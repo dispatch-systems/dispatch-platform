@@ -182,6 +182,8 @@ class PrScreenshotsTests(unittest.TestCase):
         with self.assertRaises(SystemExit) as stop:
             shots.upload_settings()
         self.assertIn("No upload settings", str(stop.exception))
+        for field in shots.SETTING_FIELDS:
+            self.assertIn(field, str(stop.exception))
         self.settings.write_text(json.dumps(SETTINGS))
         self.settings.chmod(0o644)
         with self.assertRaises(SystemExit) as stop:

@@ -131,7 +131,11 @@ def upload_settings(path=None):
     bucket, and the screenshots Worker's public URL. The file holds the key's secret."""
     path = Path(path or os.environ.get("DISPATCH_SCREENSHOTS_SETTINGS") or SETTINGS)
     if not path.is_file():
-        raise SystemExit(f"No upload settings at {path}; screenshots.md in the docs says what goes in it.")
+        raise SystemExit(
+            f"No upload settings at {path}. Write it, mode 0600, as a JSON object: endpoint (R2's S3 endpoint, "
+            "https://<account id>.r2.cloudflarestorage.com), bucket, accessKeyId and secretAccessKey (an R2 "
+            "API token with Object Read & Write on that bucket alone), and publicUrl (the screenshots Worker's "
+            "workers.dev URL).")
     if path.stat().st_mode & 0o077:
         raise SystemExit(f"{path} holds a secret; make it mode 0600.")
     settings = json.loads(path.read_text())
