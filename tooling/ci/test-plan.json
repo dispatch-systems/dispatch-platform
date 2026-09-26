@@ -16,6 +16,7 @@
   "rules": [
     "tests/api/audit-actions.test.ts",
     "tests/tooling/mail-config.test.ts",
+    "tests/tooling/screenshots-worker.test.ts",
     "tests/tooling/source-lines.test.ts",
     "tests/tooling/test-plan.test.ts"
   ],

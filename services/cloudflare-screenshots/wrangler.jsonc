@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  // Serves the PR screenshots bucket on workers.dev; screenshots.md in the docs covers deploying it.
+  "name": "dispatch-pr-screenshots",
+  "main": "worker.ts",
+  "compatibility_date": "2026-09-17",
+  "workers_dev": true,
+  "preview_urls": false,
+  "r2_buckets": [
+    {
+      "binding": "SCREENSHOTS",
+      "bucket_name": "dispatch-pr-screenshots",
+    },
+  ],
+}

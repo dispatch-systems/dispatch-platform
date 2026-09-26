@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Before-and-after screenshots for a PR: capture them from the fixture server, then publish
-them to the repository's `screenshots` branch and print the PR's Screenshots section.
+"""Before-and-after screenshots for a PR: capture them from the fixture server, then upload
+them to the screenshots bucket and print the PR's Screenshots section.
 
     npm run pr:screenshots -- capture <before|after> <screen>... [--dark]
     npm run pr:screenshots -- publish [--reviewed]
@@ -8,9 +8,15 @@ them to the repository's `screenshots` branch and print the PR's Screenshots sec
 Screens are page ids from `dashboard/src/app/route-meta.ts`. Captures go to the worktree's
 scratch directory, `/tmp/dispatch-<worktree>/screenshots/<label>/`. Publishing audits them
 with the export privacy check first; the images it has not seen need a visual review, which
-`--reviewed` asserts, and are then recorded in the private review manifest.
+`--reviewed` asserts, and are then recorded in the private review manifest. Each image then
+goes to R2 under its SHA-256, through the private upload settings, and the section links it
+through the screenshots Worker.
 """
 import argparse
+from datetime import datetime, timezone
+import hashlib
+import hmac
+import html
 import json
 import os
 from pathlib import Path
@@ -19,11 +25,18 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
 
 LABELS = ("before", "after")
 NEEDS_REVIEW = "image-needs-synthetic-data-review"
 # The audit also flags every unreviewed binary asset as such; the same review clears both.
 REVIEW_RULES = {NEEDS_REVIEW, "asset-needs-synthetic-data-review"}
+SETTINGS = Path.home() / ".config/dispatch-screenshots/upload.json"
+SETTING_FIELDS = ("endpoint", "bucket", "accessKeyId", "secretAccessKey", "publicUrl")
+# A key names its bytes, so a link never changes what it shows and may be cached for good.
+CACHE_CONTROL = "public, max-age=31536000, immutable"
 
 
 def run(args, cwd=None, env=None, check=True, capture=True):
@@ -42,13 +55,6 @@ class Worktree:
         self.branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=self.root)
         # The workspace holds the worktrees directory and the private `.privacy/` state.
         self.workspace = Path(os.environ.get("DISPATCH_WORKSPACE") or self.root.parent.parent)
-
-    def repository(self):
-        url = run(["git", "remote", "get-url", "origin"], cwd=self.root)
-        match = re.search(r"[:/]([^/:]+/[^/]+?)(?:\.git)?/?$", url)
-        if not match:
-            raise SystemExit(f"Cannot read the GitHub repository from the origin URL")
-        return match.group(1)
 
 
 def capture(tree, label, screens, dark):
@@ -117,77 +123,109 @@ def record(review_file, hashes):
 
 
 def sha256(path):
-    import hashlib
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def section(repository, commit, branch, captured, labels):
-    """The PR's Screenshots section: each screen with its before and after, or after alone."""
+def upload_settings(path=None):
+    """The private upload settings: R2's S3 endpoint, the bucket, a key that can write only that
+    bucket, and the screenshots Worker's public URL. The file holds the key's secret."""
+    path = Path(path or os.environ.get("DISPATCH_SCREENSHOTS_SETTINGS") or SETTINGS)
+    if not path.is_file():
+        raise SystemExit(f"No upload settings at {path}; screenshots.md in the docs says what goes in it.")
+    if path.stat().st_mode & 0o077:
+        raise SystemExit(f"{path} holds a secret; make it mode 0600.")
+    settings = json.loads(path.read_text())
+    missing = [field for field in SETTING_FIELDS if not settings.get(field)]
+    if missing:
+        raise SystemExit(f"{path} lacks {', '.join(missing)}.")
+    return settings
+
+
+def sign(method, url, headers, payload_hash, key_id, secret, region="auto"):
+    """The Authorization value for an S3 request, by AWS Signature Version 4, which R2 takes with
+    the region `auto`. Signs the host and every header given; `x-amz-date` must be one."""
+    parts = urllib.parse.urlsplit(url)
+    signed = {"host": parts.netloc, **{name.lower(): value.strip() for name, value in headers.items()}}
+    names = ";".join(sorted(signed))
+    request = "\n".join([method, parts.path or "/", parts.query,
+                         "".join(f"{name}:{signed[name]}\n" for name in sorted(signed)), names, payload_hash])
+    stamp = signed["x-amz-date"]
+    scope = f"{stamp[:8]}/{region}/s3/aws4_request"
+    text = "\n".join(["AWS4-HMAC-SHA256", stamp, scope, hashlib.sha256(request.encode()).hexdigest()])
+    key = f"AWS4{secret}".encode()
+    for part in scope.split("/"):
+        key = hmac.new(key, part.encode(), hashlib.sha256).digest()
+    signature = hmac.new(key, text.encode(), hashlib.sha256).hexdigest()
+    return f"AWS4-HMAC-SHA256 Credential={key_id}/{scope}, SignedHeaders={names}, Signature={signature}"
+
+
+def upload(settings, captured, opener=urllib.request.urlopen):
+    """Puts each distinct image in the bucket as `<sha256>.png`; `(label, name)` to its public URL."""
+    urls, sent = {}, set()
+    for label, name, path in captured:
+        body = path.read_bytes()
+        digest = hashlib.sha256(body).hexdigest()
+        urls[(label, name)] = f"{settings['publicUrl'].rstrip('/')}/{digest}.png"
+        if digest in sent:
+            continue
+        url = f"{settings['endpoint'].rstrip('/')}/{settings['bucket']}/{digest}.png"
+        headers = {"Cache-Control": CACHE_CONTROL, "Content-Type": "image/png", "x-amz-content-sha256": digest,
+                   "x-amz-date": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")}
+        headers["Authorization"] = sign("PUT", url, headers, digest, settings["accessKeyId"],
+                                        settings["secretAccessKey"])
+        try:
+            with opener(urllib.request.Request(url, data=body, headers=headers, method="PUT"), timeout=60):
+                pass
+        except urllib.error.HTTPError as error:
+            # R2 answers with an XML error; its code alone says what went wrong.
+            code = re.search(r"<Code>([A-Za-z]+)</Code>", error.read().decode(errors="replace"))
+            raise SystemExit(f"Uploading {label}/{name} failed: HTTP {error.code}"
+                             + (f" {code.group(1)}" if code else ""))
+        except urllib.error.URLError as error:
+            raise SystemExit(f"Uploading {label}/{name} failed: {error.reason}")
+        sent.add(digest)
+    return urls
+
+
+def section(captured, urls, labels):
+    """The PR's Screenshots section: a collapsed dropdown per screen, holding its before and after,
+    or one of them alone for a new or a removed screen."""
     screens = {}
     for label, name, _ in captured:
-        screens.setdefault(name, {})[label] = (
-            f"https://raw.githubusercontent.com/{repository}/{commit}/{branch}/{label}/{name}")
+        screens.setdefault(name, {})[label] = urls[(label, name)]
     lines = ["## Screenshots", ""]
     for name, shots in screens.items():
         title = labels.get(name[:-4], name[:-4].replace("-", " ").capitalize())
-        lines.append(f"{title}, before and after" if len(shots) == 2 else f"{title}, new")
+        pair = len(shots) == 2
+        kind = "before and after" if pair else "new" if "after" in shots else "removed"
+        # GitHub renders Markdown inside the dropdown only between blank lines.
+        lines += ["<details>", f"<summary>{html.escape(title)}, {kind}</summary>", ""]
         for label in LABELS:
             if label in shots:
-                lines.append(f"![{title} {label}]({shots[label]})")
-        lines.append("")
+                lines += [label.capitalize(), ""] if pair else []
+                lines += [f"![{title} {label}]({shots[label]})", ""]
+        lines += ["</details>", ""]
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
-def push(tree, branch_name, captured, git_env=None):
-    """Commits the captures under `<branch>/<label>/` on the screenshots branch, keeping every
-    other PR's directory, and pushes; the commit's hash pins the links."""
-    git = lambda *args: run(["git", *args], cwd=tree.root, env={**os.environ, **(git_env or {})})
-    for attempt in range(2):
-        parent = None
-        fetch = subprocess.run(["git", "fetch", "-q", "origin", "refs/heads/screenshots"], cwd=tree.root,
-                               text=True, capture_output=True)
-        if fetch.returncode == 0:
-            parent = git("rev-parse", "FETCH_HEAD")
-        with tempfile.TemporaryDirectory(prefix="dispatch-screenshots-") as temporary:
-            env = {"GIT_INDEX_FILE": str(Path(temporary) / "index"), **(git_env or {})}
-            indexed = lambda *args: run(["git", *args], cwd=tree.root, env={**os.environ, **env})
-            if parent:
-                indexed("read-tree", parent)
-                stale = [name for name in indexed("ls-files").splitlines()
-                         if name.startswith(f"{branch_name}/")]
-                if stale:
-                    indexed("update-index", "--force-remove", *stale)
-            for label, name, path in captured:
-                blob = git("hash-object", "-w", str(path))
-                indexed("update-index", "--add", "--cacheinfo", f"100644,{blob},{branch_name}/{label}/{name}")
-            tree_id = indexed("write-tree")
-        message = f"screenshots: {branch_name}"
-        commit = git("commit-tree", tree_id, *(["-p", parent] if parent else []), "-m", message)
-        result = subprocess.run(["git", "push", "-q", "origin", f"{commit}:refs/heads/screenshots"],
-                                cwd=tree.root, text=True, capture_output=True)
-        if result.returncode == 0:
-            return commit
-        if attempt:
-            raise SystemExit(f"Pushing the screenshots branch failed:\n{result.stderr.strip()}")
-    raise AssertionError("unreachable")
-
-
-def publish(tree, reviewed, review_file=None, tesseract=None, pusher=push, auditor=audit):
+def publish(tree, reviewed, review_file=None, tesseract=None, settings=None, uploader=upload, auditor=audit):
     if tree.branch in ("main", "HEAD"):
         raise SystemExit("Publish from the PR's branch, not main.")
     captured = files(tree)
+    settings = settings or upload_settings()
     review_file = review_file or tree.workspace / ".privacy/export-review.json"
     if tesseract is None:
         candidate = tree.workspace / ".privacy/bin/tesseract"
         tesseract = candidate if candidate.is_file() else None
     with tempfile.TemporaryDirectory(prefix="dispatch-screenshots-") as temporary:
         staged = Path(temporary) / "workspace"
-        keys = {}
+        keys, audited = {}, []
         for label, name, path in captured:
             copy = staged / "screenshots" / tree.branch / label / name
             copy.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(path, copy)
             keys[f"screenshots/{tree.branch}/{label}/{name}"] = path
+            audited.append((label, name, copy))
         findings = auditor(tree, staged, review_file, tesseract)
         unreviewed = {name for name, rules in findings.items() if rules <= REVIEW_RULES}
         other = {name: rules for name, rules in findings.items() if not rules <= REVIEW_RULES}
@@ -202,11 +240,11 @@ def publish(tree, reviewed, review_file=None, tesseract=None, pusher=push, audit
             record(review_file, {name: sha256(keys[name]) for name in unreviewed})
             if auditor(tree, staged, review_file, tesseract):
                 raise SystemExit("The export audit still fails after recording the review.")
-    commit = pusher(tree, tree.branch, captured)
-    text = section(tree.repository(), commit, tree.branch, captured, titles(tree))
+        # Upload the audited copies, so a capture changed since cannot go out unchecked.
+        text = section(captured, uploader(settings, audited), titles(tree))
     (tree.shots / "section.md").write_text(text)
     print(text)
-    return commit
+    return text
 
 
 def main(argv=None):
@@ -216,7 +254,7 @@ def main(argv=None):
     cap.add_argument("label", choices=LABELS)
     cap.add_argument("screens", nargs="+", help="page ids from app/route-meta.ts")
     cap.add_argument("--dark", action="store_true", help="capture the dark color scheme")
-    pub = commands.add_parser("publish", help="audit, push to the screenshots branch, print the section")
+    pub = commands.add_parser("publish", help="audit, upload to the screenshots bucket, print the section")
     pub.add_argument("--reviewed", action="store_true",
                      help="the listed images were looked at and show only fixture data")
     args = parser.parse_args(argv)
