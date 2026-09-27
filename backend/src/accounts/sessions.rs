@@ -93,26 +93,34 @@ impl Store {
         })
     }
     pub fn context(&self, a: &Auth, id: &str, permission: &str) -> Result<Context> {
-        let dsp = self.find_dsp(id)?;
-        let grant = if !a.user.platform_owner {
-            self.grant(&a.user.id, id)?
-        } else if let Some(role) = &a.preview {
-            // A previewed role that was deleted reads as a stale view, so the
-            // dashboard reopens the DSP rather than showing a denial.
-            let row = self.find_role(id, role)?;
-            Some(
-                row.ok_or_else(|| Error::new("dsp_view_expired", 409))?
-                    .into(),
-            )
+        // An ordinary member learns whether they belong to a DSP, never whether a
+        // caller-supplied DSP id exists. Resolve their grant first so an absent DSP
+        // and an existing DSP outside their membership have the same answer.
+        let (dsp, grant) = if !a.user.platform_owner {
+            let grant = self
+                .grant(&a.user.id, id)?
+                .ok_or_else(|| Error::new("permission_denied", 403))?;
+            (self.find_dsp(id)?, grant)
         } else {
-            Some(crate::roles::Grant {
-                id: "platform_owner".to_owned(),
-                name: "Platform owner".to_owned(),
-                owner: true,
-                permissions: crate::roles::all(),
-            })
+            // Platform owners may distinguish DSPs, and historically resolve the
+            // DSP before a preview role. Preserve that 404/409 ordering.
+            let dsp = self.find_dsp(id)?;
+            let grant = if let Some(role) = &a.preview {
+                // A previewed role that was deleted reads as a stale view, so the
+                // dashboard reopens the DSP rather than showing a denial.
+                self.find_role(id, role)?
+                    .ok_or_else(|| Error::new("dsp_view_expired", 409))?
+                    .into()
+            } else {
+                crate::roles::Grant {
+                    id: "platform_owner".to_owned(),
+                    name: "Platform owner".to_owned(),
+                    owner: true,
+                    permissions: crate::roles::all(),
+                }
+            };
+            (dsp, grant)
         };
-        let grant = grant.ok_or_else(|| Error::new("permission_denied", 403))?;
         let features = self.features(&dsp.id)?;
         let c = Context {
             auth: a.clone(),

@@ -57,6 +57,44 @@ pub struct Session {
     last_used: Mutex<std::time::Instant>,
     collecting: std::sync::atomic::AtomicBool,
 }
+
+/// The durable authority behind a provider operation. Member requests and jobs
+/// have different revocation rules, but neither may reach credentials, a browser
+/// command or provider state through an unguarded/default path.
+#[derive(Clone)]
+pub(crate) enum ProviderAuthority {
+    Member(Box<Context>),
+    Job { id: String, owner: String },
+}
+impl ProviderAuthority {
+    fn check(&self, db: &Store, dsp: &str, provider: Provider) -> Result<()> {
+        match self {
+            Self::Member(context) => {
+                let current = db.revalidate(context, "connections.manage")?;
+                ensure(current.dsp.id == dsp, "permission_denied", 403)?;
+                ensure(current.has(provider.id()), "not_found", 404)
+            }
+            Self::Job { id, owner } => {
+                let current = db.guard(id, owner)?;
+                ensure(current.id == dsp, "job_cancelled", 409)?;
+                let job = db.job_row(id, Some(dsp))?;
+                ensure(job.provider() == provider, "connection_changed", 409)
+            }
+        }
+    }
+    pub(crate) async fn revalidate(
+        &self,
+        state: &Arc<State>,
+        dsp: &str,
+        provider: Provider,
+    ) -> Result<()> {
+        let authority = self.clone();
+        let dsp = dsp.to_owned();
+        state
+            .read(move |db| authority.check(db, &dsp, provider))
+            .await
+    }
+}
 impl Manager {
     fn runtime(&self, config: &super::config::Config) -> Result<Arc<browseros::Runtime>> {
         let mut current = self
@@ -208,15 +246,13 @@ impl Session {
         }
         let _ = std::fs::remove_dir_all(&self.run);
     }
-    pub async fn request(&self, command: Value, types: &[&str], seconds: u64) -> Result<Value> {
-        self.request_guarded(command, types, seconds, None).await
-    }
-    pub async fn request_guarded(
+    pub(crate) async fn request_guarded(
         &self,
         command: Value,
         types: &[&str],
         seconds: u64,
-        guard: Option<(&Arc<State>, &Context)>,
+        state: &Arc<State>,
+        authority: &ProviderAuthority,
     ) -> Result<Value> {
         ensure(!self.closed(), "verification_expired", 409)?;
         let _slot = self
@@ -230,12 +266,9 @@ impl Session {
                 self.worker.lock())=>lock.map_err(|_|Error::new("provider_timeout",504))?,
         };
         ensure(!self.closed(), "verification_expired", 409)?;
-        if let Some((state, context)) = guard {
-            let context = context.clone();
-            state
-                .read(move |db| db.revalidate(&context, "connections.manage"))
-                .await?;
-        }
+        authority
+            .revalidate(state, &self.dsp, self.provider)
+            .await?;
         if ["screenshot", "assist", "complete_assistance"].contains(&s(&command, "action")) {
             ensure(self.interactive(), "verification_expired", 409)?;
         }
@@ -254,6 +287,11 @@ impl Session {
             "browser_protocol_failed",
             502,
         )?;
+        // A provider response can arrive after a member, job or feature was
+        // revoked. Refuse it before changing the shared session or returning it.
+        authority
+            .revalidate(state, &self.dsp, self.provider)
+            .await?;
         *self.last_used.lock().expect("browser idle clock") = std::time::Instant::now();
         if s(&event, "type") == "ready" {
             self.status.store(1, Ordering::SeqCst);
@@ -431,27 +469,38 @@ impl State {
             }
         }
     }
-    pub async fn connection(self: &Arc<Self>, id: &str, provider: Provider) -> Result<Connection> {
-        let dsp = id.to_owned();
-        let mut value = self
-            .run(move |db| db.connection_for(&dsp, provider))
-            .await?;
-        if let Some(session) = self.browsers.get_for(id, provider)
-            && session.interactive()
-        {
-            value.verification_session_id = Some(session.id.clone());
-        }
-        Ok(value)
+    pub(crate) async fn connection(
+        self: &Arc<Self>,
+        context: &Context,
+        provider: Provider,
+    ) -> Result<Connection> {
+        let authority = ProviderAuthority::Member(Box::new(context.clone()));
+        let dsp = context.dsp.id.clone();
+        let session = self.browsers.get_for(&dsp, provider);
+        self.read(move |db| {
+            authority.check(db, &dsp, provider)?;
+            let mut value = db.connection_for(&dsp, provider)?;
+            if let Some(session) = session
+                && session.interactive()
+            {
+                value.verification_session_id = Some(session.id.clone());
+            }
+            Ok(value)
+        })
+        .await
     }
-    pub async fn ensure_provider_browser(
+    pub(crate) async fn ensure_provider_browser(
         self: &Arc<Self>,
         id: &str,
         retry: bool,
         provider: Provider,
+        authority: ProviderAuthority,
     ) -> Result<Arc<Session>> {
         let dsp = id.to_owned();
+        let initial_authority = authority.clone();
         let (dsp, credentials, revision, run, profile) = self
             .run(move |db| {
+                initial_authority.check(db, &dsp, provider)?;
                 let value = db.ensure_dsp_active(&dsp)?;
                 let connection = db
                     .connection_lease(&dsp, provider)?
@@ -475,16 +524,27 @@ impl State {
             ensure(session.revision == revision, "connection_changed", 409)?;
             if retry {
                 let result = session
-                    .request(
+                    .request_guarded(
                         json!({"action":"check","credentials":credentials}),
                         &["ready", "challenge"],
                         180,
+                        self,
+                        &authority,
                     )
                     .await;
-                self.browser_result(&session, &result).await?;
-                if result.is_err() {
-                    self.browsers.revoke_current(&session).await;
+                let persisted = self.browser_result(&session, &result, &authority).await;
+                if result.is_err() || persisted.is_err() {
+                    // An existing browser may belong to another authorized member
+                    // or job. A caller losing authority must not tear it down.
+                    if authority
+                        .revalidate(self, &session.dsp, session.provider)
+                        .await
+                        .is_ok()
+                    {
+                        self.browsers.revoke_current(&session).await;
+                    }
                 }
+                persisted?;
                 result?;
             }
             return Ok(session);
@@ -538,7 +598,9 @@ impl State {
             let mut worker = session.worker.lock().await;
             ensure(!session.closed(), "verification_expired", 409)?;
             let dsp = id.to_owned();
+            let launch_authority = authority.clone();
             self.run(move |db| {
+                launch_authority.check(db, &dsp, provider)?;
                 let tenant = db.find_dsp(&dsp)?;
                 ensure(tenant.status == DspStatus::Active, "dsp_unavailable", 409)?;
                 let connection = db
@@ -594,26 +656,30 @@ impl State {
             }
             drop(worker);
             session
-                .request(
+                .request_guarded(
                     json!({"action":"start","credentials":credentials,"timezone":session.timezone,
                 "ownerRetry":retry,"fixtureUrl":self.config.fixture_url}),
                     &["ready", "challenge"],
                     180,
+                    self,
+                    &authority,
                 )
                 .await
         }
         .await;
-        self.browser_result(&session, &start).await?;
-        if let Err(error) = start {
+        let persisted = self.browser_result(&session, &start, &authority).await;
+        if start.is_err() || persisted.is_err() {
             self.browsers.revoke_current(&session).await;
-            return Err(error);
         }
+        persisted?;
+        start?;
         Ok(session)
     }
-    pub async fn browser_result(
+    pub(crate) async fn browser_result(
         self: &Arc<Self>,
         session: &Arc<Session>,
         result: &Result<Value>,
+        authority: &ProviderAuthority,
     ) -> Result<()> {
         let dsp = session.dsp.clone();
         let revision = session.revision;
@@ -635,7 +701,11 @@ impl State {
         } else {
             result.as_ref().err().map(|e| e.code.clone())
         };
-        self.run(move |db| db.connection_state(&dsp, provider, revision, status, error.as_deref()))
-            .await
+        let authority = authority.clone();
+        self.run(move |db| {
+            authority.check(db, &dsp, provider)?;
+            db.connection_state(&dsp, provider, revision, status, error.as_deref())
+        })
+        .await
     }
 }

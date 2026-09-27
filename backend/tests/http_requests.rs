@@ -3,6 +3,7 @@
 //! how the HTTP layer answers rather than how it is built.
 use dispatch_backend::{
     State,
+    collectors::Provider,
     config::Config,
     crypto,
     db::{self, Store, s},
@@ -237,6 +238,175 @@ impl Server {
             );
         }
     }
+}
+
+#[tokio::test]
+async fn ordinary_members_cannot_distinguish_absent_and_foreign_dsps() {
+    let server = Server::start().await;
+    let mut member = server.member("member@dispatch.test").await;
+    let foreign = server.dsp("Summit Delivery").await;
+    let absent = format!("dsp_{}", "0".repeat(32));
+
+    let foreign_open = server
+        .send(Call::post("/api/session/dsp", json!({"dspId":foreign.clone()})).who(&member))
+        .await;
+    let absent_open = server
+        .send(Call::post("/api/session/dsp", json!({"dspId":absent.clone()})).who(&member))
+        .await;
+    assert_eq!(
+        (foreign_open.status, &foreign_open.body),
+        (absent_open.status, &absent_open.body)
+    );
+    assert_eq!(
+        (foreign_open.status, foreign_open.error()),
+        (403, "permission_denied")
+    );
+
+    member.view = Some(format!("{foreign}.invalid"));
+    let foreign_view = server
+        .send(Call::get("/api/dsp/employees").who(&member))
+        .await;
+    member.view = Some(format!("{absent}.invalid"));
+    let absent_view = server
+        .send(Call::get("/api/dsp/employees").who(&member))
+        .await;
+    assert_eq!(
+        (foreign_view.status, &foreign_view.body),
+        (absent_view.status, &absent_view.body)
+    );
+    assert_eq!(
+        (foreign_view.status, foreign_view.error()),
+        (403, "permission_denied")
+    );
+
+    let owner = server.session("owner@dispatch.test").await;
+    server
+        .expect(
+            Call::post("/api/session/dsp", json!({"dspId":absent.clone()})).who(&owner),
+            404,
+            "dsp_not_found",
+        )
+        .await;
+    server
+        .expect(
+            Call::post(
+                "/api/session/dsp",
+                json!({"dspId":absent.clone(),"roleId":format!("role_{}", "0".repeat(32))}),
+            )
+            .who(&owner),
+            404,
+            "dsp_not_found",
+        )
+        .await;
+    let mut owner_preview = owner;
+    owner_preview.view = Some(format!("{absent}.role_{}.invalid", "0".repeat(32)));
+    server
+        .expect(
+            Call::get("/api/dsp/employees").who(&owner_preview),
+            404,
+            "dsp_not_found",
+        )
+        .await;
+}
+
+#[tokio::test]
+async fn revoked_connection_manager_cannot_persist_a_pending_provider_result() {
+    let server = Server::start().await;
+    let dsp = server.dsp("Northline Logistics").await;
+    let setup_dsp = dsp.clone();
+    server
+        .state
+        .run(move |db| {
+            db.platform.exec(
+                "UPDATE roles SET permissions='[\"connections.manage\"]' WHERE id=(SELECT \
+                 m.role_id FROM memberships m JOIN users u ON u.id=m.user_id WHERE \
+                 u.email='member@dispatch.test' AND m.dsp_id=?)",
+                [&setup_dsp],
+            )?;
+            db.platform
+                .exec("UPDATE dsps SET revision=revision+1 WHERE id=?", [&setup_dsp])?;
+            let credentials = json!({"clientCode":"DEMO1","username":"fixture-user",
+                "password":"slow-valid-password","securityAnswers":["one","two","three","four","five"]});
+            let area = db.area(&setup_dsp, "secrets")?;
+            let key = db::key_file(&area.join("vault.key"))?;
+            db::write_private(
+                &area.join("paycom.enc"),
+                crypto::encrypt(&key, &format!("{setup_dsp}:paycom:2"), &credentials)?
+                    .as_bytes(),
+            )?;
+            db.collector(&setup_dsp, Provider::Paycom)?.exec(
+                "UPDATE connections SET status='not_connected',error=NULL,verified_at=NULL",
+                [],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let member = server.member("member@dispatch.test").await;
+
+    let revoke_state = server.state.clone();
+    let revoke_dsp = dsp.clone();
+    let request =
+        server.send(Call::post("/api/dsp/connections/paycom/check", json!({})).who(&member));
+    let revoke = async move {
+        let mut pending = false;
+        for _ in 0..200 {
+            let id = revoke_dsp.clone();
+            let status = revoke_state
+                .read(move |db| {
+                    Ok(db
+                        .collector(&id, Provider::Paycom)?
+                        .one("SELECT status FROM connections WHERE provider='paycom'", [])?
+                        .and_then(|row| row["status"].as_str().map(str::to_owned))
+                        .unwrap_or_default())
+                })
+                .await
+                .unwrap();
+            if status == "signing_in" {
+                pending = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert!(pending, "provider request never reached its pending state");
+        revoke_state
+            .run(move |db| {
+                db.platform.exec(
+                    "UPDATE roles SET permissions='[]' WHERE id=(SELECT m.role_id FROM \
+                     memberships m JOIN users u ON u.id=m.user_id WHERE \
+                     u.email='member@dispatch.test' AND m.dsp_id=?)",
+                    [&revoke_dsp],
+                )?;
+                db.platform.exec(
+                    "UPDATE dsps SET revision=revision+1 WHERE id=?",
+                    [&revoke_dsp],
+                )?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+    };
+    let (answer, ()) = tokio::join!(request, revoke);
+    assert_eq!((answer.status, answer.error()), (403, "permission_denied"));
+    assert_eq!(server.state.browsers.active(), 0);
+    let final_dsp = dsp.clone();
+    let status = server
+        .state
+        .read(move |db| {
+            Ok(db
+                .collector(&final_dsp, Provider::Paycom)?
+                .one("SELECT status FROM connections WHERE provider='paycom'", [])?
+                .unwrap()["status"]
+                .as_str()
+                .unwrap()
+                .to_owned())
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        status, "signing_in",
+        "revoked provider result was persisted"
+    );
 }
 
 #[tokio::test]

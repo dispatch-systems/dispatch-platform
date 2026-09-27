@@ -26,6 +26,11 @@ impl Drives for Driver {
             match s(&command, "action") {
                 "start" | "check" => {
                     let password = s(&command["credentials"], "password");
+                    // Gives authorization-race tests a provider wait they can revoke
+                    // deterministically without contacting an outside service.
+                    if password == "slow-valid-password" {
+                        tokio::time::sleep(Duration::from_millis(250)).await;
+                    }
                     ensure(password != "invalid-password", "invalid_credentials", 409)?;
                     self.challenge = password == "require-verification";
                 }
