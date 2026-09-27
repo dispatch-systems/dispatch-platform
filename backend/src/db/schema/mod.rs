@@ -129,11 +129,29 @@ pub const SCORECARD: &[Migration] = &[
         apply: Sql(include_str!("scorecard/0002_sources.sql")),
     },
 ];
-pub const ROUTEDATA: &[Migration] = &[Migration {
-    id: 1,
-    name: "baseline",
-    apply: Sql(include_str!("routedata/0001_baseline.sql")),
-}];
+pub const ROUTEDATA: &[Migration] = &[
+    Migration {
+        id: 1,
+        name: "baseline",
+        apply: Sql(include_str!("routedata/0001_baseline.sql")),
+    },
+    Migration {
+        id: 2,
+        name: "details",
+        apply: Code(routedata_details),
+    },
+];
+
+/// Removed tasks join `tasks`, marked inactive; the itinerary keeps its route-level lists;
+/// breaks and unknown stops get tables, and two views pre-join the common questions.
+fn routedata_details(db: &Db) -> Result<()> {
+    add_column(db, "tasks", "active", "INTEGER NOT NULL DEFAULT 1")?;
+    for column in ["rescue_actions", "sequence_edits", "pause_events"] {
+        add_column(db, "itineraries", column, "TEXT")?;
+    }
+    db.0.execute_batch(include_str!("routedata/0002_details.sql"))?;
+    Ok(())
+}
 
 fn role_columns(db: &Db) -> Result<()> {
     add_column(db, "memberships", "role_id", "TEXT REFERENCES roles(id)")?;

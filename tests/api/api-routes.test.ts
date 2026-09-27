@@ -79,6 +79,38 @@ test('a day of routes is collected on request, stored in normalized rows and lis
   assert.equal(day.itineraries[0].delivered, 2);
   assert.equal(day.itineraries[1].notDelivered, 1);
   assert.equal((await owner.get('/api/dsp/routes/days/2026-09-24')).status, 404);
+  // One itinerary in full, and a package's history.
+  const detail = (await owner.get('/api/dsp/routes/days/2026-09-25/itineraries/itinerary-2')).value;
+  assert.equal(detail.itinerary.driverName, 'Second Driver');
+  assert.equal(detail.stops.length, 2);
+  assert.equal(detail.stops[1].address.address1, '100 Example St');
+  assert.deepEqual(
+    detail.stops[1].tasks.map((task: any) => [task.trackingId, task.taskState]),
+    [
+      ['TBA000000000001', 'DELIVERED'],
+      ['TBA000000000002', 'UNDELIVERABLE'],
+    ],
+  );
+  assert.equal(detail.breaks.length, 2);
+  assert.equal(detail.unknownStops.length, 1);
+  assert.equal(detail.inactiveTasks.length, 1);
+  assert.equal(
+    (await owner.get('/api/dsp/routes/days/2026-09-25/itineraries/missing')).status,
+    404,
+  );
+  const pkg = (await owner.get('/api/dsp/routes/packages/TBA000000000002')).value;
+  assert.equal(pkg.trackingId, 'TBA000000000002');
+  assert.equal(pkg.events.length, 4);
+  assert.ok(pkg.events.every((e: any) => e.day === '2026-09-25'));
+  assert.ok(pkg.events.some((e: any) => e.address?.city === 'Fixture'));
+  assert.equal((await owner.get('/api/dsp/routes/packages/not%20valid')).status, 400);
+  // The platform owner rebuilds the rows from the stored responses.
+  const reprocessed = await owner.post(`/api/platform/dsps/${dsp.id}/routes/reprocess`, {
+    day: '2026-09-25',
+  });
+  assert.equal(reprocessed.status, 200, reprocessed.body);
+  assert.equal(reprocessed.value.publications.length, 1);
+  assert.equal(reprocessed.value.publications[0].taskCount, 8);
   const stored = f.database(`dsps/${dsp.id}/data/routedata/routedata.sqlite`, (db) => ({
     identity: db
       .prepare('SELECT provider,source FROM storage_identity')
@@ -86,7 +118,7 @@ test('a day of routes is collected on request, stored in normalized rows and lis
       .map((r) => ({ ...r })),
     tasks: db
       .prepare(
-        "SELECT tracking_id,task_state FROM tasks WHERE itinerary_id='itinerary-2' AND task_type='DROP_OFF' ORDER BY task_id",
+        "SELECT tracking_id,task_state FROM tasks WHERE itinerary_id='itinerary-2' AND task_type='DROP_OFF' AND active=1 ORDER BY task_id",
       )
       .all()
       .map((r) => ({ ...r })),
