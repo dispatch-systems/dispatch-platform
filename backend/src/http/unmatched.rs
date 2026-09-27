@@ -53,6 +53,8 @@ fn area_permission(input: &Input) -> &'static str {
         ("paycom", _, true) | ("schedules", ..) => "timecard.manage",
         ("jobs", Some("meal-breaks"), false) => "timecard.view",
         ("jobs", ..) | ("cortex", _, true) => "collections.run",
+        ("routes", _, true) => "routes.collect",
+        ("routes", ..) => "routes.view",
         _ => "timecard.view",
     }
 }

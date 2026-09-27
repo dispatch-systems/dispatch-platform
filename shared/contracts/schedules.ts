@@ -1,6 +1,6 @@
 export interface ScheduleInput {
   name: string;
-  collection: 'paycom' | 'meal_break' | 'both' | 'scorecard';
+  collection: 'paycom' | 'meal_break' | 'both' | 'scorecard' | 'routes';
   cadence: 'interval' | 'daily';
   intervalMinutes: number | null;
   localTime: string;

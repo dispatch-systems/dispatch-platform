@@ -73,7 +73,17 @@ impl Db {
         })?;
         db.busy_timeout(Duration::from_secs(5))?;
         db.set_prepared_statement_cache_capacity(32);
-        db.pragma_update(None, "cache_size", -512)?;
+        // Kibibytes. The itineraries database holds a day of tasks per publication and
+        // answers day-range reads, so its indexes stay in memory.
+        db.pragma_update(
+            None,
+            "cache_size",
+            if kind == Kind::Itineraries {
+                -32768
+            } else {
+                -512
+            },
+        )?;
         let db = Self(db);
         let current = db.version()?;
         ensure(

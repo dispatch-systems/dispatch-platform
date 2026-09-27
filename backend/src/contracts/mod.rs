@@ -23,6 +23,7 @@ mod audit;
 mod collections;
 #[cfg(test)]
 mod generated;
+mod itineraries;
 mod jobs;
 mod meals;
 mod metrics;
@@ -37,6 +38,7 @@ pub use accounts::*;
 pub use assessment::*;
 pub use audit::*;
 pub use collections::*;
+pub use itineraries::*;
 pub use jobs::*;
 pub use meals::*;
 pub use metrics::*;
@@ -110,6 +112,7 @@ text_enum! {
         MealBreak => "meal_break",
         Both => "both",
         Scorecard => "scorecard",
+        Routes => "routes",
     }
 }
 text_enum! {

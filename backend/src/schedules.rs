@@ -25,7 +25,7 @@ const PAUSE: &str = "UPDATE collection_schedules SET enabled=0,next_run=NULL,las
 const RETIME: &str = "UPDATE collection_schedules SET anchor=?,next_run=?,last_error=NULL,\
     revision=revision+1 WHERE id=?";
 const NEXT_DEADLINE: &str =
-    "SELECT next_run FROM collection_schedules WHERE enabled=1 ORDER BY next_run LIMIT 1";
+    "SELECT collection,next_run FROM collection_schedules WHERE enabled=1 ORDER BY next_run";
 const ACTIVE_JOB: &str = concat!(
     "SELECT id FROM jobs WHERE dsp_id=? AND status IN ",
     job_statuses!(active),
@@ -313,7 +313,7 @@ impl Store {
         let collection = v::choice(
             value,
             "collection",
-            &["paycom", "meal_break", "both", "scorecard"],
+            &["paycom", "meal_break", "both", "scorecard", "routes"],
         )?;
         let collection = ScheduleCollection::parse(collection)
             .ok_or_else(|| Error::new("invalid_input", 400))?;
@@ -455,11 +455,20 @@ impl Store {
             [&self.config.environment],
         )?;
         for (id,) in dsps {
-            if !self.feature_enabled(&id, crate::features::SCHEDULES)? {
+            let enabled = self.features(&id)?;
+            if !crate::features::automates(&enabled) {
                 continue;
             }
-            let next: Option<(Option<String>,)> = self.dsp(&id)?.one_as(NEXT_DEADLINE, [])?;
-            if let Some((next_run,)) = next {
+            // The soonest schedule whose page is on; the others wait for their page.
+            let rows: Vec<(String, Option<String>)> = self.dsp(&id)?.query_as(NEXT_DEADLINE, [])?;
+            let next = rows
+                .into_iter()
+                .find(|(collection, _)| {
+                    let page = crate::features::automation(collection);
+                    enabled.iter().any(|f| f == page)
+                })
+                .map(|(_, next_run)| next_run);
+            if let Some(next_run) = next {
                 let deadline = next_run
                     .and_then(|v| chrono::DateTime::parse_from_rfc3339(&v).ok())
                     .map_or(0, |d| d.timestamp_millis());
@@ -501,7 +510,8 @@ impl Store {
     }
     pub fn schedule_due(&self, id: &str) -> Result<Option<i64>> {
         let dsp = self.find_dsp(id)?;
-        if !self.serves(&dsp) || !self.feature_enabled(id, crate::features::SCHEDULES)? {
+        let enabled = self.features(id)?;
+        if !self.serves(&dsp) || !crate::features::automates(&enabled) {
             return Ok(None);
         }
         let db = self.dsp(id)?;
@@ -511,6 +521,11 @@ impl Store {
             [],
         )?;
         for mut row in rows {
+            // A schedule whose page is off waits, as every schedule does without the page.
+            let page = crate::features::automation(row.schedule.collection.as_str());
+            if !enabled.iter().any(|f| f == page) {
+                continue;
+            }
             let pending = row.schedule.next_run.clone();
             if pending.as_ref().is_some_and(|value| value <= &iso()) {
                 if let Err(error) = self.enqueue_schedule(id, &row.schedule) {

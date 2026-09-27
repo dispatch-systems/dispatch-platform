@@ -40,16 +40,26 @@ export function FeatureSwitchDialog({
   const unmet = preview
     ? []
     : feature.requires.filter(
-        (c) => !featureCatalog.some((f) => f.provides === c && enabled.includes(f.id)),
+        (c) => !featureCatalog.some((f) => f.provides?.includes(c) && enabled.includes(f.id)),
       );
   const others = changes.filter((change) => change.feature !== feature.id);
+  // The capability two features have in common, or the first one either supplies or needs.
+  const shared = (
+    a: { provides?: string[]; requires: string[] },
+    b: { provides?: string[]; requires: string[] },
+  ) =>
+    [...(a.provides ?? []), ...a.requires].find(
+      (c) => (b.provides ?? []).includes(c) || b.requires.includes(c),
+    ) ??
+    (a.provides ?? a.requires)[0] ??
+    '';
   const reasons = others.map((change) => {
     const other = entry(change.feature);
     if (on && change.enabled)
-      return `${feature.label} needs ${capabilityLabel(other.provides ?? '')}, so ${other.label} switches on too.`;
+      return `${feature.label} needs ${capabilityLabel(shared(feature, other))}, so ${other.label} switches on too.`;
     if (on)
-      return `A DSP runs one ${capabilityLabel(feature.provides ?? '').replace(/^an? /, '')} at a time, so ${other.label} switches off.`;
-    return `${other.label} needs ${capabilityLabel(feature.provides ?? '')}, so it switches off too.`;
+      return `A DSP runs one ${capabilityLabel(shared(feature, other)).replace(/^an? /, '')} at a time, so ${other.label} switches off.`;
+    return `${other.label} needs ${capabilityLabel(shared(other, feature))}, so it switches off too.`;
   });
   const pagesOff = changes.filter((c) => !c.enabled && entry(c.feature).kind === 'page');
   const pagesOn = changes.filter((c) => c.enabled && entry(c.feature).kind === 'page');

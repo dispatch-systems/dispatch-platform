@@ -511,6 +511,7 @@ dependencies = [
  "chrono-tz",
  "dispatch-host",
  "ego-tree",
+ "flate2",
  "fs2",
  "futures-util",
  "getrandom 0.4.3",

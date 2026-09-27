@@ -57,6 +57,8 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
             .collect(&state, &id, &owner, &metrics, &request, job.attempt)
             .await?;
         metrics.counts(&collected.data);
+        // Shaping and compressing happen here, before the platform lock is taken.
+        let collected = provider.collector().prepare(collected)?;
         metrics.phase(Phase::Publication);
         let jid = id.clone();
         let worker = owner.clone();

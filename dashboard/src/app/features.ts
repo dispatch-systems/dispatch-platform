@@ -16,8 +16,8 @@ type Entry<Kind, Id> = {
   requires: string[];
 };
 export type PageEntry = Entry<'page', PageFeature> & { provides?: undefined };
-/** `provides` is what the connection supplies. */
-export type ConnectionEntry = Entry<'connection', ConnectionFeature> & { provides: string };
+/** `provides` is what the connection supplies, one capability or several. */
+export type ConnectionEntry = Entry<'connection', ConnectionFeature> & { provides: string[] };
 export type FeatureEntry = PageEntry | ConnectionEntry;
 /** Mirrors `PAGES` and the collector registry in `backend/src/features.rs`. */
 export const featureCatalog: FeatureEntry[] = [
@@ -36,11 +36,18 @@ export const featureCatalog: FeatureEntry[] = [
     requires: [],
   },
   {
+    id: 'routes',
+    label: 'Routes',
+    kind: 'page',
+    permissions: ['routes.view', 'routes.collect', 'routes.manage'],
+    requires: ['routes'],
+  },
+  {
     id: 'paycom',
     label: 'Paycom',
     kind: 'connection',
     permissions: [],
-    provides: 'timecards',
+    provides: ['timecards'],
     requires: [],
   },
   {
@@ -48,7 +55,7 @@ export const featureCatalog: FeatureEntry[] = [
     label: 'Cortex',
     kind: 'connection',
     permissions: [],
-    provides: 'meal_breaks',
+    provides: ['meal_breaks', 'routes'],
     requires: [],
   },
 ];
@@ -58,6 +65,7 @@ export const schedulesFeature: PageFeature = 'timecard';
 const capabilities: Record<string, string> = {
   timecards: 'a timecard source',
   meal_breaks: 'a meal-break source',
+  routes: 'a route source',
 };
 export const capabilityLabel = (capability: string) => capabilities[capability] ?? capability;
 /** The connections among `features`, in catalog order. */
@@ -81,16 +89,18 @@ export function previewSwitch(enabled: readonly string[], id: Feature, on: boole
     else current.delete(feature.id);
     changed.push({ feature: feature.id, enabled: to });
   };
+  const provides = (f: FeatureEntry, capability: string) =>
+    f.provides?.includes(capability) ?? false;
   const provided = (capability: string) =>
-    featureCatalog.some((f) => f.provides === capability && current.has(f.id));
+    featureCatalog.some((f) => provides(f, capability) && current.has(f.id));
   const feature = featureCatalog.find((f) => f.id === id)!;
   if (on) {
-    if (feature.provides)
+    for (const capability of feature.provides ?? [])
       for (const other of featureCatalog)
-        if (other.provides === feature.provides && other.id !== feature.id) flip(other, false);
+        if (provides(other, capability) && other.id !== feature.id) flip(other, false);
     for (const capability of feature.requires) {
       if (provided(capability)) continue;
-      const providers = featureCatalog.filter((f) => f.provides === capability);
+      const providers = featureCatalog.filter((f) => provides(f, capability));
       if (providers.length !== 1) return undefined;
       flip(providers[0]!, true);
     }

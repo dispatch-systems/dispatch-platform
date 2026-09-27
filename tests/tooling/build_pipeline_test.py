@@ -52,6 +52,7 @@ class PipelineTests(unittest.TestCase):
             "tests/providers/native-browser-recovery.test.ts",
             "tests/providers/cortex-worker.test.ts", "tests/providers/cortex-meals-worker.test.ts",
             "tests/providers/cortex-scorecard-worker.test.ts",
+            "tests/providers/cortex-routes-worker.test.ts",
             "tests/providers/multi-dsp-browser.test.ts", "tests/providers/collection-throughput.test.ts",
         })
         self.assertEqual(set(collectors.SHARDS["capacity"]), {

@@ -203,7 +203,12 @@ export const jobSchema = z.object({
   dspId: text.min(1),
   dspName: text,
   environment,
-  kind: z.enum(['paycom.collect', 'cortex.meal_breaks.collect', 'cortex.scorecard.collect']),
+  kind: z.enum([
+    'paycom.collect',
+    'cortex.meal_breaks.collect',
+    'cortex.scorecard.collect',
+    'cortex.routes.collect',
+  ]),
   status: jobStatusSchema,
   progress: count.max(100),
   message: text,

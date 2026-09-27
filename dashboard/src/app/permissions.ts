@@ -19,6 +19,9 @@ export const permissionLabels: Record<Permission, string> = {
   'timecard.view': 'View Timecard',
   'timecard.manage': 'Manage Timecard',
   'collections.run': 'Run Collections',
+  'routes.view': 'View Routes',
+  'routes.collect': 'Collect Routes',
+  'routes.manage': 'Manage Routes',
   'connections.manage': 'Manage Connections',
   'members.invite': 'Invite Members',
   'members.manage': 'Manage Members',
@@ -42,4 +45,6 @@ export const impliedPermissions: Partial<Record<Permission, Permission>> = {
   'timecard.manage': 'timecard.view',
   'uniforms.adjust': 'uniforms.view',
   'uniforms.manage': 'uniforms.view',
+  'routes.collect': 'routes.view',
+  'routes.manage': 'routes.view',
 };

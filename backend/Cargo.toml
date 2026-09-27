@@ -20,6 +20,7 @@ argon2 = "0.6"
 base64 = "0.23"
 chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.10"
+flate2 = "1"
 fs2 = "0.4"
 getrandom = "0.4"
 hmac = "0.13"
