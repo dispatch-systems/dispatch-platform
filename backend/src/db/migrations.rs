@@ -43,7 +43,7 @@ pub enum Kind {
     Paycom,
     Cortex,
     Scorecard,
-    Itineraries,
+    RouteData,
 }
 impl Kind {
     pub const ALL: &[Self] = &[
@@ -53,7 +53,7 @@ impl Kind {
         Self::Paycom,
         Self::Cortex,
         Self::Scorecard,
-        Self::Itineraries,
+        Self::RouteData,
     ];
     pub fn name(self) -> &'static str {
         match self {
@@ -63,7 +63,7 @@ impl Kind {
             Self::Paycom => "paycom",
             Self::Cortex => "cortex",
             Self::Scorecard => "scorecard",
-            Self::Itineraries => "itineraries",
+            Self::RouteData => "routedata",
         }
     }
     /// Pinned. Released binaries refuse to open a database with any other value.
@@ -75,7 +75,7 @@ impl Kind {
             | Self::Paycom
             | Self::Cortex
             | Self::Scorecard
-            | Self::Itineraries => 1,
+            | Self::RouteData => 1,
         }
     }
     pub fn migrations(self) -> &'static [Migration] {
@@ -86,7 +86,7 @@ impl Kind {
             Self::Paycom => schema::PAYCOM,
             Self::Cortex => schema::CORTEX,
             Self::Scorecard => schema::SCORECARD,
-            Self::Itineraries => schema::ITINERARIES,
+            Self::RouteData => schema::ROUTEDATA,
         }
     }
 }
@@ -283,7 +283,7 @@ mod tests {
             .collector(&id, crate::collectors::Provider::Cortex)
             .unwrap();
         let scorecard = store.scorecard(&id).unwrap();
-        let itineraries = store.itineraries(&id).unwrap();
+        let routedata = store.routedata(&id).unwrap();
         let databases: [(Kind, &Db); 7] = [
             (Kind::Platform, &store.platform),
             (Kind::Jobs, &store.jobs),
@@ -291,7 +291,7 @@ mod tests {
             (Kind::Paycom, &paycom),
             (Kind::Cortex, &cortex),
             (Kind::Scorecard, &scorecard),
-            (Kind::Itineraries, &itineraries),
+            (Kind::RouteData, &routedata),
         ];
         for (kind, db) in databases {
             if std::env::var_os("DISPATCH_UPDATE_SCHEMA").is_some() {

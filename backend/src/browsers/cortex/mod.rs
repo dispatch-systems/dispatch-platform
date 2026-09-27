@@ -3,7 +3,7 @@
 mod benchmark;
 mod collection;
 mod discovery;
-mod itineraries;
+mod routedata;
 mod scorecard;
 mod scorecard_csv;
 use super::{
@@ -201,7 +201,7 @@ impl Drives for Driver {
                     scope: None,
                 });
             }
-            if let Some(request) = crate::itineraries::Request::parse(run.request)? {
+            if let Some(request) = crate::routedata::Request::parse(run.request)? {
                 let capture = self.collect_routes(&request, run).await?;
                 let scope = capture.scope.clone();
                 return Ok(Collected {

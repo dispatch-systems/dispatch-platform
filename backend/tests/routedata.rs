@@ -4,7 +4,7 @@ mod common;
 use dispatch_backend::{
     collectors::Provider,
     db::{Store, s},
-    itineraries::{self, Capture, Mode, Request},
+    routedata::{self, Capture, Mode, Request},
 };
 use serde_json::{Value, json};
 
@@ -40,21 +40,21 @@ fn publish(db: &Store, id: &str, key: &str, day: &str, capture: &Capture) -> Str
     job
 }
 fn count(db: &Store, id: &str, sql: &str) -> i64 {
-    db.itineraries(id).unwrap().count(sql, []).unwrap()
+    db.routedata(id).unwrap().count(sql, []).unwrap()
 }
 
 #[test]
 fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
     let (_root, db, id) = ready();
-    let capture = itineraries::fixture(&request("2026-09-25", Mode::Final)).unwrap();
+    let capture = routedata::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     // Prepared ahead, as the executor does outside the platform lock.
-    let prepared = itineraries::prepare(capture.clone()).unwrap();
+    let prepared = routedata::prepare(capture.clone()).unwrap();
     assert!(prepared.prepared.is_some());
     assert!(prepared.itineraries.iter().all(|i| i.detail.is_empty()));
     let job = publish(&db, &id, "first", "2026-09-25", &prepared);
     let queued: Value = db.job(&job, Some(&id)).unwrap();
     assert_eq!(queued["kind"], "cortex.routes.collect");
-    let storage = db.itineraries(&id).unwrap();
+    let storage = db.routedata(&id).unwrap();
     let publication = storage
         .one("SELECT * FROM route_publications WHERE job_id=?", [&job])
         .unwrap()
@@ -131,7 +131,7 @@ fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
             |row| row.get(0),
         )
         .unwrap();
-    let inflated: Value = serde_json::from_slice(&itineraries::gunzip(&body).unwrap()).unwrap();
+    let inflated: Value = serde_json::from_slice(&routedata::gunzip(&body).unwrap()).unwrap();
     assert_eq!(inflated, capture.summaries);
     // The views read the publication and its drivers.
     let days = db.route_days(&id).unwrap();
@@ -149,7 +149,7 @@ fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
 #[test]
 fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
     let (_root, db, id) = ready();
-    let capture = itineraries::fixture(&request("2026-09-25", Mode::Final)).unwrap();
+    let capture = routedata::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     let first = publish(&db, &id, "first", "2026-09-25", &capture);
     let mut again = capture.clone();
     again.itineraries.truncate(1);
@@ -161,7 +161,7 @@ fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
     again.finished_at += 2000;
     let second = publish(&db, &id, "second", "2026-09-25", &again);
     assert_ne!(first, second);
-    let storage = db.itineraries(&id).unwrap();
+    let storage = db.routedata(&id).unwrap();
     let publications = storage
         .all(
             "SELECT job_id,active,itinerary_count FROM route_publications",
@@ -186,7 +186,7 @@ fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
             .is_empty()
     );
     // A capture for another day or station is refused.
-    let other = itineraries::fixture(&request("2026-09-24", Mode::Final)).unwrap();
+    let other = routedata::fixture(&request("2026-09-24", Mode::Final)).unwrap();
     let jobs = db
         .enqueue_routes(&id, None, "third", Some("2026-09-25"), Mode::Final, 1)
         .unwrap();
@@ -201,14 +201,14 @@ fn a_schedule_queues_recent_days_without_a_final_publication() {
     let day = |back: i64| (today - chrono::Duration::days(back)).to_string();
     let jobs = db.routes_jobs(&id).unwrap();
     // Yesterday first, then the days before, at most four per run.
-    assert_eq!(jobs.len(), itineraries::MAX_JOBS_PER_RUN);
+    assert_eq!(jobs.len(), routedata::MAX_JOBS_PER_RUN);
     assert_eq!(jobs[0].0, format!("routes:{}", day(1)));
     assert_eq!(jobs[0].1["date"], day(1));
     assert_eq!(jobs[0].1["mode"], "final");
     assert_eq!(jobs[0].1["station"], "TST1");
     assert_eq!(jobs[3].0, format!("routes:{}", day(4)));
     // A published day is not asked for again.
-    let capture = itineraries::fixture(&request(&day(1), Mode::Final)).unwrap();
+    let capture = routedata::fixture(&request(&day(1), Mode::Final)).unwrap();
     publish(&db, &id, "yesterday", &day(1), &capture);
     let jobs = db.routes_jobs(&id).unwrap();
     assert_eq!(jobs[0].0, format!("routes:{}", day(2)));
@@ -217,7 +217,7 @@ fn a_schedule_queues_recent_days_without_a_final_publication() {
             .all(|(key, _)| key != &format!("routes:{}", day(1)))
     );
     // A snapshot of today is a different reading and leaves the schedule's view alone.
-    let snapshot = itineraries::fixture(&request(&day(0), Mode::Snapshot)).unwrap();
+    let snapshot = routedata::fixture(&request(&day(0), Mode::Snapshot)).unwrap();
     publish(&db, &id, "today", &day(0), &snapshot);
     assert_eq!(db.route_days(&id).unwrap().days.len(), 2);
     assert_eq!(

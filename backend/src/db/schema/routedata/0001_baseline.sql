@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS storage_identity (dsp_id TEXT NOT NULL, provider TEXT NOT NULL, source TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS itineraries_schema (version INTEGER PRIMARY KEY CHECK(version=1));
-INSERT OR IGNORE INTO itineraries_schema VALUES (1);
+CREATE TABLE IF NOT EXISTS routedata_schema (version INTEGER PRIMARY KEY CHECK(version=1));
+INSERT OR IGNORE INTO routedata_schema VALUES (1);
 
 -- One collection of one day's routes at a station for a provider. The newest is
 -- active; a recollection replaces the previous publication and everything under it,

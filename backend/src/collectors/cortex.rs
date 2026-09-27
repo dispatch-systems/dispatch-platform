@@ -11,9 +11,9 @@ use crate::{
         cortex,
     },
     db::{self, Db, Kind, Store},
-    ensure, itineraries,
+    ensure,
     meals::{self, CollectionRequest},
-    scorecard, validate as v,
+    routedata, scorecard, validate as v,
 };
 use serde_json::{Value, json};
 use std::path::Path;
@@ -33,19 +33,19 @@ impl Collector for Cortex {
         "cortex.meal_breaks.collect"
     }
     fn other_job_kinds(&self) -> &'static [&'static str] {
-        &[scorecard::JOB_KIND, itineraries::JOB_KIND]
+        &[scorecard::JOB_KIND, routedata::JOB_KIND]
     }
     fn job_kind_for(&self, request: &Value) -> &'static str {
         if scorecard::Request::is(request) {
             scorecard::JOB_KIND
-        } else if itineraries::Request::is(request) {
-            itineraries::JOB_KIND
+        } else if routedata::Request::is(request) {
+            routedata::JOB_KIND
         } else {
             self.job_kind()
         }
     }
     fn added_storages(&self) -> &'static [&'static AddedStorage] {
-        static ADDED: [&AddedStorage; 2] = [&scorecard::STORAGE, &itineraries::STORAGE];
+        static ADDED: [&AddedStorage; 2] = [&scorecard::STORAGE, &routedata::STORAGE];
         &ADDED
     }
     fn database(&self) -> Kind {
@@ -115,8 +115,8 @@ impl Collector for Cortex {
                 scope: None,
             });
         }
-        if let Some(request) = itineraries::Request::parse(request)? {
-            let capture = itineraries::fixture(&request)?;
+        if let Some(request) = routedata::Request::parse(request)? {
+            let capture = routedata::fixture(&request)?;
             let scope = capture.scope.clone();
             return Ok(Collected {
                 data: serde_json::to_value(capture)?,
@@ -137,19 +137,19 @@ impl Collector for Cortex {
     fn progress(&self, request: &Value) -> &'static str {
         if scorecard::Request::is(request) {
             "Collecting scorecard"
-        } else if itineraries::Request::is(request) {
+        } else if routedata::Request::is(request) {
             "Collecting routes"
         } else {
             "Collecting meal breaks"
         }
     }
     fn prepare(&self, collected: Collected) -> Result<Collected> {
-        if !itineraries::Request::is(&collected.data) {
+        if !routedata::Request::is(&collected.data) {
             return Ok(collected);
         }
-        let capture: itineraries::Capture = serde_json::from_value(collected.data)?;
+        let capture: routedata::Capture = serde_json::from_value(collected.data)?;
         Ok(Collected {
-            data: serde_json::to_value(itineraries::prepare(capture)?)?,
+            data: serde_json::to_value(routedata::prepare(capture)?)?,
             scope: collected.scope,
         })
     }
@@ -157,7 +157,7 @@ impl Collector for Cortex {
         if scorecard::Request::is(&collected.data) {
             return store.publish_scorecard(dsp, job, &serde_json::from_value(collected.data)?);
         }
-        if itineraries::Request::is(&collected.data) {
+        if routedata::Request::is(&collected.data) {
             return store.publish_routes(dsp, job, &serde_json::from_value(collected.data)?);
         }
         store.publish_meals(

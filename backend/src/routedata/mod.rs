@@ -1,9 +1,9 @@
 //! Daily routes from Cortex's execution pages: the station's route list, every driver's
 //! itinerary with its stops and packages, and the newer routes page's list, one day at a
-//! time, published into the DSP's itineraries database. Normalized rows hold what reads
+//! time, published into the DSP's route data database. Normalized rows hold what reads
 //! filter on; every response is kept whole, compressed, for reprocessing. Browser and
 //! HTTP data is untrusted input. The collection is `routes` to the platform; the module
-//! and its database take Amazon's word, since `routes` names the HTTP routes here.
+//! and its database are `routedata`, since `routes` names the HTTP routes here.
 use crate::{
     Error, Result,
     collectors::{AddedStorage, Provider},
@@ -21,12 +21,12 @@ use std::io::Write;
 pub const JOB_KIND: &str = "cortex.routes.collect";
 pub const COLLECTION: &str = "routes";
 pub const ADAPTER_VERSION: i64 = 1;
-/// The itineraries database beside `cortex.sqlite`.
+/// The route data database beside `cortex.sqlite`.
 pub static STORAGE: AddedStorage = AddedStorage {
-    id: "itineraries",
-    kind: Kind::Itineraries,
-    marker: "storage.itineraries",
-    source: "itineraries-v1",
+    id: "routedata",
+    kind: Kind::RouteData,
+    marker: "storage.routedata",
+    source: "routedata-v1",
     verify,
 };
 /// How far back a schedule collects days it has no final publication of.
@@ -612,8 +612,8 @@ fn decode(blob: &str) -> Result<Vec<u8>> {
 
 fn verify(db: &Db) -> Result<()> {
     ensure(
-        db.all("SELECT version FROM itineraries_schema", [])? == vec![json!({"version":1})],
-        "unsupported_itineraries_schema",
+        db.all("SELECT version FROM routedata_schema", [])? == vec![json!({"version":1})],
+        "unsupported_routedata_schema",
         503,
     )?;
     // Missing initialized tables fail closed, rather than recreating lost data.
@@ -662,7 +662,7 @@ struct Flat {
 }
 
 impl Store {
-    pub fn itineraries(&self, id: &str) -> Result<DspLease<'_>> {
+    pub fn routedata(&self, id: &str) -> Result<DspLease<'_>> {
         self.added_storage(id, Provider::Cortex, &STORAGE)
     }
     /// Today, where the DSP is.
@@ -686,7 +686,7 @@ impl Store {
         )?;
         // A scope proven by an earlier day at this station spares discovery, which
         // starts from an address Cortex may send elsewhere.
-        let known = self.itineraries(id)?.one(
+        let known = self.routedata(id)?.one(
             "SELECT service_area_id,provider FROM route_publications WHERE station=? AND active=1 \
              ORDER BY collected_at DESC LIMIT 1",
             [&profile.station_code],
@@ -759,7 +759,7 @@ impl Store {
     pub fn routes_jobs(&self, id: &str) -> Result<Vec<(String, Value)>> {
         let today = self.routes_today(id)?;
         let station = self.profile(id)?.station_code;
-        let db = self.itineraries(id)?;
+        let db = self.routedata(id)?;
         let mut jobs = Vec::new();
         for back in 1..=(BACKFILL_DAYS as i64) {
             let day = (today - Duration::days(back)).to_string();
@@ -792,7 +792,7 @@ impl Store {
                 .prepared
                 .ok_or_else(|| Error::new("routes_capture_invalid", 502))?,
         };
-        let db = self.itineraries(id)?;
+        let db = self.routedata(id)?;
         let day = capture.scope.date.as_str();
         let publication = crate::crypto::id("routes")?;
         let routes = capture.route_summaries["rmsRouteSummaries"]
@@ -983,7 +983,7 @@ impl Store {
     pub fn route_days(&self, id: &str) -> Result<RouteDays> {
         let today = self.routes_today(id)?;
         let station = self.profile(id)?.station_code;
-        let db = self.itineraries(id)?;
+        let db = self.routedata(id)?;
         let days = db
             .all(
                 "SELECT id,day,mode,station,collected_at,route_count,itinerary_count,stop_count,task_count \
@@ -1003,7 +1003,7 @@ impl Store {
     pub fn route_day(&self, id: &str, day: &str) -> Result<Option<RouteDayView>> {
         crate::validate::date(day)?;
         let station = self.profile(id)?.station_code;
-        let db = self.itineraries(id)?;
+        let db = self.routedata(id)?;
         let Some(row) = db.one(
             "SELECT id,day,mode,station,collected_at,route_count,itinerary_count,stop_count,task_count \
              FROM route_publications WHERE station=? AND day=? AND active=1",

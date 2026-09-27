@@ -1,5 +1,5 @@
 //! Daily routes: what is stored, and collecting a day. The collection is `routes` here
-//! and in its paths; its module and database are `itineraries`.
+//! and in its paths; its module and database are `routedata`.
 use crate::{
     Error, Result,
     db::Store,
@@ -7,7 +7,7 @@ use crate::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, read, write},
     },
-    itineraries::{self, MAX_DAYS_PER_REQUEST, Mode},
+    routedata::{self, MAX_DAYS_PER_REQUEST, Mode},
     validate as v,
 };
 
@@ -64,7 +64,7 @@ fn collect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         actor,
         Some(id),
         "routes.collection_requested",
-        date.unwrap_or(itineraries::COLLECTION),
+        date.unwrap_or(routedata::COLLECTION),
     )?;
     Ok(Reply::status(jobs, 202))
 }
