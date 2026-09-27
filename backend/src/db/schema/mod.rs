@@ -67,6 +67,11 @@ pub const JOBS: &[Migration] = &[
         name: "scorecard_kind",
         apply: Sql(include_str!("jobs/0002_scorecard_kind.sql")),
     },
+    Migration {
+        id: 3,
+        name: "routes_kind",
+        apply: Sql(include_str!("jobs/0003_routes_kind.sql")),
+    },
 ];
 pub const DSP: &[Migration] = &[
     Migration {
@@ -83,6 +88,11 @@ pub const DSP: &[Migration] = &[
         id: 3,
         name: "scorecard_collection",
         apply: Sql(include_str!("dsp/0003_scorecard_collection.sql")),
+    },
+    Migration {
+        id: 4,
+        name: "routes_collection",
+        apply: Sql(include_str!("dsp/0004_routes_collection.sql")),
     },
 ];
 pub const PAYCOM: &[Migration] = &[
