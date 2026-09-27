@@ -4,7 +4,7 @@
 use crate::{
     Error, Result, State,
     accounts::Context,
-    browsers::Provider,
+    browsers::{Provider, ProviderAuthority},
     contracts::Connection,
     db::Store,
     ensure,
@@ -78,9 +78,8 @@ async fn revalidate(state: &Arc<State>, c: &Context, access: Dsp) -> Result<()> 
 
 // Every flow ends the same way too: the connection as it now stands, for a
 // member who may still see it.
-async fn answer(state: &Arc<State>, c: &Context, provider: Provider, access: Dsp) -> Result<Reply> {
-    revalidate(state, c, access).await?;
-    let connection = state.connection(&c.dsp.id, provider).await?;
+async fn answer(state: &Arc<State>, c: &Context, provider: Provider) -> Result<Reply> {
+    let connection = state.connection(c, provider).await?;
     Reply::of(&connection)
 }
 
@@ -99,7 +98,7 @@ async fn stop(state: &Arc<State>, c: &Context, provider: Provider, access: Dsp) 
 
 async fn provider_connection(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let (c, provider) = open(&state, &input, access).await?;
-    let connection = state.connection(&c.dsp.id, provider).await?;
+    let connection = state.connection(&c, provider).await?;
     Reply::of(&connection)
 }
 
@@ -113,8 +112,15 @@ async fn save(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     state
         .run(move |db| db.save_credentials(&context, &credentials, provider))
         .await?;
-    state.ensure_provider_browser(id, true, provider).await?;
-    answer(&state, &c, provider, access).await
+    state
+        .ensure_provider_browser(
+            id,
+            true,
+            provider,
+            ProviderAuthority::Member(Box::new(c.clone())),
+        )
+        .await?;
+    answer(&state, &c, provider).await
 }
 
 async fn check(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
@@ -122,8 +128,15 @@ async fn check(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let id = c.dsp.id.as_str();
     let _operation = state.browsers.operation(id)?;
     v::fields(&input.body, &[])?;
-    state.ensure_provider_browser(id, true, provider).await?;
-    answer(&state, &c, provider, access).await
+    state
+        .ensure_provider_browser(
+            id,
+            true,
+            provider,
+            ProviderAuthority::Member(Box::new(c.clone())),
+        )
+        .await?;
+    answer(&state, &c, provider).await
 }
 
 async fn disable(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
@@ -136,7 +149,7 @@ async fn disable(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> 
     state
         .run(move |db| db.disable(&context, remove, provider))
         .await?;
-    answer(&state, &c, provider, access).await
+    answer(&state, &c, provider).await
 }
 
 // What a member does inside a browser session that is waiting for them.
@@ -208,7 +221,7 @@ async fn step(state: Arc<State>, input: Input, access: Dsp, step: Step) -> Resul
         }
         Step::Submit => {
             if session.ready() {
-                return answer(&state, &c, provider, access).await;
+                return answer(&state, &c, provider).await;
             }
             (
                 json!({"action":"complete_assistance"}),
@@ -217,16 +230,31 @@ async fn step(state: Arc<State>, input: Input, access: Dsp, step: Step) -> Resul
             )
         }
     };
+    let authority = ProviderAuthority::Member(Box::new(c.clone()));
     let result = session
-        .request_guarded(command, &types, timeout, Some((&state, &c)))
+        .request_guarded(command, &types, timeout, &state, &authority)
         .await;
-    if [Step::Verify, Step::Submit].contains(&step) {
-        state.browser_result(&session, &result).await?;
+    if [Step::Verify, Step::Submit].contains(&step)
+        && let Err(error) = state.browser_result(&session, &result, &authority).await
+    {
+        if authority
+            .revalidate(&state, &session.dsp, session.provider)
+            .await
+            .is_ok()
+        {
+            state.browsers.revoke_current(&session).await;
+        }
+        return Err(error);
     }
     let value = match result {
         Ok(value) => value,
         Err(error) => {
-            if !error.is_any(crate::Code::RECOVERABLE) {
+            if !error.is_any(crate::Code::RECOVERABLE)
+                && authority
+                    .revalidate(&state, &session.dsp, session.provider)
+                    .await
+                    .is_ok()
+            {
                 state.browsers.revoke_current(&session).await;
             }
             return Err(error);
@@ -247,9 +275,12 @@ async fn step(state: Arc<State>, input: Input, access: Dsp, step: Step) -> Resul
     )?;
     let context = c.clone();
     state
-        .run(move |db| context.audit(db, "connection.verification_submitted", provider.id()))
+        .run(move |db| {
+            access.revalidate(db, &context)?;
+            context.audit(db, "connection.verification_submitted", provider.id())
+        })
         .await?;
-    answer(&state, &c, provider, access).await
+    answer(&state, &c, provider).await
 }
 
 fn validate_browser_input(input: &Value) -> Result<()> {

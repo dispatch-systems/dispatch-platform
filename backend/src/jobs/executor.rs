@@ -1,6 +1,7 @@
 use crate::collectors::Provider;
 use crate::{
     State,
+    browsers::ProviderAuthority,
     contracts::{ActiveJobStatus, JobRow, JobStatus},
     db::now,
     ensure,
@@ -21,7 +22,17 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
             .run(move |db| db.guard(&jid, &worker).map(|_| ()))
             .await?;
         metrics.phase(Phase::Authentication);
-        let session = state.ensure_provider_browser(&dsp, false, provider).await?;
+        let session = state
+            .ensure_provider_browser(
+                &dsp,
+                false,
+                provider,
+                ProviderAuthority::Job {
+                    id: id.clone(),
+                    owner: owner.clone(),
+                },
+            )
+            .await?;
         if session.challenge() {
             metrics.phase(Phase::Verification);
             let jid = id.clone();
