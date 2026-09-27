@@ -1161,3 +1161,505 @@ async fn probe_scorecard_api() -> Result<()> {
     driver.browser.close().await;
     result
 }
+
+/// The shape of a JSON value without its contents. Objects give each key's shape;
+/// arrays of objects give, per key, how many items carry it, how many fill it, the
+/// kinds of value seen and the range of string lengths, plus the shape of the first
+/// nested object or array under each key. Strings are classed, never shown.
+fn shape(value: &Value, depth: usize) -> Value {
+    fn class(text: &str) -> &'static str {
+        let bytes = text.as_bytes();
+        if text.is_empty() {
+            "empty"
+        } else if text.len() == 36 && text.bytes().filter(|b| *b == b'-').count() == 4 {
+            "uuid"
+        } else if text.len() == 10 && bytes[4] == b'-' && bytes[7] == b'-' {
+            "date"
+        } else if text.len() >= 16
+            && bytes[4] == b'-'
+            && bytes[7] == b'-'
+            && (bytes[10] == b'T' || bytes[10] == b' ')
+        {
+            "datetime"
+        } else if bytes
+            .iter()
+            .all(|b| b.is_ascii_digit() || *b == b'.' || *b == b'-' || *b == b'+')
+        {
+            "digits"
+        } else if bytes
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || *b == b'_')
+        {
+            "alnum"
+        } else if bytes.contains(&b'@') {
+            "email"
+        } else {
+            "text"
+        }
+    }
+    fn kind(value: &Value) -> String {
+        match value {
+            Value::Null => "null".into(),
+            Value::Bool(_) => "bool".into(),
+            Value::Number(_) => "number".into(),
+            Value::String(text) => format!("string:{}", class(text)),
+            Value::Array(_) => "array".into(),
+            Value::Object(_) => "object".into(),
+        }
+    }
+    fn filled(value: &Value) -> bool {
+        match value {
+            Value::Null => false,
+            Value::String(text) => !text.trim().is_empty(),
+            Value::Array(items) => !items.is_empty(),
+            Value::Object(fields) => !fields.is_empty(),
+            _ => true,
+        }
+    }
+    type Field = (
+        usize,
+        usize,
+        std::collections::BTreeSet<String>,
+        usize,
+        usize,
+    );
+    match value {
+        Value::Object(fields) if depth > 7 => {
+            json!({"object":fields.len(),"keys":fields.keys().take(80).collect::<Vec<_>>()})
+        }
+        Value::Object(fields) => {
+            let mut out = serde_json::Map::new();
+            for (key, child) in fields.iter().take(150) {
+                out.insert(key.clone(), shape(child, depth + 1));
+            }
+            json!({"object":out})
+        }
+        Value::Array(items) => {
+            let objects: Vec<&serde_json::Map<String, Value>> =
+                items.iter().filter_map(Value::as_object).collect();
+            if objects.is_empty() {
+                return json!({"array":items.len(),"item":items.first().map(|v| shape(v, depth + 1))});
+            }
+            let mut fields: std::collections::BTreeMap<String, Field> = Default::default();
+            let mut nested = serde_json::Map::new();
+            for object in objects.iter().take(400) {
+                for (key, child) in object.iter() {
+                    let entry = fields.entry(key.clone()).or_insert((
+                        0,
+                        0,
+                        Default::default(),
+                        usize::MAX,
+                        0,
+                    ));
+                    entry.0 += 1;
+                    if filled(child) {
+                        entry.1 += 1;
+                    }
+                    entry.2.insert(kind(child));
+                    if let Value::String(text) = child {
+                        entry.3 = entry.3.min(text.chars().count());
+                        entry.4 = entry.4.max(text.chars().count());
+                    }
+                    if depth < 7
+                        && !nested.contains_key(key)
+                        && filled(child)
+                        && (child.is_object() || child.is_array())
+                    {
+                        nested.insert(key.clone(), shape(child, depth + 1));
+                    }
+                }
+            }
+            let fields: serde_json::Map<String, Value> = fields
+                .into_iter()
+                .map(|(key, (present, filled, kinds, min, max))| {
+                    let mut record = json!({"present":present,"filled":filled,"kinds":kinds});
+                    if max > 0 {
+                        record["len"] = json!([min, max]);
+                    }
+                    (key, record)
+                })
+                .collect();
+            json!({"array":items.len(),"objects":objects.len(),"fields":fields,"nested":nested})
+        }
+        other => json!(kind(other)),
+    }
+}
+/// A path segment with a digit, or a long one, is an identifier.
+fn mask_segment(segment: &str) -> String {
+    if segment.chars().any(|c| c.is_ascii_digit()) || segment.len() > 32 {
+        "{id}".to_owned()
+    } else {
+        segment.to_owned()
+    }
+}
+/// An address as printed: masked path and the names of its query parameters.
+fn masked_url(url: &str) -> Value {
+    url::Url::parse(url)
+        .map(|u| {
+            let mut keys: Vec<_> = u.query_pairs().map(|(k, _)| k.into_owned()).collect();
+            keys.sort();
+            json!({"path":u.path().split('/').map(mask_segment).collect::<Vec<_>>().join("/"),"queryKeys":keys})
+        })
+        .unwrap_or_else(|_| json!({"path":"(unparsed)"}))
+}
+/// Loads `url` in the driver's tab while every data response under
+/// /operations/execution/api/ is paused, read and let go. Prints each response's
+/// masked address, size and shape, saves its body under `output` when given, and
+/// returns the parsed bodies by masked path.
+async fn load_routes_page(
+    driver: &Driver,
+    output: Option<&Path>,
+    name: &'static str,
+    url: &str,
+    saved: &mut usize,
+) -> Result<Vec<(String, Option<Value>)>> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    let page = &driver.page;
+    let patterns: Vec<Value> = ["XHR", "Fetch"]
+        .iter()
+        .map(|kind| json!({"urlPattern":"*/operations/execution/api/*","resourceType":kind,"requestStage":"Response"}))
+        .collect();
+    page.command("Fetch.enable", json!({"patterns":patterns}))
+        .await?;
+    let started = Instant::now();
+    page.start_navigation(url).await?;
+    let mut bodies: Vec<(Value, Vec<u8>)> = Vec::new();
+    let mut last_event = Instant::now();
+    while started.elapsed() < Duration::from_secs(60) {
+        let event = driver.browser.event(&page.id).await?;
+        if event.is_null() {
+            // Quiet for a while after the first response: the page has what it needs.
+            if !bodies.is_empty() && last_event.elapsed() > Duration::from_secs(6) {
+                break;
+            }
+            continue;
+        }
+        last_event = Instant::now();
+        if event["responseStatusCode"].is_null() {
+            let _ = page
+                .command(
+                    "Fetch.continueRequest",
+                    json!({"requestId":event["requestId"]}),
+                )
+                .await;
+            continue;
+        }
+        let described = describe_response(&event);
+        let body = page
+            .command(
+                "Fetch.getResponseBody",
+                json!({"requestId":event["requestId"]}),
+            )
+            .await;
+        if page
+            .command(
+                "Fetch.continueResponse",
+                json!({"requestId":event["requestId"]}),
+            )
+            .await
+            .is_err()
+        {
+            let _ = page
+                .command(
+                    "Fetch.continueRequest",
+                    json!({"requestId":event["requestId"]}),
+                )
+                .await;
+        }
+        let bytes = match body {
+            Ok(body) if body["base64Encoded"] == true => {
+                STANDARD.decode(s(&body, "body")).unwrap_or_default()
+            }
+            Ok(body) => s(&body, "body").as_bytes().to_vec(),
+            Err(error) => {
+                eprintln!(
+                    "ROUTES {}",
+                    json!({"page":name,"response":described,"bodyError":error.code})
+                );
+                continue;
+            }
+        };
+        bodies.push((described, bytes));
+    }
+    let _ = page.command("Fetch.disable", json!({})).await;
+    let frame = page.frame().await?;
+    eprintln!(
+        "ROUTES {}",
+        json!({"page":name,"ms":started.elapsed().as_millis(),"responses":bodies.len(),
+            "landed":masked_url(s(&frame, "url"))})
+    );
+    let mut parsed = Vec::new();
+    for (described, bytes) in bodies {
+        let value: Option<Value> = serde_json::from_slice(&bytes).ok();
+        let mut record = json!({"page":name,"response":described,"bytes":bytes.len()});
+        if let Some(value) = &value {
+            record["shape"] = shape(value, 0);
+        }
+        if let Some(output) = output {
+            *saved += 1;
+            record["saved"] = save_capture(output, name, *saved, "application/json", &bytes)?;
+        }
+        eprintln!("ROUTES {}", serde_json::to_string(&record)?);
+        parsed.push((s(&record["response"], "path").to_owned(), value));
+    }
+    Ok(parsed)
+}
+
+/// Takes every data response under /operations/execution/api/ the tab receives in
+/// the next ten seconds, printing and saving each as `load_routes_page` does, and
+/// returns where the tab landed with the masked paths seen.
+async fn capture_routes_responses(
+    driver: &Driver,
+    output: Option<&Path>,
+    label: &'static str,
+    saved: &mut usize,
+) -> Result<Value> {
+    let page = &driver.page;
+    let patterns: Vec<Value> = ["XHR", "Fetch"]
+        .iter()
+        .map(|kind| json!({"urlPattern":"*/operations/execution/api/*","resourceType":kind,"requestStage":"Response"}))
+        .collect();
+    page.command("Fetch.enable", json!({"patterns":patterns}))
+        .await?;
+    let started = Instant::now();
+    let mut seen = Vec::new();
+    while started.elapsed() < Duration::from_secs(10) {
+        let event = driver.browser.event(&page.id).await?;
+        if event.is_null() {
+            continue;
+        }
+        if event["responseStatusCode"].is_null() {
+            let _ = page
+                .command(
+                    "Fetch.continueRequest",
+                    json!({"requestId":event["requestId"]}),
+                )
+                .await;
+            continue;
+        }
+        let described = describe_response(&event);
+        let body = page
+            .command(
+                "Fetch.getResponseBody",
+                json!({"requestId":event["requestId"]}),
+            )
+            .await
+            .ok();
+        if page
+            .command(
+                "Fetch.continueResponse",
+                json!({"requestId":event["requestId"]}),
+            )
+            .await
+            .is_err()
+        {
+            let _ = page
+                .command(
+                    "Fetch.continueRequest",
+                    json!({"requestId":event["requestId"]}),
+                )
+                .await;
+        }
+        let mut record = json!({"page":label,"response":described});
+        if let Some(body) = body {
+            let text = s(&body, "body").to_owned();
+            record["bytes"] = json!(text.len());
+            if let Ok(value) = serde_json::from_str::<Value>(&text) {
+                record["shape"] = shape(&value, 0);
+            }
+            if let Some(output) = output {
+                *saved += 1;
+                record["saved"] =
+                    save_capture(output, label, *saved, "application/json", text.as_bytes())?;
+            }
+        }
+        eprintln!("ROUTES {}", serde_json::to_string(&record)?);
+        seen.push(s(&record["response"], "path").to_owned());
+    }
+    let _ = page.command("Fetch.disable", json!({})).await;
+    let frame = page.frame().await?;
+    Ok::<_, Error>(json!({"landed":masked_url(s(&frame, "url")),"responses":seen}))
+}
+
+/// Surveys of the routes page: controls by kind, presses, and what appeared. Fixed
+/// interface words only; other text is reported as its length.
+const ROUTES_SURVEY: &str = include_str!("benchmark/routes_survey.js");
+async fn survey_routes_page(driver: &Driver, input: Value) -> Result<Value> {
+    driver
+        .browser
+        .evaluate(&driver.page.id, &call(ROUTES_SURVEY, &input))
+        .await
+}
+
+// What the route pages are built from: signs in, opens the itinerary list and one
+// route's details, then the newer routes page, and takes each data response as the
+// browser receives it. Prints masked addresses, statuses, sizes and the shape of each
+// body: key names, value kinds, fill counts and string lengths, never a value. Bodies
+// are saved under DISPATCH_BENCHMARK_OUTPUT when it is set, for sizing, and are the
+// operator's to delete.
+#[tokio::test]
+#[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
+async fn probe_routes_api() -> Result<()> {
+    let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
+    let output = std::env::var_os("DISPATCH_BENCHMARK_OUTPUT").map(PathBuf::from);
+    let scope: Scope = serde_json::from_str(
+        &std::env::var("DISPATCH_BENCHMARK_SCOPE")
+            .map_err(|_| Error::new("benchmark_configuration_required", 400))?,
+    )?;
+    scope.validate()?;
+    let profile = dsp.join("state/browsers/cortex-browseros");
+    let runtime = browseros::Runtime::new(
+        Path::new("/opt/dispatch-browseros/0.50.5/browseros"),
+        Path::new("/usr/local/libexec/dispatch-dev/bwrap"),
+        &env_path("DISPATCH_BENCHMARK_WORKER")?,
+        &env_path("DISPATCH_BENCHMARK_RUNS")?,
+        1,
+    )?;
+    let browser = runtime
+        .start(
+            &profile,
+            browseros::Mode::Windowed,
+            browseros::NetworkPolicy::Cortex,
+        )
+        .await?;
+    let mut driver = Driver::new(browser, &profile, None).await?;
+    let result = async {
+        let secrets = dsp.join("secrets");
+        let credentials = crate::crypto::decrypt(
+            &db::key_file(&secrets.join("vault.key"))?,
+            &format!("{}:cortex:2", dsp.file_name().unwrap().to_str().unwrap()),
+            &std::fs::read_to_string(secrets.join("cortex.enc"))?,
+        )?;
+        let signed = driver
+            .request(json!({"action":"start","credentials":credentials}))
+            .await;
+        eprintln!(
+            "ROUTES {}",
+            json!({"signIn":signed.as_ref().map(|v|s(v,"type").to_owned()).unwrap_or_else(|e|e.code.clone())})
+        );
+        ensure(
+            signed.is_ok_and(|v| v["type"] == "ready"),
+            "benchmark_verification_required",
+            409,
+        )?;
+        let driver = &driver;
+        let output = output.as_deref();
+        let origin = driver.origin.clone();
+        let mut saved = 0usize;
+        // The list the meal collector reads, then the first route's details.
+        let list = load_routes_page(
+            driver,
+            output,
+            "list",
+            &format!("{origin}{}", scope.list_path()),
+            &mut saved,
+        )
+        .await?;
+        let first_route = list
+            .iter()
+            .filter_map(|(_, value)| value.as_ref())
+            .find_map(|value| {
+                value["itinerarySummaries"]
+                    .as_array()?
+                    .iter()
+                    .find(|summary| {
+                        scope.provider == "ALL_DRIVERS"
+                            || summary["companyId"] == json!(scope.provider)
+                    })
+                    .and_then(|summary| summary["itineraryId"].as_str())
+                    .map(str::to_owned)
+            });
+        if let Some(id) = &first_route {
+            load_routes_page(
+                driver,
+                output,
+                "detail",
+                &format!("{origin}{}", scope.detail_path(id)),
+                &mut saved,
+            )
+            .await?;
+        } else {
+            eprintln!(
+                "ROUTES {}",
+                json!({"page":"detail","skipped":"no_route_in_list"})
+            );
+        }
+        // The newer routes page with the same parameters, at a desktop width: what it
+        // asks for, where it lands, its controls, what pressing the first route card
+        // loads, and what its unlabeled toolbar buttons open with downloads hooked.
+        let mut query = url::form_urlencoded::Serializer::new(String::new());
+        query
+            .append_pair("navMenuVariant", "external")
+            .append_pair("provider", &scope.provider)
+            .append_pair("selectedDay", &scope.date)
+            .append_pair("serviceAreaId", &scope.service_area_id);
+        let routes_url = format!(
+            "{origin}/operations/execution/dv/routes?{}",
+            query.finish()
+        );
+        let page = &driver.page;
+        page.command(
+            "Emulation.setDeviceMetricsOverride",
+            json!({"width":1600,"height":1000,"deviceScaleFactor":1,"mobile":false}),
+        )
+        .await?;
+        load_routes_page(driver, output, "dv_routes", &routes_url, &mut saved).await?;
+        sleep(Duration::from_secs(3)).await;
+        let links = survey_routes_page(driver, json!({"action":"links"})).await?;
+        let links: Vec<Value> = links
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|l| masked_url(l.as_str().unwrap_or("")))
+            .collect();
+        eprintln!(
+            "ROUTES {}",
+            json!({"page":"dv_routes","links":links,
+                "downloadControls":survey_routes_page(driver, json!({"action":"downloadControls"})).await?,
+                "controls":survey_routes_page(driver, json!({"action":"controls"})).await?})
+        );
+        let hooked = driver.browser.evaluate(&page.id, DOWNLOAD_HOOK).await?;
+        let pressed = survey_routes_page(driver, json!({"action":"pressCard"})).await?;
+        eprintln!(
+            "ROUTES {}",
+            json!({"page":"dv_route","hooked":hooked,"press":pressed})
+        );
+        let after = capture_routes_responses(driver, output, "dv_route", &mut saved).await?;
+        eprintln!(
+            "ROUTES {}",
+            json!({"page":"dv_route","after":after,
+                "controls":survey_routes_page(driver, json!({"action":"controls","selector":"button,[role=button],a,[role=tab]"})).await?})
+        );
+        for index in 0..6 {
+            let outcome =
+                survey_routes_page(driver, json!({"action":"pressIcon","index":index})).await?;
+            if outcome["done"] == true || !outcome.is_object() {
+                eprintln!("ROUTES {}", json!({"page":"dv_route","icons":outcome}));
+                break;
+            }
+            sleep(Duration::from_millis(1500)).await;
+            eprintln!(
+                "ROUTES {}",
+                json!({"page":"dv_route","icon":index,
+                    "appeared":survey_routes_page(driver, json!({"action":"appeared"})).await?,
+                    "downloads":survey_routes_page(driver, json!({"action":"downloads"})).await?})
+            );
+            for kind in ["keyDown", "keyUp"] {
+                let _ = page
+                    .command(
+                        "Input.dispatchKeyEvent",
+                        json!({"type":kind,"key":"Escape","code":"Escape","windowsVirtualKeyCode":27}),
+                    )
+                    .await;
+            }
+            sleep(Duration::from_millis(500)).await;
+        }
+        let _ = page
+            .command("Emulation.clearDeviceMetricsOverride", json!({}))
+            .await;
+        Ok(())
+    }
+    .await;
+    driver.browser.close().await;
+    result
+}
