@@ -47,6 +47,27 @@ impl Db {
         migrations::migrate(&db, kind)?;
         Ok(db)
     }
+    /// Creates new core DSP storage with its identity in the schema transaction,
+    /// or adopts a legacy database only while its identity migration is first applied.
+    pub(crate) fn create_dsp(file: &Path, id: &str) -> Result<Self> {
+        ensure(super::identifier(id, "dsp_"), "invalid_dsp_id", 400)?;
+        let db = Self::connect(file, Kind::Dsp, true)?;
+        if db.version()? == 0 {
+            let tx = migrations::immediate(&db)?;
+            if db.version()? == 0 {
+                migrations::apply(&db, Kind::Dsp.name(), Kind::Dsp.migrations())?;
+                db.0.execute(
+                    "INSERT INTO storage_identity(dsp_id,provider,source) \
+                     VALUES (?,'dispatch','dispatch-v1')",
+                    [id],
+                )?;
+                tx.pragma_update(None, "user_version", Kind::Dsp.version())?;
+            }
+            tx.commit()?;
+        }
+        migrations::migrate_dsp(&db, id)?;
+        Ok(db)
+    }
     fn version(&self) -> Result<i64> {
         Ok(self.0.query_row("PRAGMA user_version", [], |r| r.get(0))?)
     }
