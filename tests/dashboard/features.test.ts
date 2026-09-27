@@ -33,13 +33,17 @@ test('the dashboard mirrors the backend feature catalog', () => {
     const collector = fs.readFileSync(`backend/src/collectors/${id}.rs`, 'utf8');
     const value = (fn: string) =>
       new RegExp(`fn ${fn}\\(&self\\) -> &'static str \\{\\s*"([^"]+)"`).exec(collector)![1]!;
+    const provides =
+      /fn capabilities\(&self\) -> &'static \[&'static str\] \{\s*&\[([^\]]*)\]/.exec(
+        collector,
+      )![1]!;
     assert.equal(value('id'), id);
     return {
       id,
       label: value('label'),
       kind: 'connection',
       permissions: [],
-      provides: value('capability'),
+      provides: [...provides.matchAll(/"([^"]+)"/g)].map((m) => m[1]!),
       requires: [],
     };
   });
@@ -64,6 +68,7 @@ test('a switch brings its dependencies along, as the backend does', () => {
   assert.deepEqual(previewSwitch(all, 'cortex', false), [
     { feature: 'cortex', enabled: false },
     { feature: 'timecard', enabled: false },
+    { feature: 'routes', enabled: false },
   ]);
   // Enabling a page enables the one provider of each capability it lacks.
   assert.deepEqual(previewSwitch(['uniforms', 'paycom'], 'timecard', true), [

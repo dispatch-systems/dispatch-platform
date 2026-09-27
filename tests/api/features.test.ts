@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { fixture } from '../support/support.js';
 
 type Role = { id: string; name: string; permissions: string[] };
-const all = ['timecard', 'uniforms', 'paycom', 'cortex'];
+const all = ['timecard', 'uniforms', 'routes', 'paycom', 'cortex'];
 
 test('a feature switched off for a DSP stops existing there until it is switched back on', async (t) => {
   const f = await fixture();
@@ -36,24 +36,24 @@ test('a feature switched off for a DSP stops existing there until it is switched
   let result = await platform.post(url, { feature: 'uniforms', enabled: false });
   assert.equal(result.status, 200);
   assert.deepEqual(result.value, {
-    features: ['timecard', 'paycom', 'cortex'],
+    features: ['timecard', 'routes', 'paycom', 'cortex'],
     changed: [{ feature: 'uniforms', enabled: false }],
   });
   // Every open view of the DSP expires; reopened, it has no uniform inventory.
   assert.equal((await member.get('/api/dsp/uniforms')).value.error, 'dsp_view_expired');
   view = await member.select(north.id);
-  assert.deepEqual(view.features, ['timecard', 'paycom', 'cortex']);
+  assert.deepEqual(view.features, ['timecard', 'routes', 'paycom', 'cortex']);
   assert.deepEqual(view.permissions, ['timecard.view']);
   assert.equal((await member.get('/api/dsp/uniforms')).status, 403);
   // Owners hold every permission, but only of the features the DSP has.
   const owner = await platform.select(north.id);
-  assert.deepEqual(owner.features, ['timecard', 'paycom', 'cortex']);
+  assert.deepEqual(owner.features, ['timecard', 'routes', 'paycom', 'cortex']);
   assert.ok(!owner.permissions.includes('uniforms.view'));
   assert.equal((await platform.get('/api/dsp/uniforms')).status, 403);
   const listed = (await platform.get('/api/platform/dsps')).value.find(
     (dsp: { id: string }) => dsp.id === north.id,
   );
-  assert.deepEqual(listed.features, ['timecard', 'paycom', 'cortex']);
+  assert.deepEqual(listed.features, ['timecard', 'routes', 'paycom', 'cortex']);
 
   // A role keeps the grant it cannot show, through a save from the role sheet too.
   const roles: Role[] = (await platform.get('/api/dsp/roles')).value;
@@ -79,13 +79,14 @@ test('a feature switched off for a DSP stops existing there until it is switched
   );
   assert.equal(restored.changedBy, 'Platform Owner');
 
-  // A connection is its own feature; a page requiring what it provides goes with it.
+  // A connection is its own feature; the pages requiring what it provides go with it.
   result = await platform.post(url, { feature: 'cortex', enabled: false });
   assert.deepEqual(result.value, {
     features: ['uniforms', 'paycom'],
     changed: [
       { feature: 'cortex', enabled: false },
       { feature: 'timecard', enabled: false },
+      { feature: 'routes', enabled: false },
     ],
   });
   view = await member.select(north.id);
@@ -95,14 +96,21 @@ test('a feature switched off for a DSP stops existing there until it is switched
   assert.equal((await platform.get('/api/dsp/connections/cortex')).status, 404);
   assert.equal((await platform.get('/api/dsp/connections/paycom')).status, 200);
   assert.equal((await platform.get('/api/dsp/schedules')).status, 403);
-  // Enabling the page enables what it requires.
+  // Enabling a page enables what it requires, and only that page.
   result = await platform.post(url, { feature: 'timecard', enabled: true });
   assert.deepEqual(result.value, {
-    features: all,
+    features: ['timecard', 'uniforms', 'paycom', 'cortex'],
     changed: [
       { feature: 'cortex', enabled: true },
       { feature: 'timecard', enabled: true },
     ],
+  });
+  await platform.select(north.id);
+  assert.equal((await platform.get('/api/dsp/routes/days')).status, 403);
+  result = await platform.post(url, { feature: 'routes', enabled: true });
+  assert.deepEqual(result.value, {
+    features: all,
+    changed: [{ feature: 'routes', enabled: true }],
   });
   await platform.select(north.id);
   assert.equal((await platform.get('/api/dsp/connections/cortex')).status, 200);
@@ -120,9 +128,10 @@ test('a feature switched off for a DSP stops existing there until it is switched
     .filter((event: { action: string }) => event.action.startsWith('dsp.feature_'))
     .map((event: { action: string; detail: string }) => [event.action, event.detail]);
   // The last switch and its cascade were written in the same instant.
-  assert.deepEqual(switches.slice(0, 3).sort(), [
+  assert.deepEqual(switches.slice(0, 4).sort(), [
     ['dsp.feature_disabled', 'cortex'],
     ['dsp.feature_disabled', 'paycom'],
+    ['dsp.feature_disabled', 'routes'],
     ['dsp.feature_disabled', 'timecard'],
   ]);
   // The timecard last went with Paycom; a cascade names what took it.

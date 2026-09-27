@@ -179,6 +179,14 @@ async fn set_feature(state: Arc<State>, input: Input, access: PlatformOwner) -> 
             let feature = v::text(b, "feature", 1, 40)?.to_owned();
             let enabled = v::boolean(b, "enabled")?;
             let result = db.set_feature(&dsp, &feature, enabled, owner.user.id.as_str())?;
+            // The routes page owns its jobs; switching it off ends them. Its schedules
+            // wait, as every schedule does without its page, and resume when it returns.
+            if switched(&result, "routes", false) {
+                db.cancel_jobs(crate::jobs::CancelJobs::Kind {
+                    dsp: &dsp,
+                    kind: crate::itineraries::JOB_KIND,
+                })?;
+            }
             match stopped(&result) {
                 Stopped::Dsp => db.cancel_dsp(&dsp)?,
                 Stopped::Providers(providers) => {

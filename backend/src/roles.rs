@@ -26,6 +26,9 @@ pub const PERMISSIONS: &[&str] = &[
     "timecard.view",
     "timecard.manage",
     "collections.run",
+    "routes.view",
+    "routes.collect",
+    "routes.manage",
     "connections.manage",
     "members.invite",
     "members.manage",
@@ -38,6 +41,8 @@ const IMPLIED: &[(&str, &str)] = &[
     ("timecard.manage", "timecard.view"),
     ("uniforms.adjust", "uniforms.view"),
     ("uniforms.manage", "uniforms.view"),
+    ("routes.collect", "routes.view"),
+    ("routes.manage", "routes.view"),
 ];
 const DEFAULTS: &[(&str, &str, &[&str])] = &[
     (

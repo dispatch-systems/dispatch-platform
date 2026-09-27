@@ -1,5 +1,6 @@
-//! Cortex: meal evidence from Amazon Logistics. Its storage was added to DSPs that
-//! already existed, which is the path every later provider takes.
+//! Cortex: meal evidence, the weekly scorecard and daily routes from Amazon Logistics.
+//! Its storage was added to DSPs that already existed, which is the path every later
+//! provider takes.
 use super::AddedStorage;
 use super::Collector;
 use crate::{
@@ -10,7 +11,7 @@ use crate::{
         cortex,
     },
     db::{self, Db, Kind, Store},
-    ensure,
+    ensure, itineraries,
     meals::{self, CollectionRequest},
     scorecard, validate as v,
 };
@@ -25,24 +26,27 @@ impl Collector for Cortex {
     fn label(&self) -> &'static str {
         "Cortex"
     }
-    fn capability(&self) -> &'static str {
-        "meal_breaks"
+    fn capabilities(&self) -> &'static [&'static str] {
+        &["meal_breaks", "routes"]
     }
     fn job_kind(&self) -> &'static str {
         "cortex.meal_breaks.collect"
     }
     fn other_job_kinds(&self) -> &'static [&'static str] {
-        &[scorecard::JOB_KIND]
+        &[scorecard::JOB_KIND, itineraries::JOB_KIND]
     }
     fn job_kind_for(&self, request: &Value) -> &'static str {
         if scorecard::Request::is(request) {
             scorecard::JOB_KIND
+        } else if itineraries::Request::is(request) {
+            itineraries::JOB_KIND
         } else {
             self.job_kind()
         }
     }
-    fn added_storages(&self) -> &'static [AddedStorage] {
-        std::slice::from_ref(&scorecard::STORAGE)
+    fn added_storages(&self) -> &'static [&'static AddedStorage] {
+        static ADDED: [&AddedStorage; 2] = [&scorecard::STORAGE, &itineraries::STORAGE];
+        &ADDED
     }
     fn database(&self) -> Kind {
         Kind::Cortex
@@ -111,6 +115,14 @@ impl Collector for Cortex {
                 scope: None,
             });
         }
+        if let Some(request) = itineraries::Request::parse(request)? {
+            let capture = itineraries::fixture(&request)?;
+            let scope = capture.scope.clone();
+            return Ok(Collected {
+                data: serde_json::to_value(capture)?,
+                scope: Some(scope),
+            });
+        }
         let scope = match serde_json::from_value(request.clone())? {
             CollectionRequest::Scoped(scope) => scope,
             CollectionRequest::Discover(discovery) => {
@@ -125,13 +137,28 @@ impl Collector for Cortex {
     fn progress(&self, request: &Value) -> &'static str {
         if scorecard::Request::is(request) {
             "Collecting scorecard"
+        } else if itineraries::Request::is(request) {
+            "Collecting routes"
         } else {
             "Collecting meal breaks"
         }
     }
+    fn prepare(&self, collected: Collected) -> Result<Collected> {
+        if !itineraries::Request::is(&collected.data) {
+            return Ok(collected);
+        }
+        let capture: itineraries::Capture = serde_json::from_value(collected.data)?;
+        Ok(Collected {
+            data: serde_json::to_value(itineraries::prepare(capture)?)?,
+            scope: collected.scope,
+        })
+    }
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
         if scorecard::Request::is(&collected.data) {
             return store.publish_scorecard(dsp, job, &serde_json::from_value(collected.data)?);
+        }
+        if itineraries::Request::is(&collected.data) {
+            return store.publish_routes(dsp, job, &serde_json::from_value(collected.data)?);
         }
         store.publish_meals(
             dsp,
@@ -150,11 +177,15 @@ impl Collector for Cortex {
         &[
             ("meal_break", "schedule_meals_required"),
             ("scorecard", "schedule_scorecard_required"),
+            ("routes", "schedule_routes_required"),
         ]
     }
     fn schedule_ready(&self, store: &Store, dsp: &str, collection: &str) -> Result<()> {
         if collection == "scorecard" {
             return store.scorecard_schedule_ready(dsp);
+        }
+        if collection == "routes" {
+            return store.routes_schedule_ready(dsp);
         }
         ensure(
             !store
@@ -172,6 +203,9 @@ impl Collector for Cortex {
     ) -> Result<Vec<(String, Value)>> {
         if collection == "scorecard" {
             return store.scorecard_jobs(dsp);
+        }
+        if collection == "routes" {
+            return store.routes_jobs(dsp);
         }
         store
             .meal_sync_scopes(dsp, &store.local_date(dsp)?)?

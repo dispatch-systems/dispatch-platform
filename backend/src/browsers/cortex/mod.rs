@@ -1,8 +1,9 @@
-//! Cortex authentication and structured meal evidence from Amazon Logistics.
+//! Cortex authentication, meal evidence, the scorecard and daily routes from Amazon Logistics.
 #[cfg(test)]
 mod benchmark;
 mod collection;
 mod discovery;
+mod itineraries;
 mod scorecard;
 mod scorecard_csv;
 use super::{
@@ -198,6 +199,14 @@ impl Drives for Driver {
                 return Ok(Collected {
                     data: serde_json::to_value(capture)?,
                     scope: None,
+                });
+            }
+            if let Some(request) = crate::itineraries::Request::parse(run.request)? {
+                let capture = self.collect_routes(&request, run).await?;
+                let scope = capture.scope.clone();
+                return Ok(Collected {
+                    data: serde_json::to_value(capture)?,
+                    scope: Some(scope),
                 });
             }
             let scope = self

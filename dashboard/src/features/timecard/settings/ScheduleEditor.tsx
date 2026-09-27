@@ -43,8 +43,9 @@ export function ScheduleEditor({
         }
       : newSchedule(),
   );
-  // A scorecard schedule keeps its collection; the editor changes its timing only.
-  const scorecard = draft.collection === 'scorecard';
+  // A scorecard or routes schedule keeps its collection; the editor changes its timing only.
+  const fixed = draft.collection === 'scorecard' || draft.collection === 'routes';
+  const scorecard = fixed;
   const [paycom, setPaycom] = useState(!scorecard && draft.collection !== 'meal_break');
   const [meal, setMeal] = useState(!scorecard && draft.collection !== 'paycom');
   const [busy, setBusy] = useState(false);
@@ -113,8 +114,8 @@ export function ScheduleEditor({
         await saveSchedule(schedule?.id, {
           ...draft,
           name: draft.name.trim(),
-          collection: scorecard
-            ? 'scorecard'
+          collection: fixed
+            ? draft.collection
             : paycom && meal
               ? 'both'
               : paycom
@@ -160,7 +161,9 @@ export function ScheduleEditor({
           <fieldset className="schedule-choice-group">
             <legend>Collect</legend>
             {scorecard ? (
-              <p className="schedule-checks">Weekly scorecard</p>
+              <p className="schedule-checks">
+                {draft.collection === 'routes' ? 'Daily routes' : 'Weekly scorecard'}
+              </p>
             ) : (
               <div className="schedule-checks">
                 <label>

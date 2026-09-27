@@ -11,9 +11,17 @@
   // Without a service area Cortex redirects itineraries to its execution home,
   // which still lists the account's stations.
   const itineraries = url.pathname.startsWith('/operations/execution/itineraries');
+  const token = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
+  // A profile that has opened the newer routes page lands there instead, with the
+  // service area it last showed in the address. The scoped itineraries page still
+  // lists every station, so that area is enough to reach it.
+  if (url.pathname.startsWith('/operations/execution/dv/')) {
+    const remembered = url.searchParams.get('serviceAreaId');
+    if (token(remembered)) return { serviceAreaId: remembered };
+    return fail('cortex_content_incomplete', 'routes_page');
+  }
   if (!itineraries && !/^\/operations\/execution\/?$/.test(url.pathname))
     return fail('cortex_content_incomplete', 'path');
-  const token = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
   const zone = (v) => new Intl.DateTimeFormat('en-US', { timeZone: v }).resolvedOptions().timeZone;
   const stations = new Map();
   const visited = new Set();

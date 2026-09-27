@@ -129,6 +129,11 @@ pub const SCORECARD: &[Migration] = &[
         apply: Sql(include_str!("scorecard/0002_sources.sql")),
     },
 ];
+pub const ITINERARIES: &[Migration] = &[Migration {
+    id: 1,
+    name: "baseline",
+    apply: Sql(include_str!("itineraries/0001_baseline.sql")),
+}];
 
 fn role_columns(db: &Db) -> Result<()> {
     add_column(db, "memberships", "role_id", "TEXT REFERENCES roles(id)")?;

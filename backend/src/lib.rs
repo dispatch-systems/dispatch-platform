@@ -11,6 +11,7 @@ pub mod db;
 pub mod error;
 pub mod features;
 pub mod http;
+pub mod itineraries;
 pub mod job_metrics;
 pub mod jobs;
 pub mod live_collection;

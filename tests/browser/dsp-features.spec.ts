@@ -20,11 +20,14 @@ test('the platform switches a DSP’s features with their dependencies, and the 
   await cortex.click();
   const off = page.getByRole('dialog', { name: 'Switch off Cortex for Northline Logistics?' });
   await expect(off).toContainText('Timecard needs a meal-break source, so it switches off too.');
+  await expect(off).toContainText('Routes needs a route source, so it switches off too.');
   await expect(off).toContainText('Credentials, schedules and collected data are kept.');
   await page.screenshot({ path: test.info().outputPath('switch-off.png') });
-  await off.getByRole('button', { name: 'Switch off Cortex and Timecard', exact: true }).click();
+  await off
+    .getByRole('button', { name: 'Switch off Cortex, Timecard and Routes', exact: true })
+    .click();
   await expect(cortex).not.toBeChecked();
-  await expect(areas.getByRole('tab', { name: /^Pages/ })).toContainText('1/2');
+  await expect(areas.getByRole('tab', { name: /^Pages/ })).toContainText('1/3');
   await areas.getByRole('tab', { name: /^Pages/ }).click();
   await expect(timecard).not.toBeChecked();
   await page.screenshot({ path: test.info().outputPath('features-tab.png') });

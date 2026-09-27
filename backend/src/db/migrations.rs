@@ -43,6 +43,7 @@ pub enum Kind {
     Paycom,
     Cortex,
     Scorecard,
+    Itineraries,
 }
 impl Kind {
     pub const ALL: &[Self] = &[
@@ -52,6 +53,7 @@ impl Kind {
         Self::Paycom,
         Self::Cortex,
         Self::Scorecard,
+        Self::Itineraries,
     ];
     pub fn name(self) -> &'static str {
         match self {
@@ -61,13 +63,19 @@ impl Kind {
             Self::Paycom => "paycom",
             Self::Cortex => "cortex",
             Self::Scorecard => "scorecard",
+            Self::Itineraries => "itineraries",
         }
     }
     /// Pinned. Released binaries refuse to open a database with any other value.
     pub(crate) fn version(self) -> i64 {
         match self {
             Self::Platform => 3,
-            Self::Jobs | Self::Dsp | Self::Paycom | Self::Cortex | Self::Scorecard => 1,
+            Self::Jobs
+            | Self::Dsp
+            | Self::Paycom
+            | Self::Cortex
+            | Self::Scorecard
+            | Self::Itineraries => 1,
         }
     }
     pub fn migrations(self) -> &'static [Migration] {
@@ -78,6 +86,7 @@ impl Kind {
             Self::Paycom => schema::PAYCOM,
             Self::Cortex => schema::CORTEX,
             Self::Scorecard => schema::SCORECARD,
+            Self::Itineraries => schema::ITINERARIES,
         }
     }
 }
@@ -274,13 +283,15 @@ mod tests {
             .collector(&id, crate::collectors::Provider::Cortex)
             .unwrap();
         let scorecard = store.scorecard(&id).unwrap();
-        let databases: [(Kind, &Db); 6] = [
+        let itineraries = store.itineraries(&id).unwrap();
+        let databases: [(Kind, &Db); 7] = [
             (Kind::Platform, &store.platform),
             (Kind::Jobs, &store.jobs),
             (Kind::Dsp, &dsp),
             (Kind::Paycom, &paycom),
             (Kind::Cortex, &cortex),
             (Kind::Scorecard, &scorecard),
+            (Kind::Itineraries, &itineraries),
         ];
         for (kind, db) in databases {
             if std::env::var_os("DISPATCH_UPDATE_SCHEMA").is_some() {

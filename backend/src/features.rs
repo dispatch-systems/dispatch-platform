@@ -28,7 +28,7 @@ pub struct Feature {
     /// The permissions this feature owns. Without it, nobody in the DSP holds them.
     pub permissions: &'static [&'static str],
     /// What a connection supplies, such as timecards.
-    pub provides: Option<&'static str>,
+    pub provides: &'static [&'static str],
     /// What a page needs one enabled provider of.
     pub requires: &'static [&'static str],
     /// Whether a DSP gets it when created, or while it has no row of its own.
@@ -41,7 +41,7 @@ pub const PAGES: &[Feature] = &[
         label: "Timecard",
         kind: Kind::Page,
         permissions: &["timecard.view", "timecard.manage", "collections.run"],
-        provides: None,
+        provides: &[],
         requires: &["timecards", "meal_breaks"],
         default: false,
     },
@@ -50,13 +50,35 @@ pub const PAGES: &[Feature] = &[
         label: "Uniform Inventory",
         kind: Kind::Page,
         permissions: &["uniforms.view", "uniforms.adjust", "uniforms.manage"],
-        provides: None,
+        provides: &[],
         requires: &[],
         default: false,
     },
+    Feature {
+        id: "routes",
+        label: "Routes",
+        kind: Kind::Page,
+        permissions: &["routes.view", "routes.collect", "routes.manage"],
+        provides: &[],
+        requires: &["routes"],
+        default: false,
+    },
 ];
-/// The page whose schedules, collections and jobs run. Nothing collects without it.
+/// The page whose schedules, collections and jobs run. Nothing collects without it,
+/// except the collections another page owns (`automation`).
 pub const SCHEDULES: &str = "timecard";
+/// The page whose switch runs a job kind or a schedule collection: the routes page
+/// for its own, the schedules' page for everything else.
+pub fn automation(kind_or_collection: &str) -> &'static str {
+    match kind_or_collection {
+        "cortex.routes.collect" | "routes" => "routes",
+        _ => SCHEDULES,
+    }
+}
+/// Whether a DSP with `enabled` features runs anything at all.
+pub fn automates(enabled: &[String]) -> bool {
+    enabled.iter().any(|f| f == SCHEDULES || f == "routes")
+}
 /// The permission every connection shares; it exists while any connection does.
 const CONNECTIONS: &str = "connections.manage";
 
@@ -67,7 +89,7 @@ fn connection(provider: Provider) -> Feature {
         label: collector.label(),
         kind: Kind::Connection,
         permissions: &[],
-        provides: Some(collector.capability()),
+        provides: collector.capabilities(),
         requires: &[],
         default: false,
     }
@@ -112,7 +134,7 @@ pub fn visible<'a>(
 fn provided(capability: &str, enabled: &[String]) -> bool {
     catalog()
         .iter()
-        .any(|f| f.provides == Some(capability) && enabled.iter().any(|e| e == f.id))
+        .any(|f| f.provides.contains(&capability) && enabled.iter().any(|e| e == f.id))
 }
 /// Whether every requirement of `feature` has an enabled provider.
 fn satisfied(feature: &Feature, enabled: &[String]) -> bool {
@@ -247,10 +269,10 @@ impl Store {
                 changed.push((f, on));
             };
             if enabled {
-                if let Some(capability) = feature.provides {
+                for capability in feature.provides {
                     for other in all
                         .iter()
-                        .filter(|f| f.provides == Some(capability) && f.id != feature.id)
+                        .filter(|f| f.provides.contains(capability) && f.id != feature.id)
                     {
                         flip(&mut current, other, false);
                     }
@@ -261,7 +283,7 @@ impl Store {
                     }
                     let providers: Vec<_> = all
                         .iter()
-                        .filter(|f| f.provides == Some(*capability))
+                        .filter(|f| f.provides.contains(capability))
                         .collect();
                     ensure(providers.len() == 1, "provider_required", 409)?;
                     flip(&mut current, providers[0], true);
@@ -363,14 +385,14 @@ mod tests {
                 owned.push(*permission);
             }
             match feature.kind {
-                Kind::Page => assert!(feature.provides.is_none()),
+                Kind::Page => assert!(feature.provides.is_empty()),
                 Kind::Connection => {
-                    assert!(feature.provides.is_some() && feature.requires.is_empty())
+                    assert!(!feature.provides.is_empty() && feature.requires.is_empty())
                 }
             }
             for capability in feature.requires {
                 assert!(
-                    all.iter().any(|f| f.provides == Some(*capability)),
+                    all.iter().any(|f| f.provides.contains(capability)),
                     "nothing provides {capability}"
                 );
             }

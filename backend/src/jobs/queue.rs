@@ -74,8 +74,19 @@ const RECOVER: &str = concat!(
 
 /// Which unfinished jobs a cancellation reaches.
 pub enum CancelJobs<'a> {
-    Job { id: &'a str, dsp: &'a str },
-    Provider { dsp: &'a str, provider: Provider },
+    Job {
+        id: &'a str,
+        dsp: &'a str,
+    },
+    Provider {
+        dsp: &'a str,
+        provider: Provider,
+    },
+    /// Every job of one kind, when the page that owns it goes off.
+    Kind {
+        dsp: &'a str,
+        kind: &'a str,
+    },
     Dsp(&'a str),
 }
 /// What a worker needs to know about a provider's connection before it collects.
@@ -346,6 +357,7 @@ impl Store {
                     vec![dsp, &kind],
                 )
             }
+            CancelJobs::Kind { dsp, kind } => (" AND dsp_id=? AND kind=?", vec![dsp, kind]),
             CancelJobs::Dsp(dsp) => (" AND dsp_id=?", vec![dsp]),
         };
         at = iso();
@@ -390,7 +402,7 @@ impl Store {
         )?;
         let dsp = self.ensure_dsp_active(&row.dsp_id)?;
         ensure(
-            self.feature_enabled(&row.dsp_id, crate::features::SCHEDULES)?,
+            self.feature_enabled(&row.dsp_id, crate::features::automation(row.kind.as_str()))?,
             "feature_disabled",
             409,
         )?;

@@ -1,5 +1,5 @@
 /** The features a DSP may have, mirroring the catalog in `backend/src/features.rs`. */
-export const pages = ['timecard', 'uniforms'] as const;
+export const pages = ['timecard', 'uniforms', 'routes'] as const;
 export const connections = ['paycom', 'cortex'] as const;
 export const features = [...pages, ...connections] as const;
 export type Feature = (typeof features)[number];

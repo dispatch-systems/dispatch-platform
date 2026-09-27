@@ -42,7 +42,7 @@ pub(crate) trait Collector: Sync {
     /// Its name as the dashboard shows it.
     fn label(&self) -> &'static str;
     /// What its connection supplies to the pages that require it (`features`).
-    fn capability(&self) -> &'static str;
+    fn capabilities(&self) -> &'static [&'static str];
     /// The kind of job that runs its main collection.
     fn job_kind(&self) -> &'static str;
     /// The kinds of its other collections, each chosen by `job_kind_for`.
@@ -54,7 +54,7 @@ pub(crate) trait Collector: Sync {
         self.job_kind()
     }
     /// Databases beside its own, one per added collection.
-    fn added_storages(&self) -> &'static [AddedStorage] {
+    fn added_storages(&self) -> &'static [&'static AddedStorage] {
         &[]
     }
     /// Its database, and with it the migration list in `db::schema`.
@@ -93,6 +93,11 @@ pub(crate) trait Collector: Sync {
     fn fixture(&self, timezone: &str, request: &Value) -> Result<Collected>;
     /// The job's message while it collects `request`.
     fn progress(&self, _request: &Value) -> &'static str;
+    /// Work a finished collection needs before it is stored, done without the database
+    /// and outside the platform lock: parsing, shaping rows, compressing.
+    fn prepare(&self, collected: Collected) -> Result<Collected> {
+        Ok(collected)
+    }
     /// Stores a finished collection. Runs while the job is still this worker's.
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()>;
     /// Drops what an unfinished job kept to resume from. `None` means every job.

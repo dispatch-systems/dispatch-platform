@@ -1546,6 +1546,19 @@ async fn probe_routes_api() -> Result<()> {
         let output = output.as_deref();
         let origin = driver.origin.clone();
         let mut saved = 0usize;
+        // Where the unscoped itinerary address lands, which discovery starts from.
+        let mut unscoped = url::form_urlencoded::Serializer::new(String::new());
+        unscoped
+            .append_pair("navMenuVariant", "external")
+            .append_pair("selectedDay", &scope.date);
+        load_routes_page(
+            driver,
+            None,
+            "unscoped",
+            &format!("{origin}/operations/execution/itineraries?{}", unscoped.finish()),
+            &mut saved,
+        )
+        .await?;
         // The list the meal collector reads, then the first route's details.
         let list = load_routes_page(
             driver,
