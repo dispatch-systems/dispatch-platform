@@ -1,9 +1,12 @@
 use super::{Result, ensure};
 use std::{env, path::PathBuf};
+mod playground;
 mod security;
+pub use playground::Playground;
 pub use security::SecurityPolicy;
 #[derive(Clone)]
 pub struct Config {
+    pub playground: Option<Playground>,
     pub security: SecurityPolicy,
     pub root: PathBuf,
     pub environment: String,
@@ -83,6 +86,7 @@ impl Config {
         };
         let source = source(&bundle, environment == "production");
         let mut c = Self {
+            playground: Playground::load(development)?,
             security: SecurityPolicy::parse(&variable("DISPATCH_SECURITY_POLICY", "{}"))?,
             root: PathBuf::from(variable(
                 "DISPATCH_STATE_ROOT",

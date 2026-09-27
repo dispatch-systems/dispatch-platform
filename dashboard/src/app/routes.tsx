@@ -3,6 +3,7 @@ import {
   Building2,
   CalendarDays,
   FlaskConical,
+  PanelsTopLeft,
   House,
   ScrollText,
   Settings,
@@ -17,6 +18,10 @@ import { can } from './permissions.js';
 import { routeMeta, type DspRouteId, type PlatformRouteId, type RouteMeta } from './route-meta.js';
 
 const loadAudit = () => import('../features/audit/index.js');
+const loadPlayground = () => import('../features/design-playground/index.js');
+const DesignPlaygroundPage = lazy(() =>
+  loadPlayground().then((module) => ({ default: module.DesignPlaygroundPage })),
+);
 const AuditPage = lazy(() => loadAudit().then((module) => ({ default: module.AuditPage })));
 const loadHome = () => import('../features/home/index.js');
 const HomePage = lazy(() => loadHome().then((module) => ({ default: module.HomePage })));
@@ -110,6 +115,13 @@ const dspPages: Record<DspRouteId, Entry<DspPageContext>> = {
   },
 };
 const platformPages: Record<PlatformRouteId, Entry<PageContext>> = {
+  'design-playground': {
+    preload: loadPlayground,
+    icon: PanelsTopLeft,
+    nav: true,
+    permission: platformOwner,
+    render: () => <DesignPlaygroundPage />,
+  },
   dsps: {
     preload: loadPlatform,
     icon: Building2,

@@ -7,6 +7,7 @@ pub mod connections;
 pub mod jobs;
 pub mod live;
 pub mod platform;
+pub mod playground;
 pub mod routedata;
 pub mod schedules;
 pub mod scorecard;
@@ -24,6 +25,7 @@ pub fn all() -> Vec<Route> {
         security::routes(),
         session::routes(),
         platform::routes(),
+        playground::routes(),
         team::routes(),
         timecard::routes(),
         schedules::routes(),
