@@ -184,7 +184,7 @@ async fn set_feature(state: Arc<State>, input: Input, access: PlatformOwner) -> 
             if switched(&result, "routes", false) {
                 db.cancel_jobs(crate::jobs::CancelJobs::Kind {
                     dsp: &dsp,
-                    kind: crate::itineraries::JOB_KIND,
+                    kind: crate::routedata::JOB_KIND,
                 })?;
             }
             match stopped(&result) {

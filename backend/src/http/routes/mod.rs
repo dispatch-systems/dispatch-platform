@@ -4,10 +4,10 @@ use super::route::Route;
 pub mod audit;
 pub mod auth;
 pub mod connections;
-pub mod itineraries;
 pub mod jobs;
 pub mod live;
 pub mod platform;
+pub mod routedata;
 pub mod schedules;
 pub mod scorecard;
 pub mod security;
@@ -28,7 +28,7 @@ pub fn all() -> Vec<Route> {
         timecard::routes(),
         schedules::routes(),
         scorecard::routes(),
-        itineraries::routes(),
+        routedata::routes(),
         jobs::routes(),
         connections::routes(),
         audit::routes(),

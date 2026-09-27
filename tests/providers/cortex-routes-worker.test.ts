@@ -373,7 +373,7 @@ test(
       2,
     );
     for (const u of requests) assert.equal(u.searchParams.get('serviceAreaId'), area);
-    const stored = f.database(`dsps/${dsp.id}/data/itineraries/itineraries.sqlite`, (db) => ({
+    const stored = f.database(`dsps/${dsp.id}/data/routedata/routedata.sqlite`, (db) => ({
       publication: db
         .prepare('SELECT job_id,provider,service_area_id,active FROM route_publications')
         .all()

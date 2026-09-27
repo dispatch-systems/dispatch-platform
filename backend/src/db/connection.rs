@@ -73,12 +73,12 @@ impl Db {
         })?;
         db.busy_timeout(Duration::from_secs(5))?;
         db.set_prepared_statement_cache_capacity(32);
-        // Kibibytes. The itineraries database holds a day of tasks per publication and
+        // Kibibytes. The route data database holds a day of tasks per publication and
         // answers day-range reads, so its indexes stay in memory.
         db.pragma_update(
             None,
             "cache_size",
-            if kind == Kind::Itineraries {
+            if kind == Kind::RouteData {
                 -32768
             } else {
                 -512

@@ -79,7 +79,7 @@ test('a day of routes is collected on request, stored in normalized rows and lis
   assert.equal(day.itineraries[0].delivered, 2);
   assert.equal(day.itineraries[1].notDelivered, 1);
   assert.equal((await owner.get('/api/dsp/routes/days/2026-09-24')).status, 404);
-  const stored = f.database(`dsps/${dsp.id}/data/itineraries/itineraries.sqlite`, (db) => ({
+  const stored = f.database(`dsps/${dsp.id}/data/routedata/routedata.sqlite`, (db) => ({
     identity: db
       .prepare('SELECT provider,source FROM storage_identity')
       .all()
@@ -93,7 +93,7 @@ test('a day of routes is collected on request, stored in normalized rows and lis
     addresses: db.prepare('SELECT count(*) n FROM addresses').get() as { n: number },
     raw: db.prepare('SELECT count(*) n FROM route_raw').get() as { n: number },
   }));
-  assert.deepEqual(stored.identity, [{ provider: 'cortex', source: 'itineraries-v1' }]);
+  assert.deepEqual(stored.identity, [{ provider: 'cortex', source: 'routedata-v1' }]);
   assert.deepEqual(stored.tasks, [
     { tracking_id: 'TBA000000000001', task_state: 'DELIVERED' },
     { tracking_id: 'TBA000000000002', task_state: 'UNDELIVERABLE' },
