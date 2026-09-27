@@ -7,7 +7,11 @@
 use crate::{
     Error, Result,
     collectors::{AddedStorage, Provider},
-    contracts::{RouteDayView, RouteDays, RouteItinerary, RoutePublication},
+    contracts::{
+        RouteAddress, RouteBreak, RouteDayView, RouteDays, RouteItinerary, RouteItineraryDetail,
+        RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteStop, RouteTask,
+        RouteUnknownStop,
+    },
     db::{Db, DspLease, Kind, Store, at, now, s},
     ensure,
     meals::{CollectionRequest, Discovery, Scope},
@@ -177,6 +181,10 @@ pub struct PreparedItinerary {
     columns: Vec<(String, Value)>,
     stops: Vec<StopRow>,
     tasks: Vec<TaskRow>,
+    /// Tasks Amazon removed from the route, kept for the record.
+    inactive: Vec<TaskRow>,
+    breaks: Vec<BreakRow>,
+    unknown_stops: Vec<UnknownStopRow>,
     day: DayRow,
     addresses: Vec<Value>,
     person: Value,
@@ -501,7 +509,12 @@ pub fn fixture(request: &Request) -> Result<Capture> {
                     "plannedDepartureTime":midnight,"sessionEndTime":midnight + 8 * hour,"routeCreationTime":midnight - 6 * hour,
                     "routeDuration":28800,"itineraryDuration":28200,"stopProgress":{"completed":2,"total":2},
                     "transporterTimeAttributes":{"actualDepartureTime":midnight + 15 * 60_000,"plannedDepartureTime":midnight},
-                    "breaks":[],"plannedBreaks":[],"inactiveTasks":[],"unknownStops":[],"stops":stops,"weatherData":null},
+                    "breaks":[],"plannedBreaks":[],
+                    "inactiveTasks":[task(base + 9, "DROP_OFF", "INACTIVE", "address-2", midnight + hour, "TBA000000000009")],
+                    "unknownStops":[{"enterTime":midnight + 5 * hour,"exitTime":midnight + 5 * hour + 600_000,
+                        "enterLatitude":34.02,"enterLongitude":-118.01,"exitLatitude":34.02,"exitLongitude":-118.01}],
+                    "rescueActions":[{"type":"RESCUED","transporterId":"driver-9"}],
+                    "stops":stops,"weatherData":null},
                     "addresses":addresses,"transporters":[transporters[i].clone()],"companies":companies,
                     "itineraryPartners":null,"routePauseStatus":null})
                 .to_string(),
@@ -556,6 +569,9 @@ pub fn prepare(mut capture: Capture) -> Result<Capture> {
         };
         let flat = flatten(&summary, detail, &captured.transporter_id, &driver_name);
         let (stops, tasks, day) = rows(detail, &captured.transporter_id);
+        let inactive = inactive_tasks(detail);
+        let breaks = break_rows(&summary, detail);
+        let unknown_stops = unknown_stop_rows(detail);
         let raw = std::mem::take(&mut captured.detail);
         itineraries.push(PreparedItinerary {
             id: captured.id.clone(),
@@ -567,6 +583,9 @@ pub fn prepare(mut capture: Capture) -> Result<Capture> {
                 .collect(),
             stops,
             tasks,
+            inactive,
+            breaks,
+            unknown_stops,
             day: DayRow {
                 departed_at: stamp(&detail["transporterTimeAttributes"]["actualDepartureTime"])
                     .or_else(|| stamp(&summary["itineraryStartTime"]))
@@ -799,15 +818,13 @@ impl Store {
             .as_array()
             .cloned()
             .unwrap_or_default();
-        let stop_count: usize = prepared.itineraries.iter().map(|i| i.stops.len()).sum();
-        let task_count: usize = prepared.itineraries.iter().map(|i| i.tasks.len()).sum();
         db.transaction(|| {
-            let connection = &db.0;
-            connection.prepare_cached(
+            db.0.prepare_cached(
                 "INSERT INTO route_publications(id,job_id,day,station,service_area_id,provider,timezone,mode,\
                  started_at,collected_at,active,route_count,itinerary_count,stop_count,task_count,adapter_version) \
-                 VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?)",
-            )?.execute(params![
+                 VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?,0,0,?)",
+            )?
+            .execute(params![
                 publication,
                 job,
                 day,
@@ -820,139 +837,13 @@ impl Store {
                 at(capture.finished_at),
                 routes.len() as i64,
                 prepared.itineraries.len() as i64,
-                stop_count as i64,
-                task_count as i64,
                 ADAPTER_VERSION
             ])?;
-            let mut insert_route = connection.prepare_cached(
-                "INSERT OR REPLACE INTO routes(publication_id,day,route_id,rms_route_id,route_code,company_id,service_type,\
-                 route_status,progress_status,planned_departure_at,created_at,duration_secs,total_stops,total_tasks,\
-                 unassigned_stops,unassigned_packages,late_departing,pre_dispatch,same_day,transporter_ids,summary) \
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            )?;
-            for route in &routes {
-                let transporters: Vec<Value> = route["transporters"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|t| t["transporterId"].as_str().map(|v| json!(v)))
-                    .collect();
-                insert_route.execute(params![
-                    publication,
-                    day,
-                    text(&route["routeId"]).unwrap_or_else(|| text(&route["rmsRouteId"]).unwrap_or_default()),
-                    text(&route["rmsRouteId"]),
-                    text(&route["routeCode"]),
-                    text(&route["companyId"]),
-                    text(&route["serviceTypeName"]),
-                    text(&route["routeStatus"]),
-                    text(&route["progressStatus"]),
-                    stamp(&route["plannedDepartureTime"]),
-                    stamp(&route["routeCreationTime"]),
-                    integer(&route["routeDuration"]),
-                    integer(&route["totalStops"]),
-                    integer(&route["totalTasks"]),
-                    integer(&route["unassignedStops"]),
-                    integer(&route["unassignedPackages"]),
-                    flag(&route["lateDeparting"]),
-                    flag(&route["preDispatch"]),
-                    flag(&route["sameDayRoute"]),
-                    Value::Array(transporters).to_string(),
-                    route.to_string()
-                ])?;
-            }
-            let mut insert_stop = connection.prepare_cached(
-                "INSERT OR REPLACE INTO stops(publication_id,day,itinerary_id,stop_id,sequence,address_id,stop_type,route_code,\
-                 planned_start_at,planned_end_at,expected_start_at,actual_start_at,flags) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            )?;
-            let mut insert_task = connection.prepare_cached(
-                "INSERT OR REPLACE INTO tasks(publication_id,day,itinerary_id,stop_id,task_id,transporter_id,tracking_id,order_id,\
-                 task_type,task_state,state_context,execution_status,address_id,window_start_at,window_end_at,executed_at,\
-                 latitude,longitude,box_type,weight,weight_unit,length,width,height,volume_unit,time_windowed,high_value,\
-                 customer_return,address_type,events) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            )?;
-            let mut insert_day = connection.prepare_cached(
-                "INSERT INTO driver_days(publication_id,day,transporter_id,itinerary_id,route_code,departed_at,first_stop_at,\
-                 last_stop_at,session_end_at,stops_total,stops_completed,tasks_total,delivered,picked_up,not_delivered,\
-                 breaks_secs,overtime_secs) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            )?;
-            let mut upsert_address = connection.prepare_cached(
-                "INSERT INTO addresses(address_id,address1,address2,address3,city,state,postal_code,customer_name,\
-                 customer_phone,latitude,longitude,first_seen_day,last_seen_day) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) \
-                 ON CONFLICT(address_id) DO UPDATE SET address1=excluded.address1,address2=excluded.address2,\
-                 address3=excluded.address3,city=excluded.city,state=excluded.state,postal_code=excluded.postal_code,\
-                 customer_name=excluded.customer_name,customer_phone=excluded.customer_phone,latitude=excluded.latitude,\
-                 longitude=excluded.longitude,first_seen_day=min(first_seen_day,excluded.first_seen_day),\
-                 last_seen_day=max(last_seen_day,excluded.last_seen_day)",
-            )?;
-            let mut upsert_driver = connection.prepare_cached(
-                "INSERT INTO drivers(transporter_id,first_name,last_name,initials,work_phone,person_type,company_id,\
-                 first_seen_day,last_seen_day) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(transporter_id) DO UPDATE SET \
-                 first_name=excluded.first_name,last_name=excluded.last_name,initials=excluded.initials,\
-                 work_phone=excluded.work_phone,person_type=excluded.person_type,company_id=excluded.company_id,\
-                 first_seen_day=min(first_seen_day,excluded.first_seen_day),\
-                 last_seen_day=max(last_seen_day,excluded.last_seen_day)",
-            )?;
-            let mut insert_raw = connection.prepare_cached(
+            insert_prepared(&db, &publication, day, &routes, &prepared)?;
+            let mut insert_raw = db.0.prepare_cached(
                 "INSERT INTO route_raw(publication_id,name,encoding,raw_bytes,body) VALUES (?,?,'gzip',?,?)",
             )?;
             for itinerary in &prepared.itineraries {
-                let columns: Vec<&str> = itinerary.columns.iter().map(|(c, _)| c.as_str()).collect();
-                let placeholders = vec!["?"; columns.len() + 3].join(",");
-                let mut bound: Vec<Value> = vec![json!(publication), json!(day), json!(itinerary.id)];
-                bound.extend(itinerary.columns.iter().map(|(_, v)| v.clone()));
-                connection
-                    .prepare_cached(&format!(
-                        "INSERT INTO itineraries(publication_id,day,itinerary_id,{}) VALUES ({placeholders})",
-                        columns.join(",")
-                    ))?
-                    .execute(rusqlite::params_from_iter(bound.iter().map(sql_value)))?;
-                for stop in &itinerary.stops {
-                    insert_stop.execute(params![
-                        publication, day, itinerary.id, stop.id, stop.sequence, stop.address_id, stop.stop_type,
-                        stop.route_code, stop.planned_start_at, stop.planned_end_at, stop.expected_start_at,
-                        stop.actual_start_at, stop.flags.to_string()
-                    ])?;
-                }
-                for task in &itinerary.tasks {
-                    insert_task.execute(params![
-                        publication, day, itinerary.id, task.stop_id, task.id, itinerary.transporter_id, task.tracking_id,
-                        task.order_id, task.task_type, task.task_state, task.state_context, task.execution_status,
-                        task.address_id, task.window_start_at, task.window_end_at, task.executed_at, task.latitude,
-                        task.longitude, task.box_type, task.weight, task.weight_unit, task.length, task.width, task.height,
-                        task.volume_unit, task.time_windowed, task.high_value, task.customer_return, task.address_type,
-                        task.events.to_string()
-                    ])?;
-                }
-                let d = &itinerary.day;
-                insert_day.execute(params![
-                    publication, day, itinerary.transporter_id, itinerary.id, d.route_code, d.departed_at,
-                    d.first_stop_at, d.last_stop_at, d.session_end_at, d.stops_total, d.stops_completed, d.tasks_total,
-                    d.delivered, d.picked_up, d.not_delivered, d.breaks_secs, d.overtime_secs
-                ])?;
-                for address in &itinerary.addresses {
-                    let Some(address_id) = text(&address["addressId"]) else { continue };
-                    upsert_address.execute(params![
-                        address_id, text(&address["address1"]), text(&address["address2"]), text(&address["address3"]),
-                        text(&address["city"]), text(&address["state"]), text(&address["postalCode"]),
-                        text(&address["customerName"]), text(&address["customerPhone"]),
-                        number(&address["geocode"]["latitude"]), number(&address["geocode"]["longitude"]), day, day
-                    ])?;
-                }
-                let person = &itinerary.person;
-                if !person.is_null() {
-                    let company = itinerary
-                        .columns
-                        .iter()
-                        .find(|(c, _)| c == "company_id")
-                        .and_then(|(_, v)| v.as_str().map(str::to_owned));
-                    upsert_driver.execute(params![
-                        itinerary.transporter_id, text(&person["firstName"]), text(&person["lastName"]),
-                        text(&person["initials"]), text(&person["workPhoneNumber"]),
-                        person["personType"].as_array().map(|v| Value::Array(v.clone()).to_string()).unwrap_or_else(|| "[]".into()),
-                        company, day, day
-                    ])?;
-                }
                 insert_raw.execute(params![
                     publication,
                     format!("itinerary:{}", itinerary.id),
@@ -960,7 +851,12 @@ impl Store {
                     decode(&itinerary.raw)?
                 ])?;
             }
-            insert_raw.execute(params![publication, "summaries", prepared.summaries_bytes as i64, decode(&prepared.summaries)?])?;
+            insert_raw.execute(params![
+                publication,
+                "summaries",
+                prepared.summaries_bytes as i64,
+                decode(&prepared.summaries)?
+            ])?;
             insert_raw.execute(params![
                 publication,
                 "route_summaries",
@@ -977,6 +873,118 @@ impl Store {
                 [&publication],
             )?;
             Ok(())
+        })
+    }
+    /// Rebuilds every active publication's rows, or one day's, from the responses it
+    /// stored: what a release that reads more of them needs, without collecting again.
+    pub fn reprocess_routes(&self, id: &str, day: Option<&str>) -> Result<RouteReprocess> {
+        if let Some(day) = day {
+            crate::validate::date(day)?;
+        }
+        let db = self.routedata(id)?;
+        let publications = db.all(
+            "SELECT id,day,mode,station,service_area_id,provider,timezone,started_at,collected_at \
+             FROM route_publications WHERE active=1 AND (?1 IS NULL OR day=?1) ORDER BY day",
+            [day],
+        )?;
+        let mut rebuilt = Vec::new();
+        for row in &publications {
+            let publication = s(row, "id").to_owned();
+            let capture = self.stored_capture(&db, row)?;
+            let capture = prepare(capture)?;
+            let prepared = capture
+                .prepared
+                .as_ref()
+                .ok_or_else(|| Error::new("routes_capture_invalid", 502))?;
+            let routes = capture.route_summaries["rmsRouteSummaries"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            db.transaction(|| {
+                for table in [
+                    "routes",
+                    "itineraries",
+                    "stops",
+                    "tasks",
+                    "driver_days",
+                    "breaks",
+                    "unknown_stops",
+                ] {
+                    db.exec(
+                        &format!("DELETE FROM {table} WHERE publication_id=?"),
+                        [&publication],
+                    )?;
+                }
+                insert_prepared(&db, &publication, s(row, "day"), &routes, prepared)?;
+                db.exec(
+                    "UPDATE route_publications SET route_count=?,itinerary_count=? WHERE id=?",
+                    params![
+                        routes.len() as i64,
+                        prepared.itineraries.len() as i64,
+                        publication
+                    ],
+                )?;
+                Ok(())
+            })?;
+            let fresh = db
+                .one(
+                    "SELECT id,day,mode,station,collected_at,route_count,itinerary_count,stop_count,task_count \
+                     FROM route_publications WHERE id=?",
+                    [&publication],
+                )?
+                .ok_or_else(|| Error::new("not_found", 404))?;
+            rebuilt.push(self::publication(&fresh));
+        }
+        Ok(RouteReprocess {
+            publications: rebuilt,
+        })
+    }
+    /// A publication's capture as it was collected, from its stored responses.
+    fn stored_capture(&self, db: &Db, row: &Value) -> Result<Capture> {
+        let publication = s(row, "id");
+        let blob = |name: &str| -> Result<String> {
+            let body: Vec<u8> = db.0.query_row(
+                "SELECT body FROM route_raw WHERE publication_id=? AND name=?",
+                [publication, name],
+                |r| r.get(0),
+            )?;
+            String::from_utf8(gunzip(&body)?).map_err(|_| Error::new("routes_capture_invalid", 502))
+        };
+        let scope = Scope {
+            date: s(row, "day").into(),
+            station: s(row, "station").into(),
+            service_area_id: s(row, "service_area_id").into(),
+            provider: s(row, "provider").into(),
+            timezone: s(row, "timezone").into(),
+        };
+        let summaries: Value = serde_json::from_str(&blob("summaries")?)?;
+        let route_summaries: Value = serde_json::from_str(&blob("route_summaries")?)?;
+        let itineraries = listed(&summaries, &scope)
+            .into_iter()
+            .map(|(id, transporter_id)| {
+                Ok(ItineraryCapture {
+                    detail: blob(&format!("itinerary:{id}"))?,
+                    id,
+                    transporter_id,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let ms = |key: &str| {
+            chrono::DateTime::parse_from_rfc3339(s(row, key))
+                .map(|t| t.timestamp_millis())
+                .unwrap_or(0)
+        };
+        Ok(Capture {
+            version: 1,
+            collection: Collection::Routes,
+            mode: Mode::parse(s(row, "mode")).unwrap_or_default(),
+            scope,
+            started_at: ms("started_at"),
+            finished_at: ms("collected_at"),
+            summaries,
+            route_summaries,
+            itineraries,
+            prepared: None,
         })
     }
     /// Every day with a publication at the DSP's station, newest first.
@@ -1014,40 +1022,477 @@ impl Store {
         };
         let itineraries = db
             .all(
-                "SELECT i.itinerary_id,i.transporter_id,i.driver_name,i.route_code,i.execution_status,i.progress_status,\
-                 d.departed_at,d.first_stop_at,d.last_stop_at,d.session_end_at,d.stops_total,d.stops_completed,d.tasks_total,\
-                 d.delivered,d.picked_up,d.not_delivered,d.breaks_secs,d.overtime_secs \
-                 FROM itineraries i JOIN driver_days d ON d.publication_id=i.publication_id AND d.itinerary_id=i.itinerary_id \
-                 WHERE i.publication_id=? ORDER BY i.route_code,i.driver_name",
+                &format!("{ITINERARY_SELECT} WHERE i.publication_id=? ORDER BY i.route_code,i.driver_name"),
                 [s(&row, "id")],
             )?
             .iter()
-            .map(|r| RouteItinerary {
-                itinerary_id: s(r, "itinerary_id").into(),
-                transporter_id: s(r, "transporter_id").into(),
-                driver_name: s(r, "driver_name").into(),
-                route_code: r["route_code"].as_str().map(str::to_owned),
-                execution_status: r["execution_status"].as_str().map(str::to_owned),
-                progress_status: r["progress_status"].as_str().map(str::to_owned),
-                departed_at: r["departed_at"].as_i64(),
-                first_stop_at: r["first_stop_at"].as_i64(),
-                last_stop_at: r["last_stop_at"].as_i64(),
-                session_end_at: r["session_end_at"].as_i64(),
-                stops_total: r["stops_total"].as_i64().unwrap_or(0),
-                stops_completed: r["stops_completed"].as_i64().unwrap_or(0),
-                tasks_total: r["tasks_total"].as_i64().unwrap_or(0),
-                delivered: r["delivered"].as_i64().unwrap_or(0),
-                picked_up: r["picked_up"].as_i64().unwrap_or(0),
-                not_delivered: r["not_delivered"].as_i64().unwrap_or(0),
-                breaks_secs: r["breaks_secs"].as_i64(),
-                overtime_secs: r["overtime_secs"].as_i64(),
-            })
+            .map(itinerary_from)
             .collect();
         Ok(Some(RouteDayView {
             publication: publication(&row),
             itineraries,
         }))
     }
+}
+impl Store {
+    /// One driver's itinerary for a day: its stops with their tasks and locations, its
+    /// breaks, its unknown stops and the tasks removed from it.
+    pub fn route_itinerary(
+        &self,
+        id: &str,
+        day: &str,
+        itinerary_id: &str,
+    ) -> Result<Option<RouteItineraryDetail>> {
+        crate::validate::date(day)?;
+        let station = self.profile(id)?.station_code;
+        let db = self.routedata(id)?;
+        let Some(row) = db.one(
+            "SELECT id,day,mode,station,collected_at,route_count,itinerary_count,stop_count,task_count \
+             FROM route_publications WHERE station=? AND day=? AND active=1",
+            [&station, day],
+        )?
+        else {
+            return Ok(None);
+        };
+        let publication_id = s(&row, "id").to_owned();
+        let Some(itinerary) = db
+            .one(
+                &format!("{ITINERARY_SELECT} WHERE i.publication_id=? AND i.itinerary_id=?"),
+                [&publication_id, itinerary_id],
+            )?
+            .as_ref()
+            .map(itinerary_from)
+        else {
+            return Ok(None);
+        };
+        let tasks = db.all(
+            "SELECT t.*,a.address1,a.city,a.state,a.postal_code,a.latitude address_latitude,a.longitude address_longitude \
+             FROM tasks t LEFT JOIN addresses a ON a.address_id=t.address_id \
+             WHERE t.publication_id=? AND t.itinerary_id=? ORDER BY t.executed_at,t.task_id",
+            [&publication_id, itinerary_id],
+        )?;
+        let stops = db
+            .all(
+                "SELECT s.*,a.address1,a.city,a.state,a.postal_code,a.latitude,a.longitude \
+                 FROM stops s LEFT JOIN addresses a ON a.address_id=s.address_id \
+                 WHERE s.publication_id=? AND s.itinerary_id=? ORDER BY s.sequence,s.stop_id",
+                [&publication_id, itinerary_id],
+            )?
+            .iter()
+            .map(|stop| RouteStop {
+                stop_id: s(stop, "stop_id").into(),
+                sequence: stop["sequence"].as_i64(),
+                stop_type: stop["stop_type"].as_str().map(str::to_owned),
+                planned_start_at: stop["planned_start_at"].as_i64(),
+                planned_end_at: stop["planned_end_at"].as_i64(),
+                address: address_from(stop, "latitude", "longitude"),
+                tasks: tasks
+                    .iter()
+                    .filter(|t| t["stop_id"] == stop["stop_id"] && t["active"] != 0)
+                    .map(task_from)
+                    .collect(),
+            })
+            .collect();
+        let breaks = db
+            .all(
+                "SELECT * FROM breaks WHERE publication_id=? AND itinerary_id=? ORDER BY planned,ordinal",
+                [&publication_id, itinerary_id],
+            )?
+            .iter()
+            .map(|b| RouteBreak {
+                planned: b["planned"] == 1,
+                break_id: b["break_id"].as_str().map(str::to_owned),
+                kind: b["kind"].as_str().map(str::to_owned),
+                state: b["state"].as_str().map(str::to_owned),
+                started_at: b["started_at"].as_i64(),
+                ended_at: b["ended_at"].as_i64(),
+                planned_start_at: b["planned_start_at"].as_i64(),
+                planned_end_at: b["planned_end_at"].as_i64(),
+            })
+            .collect();
+        let unknown_stops = db
+            .all(
+                "SELECT * FROM unknown_stops WHERE publication_id=? AND itinerary_id=? ORDER BY ordinal",
+                [&publication_id, itinerary_id],
+            )?
+            .iter()
+            .map(|u| RouteUnknownStop {
+                entered_at: u["entered_at"].as_i64(),
+                exited_at: u["exited_at"].as_i64(),
+                enter_latitude: u["enter_latitude"].as_f64(),
+                enter_longitude: u["enter_longitude"].as_f64(),
+                exit_latitude: u["exit_latitude"].as_f64(),
+                exit_longitude: u["exit_longitude"].as_f64(),
+            })
+            .collect();
+        Ok(Some(RouteItineraryDetail {
+            publication: publication(&row),
+            itinerary,
+            stops,
+            breaks,
+            unknown_stops,
+            inactive_tasks: tasks
+                .iter()
+                .filter(|t| t["active"] == 0)
+                .map(task_from)
+                .collect(),
+        }))
+    }
+    /// Everything that happened to a package across the days stored, newest first.
+    pub fn route_package(&self, id: &str, tracking: &str) -> Result<RoutePackage> {
+        let db = self.routedata(id)?;
+        let events = db
+            .all(
+                "SELECT t.*,i.driver_name,i.route_code,a.address1,a.city,a.state,a.postal_code,\
+                 a.latitude address_latitude,a.longitude address_longitude \
+                 FROM tasks t JOIN route_publications p ON p.id=t.publication_id AND p.active=1 \
+                 LEFT JOIN itineraries i ON i.publication_id=t.publication_id AND i.itinerary_id=t.itinerary_id \
+                 LEFT JOIN addresses a ON a.address_id=t.address_id \
+                 WHERE t.tracking_id=? ORDER BY t.day DESC,t.executed_at,t.task_id LIMIT 500",
+                [tracking],
+            )?
+            .iter()
+            .map(|t| RoutePackageEvent {
+                day: s(t, "day").into(),
+                transporter_id: s(t, "transporter_id").into(),
+                driver_name: t["driver_name"].as_str().map(str::to_owned),
+                route_code: t["route_code"].as_str().map(str::to_owned),
+                itinerary_id: s(t, "itinerary_id").into(),
+                task: task_from(t),
+                address: address_from(t, "address_latitude", "address_longitude"),
+            })
+            .collect();
+        Ok(RoutePackage {
+            tracking_id: tracking.into(),
+            events,
+        })
+    }
+}
+/// The itinerary and day-summary columns a `RouteItinerary` is read from.
+const ITINERARY_SELECT: &str = "SELECT i.itinerary_id,i.transporter_id,i.driver_name,i.route_code,i.execution_status,i.progress_status,\
+    d.departed_at,d.first_stop_at,d.last_stop_at,d.session_end_at,d.stops_total,d.stops_completed,d.tasks_total,\
+    d.delivered,d.picked_up,d.not_delivered,d.breaks_secs,d.overtime_secs \
+    FROM itineraries i JOIN driver_days d ON d.publication_id=i.publication_id AND d.itinerary_id=i.itinerary_id";
+fn itinerary_from(r: &Value) -> RouteItinerary {
+    RouteItinerary {
+        itinerary_id: s(r, "itinerary_id").into(),
+        transporter_id: s(r, "transporter_id").into(),
+        driver_name: s(r, "driver_name").into(),
+        route_code: r["route_code"].as_str().map(str::to_owned),
+        execution_status: r["execution_status"].as_str().map(str::to_owned),
+        progress_status: r["progress_status"].as_str().map(str::to_owned),
+        departed_at: r["departed_at"].as_i64(),
+        first_stop_at: r["first_stop_at"].as_i64(),
+        last_stop_at: r["last_stop_at"].as_i64(),
+        session_end_at: r["session_end_at"].as_i64(),
+        stops_total: r["stops_total"].as_i64().unwrap_or(0),
+        stops_completed: r["stops_completed"].as_i64().unwrap_or(0),
+        tasks_total: r["tasks_total"].as_i64().unwrap_or(0),
+        delivered: r["delivered"].as_i64().unwrap_or(0),
+        picked_up: r["picked_up"].as_i64().unwrap_or(0),
+        not_delivered: r["not_delivered"].as_i64().unwrap_or(0),
+        breaks_secs: r["breaks_secs"].as_i64(),
+        overtime_secs: r["overtime_secs"].as_i64(),
+    }
+}
+fn task_from(t: &Value) -> RouteTask {
+    RouteTask {
+        task_id: s(t, "task_id").into(),
+        tracking_id: t["tracking_id"].as_str().map(str::to_owned),
+        order_id: t["order_id"].as_str().map(str::to_owned),
+        task_type: t["task_type"].as_str().map(str::to_owned),
+        task_state: t["task_state"].as_str().map(str::to_owned),
+        state_context: t["state_context"].as_str().map(str::to_owned),
+        execution_status: t["execution_status"].as_str().map(str::to_owned),
+        executed_at: t["executed_at"].as_i64(),
+        window_start_at: t["window_start_at"].as_i64(),
+        window_end_at: t["window_end_at"].as_i64(),
+        latitude: t["latitude"].as_f64(),
+        longitude: t["longitude"].as_f64(),
+        address_id: t["address_id"].as_str().map(str::to_owned),
+        address_type: t["address_type"].as_str().map(str::to_owned),
+        active: t["active"] != 0,
+    }
+}
+/// The address joined onto a row, when the row has one.
+fn address_from(row: &Value, latitude: &str, longitude: &str) -> Option<RouteAddress> {
+    let address_id = row["address_id"].as_str()?;
+    Some(RouteAddress {
+        address_id: address_id.into(),
+        address1: row["address1"].as_str().map(str::to_owned),
+        city: row["city"].as_str().map(str::to_owned),
+        state: row["state"].as_str().map(str::to_owned),
+        postal_code: row["postal_code"].as_str().map(str::to_owned),
+        latitude: row[latitude].as_f64(),
+        longitude: row[longitude].as_f64(),
+    })
+}
+/// Inserts a prepared day's rows under `publication`, inside the caller's transaction,
+/// and records the stop and task counts on the publication.
+fn insert_prepared(
+    db: &Db,
+    publication: &str,
+    day: &str,
+    routes: &[Value],
+    prepared: &Prepared,
+) -> Result<()> {
+    let connection = &db.0;
+    let mut insert_route = connection.prepare_cached(
+        "INSERT OR REPLACE INTO routes(publication_id,day,route_id,rms_route_id,route_code,company_id,service_type,\
+         route_status,progress_status,planned_departure_at,created_at,duration_secs,total_stops,total_tasks,\
+         unassigned_stops,unassigned_packages,late_departing,pre_dispatch,same_day,transporter_ids,summary) \
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    )?;
+    for route in routes {
+        let transporters: Vec<Value> = route["transporters"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|t| t["transporterId"].as_str().map(|v| json!(v)))
+            .collect();
+        insert_route.execute(params![
+            publication,
+            day,
+            text(&route["routeId"])
+                .unwrap_or_else(|| text(&route["rmsRouteId"]).unwrap_or_default()),
+            text(&route["rmsRouteId"]),
+            text(&route["routeCode"]),
+            text(&route["companyId"]),
+            text(&route["serviceTypeName"]),
+            text(&route["routeStatus"]),
+            text(&route["progressStatus"]),
+            stamp(&route["plannedDepartureTime"]),
+            stamp(&route["routeCreationTime"]),
+            integer(&route["routeDuration"]),
+            integer(&route["totalStops"]),
+            integer(&route["totalTasks"]),
+            integer(&route["unassignedStops"]),
+            integer(&route["unassignedPackages"]),
+            flag(&route["lateDeparting"]),
+            flag(&route["preDispatch"]),
+            flag(&route["sameDayRoute"]),
+            Value::Array(transporters).to_string(),
+            route.to_string()
+        ])?;
+    }
+    let mut insert_stop = connection.prepare_cached(
+        "INSERT OR REPLACE INTO stops(publication_id,day,itinerary_id,stop_id,sequence,address_id,stop_type,route_code,\
+         planned_start_at,planned_end_at,expected_start_at,actual_start_at,flags) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    )?;
+    let mut insert_task = connection.prepare_cached(
+        "INSERT OR IGNORE INTO tasks(publication_id,day,itinerary_id,stop_id,task_id,transporter_id,tracking_id,order_id,\
+         task_type,task_state,state_context,execution_status,address_id,window_start_at,window_end_at,executed_at,\
+         latitude,longitude,box_type,weight,weight_unit,length,width,height,volume_unit,time_windowed,high_value,\
+         customer_return,address_type,events,active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    )?;
+    let mut insert_day = connection.prepare_cached(
+        "INSERT INTO driver_days(publication_id,day,transporter_id,itinerary_id,route_code,departed_at,first_stop_at,\
+         last_stop_at,session_end_at,stops_total,stops_completed,tasks_total,delivered,picked_up,not_delivered,\
+         breaks_secs,overtime_secs) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    )?;
+    let mut insert_break = connection.prepare_cached(
+        "INSERT INTO breaks(publication_id,day,itinerary_id,transporter_id,ordinal,planned,break_id,kind,state,sequence,\
+         punch_id,started_at,ended_at,planned_start_at,planned_end_at,min_duration_ms) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    )?;
+    let mut insert_unknown = connection.prepare_cached(
+        "INSERT INTO unknown_stops(publication_id,day,itinerary_id,transporter_id,ordinal,entered_at,exited_at,\
+         enter_latitude,enter_longitude,exit_latitude,exit_longitude) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+    )?;
+    let mut upsert_address = connection.prepare_cached(
+        "INSERT INTO addresses(address_id,address1,address2,address3,city,state,postal_code,customer_name,\
+         customer_phone,latitude,longitude,first_seen_day,last_seen_day) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) \
+         ON CONFLICT(address_id) DO UPDATE SET address1=excluded.address1,address2=excluded.address2,\
+         address3=excluded.address3,city=excluded.city,state=excluded.state,postal_code=excluded.postal_code,\
+         customer_name=excluded.customer_name,customer_phone=excluded.customer_phone,latitude=excluded.latitude,\
+         longitude=excluded.longitude,first_seen_day=min(first_seen_day,excluded.first_seen_day),\
+         last_seen_day=max(last_seen_day,excluded.last_seen_day)",
+    )?;
+    let mut upsert_driver = connection.prepare_cached(
+        "INSERT INTO drivers(transporter_id,first_name,last_name,initials,work_phone,person_type,company_id,\
+         first_seen_day,last_seen_day) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(transporter_id) DO UPDATE SET \
+         first_name=excluded.first_name,last_name=excluded.last_name,initials=excluded.initials,\
+         work_phone=excluded.work_phone,person_type=excluded.person_type,company_id=excluded.company_id,\
+         first_seen_day=min(first_seen_day,excluded.first_seen_day),\
+         last_seen_day=max(last_seen_day,excluded.last_seen_day)",
+    )?;
+    let mut stop_count = 0i64;
+    let mut task_count = 0i64;
+    for itinerary in &prepared.itineraries {
+        let columns: Vec<&str> = itinerary.columns.iter().map(|(c, _)| c.as_str()).collect();
+        let placeholders = vec!["?"; columns.len() + 3].join(",");
+        let mut bound: Vec<Value> = vec![json!(publication), json!(day), json!(itinerary.id)];
+        bound.extend(itinerary.columns.iter().map(|(_, v)| v.clone()));
+        connection
+            .prepare_cached(&format!(
+                "INSERT INTO itineraries(publication_id,day,itinerary_id,{}) VALUES ({placeholders})",
+                columns.join(",")
+            ))?
+            .execute(rusqlite::params_from_iter(bound.iter().map(sql_value)))?;
+        for stop in &itinerary.stops {
+            insert_stop.execute(params![
+                publication,
+                day,
+                itinerary.id,
+                stop.id,
+                stop.sequence,
+                stop.address_id,
+                stop.stop_type,
+                stop.route_code,
+                stop.planned_start_at,
+                stop.planned_end_at,
+                stop.expected_start_at,
+                stop.actual_start_at,
+                stop.flags.to_string()
+            ])?;
+        }
+        stop_count += itinerary.stops.len() as i64;
+        task_count += itinerary.tasks.len() as i64;
+        for (task, active) in itinerary
+            .tasks
+            .iter()
+            .map(|t| (t, 1))
+            .chain(itinerary.inactive.iter().map(|t| (t, 0)))
+        {
+            insert_task.execute(params![
+                publication,
+                day,
+                itinerary.id,
+                task.stop_id,
+                task.id,
+                itinerary.transporter_id,
+                task.tracking_id,
+                task.order_id,
+                task.task_type,
+                task.task_state,
+                task.state_context,
+                task.execution_status,
+                task.address_id,
+                task.window_start_at,
+                task.window_end_at,
+                task.executed_at,
+                task.latitude,
+                task.longitude,
+                task.box_type,
+                task.weight,
+                task.weight_unit,
+                task.length,
+                task.width,
+                task.height,
+                task.volume_unit,
+                task.time_windowed,
+                task.high_value,
+                task.customer_return,
+                task.address_type,
+                task.events.to_string(),
+                active
+            ])?;
+        }
+        let d = &itinerary.day;
+        insert_day.execute(params![
+            publication,
+            day,
+            itinerary.transporter_id,
+            itinerary.id,
+            d.route_code,
+            d.departed_at,
+            d.first_stop_at,
+            d.last_stop_at,
+            d.session_end_at,
+            d.stops_total,
+            d.stops_completed,
+            d.tasks_total,
+            d.delivered,
+            d.picked_up,
+            d.not_delivered,
+            d.breaks_secs,
+            d.overtime_secs
+        ])?;
+        let mut ordinals = [0i64, 0i64];
+        for b in &itinerary.breaks {
+            let ordinal = &mut ordinals[usize::from(b.planned)];
+            insert_break.execute(params![
+                publication,
+                day,
+                itinerary.id,
+                itinerary.transporter_id,
+                *ordinal,
+                i64::from(b.planned),
+                b.break_id,
+                b.kind,
+                b.state,
+                b.sequence,
+                b.punch_id,
+                b.started_at,
+                b.ended_at,
+                b.planned_start_at,
+                b.planned_end_at,
+                b.min_duration_ms
+            ])?;
+            *ordinal += 1;
+        }
+        for (ordinal, u) in itinerary.unknown_stops.iter().enumerate() {
+            insert_unknown.execute(params![
+                publication,
+                day,
+                itinerary.id,
+                itinerary.transporter_id,
+                ordinal as i64,
+                u.entered_at,
+                u.exited_at,
+                u.enter_latitude,
+                u.enter_longitude,
+                u.exit_latitude,
+                u.exit_longitude
+            ])?;
+        }
+        for address in &itinerary.addresses {
+            let Some(address_id) = text(&address["addressId"]) else {
+                continue;
+            };
+            upsert_address.execute(params![
+                address_id,
+                text(&address["address1"]),
+                text(&address["address2"]),
+                text(&address["address3"]),
+                text(&address["city"]),
+                text(&address["state"]),
+                text(&address["postalCode"]),
+                text(&address["customerName"]),
+                text(&address["customerPhone"]),
+                number(&address["geocode"]["latitude"]),
+                number(&address["geocode"]["longitude"]),
+                day,
+                day
+            ])?;
+        }
+        let person = &itinerary.person;
+        if !person.is_null() {
+            let company = itinerary
+                .columns
+                .iter()
+                .find(|(c, _)| c == "company_id")
+                .and_then(|(_, v)| v.as_str().map(str::to_owned));
+            upsert_driver.execute(params![
+                itinerary.transporter_id,
+                text(&person["firstName"]),
+                text(&person["lastName"]),
+                text(&person["initials"]),
+                text(&person["workPhoneNumber"]),
+                person["personType"]
+                    .as_array()
+                    .map(|v| Value::Array(v.clone()).to_string())
+                    .unwrap_or_else(|| "[]".into()),
+                company,
+                day,
+                day
+            ])?;
+        }
+    }
+    db.exec(
+        "UPDATE route_publications SET stop_count=?,task_count=? WHERE id=?",
+        params![stop_count, task_count, publication],
+    )?;
+    Ok(())
 }
 fn publication(row: &Value) -> RoutePublication {
     RoutePublication {
@@ -1077,6 +1522,13 @@ fn sql_value(value: &Value) -> rusqlite::types::Value {
 }
 fn opt<T: Into<Value>>(value: Option<T>) -> Value {
     value.map(Into::into).unwrap_or(Value::Null)
+}
+/// A list as JSON text, or nothing when absent or empty.
+fn json_list(value: &Value) -> Value {
+    match value.as_array() {
+        Some(items) if !items.is_empty() => json!(Value::Array(items.clone()).to_string()),
+        _ => Value::Null,
+    }
 }
 /// The itinerary row's columns from the list's summary and the detail.
 fn flatten(summary: &Value, detail: &Value, transporter: &str, driver_name: &str) -> Flat {
@@ -1171,6 +1623,9 @@ fn flatten(summary: &Value, detail: &Value, transporter: &str, driver_name: &str
                         .unwrap_or_else(|| "[]".into())
                 ),
             ),
+            ("rescue_actions", json_list(either("rescueActions"))),
+            ("sequence_edits", json_list(either("sequenceEdits"))),
+            ("pause_events", json_list(either("routePauseEvents"))),
             (
                 "summary",
                 json!(if summary.is_null() {
@@ -1240,6 +1695,67 @@ struct DayRow {
     picked_up: i64,
     not_delivered: i64,
 }
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct BreakRow {
+    planned: bool,
+    break_id: Option<String>,
+    kind: Option<String>,
+    state: Option<String>,
+    sequence: Option<i64>,
+    punch_id: Option<String>,
+    started_at: Option<i64>,
+    ended_at: Option<i64>,
+    planned_start_at: Option<i64>,
+    planned_end_at: Option<i64>,
+    min_duration_ms: Option<i64>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct UnknownStopRow {
+    entered_at: Option<i64>,
+    exited_at: Option<i64>,
+    enter_latitude: Option<f64>,
+    enter_longitude: Option<f64>,
+    exit_latitude: Option<f64>,
+    exit_longitude: Option<f64>,
+}
+/// A task's row, at `stop_id` or removed from the route. A task without an identifier
+/// cannot be a row.
+fn task_row(task: &Value, stop_id: &str) -> Option<TaskRow> {
+    let task_id = text(&task["taskId"]).filter(|v| identifier(v, 256))?;
+    let dimension = |key: &str| number(&task[key]);
+    Some(TaskRow {
+        id: task_id,
+        stop_id: stop_id.to_owned(),
+        tracking_id: text(&task["domainMap"]["scannableId"]).or_else(|| text(&task["scannableId"])),
+        order_id: text(&task["domainMap"]["orderId"]),
+        task_type: text(&task["taskType"]),
+        task_state: text(&task["taskState"]),
+        state_context: text(&task["taskStateContext"]),
+        execution_status: text(&task["executionStatus"]),
+        address_id: text(&task["addressId"]),
+        window_start_at: stamp(&task["windowStartTime"]),
+        window_end_at: stamp(&task["windowEndTime"]),
+        executed_at: stamp(&task["actualExecutionTime"])
+            .or_else(|| stamp(&task["taskExecutionTime"])),
+        latitude: number(&task["executionGeocode"]["latitude"]),
+        longitude: number(&task["executionGeocode"]["longitude"]),
+        box_type: text(&task["boxType"]),
+        weight: dimension("weight"),
+        weight_unit: text(&task["weightUnit"]),
+        length: dimension("length"),
+        width: dimension("width"),
+        height: dimension("height"),
+        volume_unit: text(&task["volumeUnit"]),
+        time_windowed: flag(&task["timeWindowed"]),
+        high_value: flag(&task["highValueTaskFlag"]),
+        customer_return: flag(&task["customerReturn"]),
+        address_type: text(&task["addressTypeInfo"]),
+        events: task["recentTaskEvents"]
+            .as_array()
+            .map(|v| Value::Array(v.clone()))
+            .unwrap_or_else(|| json!([])),
+    })
+}
 /// The stops and tasks of a detail, and the day summary they add up to. A task or
 /// stop without an identifier, or one repeated, is skipped: it cannot be a row.
 fn rows(detail: &Value, transporter: &str) -> (Vec<StopRow>, Vec<TaskRow>, DayRow) {
@@ -1260,12 +1776,6 @@ fn rows(detail: &Value, transporter: &str) -> (Vec<StopRow>, Vec<TaskRow>, DayRo
         }
         let mut completed = false;
         for task in stop["tasks"].as_array().into_iter().flatten() {
-            let Some(task_id) = text(&task["taskId"]).filter(|v| identifier(v, 256)) else {
-                continue;
-            };
-            if !seen_tasks.insert(task_id.clone()) {
-                continue;
-            }
             // A task another driver executed belongs to that driver's itinerary.
             if task["transporterId"]
                 .as_str()
@@ -1273,16 +1783,18 @@ fn rows(detail: &Value, transporter: &str) -> (Vec<StopRow>, Vec<TaskRow>, DayRo
             {
                 continue;
             }
-            let executed_at =
-                stamp(&task["actualExecutionTime"]).or_else(|| stamp(&task["taskExecutionTime"]));
-            let task_type = text(&task["taskType"]);
-            let task_state = text(&task["taskState"]);
+            let Some(row) = task_row(task, &stop_id) else {
+                continue;
+            };
+            if !seen_tasks.insert(row.id.clone()) {
+                continue;
+            }
             day.tasks_total += 1;
-            match (task_type.as_deref(), task_state.as_deref()) {
+            match (row.task_type.as_deref(), row.task_state.as_deref()) {
                 (Some("DROP_OFF"), Some("DELIVERED")) => {
                     day.delivered += 1;
                     completed = true;
-                    if let Some(at) = executed_at {
+                    if let Some(at) = row.executed_at {
                         day.first_stop_at = Some(day.first_stop_at.map_or(at, |v| v.min(at)));
                         day.last_stop_at = Some(day.last_stop_at.map_or(at, |v| v.max(at)));
                     }
@@ -1291,39 +1803,7 @@ fn rows(detail: &Value, transporter: &str) -> (Vec<StopRow>, Vec<TaskRow>, DayRo
                 (Some("PICK_UP"), Some("PICKED_UP")) => day.picked_up += 1,
                 _ => (),
             }
-            let dimension = |key: &str| number(&task[key]);
-            tasks.push(TaskRow {
-                id: task_id,
-                stop_id: stop_id.clone(),
-                tracking_id: text(&task["domainMap"]["scannableId"])
-                    .or_else(|| text(&task["scannableId"])),
-                order_id: text(&task["domainMap"]["orderId"]),
-                task_type,
-                task_state,
-                state_context: text(&task["taskStateContext"]),
-                execution_status: text(&task["executionStatus"]),
-                address_id: text(&task["addressId"]),
-                window_start_at: stamp(&task["windowStartTime"]),
-                window_end_at: stamp(&task["windowEndTime"]),
-                executed_at,
-                latitude: number(&task["executionGeocode"]["latitude"]),
-                longitude: number(&task["executionGeocode"]["longitude"]),
-                box_type: text(&task["boxType"]),
-                weight: dimension("weight"),
-                weight_unit: text(&task["weightUnit"]),
-                length: dimension("length"),
-                width: dimension("width"),
-                height: dimension("height"),
-                volume_unit: text(&task["volumeUnit"]),
-                time_windowed: flag(&task["timeWindowed"]),
-                high_value: flag(&task["highValueTaskFlag"]),
-                customer_return: flag(&task["customerReturn"]),
-                address_type: text(&task["addressTypeInfo"]),
-                events: task["recentTaskEvents"]
-                    .as_array()
-                    .map(|v| Value::Array(v.clone()))
-                    .unwrap_or_else(|| json!([])),
-            });
+            tasks.push(row);
         }
         day.stops_total += 1;
         if completed {
@@ -1350,6 +1830,74 @@ fn rows(detail: &Value, transporter: &str) -> (Vec<StopRow>, Vec<TaskRow>, DayRo
         day.stops_completed = completed;
     }
     (stops, tasks, day)
+}
+/// Tasks removed from the route, each once.
+fn inactive_tasks(detail: &Value) -> Vec<TaskRow> {
+    let mut seen = std::collections::HashSet::new();
+    detail["inactiveTasks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|task| task_row(task, ""))
+        .filter(|row| seen.insert(row.id.clone()))
+        .collect()
+}
+/// Break punches, from the detail or else the list's summary, then planned breaks.
+fn break_rows(summary: &Value, detail: &Value) -> Vec<BreakRow> {
+    let taken = match detail["breaks"].as_array() {
+        Some(list) if !list.is_empty() => Some(list),
+        _ => summary["breaks"].as_array(),
+    };
+    let planned = match detail["plannedBreaks"].as_array() {
+        Some(list) if !list.is_empty() => Some(list),
+        _ => summary["plannedBreaks"].as_array(),
+    };
+    let mut rows: Vec<BreakRow> = taken
+        .into_iter()
+        .flatten()
+        .map(|b| BreakRow {
+            planned: false,
+            break_id: text(&b["breakId"]),
+            kind: text(&b["type"]),
+            state: text(&b["state"]),
+            sequence: integer(&b["sequenceNumber"]),
+            punch_id: text(&b["punchId"]),
+            started_at: stamp(&b["timeStampOn"]),
+            ended_at: stamp(&b["timeStampOff"]),
+            planned_start_at: None,
+            planned_end_at: None,
+            min_duration_ms: None,
+        })
+        .collect();
+    rows.extend(planned.into_iter().flatten().map(|b| BreakRow {
+        planned: true,
+        break_id: text(&b["breakId"]),
+        kind: text(&b["type"]).or_else(|| text(&b["breakType"])),
+        state: None,
+        sequence: integer(&b["plannedSequenceNumber"]),
+        punch_id: None,
+        started_at: None,
+        ended_at: None,
+        planned_start_at: stamp(&b["plannedStart"]),
+        planned_end_at: stamp(&b["plannedEnd"]),
+        min_duration_ms: integer(&b["minDurationInMillis"]),
+    }));
+    rows
+}
+fn unknown_stop_rows(detail: &Value) -> Vec<UnknownStopRow> {
+    detail["unknownStops"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|u| UnknownStopRow {
+            entered_at: stamp(&u["enterTime"]),
+            exited_at: stamp(&u["exitTime"]),
+            enter_latitude: number(&u["enterLatitude"]),
+            enter_longitude: number(&u["enterLongitude"]),
+            exit_latitude: number(&u["exitLatitude"]),
+            exit_longitude: number(&u["exitLongitude"]),
+        })
+        .collect()
 }
 
 #[cfg(test)]

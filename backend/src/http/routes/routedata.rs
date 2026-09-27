@@ -3,6 +3,7 @@
 use crate::{
     Error, Result,
     db::Store,
+    ensure,
     http::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, read, write},
@@ -18,8 +19,31 @@ pub fn routes() -> Vec<Route> {
     vec![
         read("/api/dsp/routes/days", VIEW, days),
         read("/api/dsp/routes/days/{day}", VIEW, day),
+        read(
+            "/api/dsp/routes/days/{day}/itineraries/{id}",
+            VIEW,
+            itinerary,
+        ),
+        read("/api/dsp/routes/packages/{tracking}", VIEW, package),
         write("/api/dsp/routes/collect", COLLECT, collect),
     ]
+}
+
+fn itinerary(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    let day = input.param("day");
+    v::date(day)?;
+    let id = input.param("id");
+    ensure(routedata::token(id, 128), "invalid_input", 400)?;
+    let view = db
+        .route_itinerary(c.dsp_id(), day, id)?
+        .ok_or_else(|| Error::new("not_found", 404))?;
+    Reply::of(&view)
+}
+
+fn package(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    let tracking = input.param("tracking");
+    ensure(routedata::token(tracking, 64), "invalid_input", 400)?;
+    Reply::of(&db.route_package(c.dsp_id(), tracking)?)
 }
 
 fn days(db: &Store, c: &Member, _: &Input) -> Result<Reply> {

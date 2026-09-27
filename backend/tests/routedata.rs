@@ -71,7 +71,7 @@ fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
     let tasks = storage
         .all(
             "SELECT tracking_id,task_type,task_state,transporter_id,latitude FROM tasks \
-             WHERE publication_id=? AND itinerary_id='itinerary-2' ORDER BY task_id",
+             WHERE publication_id=? AND itinerary_id='itinerary-2' AND active=1 ORDER BY task_id",
             [pid],
         )
         .unwrap();
@@ -144,6 +144,112 @@ fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
     assert_eq!(view.itineraries[0].delivered, 2);
     assert_eq!(view.itineraries[1].not_delivered, 1);
     assert!(db.route_day(&id, "2026-09-24").unwrap().is_none());
+    // Breaks, unknown stops and removed tasks have rows of their own; the views join them.
+    assert_eq!(
+        count(&db, &id, "SELECT count(*) FROM breaks WHERE planned=0"),
+        2
+    );
+    assert_eq!(
+        count(&db, &id, "SELECT count(*) FROM breaks WHERE planned=1"),
+        2
+    );
+    assert_eq!(count(&db, &id, "SELECT count(*) FROM unknown_stops"), 2);
+    assert_eq!(
+        count(&db, &id, "SELECT count(*) FROM tasks WHERE active=0"),
+        2
+    );
+    assert_eq!(
+        count(
+            &db,
+            &id,
+            "SELECT count(*) FROM deliveries WHERE task_state='DELIVERED' AND address1 IS NOT NULL"
+        ),
+        3
+    );
+    // One stop per driver had deliveries; the first driver's had two.
+    assert_eq!(
+        count(
+            &db,
+            &id,
+            "SELECT count(*) FROM driver_stops WHERE delivered>0"
+        ),
+        2
+    );
+    assert_eq!(
+        count(&db, &id, "SELECT sum(delivered) FROM driver_stops"),
+        3
+    );
+    let detail = db
+        .route_itinerary(&id, "2026-09-25", "itinerary-2")
+        .unwrap()
+        .unwrap();
+    assert_eq!(detail.stops.len(), 2);
+    assert_eq!(detail.stops[1].tasks.len(), 2);
+    assert_eq!(
+        detail.stops[1].address.as_ref().unwrap().city.as_deref(),
+        Some("Fixture")
+    );
+    assert_eq!(detail.breaks.len(), 2);
+    assert_eq!(detail.unknown_stops.len(), 1);
+    assert_eq!(detail.inactive_tasks.len(), 1);
+    assert!(!detail.inactive_tasks[0].active);
+    let package = db.route_package(&id, "TBA000000000002").unwrap();
+    assert_eq!(package.events.len(), 4);
+    assert!(
+        package
+            .events
+            .iter()
+            .any(|e| e.task.task_state.as_deref() == Some("UNDELIVERABLE"))
+    );
+    assert!(
+        db.route_itinerary(&id, "2026-09-25", "nope")
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn a_reprocess_rebuilds_every_row_from_the_stored_responses() {
+    let (_root, db, id) = ready();
+    let capture = routedata::fixture(&request("2026-09-25", Mode::Final)).unwrap();
+    publish(&db, &id, "first", "2026-09-25", &capture);
+    let before = db.route_days(&id).unwrap().days.remove(0);
+    let storage = db.routedata(&id).unwrap();
+    for table in ["tasks", "stops", "breaks", "unknown_stops", "driver_days"] {
+        storage.exec(&format!("DELETE FROM {table}"), []).unwrap();
+    }
+    storage
+        .exec(
+            "UPDATE route_publications SET stop_count=0,task_count=0",
+            [],
+        )
+        .unwrap();
+    let result = db.reprocess_routes(&id, None).unwrap();
+    assert_eq!(result.publications.len(), 1);
+    assert_eq!(result.publications[0].stop_count, before.stop_count);
+    assert_eq!(result.publications[0].task_count, before.task_count);
+    assert_eq!(
+        count(&db, &id, "SELECT count(*) FROM tasks WHERE active=1"),
+        8
+    );
+    assert_eq!(count(&db, &id, "SELECT count(*) FROM breaks"), 4);
+    assert_eq!(count(&db, &id, "SELECT count(*) FROM unknown_stops"), 2);
+    assert_eq!(count(&db, &id, "SELECT count(*) FROM driver_days"), 2);
+    assert_eq!(count(&db, &id, "SELECT count(*) FROM route_raw"), 4);
+    assert!(
+        storage
+            .all("PRAGMA foreign_key_check", [])
+            .unwrap()
+            .is_empty()
+    );
+    // A day without a publication rebuilds nothing.
+    assert!(
+        db.reprocess_routes(&id, Some("2026-09-24"))
+            .unwrap()
+            .publications
+            .is_empty()
+    );
+    assert!(db.reprocess_routes(&id, Some("bad")).is_err());
 }
 
 #[test]
@@ -174,7 +280,14 @@ fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
     );
     // Rows under the replaced publication went with it; shared rows stayed.
     assert_eq!(count(&db, &id, "SELECT count(*) FROM itineraries"), 1);
-    assert_eq!(count(&db, &id, "SELECT count(*) FROM tasks"), 4);
+    assert_eq!(
+        count(&db, &id, "SELECT count(*) FROM tasks WHERE active=1"),
+        4
+    );
+    assert_eq!(
+        count(&db, &id, "SELECT count(*) FROM tasks WHERE active=0"),
+        1
+    );
     assert_eq!(count(&db, &id, "SELECT count(*) FROM driver_days"), 1);
     assert_eq!(count(&db, &id, "SELECT count(*) FROM route_raw"), 3);
     assert_eq!(count(&db, &id, "SELECT count(*) FROM addresses"), 2);
