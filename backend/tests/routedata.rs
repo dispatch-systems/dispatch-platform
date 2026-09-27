@@ -253,6 +253,39 @@ fn a_reprocess_rebuilds_every_row_from_the_stored_responses() {
 }
 
 #[test]
+fn misreported_prepared_and_oversized_stored_captures_fail_before_changing_publications() {
+    let (_root, db, id) = ready();
+    let capture = routedata::fixture(&request("2026-09-25", Mode::Final)).unwrap();
+    let mut oversized = serde_json::to_value(routedata::prepare(capture.clone()).unwrap()).unwrap();
+    oversized["prepared"]["itineraries"][0]["rawBytes"] = json!(0);
+    let oversized: Capture = serde_json::from_value(oversized).unwrap();
+    let jobs = db
+        .enqueue_routes(&id, None, "oversized", Some("2026-09-25"), Mode::Final, 1)
+        .unwrap();
+    let error = db
+        .publish_routes(&id, s(&jobs[0], "id"), &oversized)
+        .unwrap_err();
+    assert_eq!(error.code, "routes_capture_invalid");
+    assert_eq!(
+        count(&db, &id, "SELECT count(*) FROM route_publications"),
+        0
+    );
+
+    publish(&db, &id, "ordinary", "2026-09-25", &capture);
+    let before = count(&db, &id, "SELECT count(*) FROM tasks");
+    db.routedata(&id)
+        .unwrap()
+        .exec(
+            "UPDATE route_raw SET raw_bytes=? WHERE name LIKE 'itinerary:%'",
+            [routedata::MAX_CAPTURE_BYTES as i64],
+        )
+        .unwrap();
+    let error = db.reprocess_routes(&id, None).unwrap_err();
+    assert_eq!(error.code, "routes_source_too_large");
+    assert_eq!(count(&db, &id, "SELECT count(*) FROM tasks"), before);
+}
+
+#[test]
 fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
     let (_root, db, id) = ready();
     let capture = routedata::fixture(&request("2026-09-25", Mode::Final)).unwrap();

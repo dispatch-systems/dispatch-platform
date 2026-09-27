@@ -46,6 +46,20 @@ pub const MAX_STOPS: usize = 5000;
 pub const MAX_TASKS: usize = 20_000;
 /// As much as one response may be. The largest itinerary seen was 1.4 MB.
 pub const MAX_BODY: usize = 32 * 1024 * 1024;
+/// Uncompressed provider responses retained for one day. Ordinary days hold tens of
+/// megabytes; this bounds their combined parse, compression and storage amplification.
+pub const MAX_CAPTURE_BYTES: usize = 128 * 1024 * 1024;
+/// Gzip overhead for an incompressible maximum-size response, with ample format headroom.
+const MAX_GZIP_BODY: usize = MAX_BODY + 64 * 1024;
+const MAX_ENCODED_BODY: usize = MAX_GZIP_BODY.div_ceil(3) * 4;
+
+/// Adds one response to a day's total without allowing overflow or a partial capture.
+pub(crate) fn add_capture_bytes(total: usize, additional: usize) -> Result<usize> {
+    let next = total
+        .checked_add(additional)
+        .filter(|next| *next <= MAX_CAPTURE_BYTES);
+    next.ok_or_else(|| Error::new("routes_source_too_large", 502))
+}
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum Collection {
@@ -254,6 +268,47 @@ pub fn listed(summaries: &Value, scope: &Scope) -> Vec<(String, String)> {
         .collect()
 }
 impl Capture {
+    /// The total uncompressed provider data represented by this capture. Prepared
+    /// captures carry the byte lengths after their original strings have been dropped.
+    fn validate_response_budget(&self) -> Result<()> {
+        let summaries = serde_json::to_vec(&self.summaries)?;
+        let route_summaries = serde_json::to_vec(&self.route_summaries)?;
+        let mut total;
+        if let Some(prepared) = &self.prepared {
+            let stored_summaries = gunzip(&decode(&prepared.summaries)?)?;
+            let stored_route_summaries = gunzip(&decode(&prepared.route_summaries)?)?;
+            ensure(
+                prepared.summaries_bytes == stored_summaries.len()
+                    && prepared.route_summaries_bytes == stored_route_summaries.len()
+                    && stored_summaries == summaries
+                    && stored_route_summaries == route_summaries
+                    && self
+                        .itineraries
+                        .iter()
+                        .all(|capture| capture.detail.is_empty()),
+                "routes_capture_invalid",
+                502,
+            )?;
+            total = add_capture_bytes(0, stored_summaries.len())?;
+            total = add_capture_bytes(total, stored_route_summaries.len())?;
+            for itinerary in &prepared.itineraries {
+                let raw = gunzip(&decode(&itinerary.raw)?)?;
+                ensure(
+                    itinerary.raw_bytes == raw.len(),
+                    "routes_capture_invalid",
+                    502,
+                )?;
+                total = add_capture_bytes(total, raw.len())?;
+            }
+        } else {
+            total = add_capture_bytes(0, summaries.len())?;
+            total = add_capture_bytes(total, route_summaries.len())?;
+            for itinerary in &self.itineraries {
+                total = add_capture_bytes(total, itinerary.detail.len())?;
+            }
+        }
+        Ok(())
+    }
     pub fn validate(&self, request: &Request) -> Result<()> {
         request.validate()?;
         ensure(self.version == 1, "routes_capture_invalid", 502)?;
@@ -270,6 +325,7 @@ impl Capture {
             "routes_capture_invalid",
             502,
         )?;
+        self.validate_response_budget()?;
         let listed = listed(&self.summaries, &self.scope);
         ensure(
             listed.len() <= MAX_ITINERARIES && self.itineraries.len() == listed.len(),
@@ -540,6 +596,8 @@ pub fn fixture(request: &Request) -> Result<Capture> {
 /// Shapes every itinerary into its rows and compresses every body, outside any lock,
 /// and drops the bodies from the capture: what remains is what publication inserts.
 pub fn prepare(mut capture: Capture) -> Result<Capture> {
+    // Reject the aggregate before parsing any itinerary into a larger JSON tree.
+    capture.validate_response_budget()?;
     let summaries: Map<String, Value> = capture.summaries["itinerarySummaries"]
         .as_array()
         .into_iter()
@@ -625,6 +683,11 @@ pub fn prepare(mut capture: Capture) -> Result<Capture> {
     Ok(capture)
 }
 fn decode(blob: &str) -> Result<Vec<u8>> {
+    ensure(
+        blob.len() <= MAX_ENCODED_BODY,
+        "routes_source_too_large",
+        502,
+    )?;
     base64::Engine::decode(&base64::engine::general_purpose::STANDARD, blob)
         .map_err(|_| Error::new("routes_capture_invalid", 502))
 }
@@ -942,13 +1005,27 @@ impl Store {
     /// A publication's capture as it was collected, from its stored responses.
     fn stored_capture(&self, db: &Db, row: &Value) -> Result<Capture> {
         let publication = s(row, "id");
-        let blob = |name: &str| -> Result<String> {
+        let declared: i64 = db.0.query_row(
+            "SELECT COALESCE(SUM(raw_bytes),0) FROM route_raw WHERE publication_id=?",
+            [publication],
+            |row| row.get(0),
+        )?;
+        ensure(
+            (0..=MAX_CAPTURE_BYTES as i64).contains(&declared),
+            "routes_source_too_large",
+            502,
+        )?;
+        let mut bytes = 0;
+        let mut blob = |name: &str| -> Result<String> {
             let body: Vec<u8> = db.0.query_row(
                 "SELECT body FROM route_raw WHERE publication_id=? AND name=?",
                 [publication, name],
                 |r| r.get(0),
             )?;
-            String::from_utf8(gunzip(&body)?).map_err(|_| Error::new("routes_capture_invalid", 502))
+            let text = String::from_utf8(gunzip(&body)?)
+                .map_err(|_| Error::new("routes_capture_invalid", 502))?;
+            bytes = add_capture_bytes(bytes, text.len())?;
+            Ok(text)
         };
         let scope = Scope {
             date: s(row, "day").into(),
@@ -1974,6 +2051,18 @@ mod tests {
         assert!(day.first_stop_at.unwrap() <= day.last_stop_at.unwrap());
         let inflated = gunzip(&gzip(b"{\"a\":1}").unwrap()).unwrap();
         assert_eq!(inflated, b"{\"a\":1}");
+    }
+    #[test]
+    fn aggregate_response_bytes_stop_at_the_daily_limit() {
+        let chunk = MAX_CAPTURE_BYTES / MAX_ITINERARIES;
+        let mut total = 0;
+        for _ in 0..MAX_ITINERARIES {
+            total = add_capture_bytes(total, chunk).unwrap();
+        }
+        total = add_capture_bytes(total, MAX_CAPTURE_BYTES - total).unwrap();
+        assert_eq!(total, MAX_CAPTURE_BYTES);
+        let error = add_capture_bytes(total, 1).unwrap_err();
+        assert_eq!(error.code, "routes_source_too_large");
     }
     #[test]
     fn stamps_take_seconds_and_milliseconds() {
