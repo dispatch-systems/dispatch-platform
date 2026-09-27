@@ -199,6 +199,69 @@ pub fn migrate(db: &Db, kind: Kind) -> Result<()> {
     run(db, kind.name(), kind.migrations())
 }
 
+/// Verifies that core DSP storage belongs to the tenant whose path selected it.
+/// Unlike provider storage, legacy core databases need one explicit adoption
+/// while migration 5 is first applied.
+pub(crate) fn verify_dsp_identity(db: &Db, id: &str) -> Result<()> {
+    crate::ensure(
+        db.count(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='storage_identity'",
+            [],
+        )? == 1,
+        "dsp_storage_identity_mismatch",
+        503,
+    )?;
+    let rows = db.all("SELECT dsp_id,provider,source FROM storage_identity", [])?;
+    crate::ensure(
+        rows.len() == 1
+            && super::s(&rows[0], "dsp_id") == id
+            && super::s(&rows[0], "provider") == "dispatch"
+            && super::s(&rows[0], "source") == "dispatch-v1",
+        "dsp_storage_identity_mismatch",
+        503,
+    )
+}
+
+/// Migrates an existing core DSP database and binds a legacy file exactly once.
+/// The identity row and migration record commit together, so a database that has
+/// recorded migration 5 but later loses or changes its identity is never rebound.
+pub(crate) fn migrate_dsp(db: &Db, id: &str) -> Result<()> {
+    migrate_dsp_after_probe(db, id, || {})
+}
+
+fn migrate_dsp_after_probe<F: FnOnce()>(db: &Db, id: &str, after_probe: F) -> Result<()> {
+    let list = Kind::Dsp.migrations();
+    let done = applied(db)?;
+    if done.contains(&5) {
+        verify_dsp_identity(db, id)?;
+        return run(db, Kind::Dsp.name(), list);
+    }
+    after_probe();
+    let tx = immediate(db)?;
+    let done = applied(db)?;
+    let bind = !done.contains(&5);
+    if bind {
+        crate::ensure(
+            db.count(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='storage_identity'",
+                [],
+            )? == 0,
+            "dsp_storage_identity_mismatch",
+            503,
+        )?;
+    }
+    apply(db, Kind::Dsp.name(), list)?;
+    if bind {
+        db.0.execute(
+            "INSERT INTO storage_identity(dsp_id,provider,source) VALUES (?,'dispatch','dispatch-v1')",
+            [id],
+        )?;
+    }
+    verify_dsp_identity(db, id)?;
+    tx.commit()?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,6 +272,7 @@ mod tests {
     };
 
     const RECORD: &str = "CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL);\n";
+    const DSP_IDENTITY: &str = "CREATE TABLE storage_identity ( dsp_id TEXT PRIMARY KEY, provider TEXT NOT NULL, source TEXT NOT NULL );\n";
 
     fn snapshot(kind: Kind) -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -245,6 +309,14 @@ mod tests {
     }
     fn recorded(kind: Kind) -> String {
         std::fs::read_to_string(snapshot(kind)).unwrap()
+    }
+    fn legacy(kind: Kind) -> String {
+        let schema = recorded(kind).replace(RECORD, "");
+        if kind == Kind::Dsp {
+            schema.replace(DSP_IDENTITY, "")
+        } else {
+            schema
+        }
     }
     fn ids(db: &Db) -> Vec<i64> {
         db.all("SELECT id FROM schema_migrations ORDER BY id", [])
@@ -351,10 +423,41 @@ mod tests {
         let root = private();
         for kind in Kind::ALL {
             let file = root.path().join(format!("{}.sqlite", kind.name()));
-            older(&file, *kind, &recorded(*kind).replace(RECORD, ""));
+            older(&file, *kind, &legacy(*kind));
             let db = Db::create(&file, *kind, "INSERT INTO never_run VALUES (1);").unwrap();
             assert_eq!(dump(&db), recorded(*kind), "{}", kind.name());
         }
+    }
+
+    #[test]
+    fn concurrent_legacy_dsp_adoption_accepts_the_identity_committed_while_waiting() {
+        let root = private();
+        let file = root.path().join("dsp.sqlite");
+        let id = format!("dsp_{}", "1".repeat(32));
+        older(&file, Kind::Dsp, &legacy(Kind::Dsp));
+        let first = Db::open(&file, Kind::Dsp).unwrap();
+        let second = Db::open(&file, Kind::Dsp).unwrap();
+        let probed = std::sync::Barrier::new(2);
+        let resume = std::sync::Barrier::new(2);
+
+        std::thread::scope(|scope| {
+            let id = &id;
+            let probed = &probed;
+            let resume = &resume;
+            let waiting = scope.spawn(move || {
+                migrate_dsp_after_probe(&second, id, || {
+                    probed.wait();
+                    resume.wait();
+                })
+            });
+            probed.wait();
+            migrate_dsp(&first, id).unwrap();
+            resume.wait();
+            waiting.join().unwrap().unwrap();
+        });
+
+        verify_dsp_identity(&first, &id).unwrap();
+        assert_eq!(ids(&first), vec![1, 2, 3, 4, 5]);
     }
 
     #[test]
@@ -453,9 +556,7 @@ mod tests {
                 .is_empty()
         );
 
-        let dsp_schema = recorded(Kind::Dsp)
-            .replace(RECORD, "")
-            .replace(",'scorecard'", "");
+        let dsp_schema = legacy(Kind::Dsp).replace(",'scorecard'", "");
         assert!(!dsp_schema.contains("scorecard"));
         let file = root.path().join("dsp.sqlite");
         older(&file, Kind::Dsp, &dsp_schema);
@@ -527,9 +628,7 @@ mod tests {
                 .is_empty()
         );
 
-        let dsp_schema = recorded(Kind::Dsp)
-            .replace(RECORD, "")
-            .replace(",'routes'", "");
+        let dsp_schema = legacy(Kind::Dsp).replace(",'routes'", "");
         assert!(!dsp_schema.contains("routes"));
         let file = root.path().join("dsp.sqlite");
         older(&file, Kind::Dsp, &dsp_schema);

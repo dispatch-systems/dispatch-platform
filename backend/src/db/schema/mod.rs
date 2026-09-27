@@ -94,6 +94,11 @@ pub const DSP: &[Migration] = &[
         name: "routes_collection",
         apply: Sql(include_str!("dsp/0004_routes_collection.sql")),
     },
+    Migration {
+        id: 5,
+        name: "storage_identity",
+        apply: Sql(include_str!("dsp/0005_storage_identity.sql")),
+    },
 ];
 pub const PAYCOM: &[Migration] = &[
     Migration {

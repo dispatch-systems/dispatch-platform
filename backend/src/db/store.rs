@@ -1,4 +1,4 @@
-use super::{Db, Kind, identifier, key_file, migrate, private_dir, private_file, s};
+use super::{Db, Kind, identifier, key_file, migrations, private_dir, private_file, s};
 use crate::{Result, config::Config, ensure};
 use std::path::{Path, PathBuf};
 pub struct DspLease<'a> {
@@ -61,7 +61,7 @@ impl Store {
             [],
         )? {
             let id = s(&row, "id");
-            migrate(&*store.dsp(id)?, Kind::Dsp)?;
+            migrations::migrate_dsp(&*store.dsp_unverified(id)?, id)?;
             store.open_collectors(id)?;
             store.initialize_schedules(id)?;
         }
@@ -88,6 +88,11 @@ impl Store {
         private_dir(&root.join(area))
     }
     pub fn dsp(&self, id: &str) -> Result<DspLease<'_>> {
+        let db = self.dsp_unverified(id)?;
+        migrations::verify_dsp_identity(&db, id)?;
+        Ok(db)
+    }
+    fn dsp_unverified(&self, id: &str) -> Result<DspLease<'_>> {
         let path = self.area(id, "data")?.join("dispatch.sqlite");
         self.cached_database(&path, Kind::Dsp)
     }
@@ -116,10 +121,6 @@ impl Store {
         for area in ["data", "config", "state", "secrets"] {
             self.area(id, area)?;
         }
-        Db::create(
-            &self.area(id, "data")?.join("dispatch.sqlite"),
-            Kind::Dsp,
-            "",
-        )
+        Db::create_dsp(&self.area(id, "data")?.join("dispatch.sqlite"), id)
     }
 }
