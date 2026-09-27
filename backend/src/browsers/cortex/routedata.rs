@@ -7,7 +7,8 @@ use crate::{
     job_metrics::Recorder,
     meals::Scope,
     routedata::{
-        Capture, Collection, ItineraryCapture, MAX_BODY, MAX_ITINERARIES, Request, listed,
+        Capture, Collection, ItineraryCapture, MAX_BODY, MAX_ITINERARIES, Request,
+        add_capture_bytes, listed,
     },
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -18,6 +19,23 @@ const ROUTE_SUMMARIES: &str = "/operations/execution/api/route-summaries";
 const ITINERARY: &str = "/operations/execution/api/itineraries/";
 /// How long a page may take to ask for its data.
 const PAGE_DEADLINE: Duration = Duration::from_secs(45);
+
+/// The two itinerary lanes share one exact byte reservation for the day's accepted
+/// responses. A failed reservation leaves the total unchanged.
+struct CaptureBudget(AtomicUsize);
+impl CaptureBudget {
+    fn new(bytes: usize) -> Result<Self> {
+        Ok(Self(AtomicUsize::new(add_capture_bytes(0, bytes)?)))
+    }
+    fn add(&self, bytes: usize) -> Result<()> {
+        self.0
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |total| {
+                add_capture_bytes(total, bytes).ok()
+            })
+            .map(|_| ())
+            .map_err(|_| Error::new("routes_source_too_large", 502))
+    }
+}
 
 /// The newer routes page for the scope.
 fn routes_page(origin: &str, scope: &Scope) -> String {
@@ -172,24 +190,26 @@ impl Driver {
         let parse = |text: String| -> Result<Value> {
             serde_json::from_str(&text).map_err(|_| Error::new("cortex_content_incomplete", 502))
         };
-        let summaries = parse(
-            self.capture_page(
+        let summaries_body = self
+            .capture_page(
                 &self.page,
                 &format!("{origin}{}", scope.list_path()),
                 SUMMARIES,
                 run.metrics,
             )
-            .await?,
-        )?;
-        let route_summaries = parse(
-            self.capture_page(
+            .await?;
+        let bytes = CaptureBudget::new(summaries_body.len())?;
+        let summaries = parse(summaries_body)?;
+        let route_summaries_body = self
+            .capture_page(
                 &self.page,
                 &routes_page(&origin, &scope),
                 ROUTE_SUMMARIES,
                 run.metrics,
             )
-            .await?,
-        )?;
+            .await?;
+        bytes.add(route_summaries_body.len())?;
+        let route_summaries = parse(route_summaries_body)?;
         ensure(
             route_summaries["rmsRouteSummaries"].is_array(),
             "cortex_content_incomplete",
@@ -219,6 +239,7 @@ impl Driver {
             next: AtomicUsize::new(0),
             done: AtomicUsize::new(0),
             stopped: AtomicBool::new(false),
+            bytes,
         };
         // Drain every tab even when one fails. Dropping a sibling's in-flight command
         // closes the shared browser transport.
@@ -268,6 +289,7 @@ struct Lanes<'a> {
     next: AtomicUsize,
     done: AtomicUsize,
     stopped: AtomicBool,
+    bytes: CaptureBudget,
 }
 impl Lanes<'_> {
     async fn read(&self, page: &Page) -> Result<Vec<(usize, ItineraryCapture)>> {
@@ -294,6 +316,10 @@ impl Lanes<'_> {
                     return Err(error);
                 }
             };
+            if let Err(error) = self.bytes.add(detail.len()) {
+                self.stopped.store(true, Ordering::SeqCst);
+                return Err(error);
+            }
             let finished = self.done.fetch_add(1, Ordering::SeqCst) + 1;
             self.run
                 .progress(
@@ -314,5 +340,29 @@ impl Lanes<'_> {
             }
         }
         Ok(read)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    #[test]
+    fn concurrent_lanes_cannot_overbook_the_capture_budget() {
+        let budget = Arc::new(CaptureBudget::new(crate::routedata::MAX_CAPTURE_BYTES - 1).unwrap());
+        let results = std::thread::scope(|scope| {
+            let first = scope.spawn({
+                let budget = budget.clone();
+                move || budget.add(1)
+            });
+            let second = scope.spawn({
+                let budget = budget.clone();
+                move || budget.add(1)
+            });
+            [first.join().unwrap(), second.join().unwrap()]
+        });
+        assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+        assert!(results.iter().any(|result| result.is_err()));
     }
 }
