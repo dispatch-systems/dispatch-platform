@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { AppWindow, Plug, type LucideIcon } from 'lucide-react';
 import type { DspSummary } from '../../../../shared/contracts/index.js';
-import { useDspFeatures } from '../../app/endpoints.js';
-import { featureCatalog, type FeatureEntry } from '../../app/features.js';
+import { setDspFeature, useDspFeatures } from '../../app/endpoints.js';
+import { featureCatalog, previewSwitch, type FeatureEntry } from '../../app/features.js';
+import { useAction } from '../../app/useAction.js';
 import { Badge, ErrorBox } from '../../ui/index.js';
 import { FeatureSwitchDialog } from './FeatureSwitchDialog.js';
 
@@ -13,7 +14,7 @@ const areas: Area[] = [
 ];
 
 // The catalog by area: choose an area on the left, switch its features on the right.
-// A switch asks before it acts.
+// A switch acts at once; one that takes other features with it asks first.
 export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () => void }) {
   const { data, error, refresh } = useDspFeatures(dsp.id);
   const [kind, setKind] = useState<Area['kind']>('page');
@@ -25,6 +26,26 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
   const on = (features: FeatureEntry[]) => features.filter((f) => enabled.includes(f.id)).length;
   const area = areas.find((candidate) => candidate.kind === kind)!;
   const items = of(area);
+  const done = () => {
+    refresh();
+    changed();
+  };
+  const direct = useAction(
+    async (feature: FeatureEntry, on: boolean) => {
+      await setDspFeature(dsp.id, feature.id, on);
+      done();
+    },
+    { success: (feature, on) => `${feature.label} switched ${on ? 'on' : 'off'}` },
+  );
+  const toggle = (feature: FeatureEntry, on: boolean) => {
+    const preview = previewSwitch(enabled, feature.id, on);
+    // Alone, or already as asked: no question to ask.
+    if (preview && preview.every((change) => change.feature === feature.id)) {
+      if (preview.length) void direct.run(feature, on);
+      return;
+    }
+    setPending({ feature, on });
+  };
   return (
     <div className="dsp-features">
       <ErrorBox message={error} />
@@ -60,8 +81,8 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
                 role="switch"
                 aria-label={feature.label}
                 checked={has}
-                disabled={!data}
-                onChange={(event) => setPending({ feature, on: event.target.checked })}
+                disabled={!data || direct.busy}
+                onChange={(event) => toggle(feature, event.target.checked)}
               />
               <strong>{feature.label}</strong>
               {feature.kind === 'connection' && has && (
@@ -77,12 +98,10 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
           feature={pending.feature}
           on={pending.on}
           enabled={enabled}
-          report={data}
           onClose={() => setPending(undefined)}
           onDone={() => {
             setPending(undefined);
-            refresh();
-            changed();
+            done();
           }}
         />
       )}

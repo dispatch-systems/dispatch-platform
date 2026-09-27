@@ -28,6 +28,8 @@ fn store() -> (tempfile::TempDir, Store, String) {
     let id = s(&bootstrap["dsp"], "id").to_owned();
     (root, store, id)
 }
+/// A day in the demo period of Sep 6 to 19, 2026, within a week of its start.
+const DEMO_DAY: chrono::NaiveDate = chrono::NaiveDate::from_ymd_opt(2026, 9, 12).unwrap();
 fn actor(db: &Store) -> String {
     s(
         &db.platform
@@ -39,7 +41,10 @@ fn actor(db: &Store) -> String {
     .to_owned()
 }
 fn seed(db: &Store, id: &str) -> (String, String) {
-    let mut workforce = workforce::fixture("America/Los_Angeles").unwrap();
+    // A fixed day inside the demo period, so the period's first day has timecards whatever
+    // today is: the fixture seeds the seven days up to "today", and the comparison reads
+    // the period's first day.
+    let mut workforce = workforce::fixture_date("America/Los_Angeles", Some(DEMO_DAY)).unwrap();
     let date = s(&workforce, "from").to_owned();
     // Provider formatting differences should join without a saved identity.
     workforce["employees"][0]["name"] = json!("Driver, Demo");
@@ -268,7 +273,7 @@ fn newer_empty_scope_suppresses_stale_meals_and_latest_paycom_period_wins() {
             .iter()
             .all(|r| r["cortex"] == json!([]))
     );
-    let mut newer = workforce::fixture("America/Los_Angeles").unwrap();
+    let mut newer = workforce::fixture_date("America/Los_Angeles", Some(DEMO_DAY)).unwrap();
     newer["collectedAt"] = json!("2099-01-01T00:00:00Z");
     newer["timecards"] = json!([]);
     db.publish(&id, &newer).unwrap();

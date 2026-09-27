@@ -18,14 +18,14 @@ test('the platform switches a DSP’s features with their dependencies, and the 
   await areas.getByRole('tab', { name: /^Connections/ }).click();
   await expect(cortex).toBeChecked();
   await cortex.click();
-  const off = page.getByRole('dialog', { name: 'Switch off Cortex for Northline Logistics?' });
-  await expect(off).toContainText('Timecard needs a meal-break source, so it switches off too.');
-  await expect(off).toContainText('Routes needs a route source, so it switches off too.');
-  await expect(off).toContainText('Credentials, schedules and collected data are kept.');
+  const off = page.getByRole('dialog', { name: 'Switch off Cortex?' });
+  await expect(off).toContainText('Also switches off:');
+  await expect(off.getByRole('listitem')).toHaveText([
+    'Timecardneeds a meal-break source',
+    'Routesneeds a route source',
+  ]);
   await page.screenshot({ path: test.info().outputPath('switch-off.png') });
-  await off
-    .getByRole('button', { name: 'Switch off Cortex, Timecard and Routes', exact: true })
-    .click();
+  await off.getByRole('button', { name: 'Switch off', exact: true }).click();
   await expect(cortex).not.toBeChecked();
   await expect(areas.getByRole('tab', { name: /^Pages/ })).toContainText('1/3');
   await areas.getByRole('tab', { name: /^Pages/ }).click();
@@ -55,12 +55,20 @@ test('the platform switches a DSP’s features with their dependencies, and the 
   await list.getByRole('button', { name: /Northline Logistics/ }).click();
   await pane.getByRole('tab', { name: 'Features', exact: true }).click();
   await timecard.click();
-  const on = page.getByRole('dialog', { name: 'Switch on Timecard for Northline Logistics?' });
-  await expect(on).toContainText('Timecard needs a meal-break source, so Cortex switches on too.');
-  await on.getByRole('button', { name: 'Switch on Timecard and Cortex', exact: true }).click();
+  const on = page.getByRole('dialog', { name: 'Switch on Timecard?' });
+  await expect(on.getByRole('listitem')).toHaveText(['CortexTimecard needs a meal-break source']);
+  await on.getByRole('button', { name: 'Switch on', exact: true }).click();
   await expect(timecard).toBeChecked();
   await areas.getByRole('tab', { name: /^Connections/ }).click();
   await expect(cortex).toBeChecked();
+  // A switch that takes nothing with it asks nothing.
+  await areas.getByRole('tab', { name: /^Pages/ }).click();
+  const uniforms = pane.getByRole('switch', { name: 'Uniform Inventory', exact: true });
+  await uniforms.click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(uniforms).not.toBeChecked();
+  await uniforms.click();
+  await expect(uniforms).toBeChecked();
   // The member's next request finds their view expired and reopens it with the page back.
   await member.getByRole('link', { name: 'Uniform Inventory', exact: true }).click();
   await expect(member.getByRole('link', { name: 'Timecard', exact: true })).toBeVisible();
