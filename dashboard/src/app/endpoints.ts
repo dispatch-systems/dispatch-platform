@@ -17,6 +17,7 @@ import { prefetchData } from './prefetch.js';
 import { dataCache } from './data-cache.js';
 import type {
   AuditPage,
+  PlaygroundAccess,
   PlatformHealth,
   CollectionSchedule,
   CollectionSchedules,
@@ -51,6 +52,7 @@ export const getCollectionUpdates = (after: string, signal: AbortSignal) =>
   );
 
 export const getSession = () => api<SessionView>('/api/session');
+export const getPlaygroundAccess = () => api<PlaygroundAccess>('/api/platform/design-playground');
 export const getSecurityStatus = () => api<SecurityStatus>('/api/auth/security/status');
 export const useSecurityStatus = () => useData<SecurityStatus>('/api/auth/security/status');
 export const usePasskeys = () => useData<PasskeySummary[]>('/api/auth/security/passkeys');

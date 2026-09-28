@@ -115,13 +115,16 @@ pub async fn pipeline(
         .entry(header::CACHE_CONTROL)
         .or_insert("no-store".parse().unwrap());
     let development = state.config.development;
-    let csp = format!(
+    let mut csp = format!(
         "default-src 'self'; script-src 'self'{}; style-src 'self' 'unsafe-inline'; \
          img-src 'self' data: blob:; connect-src 'self' blob:{}; font-src 'self'; object-src 'none'; \
          base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
         if development { " 'unsafe-inline'" } else { "" },
         if development { " ws:" } else { "" }
     );
+    if let Some(playground) = &state.config.playground {
+        csp.push_str(&format!("; frame-src 'self' {}", playground.origin));
+    }
     headers.insert("content-security-policy", csp.parse().unwrap());
     response
 }
