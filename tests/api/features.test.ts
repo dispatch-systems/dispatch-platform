@@ -142,3 +142,24 @@ test('a feature switched off for a DSP stops existing there until it is switched
   );
   assert.deepEqual(cascade.changes, [{ field: 'cause', from: null, to: 'Paycom' }]);
 });
+
+test('a feature switch needs no recent verification; removing a DSP still does', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const platform = await f.client();
+  const north = platform.session.dsps.find(
+    (d: { name: string }) => d.name === 'Northline Logistics',
+  );
+  f.database('data/platform/accounts.sqlite', (db) =>
+    db.prepare('UPDATE sessions SET created_at=0 WHERE user_id=?').run(platform.session.user.id),
+  );
+  const url = `/api/platform/dsps/${north.id}/features`;
+  assert.equal((await platform.post(url, { feature: 'uniforms', enabled: false })).status, 200);
+  assert.equal((await platform.post(url, { feature: 'uniforms', enabled: true })).status, 200);
+  const remove = await platform.post(`/api/platform/dsps/${north.id}/remove`, {});
+  assert.equal(remove.status, 403, remove.body);
+  assert.ok(
+    ['sign_in_again', 'reauthentication_required'].includes(remove.value.error),
+    remove.body,
+  );
+});
