@@ -37,6 +37,7 @@ export function collectionAffects(url: string, changes: CollectionChange[]) {
 export function mutationAffects(mutation: string, url: string) {
   const write = path(mutation);
   if (write === '/api/session/dsp' || write.startsWith('/api/auth/')) return false;
+  if (write.startsWith('/api/dsp/dvic/')) return begins(url, '/api/dsp/dvic/');
   if (write.startsWith('/api/dsp/uniforms')) return begins(url, '/api/dsp/uniforms');
   if (write === '/api/dsp/paycom/settings') return collectionData(url) || path(url) === write;
   if (write === '/api/dsp/paycom/employee-links') return begins(url, '/api/dsp/paycom/meal-breaks');

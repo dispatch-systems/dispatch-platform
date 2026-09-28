@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { routeMeta } from '../../dashboard/src/app/route-meta.js';
 import { test, expect, login, openDsp } from './fixtures.js';
+import { seedDvic } from '../support/dvic.js';
 
 // Not a test: `npm run pr:screenshots -- capture` runs it to photograph the named screens of
 // the built dashboard, from the fixture server, for a PR's Screenshots section. In the suite,
@@ -15,12 +16,13 @@ test.skip(
 );
 test.use({ viewport: { width: 1920, height: 1080 } });
 
-test('captures the named screens', async ({ page }) => {
+test('captures the named screens', async ({ page, dispatch }) => {
   test.slow();
   const unknown = screens.filter((id) => !routeMeta.some((route) => route.id === id));
   expect(unknown, `unknown screens; the ids are in app/route-meta.ts`).toEqual([]);
   fs.mkdirSync(output, { recursive: true });
   await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
+  if (screens.includes('dvic')) await seedDvic(dispatch);
   await login(page);
   let dsp = '';
   const titles: Record<string, string> = {};

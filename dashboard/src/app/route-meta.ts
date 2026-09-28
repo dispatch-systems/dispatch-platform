@@ -33,6 +33,11 @@ export const routeMeta = [
     label: 'Uniform Inventory',
   },
   {
+    id: 'dvic',
+    scope: 'dsp',
+    label: 'DVIC',
+  },
+  {
     id: 'team',
     scope: 'dsp',
     label: 'Team & Roles',

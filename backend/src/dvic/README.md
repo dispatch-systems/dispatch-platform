@@ -1,7 +1,15 @@
 # DVIC collection
 
 Backend collection through the existing Cortex connection. Enable the DSP's `dvic`
-feature and configure its station before collecting. This change adds no DVIC screen.
+feature and configure its station before collecting. The dashboard's DVIC page has a
+Day tab (headline numbers, repeat drivers, and the day's records by vehicle type) and
+a Week tab (drivers by day, showing the shortest inspection or the count), with week
+navigation, driver/VIN search, vehicle filters, and inspection details. Bands state the
+share of the minimum reached (75%+, 35–75%, under 35%) without a verdict. Viewing,
+manual sync, and schedule management use the separate permissions below. Sync now
+checks recent publication weeks; historical backfills remain available through the API.
+The page reads every cursor page before displaying counts, and keeps source wall times
+unchanged.
 CV/CDV inspections shorter than 90 seconds and SV inspections shorter than 300 seconds
 are exceptions. Exactly 90/300 seconds meets the minimum. Unknown vehicle types fail
 validation rather than guessing a threshold.
