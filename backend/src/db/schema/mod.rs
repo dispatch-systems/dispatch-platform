@@ -72,6 +72,11 @@ pub const JOBS: &[Migration] = &[
         name: "routes_kind",
         apply: Sql(include_str!("jobs/0003_routes_kind.sql")),
     },
+    Migration {
+        id: 4,
+        name: "dvic_kind",
+        apply: Sql(include_str!("jobs/0004_dvic_kind.sql")),
+    },
 ];
 pub const DSP: &[Migration] = &[
     Migration {
@@ -98,6 +103,11 @@ pub const DSP: &[Migration] = &[
         id: 5,
         name: "storage_identity",
         apply: Sql(include_str!("dsp/0005_storage_identity.sql")),
+    },
+    Migration {
+        id: 6,
+        name: "dvic_collection",
+        apply: Sql(include_str!("dsp/0006_dvic_collection.sql")),
     },
 ];
 pub const PAYCOM: &[Migration] = &[
