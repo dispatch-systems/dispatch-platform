@@ -1,7 +1,75 @@
 import { useEffect, useRef, useState } from 'react';
-import { getPlaygroundAccess } from '../../app/endpoints.js';
+import type { PlaygroundStatus } from '../../../../shared/contracts/index.js';
+import { getPlaygroundAccess, getPlaygroundStatus, startPlayground } from '../../app/endpoints.js';
+import { useAction } from '../../app/useAction.js';
 import { Empty, ErrorBox, Loading } from '../../ui/index.js';
 export function DesignPlaygroundPage() {
+  const [status, setStatus] = useState<PlaygroundStatus>();
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+  const revision = useRef(0);
+  const start = useAction(
+    async () => {
+      revision.current++;
+      try {
+        setStatus(await startPlayground());
+      } finally {
+        revision.current++;
+      }
+    },
+    { inline: true },
+  );
+  useEffect(() => {
+    let active = true;
+    let timer: number | undefined;
+    async function check() {
+      const expected = revision.current;
+      try {
+        const next = await getPlaygroundStatus();
+        if (active && expected === revision.current) {
+          setStatus(next);
+          setError('');
+        }
+      } catch (cause) {
+        if (active && expected === revision.current)
+          setError(cause instanceof Error ? cause.message : 'Unable to check the playground.');
+      } finally {
+        if (active) timer = window.setTimeout(() => void check(), 10_000);
+      }
+    }
+    void check();
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [retry]);
+  if (status?.running) return <PlaygroundCanvas />;
+  if (!status && !error) return <Loading />;
+  return (
+    <div className="design-playground-status">
+      <Empty
+        title={
+          status?.configured
+            ? 'Design Playground is offline'
+            : 'Design Playground is not available yet'
+        }
+      />
+      {(start.error || error) && <ErrorBox message={start.error || error} />}
+      <div className="design-playground-actions">
+        {status?.canStart && (
+          <button className="button primary" disabled={start.busy} onClick={() => void start.run()}>
+            {start.busy ? 'Starting playground…' : 'Start playground'}
+          </button>
+        )}
+        <button className="button" disabled={start.busy} onClick={() => setRetry((old) => old + 1)}>
+          Try again
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PlaygroundCanvas() {
   const frame = useRef<HTMLIFrameElement>(null);
   const [origin, setOrigin] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState('');

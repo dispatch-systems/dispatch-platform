@@ -56,6 +56,7 @@ fn bindings() -> BTreeMap<PathBuf, String> {
         MailHealth,
         PlatformHealth,
         PlaygroundAccess,
+        PlaygroundStatus,
         Employee,
         Punch,
         InPunchKind,

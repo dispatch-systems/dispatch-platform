@@ -19,6 +19,7 @@ pub mod mail;
 pub mod meals;
 pub mod observability;
 pub mod operations;
+pub mod playground;
 pub mod presence;
 pub mod proxy;
 pub mod read_cache;

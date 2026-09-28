@@ -6,6 +6,7 @@ export * from './features.js';
 export * from './jobs.js';
 export * from './platform.js';
 export type { PlaygroundAccess } from './generated/PlaygroundAccess.js';
+export type { PlaygroundStatus } from './generated/PlaygroundStatus.js';
 export * from './schedules.js';
 export * from './workforce.js';
 export * from './uniforms.js';
