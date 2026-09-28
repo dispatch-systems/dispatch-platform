@@ -457,7 +457,7 @@ mod tests {
         });
 
         verify_dsp_identity(&first, &id).unwrap();
-        assert_eq!(ids(&first), vec![1, 2, 3, 4, 5]);
+        assert_eq!(ids(&first), vec![1, 2, 3, 4, 5, 6]);
     }
 
     #[test]
@@ -649,6 +649,86 @@ mod tests {
         db.exec(
             "INSERT INTO collection_schedules(id,name,collection,cadence,local_time,anchor,\
              enabled,created_at) VALUES ('s2','Routes','routes','daily','05:00',0,1,'2026-01-02')",
+            [],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn jobs_and_schedules_from_before_the_dvic_collection_keep_their_rows_through_the_rebuild() {
+        let root = private();
+        // The previous release names neither the DVIC job kind nor its schedule collection.
+        let jobs_schema = recorded(Kind::Jobs).replace(",'cortex.dvic.collect'", "");
+        assert!(!jobs_schema.contains("dvic"));
+        let file = root.path().join("jobs.sqlite");
+        older(&file, Kind::Jobs, &jobs_schema);
+        rusqlite::Connection::open(&file)
+            .unwrap()
+            .execute_batch(
+                "INSERT INTO schema_migrations VALUES (1,'baseline',0),(2,'scorecard_kind',0),(3,'routes_kind',0); \
+                 INSERT INTO jobs(id,dsp_id,environment,kind,status,available_at,created_at,\
+                 release,connection_revision,idempotency_key) VALUES ('job_1','dsp_1','preview',\
+                 'cortex.routes.collect','succeeded',0,'2026-01-01T00:00:00Z','0.0.12',1,'k1'); \
+                 INSERT INTO job_metrics VALUES ('job_1',1,'worker','{}');",
+            )
+            .unwrap();
+        let db = Db::create(&file, Kind::Jobs, "").unwrap();
+        assert_eq!(dump(&db), recorded(Kind::Jobs));
+        assert_eq!(
+            db.all("SELECT id,kind FROM jobs", []).unwrap(),
+            vec![json!({"id":"job_1","kind":"cortex.routes.collect"})]
+        );
+        assert_eq!(
+            db.all("SELECT job_id,attempt,owner FROM job_metrics", [])
+                .unwrap(),
+            vec![json!({"job_id":"job_1","attempt":1,"owner":"worker"})]
+        );
+        assert!(db.all("PRAGMA foreign_key_check", []).unwrap().is_empty());
+        db.exec(
+            "INSERT INTO jobs(id,dsp_id,environment,kind,status,available_at,created_at,\
+             release,connection_revision,idempotency_key) VALUES ('job_2','dsp_1','preview',\
+             'cortex.dvic.collect','queued',0,'2026-01-02T00:00:00Z','0.0.13',1,'k2')",
+            [],
+        )
+        .unwrap();
+        // Metrics still follow their job.
+        db.exec("DELETE FROM jobs WHERE id='job_1'", []).unwrap();
+        assert!(
+            db.all("SELECT job_id FROM job_metrics", [])
+                .unwrap()
+                .is_empty()
+        );
+
+        // A DSP database already bound by migration 5 migrates through the startup path,
+        // which verifies its identity before and after the rebuild.
+        let dsp_schema = recorded(Kind::Dsp).replace(",'dvic'", "");
+        assert!(!dsp_schema.contains("dvic"));
+        let file = root.path().join("dsp.sqlite");
+        let id = format!("dsp_{}", "2".repeat(32));
+        older(&file, Kind::Dsp, &dsp_schema);
+        rusqlite::Connection::open(&file)
+            .unwrap()
+            .execute_batch(&format!(
+                "INSERT INTO schema_migrations VALUES (1,'baseline',0),(2,'uniform_inventory',0),\
+                 (3,'scorecard_collection',0),(4,'routes_collection',0),(5,'storage_identity',0); \
+                 INSERT INTO storage_identity(dsp_id,provider,source) VALUES ('{id}','dispatch','dispatch-v1'); \
+                 INSERT INTO collection_schedules(id,name,collection,cadence,local_time,anchor,\
+                 enabled,created_at) VALUES ('s1','Routes','routes','daily','07:00',0,1,'2026-01-01')"
+            ))
+            .unwrap();
+        let db = Db::open(&file, Kind::Dsp).unwrap();
+        migrate_dsp(&db, &id).unwrap();
+        verify_dsp_identity(&db, &id).unwrap();
+        assert_eq!(ids(&db), vec![1, 2, 3, 4, 5, 6]);
+        assert_eq!(dump(&db), recorded(Kind::Dsp));
+        assert_eq!(
+            db.all("SELECT id,collection,enabled FROM collection_schedules", [])
+                .unwrap(),
+            vec![json!({"id":"s1","collection":"routes","enabled":1})]
+        );
+        db.exec(
+            "INSERT INTO collection_schedules(id,name,collection,cadence,local_time,anchor,\
+             enabled,created_at) VALUES ('s2','DVIC','dvic','daily','05:00',0,1,'2026-01-02')",
             [],
         )
         .unwrap();
