@@ -208,6 +208,7 @@ export const jobSchema = z.object({
     'cortex.meal_breaks.collect',
     'cortex.scorecard.collect',
     'cortex.routes.collect',
+    'cortex.dvic.collect',
   ]),
   status: jobStatusSchema,
   progress: count.max(100),

@@ -43,6 +43,13 @@ export const featureCatalog: FeatureEntry[] = [
     requires: ['routes'],
   },
   {
+    id: 'dvic',
+    label: 'DVIC',
+    kind: 'page',
+    permissions: ['dvic.view', 'dvic.collect', 'dvic.manage'],
+    requires: ['dvic'],
+  },
+  {
     id: 'paycom',
     label: 'Paycom',
     kind: 'connection',
@@ -55,7 +62,7 @@ export const featureCatalog: FeatureEntry[] = [
     label: 'Cortex',
     kind: 'connection',
     permissions: [],
-    provides: ['meal_breaks', 'routes'],
+    provides: ['meal_breaks', 'routes', 'dvic'],
     requires: [],
   },
 ];
@@ -66,6 +73,7 @@ const capabilities: Record<string, string> = {
   timecards: 'a timecard source',
   meal_breaks: 'a meal-break source',
   routes: 'a route source',
+  dvic: 'a DVIC source',
 };
 export const capabilityLabel = (capability: string) => capabilities[capability] ?? capability;
 /** The connections among `features`, in catalog order. */

@@ -21,6 +21,7 @@ mod accounts;
 mod assessment;
 mod audit;
 mod collections;
+mod dvic;
 #[cfg(test)]
 mod generated;
 mod jobs;
@@ -38,6 +39,7 @@ pub use accounts::*;
 pub use assessment::*;
 pub use audit::*;
 pub use collections::*;
+pub use dvic::*;
 pub use jobs::*;
 pub use meals::*;
 pub use metrics::*;
@@ -113,6 +115,7 @@ text_enum! {
         Both => "both",
         Scorecard => "scorecard",
         Routes => "routes",
+        Dvic => "dvic",
     }
 }
 text_enum! {

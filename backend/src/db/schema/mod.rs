@@ -209,3 +209,9 @@ fn security_hardening(db: &Db) -> Result<()> {
     )?;
     Ok(())
 }
+
+pub const DVIC: &[Migration] = &[Migration {
+    id: 1,
+    name: "baseline",
+    apply: Sql(include_str!("dvic/0001_baseline.sql")),
+}];

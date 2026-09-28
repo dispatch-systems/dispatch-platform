@@ -257,12 +257,22 @@ impl Recorder {
                 .map(|r| r["meals"].as_array().map_or(0, Vec::len))
                 .sum()
         });
-        clock.value.rows = data["datasets"].as_array().map(|datasets| {
-            datasets
-                .iter()
-                .map(|d| d["rows"].as_array().map_or(0, Vec::len))
-                .sum()
-        });
+        clock.value.rows = data["reports"]
+            .as_array()
+            .map(|reports| {
+                reports
+                    .iter()
+                    .map(|r| r["rows"].as_array().map_or(0, Vec::len))
+                    .sum()
+            })
+            .or_else(|| {
+                data["datasets"].as_array().map(|datasets| {
+                    datasets
+                        .iter()
+                        .map(|d| d["rows"].as_array().map_or(0, Vec::len))
+                        .sum()
+                })
+            });
     }
     pub fn snapshot(&self) -> Metrics {
         let clock = self.0.lock().expect("job metrics");

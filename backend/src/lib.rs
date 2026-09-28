@@ -8,6 +8,7 @@ pub mod config;
 pub mod contracts;
 pub mod crypto;
 pub mod db;
+pub mod dvic;
 pub mod error;
 pub mod features;
 pub mod http;

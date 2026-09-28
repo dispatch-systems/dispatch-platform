@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { fixture } from '../support/support.js';
 
 type Role = { id: string; name: string; permissions: string[] };
-const all = ['timecard', 'uniforms', 'routes', 'paycom', 'cortex'];
+const all = ['timecard', 'uniforms', 'routes', 'dvic', 'paycom', 'cortex'];
 
 test('a feature switched off for a DSP stops existing there until it is switched back on', async (t) => {
   const f = await fixture();
@@ -36,24 +36,24 @@ test('a feature switched off for a DSP stops existing there until it is switched
   let result = await platform.post(url, { feature: 'uniforms', enabled: false });
   assert.equal(result.status, 200);
   assert.deepEqual(result.value, {
-    features: ['timecard', 'routes', 'paycom', 'cortex'],
+    features: ['timecard', 'routes', 'dvic', 'paycom', 'cortex'],
     changed: [{ feature: 'uniforms', enabled: false }],
   });
   // Every open view of the DSP expires; reopened, it has no uniform inventory.
   assert.equal((await member.get('/api/dsp/uniforms')).value.error, 'dsp_view_expired');
   view = await member.select(north.id);
-  assert.deepEqual(view.features, ['timecard', 'routes', 'paycom', 'cortex']);
+  assert.deepEqual(view.features, ['timecard', 'routes', 'dvic', 'paycom', 'cortex']);
   assert.deepEqual(view.permissions, ['timecard.view']);
   assert.equal((await member.get('/api/dsp/uniforms')).status, 403);
   // Owners hold every permission, but only of the features the DSP has.
   const owner = await platform.select(north.id);
-  assert.deepEqual(owner.features, ['timecard', 'routes', 'paycom', 'cortex']);
+  assert.deepEqual(owner.features, ['timecard', 'routes', 'dvic', 'paycom', 'cortex']);
   assert.ok(!owner.permissions.includes('uniforms.view'));
   assert.equal((await platform.get('/api/dsp/uniforms')).status, 403);
   const listed = (await platform.get('/api/platform/dsps')).value.find(
     (dsp: { id: string }) => dsp.id === north.id,
   );
-  assert.deepEqual(listed.features, ['timecard', 'routes', 'paycom', 'cortex']);
+  assert.deepEqual(listed.features, ['timecard', 'routes', 'dvic', 'paycom', 'cortex']);
 
   // A role keeps the grant it cannot show, through a save from the role sheet too.
   const roles: Role[] = (await platform.get('/api/dsp/roles')).value;
@@ -87,6 +87,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       { feature: 'cortex', enabled: false },
       { feature: 'timecard', enabled: false },
       { feature: 'routes', enabled: false },
+      { feature: 'dvic', enabled: false },
     ],
   });
   view = await member.select(north.id);
@@ -109,7 +110,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
   assert.equal((await platform.get('/api/dsp/routes/days')).status, 403);
   result = await platform.post(url, { feature: 'routes', enabled: true });
   assert.deepEqual(result.value, {
-    features: all,
+    features: all.filter((feature) => feature !== 'dvic'),
     changed: [{ feature: 'routes', enabled: true }],
   });
   await platform.select(north.id);

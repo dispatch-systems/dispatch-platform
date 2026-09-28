@@ -22,13 +22,13 @@ const LANES: usize = 4;
 const OVERVIEW: &str = "/performance?pageId=dsp_dashboard_overview";
 
 /// Where the page sends its data requests, and how it names this DSP there.
-struct Api {
+pub(super) struct Api {
     /// The origin and path up to the version segment.
-    base: String,
+    pub(super) base: String,
     /// The `dsp` parameter, the DSP's code.
-    dsp: String,
+    pub(super) dsp: String,
     /// The `companyId` the page settled on.
-    company_id: String,
+    pub(super) company_id: String,
 }
 impl Api {
     fn address(&self, dataset: &Dataset, station: &str, from: &str, to: &str) -> String {
@@ -113,46 +113,44 @@ fn data_request(url: &str, origin: &str) -> Result<(String, String, String)> {
 }
 
 impl Driver {
-    /// Lets every request still paused go on. After `Fetch.disable` the browser has
-    /// released them itself, and continuing one again only errors.
-    async fn release_paused(&self) {
+    /// Fetch.disable already resumes outstanding requests. Drain their queued
+    /// notifications without issuing stale continueRequest commands, which retire
+    /// the browser session on a protocol error.
+    async fn drain_paused(&self) {
         while let Ok(event) = self.browser.event(&self.page.id).await {
             if event.is_null() {
                 break;
             }
-            let _ = self
-                .page
-                .command(
-                    "Fetch.continueRequest",
-                    json!({"requestId":event["requestId"]}),
-                )
-                .await;
         }
     }
     /// Opens the overview and watches the page's data requests until one is for the
     /// request's station. The page settles on a station of its own first; when that
     /// is another one, it is asked for the station explicitly, and requests the
     /// earlier page still had in flight are let go.
-    async fn scorecard_api(&mut self, request: &Request, metrics: &Recorder) -> Result<Api> {
+    pub(super) async fn performance_api(
+        &mut self,
+        station: &str,
+        metrics: &Recorder,
+    ) -> Result<Api> {
         self.page
             .command(
                 "Fetch.enable",
                 json!({"patterns":[{"urlPattern":"*/performance/api/*getData*","requestStage":"Request"}]}),
             )
             .await?;
-        let result = self.observe_api(request, metrics).await;
+        let result = self.observe_api(station, metrics).await;
         let _ = self.page.command("Fetch.disable", json!({})).await;
-        self.release_paused().await;
+        self.drain_paused().await;
         result
     }
-    async fn observe_api(&mut self, request: &Request, metrics: &Recorder) -> Result<Api> {
+    async fn observe_api(&mut self, expected_station: &str, metrics: &Recorder) -> Result<Api> {
         let mut found = None;
         for attempt in 0..2 {
             let address = if attempt == 0 {
                 format!("{}{OVERVIEW}", self.origin)
             } else {
                 metrics.detail("station_navigation");
-                format!("{}{OVERVIEW}&station={}", self.origin, request.station)
+                format!("{}{OVERVIEW}&station={}", self.origin, expected_station)
             };
             self.page.start_navigation(&address).await?;
             let deadline = Instant::now() + Duration::from_secs(60);
@@ -174,7 +172,7 @@ impl Driver {
                     continue;
                 }
                 let (base, dsp, station) = data_request(url, &self.origin)?;
-                if station == request.station {
+                if station == expected_station {
                     found = Some((base, dsp));
                 } else if attempt == 0 {
                     // The page's own choice; ask for the station instead.
@@ -189,7 +187,7 @@ impl Driver {
         let (base, dsp) = found.ok_or_else(|| Error::new("cortex_station_unavailable", 502))?;
         // Stop intercepting before waiting on the page: nothing else must be held up.
         self.page.command("Fetch.disable", json!({})).await?;
-        self.release_paused().await;
+        self.drain_paused().await;
         // The page names the company in its own address once it has settled.
         let settled = Instant::now() + Duration::from_secs(15);
         let company_id = loop {
@@ -223,7 +221,7 @@ impl Driver {
         request.validate()?;
         let started_at = now();
         run.progress(10, "Finding the scorecard".into()).await?;
-        let api = self.scorecard_api(request, run.metrics).await?;
+        let api = self.performance_api(&request.station, run.metrics).await?;
         run.progress(20, "Reading scorecard datasets".into())
             .await?;
         let http = Http::signed_in(&self.browser, &self.origin).await?;

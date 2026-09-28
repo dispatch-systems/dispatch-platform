@@ -142,7 +142,7 @@ impl Store {
         const AREA: &str = "CASE WHEN a.action LIKE 'member.%' OR a.action LIKE \
             'invitation.%' THEN 'team' WHEN a.action LIKE 'role.%' THEN 'roles' WHEN \
             a.action LIKE 'collection.%' OR a.action LIKE 'cortex.collection.%' OR a.action \
-            LIKE 'meal_breaks.%' THEN 'collections' WHEN a.action LIKE 'schedule.%' THEN \
+            LIKE 'meal_breaks.%' OR a.action LIKE 'dvic.%' THEN 'collections' WHEN a.action LIKE 'schedule.%' THEN \
             'schedules' WHEN a.action LIKE 'connection.%' THEN 'connections' WHEN a.action \
             IN ('dsp.view_opened','dsp.owner_view_opened') THEN CASE WHEN ?1 IS NULL THEN \
             'access' ELSE 'team' END WHEN a.action LIKE 'account.%' THEN 'access' WHEN \

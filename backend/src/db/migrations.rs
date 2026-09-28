@@ -44,6 +44,7 @@ pub enum Kind {
     Cortex,
     Scorecard,
     RouteData,
+    Dvic,
 }
 impl Kind {
     pub const ALL: &[Self] = &[
@@ -54,6 +55,7 @@ impl Kind {
         Self::Cortex,
         Self::Scorecard,
         Self::RouteData,
+        Self::Dvic,
     ];
     pub fn name(self) -> &'static str {
         match self {
@@ -64,6 +66,7 @@ impl Kind {
             Self::Cortex => "cortex",
             Self::Scorecard => "scorecard",
             Self::RouteData => "routedata",
+            Self::Dvic => "dvic",
         }
     }
     /// Pinned. Released binaries refuse to open a database with any other value.
@@ -75,7 +78,8 @@ impl Kind {
             | Self::Paycom
             | Self::Cortex
             | Self::Scorecard
-            | Self::RouteData => 1,
+            | Self::RouteData
+            | Self::Dvic => 1,
         }
     }
     pub fn migrations(self) -> &'static [Migration] {
@@ -87,6 +91,7 @@ impl Kind {
             Self::Cortex => schema::CORTEX,
             Self::Scorecard => schema::SCORECARD,
             Self::RouteData => schema::ROUTEDATA,
+            Self::Dvic => schema::DVIC,
         }
     }
 }
@@ -356,7 +361,8 @@ mod tests {
             .unwrap();
         let scorecard = store.scorecard(&id).unwrap();
         let routedata = store.routedata(&id).unwrap();
-        let databases: [(Kind, &Db); 7] = [
+        let dvic = store.dvic(&id).unwrap();
+        let databases: [(Kind, &Db); 8] = [
             (Kind::Platform, &store.platform),
             (Kind::Jobs, &store.jobs),
             (Kind::Dsp, &dsp),
@@ -364,6 +370,7 @@ mod tests {
             (Kind::Cortex, &cortex),
             (Kind::Scorecard, &scorecard),
             (Kind::RouteData, &routedata),
+            (Kind::Dvic, &dvic),
         ];
         for (kind, db) in databases {
             if std::env::var_os("DISPATCH_UPDATE_SCHEMA").is_some() {

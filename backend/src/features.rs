@@ -63,21 +63,44 @@ pub const PAGES: &[Feature] = &[
         requires: &["routes"],
         default: false,
     },
+    Feature {
+        id: "dvic",
+        label: "DVIC",
+        kind: Kind::Page,
+        permissions: &["dvic.view", "dvic.collect", "dvic.manage"],
+        provides: &[],
+        requires: &["dvic"],
+        default: false,
+    },
 ];
 /// The page whose schedules, collections and jobs run. Nothing collects without it,
 /// except the collections another page owns (`automation`).
 pub const SCHEDULES: &str = "timecard";
-/// The page whose switch runs a job kind or a schedule collection: the routes page
-/// for its own, the schedules' page for everything else.
+/// Collections owned by a feature other than the timecard page.
+const COLLECTION_PAGES: &[(&str, &str, &str)] = &[
+    ("routes", "cortex.routes.collect", "routes"),
+    ("dvic", "cortex.dvic.collect", "dvic"),
+];
 pub fn automation(kind_or_collection: &str) -> &'static str {
-    match kind_or_collection {
-        "cortex.routes.collect" | "routes" => "routes",
-        _ => SCHEDULES,
-    }
+    COLLECTION_PAGES
+        .iter()
+        .find(|(collection, kind, _)| {
+            *collection == kind_or_collection || *kind == kind_or_collection
+        })
+        .map_or(SCHEDULES, |(_, _, page)| *page)
 }
-/// Whether a DSP with `enabled` features runs anything at all.
 pub fn automates(enabled: &[String]) -> bool {
-    enabled.iter().any(|f| f == SCHEDULES || f == "routes")
+    enabled
+        .iter()
+        .any(|f| f == SCHEDULES || COLLECTION_PAGES.iter().any(|(_, _, page)| f == page))
+}
+pub fn collection_permission(kind: &str) -> String {
+    let page = automation(kind);
+    if page == SCHEDULES {
+        "collections.run".into()
+    } else {
+        format!("{page}.collect")
+    }
 }
 /// The permission every connection shares; it exists while any connection does.
 const CONNECTIONS: &str = "connections.manage";

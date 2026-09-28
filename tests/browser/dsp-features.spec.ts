@@ -23,11 +23,12 @@ test('the platform switches a DSP’s features with their dependencies, and the 
   await expect(off.getByRole('listitem')).toHaveText([
     'Timecardneeds a meal-break source',
     'Routesneeds a route source',
+    'DVICneeds a DVIC source',
   ]);
   await page.screenshot({ path: test.info().outputPath('switch-off.png') });
   await off.getByRole('button', { name: 'Switch off', exact: true }).click();
   await expect(cortex).not.toBeChecked();
-  await expect(areas.getByRole('tab', { name: /^Pages/ })).toContainText('1/3');
+  await expect(areas.getByRole('tab', { name: /^Pages/ })).toContainText('1/4');
   await areas.getByRole('tab', { name: /^Pages/ }).click();
   await expect(timecard).not.toBeChecked();
   await page.screenshot({ path: test.info().outputPath('features-tab.png') });

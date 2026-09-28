@@ -69,6 +69,7 @@ test('a switch brings its dependencies along, as the backend does', () => {
     { feature: 'cortex', enabled: false },
     { feature: 'timecard', enabled: false },
     { feature: 'routes', enabled: false },
+    { feature: 'dvic', enabled: false },
   ]);
   // Enabling a page enables the one provider of each capability it lacks.
   assert.deepEqual(previewSwitch(['uniforms', 'paycom'], 'timecard', true), [
