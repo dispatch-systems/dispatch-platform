@@ -8,6 +8,7 @@ import {
   ScrollText,
   Settings,
   Shirt,
+  ClipboardCheck,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -42,6 +43,8 @@ const UniformInventoryPage = lazy(() =>
   loadUniforms().then((module) => ({ default: module.UniformInventoryPage })),
 );
 const loadTimecard = () => import('../features/timecard/index.js');
+const loadDvic = () => import('../features/dvic/index.js');
+const DvicPage = lazy(() => loadDvic().then((module) => ({ default: module.DvicPage })));
 const PaycomPage = lazy(() => loadTimecard().then((module) => ({ default: module.PaycomPage })));
 const PaycomSettingsPage = lazy(() =>
   loadTimecard().then((module) => ({ default: module.PaycomSettingsPage })),
@@ -69,6 +72,14 @@ const platformOwner = ({ session }: Access) => session.user.platformOwner;
 
 // Every page declared in route-meta.ts gets its navigation, access and component here.
 const dspPages: Record<DspRouteId, Entry<DspPageContext>> = {
+  dvic: {
+    preload: loadDvic,
+    icon: ClipboardCheck,
+    nav: true,
+    feature: 'dvic',
+    permission: ({ view }) => can(view, 'dvic.view'),
+    render: ({ view }) => <DvicPage key={view.token} view={view} />,
+  },
   uniforms: {
     preload: loadUniforms,
     icon: Shirt,
