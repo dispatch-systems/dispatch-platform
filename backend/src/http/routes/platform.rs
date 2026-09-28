@@ -7,7 +7,7 @@ use crate::{
     ensure, features,
     http::{
         input::{Input, Reply, optional},
-        route::{Grant, PlatformOwner, Route, User, async_post, read, write},
+        route::{Grant, PlatformOwner, PlatformRoutine, Route, User, async_post, read, write},
     },
     mail, operations, validate as v, workforce,
 };
@@ -41,7 +41,7 @@ pub fn routes() -> Vec<Route> {
         ),
         async_post(
             "/api/platform/dsps/{id}/features",
-            PlatformOwner,
+            PlatformRoutine,
             set_feature,
         ),
         async_post("/api/platform/dsps/{id}/remove", PlatformOwner, remove_dsp),
@@ -187,7 +187,7 @@ fn dsp_features(db: &Store, _: &User, input: &Input) -> Result<Reply> {
 // Switching a feature off stops what it ran for the DSP: its jobs and live
 // collection in the database, then its browsers outside it. Switching the
 // schedules' page back on retimes them from now and wakes the scheduler.
-async fn set_feature(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<Reply> {
+async fn set_feature(state: Arc<State>, input: Input, access: PlatformRoutine) -> Result<Reply> {
     let id = input.param("id").to_owned();
     let dsp = id.clone();
     let (result, cancelled) = state

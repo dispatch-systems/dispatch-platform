@@ -44,8 +44,14 @@ pub trait Grant: Copy + Send + Sync + 'static {
 pub struct Public;
 #[derive(Clone, Copy)]
 pub struct Session;
+/// A platform owner who verified their identity recently, for writes that create,
+/// suspend or remove a DSP and the like.
 #[derive(Clone, Copy)]
 pub struct PlatformOwner;
+/// A platform owner doing a routine, reversible change that asks for no fresh
+/// verification: switching a DSP's features.
+#[derive(Clone, Copy)]
+pub struct PlatformRoutine;
 #[derive(Clone, Copy)]
 pub struct Dsp(pub &'static str);
 
@@ -101,6 +107,17 @@ impl Grant for PlatformOwner {
         if input.method == Method::POST {
             db.ensure_recent(&auth)?;
         }
+        Ok(auth)
+    }
+}
+impl Grant for PlatformRoutine {
+    type Who = Auth;
+    fn access(self) -> Access {
+        Access::PlatformOwner
+    }
+    fn authorize(self, db: &Store, input: &Input) -> Result<Auth> {
+        let auth = Session.authorize(db, input)?;
+        ensure(auth.user.platform_owner, "platform_owner_required", 403)?;
         Ok(auth)
     }
 }
