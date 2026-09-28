@@ -699,20 +699,27 @@ mod tests {
                 .is_empty()
         );
 
+        // A DSP database already bound by migration 5 migrates through the startup path,
+        // which verifies its identity before and after the rebuild.
         let dsp_schema = recorded(Kind::Dsp).replace(",'dvic'", "");
         assert!(!dsp_schema.contains("dvic"));
         let file = root.path().join("dsp.sqlite");
+        let id = format!("dsp_{}", "2".repeat(32));
         older(&file, Kind::Dsp, &dsp_schema);
         rusqlite::Connection::open(&file)
             .unwrap()
-            .execute_batch(
+            .execute_batch(&format!(
                 "INSERT INTO schema_migrations VALUES (1,'baseline',0),(2,'uniform_inventory',0),\
                  (3,'scorecard_collection',0),(4,'routes_collection',0),(5,'storage_identity',0); \
+                 INSERT INTO storage_identity(dsp_id,provider,source) VALUES ('{id}','dispatch','dispatch-v1'); \
                  INSERT INTO collection_schedules(id,name,collection,cadence,local_time,anchor,\
-                 enabled,created_at) VALUES ('s1','Routes','routes','daily','07:00',0,1,'2026-01-01')",
-            )
+                 enabled,created_at) VALUES ('s1','Routes','routes','daily','07:00',0,1,'2026-01-01')"
+            ))
             .unwrap();
-        let db = Db::create(&file, Kind::Dsp, "").unwrap();
+        let db = Db::open(&file, Kind::Dsp).unwrap();
+        migrate_dsp(&db, &id).unwrap();
+        verify_dsp_identity(&db, &id).unwrap();
+        assert_eq!(ids(&db), vec![1, 2, 3, 4, 5, 6]);
         assert_eq!(dump(&db), recorded(Kind::Dsp));
         assert_eq!(
             db.all("SELECT id,collection,enabled FROM collection_schedules", [])
