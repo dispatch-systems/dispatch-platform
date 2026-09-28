@@ -25,6 +25,7 @@ pub fn allowed_host(host: &str) -> bool {
 pub fn allowed_cortex_host(host: &str) -> bool {
     [
         "logistics.amazon.com",
+        crate::dvic::REPORT_HOST,
         "amazon.com",
         "www.amazon.com",
         "unagi.amazon.com",

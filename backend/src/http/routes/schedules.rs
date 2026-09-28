@@ -12,21 +12,37 @@ use crate::{
     validate as v,
 };
 
-const MANAGE: Dsp = Dsp("timecard.manage|routes.manage");
+const MANAGE: Dsp = Dsp("timecard.manage|routes.manage|dvic.manage");
 
 /// The permission a schedule of `collection` needs, checked against the member's role
 /// once more, as their features stand.
 fn permitted(db: &Store, c: &Member, collection: &str) -> Result<()> {
-    let permission = if collection == "routes" {
-        "routes.manage"
-    } else {
-        "timecard.manage"
-    };
-    db.revalidate(c, permission).map(|_| ())
+    let permission = format!("{}.manage", crate::features::automation(collection));
+    db.revalidate(c, &permission).map(|_| ())
 }
 
 pub fn routes() -> Vec<Route> {
     vec![
+        read("/api/dsp/dvic/schedules", Dsp("dvic.manage"), schedules),
+        write("/api/dsp/dvic/schedules", Dsp("dvic.manage"), create).invalidates_schedules(),
+        write(
+            "/api/dsp/dvic/schedules/preview",
+            Dsp("dvic.manage"),
+            preview,
+        ),
+        write("/api/dsp/dvic/schedules/{key}", Dsp("dvic.manage"), update).invalidates_schedules(),
+        write(
+            "/api/dsp/dvic/schedules/{key}/enabled",
+            Dsp("dvic.manage"),
+            toggle,
+        )
+        .invalidates_schedules(),
+        write(
+            "/api/dsp/dvic/schedules/{key}/remove",
+            Dsp("dvic.manage"),
+            remove,
+        )
+        .invalidates_schedules(),
         read("/api/dsp/schedules", MANAGE, schedules),
         write("/api/dsp/schedules", MANAGE, create).invalidates_schedules(),
         write("/api/dsp/schedules/preview", MANAGE, preview),
@@ -36,8 +52,17 @@ pub fn routes() -> Vec<Route> {
     ]
 }
 
-fn schedules(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    Reply::of(&db.collection_schedules(c.dsp_id())?)
+fn schedules(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    let mut result = db.collection_schedules(c.dsp_id())?;
+    let dvic = input.path.starts_with("/api/dsp/dvic/");
+    result.schedules.retain(|s| {
+        (s.collection.as_str() == "dvic") == dvic
+            && c.can(&format!(
+                "{}.manage",
+                crate::features::automation(s.collection.as_str())
+            ))
+    });
+    Reply::of(&result)
 }
 
 fn preview(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -46,6 +71,10 @@ fn preview(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 
 fn create(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let id = c.dsp_id();
+    scope(
+        input,
+        v::text(&input.body, "collection", 1, 32).unwrap_or(""),
+    )?;
     permitted(
         db,
         c,
@@ -70,7 +99,11 @@ fn create(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 fn update(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let (id, key) = (c.dsp_id(), input.param("key"));
     let before = db.collection_schedule(id, key)?;
+    scope(input, before.collection.as_str())?;
     permitted(db, c, before.collection.as_str())?;
+    let target = v::text(&input.body, "collection", 1, 32)?;
+    scope(input, target)?;
+    permitted(db, c, target)?;
     let result = db.save_schedule(id, Some(key), &input.body)?;
     db.audit_ref(
         Some(c.actor()),
@@ -87,6 +120,7 @@ fn update(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 fn toggle(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let (id, key) = (c.dsp_id(), input.param("key"));
     let before = db.collection_schedule(id, key)?;
+    scope(input, before.collection.as_str())?;
     permitted(db, c, before.collection.as_str())?;
     let result = db.enable_schedule(id, key, &input.body)?;
     db.audit_ref(
@@ -104,6 +138,7 @@ fn toggle(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 fn remove(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let (id, key) = (c.dsp_id(), input.param("key"));
     let before = db.collection_schedule(id, key)?;
+    scope(input, before.collection.as_str())?;
     permitted(db, c, before.collection.as_str())?;
     db.delete_collection_schedule(id, key, &input.body)?;
     let name = before.name.as_str();
@@ -119,4 +154,12 @@ fn remove(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         subject,
     )?;
     Ok(Reply::ok())
+}
+
+fn scope(input: &Input, collection: &str) -> Result<()> {
+    crate::ensure(
+        !input.path.starts_with("/api/dsp/dvic/") || collection == "dvic",
+        "permission_denied",
+        403,
+    )
 }

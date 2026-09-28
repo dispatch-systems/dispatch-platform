@@ -29,6 +29,9 @@ pub const PERMISSIONS: &[&str] = &[
     "routes.view",
     "routes.collect",
     "routes.manage",
+    "dvic.view",
+    "dvic.collect",
+    "dvic.manage",
     "connections.manage",
     "members.invite",
     "members.manage",
@@ -43,6 +46,8 @@ const IMPLIED: &[(&str, &str)] = &[
     ("uniforms.manage", "uniforms.view"),
     ("routes.collect", "routes.view"),
     ("routes.manage", "routes.view"),
+    ("dvic.collect", "dvic.view"),
+    ("dvic.manage", "dvic.view"),
 ];
 const DEFAULTS: &[(&str, &str, &[&str])] = &[
     (

@@ -9,7 +9,7 @@ export const providerName = (kind: Job['kind']) =>
 export const unit = (kind: Job['kind']) =>
   kind === 'paycom.collect'
     ? 'employee'
-    : kind === 'cortex.scorecard.collect'
+    : kind === 'cortex.scorecard.collect' || kind === 'cortex.dvic.collect'
       ? 'row'
       : 'itinerary';
 function median(values: number[]) {
@@ -27,7 +27,7 @@ export function runHistory(job: Job) {
   const count =
     job.kind === 'paycom.collect'
       ? latest?.employees
-      : job.kind === 'cortex.scorecard.collect'
+      : job.kind === 'cortex.scorecard.collect' || job.kind === 'cortex.dvic.collect'
         ? latest?.rows
         : latest?.itineraries;
   const collectionMs = collections.length ? collections.reduce((a, b) => a + b, 0) : null;

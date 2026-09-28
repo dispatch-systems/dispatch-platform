@@ -1,4 +1,4 @@
-//! Cortex: meal evidence, the weekly scorecard and daily routes from Amazon Logistics.
+//! Cortex: meal evidence, the scorecard, daily routes, and short DVIC inspections from Amazon Logistics.
 //! Its storage was added to DSPs that already existed, which is the path every later
 //! provider takes.
 use super::AddedStorage;
@@ -11,7 +11,7 @@ use crate::{
         cortex,
     },
     db::{self, Db, Kind, Store},
-    ensure,
+    dvic, ensure,
     meals::{self, CollectionRequest},
     routedata, scorecard, validate as v,
 };
@@ -27,16 +27,18 @@ impl Collector for Cortex {
         "Cortex"
     }
     fn capabilities(&self) -> &'static [&'static str] {
-        &["meal_breaks", "routes"]
+        &["meal_breaks", "routes", "dvic"]
     }
     fn job_kind(&self) -> &'static str {
         "cortex.meal_breaks.collect"
     }
     fn other_job_kinds(&self) -> &'static [&'static str] {
-        &[scorecard::JOB_KIND, routedata::JOB_KIND]
+        &[scorecard::JOB_KIND, routedata::JOB_KIND, dvic::JOB_KIND]
     }
     fn job_kind_for(&self, request: &Value) -> &'static str {
-        if scorecard::Request::is(request) {
+        if dvic::Request::is(request) {
+            dvic::JOB_KIND
+        } else if scorecard::Request::is(request) {
             scorecard::JOB_KIND
         } else if routedata::Request::is(request) {
             routedata::JOB_KIND
@@ -45,7 +47,8 @@ impl Collector for Cortex {
         }
     }
     fn added_storages(&self) -> &'static [&'static AddedStorage] {
-        static ADDED: [&AddedStorage; 2] = [&scorecard::STORAGE, &routedata::STORAGE];
+        static ADDED: [&AddedStorage; 3] =
+            [&scorecard::STORAGE, &routedata::STORAGE, &dvic::STORAGE];
         &ADDED
     }
     fn database(&self) -> Kind {
@@ -109,6 +112,12 @@ impl Collector for Cortex {
         })
     }
     fn fixture(&self, _: &str, request: &Value) -> Result<Collected> {
+        if let Some(request) = dvic::Request::parse(request)? {
+            return Ok(Collected {
+                data: serde_json::to_value(dvic::fixture(&request)?)?,
+                scope: None,
+            });
+        }
         if let Some(request) = scorecard::Request::parse(request)? {
             return Ok(Collected {
                 data: serde_json::to_value(scorecard::fixture(&request)?)?,
@@ -135,7 +144,9 @@ impl Collector for Cortex {
         })
     }
     fn progress(&self, request: &Value) -> &'static str {
-        if scorecard::Request::is(request) {
+        if dvic::Request::is(request) {
+            "Collecting DVIC"
+        } else if scorecard::Request::is(request) {
             "Collecting scorecard"
         } else if routedata::Request::is(request) {
             "Collecting routes"
@@ -154,6 +165,9 @@ impl Collector for Cortex {
         })
     }
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
+        if dvic::Request::is(&collected.data) {
+            return store.publish_dvic(dsp, job, &serde_json::from_value(collected.data)?);
+        }
         if scorecard::Request::is(&collected.data) {
             return store.publish_scorecard(dsp, job, &serde_json::from_value(collected.data)?);
         }
@@ -178,9 +192,13 @@ impl Collector for Cortex {
             ("meal_break", "schedule_meals_required"),
             ("scorecard", "schedule_scorecard_required"),
             ("routes", "schedule_routes_required"),
+            ("dvic", "schedule_dvic_required"),
         ]
     }
     fn schedule_ready(&self, store: &Store, dsp: &str, collection: &str) -> Result<()> {
+        if collection == "dvic" {
+            return store.dvic_schedule_ready(dsp);
+        }
         if collection == "scorecard" {
             return store.scorecard_schedule_ready(dsp);
         }
@@ -201,6 +219,9 @@ impl Collector for Cortex {
         dsp: &str,
         collection: &str,
     ) -> Result<Vec<(String, Value)>> {
+        if collection == "dvic" {
+            return store.dvic_jobs(dsp);
+        }
         if collection == "scorecard" {
             return store.scorecard_jobs(dsp);
         }

@@ -313,7 +313,14 @@ impl Store {
         let collection = v::choice(
             value,
             "collection",
-            &["paycom", "meal_break", "both", "scorecard", "routes"],
+            &[
+                "paycom",
+                "meal_break",
+                "both",
+                "scorecard",
+                "routes",
+                "dvic",
+            ],
         )?;
         let collection = ScheduleCollection::parse(collection)
             .ok_or_else(|| Error::new("invalid_input", 400))?;
@@ -434,9 +441,20 @@ impl Store {
         Ok(())
     }
     pub(crate) fn retime_schedules(&self, id: &str, tz: &str) -> Result<()> {
+        self.retime_schedules_for(id, tz, None)
+    }
+    pub(crate) fn retime_feature_schedules(&self, id: &str, tz: &str, feature: &str) -> Result<()> {
+        self.retime_schedules_for(id, tz, Some(feature))
+    }
+    fn retime_schedules_for(&self, id: &str, tz: &str, feature: Option<&str>) -> Result<()> {
         let db = self.dsp(id)?;
         db.transaction(|| {
             for mut row in db.query_as::<ScheduleRow>("SELECT * FROM collection_schedules", [])? {
+                if feature.is_some_and(|f| {
+                    crate::features::automation(row.schedule.collection.as_str()) != f
+                }) {
+                    continue;
+                }
                 row.anchor = anchor(&row.schedule.local_time, tz, now())?;
                 let deadline = if row.schedule.enabled {
                     Some(next(&row.timing(), tz, now())?)

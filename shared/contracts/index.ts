@@ -10,3 +10,4 @@ export type { PlaygroundStatus } from './generated/PlaygroundStatus.js';
 export * from './schedules.js';
 export * from './workforce.js';
 export * from './uniforms.js';
+export * from './dvic.js';

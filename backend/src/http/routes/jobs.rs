@@ -57,12 +57,25 @@ fn collect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 // A running job owns a browser, which is closed outside the database; the
 // member's permission is then checked once more before the answer is given.
 async fn cancel(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    cancel_kind(state, input, access, None).await
+}
+pub(super) async fn cancel_kind(
+    state: Arc<State>,
+    input: Input,
+    access: Dsp,
+    kind: Option<&'static str>,
+) -> Result<Reply> {
     let job = input.param("id").to_owned();
     let (context, result, active_revision) = state
         .run(move |db| {
             let c = access.authorize(db, &input)?;
             v::fields(&input.body, &[])?;
             let row = db.job_row(&job, Some(&c.dsp.id))?;
+            crate::ensure(
+                kind.is_none_or(|kind| row.kind.as_str() == kind),
+                "permission_denied",
+                403,
+            )?;
             let active_revision = row
                 .status
                 .is_leased()

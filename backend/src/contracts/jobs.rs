@@ -157,7 +157,8 @@ pub struct PublicJob {
     #[cfg_attr(
         test,
         ts(
-            type = "\"paycom.collect\" | \"cortex.meal_breaks.collect\" | \"cortex.scorecard.collect\" | \"cortex.routes.collect\""
+            type = "\"paycom.collect\" | \"cortex.meal_breaks.collect\" | \"cortex.scorecard.collect\" | \"cortex.routes.collect\" | \
+                    \"cortex.dvic.collect\""
         )
     )]
     pub kind: JobKind,

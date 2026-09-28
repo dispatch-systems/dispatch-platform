@@ -127,7 +127,7 @@ test(
           );
         }
         return html(
-          `<main>Overview</main><script>fetch('/performance/api/v1/getData?dataSetId=dsp_station_weekly_quality&dsp=NLOG&from=2026-W38&station=${station}&timeFrame=Weekly&to=2026-W38',{credentials:'include'});</script>`,
+          `<main>Overview</main><script>for(let i=0;i<12;i++) fetch('/performance/api/v1/getData?dataSetId=dsp_station_weekly_quality&dsp=NLOG&from=2026-W38&station=${station}&timeFrame=Weekly&to=2026-W38',{credentials:'include'});</script>`,
         );
       }
       if (url.pathname === '/performance/api/v1/getData') {

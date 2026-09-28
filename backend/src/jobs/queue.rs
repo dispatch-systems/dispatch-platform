@@ -419,7 +419,10 @@ impl Store {
                 status == UserStatus::Active
                     && (platform_owner
                         || self.grant(actor, &row.dsp_id)?.is_some_and(|grant| {
-                            grant.owner || grant.permissions.iter().any(|p| p == "collections.run")
+                            grant.owner
+                                || grant.permissions.iter().any(|p| {
+                                    p == &crate::features::collection_permission(row.kind.as_str())
+                                })
                         })),
                 "permission_denied",
                 403,

@@ -49,6 +49,7 @@ codes! {
     CortexInvalidMealEvidence => "cortex_invalid_meal_evidence",
     CortexInvalidIdentity => "cortex_invalid_identity",
     InvalidCortexScope => "invalid_cortex_scope",
+    DvicSourceChanged => "dvic_source_changed",
     ScorecardWeekUnavailable => "scorecard_week_unavailable",
     TimecardExtractionFailed => "timecard_extraction_failed",
     InvalidTimecardHours => "invalid_timecard_hours",
@@ -78,6 +79,7 @@ impl Code {
         Code::ProviderContentTimeout,
         Code::ProviderResponseUnreadable,
         Code::CortexSourceChanged,
+        Code::DvicSourceChanged,
         Code::CortexContentIncomplete,
     ];
     /// The job stopped because someone withdrew it or its access; that is not a failure.
@@ -230,6 +232,7 @@ mod tests {
                 "provider_content_timeout",
                 "provider_response_unreadable",
                 "cortex_source_changed",
+                "dvic_source_changed",
                 "cortex_content_incomplete",
             ]
         );

@@ -43,6 +43,10 @@ const phrases: Record<string, (event: AuditEvent) => Part[]> = {
     'started a scorecard collection',
     ...(e.detail ? [' for week ', strong(e.detail)] : []),
   ],
+  'dvic.collection_requested': (e) => [
+    'started a DVIC collection',
+    ...(e.detail && e.detail !== 'recent' ? [' through publication week ', strong(e.detail)] : []),
+  ],
   'routes.collection_requested': (e) => [
     'started a routes collection',
     ...(e.detail && e.detail !== 'routes' ? [' for ', strong(day(e.detail))] : []),
@@ -186,6 +190,7 @@ export const spoken = new Set([
   'meal_breaks.sync_requested',
   'scorecard.collection_requested',
   'routes.collection_requested',
+  'dvic.collection_requested',
   'schedule.created',
   'schedule.updated',
   'schedule.toggled',
