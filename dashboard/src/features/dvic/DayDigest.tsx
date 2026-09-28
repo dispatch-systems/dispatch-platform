@@ -3,8 +3,7 @@ import { ChevronRight } from 'lucide-react';
 import type { DvicInspection } from '../../../../shared/contracts/dvic.js';
 import {
   bandLabel,
-  fleetLabel,
-  groupByFleet,
+  groupByVehicleClass,
   inspectionBand,
   inspectionClock,
   inspectionDuration as duration,
@@ -15,24 +14,26 @@ import {
 import { Empty } from '../../ui/index.js';
 import { DurationBar } from './InspectionDetail.js';
 
-function FleetGroup({
-  fleet,
+function VehicleGroup({
+  vehicles,
+  label,
   minimum,
   rows,
   onSelect,
 }: {
-  fleet: string;
+  vehicles: 'dot' | 'non-dot';
+  label: string;
   minimum: number;
   rows: DvicInspection[];
   onSelect: (row: DvicInspection) => void;
 }) {
   const [limit, setLimit] = useState(100);
   return (
-    <section className="dvic-group" aria-label={fleetLabel(fleet)}>
+    <section className="dvic-group" aria-label={label}>
       <header>
-        <span className="dvic-fleet" data-fleet={fleet}>
+        <span className="dvic-fleet" data-vehicles={vehicles}>
           <i aria-hidden="true" />
-          {fleetLabel(fleet)}
+          {label}
         </span>
         <span>
           {rows.length} short · minimum {duration(minimum)}
@@ -53,7 +54,7 @@ function FleetGroup({
             <span className="dvic-driver">
               <strong>{row.driverName || row.driverId}</strong>
               <small>
-                {inspectionClock(row.startTime)} · VIN …{row.vin.slice(-6)}
+                {inspectionClock(row.startTime)} · {row.fleetType} · VIN …{row.vin.slice(-6)}
               </small>
             </span>
             <span className="dvic-took">
@@ -106,8 +107,8 @@ export function DayDigest({
         </p>
       )}
       {rows.length ? (
-        groupByFleet(rows).map((group) => (
-          <FleetGroup key={group.fleet} {...group} onSelect={onSelect} />
+        groupByVehicleClass(rows).map((group) => (
+          <VehicleGroup key={group.vehicles} {...group} onSelect={onSelect} />
         ))
       ) : (
         <Empty title={filtered ? 'No matching inspections' : 'No short inspections on this day'}>

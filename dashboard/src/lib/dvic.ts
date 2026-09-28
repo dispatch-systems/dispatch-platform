@@ -146,17 +146,21 @@ export function repeatDrivers(week: DvicInspection[], day: DvicInspection[], min
     .map((driver) => driver.driverName);
 }
 
-/** Groups in a fixed vehicle order so a day reads the same way every time. */
-export function groupByFleet(rows: DvicInspection[]) {
-  const order = ['CV', 'CDV', 'SV'];
-  const fleets = [...new Set(rows.map((row) => row.fleetType))].sort(
-    (a, b) =>
-      (order.includes(a) ? order.indexOf(a) : order.length) -
-        (order.includes(b) ? order.indexOf(b) : order.length) || a.localeCompare(b),
-  );
-  return fleets.map((fleet) => ({
-    fleet,
-    minimum: rows.find((row) => row.fleetType === fleet)!.minimumSeconds,
-    rows: shortestFirst(rows.filter((row) => row.fleetType === fleet)),
-  }));
+/** Non-DOT vehicles (cargo vans and CDVs) first, then DOT (step vans); each with its minimum. */
+export function groupByVehicleClass(rows: DvicInspection[]) {
+  return (
+    [
+      { vehicles: 'non-dot', label: 'Non-DOT · Cargo Van & CDV' },
+      { vehicles: 'dot', label: 'DOT · Step Van' },
+    ] as const
+  )
+    .map((group) => ({
+      ...group,
+      rows: shortestFirst(rows.filter((row) => vehicleClass(row) === group.vehicles)),
+    }))
+    .filter((group) => group.rows.length)
+    .map((group) => ({
+      ...group,
+      minimum: Math.max(...group.rows.map((row) => row.minimumSeconds)),
+    }));
 }
