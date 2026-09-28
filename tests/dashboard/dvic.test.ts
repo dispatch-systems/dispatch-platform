@@ -55,9 +55,12 @@ test('inspection weeks use Sunday dates across year and DST boundaries; source c
 test('filters use driver identity, name or VIN and preserve distinct inspections', () => {
   const rows = [row('a'), row('b', 'SV')];
   assert.equal(filterInspections(rows, '  BROOKS ', '').length, 2);
-  assert.equal(filterInspections(rows, 'fixture', 'SV')[0]?.id, 'b');
+  assert.equal(filterInspections(rows, 'fixture', 'dot')[0]?.id, 'b');
   assert.equal(filterInspections(rows, 'driver-1', '').length, 2);
-  assert.equal(filterInspections(rows, '', 'CDV').length, 0);
+  assert.deepEqual(
+    filterInspections([...rows, row('c', 'CDV')], '', 'non-dot').map((item) => item.id),
+    ['a', 'c'],
+  );
 });
 test('complete weeks follow cursors, deduplicate identities and fail rather than publishing partial totals', async () => {
   const calls: (string | null)[] = [];

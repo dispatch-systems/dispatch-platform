@@ -33,12 +33,17 @@ export function inspectionDuration(seconds: number) {
 export const inspectionShortfall = (seconds: number) =>
   inspectionDuration(Math.max(0, Math.ceil(seconds - 1e-6)));
 
-export function filterInspections(rows: DvicInspection[], query: string, fleet: string) {
+/** Step vans are DOT vehicles with the 5-minute minimum; cargo vans and CDVs are not. */
+export type VehicleClass = '' | 'dot' | 'non-dot';
+export const vehicleClass = (row: DvicInspection): VehicleClass =>
+  row.fleetType === 'SV' ? 'dot' : 'non-dot';
+
+export function filterInspections(rows: DvicInspection[], query: string, vehicles: VehicleClass) {
   const needle = query.trim().toLowerCase();
   return rows
     .filter(
       (row) =>
-        (!fleet || row.fleetType === fleet) &&
+        (!vehicles || vehicleClass(row) === vehicles) &&
         [row.driverName, row.driverId, row.vin].some((value) =>
           value.toLowerCase().includes(needle),
         ),
