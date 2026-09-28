@@ -22,3 +22,17 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+.design-playground-shell {
+  position: relative;
+}
+.design-playground-recovery {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: 0 4px 16px var(--shadow-color);
+}

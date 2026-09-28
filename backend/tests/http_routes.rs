@@ -68,6 +68,8 @@ const INVENTORY: &[Row] = &[
     ("POST", "/api/platform/audit/export", PlatformOwner, Write, false),
     ("GET", "/api/platform/health", PlatformOwner, Read, false),
     ("GET", "/api/platform/design-playground", PlatformOwner, Read, false),
+    ("GET", "/api/platform/design-playground/status", PlatformOwner, Async, false),
+    ("POST", "/api/platform/design-playground/start", PlatformOwner, Async, false),
     ("GET", "/api/platform/mail", PlatformOwner, Read, false),
     ("POST", "/api/platform/mail/{id}/retry", PlatformOwner, Write, false),
     ("POST", "/api/platform/mail/{id}/discard", PlatformOwner, Write, false),

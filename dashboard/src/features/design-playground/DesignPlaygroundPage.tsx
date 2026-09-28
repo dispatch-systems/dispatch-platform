@@ -5,6 +5,7 @@ import { useAction } from '../../app/useAction.js';
 import { Empty, ErrorBox, Loading } from '../../ui/index.js';
 export function DesignPlaygroundPage() {
   const [status, setStatus] = useState<PlaygroundStatus>();
+  const [canvasMounted, setCanvasMounted] = useState(false);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   const revision = useRef(0);
@@ -12,7 +13,9 @@ export function DesignPlaygroundPage() {
     async () => {
       revision.current++;
       try {
-        setStatus(await startPlayground());
+        const next = await startPlayground();
+        setStatus(next);
+        if (next.running) setCanvasMounted(true);
       } finally {
         revision.current++;
       }
@@ -28,6 +31,7 @@ export function DesignPlaygroundPage() {
         const next = await getPlaygroundStatus();
         if (active && expected === revision.current) {
           setStatus(next);
+          if (next.running) setCanvasMounted(true);
           setError('');
         }
       } catch (cause) {
@@ -43,9 +47,8 @@ export function DesignPlaygroundPage() {
       window.clearTimeout(timer);
     };
   }, [retry]);
-  if (status?.running) return <PlaygroundCanvas />;
   if (!status && !error) return <Loading />;
-  return (
+  const recovery = (
     <div className="design-playground-status">
       <Empty
         title={
@@ -65,6 +68,17 @@ export function DesignPlaygroundPage() {
           Try again
         </button>
       </div>
+    </div>
+  );
+  if (!canvasMounted) return recovery;
+  return (
+    <div className="design-playground-shell">
+      <PlaygroundCanvas />
+      {(!status?.running || error) && (
+        <div className="design-playground-recovery" role="region" aria-label="Playground recovery">
+          {recovery}
+        </div>
+      )}
     </div>
   );
 }
