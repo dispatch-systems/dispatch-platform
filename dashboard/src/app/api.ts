@@ -29,6 +29,8 @@ export class ApiError extends Error {
   }
 }
 const labels: Record<string, string> = {
+  playground_start_unavailable: 'Starting this playground from the dashboard is not available.',
+  playground_start_failed: 'The playground could not start. Try again.',
   already_a_member: 'This person already has access. Change their role in the member list.',
   email_queue_full: 'Email capacity is temporarily full. Try again later.',
   mfa_required: 'Verify your identity to continue.',
