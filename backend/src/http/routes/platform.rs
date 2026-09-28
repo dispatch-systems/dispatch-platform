@@ -206,13 +206,25 @@ async fn set_feature(state: Arc<State>, input: Input, access: PlatformOwner) -> 
                     .chain(collector.other_job_kinds().iter().copied())
                 {
                     if switched(&result, features::automation(kind), false) {
-                        for job in db.jobs.query_as::<crate::contracts::JobRow>(
-                            "SELECT * FROM jobs WHERE dsp_id=? AND kind=? AND status IN ('running','waiting_verification')",
+                        let jobs = db.jobs.query_as::<crate::contracts::JobRow>(
+                            concat!(
+                                "SELECT * FROM jobs WHERE dsp_id=? AND kind=? AND status IN ",
+                                crate::job_statuses!(active)
+                            ),
                             rusqlite::params![dsp, kind],
-                        )? {
-                            cancelled.push((*provider, job.connection_revision));
+                        )?;
+                        for job in &jobs {
+                            if job.status.is_leased() {
+                                cancelled.push((*provider, job.connection_revision));
+                            }
                         }
                         db.cancel_jobs(crate::jobs::CancelJobs::Kind { dsp: &dsp, kind })?;
+                        // Cancelling clears the lease, so a worker's finish no longer owns
+                        // the job and skips this; drop what each job kept, as `cancel` does.
+                        for job in &jobs {
+                            db.clear_live(&dsp, *provider, Some(&job.id))?;
+                            collector.discard(db, &dsp, Some(&job.id))?;
+                        }
                     }
                 }
             }

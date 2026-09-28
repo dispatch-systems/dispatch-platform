@@ -66,13 +66,16 @@ pub(super) async fn cancel_kind(
     kind: Option<&'static str>,
 ) -> Result<Reply> {
     let job = input.param("id").to_owned();
-    let (context, result, active_revision) = state
+    let (context, result, active_revision, required) = state
         .run(move |db| {
             let c = access.authorize(db, &input)?;
             v::fields(&input.body, &[])?;
             let row = db.job_row(&job, Some(&c.dsp.id))?;
+            // A page's own route cancels only its kind. The generic route cancels a job
+            // another page owns only for a member who also holds that page's permission.
+            let required = crate::features::collection_permission(row.kind.as_str());
             crate::ensure(
-                kind.is_none_or(|kind| row.kind.as_str() == kind),
+                kind.map_or_else(|| c.allows(&required), |kind| row.kind.as_str() == kind),
                 "permission_denied",
                 403,
             )?;
@@ -82,7 +85,7 @@ pub(super) async fn cancel_kind(
                 .then(|| (row.connection_revision, row.provider()));
             let result = db.cancel(&job, &c.dsp.id)?;
             c.audit(db, "collection.cancelled", "")?;
-            Ok((c, result, active_revision))
+            Ok((c, result, active_revision, required))
         })
         .await?;
     if let Some((revision, provider)) = active_revision {
@@ -92,7 +95,10 @@ pub(super) async fn cancel_kind(
             .await;
     }
     state
-        .run(move |db| access.revalidate(db, &context).map(|_| ()))
+        .run(move |db| {
+            let context = access.revalidate(db, &context)?;
+            crate::ensure(context.allows(&required), "permission_denied", 403)
+        })
         .await?;
     Reply::of(&result)
 }

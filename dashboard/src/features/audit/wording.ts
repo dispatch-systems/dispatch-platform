@@ -266,6 +266,7 @@ const collections: Record<string, string> = {
   both: 'Paycom and meal breaks',
   scorecard: 'Scorecard',
   routes: 'Routes',
+  dvic: 'DVIC',
 };
 export function changeValue(field: string, value: string) {
   if (field === 'permission') return permissionLabels[value as Permission] ?? title(value);

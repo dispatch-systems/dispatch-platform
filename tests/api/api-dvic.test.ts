@@ -170,3 +170,109 @@ test('DVIC collects into its own database and schedules run independently of tim
     200,
   );
 });
+
+test("the generic cancel route needs the job kind's own permission; switching DVIC off drops what its jobs kept", async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const dsp = owner.session.dsps.find((d: any) => d.name === 'Northline Logistics');
+  await owner.select(dsp.id);
+  await owner.post('/api/dsp/connections/cortex', {
+    username: 'fixture@example.test',
+    password: 'fixture-password',
+  });
+  await owner.post('/api/dsp/profile', {
+    name: dsp.name,
+    abbreviation: 'NLL',
+    stationCode: 'TST1',
+    timezone: dsp.timezone,
+  });
+  await owner.select(dsp.id);
+  const queued = await owner.post('/api/dsp/dvic/collect', {
+    requestId: 'cancel-permission',
+    week: '2026-W39',
+  });
+  assert.equal(queued.status, 202, queued.body);
+  const id = queued.value.id;
+  await until(async () => {
+    const job = (await owner.get('/api/dsp/dvic/status')).value.jobs.find((j: any) => j.id === id);
+    assert.notEqual(job?.status, 'failed', JSON.stringify(job));
+    return job?.status === 'succeeded';
+  });
+  // collections.run alone cancels timecard jobs, not a job another page owns.
+  const role = (await owner.get('/api/dsp/roles')).value.find((r: any) => r.name === 'Member');
+  const grant = async (permissions: string[]) => {
+    await owner.select(dsp.id);
+    assert.equal(
+      (await owner.post(`/api/dsp/roles/${role.id}`, { name: 'Member', permissions })).status,
+      200,
+    );
+  };
+  await grant(['collections.run']);
+  const member = await f.client('member@dispatch.test');
+  await member.select(dsp.id);
+  {
+    const reply = await member.post(`/api/dsp/jobs/${id}/cancel`, {});
+    assert.equal(reply.status, 403, reply.body);
+  }
+  {
+    const reply = await member.post(`/api/dsp/dvic/jobs/${id}/cancel`, {});
+    assert.equal(reply.status, 403, reply.body);
+  }
+  // The page's own permission cancels through either route; the owner holds both.
+  await grant(['collections.run', 'dvic.collect']);
+  await member.select(dsp.id);
+  {
+    const reply = await member.post(`/api/dsp/jobs/${id}/cancel`, {});
+    assert.equal(reply.status, 200, reply.body);
+  }
+  {
+    const reply = await member.post(`/api/dsp/dvic/jobs/${id}/cancel`, {});
+    assert.equal(reply.status, 200, reply.body);
+  }
+  await owner.select(dsp.id);
+  {
+    const reply = await owner.post(`/api/dsp/jobs/${id}/cancel`, {});
+    assert.equal(reply.status, 200, reply.body);
+  }
+  // Switching the page off cancels its waiting job and drops the live run it kept,
+  // which a worker's own finish would no longer do once the lease is gone.
+  await f.stop();
+  f.database('data/preview/jobs.sqlite', (db) =>
+    db
+      .prepare(
+        "UPDATE jobs SET status='queued',completed_at=NULL,lease_owner=NULL,lease_until=NULL,available_at=? WHERE id=?",
+      )
+      .run(4102444800000, id),
+  );
+  f.database(`dsps/${dsp.id}/data/cortex/cortex.sqlite`, (db) =>
+    db.prepare('INSERT INTO collection_live_runs VALUES (?,?,?)').run(id, 'worker-1', '{}'),
+  );
+  await f.start();
+  await owner.select(dsp.id);
+  assert.equal(
+    (await owner.get('/api/dsp/jobs')).value.find((j: any) => j.id === id).status,
+    'queued',
+  );
+  assert.equal(
+    (
+      await owner.post(`/api/platform/dsps/${dsp.id}/features`, {
+        feature: 'dvic',
+        enabled: false,
+      })
+    ).status,
+    200,
+  );
+  await owner.select(dsp.id);
+  assert.equal(
+    (await owner.get('/api/dsp/jobs')).value.find((j: any) => j.id === id).status,
+    'cancelled',
+  );
+  assert.equal(
+    f.database(
+      `dsps/${dsp.id}/data/cortex/cortex.sqlite`,
+      (db) => (db.prepare('SELECT count(*) n FROM collection_live_runs').get() as { n: number }).n,
+    ),
+    0,
+  );
+});
