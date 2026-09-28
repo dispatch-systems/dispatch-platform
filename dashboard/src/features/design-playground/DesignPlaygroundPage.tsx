@@ -11,10 +11,11 @@ export function DesignPlaygroundPage() {
     let active = true,
       loading = false,
       issued = 0;
+    let retryTimer: number | undefined;
     let currentOrigin: string | null = null;
     let ticket: string | null = null;
     const send = () => {
-      if (!currentOrigin || !ticket || !frame.current?.contentWindow) return;
+      if (!currentOrigin || !ticket || !frame.current?.contentWindow) return false;
       frame.current?.contentWindow?.postMessage(
         { type: 'playground:access', ticket },
         currentOrigin,
@@ -27,12 +28,26 @@ export function DesignPlaygroundPage() {
         currentOrigin,
       );
       ticket = null;
+      return true;
     };
     const refresh = async () => {
-      if (loading || Date.now() - issued < 1500) {
+      if (!active) return;
+      if (loading) {
         send();
         return;
       }
+      const wait = 1500 - (Date.now() - issued);
+      if (wait > 0) {
+        if (!send() && retryTimer === undefined) {
+          retryTimer = window.setTimeout(() => {
+            retryTimer = undefined;
+            void refresh();
+          }, wait);
+        }
+        return;
+      }
+      window.clearTimeout(retryTimer);
+      retryTimer = undefined;
       loading = true;
       try {
         const access = await getPlaygroundAccess();
@@ -78,6 +93,7 @@ export function DesignPlaygroundPage() {
     void refresh();
     return () => {
       active = false;
+      window.clearTimeout(retryTimer);
       appearance.disconnect();
       window.removeEventListener('message', message);
       requestAccess.current = () => {};
@@ -93,12 +109,7 @@ export function DesignPlaygroundPage() {
       </div>
     );
   if (origin === undefined) return <Loading />;
-  if (origin === null)
-    return (
-      <Empty title="Design Playground is not available yet">
-        Your design workspace is still being set up.
-      </Empty>
-    );
+  if (origin === null) return <Empty title="Design Playground is not available yet" />;
   return (
     <div className="design-playground-page">
       <iframe
