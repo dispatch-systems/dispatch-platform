@@ -122,7 +122,6 @@ export function DvicPage({ view }: { view: DspView }) {
           </button>
         )}
       </Header>
-      <p className="dvic-subtitle">Pre-trip inspections completed below the minimum time.</p>
       <div className="dvic-period">
         <div className="dvic-date-controls" role="group" aria-label="Inspection week">
           <span className="muted">Inspection dates</span>

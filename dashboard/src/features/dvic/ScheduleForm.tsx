@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import type {
   CollectionSchedule,
   ScheduleInput,
@@ -7,17 +7,22 @@ import type {
 import { api, ApiError } from '../../app/api.js';
 import { messageOf } from '../../lib/errors.js';
 import { time } from '../../lib/format.js';
-import { ErrorBox } from '../../ui/index.js';
+import { ErrorBox, Modal } from '../../ui/index.js';
+
+/** Runs `then` at once, or after the member chooses Save or Discard for unsaved edits. */
+export type Leave = (then: () => void) => void;
 
 export function ScheduleForm({
   schedule,
   timezone,
+  leaveRef,
   onSaved,
   onCancel,
   onReload,
 }: {
   schedule: CollectionSchedule | null;
   timezone: string;
+  leaveRef: MutableRefObject<Leave | null>;
   onSaved: (message: string) => void;
   onCancel: () => void;
   onReload: () => Promise<void>;
@@ -34,6 +39,8 @@ export function ScheduleForm({
           enabled: true,
         },
   );
+  const initial = useRef(draft);
+  const [confirming, setConfirming] = useState<(() => void) | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [stale, setStale] = useState(false);
@@ -41,6 +48,17 @@ export function ScheduleForm({
   const [preview, setPreview] = useState<string>();
   const [previewError, setPreviewError] = useState('');
   const { cadence, intervalMinutes, localTime, enabled } = draft;
+  const dirty = (['name', 'cadence', 'intervalMinutes', 'localTime', 'enabled'] as const).some(
+    (key) => draft[key] !== initial.current[key],
+  );
+  // Edits leave only through Save or Discard; closing the tab drops them silently.
+  const leave: Leave = (then) => (dirty ? setConfirming(() => then) : then());
+  useEffect(() => {
+    leaveRef.current = leave;
+    return () => {
+      leaveRef.current = null;
+    };
+  });
   useEffect(() => {
     const controller = new AbortController();
     setPreview(undefined);
@@ -80,8 +98,8 @@ export function ScheduleForm({
   }, [cadence, intervalMinutes, localTime, enabled, schedule?.id]);
   const edit = <K extends keyof ScheduleInput>(key: K, value: ScheduleInput[K]) =>
     setDraft((old) => ({ ...old, [key]: value }));
-  async function save(remove = false) {
-    if (busy) return;
+  async function save(remove = false): Promise<boolean> {
+    if (busy) return false;
     setBusy(true);
     setError('');
     try {
@@ -100,135 +118,168 @@ export function ScheduleForm({
           ...(schedule ? { revision: schedule.revision } : {}),
         });
       onSaved(remove ? 'Schedule deleted' : 'Schedule saved');
+      return true;
     } catch (cause) {
       setError(messageOf(cause));
       setStale(
         cause instanceof ApiError &&
           ['schedule_changed', 'schedule_not_found'].includes(cause.code),
       );
+      return false;
     } finally {
       setBusy(false);
     }
   }
   return (
-    <form
-      className="dvic-schedule-form"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void save();
-      }}
-    >
-      <fieldset disabled={busy || stale}>
-        <label>
-          Schedule name
-          <input
-            required
-            maxLength={60}
-            value={draft.name}
-            onChange={(e) => edit('name', e.target.value)}
-          />
-        </label>
-        <label>
-          Frequency
-          <select
-            value={cadence}
-            onChange={(e) =>
-              setDraft((old) => ({
-                ...old,
-                cadence: e.target.value as 'daily' | 'interval',
-                intervalMinutes: e.target.value === 'daily' ? null : 120,
-              }))
-            }
-          >
-            <option value="daily">Daily</option>
-            <option value="interval">Every interval</option>
-          </select>
-        </label>
-        <div className="dvic-schedule-timing">
-          {cadence === 'interval' && (
-            <label>
-              Every (hours)
-              <input
-                type="number"
-                min="0.5"
-                max="24"
-                step="0.5"
-                required
-                value={intervalMinutes ? intervalMinutes / 60 : ''}
-                onChange={(e) => edit('intervalMinutes', Number(e.target.value) * 60)}
-              />
-            </label>
-          )}
+    <>
+      <form
+        className="dvic-schedule-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <fieldset disabled={busy || stale}>
           <label>
-            {cadence === 'daily' ? 'Collection time' : 'Starting at'}
+            Schedule name
             <input
-              type="time"
               required
-              value={localTime}
-              onChange={(e) => edit('localTime', e.target.value)}
+              maxLength={60}
+              value={draft.name}
+              onChange={(e) => edit('name', e.target.value)}
             />
           </label>
+          <label>
+            Frequency
+            <select
+              value={cadence}
+              onChange={(e) =>
+                setDraft((old) => ({
+                  ...old,
+                  cadence: e.target.value as 'daily' | 'interval',
+                  intervalMinutes: e.target.value === 'daily' ? null : 120,
+                }))
+              }
+            >
+              <option value="daily">Daily</option>
+              <option value="interval">Every interval</option>
+            </select>
+          </label>
+          <div className="dvic-schedule-timing">
+            {cadence === 'interval' && (
+              <label>
+                Every (hours)
+                <input
+                  type="number"
+                  min="0.5"
+                  max="24"
+                  step="0.5"
+                  required
+                  value={intervalMinutes ? intervalMinutes / 60 : ''}
+                  onChange={(e) => edit('intervalMinutes', Number(e.target.value) * 60)}
+                />
+              </label>
+            )}
+            <label>
+              {cadence === 'daily' ? 'Collection time' : 'Starting at'}
+              <input
+                type="time"
+                required
+                value={localTime}
+                onChange={(e) => edit('localTime', e.target.value)}
+              />
+            </label>
+          </div>
+          <p className="muted">{timezone} · DSP timezone</p>
+          <label className="dvic-schedule-toggle">
+            <input
+              type="checkbox"
+              role="switch"
+              checked={enabled}
+              onChange={(e) => edit('enabled', e.target.checked)}
+            />
+            Scheduled collection enabled
+          </label>
+          <p className="muted">
+            Next collection:{' '}
+            <output>{enabled ? (preview ? time(preview, timezone) : '—') : 'Paused'}</output>
+          </p>
+        </fieldset>
+        <ErrorBox message={previewError} />
+        <ErrorBox message={error} />
+        {stale && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void onReload().catch((cause) => setError(messageOf(cause)))}
+          >
+            Reload schedule
+          </button>
+        )}
+        <div className="form-actions">
+          <button type="button" disabled={busy} onClick={() => leave(onCancel)}>
+            Back
+          </button>
+          <button type="submit" className="primary" disabled={busy || stale}>
+            {busy ? 'Saving…' : 'Save schedule'}
+          </button>
         </div>
-        <p className="muted">{timezone} · DSP timezone</p>
-        <label className="dvic-schedule-toggle">
-          <input
-            type="checkbox"
-            role="switch"
-            checked={enabled}
-            onChange={(e) => edit('enabled', e.target.checked)}
-          />
-          Scheduled collection enabled
-        </label>
-        <p className="muted">
-          Next collection:{' '}
-          <output>{enabled ? (preview ? time(preview, timezone) : '—') : 'Paused'}</output>
-        </p>
-      </fieldset>
-      <ErrorBox message={previewError} />
-      <ErrorBox message={error} />
-      {stale && (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void onReload().catch((cause) => setError(messageOf(cause)))}
-        >
-          Reload schedule
-        </button>
-      )}
-      <div className="form-actions">
-        <button type="button" disabled={busy} onClick={onCancel}>
-          Back
-        </button>
-        <button type="submit" className="primary" disabled={busy || stale}>
-          {busy ? 'Saving…' : 'Save schedule'}
-        </button>
-      </div>
-      {schedule &&
-        (deleting ? (
-          <div className="dvic-delete-confirm">
-            <p>Delete this schedule?</p>
-            <button type="button" disabled={busy} onClick={() => setDeleting(false)}>
-              Keep schedule
-            </button>
+        {schedule &&
+          (deleting ? (
+            <div className="dvic-delete-confirm">
+              <p>Delete this schedule?</p>
+              <button type="button" disabled={busy} onClick={() => setDeleting(false)}>
+                Keep schedule
+              </button>
+              <button
+                type="button"
+                className="danger"
+                disabled={busy || stale}
+                onClick={() => void save(true)}
+              >
+                Delete schedule
+              </button>
+            </div>
+          ) : (
             <button
               type="button"
-              className="danger"
-              disabled={busy || stale}
-              onClick={() => void save(true)}
+              className="text-button danger"
+              disabled={busy}
+              onClick={() => setDeleting(true)}
             >
               Delete schedule
             </button>
+          ))}
+      </form>
+      {confirming && (
+        <Modal title="Save changes?" dismissible={false} onClose={() => {}}>
+          <p>This schedule has unsaved changes.</p>
+          <div className="form-actions">
+            <button
+              type="button"
+              onClick={() => {
+                const then = confirming;
+                setConfirming(null);
+                then();
+              }}
+            >
+              Discard changes
+            </button>
+            <button
+              type="button"
+              className="primary"
+              disabled={busy || stale || !draft.name.trim()}
+              onClick={async () => {
+                const then = confirming;
+                if (await save()) then();
+                else setConfirming(null);
+              }}
+            >
+              Save changes
+            </button>
           </div>
-        ) : (
-          <button
-            type="button"
-            className="text-button danger"
-            disabled={busy}
-            onClick={() => setDeleting(true)}
-          >
-            Delete schedule
-          </button>
-        ))}
-    </form>
+        </Modal>
+      )}
+    </>
   );
 }

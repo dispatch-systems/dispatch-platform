@@ -154,6 +154,15 @@ test('schedules persist, pause, reject stale edits and delete; manual sync reach
   await openDsp(page, dsp.name);
   await page.getByRole('link', { name: 'DVIC', exact: true }).click();
   await page.getByRole('button', { name: 'Collection settings' }).click();
+  // Unsaved edits leave only through Save or Discard.
+  await page.getByRole('button', { name: 'Add schedule' }).click();
+  await page.getByLabel('Schedule name').fill('Draft only');
+  await page.keyboard.press('Escape');
+  const ask = page.getByRole('dialog', { name: 'Save changes?' });
+  await expect(ask).toBeVisible();
+  await ask.getByRole('button', { name: 'Discard changes' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Collection settings' }).click();
   await page.getByRole('button', { name: 'Add schedule' }).click();
   await page.getByLabel('Schedule name').fill('Evening DVIC');
   await page.getByLabel('Frequency').selectOption('interval');
@@ -166,6 +175,11 @@ test('schedules persist, pause, reject stale edits and delete; manual sync reach
   expect(saved.intervalMinutes).toBe(180);
   await page.getByRole('button', { name: 'Pause Evening DVIC' }).click();
   await expect(page.getByRole('button', { name: 'Resume Evening DVIC' })).toBeVisible();
+  await page.getByRole('button', { name: 'Edit Evening DVIC' }).click();
+  await page.getByLabel('Starting at').fill('19:00');
+  await page.getByRole('button', { name: 'Back' }).click();
+  await ask.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByRole('dialog', { name: 'Collection settings' })).toContainText('19:00');
   await page.getByRole('button', { name: 'Edit Evening DVIC' }).click();
   saved = (await owner.get('/api/dsp/dvic/schedules')).value.schedules[0];
   await owner.post('/api/dsp/dvic/schedules/' + saved.id + '/enabled', {

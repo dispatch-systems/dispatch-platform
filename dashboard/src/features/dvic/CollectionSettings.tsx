@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import type {
   CollectionSchedule,
@@ -9,12 +9,14 @@ import { useAction } from '../../app/useAction.js';
 import { useFeedback } from '../../app/feedback.js';
 import { time } from '../../lib/format.js';
 import { DataState, Empty, ErrorBox, Modal } from '../../ui/index.js';
-import { ScheduleForm } from './ScheduleForm.js';
+import { ScheduleForm, type Leave } from './ScheduleForm.js';
 
 const endpoint = '/api/dsp/dvic/schedules';
 export function CollectionSettings({ onClose }: { onClose: () => void }) {
   const schedules = useData<CollectionSchedules>(endpoint);
   const [editing, setEditing] = useState<CollectionSchedule | null>();
+  // While the editor is open, closing the sheet asks about unsaved changes first.
+  const leave = useRef<Leave | null>(null);
   const { notify } = useFeedback();
   const toggle = useAction(
     async (schedule: CollectionSchedule) => {
@@ -35,17 +37,13 @@ export function CollectionSettings({ onClose }: { onClose: () => void }) {
         editing === undefined ? 'Collection settings' : editing ? 'Edit schedule' : 'New schedule'
       }
       variant="sheet"
-      onClose={onClose}
+      onClose={() => (leave.current ? leave.current(onClose) : onClose())}
     >
       <div className="dvic-settings">
         <DataState data={schedules.data} error={schedules.error} failed={!!schedules.error}>
           {(data) =>
             editing === undefined ? (
               <>
-                <p className="muted">
-                  Collect short DVIC inspections automatically through Cortex. Overlapping reports
-                  are combined, so each inspection appears once.
-                </p>
                 <button onClick={() => setEditing(null)}>
                   <Plus size={16} />
                   Add schedule
@@ -96,6 +94,7 @@ export function CollectionSettings({ onClose }: { onClose: () => void }) {
                 key={editing ? editing.id + ':' + editing.revision : 'new'}
                 schedule={editing}
                 timezone={data.timezone}
+                leaveRef={leave}
                 onCancel={() => setEditing(undefined)}
                 onSaved={(message) => {
                   notify(message);

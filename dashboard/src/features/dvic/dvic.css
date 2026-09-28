@@ -5,12 +5,8 @@
   display: flex;
   gap: 9px;
 }
-.dvic-subtitle {
-  color: var(--muted-foreground);
-  margin: 0 0 26px;
-  font-size: 13px;
-}
 .dvic-period {
+  margin-top: 22px;
   display: flex;
   align-items: center;
   justify-content: space-between;
