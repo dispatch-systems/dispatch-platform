@@ -80,7 +80,7 @@ test('the day digest and week grid read the same inspections, with details on de
   await page.getByRole('tab', { name: 'Week' }).click();
   await expect(page.locator('.dvic-footer')).toContainText('3 records this week');
   await expect(page.locator('.dvic-grid tbody tr')).toHaveCount(1);
-  await page.getByLabel('Vehicle type').selectOption('SV');
+  await page.getByLabel('Vehicle type').selectOption('dot');
   await expect(page.locator('.dvic-footer')).toContainText('1 record this week');
   await page.getByLabel('Vehicle type').selectOption('');
   await page.getByRole('textbox', { name: 'Search inspections' }).fill('');

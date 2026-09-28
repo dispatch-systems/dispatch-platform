@@ -5,7 +5,13 @@ import type { DvicStatus } from '../../../../shared/contracts/dvic.js';
 import { api, ApiError, useData } from '../../app/api.js';
 import { can } from '../../app/permissions.js';
 import { useAction } from '../../app/useAction.js';
-import { filterInspections, inspectionDate, weekDays, weekStart } from '../../lib/dvic.js';
+import {
+  filterInspections,
+  inspectionDate,
+  weekDays,
+  weekStart,
+  type VehicleClass,
+} from '../../lib/dvic.js';
 import { localDate, shiftDate } from '../../lib/meal-breaks.js';
 import { performancePolicy } from '../../lib/performance-policy.js';
 import { randomId } from '../../lib/random-id.js';
@@ -25,7 +31,7 @@ export function DvicPage({ view }: { view: DspView }) {
   const [chosenWeek, setChosenWeek] = useState<string>();
   const [chosenDay, setChosenDay] = useState<string>();
   const [query, setQuery] = useState('');
-  const [fleet, setFleet] = useState('');
+  const [vehicles, setVehicles] = useState<VehicleClass>('');
   const [selected, setSelected] = useState<string>();
   const [settings, setSettings] = useState(false);
   const [pending, setPending] = useState<Job>();
@@ -59,9 +65,9 @@ export function DvicPage({ view }: { view: DspView }) {
     .sort()
     .at(-1);
   const inspections = useInspections(start, end, (completed ?? '') + ':' + (checked ?? ''));
-  const rows = filterInspections(inspections.rows ?? [], query, fleet);
+  const rows = filterInspections(inspections.rows ?? [], query, vehicles);
   const dayRows = rows.filter((row) => row.startDate === day);
-  const filtered = !!(query || fleet);
+  const filtered = !!(query || vehicles);
   const shown = tab === 'day' ? dayRows : rows;
   const detail = inspections.rows?.find((row) => row.id === selected);
   const newest = jobs[0];
@@ -225,13 +231,18 @@ export function DvicPage({ view }: { view: DspView }) {
           value={query}
           onChange={setQuery}
         />
-        <select aria-label="Vehicle type" value={fleet} onChange={(e) => setFleet(e.target.value)}>
+        <select
+          aria-label="Vehicle type"
+          value={vehicles}
+          onChange={(e) => setVehicles(e.target.value as VehicleClass)}
+        >
           <option value="">All vehicles</option>
-          <option value="CV">CV · Cargo Van</option>
-          <option value="CDV">CDV</option>
-          <option value="SV">SV · Step Van</option>
+          <option value="dot">DOT</option>
+          <option value="non-dot">Non-DOT</option>
         </select>
-        <span className="dvic-minimums">Minimums: CV / CDV · 1m 30s &nbsp; SV · 5m</span>
+        <span className="dvic-minimums">
+          Minimums: Non-DOT (CV, CDV) · 1m 30s &nbsp; DOT (SV) · 5m
+        </span>
       </div>
       <ErrorBox
         message={
