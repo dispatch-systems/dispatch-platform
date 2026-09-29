@@ -279,8 +279,12 @@ async fn compare_tabs() -> Result<()> {
         for tabs in runs.split(',').filter_map(|v| v.trim().parse::<usize>().ok()) {
             let metrics = Recorder::new(&json!({}));
             let started = Instant::now();
+            let method = collection::MealMethod {
+                tabs,
+                ..collection::MealMethod::rendered()
+            };
             let capture = driver
-                .collect(&scope, &metrics, None, |_, _| async { Ok(()) }, tabs)
+                .collect(&scope, &metrics, None, |_, _| async { Ok(()) }, &method)
                 .await;
             let capture = match capture {
                 Ok(capture) => capture,
@@ -434,7 +438,7 @@ async fn diagnose_tabs() -> Result<()> {
         };
         let collect = async {
             let result = driver
-                .collect(&scope, &metrics, None, |_, _| async { Ok(()) }, 2)
+                .collect(&scope, &metrics, None, |_, _| async { Ok(()) }, &collection::MealMethod::rendered())
                 .await;
             done.store(true, std::sync::atomic::Ordering::SeqCst);
             result
@@ -1928,6 +1932,170 @@ async fn measure_route_method() -> Result<()> {
                 "listDigest": digest(&canonical(&list).to_string()),
                 "routesDigest": digest(&canonical(&routes).to_string()),
                 "read": read,
+            })
+        );
+        Ok(())
+    }
+    .await;
+    driver.browser.close().await;
+    result
+}
+
+// One day's meal evidence read by the method in DISPATCH_BENCHMARK_METHOD (JSON; the
+// current default when unset), with the browser in DISPATCH_BENCHMARK_MODE. Run each in
+// its own cgroup (systemd-run --user --scope). Prints times, passes, CPU, memory, bytes,
+// counts and a digest of each route's record; never a value. Its own deadline closes the
+// browser, so a slow run never has to be killed.
+#[tokio::test]
+#[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
+async fn measure_meal_method() -> Result<()> {
+    use crate::browsers::egress::counted::{RECEIVED, SENT};
+    use collection::MealMethod;
+    let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
+    let method: MealMethod = match std::env::var("DISPATCH_BENCHMARK_METHOD").as_deref() {
+        Ok(text) if !text.is_empty() => serde_json::from_str(text)?,
+        _ => MealMethod::default(),
+    };
+    let mode = if std::env::var("DISPATCH_BENCHMARK_MODE").as_deref() == Ok("headless") {
+        browseros::Mode::Headless
+    } else {
+        browseros::Mode::Windowed
+    };
+    let scope: Scope = serde_json::from_str(
+        &std::env::var("DISPATCH_BENCHMARK_SCOPE")
+            .map_err(|_| Error::new("benchmark_configuration_required", 400))?,
+    )?;
+    let profile = dsp.join("state/browsers/cortex-browseros");
+    let runtime = browseros::Runtime::new(
+        Path::new("/opt/dispatch-browseros/0.50.5/browseros"),
+        Path::new("/usr/local/libexec/dispatch-dev/bwrap"),
+        &env_path("DISPATCH_BENCHMARK_WORKER")?,
+        &env_path("DISPATCH_BENCHMARK_RUNS")?,
+        1,
+    )?;
+    let cgroup = own_cgroup().ok_or_else(|| Error::new("benchmark_cgroup_required", 400))?;
+    let browser = runtime
+        .start(&profile, mode, browseros::NetworkPolicy::Cortex)
+        .await?;
+    let mut driver = Driver::new(browser, &profile, None).await?;
+    let result = async {
+        let secrets = dsp.join("secrets");
+        let credentials = crate::crypto::decrypt(
+            &db::key_file(&secrets.join("vault.key"))?,
+            &format!("{}:cortex:2", dsp.file_name().unwrap().to_str().unwrap()),
+            &std::fs::read_to_string(secrets.join("cortex.enc"))?,
+        )?;
+        let signed = driver
+            .request(json!({"action":"start","credentials":credentials}))
+            .await;
+        ensure(
+            signed.is_ok_and(|v| v["type"] == "ready"),
+            "benchmark_verification_required",
+            409,
+        )?;
+        let cpu_before = cgroup_cpu_usec(&cgroup);
+        let mut peak = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(cgroup.join("memory.peak"))?;
+        {
+            use std::io::Write;
+            let _ = peak.write_all(b"reset\n");
+        }
+        let (sent, received) = (
+            SENT.load(std::sync::atomic::Ordering::Relaxed),
+            RECEIVED.load(std::sync::atomic::Ordering::Relaxed),
+        );
+        let pid = driver.browser.process_id();
+        let sampling = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let sampler = {
+            let sampling = sampling.clone();
+            tokio::task::spawn_blocking(move || {
+                let (mut max_pss, mut sum_pss, mut samples) = (0u64, 0u64, 0u64);
+                while sampling.load(std::sync::atomic::Ordering::Relaxed) {
+                    if let Some(memory) = crate::job_metrics::memory(pid) {
+                        max_pss = max_pss.max(memory.pss);
+                        sum_pss += memory.pss;
+                        samples += 1;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                }
+                (max_pss, sum_pss / samples.max(1))
+            })
+        };
+        let metrics = Recorder::new(&json!({}));
+        let passes = std::sync::atomic::AtomicUsize::new(0);
+        let started = Instant::now();
+        let collected = tokio::time::timeout(
+            Duration::from_secs(600),
+            driver.collect(
+                &scope,
+                &metrics,
+                None,
+                |_, message: String| {
+                    if message.starts_with("Checking source changes") {
+                        passes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    async { Ok(()) }
+                },
+                &method,
+            ),
+        )
+        .await
+        .map_err(|_| Error::new("benchmark_deadline", 504))
+        .and_then(|result| result);
+        let collect_ms = started.elapsed().as_millis();
+        let cpu = cgroup_cpu_usec(&cgroup) - cpu_before;
+        sampling.store(false, std::sync::atomic::Ordering::Relaxed);
+        let (max_pss, avg_pss) = sampler.await.unwrap_or((0, 0));
+        let capture = collected?;
+        let peak_bytes: u64 = {
+            use std::io::{Read, Seek};
+            let mut text = String::new();
+            peak.seek(std::io::SeekFrom::Start(0))?;
+            peak.read_to_string(&mut text)?;
+            text.trim().parse().unwrap_or(0)
+        };
+        let mut routes: Vec<Value> = capture["itineraries"].as_array().cloned().unwrap_or_default();
+        routes.sort_by_key(|r| s(r, "id").to_owned());
+        let records: Vec<Value> = routes
+            .iter()
+            .map(|r| {
+                let mut r = r.clone();
+                if let Some(object) = r.as_object_mut() {
+                    object.remove("observedAt");
+                    object.remove("sourceUrl");
+                }
+                json!({"route": digest(s(&r, "id")), "record": digest(&canonical(&r).to_string()),
+                    "meals": r["meals"].as_array().map_or(0, Vec::len),
+                    "bounded": r["meals"].as_array().map_or(0, |m| m.iter().filter(|m| !m["lastDelivery"].is_null()).count()),
+                    "coverage": r["deliveryCoverage"], "complete": r["routeComplete"]})
+            })
+            .collect();
+        let snapshot = serde_json::to_value(metrics.snapshot())?;
+        let pages = &snapshot["pageReads"];
+        eprintln!(
+            "BENCH {}",
+            json!({
+                "method": method,
+                "mode": if matches!(mode, browseros::Mode::Headless) {"headless"} else {"windowed"},
+                "date": scope.date,
+                "collectMs": collect_ms,
+                "passes": passes.load(std::sync::atomic::Ordering::Relaxed),
+                "cpuSeconds": (cpu as f64 / 1e6),
+                "cgroupPeakMB": peak_bytes / 1_048_576,
+                "browserPeakPssMB": max_pss / 1_048_576,
+                "browserAvgPssMB": avg_pss / 1_048_576,
+                "sentKB": (SENT.load(std::sync::atomic::Ordering::Relaxed) - sent) / 1024,
+                "receivedKB": (RECEIVED.load(std::sync::atomic::Ordering::Relaxed) - received) / 1024,
+                "routes": routes.len(),
+                "meals": records.iter().map(|r| r["meals"].as_u64().unwrap_or(0)).sum::<u64>(),
+                "bounded": records.iter().map(|r| r["bounded"].as_u64().unwrap_or(0)).sum::<u64>(),
+                "coverageComplete": records.iter().filter(|r| r["coverage"] == "complete").count(),
+                "pages": {"completed": pages["completed"], "retries": pages["retries"], "totalMs": pages["totalMs"]},
+                "detail": snapshot["detail"],
+                "digest": digest(&records.iter().map(|r| s(r, "record")).collect::<Vec<_>>().join(",")),
+                "records": records,
             })
         );
         Ok(())

@@ -9,11 +9,11 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
     future::Future,
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    sync::{
+        LazyLock,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
 };
-/// Route pages read at once, each in its own tab. Two read ten real routes in 30 s
-/// instead of 42 s for 6% more memory; more share the same renderer and connection.
-pub(super) const TABS: usize = 2;
 // The route's content has not settled yet; read it again.
 pub(super) const CONTENT_NOT_READY: &[crate::Code] = &[
     crate::Code::CortexContentIncomplete,
@@ -22,7 +22,27 @@ pub(super) const CONTENT_NOT_READY: &[crate::Code] = &[
     crate::Code::CortexScopeMismatch,
     crate::Code::VerificationRequired,
 ];
-const EXTRACT: &str = include_str!("meal.js");
+/// A page script without the trailing `;` its formatter adds, so it can be called.
+fn script(source: &str) -> &str {
+    source.trim().trim_end_matches(';')
+}
+const RULES: &str = include_str!("meal_rules.js");
+/// `meal.js`, given the rules it shares with the hook.
+static EXTRACT: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        "(input)=>({})(input,{})",
+        script(include_str!("meal.js")),
+        script(RULES)
+    )
+});
+/// `meal_hook.js`, installed with the rules it shares with `meal.js`.
+static HOOK: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        "({})({})",
+        script(include_str!("meal_hook.js")),
+        script(RULES)
+    )
+});
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Candidate {
@@ -40,6 +60,44 @@ struct Punch {
     id: String,
     start: i64,
     end: Option<i64>,
+}
+/// How a day's meals are read. The default was measured against the alternatives on a
+/// real day of 38 routes (`measure_meal_method`): moving in the application, with
+/// `meal_hook.js` reading each itinerary inside the page, in three background tabs, read
+/// the day in 22.5 s instead of 138.5 s, with an eighth of the CPU and half the memory
+/// of loading and reading each rendered page, and the same records.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct MealMethod {
+    /// Tabs reading routes at once.
+    pub tabs: usize,
+    /// Extra tabs each get a window of their own rather than a background tab. Only a
+    /// rendered page needs one: Cortex doesn't render a hidden tab.
+    pub windows: bool,
+    /// Each route is read by moving the application to it, and the hook reads the
+    /// itinerary it fetches, which the page never renders. Otherwise each route's page is
+    /// loaded and `meal.js` reads it once rendered.
+    pub hook: bool,
+}
+impl Default for MealMethod {
+    fn default() -> Self {
+        Self {
+            tabs: 3,
+            windows: false,
+            hook: true,
+        }
+    }
+}
+impl MealMethod {
+    /// How meals were read before the hook: a rendered page per route, two windows.
+    #[cfg(test)]
+    pub(crate) fn rendered() -> Self {
+        Self {
+            tabs: 2,
+            windows: true,
+            hook: false,
+        }
+    }
 }
 impl Driver {
     async fn meal_read(
@@ -62,30 +120,9 @@ impl Driver {
         let input = json!({"kind":if candidate.is_some(){"detail"}else{"list"},"scope":scope,"candidate":candidate,"origin":self.origin});
         let result = self
             .browser
-            .evaluate(&page.id, &call(EXTRACT, &input))
+            .evaluate(&page.id, &call(&EXTRACT, &input))
             .await?;
-        if let Some(error) = result["error"].as_str() {
-            metrics.detail(s(&result, "reason"));
-            let allowed = [
-                crate::Code::CortexScopeMismatch,
-                crate::Code::CortexContentIncomplete,
-                crate::Code::CortexTimezoneMismatch,
-                crate::Code::CortexSourceTooLarge,
-                crate::Code::CortexInvalidMealEvidence,
-                crate::Code::CortexInvalidIdentity,
-                crate::Code::CortexSourceChanged,
-                crate::Code::InvalidCortexScope,
-            ];
-            return Err(Error::new(
-                if crate::Code::text_is_any(error, &allowed) {
-                    error
-                } else {
-                    "cortex_content_incomplete"
-                },
-                502,
-            ));
-        }
-        Ok(result)
+        evidence(result, metrics)
     }
     pub(super) async fn meal_page(
         &self,
@@ -94,10 +131,7 @@ impl Driver {
         candidate: Option<&Candidate>,
         metrics: &Recorder,
     ) -> Result<Value> {
-        let path = candidate
-            .map(|c| scope.detail_path(&c.id))
-            .unwrap_or_else(|| scope.list_path());
-        let url = format!("{}{path}", self.origin);
+        let url = self.meal_url(scope, candidate);
         page.start_navigation(&url).await?;
         let deadline = Instant::now() + Duration::from_secs(30);
         // Cortex occasionally settles on another route's details and never
@@ -140,6 +174,120 @@ impl Driver {
         }
         Err(Error::new(&last_error, 502))
     }
+    fn meal_url(&self, scope: &Scope, candidate: Option<&Candidate>) -> String {
+        let path = candidate
+            .map(|c| scope.detail_path(&c.id))
+            .unwrap_or_else(|| scope.list_path());
+        format!("{}{path}", self.origin)
+    }
+    /// One route's evidence as `method` reads it. `moving` is whether the tab shows
+    /// Cortex's application, which can move to the route, and is kept up to date.
+    async fn read_route(
+        &self,
+        page: &Page,
+        scope: &Scope,
+        candidate: &Candidate,
+        method: &MealMethod,
+        moving: &mut bool,
+        metrics: &Recorder,
+    ) -> Result<Value> {
+        if !method.hook {
+            return self.meal_page(page, scope, Some(candidate), metrics).await;
+        }
+        let url = self.meal_url(scope, Some(candidate));
+        let expect = format!(
+            "!!window.__dispatchMeals && window.__dispatchMeals.expect({})",
+            json!({"candidate": candidate, "scope": scope, "origin": self.origin})
+        );
+        if *moving {
+            let told = self.browser.evaluate(&page.id, &expect).await;
+            let moved = told.is_ok_and(|v| v == true)
+                && page
+                    .evaluate(&call(super::routedata::MOVE, &json!(url)))
+                    .await
+                    .is_ok_and(|v| v == true);
+            if moved && let Some(result) = self.hook_result(page, candidate, metrics).await? {
+                return evidence(result, metrics);
+            }
+            // The application did not answer, or its request failed: load the page.
+            metrics.detail("meal_move_reloaded");
+        }
+        // A loaded page is told its route once its own document has the hook: the page
+        // it leaves has one too, and must not be the one told.
+        let previous = page.start_navigation(&url).await?;
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while page.navigation(&previous).await?.is_null() {
+            ensure(Instant::now() < deadline, "cortex_content_incomplete", 502)?;
+            sleep(Duration::from_millis(50)).await;
+        }
+        while !self
+            .browser
+            .evaluate(&page.id, &expect)
+            .await
+            .is_ok_and(|v| v == true)
+        {
+            if Instant::now() >= deadline {
+                // meal.js's check: a tab sent elsewhere was sent to sign in.
+                let frame = page.frame().await?;
+                let cortex = url::Url::parse(s(&frame, "url"))
+                    .is_ok_and(|u| u.origin().ascii_serialization() == self.origin);
+                return Err(if cortex {
+                    Error::new("cortex_content_incomplete", 502)
+                } else {
+                    Error::new("verification_required", 409)
+                });
+            }
+            sleep(Duration::from_millis(50)).await;
+        }
+        *moving = true;
+        match self.hook_result(page, candidate, metrics).await? {
+            Some(result) => evidence(result, metrics),
+            None => self.rendered(scope, candidate, metrics).await,
+        }
+    }
+    /// What the hook read for `candidate`, or none when the application's request for it
+    /// failed or no request came within 20 s.
+    async fn hook_result(
+        &self,
+        page: &Page,
+        candidate: &Candidate,
+        metrics: &Recorder,
+    ) -> Result<Option<Value>> {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let take = format!(
+            "window.__dispatchMeals && window.__dispatchMeals.take({})",
+            json!(candidate.id)
+        );
+        while Instant::now() < deadline {
+            match self.browser.evaluate(&page.id, &take).await {
+                Ok(value) if value["unanswered"] == true => {
+                    metrics.detail("meal_hook_unanswered");
+                    return Ok(None);
+                }
+                Ok(value) if value.is_object() => return Ok(Some(value)),
+                Ok(_) => (),
+                Err(error) if error.is_any(CONTENT_NOT_READY) => (),
+                Err(error) => return Err(error),
+            }
+            sleep(Duration::from_millis(50)).await;
+        }
+        Ok(None)
+    }
+    /// A route the hook could not read, read from its rendered page as `meal.js` always
+    /// has, in a window of its own without the hook: Cortex doesn't render a hidden tab.
+    async fn rendered(
+        &self,
+        scope: &Scope,
+        candidate: &Candidate,
+        metrics: &Recorder,
+    ) -> Result<Value> {
+        metrics.detail("meal_hook_missed");
+        let mut page = Page::open_window(self.browser.clone(), self.origin.clone()).await?;
+        page.allow_origins(&self.origins.iter().map(String::as_str).collect::<Vec<_>>());
+        let result = self.meal_page(&page, scope, Some(candidate), metrics).await;
+        let _ = page.close().await;
+        result
+    }
     pub(super) async fn candidates(
         &self,
         scope: &Scope,
@@ -151,37 +299,83 @@ impl Driver {
         ensure(rows.len() <= 1000, "cortex_source_too_large", 502)?;
         Ok(rows)
     }
-    /// Every route of the scope's day, read until one pass finds each route's record
-    /// at its latest revision. `tabs` route pages are read at once, each in its own tab.
+    /// Every route of the scope's day, read as `method` says until one pass finds each
+    /// route's record at its latest revision.
     pub async fn collect<F, Fut>(
         &mut self,
         scope: &Scope,
         metrics: &Recorder,
         live: Option<&Writer>,
         progress: F,
-        tabs: usize,
+        method: &MealMethod,
     ) -> Result<Value>
     where
         F: Fn(i64, String) -> Fut,
         Fut: Future<Output = Result<()>>,
     {
         scope.validate()?;
+        ensure((1..=4).contains(&method.tabs), "invalid_cortex_scope", 400)?;
+        let hook = json!({"source": *HOOK});
+        let installed = if method.hook {
+            let added = self
+                .page
+                .command("Page.addScriptToEvaluateOnNewDocument", hook.clone())
+                .await?;
+            Some(added["identifier"].clone())
+        } else {
+            None
+        };
+        let result = self
+            .read_day(scope, metrics, live, &progress, method, &hook)
+            .await;
+        // The session's tab goes on to other collections, whose pages keep what they fetch.
+        if let Some(identifier) = installed {
+            let _ = self
+                .page
+                .command(
+                    "Page.removeScriptToEvaluateOnNewDocument",
+                    json!({"identifier": identifier}),
+                )
+                .await;
+        }
+        result
+    }
+    async fn read_day<F, Fut>(
+        &self,
+        scope: &Scope,
+        metrics: &Recorder,
+        live: Option<&Writer>,
+        progress: &F,
+        method: &MealMethod,
+        hook: &Value,
+    ) -> Result<Value>
+    where
+        F: Fn(i64, String) -> Fut,
+        Fut: Future<Output = Result<()>>,
+    {
         let started_at = now();
         let candidates = self.candidates(scope, metrics).await?;
         if let Some(live) = live {
             live.start_cortex(scope, drivers(&candidates)).await?;
         }
-        // Tabs beside the first, opened once and kept for every pass. Each has its
-        // own window: Cortex can stop loading a route in a hidden background tab.
+        // Tabs beside the first, opened once and kept for every pass.
         let mut others = Vec::new();
-        for _ in 1..tabs.min(candidates.len()) {
-            let mut page = Page::open_window(self.browser.clone(), self.origin.clone()).await?;
+        for _ in 1..method.tabs.min(candidates.len()) {
+            let mut page = if method.windows {
+                Page::open_window(self.browser.clone(), self.origin.clone()).await?
+            } else {
+                Page::open(self.browser.clone(), self.origin.clone()).await?
+            };
             page.allow_origins(&self.origins.iter().map(String::as_str).collect::<Vec<_>>());
+            if method.hook {
+                page.command("Page.addScriptToEvaluateOnNewDocument", hook.clone())
+                    .await?;
+            }
             others.push(page);
         }
         let result = self
             .passes(
-                scope, metrics, live, &progress, candidates, &others, started_at,
+                scope, metrics, live, progress, candidates, &others, started_at, method,
             )
             .await;
         // Close the extra windows, so they hold no memory while the capture is published.
@@ -201,6 +395,7 @@ impl Driver {
         mut candidates: Vec<Candidate>,
         others: &[Page],
         started_at: i64,
+        method: &MealMethod,
     ) -> Result<Value>
     where
         F: Fn(i64, String) -> Fut,
@@ -234,13 +429,16 @@ impl Driver {
                     live,
                     started_at,
                     progress,
+                    method,
                 };
                 // Drain every tab even when one fails. Dropping a sibling's in-flight
                 // command closes the shared browser transport.
+                // The first tab shows the list's application; the others show whatever
+                // their last read left, which a first read in each loads.
                 futures_util::future::join_all(
-                    std::iter::once(&self.page)
-                        .chain(others)
-                        .map(|page| routes.lane(page)),
+                    std::iter::once((&self.page, true))
+                        .chain(others.iter().map(|page| (page, pass > 0)))
+                        .map(|(page, loaded)| routes.lane(page, loaded)),
                 )
                 .await
             };
@@ -255,6 +453,7 @@ impl Driver {
                 }
             }
             progress(85, format!("Checking source changes (pass {})", pass + 1)).await?;
+            // A loaded list, not a move: Cortex's application keeps the list it has.
             let next = self.candidates(scope, metrics).await?;
             let ids: HashSet<_> = next.iter().map(|c| c.id.clone()).collect();
             ensure(known.is_subset(&ids), "cortex_membership_regressed", 502)?;
@@ -284,6 +483,31 @@ impl Driver {
     }
 }
 
+/// A page script's answer: its evidence, or its failure as the code the collection knows.
+fn evidence(result: Value, metrics: &Recorder) -> Result<Value> {
+    if let Some(error) = result["error"].as_str() {
+        metrics.detail(s(&result, "reason"));
+        let allowed = [
+            crate::Code::CortexScopeMismatch,
+            crate::Code::CortexContentIncomplete,
+            crate::Code::CortexTimezoneMismatch,
+            crate::Code::CortexSourceTooLarge,
+            crate::Code::CortexInvalidMealEvidence,
+            crate::Code::CortexInvalidIdentity,
+            crate::Code::CortexSourceChanged,
+            crate::Code::InvalidCortexScope,
+        ];
+        return Err(Error::new(
+            if crate::Code::text_is_any(error, &allowed) {
+                error
+            } else {
+                "cortex_content_incomplete"
+            },
+            502,
+        ));
+    }
+    Ok(result)
+}
 /// The drivers a list names, as the live view shows them.
 fn drivers(candidates: &[Candidate]) -> Value {
     json!(
@@ -308,6 +532,7 @@ struct Routes<'a, F> {
     live: Option<&'a Writer>,
     started_at: i64,
     progress: &'a F,
+    method: &'a MealMethod,
 }
 /// A route's record at the revision it was read, or `None` when it changed meanwhile.
 type Read = (String, Option<(String, Itinerary)>);
@@ -316,14 +541,14 @@ where
     F: Fn(i64, String) -> Fut,
     Fut: Future<Output = Result<()>>,
 {
-    async fn lane(&self, page: &Page) -> Result<Vec<Read>> {
-        let result = self.read(page).await;
+    async fn lane(&self, page: &Page, loaded: bool) -> Result<Vec<Read>> {
+        let result = self.read(page, loaded && self.method.hook).await;
         if result.is_err() {
             self.stopped.store(true, Ordering::SeqCst);
         }
         result
     }
-    async fn read(&self, page: &Page) -> Result<Vec<Read>> {
+    async fn read(&self, page: &Page, mut moving: bool) -> Result<Vec<Read>> {
         let mut reads = Vec::new();
         while !self.stopped.load(Ordering::SeqCst) {
             let Some(candidate) = self.pending.get(self.next.fetch_add(1, Ordering::SeqCst)) else {
@@ -340,7 +565,14 @@ where
             .await?;
             let result = self
                 .driver
-                .meal_page(page, self.scope, Some(candidate), self.metrics)
+                .read_route(
+                    page,
+                    self.scope,
+                    candidate,
+                    self.method,
+                    &mut moving,
+                    self.metrics,
+                )
                 .await;
             self.metrics
                 .page_finish(ordinal, result.as_ref().err().map(|e| e.code.as_str()));
@@ -380,7 +612,9 @@ where
                 }
                 Err(error) => return Err(error),
             }
-            if reads.len().is_multiple_of(10) {
+            // A rendered page keeps what it showed until collected; the hook's pages
+            // render nothing.
+            if !self.method.hook && reads.len().is_multiple_of(10) {
                 page.collect_garbage().await?;
             }
         }

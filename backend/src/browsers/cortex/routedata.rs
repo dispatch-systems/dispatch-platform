@@ -39,7 +39,7 @@ const MOVE_FAILED: &[crate::Code] = &[
 const MOVE_DEADLINE: Duration = Duration::from_secs(20);
 /// Moves the loaded application to `url` as its own links do: the address changes and
 /// the application is told, so it fetches, and signs, what the new address shows.
-const MOVE: &str = r#"(url)=>{const next=new URL(url);if(next.origin!==location.origin)return false;
+pub(super) const MOVE: &str = r#"(url)=>{const next=new URL(url);if(next.origin!==location.origin)return false;
   history.pushState(history.state,'',next.pathname+next.search);
   dispatchEvent(new PopStateEvent('popstate',{state:history.state}));return true;}"#;
 
