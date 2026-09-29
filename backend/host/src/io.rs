@@ -188,3 +188,22 @@ impl Drop for ExclusiveLock {
         let _ = fs2::FileExt::unlock(&self.0);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ExclusiveLock;
+
+    #[test]
+    fn a_lock_is_released_even_while_a_child_retains_its_descriptor() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("production-update.lock");
+        let lock = ExclusiveLock::try_acquire(&path).unwrap().unwrap();
+        // dup shares the same open file description as a descriptor inherited between fork
+        // and exec, without forking from a multithreaded test process.
+        let inherited = lock.0.try_clone().unwrap();
+        assert!(ExclusiveLock::try_acquire(&path).unwrap().is_none());
+        drop(lock);
+        assert!(ExclusiveLock::try_acquire(&path).unwrap().is_some());
+        drop(inherited);
+    }
+}
