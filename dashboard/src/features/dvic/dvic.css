@@ -162,10 +162,7 @@
   border-radius: 50%;
   background: var(--series-1);
 }
-.dvic-fleet[data-fleet='CDV'] i {
-  background: var(--series-3);
-}
-.dvic-fleet[data-fleet='SV'] i {
+.dvic-fleet[data-vehicles='dot'] i {
   background: var(--series-2);
 }
 .dvic-items {

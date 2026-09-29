@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   driversByCount,
   filterInspections,
-  groupByFleet,
+  groupByVehicleClass,
   inspectionBand,
   inspectionClock,
   inspectionDuration,
@@ -151,10 +151,20 @@ test('repeat drivers and driver grouping follow identity, not the displayed name
       ['driver-2', 'Jordan Lee', 1],
     ],
   );
+  const step = { ...row('s', 'SV'), minimumSeconds: 300 as const, shortBySeconds: 226 };
   assert.deepEqual(
-    groupByFleet([row('s', 'SV'), row('v'), row('c', 'CDV'), row('o', 'OTHER')]).map(
-      (group) => group.fleet,
-    ),
-    ['CV', 'CDV', 'SV', 'OTHER'],
+    groupByVehicleClass([step, row('v'), row('c', 'CDV')]).map((group) => [
+      group.vehicles,
+      group.minimum,
+      group.rows.map((item) => item.id),
+    ]),
+    [
+      ['non-dot', 90, ['c', 'v']],
+      ['dot', 300, ['s']],
+    ],
+  );
+  assert.deepEqual(
+    groupByVehicleClass([row('v')]).map((group) => group.vehicles),
+    ['non-dot'],
   );
 });
