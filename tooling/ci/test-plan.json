@@ -37,5 +37,23 @@
       "tests/providers/multi-dsp-browser.test.ts",
       "tests/providers/collection-throughput.test.ts"
     ]
-  }
+  },
+  "watch": [
+    {
+      "sources": [
+        "backend/src/features.rs",
+        "backend/src/roles.rs",
+        "dashboard/src/app/features.ts",
+        "dashboard/src/app/permissions.ts",
+        "shared/contracts/accounts.ts",
+        "shared/contracts/features.ts"
+      ],
+      "tests": [
+        "tests/api/features.test.ts",
+        "tests/api/roles.test.ts",
+        "tests/browser/dsp-features.spec.ts",
+        "tests/dashboard/features.test.ts"
+      ]
+    }
+  ]
 }

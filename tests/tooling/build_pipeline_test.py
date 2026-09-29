@@ -1,6 +1,7 @@
 """Rust owns cache/preflight policy; test compatibility entry points here."""
 import importlib.util
 from pathlib import Path
+import re
 import sys
 import unittest
 from unittest.mock import patch
@@ -58,6 +59,21 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(set(collectors.SHARDS["capacity"]), {
             "tests/providers/multi-dsp-browser.test.ts", "tests/providers/collection-throughput.test.ts",
         })
+
+    def test_ship_knows_every_job_the_gate_lets_fail(self):
+        # pr:ship stops at a queue run's first failed job unless the gate lets that job fail.
+        workflow = (ROOT / ".github/workflows/checks.yml").read_text().split("\njobs:\n", 1)[1]
+        job, advisory = None, set()
+        for line in workflow.splitlines():
+            if re.fullmatch(r"  [a-z-]+:", line):
+                job = line.strip()[:-1]
+            elif line == "    continue-on-error: true":
+                advisory.add(job)
+        listed = re.search(r"const ADVISORY: &\[&str\] = &\[([^\]]*)\];",
+                           (ROOT / "backend/ci/src/ship.rs").read_text())
+        self.assertIsNotNone(listed)
+        self.assertEqual(set(re.findall(r'"([a-z-]+)"', listed.group(1))), advisory)
+        self.assertTrue(advisory)
 
 
 if __name__ == "__main__":

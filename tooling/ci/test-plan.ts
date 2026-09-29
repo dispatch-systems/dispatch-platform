@@ -6,6 +6,7 @@ const plan = JSON.parse(fs.readFileSync(new URL('./test-plan.json', import.meta.
   dashboard: string[];
   rules: string[];
   native: Record<string, string[]>;
+  watch: { sources: string[]; tests: string[] }[];
 };
 
 /** Dashboard logic: the checks job runs these against the packaged build. */
@@ -17,6 +18,11 @@ export const dashboardTests = plan.dashboard;
 export const ruleTests = [...plan.dashboard, ...plan.rules];
 /** Native collector shards, run with a real browser by `npm run test:browseros`. */
 export const nativeShards = plan.native;
+/**
+ * Sources whose changes break tests elsewhere, which `npm run pr:prepare` names with the
+ * tests the diff changes. Each group comes from queue runs such changes failed.
+ */
+export const watchedTests = plan.watch;
 /** Every other test file: the api job runs these, so nothing runs twice in a full run. */
 export function allTests(directory = 'tests') {
   return fs
