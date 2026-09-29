@@ -140,6 +140,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         if: steps.tools.outputs.fixture-hit != 'true'
         with:
+          prefix-key: ${{ env.DISPATCH_RUST_CACHE }}
           shared-key: dispatch-debug
           cache-bin: 'false'
           save-if: 'false'
@@ -293,6 +294,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         if: steps.restore.outputs.tools-hit != 'true'
         with:
+          prefix-key: ${{ env.DISPATCH_RUST_CACHE }}
           shared-key: dispatch-release
           cache-bin: 'false'
           save-if: 'false'
@@ -312,6 +314,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         if: steps.restore.outputs.fixture-hit != 'true'
         with:
+          prefix-key: ${{ env.DISPATCH_RUST_CACHE }}
           shared-key: dispatch-debug
           cache-bin: 'false'
           save-if: 'false'
