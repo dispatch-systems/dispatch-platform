@@ -156,6 +156,13 @@ test('Cloudflare outbox sends HTML, retries failure and clears encrypted mail af
   // A terminal failure stays visible after restarting the core.
   rejectMail = true;
   await owner.post('/api/platform/dsps', { ownerEmail: 'failed@dispatch.test' });
+  // Queued mail goes out at once: exhaust its attempts only after the first one is recorded,
+  // so the edit cannot race a delivery in flight.
+  const pending = () =>
+    f.database('data/platform/accounts.sqlite', (db) =>
+      db.prepare("SELECT attempts FROM outbox WHERE status='pending'").get(),
+    ) as { attempts: number } | undefined;
+  await until(async () => pending()?.attempts === 1);
   f.database('data/platform/accounts.sqlite', (db) =>
     db.prepare("UPDATE outbox SET attempts=4,available_at=0 WHERE status='pending'").run(),
   );

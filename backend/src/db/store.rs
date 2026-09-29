@@ -30,6 +30,8 @@ pub struct Store {
     pub jobs: Db,
     pub key: Vec<u8>,
     dsp_cache: std::cell::RefCell<Vec<(String, Db)>>,
+    // Set when this work queued mail; the state wakes the mailer once the work is done.
+    mail_queued: std::cell::Cell<bool>,
 }
 impl Store {
     pub fn initialize(config: Config) -> Result<Self> {
@@ -54,6 +56,7 @@ impl Store {
             config,
             key,
             dsp_cache: std::cell::RefCell::new(Vec::new()),
+            mail_queued: std::cell::Cell::new(false),
         };
         crate::roles::backfill(&store.platform)?;
         for row in store.platform.all(
@@ -74,7 +77,16 @@ impl Store {
             config,
             key,
             dsp_cache: std::cell::RefCell::new(Vec::new()),
+            mail_queued: std::cell::Cell::new(false),
         })
+    }
+    /// Records that this work queued mail for delivery.
+    pub fn mail_queued(&self) {
+        self.mail_queued.set(true);
+    }
+    /// Whether the work since the last call queued mail.
+    pub fn take_mail_queued(&self) -> bool {
+        self.mail_queued.replace(false)
     }
     pub fn area(&self, dsp: &str, area: &str) -> Result<PathBuf> {
         ensure(identifier(dsp, "dsp_"), "invalid_dsp_id", 400)?;

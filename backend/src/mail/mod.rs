@@ -193,7 +193,9 @@ pub fn retry(db: &Store, actor: &str, id: &str) -> Result<()> {
              WHERE id=?",
             params![db::now(), id],
         )
-    })
+    })?;
+    db.mail_queued();
+    Ok(())
 }
 
 /// Drops a message that ran out of attempts, along with its encrypted content.

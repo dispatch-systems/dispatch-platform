@@ -50,6 +50,8 @@ pub struct State {
     pub schedule_revision: std::sync::atomic::AtomicU64,
     pub password_slots: Arc<Semaphore>,
     pub mail_transport: Mutex<mail::TransportHealth>,
+    // Wakes the mailer when a request queues mail, instead of it waiting for its next tick.
+    pub mail_wake: tokio::sync::Notify,
     pub browsers: browsers::Manager,
     pub updates: live_updates::Updates,
     pub uniform_updates: live_updates::Updates,
@@ -80,6 +82,7 @@ impl State {
             schedule_revision: std::sync::atomic::AtomicU64::new(0),
             password_slots: Arc::new(Semaphore::new(2)),
             mail_transport: Mutex::new(mail::TransportHealth::default()),
+            mail_wake: tokio::sync::Notify::new(),
             browsers: browsers::Manager::default(),
             updates: live_updates::Updates::new()?,
             uniform_updates: live_updates::Updates::new()?,
@@ -157,6 +160,10 @@ impl State {
                 f(&db)
             };
             let work_ms = work_started.elapsed().as_secs_f64() * 1000.0;
+            // Any transaction in the work has committed, so the mailer finds what it queued.
+            if db.take_mail_queued() {
+                state.mail_wake.notify_one();
+            }
             if queued_ms + lock_ms + work_ms >= 25.0 {
                 observability::event(
                     "info",
