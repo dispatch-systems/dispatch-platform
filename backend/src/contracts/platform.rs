@@ -90,20 +90,3 @@ pub struct PlatformHealth {
     pub mail: MailHealth,
     pub provider_mode: ProviderMode,
 }
-#[derive(serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[serde(rename_all = "camelCase")]
-pub struct PlaygroundAccess {
-    pub origin: Option<String>,
-    pub ticket: Option<String>,
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub expires_at: Option<i64>,
-}
-#[derive(serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[serde(rename_all = "camelCase")]
-pub struct PlaygroundStatus {
-    pub configured: bool,
-    pub running: bool,
-    pub can_start: bool,
-}

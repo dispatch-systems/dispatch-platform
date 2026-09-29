@@ -238,11 +238,6 @@ const collectionUpdatesSchema = z.object({
 }) satisfies z.ZodType<CollectionUpdates>;
 const okSchema = z.object({ ok: z.literal(true) });
 const jobsSchema = z.array(jobSchema);
-const playgroundStatusSchema = z.object({
-  configured: z.boolean(),
-  running: z.boolean(),
-  canStart: z.boolean(),
-});
 export function parseApiResponse(path: string, method: 'GET' | 'POST', value: unknown): unknown {
   const route = path.split('?')[0];
   let schema: z.ZodType | undefined;
@@ -259,13 +254,6 @@ export function parseApiResponse(path: string, method: 'GET' | 'POST', value: un
     else if (route === '/api/dsp/paycom/settings') schema = paycomSettingsSchema;
     else if (route === '/api/platform/audit') schema = auditPageSchema;
     else if (route === '/api/platform/health') schema = platformHealthSchema;
-    else if (route === '/api/platform/design-playground/status') schema = playgroundStatusSchema;
-    else if (route === '/api/platform/design-playground')
-      schema = z.object({
-        origin: z.string().url().nullable(),
-        ticket: z.string().min(1).nullable(),
-        expiresAt: milliseconds.nullable(),
-      });
     else if (route === '/api/dsp/employees') schema = employeesSchema;
     else if (route && /^\/api\/dsp\/employees\/[^/]+$/.test(route)) schema = employeeTimecardSchema;
     else if (route === '/api/dsp/timecards') schema = dailyTimecardsSchema;
@@ -303,7 +291,6 @@ export function parseApiResponse(path: string, method: 'GET' | 'POST', value: un
       schema = uniformInventorySchema;
     else if (route === '/api/dsp/paycom/settings') schema = paycomSettingsSchema;
     else if (route === '/api/platform/audit/export') schema = auditPageSchema;
-    else if (route === '/api/platform/design-playground/start') schema = playgroundStatusSchema;
     else if (route === '/api/dsp/jobs' || route === '/api/dsp/cortex/meal-breaks/collect')
       schema = jobSchema;
     else if (route === '/api/dsp/jobs/meal-breaks')

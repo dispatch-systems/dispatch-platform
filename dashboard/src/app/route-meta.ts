@@ -63,11 +63,6 @@ export const routeMeta = [
     label: 'Audit log',
   },
   {
-    id: 'design-playground',
-    scope: 'platform',
-    label: 'Design Playground',
-  },
-  {
     id: 'account',
     scope: 'platform',
     label: 'Settings',
