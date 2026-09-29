@@ -1,5 +1,5 @@
-//! Scorecard storage: publication, supersession, weeks not posted and what a
-//! schedule queues.
+//! Scorecard storage: publication, supersession, weeks not posted, where the next
+//! job reads and what a schedule queues.
 mod common;
 use dispatch_backend::{
     collectors::Provider,
@@ -117,7 +117,7 @@ fn a_posted_week_is_published_into_one_table_per_dataset_with_its_keys() {
         ),
         job
     );
-    // Where each dataset came from is kept beside its rows.
+    // The address each dataset was read at is kept beside its rows.
     assert_eq!(
         storage
             .count(
@@ -127,65 +127,26 @@ fn a_posted_week_is_published_into_one_table_per_dataset_with_its_keys() {
             .unwrap() as usize,
         scorecard::DATASETS.len()
     );
-    assert!(published.datasets.iter().all(|d| d.source == "api"));
 }
 
 #[test]
-fn a_dataset_read_from_the_pages_spreadsheet_is_marked_as_such() {
+fn the_next_job_reads_at_the_address_the_last_publication_read() {
     let (_root, db, id) = ready();
-    let mut capture = scorecard::fixture(&request("2026-W35")).unwrap();
-    let returns = capture
-        .datasets
-        .iter_mut()
-        .find(|d| d.id == "da_dsp_weekly_rts_deep_dive")
-        .unwrap();
-    returns.source = scorecard::Source::Csv;
-    returns.source_url =
-        "https://logistics.amazon.com/performance?pageId=dsp_return_to_station".into();
-    returns.rows = scorecard::csv::rows(
-        "Delivery Associate ,Impacts Scorecard,Tracking ID\nJo,Y,TBA9\n",
-        &[
-            "${da_name}".into(),
-            "${impacting_dcr}".into(),
-            "${tracking_id}".into(),
-        ],
-    )
-    .unwrap();
-    publish(&db, &id, "csv", "2026-W35", &capture);
-    let storage = db.scorecard(&id).unwrap();
-    assert_eq!(
-        storage
-            .all(
-                "SELECT source,row_count FROM scorecard_sources WHERE dataset='da_dsp_weekly_rts_deep_dive'",
-                []
-            )
-            .unwrap(),
-        vec![json!({"source":"csv","row_count":1})]
-    );
-    assert_eq!(
-        storage
-            .all("SELECT tracking_id,impact FROM returns_to_station", [])
-            .unwrap(),
-        vec![json!({"tracking_id":"TBA9","impact":1})]
-    );
-    let weeks = db.scorecard_weeks(&id).unwrap();
-    let datasets = &weeks.weeks[0].publication.as_ref().unwrap().datasets;
-    assert_eq!(
-        datasets
-            .iter()
-            .find(|d| d.table == "returns_to_station")
-            .unwrap()
-            .source,
-        "csv"
-    );
-    assert_eq!(
-        datasets
-            .iter()
-            .find(|d| d.table == "customer_feedback")
-            .unwrap()
-            .source,
-        "api"
-    );
+    assert_eq!(db.scorecard_address(&id, "TST1").unwrap(), None);
+    let mut older = scorecard::fixture(&request("2026-W30")).unwrap();
+    for dataset in &mut older.datasets {
+        dataset.source_url = dataset.source_url.replace("/v1/", "/v0/");
+    }
+    publish(&db, &id, "older", "2026-W30", &older);
+    let mut newer = scorecard::fixture(&request("2026-W31")).unwrap();
+    newer.started_at += 1000;
+    newer.finished_at += 1000;
+    publish(&db, &id, "newer", "2026-W31", &newer);
+    let (url, company) = db.scorecard_address(&id, "TST1").unwrap().unwrap();
+    assert!(url.contains("/performance/api/v1/getData?"), "{url}");
+    assert_eq!(company, "company-fixture");
+    // Another station has no address yet.
+    assert_eq!(db.scorecard_address(&id, "TST2").unwrap(), None);
 }
 
 #[test]
@@ -264,66 +225,47 @@ fn a_week_not_posted_yet_is_noted_without_a_publication() {
 }
 
 #[test]
-fn a_schedule_queues_the_newest_week_then_backfills_and_refreshes_within_the_limit() {
+fn a_schedule_queues_the_latest_week_until_it_is_published() {
     let (_root, db, id) = ready();
-    let jobs = db.scorecard_jobs(&id).unwrap();
-    assert_eq!(jobs.len(), scorecard::MAX_JOBS_PER_RUN);
     let latest = db.scorecard_weeks(&id).unwrap().latest_week;
+    let jobs = db.scorecard_jobs(&id).unwrap();
+    assert_eq!(jobs.len(), 1);
     assert_eq!(jobs[0].0, format!("scorecard:{latest}"));
-    assert_eq!(jobs[0].1["station"], "TST1");
-    let expected = scorecard::weeks_before(&latest, scorecard::MAX_JOBS_PER_RUN - 1).unwrap();
-    let keys: Vec<String> = jobs.iter().map(|(key, _)| key.clone()).collect();
-    let expected_keys: Vec<String> = expected
-        .iter()
-        .map(|week| format!("scorecard:{week}"))
-        .collect();
-    assert_eq!(keys, expected_keys);
-    // Once the newest week is published and the next is checked, the run moves on
-    // to the weeks it has never seen.
-    publish(
-        &db,
-        &id,
-        "latest",
-        &latest,
-        &scorecard::fixture(&request(&latest)).unwrap(),
+    assert_eq!(
+        jobs[0].1,
+        json!({"collection":"scorecard","week":latest,"station":"TST1"})
     );
-    let mut empty = scorecard::fixture(&request(&expected[1])).unwrap();
+    // Not posted yet: asked again once the recheck interval has passed.
+    let mut empty = scorecard::fixture(&request(&latest)).unwrap();
     for dataset in &mut empty.datasets {
         dataset.rows.clear();
     }
     empty.posted = false;
-    publish(&db, &id, "next", &expected[1], &empty);
-    let jobs = db.scorecard_jobs(&id).unwrap();
-    let keys: Vec<String> = jobs.iter().map(|(key, _)| key.clone()).collect();
-    assert!(!keys.contains(&format!("scorecard:{latest}")), "{keys:?}");
-    assert!(
-        !keys.contains(&format!("scorecard:{}", expected[1])),
-        "{keys:?}"
-    );
-    assert_eq!(keys[0], format!("scorecard:{}", expected[2]));
-    // A publication older than the refresh interval is collected again; an older
-    // unposted check is asked again after its interval.
+    publish(&db, &id, "empty", &latest, &empty);
+    assert!(db.scorecard_jobs(&id).unwrap().is_empty());
     let storage = db.scorecard(&id).unwrap();
     storage
         .exec(
-            "UPDATE scorecard_publications SET collected_at='2020-01-01T00:00:00.000Z' WHERE week=?",
+            "UPDATE scorecard_weeks SET checked_at='2020-01-01T00:00:00.000Z' WHERE week=?",
             [&latest],
         )
         .unwrap();
-    storage
-        .exec(
-            "UPDATE scorecard_weeks SET checked_at='2020-01-01T00:00:00.000Z' WHERE week=?",
-            [&expected[1]],
-        )
-        .unwrap();
-    let keys: Vec<String> = db
-        .scorecard_jobs(&id)
-        .unwrap()
-        .into_iter()
-        .map(|(key, _)| key)
-        .collect();
-    assert_eq!(keys[0], format!("scorecard:{latest}"));
-    assert_eq!(keys[1], format!("scorecard:{}", expected[1]));
+    assert_eq!(db.scorecard_jobs(&id).unwrap().len(), 1);
+    // Published: nothing more to ask for, and never an older week.
+    publish(
+        &db,
+        &id,
+        "posted",
+        &latest,
+        &scorecard::fixture(&request(&latest)).unwrap(),
+    );
+    assert!(db.scorecard_jobs(&id).unwrap().is_empty());
+    assert_eq!(
+        storage
+            .all("SELECT DISTINCT week FROM scorecard_weeks", [])
+            .unwrap(),
+        vec![json!({"week":latest})]
+    );
     // Without a station there is nothing to ask for.
     db.set_profile(&id, json!({"stationCode":""})).unwrap();
     assert_eq!(

@@ -1,7 +1,8 @@
-//! A week's scorecard. The overview page's own first data request names the API
-//! and the parameters that identify this DSP; the datasets are then read over
-//! plain HTTP with the browser's session, a few at once.
-use super::scorecard_csv;
+//! A week's scorecard from Cortex's performance API, over plain HTTP with the
+//! browser's session. The API's address, and how it names this DSP, come from the
+//! station's last publication; when there is none, or nothing answers there, the
+//! overview page's own first data request names them. Every dataset is read at once,
+//! and the browser closes as soon as the API has answered one.
 use super::*;
 use crate::{
     browsers::http::{Http, Refusal},
@@ -9,16 +10,16 @@ use crate::{
     job_metrics::Recorder,
     scorecard::{
         Capture, Collection, DATASETS, Dataset, DatasetCapture, MAX_ROWS, POSTED_SIGNAL, Request,
-        Source, token,
+        token,
     },
 };
-use std::sync::atomic::{AtomicUsize, Ordering};
-use tokio::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-/// As much as one dataset may send. The largest week seen was 2 MB.
+/// As much as one reply may hold once decompressed. The largest week seen was 2 MB.
 const LIMIT: usize = 16 * 1024 * 1024;
-/// Datasets read at once.
-const LANES: usize = 4;
+/// Reads at once: as many as the overview page itself sends when it opens. Cortex
+/// takes over a second to answer even the smallest, so they wait on it together.
+const LANES: usize = DATASETS.len();
 const OVERVIEW: &str = "/performance?pageId=dsp_dashboard_overview";
 
 /// Where the page sends its data requests, and how it names this DSP there.
@@ -47,17 +48,14 @@ impl Api {
         format!("{}/getData?{}", self.base, query.finish())
     }
 }
-/// The error a refusal is, and whether the dataset's page could still answer: not
-/// when the provider is down or the session has ended, which the page shares.
-fn refused(refusal: Refusal, metrics: &Recorder) -> (Error, bool) {
+/// The error a refusal is. The page shares the session and the provider, so nothing
+/// else can read a dataset the API refused; the job's next attempt asks again.
+fn refused(refusal: Refusal, metrics: &Recorder) -> Error {
     match refusal {
-        Refusal::Unavailable => (Error::new("provider_unavailable", 502), false),
+        Refusal::Unavailable => Error::new("provider_unavailable", 502),
         Refusal::Unreadable(label) => {
             metrics.detail(label);
-            (
-                Error::new("scorecard_api_unreadable", 502),
-                label != "http_signed_out",
-            )
+            Error::new("scorecard_api_unreadable", 502)
         }
     }
 }
@@ -111,6 +109,20 @@ fn data_request(url: &str, origin: &str) -> Result<(String, String, String)> {
         query.get("station").cloned().unwrap_or_default(),
     ))
 }
+/// Reading every dataset failed: the first error, and whether the API had answered
+/// any read at that address.
+struct Failed {
+    error: Error,
+    answered: bool,
+}
+impl From<Error> for Failed {
+    fn from(error: Error) -> Self {
+        Self {
+            error,
+            answered: false,
+        }
+    }
+}
 
 impl Driver {
     /// Fetch.disable already resumes outstanding requests. Drain their queued
@@ -161,12 +173,15 @@ impl Driver {
                     continue;
                 }
                 // Every paused request goes on, watched or not: the page must keep loading.
-                self.page
+                // One the page dropped when it was asked for the station is gone, and
+                // resuming it fails with nothing lost.
+                let _ = self
+                    .page
                     .command(
                         "Fetch.continueRequest",
                         json!({"requestId":event["requestId"]}),
                     )
-                    .await?;
+                    .await;
                 let url = s(&event["request"], "url");
                 if event["request"]["method"] != "GET" || !url.contains("/getData") {
                     continue;
@@ -213,25 +228,40 @@ impl Driver {
             company_id,
         })
     }
-    pub(super) async fn collect_scorecard(
-        &mut self,
+    /// The API where the station's last publication read it, if that still names this
+    /// origin and station.
+    async fn saved_api(&self, station: &str, run: &Run<'_>) -> Result<Option<Api>> {
+        let (job, at) = (run.job.to_owned(), station.to_owned());
+        let saved = run
+            .state
+            .read(move |db| {
+                let dsp = db.job_row(&job, None)?.dsp_id;
+                db.scorecard_address(&dsp, &at)
+            })
+            .await?;
+        Ok(saved.and_then(|(url, company_id)| {
+            let (base, dsp, named) = data_request(&url, &self.origin).ok()?;
+            (named == station && token(&company_id, 128)).then_some(Api {
+                base,
+                dsp,
+                company_id,
+            })
+        }))
+    }
+    /// Every dataset at once, answering each one's address and rows in `DATASETS`
+    /// order. The first answer shows the session and the address work, and the
+    /// browser closes then: nothing after it needs a page.
+    async fn read_all(
+        &self,
+        api: &Api,
         request: &Request,
         run: &Run<'_>,
-    ) -> Result<Capture> {
-        request.validate()?;
-        let started_at = now();
-        run.progress(10, "Finding the scorecard".into()).await?;
-        let api = self.performance_api(&request.station, run.metrics).await?;
-        run.progress(20, "Reading scorecard datasets".into())
-            .await?;
+    ) -> std::result::Result<Vec<(String, Vec<Value>)>, Failed> {
         let http = Http::signed_in(&self.browser, &self.origin).await?;
         let referer = format!("{}/performance", self.origin);
         let next = AtomicUsize::new(0);
         let done = AtomicUsize::new(0);
-        // The page's spreadsheet stands in for a dataset the API would not give; the
-        // one tab reads them one at a time.
-        let tab = Mutex::new(());
-        let this = &*self;
+        let answered = AtomicBool::new(false);
         let lanes = futures_util::future::join_all((0..LANES).map(|_| async {
             let mut read = Vec::new();
             loop {
@@ -240,57 +270,88 @@ impl Driver {
                     break;
                 };
                 let (from, to) = request.interval(dataset)?;
-                let source_url = api.address(dataset, &request.station, &from, &to);
-                // What the API gave, or the error and whether the page could stand in.
-                let direct = match http.json(&source_url, &referer, LIMIT).await {
-                    Ok(value) => rows(dataset.id, &value)
-                        .map(|rows| DatasetCapture {
-                            id: dataset.id.into(),
-                            from: from.clone(),
-                            to: to.clone(),
-                            source_url,
-                            source: Source::Api,
-                            rows,
-                        })
-                        .map_err(|error| (error, true)),
-                    Err(refusal) => Err(refused(refusal, run.metrics)),
-                };
-                let captured = match (direct, dataset.page) {
-                    (Ok(captured), _) => captured,
-                    (Err((error, true)), Some((page_id, tab_id))) => {
-                        run.metrics.detail(&error.code);
-                        let _held = tab.lock().await;
-                        this.download_dataset(
-                            request,
-                            &api.company_id,
-                            dataset,
-                            &scorecard_csv::Page { page_id, tab_id },
-                            run,
-                        )
-                        .await?
-                    }
-                    (Err((error, _)), _) => return Err(error),
-                };
+                let url = api.address(dataset, &request.station, &from, &to);
+                let value = http
+                    .json(&url, &referer, LIMIT)
+                    .await
+                    .map_err(|refusal| refused(refusal, run.metrics))?;
+                let rows = rows(dataset.id, &value)?;
+                if !answered.swap(true, Ordering::SeqCst) {
+                    self.browser.close().await;
+                }
                 let finished = done.fetch_add(1, Ordering::SeqCst) + 1;
                 run.progress(
                     20 + (70 * finished / DATASETS.len()) as i64,
                     format!("Reading scorecard datasets ({finished}/{})", DATASETS.len()),
                 )
                 .await?;
-                read.push((index, captured));
+                read.push((index, url, rows));
             }
             Ok::<_, Error>(read)
         }))
         .await;
-        let mut datasets: Vec<Option<DatasetCapture>> = DATASETS.iter().map(|_| None).collect();
+        let mut replies: Vec<Option<(String, Vec<Value>)>> =
+            DATASETS.iter().map(|_| None).collect();
         for lane in lanes {
-            for (index, captured) in lane? {
-                datasets[index] = Some(captured);
+            let lane = lane.map_err(|error| Failed {
+                error,
+                answered: answered.load(Ordering::SeqCst),
+            })?;
+            for (index, url, rows) in lane {
+                replies[index] = Some((url, rows));
             }
         }
-        let datasets = datasets
+        Ok(replies
             .into_iter()
-            .map(|d| d.ok_or_else(|| Error::new("scorecard_capture_invalid", 502)))
+            .map(|reply| reply.ok_or_else(|| Error::new("scorecard_capture_invalid", 502)))
+            .collect::<Result<Vec<_>>>()?)
+    }
+    pub(super) async fn collect_scorecard(
+        &mut self,
+        request: &Request,
+        run: &Run<'_>,
+    ) -> Result<Capture> {
+        request.validate()?;
+        let started_at = now();
+        run.progress(10, "Finding the scorecard".into()).await?;
+        let (mut api, mut saved) = match self.saved_api(&request.station, run).await? {
+            Some(api) => (api, true),
+            None => (
+                self.performance_api(&request.station, run.metrics).await?,
+                false,
+            ),
+        };
+        run.progress(20, "Reading scorecard datasets".into())
+            .await?;
+        let replies = loop {
+            match self.read_all(&api, request, run).await {
+                Ok(replies) => break replies,
+                // Nothing answered where the last publication read: Cortex moved its
+                // API, and the page names it again.
+                Err(failed)
+                    if saved
+                        && !failed.answered
+                        && failed.error.is(crate::Code::ScorecardApiUnreadable) =>
+                {
+                    api = self.performance_api(&request.station, run.metrics).await?;
+                    saved = false;
+                }
+                Err(failed) => return Err(failed.error),
+            }
+        };
+        let datasets = DATASETS
+            .iter()
+            .zip(replies)
+            .map(|(dataset, (source_url, rows))| {
+                let (from, to) = request.interval(dataset)?;
+                Ok(DatasetCapture {
+                    id: dataset.id.into(),
+                    from,
+                    to,
+                    source_url,
+                    rows,
+                })
+            })
             .collect::<Result<Vec<_>>>()?;
         let posted = datasets
             .iter()

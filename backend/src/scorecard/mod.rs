@@ -2,7 +2,6 @@
 //! page, one week at a time, published into the DSP's scorecard database. Every row
 //! Amazon sends is kept as JSON beside the keys reads filter on. Browser and HTTP
 //! data is untrusted input.
-pub mod csv;
 use crate::{
     Error, Result,
     collectors::{AddedStorage, Provider},
@@ -26,17 +25,8 @@ pub static STORAGE: AddedStorage = AddedStorage {
     source: "scorecard-v1",
     verify,
 };
-/// How far back a schedule collects weeks it has never seen.
-pub const BACKFILL_WEEKS: usize = 26;
-/// How many recent weeks a schedule collects again, so dispute outcomes arrive.
-pub const REFRESH_WEEKS: usize = 4;
-pub const REFRESH_AFTER_MS: i64 = 7 * 24 * 60 * 60 * 1000;
-/// A week found not posted yet is asked for again this much later: daily for the
-/// newest week, weekly for older ones Amazon may never post.
-pub const RECHECK_NEWEST_AFTER_MS: i64 = 20 * 60 * 60 * 1000;
-pub const RECHECK_OLDER_AFTER_MS: i64 = REFRESH_AFTER_MS;
-/// Jobs one scheduled run queues at most; the queue admits five active per DSP.
-pub const MAX_JOBS_PER_RUN: usize = 4;
+/// The latest week, found not posted yet, is asked for again this much later.
+pub const RECHECK_AFTER_MS: i64 = 20 * 60 * 60 * 1000;
 /// Rows one dataset may hold, well above any week seen.
 pub const MAX_ROWS: usize = 50_000;
 
@@ -62,12 +52,9 @@ pub struct Dataset {
     pub program: Option<&'static str>,
     /// The row field that says whether the row counts against the scorecard.
     pub impact: Option<&'static str>,
-    /// The scorecard page whose spreadsheet is this dataset, as `pageId` and `tabId`,
-    /// for the datasets that have one.
-    pub page: Option<(&'static str, &'static str)>,
 }
-/// Every dataset a week's collection reads. The first six back the scorecard
-/// pages' spreadsheets; the rest are the DSP's own weekly numbers.
+/// Every dataset a week's collection reads. The first six are the scorecard pages'
+/// tables; the rest are the DSP's own weekly numbers.
 pub const DATASETS: &[Dataset] = &[
     Dataset {
         id: "da_dsp_station_weekly_performance",
@@ -75,7 +62,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: Some("AMZL"),
         impact: None,
-        page: Some(("dsp_dashboard_overview", "overview-dsp-weekly-tab")),
     },
     Dataset {
         id: "da_dsp_weekly_rts_deep_dive",
@@ -83,7 +69,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: Some("impacting_dcr"),
-        page: Some(("dsp_return_to_station", "dsp-return-to-station-weekly-tab")),
     },
     Dataset {
         id: "da_dsp_station_daily_dsb_dnr_tba",
@@ -91,10 +76,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Daily,
         program: None,
         impact: Some("dsb_flag"),
-        page: Some((
-            "dsp_delivery_concessions",
-            "delivery-concessions-weekly-tab",
-        )),
     },
     Dataset {
         id: "da_dsp_weekly_cdf_deep_dive",
@@ -102,10 +83,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: Some("cdf_impact_flag"),
-        page: Some((
-            "dsp_customer_delivery_feedback_negative",
-            "customer-delivery-feedback-weekly-tab",
-        )),
     },
     Dataset {
         id: "da_dsp_daily_psb_stop",
@@ -113,7 +90,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Daily,
         program: None,
         impact: None,
-        page: Some(("dsp_pickup_failures", "dsp-psb-deep-dive-weekly-tab")),
     },
     Dataset {
         id: "da_dsp_station_daily_safety_oss_events_intraday",
@@ -121,7 +97,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Daily,
         program: None,
         impact: Some("oss_impact_flag"),
-        page: Some(("dsp_safety", "safety-dsp-weekly-tab")),
     },
     Dataset {
         id: "da_dsp_station_weekly_safety_oss_v2",
@@ -129,7 +104,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
-        page: None,
     },
     Dataset {
         id: "dsp_station_weekly_quality",
@@ -137,7 +111,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
-        page: None,
     },
     Dataset {
         id: "dsp_station_weekly_team",
@@ -145,7 +118,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
-        page: None,
     },
     Dataset {
         id: "dsp_station_weekly_compliance",
@@ -153,7 +125,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
-        page: None,
     },
     Dataset {
         id: "dsp_station_weekly_safety_oss_v2",
@@ -161,7 +132,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
-        page: None,
     },
     Dataset {
         id: "dsp_station_weekly_working_device",
@@ -169,7 +139,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
-        page: None,
     },
     Dataset {
         id: "dsp_weekly_cdf",
@@ -177,7 +146,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
-        page: None,
     },
     Dataset {
         id: "dsp_weekly_psb",
@@ -185,7 +153,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
-        page: None,
     },
 ];
 /// The DSP's own scorecard row: a week without one is not posted yet.
@@ -317,24 +284,6 @@ impl Request {
     }
 }
 
-/// Where a dataset's rows came from.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum Source {
-    #[default]
-    Api,
-    /// The page's spreadsheet, read when the API could not be: the rows the page
-    /// showed, with its default filter, as text.
-    Csv,
-}
-impl Source {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Api => "api",
-            Self::Csv => "csv",
-        }
-    }
-}
 /// One dataset's rows for the week, as objects, with the address they came from.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -343,8 +292,6 @@ pub struct DatasetCapture {
     pub from: String,
     pub to: String,
     pub source_url: String,
-    #[serde(default)]
-    pub source: Source,
     pub rows: Vec<Value>,
 }
 /// A week's scorecard as collected, before publication.
@@ -498,7 +445,6 @@ pub fn fixture(request: &Request) -> Result<Capture> {
             ),
             from,
             to,
-            source: Source::Api,
             rows,
         });
     }
@@ -599,56 +545,45 @@ impl Store {
     pub(crate) fn scorecard_schedule_ready(&self, id: &str) -> Result<()> {
         self.scorecard_station(id).map(|_| ())
     }
-    /// The weeks a scheduled run collects: the newest completed week until it is
-    /// posted, weeks never seen back to the backfill limit, and recent weeks
-    /// collected long enough ago that disputes may have been decided.
+    /// What a scheduled run collects: the latest completed week, until it is
+    /// published. A week not posted yet is asked for again after `RECHECK_AFTER_MS`.
     pub fn scorecard_jobs(&self, id: &str) -> Result<Vec<(String, Value)>> {
-        let today = self.scorecard_today(id)?;
+        let week = last_completed_week(self.scorecard_today(id)?);
         let station = self.scorecard_station(id)?;
         let db = self.scorecard(id)?;
-        let mut jobs = Vec::new();
-        for (index, week) in weeks_before(&last_completed_week(today), BACKFILL_WEEKS)?
-            .iter()
-            .enumerate()
-        {
-            let state = db.one(
-                "SELECT checked_at,posted FROM scorecard_weeks WHERE week=? AND station=?",
-                [week, &station],
-            )?;
-            let publication = db.one(
-                "SELECT collected_at FROM scorecard_publications WHERE week=? AND station=? AND active=1",
-                [week, &station],
-            )?;
-            let age = |value: &Value, key: &str| {
-                chrono::DateTime::parse_from_rfc3339(s(value, key))
-                    .map(|at| now() - at.timestamp_millis())
-                    .unwrap_or(i64::MAX)
-            };
-            let due = match (&state, &publication) {
-                (_, Some(publication)) => {
-                    index < REFRESH_WEEKS && age(publication, "collected_at") >= REFRESH_AFTER_MS
-                }
-                (Some(state), None) => {
-                    age(state, "checked_at")
-                        >= if index == 0 {
-                            RECHECK_NEWEST_AFTER_MS
-                        } else {
-                            RECHECK_OLDER_AFTER_MS
-                        }
-                }
-                (None, None) => true,
-            };
-            if due {
-                jobs.push((
-                    format!("scorecard:{week}"),
-                    self.scorecard_request(id, week)?,
-                ));
-                if jobs.len() >= MAX_JOBS_PER_RUN {
-                    break;
-                }
-            }
+        let published = db
+            .one(
+                "SELECT id FROM scorecard_publications WHERE week=? AND station=? AND active=1",
+                [&week, &station],
+            )?
+            .is_some();
+        let checked = db
+            .one(
+                "SELECT checked_at FROM scorecard_weeks WHERE week=? AND station=?",
+                [&week, &station],
+            )?
+            .and_then(|row| chrono::DateTime::parse_from_rfc3339(s(&row, "checked_at")).ok())
+            .map(|at| now() - at.timestamp_millis());
+        if published || checked.is_some_and(|age| age < RECHECK_AFTER_MS) {
+            return Ok(Vec::new());
         }
-        Ok(jobs)
+        Ok(vec![(
+            format!("scorecard:{week}"),
+            self.scorecard_request(id, &week)?,
+        )])
+    }
+    /// The API address the station's last publication read, with the company it
+    /// named. A job reads there again without opening Cortex's page.
+    pub fn scorecard_address(&self, id: &str, station: &str) -> Result<Option<(String, String)>> {
+        Ok(self
+            .scorecard(id)?
+            .one(
+                "SELECT s.url,p.company_id FROM scorecard_publications p JOIN scorecard_sources s \
+                 ON s.publication_id=p.id WHERE p.station=? AND s.source='api' \
+                 ORDER BY p.collected_at DESC,s.dataset LIMIT 1",
+                [station],
+            )?
+            .map(|row| (s(&row, "url").to_owned(), s(&row, "company_id").to_owned())))
     }
     /// Stores a week's capture as its active publication, or records that the week
     /// is not posted yet. One transaction: a reader never sees part of a week.
@@ -713,11 +648,10 @@ impl Store {
             for captured in &capture.datasets {
                 db.exec(
                     "INSERT INTO scorecard_sources(publication_id,dataset,source,url,row_count) \
-                     VALUES (?,?,?,?,?)",
+                     VALUES (?,?,'api',?,?)",
                     params![
                         publication,
                         captured.id,
-                        captured.source.as_str(),
                         captured.source_url,
                         captured.rows.len() as i64
                     ],
@@ -762,19 +696,6 @@ impl Store {
                 );
             }
         }
-        let mut sources: HashMap<(String, String), String> = HashMap::new();
-        for row in db.all(
-            "SELECT publication_id,dataset,source FROM scorecard_sources",
-            [],
-        )? {
-            sources.insert(
-                (
-                    s(&row, "publication_id").to_owned(),
-                    s(&row, "dataset").to_owned(),
-                ),
-                s(&row, "source").to_owned(),
-            );
-        }
         let mut weeks = Vec::new();
         for state in db.all(
             "SELECT w.week,w.checked_at,w.posted,p.id,p.station,p.dsp_code,p.collected_at,p.row_count \
@@ -792,7 +713,6 @@ impl Store {
                             id: dataset.id.into(),
                             table: dataset.table.into(),
                             rows: counts.get(&key).copied().unwrap_or(0),
-                            source: sources.get(&key).cloned().unwrap_or_else(|| "api".into()),
                         }
                     })
                     .collect();

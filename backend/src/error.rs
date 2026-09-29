@@ -51,7 +51,7 @@ codes! {
     CortexInvalidIdentity => "cortex_invalid_identity",
     InvalidCortexScope => "invalid_cortex_scope",
     DvicSourceChanged => "dvic_source_changed",
-    ScorecardWeekUnavailable => "scorecard_week_unavailable",
+    ScorecardApiUnreadable => "scorecard_api_unreadable",
     TimecardExtractionFailed => "timecard_extraction_failed",
     InvalidTimecardHours => "invalid_timecard_hours",
     VerificationRequired => "verification_required",
@@ -82,6 +82,7 @@ impl Code {
         Code::CortexSourceChanged,
         Code::DvicSourceChanged,
         Code::CortexContentIncomplete,
+        Code::ScorecardApiUnreadable,
     ];
     /// The job stopped because someone withdrew it or its access; that is not a failure.
     pub const WITHDRAWN: &'static [Code] = &[
@@ -235,6 +236,7 @@ mod tests {
                 "cortex_source_changed",
                 "dvic_source_changed",
                 "cortex_content_incomplete",
+                "scorecard_api_unreadable",
             ]
         );
         for code in Code::ALL {

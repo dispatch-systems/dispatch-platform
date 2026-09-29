@@ -119,7 +119,11 @@ impl MailTransport {
         Ok(match config.mail_mode.as_str() {
             "capture" => Self::Capture,
             "cloudflare" => Self::Cloudflare(
+                // HTTP/1.1 without compression, as mail has always been sent; only
+                // Cortex reads use HTTP/2 and gzip.
                 reqwest::blocking::Client::builder()
+                    .http1_only()
+                    .no_gzip()
                     .user_agent("Dispatch-Mail/1.0")
                     .timeout(Duration::from_secs(15))
                     .redirect(reqwest::redirect::Policy::none())

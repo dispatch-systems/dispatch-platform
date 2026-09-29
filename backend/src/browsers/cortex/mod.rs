@@ -6,7 +6,6 @@ mod discovery;
 mod dvic;
 pub(crate) mod routedata;
 mod scorecard;
-mod scorecard_csv;
 use super::{
     attempt::Attempts,
     browseros,
