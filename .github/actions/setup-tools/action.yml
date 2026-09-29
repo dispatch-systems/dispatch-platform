@@ -40,6 +40,10 @@ runs:
         playwright=$(jq -er '.packages["node_modules/playwright-core"].version' package-lock.json)
         echo "playwright=dispatch-playwright-${{ runner.os }}-${{ runner.arch }}-$playwright" >> "$GITHUB_OUTPUT"
         echo "DISPATCH_CI_TOOLS=$GITHUB_WORKSPACE/.ci-tools" >> "$GITHUB_ENV"
+        # Cargo's dependency caches only grow: each restores the last and saves what both
+        # hold. A new generation every ISO week starts them clean; caches.yml fills it on
+        # Monday, before the week's first queue run.
+        echo "DISPATCH_RUST_CACHE=v0-rust-$(date -u +%G-W%V)" >> "$GITHUB_ENV"
     - name: Restore the CI and host tools
       id: tools
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9

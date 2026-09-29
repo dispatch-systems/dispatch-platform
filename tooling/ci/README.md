@@ -9,12 +9,12 @@ suite in sequence:
 | --------------- | ------------------------------------------ | ----------------------------------------------------------------------------- |
 | build           | `build`                                    | The runtime packages: the release backend and the dashboard.                  |
 | checks          | `checks`                                   | Source privacy/secrets, types, formatting, bundle budget and dashboard logic. |
-| browser ×8      | `browser <n>/8 [spec]`                     | The browser suite against the packaged runtime.                               |
+| browser ×6      | `browser <n>/6 [spec]`                     | The browser suite against the packaged runtime.                               |
 | smoke           | `smoke`                                    | The package starts, signs in and serves, as a release asks.                   |
 | benchmark       | `benchmark`                                | The Rust workload budget.                                                     |
 | core            | `core`                                     | Rust formatting, lints and tests.                                             |
 | api             | `api`                                      | The API tests, the Python tooling tests, the npm audit.                       |
-| collectors ×4   | `npm run test:browseros -- --shard <name>` | The native collectors with a real browser.                                    |
+| collectors ×5   | `npm run test:browseros -- --shard <name>` | The native collectors with a real browser.                                    |
 | rust-advisories |                                            | `cargo audit`.                                                                |
 | platform        |                                            | The gate: the one required check.                                             |
 

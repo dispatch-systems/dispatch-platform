@@ -7,6 +7,9 @@ inputs:
   save:
     description: Allow this job to maintain the cache on main.
     default: 'true'
+  reuse-binary:
+    description: Restore the exact release binary instead of compiling it.
+    default: 'true'
 outputs:
   binary-key:
     description: Exact Rust input key for the release binary.
@@ -40,7 +43,7 @@ runs:
       run: echo "DISPATCH_CI_RUST_KEY=$BINARY_KEY" >> "$GITHUB_ENV"
     - name: Restore exact release binary
       id: binary-cache
-      if: steps.binary-key.outputs.key != ''
+      if: steps.binary-key.outputs.key != '' && inputs.reuse-binary == 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: .ci-rust-cache/
@@ -48,6 +51,7 @@ runs:
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
       if: steps.binary-cache.outputs.cache-hit != 'true'
       with:
+        prefix-key: ${{ env.DISPATCH_RUST_CACHE }}
         shared-key: dispatch-${{ inputs.profile }}
         cache-bin: 'false'
         save-if: ${{ inputs.save == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}

@@ -97,8 +97,8 @@ jobs:
           name: ${{ needs.build.outputs.candidate }}
       - run: mkdir .build && tar -xzf dispatch-dev.tar.gz -C .build
       - run: npm run check:ci -- checks
-  # The browser suite in eight shards, three workers each, every test with its own server,
-  # port, database and mail. Failed shards upload their traces.
+  # The browser suite in six shards of about equal time, three workers each, every test with
+  # its own server, port, database and mail. Failed shards upload their traces.
   browser:
     needs: build
     if: contains('all browser', inputs.suite || 'all')
@@ -107,11 +107,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.23.2
+          cache: npm
+      - run: npm ci --ignore-scripts
+      # The browser's system packages take about 14 seconds to install. They install in the
+      # background while the rest of the job sets up, and the suite waits for them.
+      - name: Start installing the browser's system packages
+        run: |
+          (npx playwright install-deps chromium > "$RUNNER_TEMP/browser-packages.log" 2>&1
+            echo $? > "$RUNNER_TEMP/browser-packages.written"
+            mv "$RUNNER_TEMP/browser-packages.written" "$RUNNER_TEMP/browser-packages.status") &
       - uses: ./.github/actions/setup-tools
         id: tools
         with:
@@ -121,11 +133,6 @@ jobs:
         with:
           path: ~/.cache/ms-playwright/
           key: ${{ steps.tools.outputs.playwright-key }}
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: 22.23.2
-          cache: npm
-      - run: npm ci --ignore-scripts
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: ${{ needs.build.outputs.candidate }}
@@ -133,11 +140,14 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         if: steps.tools.outputs.fixture-hit != 'true'
         with:
+          prefix-key: ${{ env.DISPATCH_RUST_CACHE }}
           shared-key: dispatch-debug
           cache-bin: 'false'
           save-if: 'false'
-      - name: Browser suite shard ${{ matrix.shard }} of 8
-        run: npm run check:ci -- browser ${{ matrix.shard }}/8 ${{ inputs.spec }}
+      - name: Browser suite shard ${{ matrix.shard }} of 6
+        env:
+          DISPATCH_BROWSER_PACKAGES: ${{ runner.temp }}/browser-packages
+        run: npm run check:ci -- browser ${{ matrix.shard }}/6 ${{ inputs.spec }}
       - name: Preserve failure traces
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -147,7 +157,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
   # The packaged runtime starts, signs in and serves: what a release's smoke test asks of the
-  # same bytes, so a release never finds out first.
+  # same bytes, so a release never finds out first. It speaks HTTP only, so it needs no browser.
   smoke:
     needs: build
     if: contains('all smoke', inputs.suite || 'all')
@@ -158,18 +168,11 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
-        id: tools
-      - name: Restore the pinned Playwright browser
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-        with:
-          path: ~/.cache/ms-playwright/
-          key: ${{ steps.tools.outputs.playwright-key }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22.23.2
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: npx playwright install --with-deps chromium
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: ${{ needs.build.outputs.candidate }}
@@ -241,7 +244,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [paycom, paycom-recovery, cortex, capacity]
+        shard: [paycom, paycom-recovery, cortex, cortex-meals, capacity]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -272,30 +275,6 @@ jobs:
         if: steps.audit-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-audit --version 0.22.2 --locked
       - run: cargo audit --deny warnings
-  codeql:
-    if: contains('all core', inputs.suite || 'all')
-    permissions:
-      contents: read
-      security-events: write
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [javascript-typescript, rust]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@7999b86c43a865dc79d8923397f35af22de63401
-        with:
-          languages: ${{ matrix.language }}
-          build-mode: none
-      - name: Analyze
-        uses: github/codeql-action/analyze@7999b86c43a865dc79d8923397f35af22de63401
-        with:
-          category: /language:${{ matrix.language }}
   # Builds the tools and fixture this ref's inputs lack, off the critical path, and saves
   # them to this ref's cache: the jobs that start later restore them instead of compiling.
   # `main`'s copies come from caches.yml. Every other job builds with Cargo when a tool is
@@ -315,6 +294,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         if: steps.restore.outputs.tools-hit != 'true'
         with:
+          prefix-key: ${{ env.DISPATCH_RUST_CACHE }}
           shared-key: dispatch-release
           cache-bin: 'false'
           save-if: 'false'
@@ -334,6 +314,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         if: steps.restore.outputs.fixture-hit != 'true'
         with:
+          prefix-key: ${{ env.DISPATCH_RUST_CACHE }}
           shared-key: dispatch-debug
           cache-bin: 'false'
           save-if: 'false'
@@ -354,8 +335,7 @@ jobs:
   # verified build under the commit's name: Dev installs it and a release stamps it. A
   # manual run of one suite has no gate, so nothing partial is ever published.
   platform:
-    needs:
-      [build, checks, browser, smoke, benchmark, core, api, collectors, rust-advisories, codeql]
+    needs: [build, checks, browser, smoke, benchmark, core, api, collectors, rust-advisories]
     if: always() && (inputs.suite || 'all') == 'all'
     runs-on: ubuntu-24.04
     timeout-minutes: 5

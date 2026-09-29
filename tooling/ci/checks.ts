@@ -1,6 +1,9 @@
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 import { assessmentFixture } from '../testing/ci-tools.js';
+import { PAINT_BUDGET, WORKERS, browserTests, shards } from './browser-shards.js';
 import { coreTests, dashboardTests } from './test-plan.js';
 
 // One job of the platform checks, or locally the whole suite in sequence. CI runs each mode
@@ -54,37 +57,85 @@ function benchmark() {
     '/tmp/dispatch-rust-benchmark.json',
   ]);
 }
-function installBrowsers() {
-  return run('browser setup', 'npx', [
+/**
+ * The pinned browser, from the cache when the job restored it. In CI its system packages
+ * install too, unless the job installs them in the background and names that install in
+ * DISPATCH_BROWSER_PACKAGES: then this waits for its result.
+ */
+async function installBrowsers() {
+  const packages = process.env.DISPATCH_BROWSER_PACKAGES;
+  const browser = run('browser setup', 'npx', [
     'playwright',
     'install',
-    ...(process.env.CI === 'true' ? ['--with-deps'] : []),
+    ...(process.env.CI === 'true' && !packages ? ['--with-deps'] : []),
     'chromium',
   ]);
+  if (!packages) return browser;
+  const start = Date.now();
+  // The install writes its exit status last; five minutes without one is a hung install.
+  while (!fs.existsSync(`${packages}.status`) && Date.now() - start < 300000)
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  const installed =
+    fs.existsSync(`${packages}.status`) &&
+    fs.readFileSync(`${packages}.status`, 'utf8').trim() === '0';
+  if (!installed) {
+    if (fs.existsSync(`${packages}.log`))
+      process.stdout.write(fs.readFileSync(`${packages}.log`, 'utf8'));
+    failures.push('browser system packages');
+  }
+  process.stdout.write(
+    `[${installed ? 'pass' : 'fail'}] browser system packages, waited ${((Date.now() - start) / 1000).toFixed(1)}s\n`,
+  );
+  return (await browser) && installed;
 }
 /**
- * One shard of the browser suite against the build already in `.build`, as `browser 3/8`.
+ * One shard of the browser suite against the build already in `.build`, as `browser 3/6`.
  * A manual lane names a spec or test after the shard; shards it leaves empty still pass.
  */
 async function browser() {
-  const shard = process.argv[3];
-  if (!/^[1-9]\d*\/[1-9]\d*$/.test(shard ?? '')) throw new Error('Browser shard required, as 1/8');
+  const shard = /^([1-9]\d*)\/([1-9]\d*)$/.exec(process.argv[3] ?? '');
+  if (!shard || Number(shard[1]) > Number(shard[2]))
+    throw new Error('Browser shard required, as 1/6');
+  const [index, count] = [Number(shard[1]), Number(shard[2])];
   const only = process.argv.slice(4).filter(Boolean);
   // The browser downloads and installs its system packages while Cargo compiles the
   // fixture; test:ui then finds the fixture already built.
   const fixture = assessmentFixture(process.env, process.cwd())
     ? Promise.resolve(true)
     : run('assessment fixture', 'cargo', ['build', '--locked', '--example', 'assessment-fixture']);
-  const ready = await Promise.all([installBrowsers(), fixture]);
+  const setup = Promise.all([installBrowsers(), fixture]);
+  // Meanwhile, this shard's share of a split by the tests' recorded times, which every shard
+  // computes alike: Playwright's own sharding splits by count, and one long test made one
+  // shard the slowest of every run.
+  const tests = shards(browserTests(), count)[index - 1]!;
+  const list = path.join(os.tmpdir(), `dispatch-browser-shard-${index}-of-${count}.txt`);
+  fs.writeFileSync(list, `${tests.join('\n')}\n`);
+  if (!(await setup).every(Boolean)) return;
+  // Paint budgets run alone after the rest, with their own output so the first run's traces
+  // survive.
+  const alone = tests.some((test) => test.includes(PAINT_BUDGET));
   // Three workers on a four-core runner: the fourth core keeps the private servers and the
   // sign-in animation responsive, so long multi-login tests stay well inside their budget.
-  if (ready.every(Boolean))
-    await npm(
-      'test:ui',
-      `--shard=${shard}`,
-      '--workers=3',
-      ...(only.length ? ['--pass-with-no-tests', ...only] : []),
+  await npm(
+    'test:ui',
+    '--test-list',
+    list,
+    `--workers=${WORKERS}`,
+    ...(alone ? ['--grep-invert', PAINT_BUDGET] : []),
+    ...(only.length ? ['--pass-with-no-tests', ...only] : []),
+  );
+  if (alone) {
+    const output = process.env.DISPATCH_TEST_OUTPUT ?? 'test-results';
+    await run(
+      'paint budgets',
+      'npm',
+      [
+        ...['run', 'test:ui', '--', '--test-list', list, '--workers=1'],
+        ...['--grep', PAINT_BUDGET, '--pass-with-no-tests', ...only],
+      ],
+      { ...process.env, DISPATCH_TEST_OUTPUT: path.join(output, 'paint-budgets') },
     );
+  }
 }
 /** Rust formatting, lints and tests: `npm run check:rust` compiles what it checks. */
 function core() {

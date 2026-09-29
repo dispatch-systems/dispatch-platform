@@ -5,3 +5,12 @@ resolver = "3"
 [profile.release]
 lto = "thin"
 strip = true
+
+# Unoptimised, one password hash takes about half a second against 22 ms in release, and the
+# API and collector tests sign in hundreds of times against a debug backend. Only the hashing
+# crates are optimised; debug assertions stay on everywhere.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3

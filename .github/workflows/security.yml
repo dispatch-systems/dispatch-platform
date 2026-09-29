@@ -1,14 +1,22 @@
 name: Dependency security
-# Nightly, so new advisories against unchanged dependencies surface. PRs already run both
-# audits in the platform checks.
+# Nightly, so new advisories against unchanged dependencies surface; every queue run audits
+# too. CodeQL analyses each push to main as well. Its alerts go to code scanning and gate no
+# merge, so it runs after the merge instead of holding up the queue; a newer push to main
+# replaces an analysis still running.
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: '23 7 * * *'
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: security-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 jobs:
   audit:
+    if: github.event_name != 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

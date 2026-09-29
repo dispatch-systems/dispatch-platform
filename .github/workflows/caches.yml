@@ -1,10 +1,13 @@
 name: Shared caches
 # Only main's caches reach every branch: a merge queue run saves to a branch GitHub deletes.
 # This refills, on every push to main, everything the platform checks only restore, and
-# nothing waits on it.
+# nothing waits on it. Early each Monday it fills the week's new generation of Cargo's
+# caches (setup-tools), so the week's first queue run does not compile from nothing.
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: '5 0 * * 1'
   workflow_dispatch:
 permissions:
   contents: read
@@ -72,6 +75,8 @@ jobs:
         id: tools
         with:
           profile: release
+          # The week's new cache generation fills only from a compile.
+          reuse-binary: ${{ github.event_name != 'schedule' }}
       - name: Compile the release backend
         if: steps.tools.outputs.binary-hit != 'true'
         run: python3 tooling/cargo-build.py --release
@@ -98,6 +103,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         if: steps.restore.outputs.tools-hit != 'true'
         with:
+          prefix-key: ${{ env.DISPATCH_RUST_CACHE }}
           shared-key: dispatch-release
           cache-bin: 'false'
           save-if: 'false'
@@ -115,12 +121,14 @@ jobs:
           path: .ci-tools/tools/
           key: ${{ steps.restore.outputs.tools-key }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
-        if: steps.restore.outputs.fixture-hit != 'true'
+        id: debug-cache
         with:
+          prefix-key: ${{ env.DISPATCH_RUST_CACHE }}
           shared-key: dispatch-debug
           cache-bin: 'false'
+      # Also when the fixture is current but the week's debug cache is new: this fills it.
       - name: Build the assessment fixture
-        if: steps.restore.outputs.fixture-hit != 'true'
+        if: steps.restore.outputs.fixture-hit != 'true' || steps.debug-cache.outputs.cache-hit != 'true'
         run: |
           cargo build --locked --example assessment-fixture
           target=$(cargo metadata --locked --no-deps --format-version=1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
@@ -132,3 +140,9 @@ jobs:
         with:
           path: .ci-tools/fixture/
           key: ${{ steps.restore.outputs.fixture-key }}
+      # The release tools above were built in the same target directory, and the debug cache
+      # saves what it holds when the job ends: only the debug build belongs in it.
+      - name: Leave the release build out of the debug cache
+        run: |
+          target=$(cargo metadata --locked --no-deps --format-version=1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
+          rm -rf "$target/release"
