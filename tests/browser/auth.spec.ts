@@ -55,7 +55,7 @@ test('remembering sign-in appearance keeps different accounts independent', asyn
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
 
-test('remember me uses three days and unchecked sign-in keeps eight hours', async ({
+test('remember me uses seven days and unchecked sign-in keeps eight hours', async ({
   page,
   context,
 }) => {
@@ -70,8 +70,8 @@ test('remember me uses three days and unchecked sign-in keeps eight hours', asyn
   )!;
   expect(cookie.httpOnly).toBe(true);
   expect(cookie.sameSite).toBe('Strict');
-  expect(cookie.expires - Date.now() / 1000).toBeGreaterThan(259_100);
-  expect(cookie.expires - Date.now() / 1000).toBeLessThanOrEqual(259_200);
+  expect(cookie.expires - Date.now() / 1000).toBeGreaterThan(604_700);
+  expect(cookie.expires - Date.now() / 1000).toBeLessThanOrEqual(604_800);
   await page.reload();
   await expect(page.getByRole('heading', { name: 'DSPs', exact: true })).toBeVisible();
   await context.clearCookies();

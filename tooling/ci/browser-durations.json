@@ -10,7 +10,7 @@
   "auth.spec.ts › desktop animation lifecycle › autoplays in both themes and releases rendering on mobile and sign-in": 17.9,
   "auth.spec.ts › graphics failure leaves a working sign-in form and a static van": 2.0,
   "auth.spec.ts › mobile loads only the form; reset and password reveal still work": 6.8,
-  "auth.spec.ts › remember me uses three days and unchecked sign-in keeps eight hours": 4.5,
+  "auth.spec.ts › remember me uses seven days and unchecked sign-in keeps eight hours": 4.5,
   "auth.spec.ts › remembering sign-in appearance keeps different accounts independent": 3.2,
   "auth.spec.ts › sign-in remembers Dark after sign-out and reload": 5.1,
   "auth.spec.ts › sign-in remembers Light after sign-out and reload": 5.0,
