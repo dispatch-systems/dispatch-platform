@@ -57,11 +57,14 @@ jobs:
                                    check=True, capture_output=True, text=True).stdout
               return [json.loads(line) for line in out.splitlines() if line]
 
-          fields = "{id, conclusion, head_branch, head_sha, created_at, html_url}"
+          fields = ("{id, conclusion, head_branch, head_sha, created_at, html_url,"
+                    " source: .head_repository.full_name}")
           queue = api(f"repos/{repo}/actions/workflows/checks.yml/runs"
                       f"?event=merge_group&created=>={since}&per_page=100", f".workflow_runs[] | {fields}")
           # The admission check runs on every push to a PR, so its runs date each head. They
-          # outlive the PR's number, which GitHub drops from a run once the branch is gone.
+          # outlive the PR's number, which GitHub drops from a run once the branch is gone, so
+          # they are matched by the PR's branch and the repository it lives in, as forks can
+          # share a branch name.
           admitted = api(f"repos/{repo}/actions/workflows/queue-admission.yml/runs"
                          f"?created=>={heads}&per_page=100", f".workflow_runs[] | {fields}")
           entries = defaultdict(list)
@@ -74,20 +77,22 @@ jobs:
           print("| --- | --- | --- | --- |")
           rows = 0
           for number, runs in sorted(entries.items()):
-              branch = None
+              head = None
               for index, failed in enumerate(runs):
                   passed = next((run for run in runs[index + 1:] if run["conclusion"] == "success"), None)
                   if failed["conclusion"] != "failure" or passed is None:
                       continue
-                  if branch is None:
-                      branch = api(f"repos/{repo}/pulls/{number}", "{ref: .head.ref}")[0]["ref"]
+                  if head is None:
+                      head = api(f"repos/{repo}/pulls/{number}",
+                                 "{branch: .head.ref, source: .head.repo.full_name}")[0]
 
-                  def head(at):
+                  def head_at(at):
                       earlier = [run for run in admitted
-                                 if run["head_branch"] == branch and run["created_at"] < at]
+                                 if head["source"] and run["source"] == head["source"]
+                                 and run["head_branch"] == head["branch"] and run["created_at"] < at]
                       return max(earlier, key=lambda run: run["created_at"])["head_sha"] if earlier else None
 
-                  if head(failed["created_at"]) is None or head(failed["created_at"]) != head(passed["created_at"]):
+                  if head_at(failed["created_at"]) is None or head_at(failed["created_at"]) != head_at(passed["created_at"]):
                       continue
                   jobs = api(f"repos/{repo}/actions/runs/{failed['id']}/jobs?per_page=100",
                              '.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out") | {name}')
