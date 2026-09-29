@@ -40,6 +40,7 @@ codes! {
     ProviderHoursMismatch => "provider_hours_mismatch",
     ProviderResponseUnreadable => "provider_response_unreadable",
     CortexSourceChanged => "cortex_source_changed",
+    RoutesMoveUnanswered => "routes_move_unanswered",
     CortexContentIncomplete => "cortex_content_incomplete",
     CortexScopeMismatch => "cortex_scope_mismatch",
     CortexTimezoneMismatch => "cortex_timezone_mismatch",

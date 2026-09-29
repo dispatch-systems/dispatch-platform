@@ -8,6 +8,10 @@ use std::{
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 pub(super) const MAX_FRAME: u64 = 8 * 1024 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(15);
+/// How long one event poll may hold the transport, which every tab shares: a longer
+/// wait starves the other tabs' commands. Measured on a day of routes read by three
+/// tabs: 250 ms took 33 s, 50 ms 25 s, 20 ms no faster than 50.
+const EVENT_WAIT: Duration = Duration::from_millis(50);
 fn require(ok: bool, code: &str) -> Result<()> {
     ensure(ok, code, 503)
 }
@@ -107,7 +111,7 @@ impl Cdp {
         result.unwrap_or(Ok(Value::Null))
     }
     pub(super) async fn event(&mut self, session: &str) -> Result<Value> {
-        let result = tokio::time::timeout(Duration::from_millis(250), async {
+        let result = tokio::time::timeout(EVENT_WAIT, async {
             loop {
                 if let Some(index) = self.events.iter().position(|v| v["sessionId"] == session) {
                     return Ok(self.events.remove(index).unwrap()["params"].clone());

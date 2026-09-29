@@ -125,6 +125,7 @@ fn bindings() -> BTreeMap<PathBuf, String> {
         RoutePackageEvent,
         RoutePublication,
         RouteReprocess,
+        RouteRetention,
         RouteStop,
         RouteTask,
         RouteUnknownStop,

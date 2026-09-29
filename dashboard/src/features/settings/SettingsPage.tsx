@@ -8,15 +8,18 @@ import { ThemeSection } from './ThemeSection.js';
 import { hashQuery, replaceHashQuery } from '../../app/navigation.js';
 import { ProfileBadge } from './ProfileBadge.js';
 import { SecuritySettings } from './SecuritySettings.js';
+import { RouteDataSettings } from './RouteDataSettings.js';
 
 export function SettingsPage({ session, view }: { session: SessionView; view?: DspView }) {
   const [requestedTab, setTab] = useState(hashQuery().get('tab') || 'general');
   const connections = can(view, 'connections.manage');
+  const routeData = can(view, 'routes.manage');
   const tabs = [
     // The id stays `general` so existing links to the tab keep working.
     ['general', 'Profile'],
     ['security', 'Security'],
     ...(connections ? [['connections', 'Connections']] : []),
+    ...(routeData ? [['data', 'Data']] : []),
     ['theme', 'Theme'],
   ];
   const tab = tabs.some(([id]) => id === requestedTab) ? requestedTab : 'general';
@@ -43,6 +46,7 @@ export function SettingsPage({ session, view }: { session: SessionView; view?: D
           />
         </div>
       )}
+      {tab === 'data' && routeData && view && <RouteDataSettings timeZone={view.dsp.timezone} />}
       {tab === 'theme' && <ThemeSection userId={session.user.id} />}
     </>
   );

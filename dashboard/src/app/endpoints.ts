@@ -8,6 +8,7 @@ import type {
 } from '../../../shared/contracts/uniforms.js';
 import type { PaycomPreferences, PaycomSettings } from '../../../shared/contracts/paycom.js';
 import type { MealComparison } from '../../../shared/contracts/meals.js';
+import type { RouteRetention } from '../../../shared/contracts/routes.js';
 // The endpoints whose responses are generated from the backend's Rust types: each address
 // is written once, next to the type it answers with. Other endpoints still call `api` and
 // `useData` directly; move one here when its response gains a generated type.
@@ -213,3 +214,10 @@ export const useUniformHistory = (before: number | null, revision: number) =>
     0,
     String(revision),
   );
+
+const routeRetention = '/api/dsp/routes/retention';
+/** How long the DSP keeps its route data, and what it holds now. */
+export const useRouteRetention = () => useCachedData<RouteRetention>(routeRetention);
+/** Keeps `days` of route data, or every day with `null`. */
+export const setRouteRetention = (days: number | null) =>
+  api<RouteRetention>(routeRetention, { days });

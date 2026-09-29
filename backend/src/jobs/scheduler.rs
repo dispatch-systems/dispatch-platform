@@ -50,6 +50,8 @@ struct Scheduler {
     refreshed: i64,
     // A year's retention does not need checking every minute.
     audit_pruned: i64,
+    // Nor does a DSP's route data retention.
+    routes_expired: i64,
 }
 impl Scheduler {
     async fn cleanup(&mut self) {
@@ -90,6 +92,48 @@ impl Scheduler {
             .await;
         if let Err(error) = result {
             failed("checkpoint_cleanup_failed", &error);
+        }
+        self.clean_route_data().await;
+    }
+    /// Retires route data past each DSP's retention window, hourly, and deletes what no
+    /// reader sees any more in small steps, so the platform lock is never held for long.
+    async fn clean_route_data(&mut self) {
+        let expire = now() - self.routes_expired >= 60 * 60 * 1000;
+        if expire {
+            self.routes_expired = now();
+        }
+        let dsps = self
+            .state
+            .read(|db| {
+                db.platform.query_as::<(String,)>(
+                    "SELECT id FROM dsps WHERE status IN ('active','suspended')",
+                    [],
+                )
+            })
+            .await;
+        let dsps = match dsps {
+            Ok(dsps) => dsps,
+            Err(error) => return failed("routes_cleanup_failed", &error),
+        };
+        for (dsp,) in dsps {
+            if expire {
+                let id = dsp.clone();
+                if let Err(error) = self.state.run(move |db| db.expire_routes(&id)).await {
+                    failed("routes_expiry_failed", &error);
+                }
+            }
+            // A day of rows is a few dozen steps; the rest waits for the next minute.
+            for _ in 0..200 {
+                let id = dsp.clone();
+                match self.state.run(move |db| db.sweep_routes(&id)).await {
+                    Ok(true) => continue,
+                    Ok(false) => break,
+                    Err(error) => {
+                        failed("routes_cleanup_failed", &error);
+                        break;
+                    }
+                }
+            }
         }
     }
     async fn run_due_schedules(&mut self) {
@@ -209,6 +253,7 @@ pub async fn start(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<boo
         schedule_revision: u64::MAX,
         refreshed: 0,
         audit_pruned: 0,
+        routes_expired: 0,
     };
     let mut timer = tokio::time::interval(Duration::from_secs(1));
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);

@@ -30,6 +30,9 @@ export class ApiError extends Error {
 }
 const labels: Record<string, string> = {
   dvic_station_required: 'Set your station code in the DSP profile before collecting DVIC reports.',
+  invalid_retention: 'Choose a retention window from 30 to 3,650 days.',
+  routes_day_outside_retention:
+    'That day is older than your route data retention window. Lengthen the window first.',
   dvic_week_not_available: 'That report week is not available yet.',
   already_a_member: 'This person already has access. Change their role in the member list.',
   email_queue_full: 'Email capacity is temporarily full. Try again later.',

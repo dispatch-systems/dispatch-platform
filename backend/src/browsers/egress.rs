@@ -214,6 +214,57 @@ async fn proxy(client: UnixStream, policy: NetworkPolicy) -> Result<()> {
         out.push_str("Connection: close\r\n\r\n");
         upstream.write_all(out.as_bytes()).await?;
     }
+    // Benchmarks count the bytes a collection moved.
+    #[cfg(test)]
+    let mut upstream = counted::Counted(upstream);
     tokio::io::copy_bidirectional(&mut client, &mut upstream).await?;
     Ok(())
+}
+/// Bytes sent and received through every tunnel this process ran, counted as they flow,
+/// for benchmarks that compare how collections read a provider.
+#[cfg(test)]
+pub mod counted {
+    use std::{
+        pin::Pin,
+        sync::atomic::{AtomicU64, Ordering},
+        task::{Context, Poll},
+    };
+    use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+    pub static SENT: AtomicU64 = AtomicU64::new(0);
+    pub static RECEIVED: AtomicU64 = AtomicU64::new(0);
+    pub struct Counted<T>(pub T);
+    impl<T: AsyncRead + Unpin> AsyncRead for Counted<T> {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            let before = buf.filled().len();
+            let result = Pin::new(&mut self.0).poll_read(cx, buf);
+            RECEIVED.fetch_add((buf.filled().len() - before) as u64, Ordering::Relaxed);
+            result
+        }
+    }
+    impl<T: AsyncWrite + Unpin> AsyncWrite for Counted<T> {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<std::io::Result<usize>> {
+            let result = Pin::new(&mut self.0).poll_write(cx, buf);
+            if let Poll::Ready(Ok(n)) = &result {
+                SENT.fetch_add(*n as u64, Ordering::Relaxed);
+            }
+            result
+        }
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            Pin::new(&mut self.0).poll_flush(cx)
+        }
+        fn poll_shutdown(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            Pin::new(&mut self.0).poll_shutdown(cx)
+        }
+    }
 }

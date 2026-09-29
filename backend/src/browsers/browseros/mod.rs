@@ -120,6 +120,7 @@ impl Runtime {
             .try_acquire_owned()
             .map_err(|_| Error::new("browser_capacity_busy", 429))?;
         let lease = profile_lease(profile)?;
+        scrub(profile)?;
         // Credentials belong to the DSP vault; password-manager chrome must not
         // cover native PIN entry or persist another copy in the browser profile.
         let defaults = db::private_dir(&profile.join("Default"))?;
@@ -156,6 +157,7 @@ impl Runtime {
         let (stop, cancellation) = watch::channel(false);
         let (finished, closed) = watch::channel(None);
         let (ready, started) = oneshot::channel();
+        let traced = profile.to_path_buf();
         tokio::spawn(async move {
             let mut child = child;
             serve_child(
@@ -167,8 +169,16 @@ impl Runtime {
             )
             .await;
             let exit = stop_child(&mut child).await;
-            // Release leases only after reaping the namespace supervisor.
+            // Release leases only after reaping the namespace supervisor, and after the
+            // pages it opened left nothing behind.
             drop(child);
+            if let Err(error) = scrub(&traced) {
+                crate::observability::event(
+                    "error",
+                    "browser.scrub_failed",
+                    serde_json::json!({"error":error.code}),
+                );
+            }
             drop(egress);
             drop(run);
             drop(lease);
@@ -193,6 +203,86 @@ impl Runtime {
             }
         }
     }
+}
+
+/// What a browser keeps of the pages it opened: its caches, history, sessions, icons,
+/// page storage, and the stores its shopping and metrics features fill from what pages
+/// show. Everything a collection reads goes into a database, so none of it may stay in
+/// a profile: it is removed before every start and after every exit, leaving only what
+/// signing in needs (cookies, local storage, preferences).
+const PAGE_TRACES: &[&str] = &[
+    "Default/Cache",
+    "Default/Code Cache",
+    "Default/GPUCache",
+    "Default/DawnGraphiteCache",
+    "Default/DawnWebGPUCache",
+    "Default/History",
+    "Default/History-journal",
+    "Default/Visited Links",
+    "Default/Top Sites",
+    "Default/Top Sites-journal",
+    "Default/Favicons",
+    "Default/Favicons-journal",
+    "Default/Shortcuts",
+    "Default/Shortcuts-journal",
+    "Default/Network Action Predictor",
+    "Default/Network Action Predictor-journal",
+    "Default/Sessions",
+    "Default/Session Storage",
+    "Default/Service Worker",
+    "Default/blob_storage",
+    "Default/Shared Dictionary",
+    "Default/SharedStorage",
+    "Default/SharedStorage-shm",
+    "Default/SharedStorage-wal",
+    "Default/Reporting and NEL",
+    "Default/Reporting and NEL-journal",
+    "Default/BrowsingTopicsSiteData",
+    "Default/BrowsingTopicsSiteData-journal",
+    "Default/BrowsingTopicsState",
+    "Default/Site Characteristics Database",
+    "Default/optimization_guide_hint_cache_store",
+    "Default/parcel_tracking_db",
+    "Default/chrome_cart_db",
+    "Default/commerce_subscription_db",
+    "Default/discount_infos_db",
+    "Default/discounts_db",
+    "Default/DIPS",
+    "Default/DIPS-shm",
+    "Default/DIPS-wal",
+    "Default/DIPS-journal",
+    "Default/Web Data",
+    "Default/Web Data-journal",
+    "Default/Account Web Data",
+    "Default/Account Web Data-journal",
+    "Default/Segmentation Platform",
+    "Default/shared_proto_db",
+    "segmentation_platform",
+    "GPUPersistentCache",
+    "BrowserMetrics",
+    "BrowserMetrics-spare.pma",
+    "CrashpadMetrics-active.pma",
+    "config/browser-os/Crash Reports",
+];
+/// Removes every page trace from `profile`. Runs only while this process holds the
+/// profile's lease, so no browser is writing to it.
+pub(crate) fn scrub(profile: &Path) -> Result<()> {
+    for entry in PAGE_TRACES {
+        let path = profile.join(entry);
+        let result = match fs::symlink_metadata(&path) {
+            Ok(meta) if meta.is_dir() => fs::remove_dir_all(&path),
+            Ok(_) => fs::remove_file(&path),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => Err(error),
+        };
+        match result {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                return Err(error.into());
+            }
+            _ => (),
+        }
+    }
+    Ok(())
 }
 
 fn profile_lease(profile: &Path) -> Result<File> {

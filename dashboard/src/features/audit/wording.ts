@@ -51,6 +51,15 @@ const phrases: Record<string, (event: AuditEvent) => Part[]> = {
     'started a routes collection',
     ...(e.detail && e.detail !== 'routes' ? [' for ', strong(day(e.detail))] : []),
   ],
+  'routes.retention_changed': (e) =>
+    e.detail === 'forever'
+      ? ['set route data to be kept ', strong('indefinitely')]
+      : ['set route data to be kept for ', strong(`${e.detail} days`)],
+  'routes.data_expired': (e) => [
+    'deleted route data from before ',
+    strong(day(e.detail)),
+    ', as the retention setting asks',
+  ],
   'meal_breaks.sync_requested': (e) => [
     'started a meal break sync',
     ...(e.detail ? [' for ', strong(day(e.detail))] : []),
@@ -190,6 +199,8 @@ export const spoken = new Set([
   'meal_breaks.sync_requested',
   'scorecard.collection_requested',
   'routes.collection_requested',
+  'routes.retention_changed',
+  'routes.data_expired',
   'dvic.collection_requested',
   'schedule.created',
   'schedule.updated',

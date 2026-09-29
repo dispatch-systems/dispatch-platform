@@ -68,9 +68,14 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
             .collect(&state, &id, &owner, &metrics, &request, job.attempt)
             .await?;
         metrics.counts(&collected.data);
-        // Shaping and compressing happen here, before the platform lock is taken.
+        // Work that needs no database first; then staging stores what it can in short
+        // steps, so the platform lock is only ever taken for moments.
         let collected = provider.collector().prepare(collected)?;
         metrics.phase(Phase::Publication);
+        let collected = provider
+            .collector()
+            .stage(&state, &dsp, &id, &owner, collected)
+            .await?;
         let jid = id.clone();
         let worker = owner.clone();
         let tenant = dsp.clone();
@@ -113,7 +118,9 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
                 let jid=id.clone();let worker=owner.clone();
                 let guard=state.run(move|db|{db.guard(&jid,&worker)?;db.jobs.exec("UPDATE \
                     jobs SET lease_until=? WHERE id=? AND lease_owner=?",params![now()+120000,jid,worker])?;Ok(())}).await;
-                if let Err(error)=guard{break Err(error);}
+                // A publication may have finished the job while this waited for the lock:
+                // the task's own outcome then stands, not the lease it released.
+                if let Err(error)=guard{break futures_util::FutureExt::now_or_never(&mut task).unwrap_or(Err(error));}
             }
         }
     };
@@ -224,4 +231,13 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
         })
         .await;
     state.updates.changed(&changed_dsp, change);
+    // A collection parses tens of megabytes; hand the freed pages back to the host
+    // rather than keeping them resident until the next one.
+    let _ = tokio::task::spawn_blocking(|| {
+        #[cfg(target_env = "gnu")]
+        unsafe {
+            libc::malloc_trim(0);
+        }
+    })
+    .await;
 }

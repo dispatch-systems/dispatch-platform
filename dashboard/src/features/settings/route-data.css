@@ -1,0 +1,42 @@
+.route-data-settings {
+  max-width: 900px;
+  padding-top: 24px;
+}
+.route-retention {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.route-retention-copy {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.route-retention-copy p {
+  margin: 12px 0 0;
+  max-width: 52ch;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+}
+.route-retention-copy .route-retention-held {
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+.route-retention-form {
+  display: grid;
+  flex: 0 1 240px;
+  gap: 10px;
+}
+.route-retention-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.route-retention-form small {
+  color: var(--muted-foreground);
+}
+.route-retention-form .route-retention-invalid {
+  color: var(--destructive);
+}
+.route-retention-form button {
+  justify-self: start;
+}

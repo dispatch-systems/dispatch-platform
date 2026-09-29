@@ -98,6 +98,19 @@ pub(crate) trait Collector: Sync {
     fn prepare(&self, collected: Collected) -> Result<Collected> {
         Ok(collected)
     }
+    /// Stores what it can of a finished collection before the job publishes it, in
+    /// steps short enough that the platform lock is never held for long; `publish` then
+    /// only makes it current. Each step checks the job is still this worker's.
+    fn stage<'a>(
+        &'a self,
+        _state: &'a std::sync::Arc<crate::State>,
+        _dsp: &'a str,
+        _job: &'a str,
+        _owner: &'a str,
+        collected: Collected,
+    ) -> Pending<'a, Collected> {
+        Box::pin(async move { Ok(collected) })
+    }
     /// Stores a finished collection. Runs while the job is still this worker's.
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()>;
     /// Drops what an unfinished job kept to resume from. `None` means every job.
