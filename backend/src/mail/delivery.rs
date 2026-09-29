@@ -7,6 +7,8 @@ use crate::{
 };
 use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
+/// Messages sent per look at the outbox.
+const BATCH: usize = 5;
 pub async fn mailer(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<bool>) {
     // The tick brings retries that have come due; a request that queues mail wakes it at once.
     let mut timer = tokio::time::interval(Duration::from_secs(5));
@@ -47,8 +49,8 @@ pub async fn mailer(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<bo
                 db.platform.all(
                     "SELECT id,encrypted_message,attempts \
             FROM outbox WHERE status='pending' AND available_at<=? \
-            ORDER BY CASE kind WHEN 'reset' THEN 0 ELSE 1 END,available_at LIMIT 5",
-                    [db::now()],
+            ORDER BY CASE kind WHEN 'reset' THEN 0 ELSE 1 END,available_at LIMIT ?",
+                    [db::now(), BATCH as i64],
                 )
             })
             .await;
@@ -63,8 +65,13 @@ pub async fn mailer(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<bo
                 continue;
             }
         };
+        // A full batch may have left mail behind: look again at once rather than on the tick.
+        // Only when every delivery was recorded, since an unrecorded one is still pending and
+        // would be sent again straight away.
+        let mut again = rows.len() == BATCH;
         for row in rows {
             if *stop.borrow() {
+                again = false;
                 break;
             }
             let config = state.config.clone();
@@ -88,12 +95,16 @@ pub async fn mailer(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<bo
                 .run(move |db| super::record_delivery(db, &id, attempts, error.as_deref()))
                 .await
             {
+                again = false;
                 crate::observability::event(
                     "error",
                     "mail.record_failed",
                     json!({"error":error.code}),
                 );
             }
+        }
+        if again {
+            state.mail_wake.notify_one();
         }
     }
 }
