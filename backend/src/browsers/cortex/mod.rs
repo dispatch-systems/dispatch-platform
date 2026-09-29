@@ -229,7 +229,7 @@ impl Drives for Driver {
                     run.owner,
                 )),
                 |progress, message| run.progress(progress, message),
-                collection::TABS,
+                &collection::MealMethod::default(),
             )
             .await?;
             Ok(Collected {
