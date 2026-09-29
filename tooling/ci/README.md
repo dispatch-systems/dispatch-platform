@@ -14,7 +14,7 @@ suite in sequence:
 | benchmark       | `benchmark`                                | The Rust workload budget.                                                     |
 | core            | `core`                                     | Rust formatting, lints and tests.                                             |
 | api             | `api`                                      | The API tests, the Python tooling tests, the npm audit.                       |
-| collectors ×4   | `npm run test:browseros -- --shard <name>` | The native collectors with a real browser.                                    |
+| collectors ×5   | `npm run test:browseros -- --shard <name>` | The native collectors with a real browser.                                    |
 | rust-advisories |                                            | `cargo audit`.                                                                |
 | platform        |                                            | The gate: the one required check.                                             |
 

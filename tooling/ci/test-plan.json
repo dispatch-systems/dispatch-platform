@@ -27,8 +27,10 @@
     "paycom-recovery": ["tests/providers/native-browser-recovery.test.ts"],
     "cortex": [
       "tests/providers/cortex-worker.test.ts",
+      "tests/providers/cortex-scorecard-worker.test.ts"
+    ],
+    "cortex-meals": [
       "tests/providers/cortex-meals-worker.test.ts",
-      "tests/providers/cortex-scorecard-worker.test.ts",
       "tests/providers/cortex-routes-worker.test.ts"
     ],
     "capacity": [
