@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { assessmentFixture } from '../testing/ci-tools.js';
-import { browserTests, shards } from './browser-shards.js';
+import { PAINT_BUDGET, WORKERS, browserTests, shards } from './browser-shards.js';
 import { coreTests, dashboardTests } from './test-plan.js';
 
 // One job of the platform checks, or locally the whole suite in sequence. CI runs each mode
@@ -107,18 +107,35 @@ async function browser() {
   // Meanwhile, this shard's share of a split by the tests' recorded times, which every shard
   // computes alike: Playwright's own sharding splits by count, and one long test made one
   // shard the slowest of every run.
+  const tests = shards(browserTests(), count)[index - 1]!;
   const list = path.join(os.tmpdir(), `dispatch-browser-shard-${index}-of-${count}.txt`);
-  fs.writeFileSync(list, `${shards(browserTests(), count)[index - 1]!.join('\n')}\n`);
+  fs.writeFileSync(list, `${tests.join('\n')}\n`);
+  if (!(await setup).every(Boolean)) return;
+  // Paint budgets run alone after the rest, with their own output so the first run's traces
+  // survive.
+  const alone = tests.some((test) => test.includes(PAINT_BUDGET));
   // Three workers on a four-core runner: the fourth core keeps the private servers and the
   // sign-in animation responsive, so long multi-login tests stay well inside their budget.
-  if ((await setup).every(Boolean))
-    await npm(
-      'test:ui',
-      '--test-list',
-      list,
-      '--workers=3',
-      ...(only.length ? ['--pass-with-no-tests', ...only] : []),
+  await npm(
+    'test:ui',
+    '--test-list',
+    list,
+    `--workers=${WORKERS}`,
+    ...(alone ? ['--grep-invert', PAINT_BUDGET] : []),
+    ...(only.length ? ['--pass-with-no-tests', ...only] : []),
+  );
+  if (alone) {
+    const output = process.env.DISPATCH_TEST_OUTPUT ?? 'test-results';
+    await run(
+      'paint budgets',
+      'npm',
+      [
+        ...['run', 'test:ui', '--', '--test-list', list, '--workers=1'],
+        ...['--grep', PAINT_BUDGET, '--pass-with-no-tests', ...only],
+      ],
+      { ...process.env, DISPATCH_TEST_OUTPUT: path.join(output, 'paint-budgets') },
     );
+  }
 }
 /** Rust formatting, lints and tests: `npm run check:rust` compiles what it checks. */
 function core() {

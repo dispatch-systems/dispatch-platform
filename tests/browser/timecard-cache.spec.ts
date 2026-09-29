@@ -101,7 +101,7 @@ test('data saver skips optional preloads while selected employees still load', a
   expect(requested.has('/api/dsp/employees/E001')).toBe(true);
 });
 
-test('preloaded employees and pay periods render on the next paint with requests held back', async ({
+test('preloaded employees and pay periods render on the next paint with requests held back @paint-budget', async ({
   page,
   dispatch,
 }) => {
@@ -182,7 +182,7 @@ test('preloaded employees and pay periods render on the next paint with requests
   }
 });
 
-test('adjacent days render from memory and returning from another Dispatch page retains the cache', async ({
+test('adjacent days render from memory and returning from another Dispatch page retains the cache @paint-budget', async ({
   page,
   dispatch,
 }) => {
