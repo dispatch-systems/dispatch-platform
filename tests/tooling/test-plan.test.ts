@@ -7,6 +7,7 @@ import {
   dashboardTests,
   nativeShards,
   ruleTests,
+  watchedTests,
 } from '../../tooling/ci/test-plan.js';
 
 const names = (directory: string, pattern: RegExp) =>
@@ -77,4 +78,16 @@ test('check:rules runs the dashboard logic and the listed source rules, which CI
   assert.match(fs.readFileSync('tooling/ci/rules.ts', 'utf8'), /\.\.\.ruleTests/);
   const scripts = JSON.parse(fs.readFileSync('package.json', 'utf8')).scripts;
   assert.equal(scripts['check:rules'], 'tsx tooling/ci/rules.ts');
+});
+
+test('pr:prepare watches only sources and tests that exist', () => {
+  assert(watchedTests.length > 0);
+  for (const { sources, tests } of watchedTests) {
+    assert(sources.length > 0 && tests.length > 0);
+    for (const file of sources) assert(fs.existsSync(file), `${file} does not exist`);
+    for (const file of tests) {
+      assert(fs.existsSync(file), `${file} does not exist`);
+      assert.match(file, /^tests\/.+\.(test|spec)\.ts$/);
+    }
+  }
 });

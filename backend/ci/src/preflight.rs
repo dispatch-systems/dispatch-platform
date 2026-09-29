@@ -1,6 +1,6 @@
 use crate::{REPOSITORY, Result, Runner};
 use serde_json::Value;
-use std::path::Path;
+use std::{collections::BTreeSet, path::Path};
 /// Problems that stop a push. With a merge queue on `main`, the queue validates the actual
 /// merged state, so a moved `main` and other ready PRs no longer block.
 pub fn blockers(
@@ -30,6 +30,92 @@ pub fn blockers(
         problems.push(format!("Finish the ready PRs first, or leave this PR as a draft: {}. Use --allow-concurrent when overlap is intentional.",others.join(", ")));
     }
     problems
+}
+/// The local commands that check what the diff touches: the Rust crates it changes, and the
+/// test files it changes or that watch a source it changes, from `tooling/ci/test-plan.json`.
+/// `npm run check:rules` already runs the rule and dashboard tests, so they are left out.
+pub fn affected(changed: &[String], plan: &Value) -> Vec<String> {
+    let list = |value: &Value| -> Vec<String> {
+        value
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect()
+    };
+    let mut tests: BTreeSet<String> = changed
+        .iter()
+        .filter(|file| {
+            file.starts_with("tests/") && (file.ends_with(".test.ts") || file.ends_with(".spec.ts"))
+        })
+        .cloned()
+        .collect();
+    for group in plan["watch"].as_array().into_iter().flatten() {
+        if list(&group["sources"])
+            .iter()
+            .any(|source| changed.contains(source))
+        {
+            tests.extend(list(&group["tests"]));
+        }
+    }
+    let mut crates = BTreeSet::new();
+    for file in changed {
+        if file.starts_with("backend/host/") {
+            crates.insert("dispatch-host");
+        } else if file.starts_with("backend/ci/") {
+            crates.insert("dispatch-ci");
+        } else if file.starts_with("backend/") {
+            crates.insert("dispatch-backend");
+        } else if matches!(
+            file.as_str(),
+            "Cargo.toml" | "Cargo.lock" | "rust-toolchain.toml"
+        ) || file.starts_with(".cargo/")
+        {
+            crates.extend(["dispatch-backend", "dispatch-ci", "dispatch-host"]);
+        }
+    }
+    let mut commands = vec![];
+    if !crates.is_empty() {
+        commands.push("cargo clippy --locked --all-targets -- -D warnings".to_owned());
+        let packages: Vec<_> = crates.iter().map(|name| format!("-p {name}")).collect();
+        commands.push(format!("cargo test --locked {}", packages.join(" ")));
+    }
+    let rules = [list(&plan["dashboard"]), list(&plan["rules"])].concat();
+    let shard = |test: &str| {
+        plan["native"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .find(|(_, files)| list(files).iter().any(|file| file == test))
+            .map(|(shard, _)| shard.clone())
+    };
+    let (mut node, mut shards, mut specs) = (vec![], BTreeSet::new(), vec![]);
+    for test in tests.iter().filter(|test| !rules.contains(test)) {
+        if let Some(spec) = test.strip_prefix("tests/browser/") {
+            specs.push(spec);
+        } else if let Some(shard) = shard(test) {
+            shards.insert(shard);
+        } else {
+            node.push(test.as_str());
+        }
+    }
+    if !node.is_empty() {
+        commands.push(format!(
+            "python3 tooling/cargo-build.py && npx tsx --test {}",
+            node.join(" ")
+        ));
+    }
+    for shard in shards {
+        commands.push(format!("npm run test:browseros -- --shard {shard}"));
+    }
+    if !specs.is_empty() {
+        commands.push(format!(
+            "npm run build && npm run test:ui -- {}",
+            specs.join(" ")
+        ));
+    }
+    commands
 }
 pub fn run(root: &Path, concurrent: bool, runner: &dyn Runner) -> Result<()> {
     let command = |args: &[&str]| -> Result<String> {
@@ -65,9 +151,32 @@ pub fn run(root: &Path, concurrent: bool, runner: &dyn Runner) -> Result<()> {
         )
         .into());
     }
-    println!(
-        "Run focused local checks for the changed behavior. The merge queue runs the full suite on the squash commit; nothing runs on the PR itself."
-    );
+    let changed: Vec<String> = command(&[
+        "git",
+        "diff",
+        "--name-only",
+        "--diff-filter=d",
+        "origin/main...HEAD",
+    ])?
+    .lines()
+    .map(str::to_owned)
+    .collect();
+    // Without a readable plan, the changed tests and crates alone are named.
+    let plan = std::fs::read_to_string(root.join("tooling/ci/test-plan.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or(Value::Null);
+    let commands = affected(&changed, &plan);
+    if commands.is_empty() {
+        println!(
+            "Nothing in the diff has tests beyond npm run check:rules. The merge queue runs the full suite on the squash commit; nothing runs on the PR itself."
+        );
+    } else {
+        println!(
+            "Run what the diff touches before pushing. The merge queue runs the full suite on the squash commit; nothing runs on the PR itself.\n- {}",
+            commands.join("\n- ")
+        );
+    }
     println!(
         "Ready for final validation against {}.",
         command(&["git", "rev-parse", "--short", "origin/main"])?
@@ -133,6 +242,53 @@ mod tests {
         assert!(blockers("feature", false, false, &[pull], false, true).is_empty());
         assert!(!blockers("feature", true, true, &[], true, true).is_empty());
         assert!(!blockers("main", false, true, &[], true, true).is_empty());
+    }
+    #[test]
+    fn affected_names_the_changed_crates_and_the_tests_the_diff_changes_or_watches() {
+        let plan = json!({
+            "dashboard": ["tests/dashboard/features.test.ts"],
+            "rules": ["tests/tooling/test-plan.test.ts"],
+            "native": {"cortex": ["tests/providers/cortex-worker.test.ts"]},
+            "watch": [{"sources": ["backend/src/roles.rs"], "tests": [
+                "tests/api/roles.test.ts", "tests/browser/dsp-features.spec.ts",
+                "tests/dashboard/features.test.ts"]}]
+        });
+        let changed = |files: &[&str]| -> Vec<String> {
+            let files: Vec<String> = files.iter().map(|file| (*file).to_owned()).collect();
+            affected(&files, &plan)
+        };
+        assert_eq!(
+            changed(&[
+                "backend/src/roles.rs",
+                "tests/providers/cortex-worker.test.ts"
+            ]),
+            [
+                "cargo clippy --locked --all-targets -- -D warnings",
+                "cargo test --locked -p dispatch-backend",
+                "python3 tooling/cargo-build.py && npx tsx --test tests/api/roles.test.ts",
+                "npm run test:browseros -- --shard cortex",
+                "npm run build && npm run test:ui -- dsp-features.spec.ts",
+            ]
+        );
+        // A workspace input touches every crate; rule tests are check:rules' own.
+        assert_eq!(
+            changed(&["Cargo.lock", "tests/tooling/test-plan.test.ts"]),
+            [
+                "cargo clippy --locked --all-targets -- -D warnings",
+                "cargo test --locked -p dispatch-backend -p dispatch-ci -p dispatch-host",
+            ]
+        );
+        assert_eq!(
+            changed(&["backend/host/src/updater.rs", "tests/browser/roles.spec.ts"])[1],
+            "cargo test --locked -p dispatch-host"
+        );
+        assert!(changed(&["docs/readme.md", "dashboard/src/app/App.tsx"]).is_empty());
+        // Without a plan, the changed tests themselves are still named.
+        let files = vec!["tests/api/roles.test.ts".to_owned()];
+        assert_eq!(
+            affected(&files, &Value::Null),
+            ["python3 tooling/cargo-build.py && npx tsx --test tests/api/roles.test.ts"]
+        );
     }
     #[test]
     fn merge_queue_is_detected_only_from_a_well_formed_answer() {
