@@ -1,24 +1,15 @@
 import { spawn } from 'node:child_process';
 import { ruleTests } from './test-plan.js';
 
-// Everything a push can fail on without a build: types, formatting and the source-wide rule
-// tests. About half a minute; run it before every push.
+// Everything a push can fail on without a build: types, formatting, the source-wide rule
+// tests and the Python tooling tests, which take seconds and otherwise fail only in the queue.
+// About half a minute; run it before every push.
 const checks: [string, string, string[]][] = [
   ['privacy', 'python3', ['tooling/security/scan.py']],
   [
-    'compiler path policy',
+    'Python tooling tests',
     'python3',
-    [
-      '-m',
-      'unittest',
-      'discover',
-      '-s',
-      'tests/tooling',
-      '-p',
-      'compiler_paths_test.py',
-      '-k',
-      'fingerprint',
-    ],
+    ['-m', 'unittest', 'discover', '-s', 'tests/tooling', '-p', '*_test.py'],
   ],
   ['types', 'npx', ['tsc', '--noEmit']],
   ['format', 'npx', ['prettier', '--check', '.']],
