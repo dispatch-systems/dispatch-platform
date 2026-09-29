@@ -84,7 +84,8 @@ export async function prepare(options: boolean | FixtureOptions = true) {
   return { root, binary, env, port, address, cli };
 }
 export async function fixture(options: boolean | FixtureOptions = true) {
-  const { root, binary, env, address: origin, cli } = await prepare(options);
+  const { root, binary, env, address, cli } = await prepare(options);
+  let origin = address;
   const overrides = typeof options === 'boolean' ? {} : (options.env ?? {});
   const inherit = typeof options !== 'boolean' && options.output === 'inherit';
   const password = demo.password;
@@ -137,11 +138,15 @@ export async function fixture(options: boolean | FixtureOptions = true) {
       value,
     };
   };
-  const start = async () => {
-    server = spawn(binary, ['serve'], {
+  // Whether a server of this fixture has served, after which its origin can no longer move.
+  let served = false;
+  const start = async (): Promise<void> => {
+    const child = spawn(binary, ['serve'], {
       env,
       stdio: inherit ? ['ignore', 'inherit', 'inherit'] : ['ignore', 'pipe', 'pipe'],
     });
+    server = child;
+    const from = logs.length;
     // A browser that fails to start says why only in the server's log. Show that line in
     // the test output as it happens, so a failure on a CI runner explains itself.
     const keep = (data: Buffer) => {
@@ -149,16 +154,36 @@ export async function fixture(options: boolean | FixtureOptions = true) {
       for (const line of String(data).split('\n'))
         if (line.includes('"browser.start_failed"')) process.stderr.write(`${line}\n`);
     };
-    server.stdout?.on('data', keep);
-    server.stderr?.on('data', keep);
+    child.stdout?.on('data', keep);
+    child.stderr?.on('data', keep);
+    // The port was free when prepare() chose it, but another process can listen on it before
+    // this server binds, and would answer the health check in its place. Only this server's
+    // own start line, logged once it holds the port, proves the answer is its own.
     await until(async () => {
+      if (child.exitCode !== null) return true;
+      if (!inherit && !logs.includes('"event":"core.started"', from)) return false;
       try {
         return (await request('/api/health')).status === 200;
       } catch {
-        assert(server?.exitCode === null, logs);
         return false;
       }
     });
+    if (child.exitCode === null) {
+      served = true;
+      return;
+    }
+    // Lost the port before anything used this origin: take another. Later, fail with the log.
+    assert(
+      !served &&
+        !overrides.PORT &&
+        !overrides.DISPATCH_ORIGIN &&
+        logs.includes('"kind":"AddrInUse"', from),
+      logs,
+    );
+    const port = await freePort();
+    Object.assign(env, { PORT: String(port), DISPATCH_ORIGIN: `http://localhost:${port}` });
+    origin = `http://127.0.0.1:${port}`;
+    return start();
   };
   const stop = async (signal: NodeJS.Signals = 'SIGTERM') => {
     if (server && server.exitCode === null && server.signalCode === null) {
