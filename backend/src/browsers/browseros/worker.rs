@@ -262,6 +262,10 @@ async fn browser(mode: &str, notes: &Notes) -> Result<(tokio::process::Child, Cd
         // A window covered by another stays visible: Cortex does not show a route it
         // has loaded while its document is hidden, so a covered tab would never finish.
         "--disable-backgrounding-occluded-windows",
+        // The cache lives in the sandbox's own memory and ends with it: what pages
+        // loaded never reaches the profile on disk. Bounded, since memory holds it.
+        "--disk-cache-dir=/tmp/browser-cache",
+        "--disk-cache-size=67108864",
     ]);
     if mode == "headless" {
         command.arg("--headless=new");

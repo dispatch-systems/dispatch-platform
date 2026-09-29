@@ -4,7 +4,7 @@ mod benchmark;
 mod collection;
 mod discovery;
 mod dvic;
-mod routedata;
+pub(crate) mod routedata;
 mod scorecard;
 mod scorecard_csv;
 use super::{

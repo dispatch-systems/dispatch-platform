@@ -116,6 +116,8 @@ const INVENTORY: &[Row] = &[
     ("GET", "/api/dsp/routes/days/{day}/itineraries/{id}", Dsp("routes.view"), Read, false),
     ("GET", "/api/dsp/routes/packages/{tracking}", Dsp("routes.view"), Read, false),
     ("POST", "/api/dsp/routes/collect", Dsp("routes.collect"), Write, false),
+    ("GET", "/api/dsp/routes/retention", Dsp("routes.manage"), Read, false),
+    ("POST", "/api/dsp/routes/retention", Dsp("routes.manage"), Write, false),
     ("GET", "/api/dsp/schedules", Dsp("timecard.manage|routes.manage|dvic.manage"), Read, false),
     ("POST", "/api/dsp/schedules", Dsp("timecard.manage|routes.manage|dvic.manage"), Write, WAKES_SCHEDULER),
     ("POST", "/api/dsp/schedules/preview", Dsp("timecard.manage|routes.manage|dvic.manage"), Write, false),

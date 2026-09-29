@@ -14,6 +14,7 @@ use crate::{
 
 const VIEW: Dsp = Dsp("routes.view");
 const COLLECT: Dsp = Dsp("routes.collect");
+const MANAGE: Dsp = Dsp("routes.manage");
 
 pub fn routes() -> Vec<Route> {
     vec![
@@ -26,6 +27,8 @@ pub fn routes() -> Vec<Route> {
         ),
         read("/api/dsp/routes/packages/{tracking}", VIEW, package),
         write("/api/dsp/routes/collect", COLLECT, collect),
+        read("/api/dsp/routes/retention", MANAGE, retention),
+        write("/api/dsp/routes/retention", MANAGE, set_retention),
     ]
 }
 
@@ -57,6 +60,27 @@ fn day(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         .route_day(c.dsp_id(), day)?
         .ok_or_else(|| Error::new("not_found", 404))?;
     Reply::of(&view)
+}
+
+fn retention(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
+    Reply::of(&db.route_retention(c.dsp_id())?)
+}
+
+/// Sets the window: `days` from 30 to 3650, or null to keep every day.
+fn set_retention(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    let b = &input.body;
+    v::fields(b, &["days"])?;
+    let days = match b.get("days") {
+        Some(serde_json::Value::Null) => None,
+        Some(_) => Some(v::integer(
+            b,
+            "days",
+            routedata::MIN_RETENTION_DAYS,
+            routedata::MAX_RETENTION_DAYS,
+        )?),
+        None => return Err(crate::Error::new("invalid_input", 400)),
+    };
+    Reply::of(&db.set_route_retention(c.dsp_id(), Some(c.actor()), days)?)
 }
 
 /// Queues one day, the most recent completed one unless `date` names another, or up to

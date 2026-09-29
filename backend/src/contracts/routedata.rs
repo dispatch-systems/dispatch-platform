@@ -163,6 +163,19 @@ pub struct RoutePackage {
     pub tracking_id: String,
     pub events: Vec<RoutePackageEvent>,
 }
+/// How long a DSP keeps its route data, and what it holds now.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct RouteRetention {
+    /// Days kept, counted back from today where the DSP is. `None` keeps every day.
+    #[cfg_attr(test, ts(type = "number | null"))]
+    pub days: Option<i64>,
+    pub changed_at: Option<String>,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub stored_days: i64,
+    pub oldest_day: Option<String>,
+}
 /// What a reprocess rebuilt: each publication with its counts as they now stand.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]

@@ -120,6 +120,7 @@ impl Runtime {
             .try_acquire_owned()
             .map_err(|_| Error::new("browser_capacity_busy", 429))?;
         let lease = profile_lease(profile)?;
+        scrub_reported(profile);
         // Credentials belong to the DSP vault; password-manager chrome must not
         // cover native PIN entry or persist another copy in the browser profile.
         let defaults = db::private_dir(&profile.join("Default"))?;
@@ -156,6 +157,7 @@ impl Runtime {
         let (stop, cancellation) = watch::channel(false);
         let (finished, closed) = watch::channel(None);
         let (ready, started) = oneshot::channel();
+        let traced = profile.to_path_buf();
         tokio::spawn(async move {
             let mut child = child;
             serve_child(
@@ -167,8 +169,10 @@ impl Runtime {
             )
             .await;
             let exit = stop_child(&mut child).await;
-            // Release leases only after reaping the namespace supervisor.
+            // Release leases only after reaping the namespace supervisor, and after the
+            // pages it opened left nothing behind.
             drop(child);
+            scrub_reported(&traced);
             drop(egress);
             drop(run);
             drop(lease);
@@ -192,6 +196,98 @@ impl Runtime {
                 Err(Error::new("browser_start_failed", 503))
             }
         }
+    }
+}
+
+/// What a browser keeps of the pages it opened: its caches, history, sessions, icons,
+/// page storage, and the stores its shopping and metrics features fill from what pages
+/// show. Everything a collection reads goes into a database, so none of it may stay in
+/// a profile: it is removed before every start and after every exit, leaving only what
+/// signing in needs (cookies, local storage, preferences).
+const PAGE_TRACES: &[&str] = &[
+    "Default/Cache",
+    "Default/Code Cache",
+    "Default/GPUCache",
+    "Default/DawnGraphiteCache",
+    "Default/DawnWebGPUCache",
+    "Default/History",
+    "Default/History-journal",
+    "Default/Visited Links",
+    "Default/Top Sites",
+    "Default/Top Sites-journal",
+    "Default/Favicons",
+    "Default/Favicons-journal",
+    "Default/Shortcuts",
+    "Default/Shortcuts-journal",
+    "Default/Network Action Predictor",
+    "Default/Network Action Predictor-journal",
+    "Default/Sessions",
+    "Default/Session Storage",
+    "Default/Service Worker",
+    "Default/blob_storage",
+    "Default/Shared Dictionary",
+    "Default/SharedStorage",
+    "Default/SharedStorage-shm",
+    "Default/SharedStorage-wal",
+    "Default/Reporting and NEL",
+    "Default/Reporting and NEL-journal",
+    "Default/BrowsingTopicsSiteData",
+    "Default/BrowsingTopicsSiteData-journal",
+    "Default/BrowsingTopicsState",
+    "Default/Site Characteristics Database",
+    "Default/optimization_guide_hint_cache_store",
+    "Default/parcel_tracking_db",
+    "Default/chrome_cart_db",
+    "Default/commerce_subscription_db",
+    "Default/discount_infos_db",
+    "Default/discounts_db",
+    "Default/DIPS",
+    "Default/DIPS-shm",
+    "Default/DIPS-wal",
+    "Default/DIPS-journal",
+    "Default/Web Data",
+    "Default/Web Data-journal",
+    "Default/Account Web Data",
+    "Default/Account Web Data-journal",
+    "Default/Segmentation Platform",
+    "Default/shared_proto_db",
+    "segmentation_platform",
+    "GPUPersistentCache",
+    "BrowserMetrics",
+    "BrowserMetrics-spare.pma",
+    "CrashpadMetrics-active.pma",
+    "config/browser-os/Crash Reports",
+];
+/// Removes every page trace from `profile`. Runs only while this process holds the
+/// profile's lease, so no browser is writing to it. A trace that cannot be removed does
+/// not keep the rest: every entry is tried, and the first failure is returned.
+pub(crate) fn scrub(profile: &Path) -> Result<()> {
+    let mut first = None;
+    for entry in PAGE_TRACES {
+        let path = profile.join(entry);
+        let result = match fs::symlink_metadata(&path) {
+            Ok(meta) if meta.is_dir() => fs::remove_dir_all(&path),
+            Ok(_) => fs::remove_file(&path),
+            Err(error) => Err(error),
+        };
+        match result {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                first.get_or_insert(error);
+            }
+            _ => (),
+        }
+    }
+    first.map_or(Ok(()), |error| Err(error.into()))
+}
+/// A scrub that failed is reported, never fatal: the browser still starts or stops, and
+/// the next start or exit tries again.
+fn scrub_reported(profile: &Path) {
+    if let Err(error) = scrub(profile) {
+        crate::observability::event(
+            "error",
+            "browser.scrub_failed",
+            serde_json::json!({"error":error.code}),
+        );
     }
 }
 
@@ -572,6 +668,32 @@ pub async fn worker_main(mode: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_scrub_removes_every_page_trace_and_keeps_what_signing_in_needs() {
+        use std::os::unix::fs::PermissionsExt;
+        let profile = tempfile::tempdir().unwrap();
+        let default = profile.path().join("Default");
+        fs::create_dir_all(default.join("Cache/Cache_Data")).unwrap();
+        fs::create_dir_all(default.join("Service Worker/CacheStorage")).unwrap();
+        for file in ["History", "Web Data", "Cookies", "Preferences"] {
+            fs::write(default.join(file), b"x").unwrap();
+        }
+        fs::create_dir_all(default.join("Local Storage")).unwrap();
+        // A trace it cannot remove is reported, and every other trace still goes.
+        let locked = default.join("Service Worker/CacheStorage");
+        fs::write(locked.join("entry"), b"x").unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o500)).unwrap();
+        assert!(scrub(profile.path()).is_err());
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o700)).unwrap();
+        for gone in ["Cache", "History", "Web Data"] {
+            assert!(!default.join(gone).exists(), "{gone}");
+        }
+        for kept in ["Cookies", "Preferences", "Local Storage"] {
+            assert!(default.join(kept).exists(), "{kept}");
+        }
+        assert!(scrub(profile.path()).is_ok());
+        assert!(!default.join("Service Worker").exists());
+    }
     #[test]
     fn a_failed_start_names_the_workers_own_reason() {
         assert_eq!(

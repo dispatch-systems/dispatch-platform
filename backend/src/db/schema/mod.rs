@@ -155,6 +155,11 @@ pub const ROUTEDATA: &[Migration] = &[
         name: "details",
         apply: Code(routedata_details),
     },
+    Migration {
+        id: 3,
+        name: "task_keys",
+        apply: Sql(include_str!("routedata/0003_task_keys.sql")),
+    },
 ];
 
 /// Removed tasks join `tasks`, marked inactive; the itinerary keeps its route-level lists;

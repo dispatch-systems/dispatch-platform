@@ -17,6 +17,9 @@ test(
     const base = Date.UTC(2026, 8, 25, 15);
     const hour = 3_600_000;
     const requests: URL[] = [];
+    // Documents loaded other than the list: Cortex's pages are one application that
+    // fetches what its address shows, on load and whenever its history changes.
+    const pages: string[] = [];
     const drivers = [
       {
         id: 'driver-1',
@@ -191,8 +194,6 @@ test(
           city: 'Fixture',
           state: 'CA',
           postalCode: '90000',
-          customerName: null,
-          customerPhone: null,
           geocode: { latitude: 34.01, longitude: -118.0, scope: 0 },
         },
       ],
@@ -212,6 +213,20 @@ test(
           isLoadingSummaries: false, allItinerarySummaries: [], transporterSummary: {} }, return: null };
         ${extra}
       </script>`;
+    const router = `
+      const show = () => {
+        const path = location.pathname;
+        if (path.startsWith('/operations/execution/itineraries/')) {
+          const id = decodeURIComponent(path.split('/')[4]);
+          fetch('/operations/execution/api/itineraries/?documentType=Itinerary&historicalDay=true&itineraryId=' + encodeURIComponent(id) + '&serviceAreaId=${area}', { credentials: 'include' }).catch(() => {});
+        } else if (path === '/operations/execution/dv/routes') {
+          fetch('/operations/execution/api/route-summaries?historicalDay=true&localDate=${day}&serviceAreaId=${area}&statsFromSummaries=true', { credentials: 'include' }).catch(() => {});
+        } else {
+          fetch('/operations/execution/api/summaries?historicalDay=true&localDate=${day}&serviceAreaId=${area}', { credentials: 'include' }).catch(() => {});
+        }
+      };
+      addEventListener('popstate', show);
+      show();`;
     const server = http.createServer(async (req, res) => {
       const url = new URL(req.url!, 'http://fixture.test');
       const authenticated = req.headers.cookie?.includes('authenticated=yes');
@@ -286,26 +301,14 @@ test(
           return redirect(
             `/operations/execution/dv/routes?navMenuVariant=external&provider=ALL_DRIVERS&selectedDay=${day}&serviceAreaId=${area}`,
           );
-        return html(
-          props(
-            `fetch('/operations/execution/api/summaries?historicalDay=true&localDate=${day}&serviceAreaId=${area}', { credentials: 'include' });`,
-          ),
-        );
+        return html(props(router));
       }
-      if (url.pathname.startsWith('/operations/execution/itineraries/')) {
-        const id = decodeURIComponent(url.pathname.split('/')[4]!);
-        return html(
-          props(
-            `fetch('/operations/execution/api/itineraries/?documentType=Itinerary&historicalDay=true&itineraryId=${id}&serviceAreaId=${area}', { credentials: 'include' });`,
-          ),
-        );
-      }
-      if (url.pathname === '/operations/execution/dv/routes') {
-        return html(
-          props(
-            `fetch('/operations/execution/api/route-summaries?historicalDay=true&localDate=${day}&serviceAreaId=${area}&statsFromSummaries=true', { credentials: 'include' });`,
-          ),
-        );
+      if (
+        url.pathname.startsWith('/operations/execution/itineraries/') ||
+        url.pathname === '/operations/execution/dv/routes'
+      ) {
+        pages.push(url.pathname);
+        return html(props(router));
       }
       res.writeHead(404);
       res.end();
@@ -373,6 +376,17 @@ test(
       2,
     );
     for (const u of requests) assert.equal(u.searchParams.get('serviceAreaId'), area);
+    // The list's application moved to the itineraries and the routes page itself: only
+    // the second tab loaded a page, for its first itinerary, and the routes page was
+    // loaded once, where discovery landed.
+    assert.ok(
+      pages.filter((p) => p.startsWith('/operations/execution/itineraries/')).length <= 1,
+      JSON.stringify(pages),
+    );
+    assert.ok(
+      pages.filter((p) => p === '/operations/execution/dv/routes').length <= 1,
+      JSON.stringify(pages),
+    );
     const stored = f.database(`dsps/${dsp.id}/data/routedata/routedata.sqlite`, (db) => ({
       publication: db
         .prepare('SELECT job_id,provider,service_area_id,active FROM route_publications')

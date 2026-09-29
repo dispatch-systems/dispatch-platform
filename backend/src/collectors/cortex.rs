@@ -154,14 +154,24 @@ impl Collector for Cortex {
             "Collecting meal breaks"
         }
     }
-    fn prepare(&self, collected: Collected) -> Result<Collected> {
-        if !routedata::Request::is(&collected.data) {
-            return Ok(collected);
-        }
-        let capture: routedata::Capture = serde_json::from_value(collected.data)?;
-        Ok(Collected {
-            data: serde_json::to_value(routedata::prepare(capture)?)?,
-            scope: collected.scope,
+    fn stage<'a>(
+        &'a self,
+        state: &'a std::sync::Arc<crate::State>,
+        dsp: &'a str,
+        job: &'a str,
+        owner: &'a str,
+        collected: Collected,
+    ) -> Pending<'a, Collected> {
+        Box::pin(async move {
+            if !routedata::Request::is(&collected.data) {
+                return Ok(collected);
+            }
+            let capture: routedata::Capture = serde_json::from_value(collected.data)?;
+            let staged = routedata::stage(state, dsp, job, owner, capture).await?;
+            Ok(Collected {
+                data: serde_json::to_value(staged)?,
+                scope: collected.scope,
+            })
         })
     }
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {

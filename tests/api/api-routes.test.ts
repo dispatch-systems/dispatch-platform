@@ -170,3 +170,58 @@ test('a day of routes is collected on request, stored in normalized rows and lis
     ),
   );
 });
+
+test('route data is kept until the DSP chooses a retention window, which only managers change', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const dsp = owner.session.dsps.find((d: any) => d.name === 'Northline Logistics');
+  await owner.select(dsp.id);
+  const initial = await owner.get('/api/dsp/routes/retention');
+  assert.equal(initial.status, 200, initial.body);
+  assert.equal(initial.value.days, null);
+  assert.equal(initial.value.storedDays, 0);
+  assert.equal(initial.value.oldestDay, null);
+  // Windows are 30 days to ten years, or null for every day.
+  for (const body of [{ days: 29 }, { days: 3651 }, { days: '90' }, {}, { days: 90, extra: 1 }]) {
+    assert.equal((await owner.post('/api/dsp/routes/retention', body)).status, 400);
+  }
+  const saved = await owner.post('/api/dsp/routes/retention', { days: 90 });
+  assert.equal(saved.status, 200, saved.body);
+  assert.equal(saved.value.days, 90);
+  assert.ok(saved.value.changedAt);
+  assert.equal((await owner.get('/api/dsp/routes/retention')).value.days, 90);
+  // A day the window has passed is not collected.
+  assert.equal(
+    (
+      await owner.post('/api/dsp/profile', {
+        name: dsp.name,
+        abbreviation: 'NLL',
+        stationCode: 'TST1',
+        timezone: dsp.timezone,
+      })
+    ).status,
+    200,
+  );
+  await owner.select(dsp.id);
+  const outside = await owner.post('/api/dsp/routes/collect', {
+    requestId: 'old',
+    date: '2020-01-01',
+  });
+  assert.equal(outside.status, 400);
+  assert.equal(outside.value.error, 'routes_day_outside_retention');
+  // A member without the manage permission neither reads nor changes it.
+  const member = await f.client('member@dispatch.test');
+  await member.select(dsp.id);
+  assert.equal((await member.get('/api/dsp/routes/retention')).status, 403);
+  assert.equal((await member.post('/api/dsp/routes/retention', { days: null })).status, 403);
+  assert.equal((await owner.post('/api/dsp/routes/retention', { days: null })).value.days, null);
+  const events = (await owner.get('/api/platform/audit?limit=50')).value.events;
+  assert.deepEqual(
+    events
+      .filter((e: any) => e.action === 'routes.retention_changed')
+      .map((e: any) => e.detail)
+      .sort(),
+    ['90', 'forever'],
+  );
+});

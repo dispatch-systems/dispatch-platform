@@ -5,8 +5,8 @@ import { test, expect, login, openDsp } from './fixtures.js';
 import { seedDvic } from '../support/dvic.js';
 
 // Not a test: `npm run pr:screenshots -- capture` runs it to photograph the named screens of
-// the built dashboard, from the fixture server, for a PR's Screenshots section. In the suite,
-// without the variables, it skips itself.
+// the built dashboard, from the fixture server, for a PR's Screenshots section. A screen may
+// name a tab, as `settings?tab=data`. In the suite, without the variables, it skips itself.
 const screens = (process.env.DISPATCH_SCREENSHOTS ?? '').split(',').filter(Boolean);
 const output = process.env.DISPATCH_SCREENSHOT_DIR ?? '';
 const scheme = process.env.DISPATCH_SCREENSHOT_SCHEME === 'dark' ? 'dark' : 'light';
@@ -18,7 +18,8 @@ test.use({ viewport: { width: 1920, height: 1080 } });
 
 test('captures the named screens', async ({ page, dispatch }) => {
   test.slow();
-  const unknown = screens.filter((id) => !routeMeta.some((route) => route.id === id));
+  const pageId = (screen: string) => screen.split('?')[0]!;
+  const unknown = screens.filter((id) => !routeMeta.some((route) => route.id === pageId(id)));
   expect(unknown, `unknown screens; the ids are in app/route-meta.ts`).toEqual([]);
   fs.mkdirSync(output, { recursive: true });
   await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
@@ -27,7 +28,7 @@ test('captures the named screens', async ({ page, dispatch }) => {
   let dsp = '';
   const titles: Record<string, string> = {};
   for (const id of screens) {
-    const route = routeMeta.find((candidate) => candidate.id === id)!;
+    const route = routeMeta.find((candidate) => candidate.id === pageId(id))!;
     if (route.scope === 'dsp') {
       if (!dsp) {
         await openDsp(page, 'Northline Logistics');
@@ -42,8 +43,9 @@ test('captures the named screens', async ({ page, dispatch }) => {
     await expect(page.getByRole('status')).toHaveCount(0, { timeout: 15000 });
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(500);
-    await page.screenshot({ path: path.join(output, `${id}.png`), animations: 'disabled' });
-    titles[id] = route.label;
+    const file = id.replace(/[?=&]/g, '-');
+    await page.screenshot({ path: path.join(output, `${file}.png`), animations: 'disabled' });
+    titles[file] = route.label;
   }
   fs.writeFileSync(path.join(output, 'index.json'), JSON.stringify(titles, null, 2) + '\n');
 });
