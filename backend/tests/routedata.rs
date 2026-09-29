@@ -556,11 +556,20 @@ fn the_sweep_keeps_a_running_jobs_day_and_deletes_what_no_reader_sees() {
         1
     );
     assert!(db.route_days(&id).unwrap().days.is_empty());
-    // A retry starts over: the first attempt's staged day goes, not beside the new one.
+    // A retry starts over: the first attempt's staged day is detached from the job and
+    // swept in steps, while the new one, its job still queued, stays.
     db.stage_routes(&id, &job, capture.clone()).unwrap();
     assert_eq!(
         count(&db, &id, "SELECT count(*) FROM route_publications"),
-        1
+        2
+    );
+    assert!(sweep(&db, &id) > 1);
+    assert_eq!(
+        db.routedata(&id)
+            .unwrap()
+            .all("SELECT job_id FROM route_publications", [])
+            .unwrap(),
+        vec![json!({"job_id": job})]
     );
     // Once the job has ended without publishing, the sweep removes every row of it.
     db.jobs

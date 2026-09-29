@@ -120,7 +120,7 @@ impl Runtime {
             .try_acquire_owned()
             .map_err(|_| Error::new("browser_capacity_busy", 429))?;
         let lease = profile_lease(profile)?;
-        scrub(profile)?;
+        scrub_reported(profile);
         // Credentials belong to the DSP vault; password-manager chrome must not
         // cover native PIN entry or persist another copy in the browser profile.
         let defaults = db::private_dir(&profile.join("Default"))?;
@@ -172,13 +172,7 @@ impl Runtime {
             // Release leases only after reaping the namespace supervisor, and after the
             // pages it opened left nothing behind.
             drop(child);
-            if let Err(error) = scrub(&traced) {
-                crate::observability::event(
-                    "error",
-                    "browser.scrub_failed",
-                    serde_json::json!({"error":error.code}),
-                );
-            }
+            scrub_reported(&traced);
             drop(egress);
             drop(run);
             drop(lease);
@@ -265,24 +259,36 @@ const PAGE_TRACES: &[&str] = &[
     "config/browser-os/Crash Reports",
 ];
 /// Removes every page trace from `profile`. Runs only while this process holds the
-/// profile's lease, so no browser is writing to it.
+/// profile's lease, so no browser is writing to it. A trace that cannot be removed does
+/// not keep the rest: every entry is tried, and the first failure is returned.
 pub(crate) fn scrub(profile: &Path) -> Result<()> {
+    let mut first = None;
     for entry in PAGE_TRACES {
         let path = profile.join(entry);
         let result = match fs::symlink_metadata(&path) {
             Ok(meta) if meta.is_dir() => fs::remove_dir_all(&path),
             Ok(_) => fs::remove_file(&path),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
             Err(error) => Err(error),
         };
         match result {
             Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-                return Err(error.into());
+                first.get_or_insert(error);
             }
             _ => (),
         }
     }
-    Ok(())
+    first.map_or(Ok(()), |error| Err(error.into()))
+}
+/// A scrub that failed is reported, never fatal: the browser still starts or stops, and
+/// the next start or exit tries again.
+fn scrub_reported(profile: &Path) {
+    if let Err(error) = scrub(profile) {
+        crate::observability::event(
+            "error",
+            "browser.scrub_failed",
+            serde_json::json!({"error":error.code}),
+        );
+    }
 }
 
 fn profile_lease(profile: &Path) -> Result<File> {
@@ -662,6 +668,32 @@ pub async fn worker_main(mode: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_scrub_removes_every_page_trace_and_keeps_what_signing_in_needs() {
+        use std::os::unix::fs::PermissionsExt;
+        let profile = tempfile::tempdir().unwrap();
+        let default = profile.path().join("Default");
+        fs::create_dir_all(default.join("Cache/Cache_Data")).unwrap();
+        fs::create_dir_all(default.join("Service Worker/CacheStorage")).unwrap();
+        for file in ["History", "Web Data", "Cookies", "Preferences"] {
+            fs::write(default.join(file), b"x").unwrap();
+        }
+        fs::create_dir_all(default.join("Local Storage")).unwrap();
+        // A trace it cannot remove is reported, and every other trace still goes.
+        let locked = default.join("Service Worker/CacheStorage");
+        fs::write(locked.join("entry"), b"x").unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o500)).unwrap();
+        assert!(scrub(profile.path()).is_err());
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o700)).unwrap();
+        for gone in ["Cache", "History", "Web Data"] {
+            assert!(!default.join(gone).exists(), "{gone}");
+        }
+        for kept in ["Cookies", "Preferences", "Local Storage"] {
+            assert!(default.join(kept).exists(), "{kept}");
+        }
+        assert!(scrub(profile.path()).is_ok());
+        assert!(!default.join("Service Worker").exists());
+    }
     #[test]
     fn a_failed_start_names_the_workers_own_reason() {
         assert_eq!(

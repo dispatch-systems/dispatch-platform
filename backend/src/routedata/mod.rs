@@ -893,7 +893,8 @@ impl Store {
         Ok(jobs)
     }
     /// Starts a day's inactive publication for `job`: the publication row, both lists'
-    /// responses and the planned routes. A previous attempt's publication goes first.
+    /// responses and the planned routes. A previous attempt's publication is left to the
+    /// sweep.
     /// `lists` is the validated capture with its itineraries taken out; `itineraries`
     /// is how many it had.
     pub fn stage_routes_start(
@@ -914,8 +915,11 @@ impl Store {
         let summaries = serde_json::to_vec(&capture.summaries)?;
         let route_summaries = serde_json::to_vec(&capture.route_summaries)?;
         db.transaction(|| {
+            // A previous attempt's day is handed to `sweep_routes`, which deletes it in
+            // small steps; its job id is freed for this attempt.
             db.exec(
-                "DELETE FROM route_publications WHERE job_id=? AND active=0",
+                "UPDATE route_publications SET job_id=job_id||':abandoned:'||id \
+                 WHERE job_id=? AND active=0",
                 [job],
             )?;
             db.0.prepare_cached(
