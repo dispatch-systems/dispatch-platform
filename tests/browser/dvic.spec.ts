@@ -74,7 +74,7 @@ test('the day digest and week grid read the same inspections, with details on de
     .click();
   await expect(page.getByRole('heading', { name: 'Sun, Sep 20, 2026' })).toBeVisible();
   await expect(page.locator('.dvic-footer')).toContainText('2 records');
-  await page.getByRole('textbox', { name: 'Search inspections' }).fill('Taylor');
+  await page.getByRole('textbox', { name: 'Search drivers' }).fill('Taylor');
   await expect(page.getByText('No matching inspections', { exact: true })).toBeVisible();
   // Filters scope both tabs.
   await page.getByRole('tab', { name: 'Week' }).click();
@@ -83,7 +83,7 @@ test('the day digest and week grid read the same inspections, with details on de
   await page.getByLabel('Vehicle type').selectOption('dot');
   await expect(page.locator('.dvic-footer')).toContainText('1 record this week');
   await page.getByLabel('Vehicle type').selectOption('');
-  await page.getByRole('textbox', { name: 'Search inspections' }).fill('');
+  await page.getByRole('textbox', { name: 'Search drivers' }).fill('');
   await expect(page.locator('.dvic-footer')).toContainText('19 records this week');
   await expect(page.locator('.dvic-grid tbody tr')).toHaveCount(8);
   await expect(page.locator('.dvic-grid-total').nth(1)).toHaveText('3');

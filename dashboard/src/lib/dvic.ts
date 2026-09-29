@@ -44,9 +44,7 @@ export function filterInspections(rows: DvicInspection[], query: string, vehicle
     .filter(
       (row) =>
         (!vehicles || vehicleClass(row) === vehicles) &&
-        [row.driverName, row.driverId, row.vin].some((value) =>
-          value.toLowerCase().includes(needle),
-        ),
+        [row.driverName, row.driverId].some((value) => value.toLowerCase().includes(needle)),
     )
     .sort(
       (a, b) =>
