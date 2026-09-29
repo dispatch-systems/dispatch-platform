@@ -108,6 +108,22 @@ test(
       ...Array.from({ length: 23 }, (_, i) => `CC${String(i).padStart(2, '0')}`),
     ];
     f.state.timecardDelayMs = 600;
+    // Each proving read alternates a platform HTTP read with a tab read of the same length,
+    // so tabs that start half a cycle apart never overlap by themselves. Hold the first tab
+    // read until the other tab's arrives; the timer only ends the wait of a one-tab
+    // regression, which the overlap assertion below then reports.
+    let pairTabs!: () => void;
+    const paired = new Promise<void>((resolve) => (pairTabs = resolve));
+    const unpaired = setTimeout(pairTabs, 10000);
+    t.after(() => {
+      clearTimeout(unpaired);
+      pairTabs();
+    });
+    f.state.beforeTimecard = async (_account, _code, fromPlatform) => {
+      if (fromPlatform) return;
+      if (f.state.browserActive >= 2) pairTabs();
+      await paired;
+    };
     const owner = await f.client();
     const dsp = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
     await owner.select(dsp.id);
