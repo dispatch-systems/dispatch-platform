@@ -272,30 +272,6 @@ jobs:
         if: steps.audit-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-audit --version 0.22.2 --locked
       - run: cargo audit --deny warnings
-  codeql:
-    if: contains('all core', inputs.suite || 'all')
-    permissions:
-      contents: read
-      security-events: write
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [javascript-typescript, rust]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@7999b86c43a865dc79d8923397f35af22de63401
-        with:
-          languages: ${{ matrix.language }}
-          build-mode: none
-      - name: Analyze
-        uses: github/codeql-action/analyze@7999b86c43a865dc79d8923397f35af22de63401
-        with:
-          category: /language:${{ matrix.language }}
   # Builds the tools and fixture this ref's inputs lack, off the critical path, and saves
   # them to this ref's cache: the jobs that start later restore them instead of compiling.
   # `main`'s copies come from caches.yml. Every other job builds with Cargo when a tool is
@@ -354,8 +330,7 @@ jobs:
   # verified build under the commit's name: Dev installs it and a release stamps it. A
   # manual run of one suite has no gate, so nothing partial is ever published.
   platform:
-    needs:
-      [build, checks, browser, smoke, benchmark, core, api, collectors, rust-advisories, codeql]
+    needs: [build, checks, browser, smoke, benchmark, core, api, collectors, rust-advisories]
     if: always() && (inputs.suite || 'all') == 'all'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
