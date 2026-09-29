@@ -1,7 +1,8 @@
 name: Flaky tests
-# A job that failed and then passed on a rerun of the same commit is a flake, or a runner
-# problem, and either costs a merge. This lists them weekly, from the platform checks' reruns,
-# in the run's summary. It changes nothing.
+# A job that failed and then passed on the same code is a flake, or a runner problem, and
+# either costs a merge. This lists them weekly in the run's summary: reruns of one run, and
+# queue entries that failed and then merged with the PR's head unchanged, since a PR queued
+# again gets a new run on a new squash commit. It changes nothing.
 on:
   schedule:
     - cron: '17 6 * * 1'
@@ -9,6 +10,7 @@ on:
 permissions:
   actions: read
   contents: read
+  pull-requests: read
 jobs:
   report:
     runs-on: ubuntu-24.04
@@ -42,5 +44,60 @@ jobs:
           if ! grep -q '^| \[' report.md; then
             echo "| none | | |" >> report.md
           fi
+          # A head older than a fortnight is left out: such an entry is not listed.
+          heads=$(date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          SINCE="$since" HEADS_SINCE="$heads" python3 - >> report.md <<'EOF'
+          import json, os, re, subprocess
+          from collections import defaultdict
+
+          repo, since, heads = os.environ["REPO"], os.environ["SINCE"], os.environ["HEADS_SINCE"]
+
+          def api(path, jq):
+              out = subprocess.run(["gh", "api", "--paginate", path, "--jq", jq],
+                                   check=True, capture_output=True, text=True).stdout
+              return [json.loads(line) for line in out.splitlines() if line]
+
+          fields = "{id, conclusion, head_branch, head_sha, created_at, html_url}"
+          queue = api(f"repos/{repo}/actions/workflows/checks.yml/runs"
+                      f"?event=merge_group&created=>={since}&per_page=100", f".workflow_runs[] | {fields}")
+          # The admission check runs on every push to a PR, so its runs date each head. They
+          # outlive the PR's number, which GitHub drops from a run once the branch is gone.
+          admitted = api(f"repos/{repo}/actions/workflows/queue-admission.yml/runs"
+                         f"?created=>={heads}&per_page=100", f".workflow_runs[] | {fields}")
+          entries = defaultdict(list)
+          for run in sorted(queue, key=lambda run: run["created_at"]):
+              number = re.match(r"gh-readonly-queue/main/pr-(\d+)-", run["head_branch"] or "")
+              if number:
+                  entries[int(number[1])].append(run)
+          print(f"\n## Queue entries that failed, then merged with the PR unchanged, since {since}\n")
+          print("| PR | Failed run | Job | Passed run |")
+          print("| --- | --- | --- | --- |")
+          rows = 0
+          for number, runs in sorted(entries.items()):
+              branch = None
+              for index, failed in enumerate(runs):
+                  passed = next((run for run in runs[index + 1:] if run["conclusion"] == "success"), None)
+                  if failed["conclusion"] != "failure" or passed is None:
+                      continue
+                  if branch is None:
+                      branch = api(f"repos/{repo}/pulls/{number}", "{ref: .head.ref}")[0]["ref"]
+
+                  def head(at):
+                      earlier = [run for run in admitted
+                                 if run["head_branch"] == branch and run["created_at"] < at]
+                      return max(earlier, key=lambda run: run["created_at"])["head_sha"] if earlier else None
+
+                  if head(failed["created_at"]) is None or head(failed["created_at"]) != head(passed["created_at"]):
+                      continue
+                  jobs = api(f"repos/{repo}/actions/runs/{failed['id']}/jobs?per_page=100",
+                             '.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out") | {name}')
+                  for job in (job["name"] for job in jobs):
+                      if job != "platform":
+                          rows += 1
+                          print(f"| #{number} | [{failed['id']}]({failed['html_url']}) | {job} "
+                                f"| [{passed['id']}]({passed['html_url']}) |")
+          if not rows:
+              print("| none | | | |")
+          EOF
           cat report.md >> "$GITHUB_STEP_SUMMARY"
           cat report.md
