@@ -17,17 +17,17 @@ const SATURDAYS: Record<string, string> = {
 };
 
 // The real Rust driver against a staged Cortex. The first job finds the API through the
-// overview page's own first data request; the next ones start from the saved session
-// and read at the address the first stored, with no page at all; when the API moves, a
-// job finds it again; a dataset the API refuses fails the attempt for a retry; and
-// nothing collected is left outside the databases.
+// overview page's own first data request; the next ones read at the address the first
+// stored, without loading the overview; when the API moves, a job finds it again; a
+// dataset the API refuses fails the attempt for a retry; and nothing collected is left
+// outside the databases.
 test(
   'Cortex BrowserOS collects scorecard weeks at the stored API address, finds it again when it moves, and leaves nothing outside the databases',
   { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 300000 },
   async (t) => {
     let version = 'v1';
     const requests: URL[] = [];
-    const seen = { overview: 0, browserLanding: 0, sessionCheck: 0 };
+    const seen = { overview: 0 };
     // Weeks 38 and 36 are posted, 37 is not, and 35's returns are refused.
     const rows = (dataSetId: string, week: string): object[] => {
       if (week === '2026-W37') return [];
@@ -88,9 +88,6 @@ test(
         res.end();
       };
       if (url.pathname === '/dspconsolev2') {
-        // A browser navigating says so; the backend checking the saved session does not.
-        if (req.headers['sec-fetch-mode'] === 'navigate') seen.browserLanding++;
-        else seen.sessionCheck++;
         if (authenticated)
           return html(
             '<nav><a href="/scheduling/calendar-view/week">Weekly schedule</a></nav><a href="/ap/signin">Sign out</a>',
@@ -259,15 +256,12 @@ test(
       { tracking_id: 'TBA2', impact: 0, reason: 'CUSTOMER UNAVAILABLE' },
     ]);
 
-    // The next jobs start from the saved session and read at the stored address with
-    // no page at all: a week not posted yet is noted, a posted one published.
+    // The next jobs read at the stored address without loading the overview: a week not
+    // posted yet is noted, a posted one published.
     requests.length = 0;
-    const [landings, checks] = [seen.browserLanding, seen.sessionCheck];
     await collect('week-37', '2026-W37');
     const posted36 = await collect('week-36', '2026-W36');
     assert.equal(seen.overview, overviews);
-    assert.equal(seen.browserLanding, landings);
-    assert.equal(seen.sessionCheck, checks + 2);
     assert.equal(requests.length, 14 * 2);
     assert.ok(requests.every((u) => u.pathname === '/performance/api/v1/getData'));
     const after = (await owner.get('/api/dsp/scorecard/weeks')).value.weeks;

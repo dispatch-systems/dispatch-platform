@@ -248,14 +248,6 @@ impl Driver {
             })
         }))
     }
-    /// The API as the overview page names it, in a tab opened for it when the job
-    /// started from the saved session without one.
-    async fn found_api(&mut self, station: &str, metrics: &Recorder) -> Result<Api> {
-        if self.page.id.is_empty() {
-            self.open().await?;
-        }
-        self.performance_api(station, metrics).await
-    }
     /// Every dataset at once, answering each one's address and rows in `DATASETS`
     /// order. The first answer shows the session and the address work, and the
     /// browser closes then: nothing after it needs a page.
@@ -324,7 +316,10 @@ impl Driver {
         run.progress(10, "Finding the scorecard".into()).await?;
         let (mut api, mut saved) = match self.saved_api(&request.station, run).await? {
             Some(api) => (api, true),
-            None => (self.found_api(&request.station, run.metrics).await?, false),
+            None => (
+                self.performance_api(&request.station, run.metrics).await?,
+                false,
+            ),
         };
         run.progress(20, "Reading scorecard datasets".into())
             .await?;
@@ -338,7 +333,7 @@ impl Driver {
                         && !failed.answered
                         && failed.error.is(crate::Code::ScorecardApiUnreadable) =>
                 {
-                    api = self.found_api(&request.station, run.metrics).await?;
+                    api = self.performance_api(&request.station, run.metrics).await?;
                     saved = false;
                 }
                 Err(failed) => return Err(failed.error),
