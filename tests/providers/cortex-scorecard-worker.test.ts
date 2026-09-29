@@ -1,52 +1,74 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import http from 'node:http';
+import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { fixture, until } from '../support/support.js';
 
-// The real Rust driver against a staged performance page and data API: the page's
-// first request names the API, the datasets are read over HTTP with the browser's
-// cookies, and a week without the DSP's row is not posted.
+// What only the collected rows carry, so any copy of them outside the databases shows.
+const MARKERS = ['TBA-SCORECARD-MARKER-1', 'Scorecard Marker Driver', 'QUALITY-MARKER-NOTE'];
+const WEEKS = ['2026-W35', '2026-W36', '2026-W37', '2026-W38'];
+// The Saturday that ends each week, as daily datasets name the week they ask for.
+const SATURDAYS: Record<string, string> = {
+  '2026-08-29': '2026-W35',
+  '2026-09-05': '2026-W36',
+  '2026-09-12': '2026-W37',
+  '2026-09-19': '2026-W38',
+};
+
+// The real Rust driver against a staged Cortex. The first job finds the API through the
+// overview page's own first data request; the next starts from the saved session and
+// reads two weeks at the address the first stored, spanning the small datasets, with no
+// page at all; when the API moves, a job finds it again; a dataset the API refuses fails
+// the attempt for a retry; and nothing collected is left outside the databases.
 test(
-  'Cortex BrowserOS collects a scorecard week through the page-named API and notes a week not posted',
-  { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 240000 },
+  'Cortex BrowserOS collects scorecard weeks at the stored API address, finds it again when it moves, and leaves nothing outside the databases',
+  { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 300000 },
   async (t) => {
+    let version = 'v1';
     const requests: URL[] = [];
-    // Week 36 is posted, but its returns dataset answers an error: the page's
-    // spreadsheet stands in for it.
-    const rows = (dataSetId: string, week: string) => {
-      if (week === '2026-W36')
-        return dataSetId === 'dsp_station_weekly_quality'
-          ? [{ dsp_code: 'NLOG', station_code: 'TST1', data_date: week }]
-          : [];
-      if (week !== '2026-W38') return [];
+    const seen = { overview: 0, browserLanding: 0, sessionCheck: 0 };
+    // Weeks 38 and 36 are posted, 37 is not, and 35's returns are refused.
+    const rows = (dataSetId: string, week: string): object[] => {
+      if (week === '2026-W37') return [];
       switch (dataSetId) {
         case 'dsp_station_weekly_quality':
-          return [{ dsp_code: 'NLOG', station_code: 'TST1', data_date: week, dsp_final_score: 91 }];
-        case 'da_dsp_weekly_rts_deep_dive':
           return [
             {
-              transporter_id: 'driver-1',
-              tracking_id: 'TBA1',
+              dsp_code: 'NLOG',
+              station_code: 'TST1',
               data_date: week,
-              impacting_dcr: 'Y',
-              rts_reason_code: 'BUSINESS CLOSED',
-            },
-            {
-              transporter_id: 'driver-2',
-              tracking_id: 'TBA2',
-              data_date: week,
-              impacting_dcr: 'N',
-              rts_reason_code: 'CUSTOMER UNAVAILABLE',
+              dsp_final_score: 91,
+              note: MARKERS[2],
             },
           ];
+        case 'da_dsp_weekly_rts_deep_dive':
+          return week === '2026-W38'
+            ? [
+                {
+                  transporter_id: 'driver-1',
+                  tracking_id: MARKERS[0],
+                  data_date: week,
+                  impacting_dcr: 'Y',
+                  rts_reason_code: 'BUSINESS CLOSED',
+                },
+                {
+                  transporter_id: 'driver-2',
+                  tracking_id: 'TBA2',
+                  data_date: week,
+                  impacting_dcr: 'N',
+                  rts_reason_code: 'CUSTOMER UNAVAILABLE',
+                },
+              ]
+            : [];
         case 'da_dsp_station_weekly_performance':
           return [
             {
               transporter_id: 'driver-1',
-              da_name: 'Fixture Driver',
+              da_name: MARKERS[1],
               data_date: week,
-              da_overall_score: 95,
+              da_overall_score: week === '2026-W38' ? 95 : 90,
             },
           ];
         case 'da_dsp_daily_psb_stop':
@@ -67,6 +89,9 @@ test(
         res.end();
       };
       if (url.pathname === '/dspconsolev2') {
+        // A browser navigating says so; the backend checking the saved session does not.
+        if (req.headers['sec-fetch-mode'] === 'navigate') seen.browserLanding++;
+        else seen.sessionCheck++;
         if (authenticated)
           return html(
             '<nav><a href="/scheduling/calendar-view/week">Weekly schedule</a></nav><a href="/ap/signin">Sign out</a>',
@@ -89,32 +114,6 @@ test(
         res.setHeader('set-cookie', 'authenticated=yes; Path=/; Max-Age=3600');
         return redirect('/dspconsolev2');
       }
-      if (
-        url.pathname === '/performance' &&
-        url.searchParams.get('pageId') === 'dsp_return_to_station'
-      ) {
-        if (!authenticated) return redirect('/ap/signin');
-        // The returns page for week 36: a table whose component carries the
-        // spreadsheet's templates, an action bar with an unlabeled download button,
-        // and a download that hands the browser a blob, as the real page does.
-        if (url.searchParams.get('to') !== '2026-W36')
-          return redirect(
-            '/performance?pageId=dsp_return_to_station&station=TST1&companyId=company-1&tabId=dsp-return-to-station-weekly-tab&timeFrame=Weekly&to=2026-W38',
-          );
-        return html(
-          `<div id="bar"><button id="clear">Clear search</button><button id="dl"><svg width="16" height="16"></svg></button></div>` +
-            `<table id="t"><thead><tr><th>Delivery Associate</th></tr></thead><tbody><tr><th>Jo</th></tr></tbody></table>` +
-            `<script>
-            const table = document.querySelector('#t');
-            table.__reactInternalInstance$fixture = { memoizedProps: {}, return: { memoizedProps: { csvDownloadData: { fields: [{ header: 'a', value: '\${da_name}' }, { header: 'b', value: '\${impacting_dcr}' }, { header: 'c', value: '\${tracking_id}' }], csvDataRows: [1], csvFileName: 'Quality_RTS.csv' } }, type: { displayName: 'mo' } } };
-            document.querySelector('#bar').__reactInternalInstance$fixture = { memoizedProps: {}, type: { displayName: 'TableActionBar' }, return: null };
-            document.querySelector('#dl').onclick = () => {
-              const blob = new Blob(['\\ufeffDelivery Associate ,Impacts Scorecard,Tracking ID\\nJo,Y,TBA9\\nAl,N,TBA10\\n'], { type: 'text/csv;charset=utf-8;' });
-              const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'Quality_RTS.csv'; a.click();
-            };
-            </script>`,
-        );
-      }
       if (url.pathname === '/performance') {
         if (!authenticated) return redirect('/ap/signin');
         // Like Cortex, the overview settles on a station and company of its own
@@ -126,28 +125,35 @@ test(
             `/performance?pageId=dsp_dashboard_overview&station=${chosen}&companyId=company-1&tabId=overview-dsp-weekly-tab&timeFrame=Weekly&to=2026-W38`,
           );
         }
+        seen.overview++;
         return html(
-          `<main>Overview</main><script>for(let i=0;i<12;i++) fetch('/performance/api/v1/getData?dataSetId=dsp_station_weekly_quality&dsp=NLOG&from=2026-W38&station=${station}&timeFrame=Weekly&to=2026-W38',{credentials:'include'});</script>`,
+          `<main>Overview</main><script>for(let i=0;i<12;i++) fetch('/performance/api/${version}/getData?dataSetId=dsp_station_weekly_quality&dsp=NLOG&from=2026-W38&station=${station}&timeFrame=Weekly&to=2026-W38',{credentials:'include'});</script>`,
         );
       }
-      if (url.pathname === '/performance/api/v1/getData') {
+      const api = url.pathname.match(/^\/performance\/api\/([^/]+)\/getData$/);
+      if (api) {
         if (!authenticated) {
           res.writeHead(401);
           return res.end();
         }
+        // An address Cortex no longer serves answers as an unknown page does.
+        if (api[1] !== version) {
+          res.writeHead(404, { 'content-type': 'text/html' });
+          return res.end('<html>Not found</html>');
+        }
         requests.push(url);
         const dataSetId = url.searchParams.get('dataSetId')!;
+        const from = url.searchParams.get('from')!;
         const to = url.searchParams.get('to')!;
-        const week =
+        const saturday = SATURDAYS[to];
+        const weeks =
           url.searchParams.get('timeFrame') === 'Weekly'
-            ? to
-            : to === '2026-09-19'
-              ? '2026-W38'
-              : to === '2026-09-05'
-                ? '2026-W36'
-                : 'other';
-        // Refused in a way the page can answer; a server error would mean Cortex is down.
-        if (week === '2026-W36' && dataSetId === 'da_dsp_weekly_rts_deep_dive') {
+            ? WEEKS.filter((w) => w >= from && w <= to)
+            : saturday
+              ? [saturday]
+              : [];
+        // Refused in a way no page can answer either: the attempt fails for a retry.
+        if (weeks.includes('2026-W35') && dataSetId === 'da_dsp_weekly_rts_deep_dive') {
           res.writeHead(404);
           return res.end();
         }
@@ -155,7 +161,9 @@ test(
         return res.end(
           JSON.stringify({
             tableData: {
-              [dataSetId]: { rows: rows(dataSetId, week).map((row) => JSON.stringify(row)) },
+              [dataSetId]: {
+                rows: weeks.flatMap((week) => rows(dataSetId, week)).map((r) => JSON.stringify(r)),
+              },
             },
           }),
         );
@@ -196,35 +204,50 @@ test(
       password: 'fixture-password',
     });
     assert.equal(saved.value.status, 'ready', saved.body);
-    const collect = async (week: string) => {
-      const queued = await owner.post('/api/dsp/scorecard/collect', { requestId: week, week });
+    const job = async (id: string) =>
+      (await owner.get('/api/dsp/jobs')).value.find((j: any) => j.id === id);
+    const collect = async (requestId: string, week: string, weeks = 1) => {
+      const queued = await owner.post('/api/dsp/scorecard/collect', { requestId, week, weeks });
       assert.equal(queued.status, 202, queued.body);
       await until(async () => {
-        const job = (await owner.get('/api/dsp/jobs')).value.find(
-          (j: any) => j.id === queued.value.id,
-        );
-        assert.notEqual(job.status, 'failed', JSON.stringify(job));
-        return job.status === 'succeeded';
+        const current = await job(queued.value.id);
+        assert.notEqual(current.status, 'failed', JSON.stringify(current));
+        return current.status === 'succeeded';
       }, 120000);
       return queued.value.id;
     };
-    const job = await collect('2026-W38');
+    const stored = () =>
+      f.database(`dsps/${dsp.id}/data/scorecard/scorecard.sqlite`, (db) => ({
+        publications: db
+          .prepare(
+            'SELECT job_id,week,company_id,active FROM scorecard_publications ORDER BY rowid',
+          )
+          .all()
+          .map((r) => ({ ...r })),
+        urls: db
+          .prepare(
+            "SELECT p.week,s.url FROM scorecard_sources s JOIN scorecard_publications p ON p.id=s.publication_id WHERE s.dataset='dsp_station_weekly_quality' ORDER BY p.rowid",
+          )
+          .all()
+          .map((r) => ({ ...r }) as { week: string; url: string }),
+        returns: db
+          .prepare(
+            "SELECT tracking_id,impact,json_extract(row,'$.rts_reason_code') reason FROM returns_to_station ORDER BY rowid",
+          )
+          .all()
+          .map((r) => ({ ...r })),
+      }));
+
+    // The first job has no stored address: the overview page names the API.
+    const first = await collect('week-38', '2026-W38');
+    const overviews = seen.overview;
+    assert.ok(overviews > 0);
     const weeks = (await owner.get('/api/dsp/scorecard/weeks')).value;
     const posted = weeks.weeks.find((w: any) => w.week === '2026-W38');
     assert.equal(posted.posted, true);
     assert.equal(posted.publication.dspCode, 'NLOG');
     assert.equal(posted.publication.rowCount, 14);
-    assert.equal(
-      posted.publication.datasets.find((d: any) => d.table === 'returns_to_station').rows,
-      2,
-    );
-    // Every dataset was read once for the week, with the page's own parameters.
-    const datasets = requests.filter(
-      (u) =>
-        !u.searchParams.get('dataSetId')!.endsWith('quality') ||
-        u.searchParams.get('to') === '2026-W38',
-    );
-    const read = new Map(datasets.map((u) => [u.searchParams.get('dataSetId')!, u]));
+    const read = new Map(requests.map((u) => [u.searchParams.get('dataSetId')!, u]));
     assert.equal(read.size, 14, [...read.keys()].join(','));
     for (const u of read.values()) {
       assert.equal(u.searchParams.get('dsp'), 'NLOG');
@@ -236,54 +259,84 @@ test(
     );
     assert.equal(read.get('da_dsp_daily_psb_stop')!.searchParams.get('from'), '2026-09-13');
     assert.equal(read.get('da_dsp_daily_psb_stop')!.searchParams.get('to'), '2026-09-19');
-    const stored = f.database(`dsps/${dsp.id}/data/scorecard/scorecard.sqlite`, (db) => ({
-      publication: db
-        .prepare('SELECT job_id,company_id,active FROM scorecard_publications')
-        .all()
-        .map((r) => ({ ...r })),
-      returns: db
-        .prepare(
-          "SELECT tracking_id,impact,json_extract(row,'$.rts_reason_code') reason FROM returns_to_station ORDER BY row_index",
-        )
-        .all()
-        .map((r) => ({ ...r })),
-    }));
-    assert.deepEqual(stored.publication, [{ job_id: job, company_id: 'company-1', active: 1 }]);
-    assert.deepEqual(stored.returns, [
-      { tracking_id: 'TBA1', impact: 1, reason: 'BUSINESS CLOSED' },
+    assert.deepEqual(stored().publications, [
+      { job_id: first, week: '2026-W38', company_id: 'company-1', active: 1 },
+    ]);
+    assert.deepEqual(stored().returns, [
+      { tracking_id: MARKERS[0], impact: 1, reason: 'BUSINESS CLOSED' },
       { tracking_id: 'TBA2', impact: 0, reason: 'CUSTOMER UNAVAILABLE' },
     ]);
-    // A week Amazon has not posted answers no rows: noted, not published.
-    await collect('2026-W37');
-    const after = (await owner.get('/api/dsp/scorecard/weeks')).value;
-    const unposted = after.weeks.find((w: any) => w.week === '2026-W37');
-    assert.equal(unposted.posted, false);
-    assert.equal(unposted.publication, null);
-    // A dataset the API refuses comes from the page's spreadsheet instead.
-    await collect('2026-W36');
-    const fallback = (await owner.get('/api/dsp/scorecard/weeks')).value.weeks.find(
-      (w: any) => w.week === '2026-W36',
+
+    // The next job starts from the saved session and reads two weeks at the stored
+    // address without a page: small datasets once across both weeks, the rest per week.
+    requests.length = 0;
+    const [landings, checks] = [seen.browserLanding, seen.sessionCheck];
+    const second = await collect('weeks-37', '2026-W37', 2);
+    assert.equal(seen.overview, overviews);
+    assert.equal(seen.browserLanding, landings);
+    assert.equal(seen.sessionCheck, checks + 1);
+    const spans = requests.filter(
+      (u) => u.searchParams.get('from') === '2026-W36' && u.searchParams.get('to') === '2026-W37',
     );
-    assert.equal(fallback.posted, true);
-    const returns = fallback.publication.datasets.find(
-      (d: any) => d.table === 'returns_to_station',
-    );
-    assert.deepEqual({ rows: returns.rows, source: returns.source }, { rows: 2, source: 'csv' });
+    assert.equal(spans.length, 9);
+    assert.equal(requests.length, 9 + 5 * 2);
+    const after = (await owner.get('/api/dsp/scorecard/weeks')).value.weeks;
+    assert.equal(after.find((w: any) => w.week === '2026-W37').posted, false);
+    const w36 = after.find((w: any) => w.week === '2026-W36');
+    assert.equal(w36.posted, true);
     assert.equal(
-      fallback.publication.datasets.find((d: any) => d.table === 'dsp_quality').source,
-      'api',
+      w36.publication.datasets.find((d: any) => d.table === 'driver_scorecards').rows,
+      1,
     );
-    const fromPage = f.database(`dsps/${dsp.id}/data/scorecard/scorecard.sqlite`, (db) =>
-      db
-        .prepare(
-          "SELECT r.tracking_id,r.impact,json_extract(r.row,'$.da_name') name FROM returns_to_station r JOIN scorecard_publications p ON p.id=r.publication_id WHERE p.week='2026-W36' ORDER BY r.row_index",
-        )
-        .all()
-        .map((r) => ({ ...r })),
+    assert.deepEqual(
+      stored().publications.filter((p) => p.job_id === second),
+      [{ job_id: second, week: '2026-W36', company_id: 'company-1', active: 1 }],
     );
-    assert.deepEqual(fromPage, [
-      { tracking_id: 'TBA9', impact: 1, name: 'Jo' },
-      { tracking_id: 'TBA10', impact: 0, name: 'Al' },
-    ]);
+    const metrics = (await job(second)).metrics.at(-1);
+    assert.equal(metrics.rows, 12);
+
+    // Cortex moves its API: nothing answers at the stored address, the page names the
+    // new one, and the week is read there.
+    version = 'v2';
+    await collect('week-38-again', '2026-W38');
+    assert.ok(seen.overview > overviews);
+    assert.match(stored().urls.at(-1)!.url, /\/performance\/api\/v2\/getData\?/);
+
+    // A dataset the API refuses has no other source: the attempt fails for a retry.
+    const refused = await owner.post('/api/dsp/scorecard/collect', {
+      requestId: 'week-35',
+      week: '2026-W35',
+    });
+    await until(async () => {
+      const current = await job(refused.value.id);
+      return current.error === 'scorecard_api_unreadable';
+    }, 120000);
+    const retried = await job(refused.value.id);
+    assert.equal(retried.status, 'queued');
+    assert.equal((await owner.post(`/api/dsp/jobs/${refused.value.id}/cancel`, {})).status, 200);
+    assert.equal(
+      stored().publications.some((p) => p.week === '2026-W35'),
+      false,
+    );
+
+    // Everything collected lives in the scorecard database alone: no browser run is
+    // left, and no other file holds any of it, in any encoding a browser stores text.
+    const runs = path.join(f.root, 'data/preview/browser-runs');
+    await until(async () => !fs.existsSync(runs) || fs.readdirSync(runs).length === 0, 30000);
+    const database = path.join(f.root, `dsps/${dsp.id}/data/scorecard/scorecard.sqlite`);
+    const needles = MARKERS.flatMap((m) => [Buffer.from(m, 'utf8'), Buffer.from(m, 'utf16le')]);
+    const holding: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const file = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(file);
+        else if (entry.isFile() && !file.startsWith(database)) {
+          const bytes = fs.readFileSync(file);
+          if (needles.some((n) => bytes.includes(n))) holding.push(path.relative(f.root, file));
+        }
+      }
+    };
+    walk(f.root);
+    assert.deepEqual(holding, []);
   },
 );

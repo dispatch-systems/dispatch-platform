@@ -6,7 +6,6 @@ mod discovery;
 mod dvic;
 pub(crate) mod routedata;
 mod scorecard;
-mod scorecard_csv;
 use super::{
     attempt::Attempts,
     browseros,
@@ -66,6 +65,19 @@ impl Driver {
             .allow_origins(&self.origins.iter().map(String::as_str).collect::<Vec<_>>());
         self.page.size_window().await?;
         self.page.front_alone().await
+    }
+    /// Whether Cortex still takes the profile's saved session: its landing page
+    /// answers over HTTP with the browser's cookies instead of sending it to sign in.
+    async fn saved_session(&self) -> bool {
+        let Ok(http) = super::http::Http::signed_in(&self.browser, &self.origin).await else {
+            return false;
+        };
+        http.page(
+            &format!("{}{LANDING}", self.origin),
+            &format!("{}/", self.origin),
+        )
+        .await
+        .is_ok()
     }
     async fn script(&self, mut input: Value) -> Result<Value> {
         input["origins"] = json!(self.origins);
@@ -146,6 +158,16 @@ impl Driver {
                     };
                     self.username_submitted = false;
                     self.password_submitted = false;
+                    // A job that needs no page starts from the saved session while
+                    // Cortex still takes it; otherwise it signs in as ever.
+                    if command["quick"] == true
+                        && self.page.id.is_empty()
+                        && self.saved_session().await
+                    {
+                        self.attempts.succeeded()?;
+                        self.credentials = Value::Null;
+                        return Ok(json!({"type":"ready"}));
+                    }
                     if self.page.id.is_empty() {
                         self.open().await?;
                     }

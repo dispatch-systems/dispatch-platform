@@ -1,24 +1,26 @@
-//! A week's scorecard. The overview page's own first data request names the API
-//! and the parameters that identify this DSP; the datasets are then read over
-//! plain HTTP with the browser's session, a few at once.
-use super::scorecard_csv;
+//! A job's scorecard weeks from Cortex's performance API, over plain HTTP with the
+//! browser's session. The API's address, and how it names this DSP, come from the
+//! station's last publication; when there is none, or nothing answers there, the
+//! overview page's own first data request names them. Every read of the job goes out
+//! at once, and the browser closes as soon as the API has answered one.
 use super::*;
 use crate::{
     browsers::http::{Http, Refusal},
     db::now,
     job_metrics::Recorder,
     scorecard::{
-        Capture, Collection, DATASETS, Dataset, DatasetCapture, MAX_ROWS, POSTED_SIGNAL, Request,
-        Source, token,
+        Capture, Collection, DATASETS, DatasetCapture, MAX_ROWS, POSTED_SIGNAL, Read, Request,
+        WeekCapture, token,
     },
 };
-use std::sync::atomic::{AtomicUsize, Ordering};
-use tokio::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-/// As much as one dataset may send. The largest week seen was 2 MB.
+/// As much as one reply may hold once decompressed. The largest week seen was 2 MB,
+/// and only datasets of a row per driver or per DSP span weeks.
 const LIMIT: usize = 16 * 1024 * 1024;
-/// Datasets read at once.
-const LANES: usize = 4;
+/// Reads at once: as many as the overview page itself sends when it opens. Cortex
+/// takes over a second to answer even the smallest, so they wait on it together.
+const LANES: usize = DATASETS.len();
 const OVERVIEW: &str = "/performance?pageId=dsp_dashboard_overview";
 
 /// Where the page sends its data requests, and how it names this DSP there.
@@ -31,33 +33,31 @@ pub(super) struct Api {
     pub(super) company_id: String,
 }
 impl Api {
-    fn address(&self, dataset: &Dataset, station: &str, from: &str, to: &str) -> String {
+    fn address(&self, read: &Read, station: &str) -> String {
+        let dataset = read.dataset;
         let mut query = url::form_urlencoded::Serializer::new(String::new());
         query
             .append_pair("dataSetId", dataset.id)
             .append_pair("dsp", &self.dsp)
-            .append_pair("from", from);
+            .append_pair("from", &read.from);
         if let Some(program) = dataset.program {
             query.append_pair("program", program);
         }
         query
             .append_pair("station", station)
             .append_pair("timeFrame", dataset.time_frame.as_str())
-            .append_pair("to", to);
+            .append_pair("to", &read.to);
         format!("{}/getData?{}", self.base, query.finish())
     }
 }
-/// The error a refusal is, and whether the dataset's page could still answer: not
-/// when the provider is down or the session has ended, which the page shares.
-fn refused(refusal: Refusal, metrics: &Recorder) -> (Error, bool) {
+/// The error a refusal is. The page shares the session and the provider, so nothing
+/// else can read a dataset the API refused; the job's next attempt asks again.
+fn refused(refusal: Refusal, metrics: &Recorder) -> Error {
     match refusal {
-        Refusal::Unavailable => (Error::new("provider_unavailable", 502), false),
+        Refusal::Unavailable => Error::new("provider_unavailable", 502),
         Refusal::Unreadable(label) => {
             metrics.detail(label);
-            (
-                Error::new("scorecard_api_unreadable", 502),
-                label != "http_signed_out",
-            )
+            Error::new("scorecard_api_unreadable", 502)
         }
     }
 }
@@ -81,6 +81,22 @@ fn rows(dataset: &str, value: &Value) -> Result<Vec<Value>> {
             Ok(row)
         })
         .collect()
+}
+/// A read's rows filed under each week it covered, by the week each row names.
+fn by_week(read: &Read, rows: Vec<Value>) -> Result<Vec<Vec<Value>>> {
+    if read.weeks.len() == 1 {
+        return Ok(vec![rows]);
+    }
+    let mut weeks: Vec<Vec<Value>> = read.weeks.iter().map(|_| Vec::new()).collect();
+    for row in rows {
+        let index = read
+            .weeks
+            .iter()
+            .position(|week| row["data_date"].as_str() == Some(week))
+            .ok_or_else(|| Error::new("scorecard_scope_mismatch", 502))?;
+        weeks[index].push(row);
+    }
+    Ok(weeks)
 }
 /// The API a data request names: its base address, the `dsp` code and the station.
 fn data_request(url: &str, origin: &str) -> Result<(String, String, String)> {
@@ -110,6 +126,20 @@ fn data_request(url: &str, origin: &str) -> Result<(String, String, String)> {
         dsp.clone(),
         query.get("station").cloned().unwrap_or_default(),
     ))
+}
+/// Reading every dataset failed: the first error, and whether the API had answered
+/// any read at that address.
+struct Failed {
+    error: Error,
+    answered: bool,
+}
+impl From<Error> for Failed {
+    fn from(error: Error) -> Self {
+        Self {
+            error,
+            answered: false,
+        }
+    }
 }
 
 impl Driver {
@@ -161,12 +191,15 @@ impl Driver {
                     continue;
                 }
                 // Every paused request goes on, watched or not: the page must keep loading.
-                self.page
+                // One the page dropped when it was asked for the station is gone, and
+                // resuming it fails with nothing lost.
+                let _ = self
+                    .page
                     .command(
                         "Fetch.continueRequest",
                         json!({"requestId":event["requestId"]}),
                     )
-                    .await?;
+                    .await;
                 let url = s(&event["request"], "url");
                 if event["request"]["method"] != "GET" || !url.contains("/getData") {
                     continue;
@@ -213,6 +246,91 @@ impl Driver {
             company_id,
         })
     }
+    /// The API where the station's last publication read it, if that still names this
+    /// origin and station.
+    async fn saved_api(&self, station: &str, run: &Run<'_>) -> Result<Option<Api>> {
+        let (job, at) = (run.job.to_owned(), station.to_owned());
+        let saved = run
+            .state
+            .read(move |db| {
+                let dsp = db.job_row(&job, None)?.dsp_id;
+                db.scorecard_address(&dsp, &at)
+            })
+            .await?;
+        Ok(saved.and_then(|(url, company_id)| {
+            let (base, dsp, named) = data_request(&url, &self.origin).ok()?;
+            (named == station && token(&company_id, 128)).then_some(Api {
+                base,
+                dsp,
+                company_id,
+            })
+        }))
+    }
+    /// The API as the overview page names it, in a tab opened for it when the job
+    /// started from the saved session without one.
+    async fn found_api(&mut self, station: &str, metrics: &Recorder) -> Result<Api> {
+        if self.page.id.is_empty() {
+            self.open().await?;
+        }
+        self.performance_api(station, metrics).await
+    }
+    /// Every read at once, answering each read's rows in the plan's order. The first
+    /// answer shows the session and the address work, and the browser closes then:
+    /// nothing after it needs a page.
+    async fn read_all(
+        &self,
+        api: &Api,
+        request: &Request,
+        reads: &[Read],
+        run: &Run<'_>,
+    ) -> std::result::Result<Vec<(String, Vec<Value>)>, Failed> {
+        let http = Http::signed_in(&self.browser, &self.origin).await?;
+        let referer = format!("{}/performance", self.origin);
+        let next = AtomicUsize::new(0);
+        let done = AtomicUsize::new(0);
+        let answered = AtomicBool::new(false);
+        let lanes = futures_util::future::join_all((0..LANES).map(|_| async {
+            let mut read_rows = Vec::new();
+            loop {
+                let index = next.fetch_add(1, Ordering::SeqCst);
+                let Some(read) = reads.get(index) else {
+                    break;
+                };
+                let url = api.address(read, &request.station);
+                let value = http
+                    .json(&url, &referer, LIMIT)
+                    .await
+                    .map_err(|refusal| refused(refusal, run.metrics))?;
+                let rows = rows(read.dataset.id, &value)?;
+                if !answered.swap(true, Ordering::SeqCst) {
+                    self.browser.close().await;
+                }
+                let finished = done.fetch_add(1, Ordering::SeqCst) + 1;
+                run.progress(
+                    20 + (70 * finished / reads.len()) as i64,
+                    format!("Reading scorecard datasets ({finished}/{})", reads.len()),
+                )
+                .await?;
+                read_rows.push((index, url, rows));
+            }
+            Ok::<_, Error>(read_rows)
+        }))
+        .await;
+        let mut replies: Vec<Option<(String, Vec<Value>)>> = reads.iter().map(|_| None).collect();
+        for lane in lanes {
+            let lane = lane.map_err(|error| Failed {
+                error,
+                answered: answered.load(Ordering::SeqCst),
+            })?;
+            for (index, url, rows) in lane {
+                replies[index] = Some((url, rows));
+            }
+        }
+        Ok(replies
+            .into_iter()
+            .map(|reply| reply.ok_or_else(|| Error::new("scorecard_capture_invalid", 502)))
+            .collect::<Result<Vec<_>>>()?)
+    }
     pub(super) async fn collect_scorecard(
         &mut self,
         request: &Request,
@@ -220,94 +338,86 @@ impl Driver {
     ) -> Result<Capture> {
         request.validate()?;
         let started_at = now();
+        let reads = request.reads()?;
         run.progress(10, "Finding the scorecard".into()).await?;
-        let api = self.performance_api(&request.station, run.metrics).await?;
+        let (mut api, mut saved) = match self.saved_api(&request.station, run).await? {
+            Some(api) => (api, true),
+            None => (self.found_api(&request.station, run.metrics).await?, false),
+        };
         run.progress(20, "Reading scorecard datasets".into())
             .await?;
-        let http = Http::signed_in(&self.browser, &self.origin).await?;
-        let referer = format!("{}/performance", self.origin);
-        let next = AtomicUsize::new(0);
-        let done = AtomicUsize::new(0);
-        // The page's spreadsheet stands in for a dataset the API would not give; the
-        // one tab reads them one at a time.
-        let tab = Mutex::new(());
-        let this = &*self;
-        let lanes = futures_util::future::join_all((0..LANES).map(|_| async {
-            let mut read = Vec::new();
-            loop {
-                let index = next.fetch_add(1, Ordering::SeqCst);
-                let Some(dataset) = DATASETS.get(index) else {
-                    break;
-                };
-                let (from, to) = request.interval(dataset)?;
-                let source_url = api.address(dataset, &request.station, &from, &to);
-                // What the API gave, or the error and whether the page could stand in.
-                let direct = match http.json(&source_url, &referer, LIMIT).await {
-                    Ok(value) => rows(dataset.id, &value)
-                        .map(|rows| DatasetCapture {
-                            id: dataset.id.into(),
-                            from: from.clone(),
-                            to: to.clone(),
-                            source_url,
-                            source: Source::Api,
-                            rows,
-                        })
-                        .map_err(|error| (error, true)),
-                    Err(refusal) => Err(refused(refusal, run.metrics)),
-                };
-                let captured = match (direct, dataset.page) {
-                    (Ok(captured), _) => captured,
-                    (Err((error, true)), Some((page_id, tab_id))) => {
-                        run.metrics.detail(&error.code);
-                        let _held = tab.lock().await;
-                        this.download_dataset(
-                            request,
-                            &api.company_id,
-                            dataset,
-                            &scorecard_csv::Page { page_id, tab_id },
-                            run,
-                        )
-                        .await?
-                    }
-                    (Err((error, _)), _) => return Err(error),
-                };
-                let finished = done.fetch_add(1, Ordering::SeqCst) + 1;
-                run.progress(
-                    20 + (70 * finished / DATASETS.len()) as i64,
-                    format!("Reading scorecard datasets ({finished}/{})", DATASETS.len()),
-                )
-                .await?;
-                read.push((index, captured));
+        let replies = loop {
+            match self.read_all(&api, request, &reads, run).await {
+                Ok(replies) => break replies,
+                // Nothing answered where the last publication read: Cortex moved its
+                // API, and the page names it again.
+                Err(failed)
+                    if saved
+                        && !failed.answered
+                        && failed.error.is(crate::Code::ScorecardApiUnreadable) =>
+                {
+                    api = self.found_api(&request.station, run.metrics).await?;
+                    saved = false;
+                }
+                Err(failed) => return Err(failed.error),
             }
-            Ok::<_, Error>(read)
-        }))
-        .await;
-        let mut datasets: Vec<Option<DatasetCapture>> = DATASETS.iter().map(|_| None).collect();
-        for lane in lanes {
-            for (index, captured) in lane? {
-                datasets[index] = Some(captured);
+        };
+        // Each read's rows, filed under the weeks it covered.
+        let mut filed: Vec<Vec<Option<DatasetCapture>>> = request
+            .weeks
+            .iter()
+            .map(|_| DATASETS.iter().map(|_| None).collect())
+            .collect();
+        for (read, (source_url, rows)) in reads.iter().zip(replies) {
+            let dataset = DATASETS
+                .iter()
+                .position(|d| d.id == read.dataset.id)
+                .ok_or_else(|| Error::new("scorecard_capture_invalid", 502))?;
+            for (week, rows) in read.weeks.iter().zip(by_week(read, rows)?) {
+                let index = request
+                    .weeks
+                    .iter()
+                    .position(|w| w == week)
+                    .ok_or_else(|| Error::new("scorecard_capture_invalid", 502))?;
+                filed[index][dataset] = Some(DatasetCapture {
+                    id: read.dataset.id.into(),
+                    from: read.from.clone(),
+                    to: read.to.clone(),
+                    source_url: source_url.clone(),
+                    rows,
+                });
             }
         }
-        let datasets = datasets
-            .into_iter()
-            .map(|d| d.ok_or_else(|| Error::new("scorecard_capture_invalid", 502)))
-            .collect::<Result<Vec<_>>>()?;
-        let posted = datasets
+        let weeks = request
+            .weeks
             .iter()
-            .find(|d| d.id == POSTED_SIGNAL)
-            .is_some_and(|d| !d.rows.is_empty());
+            .zip(filed)
+            .map(|(week, datasets)| {
+                let datasets = datasets
+                    .into_iter()
+                    .map(|d| d.ok_or_else(|| Error::new("scorecard_capture_invalid", 502)))
+                    .collect::<Result<Vec<_>>>()?;
+                let posted = datasets
+                    .iter()
+                    .find(|d| d.id == POSTED_SIGNAL)
+                    .is_some_and(|d| !d.rows.is_empty());
+                Ok(WeekCapture {
+                    week: week.clone(),
+                    posted,
+                    datasets,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
         run.progress(95, "Validating scorecard".into()).await?;
         let capture = Capture {
-            version: 1,
+            version: 2,
             collection: Collection::Scorecard,
-            week: request.week.clone(),
             station: request.station.clone(),
             company_id: api.company_id,
             dsp_code: api.dsp,
             started_at,
             finished_at: now().max(started_at),
-            posted,
-            datasets,
+            weeks,
         };
         capture.validate(request)?;
         Ok(capture)
@@ -373,14 +483,56 @@ mod tests {
             dsp: "NLOG".into(),
             company_id: "company".into(),
         };
-        let dataset = crate::scorecard::dataset("da_dsp_station_weekly_performance").unwrap();
+        let read = Read {
+            dataset: crate::scorecard::dataset("da_dsp_station_weekly_performance").unwrap(),
+            from: "2026-W37".into(),
+            to: "2026-W38".into(),
+            weeks: vec!["2026-W38".into(), "2026-W37".into()],
+        };
         assert_eq!(
-            api.address(dataset, "TST1", "2026-W38", "2026-W38"),
+            api.address(&read, "TST1"),
             concat!(
                 "https://logistics.amazon.com/performance/api/v1/getData?dataSetId=",
-                "da_dsp_station_weekly_performance&dsp=NLOG&from=2026-W38&program=AMZL",
+                "da_dsp_station_weekly_performance&dsp=NLOG&from=2026-W37&program=AMZL",
                 "&station=TST1&timeFrame=Weekly&to=2026-W38"
             )
+        );
+    }
+    #[test]
+    fn a_spans_rows_are_filed_by_the_week_they_name() {
+        let read = Read {
+            dataset: crate::scorecard::dataset(POSTED_SIGNAL).unwrap(),
+            from: "2026-W37".into(),
+            to: "2026-W38".into(),
+            weeks: vec!["2026-W38".into(), "2026-W37".into()],
+        };
+        let filed = by_week(
+            &read,
+            vec![
+                json!({"data_date":"2026-W37","n":1}),
+                json!({"data_date":"2026-W38","n":2}),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            filed,
+            vec![
+                vec![json!({"data_date":"2026-W38","n":2})],
+                vec![json!({"data_date":"2026-W37","n":1})]
+            ]
+        );
+        // A row of a week the span did not ask for, or of no week, is not filed.
+        assert!(by_week(&read, vec![json!({"data_date":"2026-W36"})]).is_err());
+        assert!(by_week(&read, vec![json!({"n":1})]).is_err());
+        // A week read alone keeps all its rows as they came.
+        let alone = Read {
+            weeks: vec!["2026-W38".into()],
+            from: "2026-W38".into(),
+            ..read
+        };
+        assert_eq!(
+            by_week(&alone, vec![json!({"n":1})]).unwrap(),
+            vec![vec![json!({"n":1})]]
         );
     }
 }

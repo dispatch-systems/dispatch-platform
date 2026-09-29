@@ -22,10 +22,11 @@ fn weeks(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
     Reply::of(&db.scorecard_weeks(c.dsp_id())?)
 }
 
-/// Queues one week, the most recent completed one unless `week` names another.
+/// Queues the most recent completed week unless `week` names another, and the
+/// `weeks - 1` before it, as one job.
 fn collect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let b = &input.body;
-    v::fields(b, &["requestId", "week"])?;
+    v::fields(b, &["requestId", "week", "weeks"])?;
     let key = v::text(b, "requestId", 1, 128)?;
     let week = if b.get("week").is_some() {
         let week = v::text(b, "week", 8, 8)?;
@@ -34,8 +35,13 @@ fn collect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     } else {
         None
     };
+    let weeks = if b.get("weeks").is_some() {
+        v::integer(b, "weeks", 1, scorecard::MAX_WEEKS_PER_JOB as i64)? as usize
+    } else {
+        1
+    };
     let (id, actor) = (c.dsp_id(), Some(c.actor()));
-    let job = db.enqueue_scorecard(id, actor, key, week)?;
+    let job = db.enqueue_scorecard(id, actor, key, week, weeks)?;
     db.audit(
         actor,
         Some(id),

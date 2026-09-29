@@ -518,6 +518,101 @@ mod tests {
     }
 
     #[test]
+    fn scorecard_publications_keep_their_rows_links_and_cascades_through_the_rebuild() {
+        let root = private();
+        // The scorecard database before a job could publish several weeks.
+        let file = root.path().join("scorecard.sqlite");
+        older(
+            &file,
+            Kind::Scorecard,
+            &format!(
+                "{}{}",
+                include_str!("schema/scorecard/0001_baseline.sql"),
+                include_str!("schema/scorecard/0002_sources.sql")
+            ),
+        );
+        let before = rusqlite::Connection::open(&file).unwrap();
+        before
+            .execute_batch(
+                "INSERT INTO scorecard_publications VALUES ('p1','job_1','2026-W38','TST1','c1',\
+                 'NLOG','2026-09-20','2026-09-20',1,14,1); \
+                 INSERT INTO scorecard_sources VALUES ('p1','dsp_station_weekly_quality','api','https://x',1); \
+                 INSERT INTO scorecard_weeks VALUES ('2026-W38','TST1','2026-09-20',1,'p1');",
+            )
+            .unwrap();
+        for dataset in crate::scorecard::DATASETS {
+            before
+                .execute(
+                    &format!(
+                        "INSERT INTO {}(publication_id,row_index,week,transporter_id,row) \
+                         VALUES ('p1',0,'2026-W38','d1','{{}}')",
+                        dataset.table
+                    ),
+                    [],
+                )
+                .unwrap();
+        }
+        drop(before);
+        let db = Db::create(&file, Kind::Scorecard, "").unwrap();
+        assert_eq!(dump(&db), recorded(Kind::Scorecard));
+        for dataset in crate::scorecard::DATASETS {
+            assert_eq!(
+                db.all(
+                    &format!(
+                        "SELECT publication_id,transporter_id FROM {}",
+                        dataset.table
+                    ),
+                    []
+                )
+                .unwrap(),
+                vec![json!({"publication_id":"p1","transporter_id":"d1"})],
+                "{}",
+                dataset.table
+            );
+        }
+        assert_eq!(
+            db.all("SELECT publication_id FROM scorecard_weeks", [])
+                .unwrap(),
+            vec![json!({"publication_id":"p1"})]
+        );
+        assert!(db.all("PRAGMA foreign_key_check", []).unwrap().is_empty());
+        // One job may now publish another week, but each week once.
+        db.exec(
+            "INSERT INTO scorecard_publications VALUES ('p2','job_1','2026-W37','TST1','c1',\
+             'NLOG','2026-09-20','2026-09-20',1,0,1)",
+            [],
+        )
+        .unwrap();
+        assert!(
+            db.exec(
+                "INSERT INTO scorecard_publications VALUES ('p3','job_1','2026-W37','TST1','c1',\
+                 'NLOG','2026-09-20','2026-09-20',0,0,1)",
+                [],
+            )
+            .is_err()
+        );
+        // Rows and sources still go with their publication; the week keeps its check.
+        db.exec("DELETE FROM scorecard_publications WHERE id='p1'", [])
+            .unwrap();
+        for table in crate::scorecard::DATASETS
+            .iter()
+            .map(|d| d.table)
+            .chain(["scorecard_sources"])
+        {
+            assert_eq!(
+                db.count(&format!("SELECT count(*) FROM {table}"), [])
+                    .unwrap(),
+                0,
+                "{table}"
+            );
+        }
+        assert_eq!(
+            db.all("SELECT posted,publication_id FROM scorecard_weeks", [])
+                .unwrap(),
+            vec![json!({"posted":1,"publication_id":null})]
+        );
+    }
+    #[test]
     fn jobs_and_schedules_from_before_the_scorecard_keep_their_rows_through_the_rebuild() {
         let root = private();
         // v0.0.9 names neither the scorecard job kind nor the scorecard collection.

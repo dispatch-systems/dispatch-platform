@@ -498,9 +498,19 @@ impl State {
     ) -> Result<Arc<Session>> {
         let dsp = id.to_owned();
         let initial_authority = authority.clone();
-        let (dsp, credentials, revision, run, profile) = self
+        let (dsp, credentials, revision, run, profile, quick) = self
             .run(move |db| {
                 initial_authority.check(db, &dsp, provider)?;
+                let quick = match &initial_authority {
+                    ProviderAuthority::Job { id, .. } => {
+                        let request = db.job_row(id, Some(&dsp))?.request;
+                        !retry
+                            && provider
+                                .collector()
+                                .quick_start(&serde_json::from_str(&request)?)
+                    }
+                    ProviderAuthority::Member(_) => false,
+                };
                 let value = db.ensure_dsp_active(&dsp)?;
                 let connection = db
                     .connection_lease(&dsp, provider)?
@@ -516,6 +526,7 @@ impl State {
                     connection.revision,
                     run,
                     profile,
+                    quick,
                 ))
             })
             .await?;
@@ -658,7 +669,7 @@ impl State {
             session
                 .request_guarded(
                     json!({"action":"start","credentials":credentials,"timezone":session.timezone,
-                "ownerRetry":retry,"fixtureUrl":self.config.fixture_url}),
+                "ownerRetry":retry,"fixtureUrl":self.config.fixture_url,"quick":quick}),
                     &["ready", "challenge"],
                     180,
                     self,

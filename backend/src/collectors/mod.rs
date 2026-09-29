@@ -89,6 +89,11 @@ pub(crate) trait Collector: Sync {
         profile: &'a Path,
         fixture: Option<&'a str>,
     ) -> Pending<'a, Box<dyn Driver>>;
+    /// Whether a job collecting `request` may start from the browser's saved session
+    /// when the provider still takes it, without loading a page to sign in.
+    fn quick_start(&self, _request: &Value) -> bool {
+        false
+    }
     /// What a collection returns in fixture mode, where no browser runs.
     fn fixture(&self, timezone: &str, request: &Value) -> Result<Collected>;
     /// The job's message while it collects `request`.

@@ -151,6 +151,8 @@ impl Http {
         let client = Client::builder()
             .redirect(Policy::none())
             .no_proxy()
+            .http1_only()
+            .no_gzip()
             .dns_resolver(Arc::new(Resolver(hosts)))
             .https_only(!matches!(hosts, Hosts::Fixture(_)))
             .connect_timeout(Duration::from_secs(10))
@@ -265,10 +267,17 @@ impl Http {
             }
             jar.add_cookie_str(&line, &url);
         }
-        let client = Client::builder()
+        let mut client = Client::builder()
             .cookie_provider(Arc::new(jar))
             .redirect(Policy::none())
-            .no_proxy()
+            .no_proxy();
+        // Cortex answers over HTTP/2 and compresses its JSON to a twelfth: every read
+        // of a job shares one connection. Paycom's reads, and the local stand-in's,
+        // stay uncompressed HTTP/1.1, as measured.
+        if !matches!(hosts, Hosts::Cortex) {
+            client = client.http1_only().no_gzip();
+        }
+        let client = client
             .dns_resolver(Arc::new(Resolver(hosts)))
             .https_only(!matches!(hosts, Hosts::Fixture(_)))
             .connect_timeout(Duration::from_secs(10))
