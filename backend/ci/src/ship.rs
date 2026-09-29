@@ -8,20 +8,26 @@
 use crate::{REPOSITORY, Result, Runner};
 use serde_json::Value;
 
-/// Seconds between looks at the PR, and how many looks bound the whole wait: 90 minutes.
-const PAUSE: u64 = 20;
-const LOOKS: u32 = 270;
-/// Consecutive failed API calls, or refused additions to the queue, before giving up.
-const ATTEMPTS: u32 = 5;
+/// Seconds between looks at the PR.
+const PAUSE: u64 = 10;
+/// The looks that fit in `seconds`.
+const fn looks(seconds: u64) -> u32 {
+    (seconds / PAUSE) as u32
+}
+/// Looks that bound the whole wait: 90 minutes.
+const LOOKS: u32 = looks(90 * 60);
+/// Consecutive failed API calls, or refused additions to the queue, before giving up: about
+/// a minute and a half.
+const ATTEMPTS: u32 = looks(100);
 /// Looks spent waiting for CodeRabbit before giving up: 20 minutes in all, and 5 while it has
 /// not started.
-const REVIEW_LOOKS: u32 = 60;
-const UNSTARTED_LOOKS: u32 = 15;
+const REVIEW_LOOKS: u32 = looks(20 * 60);
+const UNSTARTED_LOOKS: u32 = looks(5 * 60);
 /// Looks spent waiting for CodeRabbit to answer the replies to its threads: 5 minutes.
-const ANSWER_LOOKS: u32 = 15;
-/// Looks in a row that must find CodeRabbit rate limited before stopping: a request made again
-/// takes it up to half a minute to replace an earlier rate-limited status.
-const LIMITED_LOOKS: u32 = 3;
+const ANSWER_LOOKS: u32 = looks(5 * 60);
+/// Looks in a row that must find CodeRabbit rate limited before stopping, a minute: a request
+/// made again takes it up to half a minute to replace an earlier rate-limited status.
+const LIMITED_LOOKS: u32 = looks(60);
 
 /// The check the ruleset expects on a PR head before the queue admits it, which
 /// `queue-admission.yml` reports, and the queue's own gate.
@@ -248,8 +254,13 @@ fn queue_run(runner: &dyn Runner, number: u64) -> Option<Value> {
         .cloned()
 }
 
-/// The failed jobs of `run`, as "name: conclusion link" lines.
-fn failed_jobs(runner: &dyn Runner, run: &Value) -> Vec<String> {
+/// Jobs of `checks.yml` that may fail without failing the gate, its `continue-on-error` jobs;
+/// `tests/tooling/build_pipeline_test.py` holds this list to the workflow.
+const ADVISORY: &[&str] = &["tools"];
+
+/// The failed jobs of `run`, as "name: conclusion link" lines. With `gating`, only the
+/// failures that already fail the gate, while the rest of the run is still going.
+fn failed_jobs(runner: &dyn Runner, run: &Value, gating: bool) -> Vec<String> {
     let Ok(jobs) = rest(
         runner,
         &format!("actions/runs/{}/jobs?per_page=100", run["id"]),
@@ -260,11 +271,14 @@ fn failed_jobs(runner: &dyn Runner, run: &Value) -> Vec<String> {
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|job| {
-            matches!(
-                job["conclusion"].as_str(),
-                Some("failure" | "cancelled" | "timed_out" | "startup_failure")
-            )
+        .filter(|job| match job["conclusion"].as_str() {
+            Some("failure" | "timed_out" | "startup_failure") => {
+                // A matrix job is named after its job and its matrix value, as `browser (3)`.
+                let name = job["name"].as_str().unwrap_or("");
+                !gating || !ADVISORY.contains(&name.split(" (").next().unwrap_or(name))
+            }
+            Some("cancelled") => !gating,
+            _ => false,
         })
         .map(|job| {
             format!(
@@ -340,6 +354,29 @@ pub fn run(
         }
         let entry = &pr["mergeQueueEntry"];
         if entry.is_object() {
+            // One failed job fails the gate, so the verdict is out before the run ends. An
+            // entry this run did not see start, found already failing, is waited out: after a
+            // fix is pushed, the new head is queued once GitHub has taken the old one out.
+            let failed = match queue_run(runner, number) {
+                Some(run) if run["id"].as_u64() > earlier || earlier.is_none() => {
+                    failed_jobs(runner, &run, true)
+                }
+                _ => vec![],
+            };
+            if !failed.is_empty() {
+                if queued.as_ref() == Some(head) {
+                    return Err(format!(
+                        "#{number} failed its queue run, and GitHub takes it out of the queue once the run ends. Fix it, push and ship it again; shipping waits for it to leave the queue first. Failed jobs so far:\n- {}",
+                        failed.join("\n- ")
+                    )
+                    .into());
+                }
+                note(format!(
+                    "Waiting for GitHub to take #{number} out of the queue after its failed run"
+                ));
+                pause(PAUSE);
+                continue;
+            }
             queued = Some(head.clone());
             outside = 0;
             note(format!(
@@ -360,7 +397,7 @@ pub fn run(
                     .to_owned();
                 let failed = match queue_run(runner, number) {
                     Some(run) if run["id"].as_u64() > earlier || earlier.is_none() => {
-                        failed_jobs(runner, &run)
+                        failed_jobs(runner, &run, false)
                     }
                     _ => vec![],
                 };
@@ -710,6 +747,21 @@ mod tests {
             {"name":"core","conclusion":"failure","html_url":"https://github.com/job/2"},
             {"name":"platform","conclusion":"failure","html_url":"https://github.com/job/3"}]})
     }
+    /// A queue run still going, whose only failure so far is one the gate allows.
+    fn running() -> Value {
+        json!({"jobs":[
+            {"name":"build","conclusion":"success","html_url":"https://github.com/job/1"},
+            {"name":"tools","conclusion":"failure","html_url":"https://github.com/job/4"},
+            {"name":"browser (3)","conclusion":null,"html_url":"https://github.com/job/5"},
+            {"name":"platform","conclusion":null,"html_url":"https://github.com/job/3"}]})
+    }
+    /// The same run once a browser shard failed and the rest was cancelled.
+    fn failing() -> Value {
+        let mut value = running();
+        value["jobs"][2]["conclusion"] = "failure".into();
+        value["jobs"][3]["conclusion"] = "cancelled".into();
+        value
+    }
 
     #[test]
     fn queues_an_admitted_head_at_once_and_returns_the_merge() {
@@ -802,7 +854,7 @@ mod tests {
             .insert(RUNS.into(), VecDeque::from([runs(&[39]), runs(&[39, 40])]));
         github.rest.borrow_mut().insert(
             "actions/runs/40/jobs?per_page=100".into(),
-            VecDeque::from([jobs()]),
+            VecDeque::from([running(), jobs()]),
         );
         let error = ship(&github).0.unwrap_err().to_string();
         assert!(
@@ -845,7 +897,7 @@ mod tests {
             .insert(RUNS.into(), VecDeque::from([runs(&[40])]));
         github.rest.borrow_mut().insert(
             "actions/runs/40/jobs?per_page=100".into(),
-            VecDeque::from([jobs()]),
+            VecDeque::from([running(), jobs()]),
         );
         let error = ship(&github).0.unwrap_err().to_string();
         assert!(error.contains("- core: failure"), "{error}");
@@ -854,6 +906,81 @@ mod tests {
         let github = self::github(vec![open(OLD), open(OLD), in_queue(OLD), merged(OLD)]);
         assert_eq!(ship(&github).0.unwrap(), "3333333");
         assert_eq!(github.queued.borrow().len(), 1);
+    }
+
+    #[test]
+    fn a_failed_job_stops_it_while_the_run_is_still_going() {
+        let github = github(vec![open(OLD), in_queue(OLD), in_queue(OLD)]);
+        github
+            .rest
+            .borrow_mut()
+            .insert(RUNS.into(), VecDeque::from([runs(&[39]), runs(&[39, 40])]));
+        github.rest.borrow_mut().insert(
+            "actions/runs/40/jobs?per_page=100".into(),
+            VecDeque::from([running(), failing()]),
+        );
+        let (result, said, _) = ship(&github);
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("#7 failed its queue run"), "{error}");
+        assert!(
+            error.contains("- browser (3): failure https://github.com/job/5"),
+            "{error}"
+        );
+        // The gate allows the tools job to fail, and cancellations follow the failure.
+        assert!(
+            !error.contains("tools") && !error.contains("cancelled"),
+            "{error}"
+        );
+        assert!(said.iter().any(|text| text.contains("in the merge queue")));
+        // A failure the gate allows alone keeps it waiting for the merge.
+        let github = self::github(vec![open(OLD), in_queue(OLD), merged(OLD)]);
+        github
+            .rest
+            .borrow_mut()
+            .insert(RUNS.into(), VecDeque::from([runs(&[39]), runs(&[39, 40])]));
+        github.rest.borrow_mut().insert(
+            "actions/runs/40/jobs?per_page=100".into(),
+            VecDeque::from([running()]),
+        );
+        assert_eq!(ship(&github).0.unwrap(), "3333333");
+        // An earlier attempt's failed run is not this one's.
+        let github = self::github(vec![open(OLD), in_queue(OLD), merged(OLD)]);
+        github
+            .rest
+            .borrow_mut()
+            .insert(RUNS.into(), VecDeque::from([runs(&[40])]));
+        github.rest.borrow_mut().insert(
+            "actions/runs/40/jobs?per_page=100".into(),
+            VecDeque::from([failing()]),
+        );
+        assert_eq!(ship(&github).0.unwrap(), "3333333");
+    }
+
+    #[test]
+    fn a_failing_entry_found_in_the_queue_is_waited_out_and_the_head_queued_again() {
+        // A fix pushed while the failed attempt is still queued goes in once it has left.
+        let github = github(vec![
+            in_queue(NEW),
+            in_queue(NEW),
+            open(NEW),
+            in_queue(NEW),
+            merged(NEW),
+        ]);
+        github
+            .rest
+            .borrow_mut()
+            .insert(RUNS.into(), VecDeque::from([runs(&[40])]));
+        github.rest.borrow_mut().insert(
+            "actions/runs/40/jobs?per_page=100".into(),
+            VecDeque::from([failing()]),
+        );
+        let (result, said, _) = ship(&github);
+        assert_eq!(result.unwrap(), "3333333");
+        assert_eq!(*github.queued.borrow(), [format!("head={NEW}")]);
+        assert_eq!(
+            said[0],
+            "Waiting for GitHub to take #7 out of the queue after its failed run"
+        );
     }
 
     #[test]
