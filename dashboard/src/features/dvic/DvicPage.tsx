@@ -226,8 +226,8 @@ export function DvicPage({ view }: { view: DspView }) {
       )}
       <div className="dvic-filters">
         <SearchInput
-          label="Search inspections"
-          placeholder="Search driver or VIN…"
+          label="Search drivers"
+          placeholder="Search drivers…"
           value={query}
           onChange={setQuery}
         />

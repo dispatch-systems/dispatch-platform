@@ -55,8 +55,9 @@ test('inspection weeks use Sunday dates across year and DST boundaries; source c
 test('filters use driver identity, name or VIN and preserve distinct inspections', () => {
   const rows = [row('a'), row('b', 'SV')];
   assert.equal(filterInspections(rows, '  BROOKS ', '').length, 2);
-  assert.equal(filterInspections(rows, 'fixture', 'dot')[0]?.id, 'b');
+  assert.equal(filterInspections(rows, 'brooks', 'dot')[0]?.id, 'b');
   assert.equal(filterInspections(rows, 'driver-1', '').length, 2);
+  assert.equal(filterInspections(rows, 'fixture', '').length, 0, 'VINs are not searched');
   assert.deepEqual(
     filterInspections([...rows, row('c', 'CDV')], '', 'non-dot').map((item) => item.id),
     ['a', 'c'],
