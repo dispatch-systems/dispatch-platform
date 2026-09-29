@@ -8,10 +8,15 @@ use crate::{
 use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 pub async fn mailer(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<bool>) {
+    // The tick brings retries that have come due; a request that queues mail wakes it at once.
     let mut timer = tokio::time::interval(Duration::from_secs(5));
     let mut transport = None;
     loop {
-        tokio::select! {_=crate::cancelled(&mut stop)=>break,_=timer.tick()=>{}};
+        tokio::select! {
+            _ = crate::cancelled(&mut stop) => break,
+            _ = timer.tick() => {}
+            _ = state.mail_wake.notified() => {}
+        };
         if !state.config.mail_available() {
             continue;
         }

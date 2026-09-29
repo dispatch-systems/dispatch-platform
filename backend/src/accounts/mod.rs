@@ -206,6 +206,7 @@ impl Store {
              invitation_hash,user_id) VALUES (?,?,?3,?3,?,?,?)",
             params![id, encrypted, now(), kind, invitation, user],
         )?;
+        self.mail_queued();
         Ok(())
     }
 }
