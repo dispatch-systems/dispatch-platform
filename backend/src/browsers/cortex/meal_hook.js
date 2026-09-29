@@ -67,7 +67,11 @@
   window.fetch = async function (resource, init) {
     const id = itinerary(resource instanceof Request ? resource.url : String(resource));
     const response = await fetched.call(this, resource, init);
-    if (!id || response.status !== 200) return response;
+    if (!id) return response;
+    if (response.status !== 200) {
+      arrived(id, response.status, '');
+      return response;
+    }
     arrived(id, response.status, await response.text());
     return new Response('', { status: 503 });
   };

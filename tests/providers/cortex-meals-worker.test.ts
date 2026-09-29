@@ -394,6 +394,8 @@ test(
     release();
     assert.equal((await first).status, 'succeeded');
     assert(visits['itinerary-1']! >= 2, 'Changed existing meals must be re-read');
+    // Read from its own response, whatever the page shows, a route needs no reload.
+    assert.equal(visits['itinerary-2'], 1, 'An unchanged route is read once');
     const publications = () => owner.get('/api/dsp/cortex/meal-breaks?date=2026-01-10');
     const initial = (await publications()).value;
     assert.equal(initial[0].itineraryCount, 2);

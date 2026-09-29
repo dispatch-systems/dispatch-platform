@@ -314,9 +314,11 @@ test('the hook reads and withholds a fetched itinerary the same way', async () =
   assert.equal(fetched.status, 503);
   assert.equal(await fetched.text(), '');
   assert.equal(page.take().itinerary.deliveryCoverage, 'complete');
+  page.expect({ ...candidate, id: 'itinerary-2' });
   const failed: Response = await page.context.fetch(api('itinerary-2'));
   assert.equal(failed.status, 500);
   assert.equal(await failed.text(), 'unavailable');
+  assert.deepEqual(page.take('itinerary-2'), { unanswered: true });
 });
 
 test('the hook only answers on Cortex, and reads a route that changed hands as changed', () => {
