@@ -1,5 +1,5 @@
 //! Weekly scorecards from Cortex's performance API: the datasets behind each scorecard
-//! page, a few weeks at a time, published into the DSP's scorecard database. Every row
+//! page, one week at a time, published into the DSP's scorecard database. Every row
 //! Amazon sends is kept as JSON beside the keys reads filter on. Browser and HTTP
 //! data is untrusted input.
 use crate::{
@@ -25,18 +25,8 @@ pub static STORAGE: AddedStorage = AddedStorage {
     source: "scorecard-v1",
     verify,
 };
-/// How far back a schedule collects weeks it has never seen.
-pub const BACKFILL_WEEKS: usize = 26;
-/// How many recent weeks a schedule collects again, so dispute outcomes arrive.
-pub const REFRESH_WEEKS: usize = 4;
-pub const REFRESH_AFTER_MS: i64 = 7 * 24 * 60 * 60 * 1000;
-/// A week found not posted yet is asked for again this much later: daily for the
-/// newest week, weekly for older ones Amazon may never post.
-pub const RECHECK_NEWEST_AFTER_MS: i64 = 20 * 60 * 60 * 1000;
-pub const RECHECK_OLDER_AFTER_MS: i64 = REFRESH_AFTER_MS;
-/// Weeks one job collects at most; a scheduled run queues them as one job. Cortex
-/// answers a span of up to seven weeks in one request.
-pub const MAX_WEEKS_PER_JOB: usize = 4;
+/// The latest week, found not posted yet, is asked for again this much later.
+pub const RECHECK_AFTER_MS: i64 = 20 * 60 * 60 * 1000;
 /// Rows one dataset may hold, well above any week seen.
 pub const MAX_ROWS: usize = 50_000;
 
@@ -62,10 +52,6 @@ pub struct Dataset {
     pub program: Option<&'static str>,
     /// The row field that says whether the row counts against the scorecard.
     pub impact: Option<&'static str>,
-    /// Consecutive weeks come in one request, each row naming its week in
-    /// `data_date`. Only weekly datasets of one row per driver or per DSP a week span,
-    /// so a span stays small; the deep dives and daily datasets go a week at a time.
-    pub spans: bool,
 }
 /// Every dataset a week's collection reads. The first six are the scorecard pages'
 /// tables; the rest are the DSP's own weekly numbers.
@@ -76,7 +62,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: Some("AMZL"),
         impact: None,
-        spans: true,
     },
     Dataset {
         id: "da_dsp_weekly_rts_deep_dive",
@@ -84,7 +69,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: Some("impacting_dcr"),
-        spans: false,
     },
     Dataset {
         id: "da_dsp_station_daily_dsb_dnr_tba",
@@ -92,7 +76,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Daily,
         program: None,
         impact: Some("dsb_flag"),
-        spans: false,
     },
     Dataset {
         id: "da_dsp_weekly_cdf_deep_dive",
@@ -100,7 +83,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: Some("cdf_impact_flag"),
-        spans: false,
     },
     Dataset {
         id: "da_dsp_daily_psb_stop",
@@ -108,7 +90,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Daily,
         program: None,
         impact: None,
-        spans: false,
     },
     Dataset {
         id: "da_dsp_station_daily_safety_oss_events_intraday",
@@ -116,7 +97,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Daily,
         program: None,
         impact: Some("oss_impact_flag"),
-        spans: false,
     },
     Dataset {
         id: "da_dsp_station_weekly_safety_oss_v2",
@@ -124,7 +104,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
-        spans: true,
     },
     Dataset {
         id: "dsp_station_weekly_quality",
@@ -132,7 +111,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
-        spans: true,
     },
     Dataset {
         id: "dsp_station_weekly_team",
@@ -140,7 +118,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
-        spans: true,
     },
     Dataset {
         id: "dsp_station_weekly_compliance",
@@ -148,7 +125,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
-        spans: true,
     },
     Dataset {
         id: "dsp_station_weekly_safety_oss_v2",
@@ -156,7 +132,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
-        spans: true,
     },
     Dataset {
         id: "dsp_station_weekly_working_device",
@@ -164,7 +139,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
-        spans: true,
     },
     Dataset {
         id: "dsp_weekly_cdf",
@@ -172,7 +146,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
-        spans: true,
     },
     Dataset {
         id: "dsp_weekly_psb",
@@ -180,7 +153,6 @@ pub const DATASETS: &[Dataset] = &[
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
-        spans: true,
     },
 ];
 /// The DSP's own scorecard row: a week without one is not posted yet.
@@ -266,24 +238,13 @@ pub enum Collection {
     #[serde(rename = "scorecard")]
     Scorecard,
 }
-/// A few weeks of one station's scorecard, as a job asks for them.
+/// One week of one station's scorecard, as a job asks for it.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Request {
     pub collection: Collection,
-    /// Newest first, each once.
-    pub weeks: Vec<String>,
+    pub week: String,
     pub station: String,
-}
-/// One request of a job: a dataset over one week, or over consecutive weeks for a
-/// dataset that spans them.
-#[derive(Clone)]
-pub struct Read {
-    pub dataset: &'static Dataset,
-    pub from: String,
-    pub to: String,
-    /// The weeks its rows belong to, newest first.
-    pub weeks: Vec<String>,
 }
 impl Request {
     /// Whether a job request or a collection names the scorecard collection.
@@ -300,19 +261,7 @@ impl Request {
         Ok(Some(request))
     }
     pub fn validate(&self) -> Result<()> {
-        ensure(
-            (1..=MAX_WEEKS_PER_JOB).contains(&self.weeks.len()),
-            "invalid_week",
-            400,
-        )?;
-        for week in &self.weeks {
-            parse_week(week)?;
-        }
-        ensure(
-            self.weeks.windows(2).all(|pair| pair[0] > pair[1]),
-            "invalid_week",
-            400,
-        )?;
+        parse_week(&self.week)?;
         ensure(
             (3..=8).contains(&self.station.len())
                 && self
@@ -323,58 +272,19 @@ impl Request {
             400,
         )
     }
-    /// Every request the job makes: each dataset once per run of consecutive weeks
-    /// when it spans, else once per week.
-    pub fn reads(&self) -> Result<Vec<Read>> {
-        let mut runs: Vec<Vec<String>> = Vec::new();
-        for week in &self.weeks {
-            match runs.last_mut() {
-                Some(run)
-                    if weeks_before(run.last().expect("a run has a week"), 1)?[1] == *week =>
-                {
-                    run.push(week.clone());
-                }
-                _ => runs.push(vec![week.clone()]),
+    /// The interval a dataset takes for this week.
+    pub fn interval(&self, dataset: &Dataset) -> Result<(String, String)> {
+        Ok(match dataset.time_frame {
+            TimeFrame::Weekly => (self.week.clone(), self.week.clone()),
+            TimeFrame::Daily => {
+                let (first, last) = week_days(&self.week)?;
+                (first.to_string(), last.to_string())
             }
-        }
-        let mut reads = Vec::new();
-        for dataset in DATASETS {
-            if dataset.spans {
-                for run in &runs {
-                    reads.push(Read {
-                        dataset,
-                        from: run.last().expect("a run has a week").clone(),
-                        to: run[0].clone(),
-                        weeks: run.clone(),
-                    });
-                }
-            } else {
-                for week in &self.weeks {
-                    let (from, to) = interval(dataset, week)?;
-                    reads.push(Read {
-                        dataset,
-                        from,
-                        to,
-                        weeks: vec![week.clone()],
-                    });
-                }
-            }
-        }
-        Ok(reads)
+        })
     }
 }
-/// The interval a dataset takes for one week.
-pub fn interval(dataset: &Dataset, week: &str) -> Result<(String, String)> {
-    Ok(match dataset.time_frame {
-        TimeFrame::Weekly => (week.to_owned(), week.to_owned()),
-        TimeFrame::Daily => {
-            let (first, last) = week_days(week)?;
-            (first.to_string(), last.to_string())
-        }
-    })
-}
 
-/// One dataset's rows for a week, as objects, with the request they came from.
+/// One dataset's rows for the week, as objects, with the address they came from.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DatasetCapture {
@@ -384,31 +294,20 @@ pub struct DatasetCapture {
     pub source_url: String,
     pub rows: Vec<Value>,
 }
-/// One week of a collection.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WeekCapture {
-    pub week: String,
-    pub posted: bool,
-    pub datasets: Vec<DatasetCapture>,
-}
-impl WeekCapture {
-    pub fn row_count(&self) -> usize {
-        self.datasets.iter().map(|d| d.rows.len()).sum()
-    }
-}
-/// A job's weeks as collected, before publication.
+/// A week's scorecard as collected, before publication.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Capture {
     pub version: u32,
     pub collection: Collection,
+    pub week: String,
     pub station: String,
     pub company_id: String,
     pub dsp_code: String,
     pub started_at: i64,
     pub finished_at: i64,
-    pub weeks: Vec<WeekCapture>,
+    pub posted: bool,
+    pub datasets: Vec<DatasetCapture>,
 }
 /// An identifier as the API and the page spell them.
 pub fn token(value: &str, max: usize) -> bool {
@@ -421,10 +320,9 @@ pub fn token(value: &str, max: usize) -> bool {
 impl Capture {
     pub fn validate(&self, request: &Request) -> Result<()> {
         request.validate()?;
-        ensure(self.version == 2, "scorecard_capture_invalid", 502)?;
+        ensure(self.version == 1, "scorecard_capture_invalid", 502)?;
         ensure(
-            self.station == request.station
-                && self.weeks.iter().map(|w| &w.week).eq(&request.weeks),
+            self.week == request.week && self.station == request.station,
             "scorecard_scope_mismatch",
             502,
         )?;
@@ -438,109 +336,63 @@ impl Capture {
             "scorecard_capture_invalid",
             502,
         )?;
-        let reads = request.reads()?;
-        for week in &self.weeks {
+        ensure(
+            self.datasets.len() == DATASETS.len(),
+            "scorecard_capture_invalid",
+            502,
+        )?;
+        for (dataset, captured) in DATASETS.iter().zip(&self.datasets) {
+            ensure(captured.id == dataset.id, "scorecard_capture_invalid", 502)?;
+            let (from, to) = request.interval(dataset)?;
             ensure(
-                week.datasets.len() == DATASETS.len(),
+                captured.from == from && captured.to == to,
+                "scorecard_scope_mismatch",
+                502,
+            )?;
+            ensure(
+                captured.rows.len() <= MAX_ROWS,
+                "scorecard_source_too_large",
+                502,
+            )?;
+            ensure(
+                captured.source_url.len() <= 2048,
                 "scorecard_capture_invalid",
                 502,
             )?;
-            for (dataset, captured) in DATASETS.iter().zip(&week.datasets) {
-                ensure(captured.id == dataset.id, "scorecard_capture_invalid", 502)?;
-                let read = reads
-                    .iter()
-                    .find(|r| r.dataset.id == dataset.id && r.weeks.contains(&week.week))
-                    .ok_or_else(|| Error::new("scorecard_capture_invalid", 502))?;
-                ensure(
-                    captured.from == read.from && captured.to == read.to,
-                    "scorecard_scope_mismatch",
-                    502,
-                )?;
-                ensure(
-                    captured.rows.len() <= MAX_ROWS,
-                    "scorecard_source_too_large",
-                    502,
-                )?;
-                ensure(
-                    captured.source_url.len() <= 2048,
-                    "scorecard_capture_invalid",
-                    502,
-                )?;
-                ensure(
-                    captured.rows.iter().all(Value::is_object),
-                    "scorecard_row_invalid",
-                    502,
-                )?;
-                // A span's rows were filed by the week they name.
-                ensure(
-                    read.weeks.len() == 1
-                        || captured
-                            .rows
-                            .iter()
-                            .all(|row| row["data_date"].as_str() == Some(week.week.as_str())),
-                    "scorecard_scope_mismatch",
-                    502,
-                )?;
-            }
-            let posted = week
-                .datasets
-                .iter()
-                .find(|d| d.id == POSTED_SIGNAL)
-                .is_some_and(|d| !d.rows.is_empty());
-            ensure(posted == week.posted, "scorecard_capture_invalid", 502)?;
+            ensure(
+                captured.rows.iter().all(Value::is_object),
+                "scorecard_row_invalid",
+                502,
+            )?;
         }
-        Ok(())
+        let posted = self
+            .datasets
+            .iter()
+            .find(|d| d.id == POSTED_SIGNAL)
+            .is_some_and(|d| !d.rows.is_empty());
+        ensure(posted == self.posted, "scorecard_capture_invalid", 502)
     }
     pub fn row_count(&self) -> usize {
-        self.weeks.iter().map(WeekCapture::row_count).sum()
+        self.datasets.iter().map(|d| d.rows.len()).sum()
     }
 }
 
-/// What fixture mode collects: small, complete weeks.
+/// What fixture mode collects: a small, complete week.
 pub fn fixture(request: &Request) -> Result<Capture> {
     request.validate()?;
     let started_at = now();
-    let reads = request.reads()?;
-    let weeks = request
-        .weeks
-        .iter()
-        .map(|week| {
-            Ok(WeekCapture {
-                week: week.clone(),
-                posted: true,
-                datasets: fixture_week(request, week, &reads)?,
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let capture = Capture {
-        version: 2,
-        collection: Collection::Scorecard,
-        station: request.station.clone(),
-        company_id: "company-fixture".into(),
-        dsp_code: "FXTR".into(),
-        started_at,
-        finished_at: now().max(started_at),
-        weeks,
-    };
-    capture.validate(request)?;
-    Ok(capture)
-}
-fn fixture_week(request: &Request, week: &str, reads: &[Read]) -> Result<Vec<DatasetCapture>> {
-    let (first, last) = week_days(week)?;
+    let (first, last) = week_days(&request.week)?;
     let drivers = ["driver-1", "driver-2", "driver-3"];
     let mut datasets = Vec::new();
     for dataset in DATASETS {
-        let read = reads
-            .iter()
-            .find(|r| r.dataset.id == dataset.id && r.weeks.iter().any(|w| w == week))
-            .ok_or_else(|| Error::new("scorecard_capture_invalid", 502))?;
+        let (from, to) = request.interval(dataset)?;
         let rows: Vec<Value> = match dataset.id {
             "da_dsp_station_weekly_performance" => drivers
                 .iter()
                 .enumerate()
                 .map(|(i, driver)| {
                     json!({"transporter_id":driver,"da_name":format!("Fixture Driver {}", i + 1),"week":"38","year":2026,
-                        "data_date":week,"station_code":request.station,"dsp_code":"FXTR",
+                        "data_date":request.week,"station_code":request.station,"dsp_code":"FXTR",
                         "da_overall_score":90 - i as i64,"da_overall_tier":"Fantastic","delivered":1000 + i as i64,
                         "cdf_metric_dpmo":100 * i as i64,"dsb_metric_dpmo":0,"rts_metric_adjusted":0})
                 })
@@ -548,16 +400,16 @@ fn fixture_week(request: &Request, week: &str, reads: &[Read]) -> Result<Vec<Dat
             "da_dsp_station_weekly_safety_oss_v2" => drivers
                 .iter()
                 .map(|driver| {
-                    json!({"transporter_id":driver,"data_date":week,
+                    json!({"transporter_id":driver,"data_date":request.week,
                         "speeding_rate":0,"seatbelt_rate":0})
                 })
                 .collect(),
             "da_dsp_weekly_rts_deep_dive" => vec![
                 json!({"transporter_id":"driver-1","tracking_id":"TBA000000000001",
-                    "data_date":week,"delivery_planned_date":first.to_string(),
+                    "data_date":request.week,"delivery_planned_date":first.to_string(),
                     "impacting_dcr":"Y","rts_reason_code":"BUSINESS CLOSED","weekly_exemption":0}),
                 json!({"transporter_id":"driver-2","tracking_id":"TBA000000000002",
-                    "data_date":week,"delivery_planned_date":last.to_string(),
+                    "data_date":request.week,"delivery_planned_date":last.to_string(),
                     "impacting_dcr":"N","rts_reason_code":"CUSTOMER UNAVAILABLE","weekly_exemption":1}),
             ],
             "da_dsp_station_daily_dsb_dnr_tba" => vec![json!({"transporter_id":"driver-3",
@@ -565,10 +417,10 @@ fn fixture_week(request: &Request, week: &str, reads: &[Read]) -> Result<Vec<Dat
                 "delivery_type":"Residential"})],
             "da_dsp_weekly_cdf_deep_dive" => vec![
                 json!({"transporter_id":"driver-1","tracking_id":"TBA000000000004",
-                    "data_date":week,"cdf_impact_flag":"Y","negative_feedback_flag":1,
+                    "data_date":request.week,"cdf_impact_flag":"Y","negative_feedback_flag":1,
                     "driver_was_unprofessional":1}),
                 json!({"transporter_id":"driver-2","tracking_id":"TBA000000000005",
-                    "data_date":week,"cdf_impact_flag":"N","negative_feedback_flag":0,
+                    "data_date":request.week,"cdf_impact_flag":"N","negative_feedback_flag":0,
                     "delivered_with_care":1}),
             ],
             "da_dsp_daily_psb_stop" => vec![],
@@ -576,27 +428,40 @@ fn fixture_week(request: &Request, week: &str, reads: &[Read]) -> Result<Vec<Dat
                 "transporter_id":"driver-3","event_id":"90000001","data_date":last.to_string(),
                 "oss_impact_flag":1,"dashboard_metric_type":"Speeding"})],
             "dsp_station_weekly_quality" => vec![json!({"dsp_code":"FXTR",
-                "station_code":request.station,"data_date":week,
+                "station_code":request.station,"data_date":request.week,
                 "dsp_final_score":88.5,"dsp_final_tier":"Great"})],
-            "dsp_weekly_cdf" => vec![json!({"dsp_code":"FXTR","data_date":week,
+            "dsp_weekly_cdf" => vec![json!({"dsp_code":"FXTR","data_date":request.week,
                 "positive_response_cnt":40,"negative_response_cnt":1,"no_feedback_cnt":900})],
-            "dsp_weekly_psb" => vec![json!({"dsp_code":"FXTR","data_date":week,
+            "dsp_weekly_psb" => vec![json!({"dsp_code":"FXTR","data_date":request.week,
                 "total_stops":12,"failed_stops":0})],
             _ => vec![json!({"dsp_code":"FXTR","station_code":request.station,
-                "data_date":week})],
+                "data_date":request.week})],
         };
         datasets.push(DatasetCapture {
             id: dataset.id.into(),
             source_url: format!(
-                "fixture://performance/api/v1/getData?dataSetId={}&from={}&to={}",
-                dataset.id, read.from, read.to
+                "fixture://performance/api/v1/getData?dataSetId={}",
+                dataset.id
             ),
-            from: read.from.clone(),
-            to: read.to.clone(),
+            from,
+            to,
             rows,
         });
     }
-    Ok(datasets)
+    let capture = Capture {
+        version: 1,
+        collection: Collection::Scorecard,
+        week: request.week.clone(),
+        station: request.station.clone(),
+        company_id: "company-fixture".into(),
+        dsp_code: "FXTR".into(),
+        started_at,
+        finished_at: now().max(started_at),
+        posted: true,
+        datasets,
+    };
+    capture.validate(request)?;
+    Ok(capture)
 }
 
 /// The columns a row is indexed by, read from its fields when it has them.
@@ -634,92 +499,6 @@ fn keys(dataset: &Dataset, row: &Value) -> Keys {
     }
 }
 
-/// One week of a capture: its publication, or the note that it is not posted yet.
-fn publish_week(
-    db: &Db,
-    job: &str,
-    capture: &Capture,
-    week: &WeekCapture,
-    checked_at: &str,
-) -> Result<()> {
-    if !week.posted {
-        // A week published before stays published; only the check is noted.
-        db.exec(
-            "INSERT INTO scorecard_weeks(week,station,checked_at,posted,publication_id) \
-             VALUES (?,?,?,0,NULL) ON CONFLICT(week,station) DO UPDATE SET \
-             checked_at=excluded.checked_at",
-            params![week.week, capture.station, checked_at],
-        )?;
-        return Ok(());
-    }
-    let publication = crate::crypto::id("scorecard")?;
-    db.exec(
-        "INSERT INTO scorecard_publications(id,job_id,week,station,company_id,dsp_code,started_at,\
-         collected_at,active,row_count,adapter_version) VALUES (?,?,?,?,?,?,?,?,0,?,?)",
-        params![
-            publication,
-            job,
-            week.week,
-            capture.station,
-            capture.company_id,
-            capture.dsp_code,
-            at(capture.started_at),
-            checked_at,
-            week.row_count() as i64,
-            ADAPTER_VERSION
-        ],
-    )?;
-    for (dataset, captured) in DATASETS.iter().zip(&week.datasets) {
-        let sql = format!(
-            "INSERT INTO {}(publication_id,row_index,week,data_date,transporter_id,tracking_id,\
-             event_id,impact,row) VALUES (?,?,?,?,?,?,?,?,?)",
-            dataset.table
-        );
-        for (index, row) in captured.rows.iter().enumerate() {
-            let keys = keys(dataset, row);
-            db.exec(
-                &sql,
-                params![
-                    publication,
-                    index as i64,
-                    week.week,
-                    keys.data_date,
-                    keys.transporter_id,
-                    keys.tracking_id,
-                    keys.event_id,
-                    keys.impact,
-                    row.to_string()
-                ],
-            )?;
-        }
-        db.exec(
-            "INSERT INTO scorecard_sources(publication_id,dataset,source,url,row_count) \
-             VALUES (?,?,'api',?,?)",
-            params![
-                publication,
-                captured.id,
-                captured.source_url,
-                captured.rows.len() as i64
-            ],
-        )?;
-    }
-    db.exec(
-        "UPDATE scorecard_publications SET active=0 WHERE week=? AND station=? AND company_id=? AND active=1",
-        params![week.week, capture.station, capture.company_id],
-    )?;
-    db.exec(
-        "UPDATE scorecard_publications SET active=1 WHERE id=?",
-        [&publication],
-    )?;
-    db.exec(
-        "INSERT INTO scorecard_weeks(week,station,checked_at,posted,publication_id) \
-         VALUES (?,?,?,1,?) ON CONFLICT(week,station) DO UPDATE SET \
-         checked_at=excluded.checked_at,posted=1,publication_id=excluded.publication_id",
-        params![week.week, capture.station, checked_at, publication],
-    )?;
-    Ok(())
-}
-
 impl Store {
     pub fn scorecard(&self, id: &str) -> Result<DspLease<'_>> {
         self.added_storage(id, Provider::Cortex, &STORAGE)
@@ -739,32 +518,25 @@ impl Store {
         ensure(!station.is_empty(), "scorecard_station_required", 409)?;
         Ok(station)
     }
-    pub(crate) fn scorecard_request(&self, id: &str, weeks: Vec<String>) -> Result<Value> {
+    pub(crate) fn scorecard_request(&self, id: &str, week: &str) -> Result<Value> {
         let request = Request {
             collection: Collection::Scorecard,
-            weeks,
+            week: week.into(),
             station: self.scorecard_station(id)?,
         };
         request.validate()?;
         Ok(serde_json::to_value(request)?)
     }
-    /// Queues `week`, or the most recent completed one, and the `count - 1` weeks
-    /// before it as one job, answering with the job.
+    /// Queues `week`, or the most recent completed one, answering with the job.
     pub fn enqueue_scorecard(
         &self,
         id: &str,
         actor: Option<&str>,
         key: &str,
         week: Option<&str>,
-        count: usize,
     ) -> Result<Value> {
         let week = week_or_latest(week, self.scorecard_today(id)?)?;
-        ensure(
-            (1..=MAX_WEEKS_PER_JOB).contains(&count),
-            "invalid_week",
-            400,
-        )?;
-        let request = self.scorecard_request(id, weeks_before(&week, count - 1)?)?;
+        let request = self.scorecard_request(id, &week)?;
         let job = self
             .enqueue_batch(id, actor, &[(key.into(), Provider::Cortex, request)])?
             .remove(0);
@@ -773,58 +545,31 @@ impl Store {
     pub(crate) fn scorecard_schedule_ready(&self, id: &str) -> Result<()> {
         self.scorecard_station(id).map(|_| ())
     }
-    /// The one job a scheduled run queues, for the weeks due: the newest completed
-    /// week until it is posted, weeks never seen back to the backfill limit, and
-    /// recent weeks collected long enough ago that disputes may have been decided.
+    /// What a scheduled run collects: the latest completed week, until it is
+    /// published. A week not posted yet is asked for again after `RECHECK_AFTER_MS`.
     pub fn scorecard_jobs(&self, id: &str) -> Result<Vec<(String, Value)>> {
-        let today = self.scorecard_today(id)?;
+        let week = last_completed_week(self.scorecard_today(id)?);
         let station = self.scorecard_station(id)?;
         let db = self.scorecard(id)?;
-        let mut weeks = Vec::new();
-        for (index, week) in weeks_before(&last_completed_week(today), BACKFILL_WEEKS)?
-            .iter()
-            .enumerate()
-        {
-            let state = db.one(
-                "SELECT checked_at,posted FROM scorecard_weeks WHERE week=? AND station=?",
-                [week, &station],
-            )?;
-            let publication = db.one(
-                "SELECT collected_at FROM scorecard_publications WHERE week=? AND station=? AND active=1",
-                [week, &station],
-            )?;
-            let age = |value: &Value, key: &str| {
-                chrono::DateTime::parse_from_rfc3339(s(value, key))
-                    .map(|at| now() - at.timestamp_millis())
-                    .unwrap_or(i64::MAX)
-            };
-            let due = match (&state, &publication) {
-                (_, Some(publication)) => {
-                    index < REFRESH_WEEKS && age(publication, "collected_at") >= REFRESH_AFTER_MS
-                }
-                (Some(state), None) => {
-                    age(state, "checked_at")
-                        >= if index == 0 {
-                            RECHECK_NEWEST_AFTER_MS
-                        } else {
-                            RECHECK_OLDER_AFTER_MS
-                        }
-                }
-                (None, None) => true,
-            };
-            if due {
-                weeks.push(week.clone());
-                if weeks.len() >= MAX_WEEKS_PER_JOB {
-                    break;
-                }
-            }
-        }
-        if weeks.is_empty() {
+        let published = db
+            .one(
+                "SELECT id FROM scorecard_publications WHERE week=? AND station=? AND active=1",
+                [&week, &station],
+            )?
+            .is_some();
+        let checked = db
+            .one(
+                "SELECT checked_at FROM scorecard_weeks WHERE week=? AND station=?",
+                [&week, &station],
+            )?
+            .and_then(|row| chrono::DateTime::parse_from_rfc3339(s(&row, "checked_at")).ok())
+            .map(|at| now() - at.timestamp_millis());
+        if published || checked.is_some_and(|age| age < RECHECK_AFTER_MS) {
             return Ok(Vec::new());
         }
         Ok(vec![(
-            "scorecard".into(),
-            self.scorecard_request(id, weeks)?,
+            format!("scorecard:{week}"),
+            self.scorecard_request(id, &week)?,
         )])
     }
     /// The API address the station's last publication read, with the company it
@@ -840,9 +585,8 @@ impl Store {
             )?
             .map(|row| (s(&row, "url").to_owned(), s(&row, "company_id").to_owned())))
     }
-    /// Stores each posted week of a capture as that week's active publication, and
-    /// notes the weeks not posted yet. One transaction: a reader never sees part of a
-    /// week.
+    /// Stores a week's capture as its active publication, or records that the week
+    /// is not posted yet. One transaction: a reader never sees part of a week.
     pub fn publish_scorecard(&self, id: &str, job: &str, capture: &Capture) -> Result<()> {
         let request: Value = serde_json::from_str(&self.job_row(job, Some(id))?.request)?;
         let request = Request::parse(&request)?.ok_or_else(|| Error::new("invalid_input", 400))?;
@@ -850,9 +594,83 @@ impl Store {
         let db = self.scorecard(id)?;
         let checked_at = at(capture.finished_at);
         db.transaction(|| {
-            for week in &capture.weeks {
-                publish_week(&db, job, capture, week, &checked_at)?;
+            if !capture.posted {
+                // A week published before stays published; only the check is noted.
+                db.exec(
+                    "INSERT INTO scorecard_weeks(week,station,checked_at,posted,publication_id) \
+                     VALUES (?,?,?,0,NULL) ON CONFLICT(week,station) DO UPDATE SET \
+                     checked_at=excluded.checked_at",
+                    params![capture.week, capture.station, checked_at],
+                )?;
+                return Ok(());
             }
+            let publication = crate::crypto::id("scorecard")?;
+            db.exec(
+                "INSERT INTO scorecard_publications(id,job_id,week,station,company_id,dsp_code,started_at,\
+                 collected_at,active,row_count,adapter_version) VALUES (?,?,?,?,?,?,?,?,0,?,?)",
+                params![
+                    publication,
+                    job,
+                    capture.week,
+                    capture.station,
+                    capture.company_id,
+                    capture.dsp_code,
+                    at(capture.started_at),
+                    checked_at,
+                    capture.row_count() as i64,
+                    ADAPTER_VERSION
+                ],
+            )?;
+            for (dataset, captured) in DATASETS.iter().zip(&capture.datasets) {
+                let sql = format!(
+                    "INSERT INTO {}(publication_id,row_index,week,data_date,transporter_id,tracking_id,\
+                     event_id,impact,row) VALUES (?,?,?,?,?,?,?,?,?)",
+                    dataset.table
+                );
+                for (index, row) in captured.rows.iter().enumerate() {
+                    let keys = keys(dataset, row);
+                    db.exec(
+                        &sql,
+                        params![
+                            publication,
+                            index as i64,
+                            capture.week,
+                            keys.data_date,
+                            keys.transporter_id,
+                            keys.tracking_id,
+                            keys.event_id,
+                            keys.impact,
+                            row.to_string()
+                        ],
+                    )?;
+                }
+            }
+            for captured in &capture.datasets {
+                db.exec(
+                    "INSERT INTO scorecard_sources(publication_id,dataset,source,url,row_count) \
+                     VALUES (?,?,'api',?,?)",
+                    params![
+                        publication,
+                        captured.id,
+                        captured.source_url,
+                        captured.rows.len() as i64
+                    ],
+                )?;
+            }
+            db.exec(
+                "UPDATE scorecard_publications SET active=0 WHERE week=? AND station=? AND company_id=? AND active=1",
+                params![capture.week, capture.station, capture.company_id],
+            )?;
+            db.exec(
+                "UPDATE scorecard_publications SET active=1 WHERE id=?",
+                [&publication],
+            )?;
+            db.exec(
+                "INSERT INTO scorecard_weeks(week,station,checked_at,posted,publication_id) \
+                 VALUES (?,?,?,1,?) ON CONFLICT(week,station) DO UPDATE SET \
+                 checked_at=excluded.checked_at,posted=1,publication_id=excluded.publication_id",
+                params![capture.week, capture.station, checked_at, publication],
+            )?;
             Ok(())
         })
     }
@@ -961,101 +779,39 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
-        let request = |weeks: Value| {
-            Request::parse(&json!({"collection":"scorecard","weeks":weeks,"station":"TST1"}))
-        };
-        assert!(request(json!(["2026-W38"])).unwrap().is_some());
-        assert!(
-            request(json!(["2026-W38", "2026-W37", "2026-W30", "2026-W29"]))
-                .unwrap()
-                .is_some()
-        );
-        // Newest first, each once, and a few at most.
-        for weeks in [
-            json!([]),
-            json!(["2026-W37", "2026-W38"]),
-            json!(["2026-W38", "2026-W38"]),
-            json!(["2026-W38", "2026-W37", "2026-W36", "2026-W35", "2026-W34"]),
-            json!(["2026-W54"]),
-        ] {
-            assert!(request(weeks.clone()).is_err(), "{weeks}");
-        }
-        assert!(
-            Request::parse(
-                &json!({"collection":"scorecard","weeks":["2026-W38"],"station":"tst1"})
-            )
-            .is_err()
-        );
-        assert!(
-            Request::parse(
-                &json!({"collection":"scorecard","weeks":["2026-W38"],"station":"TST1","extra":1})
-            )
-            .is_err()
-        );
-        // The shape before a job could hold several weeks is not a request any more.
-        assert!(
+        let request =
             Request::parse(&json!({"collection":"scorecard","week":"2026-W38","station":"TST1"}))
+                .unwrap()
+                .unwrap();
+        assert_eq!(
+            request
+                .interval(dataset("da_dsp_daily_psb_stop").unwrap())
+                .unwrap()
+                .0,
+            "2026-09-13"
+        );
+        assert!(
+            Request::parse(&json!({"collection":"scorecard","week":"2026-W38","station":"tst1"}))
                 .is_err()
         );
-    }
-    #[test]
-    fn a_job_reads_small_weekly_datasets_as_spans_and_the_rest_a_week_at_a_time() {
-        let request = Request::parse(&json!({"collection":"scorecard",
-            "weeks":["2026-W02","2026-W01","2025-W52","2025-W40"],"station":"TST1"}))
-        .unwrap()
-        .unwrap();
-        let reads = request.reads().unwrap();
-        let of = |id: &str| -> Vec<(String, String, Vec<String>)> {
-            reads
-                .iter()
-                .filter(|r| r.dataset.id == id)
-                .map(|r| (r.from.clone(), r.to.clone(), r.weeks.clone()))
-                .collect()
-        };
-        let weeks = |list: &[&str]| list.iter().map(|w| (*w).to_owned()).collect::<Vec<_>>();
-        // Consecutive weeks across a year's end are one span; a gap starts another.
-        assert_eq!(
-            of("dsp_station_weekly_quality"),
-            vec![
-                (
-                    "2025-W52".into(),
-                    "2026-W02".into(),
-                    weeks(&["2026-W02", "2026-W01", "2025-W52"])
-                ),
-                ("2025-W40".into(), "2025-W40".into(), weeks(&["2025-W40"])),
-            ]
-        );
-        assert_eq!(of("da_dsp_weekly_cdf_deep_dive").len(), 4);
-        assert_eq!(
-            of("da_dsp_daily_psb_stop")[0],
-            (
-                "2026-01-04".into(),
-                "2026-01-10".into(),
-                weeks(&["2026-W02"])
-            )
-        );
-        let spans = DATASETS.iter().filter(|d| d.spans).count();
-        assert_eq!(reads.len(), spans * 2 + (DATASETS.len() - spans) * 4);
         assert!(
-            DATASETS
-                .iter()
-                .all(|d| !d.spans || d.time_frame == TimeFrame::Weekly)
+            Request::parse(
+                &json!({"collection":"scorecard","week":"2026-W38","station":"TST1","extra":1})
+            )
+            .is_err()
         );
     }
     #[test]
-    fn the_fixture_is_valid_posted_weeks_and_its_keys_are_read_from_rows() {
-        let request = Request::parse(
-            &json!({"collection":"scorecard","weeks":["2026-W38","2026-W37"],"station":"TST1"}),
-        )
-        .unwrap()
-        .unwrap();
+    fn the_fixture_is_a_valid_posted_week_and_its_keys_are_read_from_rows() {
+        let request =
+            Request::parse(&json!({"collection":"scorecard","week":"2026-W38","station":"TST1"}))
+                .unwrap()
+                .unwrap();
         let capture = fixture(&request).unwrap();
-        assert_eq!(capture.weeks.len(), 2);
-        assert!(capture.weeks.iter().all(|w| w.posted));
-        let week = &capture.weeks[0];
-        assert_eq!(week.datasets.len(), DATASETS.len());
+        assert!(capture.posted);
+        assert_eq!(capture.datasets.len(), DATASETS.len());
         let returns = dataset("da_dsp_weekly_rts_deep_dive").unwrap();
-        let rows = &week
+        let rows = &capture
             .datasets
             .iter()
             .find(|d| d.id == returns.id)
@@ -1066,7 +822,7 @@ mod tests {
         assert_eq!(first.tracking_id.as_deref(), Some("TBA000000000001"));
         assert_eq!(keys(returns, &rows[1]).impact, Some(0));
         let concessions = dataset("da_dsp_station_daily_dsb_dnr_tba").unwrap();
-        let rows = &week
+        let rows = &capture
             .datasets
             .iter()
             .find(|d| d.id == concessions.id)
@@ -1077,39 +833,8 @@ mod tests {
             keys(concessions, &rows[0]).data_date.as_deref(),
             Some("2026-09-13")
         );
-        // A spanning dataset names the span it was read over.
-        let quality = week
-            .datasets
-            .iter()
-            .find(|d| d.id == POSTED_SIGNAL)
-            .unwrap();
-        assert_eq!(
-            (quality.from.as_str(), quality.to.as_str()),
-            ("2026-W37", "2026-W38")
-        );
         let mut other = capture.clone();
-        other.weeks[1].posted = false;
+        other.posted = false;
         assert!(other.validate(&request).is_err());
-        // A span's row filed under another week is refused.
-        let mut misfiled = capture.clone();
-        misfiled.weeks[0]
-            .datasets
-            .iter_mut()
-            .find(|d| d.id == POSTED_SIGNAL)
-            .unwrap()
-            .rows[0]["data_date"] = json!("2026-W37");
-        assert!(misfiled.validate(&request).is_err());
-        // Weeks in another order, or another span, are not what the job asked for.
-        let mut swapped = capture.clone();
-        swapped.weeks.reverse();
-        assert!(swapped.validate(&request).is_err());
-        let mut narrowed = capture;
-        narrowed.weeks[0]
-            .datasets
-            .iter_mut()
-            .find(|d| d.id == POSTED_SIGNAL)
-            .unwrap()
-            .from = "2026-W38".into();
-        assert!(narrowed.validate(&request).is_err());
     }
 }

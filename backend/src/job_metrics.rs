@@ -266,10 +266,9 @@ impl Recorder {
                     .sum()
             })
             .or_else(|| {
-                data["weeks"].as_array().map(|weeks| {
-                    weeks
+                data["datasets"].as_array().map(|datasets| {
+                    datasets
                         .iter()
-                        .flat_map(|w| w["datasets"].as_array().into_iter().flatten())
                         .map(|d| d["rows"].as_array().map_or(0, Vec::len))
                         .sum()
                 })

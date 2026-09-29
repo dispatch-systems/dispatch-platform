@@ -143,11 +143,6 @@ pub const SCORECARD: &[Migration] = &[
         name: "sources",
         apply: Sql(include_str!("scorecard/0002_sources.sql")),
     },
-    Migration {
-        id: 3,
-        name: "publication_weeks",
-        apply: Sql(include_str!("scorecard/0003_publication_weeks.sql")),
-    },
 ];
 pub const ROUTEDATA: &[Migration] = &[
     Migration {

@@ -78,37 +78,6 @@ test('a scorecard week is collected on request, stored per dataset and listed, a
     { tracking_id: 'TBA000000000001', impact: 1, reason: 'BUSINESS CLOSED' },
     { tracking_id: 'TBA000000000002', impact: 0, reason: 'CUSTOMER UNAVAILABLE' },
   ]);
-  // One request may name up to four weeks, collected as one job.
-  assert.equal(
-    (
-      await owner.post('/api/dsp/scorecard/collect', {
-        requestId: 'too-many',
-        week: '2026-W37',
-        weeks: 5,
-      })
-    ).status,
-    400,
-  );
-  const both = await owner.post('/api/dsp/scorecard/collect', {
-    requestId: 'weeks-37',
-    week: '2026-W37',
-    weeks: 2,
-  });
-  assert.equal(both.status, 202, both.body);
-  await until(async () => {
-    const job = (await owner.get('/api/dsp/jobs')).value.find((j: any) => j.id === both.value.id);
-    assert.notEqual(job.status, 'failed', JSON.stringify(job));
-    return job.status === 'succeeded';
-  });
-  const listed = (await owner.get('/api/dsp/scorecard/weeks')).value.weeks;
-  assert.deepEqual(
-    listed.map((w: any) => [w.week, w.posted, w.publication.rowCount]),
-    [
-      ['2026-W38', true, 19],
-      ['2026-W37', true, 19],
-      ['2026-W36', true, 19],
-    ],
-  );
   // A member without the collection permission can read the weeks but not collect.
   const member = await f.client('member@dispatch.test');
   await member.select(dsp.id);

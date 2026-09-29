@@ -8,7 +8,6 @@ import { fixture, until } from '../support/support.js';
 
 // What only the collected rows carry, so any copy of them outside the databases shows.
 const MARKERS = ['TBA-SCORECARD-MARKER-1', 'Scorecard Marker Driver', 'QUALITY-MARKER-NOTE'];
-const WEEKS = ['2026-W35', '2026-W36', '2026-W37', '2026-W38'];
 // The Saturday that ends each week, as daily datasets name the week they ask for.
 const SATURDAYS: Record<string, string> = {
   '2026-08-29': '2026-W35',
@@ -18,10 +17,10 @@ const SATURDAYS: Record<string, string> = {
 };
 
 // The real Rust driver against a staged Cortex. The first job finds the API through the
-// overview page's own first data request; the next starts from the saved session and
-// reads two weeks at the address the first stored, spanning the small datasets, with no
-// page at all; when the API moves, a job finds it again; a dataset the API refuses fails
-// the attempt for a retry; and nothing collected is left outside the databases.
+// overview page's own first data request; the next ones start from the saved session
+// and read at the address the first stored, with no page at all; when the API moves, a
+// job finds it again; a dataset the API refuses fails the attempt for a retry; and
+// nothing collected is left outside the databases.
 test(
   'Cortex BrowserOS collects scorecard weeks at the stored API address, finds it again when it moves, and leaves nothing outside the databases',
   { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 300000 },
@@ -143,17 +142,10 @@ test(
         }
         requests.push(url);
         const dataSetId = url.searchParams.get('dataSetId')!;
-        const from = url.searchParams.get('from')!;
         const to = url.searchParams.get('to')!;
-        const saturday = SATURDAYS[to];
-        const weeks =
-          url.searchParams.get('timeFrame') === 'Weekly'
-            ? WEEKS.filter((w) => w >= from && w <= to)
-            : saturday
-              ? [saturday]
-              : [];
+        const week = url.searchParams.get('timeFrame') === 'Weekly' ? to : (SATURDAYS[to] ?? '');
         // Refused in a way no page can answer either: the attempt fails for a retry.
-        if (weeks.includes('2026-W35') && dataSetId === 'da_dsp_weekly_rts_deep_dive') {
+        if (week === '2026-W35' && dataSetId === 'da_dsp_weekly_rts_deep_dive') {
           res.writeHead(404);
           return res.end();
         }
@@ -162,7 +154,7 @@ test(
           JSON.stringify({
             tableData: {
               [dataSetId]: {
-                rows: weeks.flatMap((week) => rows(dataSetId, week)).map((r) => JSON.stringify(r)),
+                rows: rows(dataSetId, week).map((r) => JSON.stringify(r)),
               },
             },
           }),
@@ -206,8 +198,8 @@ test(
     assert.equal(saved.value.status, 'ready', saved.body);
     const job = async (id: string) =>
       (await owner.get('/api/dsp/jobs')).value.find((j: any) => j.id === id);
-    const collect = async (requestId: string, week: string, weeks = 1) => {
-      const queued = await owner.post('/api/dsp/scorecard/collect', { requestId, week, weeks });
+    const collect = async (requestId: string, week: string) => {
+      const queued = await owner.post('/api/dsp/scorecard/collect', { requestId, week });
       assert.equal(queued.status, 202, queued.body);
       await until(async () => {
         const current = await job(queued.value.id);
@@ -267,19 +259,17 @@ test(
       { tracking_id: 'TBA2', impact: 0, reason: 'CUSTOMER UNAVAILABLE' },
     ]);
 
-    // The next job starts from the saved session and reads two weeks at the stored
-    // address without a page: small datasets once across both weeks, the rest per week.
+    // The next jobs start from the saved session and read at the stored address with
+    // no page at all: a week not posted yet is noted, a posted one published.
     requests.length = 0;
     const [landings, checks] = [seen.browserLanding, seen.sessionCheck];
-    const second = await collect('weeks-37', '2026-W37', 2);
+    await collect('week-37', '2026-W37');
+    const posted36 = await collect('week-36', '2026-W36');
     assert.equal(seen.overview, overviews);
     assert.equal(seen.browserLanding, landings);
-    assert.equal(seen.sessionCheck, checks + 1);
-    const spans = requests.filter(
-      (u) => u.searchParams.get('from') === '2026-W36' && u.searchParams.get('to') === '2026-W37',
-    );
-    assert.equal(spans.length, 9);
-    assert.equal(requests.length, 9 + 5 * 2);
+    assert.equal(seen.sessionCheck, checks + 2);
+    assert.equal(requests.length, 14 * 2);
+    assert.ok(requests.every((u) => u.pathname === '/performance/api/v1/getData'));
     const after = (await owner.get('/api/dsp/scorecard/weeks')).value.weeks;
     assert.equal(after.find((w: any) => w.week === '2026-W37').posted, false);
     const w36 = after.find((w: any) => w.week === '2026-W36');
@@ -289,11 +279,10 @@ test(
       1,
     );
     assert.deepEqual(
-      stored().publications.filter((p) => p.job_id === second),
-      [{ job_id: second, week: '2026-W36', company_id: 'company-1', active: 1 }],
+      stored().publications.filter((p) => p.job_id === posted36),
+      [{ job_id: posted36, week: '2026-W36', company_id: 'company-1', active: 1 }],
     );
-    const metrics = (await job(second)).metrics.at(-1);
-    assert.equal(metrics.rows, 12);
+    assert.equal((await job(posted36)).metrics.at(-1).rows, 12);
 
     // Cortex moves its API: nothing answers at the stored address, the page names the
     // new one, and the week is read there.

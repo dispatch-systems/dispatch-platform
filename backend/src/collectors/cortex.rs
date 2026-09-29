@@ -111,10 +111,6 @@ impl Collector for Cortex {
             Ok(Box::new(cortex::Driver::new(browser, profile, fixture).await?) as Box<dyn Driver>)
         })
     }
-    /// A scorecard needs no page: it reads Cortex's API with the session's cookies.
-    fn quick_start(&self, request: &Value) -> bool {
-        scorecard::Request::is(request)
-    }
     fn fixture(&self, _: &str, request: &Value) -> Result<Collected> {
         if let Some(request) = dvic::Request::parse(request)? {
             return Ok(Collected {
