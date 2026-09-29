@@ -46,10 +46,10 @@ jobs:
       # Named by the attempt that built it. Rerunning only failed jobs keeps this job's
       # outputs, so the other jobs still find the bytes this job uploaded.
       candidate: ${{ steps.candidate.outputs.name }}
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: useblacksmith/checkout@v1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
@@ -80,10 +80,10 @@ jobs:
   checks:
     needs: build
     if: contains('all checks', inputs.suite || 'all')
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: useblacksmith/checkout@v1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
@@ -102,14 +102,14 @@ jobs:
   browser:
     needs: build
     if: contains('all browser', inputs.suite || 'all')
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: useblacksmith/checkout@v1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
@@ -151,10 +151,10 @@ jobs:
   smoke:
     needs: build
     if: contains('all smoke', inputs.suite || 'all')
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: useblacksmith/checkout@v1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
@@ -179,10 +179,10 @@ jobs:
   benchmark:
     needs: build
     if: contains('all benchmark', inputs.suite || 'all')
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: useblacksmith/checkout@v1
         with:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -206,10 +206,10 @@ jobs:
   # Rust formatting, lints and tests.
   core:
     if: contains('all core', inputs.suite || 'all')
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: useblacksmith/checkout@v1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
@@ -221,10 +221,10 @@ jobs:
   # The API tests against a debug backend, the Python tooling tests and the npm audit.
   api:
     if: contains('all api', inputs.suite || 'all')
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: useblacksmith/checkout@v1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
@@ -236,14 +236,14 @@ jobs:
   # The native collectors against their fixtures, with a real isolated browser.
   collectors:
     if: contains('all collectors', inputs.suite || 'all')
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         shard: [paycom, paycom-recovery, cortex, capacity]
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: useblacksmith/checkout@v1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
@@ -256,10 +256,10 @@ jobs:
         run: npm run test:browseros -- --shard ${{ matrix.shard }}
   rust-advisories:
     if: contains('all core', inputs.suite || 'all')
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: useblacksmith/checkout@v1
         with:
           persist-credentials: false
       - name: Cache audit tool
@@ -277,14 +277,14 @@ jobs:
     permissions:
       contents: read
       security-events: write
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         language: [javascript-typescript, rust]
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: useblacksmith/checkout@v1
         with:
           persist-credentials: false
       - name: Initialize CodeQL
@@ -302,10 +302,10 @@ jobs:
   # absent, so a failure here only costs time.
   tools:
     continue-on-error: true
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: useblacksmith/checkout@v1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
@@ -357,7 +357,7 @@ jobs:
     needs:
       [build, checks, browser, smoke, benchmark, core, api, collectors, rust-advisories, codeql]
     if: always() && (inputs.suite || 'all') == 'all'
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
       - name: Require every suite
@@ -371,7 +371,7 @@ jobs:
             exit 1
           fi
           echo "Every suite passed."
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: useblacksmith/checkout@v1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools

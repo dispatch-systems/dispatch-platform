@@ -18,10 +18,10 @@ env:
 jobs:
   browsers:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: useblacksmith/checkout@v1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
@@ -61,10 +61,10 @@ jobs:
   # build job restores when the Rust sources are unchanged.
   release-binary:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: useblacksmith/checkout@v1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
@@ -85,10 +85,10 @@ jobs:
   # branch whose inputs match restores them instead of compiling.
   tools:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: useblacksmith/checkout@v1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-tools
