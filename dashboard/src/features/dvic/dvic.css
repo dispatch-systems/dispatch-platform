@@ -171,7 +171,7 @@
   gap: 8px;
 }
 .dvic-item {
-  --tone: var(--warning);
+  --tone: var(--series-4);
   width: 100%;
   min-height: 0;
   display: grid;
@@ -257,7 +257,7 @@
   display: block;
   height: 100%;
   border-radius: 3px;
-  background: var(--warning);
+  background: var(--series-4);
 }
 .dvic-duration-bar[data-band='high'] > span {
   background: var(--series-1);
@@ -289,7 +289,7 @@
   width: 10px;
   height: 10px;
   border-radius: 3px;
-  background: var(--warning);
+  background: var(--series-4);
 }
 .dvic-legend i[data-band='high'] {
   background: var(--series-1);
@@ -393,9 +393,16 @@
   justify-content: center;
   gap: 4px;
   font-variant-numeric: tabular-nums;
-  background: var(--warning);
+  background: var(--series-4);
   color: var(--primary-foreground);
   box-shadow: inset 0 0 0 2px var(--card);
+}
+/* Amber is light, so its duration is dark in both themes. */
+.dvic-cell[data-band='mid'] {
+  color: var(--foreground);
+}
+[data-theme='dark'] .dvic-cell[data-band='mid'] {
+  color: var(--primary-foreground);
 }
 .dvic-cell[data-band='high'] {
   background: var(--series-1);
