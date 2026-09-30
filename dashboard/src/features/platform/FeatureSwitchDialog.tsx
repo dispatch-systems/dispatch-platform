@@ -4,6 +4,8 @@ import {
   capabilityLabel,
   featureCatalog,
   previewSwitch,
+  sideEffects,
+  switchLabel,
   type FeatureEntry,
 } from '../../app/features.js';
 import { useAction } from '../../app/useAction.js';
@@ -34,7 +36,7 @@ export function FeatureSwitchDialog({
     : feature.requires.filter(
         (c) => !featureCatalog.some((f) => f.provides?.includes(c) && enabled.includes(f.id)),
       );
-  const others = (preview ?? []).filter((change) => change.feature !== feature.id);
+  const others = sideEffects(feature, preview ?? []);
   // The capability two features have in common, or the first one either supplies or needs.
   const shared = (
     a: { provides?: string[]; requires: string[] },
@@ -46,6 +48,8 @@ export function FeatureSwitchDialog({
     (a.provides ?? a.requires)[0] ??
     '';
   const why = (change: { feature: string; enabled: boolean }) => {
+    // A tab takes only its page along, when it was the page's last one on.
+    if (feature.kind === 'tab') return 'has no other tab on';
     const other = entry(change.feature);
     if (on && change.enabled)
       return `${feature.label} needs ${capabilityLabel(shared(feature, other))}`;
@@ -57,10 +61,10 @@ export function FeatureSwitchDialog({
       await setDspFeature(dsp.id, feature.id, on);
       onDone();
     },
-    { success: `${feature.label} switched ${on ? 'on' : 'off'}` },
+    { success: `${switchLabel(feature)} switched ${on ? 'on' : 'off'}` },
   );
   return (
-    <Modal title={`Switch ${on ? 'on' : 'off'} ${feature.label}?`} onClose={onClose}>
+    <Modal title={`Switch ${on ? 'on' : 'off'} ${switchLabel(feature)}?`} onClose={onClose}>
       {preview ? (
         <>
           <p>Also switches {others.every((c) => c.enabled) ? 'on' : 'off'}:</p>

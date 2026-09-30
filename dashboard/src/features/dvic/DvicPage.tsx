@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, RefreshCw, Settings2 } from 'lucide-react';
 import type { DspView, Job } from '../../../../shared/contracts/index.js';
 import type { DvicStatus } from '../../../../shared/contracts/dvic.js';
 import { api, ApiError, useData } from '../../app/api.js';
+import { hasFeature } from '../../app/features.js';
 import { can } from '../../app/permissions.js';
 import { useAction } from '../../app/useAction.js';
 import {
@@ -24,10 +25,19 @@ import { WeekGrid } from './WeekGrid.js';
 import { useInspections } from './useInspections.js';
 
 const activeJob = (job: Job) => ['queued', 'running', 'waiting_verification'].includes(job.status);
+// Each view is a tab the platform switches on its own; the page has at least one while on.
+const views = [
+  ['day', 'Day', 'dvic.day'],
+  ['week', 'Week', 'dvic.week'],
+] as const;
 
 export function DvicPage({ view }: { view: DspView }) {
   const status = useData<DvicStatus>('/api/dsp/dvic/status', performancePolicy.recoveryPollMs);
-  const [tab, setTab] = useState<'day' | 'week'>('day');
+  const shownViews = views.filter(([, , feature]) => hasFeature(view, feature));
+  const [chosenTab, setTab] = useState<'day' | 'week'>('day');
+  const tab = shownViews.some(([id]) => id === chosenTab)
+    ? chosenTab
+    : (shownViews[0]?.[0] ?? chosenTab);
   const [chosenWeek, setChosenWeek] = useState<string>();
   const [chosenDay, setChosenDay] = useState<string>();
   const [query, setQuery] = useState('');
@@ -192,10 +202,7 @@ export function DvicPage({ view }: { view: DspView }) {
         label="DVIC views"
         value={tab}
         onChange={(value) => setTab(value as 'day' | 'week')}
-        items={[
-          ['day', 'Day'],
-          ['week', 'Week'],
-        ]}
+        items={shownViews.map(([id, label]) => [id, label])}
       />
       {tab === 'day' && (
         <nav className="dvic-week-strip" aria-label="Inspection days">

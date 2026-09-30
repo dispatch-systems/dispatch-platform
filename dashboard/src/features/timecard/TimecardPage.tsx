@@ -9,6 +9,7 @@ import type {
 } from '../../../../shared/contracts/index.js';
 import { paycomDefaults } from '../../lib/paycom.js';
 import { api, useCachedData, useData } from '../../app/api.js';
+import { hasFeature } from '../../app/features.js';
 import { syncEmployeeTimecard, usePaycomSettings } from '../../app/endpoints.js';
 import { dataCache } from '../../app/data-cache.js';
 import { collectionData } from '../../lib/data-policy.js';
@@ -25,13 +26,23 @@ import { useAction } from '../../app/useAction.js';
 import { dspHash, navigate } from '../../app/navigation.js';
 import { SourceSyncStatus, type SyncSource } from './SourceSyncStatus.js';
 
+// Each is a tab the platform switches on its own; the page has at least one while on.
+const tabs = [
+  ['timecards', 'Timecard', 'timecard.daily'],
+  ['meal-breaks', 'Meal Breaks', 'timecard.meal_breaks'],
+  ['employees', 'Employees', 'timecard.employees'],
+] as const;
+
 export function PaycomPage({ view }: { view: DspView }) {
   const canCollect = can(view, 'collections.run');
   const [selectedTab, setTab] = useUpdateState<string | undefined>('paycom-tab', undefined);
   const { date, today, selectDate } = usePaycomDate(view.dsp.id, view.dsp.timezone);
   const preferences = usePaycomSettings();
   useCollectionUpdates();
-  const tab = selectedTab ?? 'timecards';
+  const shownTabs = tabs.filter(([, , feature]) => hasFeature(view, feature));
+  const tab = shownTabs.some(([id]) => id === selectedTab)
+    ? selectedTab!
+    : (shownTabs[0]?.[0] ?? 'timecards');
   const [syncRevision, setSyncRevision] = useState(0);
   const [collecting, setCollecting] = useState(false);
   const overview = useCachedData<{
@@ -168,11 +179,7 @@ export function PaycomPage({ view }: { view: DspView }) {
       <Tabs
         value={tab}
         onChange={setTab}
-        items={[
-          ['timecards', 'Timecard'],
-          ['meal-breaks', 'Meal Breaks'],
-          ['employees', 'Employees'],
-        ]}
+        items={shownTabs.map(([id, label]) => [id, label])}
         label="Timecard"
       />
       {canCollect && syncUnavailable && (

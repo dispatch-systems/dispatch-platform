@@ -4,6 +4,7 @@ import type {
   Feature,
   PageFeature,
   Permission,
+  TabFeature,
 } from '../../../shared/contracts/index.js';
 
 type Entry<Kind, Id> = {
@@ -16,10 +17,20 @@ type Entry<Kind, Id> = {
   requires: string[];
 };
 export type PageEntry = Entry<'page', PageFeature> & { provides?: undefined };
+/** A tab of `page`, switched on its own; it exists only while its page is on too. */
+export type TabEntry = Entry<'tab', TabFeature> & { page: PageFeature; provides?: undefined };
 /** `provides` is what the connection supplies, one capability or several. */
 export type ConnectionEntry = Entry<'connection', ConnectionFeature> & { provides: string[] };
-export type FeatureEntry = PageEntry | ConnectionEntry;
-/** Mirrors `PAGES` and the collector registry in `backend/src/features.rs`. */
+export type FeatureEntry = PageEntry | TabEntry | ConnectionEntry;
+const tab = (id: TabFeature, label: string, page: PageFeature): TabEntry => ({
+  id,
+  label,
+  kind: 'tab',
+  page,
+  permissions: [],
+  requires: [],
+});
+/** Mirrors `PAGES`, `TABS` and the collector registry in `backend/src/features.rs`. */
 export const featureCatalog: FeatureEntry[] = [
   {
     id: 'timecard',
@@ -49,6 +60,11 @@ export const featureCatalog: FeatureEntry[] = [
     permissions: ['dvic.view', 'dvic.collect', 'dvic.manage'],
     requires: ['dvic'],
   },
+  tab('timecard.daily', 'Timecard', 'timecard'),
+  tab('timecard.meal_breaks', 'Meal Breaks', 'timecard'),
+  tab('timecard.employees', 'Employee Search', 'timecard'),
+  tab('dvic.day', 'Day', 'dvic'),
+  tab('dvic.week', 'Week', 'dvic'),
   {
     id: 'paycom',
     label: 'Paycom',
@@ -76,6 +92,9 @@ const capabilities: Record<string, string> = {
   dvic: 'a DVIC source',
 };
 export const capabilityLabel = (capability: string) => capabilities[capability] ?? capability;
+/** The tabs of `page`, in catalog order. */
+export const tabsOf = (page: string) =>
+  featureCatalog.filter((f): f is TabEntry => f.kind === 'tab' && f.page === page);
 /** The connections among `features`, in catalog order. */
 export const connectionFeatures = (features: readonly string[]) =>
   featureCatalog.filter(
@@ -83,10 +102,12 @@ export const connectionFeatures = (features: readonly string[]) =>
   );
 /**
  * What switching `id` would change, mirroring `set_feature` in the backend: enabling a
- * page enables the one provider of each capability it lacks, enabling a provider switches
- * off another of the same capability, and disabling a provider disables the pages left
- * without one. Undefined when a page needs a capability with several providers and none
- * is on: the backend refuses that switch until one is chosen.
+ * page enables the one provider of each capability it lacks, and its tabs when none is on;
+ * enabling a provider switches off another of the same capability; disabling a provider
+ * disables the pages left without one; disabling a page's last tab disables the page.
+ * `enabled` is what is switched on, tabs of a page that is off included. Undefined when a
+ * page needs a capability with several providers and none is on: the backend refuses that
+ * switch until one is chosen.
  */
 export function previewSwitch(enabled: readonly string[], id: Feature, on: boolean) {
   const current = new Set(enabled);
@@ -113,15 +134,46 @@ export function previewSwitch(enabled: readonly string[], id: Feature, on: boole
       flip(providers[0]!, true);
     }
     flip(feature, true);
+    const own = tabsOf(feature.id);
+    if (!own.some((t) => current.has(t.id))) for (const t of own) flip(t, true);
   } else {
     flip(feature, false);
+    if (
+      feature.kind === 'tab' &&
+      current.has(feature.page) &&
+      !tabsOf(feature.page).some((t) => current.has(t.id))
+    )
+      flip(
+        featureCatalog.find((f) => f.id === feature.page)!,
+        false,
+      );
     for (const page of featureCatalog)
       if (page.kind === 'page' && !page.requires.every(provided)) flip(page, false);
   }
   return changed;
 }
-export const featureLabel = (id: string) =>
-  featureCatalog.find((feature) => feature.id === id)?.label ?? id;
+/**
+ * The switches of `changes` worth asking about before switching `feature`: every one but
+ * the feature's own, and a page's tabs coming on with it.
+ */
+export const sideEffects = (
+  feature: FeatureEntry,
+  changes: readonly { feature: Feature; enabled: boolean }[],
+) =>
+  changes.filter(
+    (change) =>
+      change.feature !== feature.id &&
+      !(change.enabled && tabsOf(feature.id).some((tab) => tab.id === change.feature)),
+  );
+/** A switch's name in a question or a notice: a tab says it is one. */
+export const switchLabel = (feature: FeatureEntry) =>
+  feature.kind === 'tab' ? `${feature.label} tab` : feature.label;
+/** A feature's name on its own, as the audit log shows it: a tab with its page. */
+export function featureLabel(id: string): string {
+  const feature = featureCatalog.find((f) => f.id === id);
+  if (feature?.kind !== 'tab') return feature?.label ?? id;
+  return `${featureLabel(feature.page)} · ${feature.label}`;
+}
 export const hasFeature = (view: DspView | undefined, id: Feature) =>
   Boolean(view?.features.includes(id));
 /** Whether a permission exists with these features, mirroring `grants` in the backend. */
