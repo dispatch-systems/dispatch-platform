@@ -15,6 +15,10 @@ use serde_json::json;
 
 const VIEW: Dsp = Dsp("timecard.view");
 const MANAGE: Dsp = Dsp("timecard.manage");
+// The page's tabs. Each owns no permission, so its routes ask for the tab itself.
+const DAILY: &str = "timecard.daily";
+const MEAL_BREAKS: &str = "timecard.meal_breaks";
+const EMPLOYEES: &str = "timecard.employees";
 const SORTS: &[&str] = &[
     "name",
     "hours",
@@ -50,6 +54,7 @@ pub fn routes() -> Vec<Route> {
 }
 
 fn employees(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    tab(c, EMPLOYEES)?;
     let q = &input.query;
     v::fields(q, &["q", "direction", "offset", "limit", "status"])?;
     let query = optional_text(q, "q", 100)?;
@@ -74,6 +79,7 @@ fn employees(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 
 fn employee(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    tab(c, EMPLOYEES)?;
     let q = &input.query;
     v::fields(q, &["from", "to"])?;
     let period = if q.get("from").is_some() || q.get("to").is_some() {
@@ -93,6 +99,7 @@ fn employee(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 
 fn timecards(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    tab(c, DAILY)?;
     let q = &input.query;
     v::fields(q, &["date", "sort", "direction"])?;
     let sort = optional(q, "sort", |q, key| v::choice(q, key, SORTS))?.unwrap_or("name");
@@ -101,6 +108,7 @@ fn timecards(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 
 fn sync_employee(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    tab(c, EMPLOYEES)?;
     let body = &input.body;
     v::fields(body, &["requestId", "from", "to"])?;
     let period = EmployeeTimecardPeriod {
@@ -151,6 +159,7 @@ fn save_paycom_settings(db: &Store, c: &Member, input: &Input) -> Result<Reply> 
 }
 
 fn meal_comparison(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    tab(c, MEAL_BREAKS)?;
     v::fields(&input.query, &["date"])?;
     let date = v::text(&input.query, "date", 10, 10)?;
     let comparison = c.state.read_cache.json(
@@ -164,12 +173,18 @@ fn meal_comparison(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 
 fn save_employee_links(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    tab(c, MEAL_BREAKS)?;
     let links = db.save_employee_links(c.dsp_id(), c.actor(), &input.body)?;
     Ok(Reply::json(links))
 }
 
 fn cortex_meal_breaks(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    tab(c, MEAL_BREAKS)?;
     v::fields(&input.query, &["date"])?;
     let date = v::text(&input.query, "date", 10, 10)?;
     Ok(Reply::json(db.meal_publications(c.dsp_id(), date)?))
+}
+/// A tab switched off answers as a route that never existed.
+fn tab(c: &Member, id: &str) -> Result<()> {
+    crate::ensure(c.has(id), "not_found", 404)
 }

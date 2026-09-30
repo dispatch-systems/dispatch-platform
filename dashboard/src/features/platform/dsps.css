@@ -172,10 +172,10 @@
   overflow-wrap: anywhere;
 }
 
-/* Features: areas on the left, the chosen area's switches on the right. */
+/* Features: every page, then the connections, on the left; the chosen one's switches on the right. */
 .dsp-features {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-columns: 220px minmax(0, 1fr);
   gap: 32px;
   align-items: start;
 }
@@ -211,13 +211,22 @@
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
 }
-.dsp-areas button[aria-selected='true'] {
+.dsp-areas button.off span {
+  color: var(--muted-foreground);
+}
+.dsp-areas button[aria-current='true'] {
   background: var(--selection);
   color: var(--primary);
   font-weight: 550;
 }
-.dsp-areas button[aria-selected='true'] svg {
+.dsp-areas button[aria-current='true'] svg {
   color: var(--primary);
+}
+.dsp-areas .dsp-group {
+  padding: 6px 12px;
+}
+.dsp-areas .dsp-group ~ .dsp-group {
+  padding-top: 16px;
 }
 .dsp-area h3 {
   display: flex;
@@ -245,6 +254,17 @@
   margin-left: auto;
 }
 .dsp-feature-row:first-of-type {
+  border-top: 0;
+}
+.dsp-tabs-label {
+  padding: 18px 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.dsp-tabs-label + .dsp-feature-row {
   border-top: 0;
 }
 .dsp-feature-row strong {
@@ -355,6 +375,9 @@
   .dsp-areas {
     flex-direction: row;
     flex-wrap: wrap;
+  }
+  .dsp-areas .dsp-group {
+    flex-basis: 100%;
   }
   .dsp-counts {
     margin-bottom: 18px;

@@ -118,7 +118,7 @@ impl Context {
         crate::features::visible(&self.features, stored)
     }
     /// Whether the DSP has `feature`. A page gates on its permissions instead; this is for
-    /// a connection, which owns none.
+    /// a connection or a tab, which own none.
     pub fn has(&self, feature: &str) -> bool {
         self.features.iter().any(|f| f == feature)
     }

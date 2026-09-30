@@ -1,9 +1,10 @@
-//! What a DSP may use. A feature is a page with the permissions it owns, or a
-//! connection to a provider. The platform owner switches features per DSP: a
-//! switched-off feature's pages, permissions and automation do not exist for
-//! that DSP, and nothing it stored is touched, so switching it back on restores
-//! everything. Connections come from the collector registry, each providing a
-//! capability; a page requires capabilities, never a provider by name.
+//! What a DSP may use. A feature is a page with the permissions it owns, a tab
+//! inside a page, or a connection to a provider. The platform owner switches
+//! features per DSP: a switched-off feature's pages, permissions and automation
+//! do not exist for that DSP, and nothing it stored is touched, so switching it
+//! back on restores everything. Connections come from the collector registry,
+//! each providing a capability; a page requires capabilities, never a provider
+//! by name.
 use super::{
     Result,
     audit::AuditChange,
@@ -18,6 +19,8 @@ use std::{collections::BTreeMap, sync::LazyLock};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Kind {
     Page,
+    /// A tab of the page with this id.
+    Tab(&'static str),
     Connection,
 }
 #[derive(Clone, Copy, Debug)]
@@ -73,6 +76,43 @@ pub const PAGES: &[Feature] = &[
         default: false,
     },
 ];
+impl Feature {
+    /// How the audit log names it: a tab with its page, as "Timecard · Meal Breaks".
+    fn name(&self) -> String {
+        match self.kind {
+            Kind::Tab(page) => format!("{} · {}", find(page).map_or(page, |p| p.label), self.label),
+            _ => self.label.to_owned(),
+        }
+    }
+}
+/// Tabs switched on their own, each inside its page. A tab owns no permissions and
+/// requires nothing: it exists while its page and its own switch are on, so the page's
+/// permissions gate it and its routes ask `Context::has`. Switching one never touches
+/// automation, which follows the page. It defaults on, so a page switched on shows every
+/// tab until one is switched off; a DSP still starts with none, as its pages are off.
+pub const TABS: &[Feature] = &[
+    tab("timecard.daily", "Timecard", "timecard"),
+    tab("timecard.meal_breaks", "Meal Breaks", "timecard"),
+    tab("timecard.employees", "Employee Search", "timecard"),
+    tab("dvic.day", "Day", "dvic"),
+    tab("dvic.week", "Week", "dvic"),
+];
+const fn tab(id: &'static str, label: &'static str, page: &'static str) -> Feature {
+    Feature {
+        id,
+        label,
+        kind: Kind::Tab(page),
+        permissions: &[],
+        provides: &[],
+        requires: &[],
+        default: true,
+    }
+}
+/// The tabs of `page`, in catalog order.
+fn tabs(page: &str) -> impl Iterator<Item = &'static Feature> {
+    TABS.iter()
+        .filter(move |t| matches!(t.kind, Kind::Tab(p) if p == page))
+}
 /// The page whose schedules, collections and jobs run. Nothing collects without it,
 /// except the collections another page owns (`automation`).
 pub const SCHEDULES: &str = "timecard";
@@ -117,10 +157,11 @@ fn connection(provider: Provider) -> Feature {
         default: false,
     }
 }
-/// The catalog, pages first, then every registered connection.
+/// The catalog: pages, their tabs, then every registered connection.
 static CATALOG: LazyLock<Vec<Feature>> = LazyLock::new(|| {
     PAGES
         .iter()
+        .chain(TABS)
         .copied()
         .chain(Provider::ALL.iter().map(|p| connection(*p)))
         .collect()
@@ -153,6 +194,17 @@ pub fn visible<'a>(
 ) -> impl Iterator<Item = &'a String> {
     stored.iter().filter(move |p| grants(enabled, p))
 }
+/// The features of `switches` that exist: a tab only while its page is on too.
+pub fn effective(switches: &[String]) -> Vec<String> {
+    switches
+        .iter()
+        .filter(|id| match find(id).map(|f| f.kind) {
+            Some(Kind::Tab(page)) => switches.iter().any(|s| s == page),
+            _ => true,
+        })
+        .cloned()
+        .collect()
+}
 /// Whether an enabled connection provides `capability`.
 fn provided(capability: &str, enabled: &[String]) -> bool {
     catalog()
@@ -175,9 +227,14 @@ impl FromRow for FeatureState {
     }
 }
 impl Store {
-    /// The DSP's enabled features, in catalog order. A feature without a row of its
-    /// own is at its default, which is how a DSP made before the feature existed reads.
+    /// The DSP's features, in catalog order: what is switched on, less the tabs of a
+    /// page that is off.
     pub fn features(&self, dsp: &str) -> Result<Vec<String>> {
+        Ok(effective(&self.switches(dsp)?))
+    }
+    /// Every feature switched on, in catalog order. A feature without a row of its own
+    /// is at its default, which is how a DSP made before the feature existed reads.
+    fn switches(&self, dsp: &str) -> Result<Vec<String>> {
         let stored: BTreeMap<String, bool> = self
             .platform
             .query_as(
@@ -263,9 +320,11 @@ impl Store {
         Ok(())
     }
     /// Switches one feature, and with it whatever depends on it: enabling a page
-    /// enables a provider of each capability it lacks, enabling a provider switches
-    /// off another of the same capability, and disabling a provider disables the
-    /// pages left without one. Every switch is audited; the answer lists them.
+    /// enables a provider of each capability it lacks, and its tabs when none is on;
+    /// enabling a provider switches off another of the same capability; disabling a
+    /// provider disables the pages left without one; disabling a page's last tab
+    /// disables the page. A page switched off keeps its tabs' switches as they are.
+    /// Every switch is audited; the answer lists them.
     pub fn set_feature(
         &self,
         dsp: &str,
@@ -277,7 +336,7 @@ impl Store {
         let feature = find(id).ok_or_else(|| super::Error::new("feature_not_found", 404))?;
         self.platform.transaction(|| {
             self.find_dsp(dsp)?;
-            let mut current = self.features(dsp)?;
+            let mut current = self.switches(dsp)?;
             let mut changed: Vec<(&Feature, bool)> = Vec::new();
             let mut flip = |current: &mut Vec<String>, f: &'static Feature, on: bool| {
                 let is_on = current.iter().any(|e| e == f.id);
@@ -312,8 +371,20 @@ impl Store {
                     flip(&mut current, providers[0], true);
                 }
                 flip(&mut current, feature, true);
+                let own: Vec<_> = tabs(feature.id).collect();
+                if !own.iter().any(|t| current.iter().any(|e| e == t.id)) {
+                    for tab in own {
+                        flip(&mut current, tab, true);
+                    }
+                }
             } else {
                 flip(&mut current, feature, false);
+                if let Kind::Tab(page) = feature.kind
+                    && current.iter().any(|e| e == page)
+                    && !tabs(page).any(|t| current.iter().any(|e| e == t.id))
+                {
+                    flip(&mut current, find(page).expect("a tab's page"), false);
+                }
                 for page in all.iter().filter(|f| f.kind == Kind::Page) {
                     if !satisfied(page, &current) {
                         flip(&mut current, page, false);
@@ -330,7 +401,7 @@ impl Store {
                 let cause: Vec<AuditChange> = if f.id == id {
                     vec![]
                 } else {
-                    vec![("cause", None, Some(feature.label.to_owned()))]
+                    vec![("cause", None, Some(feature.name()))]
                 };
                 self.audit_with(
                     Some(actor),
@@ -341,7 +412,7 @@ impl Store {
                         "dsp.feature_disabled"
                     },
                     f.id,
-                    Some(f.label),
+                    Some(&f.name()),
                     &cause,
                 )?;
             }
@@ -391,6 +462,59 @@ mod tests {
         assert_eq!(db.features(&dsp.id).unwrap(), all);
     }
     #[test]
+    fn a_tab_follows_its_page_and_the_last_one_takes_the_page() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut config = super::super::config::Config::load().unwrap();
+        config.root = root.path().into();
+        let db = Store::initialize(config).unwrap();
+        let owner = db
+            .create_user(
+                "owner@example.test",
+                "Platform",
+                "Owner",
+                "Tabs-test-2026!",
+                true,
+            )
+            .unwrap();
+        let dsp = db.new_dsp("Tabs DSP", "UTC", &owner.id, false).unwrap().id;
+        let changes = |r: DspFeatures| -> Vec<(String, bool)> {
+            r.changed
+                .into_iter()
+                .map(|c| (c.feature, c.enabled))
+                .collect()
+        };
+        let on = |id: &str| (id.to_owned(), true);
+        let off = |id: &str| (id.to_owned(), false);
+        // A new DSP's tabs are switched on, but none exists before its page does.
+        let dvic = db.set_feature(&dsp, "dvic", true, &owner.id).unwrap();
+        assert_eq!(changes(dvic), [on("cortex"), on("dvic")]);
+        assert_eq!(
+            db.features(&dsp).unwrap(),
+            ["dvic", "dvic.day", "dvic.week", "cortex"]
+        );
+        // One tab goes alone; the last takes its page, which keeps the tab's switch.
+        let day = db.set_feature(&dsp, "dvic.day", false, &owner.id).unwrap();
+        assert_eq!(changes(day), [off("dvic.day")]);
+        let week = db.set_feature(&dsp, "dvic.week", false, &owner.id).unwrap();
+        assert_eq!(changes(week), [off("dvic.week"), off("dvic")]);
+        assert_eq!(db.features(&dsp).unwrap(), ["cortex"]);
+        // A page switched on without a tab brings every tab back.
+        let back = db.set_feature(&dsp, "dvic", true, &owner.id).unwrap();
+        assert_eq!(changes(back), [on("dvic"), on("dvic.day"), on("dvic.week")]);
+        // A page switched off keeps its tabs as they were, and switching it on finds them.
+        db.set_feature(&dsp, "dvic.week", false, &owner.id).unwrap();
+        db.set_feature(&dsp, "dvic", false, &owner.id).unwrap();
+        assert_eq!(db.features(&dsp).unwrap(), ["cortex"]);
+        let report = db.feature_report(&dsp).unwrap().features;
+        let state = |id: &str| report.iter().find(|s| s.feature == id).unwrap().enabled;
+        assert!(state("dvic.day") && !state("dvic.week"));
+        let again = db.set_feature(&dsp, "dvic", true, &owner.id).unwrap();
+        assert_eq!(changes(again), [on("dvic")]);
+        assert_eq!(db.features(&dsp).unwrap(), ["dvic", "dvic.day", "cortex"]);
+    }
+    #[test]
     fn the_catalog_is_consistent() {
         let all = catalog();
         let mut ids: Vec<_> = all.iter().map(|f| f.id).collect();
@@ -409,6 +533,11 @@ mod tests {
             }
             match feature.kind {
                 Kind::Page => assert!(feature.provides.is_empty()),
+                Kind::Tab(page) => {
+                    assert!(find(page).is_some_and(|p| p.kind == Kind::Page));
+                    assert!(feature.permissions.is_empty() && feature.provides.is_empty());
+                    assert!(feature.requires.is_empty() && feature.default);
+                }
                 Kind::Connection => {
                     assert!(!feature.provides.is_empty() && feature.requires.is_empty())
                 }
