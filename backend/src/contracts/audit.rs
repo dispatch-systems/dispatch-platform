@@ -10,7 +10,9 @@ text_enum! {
 }
 text_enum! {
     #[cfg_attr(test, derive(ts_rs::TS))]
-    pub enum AuditSubject { Member => "member", Role => "role", Schedule => "schedule", Job => "job", }
+    pub enum AuditSubject {
+        Member => "member", Role => "role", Schedule => "schedule", Job => "job", Driver => "driver",
+    }
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]

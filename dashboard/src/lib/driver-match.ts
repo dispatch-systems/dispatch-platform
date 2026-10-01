@@ -9,7 +9,7 @@ import type {
 } from '../../../shared/contracts/index.js';
 import { dateFormatter } from './date-format.js';
 
-export type DriverFilter = 'all' | 'matched' | 'review' | 'paycom' | 'amazon' | 'office';
+export type DriverFilter = 'all' | 'matched' | 'review' | 'paycom' | 'amazon' | 'office' | 'former';
 export const driverFilters: [DriverFilter, string][] = [
   ['all', 'All'],
   ['matched', 'Matched'],
@@ -17,6 +17,7 @@ export const driverFilters: [DriverFilter, string][] = [
   ['paycom', 'Paycom only'],
   ['amazon', 'Amazon only'],
   ['office', 'Office staff'],
+  ['former', 'Former'],
 ];
 const filterOf: Record<DriverStatus, DriverFilter> = {
   matched: 'matched',
@@ -26,6 +27,7 @@ const filterOf: Record<DriverStatus, DriverFilter> = {
   paycom_only: 'paycom',
   amazon_only: 'amazon',
   office: 'office',
+  former: 'former',
 };
 export const inFilter = (driver: Driver, filter: DriverFilter) =>
   filter === 'all' || filterOf[driver.status] === filter;
@@ -38,6 +40,7 @@ export const statusLabels: Record<DriverStatus, string> = {
   paycom_only: 'Paycom only',
   amazon_only: 'Amazon only',
   office: 'Office staff',
+  former: 'Former',
 };
 /** The colour each status reads in: calm when matched, amber while waiting on a person. */
 export const statusTones: Record<DriverStatus, string> = {
@@ -48,6 +51,7 @@ export const statusTones: Record<DriverStatus, string> = {
   paycom_only: 'slate',
   amazon_only: 'slate',
   office: 'violet',
+  former: 'neutral',
 };
 
 export const dataLabels: Record<DriverData, string> = {

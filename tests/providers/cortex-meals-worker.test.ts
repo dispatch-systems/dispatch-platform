@@ -502,6 +502,9 @@ test(
     const reads: Record<string, number> = {};
     const pages: Record<string, number> = {};
     const peaks: Record<string, number> = {};
+    // Responses held until every tab has asked: how soon a tab starts is the machine's
+    // pace, not the collector's, so the peak never rests on a fixed delay.
+    const held: Record<string, (() => void)[]> = {};
     let active = 0;
     let swiped = false;
     const route = (date: string, n: number) => {
@@ -538,7 +541,15 @@ test(
         reads[id] = (reads[id] || 0) + 1;
         if (id === swipe) swiped = true;
         peaks[date] = Math.max(peaks[date] ?? 0, ++active);
-        await new Promise((resolve) => setTimeout(resolve, 800));
+        if (peaks[date]! < Math.min(3, routes(date).length))
+          await new Promise<void>((resolve) => {
+            (held[date] ??= []).push(resolve);
+            setTimeout(resolve, 15000);
+          });
+        else {
+          for (const release of held[date]?.splice(0) ?? []) release();
+          await new Promise((resolve) => setTimeout(resolve, 800));
+        }
         active--;
         const c = routes(date).find((r) => r.itineraryId === id)!;
         const meal = c.breaks[0]!;

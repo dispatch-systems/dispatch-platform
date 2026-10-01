@@ -23,7 +23,8 @@ text_enum! {
 }
 text_enum! {
     #[cfg_attr(test, derive(ts_rs::TS))]
-    /// Where a person stands. `review` is a person who might be someone else listed twice.
+    /// Where a person stands. `review` is a person who might be someone else listed twice;
+    /// `former` someone only one source knows who has left.
     pub enum DriverStatus {
         Matched => "matched",
         Variant => "variant",
@@ -32,6 +33,7 @@ text_enum! {
         PaycomOnly => "paycom_only",
         AmazonOnly => "amazon_only",
         Office => "office",
+        Former => "former",
     }
 }
 text_enum! {
@@ -106,8 +108,9 @@ pub struct Driver {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DriverCounts {
-    /// Everyone with a code, office staff included.
+    /// Everyone with a code, office staff and those who have left included.
     pub all: usize,
+    /// Everyone else.
     pub drivers: usize,
     /// Drivers known to both Paycom and Amazon.
     pub matched: usize,
@@ -116,6 +119,8 @@ pub struct DriverCounts {
     pub paycom_only: usize,
     pub amazon_only: usize,
     pub office: usize,
+    /// People only one source knows who have left: off Paycom's roster and unseen lately.
+    pub former: usize,
 }
 /// One reason two people might be one. `short` and `long` name a short form and the
 /// name it stands for; `same` of `of` days count days both sides worked.

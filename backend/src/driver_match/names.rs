@@ -40,7 +40,7 @@ pub(crate) fn name_key(name: &str) -> String {
         .collect()
 }
 
-/// A name in parts: the first name, the rest of the words, and a closing suffix.
+/// A name in parts: the first name, the rest of the words, and a suffix.
 pub(crate) struct Name {
     pub given: String,
     pub surnames: Vec<String>,
@@ -59,17 +59,25 @@ impl Name {
             .map(name_key)
             .filter(|word| !word.is_empty())
             .collect();
-        let suffix = words.last().and_then(|word| match word.as_str() {
-            "jr" | "junior" => Some("jr"),
-            "sr" | "senior" => Some("sr"),
-            "ii" => Some("ii"),
-            "iii" => Some("iii"),
-            "iv" => Some("iv"),
-            _ => None,
-        });
-        let suffix = suffix.map(str::to_owned);
-        if suffix.is_some() {
-            words.pop();
+        // A suffix closes a name, though the scorecard sometimes writes it before the last
+        // name, as "Enrique Henry Jr Cortez". The first word is always the first name.
+        let mut suffix = None;
+        let mut index = 1;
+        while index < words.len() {
+            let found = match words[index].as_str() {
+                "jr" | "junior" => Some("jr"),
+                "sr" | "senior" => Some("sr"),
+                "ii" => Some("ii"),
+                "iii" => Some("iii"),
+                "iv" => Some("iv"),
+                _ => None,
+            };
+            if let Some(found) = found {
+                suffix = Some(found.to_owned());
+                words.remove(index);
+            } else {
+                index += 1;
+            }
         }
         let given = if words.is_empty() {
             String::new()
@@ -90,15 +98,32 @@ impl Name {
         }
     }
 
-    /// Whether two names are one name written two ways: the same first name and suffix,
-    /// with one surname the whole of the other's, or its first words.
+    /// Whether two names are one name written two ways, with the same suffix if both
+    /// have one: the same first name with one surname the whole of the other's or its
+    /// first words, or the same last name with one first name the other's first or middle
+    /// name.
     pub fn matches(&self, other: &Self) -> bool {
         if self.given.is_empty()
-            || self.given != other.given
+            || other.given.is_empty()
             || self.surnames.is_empty()
             || other.surnames.is_empty()
             || (self.suffix.is_some() && other.suffix.is_some() && self.suffix != other.suffix)
         {
+            return false;
+        }
+        // Someone may go by a middle name: "Martin Ruben Morgan" is "MORGAN, RUBEN".
+        let middle =
+            |name: &Self, first: &String| name.surnames[..name.surnames.len() - 1].contains(first);
+        let last = self.last().filter(|last| last.chars().count() > 1);
+        if last.is_some()
+            && last == other.last()
+            && (self.given == other.given
+                || middle(self, &other.given)
+                || middle(other, &self.given))
+        {
+            return true;
+        }
+        if self.given != other.given {
             return false;
         }
         // One provider may omit a second surname or join surname words. Require
@@ -298,6 +323,29 @@ mod tests {
         assert_eq!(display("O'NEILL-PRICE, JAMIE"), "Jamie O'Neill-Price");
         assert_eq!(display("McDonald, Ana Sofía"), "Ana Sofía McDonald");
         assert_eq!(display("Tony  Reyes"), "Tony Reyes");
+    }
+    #[test]
+    fn a_first_or_middle_name_with_the_same_last_name_matches() {
+        let same = |a: &str, b: &str| Name::new(a).matches(&Name::new(b));
+        assert!(same("MORGAN, RUBEN", "Martin Ruben Morgan"));
+        assert!(same("BELL, MARCUS", "Marcus Andre Bell"));
+        assert!(same("CORTEZ, HENRY", "Enrique Henry Jr Cortez"));
+        assert!(same("SALAZAR, ALEX", "Alexander Raymond Salazar"));
+        assert!(same("HERNANDEZ ORTIZ, LUIS", "Luis Hernandez"));
+        // A middle name alone never stands in for a last name, an initial or a suffix.
+        assert!(!same("CORTEZ, HENRY", "Henry Vincent Flores"));
+        assert!(!same("MORGAN, RUBEN", "Ruben Martin"));
+        assert!(!same("KOWALSKI, JORDAN", "Avery Jordan K."));
+        assert!(!same("WHITFIELD JR, JAMES", "James Edward Whitfield Sr"));
+        assert!(same("WHITFIELD JR, JAMES", "James Edward Whitfield"));
+    }
+    #[test]
+    fn a_suffix_is_found_wherever_it_is_written() {
+        let name = Name::new("Enrique Henry Jr Cortez");
+        assert_eq!(name.given, "enrique");
+        assert_eq!(name.surnames, ["henry", "cortez"]);
+        assert_eq!(name.suffix.as_deref(), Some("jr"));
+        assert_eq!(Name::new("Junior Garcia").given, "junior");
     }
     #[test]
     fn a_surname_counts_its_last_word() {

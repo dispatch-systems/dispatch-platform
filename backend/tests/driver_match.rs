@@ -100,6 +100,16 @@ fn status(result: &DriverMatch, code: &str) -> DriverStatus {
         .unwrap()
         .status
 }
+/// The subject the platform's activity log shows for the newest event of `action`.
+fn shown(db: &Store, action: &str) -> String {
+    db.audit_page(&dispatch_backend::db::AuditQuery::default())
+        .unwrap()
+        .events
+        .into_iter()
+        .find(|e| e.action == action)
+        .and_then(|e| e.target)
+        .unwrap_or_else(|| panic!("no {action}"))
+}
 const PAYCOM: DriverSource = DriverSource::Paycom;
 const AMAZON: DriverSource = DriverSource::Amazon;
 
@@ -206,6 +216,8 @@ fn a_merge_makes_one_person_and_the_old_code_still_finds_them() {
     // The entry names codes: what a collection says about someone stays in its database.
     let data: serde_json::Value = serde_json::from_str(s(&merge, "data")).unwrap();
     assert_eq!(data["target"], format!("{tony} and {antonio}"));
+    // The log reads who they are from the collections as it is shown.
+    assert_eq!(shown(&db, "driver_match.merged"), "Antonio Reyes");
 }
 
 #[test]
@@ -237,6 +249,48 @@ fn people_split_or_kept_apart_are_not_suggested_again() {
         history.iter().any(
             |e| e.kind == DriverEventKind::Apart && e.code.as_deref() == Some(shanice.as_str())
         )
+    );
+    assert_eq!(shown(&db, "driver_match.split"), "Tony Reyes");
+    assert_eq!(
+        shown(&db, "driver_match.kept_apart"),
+        "Shay Okafor and Shanice Okafor"
+    );
+}
+
+#[test]
+fn someone_only_amazon_saw_long_ago_has_left() {
+    let (_root, db, id, _) = ready(None);
+    let old = Scope {
+        date: (DAY - chrono::Duration::days(40)).to_string(),
+        station: "DEMO1".into(),
+        service_area_id: "area-demo".into(),
+        provider: "provider-demo".into(),
+        timezone: "UTC".into(),
+    };
+    let mut capture = meals::fixture(&old);
+    capture.itineraries.truncate(1);
+    let gone = &mut capture.itineraries[0];
+    gone.id = "itinerary-TGONE".into();
+    gone.transporter_id = "TGONE".into();
+    gone.driver = "Morgan Ellis".into();
+    db.publish_meals(&id, "job-old-meals", &capture, &old)
+        .unwrap();
+    db.match_drivers(&id).unwrap();
+    let result = db.driver_match(&id).unwrap();
+    let gone = code(&result, AMAZON, "TGONE");
+    assert_eq!(status(&result, &gone), DriverStatus::Former);
+    // Seen lately, Dmitri still waits for someone to find them in Paycom.
+    let dmitri = code(&result, AMAZON, "TDMITRI");
+    assert_eq!(status(&result, &dmitri), DriverStatus::AmazonOnly);
+    let counts = &result.counts;
+    assert_eq!(counts.former, 1);
+    assert_eq!(counts.drivers, counts.all - counts.office - counts.former);
+    // Paycom's roster lists everyone else, so nobody else has left.
+    assert!(
+        result
+            .drivers
+            .iter()
+            .all(|d| d.code == gone || d.status != DriverStatus::Former)
     );
 }
 
