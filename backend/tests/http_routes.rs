@@ -91,7 +91,6 @@ const INVENTORY: &[Row] = &[
     ("GET", "/api/dsp/paycom/settings", Dsp("timecard.view"), Read, false),
     ("POST", "/api/dsp/paycom/settings", Dsp("timecard.manage"), Write, false),
     ("GET", "/api/dsp/paycom/meal-breaks", Dsp("timecard.view"), Read, false),
-    ("POST", "/api/dsp/paycom/employee-links", Dsp("timecard.manage"), Write, false),
     ("GET", "/api/dsp/cortex/meal-breaks", Dsp("timecard.view"), Read, false),
     ("POST", "/api/dsp/cortex/meal-breaks/collect", Dsp("collections.run"), Write, false),
     ("GET", "/api/dsp/jobs", Dsp("collections.run"), Read, false),

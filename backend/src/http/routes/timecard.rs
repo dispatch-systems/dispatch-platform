@@ -44,11 +44,6 @@ pub fn routes() -> Vec<Route> {
         read("/api/dsp/paycom/settings", VIEW, paycom_settings),
         write("/api/dsp/paycom/settings", MANAGE, save_paycom_settings),
         read("/api/dsp/paycom/meal-breaks", VIEW, meal_comparison),
-        write(
-            "/api/dsp/paycom/employee-links",
-            MANAGE,
-            save_employee_links,
-        ),
         read("/api/dsp/cortex/meal-breaks", VIEW, cortex_meal_breaks),
     ]
 }
@@ -170,12 +165,6 @@ fn meal_comparison(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         || db.meal_comparison(c.dsp_id(), date, c.dsp.timezone.as_str()),
     )?;
     Ok(Reply::encoded(comparison))
-}
-
-fn save_employee_links(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    tab(c, MEAL_BREAKS)?;
-    let links = db.save_employee_links(c.dsp_id(), c.actor(), &input.body)?;
-    Ok(Reply::json(links))
 }
 
 fn cortex_meal_breaks(db: &Store, c: &Member, input: &Input) -> Result<Reply> {

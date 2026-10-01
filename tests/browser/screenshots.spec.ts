@@ -3,6 +3,7 @@ import path from 'node:path';
 import { routeMeta } from '../../dashboard/src/app/route-meta.js';
 import { test, expect, login, openDsp } from './fixtures.js';
 import { seedDvic } from '../support/dvic.js';
+import { seedDriverMatch } from '../support/driver-match.js';
 
 // Not a test: `npm run pr:screenshots -- capture` runs it to photograph the named screens of
 // the built dashboard, from the fixture server, for a PR's Screenshots section. A screen may
@@ -24,6 +25,7 @@ test('captures the named screens', async ({ page, dispatch }) => {
   fs.mkdirSync(output, { recursive: true });
   await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
   if (screens.includes('dvic')) await seedDvic(dispatch);
+  if (screens.includes('settings?tab=driver-match')) await seedDriverMatch(dispatch);
   await login(page);
   let dsp = '';
   const titles: Record<string, string> = {};
