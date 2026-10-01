@@ -117,18 +117,33 @@ jobs:
           node-version: 22.23.2
           cache: npm
       - run: npm ci --ignore-scripts
-      # The browser's system packages take about 14 seconds to install. They install in the
-      # background while the rest of the job sets up, and the suite waits for them. Packages
-      # the runner image has stay as they are: upgrading them only downloads from a mirror
-      # that can stall for minutes. A stalled download is dropped and tried again.
+      # The browser's system packages install in the background while the rest of the job
+      # sets up, and the suite waits for them. The runner image already has the libraries
+      # Chromium needs, so only what Playwright finds missing installs, less the fonts it adds
+      # for other scripts' text, which the English suite never shows. Installed packages stay
+      # as they are. Upgrades and those fonts only downloaded from a mirror that can stall for
+      # minutes; a stalled download is dropped and tried again.
       - name: Start installing the browser's system packages
         run: |
           printf '%s\n' 'APT::Get::Upgrade "false";' 'Acquire::Retries "3";' \
             'Acquire::http::Timeout "20";' 'Acquire::https::Timeout "20";' |
             sudo tee /etc/apt/apt.conf.d/90-dispatch-ci > /dev/null
-          (npx playwright install-deps chromium > "$RUNNER_TEMP/browser-packages.log" 2>&1
-            echo $? > "$RUNNER_TEMP/browser-packages.written"
-            mv "$RUNNER_TEMP/browser-packages.written" "$RUNNER_TEMP/browser-packages.status") &
+          (
+            start=$SECONDS
+            # The dry run lists what apt would install, one indented name a line, and exits 1
+            # when there is any.
+            missing=$(npx playwright install-deps --dry-run chromium | sed -n 's/^  //p' |
+              grep -vE '^x?fonts-' || true)
+            status=0
+            if [ -n "$missing" ]; then
+              echo "Installing" $missing
+              sudo apt-get update -qq &&
+                sudo apt-get install -y --no-install-recommends $missing || status=$?
+            fi
+            echo "Installed what the browser lacks in $((SECONDS - start))s"
+            echo $status > "$RUNNER_TEMP/browser-packages.written"
+            mv "$RUNNER_TEMP/browser-packages.written" "$RUNNER_TEMP/browser-packages.status"
+          ) > "$RUNNER_TEMP/browser-packages.log" 2>&1 &
       - uses: ./.github/actions/setup-tools
         id: tools
         with:
