@@ -117,6 +117,7 @@ impl Store {
         let checked = at(capture.finished_at);
         db.transaction(|| {
             if db.one("SELECT job_id FROM dvic_runs WHERE job_id=?", [job])?.is_some() { return Ok(()); }
+            let hidden = super::hidden::hidden(&db)?;
             let mut downloaded = 0;
             let mut row_count = 0;
             for report in &capture.reports {
@@ -132,6 +133,9 @@ impl Store {
                     db.exec("UPDATE dvic_reports SET checked_at=? WHERE id=?", params![checked,report_id])?;
                     continue;
                 };
+                // A hidden driver's rows are never written: not in the report's copy,
+                // its counts, or the inspections.
+                let rows = super::hidden::kept(rows, &hidden);
                 downloaded += 1;
                 row_count += rows.len();
                 // A stale capture cannot roll the same object's metadata backwards.
@@ -142,7 +146,7 @@ impl Store {
                 let revision = hash(format!("{report_id}:{}",report.sha256).as_bytes());
                 let min_date = rows.iter().map(|r|r.start_date.as_str()).min();
                 let max_date = rows.iter().map(|r|r.start_date.as_str()).max();
-                let shorts = rows.iter().map(Inspection::is_short).collect::<Result<Vec<_>>>()?.into_iter().filter(|short|*short).count();
+                let shorts = rows.iter().map(|row| row.is_short()).collect::<Result<Vec<_>>>()?.into_iter().filter(|short|*short).count();
                 db.exec(
                     "INSERT INTO dvic_reports(id,company_id,dsp_code,station,source_key,name,week,report_date,\
                      modified_at,etag,sha256,revision_id,row_count,short_count,min_date,max_date,checked_at) \
@@ -156,9 +160,9 @@ impl Store {
                 )?;
                 db.exec("INSERT OR IGNORE INTO dvic_revisions(id,report_id,sha256,modified_at,collected_at,rows) VALUES \
                     (?,?,?,?,?,?)",
-                    params![revision,report_id,report.sha256,report.modified_at,checked,serde_json::to_string(rows)?],
+                    params![revision,report_id,report.sha256,report.modified_at,checked,serde_json::to_string(&rows)?],
                 )?;
-                for row in rows {
+                for row in &rows {
                     db.exec(
                         "INSERT INTO dvic_inspections(company_id,inspection_key,dsp_code,station,start_date,\
                          transporter_id,transporter_name,vin,fleet_type,inspection_type,inspection_status,start_time,\

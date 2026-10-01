@@ -199,7 +199,12 @@ fn identity(db: &Db, id: &str, provider: Provider) -> Result<()> {
         503,
     )
 }
-fn added_identity(db: &Db, id: &str, provider: Provider, storage: &AddedStorage) -> Result<()> {
+pub(crate) fn added_identity(
+    db: &Db,
+    id: &str,
+    provider: Provider,
+    storage: &AddedStorage,
+) -> Result<()> {
     identity(db, id, provider)?;
     let rows = db.all("SELECT source FROM storage_identity", [])?;
     ensure(

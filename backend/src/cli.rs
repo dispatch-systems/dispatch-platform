@@ -26,6 +26,11 @@ pub async fn run() -> Result<()> {
         println!("{}", operations::status(&config)?);
         return Ok(());
     }
+    // Without the platform lock: see `operations::dvic_drivers`.
+    if command.starts_with("dvic-") {
+        println!("{}", operations::dvic_drivers(&config, &args)?);
+        return Ok(());
+    }
     let _lock = Lock::acquire(&config.root)?;
     match command {
         "serve" => {

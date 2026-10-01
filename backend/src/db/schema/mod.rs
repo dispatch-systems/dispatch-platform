@@ -232,8 +232,15 @@ fn security_hardening(db: &Db) -> Result<()> {
     Ok(())
 }
 
-pub const DVIC: &[Migration] = &[Migration {
-    id: 1,
-    name: "baseline",
-    apply: Sql(include_str!("dvic/0001_baseline.sql")),
-}];
+pub const DVIC: &[Migration] = &[
+    Migration {
+        id: 1,
+        name: "baseline",
+        apply: Sql(include_str!("dvic/0001_baseline.sql")),
+    },
+    Migration {
+        id: 2,
+        name: "hidden_drivers",
+        apply: Sql(include_str!("dvic/0002_hidden_drivers.sql")),
+    },
+];
