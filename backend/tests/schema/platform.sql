@@ -1,4 +1,6 @@
 CREATE TABLE account_passkeys ( id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, credential TEXT NOT NULL, name TEXT NOT NULL, created_at INTEGER NOT NULL );
+CREATE TABLE agent_key_dsps ( key_id TEXT NOT NULL REFERENCES agent_keys(id) ON DELETE CASCADE, dsp_id TEXT NOT NULL REFERENCES dsps(id), PRIMARY KEY(key_id, dsp_id) );
+CREATE TABLE agent_keys ( id TEXT PRIMARY KEY, name TEXT NOT NULL, hash TEXT NOT NULL UNIQUE, hint TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), all_dsps INTEGER NOT NULL CHECK(all_dsps IN (0,1)), access TEXT NOT NULL CHECK(access IN ('read','operator')), tools TEXT NOT NULL CHECK(tools IN ('full','essential')), locations INTEGER NOT NULL CHECK(locations IN (0,1)), created_at TEXT NOT NULL, expires_at TEXT, revoked_at TEXT, last_used_at TEXT, last_client TEXT );
 CREATE TABLE audit (id INTEGER PRIMARY KEY, at TEXT NOT NULL, actor_id TEXT REFERENCES users(id), dsp_id TEXT REFERENCES dsps(id), action TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', actor_name TEXT, data TEXT, shown INTEGER);
 CREATE TABLE authenticator_apps ( user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, secret TEXT NOT NULL, created_at INTEGER NOT NULL, last_counter INTEGER NOT NULL DEFAULT -1 );
 CREATE TABLE driver_codes ( code TEXT PRIMARY KEY, dsp_id TEXT NOT NULL, created_at TEXT NOT NULL );

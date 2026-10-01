@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod agents;
 pub mod audit;
 pub mod browsers;
 pub mod cli;
@@ -57,6 +58,8 @@ pub struct State {
     pub updates: live_updates::Updates,
     pub uniform_updates: live_updates::Updates,
     pub presence: presence::Presence,
+    // How much each agent key is used, until the scheduler writes it down.
+    pub agents: agents::Usage,
 }
 impl State {
     pub fn new(config: config::Config) -> Result<Arc<Self>> {
@@ -88,6 +91,7 @@ impl State {
             updates: live_updates::Updates::new()?,
             uniform_updates: live_updates::Updates::new()?,
             presence: presence::Presence::default(),
+            agents: agents::Usage::default(),
         }))
     }
     pub async fn run<T: Send + 'static>(

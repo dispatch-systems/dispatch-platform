@@ -18,6 +18,7 @@ fn invalid_record() -> Error {
 }
 
 mod accounts;
+mod agents;
 mod assessment;
 mod audit;
 mod collections;
@@ -37,6 +38,7 @@ mod uniforms;
 mod workforce;
 
 pub use accounts::*;
+pub use agents::*;
 pub use assessment::*;
 pub use audit::*;
 pub use collections::*;

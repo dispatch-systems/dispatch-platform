@@ -62,11 +62,15 @@ impl Scheduler {
         if prune_audit {
             self.audit_pruned = now();
         }
+        let agents_used = self.state.agents.take();
         let result = self
             .state
             .run(move |db| {
                 if prune_audit {
                     db.prune_audit()?;
+                }
+                if !agents_used.is_empty() {
+                    db.record_agent_use(&agents_used)?;
                 }
                 // Expired access tokens have no remaining authentication purpose.
                 db.platform.transaction(|| {

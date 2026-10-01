@@ -1,5 +1,6 @@
 // Public API shapes. Generated files come from Rust; domain modules narrow JSON fields.
 export * from './accounts.js';
+export * from './agents.js';
 export * from './audit.js';
 export * from './collections.js';
 export * from './features.js';

@@ -15,6 +15,17 @@ fn bindings() -> BTreeMap<PathBuf, String> {
     let cfg = ts_rs::Config::new();
     exported!(
         &cfg,
+        AgentAccess,
+        AgentTools,
+        AgentKey,
+        AgentDsp,
+        AgentKeys,
+        AgentKeyCreated,
+        AgentKeyRequest,
+        AgentKeysRevoked,
+        AgentWhoami,
+        AgentWhoamiKey,
+        AgentWhoamiDsp,
         Cadence,
         DriverSource,
         DriverLink,

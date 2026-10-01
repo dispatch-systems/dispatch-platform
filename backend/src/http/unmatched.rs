@@ -2,7 +2,7 @@
 use super::{
     input::Input,
     middleware,
-    route::{Dsp, Grant, PlatformOwner},
+    route::{Agent, Dsp, Grant, PlatformOwner},
     routes::team::TEAM,
 };
 use crate::{Error, Result, State, db::Store};
@@ -29,6 +29,8 @@ async fn refuse(state: Arc<State>, request: Request) -> Result<std::convert::Inf
             PlatformOwner.authorize(db, &input)?;
         } else if input.path.starts_with("/api/dsp/") {
             Dsp(area_permission(&input)).authorize(db, &input)?;
+        } else if input.path.starts_with("/api/v1/") {
+            Agent::READ.authorize(db, &input)?;
         }
         Err(Error::new("not_found", 404))
     };

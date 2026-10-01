@@ -1,5 +1,6 @@
 import { lazy, Suspense, type ReactNode } from 'react';
 import {
+  Bot,
   Building2,
   CalendarDays,
   FlaskConical,
@@ -17,6 +18,8 @@ import { hasFeature } from './features.js';
 import { can } from './permissions.js';
 import { routeMeta, type DspRouteId, type PlatformRouteId, type RouteMeta } from './route-meta.js';
 
+const loadAgents = () => import('../features/agents/index.js');
+const AgentsPage = lazy(() => loadAgents().then((module) => ({ default: module.AgentsPage })));
 const loadAudit = () => import('../features/audit/index.js');
 const AuditPage = lazy(() => loadAudit().then((module) => ({ default: module.AuditPage })));
 const loadHome = () => import('../features/home/index.js');
@@ -134,6 +137,13 @@ const platformPages: Record<PlatformRouteId, Entry<PageContext>> = {
     nav: true,
     permission: platformOwner,
     render: () => <DiagnosticsPage />,
+  },
+  agents: {
+    preload: loadAgents,
+    icon: Bot,
+    nav: true,
+    permission: platformOwner,
+    render: () => <AgentsPage />,
   },
   audit: {
     preload: loadAudit,

@@ -1,0 +1,397 @@
+/* The Agents page: keys, the key sheet and the setup dialog. */
+.agents-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  background: var(--muted);
+  color: var(--foreground);
+}
+.agents-tag.access-read {
+  background: var(--sage-surface);
+  color: var(--sage);
+}
+.agents-tag.access-operator {
+  background: var(--violet-surface);
+  color: var(--violet);
+}
+.agents-tag.tools-essential {
+  background: var(--slate-surface);
+  color: var(--slate);
+}
+.agents-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.agents-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.agents .table-toolbar > button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+/* Keeps the visually hidden heading inside the table's own scroll area on a phone. */
+.agents .table-wrap {
+  position: relative;
+}
+.agents-table td {
+  white-space: nowrap;
+}
+.agents-table td:first-child {
+  white-space: normal;
+}
+.agents-table tr.ended td,
+.agents-table tr.ended strong {
+  color: var(--muted-foreground);
+}
+.agents-name {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+}
+.agents-name:hover {
+  background: transparent;
+}
+.agents-name strong {
+  font-weight: 500;
+}
+.agents-name small {
+  display: block;
+  margin-top: 3px;
+}
+.agents-table .cell-end button {
+  min-height: 0;
+  padding: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.agents-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--warning);
+}
+
+.agents-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 8px;
+  background: var(--warning-surface);
+  border-color: var(--warning-border);
+  color: var(--foreground);
+}
+.agents-notice > svg {
+  flex-shrink: 0;
+  color: var(--warning);
+}
+.agents-notice > span {
+  flex: 1;
+}
+.agents-notice button {
+  min-height: 32px;
+  padding: 4px 12px;
+}
+
+.agents-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 0 8px;
+  border-top: 1px solid var(--border);
+}
+.agents-footer button {
+  min-height: 32px;
+  padding: 4px 12px;
+}
+.agents-footer button.text-button {
+  color: var(--muted-foreground);
+}
+
+/* The key sheet. */
+.agents-form {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+.agents-form fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.agents-form legend {
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.agents-choices {
+  display: grid;
+  gap: 8px;
+}
+.agents-choices.two {
+  grid-template-columns: 1fr 1fr;
+}
+.agents-choice {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-weight: 400;
+  cursor: pointer;
+}
+.agents-choice:has(> input:checked) {
+  border-color: var(--primary);
+  background: var(--selection);
+}
+.agents-choice input {
+  margin-top: 2px;
+}
+.agents-choice strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+}
+.agents-choice small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.agents-dsps {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.agents-dsps label {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  font-weight: 400;
+}
+.agents-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.agents-segmented {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+}
+.agents-segmented button {
+  min-height: 30px;
+  padding: 4px 14px;
+  border: 0;
+  font-size: 13px;
+}
+.agents-segmented button[aria-pressed='true'] {
+  background: var(--selection);
+  color: var(--primary);
+  font-weight: 550;
+}
+.agents-form input[role='switch'] {
+  appearance: none;
+  position: relative;
+  width: 28px;
+  height: 16px;
+  min-height: 16px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--input);
+  border-radius: 10px;
+  background: var(--muted);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.agents-form input[role='switch']::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--foreground);
+}
+.agents-form input[role='switch']:checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.agents-form input[role='switch']:checked::before {
+  left: 14px;
+  background: var(--primary-foreground);
+}
+.agents-expiry {
+  display: grid;
+  gap: 10px;
+}
+.agents-expiry select {
+  width: 100%;
+}
+.agents-facts {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 10px 16px;
+  margin: 0;
+  font-size: 13px;
+}
+.agents-facts dt {
+  color: var(--muted-foreground);
+}
+.agents-facts dd {
+  margin: 0;
+}
+.agents-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 24px;
+}
+
+/* The key, shown once, and how to set it up: wide enough for the key on one line. */
+.modal:has(.agents-ready) {
+  width: 760px;
+}
+.agents-key {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 14px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.agents-key code {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  word-break: break-all;
+}
+.agents-key button {
+  min-height: 32px;
+  padding: 4px 12px;
+}
+.agents-snippet {
+  position: relative;
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
+}
+.agents-snippet button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-height: 28px;
+  padding: 2px 10px;
+  font-family: var(--font-family);
+  font-size: 12px;
+}
+.agents-test {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 16px;
+  font-size: 13px;
+}
+.agents-test button {
+  min-height: 34px;
+  padding: 4px 12px;
+}
+.agents-test input {
+  flex: 1;
+  min-width: 220px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.agents-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.agents-result.ok svg {
+  color: var(--success);
+}
+.agents-result.failed {
+  color: var(--destructive);
+}
+.agents-ready .notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0 22px;
+  background: var(--warning-surface);
+  border-color: var(--warning-border);
+  color: var(--foreground);
+}
+.agents-ready .notice svg {
+  flex-shrink: 0;
+  color: var(--warning);
+}
+.agents-connect {
+  max-width: 860px;
+  margin-top: 24px;
+  padding: 22px 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.agents-connect h2 {
+  margin-bottom: 16px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.agents-endpoint {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  align-items: center;
+  gap: 14px;
+  margin-top: 18px;
+  font-size: 13px;
+}
+.agents-endpoint > span {
+  color: var(--muted-foreground);
+}
+.agents-endpoint .agents-key {
+  padding: 4px 4px 4px 12px;
+}
+
+@media (max-width: 700px) {
+  .agents-choices.two {
+    grid-template-columns: 1fr;
+  }
+  .agents-endpoint {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}

@@ -17,6 +17,12 @@ import { useEffect } from 'react';
 import { prefetchData } from './prefetch.js';
 import { dataCache } from './data-cache.js';
 import type {
+  AgentKey,
+  AgentKeyCreated,
+  AgentKeyRequest,
+  AgentKeys,
+  AgentKeysRevoked,
+  AgentWhoami,
   AuditPage,
   PlatformHealth,
   CollectionSchedule,
@@ -152,6 +158,34 @@ export const splitDriver = (code: string, source: DriverSource, id: string) =>
   api<DriverMatch>(`${driverMatch}/split`, { code, source, id });
 export const keepDriversApart = (code: string, other: string) =>
   api<DriverMatch>(`${driverMatch}/apart`, { code, other });
+
+const agents = '/api/platform/agents';
+/** Every agent key, and the DSPs a key can be given. */
+export const useAgentKeys = () => useData<AgentKeys>(agents);
+/** A new key. Its token comes back this once. */
+export const createAgentKey = (request: AgentKeyRequest) =>
+  api<AgentKeyCreated>(`${agents}/keys`, request);
+export const updateAgentKey = (id: string, request: AgentKeyRequest) =>
+  api<AgentKey>(`${agents}/keys/${encodeURIComponent(id)}`, request);
+export const revokeAgentKey = (id: string) =>
+  api<AgentKey>(`${agents}/keys/${encodeURIComponent(id)}/revoke`, {});
+export const revokeAllAgentKeys = () => api<AgentKeysRevoked>(`${agents}/revoke-all`, {});
+/** Asks Dispatch who `token` belongs to, as an agent would: with the key alone, never the
+ * dashboard's session, which the server would refuse beside a key. */
+export async function agentWhoami(
+  token: string,
+): Promise<{ ok: true; value: AgentWhoami } | { ok: false; error: string }> {
+  try {
+    const response = await fetch('/api/v1/whoami', {
+      credentials: 'omit',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const value = await response.json();
+    return response.ok ? { ok: true, value } : { ok: false, error: String(value.error) };
+  } catch {
+    return { ok: false, error: 'network_error' };
+  }
+}
 
 export const connectionUrl = (provider: Connection['provider']) =>
   `/api/dsp/connections/${provider}`;

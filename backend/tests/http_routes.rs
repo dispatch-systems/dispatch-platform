@@ -1,7 +1,7 @@
 //! Guardrails for the route table in `backend/src/http/routes/`.
 use dispatch_backend::{
     http::{
-        Access::{self, Dsp, PlatformOwner, Public, Session},
+        Access::{self, Agent, Dsp, PlatformOwner, Public, Session},
         Work::{self, Async, Memory, Read, Write},
         table,
     },
@@ -52,6 +52,13 @@ const INVENTORY: &[Row] = &[
     ("POST", "/api/auth/security/reauthenticate", Session, Async, false),
     ("GET", "/api/session", Session, Read, false),
     ("POST", "/api/session/dsp", Session, Write, false),
+
+    ("GET", "/api/platform/agents", PlatformOwner, Read, false),
+    ("POST", "/api/platform/agents/keys", PlatformOwner, Write, false),
+    ("POST", "/api/platform/agents/keys/{id}", PlatformOwner, Write, false),
+    ("POST", "/api/platform/agents/keys/{id}/revoke", PlatformOwner, Write, false),
+    ("POST", "/api/platform/agents/revoke-all", PlatformOwner, Write, false),
+    ("GET", "/api/v1/whoami", Agent("read"), Read, false),
 
     ("GET", "/api/platform/dsps", PlatformOwner, Read, false),
     ("POST", "/api/platform/dsps", PlatformOwner, Write, WAKES_SCHEDULER),
@@ -200,6 +207,26 @@ fn no_route_is_registered_twice_and_only_get_and_post_exist() {
             "{} wakes the scheduler without being a write",
             route.path
         );
+    }
+}
+
+// The versioned API is for agents alone, signed in with a key, and agents reach nothing
+// else: no session can call it, and no key can call the dashboard's routes.
+#[test]
+fn only_agents_reach_the_versioned_api_and_nothing_else() {
+    for route in table() {
+        let versioned = route.path.starts_with("/api/v1/");
+        let agent = matches!(route.access, Agent(_));
+        assert_eq!(versioned, agent, "{} {}", route.method, route.path);
+        if let Agent(access) = route.access {
+            assert!(["read", "operator"].contains(&access), "{}", route.path);
+            // Calls are counted in memory, so a read is never a write.
+            assert!(
+                route.method != "GET" || route.work == Read,
+                "{}",
+                route.path
+            );
+        }
     }
 }
 

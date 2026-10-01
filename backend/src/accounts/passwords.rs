@@ -163,7 +163,10 @@ impl crate::State {
         self.run(move |db| {
             let fresh = db.reset_user(&raw)?;
             ensure(same_password_user(&fresh, &row), "reset_expired", 400)?;
-            db.replace_password(&row.user.id, &encoded, "account.password_reset")
+            db.replace_password(&row.user.id, &encoded, "account.password_reset")?;
+            // A reset can follow a stolen password, so whatever it may have made stops too.
+            db.revoke_agent_keys(Some(&row.user.id), Some(&row.user.id))?;
+            Ok(())
         })
         .await
     }
