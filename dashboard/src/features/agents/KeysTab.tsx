@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import { ChevronRight, Clock, Plus, Power, TriangleAlert } from 'lucide-react';
-import type { AgentKey, AgentKeyCreated } from '../../../../shared/contracts/index.js';
+import type {
+  AgentAccess,
+  AgentKey,
+  AgentKeyCreated,
+  AgentTools,
+} from '../../../../shared/contracts/index.js';
 import { ConfirmDialog, DataState, Empty, SearchInput } from '../../ui/index.js';
 import { useAction } from '../../app/useAction.js';
 import { revokeAllAgentKeys, useAgentKeys } from '../../app/endpoints.js';
@@ -16,6 +21,12 @@ import {
 } from '../../lib/agents.js';
 import { KeyReady } from './KeyReady.js';
 import { KeySheet } from './KeySheet.js';
+
+const accessTones: Record<AgentAccess, string> = {
+  read: 'access-read',
+  operator: 'access-operator',
+};
+const toolTones: Record<AgentTools, string> = { full: '', essential: 'tools-essential' };
 
 function Expiry({ agentKey }: { agentKey: AgentKey }) {
   const state = keyState(agentKey);
@@ -120,10 +131,10 @@ export function KeysTab() {
                           </td>
                           <td>
                             <div className="agents-tags">
-                              <span className={`agents-tag access-${key.access}`}>
+                              <span className={`agents-tag ${accessTones[key.access]}`}>
                                 {accessLabels[key.access]}
                               </span>
-                              <span className={`agents-tag tools-${key.tools}`}>
+                              <span className={`agents-tag ${toolTones[key.tools]}`}>
                                 {toolLabels[key.tools]}
                               </span>
                             </div>
