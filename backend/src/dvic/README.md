@@ -101,6 +101,11 @@ serializes with the running server's writes, so they need no stopped service; th
 must already run a release with migration 2. A page that shows fewer inspections than
 Amazon's report may have a hidden driver: check `dvic-hidden` first.
 
+Every release from this one on enforces the list, and Production only falls back to the
+release an update replaced, so a hidden driver stays out once hidden. A release from before
+migration 2 ignores the table: if one ever collects for the DSP again, rerun `dvic-hide` for
+each listed driver to remove what it stored.
+
 ## Release order
 
 The `feat/dvic-schema` commit widens the jobs/schedules CHECK constraints without
