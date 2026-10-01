@@ -75,6 +75,17 @@ pub const PAGES: &[Feature] = &[
         requires: &["dvic"],
         default: false,
     },
+    // A tab of Settings, not a page of its own: it matches Paycom's employees to the
+    // drivers Amazon's routes and other collections name.
+    Feature {
+        id: "driver_match",
+        label: "Driver Match",
+        kind: Kind::Page,
+        permissions: &["driver_match.manage"],
+        provides: &[],
+        requires: &["timecards", "routes"],
+        default: false,
+    },
 ];
 impl Feature {
     /// How the audit log names it: a tab with its page, as "Timecard · Meal Breaks".

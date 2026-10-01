@@ -464,7 +464,7 @@ mod tests {
         });
 
         verify_dsp_identity(&first, &id).unwrap();
-        assert_eq!(ids(&first), vec![1, 2, 3, 4, 5, 6]);
+        assert_eq!(ids(&first), vec![1, 2, 3, 4, 5, 6, 7]);
     }
 
     #[test]
@@ -726,7 +726,7 @@ mod tests {
         let db = Db::open(&file, Kind::Dsp).unwrap();
         migrate_dsp(&db, &id).unwrap();
         verify_dsp_identity(&db, &id).unwrap();
-        assert_eq!(ids(&db), vec![1, 2, 3, 4, 5, 6]);
+        assert_eq!(ids(&db), vec![1, 2, 3, 4, 5, 6, 7]);
         assert_eq!(dump(&db), recorded(Kind::Dsp));
         assert_eq!(
             db.all("SELECT id,collection,enabled FROM collection_schedules", [])

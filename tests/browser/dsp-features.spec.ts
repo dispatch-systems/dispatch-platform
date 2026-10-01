@@ -26,11 +26,13 @@ test('the platform switches a DSPâ€™s pages, tabs and connections, and the teamâ
     'Timecardneeds a meal-break source',
     'Routesneeds a route source',
     'DVICneeds a DVIC source',
+    'Driver Matchneeds a route source',
   ]);
   await page.screenshot({ path: test.info().outputPath('switch-off.png') });
   await off.getByRole('button', { name: 'Switch off', exact: true }).click();
   await expect(cortex).not.toBeChecked();
-  for (const name of ['Timecard', 'Routes', 'DVIC']) await expect(area(name)).toContainText('Off');
+  for (const name of ['Timecard', 'Routes', 'DVIC', 'Driver Match'])
+    await expect(area(name)).toContainText('Off');
   await expect(area('Uniform Inventory')).toContainText('On');
   await area('Timecard').click();
   await expect(timecard).not.toBeChecked();

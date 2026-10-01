@@ -119,6 +119,13 @@ const phrases: Record<string, (event: AuditEvent) => Part[]> = {
   'dsp.resumed': (e) => ['resumed ', strong(e.dspName ?? 'a DSP')],
   'paycom.settings_updated': () => ['updated Paycom settings'],
   'employees.links_updated': () => ['updated employee links'],
+  'driver_match.merged': (e) => ['confirmed ', strong(e.target ?? 'two drivers'), ' as one person'],
+  'driver_match.split': (e) => [
+    'split ',
+    strong(e.target ?? 'a driver'),
+    ' off as their own person',
+  ],
+  'driver_match.kept_apart': (e) => ['kept ', strong(e.target ?? 'two drivers'), ' apart'],
   'audit.exported': () => ['exported the audit log'],
   'account.signed_in': () => ['signed in'],
   'account.password_changed': () => ['changed their password'],

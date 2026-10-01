@@ -60,6 +60,13 @@ export const featureCatalog: FeatureEntry[] = [
     permissions: ['dvic.view', 'dvic.collect', 'dvic.manage'],
     requires: ['dvic'],
   },
+  {
+    id: 'driver_match',
+    label: 'Driver Match',
+    kind: 'page',
+    permissions: ['driver_match.manage'],
+    requires: ['timecards', 'routes'],
+  },
   tab('timecard.daily', 'Timecard', 'timecard'),
   tab('timecard.meal_breaks', 'Meal Breaks', 'timecard'),
   tab('timecard.employees', 'Employee Search', 'timecard'),

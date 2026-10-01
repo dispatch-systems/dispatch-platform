@@ -9,4 +9,5 @@ export * from './schedules.js';
 export * from './workforce.js';
 export * from './uniforms.js';
 export * from './dvic.js';
+export * from './drivers.js';
 export * from './routes.js';

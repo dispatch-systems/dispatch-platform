@@ -76,6 +76,13 @@ test('a switch brings its dependencies along, as the backend does', () => {
     { feature: 'timecard', enabled: false },
     { feature: 'routes', enabled: false },
     { feature: 'dvic', enabled: false },
+    { feature: 'driver_match', enabled: false },
+  ]);
+  // Driver Match needs both sides: losing Paycom takes it too.
+  assert.deepEqual(previewSwitch(all, 'paycom', false), [
+    { feature: 'paycom', enabled: false },
+    { feature: 'timecard', enabled: false },
+    { feature: 'driver_match', enabled: false },
   ]);
   // Enabling a page enables the one provider of each capability it lacks. Tabs default on.
   const tabs = features.filter((f) => f.startsWith('timecard.'));

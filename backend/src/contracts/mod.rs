@@ -21,6 +21,7 @@ mod accounts;
 mod assessment;
 mod audit;
 mod collections;
+mod driver_match;
 mod dvic;
 #[cfg(test)]
 mod generated;
@@ -39,6 +40,7 @@ pub use accounts::*;
 pub use assessment::*;
 pub use audit::*;
 pub use collections::*;
+pub use driver_match::*;
 pub use dvic::*;
 pub use jobs::*;
 pub use meals::*;

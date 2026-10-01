@@ -32,6 +32,7 @@ pub const PERMISSIONS: &[&str] = &[
     "dvic.view",
     "dvic.collect",
     "dvic.manage",
+    "driver_match.manage",
     "connections.manage",
     "members.invite",
     "members.manage",

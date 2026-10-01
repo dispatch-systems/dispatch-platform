@@ -1,5 +1,6 @@
 //! Read-only comparison across provider snapshots. Unique names can match
 //! automatically; saved overrides live in DSP storage, never in source records.
+use crate::driver_match::names::{Name, name_key};
 use crate::{
     Result,
     collectors::Provider,
@@ -10,94 +11,10 @@ use crate::{
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-const LINKS: &str = "employees.provider_links";
+/// Links saved on the meal-break page; Driver Match reads them as decisions too.
+pub(crate) const LINKS: &str = "employees.provider_links";
 
 // Exact matches take priority over the more conservative name-variant pass.
-fn name_key(name: &str) -> String {
-    let ordered = name
-        .split_once(',')
-        .map(|(last, first)| format!("{first} {last}"));
-    ordered
-        .as_deref()
-        .unwrap_or(name)
-        .to_lowercase()
-        .chars()
-        .filter(|c| c.is_alphanumeric())
-        .collect()
-}
-
-struct Name {
-    given: String,
-    surnames: Vec<String>,
-    suffix: Option<String>,
-}
-
-impl Name {
-    fn new(name: &str) -> Self {
-        let ordered = name
-            .split_once(',')
-            .map(|(last, first)| format!("{first} {last}"));
-        let mut words: Vec<_> = ordered
-            .as_deref()
-            .unwrap_or(name)
-            .split_whitespace()
-            .map(name_key)
-            .filter(|word| !word.is_empty())
-            .collect();
-        let suffix = words.last().and_then(|word| match word.as_str() {
-            "jr" | "junior" => Some("jr"),
-            "sr" | "senior" => Some("sr"),
-            "ii" => Some("ii"),
-            "iii" => Some("iii"),
-            "iv" => Some("iv"),
-            _ => None,
-        });
-        let suffix = suffix.map(str::to_owned);
-        if suffix.is_some() {
-            words.pop();
-        }
-        let given = if words.is_empty() {
-            String::new()
-        } else {
-            words.remove(0)
-        };
-        // Supported short forms are explicit, never arbitrary first-name prefixes
-        // (e.g. Alex must not also match Alexis or Alexandra).
-        let given = if given == "alex" {
-            "alexander".into()
-        } else {
-            given
-        };
-        Self {
-            given,
-            surnames: words,
-            suffix,
-        }
-    }
-
-    fn matches(&self, other: &Self) -> bool {
-        if self.given.is_empty()
-            || self.given != other.given
-            || self.surnames.is_empty()
-            || other.surnames.is_empty()
-            || (self.suffix.is_some() && other.suffix.is_some() && self.suffix != other.suffix)
-        {
-            return false;
-        }
-        // One provider may omit a second surname or join surname words. Require
-        // the entire shorter surname at a word boundary, not a fuzzy substring.
-        let prefix = |short: &[String], long: &[String]| {
-            let short = short.concat();
-            let mut joined = String::new();
-            long.iter().any(|word| {
-                joined.push_str(word);
-                joined == short
-            })
-        };
-        prefix(&self.surnames, &other.surnames) || prefix(&other.surnames, &self.surnames)
-    }
-}
-
 fn match_drivers(drivers: &mut BTreeMap<String, Value>, roster: &[Value], settings: &Value) {
     let saved = settings["links"].as_array().cloned().unwrap_or_default();
     let separate = settings["separate"].as_array().cloned().unwrap_or_default();
