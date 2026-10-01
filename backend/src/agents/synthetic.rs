@@ -135,11 +135,14 @@ pub fn seed(db: &Store) -> Result<Value> {
         .map(|(i, e)| (i as u64, s(e, "code").to_owned(), s(e, "name").to_owned()))
         .collect();
     let transporter = |i: u64| format!("A{:02}SYNTH{:02}", i * 7 % 97, i);
+    let dispatcher = employees.first().map(|e| s(e, "code").to_owned());
     let mut timecards = vec![];
     for (d, date) in dates.iter().enumerate() {
-        if date.weekday().number_from_monday() <= 5 {
+        if let Some(code) = &dispatcher
+            && date.weekday().number_from_monday() <= 5
+        {
             timecards.push(
-                json!({"employeeCode": "E001", "date": date.to_string(), "hours": 8.0,
+                json!({"employeeCode": code, "date": date.to_string(), "hours": 8.0,
                 "status": "Complete", "punches": [{"in":"08:00","out":"12:00","hours":4},
                 {"in":"12:30","out":"16:30","hours":4}]}),
             );

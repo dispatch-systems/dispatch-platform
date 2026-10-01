@@ -51,6 +51,11 @@ function run(command: string, args: string[], env: NodeJS.ProcessEnv, cwd: strin
     child.stdout.on('data', (chunk) => (stdout += chunk));
     child.stderr.resume();
     const timer = setTimeout(() => child.kill('SIGTERM'), 300_000);
+    // A command that cannot start, as when an agent is not installed, fails its run alone.
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      resolve({ stdout: `${stdout}\nspawn failed: ${error.message}`, code: null });
+    });
     child.on('close', (code) => {
       clearTimeout(timer);
       resolve({ stdout, code });
@@ -159,8 +164,14 @@ async function main() {
         const { DISPATCH_KEY: _, ...withoutKey } = env;
         const result = await run('claude', args, client === 'rest' ? env : withoutKey, work);
         for (const line of result.stdout.split('\n')) {
-          if (!line.trim()) continue;
-          const event = JSON.parse(line);
+          // Only the event lines; a warning the CLI prints between them is not one.
+          if (!line.trim().startsWith('{')) continue;
+          let event;
+          try {
+            event = JSON.parse(line);
+          } catch {
+            continue;
+          }
           if (event.type === 'assistant')
             for (const part of event.message.content) {
               if (part.type === 'tool_use' && part.name !== 'ToolSearch')
@@ -195,7 +206,12 @@ async function main() {
         );
         for (const line of result.stdout.split('\n')) {
           if (!line.trim().startsWith('{')) continue;
-          const event = JSON.parse(line);
+          let event;
+          try {
+            event = JSON.parse(line);
+          } catch {
+            continue;
+          }
           const item = event.item ?? {};
           if (event.type === 'item.completed' && item.type === 'mcp_tool_call')
             tools.push(`${item.tool}${JSON.stringify(item.arguments ?? {})}`);
