@@ -1,5 +1,6 @@
 // Select the four meal timestamps inside the page. No delivery history, package
-// references, stop/task IDs, addresses, cookies or tokens leave the page. Runs in the application's world
+// references, stop/task IDs, addresses, cookies or tokens leave the page; of the stops,
+// only the places in the route of the two that bound each meal. Runs in the application's world
 // because React's props are not visible from an isolated JavaScript world. `rules` is
 // meal_rules.js.
 (input, rules) => {

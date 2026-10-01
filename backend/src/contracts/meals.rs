@@ -20,6 +20,13 @@ pub struct CortexMeal {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional = nullable))]
     pub source_url: Option<String>,
+    /// The route's page with the stop of each delivery selected, when the stop was read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub last_delivery_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub first_delivery_url: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

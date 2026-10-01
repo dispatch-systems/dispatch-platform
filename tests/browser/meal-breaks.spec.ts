@@ -9,6 +9,7 @@ const paycomUrl = (code: string) =>
   `https://www.paycomonline.net/v4/cl/web.php/timecard/index?firstrefno=${code}&perioddates=2026-09-06_2026-09-19&formtype=SUMMARY`;
 const cortexUrl = (route: string) =>
   `https://logistics.amazon.com/operations/execution/itineraries/${route}/documentType/Itinerary?selectedDay=${date}`;
+const stopUrl = (route: string, stop: number) => `${cortexUrl(route)}&selectedStopId=${stop}`;
 function sample(): MealComparisonSource {
   const instant = (clock: string) => new Date(`${date}T${clock}:00-07:00`).toISOString();
   const employee = (
@@ -51,6 +52,13 @@ function sample(): MealComparisonSource {
             beforeStatus: 'verified',
             afterStatus: 'verified',
             sourceUrl: cortexUrl(`route-${id}`),
+            // Casey's meal was published before delivery stops were read.
+            ...(id === 5
+              ? {}
+              : {
+                  lastDeliveryUrl: stopUrl(`route-${id}`, 2 * id),
+                  firstDeliveryUrl: stopUrl(`route-${id}`, 2 * id + 1),
+                }),
           },
         ]
       : [],
@@ -315,10 +323,13 @@ test('Flex gap badges and employee filter preserve comparison statuses and expos
     fullPage: true,
   });
 });
-test('each time opens the Paycom timecard or Cortex route it was read from', async ({ page }) => {
+test('each time opens the Paycom timecard, Cortex route or delivery stop it was read from', async ({
+  page,
+}) => {
   const data = sample();
   const instant = (clock: string) => new Date(`${date}T${clock}:00-07:00`).toISOString();
-  // A second meal on another route links to that route; its row has no IN or OUT DAY.
+  // A second meal on another route links to that route; its row has no IN or OUT DAY. Its
+  // last delivery's stop was not read, so that one opens the route.
   data.rows[0]!.cortex.push({
     ...data.rows[0]!.cortex[0]!,
     itineraryId: 'route-1b',
@@ -328,6 +339,8 @@ test('each time opens the Paycom timecard or Cortex route it was read from', asy
     end: instant('17:30'),
     firstDelivery: instant('17:37'),
     sourceUrl: cortexUrl('route-1b'),
+    lastDeliveryUrl: null,
+    firstDeliveryUrl: stopUrl('route-1b', 7),
   });
   await page.route('**/api/dsp/paycom/settings', (route) =>
     route.fulfill({
@@ -358,20 +371,23 @@ test('each time opens the Paycom timecard or Cortex route it was read from', asy
   const paycom = paycomUrl('E001');
   const cortex = cortexUrl('route-1');
   // IN DAY, last delivery, OUT LUNCH Paycom and Flex, IN LUNCH Paycom and Flex, first
-  // delivery, OUT DAY.
+  // delivery, OUT DAY. Each delivery opens the route at its stop.
   expect(await hrefs('Alex Morgan')).toEqual([
     paycom,
-    cortex,
+    stopUrl('route-1', 2),
     paycom,
     cortex,
     paycom,
     cortex,
-    cortex,
+    stopUrl('route-1', 3),
     paycom,
   ]);
   await expect(
     page.getByRole('link', { name: '9:42 AM (open timecard in Paycom)', exact: true }),
   ).toHaveAttribute('href', paycom);
+  await expect(
+    page.getByRole('link', { name: '2:33 PM (open stop in Cortex)', exact: true }),
+  ).toHaveAttribute('href', stopUrl('route-1', 2));
   for (const link of await links('Alex Morgan').all()) {
     await expect(link).toHaveAttribute('target', '_blank');
     await expect(link).toHaveAttribute('rel', 'noreferrer');
@@ -390,7 +406,7 @@ test('each time opens the Paycom timecard or Cortex route it was read from', asy
     cortexUrl('route-1b'),
     paycom,
     cortexUrl('route-1b'),
-    cortexUrl('route-1b'),
+    stopUrl('route-1b', 7),
   ]);
   // Taylor's Paycom day has no lunch punches: the missing times still open the timecard.
   await expect(
@@ -399,7 +415,8 @@ test('each time opens the Paycom timecard or Cortex route it was read from', asy
       .filter({ hasText: 'Taylor Reed' })
       .getByRole('link', { name: /^Not available \(open timecard in Paycom\)$/ }),
   ).toHaveCount(2);
-  // Paycom only: no Flex links. Flex only: no Paycom links.
+  // Paycom only: no Flex links. Flex only: no Paycom links, and Casey's deliveries, read
+  // before their stops were, open the route.
   expect(await hrefs('Sam Patel')).toEqual(Array(4).fill(paycomUrl('E004')));
   expect(await hrefs('Casey Brooks')).toEqual(Array(4).fill(cortexUrl('route-5')));
 });

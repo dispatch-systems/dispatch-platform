@@ -162,6 +162,12 @@ pub struct Meal {
     pub end: Option<i64>,
     pub last_delivery: Option<i64>,
     pub first_delivery: Option<i64>,
+    /// The place in the route, from 0, of the stop that held each delivery: how Cortex's
+    /// itinerary page names a stop in its address. Captures from before carry none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_delivery_stop: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_delivery_stop: Option<u32>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -273,6 +279,16 @@ impl Capture {
                     "invalid_cortex_delivery_boundary",
                     502,
                 )?;
+                // A stop only names where a delivery was, and meal.js reads at most 2,000.
+                let stop = |stop: Option<u32>, delivery: Option<i64>| {
+                    stop.is_none_or(|stop| delivery.is_some() && stop < 2000)
+                };
+                ensure(
+                    stop(meal.last_delivery_stop, meal.last_delivery)
+                        && stop(meal.first_delivery_stop, meal.first_delivery),
+                    "invalid_cortex_delivery_boundary",
+                    502,
+                )?;
                 if index > 0 {
                     ensure(
                         ordered[index - 1].end.is_some_and(|end| end <= meal.start),
@@ -288,6 +304,8 @@ impl Capture {
 struct Boundaries {
     prior: Option<i64>,
     next: Option<i64>,
+    prior_stop: Option<u32>,
+    next_stop: Option<u32>,
     before: &'static str,
     after: &'static str,
 }
@@ -296,6 +314,8 @@ fn boundaries(route: &Itinerary, meal: &Meal) -> Boundaries {
         return Boundaries {
             prior: None,
             next: None,
+            prior_stop: None,
+            next_stop: None,
             before: "unavailable",
             after: if meal.end.is_none() {
                 "pending"
@@ -309,6 +329,8 @@ fn boundaries(route: &Itinerary, meal: &Meal) -> Boundaries {
     Boundaries {
         prior,
         next,
+        prior_stop: meal.last_delivery_stop,
+        next_stop: meal.first_delivery_stop,
         before: if prior.is_some() {
             "verified"
         } else {
@@ -325,10 +347,19 @@ fn boundaries(route: &Itinerary, meal: &Meal) -> Boundaries {
         },
     }
 }
+/// The route's page with one of its stops selected, as Cortex links a stop.
+pub(crate) fn stop_url(route: &str, stop: u32) -> Option<String> {
+    let mut url = url::Url::parse(route).ok()?;
+    url.query_pairs_mut()
+        .append_pair("selectedStopId", &stop.to_string());
+    Some(url.into())
+}
+/// A meal as the comparison reads it. The stops become links beside the route's own.
 pub fn comparison_meal(route: &Itinerary, meal: &Meal) -> Value {
     let b = boundaries(route, meal);
     json!({"mealId":meal.id,"lastDelivery":b.prior.map(at),"start":at(meal.start),"end":meal.end.map(at),
-        "firstDelivery":b.next.map(at),"beforeStatus":b.before,"afterStatus":b.after})
+        "firstDelivery":b.next.map(at),"beforeStatus":b.before,"afterStatus":b.after,
+        "lastDeliveryStop":b.prior_stop,"firstDeliveryStop":b.next_stop})
 }
 impl Store {
     pub fn publish_meals(
@@ -360,7 +391,7 @@ impl Store {
             db.exec("INSERT INTO \
                 meal_publications(id,job_id,report_date,station,service_area_id,provider,timezone,started_at,\
                 collected_at,itinerary_count,meal_count,verified_gap_count,adapter_version) VALUES (?,?,?,?,?,\
-                ?,?,?,?,?,?,?,3)",params![id,job,expected.date,expected.station,
+                ?,?,?,?,?,?,?,4)",params![id,job,expected.date,expected.station,
                 expected.service_area_id,expected.provider,expected.timezone,
                 at(capture.started_at),at(capture.finished_at),capture.itineraries.len() as i64,
                 meals as i64,gaps as i64])?;
@@ -383,6 +414,10 @@ impl Store {
                 first_delivery_at,before_status,after_status) VALUES (?,?,?,?,?,?,?,?,?)",
                 params![id,route.id,meal.id,b.prior.map(at),at(meal.start),
                 meal.end.map(at),b.next.map(at),b.before,b.after])?;
+                    if b.prior_stop.is_some()||b.next_stop.is_some() {
+                        db.exec("INSERT INTO meal_stops VALUES (?,?,?,?,?)",
+                            params![id,route.id,meal.id,b.prior_stop,b.next_stop])?;
+                    }
                 }
             }
             if let Some(previous)=previous {db.exec("UPDATE meal_publications SET active=0 WHERE id=?",[s(&previous,"id")])?;}
@@ -443,6 +478,8 @@ pub fn fixture(scope: &Scope) -> Capture {
                 end: Some(start + 1800000),
                 last_delivery: Some(start - 300000),
                 first_delivery: Some(start + 2100000),
+                last_delivery_stop: Some(11),
+                first_delivery_stop: Some(12),
             }],
             source_url: None,
         }],
