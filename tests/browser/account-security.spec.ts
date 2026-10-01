@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import fs from 'node:fs';
 import type { Page } from '@playwright/test';
 import { test, expect, login, openDsp, demo, signIn } from './fixtures.js';
@@ -36,18 +37,7 @@ test('passkeys gate new sessions, reject replay, and recovery codes work once', 
   page,
   dispatch,
 }) => {
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send('WebAuthn.enable');
-  await cdp.send('WebAuthn.addVirtualAuthenticator', {
-    options: {
-      protocol: 'ctap2',
-      transport: 'internal',
-      hasResidentKey: true,
-      hasUserVerification: true,
-      isUserVerified: true,
-      automaticPresenceSimulation: true,
-    },
-  });
+  await virtualAuthenticator(page);
   const older = await dispatch.client();
   await login(page);
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
@@ -128,6 +118,90 @@ test('passkeys gate new sessions, reject replay, and recovery codes work once', 
   expect((await (await page.request.get('/api/session')).json()).security.required).toBe(false);
   expect((await post('/api/auth/security/recover', { code: codes[1] })).status()).toBe(403);
 });
+
+test('DSP settings keep recovery codes up until they are saved', async ({ page }) => {
+  await virtualAuthenticator(page);
+  // Reloading the session reopens the DSP view and remounts its settings page, so it
+  // must wait until the one-time codes are saved.
+  let sessionLoads = 0;
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/session') sessionLoads += 1;
+  });
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Security', exact: true }).click();
+  const recoveryHeading = page.getByRole('heading', { name: 'Save your recovery codes' });
+  const keepsCodesUntilSaved = async (enroll: () => Promise<void>) => {
+    sessionLoads = 0;
+    await enroll();
+    await expect(recoveryHeading).toBeVisible();
+    await expect(page.getByLabel('Formatted recovery codes')).toContainText('Code 10: ');
+    expect(sessionLoads).toBe(0);
+    await page.getByRole('button', { name: 'I saved my recovery codes' }).click();
+    await expect(recoveryHeading).not.toBeVisible();
+    await expect.poll(() => sessionLoads).toBe(1);
+  };
+
+  await keepsCodesUntilSaved(async () => {
+    await page.getByRole('button', { name: 'Add passkey', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Add passkey' });
+    await dialog.getByLabel('Passkey name').fill('DSP account key');
+    await dialog.getByRole('button', { name: 'Add passkey', exact: true }).click();
+  });
+  await expect(page.getByText('DSP account key', { exact: true })).toBeVisible();
+  await keepsCodesUntilSaved(() =>
+    page.getByRole('button', { name: 'Replace recovery codes', exact: true }).click(),
+  );
+
+  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.getByRole('button', { name: 'Turn off', exact: true }).click();
+  await expect(page.getByText('DSP account key', { exact: true })).not.toBeVisible();
+  await keepsCodesUntilSaved(async () => {
+    await page.getByRole('button', { name: 'Add app', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Add authenticator app' });
+    const secret = (await dialog.locator('code').textContent())!;
+    await dialog.getByLabel('6-digit code').fill(totp(secret));
+    await dialog.getByRole('button', { name: 'Verify and add', exact: true }).click();
+  });
+  await expect(page.getByRole('button', { name: 'Remove', exact: true })).toBeVisible();
+
+  // Leaving the page with the codes up still brings the session up to date.
+  sessionLoads = 0;
+  await page.getByRole('button', { name: 'Replace recovery codes', exact: true }).click();
+  await expect(recoveryHeading).toBeVisible();
+  await page.goBack();
+  await expect(recoveryHeading).not.toBeVisible();
+  await expect.poll(() => sessionLoads).toBe(1);
+});
+
+async function virtualAuthenticator(page: Page) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('WebAuthn.enable');
+  await cdp.send('WebAuthn.addVirtualAuthenticator', {
+    options: {
+      protocol: 'ctap2',
+      transport: 'internal',
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+      automaticPresenceSimulation: true,
+    },
+  });
+}
+
+/** The current code for a base32 authenticator secret (RFC 6238: SHA-1, 30 s, 6 digits). */
+function totp(secret: string) {
+  const bits = [...secret]
+    .map((char) => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.indexOf(char).toString(2).padStart(5, '0'))
+    .join('');
+  const key = Buffer.from(bits.match(/.{8}/g)!.map((byte) => parseInt(byte, 2)));
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000)));
+  const mac = createHmac('sha1', key).update(counter).digest();
+  const offset = mac[mac.length - 1]! & 15;
+  return String((mac.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(6, '0');
+}
 
 async function captureSettings(page: Page) {
   for (const width of [1280, 700, 390]) {
