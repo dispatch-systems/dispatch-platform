@@ -4,6 +4,7 @@ import { routeMeta } from '../../dashboard/src/app/route-meta.js';
 import { test, expect, login, openDsp } from './fixtures.js';
 import { seedDvic } from '../support/dvic.js';
 import { seedDriverMatch } from '../support/driver-match.js';
+import { seedAgentKeys } from '../support/agents.js';
 
 // Not a test: `npm run pr:screenshots -- capture` runs it to photograph the named screens of
 // the built dashboard, from the fixture server, for a PR's Screenshots section. A screen may
@@ -26,7 +27,10 @@ test('captures the named screens', async ({ page, dispatch }) => {
   await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
   if (screens.includes('dvic')) await seedDvic(dispatch);
   if (screens.includes('settings?tab=driver-match')) await seedDriverMatch(dispatch);
+  if (screens.some((screen) => screen.startsWith('agents'))) await seedAgentKeys(dispatch);
   await login(page);
+  // Signing in ends by opening its own page; a screen opened before then is replaced by it.
+  await expect(page.getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
   let dsp = '';
   const titles: Record<string, string> = {};
   for (const id of screens) {

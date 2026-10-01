@@ -1,6 +1,7 @@
 //! One file per area of the API. Each lists its routes next to their handlers.
 use super::route::Route;
 
+pub mod agents;
 pub mod audit;
 pub mod auth;
 pub mod connections;
@@ -26,6 +27,7 @@ pub fn all() -> Vec<Route> {
         security::routes(),
         session::routes(),
         platform::routes(),
+        agents::routes(),
         team::routes(),
         timecard::routes(),
         schedules::routes(),

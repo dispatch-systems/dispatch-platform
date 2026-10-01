@@ -57,10 +57,14 @@ pub async fn pipeline(
         Ok(id) => id,
         Err(error) => return error.into_response(),
     };
+    let agent = request.uri().path().starts_with("/api/v1/");
     let mut response = match admit(&state, &request) {
         Ok(()) => next.run(request).await,
         Err(error) => failure(error),
     };
+    if agent {
+        agent_challenge(&mut response);
+    }
     let status = response.status().as_u16();
     let level = match status {
         500.. => "error",
@@ -126,6 +130,26 @@ pub async fn pipeline(
     response
 }
 
+// What an agent needs to recover: the scheme to sign in with, and when to try again.
+fn agent_challenge(response: &mut Response) {
+    let status = response.status().as_u16();
+    let headers = response.headers_mut();
+    match status {
+        401 => {
+            headers.insert(
+                header::WWW_AUTHENTICATE,
+                "Bearer realm=\"Dispatch\"".parse().unwrap(),
+            );
+        }
+        // Calls are counted by the minute, so the next minute starts a new count.
+        429 => {
+            let wait = 60 - (crate::db::now() / 1000) % 60;
+            headers.insert(header::RETRY_AFTER, wait.into());
+        }
+        _ => {}
+    }
+}
+
 // Only the configured origin, or this machine, may address the server, and
 // only the dashboard's own pages may send the API anything but a read.
 fn admit(state: &State, request: &Request) -> Result<()> {
@@ -141,8 +165,17 @@ fn admit(state: &State, request: &Request) -> Result<()> {
     )?;
     let reads = [Method::GET, Method::HEAD, Method::OPTIONS];
     if request.uri().path().starts_with("/api/") && !reads.contains(request.method()) {
+        // An agent's key is its own proof, from wherever it runs; it never rides on a
+        // browser's cookies, so the Origin check that guards them has nothing to guard.
+        let keyed = request.uri().path().starts_with("/api/v1/")
+            && (header(header::AUTHORIZATION).is_some()
+                || header(HeaderName::from_static("x-api-key")).is_some());
         let origin = header(header::ORIGIN);
-        ensure(origin == Some(&state.config.origin), "invalid_origin", 403)?;
+        ensure(
+            keyed || origin == Some(&state.config.origin),
+            "invalid_origin",
+            403,
+        )?;
         let kind = header(header::CONTENT_TYPE).and_then(|v| v.split(';').next());
         ensure(kind == Some("application/json"), "json_required", 415)?;
     }

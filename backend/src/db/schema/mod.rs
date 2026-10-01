@@ -60,6 +60,11 @@ pub const PLATFORM: &[Migration] = &[
         name: "driver_codes",
         apply: Sql(include_str!("platform/0010_driver_codes.sql")),
     },
+    Migration {
+        id: 11,
+        name: "agent_keys",
+        apply: Sql(include_str!("platform/0011_agent_keys.sql")),
+    },
 ];
 pub const JOBS: &[Migration] = &[
     Migration {

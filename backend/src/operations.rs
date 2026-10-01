@@ -315,6 +315,18 @@ pub fn restore(source: &Path, target: &Path) -> Result<Value> {
         db.execute_batch(
             "DELETE FROM sessions;DELETE FROM resets;DELETE FROM invitations;DELETE FROM outbox;",
         )?;
+        // Agent keys end like sessions do. A backup older than them has none.
+        let keyed: i64 = db.query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='agent_keys'",
+            [],
+            |row| row.get(0),
+        )?;
+        if keyed > 0 {
+            db.execute(
+                "UPDATE agent_keys SET revoked_at=?1 WHERE revoked_at IS NULL",
+                [iso()],
+            )?;
+        }
     }
     for env in ["preview", "production"] {
         let jobs = target.join("data").join(env).join("jobs.sqlite");

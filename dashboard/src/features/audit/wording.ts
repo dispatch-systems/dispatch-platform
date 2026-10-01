@@ -114,6 +114,13 @@ const phrases: Record<string, (event: AuditEvent) => Part[]> = {
   'mail.discarded': (e) => ['discarded an email', ...(e.target ? [' to ', strong(e.target)] : [])],
   'dsp.created': (e) => ['created ', strong(e.dspName ?? 'a DSP')],
   'dsp.removed': (e) => ['removed ', strong(e.dspName ?? 'a DSP')],
+  'agent.key_created': (e) => ['created the agent key ', strong(e.target ?? 'a key')],
+  'agent.key_updated': (e) => ['changed the agent key ', strong(e.target ?? 'a key')],
+  'agent.key_revoked': (e) => ['revoked the agent key ', strong(e.target ?? 'a key')],
+  'agent.keys_revoked': (e) => [
+    'revoked ',
+    strong(e.detail === '1' ? 'an agent key' : `${e.detail} agent keys`),
+  ],
   'dsp.restored': (e) => ['restored ', strong(e.dspName ?? 'a DSP')],
   'dsp.suspended': (e) => ['suspended ', strong(e.dspName ?? 'a DSP')],
   'dsp.resumed': (e) => ['resumed ', strong(e.dspName ?? 'a DSP')],
@@ -264,6 +271,20 @@ export const fields: Record<string, string> = {
   'paycom.driver_departments': 'Driver departments',
   'paycom.late_da_time': 'Late DA time',
   'paycom.late_da_departments': 'Late DA departments',
+  access: 'Access',
+  tools: 'Tools',
+  locations: 'Addresses and GPS',
+  dsps: 'DSPs',
+  expires: 'Expires',
+};
+const agentValues: Record<string, string> = {
+  read: 'Read only',
+  operator: 'Operator',
+  full: 'Full',
+  essential: 'Essential',
+  true: 'On',
+  false: 'Off',
+  never: 'Never',
 };
 const clockTime = (value: string) => timeOfDay(`2000-01-01T${value}:00Z`, 'UTC');
 const paycomValues: Record<string, string> = {
@@ -302,6 +323,12 @@ export function changeValue(field: string, value: string) {
       .join(', ');
   if (field.startsWith('paycom.')) return paycomValues[value] ?? value;
   if (field === 'time' && /^\d{2}:\d{2}$/.test(value)) return clockTime(value);
+  if (field === 'expires' && value !== 'never')
+    return dateFormatter('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(
+      new Date(value),
+    );
+  if (['access', 'tools', 'locations', 'expires'].includes(field))
+    return agentValues[value] ?? value;
   return value;
 }
 export function changeText(change: AuditChange) {

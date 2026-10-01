@@ -145,7 +145,7 @@ impl Store {
             LIKE 'meal_breaks.%' OR a.action LIKE 'dvic.%' THEN 'collections' WHEN a.action LIKE 'schedule.%' THEN \
             'schedules' WHEN a.action LIKE 'connection.%' THEN 'connections' WHEN a.action \
             IN ('dsp.view_opened','dsp.owner_view_opened') THEN CASE WHEN ?1 IS NULL THEN \
-            'access' ELSE 'team' END WHEN a.action LIKE 'account.%' THEN 'access' WHEN \
+            'access' ELSE 'team' END WHEN a.action LIKE 'account.%' OR a.action LIKE 'agent.%' THEN 'access' WHEN \
             a.action IN ('dsp.created','dsp.removed','dsp.restored','dsp.suspended','dsp.resumed',\
             'dsp.feature_enabled','dsp.feature_disabled') THEN 'dsps' ELSE 'settings' END";
         const FAILED: &str = "a.action LIKE '%.failed'";

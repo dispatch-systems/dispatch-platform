@@ -62,11 +62,16 @@ impl Scheduler {
         if prune_audit {
             self.audit_pruned = now();
         }
+        let agents_used = self.state.agents.take();
+        let agent_keys: Vec<String> = agents_used.iter().map(|(key, _)| key.clone()).collect();
         let result = self
             .state
             .run(move |db| {
                 if prune_audit {
                     db.prune_audit()?;
+                }
+                if !agents_used.is_empty() {
+                    db.record_agent_use(&agents_used)?;
                 }
                 // Expired access tokens have no remaining authentication purpose.
                 db.platform.transaction(|| {
@@ -94,6 +99,8 @@ impl Scheduler {
             })
             .await;
         if let Err(error) = result {
+            // Nothing was committed, so the keys' last use is written next time.
+            self.state.agents.unsaved(&agent_keys);
             failed("checkpoint_cleanup_failed", &error);
         }
         self.clean_route_data().await;

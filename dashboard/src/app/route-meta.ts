@@ -58,6 +58,11 @@ export const routeMeta = [
     label: 'Diagnostics',
   },
   {
+    id: 'agents',
+    scope: 'platform',
+    label: 'Agents',
+  },
+  {
     id: 'audit',
     scope: 'platform',
     label: 'Audit log',

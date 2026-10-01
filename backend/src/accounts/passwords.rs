@@ -10,6 +10,11 @@ impl Store {
                 .exec("DELETE FROM sessions WHERE user_id=?", [id])?;
             self.platform
                 .exec("DELETE FROM resets WHERE user_id=?", [id])?;
+            // A reset can follow a stolen password, so whatever it may have made stops too,
+            // in the same step as the password itself.
+            if action == "account.password_reset" {
+                self.revoke_agent_keys_within(Some(id), Some(id))?;
+            }
             self.audit(Some(id), None, action, "")
         })
     }

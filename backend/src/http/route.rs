@@ -8,6 +8,8 @@ use super::{
 use crate::{
     Result, State,
     accounts::{Auth, Context},
+    agents::{self, Caller},
+    contracts::AgentAccess,
     crypto,
     db::Store,
     ensure,
@@ -30,6 +32,9 @@ pub enum Access {
     PlatformOwner,
     /// A member looking at a DSP through a role holding one of the `|`-separated permissions.
     Dsp(&'static str),
+    /// An outside agent signed in with a key: `read` for any key, `operator` for a key
+    /// that may also run collections and test connections.
+    Agent(&'static str),
 }
 
 /// The access a route is registered with. Authorizing yields what the handler works with.
@@ -39,6 +44,11 @@ pub trait Grant: Copy + Send + Sync + 'static {
     /// Runs inside the same database closure as the handler's own work, so the
     /// check and what it guards are one step under the platform lock.
     fn authorize(self, db: &Store, input: &Input) -> Result<Self::Who>;
+    /// Then counts the call against what the caller may do in memory, such as an agent
+    /// key's calls a minute. Most callers have nothing to count.
+    fn admit(self, _state: &State, _who: &Self::Who) -> Result<()> {
+        Ok(())
+    }
 }
 #[derive(Clone, Copy)]
 pub struct Public;
@@ -54,6 +64,13 @@ pub struct PlatformOwner;
 pub struct PlatformRoutine;
 #[derive(Clone, Copy)]
 pub struct Dsp(pub &'static str);
+/// An outside agent's key, never a browser session. `Agent::READ` is any key; a route
+/// that acts would ask for `AgentAccess::Operator`.
+#[derive(Clone, Copy)]
+pub struct Agent(AgentAccess);
+impl Agent {
+    pub const READ: Agent = Agent(AgentAccess::Read);
+}
 
 impl Grant for Public {
     type Who = ();
@@ -143,6 +160,44 @@ impl Grant for Dsp {
         Ok(context)
     }
 }
+impl Grant for Agent {
+    type Who = Caller;
+    fn access(self) -> Access {
+        Access::Agent(self.0.as_str())
+    }
+    fn authorize(self, db: &Store, input: &Input) -> Result<Caller> {
+        let header = input.header("authorization");
+        let token = match header.split_once(' ') {
+            Some((scheme, token)) if scheme.eq_ignore_ascii_case("bearer") => token.trim(),
+            _ if header.is_empty() => input.header("x-api-key").trim(),
+            _ => "",
+        };
+        ensure(!token.is_empty(), "agent_key_required", 401)?;
+        // A key and a session never travel together, so a browser can never lend its
+        // session to a request an agent sends, or the other way round.
+        ensure(
+            input.session_token(db.config.development).is_empty(),
+            "session_and_key",
+            400,
+        )?;
+        let caller =
+            db.authenticate_agent(token, &agents::client_label(input.header("user-agent")))?;
+        input
+            .trace
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .actor = Some(format!("agent:{}", caller.key));
+        ensure(
+            self.0 == AgentAccess::Read || caller.access == AgentAccess::Operator,
+            "agent_read_only",
+            403,
+        )?;
+        Ok(caller)
+    }
+    fn admit(self, state: &State, who: &Caller) -> Result<()> {
+        state.agents.admit(&who.key, &who.client)
+    }
+}
 impl Dsp {
     /// Checks again, after work done outside the database, that the member may still do this.
     pub fn revalidate(self, db: &Store, context: &Context) -> Result<Context> {
@@ -178,6 +233,7 @@ impl Ctx<'_, Context> {
 pub type Anyone<'a> = Ctx<'a, ()>;
 pub type User<'a> = Ctx<'a, Auth>;
 pub type Member<'a> = Ctx<'a, Context>;
+pub type AgentCall<'a> = Ctx<'a, Caller>;
 
 /// Which database access a route's work runs under.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -218,6 +274,7 @@ fn blocking<A: Grant>(
 ) -> Route {
     let handler = move |db: &Store, state: &State, input: &Input| {
         let who = access.authorize(db, input)?;
+        access.admit(state, &who)?;
         handler(db, &Ctx { state, who }, input)
     };
     Route {
