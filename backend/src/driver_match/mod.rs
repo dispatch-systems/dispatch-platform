@@ -704,6 +704,25 @@ impl Store {
                 links.push(json!({"id":crypto::id("employee")?,"cortexId":amazon,"paycomCode":paycom}));
             }
         }
+        // A link saved for a driver whose data is no longer stored has no person to speak
+        // for it, so it stays as it was saved.
+        let known: BTreeSet<String> = db
+            .query_as::<(String,)>(
+                "SELECT external_id FROM person_ids WHERE source='amazon'",
+                [],
+            )?
+            .into_iter()
+            .map(|(id,)| id)
+            .collect();
+        for link in before["links"].as_array().into_iter().flatten() {
+            if let (Some(amazon), Some(paycom)) =
+                (link["cortexId"].as_str(), link["paycomCode"].as_str())
+                && !known.contains(amazon)
+                && taken.insert(paycom.to_owned())
+            {
+                links.push(link.clone());
+            }
+        }
         db.set(
             crate::meals::LINKS,
             &json!({

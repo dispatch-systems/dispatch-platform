@@ -27,11 +27,7 @@ export function MergeDialog({
     .slice(0, 8);
   const other = drivers.find((d) => d.code === chosen);
   return (
-    <Modal
-      title={`Merge with ${driver.name}`}
-      description={`Choose who is the same person. Their IDs move to ${driver.name}, who keeps code ${driver.code}; their code leads here from then on.`}
-      onClose={onClose}
-    >
+    <Modal title={`Merge with ${driver.name}`} onClose={onClose}>
       <SearchInput
         label="Search drivers"
         placeholder="Search name, code or ID"
@@ -58,6 +54,12 @@ export function MergeDialog({
         ))}
         {!options.length && <p className="muted">No one else matches that search.</p>}
       </div>
+      {other && (
+        <p className="driver-merge-note">
+          {other.name}’s IDs move to {driver.name}, who keeps code {driver.code}; {other.code} leads
+          here from then on.
+        </p>
+      )}
       <ErrorBox message={merge.error} />
       <div className="form-actions">
         <button onClick={onClose}>Cancel</button>

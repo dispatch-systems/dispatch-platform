@@ -269,3 +269,34 @@ fn the_permission_exists_only_while_the_feature_is_on() {
         Some("permission_denied")
     );
 }
+
+#[test]
+fn the_previous_release_keeps_every_link_after_a_decision() {
+    // A link saved for a driver whose data has since gone, beside one Driver Match knows.
+    let (_root, db, id, context) = ready(Some(json!({
+        "revision": 4,
+        "links": [{"id":"employee_1","cortexId":"TGONE","paycomCode":"E007"}],
+        "separate": ["TDMITRI"],
+    })));
+    db.match_drivers(&id).unwrap();
+    let before = db.driver_match(&id).unwrap();
+    let (antonio, tony) = (
+        code(&before, PAYCOM, "E002"),
+        code(&before, AMAZON, "TREYES"),
+    );
+    db.merge_drivers(&context, &tony, &antonio).unwrap();
+    let legacy = db
+        .dsp(&id)
+        .unwrap()
+        .setting("employees.provider_links", Value::Null)
+        .unwrap();
+    assert_eq!(legacy["revision"], 5);
+    let pairs: Vec<(&str, &str)> = legacy["links"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| (s(l, "cortexId"), s(l, "paycomCode")))
+        .collect();
+    assert_eq!(pairs, [("TREYES", "E002"), ("TGONE", "E007")]);
+    assert_eq!(legacy["separate"], json!(["TDMITRI"]));
+}

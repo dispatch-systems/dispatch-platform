@@ -52,21 +52,15 @@
 }
 .driver-summary-copy {
   display: flex;
+  align-items: center;
   gap: 14px;
   flex: 1 1 360px;
   min-width: 0;
 }
 .driver-summary-copy > svg {
   flex-shrink: 0;
-  margin-top: 2px;
   color: var(--muted-foreground);
   stroke-width: 1.7;
-}
-.driver-summary-copy small {
-  display: block;
-  margin-top: 8px;
-  color: var(--muted-foreground);
-  font-size: 12px;
 }
 .driver-stats {
   display: flex;
@@ -234,7 +228,7 @@
 }
 .driver-review-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   padding: 18px 22px;
   border-bottom: 1px solid var(--warning-border);
@@ -242,7 +236,6 @@
 }
 .driver-review-head > svg {
   flex-shrink: 0;
-  margin-top: 3px;
   color: var(--warning);
 }
 .driver-pair {
@@ -414,6 +407,9 @@ button.driver-person:hover strong {
   background: var(--card);
 }
 .driver-table .table-wrap {
+  /* Positioned, so the visually hidden column heading scrolls with the table instead of
+     widening the page. */
+  position: relative;
   overflow-x: auto;
 }
 .driver-table table {
@@ -675,6 +671,12 @@ button.driver-open {
 }
 
 /* Choosing who to merge with. */
+.driver-merge-note {
+  margin: 0 0 16px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.5;
+}
 .driver-merge-list {
   display: grid;
   gap: 6px;

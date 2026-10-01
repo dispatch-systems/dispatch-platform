@@ -65,8 +65,11 @@ export function ReviewPair({ pair, onOpen }: { pair: DriverPair; onOpen: (code: 
           </span>
         )}
         <ul className="driver-evidence" aria-label="Why they may be one person">
-          {pair.evidence.map((evidence) => (
-            <li key={evidence.kind} className={evidenceSupports(evidence) ? undefined : 'against'}>
+          {pair.evidence.map((evidence, index) => (
+            <li
+              key={`${evidence.kind}:${index}`}
+              className={evidenceSupports(evidence) ? undefined : 'against'}
+            >
               {evidenceSupports(evidence) ? (
                 <Check size={13} aria-hidden="true" />
               ) : (

@@ -3,6 +3,7 @@ import { useUpdateState } from '../../app/browser-update.js';
 import { useDriverMatch } from '../../app/endpoints.js';
 import { useTableState } from '../../app/useTableState.js';
 import { dateFormatter } from '../../lib/date-format.js';
+import { time } from '../../lib/format.js';
 import {
   dataLabels,
   dataOrder,
@@ -50,16 +51,11 @@ export function DriverMatchSettings({ timezone }: { timezone: string }) {
       <DataState data={request.data} error={request.error}>
         {(data) => (
           <>
-            <DriverSummary data={data} timezone={timezone} />
+            <DriverSummary data={data} />
             {data.review.length > 0 && <ReviewCard pairs={data.review} onOpen={setOpen} />}
             <section aria-labelledby="driver-list-title">
               <div className="driver-section-head">
-                <div>
-                  <h2 id="driver-list-title">All drivers</h2>
-                  <p className="driver-match-copy">
-                    Open someone to see their IDs, merge them with someone else, or split an ID off.
-                  </p>
-                </div>
+                <h2 id="driver-list-title">All drivers</h2>
                 <div className="driver-legend" aria-hidden="true">
                   {dataOrder.map((kind) => {
                     const Icon = dataIcons[kind];
@@ -116,6 +112,7 @@ export function DriverMatchSettings({ timezone }: { timezone: string }) {
                       {rows.length === drivers.length
                         ? `${drivers.length} people`
                         : `${rows.length} of ${drivers.length} people`}
+                      {data.checkedAt && ` · Checked ${time(data.checkedAt, timezone)}`}
                     </span>
                     <TablePagination table={table} variant="pages" />
                   </div>
