@@ -137,11 +137,18 @@ pub const PAYCOM: &[Migration] = &[
         apply: Sql(include_str!("paycom/0003_employee_history_index.sql")),
     },
 ];
-pub const CORTEX: &[Migration] = &[Migration {
-    id: 1,
-    name: "baseline",
-    apply: Sql(include_str!("cortex/0001_baseline.sql")),
-}];
+pub const CORTEX: &[Migration] = &[
+    Migration {
+        id: 1,
+        name: "baseline",
+        apply: Sql(include_str!("cortex/0001_baseline.sql")),
+    },
+    Migration {
+        id: 2,
+        name: "meal_stops",
+        apply: Sql(include_str!("cortex/0002_meal_stops.sql")),
+    },
+];
 pub const SCORECARD: &[Migration] = &[
     Migration {
         id: 1,

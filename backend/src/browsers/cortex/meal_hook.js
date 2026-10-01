@@ -4,7 +4,7 @@
 // meal_rules.js), keeps only the result, and answers the application with a failed
 // request, so the page never renders the itinerary. As with meal.js, no delivery history,
 // package references, stop/task IDs, addresses, cookies or tokens leave the page: only the
-// four meal timestamps and their coverage.
+// four meal timestamps, their coverage and the places in the route of the bounding stops.
 (rules) => {
   if (window.__dispatchMeals) return;
   const { fail, detail } = rules;

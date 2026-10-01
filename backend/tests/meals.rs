@@ -51,6 +51,8 @@ fn four_timestamps_multiple_meals_midnight_and_unknown_boundaries_survive_round_
         end: Some(midnight + 1800000),
         last_delivery: Some(midnight - 120000),
         first_delivery: Some(midnight + 1980000),
+        last_delivery_stop: None,
+        first_delivery_stop: None,
     });
     let p = db.publish_meals(&id, "job-first", &c, &scope).unwrap();
     let data = db.collector(&id, Provider::Cortex).unwrap();
@@ -75,6 +77,8 @@ fn four_timestamps_multiple_meals_midnight_and_unknown_boundaries_survive_round_
     for meal in &mut c.itineraries[0].meals {
         meal.last_delivery = None;
         meal.first_delivery = None;
+        meal.last_delivery_stop = None;
+        meal.first_delivery_stop = None;
     }
     c.itineraries[0].meals.push(Meal {
         id: "open-meal".into(),
@@ -82,6 +86,8 @@ fn four_timestamps_multiple_meals_midnight_and_unknown_boundaries_survive_round_
         end: None,
         last_delivery: None,
         first_delivery: None,
+        last_delivery_stop: None,
+        first_delivery_stop: None,
     });
     // A timestamp beyond the bounded operating-day window is rejected.
     assert_eq!(
@@ -146,6 +152,102 @@ fn itinerary_page_links_are_stored_returned_and_bound_to_the_route() {
         data.all("SELECT itinerary_id,url FROM meal_sources", [])
             .unwrap(),
         vec![json!({"itinerary_id":"fixture-itinerary","url":url})]
+    );
+}
+#[test]
+fn deliveries_open_the_route_at_the_stop_that_held_them() {
+    let (_root, db, id) = store();
+    let scope = scope();
+    let mut c = meals::fixture(&scope);
+    let url = format!(
+        "https://logistics.amazon.com{}",
+        scope.detail_path("fixture-itinerary")
+    );
+    c.itineraries[0].source_url = Some(url.clone());
+    let meal = |db: &dispatch_backend::db::Store| {
+        db.meal_comparison(&id, &scope.date, &scope.timezone)
+            .map(|value| serde_json::to_value(value).unwrap())
+            .unwrap()["rows"][0]["cortex"][0]
+            .clone()
+    };
+    // A stop only names where a delivery was, within the 2,000 stops a route is read with.
+    let original = c.clone();
+    c.itineraries[0].meals[0].last_delivery = None;
+    assert_eq!(
+        db.publish_meals(&id, "job-stop-alone", &c, &scope)
+            .unwrap_err()
+            .code,
+        "invalid_cortex_delivery_boundary"
+    );
+    c = original.clone();
+    c.itineraries[0].meals[0].first_delivery_stop = Some(2000);
+    assert_eq!(
+        db.publish_meals(&id, "job-stop-beyond", &c, &scope)
+            .unwrap_err()
+            .code,
+        "invalid_cortex_delivery_boundary"
+    );
+    db.publish_meals(&id, "job-stops", &original, &scope)
+        .unwrap();
+    let read = meal(&db);
+    assert_eq!(read["sourceUrl"], json!(url));
+    assert_eq!(
+        read["lastDeliveryUrl"],
+        json!(format!("{url}&selectedStopId=11"))
+    );
+    assert_eq!(
+        read["firstDeliveryUrl"],
+        json!(format!("{url}&selectedStopId=12"))
+    );
+    assert!(read.get("lastDeliveryStop").is_none());
+    let data = db.collector(&id, Provider::Cortex).unwrap();
+    assert_eq!(
+        data.all(
+            "SELECT meal_id,last_delivery_stop,first_delivery_stop FROM meal_stops",
+            []
+        )
+        .unwrap(),
+        vec![json!({"meal_id":"meal-1","last_delivery_stop":11,"first_delivery_stop":12})]
+    );
+    // The page reads a live capture's stops the same way, before it is published.
+    let live = meals::comparison_meal(&original.itineraries[0], &original.itineraries[0].meals[0]);
+    assert_eq!(
+        (&live["lastDeliveryStop"], &live["firstDeliveryStop"]),
+        (&json!(11), &json!(12))
+    );
+    // Records without stops, published before they were read, keep the route's link.
+    let mut earlier = original.clone();
+    earlier.finished_at = now();
+    earlier.itineraries[0].meals[0].last_delivery_stop = None;
+    earlier.itineraries[0].meals[0].first_delivery_stop = None;
+    db.publish_meals(&id, "job-no-stops", &earlier, &scope)
+        .unwrap();
+    let read = meal(&db);
+    assert_eq!(
+        (
+            &read["sourceUrl"],
+            &read["lastDeliveryUrl"],
+            &read["firstDeliveryUrl"]
+        ),
+        (&json!(url), &json!(null), &json!(null))
+    );
+    // Deliveries the page could not account for keep no stop either.
+    let mut unavailable = original;
+    unavailable.finished_at = now();
+    unavailable.itineraries[0].delivery_coverage = Coverage::Unavailable;
+    for meal in &mut unavailable.itineraries[0].meals {
+        meal.last_delivery = None;
+        meal.first_delivery = None;
+        meal.last_delivery_stop = None;
+        meal.first_delivery_stop = None;
+    }
+    db.publish_meals(&id, "job-unavailable", &unavailable, &scope)
+        .unwrap();
+    assert_eq!(
+        data.one("SELECT count(*) n FROM meal_stops t JOIN meal_publications p ON p.id=t.publication_id WHERE p.active=1", [])
+            .unwrap()
+            .unwrap()["n"],
+        0
     );
 }
 #[test]

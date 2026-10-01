@@ -48,11 +48,18 @@ const delivery = (line: MealLine, side: 'lastDelivery' | 'firstDelivery') =>
     ? cortexClock(line.pair.cortex[side], line.date, line.pair.cortex.timezone)
     : null;
 // A Paycom time opens the employee's timecard, and a Flex time the route its meal was read
-// from. A missing time opens it too, whenever that timecard or meal exists.
+// from, at the stop of a delivery when that stop was read. A missing time opens it too,
+// whenever that timecard or meal exists.
 const paycomLink = ({ row }: MealLine): SourceLink | null =>
   row.paycom?.sourceUrl ? { href: row.paycom.sourceUrl, site: 'Paycom' } : null;
-const cortexLink = ({ pair }: MealLine): SourceLink | null =>
-  pair.cortex?.sourceUrl ? { href: pair.cortex.sourceUrl, site: 'Cortex' } : null;
+const cortexLink = (
+  { pair }: MealLine,
+  side?: 'lastDelivery' | 'firstDelivery',
+): SourceLink | null => {
+  const stop = side && pair.cortex?.[`${side}Url`];
+  if (stop) return { href: stop, site: 'Cortex', stop: true };
+  return pair.cortex?.sourceUrl ? { href: pair.cortex.sourceUrl, site: 'Cortex' } : null;
+};
 const text = (clock?: ClockTime | null) =>
   clock ? `${clock.label}${clock.day ? ` (${clock.day > 0 ? '+' : ''}${clock.day}d)` : ''}` : '';
 // An export row is an employee, so a column with several meals lists them in order.
@@ -137,7 +144,7 @@ export const mealColumns: TableColumn<MealLine>[] = [
     ],
     cell: (line) => (
       <>
-        <Clock value={delivery(line, 'lastDelivery')} link={cortexLink(line)} />
+        <Clock value={delivery(line, 'lastDelivery')} link={cortexLink(line, 'lastDelivery')} />
         {line.pair.cortex && <GapBadge gap={line.pair.gaps.before} side="before" />}
       </>
     ),
@@ -202,7 +209,7 @@ export const mealColumns: TableColumn<MealLine>[] = [
     ],
     cell: (line) => (
       <>
-        <Clock value={delivery(line, 'firstDelivery')} link={cortexLink(line)} />
+        <Clock value={delivery(line, 'firstDelivery')} link={cortexLink(line, 'firstDelivery')} />
         {line.pair.cortex && <GapBadge gap={line.pair.gaps.after} side="after" />}
       </>
     ),

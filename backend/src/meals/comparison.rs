@@ -163,10 +163,12 @@ impl Store {
         for p in &publications {
             let mut by_itinerary: HashMap<String, Vec<Value>> = HashMap::new();
             for mut meal in cortex.all(
-                "SELECT itinerary_id,meal_id mealId,last_delivery_at \
-                lastDelivery,started_at start,ended_at end,first_delivery_at \
-                firstDelivery,before_status beforeStatus,after_status afterStatus FROM \
-                meal_records WHERE publication_id=? ORDER BY itinerary_id,started_at,meal_id",
+                "SELECT m.itinerary_id,m.meal_id mealId,m.last_delivery_at \
+                lastDelivery,m.started_at start,m.ended_at end,m.first_delivery_at \
+                firstDelivery,m.before_status beforeStatus,m.after_status afterStatus,\
+                t.last_delivery_stop lastDeliveryStop,t.first_delivery_stop firstDeliveryStop \
+                FROM meal_records m LEFT JOIN meal_stops t USING(publication_id,itinerary_id,meal_id) \
+                WHERE m.publication_id=? ORDER BY m.itinerary_id,m.started_at,m.meal_id",
                 [s(p, "id")],
             )? {
                 let id = s(&meal, "itinerary_id").to_owned();
@@ -262,6 +264,23 @@ impl Store {
                 meal["driverName"] = itinerary["driver_name"].clone();
                 meal["itineraryId"] = itinerary["itinerary_id"].clone();
                 meal["sourceUrl"] = itinerary["sourceUrl"].clone();
+                // Each delivery opens the route at the stop that held it, when both are known.
+                for (stop, link) in [
+                    ("lastDeliveryStop", "lastDeliveryUrl"),
+                    ("firstDeliveryStop", "firstDeliveryUrl"),
+                ] {
+                    let place = meal
+                        .as_object_mut()
+                        .unwrap()
+                        .remove(stop)
+                        .and_then(|v| v.as_u64())
+                        .and_then(|v| u32::try_from(v).ok());
+                    let url = itinerary["sourceUrl"]
+                        .as_str()
+                        .zip(place)
+                        .and_then(|(route, place)| crate::meals::stop_url(route, place));
+                    meal[link] = json!(url);
+                }
                 meal["station"] = p["station"].clone();
                 meal["timezone"] = p["timezone"].clone();
                 meal["collectedAt"] = p["collectedAt"].clone();

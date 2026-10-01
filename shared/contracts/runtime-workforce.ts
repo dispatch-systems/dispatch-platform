@@ -82,6 +82,8 @@ const cortexMeal = z.object({
   beforeStatus: text,
   afterStatus: text,
   sourceUrl: optionalText,
+  lastDeliveryUrl: optionalText,
+  firstDeliveryUrl: optionalText,
 });
 const gap = z.object({ milliseconds: count, overLimit: z.boolean() });
 const assessment = z.object({

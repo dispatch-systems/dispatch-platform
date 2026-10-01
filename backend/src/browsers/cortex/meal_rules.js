@@ -1,6 +1,7 @@
 // The meal rules meal.js and meal_hook.js share: how a route's meal breaks are read, and
 // which of its deliveries bound each one. Both run them inside the page; only the four
-// meal timestamps and their coverage leave it.
+// meal timestamps, their coverage and the place in the route of the stops that held the
+// two deliveries leave it.
 (() => {
   // `reason` is a fixed diagnostic label for job metrics, never page content.
   const fail = (error, reason) => ({ error, reason });
@@ -90,7 +91,9 @@
       stopIds = new Set(),
       deliveries = new Map();
     let taskCount = 0;
-    for (const stop of d.stops) {
+    // A stop's place in the route, from 0, is how Cortex's page names it in a link
+    // (`selectedStopId`), so each delivery keeps the first stop that held it.
+    for (const [place, stop] of d.stops.entries()) {
       if (
         (rendered && (!token(stop.stopId) || stopIds.has(stop.stopId))) ||
         !Array.isArray(stop.tasks)
@@ -128,27 +131,33 @@
           complete = false;
           continue;
         }
-        deliveries.set(task.taskId, time);
+        deliveries.set(task.taskId, { time, stop: place });
       }
     }
     const selectedMeals = breaks.map((meal) => {
       let lastDelivery = null,
-        firstDelivery = null;
+        firstDelivery = null,
+        lastDeliveryStop = null,
+        firstDeliveryStop = null;
       if (complete) {
-        for (const time of deliveries.values()) {
+        for (const { time, stop } of deliveries.values()) {
           // Package completion times matter, including different completions
           // within a group stop: latest before OUT, earliest after IN.
-          if (time <= meal.start && (lastDelivery === null || time > lastDelivery))
+          if (time <= meal.start && (lastDelivery === null || time > lastDelivery)) {
             lastDelivery = time;
+            lastDeliveryStop = stop;
+          }
           if (
             meal.end !== null &&
             time >= meal.end &&
             (firstDelivery === null || time < firstDelivery)
-          )
+          ) {
             firstDelivery = time;
+            firstDeliveryStop = stop;
+          }
         }
       }
-      return { ...meal, lastDelivery, firstDelivery };
+      return { ...meal, lastDelivery, firstDelivery, lastDeliveryStop, firstDeliveryStop };
     });
     // Removed tasks have uncertain ownership. Their times can only invalidate
     // a boundary if they could be closer than the selected active delivery.
@@ -174,6 +183,8 @@
       for (const meal of selectedMeals) {
         meal.lastDelivery = null;
         meal.firstDelivery = null;
+        meal.lastDeliveryStop = null;
+        meal.firstDeliveryStop = null;
       }
     }
     return {

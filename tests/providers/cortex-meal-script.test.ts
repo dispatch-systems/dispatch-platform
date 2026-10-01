@@ -92,7 +92,15 @@ test('meal collection only reads the requested day', () => {
   });
   const itinerary = read(detail([2026, 9, 15]), href(scope.date, true), candidate).itinerary;
   assert.deepEqual(itinerary.meals, [
-    { id: 'meal-1', start, end: null, lastDelivery: null, firstDelivery: null },
+    {
+      id: 'meal-1',
+      start,
+      end: null,
+      lastDelivery: null,
+      firstDelivery: null,
+      lastDeliveryStop: null,
+      firstDeliveryStop: null,
+    },
   ]);
 });
 
@@ -255,6 +263,10 @@ test("the hook reads an itinerary response with meal.js's rules and withholds it
       end: start + 1800000,
       lastDelivery: start - 60000,
       firstDelivery: start + 1860000,
+      // Each delivery's stop by its place in the route, as Cortex's links name it. A
+      // delivery repeated in an overlapping group stop keeps the first.
+      lastDeliveryStop: 0,
+      firstDeliveryStop: 1,
     },
   ]);
   assert.equal(rendered.itinerary.deliveryCoverage, 'complete');
@@ -353,4 +365,22 @@ test('meal.js still needs the id the page gives each stop; the response has none
   page.expect(candidate);
   page.request();
   assert.equal(page.take().itinerary.deliveryCoverage, 'complete');
+});
+
+test('a delivery the page cannot account for leaves both its time and its stop out', () => {
+  const props = finished();
+  const [candidate] = read(props, href()).candidates;
+  // Conflicting copies of one task cannot bound a meal, so coverage is lost.
+  props.itineraryDetails.stops[1]!.tasks[0]!.actualExecutionTime -= 1;
+  const { itinerary } = read(props, href(scope.date, true), candidate);
+  assert.equal(itinerary.deliveryCoverage, 'unavailable');
+  assert.deepEqual(
+    itinerary.meals.map((m: any) => [
+      m.lastDelivery,
+      m.firstDelivery,
+      m.lastDeliveryStop,
+      m.firstDeliveryStop,
+    ]),
+    [[null, null, null, null]],
+  );
 });

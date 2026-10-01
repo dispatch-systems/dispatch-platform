@@ -1,11 +1,15 @@
 import { AlertTriangle, ArrowUpRight } from 'lucide-react';
 import type { ClockTime, DeliveryGap } from '../../../lib/meal-breaks.js';
 
-/** The provider page a time was read from: a Paycom timecard or a Cortex route. */
+/** The provider page a time was read from: a Paycom timecard, or a Cortex route or stop. */
 export interface SourceLink {
   href: string;
   site: 'Paycom' | 'Cortex';
+  /** The Cortex route opens at the stop of this time's delivery. */
+  stop?: boolean;
 }
+const opens = ({ site, stop }: SourceLink) =>
+  site === 'Paycom' ? 'timecard in Paycom' : `${stop ? 'stop' : 'route'} in Cortex`;
 export function Source({ name }: { name: 'Paycom' | 'Flex' }) {
   return (
     <span className={`meal-source ${name.toLowerCase()}`}>
@@ -54,9 +58,7 @@ export function Clock({
   return link ? (
     <a className="meal-clock-link" href={link.href} target="_blank" rel="noreferrer">
       {clock}
-      <span className="sr-only">
-        (open {link.site === 'Paycom' ? 'timecard in Paycom' : 'route in Cortex'})
-      </span>
+      <span className="sr-only">(open {opens(link)})</span>
       <ArrowUpRight className="meal-link-arrow" size={13} aria-hidden="true" />
     </a>
   ) : (
