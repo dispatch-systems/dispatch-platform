@@ -83,7 +83,7 @@ export function RolesTab({
       id: 'actions',
       header: <span className="sr-only">Actions</span>,
       cell: (role) => {
-        const inUse = (role.members ?? 0) + (role.invitations ?? 0) > 0;
+        const inUse = (role.members ?? 0) > 0;
         return (
           manage &&
           !role.owner &&
@@ -98,9 +98,7 @@ export function RolesTab({
               <button
                 className="danger"
                 disabled={inUse}
-                title={
-                  inUse ? 'Move this role’s members and pending invitations first.' : undefined
-                }
+                title={inUse ? 'Move this role’s members first.' : undefined}
                 onClick={() => remove(role)}
               >
                 Delete role

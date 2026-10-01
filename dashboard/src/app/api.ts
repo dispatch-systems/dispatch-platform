@@ -96,7 +96,7 @@ const labels: Record<string, string> = {
   last_owner_required: 'Keep at least one DSP owner.',
   dsp_view_expired: 'Your DSP access changed. Refreshing your view…',
   role_exceeds_permissions: 'You can only manage roles and members within your own permissions.',
-  role_in_use: 'Move this role’s members and pending invitations to another role first.',
+  role_in_use: 'Move this role’s members to another role first.',
   role_name_taken: 'Another role already uses this name.',
   invalid_role_name: 'Choose a role name up to 40 characters. “Owner” is reserved.',
   role_not_found: 'This role no longer exists. Refresh and try again.',

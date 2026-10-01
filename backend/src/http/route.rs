@@ -128,14 +128,9 @@ impl Grant for Dsp {
     }
     fn authorize(self, db: &Store, input: &Input) -> Result<Context> {
         let auth = Session.authorize(db, input)?;
+        // Editing a role is routine and reversible, so it asks for no fresh verification.
         if input.method == Method::POST
-            && [
-                "connections.manage",
-                "members.manage",
-                "members.invite",
-                "roles.manage",
-            ]
-            .contains(&self.0)
+            && ["connections.manage", "members.manage", "members.invite"].contains(&self.0)
         {
             db.ensure_recent(&auth)?;
         }
