@@ -79,10 +79,18 @@ impl Plan<'_> {
     fn unique(&self, x: &Identity, same: impl Fn(&[String], &[String]) -> bool) -> Option<String> {
         let side = other(x.source);
         let carries = |m: &Member| m.source == side && same(&m.names, &x.names);
+        // Someone kept apart from Paycom on the meal-break page takes no Paycom ID by name,
+        // in this pass or any later one.
+        let kept = |members: &[Member]| {
+            x.source == DriverSource::Paycom
+                && members.iter().any(|m| {
+                    m.source == DriverSource::Amazon && self.saved.separate.contains(&m.id)
+                })
+        };
         let mut matched = self
             .people
             .iter()
-            .filter(|(_, members)| members.iter().any(carries))
+            .filter(|(_, members)| !kept(members) && members.iter().any(carries))
             .map(|(person, _)| person.clone());
         let person = matched.next()?;
         if matched.next().is_some() || self.holds(&person, x.source) {
@@ -302,6 +310,28 @@ mod tests {
         assert_eq!(
             (decided[0].1.as_str(), decided[0].2),
             ("W5HC2K", DriverLink::Name)
+        );
+    }
+    #[test]
+    fn a_driver_kept_apart_from_paycom_stays_apart_when_paycom_lists_them_later() {
+        let saved = Saved {
+            separate: BTreeSet::from(["T5".to_owned()]),
+            ..Saved::default()
+        };
+        let mut people = BTreeMap::new();
+        people.insert(
+            "W5HC2K".to_owned(),
+            vec![Member {
+                source: DriverSource::Amazon,
+                id: "T5".into(),
+                names: vec!["Maria Lee".into()],
+            }],
+        );
+        let incoming = [paycom("A005", "LEE, MARIA")];
+        let decided = plan(people, &incoming, &saved);
+        assert_eq!(
+            (decided[0].1.as_str(), decided[0].2),
+            ("+0", DriverLink::New)
         );
     }
     #[test]

@@ -234,8 +234,12 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
     // Whoever the collection brought in gets a Driver Match code. A failure here leaves
     // the collection as it is; the hourly pass catches the IDs up.
     if succeeded {
-        let tenant = changed_dsp.clone();
-        if let Err(error) = state.run(move |db| db.match_drivers(&tenant)).await {
+        let (reading, tenant) = (changed_dsp.clone(), changed_dsp.clone());
+        let matched = match state.read(move |db| db.driver_sources(&reading)).await {
+            Ok(found) => state.run(move |db| db.assign_drivers(&tenant, found)).await,
+            Err(error) => Err(error),
+        };
+        if let Err(error) = matched {
             crate::observability::event(
                 "error",
                 "driver_match.failed",

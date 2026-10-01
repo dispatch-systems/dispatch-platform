@@ -119,7 +119,18 @@ impl Scheduler {
             Err(error) => return failed("driver_match_failed", &error),
         };
         for (dsp,) in dsps {
-            if let Err(error) = self.state.run(move |db| db.match_drivers(&dsp)).await {
+            // Reading every collection takes the shared lock; only the writes take the
+            // platform lock, briefly.
+            let reading = dsp.clone();
+            let matched = match self.state.read(move |db| db.driver_sources(&reading)).await {
+                Ok(found) => {
+                    self.state
+                        .run(move |db| db.assign_drivers(&dsp, found))
+                        .await
+                }
+                Err(error) => Err(error),
+            };
+            if let Err(error) = matched {
                 failed("driver_match_failed", &error);
             }
         }

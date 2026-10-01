@@ -105,7 +105,7 @@ const AMAZON: DriverSource = DriverSource::Amazon;
 
 #[test]
 fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
-    let (_root, db, id, _) = ready(None);
+    let (_root, db, id, context) = ready(None);
     // Twelve employees and five drivers.
     assert_eq!(db.match_drivers(&id).unwrap(), 17);
     let result = db.driver_match(&id).unwrap();
@@ -130,16 +130,17 @@ fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
     let tony = code(&result, AMAZON, "TREYES");
     assert_ne!(antonio, tony);
     assert_eq!(status(&result, &antonio), DriverStatus::Review);
+    // Nobody is office staff until the DSP says which departments drive.
     assert_eq!(
         status(&result, &code(&result, PAYCOM, "E001")),
-        DriverStatus::Office
+        DriverStatus::PaycomOnly
     );
     assert_eq!(
         status(&result, &code(&result, AMAZON, "TDMITRI")),
         DriverStatus::AmazonOnly
     );
     assert_eq!(result.counts.review, 2);
-    assert_eq!(result.counts.office, 1);
+    assert_eq!(result.counts.office, 0);
     assert_eq!(result.counts.amazon_only, 1);
     let reyes = result
         .review
@@ -148,6 +149,18 @@ fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
         .unwrap();
     assert_eq!(reyes.amazon.code, tony);
     assert_eq!(reyes.strength, DriverStrength::Strong);
+    // The Timecard settings' driver departments set the rest apart as office staff.
+    let mut values = db.preference_values(&id).unwrap()["values"].clone();
+    values["driver_departments"] = json!(["Delivery"]);
+    db.save_preferences(&id, &context.auth.user.id, 0, &values)
+        .unwrap();
+    let staffed = db.driver_match(&id).unwrap();
+    assert_eq!(
+        status(&staffed, &code(&staffed, PAYCOM, "E001")),
+        DriverStatus::Office
+    );
+    assert_eq!(staffed.counts.office, 1);
+    assert_eq!(staffed.counts.drivers, staffed.counts.all - 1);
     // Nothing new the second time, and nobody's code changes.
     assert_eq!(db.match_drivers(&id).unwrap(), 0);
     let again = db.driver_match(&id).unwrap();

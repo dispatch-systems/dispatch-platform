@@ -44,26 +44,20 @@ pub fn valid_code(code: &str) -> bool {
     code.len() == CODE_LENGTH && code.bytes().all(|b| ALPHABET.contains(&b))
 }
 
-/// Whether a Paycom department or position describes office work. Only a clear office
-/// title counts, so a driver under an unusual department is never set aside.
-fn office(department: Option<&str>, position: Option<&str>) -> bool {
-    let text = format!("{} {}", department.unwrap_or(""), position.unwrap_or("")).to_lowercase();
-    let driving = ["driver", "delivery", "courier", "van", "helper"];
-    let desk = [
-        "owner",
-        "manager",
-        "human resources",
-        "hr ",
-        "admin",
-        "dispatch",
-        "office",
-        "payroll",
-        "recruit",
-        "fleet",
-        "supervisor",
-        "accounting",
-    ];
-    !driving.iter().any(|w| text.contains(w)) && desk.iter().any(|w| format!("{text} ").contains(w))
+/// The Paycom departments a DSP counts as drivers, from its Timecard settings. Everyone
+/// only Paycom knows outside them is office staff; without the setting, nobody is.
+type DriverDepartments = Option<BTreeSet<String>>;
+fn office(department: Option<&str>, drivers: &DriverDepartments) -> bool {
+    drivers
+        .as_ref()
+        .is_some_and(|list| !list.contains(department.unwrap_or("")))
+}
+
+/// What one pass reads: every ID the collections hold and the links saved on the meal-break
+/// page. Reading takes the shared lock; `assign_drivers` then writes in one short step.
+pub struct DriverSources {
+    identities: Vec<sources::Identity>,
+    saved: Saved,
 }
 
 /// A row of `person_ids`.
@@ -129,6 +123,7 @@ fn driver(
     code: &str,
     ids: &[&IdRow],
     activity: &BTreeMap<Key, BTreeMap<DriverData, Seen>>,
+    departments: &DriverDepartments,
 ) -> Driver {
     let paycom: Vec<&&IdRow> = ids
         .iter()
@@ -150,7 +145,7 @@ fn driver(
         DriverStatus::AmazonOnly
     } else if paycom
         .iter()
-        .all(|i| office(i.department.as_deref(), i.position.as_deref()))
+        .all(|i| office(i.department.as_deref(), departments))
     {
         DriverStatus::Office
     } else {
@@ -186,8 +181,19 @@ impl Store {
     /// Gives every new ID in the DSP's collections a person, and keeps each known ID's
     /// name, department and days current. Answers how many IDs were new.
     pub fn match_drivers(&self, dsp: &str) -> Result<usize> {
-        let identities = sources::identities(self, dsp)?;
-        let saved = self.saved_links(dsp)?;
+        self.assign_drivers(dsp, self.driver_sources(dsp)?)
+    }
+    /// Reads what a pass needs, without writing: run it under the shared lock.
+    pub fn driver_sources(&self, dsp: &str) -> Result<DriverSources> {
+        Ok(DriverSources {
+            identities: sources::identities(self, dsp)?,
+            saved: self.saved_links(dsp)?,
+        })
+    }
+    /// Writes what a pass found: people for new IDs, and known IDs' details kept current.
+    /// Who already holds what is read again here, so a decision made since the read stands.
+    pub fn assign_drivers(&self, dsp: &str, found: DriverSources) -> Result<usize> {
+        let DriverSources { identities, saved } = found;
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let rows: Vec<IdRow> = db.query_as("SELECT * FROM person_ids", [])?;
@@ -329,6 +335,14 @@ impl Store {
         let activity = sources::activity(self, dsp)?;
         let days = sources::days(self, dsp)?;
         let saved = self.saved_links(dsp)?;
+        let departments: DriverDepartments =
+            self.preference_values(dsp)?["values"]["driver_departments"]
+                .as_array()
+                .map(|list| {
+                    list.iter()
+                        .filter_map(|d| d.as_str().map(str::to_owned))
+                        .collect()
+                });
         let db = self.dsp(dsp)?;
         let rows: Vec<IdRow> = db.query_as(
             "SELECT i.* FROM person_ids i JOIN people p ON p.code=i.code \
@@ -350,7 +364,12 @@ impl Store {
         }
         let mut drivers: BTreeMap<String, Driver> = held
             .iter()
-            .map(|(code, ids)| ((*code).to_owned(), driver(code, ids, &activity)))
+            .map(|(code, ids)| {
+                (
+                    (*code).to_owned(),
+                    driver(code, ids, &activity, &departments),
+                )
+            })
             .collect();
         // Every name an ID's sources write, so a middle name or a different spelling in
         // one of them still counts.

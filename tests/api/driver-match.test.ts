@@ -39,6 +39,14 @@ test('Driver Match gives everyone a code and answers only to its own permission'
   const history: DriverDetails = (await owner.get(`/api/dsp/driver-match/drivers/${second!.code}`))
     .value;
   assert.ok(history.history.some((e) => e.kind === 'apart' && e.code === first!.code));
+  // A write needs the session's CSRF token, and a decision on a page out of date is refused.
+  const headers = { ...owner.headers };
+  delete headers['x-csrf-token'];
+  const merge = { code: second!.code, into: first!.code };
+  assert.equal((await f.request('/api/dsp/driver-match/merge', merge, headers)).status, 403);
+  assert.equal((await owner.post('/api/dsp/driver-match/merge', merge)).status, 200);
+  const stale = await owner.post('/api/dsp/driver-match/merge', merge);
+  assert.deepEqual([stale.status, stale.value.error], [409, 'driver_changed']);
   for (const body of [
     { code: first!.code, into: first!.code },
     { code: 'short', into: second!.code },
@@ -52,6 +60,7 @@ test('Driver Match gives everyone a code and answers only to its own permission'
   );
 
   // Switched off, the tab's routes are gone; the codes stay for when it comes back.
+  const kept: DriverMatch = (await owner.get('/api/dsp/driver-match')).value;
   const url = `/api/platform/dsps/${north.id}/features`;
   await owner.post(url, { feature: 'driver_match', enabled: false });
   await owner.select(north.id);
@@ -59,8 +68,5 @@ test('Driver Match gives everyone a code and answers only to its own permission'
   await owner.post(url, { feature: 'driver_match', enabled: true });
   await owner.select(north.id);
   const again: DriverMatch = (await owner.get('/api/dsp/driver-match')).value;
-  assert.deepEqual(
-    again.drivers.map((d) => d.code).sort(),
-    result.drivers.map((d) => d.code).sort(),
-  );
+  assert.deepEqual(again.drivers.map((d) => d.code).sort(), kept.drivers.map((d) => d.code).sort());
 });
