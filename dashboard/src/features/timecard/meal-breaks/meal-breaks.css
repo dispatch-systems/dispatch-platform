@@ -199,6 +199,24 @@
 .meal-delta {
   margin-left: 6px;
 }
+/* A time that opens its Paycom timecard or Cortex route keeps its look; the arrow shows
+   on hover and focus only, beside the time so nothing shifts. */
+.meal-clock-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.meal-link-arrow {
+  position: absolute;
+  left: calc(100% + 3px);
+  top: 50%;
+  translate: 0 -50%;
+  opacity: 0;
+}
+.meal-clock-link:hover .meal-link-arrow,
+.meal-clock-link:focus-visible .meal-link-arrow {
+  opacity: 1;
+}
 .meal-missing {
   color: var(--muted-foreground);
   font-weight: 400;

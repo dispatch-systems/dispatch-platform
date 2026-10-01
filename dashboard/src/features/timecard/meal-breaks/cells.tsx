@@ -1,6 +1,11 @@
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight } from 'lucide-react';
 import type { ClockTime, DeliveryGap } from '../../../lib/meal-breaks.js';
 
+/** The provider page a time was read from: a Paycom timecard or a Cortex route. */
+export interface SourceLink {
+  href: string;
+  site: 'Paycom' | 'Cortex';
+}
 export function Source({ name }: { name: 'Paycom' | 'Flex' }) {
   return (
     <span className={`meal-source ${name.toLowerCase()}`}>
@@ -12,11 +17,14 @@ export function Source({ name }: { name: 'Paycom' | 'Flex' }) {
 export function Clock({
   value,
   difference,
+  link,
 }: {
   value?: ClockTime | null;
   difference?: number | null;
+  /** Makes the time, even a missing one, open the page it came from in a new tab. */
+  link?: SourceLink | null;
 }) {
-  return (
+  const clock = (
     <span className={`meal-clock${difference ? ' different' : ''}`} title={value?.detail}>
       {value ? (
         <>
@@ -42,25 +50,41 @@ export function Clock({
       )}
     </span>
   );
+  // The time keeps its look; only the pointer and an arrow on hover mark the link.
+  return link ? (
+    <a className="meal-clock-link" href={link.href} target="_blank" rel="noreferrer">
+      {clock}
+      <span className="sr-only">
+        (open {link.site === 'Paycom' ? 'timecard in Paycom' : 'route in Cortex'})
+      </span>
+      <ArrowUpRight className="meal-link-arrow" size={13} aria-hidden="true" />
+    </a>
+  ) : (
+    clock
+  );
 }
 export function LunchCell({
   paycom,
   cortex,
   difference,
+  paycomLink,
+  cortexLink,
 }: {
   paycom?: ClockTime | null;
   cortex?: ClockTime | null;
   difference?: number | null;
+  paycomLink?: SourceLink | null;
+  cortexLink?: SourceLink | null;
 }) {
   return (
     <>
       <div>
         <Source name="Paycom" />
-        <Clock value={paycom} />
+        <Clock value={paycom} link={paycomLink} />
       </div>
       <div>
         <Source name="Flex" />
-        <Clock value={cortex} difference={difference} />
+        <Clock value={cortex} difference={difference} link={cortexLink} />
       </div>
     </>
   );

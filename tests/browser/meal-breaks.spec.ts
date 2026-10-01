@@ -5,6 +5,10 @@ import type { MealSource } from '../../shared/contracts/meals.js';
 import { paycomDefaults } from '../../dashboard/src/lib/paycom.js';
 
 const date = '2026-09-15';
+const paycomUrl = (code: string) =>
+  `https://www.paycomonline.net/v4/cl/web.php/timecard/index?firstrefno=${code}&perioddates=2026-09-06_2026-09-19&formtype=SUMMARY`;
+const cortexUrl = (route: string) =>
+  `https://logistics.amazon.com/operations/execution/itineraries/${route}/documentType/Itinerary?selectedDay=${date}`;
 function sample(): MealComparisonSource {
   const instant = (clock: string) => new Date(`${date}T${clock}:00-07:00`).toISOString();
   const employee = (
@@ -27,6 +31,7 @@ function sample(): MealComparisonSource {
                   { in: punches[0]!, out: punches[1]!, hours: null },
                   { in: punches[2]!, out: punches[3]!, hours: null },
                 ],
+          sourceUrl: paycomUrl(`E00${id}`),
         }
       : null,
     cortex: meal
@@ -45,6 +50,7 @@ function sample(): MealComparisonSource {
             firstDelivery: instant(meal[3]!),
             beforeStatus: 'verified',
             afterStatus: 'verified',
+            sourceUrl: cortexUrl(`route-${id}`),
           },
         ]
       : [],
@@ -325,6 +331,94 @@ test('Flex gap badges and employee filter preserve comparison statuses and expos
     path: test.info().outputPath('dispatch-flex-gaps-mobile.png'),
     fullPage: true,
   });
+});
+test('each time opens the Paycom timecard or Cortex route it was read from', async ({ page }) => {
+  const data = sample();
+  const instant = (clock: string) => new Date(`${date}T${clock}:00-07:00`).toISOString();
+  // A second meal on another route links to that route; its row has no IN or OUT DAY.
+  data.rows[0]!.cortex.push({
+    ...data.rows[0]!.cortex[0]!,
+    itineraryId: 'route-1b',
+    mealId: 'second-meal',
+    lastDelivery: instant('16:52'),
+    start: instant('17:00'),
+    end: instant('17:30'),
+    firstDelivery: instant('17:37'),
+    sourceUrl: cortexUrl('route-1b'),
+  });
+  await page.route('**/api/dsp/paycom/settings', (route) =>
+    route.fulfill({
+      json: {
+        revision: 0,
+        values: paycomDefaults,
+        history: [],
+        options: { departments: [], stations: [] },
+      },
+    }),
+  );
+  await page.route('**/api/dsp/paycom/meal-breaks?*', (route) =>
+    route.fulfill({
+      json: assessMealResponse({
+        ...data,
+        date: new URL(route.request().url()).searchParams.get('date'),
+      }),
+    }),
+  );
+  await open(page, true);
+  const links = (name: string, extra = false) =>
+    page
+      .locator(extra ? '.meal-extra' : '.meal-table tbody > tr:not(.meal-extra)')
+      .filter(extra ? {} : { hasText: name })
+      .getByRole('link');
+  const hrefs = (name: string, extra = false) =>
+    links(name, extra).evaluateAll((all) => all.map((a) => a.getAttribute('href')));
+  const paycom = paycomUrl('E001');
+  const cortex = cortexUrl('route-1');
+  // IN DAY, last delivery, OUT LUNCH Paycom and Flex, IN LUNCH Paycom and Flex, first
+  // delivery, OUT DAY.
+  expect(await hrefs('Alex Morgan')).toEqual([
+    paycom,
+    cortex,
+    paycom,
+    cortex,
+    paycom,
+    cortex,
+    cortex,
+    paycom,
+  ]);
+  await expect(
+    page.getByRole('link', { name: '9:42 AM (open timecard in Paycom)', exact: true }),
+  ).toHaveAttribute('href', paycom);
+  for (const link of await links('Alex Morgan').all()) {
+    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(link).toHaveAttribute('rel', 'noreferrer');
+  }
+  // The time keeps its look; the arrow shows only while the pointer is on it.
+  const arrow = links('Alex Morgan').first().locator('.meal-link-arrow');
+  await expect(arrow).toHaveCSS('opacity', '0');
+  await links('Alex Morgan').first().hover();
+  await expect(arrow).toHaveCSS('opacity', '1');
+  await expect(links('Alex Morgan').first()).toHaveCSS('text-decoration-line', 'none');
+  await page.getByRole('button', { name: 'Details for Alex Morgan', exact: true }).click();
+  // Its Paycom lunch is missing, so those two still open the timecard.
+  expect(await hrefs('', true)).toEqual([
+    cortexUrl('route-1b'),
+    paycom,
+    cortexUrl('route-1b'),
+    paycom,
+    cortexUrl('route-1b'),
+    cortexUrl('route-1b'),
+  ]);
+  // Taylor's Paycom day has no lunch punches: the missing times still open the timecard.
+  await expect(
+    page
+      .getByRole('row')
+      .filter({ hasText: 'Taylor Reed' })
+      .getByRole('link', { name: /^Not available \(open timecard in Paycom\)$/ }),
+  ).toHaveCount(2);
+  // Paycom only: no Flex links. Flex only: no Paycom links.
+  expect(await hrefs('Sam Patel')).toEqual(Array(4).fill(paycomUrl('E004')));
+  expect(await hrefs('Casey Brooks')).toEqual(Array(4).fill(cortexUrl('route-5')));
 });
 test('members can open real collected punch data without management controls', async ({ page }) => {
   await open(page, true);
