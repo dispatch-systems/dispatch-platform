@@ -4,8 +4,9 @@ type App = Awaited<ReturnType<typeof fixture>>;
 
 /**
  * Northline's people as Paycom and Amazon write them differently: two preferred names, a
- * driver Amazon lists by a last initial and one Paycom has never heard of. The server
- * restarts around the edit, so its first Driver Match pass reads it.
+ * driver Amazon lists by a last initial, one Paycom has never heard of and one who drove
+ * only long ago. The server restarts around the edit, so its first Driver Match pass
+ * reads it.
  */
 export async function seedDriverMatch(app: App) {
   const owner = await app.client();
@@ -38,6 +39,17 @@ export async function seedDriverMatch(app: App) {
         `INSERT INTO meal_itineraries VALUES
          ('match-pub',?,?,?,'R1',?,1,'complete','none_recorded')`,
       ).run(`itinerary-${id}`, id!, name!, `${date}T23:00:00Z`);
+    const old = new Date(Date.parse(`${date}T00:00:00Z`) - 40 * 86400000)
+      .toISOString()
+      .slice(0, 10);
+    db.prepare(
+      `INSERT INTO meal_publications VALUES
+       ('match-old','match-old-job',?,'DEMO1','area-match','ALL_DRIVERS','UTC',?,?,1,1,0,0,3)`,
+    ).run(old, `${old}T23:00:00Z`, `${old}T23:01:00Z`);
+    db.prepare(
+      `INSERT INTO meal_itineraries VALUES
+       ('match-old','itinerary-match-gone','match-gone','Riley Quinn','R1',?,1,'complete','none_recorded')`,
+    ).run(`${old}T23:00:00Z`);
   });
   await app.start();
   await owner.select(dsp.id);

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture, until } from '../support/support.js';
-import type { DriverDetails, DriverMatch } from '../../shared/contracts/index.js';
+import type { AuditEvent, DriverDetails, DriverMatch } from '../../shared/contracts/index.js';
 
 const code = /^[2-9A-HJKMNP-TV-Z]{6}$/;
 
@@ -45,6 +45,13 @@ test('Driver Match gives everyone a code and answers only to its own permission'
   const merge = { code: second!.code, into: first!.code };
   assert.equal((await f.request('/api/dsp/driver-match/merge', merge, headers)).status, 403);
   assert.equal((await owner.post('/api/dsp/driver-match/merge', merge)).status, 200);
+  // The activity log names the person the decision made, as the tab shows them now.
+  const merged: DriverMatch = (await owner.get('/api/dsp/driver-match')).value;
+  const log = await owner.get('/api/platform/audit');
+  assert.equal(log.status, 200, log.body);
+  const event = log.value.events.find((e: AuditEvent) => e.action === 'driver_match.merged');
+  assert.equal(event.target, merged.drivers.find((d) => d.code === first!.code)!.name);
+  assert.deepEqual(event.ref, { kind: 'driver', id: first!.code });
   const stale = await owner.post('/api/dsp/driver-match/merge', merge);
   assert.deepEqual([stale.status, stale.value.error], [409, 'driver_changed']);
   for (const body of [

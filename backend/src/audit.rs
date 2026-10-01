@@ -205,6 +205,7 @@ impl Store {
             };
             event.as_object_mut().unwrap().remove("data");
         }
+        self.name_driver_events(&mut events);
         let total = self.platform.count(
             &format!("SELECT count(*) {filters} AND {area}"),
             rusqlite::params![

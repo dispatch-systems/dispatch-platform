@@ -191,6 +191,7 @@ mod tests {
             position: None,
             first_seen: None,
             last_seen: None,
+            listed: false,
         }
     }
     fn paycom(code: &str, name: &str) -> Identity {
@@ -231,7 +232,7 @@ mod tests {
         assert_eq!(result["A001"].1, DriverLink::New);
     }
     #[test]
-    fn any_spelling_amazon_knows_can_match_and_a_middle_name_alone_does_not() {
+    fn any_spelling_amazon_knows_can_match_and_middle_names_are_looked_past() {
         let result = run(
             &[
                 paycom("A001", "OKAFOR, DANIEL"),
@@ -239,11 +240,29 @@ mod tests {
                 amazon("T1", &["Daniel Okafor", "Daniel Chukwuma Okafor"]),
                 paycom("A002", "BELL, MARCUS"),
                 amazon("T2", &["Marcus Andre Bell"]),
+                // Paycom lists the middle name they go by.
+                paycom("A003", "MORGAN, RUBEN"),
+                amazon("T3", &["Martin Morgan", "Martin Ruben Morgan"]),
             ],
             &Saved::default(),
         );
         assert!(together(&result, "A001", "T1"));
-        assert!(!together(&result, "A002", "T2"));
+        assert!(together(&result, "A002", "T2"));
+        assert_eq!(result["T2"].1, DriverLink::Variant);
+        assert!(together(&result, "A003", "T3"));
+        assert_eq!(result["T3"].1, DriverLink::Variant);
+    }
+    #[test]
+    fn a_middle_name_two_people_could_go_by_is_never_guessed() {
+        let result = run(
+            &[
+                paycom("A001", "GARCIA, JOSE"),
+                paycom("A002", "GARCIA, JUAN"),
+                amazon("T1", &["Juan Jose Garcia"]),
+            ],
+            &Saved::default(),
+        );
+        assert_eq!(result["T1"].1, DriverLink::New);
     }
     #[test]
     fn shared_names_and_different_first_names_are_never_guessed() {

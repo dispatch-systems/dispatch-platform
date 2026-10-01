@@ -33,6 +33,10 @@ test('Driver Match shows who might be listed twice and makes them one person', a
     .getByRole('button', { name: 'Different people', exact: true })
     .click();
   await expect(pairs).toHaveCount(1);
+  // Someone Amazon saw only long ago, whom Paycom doesn't list, has left.
+  await page.getByRole('button', { name: /^Former/ }).click();
+  await expect(page.getByRole('row').filter({ hasText: 'Riley Quinn' })).toContainText('Former');
+  await page.getByRole('button', { name: /^All/ }).click();
 
   await page.getByLabel('Search drivers').fill('benjamin');
   const row = page.getByRole('row').filter({ hasText: 'Benjamin Collins' });

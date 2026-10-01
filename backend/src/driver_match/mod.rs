@@ -31,6 +31,9 @@ const CHECKED: &str = "driver_match.checked_at";
 /// rarely spells a word.
 const ALPHABET: &[u8; 30] = b"23456789ABCDEFGHJKMNPQRSTVWXYZ";
 const CODE_LENGTH: usize = 6;
+/// How long someone only one source knows can go unseen, off Paycom's roster, before
+/// they count as having left: days before the newest day anything was collected for.
+const FORMER_AFTER_DAYS: i64 = 21;
 /// The data a person can appear in, in the order the tab shows it.
 const DATA: [DriverData; 5] = [
     DriverData::Timecards,
@@ -114,19 +117,37 @@ struct Overview {
     days: Days,
 }
 
-/// A person as the tab lists them, before review marks the ones in a pair.
+/// A person as the tab lists them, before review marks the ones in a pair. `recent` is
+/// the first day that still counts as recent.
 fn driver(
     code: &str,
     ids: &[&IdRow],
     activity: &BTreeMap<Key, BTreeMap<DriverData, Seen>>,
     departments: &DriverDepartments,
     found: &Found,
+    recent: &str,
 ) -> Driver {
     let paycom: Vec<&&IdRow> = ids
         .iter()
         .filter(|i| i.source == DriverSource::Paycom)
         .collect();
     let amazon = ids.iter().any(|i| i.source == DriverSource::Amazon);
+    let seen: Vec<&BTreeMap<DriverData, Seen>> =
+        ids.iter().filter_map(|i| activity.get(&i.key())).collect();
+    let last_seen = seen
+        .iter()
+        .flat_map(|data| data.values().filter_map(|s| s.last.clone()))
+        .chain(
+            ids.iter()
+                .filter_map(|i| found.get(&i.key())?.last_seen.clone()),
+        )
+        .max();
+    // Someone only one source knows who has left: off Paycom's roster, and in nothing
+    // collected lately. Nobody can match them, so they wait on no one.
+    let gone = !ids
+        .iter()
+        .any(|i| found.get(&i.key()).is_some_and(|x| x.listed))
+        && last_seen.as_deref().is_none_or(|last| last < recent);
     let status = if !paycom.is_empty() && amazon {
         if ids
             .iter()
@@ -138,6 +159,8 @@ fn driver(
         } else {
             DriverStatus::Matched
         }
+    } else if gone {
+        DriverStatus::Former
     } else if amazon {
         DriverStatus::AmazonOnly
     } else if paycom.iter().all(|i| {
@@ -149,16 +172,6 @@ fn driver(
     } else {
         DriverStatus::PaycomOnly
     };
-    let seen: Vec<&BTreeMap<DriverData, Seen>> =
-        ids.iter().filter_map(|i| activity.get(&i.key())).collect();
-    let last_seen = seen
-        .iter()
-        .flat_map(|data| data.values().filter_map(|s| s.last.clone()))
-        .chain(
-            ids.iter()
-                .filter_map(|i| found.get(&i.key())?.last_seen.clone()),
-        )
-        .max();
     // Paycom's name is the legal one; Amazon's stands in when Paycom has none, and an ID
     // no source holds any more when neither does.
     let written = |source: DriverSource| {
@@ -321,6 +334,20 @@ impl Store {
                         .filter_map(|d| d.as_str().map(str::to_owned))
                         .collect()
                 });
+        // Counted from what was collected, not from today, so a DSP whose collections
+        // pause does not see everyone leave.
+        let recent = found
+            .values()
+            .filter_map(|x| x.last_seen.as_deref())
+            .chain(
+                activity
+                    .values()
+                    .flat_map(|data| data.values().filter_map(|s| s.last.as_deref())),
+            )
+            .filter_map(|day| chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d").ok())
+            .max()
+            .map(|newest| (newest - chrono::Duration::days(FORMER_AFTER_DAYS)).to_string())
+            .unwrap_or_default();
         let db = self.dsp(dsp)?;
         let rows: Vec<IdRow> = db.query_as(
             "SELECT i.* FROM person_ids i JOIN people p ON p.code=i.code \
@@ -345,7 +372,7 @@ impl Store {
             .map(|(code, ids)| {
                 (
                     (*code).to_owned(),
-                    driver(code, ids, &activity, &departments, &found),
+                    driver(code, ids, &activity, &departments, &found, &recent),
                 )
             })
             .collect();
@@ -359,9 +386,20 @@ impl Store {
             })
             .map(|(code, _)| *code)
             .collect();
-        let side = |status: DriverStatus| -> Vec<review::Side<'_>> {
+        // Everyone only one source knows, those who have left included: their records
+        // are worth joining all the same.
+        let side = |source: DriverSource| -> Vec<review::Side<'_>> {
+            let only = [
+                DriverStatus::PaycomOnly,
+                DriverStatus::AmazonOnly,
+                DriverStatus::Former,
+            ];
             held.iter()
-                .filter(|(code, _)| drivers[**code].status == status && !kept.contains(**code))
+                .filter(|(code, ids)| {
+                    only.contains(&drivers[**code].status)
+                        && ids.iter().all(|i| i.source == source)
+                        && !kept.contains(**code)
+                })
                 .map(|(code, ids)| review::Side {
                     code,
                     // Every name an ID's sources write, so a middle name or a different
@@ -375,8 +413,8 @@ impl Store {
                 .collect()
         };
         let suggestions = review::suggest(
-            &side(DriverStatus::PaycomOnly),
-            &side(DriverStatus::AmazonOnly),
+            &side(DriverSource::Paycom),
+            &side(DriverSource::Amazon),
             &apart,
         );
         let worked = |code: &str| -> Option<BTreeSet<String>> {
@@ -445,9 +483,10 @@ impl Store {
             list.iter().filter(|d| statuses.contains(&d.status)).count()
         };
         let office = count(&[DriverStatus::Office]);
+        let former = count(&[DriverStatus::Former]);
         let counts = DriverCounts {
             all: list.len(),
-            drivers: list.len() - office,
+            drivers: list.len() - office - former,
             matched: count(&[
                 DriverStatus::Matched,
                 DriverStatus::Variant,
@@ -457,6 +496,7 @@ impl Store {
             paycom_only: count(&[DriverStatus::PaycomOnly]),
             amazon_only: count(&[DriverStatus::AmazonOnly]),
             office,
+            former,
         };
         Ok(Overview {
             result: DriverMatch {
@@ -495,6 +535,60 @@ impl Store {
             }
         }
         Err(Error::new("not_found", 404))
+    }
+
+    /// The name a code's person goes by now, as the tab shows it: Paycom's when they have
+    /// one, else Amazon's. A merged code answers for the person who kept its IDs.
+    fn driver_name(&self, dsp: &str, code: &str) -> Result<Option<String>> {
+        let ids = {
+            let db = self.dsp(dsp)?;
+            let code = self.surviving(&db, code)?;
+            db.query_as::<(DriverSource, String)>(
+                "SELECT source,external_id FROM person_ids WHERE code=? \
+                 ORDER BY source='amazon',linked_at,external_id",
+                [&code],
+            )?
+        };
+        for key in &ids {
+            if let Some(name) = sources::name_of(self, dsp, key)? {
+                return Ok(Some(names::display(&name)));
+            }
+        }
+        Ok(None)
+    }
+    /// Puts today's names to the codes Driver Match's activity entries name. The entries
+    /// keep codes, as what a collection says about someone stays in its database; a code
+    /// that finds no name stays as it is.
+    pub(crate) fn name_driver_events(&self, events: &mut [Value]) {
+        let mut known: BTreeMap<(String, String), String> = BTreeMap::new();
+        for event in events {
+            let action = event["action"].as_str().unwrap_or_default();
+            let (Some(dsp), Some(target)) = (event["dspId"].as_str(), event["target"].as_str())
+            else {
+                continue;
+            };
+            let codes: Vec<&str> = target.split(" and ").collect();
+            if !action.starts_with("driver_match.") || !codes.iter().all(|c| valid_code(c)) {
+                continue;
+            }
+            let mut named: Vec<String> = vec![];
+            for code in codes {
+                let name = known
+                    .entry((dsp.to_owned(), code.to_owned()))
+                    .or_insert_with(|| {
+                        self.driver_name(dsp, code)
+                            .ok()
+                            .flatten()
+                            .unwrap_or_else(|| code.to_owned())
+                    })
+                    .clone();
+                // Two codes merged into one person are that one person now.
+                if action != "driver_match.merged" || !named.contains(&name) {
+                    named.push(name);
+                }
+            }
+            event["target"] = json!(named.join(" and "));
+        }
     }
 
     /// Who did something, as the DSP sees them: a platform owner is always Platform support.

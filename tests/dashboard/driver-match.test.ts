@@ -68,6 +68,8 @@ test('people are found by any name, code or ID, and filtered by where they stand
   assert.ok(!driverMatches(antonio, 'jordan'));
   assert.ok(inFilter(antonio, 'matched') && inFilter(antonio, 'all'));
   assert.ok(!inFilter(antonio, 'review'));
+  const gone: Driver = { ...antonio, status: 'former', ids: [antonio.ids[1]!] };
+  assert.ok(inFilter(gone, 'former') && !inFilter(gone, 'amazon'));
   assert.equal(goesBy(antonio), 'Tony');
   assert.equal(goesBy({ ...antonio, ids: [antonio.ids[0]!] }), undefined);
 });
