@@ -91,10 +91,7 @@ export function DriverSheet({
                         {shortId(id)}
                       </span>
                     </strong>
-                    <small>
-                      {id.name}
-                      {id.department && ` · ${id.department}`}
-                    </small>
+                    <small>{[id.name, id.department].filter(Boolean).join(' · ')}</small>
                     <small>
                       {seenRange(id.firstSeen, id.lastSeen, today)} · {linkLabels[id.linkedBy]}
                     </small>
@@ -188,8 +185,9 @@ export function DriverSheet({
                   if (await split.run(splitting)) setSplitting(null);
                 }}
               >
-                {sourceLabels[splitting.source]} ID {splitting.id} ({splitting.name}) moves to a new
-                person with a new code. The two are kept apart from then on.
+                {sourceLabels[splitting.source]} ID {splitting.id}
+                {splitting.name && ` (${splitting.name})`} moves to a new person with a new code.
+                The two are kept apart from then on.
               </ConfirmDialog>
             )}
           </>

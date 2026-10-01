@@ -145,7 +145,7 @@ export function eventText(event: DriverEvent) {
   const other = event.name ? `${event.name} (${event.code})` : event.code;
   switch (event.kind) {
     case 'added':
-      return `Added from ${sourceName[event.source ?? 'paycom']} as ${event.name}`;
+      return `Added from ${sourceName[event.source ?? 'paycom']}${event.name ? ` as ${event.name}` : ''}`;
     case 'linked':
       return event.link === 'name'
         ? `${sourceName[event.source ?? 'amazon']} ID joined by the same name`

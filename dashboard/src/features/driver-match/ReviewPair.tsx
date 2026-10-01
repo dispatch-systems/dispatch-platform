@@ -30,7 +30,7 @@ export function ReviewPair({ pair, onOpen }: { pair: DriverPair; onOpen: (code: 
     <div className="driver-pair">
       <DriverButton driver={pair.paycom} onOpen={onOpen}>
         <small>
-          <b>Paycom</b> · {paycom?.name} · {paycom?.id}
+          <b>Paycom</b> · {[paycom?.name, paycom?.id].filter(Boolean).join(' · ')}
         </small>
         <small>{appears(pair.paycom.appears)}</small>
       </DriverButton>
