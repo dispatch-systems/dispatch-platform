@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cortexClock, fullName, displayMeal, type ClockTime } from '../../../lib/meal-breaks.js';
 import { type MealEmployee } from '../../../../../shared/contracts/meals.js';
 import type { TableColumn } from '../../../ui/index.js';
-import { Clock, GapBadge, LunchCell } from './cells.js';
+import { Clock, GapBadge, LunchCell, type SourceLink } from './cells.js';
 
 type Summary = ReturnType<typeof displayMeal>;
 type Pair = Summary['pairs'][number];
@@ -47,6 +47,12 @@ const delivery = (line: MealLine, side: 'lastDelivery' | 'firstDelivery') =>
   line.pair.cortex
     ? cortexClock(line.pair.cortex[side], line.date, line.pair.cortex.timezone)
     : null;
+// A Paycom time opens the employee's timecard, and a Flex time the route its meal was read
+// from. A missing time opens it too, whenever that timecard or meal exists.
+const paycomLink = ({ row }: MealLine): SourceLink | null =>
+  row.paycom?.sourceUrl ? { href: row.paycom.sourceUrl, site: 'Paycom' } : null;
+const cortexLink = ({ pair }: MealLine): SourceLink | null =>
+  pair.cortex?.sourceUrl ? { href: pair.cortex.sourceUrl, site: 'Cortex' } : null;
 const text = (clock?: ClockTime | null) =>
   clock ? `${clock.label}${clock.day ? ` (${clock.day > 0 ? '+' : ''}${clock.day}d)` : ''}` : '';
 // An export row is an employee, so a column with several meals lists them in order.
@@ -111,7 +117,12 @@ export const mealColumns: TableColumn<MealLine>[] = [
     sortHeader,
     value: (line) => text(line.summary.paycom.inDay),
     sortValue: (line) => line.summary.paycom.inDay?.minute ?? null,
-    cell: (line) => <Clock value={line.index === 0 ? line.summary.paycom.inDay : null} />,
+    cell: (line) =>
+      line.index === 0 ? (
+        <Clock value={line.summary.paycom.inDay} link={paycomLink(line)} />
+      ) : (
+        <Clock />
+      ),
   },
   {
     id: 'lastDelivery',
@@ -126,7 +137,7 @@ export const mealColumns: TableColumn<MealLine>[] = [
     ],
     cell: (line) => (
       <>
-        <Clock value={delivery(line, 'lastDelivery')} />
+        <Clock value={delivery(line, 'lastDelivery')} link={cortexLink(line)} />
         {line.pair.cortex && <GapBadge gap={line.pair.gaps.before} side="before" />}
       </>
     ),
@@ -145,8 +156,14 @@ export const mealColumns: TableColumn<MealLine>[] = [
       ['OUT LUNCH Paycom', (line) => meals(line, (meal) => text(meal.pair.lunch?.out))],
       ['OUT LUNCH Flex', (line) => meals(line, (meal) => text(meal.pair.out))],
     ],
-    cell: ({ pair }) => (
-      <LunchCell paycom={pair.lunch?.out} cortex={pair.out} difference={pair.outDifference} />
+    cell: (line) => (
+      <LunchCell
+        paycom={line.pair.lunch?.out}
+        cortex={line.pair.out}
+        difference={line.pair.outDifference}
+        paycomLink={paycomLink(line)}
+        cortexLink={cortexLink(line)}
+      />
     ),
   },
   {
@@ -162,8 +179,14 @@ export const mealColumns: TableColumn<MealLine>[] = [
       ['IN LUNCH Paycom', (line) => meals(line, (meal) => text(meal.pair.lunch?.in))],
       ['IN LUNCH Flex', (line) => meals(line, (meal) => text(meal.pair.into))],
     ],
-    cell: ({ pair }) => (
-      <LunchCell paycom={pair.lunch?.in} cortex={pair.into} difference={pair.inDifference} />
+    cell: (line) => (
+      <LunchCell
+        paycom={line.pair.lunch?.in}
+        cortex={line.pair.into}
+        difference={line.pair.inDifference}
+        paycomLink={paycomLink(line)}
+        cortexLink={cortexLink(line)}
+      />
     ),
   },
   {
@@ -179,7 +202,7 @@ export const mealColumns: TableColumn<MealLine>[] = [
     ],
     cell: (line) => (
       <>
-        <Clock value={delivery(line, 'firstDelivery')} />
+        <Clock value={delivery(line, 'firstDelivery')} link={cortexLink(line)} />
         {line.pair.cortex && <GapBadge gap={line.pair.gaps.after} side="after" />}
       </>
     ),
@@ -192,7 +215,12 @@ export const mealColumns: TableColumn<MealLine>[] = [
     sortHeader,
     value: (line) => text(line.summary.paycom.outDay),
     sortValue: (line) => line.summary.paycom.outDay?.minute ?? null,
-    cell: (line) => <Clock value={line.index === 0 ? line.summary.paycom.outDay : null} />,
+    cell: (line) =>
+      line.index === 0 ? (
+        <Clock value={line.summary.paycom.outDay} link={paycomLink(line)} />
+      ) : (
+        <Clock />
+      ),
   },
   {
     id: 'comparison',
