@@ -14,20 +14,15 @@ CREATE TABLE IF NOT EXISTS people (
     created_by TEXT
 );
 -- person_ids: one row per source ID, so an ID can never belong to two people; a person
--- may hold several of one source, after a rehire or a merge. The name is as the source
--- last wrote it, with Paycom's department and position, and the first and last day the
--- ID appears in what was collected. linked_by says how the ID came to its person: as its
--- first ID ('new'), by a unique name ('name') or name variant ('variant'), by a link saved
--- on the meal-break page ('saved'), or by someone's decision ('person').
+-- may hold several of one source, after a rehire or a merge. Only the ID is kept: names,
+-- departments and dates stay in the databases that collected them. linked_by says how the
+-- ID came to its person: as its first ID ('new'), by a unique name ('name') or name
+-- variant ('variant'), by a link saved on the meal-break page ('saved'), or by someone's
+-- decision ('person').
 CREATE TABLE IF NOT EXISTS person_ids (
     source TEXT NOT NULL CHECK(source IN ('paycom','amazon')),
     external_id TEXT NOT NULL,
     code TEXT NOT NULL REFERENCES people(code),
-    name TEXT NOT NULL,
-    department TEXT,
-    position TEXT,
-    first_seen TEXT,
-    last_seen TEXT,
     linked_by TEXT NOT NULL CHECK(linked_by IN ('new','name','variant','saved','person')),
     linked_at TEXT NOT NULL,
     actor_id TEXT,

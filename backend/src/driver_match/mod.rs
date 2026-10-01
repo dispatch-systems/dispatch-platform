@@ -22,7 +22,7 @@ use crate::{
 use matching::{Member, Saved};
 use rusqlite::params;
 use serde_json::{Value, json};
-use sources::{Days, Key, Seen};
+use sources::{Days, Identity, Key, Seen};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// When collected data was last checked for new IDs.
@@ -60,16 +60,12 @@ pub struct DriverSources {
     saved: Saved,
 }
 
-/// A row of `person_ids`.
+/// A row of `person_ids`: an ID, its person and how it came to them. Nothing a source
+/// says about the person is kept here; that stays in the source's own database.
 struct IdRow {
     source: DriverSource,
     external_id: String,
     code: String,
-    name: String,
-    department: Option<String>,
-    position: Option<String>,
-    first_seen: Option<String>,
-    last_seen: Option<String>,
     linked_by: DriverLink,
     linked_at: String,
     actor_id: Option<String>,
@@ -80,30 +76,29 @@ impl FromRow for IdRow {
             source: row.get("source")?,
             external_id: row.get("external_id")?,
             code: row.get("code")?,
-            name: row.get("name")?,
-            department: row.get("department")?,
-            position: row.get("position")?,
-            first_seen: row.get("first_seen")?,
-            last_seen: row.get("last_seen")?,
             linked_by: row.get("linked_by")?,
             linked_at: row.get("linked_at")?,
             actor_id: row.get("actor_id")?,
         })
     }
 }
+/// Every ID the collections hold now, as they describe it.
+type Found = BTreeMap<Key, Identity>;
 impl IdRow {
     fn key(&self) -> Key {
         (self.source, self.external_id.clone())
     }
-    fn public(&self) -> DriverId {
+    /// The ID as its sources describe it now; one no source holds any more shows bare.
+    fn public(&self, found: &Found) -> DriverId {
+        let x = found.get(&self.key());
         DriverId {
             source: self.source,
             id: self.external_id.clone(),
-            name: self.name.clone(),
-            department: self.department.clone(),
-            position: self.position.clone(),
-            first_seen: self.first_seen.clone(),
-            last_seen: self.last_seen.clone(),
+            name: x.map(|x| x.name().to_owned()).unwrap_or_default(),
+            department: x.and_then(|x| x.department.clone()),
+            position: x.and_then(|x| x.position.clone()),
+            first_seen: x.and_then(|x| x.first_seen.clone()),
+            last_seen: x.and_then(|x| x.last_seen.clone()),
             linked_by: self.linked_by,
             linked_at: self.linked_at.clone(),
         }
@@ -114,6 +109,7 @@ impl IdRow {
 struct Overview {
     result: DriverMatch,
     rows: Vec<IdRow>,
+    found: Found,
     activity: BTreeMap<Key, BTreeMap<DriverData, Seen>>,
     days: Days,
 }
@@ -124,6 +120,7 @@ fn driver(
     ids: &[&IdRow],
     activity: &BTreeMap<Key, BTreeMap<DriverData, Seen>>,
     departments: &DriverDepartments,
+    found: &Found,
 ) -> Driver {
     let paycom: Vec<&&IdRow> = ids
         .iter()
@@ -143,10 +140,11 @@ fn driver(
         }
     } else if amazon {
         DriverStatus::AmazonOnly
-    } else if paycom
-        .iter()
-        .all(|i| office(i.department.as_deref(), departments))
-    {
+    } else if paycom.iter().all(|i| {
+        found
+            .get(&i.key())
+            .is_some_and(|x| office(x.department.as_deref(), departments))
+    }) {
         DriverStatus::Office
     } else {
         DriverStatus::PaycomOnly
@@ -156,19 +154,28 @@ fn driver(
     let last_seen = seen
         .iter()
         .flat_map(|data| data.values().filter_map(|s| s.last.clone()))
-        .chain(ids.iter().filter_map(|i| i.last_seen.clone()))
+        .chain(
+            ids.iter()
+                .filter_map(|i| found.get(&i.key())?.last_seen.clone()),
+        )
         .max();
-    // Paycom's name is the legal one; Amazon's stands in when Paycom has none.
-    let name = paycom
-        .first()
-        .map(|i| names::display(&i.name))
-        .or_else(|| ids.first().map(|i| names::display(&i.name)))
+    // Paycom's name is the legal one; Amazon's stands in when Paycom has none, and an ID
+    // no source holds any more when neither does.
+    let written = |source: DriverSource| {
+        ids.iter()
+            .filter(|i| i.source == source)
+            .find_map(|i| found.get(&i.key()))
+            .map(|x| names::display(x.name()))
+    };
+    let name = written(DriverSource::Paycom)
+        .or_else(|| written(DriverSource::Amazon))
+        .or_else(|| ids.first().map(|i| i.external_id.clone()))
         .unwrap_or_default();
     Driver {
         code: code.to_owned(),
         name,
         status,
-        ids: ids.iter().map(|i| i.public()).collect(),
+        ids: ids.iter().map(|i| i.public(found)).collect(),
         appears: DATA
             .into_iter()
             .filter(|d| seen.iter().any(|data| data.contains_key(d)))
@@ -178,8 +185,7 @@ fn driver(
 }
 
 impl Store {
-    /// Gives every new ID in the DSP's collections a person, and keeps each known ID's
-    /// name, department and days current. Answers how many IDs were new.
+    /// Gives every new ID in the DSP's collections a person. Answers how many IDs were new.
     pub fn match_drivers(&self, dsp: &str) -> Result<usize> {
         self.assign_drivers(dsp, self.driver_sources(dsp)?)
     }
@@ -190,45 +196,24 @@ impl Store {
             saved: self.saved_links(dsp)?,
         })
     }
-    /// Writes what a pass found: people for new IDs, and known IDs' details kept current.
-    /// Who already holds what is read again here, so a decision made since the read stands.
+    /// Writes what a pass found: a person for every new ID. Who already holds what is read
+    /// again here, so a decision made since the read stands.
     pub fn assign_drivers(&self, dsp: &str, found: DriverSources) -> Result<usize> {
         let DriverSources { identities, saved } = found;
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let rows: Vec<IdRow> = db.query_as("SELECT * FROM person_ids", [])?;
-            let known: BTreeMap<Key, &IdRow> = rows.iter().map(|r| (r.key(), r)).collect();
-            let mut incoming = vec![];
-            for x in &identities {
-                let Some(row) = known.get(&(x.source, x.id.clone())) else {
-                    incoming.push(x.clone());
-                    continue;
-                };
-                if row.name != x.name()
-                    || row.department != x.department
-                    || row.position != x.position
-                    || row.first_seen != x.first_seen
-                    || row.last_seen != x.last_seen
-                {
-                    db.exec(
-                        "UPDATE person_ids SET name=?,department=?,position=?,first_seen=?,\
-                         last_seen=? WHERE source=? AND external_id=?",
-                        params![
-                            x.name(),
-                            x.department,
-                            x.position,
-                            x.first_seen,
-                            x.last_seen,
-                            x.source,
-                            x.id
-                        ],
-                    )?;
-                }
-            }
+            let known: BTreeSet<Key> = rows.iter().map(IdRow::key).collect();
             let names: BTreeMap<Key, &Vec<String>> = identities
                 .iter()
                 .map(|x| ((x.source, x.id.clone()), &x.names))
                 .collect();
+            let incoming: Vec<Identity> = identities
+                .iter()
+                .filter(|x| !known.contains(&(x.source, x.id.clone())))
+                .cloned()
+                .collect();
+            // An ID no source holds any more has no names to match by.
             let mut people: BTreeMap<String, Vec<Member>> = BTreeMap::new();
             for row in &rows {
                 people.entry(row.code.clone()).or_default().push(Member {
@@ -236,7 +221,8 @@ impl Store {
                     id: row.external_id.clone(),
                     names: names
                         .get(&row.key())
-                        .map_or_else(|| vec![row.name.clone()], |n| (*n).clone()),
+                        .map(|n| (*n).clone())
+                        .unwrap_or_default(),
                 });
             }
             let decided = matching::plan(people, &incoming, &saved);
@@ -254,20 +240,9 @@ impl Store {
                 };
                 let x = &incoming[*index];
                 db.exec(
-                    "INSERT INTO person_ids(source,external_id,code,name,department,position,\
-                     first_seen,last_seen,linked_by,linked_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                    params![
-                        x.source,
-                        x.id,
-                        code,
-                        x.name(),
-                        x.department,
-                        x.position,
-                        x.first_seen,
-                        x.last_seen,
-                        link,
-                        now
-                    ],
+                    "INSERT INTO person_ids(source,external_id,code,linked_by,linked_at) \
+                     VALUES (?,?,?,?,?)",
+                    params![x.source, x.id, code, link, now],
                 )?;
             }
             db.set(CHECKED, &json!(now))?;
@@ -331,7 +306,10 @@ impl Store {
     }
 
     fn overview(&self, dsp: &str) -> Result<Overview> {
-        let identities = sources::identities(self, dsp)?;
+        let found: Found = sources::identities(self, dsp)?
+            .into_iter()
+            .map(|x| ((x.source, x.id.clone()), x))
+            .collect();
         let activity = sources::activity(self, dsp)?;
         let days = sources::days(self, dsp)?;
         let saved = self.saved_links(dsp)?;
@@ -367,15 +345,9 @@ impl Store {
             .map(|(code, ids)| {
                 (
                     (*code).to_owned(),
-                    driver(code, ids, &activity, &departments),
+                    driver(code, ids, &activity, &departments, &found),
                 )
             })
-            .collect();
-        // Every name an ID's sources write, so a middle name or a different spelling in
-        // one of them still counts.
-        let spellings: BTreeMap<Key, &Vec<String>> = identities
-            .iter()
-            .map(|x| ((x.source, x.id.clone()), &x.names))
             .collect();
         // Someone kept these apart from Paycom on the meal-break page; that decision stands.
         let kept: BTreeSet<&str> = held
@@ -392,14 +364,12 @@ impl Store {
                 .filter(|(code, _)| drivers[**code].status == status && !kept.contains(**code))
                 .map(|(code, ids)| review::Side {
                     code,
+                    // Every name an ID's sources write, so a middle name or a different
+                    // spelling in one of them still counts.
                     names: ids
                         .iter()
-                        .flat_map(|i| {
-                            spellings.get(&i.key()).map_or_else(
-                                || vec![i.name.as_str()],
-                                |n| n.iter().map(String::as_str).collect(),
-                            )
-                        })
+                        .filter_map(|i| found.get(&i.key()))
+                        .flat_map(|x| x.names.iter().map(String::as_str))
                         .collect(),
                 })
                 .collect()
@@ -496,6 +466,7 @@ impl Store {
                 drivers: list,
             },
             rows,
+            found,
             activity,
             days,
         })
@@ -615,7 +586,10 @@ impl Store {
                 },
                 source: Some(id.source),
                 link: Some(id.linked_by),
-                name: Some(names::display(&id.name)),
+                name: overview
+                    .found
+                    .get(&id.key())
+                    .map(|x| names::display(x.name())),
                 code: None,
                 actor: self.actor_name(id.actor_id.as_deref())?,
             });
@@ -694,16 +668,6 @@ impl Store {
             409,
         )
     }
-    fn display_name(db: &Db, code: &str) -> Result<String> {
-        let rows = db.query_as::<(String, String)>(
-            "SELECT source,name FROM person_ids WHERE code=? ORDER BY source='amazon',linked_at",
-            [code],
-        )?;
-        Ok(rows
-            .first()
-            .map(|(_, name)| names::display(name))
-            .unwrap_or_default())
-    }
 
     /// Makes two people one: `code`'s IDs move to `into`, and `code` leads to `into` from
     /// now on. A decision that the two were different people no longer stands.
@@ -715,7 +679,7 @@ impl Store {
         )?;
         let dsp = c.dsp.id.as_str();
         let db = self.dsp(dsp)?;
-        let name = db.transaction(|| {
+        db.transaction(|| {
             Self::current(&db, code)?;
             Self::current(&db, into)?;
             let now = iso();
@@ -746,15 +710,16 @@ impl Store {
                     params![a, b, at, by],
                 )?;
             }
-            Self::display_name(&db, into)
+            Ok(())
         })?;
         drop(db);
+        // Codes, not names: what a collection says about someone stays in its database.
         self.audit_ref(
             Some(c.actor()),
             Some(dsp),
             "driver_match.merged",
             &format!("{code} into {into}"),
-            Some(&name),
+            Some(&format!("{code} and {into}")),
             &[("code", Some(code.to_owned()), Some(into.to_owned()))],
             Some(("driver", into)),
         )?;
@@ -773,7 +738,7 @@ impl Store {
         ensure(valid_code(code), "invalid_input", 400)?;
         let dsp = c.dsp.id.as_str();
         let db = self.dsp(dsp)?;
-        let (fresh, name) = db.transaction(|| {
+        let fresh = db.transaction(|| {
             Self::current(&db, code)?;
             ensure(
                 db.count(
@@ -800,7 +765,7 @@ impl Store {
                 "INSERT OR IGNORE INTO people_apart(first,second,decided_at,actor_id) VALUES (?,?,?,?)",
                 params![a, b, now, c.actor()],
             )?;
-            Ok((fresh.clone(), Self::display_name(&db, &fresh)?))
+            Ok(fresh)
         })?;
         drop(db);
         self.audit_ref(
@@ -808,7 +773,7 @@ impl Store {
             Some(dsp),
             "driver_match.split",
             &format!("{code} to {fresh}"),
-            Some(&name),
+            Some(&fresh),
             &[("code", Some(code.to_owned()), Some(fresh.clone()))],
             Some(("driver", &fresh)),
         )?;
@@ -829,18 +794,13 @@ impl Store {
         } else {
             (other, code)
         };
-        let names = db.transaction(|| {
+        db.transaction(|| {
             Self::current(&db, code)?;
             Self::current(&db, other)?;
             db.exec(
                 "INSERT OR IGNORE INTO people_apart(first,second,decided_at,actor_id) VALUES (?,?,?,?)",
                 params![first, second, iso(), c.actor()],
-            )?;
-            Ok(format!(
-                "{} and {}",
-                Self::display_name(&db, code)?,
-                Self::display_name(&db, other)?
-            ))
+            )
         })?;
         drop(db);
         self.audit_ref(
@@ -848,7 +808,7 @@ impl Store {
             Some(dsp),
             "driver_match.kept_apart",
             &format!("{code} and {other}"),
-            Some(&names),
+            Some(&format!("{code} and {other}")),
             &[],
             Some(("driver", code)),
         )?;

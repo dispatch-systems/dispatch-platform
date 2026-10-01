@@ -203,6 +203,9 @@ fn a_merge_makes_one_person_and_the_old_code_still_finds_them() {
         .unwrap();
     assert_eq!(s(&merge, "dsp_id"), id);
     assert_eq!(s(&merge, "detail"), format!("{tony} into {antonio}"));
+    // The entry names codes: what a collection says about someone stays in its database.
+    let data: serde_json::Value = serde_json::from_str(s(&merge, "data")).unwrap();
+    assert_eq!(data["target"], format!("{tony} and {antonio}"));
 }
 
 #[test]
