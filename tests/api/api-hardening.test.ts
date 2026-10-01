@@ -151,7 +151,7 @@ test('authentication and job contracts reject malformed values and validate real
   const job = (await owner.post('/api/dsp/jobs', { requestId: 'typed-job' })).value;
   assert.equal(jobSchema.parse(job).status, 'queued');
   await until(async () => {
-    const jobs = (await owner.get('/api/dsp/jobs')).value;
+    const jobs = await owner.read('/api/dsp/jobs');
     parseApiResponse('/api/dsp/jobs', 'GET', jobs);
     return jobs.find((j: { id: string }) => j.id === job.id).status === 'succeeded';
   });

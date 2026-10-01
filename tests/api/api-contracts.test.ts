@@ -122,8 +122,7 @@ test('job responses use recorded Rust metrics and accept historical records with
   const id = queued.value.id;
   let jobs: Job[] = [];
   await until(async () => {
-    const response = await owner.get('/api/dsp/jobs');
-    jobs = parseApiResponse('/api/dsp/jobs', 'GET', response.value) as Job[];
+    jobs = parseApiResponse('/api/dsp/jobs', 'GET', await owner.read('/api/dsp/jobs')) as Job[];
     return jobs.some((job) => job.id === id && job.status === 'succeeded');
   });
   const job = jobs.find((job) => job.id === id)!;

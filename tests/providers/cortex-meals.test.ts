@@ -44,7 +44,7 @@ test('Cortex meal jobs publish tenant-owned data and preserve provider isolation
     409,
   );
   await until(async () => {
-    const jobs = (await owner.get('/api/dsp/jobs')).value;
+    const jobs = await owner.read('/api/dsp/jobs');
     const j = jobs.find((j: any) => j.id === job.value.id);
     assert.notEqual(j.status, 'failed', JSON.stringify(j));
     return j.status === 'succeeded';

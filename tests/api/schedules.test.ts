@@ -105,7 +105,7 @@ test('meal and combined schedules require source setup and disconnect pauses aff
   assert.equal(seed.status, 202, seed.body);
   await until(
     async () =>
-      (await owner.get('/api/dsp/jobs')).value.find((j: any) => j.id === seed.value.id)?.status ===
+      (await owner.read('/api/dsp/jobs')).find((j: any) => j.id === seed.value.id)?.status ===
       'succeeded',
   );
   const combined = await owner.post(`/api/dsp/schedules/${paused.value.id}/enabled`, {
@@ -139,7 +139,7 @@ test('the live scheduler collects an overdue occurrence once and advances to the
   );
   await f.start();
   await until(async () =>
-    (await owner.get('/api/dsp/jobs')).value.some(
+    (await owner.read('/api/dsp/jobs')).some(
       (j: any) => j.actorId === null && j.status === 'succeeded',
     ),
   );

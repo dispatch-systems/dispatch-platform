@@ -12,8 +12,15 @@ async function inviteMember(page: Page, root: string) {
   await sheet.getByLabel('Email address').fill('new-member@dispatch.test');
   await sheet.getByLabel('Role').selectOption({ label: 'Member' });
   await sheet.getByRole('button', { name: 'Send invitation' }).click();
+  await expect(
+    page.getByText('Invitation email queued for new-member@dispatch.test', { exact: true }),
+  ).toBeVisible();
   const mail = await capturedMail(root, 'new-member@dispatch.test');
   const token = /token=([A-Za-z0-9_-]{43})/.exec(mail.text)![1];
+  // Leave the owner's dashboard before its session is cleared, so the invite opens in a
+  // fresh page as an invitee's would. Otherwise the dashboard's own refreshes after the
+  // invite are refused without the session, and signing the owner out can race the link.
+  await page.goto('about:blank');
   return `/#invite?token=${token}`;
 }
 

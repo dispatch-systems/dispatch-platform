@@ -25,7 +25,7 @@ test('collection metrics survive restart and an additive upgrade preserves old j
   ).value.id;
   let job: Job;
   await until(async () => {
-    job = (await owner.get('/api/dsp/jobs')).value.find((j: Job) => j.id === id);
+    job = (await owner.read('/api/dsp/jobs')).find((j: Job) => j.id === id);
     return job.status === 'succeeded';
   });
   const metrics = job!.metrics;

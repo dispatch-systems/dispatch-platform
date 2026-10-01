@@ -35,8 +35,8 @@ export async function seedDvic(app: Awaited<ReturnType<typeof fixture>>, count =
   });
   assert.equal(job.status, 202, job.body);
   await until(async () => {
-    const status = await owner.get('/api/dsp/dvic/status');
-    const current = status.value.jobs.find((item: { id: string }) => item.id === job.value.id);
+    const status = await owner.read('/api/dsp/dvic/status');
+    const current = status.jobs.find((item: { id: string }) => item.id === job.value.id);
     assert.notEqual(current?.status, 'failed', JSON.stringify(current));
     return current?.status === 'succeeded';
   });

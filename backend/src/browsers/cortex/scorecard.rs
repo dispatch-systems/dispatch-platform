@@ -262,6 +262,7 @@ impl Driver {
         let next = AtomicUsize::new(0);
         let done = AtomicUsize::new(0);
         let answered = AtomicBool::new(false);
+        let reporting = AtomicBool::new(false);
         let lanes = futures_util::future::join_all((0..LANES).map(|_| async {
             let mut read = Vec::new();
             loop {
@@ -279,12 +280,21 @@ impl Driver {
                 if !answered.swap(true, Ordering::SeqCst) {
                     self.browser.close().await;
                 }
-                let finished = done.fetch_add(1, Ordering::SeqCst) + 1;
-                run.progress(
-                    20 + (70 * finished / DATASETS.len()) as i64,
-                    format!("Reading scorecard datasets ({finished}/{})", DATASETS.len()),
-                )
-                .await?;
+                done.fetch_add(1, Ordering::SeqCst);
+                // Each progress update is a database write, and the datasets finish
+                // together: one write at a time shows the count, where one per lane would
+                // hold every database slot the platform answers requests with.
+                if !reporting.swap(true, Ordering::SeqCst) {
+                    let finished = done.load(Ordering::SeqCst);
+                    let written = run
+                        .progress(
+                            20 + (70 * finished / DATASETS.len()) as i64,
+                            format!("Reading scorecard datasets ({finished}/{})", DATASETS.len()),
+                        )
+                        .await;
+                    reporting.store(false, Ordering::SeqCst);
+                    written?;
+                }
                 read.push((index, url, rows));
             }
             Ok::<_, Error>(read)

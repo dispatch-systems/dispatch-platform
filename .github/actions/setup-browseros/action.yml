@@ -21,8 +21,13 @@ runs:
         mkdir -p ~/.cache/dispatch-browseros
         url=$(python3 -c "import json; print(json.load(open('tooling/browseros-release.json'))['url'])")
         curl --fail --location --silent --show-error --retry 3 --output ~/.cache/dispatch-browseros/browseros.deb "$url"
+    # Packages the runner image has stay as they are: upgrading them only downloads from a
+    # mirror that can stall for minutes. A stalled download is dropped and tried again.
     - shell: bash
       run: |
+        printf '%s\n' 'APT::Get::Upgrade "false";' 'Acquire::Retries "3";' \
+          'Acquire::http::Timeout "20";' 'Acquire::https::Timeout "20";' |
+          sudo tee /etc/apt/apt.conf.d/90-dispatch-ci > /dev/null
         sudo apt-get update -qq
         sudo apt-get install -y bubblewrap xvfb libxtst6 libnss3 libatk-bridge2.0-0 libgtk-3-0 libasound2t64 libgbm1
         sudo install -d -m 755 /usr/local/libexec/dispatch-dev

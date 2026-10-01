@@ -211,7 +211,7 @@ test(
       final.find((j) => j.id === jobs[1])!.metrics[0]!.queueMs >
         final.find((j) => j.id === jobs[0])!.metrics[0]!.queueMs,
     );
-    await until(async () => (await owner.get('/api/platform/health')).value.browsers.active === 0);
+    await until(async () => (await owner.read('/api/platform/health')).browsers.active === 0);
     latencies.sort((a, b) => a - b);
     const p95 = latencies[Math.ceil(latencies.length * 0.95) - 1]!;
     assert(

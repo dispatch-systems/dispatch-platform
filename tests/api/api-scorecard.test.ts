@@ -44,7 +44,7 @@ test('a scorecard week is collected on request, stored per dataset and listed, a
     queued.value.id,
   );
   await until(async () => {
-    const job = (await owner.get('/api/dsp/jobs')).value.find((j: any) => j.id === queued.value.id);
+    const job = (await owner.read('/api/dsp/jobs')).find((j: any) => j.id === queued.value.id);
     assert.notEqual(job.status, 'failed', JSON.stringify(job));
     return job.status === 'succeeded';
   });

@@ -118,9 +118,14 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       # The browser's system packages take about 14 seconds to install. They install in the
-      # background while the rest of the job sets up, and the suite waits for them.
+      # background while the rest of the job sets up, and the suite waits for them. Packages
+      # the runner image has stay as they are: upgrading them only downloads from a mirror
+      # that can stall for minutes. A stalled download is dropped and tried again.
       - name: Start installing the browser's system packages
         run: |
+          printf '%s\n' 'APT::Get::Upgrade "false";' 'Acquire::Retries "3";' \
+            'Acquire::http::Timeout "20";' 'Acquire::https::Timeout "20";' |
+            sudo tee /etc/apt/apt.conf.d/90-dispatch-ci > /dev/null
           (npx playwright install-deps chromium > "$RUNNER_TEMP/browser-packages.log" 2>&1
             echo $? > "$RUNNER_TEMP/browser-packages.written"
             mv "$RUNNER_TEMP/browser-packages.written" "$RUNNER_TEMP/browser-packages.status") &

@@ -147,12 +147,14 @@ export async function fixture(options: boolean | FixtureOptions = true) {
     });
     server = child;
     const from = logs.length;
-    // A browser that fails to start says why only in the server's log. Show that line in
-    // the test output as it happens, so a failure on a CI runner explains itself.
+    // A browser that fails to start, or a request the server failed, says why only in the
+    // server's log. Show those lines in the test output as they happen, so a failure on a
+    // CI runner explains itself.
     const keep = (data: Buffer) => {
       logs += data;
       for (const line of String(data).split('\n'))
-        if (line.includes('"browser.start_failed"')) process.stderr.write(`${line}\n`);
+        if (line.includes('"browser.start_failed"') || /"status":5\d\d\b/.test(line))
+          process.stderr.write(`${line}\n`);
     };
     child.stdout?.on('data', keep);
     child.stderr?.on('data', keep);
@@ -224,6 +226,25 @@ export async function fixture(options: boolean | FixtureOptions = true) {
       session: session.value,
       headers,
       get: (url: string) => request(url, undefined, headers),
+      /**
+       * What a GET answers, for a test that reads it, often while polling. A server
+       * shedding load answers 503 `platform_busy`, which a client tries again, as the
+       * dashboard does; any other answer but 200 fails with the server's own error.
+       */
+      read: async (url: string): Promise<any> => {
+        const start = Date.now();
+        let response = await request(url, undefined, headers);
+        while (
+          response.status === 503 &&
+          response.value?.error === 'platform_busy' &&
+          Date.now() - start < 10000
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          response = await request(url, undefined, headers);
+        }
+        assert.equal(response.status, 200, `GET ${url}: ${response.body}`);
+        return response.value;
+      },
       post: (url: string, body: unknown = {}) => request(url, body, headers),
       select: async (id: string) => {
         const view = await request('/api/session/dsp', { dspId: id }, headers);

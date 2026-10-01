@@ -53,6 +53,6 @@ export async function seedDriverMatch(app: App) {
   });
   await app.start();
   await owner.select(dsp.id);
-  await until(async () => (await owner.get('/api/dsp/driver-match')).value.review?.length >= 3);
+  await until(async () => (await owner.read('/api/dsp/driver-match')).review?.length >= 3);
   return dsp as { id: string; name: string };
 }
