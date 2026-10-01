@@ -173,6 +173,24 @@ fn names_dsps_and_expiries_are_checked() {
         db.create_agent_key(&user, &request(past)).unwrap_err().code,
         "invalid_expiry"
     );
+    // An expiry left as it was stays, however close it is.
+    let mut later = reach(&[&dsp]);
+    later["name"] = json!("Later");
+    let soon = db.create_agent_key(&user, &request(later.clone())).unwrap();
+    let close = db::at(db::now() + 30_000);
+    db.platform
+        .exec(
+            "UPDATE agent_keys SET expires_at=? WHERE id=?",
+            [close.clone(), soon.key.id.clone()],
+        )
+        .unwrap();
+    later["name"] = json!("Later still");
+    later["expiresAt"] = json!(close);
+    let renamed = db
+        .update_agent_key(&user, &soon.key.id, &request(later))
+        .unwrap();
+    assert_eq!(renamed.name, "Later still");
+    assert_eq!(renamed.expires_at.as_deref(), Some(close.as_str()));
     // A revoked key stays revoked.
     assert_eq!(
         db.update_agent_key(&user, &made.key.id, &request(reach(&[&dsp])))

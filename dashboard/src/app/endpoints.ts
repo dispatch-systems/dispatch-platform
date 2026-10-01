@@ -180,8 +180,10 @@ export async function agentWhoami(
       credentials: 'omit',
       headers: { Authorization: `Bearer ${token}` },
     });
-    const value = await response.json();
-    return response.ok ? { ok: true, value } : { ok: false, error: String(value.error) };
+    // A proxy's error page is no JSON; say what the server answered rather than nothing.
+    const value = await response.json().catch(() => undefined);
+    if (response.ok && value) return { ok: true, value };
+    return { ok: false, error: value?.error ? String(value.error) : `http_${response.status}` };
   } catch {
     return { ok: false, error: 'network_error' };
   }

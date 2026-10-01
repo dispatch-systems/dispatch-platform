@@ -56,6 +56,16 @@ impl Usage {
             })
             .collect()
     }
+    /// Marks keys' last calls as not yet written down again, after writing them failed.
+    /// The next take writes whatever each key's last call is by then.
+    pub fn unsaved(&self, keys: &[String]) {
+        let mut entries = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
+        for key in keys {
+            if let Some(entry) = entries.get_mut(key) {
+                entry.unsaved = true;
+            }
+        }
+    }
     /// Each key's last call as this process saw it, newer than what is written down.
     pub fn last(&self) -> HashMap<String, LastUse> {
         let keys = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
@@ -85,5 +95,10 @@ mod tests {
         assert_eq!(taken.len(), 2);
         assert!(usage.take().is_empty());
         assert_eq!(usage.last()["key_b"].1, "Codex 0.157");
+        // Writing them down failed: the next take finds them again.
+        usage.unsaved(&["key_b".to_owned(), "key_gone".to_owned()]);
+        let again = usage.take();
+        assert_eq!(again.len(), 1);
+        assert_eq!(again[0].0, "key_b");
     }
 }

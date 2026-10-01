@@ -251,7 +251,12 @@ impl Store {
         let before = self.agent_key(id)?;
         ensure(before.revoked_at.is_none(), "agent_key_revoked", 409)?;
         self.check_agent_key(Some(id), input)?;
-        let expires = expiry(input.expires_at.as_deref())?;
+        // An expiry left as it was stays, even one that is close or already past.
+        let expires = if input.expires_at == before.expires_at {
+            before.expires_at.clone()
+        } else {
+            expiry(input.expires_at.as_deref())?
+        };
         let reach = |all: bool, dsps: &[String]| {
             if all {
                 "all DSPs".to_owned()
@@ -346,17 +351,25 @@ impl Store {
 
     /// Revokes every key still in use: all of them, or only `owner`'s. Answers how many.
     pub fn revoke_agent_keys(&self, actor: Option<&str>, owner: Option<&str>) -> Result<usize> {
-        self.platform.transaction(|| {
-            let revoked = self.platform.exec(
-                "UPDATE agent_keys SET revoked_at=?1 WHERE revoked_at IS NULL \
-                 AND (?2 IS NULL OR user_id=?2)",
-                params![iso(), owner],
-            )?;
-            if revoked > 0 {
-                self.audit(actor, None, "agent.keys_revoked", &revoked.to_string())?;
-            }
-            Ok(revoked)
-        })
+        self.platform
+            .transaction(|| self.revoke_agent_keys_within(actor, owner))
+    }
+    /// The same inside a transaction the caller holds, so the revocation stands or falls
+    /// with what it belongs to, such as a password reset.
+    pub(crate) fn revoke_agent_keys_within(
+        &self,
+        actor: Option<&str>,
+        owner: Option<&str>,
+    ) -> Result<usize> {
+        let revoked = self.platform.exec(
+            "UPDATE agent_keys SET revoked_at=?1 WHERE revoked_at IS NULL \
+             AND (?2 IS NULL OR user_id=?2)",
+            params![iso(), owner],
+        )?;
+        if revoked > 0 {
+            self.audit(actor, None, "agent.keys_revoked", &revoked.to_string())?;
+        }
+        Ok(revoked)
     }
 
     /// The agent a key belongs to, or why it may not sign in.

@@ -10,6 +10,11 @@ impl Store {
                 .exec("DELETE FROM sessions WHERE user_id=?", [id])?;
             self.platform
                 .exec("DELETE FROM resets WHERE user_id=?", [id])?;
+            // A reset can follow a stolen password, so whatever it may have made stops too,
+            // in the same step as the password itself.
+            if action == "account.password_reset" {
+                self.revoke_agent_keys_within(Some(id), Some(id))?;
+            }
             self.audit(Some(id), None, action, "")
         })
     }
@@ -163,10 +168,7 @@ impl crate::State {
         self.run(move |db| {
             let fresh = db.reset_user(&raw)?;
             ensure(same_password_user(&fresh, &row), "reset_expired", 400)?;
-            db.replace_password(&row.user.id, &encoded, "account.password_reset")?;
-            // A reset can follow a stolen password, so whatever it may have made stops too.
-            db.revoke_agent_keys(Some(&row.user.id), Some(&row.user.id))?;
-            Ok(())
+            db.replace_password(&row.user.id, &encoded, "account.password_reset")
         })
         .await
     }

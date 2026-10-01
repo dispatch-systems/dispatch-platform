@@ -45,7 +45,9 @@ export function KeyTest({ token, label = 'Send test request' }: { token: string;
                   text:
                     failures[answer.error] ??
                     errorLabel(answer.error) ??
-                    'The test request failed.',
+                    (answer.error.startsWith('http_')
+                      ? `Dispatch answered ${answer.error.slice(5)} instead of the test.`
+                      : 'The test request failed.'),
                 },
           );
         }}
