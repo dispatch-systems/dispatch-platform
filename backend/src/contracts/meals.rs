@@ -66,34 +66,6 @@ pub struct MealEmployee {
     pub assessment: MealAssessment,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[serde(rename_all = "camelCase")]
-pub struct EmployeeLink {
-    pub id: String,
-    pub cortex_id: String,
-    pub paycom_code: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[serde(rename_all = "camelCase")]
-pub struct EmployeeLinks {
-    pub revision: u32,
-    pub links: Vec<EmployeeLink>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub separate: Option<Vec<String>>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[serde(rename_all = "camelCase")]
-pub struct MealRosterEmployee {
-    pub code: String,
-    pub name: String,
-}
-
 text_enum! {
     #[cfg_attr(test, derive(ts_rs::TS))]
     pub enum MatchType { Name => "name", Saved => "saved", Separate => "separate", Unmatched => "unmatched", }
@@ -135,7 +107,5 @@ pub struct MealComparison {
     pub rows: Vec<MealEmployee>,
     pub paycom_collected_at: Option<String>,
     pub cortex_publications: Vec<CortexPublication>,
-    pub employees: Vec<MealRosterEmployee>,
     pub drivers: Vec<MealDriver>,
-    pub links: EmployeeLinks,
 }

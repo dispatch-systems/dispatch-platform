@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { MealEmployee } from '../../shared/contracts/meals.js';
-import { fixture } from '../support/support.js';
+import type { Driver, DriverMatch } from '../../shared/contracts/index.js';
+import { fixture, until } from '../support/support.js';
 
-test('meal API requires DSP context, exposes the punch union to members, restricts link mutations to owners', async () => {
+test('meal API requires DSP context, exposes the punch union to members, and links only through Driver Match', async () => {
   const f = await fixture();
   try {
     const owner = await f.client();
@@ -21,36 +22,14 @@ test('meal API requires DSP context, exposes the punch union to members, restric
       [...new Set(response.value.rows.map((r: MealEmployee) => r.paycom?.department))].sort(),
       ['Delivery', 'Operations'],
     );
-    assert.equal(response.value.links.revision, 0);
     assert.equal((await owner.get('/api/dsp/paycom/meal-breaks?date=invalid')).status, 400);
     const member = await f.client('member@dispatch.test');
     await member.select(dsp.id);
     assert.equal((await member.get(`/api/dsp/paycom/meal-breaks?date=${date}`)).status, 200);
-    assert.equal(
-      (
-        await member.post('/api/dsp/paycom/employee-links', {
-          revision: 0,
-          changes: [{ cortexId: 'driver-1', paycomCode: null }],
-        })
-      ).status,
-      403,
-    );
-    const headers = { ...owner.headers };
-    delete headers['x-csrf-token'];
-    assert.equal(
-      (await f.request('/api/dsp/paycom/employee-links', { revision: 0, changes: [] }, headers))
-        .status,
-      403,
-    );
-    assert.equal(
-      (
-        await owner.post('/api/dsp/paycom/employee-links', {
-          revision: 0,
-          changes: [{ cortexId: 'absent', paycomCode: 'E001' }],
-        })
-      ).status,
-      409,
-    );
+    // The meal-break page's own link editor is gone; links are decided in Driver Match.
+    const retired = { revision: 0, changes: [{ cortexId: 'driver-1', paycomCode: null }] };
+    assert.equal((await member.post('/api/dsp/paycom/employee-links', retired)).status, 403);
+    assert.equal((await owner.post('/api/dsp/paycom/employee-links', retired)).status, 404);
   } finally {
     await f.close();
   }
@@ -126,26 +105,24 @@ test('name variants combine existing source records without recollection or losi
     assert.equal(row.cortex[0].end, `${date}T12:30:00Z`);
     assert.equal(row.cortex[0].firstDelivery, `${date}T12:32:00Z`);
   });
-  // Saved choices must still override the new automatic rules immediately.
-  assert.equal(
-    (
-      await owner.post('/api/dsp/paycom/employee-links', {
-        revision: 0,
-        changes: [{ cortexId: 'driver-0', paycomCode: null }],
-      })
-    ).status,
-    200,
-  );
+  // A decision in Driver Match overrides the automatic rules at once.
+  const holder = async (id: string) => {
+    let found: Driver | undefined;
+    await until(async () => {
+      const people: DriverMatch = (await owner.get('/api/dsp/driver-match')).value;
+      found = people.drivers.find((d) => d.ids.some((i) => i.id === id));
+      return Boolean(found);
+    });
+    return found!;
+  };
+  const jamie = await holder('driver-0');
+  assert.equal(jamie.ids.length, 2);
+  const split = { code: jamie.code, source: 'amazon', id: 'driver-0' };
+  assert.equal((await owner.post('/api/dsp/driver-match/split', split)).status, 200);
   assert.equal((await owner.get(endpoint)).value.rows.length, before.rows.length + 1);
-  assert.equal(
-    (
-      await owner.post('/api/dsp/paycom/employee-links', {
-        revision: 1,
-        changes: [{ cortexId: 'driver-0', paycomCode: null, automatic: true }],
-      })
-    ).status,
-    200,
-  );
+  const alone = await holder('driver-0');
+  const merge = { code: alone.code, into: jamie.code };
+  assert.equal((await owner.post('/api/dsp/driver-match/merge', merge)).status, 200);
   assert.equal((await owner.get(endpoint)).value.rows.length, before.rows.length);
 });
 

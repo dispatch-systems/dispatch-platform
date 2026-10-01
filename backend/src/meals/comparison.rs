@@ -1,17 +1,18 @@
-//! Read-only comparison across provider snapshots. Unique names can match
-//! automatically; saved overrides live in DSP storage, never in source records.
+//! Read-only comparison across provider snapshots. Drivers join employees through
+//! Driver Match; unique names join the drivers it has not reached yet.
 use crate::driver_match::names::{Name, name_key};
 use crate::{
     Result,
     collectors::Provider,
     contracts::{LateRule, MealComparison, MealSource},
-    db::{Store, n, s},
-    ensure, validate as v, workforce,
+    db::{Store, s},
+    validate as v, workforce,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-/// Links saved on the meal-break page; Driver Match reads them as decisions too.
+/// Links saved on the meal-break page before Driver Match, which reads them as decisions and
+/// writes its own back for the previous release.
 pub(crate) const LINKS: &str = "employees.provider_links";
 
 // Exact matches take priority over the more conservative name-variant pass.
@@ -99,96 +100,12 @@ fn match_drivers(drivers: &mut BTreeMap<String, Value>, roster: &[Value], settin
 }
 
 impl Store {
-    pub fn employee_links(&self, id: &str) -> Result<Value> {
-        self.dsp(id)?
-            .setting(LINKS, json!({"revision":0,"links":[]}))
-    }
-
-    pub fn save_employee_links(&self, id: &str, actor: &str, input: &Value) -> Result<Value> {
-        v::fields(input, &["revision", "changes"])?;
-        let revision = v::integer(input, "revision", 0, i64::MAX - 1)?;
-        let changes = input["changes"]
-            .as_array()
-            .ok_or_else(|| super::Error::new("invalid_input", 400))?;
-        ensure(
-            !changes.is_empty() && changes.len() <= 5000,
-            "invalid_input",
-            400,
-        )?;
-        let paycom = self.collector(id, Provider::Paycom)?;
-        let cortex = self.collector(id, Provider::Cortex)?;
-        let db = self.dsp(id)?;
-        let result = db.transaction(|| {
-            let before = db.setting(LINKS, json!({"revision":0,"links":[]}))?;
-            ensure(n(&before,"revision") == revision,"settings_changed_reload_before_saving",409)?;
-            let mut links = before["links"].as_array().cloned().unwrap_or_default();
-            let mut separate = before["separate"].as_array().cloned().unwrap_or_default();
-            let mut seen = HashSet::new();
-            for change in changes {
-                v::fields(change,&["cortexId","paycomCode","automatic"])?;
-                let automatic = match change.get("automatic") {
-                    None => false,
-                    Some(Value::Bool(value)) => *value,
-                    _ => return Err(super::Error::new("invalid_input",400)),
-                };
-                ensure(!automatic || change["paycomCode"].is_null(),"invalid_input",400)?;
-                let cortex_id = v::text(change,"cortexId",1,200)?;
-                ensure(seen.insert(cortex_id),"duplicate_employee_link",400)?;
-                // Unlinking remains possible after a provider's retained records expire.
-                links.retain(|link| s(link,"cortexId") != cortex_id);
-                separate.retain(|v| v.as_str() != Some(cortex_id));
-                if !change["paycomCode"].is_null() {
-                    let code = v::text(change,"paycomCode",1,64)?;
-                    ensure(paycom.one("SELECT 1 FROM employees WHERE code=? LIMIT 1",[code])?.is_some()
-                        && cortex.one("SELECT 1 FROM meal_itineraries WHERE transporter_id=? \
-                            LIMIT 1",[cortex_id])?.is_some(),"employee_link_source_missing",409)?;
-                    links.push(json!({"id":crate::crypto::id("employee")?,"cortexId":cortex_id,"paycomCode":code}));
-                } else if !automatic {
-                    separate.push(json!(cortex_id));
-                }
-            }
-            let mut codes = HashSet::new();
-            ensure(links.len() + separate.len() <= 5000 && links.iter().all(|l| codes.insert(s(l,"paycomCode"))),
-                "employee_already_linked",409)?;
-            let value = json!({"revision":revision+1,"links":links,"separate":separate});
-            db.set(LINKS,&value)?;
-            Ok(value)
-        })?;
-        // How many drivers were linked, kept apart from Paycom, or handed back to
-        // automatic matching.
-        let count = |kind: fn(&Value) -> bool| {
-            Some(changes.iter().filter(|c| kind(c)).count())
-                .filter(|count| *count > 0)
-                .map(|count| count.to_string())
-        };
-        let automatic = |c: &Value| c["automatic"] == json!(true);
-        let facts = [
-            ("linked", count(|c| !c["paycomCode"].is_null())),
-            (
-                "separated",
-                count(|c| c["paycomCode"].is_null() && c["automatic"] != json!(true)),
-            ),
-            ("automatic", count(automatic)),
-        ]
-        .into_iter()
-        .filter(|(_, count)| count.is_some())
-        .map(|(field, count)| (field, None, count))
-        .collect::<Vec<_>>();
-        self.audit_with(
-            Some(actor),
-            Some(id),
-            "employees.links_updated",
-            &format!("Revision {}; {} changes", revision + 1, changes.len()),
-            None,
-            &facts,
-        )?;
-        Ok(result)
-    }
-
     pub fn meal_comparison(&self, id: &str, date: &str, timezone: &str) -> Result<MealComparison> {
         v::date(date)?;
         let cortex = self.collector(id, Provider::Cortex)?;
-        let links = self.employee_links(id)?;
+        let links = self
+            .dsp(id)?
+            .setting(LINKS, json!({"revision":0,"links":[]}))?;
         let (publication, roster, cards) = self.daily_source(id, date)?;
         let mut rows = BTreeMap::new();
         for row in cards {
@@ -282,7 +199,42 @@ impl Store {
                 observations.push((p.clone(), itinerary, meals));
             }
         }
+        // Names join the drivers Driver Match has not given a person yet, such as those of
+        // a collection still running; Driver Match decides for every driver it knows.
         match_drivers(&mut drivers, &roster, &links);
+        let known = self.driver_links(id)?;
+        let listed: HashSet<&str> = roster.iter().map(|e| s(e, "code")).collect();
+        let separate: HashSet<&str> = links["separate"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        let mut claimed = HashSet::new();
+        for (transporter, driver) in drivers.iter_mut() {
+            let Some((codes, confirmed)) = known.get(transporter) else {
+                continue;
+            };
+            let code = codes.iter().find(|c| listed.contains(c.as_str()));
+            driver["paycomCode"] = json!(code);
+            driver["matchType"] = json!(match code {
+                Some(_) if *confirmed => "saved",
+                Some(_) => "name",
+                None if separate.contains(transporter.as_str()) => "separate",
+                None => "unmatched",
+            });
+            claimed.extend(code.cloned());
+        }
+        for (transporter, driver) in drivers.iter_mut() {
+            if !known.contains_key(transporter)
+                && driver["paycomCode"]
+                    .as_str()
+                    .is_some_and(|code| claimed.contains(code))
+            {
+                driver["paycomCode"] = Value::Null;
+                driver["matchType"] = json!("unmatched");
+            }
+        }
         let roster_by_code: HashMap<_, _> = roster
             .iter()
             .map(|employee| (s(employee, "code"), employee))
@@ -355,9 +307,7 @@ impl Store {
             rows,
             paycom_collected_at: publication.map(|p| s(&p, "collected_at").into()),
             cortex_publications: serde_json::from_value(json!(publications))?,
-            employees: serde_json::from_value(json!(roster))?,
             drivers: serde_json::from_value(json!(drivers.into_values().collect::<Vec<_>>()))?,
-            links: serde_json::from_value(links)?,
         })
     }
 }

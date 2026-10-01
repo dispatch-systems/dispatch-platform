@@ -13,12 +13,13 @@ export const collectionData = (url: string) =>
     '/api/dsp/paycom/settings',
     '/api/dsp/jobs',
     '/api/dsp/paycom/status',
+    '/api/dsp/driver-match',
   );
 
 export function collectionAffects(url: string, changes: CollectionChange[]) {
   const route = path(url);
   if (!collectionData(url)) return false;
-  if (begins(url, '/api/dsp/jobs', '/api/dsp/paycom/status')) return true;
+  if (begins(url, '/api/dsp/jobs', '/api/dsp/paycom/status', '/api/dsp/driver-match')) return true;
   return changes.some((change) => {
     if (change.provider === 'all') return true;
     if (change.provider === 'cortex' && route !== '/api/dsp/paycom/meal-breaks') return false;
@@ -40,7 +41,9 @@ export function mutationAffects(mutation: string, url: string) {
   if (write.startsWith('/api/dsp/dvic/')) return begins(url, '/api/dsp/dvic/');
   if (write.startsWith('/api/dsp/uniforms')) return begins(url, '/api/dsp/uniforms');
   if (write === '/api/dsp/paycom/settings') return collectionData(url) || path(url) === write;
-  if (write === '/api/dsp/paycom/employee-links') return begins(url, '/api/dsp/paycom/meal-breaks');
+  // A Driver Match decision moves drivers between rows of the meal-break comparison.
+  if (write.startsWith('/api/dsp/driver-match'))
+    return begins(url, '/api/dsp/driver-match', '/api/dsp/paycom/meal-breaks');
   if (write.startsWith('/api/dsp/jobs') || write.endsWith('/sync') || write.endsWith('/collect'))
     return (
       begins(url, '/api/dsp/jobs', '/api/dsp/paycom/status') ||

@@ -1,6 +1,8 @@
 use dispatch_backend::{
+    accounts::{Auth, Context},
     collectors::Provider,
     config::Config,
+    contracts::DriverSource,
     db::{Store, s},
     meals::{self, Scope},
     operations, workforce,
@@ -73,104 +75,89 @@ fn seed(db: &Store, id: &str) -> (String, String) {
     db.publish_meals(id, "job-meals", &capture, &scope).unwrap();
     (date, transporter)
 }
+/// A platform owner's view of the DSP, to decide in Driver Match.
+fn context(db: &Store, id: &str) -> Context {
+    db.enable_all_features(id).unwrap();
+    let auth = Auth {
+        user: serde_json::from_value(
+            json!({"id":actor(db),"email":"","firstName":"","lastName":"","platformOwner":true}),
+        )
+        .unwrap(),
+        hash: String::new(),
+        csrf: String::new(),
+        raw: String::new(),
+        preview: None,
+    };
+    db.context(&auth, id, "driver_match.manage").unwrap()
+}
+fn person(db: &Store, id: &str, source: DriverSource, external: &str) -> String {
+    db.driver_match(id)
+        .unwrap()
+        .drivers
+        .into_iter()
+        .find(|d| d.ids.iter().any(|i| i.source == source && i.id == external))
+        .unwrap()
+        .code
+}
+fn rows(data: &Value) -> &Vec<Value> {
+    data["rows"].as_array().unwrap()
+}
 #[test]
-fn union_matches_names_applies_overrides_and_retains_partial_source_only_employees() {
+fn drivers_join_employees_through_driver_match_and_names_cover_the_rest() {
     let (_root, db, id) = store();
     let (date, transporter) = seed(&db, &id);
-    let data = db
-        .meal_comparison(&id, &date, "UTC")
-        .map(|value| serde_json::to_value(value).unwrap())
-        .unwrap();
+    let compare = |db: &Store| {
+        db.meal_comparison(&id, &date, "UTC")
+            .map(|value| serde_json::to_value(value).unwrap())
+            .unwrap()
+    };
+    // Before Driver Match has given anyone a person, a unique name joins the driver.
+    let data = compare(&db);
     assert_eq!(data["timezone"], "America/Los_Angeles");
-    assert_eq!(data["rows"].as_array().unwrap().len(), 11);
+    assert_eq!(rows(&data).len(), 11);
     assert_eq!(data["drivers"][0]["matchType"], "name");
     assert_eq!(data["drivers"][0]["paycomCode"], "E001");
-    // Reading comparisons does not persist inferred identities.
-    assert_eq!(db.employee_links(&id).unwrap()["revision"], 0);
-    assert_eq!(data["links"]["links"], json!([]));
     assert!(
-        !data["rows"]
-            .as_array()
-            .unwrap()
+        !rows(&data)
             .iter()
             .any(|r| r["paycom"]["employeeCode"] == "E002")
     );
     assert!(
-        data["rows"]
-            .as_array()
-            .unwrap()
+        rows(&data)
             .iter()
             .any(|r| r["paycom"]["employeeCode"] == "E003")
     );
-    db.save_employee_links(
-        &id,
-        &actor(&db),
-        &json!({"revision":0,"changes":[{"cortexId":transporter,"paycomCode":"E001"}]}),
-    )
-    .unwrap();
-    let data = db
-        .meal_comparison(&id, &date, "UTC")
-        .map(|value| serde_json::to_value(value).unwrap())
+    // Driver Match gives the same answer, and its decisions move the driver.
+    let c = context(&db, &id);
+    db.match_drivers(&id).unwrap();
+    assert_eq!(compare(&db)["drivers"][0]["paycomCode"], "E001");
+    let demo = person(&db, &id, DriverSource::Amazon, &transporter);
+    db.split_driver(&c, &demo, DriverSource::Amazon, &transporter)
         .unwrap();
-    assert_eq!(data["rows"].as_array().unwrap().len(), 11);
+    let data = compare(&db);
+    assert_eq!(data["drivers"][0]["matchType"], "unmatched");
+    assert_eq!(rows(&data).len(), 12);
+    let alone = person(&db, &id, DriverSource::Amazon, &transporter);
+    let second = person(&db, &id, DriverSource::Paycom, "E002");
+    db.merge_drivers(&c, &alone, &second).unwrap();
+    let data = compare(&db);
     assert_eq!(data["drivers"][0]["matchType"], "saved");
-    let linked = data["rows"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|r| r["paycom"]["employeeCode"] == "E001")
-        .unwrap();
-    assert_eq!(linked["cortex"].as_array().unwrap().len(), 1);
-    assert!(linked["cortex"][0]["lastDelivery"].is_string());
-    assert_eq!(
-        db.save_employee_links(
-            &id,
-            &actor(&db),
-            &json!({"revision":0,"changes":[{"cortexId":transporter,"paycomCode":null}]})
-        )
-        .unwrap_err()
-        .code,
-        "settings_changed_reload_before_saving"
-    );
-    db.save_employee_links(
-        &id,
-        &actor(&db),
-        &json!({"revision":1,"changes":[{"cortexId":transporter,"paycomCode":"E002"}]}),
-    )
-    .unwrap();
-    let data = db
-        .meal_comparison(&id, &date, "UTC")
-        .map(|value| serde_json::to_value(value).unwrap())
-        .unwrap();
-    let linked = data["rows"]
-        .as_array()
-        .unwrap()
+    assert_eq!(data["drivers"][0]["paycomCode"], "E002");
+    let linked = rows(&data)
         .iter()
         .find(|r| r["id"] == "paycom:E002")
         .unwrap();
     assert!(linked["paycom"].is_null());
     assert_eq!(linked["cortex"].as_array().unwrap().len(), 1);
-    db.save_employee_links(
-        &id,
-        &actor(&db),
-        &json!({"revision":2,"changes":[{"cortexId":transporter,"paycomCode":null}]}),
-    )
-    .unwrap();
-    let separate = db
-        .meal_comparison(&id, &date, "UTC")
-        .map(|value| serde_json::to_value(value).unwrap())
+    assert!(linked["cortex"][0]["lastDelivery"].is_string());
+    // The previous release reads the same link where the meal-break page kept it.
+    let legacy = db
+        .dsp(&id)
+        .unwrap()
+        .setting("employees.provider_links", Value::Null)
         .unwrap();
-    assert_eq!(separate["rows"].as_array().unwrap().len(), 12);
-    assert_eq!(separate["drivers"][0]["matchType"], "separate");
-    assert_eq!(separate["links"]["separate"], json!([transporter]));
-    db.save_employee_links(&id, &actor(&db), &json!({"revision":3,"changes":[{"cortexId":transporter,"paycomCode":null,"automatic":true}]})).unwrap();
-    let automatic = db
-        .meal_comparison(&id, &date, "UTC")
-        .map(|value| serde_json::to_value(value).unwrap())
-        .unwrap();
-    assert_eq!(automatic["rows"].as_array().unwrap().len(), 11);
-    assert_eq!(automatic["drivers"][0]["matchType"], "name");
-    assert_eq!(automatic["links"]["separate"], json!([]));
+    assert_eq!(legacy["links"][0]["cortexId"], json!(transporter));
+    assert_eq!(legacy["links"][0]["paycomCode"], "E002");
     assert_eq!(
         db.meal_comparison(&id, "2020-01-01", "UTC")
             .map(|value| serde_json::to_value(value).unwrap())
@@ -191,59 +178,60 @@ fn union_matches_names_applies_overrides_and_retains_partial_source_only_employe
         0
     );
 }
+/// Adds a meal-break driver to the day's publication, as a collection would have.
+fn add_driver(db: &Store, id: &str, transporter: &str, name: &str) {
+    let cortex = db.collector(id, Provider::Cortex).unwrap();
+    let itinerary = format!("itinerary-{transporter}");
+    cortex
+        .exec(
+            "INSERT INTO meal_itineraries SELECT publication_id,?1,?2,?3,route_code,observed_at,\
+             route_complete,delivery_coverage,meal_state FROM meal_itineraries LIMIT 1",
+            [itinerary.as_str(), transporter, name],
+        )
+        .unwrap();
+    cortex
+        .exec(
+            "INSERT INTO meal_records SELECT publication_id,?1,meal_id,last_delivery_at,\
+             started_at,ended_at,first_delivery_at,before_status,after_status FROM meal_records \
+             LIMIT 1",
+            [itinerary.as_str()],
+        )
+        .unwrap();
+}
 #[test]
-fn link_changes_are_atomic_unique_scoped_and_rollback_readable() {
+fn a_driver_driver_match_has_not_reached_never_takes_an_employee_it_gave_someone() {
     let (_root, db, id) = store();
-    let (_, transporter) = seed(&db, &id);
-    let invalid = json!({"revision":0,"changes":[{"cortexId":transporter,"paycomCode":"E001"},{"cortexId":"unknown","paycomCode":"E002"}]});
+    let (date, _) = seed(&db, &id);
+    // Driver Match joins "Luis Hernandez" to the employee by a name variant.
+    let mut roster = workforce::fixture_date("America/Los_Angeles", Some(DEMO_DAY)).unwrap();
+    roster["employees"][2]["name"] = json!("HERNANDEZ ORTIZ, LUIS");
+    db.publish(&id, &roster).unwrap();
+    add_driver(&db, &id, "luis", "Luis Hernandez");
+    db.match_drivers(&id).unwrap();
     assert_eq!(
-        db.save_employee_links(&id, &actor(&db), &invalid)
-            .unwrap_err()
-            .code,
-        "employee_link_source_missing"
+        person(&db, &id, DriverSource::Amazon, "luis"),
+        person(&db, &id, DriverSource::Paycom, "E003")
     );
-    assert_eq!(db.employee_links(&id).unwrap()["revision"], 0);
-    db.collector(&id, Provider::Cortex).unwrap().exec(
-        "INSERT INTO meal_itineraries SELECT publication_id,itinerary_id||'-2',transporter_id||'-2',driver_name,route_code,observed_at,route_complete,delivery_coverage,meal_state FROM meal_itineraries",[]
-    ).unwrap();
-    assert_eq!(
-        db.save_employee_links(
-            &id,
-            &actor(&db),
-            &json!({"revision":0,"changes":[
-                {"cortexId":transporter,"paycomCode":"E001"},
-                {"cortexId":format!("{transporter}-2"),"paycomCode":"E001"}
-            ]})
-        )
-        .unwrap_err()
-        .code,
-        "employee_already_linked"
-    );
-    assert_eq!(db.employee_links(&id).unwrap()["links"], json!([]));
-    let user: Value = db
-        .platform
-        .one("SELECT id FROM users LIMIT 1", [])
-        .unwrap()
+    // A driver arriving with the employee's exact name before Driver Match runs again
+    // would match by name; the employee is already someone's.
+    add_driver(&db, &id, "late", "Luis Hernandez Ortiz");
+    let data = db
+        .meal_comparison(&id, &date, "UTC")
+        .map(|value| serde_json::to_value(value).unwrap())
         .unwrap();
-    let other = db
-        .create_dsp("Another DSP", "UTC", s(&user, "id"), false)
-        .unwrap();
-    assert!(
-        db.save_employee_links(
-            s(&other, "id"),
-            &actor(&db),
-            &json!({"revision":0,"changes":[{"cortexId":transporter,"paycomCode":"E001"}]})
-        )
-        .is_err()
-    );
-    assert_eq!(
-        db.dsp(&id)
+    let driver = |tid: &str| {
+        data["drivers"]
+            .as_array()
             .unwrap()
-            .one("PRAGMA user_version", [])
+            .iter()
+            .find(|d| d["id"] == tid)
+            .cloned()
             .unwrap()
-            .unwrap()["user_version"],
-        1
-    );
+    };
+    assert_eq!(driver("luis")["paycomCode"], "E003");
+    assert_eq!(driver("luis")["matchType"], "name");
+    assert_eq!(driver("late")["matchType"], "unmatched");
+    assert!(driver("late")["paycomCode"].is_null());
 }
 #[test]
 fn newer_empty_scope_suppresses_stale_meals_and_latest_paycom_period_wins() {

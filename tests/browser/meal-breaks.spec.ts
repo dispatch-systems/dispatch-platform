@@ -80,7 +80,6 @@ function sample(): MealComparisonSource {
     cortexPublications: [
       { station: 'DEMO1', timezone: 'America/Los_Angeles', collectedAt: '2026-09-16T06:00:00Z' },
     ],
-    employees: rows.map((r, i) => ({ code: `E00${i + 1}`, name: r.name })),
     drivers: rows.flatMap((r, i) =>
       r.cortex.map((m) => ({
         id: m.cortexId,
@@ -89,10 +88,6 @@ function sample(): MealComparisonSource {
         matchType: 'name' as const,
       })),
     ),
-    links: {
-      revision: 1,
-      links: [],
-    },
   };
 }
 async function open(page: Page, member = false, selectedDate: string | null = date) {
@@ -105,7 +100,7 @@ async function open(page: Page, member = false, selectedDate: string | null = da
   await page.getByRole('tab', { name: 'Meal Breaks', exact: true }).click();
   if (selectedDate) await setDate(page, selectedDate);
 }
-test('approved comparison table, filters, details, links, date errors and mobile overflow', async ({
+test('approved comparison table, filters, details, unmatched drivers, date errors and mobile overflow', async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -130,28 +125,6 @@ test('approved comparison table, filters, details, links, date errors and mobile
       });
     await route.fulfill({ json: assessMealResponse({ ...data, date: selected }) });
   });
-  await page.route('**/api/dsp/paycom/employee-links', async (route) => {
-    const input = route.request().postDataJSON();
-    expect(input.revision).toBe(data.links.revision);
-    const restore = input.revision === 2;
-    expect(input.changes).toEqual([
-      { cortexId: 'driver-5', paycomCode: null, ...(restore ? { automatic: true } : {}) },
-    ]);
-    data = {
-      ...data,
-      links: {
-        revision: data.links.revision + 1,
-        links: [],
-        separate: restore ? [] : ['driver-5'],
-      },
-      drivers: data.drivers.map((d) =>
-        d.id === 'driver-5'
-          ? { ...d, paycomCode: restore ? 'E005' : null, matchType: restore ? 'name' : 'separate' }
-          : d,
-      ),
-    };
-    await route.fulfill({ json: data.links });
-  });
   await page.setViewportSize({ width: 1586, height: 992 });
   await page.evaluate(() => window.scrollTo(0, 0));
   await open(page);
@@ -168,7 +141,8 @@ test('approved comparison table, filters, details, links, date errors and mobile
   await page.getByLabel('About meal break data').click();
   await expect(page.getByText('Delivery gaps use Flex only:', { exact: false })).toBeVisible();
   await page.getByLabel('About meal break data').click();
-  await expect(page.getByText('4 matched automatically.', { exact: false })).toBeVisible();
+  // Every driver is matched, so nothing asks for review.
+  await expect(page.locator('.meal-link-notice')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Different times 1', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Missing data 3', exact: true })).toBeVisible();
   await expect(page.getByRole('row').filter({ hasText: 'Alex Morgan' })).toContainText('2:33 PM');
@@ -192,18 +166,27 @@ test('approved comparison table, filters, details, links, date errors and mobile
   await expect(page.getByRole('heading', { name: 'Paycom punches', exact: true })).toBeVisible();
   await expect(page.locator('.meal-detail')).toContainText('America/Los_Angeles');
   await page.getByLabel('Search meal break employees').fill('');
-  await page.getByRole('button', { name: 'Manage employee links', exact: true }).click();
-  await expect(page.getByLabel('Paycom employee for Casey Brooks')).toHaveValue('auto');
-  await page.getByLabel('Paycom employee for Casey Brooks').selectOption('');
-  await page.getByRole('button', { name: 'Save 1 link', exact: true }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.getByText('1 kept separate by choice.', { exact: false })).toBeVisible();
-  await page.getByRole('button', { name: 'Manage employee links', exact: true }).click();
-  await expect(page.getByLabel('Paycom employee for Casey Brooks')).toHaveValue('');
-  await page.getByLabel('Paycom employee for Casey Brooks').selectOption('auto');
-  await page.getByRole('button', { name: 'Save 1 link', exact: true }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.getByText('4 matched automatically.', { exact: false })).toBeVisible();
+  // A driver Driver Match has not matched appears alone, with the way to review them.
+  data = {
+    ...data,
+    drivers: data.drivers.map((d) =>
+      d.id === 'driver-5' ? { ...d, paycomCode: null, matchType: 'unmatched' as const } : d,
+    ),
+  };
+  await page.getByRole('button', { name: 'Refresh meal breaks', exact: true }).click();
+  await expect(
+    page.getByText('1 Flex driver is not matched to a Paycom employee', { exact: false }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Review in Driver Match', exact: true }).click();
+  await expect(page).toHaveURL(/settings\?tab=driver-match/);
+  await expect(page.getByRole('tab', { name: /Driver Match/ })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.getByRole('link', { name: 'Timecard', exact: true }).click();
+  await page.getByRole('tab', { name: 'Meal Breaks', exact: true }).click();
+  await setDate(page, date);
+  await expect(page.locator('.meal-table tbody > tr')).toHaveCount(5);
   await page.getByRole('button', { name: 'Previous day', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Previous day', exact: true })).toBeFocused();
   await expect(page.getByRole('alert')).toBeVisible();
@@ -424,7 +407,7 @@ test('members can open real collected punch data without management controls', a
   await open(page, true);
   await page.getByRole('button', { name: 'Today', exact: true }).click();
   await expect(page.locator('.meal-table tbody > tr')).toHaveCount(12);
-  await expect(page.getByRole('button', { name: /employee links/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Review in Driver Match' })).toHaveCount(0);
   await expect(
     page.getByText('Flex has no collection for this date.', { exact: false }),
   ).toBeVisible();

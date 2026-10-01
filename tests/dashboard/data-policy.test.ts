@@ -42,11 +42,21 @@ test('a driver checkpoint touches its employee and days, not another driver, ros
 test('writes invalidate their dependencies without flushing unrelated features', () => {
   assert.equal(mutationAffects('/api/dsp/paycom/settings', '/api/dsp/employees/A'), true);
   assert.equal(mutationAffects('/api/dsp/uniforms/stock/A', '/api/dsp/employees/A'), false);
+  // A Driver Match decision moves drivers between meal-break rows, and nothing else.
   assert.equal(
-    mutationAffects(
-      '/api/dsp/paycom/employee-links',
-      '/api/dsp/paycom/meal-breaks?date=2026-09-22',
-    ),
+    mutationAffects('/api/dsp/driver-match/merge', '/api/dsp/paycom/meal-breaks?date=2026-09-22'),
+    true,
+  );
+  assert.equal(
+    mutationAffects('/api/dsp/driver-match/apart', '/api/dsp/driver-match/drivers/K7M2QX'),
+    true,
+  );
+  assert.equal(mutationAffects('/api/dsp/driver-match/split', '/api/dsp/timecards'), false);
+  // A finished collection can bring new drivers to match.
+  assert.equal(
+    collectionAffects('/api/dsp/driver-match', [
+      { provider: 'cortex', dates: ['2026-09-22'], employeeCode: null, roster: false },
+    ]),
     true,
   );
   assert.equal(mutationAffects('/api/dsp/employees/A/sync', '/api/dsp/employees/A'), true);

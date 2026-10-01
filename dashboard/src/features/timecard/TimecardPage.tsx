@@ -192,7 +192,8 @@ export function PaycomPage({ view }: { view: DspView }) {
           onDateChange={selectDate}
           refreshKey={refreshKey}
           timezone={view.dsp.timezone}
-          owner={can(view, 'timecard.manage')}
+          dspId={view.dsp.id}
+          canMatch={can(view, 'driver_match.manage')}
           preferences={preferences.data?.values ?? paycomDefaults}
         />
       ) : canConnect && data && !data.enabled && !overview.data?.workforce.collectedAt ? (

@@ -41,6 +41,9 @@ import type {
   AccountSession,
   SecurityStatus,
   PasskeySummary,
+  DriverDetails,
+  DriverMatch,
+  DriverSource,
 } from '../../../shared/contracts/index.js';
 import type { ScheduleInput } from '../../../shared/contracts/schedules.js';
 
@@ -135,6 +138,20 @@ export const setScheduleEnabled = (id: string, enabled: boolean, revision: numbe
   api<CollectionSchedule>(`${schedules}/${id}/enabled`, { enabled, revision });
 export const removeSchedule = (id: string, revision: number) =>
   api(`${schedules}/${id}/remove`, { revision });
+
+const driverMatch = '/api/dsp/driver-match';
+/** Everyone with a Driver Match code, and the pairs that may be one person. */
+export const useDriverMatch = () => useCachedData<DriverMatch>(driverMatch);
+export const useDriverDetails = (code: string) =>
+  useCachedData<DriverDetails>(`${driverMatch}/drivers/${encodeURIComponent(code)}`);
+/** `code`'s IDs move to `into`, whose code both keep from then on. */
+export const mergeDrivers = (code: string, into: string) =>
+  api<DriverMatch>(`${driverMatch}/merge`, { code, into });
+/** One of `code`'s IDs moves to a new person. */
+export const splitDriver = (code: string, source: DriverSource, id: string) =>
+  api<DriverMatch>(`${driverMatch}/split`, { code, source, id });
+export const keepDriversApart = (code: string, other: string) =>
+  api<DriverMatch>(`${driverMatch}/apart`, { code, other });
 
 export const connectionUrl = (provider: Connection['provider']) =>
   `/api/dsp/connections/${provider}`;

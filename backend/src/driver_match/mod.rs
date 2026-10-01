@@ -657,6 +657,82 @@ impl Store {
         })
     }
 
+    /// Every Amazon driver with a person: the Paycom codes that person holds, and whether
+    /// someone confirmed them rather than a name. The meal-break comparison joins by this.
+    pub fn driver_links(&self, dsp: &str) -> Result<BTreeMap<String, (Vec<String>, bool)>> {
+        let rows: Vec<IdRow> = self.dsp(dsp)?.query_as(
+            "SELECT * FROM person_ids ORDER BY linked_at,external_id",
+            [],
+        )?;
+        let mut people: BTreeMap<&str, Vec<&IdRow>> = BTreeMap::new();
+        for row in &rows {
+            people.entry(&row.code).or_default().push(row);
+        }
+        let mut out = BTreeMap::new();
+        for ids in people.values() {
+            let paycom: Vec<String> = ids
+                .iter()
+                .filter(|i| i.source == DriverSource::Paycom)
+                .map(|i| i.external_id.clone())
+                .collect();
+            let confirmed = ids
+                .iter()
+                .any(|i| matches!(i.linked_by, DriverLink::Person | DriverLink::Saved));
+            for id in ids.iter().filter(|i| i.source == DriverSource::Amazon) {
+                out.insert(id.external_id.clone(), (paycom.clone(), confirmed));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Writes the confirmed links back where the meal-break page kept them, so the previous
+    /// release still sees them after a rollback. Remove once that release can no longer be
+    /// rolled back to.
+    fn mirror_links(db: &Db) -> Result<()> {
+        let before = db.setting(crate::meals::LINKS, json!({"revision":0,"links":[]}))?;
+        let mut taken = BTreeSet::new();
+        let mut links = vec![];
+        for (amazon, paycom) in db.query_as::<(String, String)>(
+            "SELECT a.external_id,p.external_id FROM person_ids a JOIN person_ids p \
+             ON p.code=a.code AND p.source='paycom' WHERE a.source='amazon' AND EXISTS \
+             (SELECT 1 FROM person_ids c WHERE c.code=a.code AND c.linked_by IN ('saved','person')) \
+             ORDER BY a.linked_at,a.external_id,p.linked_at",
+            [],
+        )? {
+            // The previous release lets each Paycom code be linked once.
+            if taken.insert(paycom.clone()) {
+                links.push(json!({"id":crypto::id("employee")?,"cortexId":amazon,"paycomCode":paycom}));
+            }
+        }
+        // A link saved for a driver whose data is no longer stored has no person to speak
+        // for it, so it stays as it was saved.
+        let known: BTreeSet<String> = db
+            .query_as::<(String,)>(
+                "SELECT external_id FROM person_ids WHERE source='amazon'",
+                [],
+            )?
+            .into_iter()
+            .map(|(id,)| id)
+            .collect();
+        for link in before["links"].as_array().into_iter().flatten() {
+            if let (Some(amazon), Some(paycom)) =
+                (link["cortexId"].as_str(), link["paycomCode"].as_str())
+                && !known.contains(amazon)
+                && taken.insert(paycom.to_owned())
+            {
+                links.push(link.clone());
+            }
+        }
+        db.set(
+            crate::meals::LINKS,
+            &json!({
+                "revision": before["revision"].as_i64().unwrap_or(0) + 1,
+                "links": links,
+                "separate": before["separate"].clone(),
+            }),
+        )
+    }
+
     /// Answers whether `code` is a person who still holds their IDs.
     fn current(db: &Db, code: &str) -> Result<()> {
         ensure(
@@ -710,7 +786,7 @@ impl Store {
                     params![a, b, at, by],
                 )?;
             }
-            Ok(())
+            Self::mirror_links(&db)
         })?;
         drop(db);
         // Codes, not names: what a collection says about someone stays in its database.
@@ -765,6 +841,7 @@ impl Store {
                 "INSERT OR IGNORE INTO people_apart(first,second,decided_at,actor_id) VALUES (?,?,?,?)",
                 params![a, b, now, c.actor()],
             )?;
+            Self::mirror_links(&db)?;
             Ok(fresh)
         })?;
         drop(db);

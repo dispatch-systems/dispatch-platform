@@ -1,7 +1,8 @@
 import { useUpdateState } from '../../../app/browser-update.js';
-import { useMemo, useState } from 'react';
-import { AlertTriangle, Download, Globe, Info, Link2, RefreshCw } from 'lucide-react';
+import { useMemo } from 'react';
+import { AlertTriangle, ArrowRight, Download, Globe, Info, RefreshCw } from 'lucide-react';
 import { mealComparisonUrl, useMealComparison } from '../../../app/endpoints.js';
+import { dspHash, navigate } from '../../../app/navigation.js';
 import { useTableState } from '../../../app/useTableState.js';
 import {
   DataState,
@@ -19,7 +20,6 @@ import { type MealEmployee } from '../../../../../shared/contracts/meals.js';
 import type { PaycomPreferences } from '../../../../../shared/contracts/paycom.js';
 import { PaycomDateControls } from '../DateControls.js';
 import { MealDetail, mealColumns, mealLines } from './mealColumns.js';
-import { LinkEmployees } from './LinkEmployees.js';
 import { useAdjacentDays } from '../useAdjacentDays.js';
 import './meal-breaks.css';
 
@@ -29,7 +29,8 @@ export function MealBreaksPage({
   onDateChange,
   refreshKey,
   timezone,
-  owner,
+  dspId,
+  canMatch,
   preferences,
 }: {
   date: string;
@@ -37,13 +38,14 @@ export function MealBreaksPage({
   onDateChange: (date: string) => void;
   refreshKey?: string | null;
   timezone: string;
-  owner: boolean;
+  dspId: string;
+  /** Whether the person may review matches in Settings → Driver Match. */
+  canMatch: boolean;
   preferences: PaycomPreferences;
 }) {
   const [query, setQuery] = useUpdateState('meal-query', ''),
     [filter, setFilter] = useUpdateState('meal-filter', 'all');
   const state = useTableState('meal', { id: 'employee', desc: false });
-  const [linking, setLinking] = useState(false);
   const url = mealComparisonUrl(date);
   const request = useMealComparison(date, refreshKey);
   useAdjacentDays(url, date, today, request.data);
@@ -97,8 +99,6 @@ export function MealBreaksPage({
   });
   const setPage = state.setPage;
   const unlinked = data?.drivers.filter((d) => d.matchType === 'unmatched').length ?? 0;
-  const automatic = data?.drivers.filter((d) => d.matchType === 'name').length ?? 0;
-  const separate = data?.drivers.filter((d) => d.matchType === 'separate').length ?? 0;
   const zones = new Set(data?.cortexPublications.map((p) => p.timezone));
   return (
     <section className="meal-page" aria-labelledby="meal-heading">
@@ -120,7 +120,6 @@ export function MealBreaksPage({
             onDateChange(value);
             setPage(0);
             table.collapseAll();
-            setLinking(false);
           }}
         />
         <button
@@ -181,27 +180,20 @@ export function MealBreaksPage({
           Showing the last loaded results. Refresh to try again.
         </p>
       )}
-      {data && (unlinked > 0 || (owner && data.drivers.length > 0)) && (
+      {data && unlinked > 0 && (
         <div className="meal-link-notice" inert={!current}>
           <span>
-            {[
-              automatic ? `${automatic} matched automatically.` : '',
-              unlinked
-                ? `${unlinked} Flex ${unlinked === 1 ? 'employee needs' : 'employees need'} review. Different or ambiguous names appear separately.`
-                : '',
-              separate ? `${separate} kept separate by choice.` : '',
-              !automatic && !unlinked && !separate ? 'Employee links are saved for this DSP.' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
+            {unlinked} Flex {unlinked === 1 ? 'driver is' : 'drivers are'} not matched to a Paycom
+            employee and {unlinked === 1 ? 'appears' : 'appear'} on their own.
           </span>
-          {owner ? (
-            <button className="text-button" onClick={() => setLinking(true)}>
-              <Link2 size={15} />
-              {unlinked ? 'Review employee links' : 'Manage employee links'}
+          {canMatch && (
+            <button
+              className="text-button"
+              onClick={() => navigate(dspHash(dspId, 'settings', { tab: 'driver-match' }))}
+            >
+              Review in Driver Match
+              <ArrowRight size={15} />
             </button>
-          ) : (
-            unlinked > 0 && <span>Ask a DSP owner to confirm the links.</span>
           )}
         </div>
       )}
@@ -293,16 +285,6 @@ export function MealBreaksPage({
           </details>
         </div>
       </footer>
-      {linking && data && (
-        <LinkEmployees
-          data={data}
-          close={() => setLinking(false)}
-          saved={() => {
-            setLinking(false);
-            request.refresh();
-          }}
-        />
-      )}
     </section>
   );
 }

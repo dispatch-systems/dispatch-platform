@@ -82,9 +82,7 @@ test('driver results update open timecards and meal breaks without resetting the
             : [],
         paycomCollectedAt: null,
         cortexPublications: [],
-        employees: [],
         drivers: [],
-        links: { revision: 0, links: [] },
       }),
     });
   });

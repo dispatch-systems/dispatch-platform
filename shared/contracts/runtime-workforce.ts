@@ -158,7 +158,6 @@ export const mealComparisonSchema = z.object({
       provider: optionalText,
     }),
   ),
-  employees: z.array(z.object({ code: text, name: text })),
   drivers: z.array(
     z.object({
       id: text,
@@ -167,9 +166,4 @@ export const mealComparisonSchema = z.object({
       matchType: z.enum(['name', 'saved', 'separate', 'unmatched']),
     }),
   ),
-  links: z.object({
-    revision: count,
-    links: z.array(z.object({ id: text, cortexId: text, paycomCode: text })),
-    separate: z.array(text).optional(),
-  }),
 }) satisfies z.ZodType<MealComparison>;
