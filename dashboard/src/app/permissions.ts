@@ -25,6 +25,7 @@ export const permissionLabels: Record<Permission, string> = {
   'dvic.view': 'View DVIC',
   'dvic.collect': 'Collect DVIC',
   'dvic.manage': 'Manage DVIC',
+  'driver_match.manage': 'Manage Driver Match',
   'connections.manage': 'Manage Connections',
   'members.invite': 'Invite Members',
   'members.manage': 'Manage Members',

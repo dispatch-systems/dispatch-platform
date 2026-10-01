@@ -58,6 +58,7 @@ fn area_permission(input: &Input) -> &'static str {
         ("dvic", ..) => "dvic.view",
         ("routes", _, true) => "routes.collect",
         ("routes", ..) => "routes.view",
+        ("driver-match", ..) => "driver_match.manage",
         _ => "timecard.view",
     }
 }

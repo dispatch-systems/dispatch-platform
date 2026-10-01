@@ -171,6 +171,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
         .revoke_provider_revision(&dsp, job.connection_revision, provider)
         .await;
     let error = result.err().map(|e| e.code);
+    let succeeded = error.is_none();
     let actor = job.actor_id.clone();
     let snapshot = metrics.snapshot();
     // Request logs cannot explain a failed sync; record each attempt's outcome.
@@ -230,6 +231,22 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
             )
         })
         .await;
+    // Whoever the collection brought in gets a Driver Match code. A failure here leaves
+    // the collection as it is; the hourly pass catches the IDs up.
+    if succeeded {
+        let (reading, tenant) = (changed_dsp.clone(), changed_dsp.clone());
+        let matched = match state.read(move |db| db.driver_sources(&reading)).await {
+            Ok(found) => state.run(move |db| db.assign_drivers(&tenant, found)).await,
+            Err(error) => Err(error),
+        };
+        if let Err(error) = matched {
+            crate::observability::event(
+                "error",
+                "driver_match.failed",
+                json!({"dspId":changed_dsp,"error":error.code}),
+            );
+        }
+    }
     state.updates.changed(&changed_dsp, change);
     // A collection parses tens of megabytes; hand the freed pages back to the host
     // rather than keeping them resident until the next one.

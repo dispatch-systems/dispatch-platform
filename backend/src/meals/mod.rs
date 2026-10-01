@@ -1,6 +1,7 @@
 pub mod assessment;
 mod comparison;
 mod sync;
+pub(crate) use comparison::LINKS;
 // Cortex meal evidence and atomic publication. Browser data is untrusted input.
 use crate::{
     Error, Result,

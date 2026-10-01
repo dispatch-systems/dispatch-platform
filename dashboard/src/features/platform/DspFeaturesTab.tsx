@@ -1,5 +1,13 @@
 import { useState } from 'react';
-import { CalendarDays, ClipboardCheck, Plug, Route, Shirt, type LucideIcon } from 'lucide-react';
+import {
+  CalendarDays,
+  ClipboardCheck,
+  Fingerprint,
+  Plug,
+  Route,
+  Shirt,
+  type LucideIcon,
+} from 'lucide-react';
 import type { DspSummary, PageFeature } from '../../../../shared/contracts/index.js';
 import { setDspFeature, useDspFeatures } from '../../app/endpoints.js';
 import {
@@ -21,6 +29,7 @@ const icons: Record<PageFeature, LucideIcon> = {
   uniforms: Shirt,
   routes: Route,
   dvic: ClipboardCheck,
+  driver_match: Fingerprint,
 };
 const pages = featureCatalog.filter((f): f is PageEntry => f.kind === 'page');
 const connections = featureCatalog.filter((f): f is ConnectionEntry => f.kind === 'connection');

@@ -52,6 +52,9 @@ struct Scheduler {
     audit_pruned: i64,
     // Nor does a DSP's route data retention.
     routes_expired: i64,
+    // Collections give new drivers their codes as they finish; this catches up anything
+    // they missed, and every DSP's existing data on the first pass after startup.
+    drivers_matched: i64,
 }
 impl Scheduler {
     async fn cleanup(&mut self) {
@@ -94,6 +97,43 @@ impl Scheduler {
             failed("checkpoint_cleanup_failed", &error);
         }
         self.clean_route_data().await;
+        self.match_drivers().await;
+    }
+    /// Gives every ID each DSP's collections hold a Driver Match code, hourly.
+    async fn match_drivers(&mut self) {
+        if now() - self.drivers_matched < 60 * 60 * 1000 {
+            return;
+        }
+        self.drivers_matched = now();
+        let dsps = self
+            .state
+            .read(|db| {
+                db.platform.query_as::<(String,)>(
+                    "SELECT id FROM dsps WHERE status IN ('active','suspended')",
+                    [],
+                )
+            })
+            .await;
+        let dsps = match dsps {
+            Ok(dsps) => dsps,
+            Err(error) => return failed("driver_match_failed", &error),
+        };
+        for (dsp,) in dsps {
+            // Reading every collection takes the shared lock; only the writes take the
+            // platform lock, briefly.
+            let reading = dsp.clone();
+            let matched = match self.state.read(move |db| db.driver_sources(&reading)).await {
+                Ok(found) => {
+                    self.state
+                        .run(move |db| db.assign_drivers(&dsp, found))
+                        .await
+                }
+                Err(error) => Err(error),
+            };
+            if let Err(error) = matched {
+                failed("driver_match_failed", &error);
+            }
+        }
     }
     /// Retires route data past each DSP's retention window, hourly, and deletes what no
     /// reader sees any more in small steps, so the platform lock is never held for long.
@@ -254,6 +294,7 @@ pub async fn start(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<boo
         refreshed: 0,
         audit_pruned: 0,
         routes_expired: 0,
+        drivers_matched: 0,
     };
     let mut timer = tokio::time::interval(Duration::from_secs(1));
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);

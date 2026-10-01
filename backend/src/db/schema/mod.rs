@@ -55,6 +55,11 @@ pub const PLATFORM: &[Migration] = &[
         name: "features_kept_on",
         apply: Sql(include_str!("platform/0009_features_kept_on.sql")),
     },
+    Migration {
+        id: 10,
+        name: "driver_codes",
+        apply: Sql(include_str!("platform/0010_driver_codes.sql")),
+    },
 ];
 pub const JOBS: &[Migration] = &[
     Migration {
@@ -108,6 +113,11 @@ pub const DSP: &[Migration] = &[
         id: 6,
         name: "dvic_collection",
         apply: Sql(include_str!("dsp/0006_dvic_collection.sql")),
+    },
+    Migration {
+        id: 7,
+        name: "driver_match",
+        apply: Sql(include_str!("dsp/0007_driver_match.sql")),
     },
 ];
 pub const PAYCOM: &[Migration] = &[
