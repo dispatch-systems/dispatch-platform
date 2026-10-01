@@ -35,8 +35,8 @@ test('collection notifications require a current DSP view, wake on collection, a
   );
   await until(
     async () =>
-      (await owner.get('/api/dsp/jobs')).value.find((j: any) => j.id === queued.value.id)
-        ?.status === 'succeeded',
+      (await owner.read('/api/dsp/jobs')).find((j: any) => j.id === queued.value.id)?.status ===
+      'succeeded',
   );
   // Recheck authentication after the wait, not just when opening it.
   const latest = (await member.get('/api/dsp/collection-updates?after=')).value.revision;

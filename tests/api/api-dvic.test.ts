@@ -71,7 +71,7 @@ test('DVIC collects into its own database and schedules run independently of tim
     queued.value.id,
   );
   await until(async () => {
-    const job = (await member.get(`${base}/status`)).value.jobs.find(
+    const job = (await member.read(`${base}/status`)).jobs.find(
       (j: any) => j.id === queued.value.id,
     );
     assert.notEqual(job.status, 'failed', JSON.stringify(job));
@@ -143,7 +143,7 @@ test('DVIC collects into its own database and schedules run independently of tim
   );
   await f.start();
   await until(async () =>
-    (await member.get(`${base}/status`)).value.jobs.some(
+    (await member.read(`${base}/status`)).jobs.some(
       (j: any) => j.actorId === null && j.status === 'succeeded',
     ),
   );
@@ -195,7 +195,7 @@ test("the generic cancel route needs the job kind's own permission; switching DV
   assert.equal(queued.status, 202, queued.body);
   const id = queued.value.id;
   await until(async () => {
-    const job = (await owner.get('/api/dsp/dvic/status')).value.jobs.find((j: any) => j.id === id);
+    const job = (await owner.read('/api/dsp/dvic/status')).jobs.find((j: any) => j.id === id);
     assert.notEqual(job?.status, 'failed', JSON.stringify(job));
     return job?.status === 'succeeded';
   });

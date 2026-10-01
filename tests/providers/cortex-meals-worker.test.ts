@@ -98,7 +98,7 @@ async function site(t: TestContext, answer: Answer) {
     assert.equal(response.status, 202, response.body);
     let job: any;
     await until(async () => {
-      job = (await owner.get('/api/dsp/jobs')).value.find((j: any) => j.id === response.value.id);
+      job = (await owner.read('/api/dsp/jobs')).find((j: any) => j.id === response.value.id);
       return ['succeeded', 'failed'].includes(job.status);
     }, wait);
     return job;
@@ -241,7 +241,7 @@ test(
     assert.equal(queued.status, 202, queued.body);
     assert.equal(queued.value.jobs.length, 2);
     await until(async () => {
-      const jobs = (await owner.get('/api/dsp/jobs')).value.filter((j: any) =>
+      const jobs = (await owner.read('/api/dsp/jobs')).filter((j: any) =>
         queued.value.jobs.some((q: any) => q.id === j.id),
       );
       assert(!jobs.some((j: any) => j.status === 'failed'), JSON.stringify(jobs));
@@ -378,7 +378,7 @@ test(
     });
     const first = collect('2026-01-10', 'first');
     await until(async () => {
-      const comparison = (await owner.get('/api/dsp/paycom/meal-breaks?date=2026-01-10')).value;
+      const comparison = await owner.read('/api/dsp/paycom/meal-breaks?date=2026-01-10');
       return comparison.rows.some((row: any) => row.cortex.length === 2);
     }, 40000);
     assert.equal(

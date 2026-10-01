@@ -166,7 +166,7 @@ test('Cloudflare outbox sends HTML, retries failure and clears encrypted mail af
   f.database('data/platform/accounts.sqlite', (db) =>
     db.prepare("UPDATE outbox SET attempts=4,available_at=0 WHERE status='pending'").run(),
   );
-  await until(async () => (await owner.get('/api/platform/health')).value.mail.failed === 1);
+  await until(async () => (await owner.read('/api/platform/health')).mail.failed === 1);
   await f.stop();
   await f.start();
   const failure = (await owner.get('/api/platform/health')).value.mail;

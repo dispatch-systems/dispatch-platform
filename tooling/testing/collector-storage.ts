@@ -10,6 +10,8 @@ export function collectorDatabase(root: string, dspId: string, provider: 'paycom
   const core = path.join(root, 'dsps', dspId, 'data/dispatch.sqlite');
   const db = new DatabaseSync(core, { readOnly: true });
   try {
+    // The server under test can briefly hold the write lock.
+    db.exec('PRAGMA busy_timeout=5000');
     const row = db.prepare("SELECT value FROM settings WHERE key='storage.collectors'").get() as
       { value: string } | undefined;
     assert(!row || row.value === '1', 'Unsupported storage layout');

@@ -23,7 +23,7 @@ test(
     );
     const id = (await owner.post('/api/dsp/jobs', { requestId: 'page-recovery' })).value.id;
     const current = async () =>
-      (await owner.get('/api/dsp/jobs')).value.find((j: { id: string }) => j.id === id);
+      (await owner.read('/api/dsp/jobs')).find((j: { id: string }) => j.id === id);
     await until(async () => (await current()).status === 'succeeded', 30000);
     const job = await current();
     assert.equal(job.attempt, 1);
@@ -53,12 +53,12 @@ test(
         (db) => db.prepare('SELECT id FROM publications WHERE active=1').get()!.id,
       );
     const previous = publication();
-    await until(async () => (await owner.get('/api/platform/health')).value.browsers.active === 0);
+    await until(async () => (await owner.read('/api/platform/health')).browsers.active === 0);
     f.state.missingContent.set('DD04', 10);
     const bad = (await owner.post('/api/dsp/jobs', { requestId: 'page-retry-limit' })).value.id;
     let failed: any;
     await until(async () => {
-      failed = (await owner.get('/api/dsp/jobs')).value.find((j: { id: string }) => j.id === bad);
+      failed = (await owner.read('/api/dsp/jobs')).find((j: { id: string }) => j.id === bad);
       if (['succeeded', 'cancelled'].includes(failed.status)) assert.fail(JSON.stringify(failed));
       return failed.status === 'failed';
     }, 60000).catch(async (error) => {
@@ -77,14 +77,12 @@ test(
     assert.equal(failed.metrics[0].pageReads.completed, 4);
     assert.equal(publication(), previous);
     assert.equal(f.state.readsByCode.get('DD04'), 6);
-    await until(async () => (await owner.get('/api/platform/health')).value.browsers.active === 0);
+    await until(async () => (await owner.read('/api/platform/health')).browsers.active === 0);
     f.state.expiredTimecard = true;
     const expired = (await owner.post('/api/dsp/jobs', { requestId: 'page-expired-auth' })).value
       .id;
     await until(async () => {
-      failed = (await owner.get('/api/dsp/jobs')).value.find(
-        (j: { id: string }) => j.id === expired,
-      );
+      failed = (await owner.read('/api/dsp/jobs')).find((j: { id: string }) => j.id === expired);
       return failed.status === 'failed';
     }, 15000);
     assert.equal(failed.error, 'authentication_failed');
@@ -111,7 +109,7 @@ test(
     const id = (await owner.post('/api/dsp/jobs', { requestId: 'navigation-recovery' })).value.id;
     let job: any;
     await until(async () => {
-      job = (await owner.get('/api/dsp/jobs')).value.find((j: { id: string }) => j.id === id);
+      job = (await owner.read('/api/dsp/jobs')).find((j: { id: string }) => j.id === id);
       if (
         ['failed', 'cancelled'].includes(job.status) ||
         (job.status === 'queued' && job.attempt > 0)
@@ -147,9 +145,7 @@ test(
     const complete = async (id: string, expected: string) => {
       let result: any;
       await until(async () => {
-        result = (await owner.get('/api/dsp/jobs')).value.find(
-          (job: { id: string }) => job.id === id,
-        );
+        result = (await owner.read('/api/dsp/jobs')).find((job: { id: string }) => job.id === id);
         if (!['succeeded', 'failed', 'cancelled'].includes(result.status)) return false;
         assert.equal(result.status, expected, JSON.stringify(result));
         return true;

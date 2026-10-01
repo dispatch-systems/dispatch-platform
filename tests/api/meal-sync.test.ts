@@ -46,7 +46,7 @@ test('Meal Breaks sync authorizes both collectors and publishes their selected d
     queued.value.jobs.map((j: any) => j.id),
   );
   await until(async () => {
-    const jobs = (await owner.get('/api/dsp/jobs')).value.filter((j: any) =>
+    const jobs = (await owner.read('/api/dsp/jobs')).filter((j: any) =>
       queued.value.jobs.some((q: any) => q.id === j.id),
     );
     assert(

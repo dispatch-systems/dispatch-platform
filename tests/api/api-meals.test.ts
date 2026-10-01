@@ -109,7 +109,7 @@ test('name variants combine existing source records without recollection or losi
   const holder = async (id: string) => {
     let found: Driver | undefined;
     await until(async () => {
-      const people: DriverMatch = (await owner.get('/api/dsp/driver-match')).value;
+      const people: DriverMatch = await owner.read('/api/dsp/driver-match');
       found = people.drivers.find((d) => d.ids.some((i) => i.id === id));
       return Boolean(found);
     });

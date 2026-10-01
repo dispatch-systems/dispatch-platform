@@ -37,9 +37,7 @@ test('Rust owns verification, encrypted credentials, collection, idempotency and
   const job = await owner.post('/api/dsp/jobs', { requestId: 'one' });
   assert.equal(job.status, 202);
   assert.equal((await owner.post('/api/dsp/jobs', { requestId: 'one' })).value.id, job.value.id);
-  await until(
-    async () => (await owner.get('/api/dsp/jobs')).value[0].status === 'waiting_verification',
-  );
+  await until(async () => (await owner.read('/api/dsp/jobs'))[0].status === 'waiting_verification');
   assert.equal(
     (await owner.post('/api/dsp/connections/paycom/verify', { code: 'bad' })).status,
     409,
@@ -48,7 +46,7 @@ test('Rust owns verification, encrypted credentials, collection, idempotency and
     (await owner.post('/api/dsp/connections/paycom/verify', { code: '123456' })).status,
     200,
   );
-  await until(async () => (await owner.get('/api/dsp/jobs')).value[0].status === 'succeeded');
+  await until(async () => (await owner.read('/api/dsp/jobs'))[0].status === 'succeeded');
   assert.equal((await owner.get('/api/dsp/employees')).value.total, 12);
   const schedule = await owner.post('/api/dsp/schedules', {
     name: 'Morning',
@@ -88,24 +86,20 @@ test('Rust cancellation and suspension prevent late publication; restart recover
     password: 'require-verification',
   });
   const first = await owner.post('/api/dsp/jobs', { requestId: 'cancel-me' });
-  await until(
-    async () => (await owner.get('/api/dsp/jobs')).value[0].status === 'waiting_verification',
-  );
+  await until(async () => (await owner.read('/api/dsp/jobs'))[0].status === 'waiting_verification');
   assert.equal(
     (await owner.post(`/api/dsp/jobs/${first.value.id}/cancel`)).value.status,
     'cancelled',
   );
   assert.equal((await owner.get('/api/dsp/employees')).value.total, 0);
   await owner.post('/api/dsp/jobs', { requestId: 'restart-me' });
-  await until(
-    async () => (await owner.get('/api/dsp/jobs')).value[0].status === 'waiting_verification',
-  );
+  await until(async () => (await owner.read('/api/dsp/jobs'))[0].status === 'waiting_verification');
   await f.stop('SIGKILL');
   await f.start();
   owner = await f.client();
   await owner.select(dsp.id);
   await until(async () => {
-    const row = (await owner.get('/api/dsp/jobs')).value[0];
+    const row = (await owner.read('/api/dsp/jobs'))[0];
     return row.status === 'waiting_verification' && row.attempt === 2;
   });
   await owner.post(`/api/platform/dsps/${dsp.id}/status`, { status: 'suspended' });
@@ -129,7 +123,7 @@ test('cancelling a queued job preserves the active verification session and does
   });
   const first = (await owner.post('/api/dsp/jobs', { requestId: 'active' })).value;
   await until(async () =>
-    (await owner.get('/api/dsp/jobs')).value.some(
+    (await owner.read('/api/dsp/jobs')).some(
       (j: { id: string; status: string }) =>
         j.id === first.id && j.status === 'waiting_verification',
     ),
@@ -146,7 +140,7 @@ test('cancelling a queued job preserves the active verification session and does
     200,
   );
   await until(async () =>
-    (await owner.get('/api/dsp/jobs')).value.some(
+    (await owner.read('/api/dsp/jobs')).some(
       (j: { id: string; status: string }) => j.id === first.id && j.status === 'succeeded',
     ),
   );

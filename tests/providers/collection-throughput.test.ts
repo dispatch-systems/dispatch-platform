@@ -93,7 +93,7 @@ test(
     await owner.select(dsp.id);
     let job: any;
     await until(async () => {
-      job = (await owner.get('/api/dsp/jobs')).value.find((j: { id: string }) => j.id === id);
+      job = (await owner.read('/api/dsp/jobs')).find((j: { id: string }) => j.id === id);
       assert(!['failed', 'cancelled'].includes(job.status), JSON.stringify(job));
       return job.status === 'succeeded';
     }, 30000);
@@ -171,7 +171,7 @@ test(
       .value.id;
     let job: any;
     await until(async () => {
-      job = (await owner.get('/api/dsp/jobs')).value.find((j: { id: string }) => j.id === id);
+      job = (await owner.read('/api/dsp/jobs')).find((j: { id: string }) => j.id === id);
       assert(!['failed', 'cancelled'].includes(job.status), JSON.stringify(job));
       return job.status === 'succeeded';
     }, 20000);

@@ -49,7 +49,7 @@ test('owner diagnostics shows pending mail, a failed delivery, and later recover
   const owner = await f.client();
   await owner.post('/api/platform/dsps', { ownerEmail: 'diagnostics@example.test' });
   await until(
-    async () => (await owner.get('/api/platform/health')).value.mail.lastError === 'email_http_502',
+    async () => (await owner.read('/api/platform/health')).mail.lastError === 'email_http_502',
   );
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/');

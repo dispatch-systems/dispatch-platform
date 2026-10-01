@@ -24,7 +24,7 @@ test(
       assert.equal(queued.status, 202, queued.body);
       let job: any;
       await until(async () => {
-        job = (await owner.get('/api/dsp/jobs')).value.find(
+        job = (await owner.read('/api/dsp/jobs')).find(
           (j: { id: string }) => j.id === queued.value.id,
         );
         if (['succeeded', 'failed', 'cancelled'].includes(job.status)) {
@@ -79,7 +79,7 @@ test(
       1,
       'Collection must reuse persisted provider cookies',
     );
-    await until(async () => (await owner.get('/api/platform/health')).value.browsers.active === 0);
+    await until(async () => (await owner.read('/api/platform/health')).browsers.active === 0);
     await owner.select(summit.id);
     assert.equal((await owner.get('/api/dsp/employees')).value.total, 0);
     const second = await owner.post('/api/dsp/connections/paycom', credentials);
@@ -136,16 +136,14 @@ test(
       assert.equal(queued.status, 202, queued.body);
       let job: any;
       await until(async () => {
-        job = (await owner.get('/api/dsp/jobs')).value.find(
+        job = (await owner.read('/api/dsp/jobs')).find(
           (j: { id: string }) => j.id === queued.value.id,
         );
         if (!['succeeded', 'failed', 'cancelled'].includes(job.status)) return false;
         assert.equal(job.status, expected, JSON.stringify(job));
         return true;
       }, 60000);
-      await until(
-        async () => (await owner.get('/api/platform/health')).value.browsers.active === 0,
-      );
+      await until(async () => (await owner.read('/api/platform/health')).browsers.active === 0);
       return job;
     };
     const complete = (await run('parallel-complete', 'succeeded')).metrics[0].pageReads;
@@ -218,7 +216,7 @@ test(
     f.state.timecardStatus = 429;
     const throttled = await owner.post('/api/dsp/jobs', { requestId: 'parallel-throttled' });
     await until(async () => {
-      const job = (await owner.get('/api/dsp/jobs')).value.find(
+      const job = (await owner.read('/api/dsp/jobs')).find(
         (j: { id: string }) => j.id === throttled.value.id,
       );
       return job.status === 'queued' && job.error === 'provider_unavailable';
@@ -228,7 +226,7 @@ test(
       (await owner.post(`/api/dsp/jobs/${throttled.value.id}/cancel`, {})).value.status,
       'cancelled',
     );
-    await until(async () => (await owner.get('/api/platform/health')).value.browsers.active === 0);
+    await until(async () => (await owner.read('/api/platform/health')).browsers.active === 0);
 
     f.state.timecardStatus = 200;
     f.state.timecardDelayMs = 3000;
@@ -240,7 +238,7 @@ test(
     );
     await until(
       async () =>
-        (await owner.get('/api/platform/health')).value.browsers.active === 0 &&
+        (await owner.read('/api/platform/health')).browsers.active === 0 &&
         f.state.timecardsActive === 0,
     );
     assert.equal(publication(), id);
@@ -263,7 +261,7 @@ test(
     f.state.timecardStatus = 429;
     const id = (await owner.post('/api/dsp/jobs', { requestId: 'metrics-retry' })).value.id;
     const current = async () =>
-      (await owner.get('/api/dsp/jobs')).value.find((j: { id: string }) => j.id === id);
+      (await owner.read('/api/dsp/jobs')).find((j: { id: string }) => j.id === id);
     await until(async () => {
       const job = await current();
       return job.status === 'queued' && job.attempt === 1;

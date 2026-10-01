@@ -18,7 +18,7 @@ test('Driver Match gives everyone a code and answers only to its own permission'
   // The scheduler gives the demo's people their codes shortly after the server starts.
   let result!: DriverMatch;
   await until(async () => {
-    result = (await owner.get('/api/dsp/driver-match')).value;
+    result = await owner.read('/api/dsp/driver-match');
     return Boolean(result.checkedAt) && result.drivers.length > 1;
   });
   assert.ok(result.drivers.every((driver) => code.test(driver.code)));

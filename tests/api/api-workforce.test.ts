@@ -237,7 +237,7 @@ test('employee sync queues one driver and period, preserves the roster, and yiel
   assert.equal(queued.status, 202, queued.body);
   assert.equal((await owner.post('/api/dsp/employees/E001/sync', body)).value.id, queued.value.id);
   assert.equal((await owner.post('/api/dsp/employees/E002/sync', body)).status, 409);
-  await until(async () => (await owner.get(url)).value.syncStatus === 'succeeded');
+  await until(async () => (await owner.read(url)).syncStatus === 'succeeded');
   const synced = (await owner.get(url)).value;
   assert(synced.collectedAt);
   assert.equal(synced.timecards.length, 14);
@@ -273,9 +273,8 @@ test('employee sync queues one driver and period, preserves the roster, and yiel
   assert.equal(full.status, 202, full.body);
   await until(
     async () =>
-      (await owner.get('/api/dsp/jobs')).value.find(
-        (job: { id: string }) => job.id === full.value.id,
-      ).status === 'succeeded',
+      (await owner.read('/api/dsp/jobs')).find((job: { id: string }) => job.id === full.value.id)
+        .status === 'succeeded',
   );
   assert.equal((await owner.get(`/api/dsp/timecards?date=${period.to}`)).value.rows.length, 12);
   assert.equal(

@@ -194,7 +194,7 @@ test(
     });
     assert.equal(saved.value.status, 'ready', saved.body);
     const job = async (id: string) =>
-      (await owner.get('/api/dsp/jobs')).value.find((j: any) => j.id === id);
+      (await owner.read('/api/dsp/jobs')).find((j: any) => j.id === id);
     const collect = async (requestId: string, week: string) => {
       const queued = await owner.post('/api/dsp/scorecard/collect', { requestId, week });
       assert.equal(queued.status, 202, queued.body);

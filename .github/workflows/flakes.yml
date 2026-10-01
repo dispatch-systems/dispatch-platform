@@ -2,7 +2,8 @@ name: Flaky tests
 # A job that failed and then passed on the same code is a flake, or a runner problem, and
 # either costs a merge. This lists them weekly in the run's summary: reruns of one run, and
 # queue entries that failed and then merged with the PR's head unchanged, since a PR queued
-# again gets a new run on a new squash commit. It changes nothing.
+# again gets a new run on a new squash commit. A week with any is also posted to the open
+# `flaky-tests` issue, which it opens when there is none. It changes nothing else.
 on:
   schedule:
     - cron: '17 6 * * 1'
@@ -10,6 +11,7 @@ on:
 permissions:
   actions: read
   contents: read
+  issues: write
   pull-requests: read
 jobs:
   report:
@@ -106,3 +108,20 @@ jobs:
           EOF
           cat report.md >> "$GITHUB_STEP_SUMMARY"
           cat report.md
+      # A run's summary goes unread, so a week with a flake reaches the issue's watchers.
+      - name: Post the week's flakes to the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          grep -qE '^\| (\[|#[0-9])' report.md || exit 0
+          issue=$(gh issue list --repo "$REPO" --label flaky-tests --state open \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --repo "$REPO" --body-file report.md
+          else
+            gh label create flaky-tests --repo "$REPO" --force --color d93f0b \
+              --description 'Jobs that failed, then passed on the same code'
+            gh issue create --repo "$REPO" --title 'Flaky tests' --label flaky-tests \
+              --body-file report.md
+          fi

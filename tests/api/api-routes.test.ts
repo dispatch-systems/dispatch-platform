@@ -60,7 +60,7 @@ test('a day of routes is collected on request, stored in normalized rows and lis
     job.id,
   );
   await until(async () => {
-    const current = (await owner.get('/api/dsp/jobs')).value.find((j: any) => j.id === job.id);
+    const current = (await owner.read('/api/dsp/jobs')).find((j: any) => j.id === job.id);
     assert.notEqual(current.status, 'failed', JSON.stringify(current));
     return current.status === 'succeeded';
   });
