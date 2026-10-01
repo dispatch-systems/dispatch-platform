@@ -379,6 +379,10 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
           onCancel={() => setRemovingRole(undefined)}
         >
           Delete {removingRole.name}?
+          {Boolean(removingRole.invitations) &&
+            ` This also cancels ${removingRole.invitations} pending ${
+              removingRole.invitations === 1 ? 'invitation' : 'invitations'
+            }.`}
         </ConfirmDialog>
       )}
       {removing && (

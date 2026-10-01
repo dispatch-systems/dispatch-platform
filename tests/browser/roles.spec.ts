@@ -117,12 +117,25 @@ test('unsaved role edits leave only through Save changes or Discard changes', as
   await expect(row).toContainText('Manage Timecard');
 });
 
-test('owner deletes an unused role from the row menu after confirming', async ({ page }) => {
+test('owner deletes a role from the row menu after confirming, cancelling its invitations', async ({
+  page,
+  dispatch,
+}) => {
+  const api = await dispatch.client();
+  const north = api.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  const manager = (await api.select(north.id)).roles.find(
+    (r: { name: string }) => r.name === 'Manager',
+  );
+  const invited = await api.post('/api/dsp/members/invite', {
+    email: 'pending@dispatch.test',
+    role: manager.id,
+  });
+  expect(invited.status).toBe(200);
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: 'Team & Roles', exact: true }).click();
   await page.getByRole('tab', { name: 'Roles', exact: true }).click();
-  // Member has a member, so it cannot go; Manager has none.
+  // Member has a member, so it cannot go; Manager has only a pending invitation.
   await page.getByLabel('Actions for Member').click();
   await expect(page.getByRole('button', { name: 'Delete role', exact: true })).toBeDisabled();
   await page.keyboard.press('Escape');
@@ -130,7 +143,7 @@ test('owner deletes an unused role from the row menu after confirming', async ({
   await page.getByLabel('Actions for Manager').click();
   await page.getByRole('button', { name: 'Delete role', exact: true }).click();
   const confirm = page.getByRole('dialog', { name: 'Delete role' });
-  await expect(confirm).toContainText('Delete Manager?');
+  await expect(confirm).toContainText('Delete Manager? This also cancels 1 pending invitation.');
   await confirm.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(row).toBeVisible();
   await page.getByLabel('Actions for Manager').click();
@@ -138,6 +151,8 @@ test('owner deletes an unused role from the row menu after confirming', async ({
   await page.screenshot({ path: test.info().outputPath('delete-role.png') });
   await confirm.getByRole('button', { name: 'Delete role', exact: true }).click();
   await expect(row).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Invitations', exact: true }).click();
+  await expect(page.getByText('pending@dispatch.test')).toHaveCount(0);
 });
 
 test('owner removes a member from the row menu after confirming', async ({ page }) => {

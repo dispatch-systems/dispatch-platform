@@ -14,8 +14,6 @@ const ROLES: &str = "SELECT r.*,\
     (SELECT count(*) FROM invitations i WHERE i.role_id=r.id AND i.used_at IS NULL \
      AND i.expires_at>?1) invitations \
     FROM roles r WHERE r.dsp_id=?2 ORDER BY r.system DESC,r.created_at,r.name";
-const ROLE_USES: &str = "SELECT (SELECT count(*) FROM memberships WHERE role_id=?1)+\
-    (SELECT count(*) FROM invitations WHERE role_id=?1 AND used_at IS NULL AND expires_at>?2)";
 
 // Every permission a DSP owner can grant. Owners implicitly hold all of them,
 // so additions here reach owners without touching stored roles.
@@ -384,13 +382,6 @@ impl Store {
                 "UPDATE invitations SET role=? WHERE role_id=? AND used_at IS NULL",
                 [mirror, id],
             )?;
-            if role.permissions != permissions {
-                self.platform.exec(
-                    "DELETE FROM invitations WHERE dsp_id=? AND used_at IS NULL AND \
-                     (role_id=? OR created_by IN (SELECT user_id FROM memberships WHERE role_id=?))",
-                    [dsp, id, id],
-                )?;
-            }
             // Open views sign the DSP revision, so members pick up the change.
             self.platform
                 .exec("UPDATE dsps SET revision=revision+1 WHERE id=?", [dsp])?;
@@ -416,8 +407,11 @@ impl Store {
             let role = self.role(dsp, id)?;
             ensure(!role.system, "owner_role_locked", 409)?;
             self.ensure_assignable(c, &role)?;
-            let used = self.platform.count(ROLE_USES, params![id, now()])?;
-            ensure(used == 0, "role_in_use", 409)?;
+            let members = self
+                .platform
+                .count("SELECT count(*) FROM memberships WHERE role_id=?", [id])?;
+            ensure(members == 0, "role_in_use", 409)?;
+            // Deleting a role is the one change that cancels its pending invitations.
             self.platform.exec(
                 "DELETE FROM invitations WHERE role_id=? AND used_at IS NULL",
                 [id],

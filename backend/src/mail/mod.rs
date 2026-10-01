@@ -24,13 +24,6 @@ pub fn discard_stale(db: &Store) -> Result<()> {
            AND u.status='active' AND r.user_version=u.version))))",
         params![db::now()-30*86400000, db::now()-7*86400000, db::now()],
     )?;
-    for (id, hash) in db.platform.query_as::<(String, String)>(
-        "SELECT id,invitation_hash FROM outbox WHERE status IN ('pending','failed') AND kind='invitation'", [],
-    )? {
-        if !db.inviter_authorized(&hash)? {
-            db.platform.exec("DELETE FROM outbox WHERE id=?", [&id])?;
-        }
-    }
     Ok(())
 }
 

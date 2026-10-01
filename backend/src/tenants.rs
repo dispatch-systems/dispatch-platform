@@ -400,13 +400,15 @@ impl Store {
                 self.platform
                     .exec("DELETE FROM memberships WHERE id=?", [member])?;
             }
-            // Membership changes invalidate grants the member previously issued.
-            // Removal also invalidates links addressed to them, including legacy duplicates.
-            self.platform.exec(
-                "DELETE FROM invitations WHERE dsp_id=?1 AND used_at IS NULL \
-                 AND (created_by=?2 OR (?3 AND email=(SELECT email FROM users WHERE id=?2) COLLATE NOCASE))",
-                params![dsp, user, next.is_none()],
-            )?;
+            // Invitations the member sent stay open. Removal invalidates links addressed
+            // to them, including legacy duplicates, so they cannot rejoin on their own.
+            if next.is_none() {
+                self.platform.exec(
+                    "DELETE FROM invitations WHERE dsp_id=? AND used_at IS NULL \
+                     AND email=(SELECT email FROM users WHERE id=?) COLLATE NOCASE",
+                    [dsp, user],
+                )?;
+            }
             self.platform
                 .exec("UPDATE dsps SET revision=revision+1 WHERE id=?", [dsp])?;
             let name: (String,) = self
@@ -450,6 +452,7 @@ impl Store {
             .exec("DELETE FROM sessions WHERE user_id=?", [user])?;
         self.platform
             .exec("DELETE FROM resets WHERE user_id=?", [user])?;
+        // Every invitation must name an existing sender, so the ones they sent go too.
         self.platform
             .exec("DELETE FROM invitations WHERE created_by=?", [user])?;
         self.platform.exec(
