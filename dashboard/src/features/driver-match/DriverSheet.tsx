@@ -104,11 +104,6 @@ export function DriverSheet({
                   )}
                 </div>
               ))}
-              {data.mergedCodes.length > 0 && (
-                <p className="driver-match-copy">
-                  Also known by {data.mergedCodes.join(', ')}, merged into this person.
-                </p>
-              )}
             </section>
             <section className="driver-sheet-section" aria-labelledby="driver-activity">
               <h3 id="driver-activity">Appears in</h3>
