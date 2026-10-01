@@ -9,7 +9,7 @@ mod views;
 
 pub use views::*;
 
-use crate::Error;
+use crate::{Error, State, agents::Caller, db::Store};
 use serde_json::{Value, json};
 
 /// A request an agent can fix: what was unclear, in words it can repeat, and what it could
@@ -34,7 +34,7 @@ impl Refusal {
         self.choices = choices;
         self
     }
-    fn body(self) -> (u16, Value) {
+    pub fn body(self) -> (u16, Value) {
         let mut body = json!({"error":self.code,"message":self.message});
         if !self.choices.is_empty() {
             body["choices"] = json!(self.choices);
@@ -68,5 +68,35 @@ pub fn settle(answer: Answer) -> crate::Result<(u16, Value)> {
         Ok(value) => Ok((200, value)),
         Err(Failure::Refused(refusal)) => Ok(refusal.body()),
         Err(Failure::Failed(error)) => Err(error),
+    }
+}
+
+/// Answers one endpoint of the catalog, as its REST route and its MCP tool both ask it.
+/// `named` fills the endpoint's path parameter, when it has one.
+pub fn ask(
+    endpoint: &catalog::Endpoint,
+    db: &Store,
+    state: &State,
+    caller: &Caller,
+    named: &str,
+    query: &Value,
+) -> Answer {
+    match endpoint.id {
+        "whoami" => {
+            catalog::check("whoami", query)?;
+            Ok(json!(db.agent_whoami(caller)?))
+        }
+        "status" => status(db, caller, query),
+        "metrics" => metrics(query),
+        "drivers" => drivers(db, state, caller, query),
+        "driver" => driver(db, state, caller, named, query),
+        "team" => team(db, state, caller, query),
+        "routes" => routes(db, state, caller, query),
+        "route" => route(db, state, caller, named, query),
+        "package" => package(db, state, caller, named, query),
+        "timecards" => timecards(db, state, caller, query),
+        "meal_breaks" => meal_breaks(db, state, caller, query),
+        "dvic" => dvic(db, state, caller, query),
+        other => Err(Error::new(format!("unanswered_endpoint_{other}"), 500).into()),
     }
 }

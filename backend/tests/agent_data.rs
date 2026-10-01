@@ -185,6 +185,11 @@ async fn one_driver_is_one_person_across_every_source() {
     assert!(joined["stops_completed"].is_number());
     assert!(joined["hours_worked"].as_f64().unwrap() > 0.0);
     assert_eq!(joined["inspections"], 2);
+    // The team's own total for each metric, from every row.
+    assert_eq!(team["totals"]["inspections"], 2);
+    assert_eq!(team["rowCount"], rows.len());
+    let hours: f64 = rows.iter().filter_map(|r| r["hours_worked"].as_f64()).sum();
+    assert!((team["totals"]["hours_worked"].as_f64().unwrap() - hours).abs() < 0.01);
     // Someone Paycom lists but who drove no route has hours and no stops, not zero stops.
     let office = rows
         .iter()
@@ -252,6 +257,31 @@ async fn one_driver_is_one_person_across_every_source() {
     })
     .await;
     assert_eq!(meals["collected"], true);
+    // Only someone Cortex had a route for could have missed a meal break in it; the rest
+    // are listed apart.
+    let rows = meals["drivers"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["driver"]["name"], "Fixture Driver");
+    assert_eq!(rows[0]["cortexRoute"], true);
+    let apart = meals["withoutRoute"].as_array().unwrap();
+    assert!(!apart.is_empty());
+    assert!(apart.iter().all(|p| p["name"] != "Fixture Driver"));
+    // A day nothing was collected for has no totals at all, never zeros.
+    let who = me.clone();
+    let (_, nothing) = ask(&state, move |db, state| {
+        data::routes(db, state, &who, &json!({"date": "2026-09-13"}))
+    })
+    .await;
+    assert_eq!(
+        (nothing["collected"].clone(), nothing["totals"].clone()),
+        (json!(false), Value::Null)
+    );
+    assert!(
+        nothing["note"]
+            .as_str()
+            .unwrap()
+            .contains("unknown, not zero")
+    );
     let who = me.clone();
     let (_, dvic) = ask(&state, move |db, state| {
         data::dvic(db, state, &who, &json!({"date": DAY, "short": "true"}))

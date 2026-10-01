@@ -127,6 +127,10 @@ pub async fn run() -> Result<()> {
             );
         }
         "seed" => operations::seed(&Store::initialize(config)?)?,
+        "seed-agents" => println!(
+            "{}",
+            crate::agents::synthetic::seed(&Store::initialize(config)?)?
+        ),
         "backup" => {
             ensure(args.len() == 2, "usage_backup_destination", 400)?;
             println!("{}", operations::backup(&config, Path::new(&args[1]))?);

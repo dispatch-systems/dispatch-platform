@@ -58,8 +58,13 @@ const INVENTORY: &[Row] = &[
     ("POST", "/api/platform/agents/keys/{id}", PlatformOwner, Write, false),
     ("POST", "/api/platform/agents/keys/{id}/revoke", PlatformOwner, Write, false),
     ("POST", "/api/platform/agents/revoke-all", PlatformOwner, Write, false),
+    ("GET", "/api/platform/agents/skill", PlatformOwner, Read, false),
+    ("GET", "/api/platform/agents/openapi.json", PlatformOwner, Read, false),
     ("GET", "/api/v1/whoami", Agent("read"), Read, false),
     ("GET", "/api/v1/openapi.json", Agent("read"), Read, false),
+    ("GET", "/api/v1/skill", Agent("read"), Read, false),
+    ("POST", "/api/v1/mcp", Agent("read"), Async, false),
+    ("GET", "/api/v1/mcp", Agent("read"), Async, false),
     ("GET", "/api/v1/status", Agent("read"), Read, false),
     ("GET", "/api/v1/metrics", Agent("read"), Read, false),
     ("GET", "/api/v1/drivers", Agent("read"), Read, false),
@@ -232,9 +237,12 @@ fn only_agents_reach_the_versioned_api_and_nothing_else() {
         assert_eq!(versioned, agent, "{} {}", route.method, route.path);
         if let Agent(access) = route.access {
             assert!(["read", "operator"].contains(&access), "{}", route.path);
-            // Calls are counted in memory, so a read is never a write.
+            // Calls are counted in memory, so a read is never a write. Only the MCP server
+            // reads its own requests, and its tools only read.
             assert!(
-                route.method != "GET" || route.work == Read,
+                route.method != "GET"
+                    || route.work == Read
+                    || (route.work == Async && route.path == "/api/v1/mcp"),
                 "{}",
                 route.path
             );

@@ -1,20 +1,23 @@
-//! Agent keys and the agent API: the platform owner's Agents page, and everything an
-//! agent reads under `/api/v1/`. Making or widening a key asks for recent verification;
-//! revoking never does.
+//! Agent keys and the agent API: the platform owner's Agents page, everything an agent
+//! reads under `/api/v1/`, and the MCP server at `/api/v1/mcp`. Making or widening a key asks for
+//! recent verification; revoking never does.
 use crate::{
     Result,
-    agents::data,
+    agents::{data, mcp, skill},
     contracts::{AgentKeyRequest, AgentKeysRevoked},
     db::Store,
     http::{
         input::{Input, Reply},
-        route::{Agent, AgentCall, PlatformOwner, PlatformRoutine, Route, User, read, write},
+        route::{
+            Agent, PlatformOwner, PlatformRoutine, Route, Served, User, agent_protocol, read, write,
+        },
     },
     validate as v,
 };
+use axum::{extract::Request, http::Method};
 
 pub fn routes() -> Vec<Route> {
-    vec![
+    let mut routes = vec![
         read("/api/platform/agents", PlatformOwner, keys),
         write("/api/platform/agents/keys", PlatformOwner, create),
         write("/api/platform/agents/keys/{id}", PlatformOwner, update),
@@ -28,45 +31,40 @@ pub fn routes() -> Vec<Route> {
             PlatformRoutine,
             revoke_all,
         ),
-        read("/api/v1/whoami", Agent::READ, whoami),
-        read("/api/v1/openapi.json", Agent::READ, openapi),
-        read("/api/v1/status", Agent::READ, |db, a, i| {
-            reply(data::status(db, a, &i.query))
+        read("/api/platform/agents/skill", PlatformOwner, |db, _, _| {
+            Ok(skill_file(db))
         }),
-        read("/api/v1/metrics", Agent::READ, |_, _, i| {
-            reply(data::metrics(&i.query))
+        read(
+            "/api/platform/agents/openapi.json",
+            PlatformOwner,
+            |db, _, _| Ok(openapi(db)),
+        ),
+        read("/api/v1/openapi.json", Agent::READ, |db, _, _| {
+            Ok(openapi(db))
         }),
-        read("/api/v1/drivers", Agent::READ, |db, a, i| {
-            reply(data::drivers(db, a.state, a, &i.query))
-        }),
-        read("/api/v1/drivers/{driver}", Agent::READ, |db, a, i| {
-            let driver = decoded(i.param("driver"));
-            reply(data::driver(db, a.state, a, &driver, &i.query))
-        }),
-        read("/api/v1/team", Agent::READ, |db, a, i| {
-            reply(data::team(db, a.state, a, &i.query))
-        }),
-        read("/api/v1/routes", Agent::READ, |db, a, i| {
-            reply(data::routes(db, a.state, a, &i.query))
-        }),
-        read("/api/v1/routes/{itinerary}", Agent::READ, |db, a, i| {
-            let itinerary = decoded(i.param("itinerary"));
-            reply(data::route(db, a.state, a, &itinerary, &i.query))
-        }),
-        read("/api/v1/packages/{tracking}", Agent::READ, |db, a, i| {
-            let tracking = decoded(i.param("tracking"));
-            reply(data::package(db, a.state, a, &tracking, &i.query))
-        }),
-        read("/api/v1/timecards", Agent::READ, |db, a, i| {
-            reply(data::timecards(db, a.state, a, &i.query))
-        }),
-        read("/api/v1/meal-breaks", Agent::READ, |db, a, i| {
-            reply(data::meal_breaks(db, a.state, a, &i.query))
-        }),
-        read("/api/v1/dvic", Agent::READ, |db, a, i| {
-            reply(data::dvic(db, a.state, a, &i.query))
-        }),
-    ]
+        read("/api/v1/skill", Agent::READ, |db, _, _| Ok(skill_file(db))),
+        agent_protocol(Method::POST, "/api/v1/mcp", Agent::READ, mcp),
+        agent_protocol(Method::GET, "/api/v1/mcp", Agent::READ, mcp),
+    ];
+    // Every endpoint of the catalog, answered exactly as its MCP tool answers.
+    routes.extend(data::catalog::ENDPOINTS.iter().map(|endpoint| {
+        read(endpoint.path, Agent::READ, move |db, agent, input| {
+            let named = endpoint
+                .path_params
+                .first()
+                .map(|param| decoded(input.param(param.name)))
+                .unwrap_or_default();
+            reply(data::ask(
+                endpoint,
+                db,
+                agent.state,
+                agent,
+                &named,
+                &input.query,
+            ))
+        })
+    }));
+    routes
 }
 
 fn keys(db: &Store, owner: &User, _: &Input) -> Result<Reply> {
@@ -90,16 +88,23 @@ fn revoke_all(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
         revoked: db.revoke_agent_keys(Some(owner.actor()), None)?,
     })
 }
-fn whoami(db: &Store, agent: &AgentCall, _: &Input) -> Result<Reply> {
-    Reply::of(&db.agent_whoami(agent)?)
-}
 /// What an agent reads: the answer, or a refusal that says what to fix.
 fn reply(answer: data::Answer) -> Result<Reply> {
     let (status, body) = data::settle(answer)?;
     Ok(Reply::status(body, status))
 }
-fn openapi(db: &Store, _: &AgentCall, _: &Input) -> Result<Reply> {
-    Ok(Reply::json(data::catalog::openapi(&db.config.origin)))
+fn openapi(db: &Store) -> Reply {
+    Reply::json(data::catalog::openapi(&db.config.origin))
+}
+fn skill_file(db: &Store) -> Reply {
+    Reply::file(
+        "text/markdown; charset=utf-8",
+        "SKILL.md",
+        skill::skill(&db.config.origin),
+    )
+}
+fn mcp(request: Request) -> Served {
+    Box::pin(mcp::serve(request))
 }
 /// A path segment as the agent meant it: percent-escapes decoded, as a name with a space
 /// arrives as `Daniel%20Ortiz`.

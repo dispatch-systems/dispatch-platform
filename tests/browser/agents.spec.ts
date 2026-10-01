@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { test, expect, login } from './fixtures.js';
 
 test('the platform owner makes a key, sees it once, tests it, changes and revokes it', async ({
@@ -20,7 +21,16 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   const ready = page.getByRole('dialog', { name: 'Laptop – Claude Code is ready' });
   const token = await ready.locator('.agents-key code').textContent();
   expect(token).toMatch(/^dsk_dev_[0-9A-Za-z]{38}$/);
-  await expect(ready.locator('.agents-snippet')).toContainText(`DISPATCH_KEY="${token}"`);
+  // Each agent's own setup, starting with Claude Code's.
+  const setup = ready.locator('.agents-snippet');
+  await expect(setup).toContainText(`DISPATCH_KEY="${token}"`);
+  await expect(setup).toContainText('claude mcp add --transport http --scope user dispatch');
+  await ready.getByRole('tab', { name: 'Codex', exact: true }).click();
+  await expect(setup).toContainText('codex mcp add dispatch --url');
+  await expect(setup).toContainText('/api/v1/mcp');
+  await ready.getByRole('tab', { name: 'Other MCP apps', exact: true }).click();
+  await expect(setup).toContainText(`"Authorization": "Bearer ${token}"`);
+  await ready.getByRole('tab', { name: 'Claude Code', exact: true }).click();
   await ready.getByRole('button', { name: 'Send test request' }).click();
   await expect(ready.getByRole('status')).toContainText('Connected · Read only · 1 DSP');
   await page.screenshot({ path: test.info().outputPath('agents-ready.png') });
@@ -47,6 +57,18 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   await connect.getByLabel('Key to test').fill(token!);
   await connect.getByRole('button', { name: 'Test key', exact: true }).click();
   await expect(connect.getByRole('status')).toContainText('Connected · Operator · 1 DSP');
+  // The addresses an agent needs, the OpenAPI spec and the skill.
+  await expect(connect.locator('.agents-endpoint').first()).toContainText('/api/v1/mcp');
+  await expect(connect.getByRole('link', { name: 'OpenAPI spec' })).toHaveAttribute(
+    'href',
+    '/api/platform/agents/openapi.json',
+  );
+  const download = page.waitForEvent('download');
+  await connect.getByRole('link', { name: 'Download Dispatch skill' }).click();
+  const skill = await download;
+  expect(skill.suggestedFilename()).toBe('SKILL.md');
+  const text = fs.readFileSync((await skill.path())!, 'utf8');
+  expect(text).toMatch(/^---\nname: dispatch\n/);
 
   // Revoked, it stops at once.
   await page.getByRole('tab', { name: 'Keys', exact: true }).click();

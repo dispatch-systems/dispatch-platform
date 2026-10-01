@@ -385,6 +385,36 @@
 .agents-endpoint .agents-key {
   padding: 4px 4px 4px 12px;
 }
+.agents-setup .restored-tabs {
+  margin-bottom: 14px;
+}
+.agents-endpoint:first-of-type {
+  margin-top: 20px;
+}
+/* Links that fetch a file, drawn as the dashboard's buttons. */
+.agents-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+.agents-files a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--foreground);
+  font: 500 13px/1.4 var(--font-family);
+  text-decoration: none;
+  transition: background-color var(--motion-duration);
+}
+.agents-files a:hover {
+  background: var(--accent);
+}
 
 @media (max-width: 700px) {
   .agents-choices.two {

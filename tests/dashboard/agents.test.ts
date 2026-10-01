@@ -12,7 +12,7 @@ import {
   reachText,
   requestOf,
   sameRequest,
-  setupSnippet,
+  setups,
 } from '../../dashboard/src/lib/agents.js';
 
 const now = Date.parse('2026-10-01T15:00:00');
@@ -77,9 +77,22 @@ test('reach, last use and setup read plainly', () => {
   assert.equal(lastUsedText(new Date(now - 3 * 3_600_000).toISOString(), now), 'Today, 12:00 PM');
   assert.match(lastUsedText(new Date(now - DAY).toISOString(), now), /^Yesterday, /);
   assert.equal(lastUsedText('2026-09-28T15:00:00', now), 'Sep 28');
-  const snippet = setupSnippet('https://dispatch.example.com', 'dsk_dev_abc');
-  assert.ok(snippet.includes('export DISPATCH_KEY="dsk_dev_abc"'));
-  assert.ok(snippet.includes('https://dispatch.example.com/api/v1/whoami'));
+  // Every agent gets its own setup, each naming the same MCP address and key.
+  const ready = setups('https://dispatch.example.com', 'dsk_dev_abc');
+  assert.deepEqual(
+    ready.map((setup) => setup.label),
+    ['Claude Code', 'Codex', 'Hermes', 'Other MCP apps', 'REST and curl'],
+  );
+  for (const setup of ready) assert.ok(setup.text.includes('dsk_dev_abc'), setup.id);
+  for (const setup of ready.slice(0, 4))
+    assert.ok(setup.text.includes('https://dispatch.example.com/api/v1/mcp'), setup.id);
+  assert.match(ready[0].text, /claude mcp add --transport http --scope user dispatch/);
+  assert.match(ready[1].text, /--bearer-token-env-var DISPATCH_KEY/);
+  assert.match(ready[2].text, /Authorization: "Bearer \$\{DISPATCH_KEY\}"/);
+  assert.deepEqual(JSON.parse(ready[3].text).mcpServers.dispatch.headers, {
+    Authorization: 'Bearer dsk_dev_abc',
+  });
+  assert.ok(ready[4].text.includes('https://dispatch.example.com/api/v1/whoami'));
 });
 
 test('a key sheet knows when nothing changed', () => {
