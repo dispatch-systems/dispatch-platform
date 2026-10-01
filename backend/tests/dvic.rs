@@ -226,3 +226,114 @@ fn catch_up_prioritizes_unseen_weeks_before_refreshing_older_observations() {
     assert_eq!(&request.weeks[..2], &weeks[..2]);
     assert_eq!(&request.weeks[2..], &weeks[24..]);
 }
+
+#[test]
+fn a_hidden_driver_is_never_stored_and_hiding_removes_what_was() {
+    let (_root, db, id) = ready();
+    let mut capture = dvic::fixture(&request(&["2026-W39"])).unwrap();
+    let rows = capture.reports[0].rows.as_mut().unwrap();
+    rows[0].transporter_id = "A1KEPT0000001".into();
+    let mut other = rows[0].clone();
+    other.transporter_id = "A2HIDDEN00001".into();
+    other.transporter_name = "Hidden Driver".into();
+    other.vin = "1FIXTURE000000002".into();
+    rows.push(other);
+    publish(&db, &id, "both", &capture);
+    assert_eq!(count(&db, &id, "dvic_inspections"), 2);
+    let stored = |sql: &str| db.dvic(&id).unwrap().count(sql, []).unwrap();
+    let theirs = "SELECT count(*) FROM dvic_inspections WHERE transporter_id='A2HIDDEN00001'";
+    let copies = "SELECT count(*) FROM dvic_revisions WHERE rows LIKE '%A2HIDDEN00001%' \
+                  OR rows LIKE '%Hidden Driver%'";
+    let counts = || {
+        db.dvic(&id)
+            .unwrap()
+            .all("SELECT row_count,short_count FROM dvic_reports", [])
+            .unwrap()
+    };
+
+    // Hiding removes their inspection and their row from the report copy, then recounts it.
+    let summary = dvic::hidden::hide(
+        &db.dvic(&id).unwrap(),
+        "A2HIDDEN00001",
+        " Platform test ",
+        "2026-10-01T00:00:00.000Z",
+    )
+    .unwrap();
+    assert_eq!(
+        summary,
+        json!({"driver":"A2HIDDEN00001","inspectionsDeleted":1,"reportCopiesCleaned":1})
+    );
+    assert_eq!((stored(theirs), stored(copies)), (0, 0));
+    assert_eq!(counts(), vec![json!({"row_count":1,"short_count":1})]);
+    assert_eq!(count(&db, &id, "dvic_inspections"), 1);
+
+    // A changed report that has them again stores none of their rows.
+    capture.reports[0].sha256 = dvic::hash(b"newer bytes");
+    capture.reports[0].modified_at += 1000;
+    publish(&db, &id, "again", &capture);
+    assert_eq!((stored(theirs), stored(copies)), (0, 0));
+    assert_eq!(counts(), vec![json!({"row_count":1,"short_count":1})]);
+    assert_eq!(
+        dvic::hidden::list(&db.dvic(&id).unwrap()).unwrap(),
+        json!([{"driver":"A2HIDDEN00001","note":"Platform test","hiddenAt":"2026-10-01T00:00:00.000Z"}])
+    );
+
+    // Shown again, their later reports are stored; nothing earlier comes back by itself.
+    dvic::hidden::unhide(&db.dvic(&id).unwrap(), "A2HIDDEN00001").unwrap();
+    assert_eq!(stored(theirs), 0);
+    capture.reports[0].sha256 = dvic::hash(b"newest bytes");
+    capture.reports[0].modified_at += 1000;
+    publish(&db, &id, "shown", &capture);
+    assert_eq!(stored(theirs), 1);
+
+    let dvic = db.dvic(&id).unwrap();
+    let code = |result: dispatch_backend::Result<serde_json::Value>| result.unwrap_err().code;
+    assert_eq!(
+        code(dvic::hidden::unhide(&dvic, "A2HIDDEN00001")),
+        "driver_not_hidden"
+    );
+    assert_eq!(
+        code(dvic::hidden::hide(&dvic, "a2hidden", "x", "t")),
+        "invalid_driver_id"
+    );
+    assert_eq!(
+        code(dvic::hidden::hide(&dvic, "A2HIDDEN00001", " ", "t")),
+        "invalid_note"
+    );
+}
+
+#[test]
+fn the_operator_commands_hide_list_and_unhide_without_stopping_the_server() {
+    let (_root, db, id) = ready();
+    let run = |args: &[&str]| {
+        let args: Vec<String> = args.iter().map(|a| (*a).to_owned()).collect();
+        dispatch_backend::operations::dvic_drivers(&db.config, &args)
+    };
+    // The server's own connection stays open throughout, as it would on a live host.
+    let server = db.dvic(&id).unwrap();
+    assert_eq!(run(&["dvic-hidden", &id]).unwrap(), json!([]));
+    let hidden = run(&["dvic-hide", &id, "A2HIDDEN00001", "Platform test"]).unwrap();
+    assert_eq!(hidden["inspectionsDeleted"], 0);
+    assert_eq!(
+        server
+            .count("SELECT count(*) FROM dvic_hidden_drivers", [])
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        run(&["dvic-hidden", &id]).unwrap()[0]["driver"],
+        "A2HIDDEN00001"
+    );
+    run(&["dvic-unhide", &id, "A2HIDDEN00001"]).unwrap();
+    assert_eq!(run(&["dvic-hidden", &id]).unwrap(), json!([]));
+    let code = |args: &[&str]| run(args).unwrap_err().code;
+    assert_eq!(
+        code(&["dvic-hide", &id, "A2HIDDEN00001"]),
+        "usage_dvic_hidden_hide_unhide"
+    );
+    assert_eq!(code(&["dvic-hidden", "dsp_0000"]), "invalid_dsp_id");
+    assert_eq!(
+        code(&["dvic-hidden", "dsp_00000000000000000000000000000000"]),
+        "dsp_not_found"
+    );
+}

@@ -80,6 +80,27 @@ minimum are retained as non-exceptions so old reports cannot resurrect them. A r
 missing from a rolling exception report does not delete history. These reports do not
 establish the total number of inspections or a compliance percentage.
 
+## Hidden drivers
+
+An operator can keep drivers out of a DSP's DVIC data. `dvic_hidden_drivers` in the DSP's
+`dvic.sqlite` lists their transporter IDs; publication drops their rows before writing any
+report copy, count or inspection, so the database never holds them. Nothing in the
+dashboard or the API reads or changes the list. Only the platform operator does, on the
+host, with the backend binary and the service's environment:
+
+```
+dispatch-backend dvic-hidden <dsp_id>
+dispatch-backend dvic-hide <dsp_id> <transporter_id> "<note>"
+dispatch-backend dvic-unhide <dsp_id> <transporter_id>
+```
+
+Hiding also deletes the driver's stored inspections and removes their rows from every stored
+report copy, recounting those reports, in one transaction. Unhiding lets their later reports
+in and restores nothing. The commands change only that DSP's DVIC database, which SQLite
+serializes with the running server's writes, so they need no stopped service; the server
+must already run a release with migration 2. A page that shows fewer inspections than
+Amazon's report may have a hidden driver: check `dvic-hidden` first.
+
 ## Release order
 
 The `feat/dvic-schema` commit widens the jobs/schedules CHECK constraints without

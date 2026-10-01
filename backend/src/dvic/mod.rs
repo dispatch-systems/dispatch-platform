@@ -1,5 +1,6 @@
 //! Short pre-trip inspections from Cortex's rolling supplementary workbooks.
 //! Publication weeks are ISO Monday–Sunday; inspection dates come from the rows.
+pub mod hidden;
 mod storage;
 pub mod xlsx;
 
@@ -37,6 +38,7 @@ fn verify(db: &Db) -> Result<()> {
         "dvic_inspections",
         "dvic_weeks",
         "dvic_runs",
+        "dvic_hidden_drivers",
     ] {
         db.one(&format!("SELECT count(*) FROM {table} WHERE 0"), [])?;
     }
