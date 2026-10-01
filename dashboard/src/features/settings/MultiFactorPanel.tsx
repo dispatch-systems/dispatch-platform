@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { KeyRound, ShieldCheck, Smartphone } from 'lucide-react';
 import type { AuthenticatorSetup } from '../../../../shared/contracts/index.js';
 import { api } from '../../app/api.js';
@@ -10,6 +10,10 @@ import { ConfirmDialog, DataState, ErrorBox, Modal, RecoveryCodes } from '../../
 type Removing =
   { kind: 'passkey'; id: string; last: boolean } | { kind: 'authenticator'; last: boolean };
 
+const securityChanged = () => {
+  window.dispatchEvent(new Event('dispatch-security-changed'));
+};
+
 export function MultiFactorPanel() {
   const status = useSecurityStatus();
   const passkeys = usePasskeys();
@@ -17,24 +21,26 @@ export function MultiFactorPanel() {
   const [setup, setSetup] = useState<AuthenticatorSetup>();
   const [codes, setCodes] = useState<string[]>([]);
   const [removing, setRemoving] = useState<Removing>();
-  const refresh = () => {
+  const refresh = (recovery: string[] = []) => {
     status.refresh();
     passkeys.refresh();
-    window.dispatchEvent(new Event('dispatch-security-changed'));
+    if (recovery.length) setCodes(recovery);
+    else securityChanged();
   };
+  // Reloading the session reopens a DSP view, which remounts this page and would take
+  // one-time recovery codes with it; it waits until they are saved or the page is left.
+  useEffect(() => (codes.length ? securityChanged : undefined), [codes]);
   const action = useAction(
-    async (work: () => Promise<void>) => {
-      await work();
-      refresh();
+    async (work: () => Promise<string[] | void>) => {
+      refresh((await work()) ?? []);
     },
     { inline: true },
   );
   const passkeyAction = useAction(
     async (name: string) => {
       const recovery = await registerPasskey(name);
-      refresh();
       setAddingPasskey(false);
-      if (recovery.length) setCodes(recovery);
+      refresh(recovery);
     },
     { inline: true },
   );
@@ -46,7 +52,7 @@ export function MultiFactorPanel() {
     },
     { inline: true },
   );
-  const run = (work: () => Promise<void>) => void action.run(work);
+  const run = (work: () => Promise<string[] | void>) => void action.run(work);
 
   return (
     <section className="security-sessions security-mfa" aria-labelledby="security-mfa-title">
@@ -133,13 +139,11 @@ export function MultiFactorPanel() {
                   className="security-quiet"
                   disabled={action.busy}
                   onClick={() =>
-                    run(async () => {
-                      const result = await api<{ codes: string[] }>(
-                        '/api/auth/security/recovery-codes',
-                        {},
-                      );
-                      setCodes(result.codes);
-                    })
+                    run(
+                      async () =>
+                        (await api<{ codes: string[] }>('/api/auth/security/recovery-codes', {}))
+                          .codes,
+                    )
                   }
                 >
                   Replace recovery codes
@@ -170,7 +174,7 @@ export function MultiFactorPanel() {
                 { code },
               );
               setSetup(undefined);
-              if (result.codes.length) setCodes(result.codes);
+              return result.codes;
             })
           }
         />
