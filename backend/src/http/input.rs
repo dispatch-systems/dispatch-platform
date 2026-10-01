@@ -63,6 +63,8 @@ impl Input {
 enum Payload {
     Value(Value),
     Encoded(Bytes),
+    /// A document saved as a file, such as an agent's skill, with its content type and name.
+    File(&'static str, &'static str, String),
 }
 
 pub struct Reply {
@@ -99,6 +101,14 @@ impl Reply {
     pub(super) fn encoded(value: Bytes) -> Self {
         Self {
             value: Payload::Encoded(value),
+            status: 200,
+            cookie: None,
+        }
+    }
+    /// A document made by the server, never request input, that a client saves as `name`.
+    pub fn file(content_type: &'static str, name: &'static str, body: String) -> Self {
+        Self {
+            value: Payload::File(content_type, name, body),
             status: 200,
             cookie: None,
         }
@@ -141,6 +151,18 @@ impl IntoResponse for Reply {
                 status,
                 [(axum::http::header::CONTENT_TYPE, "application/json")],
                 value,
+            )
+                .into_response(),
+            Payload::File(kind, name, body) => (
+                status,
+                [
+                    (axum::http::header::CONTENT_TYPE, kind.to_owned()),
+                    (
+                        axum::http::header::CONTENT_DISPOSITION,
+                        format!("attachment; filename=\"{name}\""),
+                    ),
+                ],
+                body,
             )
                 .into_response(),
         };

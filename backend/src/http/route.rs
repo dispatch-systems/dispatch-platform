@@ -15,6 +15,7 @@ use crate::{
     ensure,
 };
 use axum::{
+    body::Body,
     extract::Request,
     http::Method,
     response::{IntoResponse, Response},
@@ -233,7 +234,6 @@ impl Ctx<'_, Context> {
 pub type Anyone<'a> = Ctx<'a, ()>;
 pub type User<'a> = Ctx<'a, Auth>;
 pub type Member<'a> = Ctx<'a, Context>;
-pub type AgentCall<'a> = Ctx<'a, Caller>;
 
 /// Which database access a route's work runs under.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -250,10 +250,12 @@ pub enum Work {
 
 type Blocking = Arc<dyn Fn(&Store, &State, &Input) -> Result<Reply> + Send + Sync>;
 type Pending = Pin<Box<dyn Future<Output = Result<Reply>> + Send>>;
+pub type Served = Pin<Box<dyn Future<Output = Response> + Send>>;
 enum Handler {
     Blocking(Blocking),
     Async(Box<dyn Fn(Arc<State>, Input) -> Pending + Send + Sync>),
     Memory(fn(&State) -> Reply),
+    Protocol(Agent, fn(Request) -> Served),
 }
 
 pub struct Route {
@@ -345,6 +347,24 @@ where
 {
     asynchronous(Method::POST, path, access, handler)
 }
+/// `method path` for a protocol an agent speaks whose requests the handler reads itself,
+/// such as MCP. The key is checked and counted first, under the shared lock; the handler
+/// then finds the `Caller` and the server's `Arc<State>` in the request's extensions.
+pub fn agent_protocol(
+    method: Method,
+    path: &'static str,
+    access: Agent,
+    handler: fn(Request) -> Served,
+) -> Route {
+    Route {
+        method,
+        path,
+        access: access.access(),
+        work: Work::Async,
+        invalidates_schedules: false,
+        handler: Handler::Protocol(access, handler),
+    }
+}
 /// A public `GET` answered from memory: no session, query, body or database.
 pub fn probe(path: &'static str, handler: fn(&State) -> Reply) -> Route {
     Route {
@@ -372,16 +392,20 @@ impl Route {
     }
     pub(super) async fn serve(&self, state: Arc<State>, request: Request) -> Response {
         match self.answer(state, request).await {
-            Ok(reply) => reply.into_response(),
+            Ok(response) => response,
             Err(error) => middleware::failure(error),
         }
     }
-    async fn answer(&self, state: Arc<State>, request: Request) -> Result<Reply> {
+    async fn answer(&self, state: Arc<State>, request: Request) -> Result<Response> {
         let handler = match &self.handler {
-            Handler::Memory(handler) => return Ok(handler(&state)),
+            Handler::Memory(handler) => return Ok(handler(&state).into_response()),
             Handler::Async(handler) => {
                 let input = middleware::input(&state, request, self.path).await?;
-                return handler(state, input).await;
+                return Ok(handler(state, input).await?.into_response());
+            }
+            Handler::Protocol(access, handler) => {
+                let request = self.signed(*access, state, request).await?;
+                return Ok(handler(request).await);
             }
             Handler::Blocking(handler) => handler.clone(),
         };
@@ -398,6 +422,24 @@ impl Route {
                 .schedule_revision
                 .fetch_add(1, std::sync::atomic::Ordering::Release);
         }
-        Ok(reply)
+        Ok(reply.into_response())
+    }
+    /// The request with its agent's key checked and counted, carrying the caller and the
+    /// server's state for the protocol's handler. The body keeps the usual limits.
+    async fn signed(&self, access: Agent, state: Arc<State>, request: Request) -> Result<Request> {
+        let (mut parts, body) = request.into_parts();
+        let input = middleware::head(&state, &parts, self.path)?;
+        let body = middleware::bytes(body).await?;
+        let shared = state.clone();
+        let caller = state
+            .read(move |db| {
+                let caller = access.authorize(db, &input)?;
+                access.admit(&shared, &caller)?;
+                Ok(caller)
+            })
+            .await?;
+        parts.extensions.insert(caller);
+        parts.extensions.insert(state);
+        Ok(Request::from_parts(parts, Body::from(body)))
     }
 }

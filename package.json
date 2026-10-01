@@ -27,6 +27,7 @@
     "pr:prepare": "python3 tooling/ci/pr-prepare.py",
     "pr:ship": "python3 tooling/ci/pr-ship.py",
     "pr:screenshots": "python3 tooling/ci/pr-screenshots.py",
+    "agents:eval": "tsx tooling/agents/eval.ts",
     "mail:types": "node services/cloudflare-mail/generate-types.mjs",
     "contracts:generate": "DISPATCH_UPDATE_CONTRACTS=1 cargo test --locked --lib contracts::generated",
     "check:privacy": "python3 tooling/security/scan.py",

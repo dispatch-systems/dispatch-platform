@@ -1,13 +1,12 @@
 import { KeyRound, LockKeyhole } from 'lucide-react';
 import type { AgentKeyCreated } from '../../../../shared/contracts/index.js';
 import { Modal } from '../../ui/index.js';
-import { setupSnippet } from '../../lib/agents.js';
 import { CopyButton } from './CopyButton.js';
 import { KeyTest } from './KeyTest.js';
+import { Setup } from './Setup.js';
 
 /** A new key, shown this once, with how an agent uses it. */
 export function KeyReady({ created, close }: { created: AgentKeyCreated; close: () => void }) {
-  const snippet = setupSnippet(window.location.origin, created.token);
   return (
     <Modal title={`${created.key.name} is ready`} onClose={close} dismissible={false}>
       <div className="agents-ready">
@@ -20,10 +19,7 @@ export function KeyReady({ created, close }: { created: AgentKeyCreated; close: 
           <LockKeyhole size={16} aria-hidden="true" />
           <span>Copy it now. Dispatch keeps only a fingerprint and can’t show it again.</span>
         </div>
-        <pre className="agents-snippet">
-          <CopyButton text={snippet} label="Copy setup" />
-          {snippet}
-        </pre>
+        <Setup token={created.token} />
         <div className="agents-test">
           <KeyTest token={created.token} />
         </div>

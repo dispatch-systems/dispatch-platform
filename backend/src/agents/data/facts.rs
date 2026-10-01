@@ -238,6 +238,9 @@ pub struct MealDay {
     pub meals: Vec<MealTaken>,
     pub late_clock_in: bool,
     pub long_gap: bool,
+    /// Whether Cortex had a route for the person that day. Without one, as for office
+    /// staff, the status says nothing about a missed meal.
+    pub cortex_route: bool,
 }
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -283,10 +286,26 @@ pub fn meal_breaks(db: &Store, dsp: &Dsp, period: &Period) -> Result<(Vec<MealDa
                 meals,
                 late_clock_in: row.assessment.late_in,
                 long_gap: row.assessment.long_gap,
+                cortex_route: false,
             });
         }
     }
     Ok((found, Coverage::of(true, held, period)))
+}
+
+/// Each day's drivers Cortex had a route for, by transporter ID: those who could have
+/// taken a meal break in it.
+pub fn meal_routes(db: &Store, dsp: &Dsp, period: &Period) -> Result<BTreeSet<(String, String)>> {
+    let rows = db.collector(&dsp.id, Provider::Cortex)?.all(
+        "SELECT p.report_date day,i.transporter_id id FROM meal_itineraries i \
+         JOIN meal_publications p ON p.id=i.publication_id AND p.active=1 \
+         WHERE p.report_date BETWEEN ? AND ?",
+        [&period.first(), &period.last()],
+    )?;
+    Ok(rows
+        .iter()
+        .map(|r| (s(r, "day").to_owned(), s(r, "id").to_owned()))
+        .collect())
 }
 
 /// One vehicle inspection.

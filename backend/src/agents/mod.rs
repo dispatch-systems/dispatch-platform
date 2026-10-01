@@ -3,6 +3,9 @@
 //! owner; reaches the DSPs it was given, active ones of this environment only; and stops
 //! once it expires or is revoked. Nothing an agent does appears in a DSP's activity log.
 pub mod data;
+pub mod mcp;
+pub mod skill;
+pub mod synthetic;
 mod token;
 mod usage;
 

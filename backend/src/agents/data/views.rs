@@ -111,7 +111,7 @@ pub fn drivers(db: &Store, state: &State, caller: &Caller, query: &Value) -> Ans
         .collect();
     Ok(json!({
         "dsp": about(dsp),
-        "total": found.len(),
+        "found": found.len(),
         "drivers": found.iter().take(limit).map(|p| person_json(p)).collect::<Vec<_>>(),
     }))
 }
@@ -127,6 +127,7 @@ fn gather(
     db: &Store,
     dsp: &Dsp,
     period: &Period,
+    people: &People,
     person: Option<&Person>,
     wanted: &[&str],
 ) -> crate::Result<Gathered> {
@@ -145,7 +146,8 @@ fn gather(
         (vec![], Coverage::default())
     };
     let meals = if on.meal_breaks && wants("meal_breaks") {
-        let (rows, coverage) = facts::meal_breaks(db, dsp, period)?;
+        let (mut rows, coverage) = facts::meal_breaks(db, dsp, period)?;
+        mark_routes(db, dsp, period, people, &mut rows)?;
         let rows = match person {
             Some(p) => rows
                 .into_iter()
@@ -183,6 +185,36 @@ fn coverage(gathered: &Gathered) -> Value {
 }
 const ALL: &[&str] = &["routes", "timecards", "meal_breaks", "dvic"];
 
+/// Marks each meal row whose person Cortex had a route for that day.
+fn mark_routes(
+    db: &Store,
+    dsp: &Dsp,
+    period: &Period,
+    people: &People,
+    meals: &mut [MealDay],
+) -> crate::Result<()> {
+    let routes = facts::meal_routes(db, dsp, period)?;
+    for meal in meals {
+        let (kind, id) = meal.source.split_once(':').unwrap_or(("", ""));
+        let ids: Vec<String> = if kind == "cortex" {
+            vec![id.to_owned()]
+        } else {
+            people
+                .holder(DriverSource::Paycom, id)
+                .map(|p| p.amazon.clone())
+                .unwrap_or_default()
+        };
+        meal.cortex_route = ids
+            .into_iter()
+            .any(|id| routes.contains(&(meal.date.clone(), id)));
+    }
+    Ok(())
+}
+/// A meal break to look at: the comparison found something on a day the driver had a route.
+fn meal_issue(meal: &MealDay) -> bool {
+    meal.cortex_route && meal.status != MealStatus::Same
+}
+
 fn day<'a>(
     days: &'a mut BTreeMap<String, Map<String, Value>>,
     date: &str,
@@ -210,7 +242,7 @@ pub fn driver(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &
     let people = People::load(db, state, &dsp.id)?;
     let person = people.find(wanted)?;
     let period = period(query, today(dsp), "last 7 days")?;
-    let gathered = gather(db, dsp, &period, Some(person), ALL)?;
+    let gathered = gather(db, dsp, &period, &people, Some(person), ALL)?;
     let mut days: BTreeMap<String, Map<String, Value>> = BTreeMap::new();
     for route in &gathered.routes.0 {
         push(day(&mut days, &route.date), "routes", json!(route));
@@ -239,7 +271,7 @@ pub fn driver(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &
         "packagesTotal": sum(|r| r.packages_total),
         "hoursWorked": (hours * 100.0).round() / 100.0,
         "daysWorked": gathered.timecards.0.iter().filter(|c| c.hours > 0.0).count(),
-        "mealIssues": gathered.meals.0.iter().filter(|m| m.status != MealStatus::Same).count(),
+        "mealIssues": gathered.meals.0.iter().filter(|m| meal_issue(m)).count(),
         "inspections": gathered.inspections.0.len(),
         "shortInspections": gathered.inspections.0.iter().filter(|i| i.short).count(),
     });
@@ -298,9 +330,7 @@ impl Tally {
             "clock_out" => cards
                 .and_then(|c| c.last()?.clock_out.clone())
                 .map(Value::from),
-            "meal_issues" => {
-                meals.map(|m| json!(m.iter().filter(|m| m.status != MealStatus::Same).count()))
-            }
+            "meal_issues" => meals.map(|m| json!(m.iter().filter(|m| meal_issue(m)).count())),
             "meal_status" => meals.and_then(|m| m.first()).map(|m| json!(m.status)),
             "inspections" => inspections.map(|i| json!(i.len())),
             "short_inspections" => inspections.map(|i| json!(i.iter().filter(|i| i.short).count())),
@@ -391,7 +421,7 @@ pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
         }
     }
     let people = People::load(db, state, &dsp.id)?;
-    let gathered = gather(db, dsp, &period, None, &sources)?;
+    let gathered = gather(db, dsp, &period, &people, None, &sources)?;
     // Each row's key: the person's code, or the source's ID for someone without one yet.
     let mut tallies: BTreeMap<(String, String), Tally> = BTreeMap::new();
     for route in &gathered.routes.0 {
@@ -495,7 +525,25 @@ pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
         }
         .then_with(|| name(a).cmp(&name(b)))
     });
-    let total = rows.len();
+    // The whole team's figure for each metric that adds up, from every row, so nobody
+    // has to add the rows themselves; a metric no row has stays unknown.
+    let mut totals = Map::new();
+    for metric in chosen.iter().filter(|m| m.total != "day") {
+        let values: Vec<f64> = rows
+            .iter()
+            .filter_map(|r| r[metric.name].as_f64())
+            .collect();
+        let sum: f64 = values.iter().sum();
+        let value = if values.is_empty() {
+            Value::Null
+        } else if values.iter().all(|v| v.fract() == 0.0) {
+            json!(sum as i64)
+        } else {
+            json!((sum * 100.0).round() / 100.0)
+        };
+        totals.insert(metric.name.into(), value);
+    }
+    let row_count = rows.len();
     rows.truncate(param(query, "limit").parse().unwrap_or(200));
     Ok(json!({
         "dsp": about(dsp),
@@ -503,7 +551,8 @@ pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
         "per": if per_day { "day" } else { "driver" },
         "metrics": chosen.iter().map(|m| json!({"name": m.name, "unit": m.unit})).collect::<Vec<_>>(),
         "sortedBy": by,
-        "total": total,
+        "totals": totals,
+        "rowCount": row_count,
         "rows": rows,
         "coverage": coverage(&gathered),
     }))
@@ -534,20 +583,32 @@ pub fn routes(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
         })
         .collect();
     let sum = |f: fn(&RouteDay) -> i64| found.iter().map(f).sum::<i64>();
-    Ok(json!({
-        "dsp": about(dsp),
-        "date": period.first(),
-        "final": coverage.snapshots.is_empty() && !coverage.days.is_empty(),
-        "collected": !coverage.days.is_empty(),
-        "totals": {
+    let collected = !coverage.days.is_empty();
+    // A day not collected has no totals: nothing is known, which is not zero.
+    let totals = collected.then(|| {
+        json!({
             "routes": found.len(),
             "stopsCompleted": sum(|r| r.stops_completed),
             "stopsTotal": sum(|r| r.stops_total),
             "packagesDelivered": sum(|r| r.packages_delivered),
             "packagesTotal": sum(|r| r.packages_total),
-        },
+        })
+    });
+    let mut answer = json!({
+        "dsp": about(dsp),
+        "date": period.first(),
+        "final": coverage.snapshots.is_empty() && collected,
+        "collected": collected,
+        "totals": totals,
         "itineraries": rows,
-    }))
+    });
+    if !collected {
+        answer["note"] = json!(format!(
+            "No routes have been collected for {}; their numbers are unknown, not zero.",
+            period.first()
+        ));
+    }
+    Ok(answer)
 }
 
 fn place(
@@ -712,19 +773,32 @@ pub fn meal_breaks(db: &Store, state: &State, caller: &Caller, query: &Value) ->
     let period = period(query, today(dsp), "today")?;
     one_day(&period)?;
     let people = People::load(db, state, &dsp.id)?;
-    let (rows, coverage) = facts::meal_breaks(db, dsp, &period)?;
+    let (mut rows, coverage) = facts::meal_breaks(db, dsp, &period)?;
+    mark_routes(db, dsp, &period, &people, &mut rows)?;
     let issues = flag(query, "issues");
+    let whom = |row: &MealDay| {
+        let (kind, id) = row.source.split_once(':').unwrap_or(("", ""));
+        let source = if kind == "paycom" {
+            DriverSource::Paycom
+        } else {
+            DriverSource::Amazon
+        };
+        who(&people, source, id, &row.name)
+    };
+    let (driving, staying): (Vec<&MealDay>, Vec<&MealDay>) =
+        rows.iter().partition(|row| row.cortex_route);
     Ok(json!({
         "dsp": about(dsp),
         "date": period.first(),
         "collected": !coverage.days.is_empty(),
-        "drivers": rows.iter().filter(|r| !issues || r.status != MealStatus::Same).map(|row| {
-            let (kind, id) = row.source.split_once(':').unwrap_or(("", ""));
-            let source = if kind == "paycom" { DriverSource::Paycom } else { DriverSource::Amazon };
+        "drivers": driving.iter().filter(|r| !issues || meal_issue(r)).map(|row| {
             let mut value = json!(row);
-            value["driver"] = who(&people, source, id, &row.name);
+            value["driver"] = whom(row);
             value
         }).collect::<Vec<_>>(),
+        // Paycom has these people that day but Cortex had no route for them, as for office
+        // staff: no meal break was expected in Cortex.
+        "withoutRoute": staying.iter().map(|row| whom(row)).collect::<Vec<_>>(),
     }))
 }
 

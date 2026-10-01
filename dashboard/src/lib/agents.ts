@@ -119,13 +119,82 @@ export const sameRequest = (a: AgentKeyRequest, b: AgentKeyRequest) =>
   JSON.stringify({ ...a, dsps: [...a.dsps].sort() }) ===
   JSON.stringify({ ...b, dsps: [...b.dsps].sort() });
 
-/** How an agent sets a key up: as an environment variable, then a first request. */
-export function setupSnippet(origin: string, token: string) {
+/** How each kind of agent connects with a key: its own setup, ready to paste. */
+export function setups(origin: string, token: string) {
+  const mcp = `${origin}/api/v1/mcp`;
+  const key = `export DISPATCH_KEY="${token}"`;
+  const skill = (folder: string) =>
+    [
+      '# The Dispatch skill',
+      `curl -fsS -H "Authorization: Bearer $DISPATCH_KEY" ${origin}/api/v1/skill \\`,
+      `  --create-dirs -o ${folder}/dispatch/SKILL.md`,
+    ].join('\n');
   return [
-    '# Keep the key in your shell profile',
-    `export DISPATCH_KEY="${token}"`,
-    '',
-    '# Ask Dispatch who the key belongs to',
-    `curl -H "Authorization: Bearer $DISPATCH_KEY" ${origin}/api/v1/whoami`,
-  ].join('\n');
+    {
+      id: 'claude-code',
+      label: 'Claude Code',
+      text: [
+        key,
+        '',
+        'claude mcp add --transport http --scope user dispatch \\',
+        `  ${mcp} \\`,
+        '  --header "Authorization: Bearer $DISPATCH_KEY"',
+        '',
+        skill('~/.claude/skills'),
+      ].join('\n'),
+    },
+    {
+      id: 'codex',
+      label: 'Codex',
+      text: [
+        '# In your shell profile',
+        key,
+        '',
+        `codex mcp add dispatch --url ${mcp} \\`,
+        '  --bearer-token-env-var DISPATCH_KEY',
+        '',
+        skill('~/.agents/skills'),
+      ].join('\n'),
+    },
+    {
+      id: 'hermes',
+      label: 'Hermes',
+      text: [
+        '# In your shell profile',
+        key,
+        '',
+        '# ~/.hermes/config.yaml',
+        'mcp_servers:',
+        '  dispatch:',
+        `    url: "${mcp}"`,
+        '    headers:',
+        '      Authorization: "Bearer ${DISPATCH_KEY}"',
+        '',
+        skill('~/.hermes/skills/operations'),
+      ].join('\n'),
+    },
+    {
+      id: 'mcp',
+      label: 'Other MCP apps',
+      text: JSON.stringify(
+        {
+          mcpServers: {
+            dispatch: { type: 'http', url: mcp, headers: { Authorization: `Bearer ${token}` } },
+          },
+        },
+        null,
+        2,
+      ),
+    },
+    {
+      id: 'rest',
+      label: 'REST and curl',
+      text: [
+        key,
+        '',
+        '# Ask Dispatch who the key belongs to',
+        `curl -H "Authorization: Bearer $DISPATCH_KEY" ${origin}/api/v1/whoami`,
+      ].join('\n'),
+    },
+  ] as const;
 }

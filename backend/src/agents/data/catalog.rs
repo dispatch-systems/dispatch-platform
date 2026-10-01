@@ -21,6 +21,10 @@ pub struct Param {
 #[derive(Clone, Copy, Debug)]
 pub struct Endpoint {
     pub id: &'static str,
+    /// The MCP tool's name: snake_case, as every model and harness accepts.
+    pub tool: &'static str,
+    /// In the Essential toolset, the few tools small models choose between best.
+    pub essential: bool,
     pub path: &'static str,
     pub summary: &'static str,
     pub description: &'static str,
@@ -77,6 +81,8 @@ const DRIVER_PATH: Param = Param {
 pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "whoami",
+        tool: "whoami",
+        essential: true,
         path: "/api/v1/whoami",
         summary: "Who this key belongs to",
         description: "The key's access, the time, and each DSP it reaches with that DSP's \
@@ -86,6 +92,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
     },
     Endpoint {
         id: "status",
+        tool: "data_status",
+        essential: true,
         path: "/api/v1/status",
         summary: "How fresh each source is",
         description: "Which sources the DSP has switched on, and when each last collected: \
@@ -95,6 +103,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
     },
     Endpoint {
         id: "metrics",
+        tool: "list_metrics",
+        essential: false,
         path: "/api/v1/metrics",
         summary: "Every metric and term",
         description: "Each metric `team` can show, with its source, unit and meaning, and a \
@@ -104,6 +114,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
     },
     Endpoint {
         id: "drivers",
+        tool: "find_drivers",
+        essential: true,
         path: "/api/v1/drivers",
         summary: "Find drivers",
         description: "Everyone in the DSP with a Driver Match code: their name, how they are \
@@ -121,6 +133,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
     },
     Endpoint {
         id: "driver",
+        tool: "driver_report",
+        essential: true,
         path: "/api/v1/drivers/{driver}",
         summary: "One driver's days",
         description: "Everything collected about one driver in a period: each day's routes \
@@ -131,11 +145,13 @@ pub const ENDPOINTS: &[Endpoint] = &[
     },
     Endpoint {
         id: "team",
+        tool: "team_table",
+        essential: true,
         path: "/api/v1/team",
         summary: "Everyone's numbers",
         description: "A table of metrics for every driver: one row per driver with totals for \
-            the period, or one row per driver per day. Defaults to yesterday's stops, \
-            packages and hours.",
+            the period, or one row per driver per day, and the whole team's total for each \
+            metric. Defaults to yesterday's stops, packages and hours.",
         path_params: &[],
         params: &[
             DSP,
@@ -163,6 +179,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
     },
     Endpoint {
         id: "routes",
+        tool: "route_day",
+        essential: true,
         path: "/api/v1/routes",
         summary: "A day's routes",
         description: "Every itinerary on one day: route, driver, packages, stops, times and \
@@ -172,6 +190,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
     },
     Endpoint {
         id: "route",
+        tool: "route_stops",
+        essential: false,
         path: "/api/v1/routes/{itinerary}",
         summary: "One itinerary's stops",
         description: "Each stop of one itinerary in order, with every package's outcome and \
@@ -185,6 +205,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
     },
     Endpoint {
         id: "package",
+        tool: "find_package",
+        essential: false,
         path: "/api/v1/packages/{tracking}",
         summary: "Find a package",
         description: "Who carried a package, on which route and day, and what happened to \
@@ -198,6 +220,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
     },
     Endpoint {
         id: "timecards",
+        tool: "timecards",
+        essential: false,
         path: "/api/v1/timecards",
         summary: "Timecards",
         description: "Paycom timecards: everyone's for one day, or one driver's for a period \
@@ -207,10 +231,13 @@ pub const ENDPOINTS: &[Endpoint] = &[
     },
     Endpoint {
         id: "meal_breaks",
+        tool: "meal_breaks",
+        essential: false,
         path: "/api/v1/meal-breaks",
         summary: "Meal breaks",
-        description: "One day's meal breaks: what Cortex recorded beside Paycom's lunch \
-            punches, with the comparison's verdict for each driver.",
+        description: "One day's meal breaks for the drivers Cortex had a route for: what Cortex \
+            recorded beside Paycom's lunch punches, with the comparison's verdict for each. People \
+            Paycom has that day without a Cortex route, such as office staff, are listed apart.",
         path_params: &[],
         params: &[
             DSP,
@@ -224,6 +251,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
     },
     Endpoint {
         id: "dvic",
+        tool: "dvic_inspections",
+        essential: false,
         path: "/api/v1/dvic",
         summary: "Vehicle inspections",
         description: "DVIC inspections in a period, with how long each took against the \
@@ -409,7 +438,8 @@ pub const METRICS: &[Metric] = &[
         source: "meal_breaks",
         unit: "days",
         total: "count",
-        description: "Days the meal-break comparison found something to look at.",
+        description: "Days the meal-break comparison found something to look at, among the \
+            days the driver had a Cortex route.",
     },
     Metric {
         name: "meal_status",
@@ -452,6 +482,14 @@ pub const GLOSSARY: &[(&str, &str)] = &[
         "Sunday to Saturday, named by the ISO week of its Saturday, as 2026-W39.",
     ),
     (
+        "departed",
+        "When the driver left the station to start the route, in the DSP's time.",
+    ),
+    (
+        "ended",
+        "When the route's session ended, after the last stop.",
+    ),
+    (
         "snapshot",
         "A route day collected while it was still in progress; numbers can still change.",
     ),
@@ -474,7 +512,8 @@ pub const GLOSSARY: &[(&str, &str)] = &[
     ),
     (
         "meal status: no_flex_meal",
-        "Paycom has lunch punches; Cortex has no meal break.",
+        "Paycom has lunch punches; Cortex has no meal break. With cortexRoute false, Cortex \
+         had no route for the person, so no meal break was expected there.",
     ),
     (
         "meal status: flex_only",
@@ -512,6 +551,40 @@ fn schema(kind: Kind) -> Value {
         Kind::Boolean => json!({"type":"boolean"}),
         Kind::Choice(choices) => json!({"type":"string","enum":choices}),
     }
+}
+
+/// The endpoint an MCP tool asks.
+pub fn tool(name: &str) -> Option<&'static Endpoint> {
+    ENDPOINTS.iter().find(|e| e.tool == name)
+}
+
+/// An MCP tool's input: one flat object of strings, numbers, yes-or-no and fixed choices,
+/// which every model's function calling accepts. The parts of the path are required.
+pub fn input_schema(endpoint: &Endpoint) -> Map<String, Value> {
+    let mut properties = Map::new();
+    for param in endpoint.path_params.iter().chain(endpoint.params) {
+        let mut property = schema(param.kind);
+        let description = if param.name == "metrics" {
+            let names: Vec<&str> = METRICS.iter().map(|m| m.name).collect();
+            format!(
+                "{} One or more of: {}.",
+                param.description,
+                names.join(", ")
+            )
+        } else {
+            param.description.to_owned()
+        };
+        property["description"] = json!(description);
+        properties.insert(param.name.to_owned(), property);
+    }
+    let mut schema = Map::new();
+    schema.insert("type".into(), json!("object"));
+    schema.insert("properties".into(), Value::Object(properties));
+    if !endpoint.path_params.is_empty() {
+        let required: Vec<&str> = endpoint.path_params.iter().map(|p| p.name).collect();
+        schema.insert("required".into(), json!(required));
+    }
+    schema
 }
 
 /// The OpenAPI 3.1 document for the agent API, for tools that read one.
@@ -573,8 +646,22 @@ mod tests {
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), METRICS.len());
+        let mut tools: Vec<&str> = ENDPOINTS.iter().map(|e| e.tool).collect();
+        tools.sort_unstable();
+        tools.dedup();
+        assert_eq!(tools.len(), ENDPOINTS.len());
         for endpoint in ENDPOINTS {
             assert!(endpoint.path.starts_with("/api/v1/"), "{}", endpoint.path);
+            // Names every model accepts: lower snake_case, well under 64 characters.
+            assert!(
+                endpoint.tool.len() <= 32
+                    && endpoint
+                        .tool
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c == '_'),
+                "{}",
+                endpoint.tool
+            );
             for param in endpoint.path_params {
                 assert!(endpoint.path.contains(&format!("{{{}}}", param.name)));
             }

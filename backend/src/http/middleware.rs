@@ -4,9 +4,9 @@
 use super::input::Input;
 use crate::{Error, Result, State, crypto, ensure, observability};
 use axum::{
-    body::to_bytes,
+    body::{Body, Bytes, to_bytes},
     extract::{ConnectInfo, Request, State as AxumState},
-    http::{HeaderName, Method, header},
+    http::{HeaderName, Method, header, request::Parts},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -146,6 +146,10 @@ fn agent_challenge(response: &mut Response) {
             let wait = 60 - (crate::db::now() / 1000) % 60;
             headers.insert(header::RETRY_AFTER, wait.into());
         }
+        // The server is busy for a moment, as while a collection writes.
+        503 => {
+            headers.insert(header::RETRY_AFTER, 5.into());
+        }
         _ => {}
     }
 }
@@ -165,14 +169,14 @@ fn admit(state: &State, request: &Request) -> Result<()> {
     )?;
     let reads = [Method::GET, Method::HEAD, Method::OPTIONS];
     if request.uri().path().starts_with("/api/") && !reads.contains(request.method()) {
-        // An agent's key is its own proof, from wherever it runs; it never rides on a
-        // browser's cookies, so the Origin check that guards them has nothing to guard.
-        let keyed = request.uri().path().starts_with("/api/v1/")
-            && (header(header::AUTHORIZATION).is_some()
-                || header(HeaderName::from_static("x-api-key")).is_some());
+        // The agent API takes only a key, which is its own proof from wherever it runs, and
+        // refuses any request carrying a session. The Origin check that guards a browser's
+        // cookies has nothing to guard there, and a request without a key is told to bring
+        // one, as MCP clients expect.
+        let agent = request.uri().path().starts_with("/api/v1/");
         let origin = header(header::ORIGIN);
         ensure(
-            keyed || origin == Some(&state.config.origin),
+            agent || origin == Some(&state.config.origin),
             "invalid_origin",
             403,
         )?;
@@ -187,6 +191,34 @@ fn admit(state: &State, request: &Request) -> Result<()> {
 /// of at most 64 KiB that arrives within 15 seconds.
 pub async fn input(state: &State, request: Request, pattern: &'static str) -> Result<Input> {
     let (parts, body) = request.into_parts();
+    let mut input = head(state, &parts, pattern)?;
+    let body = bytes(body).await?;
+    if input.method == Method::POST {
+        input.body = serde_json::from_slice(&body)?;
+    }
+    if ["/api/auth/login", "/api/auth/forgot-password"].contains(&pattern) {
+        input
+            .trace
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .account = input
+            .body
+            .get("email")
+            .and_then(Value::as_str)
+            .filter(|email| email.len() <= 254)
+            .map(|email| {
+                crypto::sign(
+                    &state.key,
+                    &format!("account:{}", email.trim().to_lowercase()),
+                )
+            });
+    }
+    Ok(input)
+}
+
+/// What `input` reads before the body: the method, the query, the client's address and
+/// the request's trace. A route that reads its own body, as the MCP server does, starts here.
+pub fn head(state: &State, parts: &Parts, pattern: &'static str) -> Result<Input> {
     let known = [Method::GET, Method::POST].contains(&parts.method);
     ensure(known, "not_found", 404)?;
     let mut query = serde_json::Map::new();
@@ -200,15 +232,6 @@ pub async fn input(state: &State, request: Request, pattern: &'static str) -> Re
         .map(|v| v.0.ip())
         .ok_or_else(|| Error::new("client_address_unavailable", 500))?;
     let ip = state.config.trusted_proxy.client_ip(peer, &parts.headers)?;
-    let body = tokio::time::timeout(BODY_TIMEOUT, to_bytes(body, BODY_LIMIT))
-        .await
-        .map_err(|_| Error::new("request_timeout", 408))?
-        .map_err(|_| Error::new("request_too_large", 413))?;
-    let body = if parts.method == Method::POST {
-        serde_json::from_slice(&body)?
-    } else {
-        Value::Null
-    };
     let trace = parts
         .extensions
         .get::<observability::RequestTrace>()
@@ -219,27 +242,23 @@ pub async fn input(state: &State, request: Request, pattern: &'static str) -> Re
         context.route = Some(pattern);
         context.bulk =
             query.get("limit").is_some_and(|value| value == "all") || pattern.ends_with("/export");
-        if ["/api/auth/login", "/api/auth/forgot-password"].contains(&pattern) {
-            context.account = body
-                .get("email")
-                .and_then(Value::as_str)
-                .filter(|email| email.len() <= 254)
-                .map(|email| {
-                    crypto::sign(
-                        &state.key,
-                        &format!("account:{}", email.trim().to_lowercase()),
-                    )
-                });
-        }
     }
     Ok(Input {
         path: parts.uri.path().to_owned(),
-        method: parts.method,
-        headers: parts.headers,
-        body,
+        method: parts.method.clone(),
+        headers: parts.headers.clone(),
+        body: Value::Null,
         query: Value::Object(query),
         ip,
         trace,
         pattern,
     })
+}
+
+/// A request's body: at most 64 KiB, arriving within 15 seconds.
+pub async fn bytes(body: Body) -> Result<Bytes> {
+    tokio::time::timeout(BODY_TIMEOUT, to_bytes(body, BODY_LIMIT))
+        .await
+        .map_err(|_| Error::new("request_timeout", 408))?
+        .map_err(|_| Error::new("request_too_large", 413))
 }
