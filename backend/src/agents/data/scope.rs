@@ -1,0 +1,470 @@
+//! What a request names, read the way a person writes it: the DSP, the days and the
+//! driver. Anything unclear is refused with what it could have meant.
+use super::Refusal;
+use crate::{
+    Result, State,
+    agents::Caller,
+    contracts::{DriverMatch, DriverSource, DriverStatus, Dsp},
+    db::Store,
+    driver_match::names::name_key,
+    scorecard,
+};
+use chrono::{Datelike, Duration, NaiveDate};
+use serde_json::Value;
+use std::collections::HashMap;
+
+/// The longest period one request may cover.
+pub const LONGEST_DAYS: i64 = 92;
+
+/// A query parameter as text, trimmed; empty when absent.
+pub fn param<'a>(query: &'a Value, name: &str) -> &'a str {
+    query.get(name).and_then(Value::as_str).unwrap_or("").trim()
+}
+
+/// The DSP a request is about: named by id or name, or the key's only DSP.
+pub fn pick_dsp<'a>(caller: &'a Caller, wanted: &str) -> std::result::Result<&'a Dsp, Refusal> {
+    let names = || {
+        caller
+            .dsps
+            .iter()
+            .map(|d| d.name.clone())
+            .collect::<Vec<_>>()
+    };
+    if wanted.is_empty() {
+        return match caller.dsps.as_slice() {
+            [one] => Ok(one),
+            [] => Err(Refusal::new(
+                403,
+                "no_dsps",
+                "This key reaches no active DSP.",
+            )),
+            _ => Err(Refusal::new(
+                400,
+                "dsp_required",
+                "This key reaches several DSPs; name one with `dsp`.",
+            )
+            .choices(names())),
+        };
+    }
+    let lower = wanted.to_lowercase();
+    if let Some(dsp) = caller
+        .dsps
+        .iter()
+        .find(|d| d.id == wanted || d.name.to_lowercase() == lower)
+    {
+        return Ok(dsp);
+    }
+    let close: Vec<&Dsp> = caller
+        .dsps
+        .iter()
+        .filter(|d| d.name.to_lowercase().contains(&lower))
+        .collect();
+    match close.as_slice() {
+        [one] => Ok(one),
+        [] => Err(Refusal::new(
+            404,
+            "dsp_not_found",
+            format!("No DSP this key reaches is called “{wanted}”."),
+        )
+        .choices(names())),
+        many => Err(Refusal::new(
+            400,
+            "dsp_ambiguous",
+            format!("Several DSPs match “{wanted}”; name one exactly."),
+        )
+        .choices(many.iter().map(|d| d.name.clone()).collect())),
+    }
+}
+
+/// Today where the DSP is.
+pub fn today(dsp: &Dsp) -> NaiveDate {
+    let zone: chrono_tz::Tz = dsp.timezone.parse().unwrap_or(chrono_tz::UTC);
+    chrono::Utc::now().with_timezone(&zone).date_naive()
+}
+
+/// The days a request covers, both included, and how it was read.
+#[derive(Clone, Debug)]
+pub struct Period {
+    pub from: NaiveDate,
+    pub to: NaiveDate,
+    pub label: String,
+}
+impl Period {
+    pub fn days(&self) -> Vec<String> {
+        let mut days = vec![];
+        let mut day = self.from;
+        while day <= self.to {
+            days.push(day.to_string());
+            day += Duration::days(1);
+        }
+        days
+    }
+    pub fn first(&self) -> String {
+        self.from.to_string()
+    }
+    pub fn last(&self) -> String {
+        self.to.to_string()
+    }
+}
+
+const FORMS: &str = "Write a period as today, yesterday, this week, last week, this month, \
+    last month, last N days, a date (2026-09-28), two dates (2026-09-01..2026-09-30) or an \
+    Amazon week (2026-W39). Weeks run Sunday to Saturday.";
+
+fn date(text: &str) -> Option<NaiveDate> {
+    NaiveDate::parse_from_str(text, "%Y-%m-%d").ok()
+}
+fn sunday(day: NaiveDate) -> NaiveDate {
+    day - Duration::days(i64::from(day.weekday().num_days_from_sunday()))
+}
+fn month_start(day: NaiveDate) -> NaiveDate {
+    day.with_day(1).unwrap_or(day)
+}
+
+/// Reads a period written in words, as a date, two dates or an Amazon week.
+pub fn read_period(text: &str, today: NaiveDate) -> Option<Period> {
+    let lower = text.trim().to_lowercase();
+    let span = |from: NaiveDate, to: NaiveDate| Period {
+        from,
+        to,
+        label: format!("{lower} ({from} to {to})"),
+    };
+    let one = |day: NaiveDate| Period {
+        from: day,
+        to: day,
+        label: format!("{lower} ({day})"),
+    };
+    Some(match lower.as_str() {
+        "today" => one(today),
+        "yesterday" => one(today - Duration::days(1)),
+        "this week" => span(sunday(today), today),
+        "last week" => {
+            let start = sunday(today) - Duration::days(7);
+            span(start, start + Duration::days(6))
+        }
+        "this month" => span(month_start(today), today),
+        "last month" => {
+            let end = month_start(today) - Duration::days(1);
+            span(month_start(end), end)
+        }
+        _ => {
+            if let Some(n) = lower
+                .strip_prefix("last ")
+                .or_else(|| lower.strip_prefix("past "))
+                .and_then(|rest| rest.strip_suffix(" days"))
+                .and_then(|n| n.trim().parse::<i64>().ok())
+                .filter(|n| (1..=LONGEST_DAYS).contains(n))
+            {
+                return Some(span(today - Duration::days(n - 1), today));
+            }
+            if let Some((a, b)) = lower.split_once("..") {
+                let (from, to) = (date(a.trim())?, date(b.trim())?);
+                return (from <= to).then(|| Period {
+                    from,
+                    to,
+                    label: format!("{from} to {to}"),
+                });
+            }
+            if let Some(day) = date(&lower) {
+                return Some(Period {
+                    from: day,
+                    to: day,
+                    label: day.to_string(),
+                });
+            }
+            let week = lower.to_uppercase();
+            let (from, to) = scorecard::week_days(&week).ok()?;
+            return Some(Period {
+                from,
+                to,
+                label: format!("Amazon week {week} ({from} to {to})"),
+            });
+        }
+    })
+}
+
+/// The period a request asks about: `period`, `date`, or `from` with `to`; `default` when
+/// it names none.
+pub fn period(
+    query: &Value,
+    today: NaiveDate,
+    default: &str,
+) -> std::result::Result<Period, Refusal> {
+    let (words, day, from, to) = (
+        param(query, "period"),
+        param(query, "date"),
+        param(query, "from"),
+        param(query, "to"),
+    );
+    let named = [
+        !words.is_empty(),
+        !day.is_empty(),
+        !from.is_empty() || !to.is_empty(),
+    ];
+    if named.iter().filter(|given| **given).count() > 1 {
+        return Err(Refusal::new(
+            400,
+            "period_conflict",
+            "Give one of `period`, `date`, or `from` with `to`.",
+        ));
+    }
+    let invalid = || Refusal::new(400, "invalid_period", FORMS);
+    let read = if !from.is_empty() || !to.is_empty() {
+        match (date(from), date(to)) {
+            (Some(from), Some(to)) if from <= to => Period {
+                from,
+                to,
+                label: format!("{from} to {to}"),
+            },
+            _ => {
+                return Err(Refusal::new(
+                    400,
+                    "invalid_period",
+                    "`from` and `to` are dates, as 2026-09-01, with `from` first.",
+                ));
+            }
+        }
+    } else {
+        let text = [words, day]
+            .into_iter()
+            .find(|t| !t.is_empty())
+            .unwrap_or(default);
+        read_period(text, today).ok_or_else(invalid)?
+    };
+    if (read.to - read.from).num_days() >= LONGEST_DAYS {
+        return Err(Refusal::new(
+            400,
+            "period_too_long",
+            format!("Ask about {LONGEST_DAYS} days or fewer at a time."),
+        ));
+    }
+    Ok(read)
+}
+
+/// A driver as an agent names them: their Driver Match code and the IDs each source knows
+/// them by.
+#[derive(Clone, Debug)]
+pub struct Person {
+    pub code: String,
+    pub name: String,
+    pub status: DriverStatus,
+    pub paycom: Vec<String>,
+    pub amazon: Vec<String>,
+}
+/// Everyone with a code in a DSP, and who holds each source's ID.
+pub struct People {
+    pub list: Vec<Person>,
+    holders: HashMap<(DriverSource, String), usize>,
+}
+impl People {
+    /// The DSP's people, from Driver Match, kept until the next change to any data.
+    pub fn load(db: &Store, state: &State, dsp: &str) -> Result<Self> {
+        let revision = state
+            .data_revision
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let matched: DriverMatch =
+            state
+                .read_cache
+                .read(format!("agent-people:{dsp}"), revision, || {
+                    db.driver_match(dsp)
+                })?;
+        let mut list = vec![];
+        let mut holders = HashMap::new();
+        for driver in matched.drivers {
+            let of = |source: DriverSource| -> Vec<String> {
+                driver
+                    .ids
+                    .iter()
+                    .filter(|id| id.source == source)
+                    .map(|id| id.id.clone())
+                    .collect()
+            };
+            let person = Person {
+                code: driver.code.clone(),
+                name: driver.name.clone(),
+                status: driver.status,
+                paycom: of(DriverSource::Paycom),
+                amazon: of(DriverSource::Amazon),
+            };
+            for id in &driver.ids {
+                holders.insert((id.source, id.id.clone()), list.len());
+            }
+            list.push(person);
+        }
+        Ok(Self { list, holders })
+    }
+    /// Who holds an ID, if anyone does yet.
+    pub fn holder(&self, source: DriverSource, id: &str) -> Option<&Person> {
+        self.holders
+            .get(&(source, id.to_owned()))
+            .map(|&index| &self.list[index])
+    }
+    /// The one person `wanted` names: a code, either source's ID, a full name, or a part of
+    /// one only a single person has.
+    pub fn find(&self, wanted: &str) -> std::result::Result<&Person, Refusal> {
+        let upper = wanted.to_uppercase();
+        if let Some(person) = self
+            .list
+            .iter()
+            .find(|p| p.code == upper || p.paycom.iter().chain(&p.amazon).any(|id| id == wanted))
+        {
+            return Ok(person);
+        }
+        let key = name_key(wanted);
+        if key.is_empty() {
+            return Err(Refusal::new(
+                400,
+                "driver_required",
+                "Name a driver by name, Driver Match code or ID.",
+            ));
+        }
+        let exact: Vec<&Person> = self
+            .list
+            .iter()
+            .filter(|p| name_key(&p.name) == key)
+            .collect();
+        let words: Vec<String> = wanted.split_whitespace().map(name_key).collect();
+        let found: Vec<&Person> = if exact.is_empty() {
+            self.list
+                .iter()
+                .filter(|p| {
+                    let name: Vec<String> = p.name.split_whitespace().map(name_key).collect();
+                    words
+                        .iter()
+                        .all(|word| name.iter().any(|part| part.starts_with(word.as_str())))
+                })
+                .collect()
+        } else {
+            exact
+        };
+        let named = |p: &&Person| format!("{} ({})", p.name, p.code);
+        match found.as_slice() {
+            [one] => Ok(one),
+            [] => Err(Refusal::new(
+                404,
+                "driver_not_found",
+                format!("No driver in this DSP is called “{wanted}”."),
+            )),
+            many => Err(Refusal::new(
+                400,
+                "driver_ambiguous",
+                format!("{} drivers match “{wanted}”; name one by code.", many.len()),
+            )
+            .choices(many.iter().take(20).map(named).collect())),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn read(text: &str) -> (String, String) {
+        let today = NaiveDate::from_ymd_opt(2026, 10, 1).unwrap(); // a Thursday
+        let p = read_period(text, today).unwrap();
+        (p.first(), p.last())
+    }
+
+    #[test]
+    fn periods_read_like_people_write_them() {
+        assert_eq!(read("today"), ("2026-10-01".into(), "2026-10-01".into()));
+        assert_eq!(
+            read("Yesterday"),
+            ("2026-09-30".into(), "2026-09-30".into())
+        );
+        // Amazon's weeks run Sunday to Saturday.
+        assert_eq!(
+            read("this week"),
+            ("2026-09-27".into(), "2026-10-01".into())
+        );
+        assert_eq!(
+            read("last week"),
+            ("2026-09-20".into(), "2026-09-26".into())
+        );
+        assert_eq!(
+            read("last month"),
+            ("2026-09-01".into(), "2026-09-30".into())
+        );
+        assert_eq!(
+            read("last 7 days"),
+            ("2026-09-25".into(), "2026-10-01".into())
+        );
+        assert_eq!(
+            read("2026-09-12"),
+            ("2026-09-12".into(), "2026-09-12".into())
+        );
+        assert_eq!(
+            read("2026-09-01..2026-09-15"),
+            ("2026-09-01".into(), "2026-09-15".into())
+        );
+        assert_eq!(read("2026-w39"), ("2026-09-20".into(), "2026-09-26".into()));
+        let today = NaiveDate::from_ymd_opt(2026, 10, 1).unwrap();
+        for nonsense in [
+            "soon",
+            "last 0 days",
+            "2026-09-15..2026-09-01",
+            "2026-13-01",
+        ] {
+            assert!(read_period(nonsense, today).is_none(), "{nonsense}");
+        }
+    }
+    #[test]
+    fn a_period_is_one_form_and_at_most_92_days() {
+        let today = NaiveDate::from_ymd_opt(2026, 10, 1).unwrap();
+        let q = |v: Value| period(&v, today, "today");
+        assert_eq!(q(serde_json::json!({})).unwrap().first(), "2026-10-01");
+        assert_eq!(
+            q(serde_json::json!({"from":"2026-09-01","to":"2026-09-02"}))
+                .unwrap()
+                .last(),
+            "2026-09-02"
+        );
+        assert_eq!(
+            q(serde_json::json!({"date":"today","period":"last week"}))
+                .unwrap_err()
+                .code,
+            "period_conflict"
+        );
+        assert_eq!(
+            q(serde_json::json!({"from":"2026-01-01","to":"2026-09-01"}))
+                .unwrap_err()
+                .code,
+            "period_too_long"
+        );
+        assert_eq!(
+            q(serde_json::json!({"from":"2026-09-01"}))
+                .unwrap_err()
+                .code,
+            "invalid_period"
+        );
+    }
+    #[test]
+    fn drivers_are_found_by_code_id_or_name_and_never_guessed() {
+        let person = |code: &str, name: &str, paycom: &str, amazon: &str| Person {
+            code: code.into(),
+            name: name.into(),
+            status: DriverStatus::Matched,
+            paycom: vec![paycom.into()],
+            amazon: vec![amazon.into()],
+        };
+        let list = vec![
+            person("K4M7QZ", "Daniel Ortiz", "E002", "A1B2C3"),
+            person("T9X2PB", "Daniel Reyes", "E003", "D4E5F6"),
+            person("H7N3QA", "Avery Morgan", "E004", "G7H8J9"),
+        ];
+        let people = People {
+            holders: HashMap::new(),
+            list,
+        };
+        assert_eq!(people.find("k4m7qz").unwrap().name, "Daniel Ortiz");
+        assert_eq!(people.find("E003").unwrap().code, "T9X2PB");
+        assert_eq!(people.find("G7H8J9").unwrap().code, "H7N3QA");
+        assert_eq!(people.find("daniel ortiz").unwrap().code, "K4M7QZ");
+        assert_eq!(people.find("avery").unwrap().code, "H7N3QA");
+        assert_eq!(people.find("Dan Rey").unwrap().code, "T9X2PB");
+        let both = people.find("Daniel").unwrap_err();
+        assert_eq!(both.code, "driver_ambiguous");
+        assert_eq!(both.choices.len(), 2);
+        assert_eq!(people.find("Quinn").unwrap_err().code, "driver_not_found");
+    }
+}
