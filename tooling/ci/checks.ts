@@ -78,10 +78,15 @@ async function installBrowsers() {
   const installed =
     fs.existsSync(`${packages}.status`) &&
     fs.readFileSync(`${packages}.status`, 'utf8').trim() === '0';
+  const log = fs.existsSync(`${packages}.log`) ? fs.readFileSync(`${packages}.log`, 'utf8') : '';
   if (!installed) {
-    if (fs.existsSync(`${packages}.log`))
-      process.stdout.write(fs.readFileSync(`${packages}.log`, 'utf8'));
+    process.stdout.write(log);
     failures.push('browser system packages');
+  } else {
+    // What installed and how long it took, so a slow mirror shows in a passing run too.
+    for (const line of log.split('\n'))
+      if (/^(Installing |Installed |Fetched |\d+ upgraded)/.test(line))
+        process.stdout.write(`${line}\n`);
   }
   process.stdout.write(
     `[${installed ? 'pass' : 'fail'}] browser system packages, waited ${((Date.now() - start) / 1000).toFixed(1)}s\n`,
