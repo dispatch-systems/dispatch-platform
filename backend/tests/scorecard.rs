@@ -4,21 +4,40 @@ mod common;
 use dispatch_backend::{
     collectors::Provider,
     db::{Store, s},
+    meals::{CollectionRequest, Scope},
     scorecard::{self, Capture, Request},
 };
 use serde_json::json;
 
 fn request(week: &str) -> Request {
-    Request::parse(&json!({"collection":"scorecard","week":week,"station":"TST1"}))
-        .unwrap()
-        .unwrap()
+    Request::parse(
+        &json!({"collection":"scorecard","week":week,"station":"TST1",
+        "timezone":"America/Los_Angeles","dspName":"Fixture Delivery",
+        "dspAbbreviation":"FXTR"}),
+    )
+    .unwrap()
+    .unwrap()
+}
+fn scope(request: &Request) -> Scope {
+    match request.scope_request() {
+        CollectionRequest::Discover(discovery) => {
+            discovery.scope("area-fixture", "company-fixture").unwrap()
+        }
+        CollectionRequest::Scoped(scope) => scope,
+    }
 }
 /// A DSP with a station and an enabled Cortex connection.
 fn ready() -> (tempfile::TempDir, Store, String) {
     let (root, db, id) = common::bootstrapped();
+    db.platform
+        .exec(
+            "UPDATE dsps SET name='Fixture Delivery',timezone='America/Los_Angeles' WHERE id=?",
+            [&id],
+        )
+        .unwrap();
     db.set_profile(
         &id,
-        json!({"stationCode":"TST1","abbreviation":"NLOG","setupRequired":false}),
+        json!({"stationCode":"TST1","abbreviation":"FXTR","setupRequired":false}),
     )
     .unwrap();
     db.collector(&id, Provider::Cortex)
@@ -31,7 +50,9 @@ fn ready() -> (tempfile::TempDir, Store, String) {
 fn publish(db: &Store, id: &str, key: &str, week: &str, capture: &Capture) -> String {
     let job = db.enqueue_scorecard(id, None, key, Some(week)).unwrap();
     let job = s(&job, "id").to_owned();
-    db.publish_scorecard(id, &job, capture).unwrap();
+    let queued = request(week);
+    db.publish_scorecard(id, &job, capture, &scope(&queued))
+        .unwrap();
     job
 }
 
@@ -280,6 +301,114 @@ fn a_week_not_posted_yet_is_noted_without_a_publication() {
     let mut wrong = capture.clone();
     wrong.posted = true;
     assert!(wrong.validate(&request("2026-W36")).is_err());
+}
+
+#[test]
+fn publication_rechecks_the_discovered_company_and_pinned_dsp_code() {
+    let (_root, db, id) = ready();
+    let week = "2026-W38";
+    let job = db
+        .enqueue_scorecard(&id, None, "scope", Some(week))
+        .unwrap();
+    let job = s(&job, "id").to_owned();
+    let queued = request(week);
+    let expected = scope(&queued);
+    let mut capture = scorecard::fixture(&queued).unwrap();
+    capture.company_id = "company-foreign".into();
+    assert!(
+        db.publish_scorecard(&id, &job, &capture, &expected)
+            .is_err()
+    );
+    capture.company_id = expected.provider.clone();
+    capture.dsp_code = "FOREIGN".into();
+    assert!(
+        db.publish_scorecard(&id, &job, &capture, &expected)
+            .is_err()
+    );
+    assert_eq!(
+        db.scorecard(&id)
+            .unwrap()
+            .count("SELECT count(*) FROM scorecard_publications", [])
+            .unwrap(),
+        0
+    );
+    capture.dsp_code = queued.dsp_abbreviation.clone();
+    db.publish_scorecard(&id, &job, &capture, &expected)
+        .unwrap();
+}
+
+#[test]
+fn legacy_unverified_publications_are_quarantined_until_a_bound_recollection() {
+    let (_root, db, id) = ready();
+    let week = db.scorecard_weeks(&id).unwrap().latest_week;
+    let storage = db.scorecard(&id).unwrap();
+    storage
+        .exec(
+            "INSERT INTO scorecard_publications(id,job_id,week,station,company_id,dsp_code,\
+             started_at,collected_at,active,row_count,adapter_version) VALUES \
+             ('legacy','legacy-job',?,'TST1','company-foreign','FOREIGN',\
+             '2026-01-01T00:00:00Z','2026-01-01T00:01:00Z',1,1,1)",
+            [&week],
+        )
+        .unwrap();
+    storage
+        .exec(
+            "INSERT INTO scorecard_sources(publication_id,dataset,source,url,row_count) VALUES \
+             ('legacy','dsp_station_weekly_quality','api','https://example.test/foreign',1)",
+            [],
+        )
+        .unwrap();
+    storage
+        .exec(
+            "INSERT INTO dsp_quality(publication_id,row_index,week,row) VALUES \
+             ('legacy',0,?,'{\"dsp_final_tier\":\"FOREIGN\"}')",
+            [&week],
+        )
+        .unwrap();
+    storage
+        .exec(
+            "INSERT INTO scorecard_weeks(week,station,checked_at,posted,publication_id) VALUES \
+             (?,'TST1','2026-01-01T00:01:00Z',1,'legacy')",
+            [&week],
+        )
+        .unwrap();
+
+    assert_eq!(db.scorecard_jobs(&id).unwrap().len(), 1);
+    assert!(db.scorecard_weeks(&id).unwrap().weeks.is_empty());
+    assert_eq!(db.scorecard_address(&id, "TST1").unwrap(), None);
+
+    let mut empty = scorecard::fixture(&request(&week)).unwrap();
+    empty.posted = false;
+    for dataset in &mut empty.datasets {
+        dataset.rows.clear();
+    }
+    publish(&db, &id, "verified-empty-after-legacy", &week, &empty);
+    let checked = db.scorecard_weeks(&id).unwrap();
+    assert_eq!(checked.weeks.len(), 1);
+    assert!(!checked.weeks[0].posted);
+    assert!(checked.weeks[0].publication.is_none());
+
+    let capture = scorecard::fixture(&request(&week)).unwrap();
+    publish(&db, &id, "verified-after-legacy", &week, &capture);
+    assert_eq!(
+        storage
+            .all(
+                "SELECT company_id,active,scope_verified FROM scorecard_publications \
+                 ORDER BY company_id",
+                [],
+            )
+            .unwrap(),
+        vec![
+            json!({"company_id":"company-fixture","active":1,"scope_verified":1}),
+            json!({"company_id":"company-foreign","active":0,"scope_verified":0}),
+        ]
+    );
+    let visible = db.scorecard_weeks(&id).unwrap();
+    assert_eq!(visible.weeks.len(), 1);
+    assert_eq!(
+        visible.weeks[0].publication.as_ref().unwrap().dsp_code,
+        "FXTR"
+    );
 }
 
 #[test]

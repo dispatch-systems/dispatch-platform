@@ -195,17 +195,17 @@ impl Drives for Driver {
     fn collect<'a>(&'a mut self, run: &'a Run<'a>) -> Pending<'a, Collected> {
         Box::pin(async move {
             if let Some(request) = crate::dvic::Request::parse(run.request)? {
-                let capture = self.collect_dvic(&request, run).await?;
+                let (capture, scope) = self.collect_dvic(&request, run).await?;
                 return Ok(Collected {
                     data: serde_json::to_value(capture)?,
-                    scope: None,
+                    scope: Some(scope),
                 });
             }
             if let Some(request) = crate::scorecard::Request::parse(run.request)? {
-                let capture = self.collect_scorecard(&request, run).await?;
+                let (capture, scope) = self.collect_scorecard(&request, run).await?;
                 return Ok(Collected {
                     data: serde_json::to_value(capture)?,
-                    scope: None,
+                    scope: Some(scope),
                 });
             }
             if let Some(request) = crate::routedata::Request::parse(run.request)? {

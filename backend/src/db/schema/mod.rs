@@ -175,6 +175,11 @@ pub const SCORECARD: &[Migration] = &[
         name: "sources",
         apply: Sql(include_str!("scorecard/0002_sources.sql")),
     },
+    Migration {
+        id: 3,
+        name: "verified_scope",
+        apply: Code(scorecard_verified_scope),
+    },
 ];
 pub const ROUTEDATA: &[Migration] = &[
     Migration {
@@ -202,6 +207,18 @@ fn routedata_details(db: &Db) -> Result<()> {
         add_column(db, "itineraries", column, "TEXT")?;
     }
     db.0.execute_batch(include_str!("routedata/0002_details.sql"))?;
+    Ok(())
+}
+
+fn scorecard_verified_scope(db: &Db) -> Result<()> {
+    for table in ["scorecard_publications", "scorecard_weeks"] {
+        add_column(
+            db,
+            table,
+            "scope_verified",
+            "INTEGER NOT NULL DEFAULT 0 CHECK(scope_verified IN (0,1))",
+        )?;
+    }
     Ok(())
 }
 
@@ -279,4 +296,26 @@ pub const DVIC: &[Migration] = &[
         name: "hidden_drivers",
         apply: Sql(include_str!("dvic/0002_hidden_drivers.sql")),
     },
+    Migration {
+        id: 3,
+        name: "verified_scope",
+        apply: Code(dvic_verified_scope),
+    },
 ];
+
+fn dvic_verified_scope(db: &Db) -> Result<()> {
+    for table in [
+        "dvic_reports",
+        "dvic_inspections",
+        "dvic_weeks",
+        "dvic_runs",
+    ] {
+        add_column(
+            db,
+            table,
+            "scope_verified",
+            "INTEGER NOT NULL DEFAULT 0 CHECK(scope_verified IN (0,1))",
+        )?;
+    }
+    Ok(())
+}

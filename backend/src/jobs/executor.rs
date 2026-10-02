@@ -58,6 +58,10 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
         let jid = id.clone();
         let worker = owner.clone();
         let request: Value = serde_json::from_str(&job.request)?;
+        let tenant = dsp.clone();
+        let request = state
+            .read(move |db| provider.collector().bind_request(db, &tenant, &request))
+            .await?;
         let message = provider.collector().progress(&request);
         state
             .run_bookkeeping(move |db| {

@@ -19,16 +19,38 @@ impl Store {
         self.added_storage(id, Provider::Cortex, &STORAGE)
     }
 
-    pub(crate) fn dvic_request(&self, id: &str, weeks: Vec<String>) -> Result<Value> {
-        let station = self.profile(id)?.station_code;
-        ensure(!station.is_empty(), "dvic_station_required", 409)?;
+    pub(crate) fn bind_dvic_request(&self, id: &str, weeks: Vec<String>) -> Result<Value> {
+        let dsp = self.find_dsp(id)?;
+        let profile = self.profile(id)?;
+        ensure(
+            !profile.station_code.is_empty(),
+            "dvic_station_required",
+            409,
+        )?;
+        let timezone: chrono_tz::Tz = dsp
+            .timezone
+            .parse()
+            .map_err(|_| Error::new("invalid_timezone", 400))?;
         let request = Request {
             collection: Collection::Dvic,
-            station,
+            station: profile.station_code,
             weeks,
+            date: chrono::Utc::now()
+                .with_timezone(&timezone)
+                .date_naive()
+                .to_string(),
+            timezone: dsp.timezone,
+            dsp_name: dsp.name,
+            dsp_abbreviation: profile.abbreviation,
         };
         request.validate()?;
         Ok(serde_json::to_value(request)?)
+    }
+    pub(crate) fn dvic_request(&self, id: &str, weeks: Vec<String>) -> Result<Value> {
+        let request = self.bind_dvic_request(id, weeks)?;
+        // Keep the durable job payload readable by the previous binary. The worker
+        // binds live tenant context immediately before collection and publication.
+        Ok(json!({"collection":"dvic","station":request["station"],"weeks":request["weeks"]}))
     }
     pub fn enqueue_dvic(
         &self,
@@ -62,7 +84,7 @@ impl Store {
         let station = self.profile(id)?.station_code;
         let db = self.dvic(id)?;
         let checked: HashMap<String, i64> = db.all(
-            "SELECT week,max(checked_at) checked_at FROM dvic_weeks WHERE station=? GROUP BY week",
+            "SELECT week,max(checked_at) checked_at FROM dvic_weeks WHERE station=? AND scope_verified=1 GROUP BY week",
             [&station],
         )?.into_iter().filter_map(|row| {
             chrono::DateTime::parse_from_rfc3339(s(&row, "checked_at")).ok()
@@ -86,7 +108,7 @@ impl Store {
     ) -> Result<HashMap<String, KnownReport>> {
         self.dvic(id)?
             .all(
-                "SELECT source_key,etag,sha256,modified_at FROM dvic_reports WHERE station=? AND company_id=?",
+                "SELECT source_key,etag,sha256,modified_at FROM dvic_reports WHERE station=? AND company_id=? AND scope_verified=1",
                 params![station, company],
             )?
             .into_iter()
@@ -103,16 +125,26 @@ impl Store {
 
     /// Validate the complete batch before committing any report, revision, or row.
     /// A job can be published again after interruption without adding history twice.
-    pub fn publish_dvic(&self, id: &str, job: &str, capture: &Capture) -> Result<()> {
+    pub fn publish_dvic(
+        &self,
+        id: &str,
+        job: &str,
+        capture: &Capture,
+        scope: &crate::meals::Scope,
+    ) -> Result<()> {
         let job_row = self.job_row(job, Some(id))?;
         ensure(
             job_row.kind.as_str() == JOB_KIND,
             "dvic_capture_invalid",
             502,
         )?;
-        let request = Request::parse(&serde_json::from_str(&job_row.request)?)?
-            .ok_or_else(|| Error::new("invalid_dvic_request", 400))?;
-        capture.validate(&request)?;
+        let request: Value = serde_json::from_str(&job_row.request)?;
+        let request = Provider::Cortex
+            .collector()
+            .bind_request(self, id, &request)?;
+        let request =
+            Request::parse(&request)?.ok_or_else(|| Error::new("invalid_dvic_request", 400))?;
+        capture.validate_scope(&request, scope)?;
         let db = self.dvic(id)?;
         let checked = at(capture.finished_at);
         db.transaction(|| {
@@ -122,15 +154,24 @@ impl Store {
             let mut row_count = 0;
             for report in &capture.reports {
                 let report_id = hash(serde_json::to_string(&[&capture.company_id, &capture.station, &report.source_key])?.as_bytes());
-                let existing = db.one("SELECT sha256,etag,modified_at FROM dvic_reports WHERE id=?", [&report_id])?;
+                let existing = db.one(
+                    "SELECT sha256,etag,modified_at,scope_verified FROM dvic_reports WHERE id=?",
+                    [&report_id],
+                )?;
+                let trusted = existing
+                    .as_ref()
+                    .is_some_and(|row| row["scope_verified"].as_i64() == Some(1));
                 let Some(rows) = &report.rows else {
-                    ensure(existing.as_ref().is_some_and(|r| {
+                    ensure(trusted && existing.as_ref().is_some_and(|r| {
                         s(r,"sha256") == report.sha256
                             && r["etag"].as_str() == report.etag.as_deref()
                             && report.etag.is_some()
                             && r["modified_at"].as_i64() == Some(report.modified_at)
                     }), "dvic_cache_changed", 409)?;
-                    db.exec("UPDATE dvic_reports SET checked_at=? WHERE id=?", params![checked,report_id])?;
+                    db.exec(
+                        "UPDATE dvic_reports SET checked_at=?,scope_verified=1 WHERE id=? AND scope_verified=1",
+                        params![checked, report_id],
+                    )?;
                     continue;
                 };
                 // A hidden driver's rows are never written: not in the report's copy,
@@ -140,7 +181,7 @@ impl Store {
                 row_count += rows.len();
                 // A stale capture cannot roll the same object's metadata backwards.
                 ensure(
-                    existing.as_ref().and_then(|r|r["modified_at"].as_i64()).is_none_or(|t|report.modified_at>=t),
+                    !trusted || existing.as_ref().and_then(|r|r["modified_at"].as_i64()).is_none_or(|t|report.modified_at>=t),
                     "dvic_source_changed", 502,
                 )?;
                 let revision = hash(format!("{report_id}:{}",report.sha256).as_bytes());
@@ -149,11 +190,11 @@ impl Store {
                 let shorts = rows.iter().map(|row| row.is_short()).collect::<Result<Vec<_>>>()?.into_iter().filter(|short|*short).count();
                 db.exec(
                     "INSERT INTO dvic_reports(id,company_id,dsp_code,station,source_key,name,week,report_date,\
-                     modified_at,etag,sha256,revision_id,row_count,short_count,min_date,max_date,checked_at) \
-                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET \
+                     modified_at,etag,sha256,revision_id,row_count,short_count,min_date,max_date,checked_at,scope_verified) \
+                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1) ON CONFLICT(id) DO UPDATE SET \
                      modified_at=excluded.modified_at,etag=excluded.etag,sha256=excluded.sha256,\
                      revision_id=excluded.revision_id,row_count=excluded.row_count,short_count=excluded.short_count,\
-                     min_date=excluded.min_date,max_date=excluded.max_date,checked_at=excluded.checked_at",
+                     min_date=excluded.min_date,max_date=excluded.max_date,checked_at=excluded.checked_at,scope_verified=1",
                     params![report_id,capture.company_id,capture.dsp_code,capture.station,report.source_key,
                         report.name,report.week,report.report_date,report.modified_at,report.etag,report.sha256,
                         revision,rows.len() as i64,shorts as i64,min_date,max_date,checked],
@@ -166,13 +207,14 @@ impl Store {
                     db.exec(
                         "INSERT INTO dvic_inspections(company_id,inspection_key,dsp_code,station,start_date,\
                          transporter_id,transporter_name,vin,fleet_type,inspection_type,inspection_status,start_time,\
-                         end_time,duration_seconds,minimum_seconds,short,report_date,source_modified_at,revision_id) \
-                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(company_id,inspection_key) DO UPDATE SET \
+                         end_time,duration_seconds,minimum_seconds,short,report_date,source_modified_at,revision_id,scope_verified) \
+                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1) ON CONFLICT(company_id,inspection_key) DO UPDATE SET \
                          transporter_name=excluded.transporter_name,fleet_type=excluded.fleet_type,\
                          inspection_status=excluded.inspection_status,end_time=excluded.end_time,\
                          duration_seconds=excluded.duration_seconds,minimum_seconds=excluded.minimum_seconds,short=excluded.short,\
                          report_date=excluded.report_date,source_modified_at=excluded.source_modified_at,\
-                         revision_id=excluded.revision_id WHERE excluded.report_date>dvic_inspections.report_date OR \
+                         revision_id=excluded.revision_id,scope_verified=1 WHERE dvic_inspections.scope_verified=0 OR \
+                         excluded.report_date>dvic_inspections.report_date OR \
                          (excluded.report_date=dvic_inspections.report_date \
                          AND excluded.source_modified_at>=dvic_inspections.source_modified_at)",
                         params![capture.company_id,row.key(),row.dsp,row.station,row.start_date,row.transporter_id,
@@ -184,15 +226,15 @@ impl Store {
             }
             for week in &capture.weeks {
                 let count = capture.reports.iter().filter(|r| &r.week == week).count();
-                db.exec("INSERT INTO dvic_weeks(station,company_id,week,checked_at,report_count) VALUES (?,?,?,?,?) ON \
+                db.exec("INSERT INTO dvic_weeks(station,company_id,week,checked_at,report_count,scope_verified) VALUES (?,?,?,?,?,1) ON \
                     CONFLICT(station,company_id,week) DO UPDATE SET \
-                    checked_at=excluded.checked_at,report_count=excluded.report_count",
+                    checked_at=excluded.checked_at,report_count=excluded.report_count,scope_verified=1",
                     params![capture.station,capture.company_id,week,checked,count as i64],
                 )?;
             }
             db.exec("INSERT INTO \
-                    dvic_runs(job_id,station,company_id,started_at,collected_at,weeks,reports,downloaded,unchanged,rows) \
-                    VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    dvic_runs(job_id,station,company_id,started_at,collected_at,weeks,reports,downloaded,unchanged,rows,scope_verified) \
+                    VALUES (?,?,?,?,?,?,?,?,?,?,1)",
                 params![job,capture.station,capture.company_id,at(capture.started_at),checked,
                     serde_json::to_string(&capture.weeks)?,capture.reports.len() as i64,downloaded as i64,
                     (capture.reports.len()-downloaded) as i64,row_count as i64],
@@ -206,12 +248,22 @@ impl Store {
         let decode = |sql: &str| db.all(sql, [&station]);
         Ok(DvicStatus {
             latest_week: report_week(chrono::Utc::now().date_naive()),
-            short_inspections: db.count("SELECT count(*) FROM dvic_inspections WHERE station=? AND short=1", [&station])? as usize,
-            weeks: decode("SELECT week,checked_at AS checkedAt,report_count AS reportCount FROM dvic_weeks WHERE station=? \
-                    ORDER BY week DESC LIMIT 104")?.into_iter().map(serde_json::from_value).collect::<std::result::Result<_,_>>()?,
+            short_inspections: db.count(
+                "SELECT count(*) FROM dvic_inspections \
+                 WHERE station=? AND short=1 AND scope_verified=1",
+                [&station],
+            )? as usize,
+            weeks: decode(
+                "SELECT week,checked_at AS checkedAt,report_count AS reportCount \
+                 FROM dvic_weeks WHERE station=? AND scope_verified=1 \
+                 ORDER BY week DESC LIMIT 104",
+            )?
+            .into_iter()
+            .map(serde_json::from_value)
+            .collect::<std::result::Result<_, _>>()?,
             reports: decode("SELECT name,week,report_date AS reportDate,row_count AS rowCount,short_count AS \
                     shortCount,min_date AS minDate,max_date AS maxDate,checked_at AS checkedAt FROM dvic_reports WHERE \
-                    station=? ORDER BY report_date DESC LIMIT 366")?
+                    station=? AND scope_verified=1 ORDER BY report_date DESC LIMIT 366")?
                 .into_iter().map(serde_json::from_value).collect::<std::result::Result<_,_>>()?,
             jobs: self.recent_jobs_of(id, JOB_KIND)?,
             station,
@@ -243,7 +295,8 @@ impl Store {
                     inspectionType,inspection_status AS status,start_time AS startTime,end_time AS \
                     endTime,duration_seconds AS durationSeconds,minimum_seconds AS \
                     minimumSeconds,minimum_seconds-duration_seconds AS shortBySeconds,report_date AS sourceReportDate \
-                    FROM dvic_inspections WHERE station=?1 AND short=1 AND start_date>=?2 AND start_date<=?3 AND (?4 IS \
+                    FROM dvic_inspections WHERE station=?1 AND short=1 AND scope_verified=1 \
+                    AND start_date>=?2 AND start_date<=?3 AND (?4 IS \
                     NULL OR transporter_id=?4) AND start_date||':'||company_id||':'||inspection_key>?5 ORDER BY \
                     start_date,company_id,inspection_key LIMIT ?6",
                     params![station,from,to,driver,after,(limit+1) as i64],

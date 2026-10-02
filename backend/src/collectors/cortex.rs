@@ -46,6 +46,30 @@ impl Collector for Cortex {
             self.job_kind()
         }
     }
+    fn bind_request(&self, store: &Store, dsp: &str, request: &Value) -> Result<Value> {
+        if dvic::Request::is(request) {
+            let station = request["station"]
+                .as_str()
+                .ok_or_else(|| Error::new("invalid_dvic_request", 400))?;
+            let weeks: Vec<String> = serde_json::from_value(request["weeks"].clone())
+                .map_err(|_| Error::new("invalid_dvic_request", 400))?;
+            let bound = store.bind_dvic_request(dsp, weeks)?;
+            ensure(bound["station"] == station, "dvic_scope_mismatch", 409)?;
+            return Ok(bound);
+        }
+        if scorecard::Request::is(request) {
+            let week = request["week"]
+                .as_str()
+                .ok_or_else(|| Error::new("invalid_input", 400))?;
+            let station = request["station"]
+                .as_str()
+                .ok_or_else(|| Error::new("invalid_input", 400))?;
+            let bound = store.bind_scorecard_request(dsp, week)?;
+            ensure(bound["station"] == station, "scorecard_scope_mismatch", 409)?;
+            return Ok(bound);
+        }
+        Ok(request.clone())
+    }
     fn added_storages(&self) -> &'static [&'static AddedStorage] {
         static ADDED: [&AddedStorage; 3] =
             [&scorecard::STORAGE, &routedata::STORAGE, &dvic::STORAGE];
@@ -113,15 +137,27 @@ impl Collector for Cortex {
     }
     fn fixture(&self, _: &str, request: &Value) -> Result<Collected> {
         if let Some(request) = dvic::Request::parse(request)? {
+            let scope = match request.scope_request() {
+                CollectionRequest::Discover(discovery) => {
+                    discovery.scope("area-fixture", "company-fixture")?
+                }
+                CollectionRequest::Scoped(scope) => scope,
+            };
             return Ok(Collected {
                 data: serde_json::to_value(dvic::fixture(&request)?)?,
-                scope: None,
+                scope: Some(scope),
             });
         }
         if let Some(request) = scorecard::Request::parse(request)? {
+            let scope = match request.scope_request() {
+                CollectionRequest::Discover(discovery) => {
+                    discovery.scope("area-fixture", "company-fixture")?
+                }
+                CollectionRequest::Scoped(scope) => scope,
+            };
             return Ok(Collected {
                 data: serde_json::to_value(scorecard::fixture(&request)?)?,
-                scope: None,
+                scope: Some(scope),
             });
         }
         if let Some(request) = routedata::Request::parse(request)? {
@@ -175,22 +211,31 @@ impl Collector for Cortex {
         })
     }
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
-        if dvic::Request::is(&collected.data) {
-            return store.publish_dvic(dsp, job, &serde_json::from_value(collected.data)?);
+        let Collected { data, scope } = collected;
+        if dvic::Request::is(&data) {
+            return store.publish_dvic(
+                dsp,
+                job,
+                &serde_json::from_value(data)?,
+                &scope.ok_or_else(|| Error::new("invalid_cortex_scope", 502))?,
+            );
         }
-        if scorecard::Request::is(&collected.data) {
-            return store.publish_scorecard(dsp, job, &serde_json::from_value(collected.data)?);
+        if scorecard::Request::is(&data) {
+            return store.publish_scorecard(
+                dsp,
+                job,
+                &serde_json::from_value(data)?,
+                &scope.ok_or_else(|| Error::new("invalid_cortex_scope", 502))?,
+            );
         }
-        if routedata::Request::is(&collected.data) {
-            return store.publish_routes(dsp, job, &serde_json::from_value(collected.data)?);
+        if routedata::Request::is(&data) {
+            return store.publish_routes(dsp, job, &serde_json::from_value(data)?);
         }
         store.publish_meals(
             dsp,
             job,
-            &serde_json::from_value(collected.data)?,
-            &collected
-                .scope
-                .ok_or_else(|| Error::new("invalid_cortex_scope", 502))?,
+            &serde_json::from_value(data)?,
+            &scope.ok_or_else(|| Error::new("invalid_cortex_scope", 502))?,
         )?;
         Ok(())
     }

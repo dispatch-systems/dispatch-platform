@@ -8,6 +8,7 @@ use crate::{
     contracts::{ScorecardDatasetCount, ScorecardPublication, ScorecardWeek, ScorecardWeeks},
     db::{Db, DspLease, Kind, Store, at, now, s},
     ensure,
+    meals::{CollectionRequest as ScopeRequest, Discovery, Scope},
 };
 use chrono::{Datelike, Duration, NaiveDate, Weekday};
 use rusqlite::params;
@@ -245,6 +246,9 @@ pub struct Request {
     pub collection: Collection,
     pub week: String,
     pub station: String,
+    pub timezone: String,
+    pub dsp_name: String,
+    pub dsp_abbreviation: String,
 }
 impl Request {
     /// Whether a job request or a collection names the scorecard collection.
@@ -267,10 +271,30 @@ impl Request {
                 && self
                     .station
                     .bytes()
-                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()),
+                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+                && token(&self.dsp_abbreviation, 32)
+                && !self.dsp_name.trim().is_empty()
+                && self.dsp_name.len() <= 256
+                && !self.dsp_name.chars().any(char::is_control),
             "invalid_station",
             400,
-        )
+        )?;
+        self.scope_request()
+            .validate_scope(&self.discovery().scope("discovery", "discovery")?)
+    }
+    fn discovery(&self) -> Discovery {
+        Discovery {
+            date: week_days(&self.week)
+                .map(|(_, saturday)| saturday.to_string())
+                .unwrap_or_default(),
+            station: self.station.clone(),
+            timezone: self.timezone.clone(),
+            dsp_name: self.dsp_name.clone(),
+            dsp_abbreviation: self.dsp_abbreviation.clone(),
+        }
+    }
+    pub fn scope_request(&self) -> ScopeRequest {
+        ScopeRequest::Discover(self.discovery())
     }
     /// The interval a dataset takes for this week.
     pub fn interval(&self, dataset: &Dataset) -> Result<(String, String)> {
@@ -327,8 +351,12 @@ impl Capture {
             502,
         )?;
         ensure(
-            token(&self.company_id, 128) && token(&self.dsp_code, 32),
-            "scorecard_capture_invalid",
+            token(&self.company_id, 128)
+                && token(&self.dsp_code, 32)
+                && self
+                    .dsp_code
+                    .eq_ignore_ascii_case(&request.dsp_abbreviation),
+            "scorecard_scope_mismatch",
             502,
         )?;
         ensure(
@@ -371,6 +399,15 @@ impl Capture {
             .find(|d| d.id == POSTED_SIGNAL)
             .is_some_and(|d| !d.rows.is_empty());
         ensure(posted == self.posted, "scorecard_capture_invalid", 502)
+    }
+    pub fn validate_scope(&self, request: &Request, scope: &Scope) -> Result<()> {
+        self.validate(request)?;
+        request.scope_request().validate_scope(scope)?;
+        ensure(
+            self.company_id == scope.provider,
+            "scorecard_scope_mismatch",
+            502,
+        )
     }
     pub fn row_count(&self) -> usize {
         self.datasets.iter().map(|d| d.rows.len()).sum()
@@ -454,7 +491,7 @@ pub fn fixture(request: &Request) -> Result<Capture> {
         week: request.week.clone(),
         station: request.station.clone(),
         company_id: "company-fixture".into(),
-        dsp_code: "FXTR".into(),
+        dsp_code: request.dsp_abbreviation.clone(),
         started_at,
         finished_at: now().max(started_at),
         posted: true,
@@ -518,14 +555,30 @@ impl Store {
         ensure(!station.is_empty(), "scorecard_station_required", 409)?;
         Ok(station)
     }
-    pub(crate) fn scorecard_request(&self, id: &str, week: &str) -> Result<Value> {
+    pub(crate) fn bind_scorecard_request(&self, id: &str, week: &str) -> Result<Value> {
+        let dsp = self.find_dsp(id)?;
+        let profile = self.profile(id)?;
+        ensure(
+            !profile.station_code.is_empty(),
+            "scorecard_station_required",
+            409,
+        )?;
         let request = Request {
             collection: Collection::Scorecard,
             week: week.into(),
-            station: self.scorecard_station(id)?,
+            station: profile.station_code,
+            timezone: dsp.timezone,
+            dsp_name: dsp.name,
+            dsp_abbreviation: profile.abbreviation,
         };
         request.validate()?;
         Ok(serde_json::to_value(request)?)
+    }
+    pub(crate) fn scorecard_request(&self, id: &str, week: &str) -> Result<Value> {
+        let request = self.bind_scorecard_request(id, week)?;
+        // Keep the durable job payload readable by the previous binary. The worker
+        // binds live tenant context immediately before collection and publication.
+        Ok(json!({"collection":"scorecard","week":request["week"],"station":request["station"]}))
     }
     /// Queues `week`, or the most recent completed one, answering with the job.
     pub fn enqueue_scorecard(
@@ -553,13 +606,13 @@ impl Store {
         let db = self.scorecard(id)?;
         let published = db
             .one(
-                "SELECT id FROM scorecard_publications WHERE week=? AND station=? AND active=1",
+                "SELECT id FROM scorecard_publications WHERE week=? AND station=? AND active=1 AND scope_verified=1",
                 [&week, &station],
             )?
             .is_some();
         let checked = db
             .one(
-                "SELECT checked_at FROM scorecard_weeks WHERE week=? AND station=?",
+                "SELECT checked_at FROM scorecard_weeks WHERE week=? AND station=? AND scope_verified=1",
                 [&week, &station],
             )?
             .and_then(|row| chrono::DateTime::parse_from_rfc3339(s(&row, "checked_at")).ok())
@@ -580,6 +633,7 @@ impl Store {
             .one(
                 "SELECT s.url,p.company_id FROM scorecard_publications p JOIN scorecard_sources s \
                  ON s.publication_id=p.id WHERE p.station=? AND s.source='api' \
+                 AND p.scope_verified=1 \
                  ORDER BY p.collected_at DESC,s.dataset LIMIT 1",
                 [station],
             )?
@@ -587,19 +641,32 @@ impl Store {
     }
     /// Stores a week's capture as its active publication, or records that the week
     /// is not posted yet. One transaction: a reader never sees part of a week.
-    pub fn publish_scorecard(&self, id: &str, job: &str, capture: &Capture) -> Result<()> {
+    pub fn publish_scorecard(
+        &self,
+        id: &str,
+        job: &str,
+        capture: &Capture,
+        scope: &Scope,
+    ) -> Result<()> {
         let request: Value = serde_json::from_str(&self.job_row(job, Some(id))?.request)?;
+        let request = Provider::Cortex
+            .collector()
+            .bind_request(self, id, &request)?;
         let request = Request::parse(&request)?.ok_or_else(|| Error::new("invalid_input", 400))?;
-        capture.validate(&request)?;
+        capture.validate_scope(&request, scope)?;
         let db = self.scorecard(id)?;
         let checked_at = at(capture.finished_at);
         db.transaction(|| {
             if !capture.posted {
                 // A week published before stays published; only the check is noted.
                 db.exec(
-                    "INSERT INTO scorecard_weeks(week,station,checked_at,posted,publication_id) \
-                     VALUES (?,?,?,0,NULL) ON CONFLICT(week,station) DO UPDATE SET \
-                     checked_at=excluded.checked_at",
+                    "INSERT INTO scorecard_weeks(week,station,checked_at,posted,publication_id,scope_verified) \
+                     VALUES (?,?,?,0,NULL,1) ON CONFLICT(week,station) DO UPDATE SET \
+                     checked_at=excluded.checked_at,\
+                     posted=CASE WHEN scorecard_weeks.scope_verified=1 THEN scorecard_weeks.posted ELSE 0 END,\
+                     publication_id=CASE WHEN scorecard_weeks.scope_verified=1 \
+                         THEN scorecard_weeks.publication_id ELSE NULL END,\
+                     scope_verified=1",
                     params![capture.week, capture.station, checked_at],
                 )?;
                 return Ok(());
@@ -607,7 +674,7 @@ impl Store {
             let publication = crate::crypto::id("scorecard")?;
             db.exec(
                 "INSERT INTO scorecard_publications(id,job_id,week,station,company_id,dsp_code,started_at,\
-                 collected_at,active,row_count,adapter_version) VALUES (?,?,?,?,?,?,?,?,0,?,?)",
+                 collected_at,active,row_count,adapter_version,scope_verified) VALUES (?,?,?,?,?,?,?,?,0,?,?,1)",
                 params![
                     publication,
                     job,
@@ -658,17 +725,17 @@ impl Store {
                 )?;
             }
             db.exec(
-                "UPDATE scorecard_publications SET active=0 WHERE week=? AND station=? AND company_id=? AND active=1",
-                params![capture.week, capture.station, capture.company_id],
+                "UPDATE scorecard_publications SET active=0 WHERE week=? AND station=? AND active=1",
+                params![capture.week, capture.station],
             )?;
             db.exec(
                 "UPDATE scorecard_publications SET active=1 WHERE id=?",
                 [&publication],
             )?;
             db.exec(
-                "INSERT INTO scorecard_weeks(week,station,checked_at,posted,publication_id) \
-                 VALUES (?,?,?,1,?) ON CONFLICT(week,station) DO UPDATE SET \
-                 checked_at=excluded.checked_at,posted=1,publication_id=excluded.publication_id",
+                "INSERT INTO scorecard_weeks(week,station,checked_at,posted,publication_id,scope_verified) \
+                 VALUES (?,?,?,1,?,1) ON CONFLICT(week,station) DO UPDATE SET \
+                 checked_at=excluded.checked_at,posted=1,publication_id=excluded.publication_id,scope_verified=1",
                 params![capture.week, capture.station, checked_at, publication],
             )?;
             Ok(())
@@ -683,8 +750,8 @@ impl Store {
         let states = db.all(
             "SELECT w.week,w.checked_at,w.posted,p.id,p.station,p.dsp_code,p.collected_at,p.row_count \
              FROM scorecard_weeks w LEFT JOIN scorecard_publications p \
-             ON p.week=w.week AND p.station=w.station AND p.active=1 \
-             WHERE w.station=? ORDER BY w.week DESC",
+             ON p.week=w.week AND p.station=w.station AND p.active=1 AND p.scope_verified=1 \
+             WHERE w.station=? AND w.scope_verified=1 ORDER BY w.week DESC",
             [&station],
         )?;
         let publications: Vec<&str> = states
@@ -807,7 +874,8 @@ mod tests {
                 .is_none()
         );
         let request =
-            Request::parse(&json!({"collection":"scorecard","week":"2026-W38","station":"TST1"}))
+            Request::parse(&json!({"collection":"scorecard","week":"2026-W38","station":"TST1",
+                "timezone":"America/Los_Angeles","dspName":"Fixture Delivery","dspAbbreviation":"FXTR"}))
                 .unwrap()
                 .unwrap();
         assert_eq!(
@@ -818,12 +886,15 @@ mod tests {
             "2026-09-13"
         );
         assert!(
-            Request::parse(&json!({"collection":"scorecard","week":"2026-W38","station":"tst1"}))
+            Request::parse(&json!({"collection":"scorecard","week":"2026-W38","station":"tst1",
+                "timezone":"America/Los_Angeles","dspName":"Fixture Delivery","dspAbbreviation":"FXTR"}))
                 .is_err()
         );
         assert!(
             Request::parse(
-                &json!({"collection":"scorecard","week":"2026-W38","station":"TST1","extra":1})
+                &json!({"collection":"scorecard","week":"2026-W38","station":"TST1",
+                    "timezone":"America/Los_Angeles","dspName":"Fixture Delivery",
+                    "dspAbbreviation":"FXTR","extra":1})
             )
             .is_err()
         );
@@ -831,7 +902,8 @@ mod tests {
     #[test]
     fn the_fixture_is_a_valid_posted_week_and_its_keys_are_read_from_rows() {
         let request =
-            Request::parse(&json!({"collection":"scorecard","week":"2026-W38","station":"TST1"}))
+            Request::parse(&json!({"collection":"scorecard","week":"2026-W38","station":"TST1",
+                "timezone":"America/Los_Angeles","dspName":"Fixture Delivery","dspAbbreviation":"FXTR"}))
                 .unwrap()
                 .unwrap();
         let capture = fixture(&request).unwrap();

@@ -8,6 +8,7 @@ use crate::{
     browsers::http::{Http, Refusal},
     db::now,
     job_metrics::Recorder,
+    meals::Scope,
     scorecard::{
         Capture, Collection, DATASETS, Dataset, DatasetCapture, MAX_ROWS, POSTED_SIGNAL, Request,
         token,
@@ -20,7 +21,6 @@ const LIMIT: usize = 16 * 1024 * 1024;
 /// Reads at once: as many as the overview page itself sends when it opens. Cortex
 /// takes over a second to answer even the smallest, so they wait on it together.
 const LANES: usize = DATASETS.len();
-const OVERVIEW: &str = "/performance?pageId=dsp_dashboard_overview";
 
 /// Where the page sends its data requests, and how it names this DSP there.
 pub(super) struct Api {
@@ -135,13 +135,12 @@ impl Driver {
             }
         }
     }
-    /// Opens the overview and watches the page's data requests until one is for the
-    /// request's station. The page settles on a station of its own first; when that
-    /// is another one, it is asked for the station explicitly, and requests the
-    /// earlier page still had in flight are let go.
+    /// Opens the overview for the provider identity discovery resolved, then accepts
+    /// only a data request and settled page that still name that provider.
     pub(super) async fn performance_api(
         &mut self,
-        station: &str,
+        scope: &Scope,
+        expected_dsp: &str,
         metrics: &Recorder,
     ) -> Result<Api> {
         self.page
@@ -150,88 +149,107 @@ impl Driver {
                 json!({"patterns":[{"urlPattern":"*/performance/api/*getData*","requestStage":"Request"}]}),
             )
             .await?;
-        let result = self.observe_api(station, metrics).await;
+        let result = self.observe_api(scope, expected_dsp, metrics).await;
         let _ = self.page.command("Fetch.disable", json!({})).await;
         self.drain_paused().await;
         result
     }
-    async fn observe_api(&mut self, expected_station: &str, metrics: &Recorder) -> Result<Api> {
-        let mut found = None;
-        for attempt in 0..2 {
-            let address = if attempt == 0 {
-                format!("{}{OVERVIEW}", self.origin)
+    async fn observe_api(
+        &mut self,
+        scope: &Scope,
+        expected_dsp: &str,
+        metrics: &Recorder,
+    ) -> Result<Api> {
+        let address = {
+            let mut query = url::form_urlencoded::Serializer::new(String::new());
+            query
+                .append_pair("pageId", "dsp_dashboard_overview")
+                .append_pair("station", &scope.station)
+                .append_pair("companyId", &scope.provider);
+            format!("{}/performance?{}", self.origin, query.finish())
+        };
+        self.page.start_navigation(&address).await?;
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let mut mismatched = false;
+        let (base, dsp) = loop {
+            ensure(
+                Instant::now() < deadline,
+                if mismatched {
+                    "cortex_scope_mismatch"
+                } else {
+                    "cortex_content_incomplete"
+                },
+                502,
+            )?;
+            let event = self.browser.event(&self.page.id).await?;
+            if event.is_null() {
+                continue;
+            }
+            // Every paused request goes on, watched or not: the page must keep loading.
+            let _ = self
+                .page
+                .command(
+                    "Fetch.continueRequest",
+                    json!({"requestId":event["requestId"]}),
+                )
+                .await;
+            let url = s(&event["request"], "url");
+            if event["request"]["method"] != "GET" || !url.contains("/getData") {
+                continue;
+            }
+            let (base, dsp, station) = data_request(url, &self.origin)?;
+            if station == scope.station && dsp.eq_ignore_ascii_case(expected_dsp) {
+                break (base, dsp);
+            }
+            mismatched = true;
+            metrics.detail(if station != scope.station {
+                "station_mismatch"
             } else {
-                metrics.detail("station_navigation");
-                format!("{}{OVERVIEW}&station={}", self.origin, expected_station)
-            };
-            self.page.start_navigation(&address).await?;
-            let deadline = Instant::now() + Duration::from_secs(60);
-            while found.is_none() {
-                ensure(Instant::now() < deadline, "cortex_content_incomplete", 502)?;
-                let event = self.browser.event(&self.page.id).await?;
-                if event.is_null() {
-                    continue;
-                }
-                // Every paused request goes on, watched or not: the page must keep loading.
-                // One the page dropped when it was asked for the station is gone, and
-                // resuming it fails with nothing lost.
-                let _ = self
-                    .page
-                    .command(
-                        "Fetch.continueRequest",
-                        json!({"requestId":event["requestId"]}),
-                    )
-                    .await;
-                let url = s(&event["request"], "url");
-                if event["request"]["method"] != "GET" || !url.contains("/getData") {
-                    continue;
-                }
-                let (base, dsp, station) = data_request(url, &self.origin)?;
-                if station == expected_station {
-                    found = Some((base, dsp));
-                } else if attempt == 0 {
-                    // The page's own choice; ask for the station instead.
-                    metrics.detail("station_mismatch");
-                    break;
-                }
-            }
-            if found.is_some() {
-                break;
-            }
-        }
-        let (base, dsp) = found.ok_or_else(|| Error::new("cortex_station_unavailable", 502))?;
+                "provider_mismatch"
+            });
+        };
         // Stop intercepting before waiting on the page: nothing else must be held up.
         self.page.command("Fetch.disable", json!({})).await?;
         self.drain_paused().await;
-        // The page names the company in its own address once it has settled.
+        // The page must settle on the exact provider discovery selected.
         let settled = Instant::now() + Duration::from_secs(15);
-        let company_id = loop {
+        loop {
             let frame = self.page.frame().await?;
-            let company = url::Url::parse(s(&frame, "url"))
-                .ok()
-                .filter(|u| u.origin().ascii_serialization() == self.origin)
-                .and_then(|u| {
-                    u.query_pairs()
-                        .find(|(key, _)| key == "companyId")
-                        .map(|(_, value)| value.into_owned())
-                })
-                .filter(|value| token(value, 128));
-            if let Some(company) = company {
-                break company;
+            if let Ok(url) = url::Url::parse(s(&frame, "url"))
+                && url.origin().ascii_serialization() == self.origin
+            {
+                let values: std::collections::HashMap<_, _> =
+                    url.query_pairs().into_owned().collect();
+                if let (Some(company), Some(station)) =
+                    (values.get("companyId"), values.get("station"))
+                    && token(company, 128)
+                {
+                    ensure(
+                        company == &scope.provider && station == &scope.station,
+                        "cortex_scope_mismatch",
+                        502,
+                    )?;
+                    break;
+                }
             }
             ensure(Instant::now() < settled, "cortex_content_incomplete", 502)?;
             sleep(Duration::from_millis(300)).await;
-        };
+        }
         Ok(Api {
             base,
             dsp,
-            company_id,
+            company_id: scope.provider.clone(),
         })
     }
     /// The API where the station's last publication read it, if that still names this
     /// origin and station.
-    async fn saved_api(&self, station: &str, run: &Run<'_>) -> Result<Option<Api>> {
-        let (job, at) = (run.job.to_owned(), station.to_owned());
+    async fn saved_api(
+        &self,
+        scope: &Scope,
+        expected_dsp: &str,
+        run: &Run<'_>,
+    ) -> Result<Option<Api>> {
+        let (job, at) = (run.job.to_owned(), scope.station.clone());
         let saved = run
             .state
             .read(move |db| {
@@ -241,7 +259,10 @@ impl Driver {
             .await?;
         Ok(saved.and_then(|(url, company_id)| {
             let (base, dsp, named) = data_request(&url, &self.origin).ok()?;
-            (named == station && token(&company_id, 128)).then_some(Api {
+            (named == scope.station
+                && company_id == scope.provider
+                && dsp.eq_ignore_ascii_case(expected_dsp))
+            .then_some(Api {
                 base,
                 dsp,
                 company_id,
@@ -320,14 +341,21 @@ impl Driver {
         &mut self,
         request: &Request,
         run: &Run<'_>,
-    ) -> Result<Capture> {
+    ) -> Result<(Capture, Scope)> {
         request.validate()?;
         let started_at = now();
         run.progress(10, "Finding the scorecard".into()).await?;
-        let (mut api, mut saved) = match self.saved_api(&request.station, run).await? {
+        let scope = self
+            .resolve_scope(&request.scope_request(), run.metrics)
+            .await?;
+        let (mut api, mut saved) = match self
+            .saved_api(&scope, &request.dsp_abbreviation, run)
+            .await?
+        {
             Some(api) => (api, true),
             None => (
-                self.performance_api(&request.station, run.metrics).await?,
+                self.performance_api(&scope, &request.dsp_abbreviation, run.metrics)
+                    .await?,
                 false,
             ),
         };
@@ -343,7 +371,9 @@ impl Driver {
                         && !failed.answered
                         && failed.error.is(crate::Code::ScorecardApiUnreadable) =>
                 {
-                    api = self.performance_api(&request.station, run.metrics).await?;
+                    api = self
+                        .performance_api(&scope, &request.dsp_abbreviation, run.metrics)
+                        .await?;
                     saved = false;
                 }
                 Err(failed) => return Err(failed.error),
@@ -380,8 +410,8 @@ impl Driver {
             posted,
             datasets,
         };
-        capture.validate(request)?;
-        Ok(capture)
+        capture.validate_scope(request, &scope)?;
+        Ok((capture, scope))
     }
 }
 

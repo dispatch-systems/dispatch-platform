@@ -153,7 +153,7 @@ pub(crate) fn identities(store: &Store, dsp: &str) -> Result<Vec<Identity>> {
             "SELECT d.transporter_id id,json_extract(d.row,'$.da_name') name,\
              min(p.week) first,max(p.week) last FROM driver_scorecards d \
              JOIN scorecard_publications p ON p.id=d.publication_id \
-             WHERE COALESCE(d.transporter_id,'')<>'' GROUP BY 1,2 ORDER BY last DESC",
+             WHERE p.scope_verified=1 AND COALESCE(d.transporter_id,'')<>'' GROUP BY 1,2 ORDER BY last DESC",
             [],
         )?,
         &plain,
@@ -162,7 +162,7 @@ pub(crate) fn identities(store: &Store, dsp: &str) -> Result<Vec<Identity>> {
     amazon(
         store.dvic(dsp)?.all(
             "SELECT transporter_id id,transporter_name name,min(start_date) first,\
-             max(start_date) last FROM dvic_inspections GROUP BY 1,2 ORDER BY last DESC",
+             max(start_date) last FROM dvic_inspections WHERE scope_verified=1 GROUP BY 1,2 ORDER BY last DESC",
             [],
         )?,
         &plain,
@@ -211,14 +211,14 @@ pub(crate) fn name_of(store: &Store, dsp: &str, (source, id): &Key) -> Result<Op
         &*store.scorecard(dsp)?,
         "SELECT json_extract(d.row,'$.da_name') FROM driver_scorecards d \
          JOIN scorecard_publications p ON p.id=d.publication_id \
-         WHERE d.transporter_id=? ORDER BY p.week DESC",
+         WHERE d.transporter_id=? AND p.scope_verified=1 ORDER BY p.week DESC",
     )?;
     if scorecard.is_some() {
         return Ok(scorecard);
     }
     first(
         &*store.dvic(dsp)?,
-        "SELECT transporter_name FROM dvic_inspections WHERE transporter_id=? \
+        "SELECT transporter_name FROM dvic_inspections WHERE transporter_id=? AND scope_verified=1 \
          ORDER BY start_date DESC",
     )
 }
@@ -288,7 +288,7 @@ pub(crate) fn activity(
     add(
         store.dvic(dsp)?.all(
             "SELECT transporter_id id,count(*) count,max(start_date) last \
-             FROM dvic_inspections GROUP BY transporter_id",
+             FROM dvic_inspections WHERE scope_verified=1 GROUP BY transporter_id",
             [],
         )?,
         DriverSource::Amazon,
@@ -299,7 +299,7 @@ pub(crate) fn activity(
         store.scorecard(dsp)?.all(
             "SELECT d.transporter_id id,count(DISTINCT p.week) count,max(p.week) last \
              FROM driver_scorecards d JOIN scorecard_publications p \
-             ON p.id=d.publication_id AND p.active=1 \
+             ON p.id=d.publication_id AND p.active=1 AND p.scope_verified=1 \
              WHERE COALESCE(d.transporter_id,'')<>'' GROUP BY d.transporter_id",
             [],
         )?,
@@ -374,7 +374,7 @@ pub(crate) fn days(store: &Store, dsp: &str) -> Result<Days> {
     // An inspection means the driver was out that day, though DVIC alone does not say
     // which days were collected.
     for (id, day) in store.dvic(dsp)?.query_as::<(String, String)>(
-        "SELECT DISTINCT transporter_id,start_date FROM dvic_inspections",
+        "SELECT DISTINCT transporter_id,start_date FROM dvic_inspections WHERE scope_verified=1",
         [],
     )? {
         out.worked

@@ -3,16 +3,49 @@ use dispatch_backend::{
     collectors::Provider,
     db::{self, Store, s},
     dvic::{self, Capture, Request},
+    meals::{CollectionRequest, Scope},
 };
 use serde_json::json;
 
 fn request(weeks: &[&str]) -> Request {
-    Request::parse(&json!({"collection":"dvic","station":"TST1","weeks":weeks}))
-        .unwrap()
-        .unwrap()
+    Request::parse(&json!({"collection":"dvic","station":"TST1","weeks":weeks,
+        "date":"2026-10-02","timezone":"America/Los_Angeles",
+        "dspName":"Fixture Delivery","dspAbbreviation":"FXTR"}))
+    .unwrap()
+    .unwrap()
+}
+fn job_scope(db: &Store, id: &str, job: &str) -> Scope {
+    let queued: serde_json::Value =
+        serde_json::from_str(&db.job_row(job, Some(id)).unwrap().request).unwrap();
+    let weeks = queued["weeks"].as_array().unwrap();
+    let weeks = weeks
+        .iter()
+        .map(|week| week.as_str().unwrap())
+        .collect::<Vec<_>>();
+    let request = request(&weeks);
+    match request.scope_request() {
+        CollectionRequest::Discover(discovery) => {
+            discovery.scope("area-fixture", "company-fixture").unwrap()
+        }
+        CollectionRequest::Scoped(scope) => scope,
+    }
+}
+fn publish_capture(
+    db: &Store,
+    id: &str,
+    job: &str,
+    capture: &Capture,
+) -> dispatch_backend::Result<()> {
+    db.publish_dvic(id, job, capture, &job_scope(db, id, job))
 }
 fn ready() -> (tempfile::TempDir, Store, String) {
     let (root, db, id) = common::bootstrapped();
+    db.platform
+        .exec(
+            "UPDATE dsps SET name='Fixture Delivery',timezone='America/Los_Angeles' WHERE id=?",
+            [&id],
+        )
+        .unwrap();
     db.set_profile(
         &id,
         json!({"stationCode":"TST1","abbreviation":"FXTR","setupRequired":false}),
@@ -29,7 +62,7 @@ fn publish(db: &Store, id: &str, key: &str, capture: &Capture) -> String {
         .enqueue_dvic(id, None, key, Some(&capture.weeks[0]), capture.weeks.len())
         .unwrap();
     let job = s(&job, "id").to_owned();
-    db.publish_dvic(id, &job, capture).unwrap();
+    publish_capture(db, id, &job, capture).unwrap();
     // The worker normally transitions the job after publication.
     db.jobs
         .exec("UPDATE jobs SET status='succeeded' WHERE id=?", [&job])
@@ -52,7 +85,7 @@ fn rolling_overlap_updates_names_once_and_older_backfills_cannot_replace_correct
     newer.reports[0].rows.as_mut().unwrap()[0].end_time = "2026-09-19 09:01:15".into();
     newer.reports[0].rows.as_mut().unwrap()[0].transporter_name = "Updated Name".into();
     let first = publish(&db, &id, "newer", &newer);
-    db.publish_dvic(&id, &first, &newer).unwrap();
+    publish_capture(&db, &id, &first, &newer).unwrap();
     publish(&db, &id, "same-file", &newer);
     let older = dvic::fixture(&request(&["2026-W38"])).unwrap();
     publish(&db, &id, "backfill", &older);
@@ -104,7 +137,7 @@ fn unchanged_reports_require_a_matching_committed_revision_and_batches_are_atomi
     let job = db
         .enqueue_dvic(&id, None, "bad", Some("2026-W39"), 2)
         .unwrap();
-    assert!(db.publish_dvic(&id, s(&job, "id"), &bad).is_err());
+    assert!(publish_capture(&db, &id, s(&job, "id"), &bad).is_err());
     assert_eq!(count(&db, &id, "dvic_revisions"), 2);
     assert_eq!(count(&db, &id, "dvic_runs"), 2);
 }
@@ -126,12 +159,10 @@ fn empty_reports_keep_history_and_missing_weeks_are_rechecked_without_inventing_
     assert_eq!(count(&db, &id, "dvic_reports"), 1);
     let jobs = db.dvic_jobs(&id).unwrap();
     assert_eq!(jobs.len(), 1);
-    let request = Request::parse(&jobs[0].1).unwrap().unwrap();
-    assert_eq!(request.weeks.len(), 4);
-    assert_eq!(
-        request.weeks[0],
-        dvic::report_week(chrono::Utc::now().date_naive())
-    );
+    assert_eq!(jobs[0].1.as_object().unwrap().len(), 3);
+    let weeks = jobs[0].1["weeks"].as_array().unwrap();
+    assert_eq!(weeks.len(), 4);
+    assert_eq!(weeks[0], dvic::report_week(chrono::Utc::now().date_naive()));
 }
 
 #[test]
@@ -142,10 +173,16 @@ fn publication_rejects_wrong_scope_and_reads_are_paginated_and_isolated() {
         .enqueue_dvic(&id, None, "scope", Some("2026-W39"), 2)
         .unwrap();
     capture.reports[1].rows.as_mut().unwrap()[0].station = "OTHER".into();
-    assert!(db.publish_dvic(&id, s(&job, "id"), &capture).is_err());
+    assert!(publish_capture(&db, &id, s(&job, "id"), &capture).is_err());
     assert_eq!(count(&db, &id, "dvic_reports"), 0);
     capture.reports[1].rows.as_mut().unwrap()[0].station = "TST1".into();
-    db.publish_dvic(&id, s(&job, "id"), &capture).unwrap();
+    capture.company_id = "company-foreign".into();
+    assert!(publish_capture(&db, &id, s(&job, "id"), &capture).is_err());
+    capture.company_id = "company-fixture".into();
+    capture.dsp_code = "FOREIGN".into();
+    assert!(publish_capture(&db, &id, s(&job, "id"), &capture).is_err());
+    capture.dsp_code = "FXTR".into();
+    publish_capture(&db, &id, s(&job, "id"), &capture).unwrap();
     let first = db
         .dvic_inspections(&id, "2026-09-01", "2026-09-30", None, "", 1)
         .unwrap();
@@ -178,6 +215,117 @@ fn publication_rejects_wrong_scope_and_reads_are_paginated_and_isolated() {
     );
     db.set_profile(&id, json!({"stationCode":"TST2"})).unwrap();
     assert_eq!(db.dvic_status(&id).unwrap().short_inspections, 0);
+}
+
+#[test]
+fn legacy_unverified_reports_and_inspections_stay_quarantined() {
+    let (_root, db, id) = ready();
+    let storage = db.dvic(&id).unwrap();
+    storage.exec(
+        "INSERT INTO dvic_reports(id,company_id,dsp_code,station,source_key,name,week,report_date,\
+         modified_at,sha256,revision_id,row_count,short_count,min_date,max_date,checked_at) VALUES \
+         ('legacy-report','company-foreign','FOREIGN','TST1','legacy-key','Foreign DVIC','2026-W39',\
+         '2026-09-27',1,'legacy-sha','legacy-revision',1,1,'2026-09-20','2026-09-20',\
+         '2026-09-27T00:00:00Z')",
+        [],
+    ).unwrap();
+    storage
+        .exec(
+            "INSERT INTO dvic_revisions(id,report_id,sha256,modified_at,collected_at,rows) VALUES \
+         ('legacy-revision','legacy-report','legacy-sha',1,'2026-09-27T00:00:00Z','[]')",
+            [],
+        )
+        .unwrap();
+    storage.exec(
+        "INSERT INTO dvic_inspections(company_id,inspection_key,dsp_code,station,start_date,\
+         transporter_id,transporter_name,vin,fleet_type,inspection_type,inspection_status,start_time,\
+         end_time,duration_seconds,minimum_seconds,short,report_date,source_modified_at,revision_id) VALUES \
+         ('company-foreign','legacy-inspection','FOREIGN','TST1','2026-09-20','foreign-driver',\
+         'Foreign Driver','FOREIGNVIN0000001','CDV','PRE_TRIP','COMPLETE','07:00','07:00',1,90,1,\
+         '2026-09-27',1,'legacy-revision')",
+        [],
+    ).unwrap();
+    storage
+        .exec(
+            "INSERT INTO dvic_weeks(station,company_id,week,checked_at,report_count) VALUES \
+         ('TST1','company-foreign','2026-W39','2026-09-27T00:00:00Z',1)",
+            [],
+        )
+        .unwrap();
+
+    let status = db.dvic_status(&id).unwrap();
+    assert_eq!(status.short_inspections, 0);
+    assert!(status.reports.is_empty());
+    assert!(status.weeks.is_empty());
+    assert!(
+        db.dvic_inspections(&id, "2026-09-01", "2026-09-30", None, "", 100)
+            .unwrap()
+            .inspections
+            .is_empty()
+    );
+
+    let capture = dvic::fixture(&request(&["2026-W39"])).unwrap();
+    let source_key = &capture.reports[0].source_key;
+    let matching_id = dvic::hash(
+        serde_json::to_string(&["company-fixture", "TST1", source_key])
+            .unwrap()
+            .as_bytes(),
+    );
+    storage.exec(
+        "INSERT INTO dvic_reports(id,company_id,dsp_code,station,source_key,name,week,report_date,\
+         modified_at,sha256,revision_id,row_count,short_count,checked_at) VALUES \
+         (?1,'company-fixture','FXTR','TST1',?2,'Poisoned matching DVIC','2026-W39','2026-09-27',\
+         9223372036854775807,'poisoned-sha','poisoned-revision',0,0,'2026-09-27T00:00:00Z')",
+        rusqlite::params![matching_id, source_key],
+    ).unwrap();
+    storage
+        .exec(
+            "INSERT INTO dvic_revisions(id,report_id,sha256,modified_at,collected_at,rows) VALUES \
+         ('poisoned-revision',?,'poisoned-sha',9223372036854775807,'2026-09-27T00:00:00Z','[]')",
+            [&matching_id],
+        )
+        .unwrap();
+    let expected = &capture.reports[0].rows.as_ref().unwrap()[0];
+    storage
+        .exec(
+            "INSERT INTO dvic_inspections(company_id,inspection_key,dsp_code,station,start_date,\
+             transporter_id,transporter_name,vin,fleet_type,inspection_type,inspection_status,start_time,\
+             end_time,duration_seconds,minimum_seconds,short,report_date,source_modified_at,revision_id) VALUES \
+             ('company-fixture',?,'FXTR','TST1',?,'driver-1','Poisoned Driver','1FIXTURE000000001',\
+             'CV','PRE_TRIP_DVIC','PASSED',?,?,75,90,1,'2099-01-01',9223372036854775807,'poisoned-revision')",
+            rusqlite::params![
+                expected.key(),
+                expected.start_date,
+                expected.start_time,
+                expected.end_time,
+            ],
+        )
+        .unwrap();
+
+    publish(&db, &id, "verified-after-legacy", &capture);
+    let visible = db.dvic_status(&id).unwrap();
+    assert_eq!(visible.short_inspections, 1);
+    assert_eq!(visible.reports.len(), 1);
+    assert_eq!(visible.weeks.len(), 1);
+    assert_eq!(
+        db.dvic_inspections(&id, "2026-09-01", "2026-09-30", None, "", 100)
+            .unwrap()
+            .inspections[0]
+            .driver_name,
+        "Fixture Driver"
+    );
+    assert_eq!(
+        storage
+            .all(
+                "SELECT company_id,scope_verified FROM dvic_reports ORDER BY company_id",
+                [],
+            )
+            .unwrap(),
+        vec![
+            json!({"company_id":"company-fixture","scope_verified":1}),
+            json!({"company_id":"company-foreign","scope_verified":0}),
+        ]
+    );
 }
 
 #[test]
@@ -243,14 +391,15 @@ fn catch_up_prioritizes_unseen_weeks_before_refreshing_older_observations() {
     let storage = db.dvic(&id).unwrap();
     for week in weeks.iter().skip(2).take(22) {
         storage.exec(
-            "INSERT INTO dvic_weeks VALUES ('TST1','company-fixture',?,'2020-01-01T00:00:00Z',0)",
+            "INSERT INTO dvic_weeks(station,company_id,week,checked_at,report_count,scope_verified) \
+             VALUES ('TST1','company-fixture',?,'2020-01-01T00:00:00Z',0,1)",
             [week],
         ).unwrap();
     }
     let jobs = db.dvic_jobs(&id).unwrap();
-    let request = Request::parse(&jobs[0].1).unwrap().unwrap();
-    assert_eq!(&request.weeks[..2], &weeks[..2]);
-    assert_eq!(&request.weeks[2..], &weeks[24..]);
+    let requested = jobs[0].1["weeks"].as_array().unwrap();
+    assert_eq!(requested[..2], weeks[..2]);
+    assert_eq!(requested[2..], weeks[24..]);
 }
 
 #[test]

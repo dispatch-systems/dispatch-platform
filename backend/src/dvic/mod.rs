@@ -8,7 +8,9 @@ use crate::{
     Error, Result,
     collectors::AddedStorage,
     db::{Db, Kind},
-    ensure, scorecard, validate,
+    ensure,
+    meals::{CollectionRequest as ScopeRequest, Discovery, Scope},
+    scorecard, validate,
 };
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
@@ -52,11 +54,15 @@ pub enum Collection {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Request {
     pub collection: Collection,
     pub station: String,
     pub weeks: Vec<String>,
+    pub date: String,
+    pub timezone: String,
+    pub dsp_name: String,
+    pub dsp_abbreviation: String,
 }
 impl Request {
     pub fn is(value: &Value) -> bool {
@@ -72,7 +78,15 @@ impl Request {
         Ok(Some(request))
     }
     pub fn validate(&self) -> Result<()> {
-        ensure(station_code(&self.station), "invalid_station_code", 400)?;
+        ensure(
+            station_code(&self.station)
+                && scorecard::token(&self.dsp_abbreviation, 32)
+                && !self.dsp_name.trim().is_empty()
+                && self.dsp_name.len() <= 256
+                && !self.dsp_name.chars().any(char::is_control),
+            "invalid_station_code",
+            400,
+        )?;
         ensure(
             (1..=MAX_WEEKS).contains(&self.weeks.len()),
             "invalid_dvic_request",
@@ -83,7 +97,20 @@ impl Request {
             scorecard::parse_week(week)?;
             ensure(seen.insert(week), "invalid_dvic_request", 400)?;
         }
-        Ok(())
+        self.scope_request()
+            .validate_scope(&self.discovery().scope("discovery", "discovery")?)
+    }
+    fn discovery(&self) -> Discovery {
+        Discovery {
+            date: self.date.clone(),
+            station: self.station.clone(),
+            timezone: self.timezone.clone(),
+            dsp_name: self.dsp_name.clone(),
+            dsp_abbreviation: self.dsp_abbreviation.clone(),
+        }
+    }
+    pub fn scope_request(&self) -> ScopeRequest {
+        ScopeRequest::Discover(self.discovery())
     }
 }
 fn station_code(station: &str) -> bool {
@@ -301,6 +328,9 @@ impl Capture {
                 && self.weeks == request.weeks
                 && scorecard::token(&self.company_id, 128)
                 && scorecard::token(&self.dsp_code, 32)
+                && self
+                    .dsp_code
+                    .eq_ignore_ascii_case(&request.dsp_abbreviation)
                 && self.started_at > 0
                 && self.finished_at >= self.started_at,
             "dvic_capture_invalid",
@@ -329,6 +359,15 @@ impl Capture {
         }
         Ok(())
     }
+    pub fn validate_scope(&self, request: &Request, scope: &Scope) -> Result<()> {
+        self.validate(request)?;
+        request.scope_request().validate_scope(scope)?;
+        ensure(
+            self.company_id == scope.provider,
+            "dvic_scope_mismatch",
+            502,
+        )
+    }
 }
 
 pub fn fixture(request: &Request) -> Result<Capture> {
@@ -339,18 +378,20 @@ pub fn fixture(request: &Request) -> Result<Capture> {
         let date = saturday + Duration::days(1);
         let (year, number) = scorecard::parse_week(week)?;
         let name = format!(
-            "US_FXTR_{}_{year}_week-{number}_{}_DVIC_PreTrip_u90s-NonDOT_u300s-DOT_last7days.xlsx",
+            "US_{}_{}_{year}_week-{number}_{}_DVIC_PreTrip_u90s-NonDOT_u300s-DOT_last7days.xlsx",
+            request.dsp_abbreviation,
             request.station,
             date.format("%Y%m%d")
         );
         let source_key = format!(
-            "/us/fxtr/{}/{year}/week-{number}/{name}",
+            "/us/{}/{}/{year}/week-{number}/{name}",
+            request.dsp_abbreviation.to_ascii_lowercase(),
             request.station.to_ascii_lowercase()
         );
         let day = saturday.to_string();
         let rows = vec![Inspection {
             start_date: day.clone(),
-            dsp: "FXTR".into(),
+            dsp: request.dsp_abbreviation.clone(),
             station: request.station.clone(),
             transporter_id: "driver-1".into(),
             transporter_name: "Fixture Driver".into(),
@@ -383,7 +424,7 @@ pub fn fixture(request: &Request) -> Result<Capture> {
         collection: Collection::Dvic,
         station: request.station.clone(),
         company_id: "company-fixture".into(),
-        dsp_code: "FXTR".into(),
+        dsp_code: request.dsp_abbreviation.clone(),
         weeks: request.weeks.clone(),
         started_at: now,
         finished_at: now,

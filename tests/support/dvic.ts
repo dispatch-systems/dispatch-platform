@@ -55,7 +55,10 @@ export async function seedDvic(app: Awaited<ReturnType<typeof fixture>>, count =
     db.exec('BEGIN');
     db.exec('DELETE FROM dvic_inspections');
     const insert = db.prepare(
-      `INSERT INTO dvic_inspections VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO dvic_inspections(company_id,inspection_key,dsp_code,station,start_date,
+       transporter_id,transporter_name,vin,fleet_type,inspection_type,inspection_status,start_time,
+       end_time,duration_seconds,minimum_seconds,short,report_date,source_modified_at,revision_id,
+       scope_verified) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`,
     );
     for (let i = 0; i < count; i++) {
       const date = '2026-09-' + (26 - (i % 7));

@@ -109,7 +109,7 @@ fn rows(
     let data = db.scorecard(&dsp.id)?;
     let mut sql = format!(
         "SELECT x.week,COALESCE(x.transporter_id,'') transporter_id,COALESCE(x.tracking_id,'') tracking_id,x.row \
-         FROM {table} x JOIN scorecard_publications p ON p.id=x.publication_id AND p.active=1 \
+         FROM {table} x JOIN scorecard_publications p ON p.id=x.publication_id AND p.active=1 AND p.scope_verified=1 \
          WHERE p.station=? AND substr(json_extract(x.row,'$.{date}'),1,10) BETWEEN ? AND ?"
     );
     let mut params = vec![station, period.first(), period.last()];
@@ -154,7 +154,7 @@ fn weeks(db: &Store, dsp: &Dsp, period: &Period) -> crate::Result<Value> {
     let posted: BTreeSet<String> = db
         .scorecard(&dsp.id)?
         .all(
-            "SELECT week FROM scorecard_publications WHERE station=? AND active=1",
+            "SELECT week FROM scorecard_publications WHERE station=? AND active=1 AND scope_verified=1",
             [&station],
         )?
         .iter()
@@ -272,7 +272,7 @@ fn ever(db: &Store, dsp: &Dsp, table: &str, field: &str) -> crate::Result<BTreeS
         .all(
             &format!(
                 "SELECT DISTINCT json_extract(x.row,'$.{field}') v FROM {table} x \
-                 JOIN scorecard_publications p ON p.id=x.publication_id AND p.active=1 \
+                 JOIN scorecard_publications p ON p.id=x.publication_id AND p.active=1 AND p.scope_verified=1 \
                  WHERE p.station=?"
             ),
             [&station],
@@ -801,7 +801,7 @@ pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
     let data = db.scorecard(&dsp.id)?;
     let posted: Vec<String> = data
         .all(
-            "SELECT week FROM scorecard_publications WHERE station=? AND active=1 ORDER BY week DESC",
+            "SELECT week FROM scorecard_publications WHERE station=? AND active=1 AND scope_verified=1 ORDER BY week DESC",
             [&station],
         )?
         .iter()
@@ -847,7 +847,7 @@ pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
     let dsp_row = data
         .one(
             "SELECT x.row FROM dsp_quality x JOIN scorecard_publications p ON p.id=x.publication_id \
-             AND p.active=1 WHERE p.station=? AND p.week=? LIMIT 1",
+             AND p.active=1 AND p.scope_verified=1 WHERE p.station=? AND p.week=? LIMIT 1",
             [&station, &week],
         )?
         .and_then(|r| serde_json::from_str::<Value>(s(&r, "row")).ok())
@@ -899,7 +899,7 @@ pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
     }
     let drivers = data.all(
         "SELECT COALESCE(x.transporter_id,'') transporter_id,x.row FROM driver_scorecards x \
-         JOIN scorecard_publications p ON p.id=x.publication_id AND p.active=1 \
+         JOIN scorecard_publications p ON p.id=x.publication_id AND p.active=1 AND p.scope_verified=1 \
          WHERE p.station=? AND p.week=? ORDER BY x.row_index",
         [&station, &week],
     )?;

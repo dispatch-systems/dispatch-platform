@@ -16,18 +16,17 @@ const SATURDAYS: Record<string, string> = {
   '2026-09-19': '2026-W38',
 };
 
-// The real Rust driver against a staged Cortex. The first job finds the API through the
-// overview page's own first data request; the next ones read at the address the first
-// stored, without loading the overview; when the API moves, a job finds it again; a
-// dataset the API refuses fails the attempt for a retry; and nothing collected is left
-// outside the databases.
+// The real Rust driver against a staged multi-provider Cortex. Provider discovery binds
+// the tenant to its company before the overview is opened; stored addresses are reused
+// only inside that scope; when the API moves, a job finds it again; a refused dataset
+// fails the attempt for a retry; and nothing collected is left outside the databases.
 test(
   'Cortex BrowserOS collects scorecard weeks at the stored API address, finds it again when it moves, and leaves nothing outside the databases',
   { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 300000 },
   async (t) => {
     let version = 'v1';
     const requests: URL[] = [];
-    const seen = { overview: 0 };
+    const seen = { discovery: 0, overview: 0, foreignApi: 0 };
     // Weeks 38 and 36 are posted, 37 is not, and 35's returns are refused.
     const rows = (dataSetId: string, week: string): object[] => {
       if (week === '2026-W37') return [];
@@ -110,20 +109,38 @@ test(
         res.setHeader('set-cookie', 'authenticated=yes; Path=/; Max-Age=3600');
         return redirect('/dspconsolev2');
       }
+      if (url.pathname === '/operations/execution/itineraries') {
+        if (!authenticated) return redirect('/ap/signin');
+        seen.discovery++;
+        const selectedDay = url.searchParams.get('selectedDay');
+        return html(`<main id="root"></main><script>
+          document.querySelector('#root').__reactFiber$fixture={memoizedProps:{
+            selectedStation:{serviceAreaID:'area-1',defaultStationCode:'TST1',timeZone:'America/Los_Angeles'},
+            providerFilterOptions:[
+              {value:'company-foreign',label:'Other Delivery'},
+              {value:'company-1',label:'Northline Logistics'},
+              {value:'ALL_DRIVERS',label:'All drivers'}
+            ],
+            serviceAreaId:'area-1',selectedDay:${JSON.stringify(selectedDay)},
+            isLoadingSummaries:false,allItinerarySummaries:[],transporterSummary:{}
+          },return:null};
+        </script>`);
+      }
       if (url.pathname === '/performance') {
         if (!authenticated) return redirect('/ap/signin');
-        // Like Cortex, the overview settles on a station and company of its own
-        // unless one is asked for; here it settles on the wrong station first.
+        // The account's default is another DSP at the same station. Only an explicit
+        // company choice reaches Northline's API identity.
         const station = url.searchParams.get('station');
-        if (!station || !url.searchParams.get('companyId')) {
-          const chosen = station ?? 'XYZ1';
+        const company = url.searchParams.get('companyId');
+        if (!station || !company) {
           return redirect(
-            `/performance?pageId=dsp_dashboard_overview&station=${chosen}&companyId=company-1&tabId=overview-dsp-weekly-tab&timeFrame=Weekly&to=2026-W38`,
+            `/performance?pageId=dsp_dashboard_overview&station=TST1&companyId=company-foreign&tabId=overview-dsp-weekly-tab&timeFrame=Weekly&to=2026-W38`,
           );
         }
         seen.overview++;
+        const code = company === 'company-1' ? 'NLOG' : 'FOREIGN';
         return html(
-          `<main>Overview</main><script>for(let i=0;i<12;i++) fetch('/performance/api/${version}/getData?dataSetId=dsp_station_weekly_quality&dsp=NLOG&from=2026-W38&station=${station}&timeFrame=Weekly&to=2026-W38',{credentials:'include'});</script>`,
+          `<main>Overview</main><script>for(let i=0;i<12;i++) fetch('/performance/api/${version}/getData?dataSetId=dsp_station_weekly_quality&dsp=${code}&from=2026-W38&station=${station}&timeFrame=Weekly&to=2026-W38',{credentials:'include'});</script>`,
         );
       }
       const api = url.pathname.match(/^\/performance\/api\/([^/]+)\/getData$/);
@@ -138,6 +155,7 @@ test(
           return res.end('<html>Not found</html>');
         }
         requests.push(url);
+        if (url.searchParams.get('dsp') === 'FOREIGN') seen.foreignApi++;
         const dataSetId = url.searchParams.get('dataSetId')!;
         const to = url.searchParams.get('to')!;
         const week = url.searchParams.get('timeFrame') === 'Weekly' ? to : (SATURDAYS[to] ?? '');
@@ -231,6 +249,8 @@ test(
     const first = await collect('week-38', '2026-W38');
     const overviews = seen.overview;
     assert.ok(overviews > 0);
+    assert.ok(seen.discovery > 0);
+    assert.equal(seen.foreignApi, 0);
     const weeks = (await owner.get('/api/dsp/scorecard/weeks')).value;
     const posted = weeks.weeks.find((w: any) => w.week === '2026-W38');
     assert.equal(posted.posted, true);
@@ -256,8 +276,8 @@ test(
       { tracking_id: 'TBA2', impact: 0, reason: 'CUSTOMER UNAVAILABLE' },
     ]);
 
-    // The next jobs read at the stored address without loading the overview: a week not
-    // posted yet is noted, a posted one published.
+    // The next jobs re-resolve provider identity, then read at the stored address without
+    // loading the overview: a week not posted yet is noted, a posted one published.
     requests.length = 0;
     await collect('week-37', '2026-W37');
     const posted36 = await collect('week-36', '2026-W36');

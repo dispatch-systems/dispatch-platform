@@ -75,8 +75,8 @@ fn ready() -> (tempfile::TempDir, Store, String) {
     let dvic = db.dvic(&id).unwrap();
     dvic.exec(
         "INSERT INTO dvic_reports(id,company_id,dsp_code,station,source_key,name,week,report_date,\
-         modified_at,sha256,revision_id,row_count,short_count,min_date,max_date,checked_at) VALUES \
-         ('report-1','company-1','NLOG','TST1','key-1','DVIC','2026-W37',?1,0,'sha','rev-1',2,1,?1,?1,?1)",
+         modified_at,sha256,revision_id,row_count,short_count,min_date,max_date,checked_at,scope_verified) VALUES \
+         ('report-1','company-1','NLOG','TST1','key-1','DVIC','2026-W37',?1,0,'sha','rev-1',2,1,?1,?1,?1,1)",
         [DAY],
     )
     .unwrap();
@@ -91,8 +91,8 @@ fn ready() -> (tempfile::TempDir, Store, String) {
             "INSERT INTO dvic_inspections(company_id,inspection_key,dsp_code,station,start_date,\
              transporter_id,transporter_name,vin,fleet_type,inspection_type,inspection_status,\
              start_time,end_time,duration_seconds,minimum_seconds,short,report_date,\
-             source_modified_at,revision_id) VALUES ('company-1',?,'NLOG','TST1',?,'driver-1',\
-             'Fixture Driver','VIN1','CDV','PRE_TRIP','COMPLETE','07:01','07:08',?,90,?,?,0,'rev-1')",
+             source_modified_at,revision_id,scope_verified) VALUES ('company-1',?,'NLOG','TST1',?,'driver-1',\
+             'Fixture Driver','VIN1','CDV','PRE_TRIP','COMPLETE','07:01','07:08',?,90,?,?,0,'rev-1',1)",
             rusqlite::params![key, DAY, seconds, short, DAY],
         )
         .unwrap();
@@ -368,6 +368,89 @@ async fn one_driver_is_one_person_across_every_source() {
             .unwrap()
             .contains("unknown, not zero")
     );
+}
+
+#[tokio::test]
+async fn agents_never_see_legacy_unverified_provider_rows() {
+    let (_root, db, id) = ready();
+    let dvic = db.dvic(&id).unwrap();
+    dvic.exec(
+        "INSERT INTO dvic_reports(id,company_id,dsp_code,station,source_key,name,week,report_date,\
+         modified_at,sha256,revision_id,row_count,short_count,min_date,max_date,checked_at) VALUES \
+         ('foreign-report','company-foreign','FOREIGN','TST1','foreign-key','Foreign DVIC','2026-W37',\
+         ?1,1,'foreign-sha','foreign-revision',1,1,?1,?1,?1)",
+        [DAY],
+    ).unwrap();
+    dvic.exec(
+        "INSERT INTO dvic_revisions(id,report_id,sha256,modified_at,collected_at,rows) VALUES \
+         ('foreign-revision','foreign-report','foreign-sha',1,?,'[]')",
+        [DAY],
+    )
+    .unwrap();
+    dvic.exec(
+        "INSERT INTO dvic_inspections(company_id,inspection_key,dsp_code,station,start_date,\
+         transporter_id,transporter_name,vin,fleet_type,inspection_type,inspection_status,start_time,\
+         end_time,duration_seconds,minimum_seconds,short,report_date,source_modified_at,revision_id) VALUES \
+         ('company-foreign','foreign-inspection','FOREIGN','TST1',?,'foreign-driver','Foreign Driver',\
+         'FOREIGNVIN0000001','CDV','PRE_TRIP','COMPLETE','06:00','06:00',1,90,1,?,1,'foreign-revision')",
+        [DAY, DAY],
+    ).unwrap();
+    drop(dvic);
+    let scorecard = db.scorecard(&id).unwrap();
+    scorecard.exec(
+        "INSERT INTO scorecard_publications(id,job_id,week,station,company_id,dsp_code,started_at,\
+         collected_at,active,row_count,adapter_version) VALUES ('foreign-publication','foreign-job',\
+         '2026-W37','TST1','company-foreign','FOREIGN',?1,?1,1,1,1)",
+        [DAY],
+    ).unwrap();
+    scorecard
+        .exec(
+            "INSERT INTO dsp_quality(publication_id,row_index,week,row) VALUES \
+         ('foreign-publication',0,'2026-W37','{\"dsp_final_tier\":\"FOREIGN\"}')",
+            [],
+        )
+        .unwrap();
+    drop(scorecard);
+    db.match_drivers(&id).unwrap();
+    let me = caller(&db, &[&id], false);
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+
+    let who = me.clone();
+    let (_, drivers) = ask(&state, move |db, state| {
+        data::drivers(db, state, &who, &json!({"q":"Foreign Driver"}))
+    })
+    .await;
+    assert!(rows(&drivers["drivers"]).is_empty(), "{drivers}");
+
+    let who = me.clone();
+    let (_, dvic) = ask(&state, move |db, state| {
+        data::dvic(db, state, &who, &json!({"date":DAY,"short":"true"}))
+    })
+    .await;
+    assert_eq!(
+        (dvic["inspections"].clone(), dvic["short"].clone()),
+        (json!(2), json!(1))
+    );
+    assert!(!dvic.to_string().contains("Foreign Driver"), "{dvic}");
+
+    let who = me.clone();
+    let (_, scorecard) = ask(&state, move |db, state| {
+        data::weekly(db, state, &who, &json!({"week":"latest"}))
+    })
+    .await;
+    assert!(
+        scorecard["note"]
+            .as_str()
+            .unwrap()
+            .contains("No scorecard week"),
+        "{scorecard}"
+    );
+
+    let (_, status) = ask(&state, move |db, _| data::status(db, &me, &json!({}))).await;
+    assert_eq!(status["sources"]["dvic"]["latestDay"], DAY);
+    assert!(status["sources"]["scorecard"]["latestWeek"].is_null());
 }
 
 #[tokio::test]

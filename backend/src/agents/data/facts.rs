@@ -749,7 +749,7 @@ pub fn inspections(
     // A report covers every day from its first to its last row.
     let mut held = BTreeSet::new();
     for report in data.all(
-        "SELECT min_date,max_date FROM dvic_reports WHERE station=? AND min_date IS NOT NULL",
+        "SELECT min_date,max_date FROM dvic_reports WHERE station=? AND scope_verified=1 AND min_date IS NOT NULL",
         [&station],
     )? {
         held.extend(period.days().into_iter().filter(|day| {
@@ -759,7 +759,7 @@ pub fn inspections(
     let rows = data.all(
         "SELECT start_date,transporter_id,transporter_name,fleet_type,inspection_type,start_time,\
          duration_seconds,minimum_seconds,short FROM dvic_inspections \
-         WHERE station=? AND start_date BETWEEN ? AND ? ORDER BY start_date,start_time",
+         WHERE station=? AND scope_verified=1 AND start_date BETWEEN ? AND ? ORDER BY start_date,start_time",
         [&station, &period.first(), &period.last()],
     )?;
     let found = rows
@@ -797,12 +797,12 @@ pub fn freshness(db: &Store, dsp: &Dsp) -> Result<Value> {
         [&station],
     )?;
     let dvic = db.dvic(&dsp.id)?.one(
-        "SELECT max(max_date) day,max(checked_at) checked_at FROM dvic_reports WHERE station=?",
+        "SELECT max(max_date) day,max(checked_at) checked_at FROM dvic_reports WHERE station=? AND scope_verified=1",
         [&station],
     )?;
     let scorecard = db.scorecard(&dsp.id)?.one(
         "SELECT max(week) week,max(collected_at) collected_at FROM scorecard_publications \
-         WHERE station=? AND active=1",
+         WHERE station=? AND active=1 AND scope_verified=1",
         [&station],
     )?;
     Ok(serde_json::json!({
