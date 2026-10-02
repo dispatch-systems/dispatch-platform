@@ -9,34 +9,34 @@ use super::{
 /// Questions people ask, with the tool and arguments that answer them.
 const EXAMPLES: &[(&str, &str, &str)] = &[
     (
-        "How did Daniel do last week?",
-        r#"driver_report(driver: "Daniel", period: "last week")"#,
-        "/api/v1/drivers/Daniel?period=last%20week",
+        "How many packages did Daniel deliver last week?",
+        r#"packages(driver: "Daniel", period: "last week", outcome: "delivered")"#,
+        "/api/v1/packages?driver=Daniel&period=last%20week&outcome=delivered",
+    ),
+    (
+        "Did Daniel return any packages last night?",
+        r#"packages(driver: "Daniel", date: "last night", outcome: "returned", group_by: "reason")"#,
+        "/api/v1/packages?driver=Daniel&date=last%20night&outcome=returned&group_by=reason",
+    ),
+    (
+        "How many business-closed packages did we have last night?",
+        r#"packages(date: "last night", reason: "business_closed", group_by: "driver")"#,
+        "/api/v1/packages?date=last%20night&reason=business_closed&group_by=driver",
+    ),
+    (
+        "Which drivers were short on their DVIC?",
+        r#"dvic_inspections(short: true)"#,
+        "/api/v1/dvic?short=true",
     ),
     (
         "Who had the most stops yesterday?",
-        r#"team_table(metrics: "stops_completed", period: "yesterday")"#,
-        "/api/v1/team?metrics=stops_completed&period=yesterday",
+        r#"team_table(metrics: "stops_completed", date: "yesterday")"#,
+        "/api/v1/team?metrics=stops_completed&date=yesterday",
     ),
     (
-        "Everyone's hours and packages each day this week",
-        r#"team_table(metrics: "hours_worked,packages_delivered", period: "this week", per: "day")"#,
-        "/api/v1/team?metrics=hours_worked,packages_delivered&period=this%20week&per=day",
-    ),
-    (
-        "Which routes ran today, and are they done?",
-        r#"route_day(date: "today")"#,
-        "/api/v1/routes?date=today",
-    ),
-    (
-        "Whose meal breaks need a look yesterday?",
-        r#"meal_breaks(date: "yesterday", issues: true)"#,
-        "/api/v1/meal-breaks?date=yesterday&issues=true",
-    ),
-    (
-        "Short inspections in the last 14 days",
-        r#"dvic_inspections(period: "last 14 days", short: true)"#,
-        "/api/v1/dvic?period=last%2014%20days&short=true",
+        "How did Daniel do last week?",
+        r#"driver_report(driver: "Daniel", period: "last week")"#,
+        "/api/v1/drivers/Daniel?period=last%20week",
     ),
 ];
 

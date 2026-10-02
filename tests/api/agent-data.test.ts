@@ -42,23 +42,28 @@ test('an agent reads a DSP by asking in its own words, and is told what to fix',
   // A key for one DSP never has to name it; a person is found by how they are called.
   const listed = await one('/api/v1/drivers');
   assert.equal(listed.status, 200, listed.body);
-  assert.equal(listed.value.dsp.name, 'Northline Logistics');
-  const someone = listed.value.drivers[0] as { code: string; name: string };
+  assert.equal(listed.value.understood.dsp, 'Northline Logistics');
+  // Tables name their columns once.
+  const { columns, rows } = listed.value.drivers as { columns: string[]; rows: string[][] };
+  const [code, name] = [columns.indexOf('code'), columns.indexOf('name')];
+  const someone = { code: rows[0]![code]!, name: rows[0]![name]! };
   const report = await one(`/api/v1/drivers/${encodeURIComponent(someone.name)}`);
   assert.equal(report.status, 200, report.body);
-  assert.equal(report.value.driver.code, someone.code);
-  assert.ok(report.value.period.from <= report.value.period.to);
-  assert.equal(report.value.coverage.timecards.enabled, true);
+  assert.equal(report.value.understood.driver.code, someone.code);
+  // No date means the last 30 days.
+  assert.equal(report.value.understood.days, 30);
+  assert.ok(report.value.coverage.timecards.of >= 1);
   const team = await one('/api/v1/team?period=last%207%20days&metrics=hours_worked');
   assert.equal(team.status, 200, team.body);
-  assert.equal(team.value.period.days, 7);
+  assert.equal(team.value.understood.days, 7);
+  assert.deepEqual(team.value.rows.columns, ['driver', 'hours_worked']);
 
   // What is unclear is refused with the choices, never guessed.
   const several = await every('/api/v1/drivers');
   assert.deepEqual([several.status, several.value.error], [400, 'dsp_required']);
   assert.ok(several.value.choices.includes('Northline Logistics'));
   assert.equal(
-    (await every('/api/v1/drivers?dsp=northline')).value.dsp.name,
+    (await every('/api/v1/drivers?dsp=northline')).value.understood.dsp,
     'Northline Logistics',
   );
   const misspelt = await one('/api/v1/team?metric=hours_worked');

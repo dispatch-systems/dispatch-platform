@@ -91,7 +91,7 @@ export function questions(world: World): Question[] {
         )
         .get(state) as { tracking: string; name: string; route: string };
     const delivered = task('DELIVERED');
-    const undeliverable = task('UNDELIVERABLE');
+    const returned = task('BACK_TO_ORIGIN');
     const noMeal = (
       cortex
         .prepare(
@@ -147,12 +147,103 @@ export function questions(world: World): Question[] {
         .get() as { code: string }
     ).code;
     const ranked = [...packages].sort((a, b) => b.value - a.value);
+    // Packages as Amazon recorded each drop-off: delivered, or brought back with a reason.
+    const tasks = (where: string, ...params: (string | number)[]) =>
+      (
+        routes
+          .prepare(
+            `SELECT COUNT(*) n FROM tasks t
+             JOIN route_publications p ON p.id=t.publication_id AND p.active=1
+             JOIN itineraries i ON i.publication_id=t.publication_id AND i.itinerary_id=t.itinerary_id
+             WHERE t.task_type='DROP_OFF' AND t.active=1 AND ${where}`,
+          )
+          .get(...params) as { n: number }
+      ).n;
+    const returner =
+      (
+        routes
+          .prepare(
+            `SELECT i.driver_name name FROM tasks t
+             JOIN route_publications p ON p.id=t.publication_id AND p.active=1
+             JOIN itineraries i ON i.publication_id=t.publication_id AND i.itinerary_id=t.itinerary_id
+             WHERE t.task_type='DROP_OFF' AND t.active=1 AND t.task_state='BACK_TO_ORIGIN' AND t.day=?
+             GROUP BY name ORDER BY COUNT(*) DESC, name LIMIT 1`,
+          )
+          .get(yesterday) as { name: string } | undefined
+      )?.name ?? middle;
+    const reasons = routes
+      .prepare(
+        `SELECT lower(t.state_context) reason, COUNT(*) n FROM tasks t
+         JOIN route_publications p ON p.id=t.publication_id AND p.active=1
+         WHERE t.task_type='DROP_OFF' AND t.active=1 AND t.task_state='BACK_TO_ORIGIN'
+         AND t.day BETWEEN ? AND ? GROUP BY reason ORDER BY n DESC`,
+      )
+      .all(day(world.to, -13), world.to) as { reason: string; n: number }[];
     const fortnight = `from ${world.from} to ${world.to}`;
     const week = `from ${weekFrom} to ${yesterday}`;
     const hoursWeek = hours(weekFrom, yesterday);
     const middleHours = hoursWeek.find((row) => row.name === middle)!;
 
     return [
+      {
+        id: 'driver_delivered_last_week',
+        ask: `How many packages did ${middle} deliver last week?`,
+        format: 'a whole number',
+        grade: 'number',
+        expected: [
+          String(
+            tasks(
+              "t.task_state='DELIVERED' AND i.driver_name=? AND t.day BETWEEN ? AND ?",
+              middle,
+              lastSunday,
+              lastSaturday,
+            ),
+          ),
+        ],
+      },
+      {
+        id: 'driver_returned_last_night',
+        ask: `Did ${returner} return any packages last night? How many?`,
+        format: 'a whole number, 0 if none',
+        grade: 'number',
+        expected: [
+          String(
+            tasks(
+              "t.task_state='BACK_TO_ORIGIN' AND i.driver_name=? AND t.day=?",
+              returner,
+              yesterday,
+            ),
+          ),
+        ],
+      },
+      {
+        id: 'business_closed_last_night',
+        ask: 'How many business-closed packages did we have last night?',
+        format: 'a whole number, 0 if none',
+        grade: 'number',
+        expected: [
+          String(
+            tasks(
+              "t.task_state='BACK_TO_ORIGIN' AND t.state_context='BUSINESS_CLOSED' AND t.day=?",
+              yesterday,
+            ),
+          ),
+        ],
+      },
+      {
+        id: 'top_return_reason',
+        ask: 'What was the most common reason packages were returned in the last 14 days?',
+        format: "the reason as Amazon names it, such as 'business closed'",
+        grade: 'text',
+        expected: reasons.filter((r) => r.n === reasons[0]!.n).map((r) => r.reason),
+      },
+      {
+        id: 'short_dvic_default',
+        ask: 'Which drivers were short on their DVIC?',
+        format: "full names separated by commas, or 'none'",
+        grade: 'names',
+        expected: [short.join(', ') || 'none'],
+      },
       {
         id: 'top_stops_yesterday',
         ask: 'Who completed the most delivery stops yesterday?',
@@ -247,10 +338,10 @@ export function questions(world: World): Question[] {
       },
       {
         id: 'package_outcome',
-        ask: `What happened to package ${undeliverable.tracking.toLowerCase()}?`,
-        format: 'one word: delivered, undeliverable or remaining',
+        ask: `What happened to package ${returned.tracking.toLowerCase()}?`,
+        format: 'one word: delivered, returned or open',
         grade: 'text',
-        expected: ['undeliverable'],
+        expected: ['returned'],
       },
       {
         id: 'meal_missing',

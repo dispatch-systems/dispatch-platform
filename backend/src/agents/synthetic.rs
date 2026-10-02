@@ -353,13 +353,37 @@ fn routes_day(
             let when = depart + 35 * 60_000 + n * stop_gap;
             let missed = n > day.stops - day.missed;
             let count = 1 + (roll((*i << 32) + (d << 16) as u64 + n as u64) % 2) as i64;
-            let state = if missed { "UNDELIVERABLE" } else { "DELIVERED" };
+            // As Cortex records them: a package brought back is BACK_TO_ORIGIN with Amazon's
+            // reason, a delivered one says where it was left.
+            let state = if missed {
+                "BACK_TO_ORIGIN"
+            } else {
+                "DELIVERED"
+            };
+            let why = roll(((d as u64) << 24) + (*i << 12) + n as u64);
+            let context = if missed {
+                [
+                    "BUSINESS_CLOSED",
+                    "OBJECT_MISSING",
+                    "DAMAGED",
+                    "INACCESSIBLE_DELIVERY_LOCATION",
+                    "ADDRESS_NOT_FOUND",
+                ][(why % 5) as usize]
+            } else {
+                [
+                    "DELIVERED_TO_DOORSTEP",
+                    "DELIVERED_TO_DOORSTEP",
+                    "DELIVERED_TO_DOORSTEP",
+                    "DELIVERED_TO_SAFE_LOCATION",
+                    "DELIVERED_TO_HOUSEHOLD_MEMBER",
+                ][(why % 5) as usize]
+            };
             let tasks: Vec<Value> = (0..count)
                 .map(|k| {
                     let tracking = format!("TBA{:04}{:02}{:03}{}", date.ordinal(), i, n, k);
                     json!({"taskId": format!("{id}-{n}-{k}"), "transporterId": null,
                         "referenceId": format!("{id}-{n}-{k}"), "taskType": "DROP_OFF", "taskState": state,
-                        "taskStateContext": if missed {"BUSINESS_CLOSED"} else {"DELIVERED_TO_DOORSTEP"},
+                        "taskStateContext": context,
                         "executionStatus": "COMPLETE", "addressId": format!("{id}-a{n}"),
                         "promiseType": "STANDARD", "windowStartTime": depart, "windowEndTime": depart + 43_200_000,
                         "actualExecutionTime": when, "executionGeocode": {"latitude": 41.8, "longitude": -87.6, "scope": 0},

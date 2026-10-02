@@ -36,6 +36,8 @@ type Run = {
   correct: boolean;
   tools: string[];
   seconds: number;
+  /** How much the model read from Dispatch: the answers' characters, all calls together. */
+  bytes: number;
   error?: string;
 };
 
@@ -123,6 +125,7 @@ async function main() {
       const started = Date.now();
       const tools: string[] = [];
       let text = '';
+      let bytes = 0;
       if (client === 'claude' || client === 'rest') {
         // Only the tools the round is about: Dispatch's MCP tools, or curl. Nothing else, so
         // a run cannot wander into other tools or other sessions on this machine.
@@ -181,6 +184,14 @@ async function main() {
                     : `${part.name.replace('mcp__dispatch__', '')}${JSON.stringify(part.input)}`,
                 );
             }
+          if (event.type === 'user')
+            for (const part of event.message.content ?? [])
+              if (part.type === 'tool_result')
+                bytes += (
+                  typeof part.content === 'string'
+                    ? part.content
+                    : (part.content ?? []).map((c: { text?: string }) => c.text ?? '').join('')
+                ).length;
           if (event.type === 'result') text = event.result ?? '';
         }
       } else if (client === 'codex') {
@@ -213,8 +224,10 @@ async function main() {
             continue;
           }
           const item = event.item ?? {};
-          if (event.type === 'item.completed' && item.type === 'mcp_tool_call')
+          if (event.type === 'item.completed' && item.type === 'mcp_tool_call') {
             tools.push(`${item.tool}${JSON.stringify(item.arguments ?? {})}`);
+            for (const c of item.result?.content ?? []) bytes += (c.text ?? '').length;
+          }
           if (event.type === 'item.completed' && item.type === 'agent_message') text = item.text;
         }
       } else throw new Error(`unknown client ${client}`);
@@ -226,6 +239,7 @@ async function main() {
         correct: check(question, answer),
         tools,
         seconds: Math.round((Date.now() - started) / 100) / 10,
+        bytes,
         ...(answer === null ? { error: text.slice(-300) } : {}),
       };
     };
@@ -243,7 +257,7 @@ async function main() {
           runs.push(run);
           console.log(
             `${run.correct ? 'pass' : 'FAIL'}  ${run.model.padEnd(22)} ${run.question.id.padEnd(24)} ` +
-              `${String(run.seconds).padStart(5)}s  ${run.tools.join(' > ')}` +
+              `${String(run.seconds).padStart(5)}s ${String(run.bytes).padStart(6)}B  ${run.tools.join(' > ')}` +
               (run.correct
                 ? ''
                 : `\n      said ${JSON.stringify(run.answer)}, expected ${run.question.expected.join(' | ')}`),
@@ -261,8 +275,8 @@ function report(runs: Run[], models: string[], asked: Question[]) {
   const lines = [
     '# Agent test set',
     '',
-    '| Model | Correct | Median time | Median tool calls |',
-    '| --- | --- | --- | --- |',
+    '| Model | Correct | Median time | Median tool calls | Median bytes read |',
+    '| --- | --- | --- | --- | --- |',
   ];
   const median = (values: number[]) =>
     [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 0;
@@ -270,7 +284,7 @@ function report(runs: Run[], models: string[], asked: Question[]) {
     const mine = runs.filter((run) => run.model === model);
     const correct = mine.filter((run) => run.correct).length;
     lines.push(
-      `| ${model} | ${correct}/${mine.length} | ${median(mine.map((run) => run.seconds))}s | ${median(mine.map((run) => run.tools.length))} |`,
+      `| ${model} | ${correct}/${mine.length} | ${median(mine.map((run) => run.seconds))}s | ${median(mine.map((run) => run.tools.length))} | ${median(mine.map((run) => run.bytes))} |`,
     );
   }
   lines.push('', '## Misses', '');
