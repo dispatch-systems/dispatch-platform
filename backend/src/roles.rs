@@ -292,7 +292,9 @@ impl Store {
             if role.system {
                 c.owner
             } else {
-                c.visible(&role.permissions).all(|p| c.can(p))
+                role.permissions
+                    .iter()
+                    .all(|permission| c.permissions.contains(permission))
             },
             "role_exceeds_permissions",
             403,

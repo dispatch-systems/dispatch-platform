@@ -79,13 +79,12 @@ impl Store {
     }
     pub fn invitation(&self, raw: &str) -> Result<Value> {
         ensure(raw.len() == 43, "invitation_expired", 404)?;
+        let hash = crypto::sha(raw);
         let mut invitation = self
             .platform
-            .one(
-                INVITATION,
-                params![crypto::sha(raw), now(), self.config.environment],
-            )?
+            .one(INVITATION, params![hash, now(), self.config.environment])?
             .ok_or_else(|| Error::new("invitation_expired", 404))?;
+        ensure(self.inviter_authorized(&hash)?, "invitation_expired", 404)?;
         let owner = flag(&invitation, "owner");
         invitation.as_object_mut().unwrap().remove("owner");
         let profile = self.profile(s(&invitation, "dspId"))?;
@@ -109,6 +108,38 @@ impl Store {
             }
             None => self.invitation(raw),
         }
+    }
+    /// An outstanding invitation never outlives the authority that issued it.
+    fn inviter_authorized(&self, hash: &str) -> Result<bool> {
+        let row: Option<(String, String, String)> = self.platform.one_as(
+            "SELECT created_by,dsp_id,role_id FROM invitations WHERE hash=?",
+            [hash],
+        )?;
+        let Some((actor, dsp, role)) = row else {
+            return Ok(false);
+        };
+        let Some(user) = UserRow::find(&self.platform, "id", &actor)? else {
+            return Ok(false);
+        };
+        if !user.active() {
+            return Ok(false);
+        }
+        if user.user.platform_owner {
+            return Ok(true);
+        }
+        let Some(grant) = self.grant(&actor, &dsp)? else {
+            return Ok(false);
+        };
+        let Some(role) = self.find_role(&dsp, &role)? else {
+            return Ok(false);
+        };
+        Ok(grant.owner
+            || (!role.system
+                && grant.permissions.iter().any(|p| p == "members.invite")
+                && role
+                    .permissions
+                    .iter()
+                    .all(|permission| grant.permissions.contains(permission))))
     }
     pub fn invitation_mail(
         &self,
