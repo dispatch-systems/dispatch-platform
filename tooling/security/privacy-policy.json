@@ -78,8 +78,14 @@
     {
       "path": "README.md",
       "rule": "known-private-identity",
-      "lineSha256": "93adbef2ee9de2d196a0650f225c57d985398fc569e0860d9989d7a914a134a3",
+      "lineSha256": "cf5ef9355c0a09042635a5855938c4e45052b1052852cb60e6c007a400487843",
       "reason": "Preserve the copyright attribution introduced by the licensing change; no fixture identity is allowed by this exception."
+    },
+    {
+      "path": "LICENSE",
+      "rule": "known-private-identity",
+      "lineSha256": "7db4abff494a0529a1f6fd00ee3c5fbdca96fcefffb2f30c3749436722cfda1b",
+      "reason": "Preserve the licensor's copyright notice in the license; no fixture identity is allowed by this exception."
     }
   ],
   "assets": {

@@ -38,8 +38,9 @@ release guides live outside Git at the workspace’s `docs/` directory.
 
 ## License
 
-Copyright (C) 2026 Dillon Lillehaug. Dispatch is free software under the GNU Affero General
-Public License, version 3 only ([LICENSE](LICENSE)). Anyone may use, change and share it, and
-anyone who offers a changed version to others, including as a hosted service, must publish that
-version's source under the same license. The dashboard's account menu links each running build
-to its source.
+Copyright 2026 Dillon Lillehaug. Dispatch is source-available under the Functional Source
+License, version 1.1, with Apache 2.0 as its future license ([LICENSE](LICENSE)). Anyone may use,
+change and share it, including running it for their own business, but not offer it or anything
+built from it to others as a competing commercial product or service, hosted or not. Two years
+after each version is released, that version is also available under the Apache License 2.0. The
+dashboard's account menu links each running build to its source.

@@ -2,7 +2,7 @@
   "name": "dispatch-platform",
   "version": "0.0.19",
   "private": true,
-  "license": "AGPL-3.0-only",
+  "license": "FSL-1.1-ALv2",
   "type": "module",
   "engines": {
     "node": ">=22.23.0 <25"
