@@ -1,4 +1,4 @@
-import type { DspView, SessionView } from '../../../shared/contracts/index.js';
+import type { DspView, EmployeesResponse, SessionView } from '../../../shared/contracts/index.js';
 import { api, view as admittedToken } from './api.js';
 import { readUpdateState } from './browser-update.js';
 import { dataCache } from './data-cache.js';
@@ -31,15 +31,21 @@ function timecardUrls(tab: string, date: string, view: DspView): string[] {
     const status = readUpdateState('employee-status', 'all', hash);
     const page = readUpdateState('employee-page', 0, hash);
     const desc = readUpdateState('employee-sort-desc', false, hash);
-    urls.push(
+    const directoryUrl =
       `/api/dsp/employees?q=${encodeURIComponent(query)}&status=${status}` +
-        `&limit=${performancePolicy.employeePageSize}&offset=${page * performancePolicy.employeePageSize}` +
-        `&direction=${desc ? 'desc' : 'asc'}`,
-    );
+      `&limit=${performancePolicy.employeePageSize}&offset=${page * performancePolicy.employeePageSize}` +
+      `&direction=${desc ? 'desc' : 'asc'}`;
+    urls.push(directoryUrl);
     const selection = readUpdateState<
       { code: string; period?: { from: string; to: string } | null } | undefined
     >('employee-selection', undefined, hash);
-    if (selection?.code) urls.push(employeeTimecardUrl(selection.code, selection.period));
+    const directory = dataCache.peek(directoryUrl).data as EmployeesResponse | undefined;
+    const employee =
+      directory?.employees.find((person) => person.code === selection?.code) ??
+      directory?.employees[0];
+    const code = directory ? employee?.code : selection?.code;
+    const period = code === selection?.code ? selection?.period : null;
+    if (code) urls.push(employeeTimecardUrl(code, period));
   } else return [];
   return urls;
 }
