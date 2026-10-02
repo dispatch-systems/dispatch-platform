@@ -19,6 +19,8 @@ const now = Date.parse('2026-10-01T15:00:00');
 const DAY = 86_400_000;
 const key = (change: Partial<AgentKey> = {}): AgentKey => ({
   id: 'agentkey_1',
+  kind: 'key',
+  client: null,
   name: 'Laptop – Claude Code',
   hint: 'x7Qp',
   access: 'read',

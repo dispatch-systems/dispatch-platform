@@ -2,8 +2,10 @@
 //! A key works for the platform owner who made it, while they stay an active platform
 //! owner; reaches the DSPs it was given, active ones of this environment only; and stops
 //! once it expires or is revoked. Nothing an agent does appears in a DSP's activity log.
+//! An app the owner connects with Sign in with Dispatch (`oauth`) is a key of kind `app`.
 pub mod data;
 pub mod mcp;
+pub mod oauth;
 pub mod skill;
 pub mod synthetic;
 mod token;
@@ -15,8 +17,8 @@ use crate::{
     Error, Result,
     audit::AuditChange,
     contracts::{
-        AgentAccess, AgentDsp, AgentKey, AgentKeyCreated, AgentKeyRequest, AgentKeys, AgentTools,
-        AgentWhoami, AgentWhoamiDsp, AgentWhoamiKey, Dsp,
+        AgentAccess, AgentDsp, AgentKey, AgentKeyCreated, AgentKeyKind, AgentKeyRequest, AgentKeys,
+        AgentTools, AgentWhoami, AgentWhoamiDsp, AgentWhoamiKey, Dsp,
     },
     crypto,
     db::{Store, at, iso, now},
@@ -29,6 +31,10 @@ use std::collections::HashMap;
 const MOST_KEYS: i64 = 50;
 /// The furthest a key's expiry may be set, short of never.
 const LONGEST: i64 = 5 * 366 * 86_400_000;
+/// A key as listed, with whether a connected app can still renew its access: a refresh
+/// token neither expired nor exchanged. `?1` is the time now.
+const LISTED: &str = "SELECT k.*,EXISTS(SELECT 1 FROM oauth_tokens t WHERE t.key_id=k.id \
+    AND t.kind='refresh' AND t.used_at IS NULL AND t.expires_at>?1) signed_in FROM agent_keys k";
 
 /// An agent signed in with a key: what the key may do and the DSPs it reaches now.
 #[derive(Clone, Debug)]
@@ -125,7 +131,7 @@ impl Store {
     fn agent_key(&self, id: &str) -> Result<AgentKey> {
         let mut key: AgentKey = self
             .platform
-            .one_as("SELECT * FROM agent_keys WHERE id=?", [id])?
+            .one_as(&format!("{LISTED} WHERE k.id=?2"), [iso(), id.to_owned()])?
             .ok_or_else(|| Error::new("agent_key_not_found", 404))?;
         key.dsps = self.agent_key_dsps(id)?;
         Ok(key)
@@ -146,8 +152,8 @@ impl Store {
     /// `seen` is what this process knows of each key's last use, newer than the database.
     pub fn agent_keys(&self, seen: &HashMap<String, LastUse>) -> Result<AgentKeys> {
         let mut keys: Vec<AgentKey> = self.platform.query_as(
-            "SELECT * FROM agent_keys ORDER BY revoked_at IS NOT NULL,created_at DESC,id",
-            [],
+            &format!("{LISTED} ORDER BY k.revoked_at IS NOT NULL,k.created_at DESC,k.id"),
+            [iso()],
         )?;
         for key in &mut keys {
             key.dsps = self.agent_key_dsps(&key.id)?;
@@ -165,21 +171,29 @@ impl Store {
         })
     }
 
-    // What every new or changed key must satisfy. `id` is the key being changed.
-    fn check_agent_key(&self, id: Option<&str>, input: &AgentKeyRequest) -> Result<()> {
+    // What every new or changed key must satisfy. `id` is the key being changed. `replaced`
+    // are the connected apps a new connection of the same app replaces, which so neither
+    // take its name nor count.
+    fn check_agent_key(
+        &self,
+        id: Option<&str>,
+        input: &AgentKeyRequest,
+        replaced: &[String],
+    ) -> Result<()> {
+        let replaced = replaced.len() as i64;
         let taken = self.platform.count(
             "SELECT count(*) FROM agent_keys WHERE revoked_at IS NULL AND id<>?1 \
              AND lower(name)=lower(?2)",
             params![id.unwrap_or(""), input.name],
         )?;
-        ensure(taken == 0, "agent_key_name_taken", 409)?;
+        ensure(taken - replaced == 0, "agent_key_name_taken", 409)?;
         if id.is_none() {
             let active = self.platform.count(
                 "SELECT count(*) FROM agent_keys WHERE revoked_at IS NULL \
                  AND (expires_at IS NULL OR expires_at>?)",
                 [iso()],
             )?;
-            ensure(active < MOST_KEYS, "agent_key_limit", 409)?;
+            ensure(active - replaced < MOST_KEYS, "agent_key_limit", 409)?;
         }
         let choices: Vec<String> = self
             .agent_dsp_choices()?
@@ -207,9 +221,9 @@ impl Store {
 
     /// Makes a key. The key itself is returned this once; only its hash is kept.
     pub fn create_agent_key(&self, user: &str, input: &AgentKeyRequest) -> Result<AgentKeyCreated> {
-        self.check_agent_key(None, input)?;
+        self.check_agent_key(None, input, &[])?;
         let expires = expiry(input.expires_at.as_deref())?;
-        let token = token::new(self.config.env())?;
+        let token = token::new(token::Kind::Key, self.config.env())?;
         let id = crypto::id("agentkey")?;
         self.platform.transaction(|| {
             self.platform.exec(
@@ -254,7 +268,13 @@ impl Store {
     ) -> Result<AgentKey> {
         let before = self.agent_key(id)?;
         ensure(before.revoked_at.is_none(), "agent_key_revoked", 409)?;
-        self.check_agent_key(Some(id), input)?;
+        // A connected app keeps what the owner approved it with; it is only ever revoked.
+        ensure(
+            before.kind == AgentKeyKind::Key,
+            "connected_app_not_editable",
+            409,
+        )?;
+        self.check_agent_key(Some(id), input, &[])?;
         // An expiry left as it was stays, even one that is close or already past.
         let expires = if input.expires_at == before.expires_at {
             before.expires_at.clone()
@@ -331,29 +351,30 @@ impl Store {
         self.agent_key(id)
     }
 
-    /// Revokes a key at once. Revoking a revoked key changes nothing.
+    /// Revokes a key, or a connected app with its tokens, at once. Revoking a revoked key
+    /// changes nothing.
     pub fn revoke_agent_key(&self, user: &str, id: &str) -> Result<AgentKey> {
         let key = self.agent_key(id)?;
         if key.revoked_at.is_none() {
+            let action = match key.kind {
+                AgentKeyKind::Key => "agent.key_revoked",
+                AgentKeyKind::App => "agent.app_revoked",
+            };
             self.platform.transaction(|| {
                 self.platform.exec(
                     "UPDATE agent_keys SET revoked_at=? WHERE id=? AND revoked_at IS NULL",
                     [iso(), id.to_owned()],
                 )?;
-                self.audit_with(
-                    Some(user),
-                    None,
-                    "agent.key_revoked",
-                    id,
-                    Some(&key.name),
-                    &[],
-                )
+                self.platform
+                    .exec("DELETE FROM oauth_tokens WHERE key_id=?", [id])?;
+                self.audit_with(Some(user), None, action, id, Some(&key.name), &[])
             })?;
         }
         self.agent_key(id)
     }
 
-    /// Revokes every key still in use: all of them, or only `owner`'s. Answers how many.
+    /// Revokes every key and connected app still in use: all of them, or only `owner`'s, with
+    /// the tokens of the apps and the approvals not yet redeemed. Answers how many.
     pub fn revoke_agent_keys(&self, actor: Option<&str>, owner: Option<&str>) -> Result<usize> {
         self.platform
             .transaction(|| self.revoke_agent_keys_within(actor, owner))
@@ -370,6 +391,15 @@ impl Store {
              AND (?2 IS NULL OR user_id=?2)",
             params![iso(), owner],
         )?;
+        self.platform.exec(
+            "DELETE FROM oauth_tokens WHERE key_id IN \
+             (SELECT id FROM agent_keys WHERE revoked_at IS NOT NULL)",
+            [],
+        )?;
+        self.platform.exec(
+            "DELETE FROM oauth_codes WHERE used_at IS NULL AND (?1 IS NULL OR approved_by=?1)",
+            [owner],
+        )?;
         if revoked > 0 {
             self.audit(actor, None, "agent.keys_revoked", &revoked.to_string())?;
         }
@@ -381,7 +411,7 @@ impl Store {
         ensure(!token.is_empty(), "agent_key_required", 401)?;
         let environment = self.config.env();
         ensure(
-            token::well_formed(token, environment),
+            token::well_formed(token, token::Kind::Key, environment),
             "agent_key_invalid",
             401,
         )?;

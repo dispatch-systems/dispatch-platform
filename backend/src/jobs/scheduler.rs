@@ -93,6 +93,7 @@ impl Scheduler {
                     }
                     Ok(())
                 })?;
+                db.prune_oauth()?;
                 let dsps: Vec<(String,)> = db.platform.query_as(
                     "SELECT id FROM dsps WHERE status IN ('active','suspended')",
                     [],

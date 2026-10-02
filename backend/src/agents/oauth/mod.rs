@@ -1,0 +1,842 @@
+//! Sign in with Dispatch: an OAuth 2.1 authorization server for the MCP endpoint. An app the
+//! platform owner approves becomes a connected app: an agent key with no static token, that
+//! signs in with an access token good for an hour and renews it with a refresh token good for
+//! 30 days, each renewal bringing a new one. It reaches what the owner chose, like a key, and
+//! stops when revoked like one. Only the platform owner approves, on the dashboard.
+pub mod clients;
+
+pub use clients::Documents;
+
+use super::{Caller, token, token::Kind};
+use crate::{
+    Error, Result,
+    config::Config,
+    contracts::{
+        AgentAccess, AgentKeyRequest, AgentTools, OAuthApp, OAuthApproval, OAuthRedirect,
+        OAuthReplaced, OAuthRequest,
+    },
+    crypto,
+    db::{Store, at, iso, now, s},
+    ensure,
+};
+use clients::Client;
+use serde_json::{Value, json};
+
+/// The one scope. Whatever an app asks for, it is what is granted.
+pub const SCOPE: &str = "dispatch";
+const REQUEST_LIFETIME: i64 = 10 * 60 * 1000;
+const CODE_LIFETIME: i64 = 5 * 60 * 1000;
+/// Seconds, as the token endpoint says it.
+const ACCESS_SECONDS: i64 = 60 * 60;
+const REFRESH_LIFETIME: i64 = 30 * 24 * 60 * 60 * 1000;
+/// How long an exchanged refresh token may be exchanged again, for an app whose processes
+/// refresh at once. Presented any later, it ends the app.
+const REFRESH_GRACE: i64 = 60 * 1000;
+/// Used codes are kept this long past their expiry, so a replay still ends what they made.
+const CODE_KEPT: i64 = 24 * 60 * 60 * 1000;
+const STATE_LONGEST: usize = 2048;
+
+/// The issuer: the origin exactly as configured, which never ends in a slash.
+pub fn issuer(config: &Config) -> &str {
+    &config.origin
+}
+/// The MCP endpoint: the one resource every token is for.
+pub fn resource(config: &Config) -> String {
+    format!("{}/api/v1/mcp", config.origin)
+}
+/// Where the MCP endpoint's protected resource metadata is, as every 401 names it.
+pub fn resource_metadata(config: &Config) -> String {
+    format!(
+        "{}/.well-known/oauth-protected-resource/api/v1/mcp",
+        config.origin
+    )
+}
+
+/// The protected resource metadata (RFC 9728).
+pub fn protected_resource(config: &Config) -> Value {
+    json!({
+        "resource": resource(config),
+        "authorization_servers": [issuer(config)],
+        "scopes_supported": [SCOPE],
+        "bearer_methods_supported": ["header"],
+        "resource_name": "Dispatch",
+    })
+}
+
+/// The authorization server metadata (RFC 8414). Only public clients exist: a client offered
+/// any other way to authenticate may pick it.
+pub fn authorization_server(config: &Config) -> Value {
+    let issuer = issuer(config);
+    json!({
+        "issuer": issuer,
+        "authorization_endpoint": format!("{issuer}/oauth/authorize"),
+        "token_endpoint": format!("{issuer}/oauth/token"),
+        "registration_endpoint": format!("{issuer}/oauth/register"),
+        "revocation_endpoint": format!("{issuer}/oauth/revoke"),
+        "response_types_supported": ["code"],
+        "response_modes_supported": ["query"],
+        "grant_types_supported": ["authorization_code", "refresh_token"],
+        "code_challenge_methods_supported": ["S256"],
+        "token_endpoint_auth_methods_supported": ["none"],
+        "revocation_endpoint_auth_methods_supported": ["none"],
+        "scopes_supported": [SCOPE],
+        "client_id_metadata_document_supported": true,
+        "authorization_response_iss_parameter_supported": true,
+    })
+}
+
+/// An OAuth error answer (RFC 6749 §5.2): the code a client acts on, and why in words.
+#[derive(Debug)]
+pub struct Refusal {
+    pub error: &'static str,
+    pub description: String,
+    pub status: u16,
+}
+impl Refusal {
+    pub fn new(error: &'static str, description: &str) -> Self {
+        Self {
+            error,
+            description: description.to_owned(),
+            status: if error == "invalid_client" { 401 } else { 400 },
+        }
+    }
+}
+/// Dispatch's own failure, said the OAuth way.
+impl From<Error> for Refusal {
+    fn from(error: Error) -> Self {
+        let (code, status) = match error.status {
+            429 => ("rate_limited", 429),
+            503 => ("temporarily_unavailable", 503),
+            500.. => ("server_error", 500),
+            _ => ("invalid_request", 400),
+        };
+        Self {
+            error: code,
+            description: error.code,
+            status,
+        }
+    }
+}
+/// What a protocol request is answered with, or the OAuth error it is refused with.
+pub type Answer<T> = std::result::Result<T, Refusal>;
+fn grant(description: &str) -> Refusal {
+    Refusal::new("invalid_grant", description)
+}
+
+/// A query or form as sent, every parameter in order. An empty value counts as absent.
+pub struct Query(Vec<(String, String)>);
+impl Query {
+    pub fn parse(text: &[u8]) -> Self {
+        Self(url::form_urlencoded::parse(text).into_owned().collect())
+    }
+    fn all(&self, name: &str) -> Vec<&str> {
+        self.0
+            .iter()
+            .filter(|(key, value)| key == name && !value.is_empty())
+            .map(|(_, value)| value.as_str())
+            .collect()
+    }
+    /// The parameter's one value. One sent more than once is refused (RFC 6749 §3.1).
+    pub fn one(&self, name: &str) -> Answer<Option<&str>> {
+        match self.all(name)[..] {
+            [] => Ok(None),
+            [value] => Ok(Some(value)),
+            _ => Err(Refusal::new(
+                "invalid_request",
+                &format!("{name} was sent more than once"),
+            )),
+        }
+    }
+    fn required(&self, name: &str) -> Answer<&str> {
+        self.one(name)?
+            .ok_or_else(|| Refusal::new("invalid_request", &format!("{name} is required")))
+    }
+}
+
+/// `uri` with parameters added to its query, skipping those without a value. A redirect
+/// keeps the query it was registered with.
+fn redirect(uri: &str, params: &[(&str, Option<&str>)]) -> String {
+    let mut query = url::form_urlencoded::Serializer::new(String::new());
+    for (name, value) in params {
+        if let Some(value) = value {
+            query.append_pair(name, value);
+        }
+    }
+    let separator = if uri.contains('?') { '&' } else { '?' };
+    format!("{uri}{separator}{}", query.finish())
+}
+
+/// Whether `challenge` is BASE64URL(SHA-256(`verifier`)), for a verifier of 43 to 128
+/// unreserved characters (RFC 7636 §4.1, §4.6).
+fn verifies(verifier: &str, challenge: &str) -> bool {
+    (43..=128).contains(&verifier.len())
+        && verifier
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-._~".contains(&b))
+        && crypto::equal(&crypto::s256(verifier), challenge)
+}
+
+impl Store {
+    /// Counts an authorization request against its address, before anything else is done for
+    /// it, a known app's document fetched included. Answers where a refused one goes.
+    pub fn throttle_authorize(&self, ip: &str) -> Result<Option<String>> {
+        match self.throttle_ip("oauth-authorize", ip, 60, 10 * 60 * 1000) {
+            Err(error) if error.code == "rate_limited" => Ok(Some(format!(
+                "{}/#authorize?error=rate_limited",
+                issuer(&self.config)
+            ))),
+            result => result.map(|()| None),
+        }
+    }
+
+    /// Where an authorization request sends the browser: to the approval page with the
+    /// request waiting there, or back to the app with why not. Until the app and its redirect
+    /// are known good, a refusal goes to Dispatch's own page and never to the app. A known
+    /// app's client comes as `document`, read from its published document beforehand.
+    pub fn authorize_oauth(
+        &self,
+        query: &Query,
+        document: Option<std::result::Result<Client, &'static str>>,
+    ) -> Result<String> {
+        let origin = issuer(&self.config);
+        let page = |error: &str| Ok(format!("{origin}/#authorize?error={error}"));
+        let Ok(Some(client_id)) = query.one("client_id") else {
+            return page("unknown_app");
+        };
+        let client = match document {
+            Some(Ok(client)) => client,
+            Some(Err(code)) => return page(code),
+            None if client_id.starts_with("dcr_") => match self.registered_client(client_id)? {
+                Some(client) => client,
+                None => return page("unknown_app"),
+            },
+            None => return page("unknown_app"),
+        };
+        let redirect_uri = match query.one("redirect_uri") {
+            Ok(Some(uri)) if clients::allowed(&client.redirect_uris, uri) => uri,
+            _ => return page("invalid_redirect"),
+        };
+        // From here on the app hears why, at the redirect it registered.
+        let state = query.one("state").ok().flatten();
+        let back = |error: &str, description: &str| {
+            Ok(redirect(
+                redirect_uri,
+                &[
+                    ("error", Some(error)),
+                    ("error_description", Some(description)),
+                    ("state", state),
+                    ("iss", Some(origin)),
+                ],
+            ))
+        };
+        let checked = (|| -> Answer<(&str, String)> {
+            for name in [
+                "response_type",
+                "code_challenge",
+                "code_challenge_method",
+                "state",
+                "scope",
+            ] {
+                query.one(name)?;
+            }
+            if query.one("response_type")? != Some("code") {
+                return Err(Refusal::new(
+                    "unsupported_response_type",
+                    "Only the code response type is supported",
+                ));
+            }
+            let challenge = query
+                .one("code_challenge")?
+                .ok_or_else(|| Refusal::new("invalid_request", "code_challenge is required"))?;
+            if query.one("code_challenge_method")? != Some("S256") {
+                return Err(Refusal::new(
+                    "invalid_request",
+                    "code_challenge_method must be S256",
+                ));
+            }
+            if challenge.len() != 43
+                || !challenge
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"-_".contains(&b))
+            {
+                return Err(Refusal::new(
+                    "invalid_request",
+                    "code_challenge must be an S256 challenge",
+                ));
+            }
+            let resource = resource(&self.config);
+            if query.all("resource").iter().any(|value| *value != resource) {
+                return Err(Refusal::new(
+                    "invalid_target",
+                    "The only resource is Dispatch's MCP endpoint",
+                ));
+            }
+            if state.is_some_and(|state| state.len() > STATE_LONGEST) {
+                return Err(Refusal::new("invalid_request", "state is too long"));
+            }
+            Ok((challenge, resource))
+        })();
+        let (challenge, resource) = match checked {
+            Ok(checked) => checked,
+            Err(refusal) => return back(refusal.error, &refusal.description),
+        };
+        let id = crypto::id("authreq")?;
+        self.platform.exec(
+            "INSERT INTO oauth_requests(id,client_id,client_name,verified,redirect_uri,state,\
+             code_challenge,resource,scope,created_at,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            rusqlite::params![
+                id,
+                client.id,
+                client.name,
+                i64::from(client.verified),
+                redirect_uri,
+                state,
+                challenge,
+                resource,
+                SCOPE,
+                iso(),
+                at(now() + REQUEST_LIFETIME)
+            ],
+        )?;
+        Ok(format!("{origin}/#authorize?request={id}"))
+    }
+
+    /// A request still waiting for the owner's answer.
+    fn waiting_request(&self, id: &str) -> Result<Value> {
+        self.platform
+            .one(
+                "SELECT * FROM oauth_requests WHERE id=? AND expires_at>?",
+                [id.to_owned(), iso()],
+            )?
+            .ok_or_else(|| Error::new("authorization_not_found", 404))
+    }
+    /// Answers a request once: a second answer finds nothing.
+    fn answer_request(&self, id: &str) -> Result<()> {
+        let answered = self.platform.exec(
+            "DELETE FROM oauth_requests WHERE id=? AND expires_at>?",
+            [id.to_owned(), iso()],
+        )?;
+        ensure(answered == 1, "authorization_not_found", 404)
+    }
+
+    /// An app asking to connect, as the approval page shows it, with the connection that
+    /// approving it as `name` would replace. `name` is the app's own name unless given.
+    pub fn oauth_request(&self, id: &str, name: Option<&str>) -> Result<OAuthRequest> {
+        let request = self.waiting_request(id)?;
+        let (redirect_host, redirect_scheme) = clients::destination(s(&request, "redirect_uri"));
+        let replaced = self.replaced_apps(
+            name.unwrap_or(s(&request, "client_name")),
+            s(&request, "client_id"),
+            s(&request, "client_name"),
+            request["verified"] == 1,
+        )?;
+        let replaces = match replaced.first() {
+            Some(id) => {
+                let earlier = self.agent_key(id)?;
+                Some(OAuthReplaced {
+                    name: earlier.name,
+                    connected_at: earlier.created_at,
+                })
+            }
+            None => None,
+        };
+        Ok(OAuthRequest {
+            id: s(&request, "id").to_owned(),
+            app: OAuthApp {
+                name: s(&request, "client_name").to_owned(),
+                client_id: s(&request, "client_id").to_owned(),
+                verified: request["verified"] == 1,
+                redirect_host,
+                redirect_scheme,
+            },
+            expires_at: s(&request, "expires_at").to_owned(),
+            replaces,
+        })
+    }
+
+    /// The owner approves: a code the app redeems once, within five minutes, for the
+    /// connected app made with these choices. Checked as a new key is.
+    pub fn approve_oauth(
+        &self,
+        owner: &str,
+        id: &str,
+        approval: &OAuthApproval,
+    ) -> Result<OAuthRedirect> {
+        let request = self.waiting_request(id)?;
+        // Connecting an app again under its name replaces its earlier connection.
+        let replaced = self.replaced_apps(
+            &approval.name,
+            s(&request, "client_id"),
+            s(&request, "client_name"),
+            request["verified"] == 1,
+        )?;
+        self.check_agent_key(None, &approval.key(), &replaced)?;
+        let code = crypto::token()?;
+        let choices = json!({
+            "name": approval.name,
+            "all_dsps": approval.all_dsps,
+            "dsps": approval.dsps,
+            "tools": approval.tools,
+            "locations": approval.locations,
+        });
+        self.platform.transaction(|| {
+            self.answer_request(id)?;
+            self.platform.exec(
+                "INSERT INTO oauth_codes(hash,client_id,client_name,client_verified,redirect_uri,\
+                 code_challenge,resource,choices,approved_by,created_at,expires_at) \
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                rusqlite::params![
+                    crypto::sha(&code),
+                    s(&request, "client_id"),
+                    s(&request, "client_name"),
+                    request["verified"].as_i64(),
+                    s(&request, "redirect_uri"),
+                    s(&request, "code_challenge"),
+                    s(&request, "resource"),
+                    choices.to_string(),
+                    owner,
+                    iso(),
+                    at(now() + CODE_LIFETIME)
+                ],
+            )?;
+            Ok(())
+        })?;
+        Ok(OAuthRedirect {
+            redirect: redirect(
+                s(&request, "redirect_uri"),
+                &[
+                    ("code", Some(&code)),
+                    ("state", request["state"].as_str()),
+                    ("iss", Some(issuer(&self.config))),
+                ],
+            ),
+        })
+    }
+
+    /// The owner refuses: the app is told so.
+    pub fn deny_oauth(&self, id: &str) -> Result<OAuthRedirect> {
+        let request = self.waiting_request(id)?;
+        self.answer_request(id)?;
+        Ok(OAuthRedirect {
+            redirect: redirect(
+                s(&request, "redirect_uri"),
+                &[
+                    ("error", Some("access_denied")),
+                    ("state", request["state"].as_str()),
+                    ("iss", Some(issuer(&self.config))),
+                ],
+            ),
+        })
+    }
+
+    /// The token endpoint: a code or a refresh token exchanged for new tokens. Every client is
+    /// public, so the `client_id` it sends must be the one the grant was made to.
+    pub fn oauth_token(&self, form: &Query) -> Answer<Value> {
+        let grant_type = form.required("grant_type")?;
+        let client_id = form.required("client_id")?;
+        if form
+            .one("resource")?
+            .is_some_and(|value| value != resource(&self.config))
+        {
+            return Err(Refusal::new(
+                "invalid_target",
+                "The only resource is Dispatch's MCP endpoint",
+            ));
+        }
+        let known = clients::known(client_id)
+            || (client_id.starts_with("dcr_") && self.registered_client(client_id)?.is_some());
+        if !known {
+            return Err(Refusal::new(
+                "invalid_client",
+                "The client is not registered",
+            ));
+        }
+        match grant_type {
+            "authorization_code" => self.redeem_code(form, client_id),
+            "refresh_token" => self.refresh(form, client_id),
+            _ => Err(Refusal::new(
+                "unsupported_grant_type",
+                "Only authorization_code and refresh_token are supported",
+            )),
+        }
+    }
+
+    /// A code for the connected app it was approved as, and its first tokens.
+    fn redeem_code(&self, form: &Query, client_id: &str) -> Answer<Value> {
+        let code = form.required("code")?;
+        let verifier = form.required("code_verifier")?;
+        let redirect_uri = form.required("redirect_uri")?;
+        let row = self
+            .platform
+            .one(
+                "SELECT * FROM oauth_codes WHERE hash=?",
+                [crypto::sha(code)],
+            )?
+            .ok_or_else(|| grant("The code is not one Dispatch issued"))?;
+        // Only the client that asked, at the redirect it asked for, with the verifier it
+        // began with. A mismatch ends nothing: it proves no one held the code rightly.
+        if s(&row, "client_id") != client_id
+            || s(&row, "redirect_uri") != redirect_uri
+            || !verifies(verifier, s(&row, "code_challenge"))
+        {
+            return Err(grant(
+                "The code was issued for another client, redirect or verifier",
+            ));
+        }
+        if !row["used_at"].is_null() {
+            // Redeemed once already, and presented again in full: whoever holds it, the
+            // connected app it made can no longer be trusted.
+            if let Some(key) = row["key_id"].as_str() {
+                self.end_app(key, "code_reused")?;
+            }
+            return Err(grant("The code was already used"));
+        }
+        if s(&row, "expires_at") <= iso().as_str() {
+            return Err(grant("The code expired"));
+        }
+        let choices: Value = serde_json::from_str(s(&row, "choices")).map_err(Error::from)?;
+        let key = AgentKeyRequest {
+            name: s(&choices, "name").to_owned(),
+            all_dsps: choices["all_dsps"] == true,
+            dsps: serde_json::from_value(choices["dsps"].clone()).map_err(Error::from)?,
+            access: AgentAccess::Read,
+            tools: AgentTools::parse(s(&choices, "tools"))
+                .ok_or_else(|| Error::new("invalid_stored_record", 500))?,
+            locations: choices["locations"] == true,
+            expires_at: None,
+        };
+        let owner = s(&row, "approved_by");
+        let standing = self
+            .platform
+            .one(
+                "SELECT 1 FROM users WHERE id=? AND platform_owner=1 AND status='active'",
+                [owner],
+            )?
+            .is_some();
+        if !standing {
+            return Err(grant("The approval no longer stands"));
+        }
+        // What the owner chose is checked again, as a key's would be when it is made.
+        let replaced = self.replaced_apps(
+            &key.name,
+            client_id,
+            s(&row, "client_name"),
+            row["client_verified"] == 1,
+        )?;
+        self.check_agent_key(None, &key, &replaced)
+            .map_err(|error| match error.status {
+                500.. => error.into(),
+                _ => grant(&format!(
+                    "The approval can no longer be used: {}",
+                    error.code
+                )),
+            })?;
+        let id = crypto::id("agentkey")?;
+        let tokens = self.platform.transaction(|| {
+            let redeemed = self.platform.exec(
+                "UPDATE oauth_codes SET used_at=?1,key_id=?2 WHERE hash=?3 AND used_at IS NULL",
+                [iso(), id.clone(), crypto::sha(code)],
+            )?;
+            ensure(redeemed == 1, "code_already_used", 409)?;
+            // The app connected again: its earlier connection of the same name ends with it.
+            for earlier in &replaced {
+                self.end_app_within(Some(owner), earlier, "replaced")?;
+            }
+            self.platform.exec(
+                "INSERT INTO agent_keys(id,name,hash,hint,user_id,all_dsps,access,tools,locations,\
+                 created_at,kind,client_id,client_name,client_verified) \
+                 VALUES (?,?,?,'',?,?,?,?,?,?,'app',?,?,?)",
+                rusqlite::params![
+                    id,
+                    key.name,
+                    format!("app:{id}"),
+                    owner,
+                    i64::from(key.all_dsps),
+                    key.access,
+                    key.tools,
+                    i64::from(key.locations),
+                    iso(),
+                    client_id,
+                    s(&row, "client_name"),
+                    row["client_verified"].as_i64()
+                ],
+            )?;
+            self.set_agent_key_dsps(&id, &key)?;
+            self.audit_with(
+                Some(owner),
+                None,
+                "agent.app_connected",
+                &id,
+                Some(&key.name),
+                &[],
+            )?;
+            self.issue_tokens(&id, client_id)
+        })?;
+        Ok(tokens)
+    }
+
+    /// A refresh token for a new pair; the one presented is spent. Presented again within a
+    /// minute it brings another pair, as an app refreshing from several processes at once
+    /// does; any later, it ends the app.
+    fn refresh(&self, form: &Query, client_id: &str) -> Answer<Value> {
+        let presented = form.required("refresh_token")?;
+        if !token::well_formed(presented, Kind::Refresh, self.config.env()) {
+            return Err(grant("The refresh token is not one Dispatch issued"));
+        }
+        let row = self
+            .platform
+            .one(
+                "SELECT t.key_id,t.resource,t.expires_at,t.used_at,k.client_id,k.revoked_at,\
+                 u.platform_owner,u.status FROM oauth_tokens t JOIN agent_keys k ON k.id=t.key_id \
+                 JOIN users u ON u.id=k.user_id WHERE t.hash=? AND t.kind='refresh'",
+                [crypto::sha(presented)],
+            )?
+            .ok_or_else(|| grant("The refresh token is not one Dispatch issued"))?;
+        if s(&row, "client_id") != client_id || s(&row, "resource") != resource(&self.config) {
+            return Err(grant("The refresh token was issued to another client"));
+        }
+        if s(&row, "expires_at") <= iso().as_str() {
+            return Err(grant("The refresh token expired"));
+        }
+        let live = row["revoked_at"].is_null()
+            && row["platform_owner"] == 1
+            && s(&row, "status") == "active";
+        if !live {
+            return Err(grant("The connection was ended"));
+        }
+        let key = s(&row, "key_id");
+        if row["used_at"]
+            .as_str()
+            .is_some_and(|used| used < at(now() - REFRESH_GRACE).as_str())
+        {
+            self.end_app(key, "refresh_reused")?;
+            return Err(grant("The refresh token was already used"));
+        }
+        Ok(self.platform.transaction(|| {
+            self.platform.exec(
+                "UPDATE oauth_tokens SET used_at=COALESCE(used_at,?1),replaced_at=?1 WHERE hash=?2",
+                [iso(), crypto::sha(presented)],
+            )?;
+            self.issue_tokens(key, client_id)
+        })?)
+    }
+
+    /// The live connections a new connection named `name` replaces: the same app's, under the
+    /// same name. The same app is the same client; or, for apps that registered themselves and
+    /// so get a new client each time, one that gave the same name. A known app and a
+    /// self-registered one are never the same, whatever they call themselves.
+    fn replaced_apps(
+        &self,
+        name: &str,
+        client_id: &str,
+        client_name: &str,
+        verified: bool,
+    ) -> Result<Vec<String>> {
+        Ok(self
+            .platform
+            .query_as::<(String,)>(
+                "SELECT id FROM agent_keys WHERE kind='app' AND revoked_at IS NULL \
+                 AND lower(name)=lower(?1) AND (client_id=?2 OR (?3=0 AND client_verified=0 \
+                 AND lower(trim(client_name))=lower(trim(?4))))",
+                rusqlite::params![name, client_id, i64::from(verified), client_name],
+            )?
+            .into_iter()
+            .map(|(id,)| id)
+            .collect())
+    }
+
+    /// A new access and refresh token for a connected app, as the token endpoint answers.
+    fn issue_tokens(&self, key: &str, client_id: &str) -> Result<Value> {
+        let environment = self.config.env();
+        let access = token::new(Kind::Access, environment)?;
+        let refresh = token::new(Kind::Refresh, environment)?;
+        for (value, kind, lifetime) in [
+            (&access, "access", ACCESS_SECONDS * 1000),
+            (&refresh, "refresh", REFRESH_LIFETIME),
+        ] {
+            self.platform.exec(
+                "INSERT INTO oauth_tokens(hash,key_id,kind,resource,created_at,expires_at) \
+                 VALUES (?,?,?,?,?,?)",
+                [
+                    crypto::sha(value),
+                    key.to_owned(),
+                    kind.to_owned(),
+                    resource(&self.config),
+                    iso(),
+                    at(now() + lifetime),
+                ],
+            )?;
+        }
+        self.used_oauth_client(client_id)?;
+        Ok(json!({
+            "access_token": access,
+            "token_type": "Bearer",
+            "expires_in": ACCESS_SECONDS,
+            "refresh_token": refresh,
+            "scope": SCOPE,
+        }))
+    }
+
+    /// Ends a connected app from the protocol's side: a code or refresh token replayed, or the
+    /// app signing out. Its tokens stop at once.
+    fn end_app(&self, key: &str, reason: &str) -> Result<()> {
+        self.platform
+            .transaction(|| self.end_app_within(None, key, reason))
+    }
+    /// The same inside a transaction the caller holds, such as the one connecting the app's
+    /// replacement. `actor` is the owner when it is their doing.
+    fn end_app_within(&self, actor: Option<&str>, key: &str, reason: &str) -> Result<()> {
+        let ended = self.platform.exec(
+            "UPDATE agent_keys SET revoked_at=? WHERE id=? AND kind='app' AND revoked_at IS NULL",
+            [iso(), key.to_owned()],
+        )?;
+        self.platform
+            .exec("DELETE FROM oauth_tokens WHERE key_id=?", [key])?;
+        if ended > 0 {
+            let (name,): (String,) = self
+                .platform
+                .one_as("SELECT name FROM agent_keys WHERE id=?", [key])?
+                .ok_or_else(|| Error::new("agent_key_not_found", 404))?;
+            self.audit_with(
+                actor,
+                None,
+                "agent.app_revoked",
+                key,
+                Some(&name),
+                &[("reason", None, Some(reason.to_owned()))],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Revocation (RFC 7009): any token of a connected app ends the whole app, as an app
+    /// signing out expects. A token Dispatch does not know changes nothing and is no error.
+    pub fn revoke_oauth(&self, form: &Query) -> Answer<()> {
+        let presented = form.required("token")?;
+        let client_id = form.one("client_id")?;
+        let row = self.platform.one(
+            "SELECT t.key_id,k.client_id FROM oauth_tokens t JOIN agent_keys k ON k.id=t.key_id \
+             WHERE t.hash=?",
+            [crypto::sha(presented)],
+        )?;
+        if let Some(row) = row
+            && client_id.is_none_or(|client| client == s(&row, "client_id"))
+        {
+            self.end_app(s(&row, "key_id"), "signed_out")?;
+        }
+        Ok(())
+    }
+
+    /// The connected app an access token signs in as, or why it may not: the token must be
+    /// current and for the MCP endpoint, and then the app passes every check a key does.
+    pub fn authenticate_app(&self, token: &str, client: &str) -> Result<Caller> {
+        ensure(
+            token::well_formed(token, Kind::Access, self.config.env()),
+            "access_token_invalid",
+            401,
+        )?;
+        let row = self
+            .platform
+            .one(
+                "SELECT t.expires_at token_expires_at,t.resource,k.id,k.name,k.user_id,k.all_dsps,\
+                 k.access,k.tools,k.locations,k.expires_at,k.revoked_at,u.platform_owner,u.status \
+                 FROM oauth_tokens t JOIN agent_keys k ON k.id=t.key_id \
+                 JOIN users u ON u.id=k.user_id WHERE t.hash=? AND t.kind='access'",
+                [crypto::sha(token)],
+            )?
+            .ok_or_else(|| Error::new("access_token_invalid", 401))?;
+        ensure(
+            s(&row, "resource") == resource(&self.config),
+            "access_token_invalid",
+            401,
+        )?;
+        ensure(
+            s(&row, "token_expires_at") > iso().as_str(),
+            "access_token_expired",
+            401,
+        )?;
+        self.agent_caller(&row, client)
+    }
+
+    /// Removes what can no longer be used: requests past their ten minutes, codes a day past
+    /// their expiry, expired tokens, and apps that registered themselves but were never given
+    /// a token within a day, or not for 90 days.
+    pub fn prune_oauth(&self) -> Result<()> {
+        let day = 24 * 60 * 60 * 1000;
+        self.platform.transaction(|| {
+            self.platform
+                .exec("DELETE FROM oauth_requests WHERE expires_at<?", [iso()])?;
+            self.platform.exec(
+                "DELETE FROM oauth_codes WHERE expires_at<?",
+                [at(now() - CODE_KEPT)],
+            )?;
+            self.platform
+                .exec("DELETE FROM oauth_tokens WHERE expires_at<?", [iso()])?;
+            self.platform.exec(
+                "DELETE FROM oauth_clients WHERE (last_used_at IS NULL AND created_at<?1) \
+                 OR last_used_at<?2",
+                [at(now() - day), at(now() - 90 * day)],
+            )?;
+            Ok(())
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redirects_keep_their_query_and_any_scheme() {
+        assert_eq!(
+            redirect(
+                "http://127.0.0.1:5/cb",
+                &[
+                    ("code", Some("a b")),
+                    ("state", None),
+                    ("iss", Some("https://d.example"))
+                ]
+            ),
+            "http://127.0.0.1:5/cb?code=a+b&iss=https%3A%2F%2Fd.example"
+        );
+        assert_eq!(
+            redirect(
+                "https://a.example/cb?x=1",
+                &[("error", Some("access_denied"))]
+            ),
+            "https://a.example/cb?x=1&error=access_denied"
+        );
+        assert_eq!(
+            redirect(
+                "cursor://anysphere.cursor-retrieval/oauth/callback",
+                &[("code", Some("c")), ("state", Some("s/1"))]
+            ),
+            "cursor://anysphere.cursor-retrieval/oauth/callback?code=c&state=s%2F1"
+        );
+    }
+
+    #[test]
+    fn pkce_takes_only_the_s256_of_a_proper_verifier() {
+        // RFC 7636 Appendix B.
+        let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+        let challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+        assert!(verifies(verifier, challenge));
+        assert!(!verifies(challenge, challenge));
+        assert!(!verifies("short", &crypto::s256("short")));
+        let spaced = format!("{} ", "a".repeat(43));
+        assert!(!verifies(&spaced, &crypto::s256(&spaced)));
+    }
+
+    #[test]
+    fn repeated_parameters_are_refused_and_empty_ones_are_absent() {
+        let query = Query::parse(b"a=1&a=2&b=&c=3&r=x&r=x");
+        assert_eq!(query.one("a").unwrap_err().error, "invalid_request");
+        assert_eq!(query.one("b").unwrap(), None);
+        assert_eq!(query.one("c").unwrap(), Some("3"));
+        assert_eq!(query.all("r"), ["x", "x"]);
+        assert_eq!(
+            query.required("b").unwrap_err().description,
+            "b is required"
+        );
+    }
+}

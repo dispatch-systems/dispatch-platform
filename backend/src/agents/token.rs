@@ -1,21 +1,34 @@
 //! The key an agent signs in with: `dsk_live_` on production and `dsk_dev_` elsewhere, then
 //! 32 random letters and digits and a 6-character checksum. The prefix says what it is
 //! and where it works; the checksum turns away a mistyped or made-up key before any lookup.
+//! A connected app's access and refresh tokens are made the same way, as `dsa_` and `dsr_`.
 use crate::{Result, contracts::Environment, crypto};
 
 const ALPHABET: &[u8; 62] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const RANDOM: usize = 32;
 const CHECK: usize = 6;
 
-pub fn prefix(environment: Environment) -> &'static str {
-    match environment {
-        Environment::Production => "dsk_live_",
-        Environment::Preview => "dsk_dev_",
+/// What a token is: an agent key, or a connected app's access or refresh token.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    Key,
+    Access,
+    Refresh,
+}
+
+pub fn prefix(kind: Kind, environment: Environment) -> &'static str {
+    match (kind, environment) {
+        (Kind::Key, Environment::Production) => "dsk_live_",
+        (Kind::Key, Environment::Preview) => "dsk_dev_",
+        (Kind::Access, Environment::Production) => "dsa_live_",
+        (Kind::Access, Environment::Preview) => "dsa_dev_",
+        (Kind::Refresh, Environment::Production) => "dsr_live_",
+        (Kind::Refresh, Environment::Preview) => "dsr_dev_",
     }
 }
 
-/// A new key for this environment.
-pub fn new(environment: Environment) -> Result<String> {
+/// A new token of this kind for this environment.
+pub fn new(kind: Kind, environment: Environment) -> Result<String> {
     let mut body = String::with_capacity(RANDOM);
     // Bytes from 248 up are skipped, so every character is equally likely.
     while body.len() < RANDOM {
@@ -25,14 +38,15 @@ pub fn new(environment: Environment) -> Result<String> {
             }
         }
     }
-    let head = format!("{}{body}", prefix(environment));
+    let head = format!("{}{body}", prefix(kind, environment));
     let check = checksum(&head);
     Ok(head + &check)
 }
 
-/// Whether `token` is shaped like this environment's key, with a checksum that matches.
-pub fn well_formed(token: &str, environment: Environment) -> bool {
-    let Some(rest) = token.strip_prefix(prefix(environment)) else {
+/// Whether `token` is shaped like this kind of token for this environment, with a checksum
+/// that matches.
+pub fn well_formed(token: &str, kind: Kind, environment: Environment) -> bool {
+    let Some(rest) = token.strip_prefix(prefix(kind, environment)) else {
         return false;
     };
     rest.len() == RANDOM + CHECK
@@ -72,22 +86,45 @@ mod tests {
 
     #[test]
     fn keys_carry_their_environment_and_a_checksum() {
-        let key = new(Environment::Production).unwrap();
+        let key = new(Kind::Key, Environment::Production).unwrap();
         assert!(key.starts_with("dsk_live_") && key.len() == 9 + RANDOM + CHECK);
-        assert!(well_formed(&key, Environment::Production));
+        assert!(well_formed(&key, Kind::Key, Environment::Production));
         // A key from one environment never passes for the other's.
-        assert!(!well_formed(&key, Environment::Preview));
-        let dev = new(Environment::Preview).unwrap();
-        assert!(dev.starts_with("dsk_dev_") && well_formed(&dev, Environment::Preview));
+        assert!(!well_formed(&key, Kind::Key, Environment::Preview));
+        let dev = new(Kind::Key, Environment::Preview).unwrap();
+        assert!(dev.starts_with("dsk_dev_") && well_formed(&dev, Kind::Key, Environment::Preview));
         // One changed character fails the checksum.
         let mut typo = key.clone().into_bytes();
         typo[12] = if typo[12] == b'a' { b'b' } else { b'a' };
         assert!(!well_formed(
             &String::from_utf8(typo).unwrap(),
+            Kind::Key,
             Environment::Production
         ));
-        assert!(!well_formed("dsk_live_short", Environment::Production));
-        assert_ne!(key, new(Environment::Production).unwrap());
+        assert!(!well_formed(
+            "dsk_live_short",
+            Kind::Key,
+            Environment::Production
+        ));
+        assert_ne!(key, new(Kind::Key, Environment::Production).unwrap());
+    }
+    #[test]
+    fn app_tokens_never_pass_for_one_another_or_for_a_key() {
+        let access = new(Kind::Access, Environment::Preview).unwrap();
+        let refresh = new(Kind::Refresh, Environment::Preview).unwrap();
+        assert!(access.starts_with("dsa_dev_") && refresh.starts_with("dsr_dev_"));
+        assert!(well_formed(&access, Kind::Access, Environment::Preview));
+        assert!(well_formed(&refresh, Kind::Refresh, Environment::Preview));
+        for (token, kind) in [
+            (&access, Kind::Refresh),
+            (&access, Kind::Key),
+            (&refresh, Kind::Access),
+        ] {
+            assert!(!well_formed(token, kind, Environment::Preview));
+        }
+        let live = new(Kind::Access, Environment::Production).unwrap();
+        assert!(live.starts_with("dsa_live_"));
+        assert!(!well_formed(&live, Kind::Access, Environment::Preview));
     }
     #[test]
     fn crc32_is_the_standard_one() {

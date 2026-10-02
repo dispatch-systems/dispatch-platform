@@ -24,6 +24,9 @@ import { isTimecardDataReady, prefetchRouteData } from './route-prefetch.js';
 
 const loadAgents = () => import('../features/agents/index.js');
 const AgentsPage = lazy(() => loadAgents().then((module) => ({ default: module.AgentsPage })));
+const AuthorizePage = lazy(() =>
+  loadAgents().then((module) => ({ default: module.AuthorizePage })),
+);
 const loadAudit = () => import('../features/audit/index.js');
 const AuditPage = lazy(() => loadAudit().then((module) => ({ default: module.AuditPage })));
 const loadHome = () => import('../features/home/index.js');
@@ -166,6 +169,12 @@ const platformPages: Record<PlatformRouteId, Entry<PageContext>> = {
     nav: true,
     permission: platformOwner,
     render: () => <AgentsPage />,
+  },
+  authorize: {
+    preload: loadAgents,
+    nav: false,
+    permission: platformOwner,
+    render: () => <AuthorizePage />,
   },
   audit: {
     preload: loadAudit,

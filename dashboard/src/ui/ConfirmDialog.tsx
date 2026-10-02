@@ -10,7 +10,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: {
-  title: string;
+  title: ReactNode;
   children: ReactNode;
   confirm: string;
   tone?: 'primary' | 'danger';

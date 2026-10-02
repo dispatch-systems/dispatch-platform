@@ -40,6 +40,10 @@ pub fn recovery_code() -> Result<String> {
 pub fn sha(value: impl AsRef<[u8]>) -> String {
     hex(&Sha256::digest(value))
 }
+/// BASE64URL(SHA-256(value)), as a PKCE S256 challenge is made (RFC 7636 §4.2).
+pub fn s256(value: &str) -> String {
+    B64.encode(Sha256::digest(value))
+}
 pub fn sign(key: &[u8], value: &str) -> String {
     let mut mac =
         <Hmac<Sha256> as KeyInit>::new_from_slice(key).expect("HMAC supports any key length");

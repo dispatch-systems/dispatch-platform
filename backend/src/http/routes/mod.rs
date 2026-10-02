@@ -9,6 +9,7 @@ pub mod driver_match;
 pub mod dvic;
 pub mod jobs;
 pub mod live;
+pub mod oauth;
 pub mod platform;
 pub mod routedata;
 pub mod schedules;
@@ -28,6 +29,7 @@ pub fn all() -> Vec<Route> {
         session::routes(),
         platform::routes(),
         agents::routes(),
+        oauth::routes(),
         team::routes(),
         timecard::routes(),
         schedules::routes(),

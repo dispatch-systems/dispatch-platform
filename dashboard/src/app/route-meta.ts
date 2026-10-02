@@ -63,6 +63,12 @@ export const routeMeta = [
     label: 'Agents',
   },
   {
+    id: 'authorize',
+    scope: 'platform',
+    label: 'Connect an app',
+    parent: 'agents',
+  },
+  {
     id: 'audit',
     scope: 'platform',
     label: 'Audit log',

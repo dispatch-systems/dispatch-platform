@@ -23,6 +23,9 @@ import type {
   AgentKeys,
   AgentKeysRevoked,
   AgentWhoami,
+  OAuthApproval,
+  OAuthRedirect,
+  OAuthRequest,
   AuditPage,
   PlatformHealth,
   CollectionSchedule,
@@ -173,6 +176,16 @@ export const updateAgentKey = (id: string, request: AgentKeyRequest) =>
 export const revokeAgentKey = (id: string) =>
   api<AgentKey>(`${agents}/keys/${encodeURIComponent(id)}/revoke`, {});
 export const revokeAllAgentKeys = () => api<AgentKeysRevoked>(`${agents}/revoke-all`, {});
+const oauthRequest = (id: string) => `/api/platform/oauth/requests/${encodeURIComponent(id)}`;
+/** An app asking to connect with "Sign in with Dispatch"; an empty id reads nothing. */
+export const useOAuthRequest = (id: string) => useData<OAuthRequest>(id ? oauthRequest(id) : '');
+/** The same request, saying what approving it under `name` would replace. */
+export const readOAuthRequest = (id: string, name: string) =>
+  api<OAuthRequest>(`${oauthRequest(id)}?${new URLSearchParams({ name })}`);
+/** The owner's answer. Either one sends the browser back to the app at `redirect`. */
+export const approveOAuthRequest = (id: string, approval: OAuthApproval) =>
+  api<OAuthRedirect>(`${oauthRequest(id)}/approve`, approval);
+export const denyOAuthRequest = (id: string) => api<OAuthRedirect>(`${oauthRequest(id)}/deny`, {});
 /** Asks Dispatch who `token` belongs to, as an agent would: with the key alone, never the
  * dashboard's session, which the server would refuse beside a key. */
 export async function agentWhoami(

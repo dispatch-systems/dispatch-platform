@@ -821,6 +821,46 @@ mod tests {
     }
 
     #[test]
+    fn agent_keys_from_before_connected_apps_stay_keys() {
+        let root = private();
+        let new = Db::create(&root.path().join("new.sqlite"), Kind::Platform, "").unwrap();
+        // The release before Sign in with Dispatch: no OAuth tables, and keys of one kind.
+        let before: String = recorded(Kind::Platform)
+            .replace(RECORD, "")
+            .replace(
+                ", kind TEXT NOT NULL DEFAULT 'key' CHECK(kind IN ('key','app')), client_id TEXT, \
+                 client_name TEXT, client_verified INTEGER NOT NULL DEFAULT 0)",
+                ")",
+            )
+            .lines()
+            .filter(|line| !line.contains("oauth_"))
+            .map(|line| format!("{line}\n"))
+            .collect();
+        assert!(!before.contains("client_verified"));
+        let file = root.path().join("platform.sqlite");
+        older(&file, Kind::Platform, &before);
+        rusqlite::Connection::open(&file)
+            .unwrap()
+            .execute_batch(
+                "INSERT INTO users(id,email,first_name,last_name,password,platform_owner,\
+                 created_at) VALUES ('u','owner@example.test','O','Wner','x',1,'then'); \
+                 INSERT INTO agent_keys(id,name,hash,hint,user_id,all_dsps,access,tools,\
+                 locations,created_at) VALUES ('k','Laptop','h','abcd','u',1,'read','full',0,'then');",
+            )
+            .unwrap();
+        let db = Db::create(&file, Kind::Platform, "").unwrap();
+        assert_eq!(dump(&db), dump(&new));
+        assert_eq!(
+            db.all(
+                "SELECT kind,client_id,client_name,client_verified FROM agent_keys",
+                []
+            )
+            .unwrap(),
+            vec![json!({"kind":"key","client_id":null,"client_name":null,"client_verified":0})]
+        );
+    }
+
+    #[test]
     fn migrations_a_newer_release_recorded_are_tolerated() {
         let root = private();
         let file = root.path().join("dsp.sqlite");

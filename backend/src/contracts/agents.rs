@@ -18,12 +18,45 @@ text_enum! {
     }
 }
 
-/// A key as the Agents page lists it. The key itself is shown once, when it is made.
+text_enum! {
+    #[cfg_attr(test, derive(ts_rs::TS))]
+    /// A key made on the Agents page, or an app the owner connected with Sign in with Dispatch.
+    pub enum AgentKeyKind {
+        Key => "key",
+        App => "app",
+    }
+}
+text_enum! {
+    #[cfg_attr(test, derive(ts_rs::TS))]
+    /// Whether a connected app can still renew its access. Signed out, it holds no refresh
+    /// token left to use, as after 30 days unused, and connects again from the app.
+    pub enum AgentAppStatus {
+        Connected => "connected",
+        SignedOut => "signed_out",
+    }
+}
+/// The app behind a connected app: the name it goes by, whether Dispatch knows it (its
+/// published document) or only has its word (an app that registered itself), and whether
+/// it is still signed in.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct AgentClient {
+    pub name: String,
+    pub verified: bool,
+    pub status: AgentAppStatus,
+}
+
+/// A key as the Agents page lists it. The key itself is shown once, when it is made. A
+/// connected app is listed the same way; it has no key, so its hint is empty.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AgentKey {
     pub id: String,
+    pub kind: AgentKeyKind,
+    /// The app, for a connected app; null for a key.
+    pub client: Option<AgentClient>,
     pub name: String,
     /// The key's last four characters.
     pub hint: String,
@@ -42,8 +75,25 @@ pub struct AgentKey {
 }
 impl FromRow for AgentKey {
     fn from_row(row: &Row<'_>) -> Result<Self> {
+        let kind: AgentKeyKind = row.get("kind")?;
+        let client = match kind {
+            AgentKeyKind::Key => None,
+            AgentKeyKind::App => Some(AgentClient {
+                name: row
+                    .get::<Option<String>>("client_name")?
+                    .unwrap_or_default(),
+                verified: row.get::<i64>("client_verified")? == 1,
+                status: if row.get::<i64>("signed_in")? == 1 {
+                    AgentAppStatus::Connected
+                } else {
+                    AgentAppStatus::SignedOut
+                },
+            }),
+        };
         Ok(Self {
             id: row.get("id")?,
+            kind,
+            client,
             name: row.get("name")?,
             hint: row.get("hint")?,
             access: row.get("access")?,
@@ -108,6 +158,83 @@ impl AgentKeyRequest {
         Ok(input)
     }
 }
+/// What the platform owner grants an app they approve: the choices a key is made with,
+/// always read-only and never expiring.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OAuthApproval {
+    pub name: String,
+    pub all_dsps: bool,
+    pub dsps: Vec<String>,
+    pub tools: AgentTools,
+    pub locations: bool,
+}
+impl OAuthApproval {
+    pub fn parse(value: &Value) -> Result<Self> {
+        let mut input: Self = request(value)?;
+        input.name = v::name(value, "name", 80)?;
+        ensure(
+            input.all_dsps == input.dsps.is_empty() && input.dsps.len() <= 500,
+            "invalid_input",
+            400,
+        )?;
+        Ok(input)
+    }
+    /// The same choices as a key's, checked by the same rules.
+    pub fn key(&self) -> AgentKeyRequest {
+        AgentKeyRequest {
+            name: self.name.clone(),
+            all_dsps: self.all_dsps,
+            dsps: self.dsps.clone(),
+            access: AgentAccess::Read,
+            tools: self.tools,
+            locations: self.locations,
+            expires_at: None,
+        }
+    }
+}
+/// An app asking the platform owner to connect, as the approval page shows it.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthRequest {
+    pub id: String,
+    pub app: OAuthApp,
+    pub expires_at: String,
+    /// The connected app approving this one under the name asked about would replace: the
+    /// same app connected earlier under that name. Null when nothing would be.
+    pub replaces: Option<OAuthReplaced>,
+}
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthReplaced {
+    pub name: String,
+    pub connected_at: String,
+}
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthApp {
+    pub name: String,
+    pub client_id: String,
+    /// Whether Dispatch knows the app, or only has its word for its name.
+    pub verified: bool,
+    /// Where the approval is sent: "this computer" for an app on the owner's own computer,
+    /// otherwise the host, such as chatgpt.com.
+    pub redirect_host: String,
+    /// The app's own URI scheme, such as cursor, when it opens an app on this computer by one.
+    pub redirect_scheme: Option<String>,
+}
+/// Where the browser goes next: back to the app, with its code or the owner's refusal.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthRedirect {
+    pub redirect: String,
+}
+
 /// How many keys were revoked.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]

@@ -41,6 +41,8 @@ pub fn route(path: &str) -> &'static str {
         _ if path.starts_with("/api/platform/") => "/api/platform/*",
         "/" => "/",
         _ if path.starts_with("/assets/") => "/assets/*",
+        _ if path.starts_with("/.well-known/") => "/.well-known/*",
+        _ if path.starts_with("/oauth/") => "/oauth/*",
         _ => "/unmatched",
     }
 }
