@@ -3,7 +3,8 @@
 -- page's order (routes, locations, timecards, meal_breaks, dvic, feedback, safety, returns,
 -- scorecard; empty for none), and bypass: whether it reads them even where a DSP has the
 -- feature switched off. The old tools and locations columns stay for an older release; they
--- are written as tools 'full' and locations as whether areas has it, and no longer read.
+-- are written as tools 'full' and locations as whether areas has it. tools is no longer read;
+-- locations only so that addresses an older release stops, run again in a rollback, stay off.
 -- agent_activity gained bypassed: whether the call read a switched-off feature that way.
 
 -- agent_key_dsp_reads: a DSP's own settings for a key or app, read there in place of its own.

@@ -4,7 +4,7 @@
 mod common;
 use common::{audits, bootstrapped};
 use dispatch_backend::{
-    contracts::{AgentAccess, AgentArea, AgentKeyRequest},
+    contracts::{AgentAccess, AgentArea, AgentKeyRequest, AgentReads},
     crypto,
     db::{self, Store, s},
 };
@@ -1065,5 +1065,184 @@ fn edits_are_audited_kind_by_kind_with_each_dsps_own_settings_in_a_line() {
     assert!(
         !text.contains("\"tools\"") && !text.contains("\"locations\""),
         "{text}"
+    );
+}
+
+#[test]
+fn a_suspended_dsp_keeps_its_reach_and_own_settings_through_an_edit() {
+    let (_root, db, first) = bootstrapped();
+    let user = owner(&db);
+    let second = db
+        .new_dsp("Harbor Route Co", "UTC", &user, false)
+        .unwrap()
+        .id;
+    // A key choosing both DSPs and one reaching every DSP, each with the second's own settings.
+    let own = json!([{"dsp":second,"areas":["dvic"],"bypass":true}]);
+    let mut chosen = reach(&[&first, &second]);
+    chosen["dspReads"] = own.clone();
+    let mut every = reach(&[]);
+    every["name"] = json!("Every DSP");
+    every["dspReads"] = own.clone();
+    let keys = [
+        db.create_agent_key(&user, &request(chosen.clone()))
+            .unwrap(),
+        db.create_agent_key(&user, &request(every.clone())).unwrap(),
+    ];
+    // Suspended, as a removed DSP is too, the Agents page no longer lists it.
+    let status = |status: &str| {
+        db.platform
+            .exec("UPDATE dsps SET status=? WHERE id=?", [status, &second])
+            .unwrap();
+    };
+    status("suspended");
+    let listed = db.agent_keys(&HashMap::new()).unwrap();
+    assert!(listed.dsps.iter().all(|dsp| dsp.id != second));
+
+    // Edited with the suspended DSP sent back as it was, each saves and keeps it.
+    for (made, body) in keys.iter().zip([&chosen, &every]) {
+        let mut body = body.clone();
+        body["reads"]["bypass"] = json!(true);
+        let edited = db
+            .update_agent_key(&user, &made.key.id, &request(body))
+            .unwrap();
+        assert!(edited.reads.bypass);
+        assert_eq!(edited.dsps, made.key.dsps);
+        assert_eq!(serde_json::to_value(&edited.dsp_reads).unwrap(), own);
+    }
+    assert_eq!(keys[0].key.dsps.len(), 2);
+    // Active again, it is reached and reads its own settings, as before it was suspended.
+    status("active");
+    for made in &keys {
+        let caller = db.authenticate_agent(&made.token, "test").unwrap();
+        assert!(caller.dsps.iter().any(|dsp| dsp.id == second));
+        assert_eq!(
+            serde_json::to_value(caller.reads_at(&second)).unwrap(),
+            json!({"areas":["dvic"],"bypass":true})
+        );
+    }
+
+    // While it is suspended, it isn't given to a key, nor given settings, nor its own changed.
+    status("suspended");
+    let mut new = reach(&[&first, &second]);
+    new["name"] = json!("New");
+    let mut changed = chosen.clone();
+    changed["dspReads"][0]["areas"] = json!(["dvic", "safety"]);
+    let mut given = every.clone();
+    given["name"] = json!("Given");
+    given["dspReads"] = json!([]);
+    let unreached = db.create_agent_key(&user, &request(given.clone())).unwrap();
+    given["dspReads"] = own.clone();
+    for (id, body) in [
+        (None, new),
+        (Some(&keys[0].key.id), changed),
+        (Some(&unreached.key.id), given),
+    ] {
+        let refused = match id {
+            None => db.create_agent_key(&user, &request(body)).unwrap_err(),
+            Some(id) => db.update_agent_key(&user, id, &request(body)).unwrap_err(),
+        };
+        assert_eq!(refused.code, "invalid_input");
+    }
+    // Left out of a request, it goes, as any DSP does.
+    let narrowed = db
+        .update_agent_key(&user, &keys[0].key.id, &request(reach(&[&first])))
+        .unwrap();
+    assert_eq!(narrowed.dsps, std::slice::from_ref(&first));
+    assert!(narrowed.dsp_reads.is_empty());
+}
+
+#[test]
+fn addresses_an_older_release_stopped_in_a_rollback_stay_stopped() {
+    let (_root, db, dsp) = bootstrapped();
+    let user = owner(&db);
+    let mut body = reach(&[&dsp]);
+    body["reads"]["areas"] = json!(["routes", "locations", "dvic"]);
+    let made = db.create_agent_key(&user, &request(body.clone())).unwrap();
+    assert!(made.key.reads.has(AgentArea::Locations));
+    // An older release, run again, stops the addresses in the only column it knows.
+    db.platform
+        .exec(
+            "UPDATE agent_keys SET locations=0 WHERE id=?",
+            [&made.key.id],
+        )
+        .unwrap();
+    let without = json!({"areas":["routes","dvic"],"bypass":false});
+    let caller = db.authenticate_agent(&made.token, "test").unwrap();
+    assert_eq!(serde_json::to_value(&caller.reads).unwrap(), without);
+    let whoami = db.agent_whoami(&caller).unwrap();
+    assert_eq!(
+        serde_json::to_value(&whoami.dsps[0].reads).unwrap(),
+        without
+    );
+    let listed = db.agent_keys(&HashMap::new()).unwrap();
+    assert_eq!(
+        serde_json::to_value(&listed.keys[0].reads).unwrap(),
+        without
+    );
+    // Allowed again here, both columns say so.
+    db.update_agent_key(&user, &made.key.id, &request(body))
+        .unwrap();
+    let row = db
+        .platform
+        .one(
+            "SELECT locations,areas FROM agent_keys WHERE id=?",
+            [&made.key.id],
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(row, json!({"locations":1,"areas":"routes,locations,dvic"}));
+    let caller = db.authenticate_agent(&made.token, "test").unwrap();
+    assert!(caller.reads.has(AgentArea::Locations));
+}
+
+#[test]
+fn delivery_addresses_are_never_claimed_without_the_routes() {
+    let (_root, db, dsp) = bootstrapped();
+    let user = owner(&db);
+    // Asked for without routes, at every DSP or at one, the addresses aren't kept.
+    let mut body = reach(&[&dsp]);
+    body["reads"]["areas"] = json!(["locations", "dvic"]);
+    body["dspReads"] = json!([{"dsp":dsp,"areas":["safety","locations"],"bypass":false}]);
+    let made = db.create_agent_key(&user, &request(body)).unwrap();
+    assert_eq!(
+        serde_json::to_value(&made.key.reads).unwrap(),
+        json!({"areas":["dvic"],"bypass":false})
+    );
+    assert_eq!(
+        serde_json::to_value(&made.key.dsp_reads).unwrap(),
+        json!([{"dsp":dsp,"areas":["safety"],"bypass":false}])
+    );
+    let row = db
+        .platform
+        .one(
+            "SELECT locations,areas FROM agent_keys WHERE id=?",
+            [&made.key.id],
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(row, json!({"locations":0,"areas":"dvic"}));
+    assert_eq!(
+        AgentReads::stored("locations,dvic", 0).areas,
+        [AgentArea::Dvic]
+    );
+    // Routes taken away take the addresses with them, as whoami and the audit log say.
+    let mut body = reach(&[&dsp]);
+    body["name"] = json!("Routes");
+    body["reads"]["areas"] = json!(["routes", "locations"]);
+    let routes = db.create_agent_key(&user, &request(body.clone())).unwrap();
+    body["reads"]["areas"] = json!(["locations"]);
+    let edited = db
+        .update_agent_key(&user, &routes.key.id, &request(body))
+        .unwrap();
+    assert!(edited.reads.areas.is_empty());
+    let caller = db.authenticate_agent(&routes.token, "test").unwrap();
+    let whoami = db.agent_whoami(&caller).unwrap();
+    assert!(whoami.dsps[0].reads.areas.is_empty());
+    assert_eq!(
+        audits(&db, None).unwrap().as_array().unwrap()[0]["changes"],
+        json!([
+            {"field":"reads.routes","from":"true","to":"false"},
+            {"field":"reads.locations","from":"true","to":"false"},
+        ])
     );
 }

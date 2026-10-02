@@ -116,11 +116,13 @@ impl AgentSource {
         }
     }
 }
-/// Kinds of data once each, in their order.
+/// Kinds of data once each, in their order. Delivery addresses come only with the routes, so
+/// nothing says it reads them where it can't.
 fn canonical(areas: &[AgentArea]) -> Vec<AgentArea> {
+    let routes = areas.contains(&AgentArea::Routes);
     AgentArea::ALL
         .into_iter()
-        .filter(|area| areas.contains(area))
+        .filter(|area| areas.contains(area) && (routes || *area != AgentArea::Locations))
         .collect()
 }
 impl AgentReads {
@@ -132,6 +134,16 @@ impl AgentReads {
             areas: canonical(&areas),
             bypass: bypass == 1,
         }
+    }
+    /// A key's or app's own reads as its row keeps them, with the old `locations` column this
+    /// release writes to match `areas`. An older release, run again in a rollback, changes only
+    /// that column: delivery addresses it stopped are read as stopped.
+    pub fn stored_key(areas: &str, bypass: i64, locations: i64) -> Self {
+        let mut reads = Self::stored(areas, bypass);
+        if locations != 1 {
+            reads.areas.retain(|area| *area != AgentArea::Locations);
+        }
+        reads
     }
     /// The kinds as the database keeps them.
     pub fn areas_text(&self) -> String {
@@ -235,7 +247,11 @@ impl FromRow for AgentKey {
             name: row.get("name")?,
             hint: row.get("hint")?,
             access: row.get("access")?,
-            reads: AgentReads::stored(&row.get::<String>("areas")?, row.get("bypass")?),
+            reads: AgentReads::stored_key(
+                &row.get::<String>("areas")?,
+                row.get("bypass")?,
+                row.get("locations")?,
+            ),
             dsp_reads: vec![],
             all_dsps: row.get::<i64>("all_dsps")? == 1,
             dsps: vec![],

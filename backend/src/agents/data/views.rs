@@ -150,6 +150,7 @@ pub fn drivers(db: &Store, state: &State, caller: &Caller, query: &Value) -> Ans
         table.push(row);
     }
     let mut answer = json!({"understood": understood(dsp, None), "found": table.rows.len()});
+    people.mark(&mut answer);
     paged(&mut answer, "drivers", table, query, 100)?;
     Ok(answer)
 }
@@ -363,6 +364,7 @@ pub fn driver(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &
             answer[key] = json!(names);
         }
     }
+    people.mark(&mut answer);
     if param(query, "detail") == "full" {
         // Every record the sources hold, day by day.
         let mut days: BTreeMap<String, Map<String, Value>> = BTreeMap::new();
@@ -758,6 +760,7 @@ pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
     for source in bypassed {
         access::bypassed(&mut answer, source);
     }
+    people.mark(&mut answer);
     paged(&mut answer, "rows", table, query, 100)?;
     Ok(answer)
 }
@@ -814,6 +817,7 @@ pub fn routes(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
             "stops_completed": sum(|r| r.stops_completed),
         })),
     });
+    people.mark(&mut answer);
     if !collected {
         answer["note"] = json!(format!(
             "No routes have been collected for {}; their numbers are unknown, not zero.",
@@ -921,6 +925,7 @@ pub fn route(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &V
         "outcomes": outcomes,
         "reasons": reasons,
     });
+    people.mark(&mut answer);
     let key = if full {
         "packages_list"
     } else {
@@ -980,6 +985,7 @@ pub fn package(
         table.push(row);
     }
     let mut answer = json!({"understood": understood(dsp, None), "tracking": found.tracking_id});
+    people.mark(&mut answer);
     paged(&mut answer, "events", table, query, 50)?;
     Ok(answer)
 }
@@ -1072,6 +1078,7 @@ pub fn packages(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         "packages": total,
         "coverage": facts::route_coverage(db, dsp, &period)?,
     });
+    people.mark(&mut answer);
     // Nothing with both: say what that reason did come with, so a guessed outcome is fixed.
     if total == 0
         && let (Some(asked), Some(_)) = (outcome, &reason)
@@ -1277,6 +1284,7 @@ pub fn timecards(db: &Store, state: &State, caller: &Caller, query: &Value) -> A
         "hours": hours(cards.iter().map(|c| c.hours).sum()),
         "coverage": coverage,
     });
+    people.mark(&mut answer);
     paged(&mut answer, "timecards", table, query, 100)?;
     Ok(answer)
 }
@@ -1329,6 +1337,7 @@ pub fn meal_breaks(db: &Store, state: &State, caller: &Caller, query: &Value) ->
         "understood": understood(dsp, Some(&period)),
         "collected": !coverage.days.is_empty(),
     });
+    people.mark(&mut answer);
     paged(&mut answer, "drivers", table, query, 100)?;
     Ok(answer)
 }
@@ -1359,6 +1368,7 @@ pub fn dvic(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
         "short": found.iter().filter(|i| i.short).count(),
         "coverage": coverage,
     });
+    people.mark(&mut answer);
     let whom = |i: &Inspection| {
         who(
             &people,

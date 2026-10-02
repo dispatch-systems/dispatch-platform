@@ -456,11 +456,14 @@ impl Store {
         )?;
         self.check_agent_key(None, &approval.key(), &replaced)?;
         let code = crypto::token()?;
+        // tools and locations as an older release redeems the code, as a key's are written.
         let choices = json!({
             "name": approval.name,
             "all_dsps": approval.all_dsps,
             "dsps": approval.dsps,
             "reads": approval.reads,
+            "tools": "full",
+            "locations": approval.reads.has(AgentArea::Locations),
         });
         self.platform.transaction(|| {
             self.answer_request(id)?;
@@ -861,8 +864,8 @@ impl Store {
             .platform
             .one(
                 "SELECT t.expires_at token_expires_at,t.resource,k.id,k.name,k.user_id,k.all_dsps,\
-                 k.access,k.areas,k.bypass,k.expires_at,k.revoked_at,u.platform_owner,u.status \
-                 FROM oauth_tokens t JOIN agent_keys k ON k.id=t.key_id \
+                 k.access,k.areas,k.bypass,k.locations,k.expires_at,k.revoked_at,u.platform_owner,\
+                 u.status FROM oauth_tokens t JOIN agent_keys k ON k.id=t.key_id \
                  JOIN users u ON u.id=k.user_id WHERE t.hash=? AND t.kind='access'",
                 [crypto::sha(token)],
             )?

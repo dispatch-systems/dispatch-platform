@@ -64,16 +64,19 @@ export function KeySheet({
   const set = (change: Partial<AgentKeyRequest>) =>
     setForm((current) => ({ ...current, ...change }));
   const expiresAt = expiry === 'keep' ? (existing?.expiresAt ?? null) : expiryOf(expiry, date);
-  // A DSP no longer reached takes its own settings with it.
+  // A DSP no longer reached takes its own settings with it. The key as it starts is read the
+  // same way, so it opens unchanged.
   const request = {
     ...form,
     name: form.name.trim(),
-    dspReads: reachedReads(form, dsps),
+    dspReads: reachedReads(form),
     expiresAt,
   };
   const dirty =
-    !sameRequest({ ...request, expiresAt: start.expiresAt }, start) ||
-    expiry !== (existing ? 'keep' : '90');
+    !sameRequest(
+      { ...request, expiresAt: start.expiresAt },
+      { ...start, dspReads: reachedReads(start) },
+    ) || expiry !== (existing ? 'keep' : '90');
   const ready =
     request.name.length > 0 &&
     (request.allDsps || request.dsps.length > 0) &&

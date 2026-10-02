@@ -1943,3 +1943,81 @@ async fn a_kind_of_data_reads_as_allowed_switched_on_or_bypassed() {
         }
     }
 }
+
+/// Driver Match's IDs come from the features that collect them. Read only by bypassing those,
+/// an answer that lists, finds or names drivers by them says so, and its Activity row is
+/// marked; data_status's dates of what it reads are no data, and aren't.
+#[tokio::test]
+async fn drivers_known_only_by_bypassing_a_feature_say_so() {
+    let (_root, db, id) = ready();
+    let areas: Vec<&str> = AgentArea::ALL
+        .iter()
+        .filter(|area| **area != AgentArea::Locations)
+        .map(|area| area.as_str())
+        .collect();
+    let me = reading(
+        &db,
+        "bypassing",
+        &[&id],
+        json!({"areas": areas, "bypass": true}),
+        json!([]),
+    );
+    let actor = owner(&db);
+    let state = State::new(db.config.clone()).unwrap();
+    let asked = |endpoint: &'static str, query: Value| {
+        let (state, who) = (state.clone(), me.clone());
+        async move {
+            ask(&state, move |db, state| {
+                let endpoint = data::catalog::endpoint(endpoint);
+                data::ask(endpoint, db, state, &who, "", &query)
+            })
+            .await
+        }
+    };
+    // Every feature on: nothing is bypassed.
+    let (status, listed) = asked("drivers", json!({"include_ids":"true"})).await;
+    assert_eq!(status, 200, "{listed}");
+    assert!(!data::bypassed(&listed), "{listed}");
+
+    // Timecard off, its Meal Breaks tab with it: Paycom's IDs are read only by bypassing them.
+    db.set_feature(&id, "timecard", false, &actor).unwrap();
+    let paycom = json!(["Timecard", "Timecard · Meal Breaks"]);
+    let (status, listed) = asked("drivers", json!({"q":"E002","include_ids":"true"})).await;
+    assert_eq!(status, 200, "{listed}");
+    let person = &rows(&listed["drivers"])[0];
+    assert_eq!(person[col(&listed["drivers"], "paycom")], "E002");
+    assert_eq!(listed["bypassed"], paycom, "{listed}");
+    assert!(data::bypassed(&listed));
+    // A driver found by that ID, in an answer read from a feature still on.
+    let (status, found) = asked("dvic", json!({"driver":"E002","date":DAY})).await;
+    assert_eq!(status, 200, "{found}");
+    assert_eq!(found["inspections"], 2, "{found}");
+    assert_eq!(found["bypassed"], paycom, "{found}");
+    let (status, fresh) = asked("status", json!({})).await;
+    assert_eq!(status, 200, "{fresh}");
+    assert_eq!(fresh["sources"]["timecards"]["reads"], true, "{fresh}");
+    assert!(!data::bypassed(&fresh), "{fresh}");
+
+    // Back on, and every source of Amazon's IDs off instead: those are named.
+    db.enable_all_features(&id).unwrap();
+    for feature in ["timecard.meal_breaks", "routes", "dvic", "scorecard"] {
+        db.set_feature(&id, feature, false, &actor).unwrap();
+    }
+    let (status, listed) = asked("drivers", json!({"q":"driver-1","include_ids":"true"})).await;
+    assert_eq!(status, 200, "{listed}");
+    let person = &rows(&listed["drivers"])[0];
+    assert_eq!(person[col(&listed["drivers"], "amazon")], "driver-1");
+    assert_eq!(
+        listed["bypassed"],
+        json!(["Routes", "Timecard · Meal Breaks", "DVIC", "Scorecard"]),
+        "{listed}"
+    );
+    // A key that doesn't bypass features reads none of those IDs, so names nothing.
+    let plain = caller(&db, &[&id], false);
+    let (_, listed) = ask(&state, move |db, state| {
+        data::drivers(db, state, &plain, &json!({"q":"driver-1"}))
+    })
+    .await;
+    assert_eq!(listed["found"], 0, "{listed}");
+    assert!(!data::bypassed(&listed), "{listed}");
+}

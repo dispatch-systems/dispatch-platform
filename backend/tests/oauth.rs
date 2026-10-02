@@ -2650,6 +2650,17 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
             .status,
         200
     );
+    // An older release, run again in a rollback, stopped its addresses in the only column it
+    // knows: the owners hear it reads everything else.
+    server
+        .state
+        .run(|db| {
+            db.platform
+                .exec("UPDATE agent_keys SET locations=0 WHERE name='ChatGPT'", [])?;
+            Ok(())
+        })
+        .await
+        .unwrap();
     for _ in 0..2 {
         let replay = server.exchange(CHATGPT, CHATGPT_REDIRECT, &code).await;
         assert_eq!(s(&replay.body, "error"), "invalid_grant");
@@ -2661,6 +2672,14 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
     for text in ended {
         assert!(text.contains("one-time code"), "{text}");
         assert!(text.contains("Sent access to: chatgpt.com"), "{text}");
+        assert!(
+            text.contains(
+                "Access: Reads Routes & packages, Timecards, Meal breaks, DVIC inspections, \
+                 Customer feedback, Safety events, Returns & contact compliance, Weekly \
+                 scorecard\n"
+            ),
+            "{text}"
+        );
     }
     // An app signing out, or the owner revoking one, is no news to them.
     let signed_in = server
@@ -2976,6 +2995,21 @@ async fn listed_key(server: &Server, owner: &Owner, name: &str) -> Value {
         .clone()
 }
 
+/// The choices an approval's code carries until the app redeems it.
+async fn stored_choices(server: &Server, code: &str) -> Value {
+    let hash = crypto::sha(code);
+    let row = server
+        .state
+        .read(move |db| {
+            db.platform
+                .one("SELECT choices FROM oauth_codes WHERE hash=?", [hash])
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    serde_json::from_str(s(&row, "choices")).unwrap()
+}
+
 #[tokio::test]
 async fn an_approval_keeps_what_it_reads_and_one_from_before_reads_everything() {
     let server = Server::paired().await;
@@ -2990,22 +3024,13 @@ async fn an_approval_keeps_what_it_reads_and_one_from_before_reads_everything() 
                 "reads":{"areas":["timecards","routes"],"bypass":true}}),
         )
         .await;
-    // The code carries the choices, reads among them, until the app redeems it.
-    let hash = crypto::sha(&code);
-    let choices = server
-        .state
-        .read(move |db| {
-            db.platform
-                .one("SELECT choices FROM oauth_codes WHERE hash=?", [hash])
-        })
-        .await
-        .unwrap()
-        .unwrap();
-    let choices: Value = serde_json::from_str(s(&choices, "choices")).unwrap();
+    // The code carries the choices, reads among them, until the app redeems it; with every
+    // tool and the addresses as chosen, as an older release redeems one in a rollback.
     assert_eq!(
-        choices,
+        stored_choices(&server, &code).await,
         json!({"name":"Laptop","all_dsps":true,"dsps":[],
-            "reads":{"areas":["routes","timecards"],"bypass":true}})
+            "reads":{"areas":["routes","timecards"],"bypass":true},
+            "tools":"full","locations":false})
     );
     let tokens = server.exchange(CLAUDE_CODE, local, &code).await;
     assert_eq!(tokens.status, 200, "{}", tokens.body);
@@ -3030,6 +3055,11 @@ async fn an_approval_keeps_what_it_reads_and_one_from_before_reads_everything() 
     ] {
         let request = server.requested(CHATGPT, CHATGPT_REDIRECT).await;
         let code = server.approved(&owner, &request, everything(name)).await;
+        let stored = stored_choices(&server, &code).await;
+        assert_eq!(
+            (&stored["tools"], &stored["locations"]),
+            (&json!("full"), &json!(true))
+        );
         let old = json!({"name":name,"all_dsps":true,"dsps":[],"tools":"essential",
             "locations":locations})
         .to_string();

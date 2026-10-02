@@ -429,6 +429,7 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         "feedback": kept.len(),
         "coverage": coverage,
     });
+    people.mark(&mut answer);
     if looked_up && access.read(AgentArea::Locations) == Read::Bypassed {
         access::bypassed(&mut answer, AgentSource::Routes);
     }
@@ -586,6 +587,7 @@ pub fn safety(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
         "by_type": types,
         "coverage": coverage,
     });
+    people.mark(&mut answer);
     if !groups.is_empty() {
         let mut counted: HashMap<Vec<String>, (i64, i64)> = HashMap::new();
         for r in &kept {
@@ -722,6 +724,7 @@ pub fn returns(db: &Store, state: &State, caller: &Caller, query: &Value) -> Ans
         "contact_missed": kept.iter().filter(|r| missed_contact(&text(&r.data, "weekly_coaching"))).count(),
         "coverage": coverage,
     });
+    people.mark(&mut answer);
     if !groups.is_empty() {
         let mut counted: HashMap<Vec<String>, i64> = HashMap::new();
         for r in &kept {
@@ -945,6 +948,7 @@ pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
         "dsp": summary,
         "drivers_by_tier": tiers,
     });
+    people.mark(&mut answer);
     paged(&mut answer, "drivers", table, query, 100)?;
     Ok(answer)
 }

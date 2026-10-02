@@ -236,12 +236,12 @@ impl Store {
         Ok(AgentKeys { keys, dsps })
     }
 
-    // What every new or changed key must satisfy. `id` is the key being changed. `replaced`
-    // are the connected apps a new connection of the same app replaces, which so neither
-    // take its name nor count.
+    // What every new or changed key must satisfy. `before` is the key being changed, as it
+    // is. `replaced` are the connected apps a new connection of the same app replaces, which
+    // so neither take its name nor count.
     fn check_agent_key(
         &self,
-        id: Option<&str>,
+        before: Option<&AgentKey>,
         input: &AgentKeyRequest,
         replaced: &[String],
     ) -> Result<()> {
@@ -249,10 +249,10 @@ impl Store {
         let taken = self.platform.count(
             "SELECT count(*) FROM agent_keys WHERE revoked_at IS NULL AND id<>?1 \
              AND lower(name)=lower(?2)",
-            params![id.unwrap_or(""), input.name],
+            params![before.map_or("", |key| key.id.as_str()), input.name],
         )?;
         ensure(taken - replaced == 0, "agent_key_name_taken", 409)?;
-        if id.is_none() {
+        if before.is_none() {
             let active = self.platform.count(
                 "SELECT count(*) FROM agent_keys WHERE revoked_at IS NULL \
                  AND (expires_at IS NULL OR expires_at>?)",
@@ -265,15 +265,25 @@ impl Store {
             .into_iter()
             .map(|dsp| dsp.id)
             .collect();
+        // A DSP that isn't active, as one suspended or removed, can't be given to a key or
+        // given settings of its own. One the key already has stays as it is, with its own
+        // settings, for when it is active again: the Agents page doesn't list it, and sends it
+        // back unchanged.
+        let kept = before.map_or(&[][..], |key| key.dsps.as_slice());
+        let kept_reads = before.map_or(&[][..], |key| key.dsp_reads.as_slice());
         ensure(
-            input.dsps.iter().all(|dsp| choices.contains(dsp)),
+            input
+                .dsps
+                .iter()
+                .all(|dsp| choices.contains(dsp) || kept.contains(dsp)),
             "invalid_input",
             400,
         )?;
         // A DSP has settings of its own only while the key reaches it.
         ensure(
             input.dsp_reads.iter().all(|own| {
-                choices.contains(&own.dsp) && (input.all_dsps || input.dsps.contains(&own.dsp))
+                (choices.contains(&own.dsp) || kept_reads.contains(own))
+                    && (input.all_dsps || input.dsps.contains(&own.dsp))
             }),
             "invalid_input",
             400,
@@ -385,7 +395,7 @@ impl Store {
                 400,
             )?;
         }
-        self.check_agent_key(Some(id), input, &[])?;
+        self.check_agent_key(Some(&before), input, &[])?;
         // An expiry left as it was stays, even one that is close or already past.
         let expires = if input.expires_at == before.expires_at {
             before.expires_at.clone()
@@ -537,7 +547,7 @@ impl Store {
         let row = self
             .platform
             .one(
-                "SELECT k.id,k.name,k.user_id,k.all_dsps,k.access,k.areas,k.bypass,\
+                "SELECT k.id,k.name,k.user_id,k.all_dsps,k.access,k.areas,k.bypass,k.locations,\
                  k.expires_at,k.revoked_at,u.platform_owner,u.status FROM agent_keys k \
                  JOIN users u ON u.id=k.user_id WHERE k.hash=?",
                 [crypto::sha(token)],
@@ -552,7 +562,7 @@ impl Store {
         let row = self
             .platform
             .one(
-                "SELECT k.id,k.name,k.user_id,k.all_dsps,k.access,k.areas,k.bypass,\
+                "SELECT k.id,k.name,k.user_id,k.all_dsps,k.access,k.areas,k.bypass,k.locations,\
              k.expires_at,k.revoked_at,u.platform_owner,u.status FROM agent_keys k \
              JOIN users u ON u.id=k.user_id WHERE k.id=? AND k.user_id=?",
                 [&caller.key, &caller.user],
@@ -603,7 +613,11 @@ impl Store {
             user: text("user_id"),
             access: AgentAccess::parse(&text("access"))
                 .ok_or_else(|| Error::new("invalid_stored_record", 500))?,
-            reads: AgentReads::stored(&text("areas"), row["bypass"].as_i64().unwrap_or(0)),
+            reads: AgentReads::stored_key(
+                &text("areas"),
+                row["bypass"].as_i64().unwrap_or(0),
+                row["locations"].as_i64().unwrap_or(0),
+            ),
             dsp_reads,
             expires_at,
             dsps,

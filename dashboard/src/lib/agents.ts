@@ -320,14 +320,11 @@ export const requestOf = (key: AgentKey): AgentKeyRequest => ({
   dspReads: key.dspReads.map(ownReads),
   expiresAt: key.expiresAt,
 });
-/** The settings of their own that go with a key: only those of the DSPs it still reaches. */
-export const reachedReads = (
-  key: Pick<AgentKeyRequest, 'allDsps' | 'dsps' | 'dspReads'>,
-  dsps: Pick<AgentDsp, 'id'>[],
-) =>
-  key.dspReads.filter(
-    (own) => dsps.some((dsp) => dsp.id === own.dsp) && (key.allDsps || key.dsps.includes(own.dsp)),
-  );
+/** The settings of their own that go with a key: only those of the DSPs it still reaches. A
+ * suspended or removed DSP isn't listed, but one the key reaches keeps its own settings, sent
+ * back as they are, for when it is active again. */
+export const reachedReads = (key: Pick<AgentKeyRequest, 'allDsps' | 'dsps' | 'dspReads'>) =>
+  key.dspReads.filter((own) => key.allDsps || key.dsps.includes(own.dsp));
 const comparable = (key: AgentKeyRequest) =>
   JSON.stringify([
     key.name,

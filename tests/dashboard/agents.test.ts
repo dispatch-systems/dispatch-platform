@@ -270,21 +270,40 @@ test('a key sheet knows when nothing changed', () => {
 });
 
 test('a key keeps the own settings of the DSPs it still reaches, and only theirs', () => {
-  const dsps = [{ id: 'dsp_a' }, { id: 'dsp_b' }];
-  const dspReads = [
+  const dspReads: AgentKey['dspReads'] = [
     { dsp: 'dsp_a', areas: [], bypass: false },
     { dsp: 'dsp_b', areas: [], bypass: true },
-    { dsp: 'dsp_gone', areas: [], bypass: false },
+    // A suspended or removed DSP, which the page doesn't list.
+    { dsp: 'dsp_away', areas: ['dvic'], bypass: true },
   ];
   assert.deepEqual(
-    reachedReads({ allDsps: true, dsps: [], dspReads }, dsps).map((own) => own.dsp),
-    ['dsp_a', 'dsp_b'],
+    reachedReads({ allDsps: true, dsps: [], dspReads }).map((own) => own.dsp),
+    ['dsp_a', 'dsp_b', 'dsp_away'],
   );
   assert.deepEqual(
-    reachedReads({ allDsps: false, dsps: ['dsp_b'], dspReads }, dsps).map((own) => own.dsp),
+    reachedReads({ allDsps: false, dsps: ['dsp_b', 'dsp_away'], dspReads }).map((own) => own.dsp),
+    ['dsp_b', 'dsp_away'],
+  );
+  assert.deepEqual(
+    reachedReads({ allDsps: false, dsps: ['dsp_b'], dspReads }).map((own) => own.dsp),
     ['dsp_b'],
   );
-  assert.deepEqual(reachedReads({ allDsps: false, dsps: [], dspReads }, dsps), []);
+  assert.deepEqual(reachedReads({ allDsps: false, dsps: [], dspReads }), []);
+
+  // A key reaching a DSP the page doesn't list opens unchanged, as the sheet compares it, and
+  // sends that DSP's own settings back as they were.
+  for (const reach of [
+    { allDsps: true, dsps: [] },
+    { allDsps: false, dsps: ['dsp_away', 'dsp_b'] },
+  ]) {
+    const start = requestOf(key({ ...reach, dspReads: dspReads.slice(1) }));
+    const sent = { ...start, dspReads: reachedReads(start) };
+    assert.ok(sameRequest(sent, start));
+    assert.deepEqual(
+      sent.dspReads.find((own) => own.dsp === 'dsp_away'),
+      { dsp: 'dsp_away', areas: ['dvic'], bypass: true },
+    );
+  }
 });
 
 test('the kinds of data come in one order, grouped under the feature that collects them', () => {

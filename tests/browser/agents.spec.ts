@@ -445,7 +445,7 @@ test('the owner changes what a connected app reads, and gives a DSP settings of 
     db.prepare('UPDATE session_security SET verified_at=0, password_verified_at=0').run();
   });
   const remove = await owner.post(`/api/platform/dsps/${summit.id}/remove`, {});
-  expect(remove.status, remove.body).toBe(403);
+  expect([remove.status, remove.value.error], remove.body).toEqual([403, 'sign_in_again']);
 
   await page.goto(`/${platformHash('agents')}`);
   const row = page.getByRole('row').filter({ hasText: 'Laptop – Claude Code' });
