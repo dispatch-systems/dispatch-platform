@@ -1,6 +1,6 @@
-/* The page container caps at 1600px; the timecard tables use the whole width instead. */
+/* Timecard runs wider than the 1600px page cap, but stops before wide screens stretch its tables. */
 .page-container:has(.paycom-page) {
-  max-width: none;
+  max-width: 1800px;
 }
 .paycom-page .page-heading {
   margin-bottom: 24px;
@@ -22,6 +22,21 @@
 .paycom-day-table {
   min-width: 0;
   font-variant-numeric: tabular-nums;
+}
+/* Punch columns share the width evenly; Employee takes what is left. */
+.punch-time-column {
+  width: 13%;
+}
+.punch-hours-column {
+  width: 10%;
+}
+.punch-status-column {
+  width: 14%;
+}
+/* A second lunch stacks under the first instead of widening its column. */
+.punch-times {
+  display: grid;
+  gap: 4px;
 }
 .employee-timecard {
   min-height: 0;
