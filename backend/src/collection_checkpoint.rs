@@ -78,17 +78,19 @@ impl Checkpoint {
         let mut live_metadata = json!({"from":period["start"],"to":period["end"],"roster":roster});
         let job = self.job.clone();
         let owner = self.owner.clone();
-        let (dsp, resume) = self.state.run(move |db| {
-            let dsp=db.guard_job(&job,&owner)?;
-            let row=db.job(&job,None)?;
-            ensure(s(&row,"kind")==Provider::Paycom.job_kind(),"unsupported_collector",409)?;
-            let tenant=s(&dsp,"id");
+        let state = self.state.clone();
+        let (dsp, resume) = self.state.run_bookkeeping(move |db| {
+            let dsp=db.guard(&job,&owner)?;
+            state.read_cache.invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::Live);
+            let row=db.job_row(&job,None)?;
+            ensure(row.kind.as_str()==Provider::Paycom.job_kind(),"unsupported_collector",409)?;
+            let tenant=dsp.id.as_str();
             db.prune_checkpoints(tenant)?;
             let storage=db.collector(tenant,Provider::Paycom)?;
             let resume = storage.transaction(|| {
                 let existing=storage.one("SELECT * FROM collection_checkpoints WHERE job_id=?",[&job])?;
                 if let Some(existing)=existing.filter(|r| s(r,
-                    "fingerprint")==fingerprint && r["connection_revision"]==row["connection_revision"]) {
+                    "fingerprint")==fingerprint && n(r,"connection_revision")==row.connection_revision) {
                     let mut pages=BTreeMap::new();
                     let mut valid=true;
                     for page in storage.all("SELECT employee_code,data FROM collection_checkpoint_pages WHERE job_id=?",[&job])? {
@@ -106,7 +108,7 @@ impl Checkpoint {
                 let token=crypto::id("checkpoint")?;
                 storage.exec("INSERT INTO \
                     collection_checkpoints(job_id,connection_revision,fingerprint,created_at,token) VALUES (?,?,?,?,?)",
-                params![job,n(&row,"connection_revision"),fingerprint,db::now(),
+                params![job,row.connection_revision,fingerprint,db::now(),
                 token])?;
                 Ok(Resume { token,pages:BTreeMap::new() })
             })?;
@@ -147,12 +149,16 @@ impl Checkpoint {
         let records = records.to_vec();
         let job = self.job.clone();
         let owner = self.owner.clone();
+        let state = self.state.clone();
         let dsp = self
             .state
-            .run(move |db| {
-                let dsp = db.guard_job(&job, &owner)?;
-                let row = db.job(&job, None)?;
-                let storage = db.collector(s(&dsp, "id"), Provider::Paycom)?;
+            .run_bookkeeping(move |db| {
+                let dsp = db.guard(&job, &owner)?;
+                state
+                    .read_cache
+                    .invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::Live);
+                let row = db.job_row(&job, None)?;
+                let storage = db.collector(&dsp.id, Provider::Paycom)?;
                 // Save resume data and visible results with one transaction per driver.
                 storage.transaction(|| {
                     // An expired checkpoint simply stops accepting new progress. The
@@ -168,7 +174,7 @@ impl Checkpoint {
                             data,
                             job,
                             token,
-                            n(&row, "connection_revision"),
+                            row.connection_revision,
                             db::now() - TTL_MS,
                             db::now()
                         ],
@@ -189,7 +195,7 @@ impl Checkpoint {
                     }
                     Ok(())
                 })?;
-                Ok(s(&dsp, "id").to_owned())
+                Ok(dsp.id)
             })
             .await?;
         self.state.updates.changed(&dsp, change);
@@ -247,7 +253,7 @@ mod tests {
                 db.collector(&dsp, Provider::Paycom)?
                     .exec("UPDATE connections SET enabled=1,revision=1", [])?;
                 let job = db.enqueue(&dsp, None, "checkpoint-test")?;
-                db.claim("owner", |_, _| true)?;
+                db.claim_job("owner", |_, _| true)?;
                 Ok((dsp, s(&job, "id").to_owned()))
             })
             .await?;
@@ -364,7 +370,7 @@ mod tests {
             .run(move |db| {
                 db.finish(&id, "owner", Some("provider_unavailable"))?;
                 let other = db.enqueue(&tenant, None, "separate-job")?;
-                db.claim("new-owner", |_, _| true)?;
+                db.claim_job("new-owner", |_, _| true)?;
                 Ok(s(&other, "id").to_owned())
             })
             .await?;
@@ -394,7 +400,7 @@ mod tests {
         let id = job.clone();
         state
             .run(move |db| {
-                db.cancel_job(&id, &tenant)?;
+                db.cancel(&id, &tenant)?;
                 Ok(())
             })
             .await?;

@@ -5,6 +5,7 @@ import fs from 'node:fs';
 const plan = JSON.parse(fs.readFileSync(new URL('./test-plan.json', import.meta.url), 'utf8')) as {
   dashboard: string[];
   rules: string[];
+  lint: string[];
   native: Record<string, string[]>;
   watch: { sources: string[]; tests: string[] }[];
 };
@@ -16,6 +17,8 @@ export const dashboardTests = plan.dashboard;
  * also run in CI, the dashboard ones in the checks job and the others in the api job.
  */
 export const ruleTests = [...plan.dashboard, ...plan.rules];
+/** Source policies run as lints by local rules and the CI checks job. */
+export const sourceLints = plan.lint;
 /** Native collector shards, run with a real browser by `npm run test:browseros`. */
 export const nativeShards = plan.native;
 /**

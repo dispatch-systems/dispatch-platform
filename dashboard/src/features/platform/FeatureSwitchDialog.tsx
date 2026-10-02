@@ -39,8 +39,8 @@ export function FeatureSwitchDialog({
   const others = sideEffects(feature, preview ?? []);
   // The capability two features have in common, or the first one either supplies or needs.
   const shared = (
-    a: { provides?: string[]; requires: string[] },
-    b: { provides?: string[]; requires: string[] },
+    a: { provides?: readonly string[]; requires: readonly string[] },
+    b: { provides?: readonly string[]; requires: readonly string[] },
   ) =>
     [...(a.provides ?? []), ...a.requires].find(
       (c) => (b.provides ?? []).includes(c) || b.requires.includes(c),

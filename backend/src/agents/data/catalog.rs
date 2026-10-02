@@ -81,6 +81,11 @@ const CURSOR: Param = Param {
     kind: Kind::Text,
     description: "The next_cursor an earlier answer gave, for its next page.",
 };
+const GROUPS_CURSOR: Param = Param {
+    name: "groups_cursor",
+    kind: Kind::Text,
+    description: "The groups table's next_cursor; cursor separately pages the package list.",
+};
 const DETAIL: Param = Param {
     name: "detail",
     kind: Kind::Choice(&["summary", "full"]),
@@ -204,6 +209,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
             },
             LIMIT,
             CURSOR,
+            GROUPS_CURSOR,
         ],
     },
     Endpoint {

@@ -1,31 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { sourceLineViolations } from '../../tooling/ci/source-lines.js';
 
-// Needs no build, so `npm run check:rules` catches a long line before a push does.
-test('backend source lines fit in 140 characters', () => {
-  const root = 'backend/src';
-  const long = new Map<string, number>();
-  for (const name of fs.readdirSync(root, { recursive: true, encoding: 'utf8' })) {
-    if (!name.endsWith('.rs')) continue;
-    // Lines end at \n or \r\n, and a character is a code point, as Rust counts them.
-    for (const line of fs.readFileSync(`${root}/${name}`, 'utf8').split('\n'))
-      if ([...line.replace(/\r$/, '')].length > 140) long.set(name, (long.get(name) ?? 0) + 1);
-  }
-  // Raw email markup and embedded provider scripts have a fixed exception budget.
-  // These budgets only shrink: wrapping an exception requires lowering its count.
-  const exceptions: [string, number][] = [
-    ['mail/templates.rs', 4],
-    ['browsers/paycom/benchmark.rs', 2],
-    ['browsers/paycom/collection.rs', 3],
-  ];
-  for (const [file, expected] of exceptions) {
-    assert.equal(
-      long.get(file) ?? 0,
-      expected,
-      `reduce the exception budget when wrapping ${file}; never increase it`,
-    );
-    long.delete(file);
-  }
-  assert.deepEqual([...long.keys()], [], 'lines over 140 characters');
+test('the source lint counts Unicode characters, handles CRLF and ratchets exceptions', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-source-lines-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, 'nested'));
+  fs.writeFileSync(path.join(root, 'nested/valid.rs'), `${'😀'.repeat(140)}\r\n`);
+  fs.writeFileSync(path.join(root, 'ignored.txt'), 'x'.repeat(141));
+  fs.writeFileSync(path.join(root, 'legacy.rs'), `${'x'.repeat(141)}\n`);
+  const exceptions = new Map([['legacy.rs', 1]]);
+  assert.deepEqual(sourceLineViolations(root, exceptions), []);
+  fs.writeFileSync(path.join(root, 'new.rs'), `${'x'.repeat(140)}\n${'x'.repeat(141)}\n`);
+  assert.deepEqual(sourceLineViolations(root, exceptions), [
+    'new.rs:2: source lines must fit in 140 characters',
+  ]);
+  fs.unlinkSync(path.join(root, 'new.rs'));
+  fs.writeFileSync(path.join(root, 'legacy.rs'), `${'x'.repeat(140)}\n`);
+  assert.match(
+    sourceLineViolations(root, exceptions)[0]!,
+    /expected 1 .* found 0; lower the budget/,
+  );
+  fs.writeFileSync(path.join(root, 'legacy.rs'), `${'x'.repeat(141)}\n${'x'.repeat(141)}\n`);
+  assert.match(
+    sourceLineViolations(root, exceptions)[0]!,
+    /expected 1 .* found 2;.*never increase it/,
+  );
 });

@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import { features, permissions } from '../../shared/contracts/index.js';
 import {
   capabilityLabel,
@@ -12,56 +11,36 @@ import {
   sideEffects,
 } from '../../dashboard/src/app/features.js';
 
-test('the dashboard mirrors the backend feature catalog', () => {
-  const source = fs.readFileSync('backend/src/features.rs', 'utf8');
-  const pages = /PAGES: &\[Feature\] = &\[([\s\S]*?)\n\];/.exec(source)![1]!;
-  const parsed = [...pages.matchAll(/Feature \{([\s\S]*?)\n {4}\}/g)].map((match) => {
-    const body = match[1]!;
-    const field = (name: string) => new RegExp(`\\n {8}${name}: ([^\\n]*),`).exec(body)![1]!;
-    const list = (name: string) => [...field(name).matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
-    return {
-      id: JSON.parse(field('id')),
-      label: JSON.parse(field('label')),
-      kind: 'page',
-      permissions: list('permissions'),
-      requires: list('requires'),
-    };
-  });
-  const tabs = /TABS: &\[Feature\] = &\[([\s\S]*?)\n\];/.exec(source)![1]!;
-  const parsedTabs = [...tabs.matchAll(/tab\("([^"]+)", "([^"]+)", "([^"]+)"\)/g)].map(
-    ([, id, label, page]) => ({ id, label, kind: 'tab', page, permissions: [], requires: [] }),
-  );
-  const registry = /pub const ALL: &\[Self\] = &\[([^\]]*)\];/.exec(
-    fs.readFileSync('backend/src/collectors/mod.rs', 'utf8'),
-  )![1]!;
-  const connections = [...registry.matchAll(/Self::(\w+)/g)].map(([, variant]) => {
-    const id = variant!.toLowerCase();
-    const collector = fs.readFileSync(`backend/src/collectors/${id}.rs`, 'utf8');
-    const value = (fn: string) =>
-      new RegExp(`fn ${fn}\\(&self\\) -> &'static str \\{\\s*"([^"]+)"`).exec(collector)![1]!;
-    const provides =
-      /fn capabilities\(&self\) -> &'static \[&'static str\] \{\s*&\[([^\]]*)\]/.exec(
-        collector,
-      )![1]!;
-    assert.equal(value('id'), id);
-    return {
-      id,
-      label: value('label'),
-      kind: 'connection',
-      permissions: [],
-      provides: [...provides.matchAll(/"([^"]+)"/g)].map((m) => m[1]!),
-      requires: [],
-    };
-  });
-  assert(parsed.length >= 2 && parsedTabs.length >= 2 && connections.length >= 2);
-  assert.deepEqual(featureCatalog, [...parsed, ...parsedTabs, ...connections]);
+test('the generated feature catalog covers every feature and its dependencies', () => {
   assert.deepEqual(
     featureCatalog.map((feature) => feature.id),
     [...features],
   );
-  assert.equal(/pub const SCHEDULES: &str = "([^"]+)";/.exec(source)![1], schedulesFeature);
-  for (const capability of featureCatalog.flatMap((feature) => feature.requires))
-    assert.notEqual(capabilityLabel(capability), capability, `${capability} has no label`);
+  assert.equal(new Set(features).size, features.length);
+  assert(
+    featureCatalog.some((feature) => feature.id === schedulesFeature && feature.kind === 'page'),
+  );
+  const owned: string[] = [];
+  for (const feature of featureCatalog) {
+    assert(feature.label.length > 0, `${feature.id} has no label`);
+    for (const permission of feature.permissions) {
+      assert(permissions.includes(permission), `${feature.id} owns an unknown permission`);
+      owned.push(permission);
+    }
+    if (feature.kind === 'tab') {
+      assert(featureCatalog.some((page) => page.kind === 'page' && page.id === feature.page));
+      assert.deepEqual(feature.permissions, []);
+      assert.deepEqual(feature.requires, []);
+    }
+    for (const capability of feature.requires) {
+      assert.notEqual(capabilityLabel(capability), capability, `${capability} has no label`);
+      assert(
+        featureCatalog.some((provider) => provider.provides?.includes(capability)),
+        `${feature.id} requires ${capability} without a provider`,
+      );
+    }
+  }
+  assert.equal(new Set(owned).size, owned.length, 'a permission has more than one owning feature');
 });
 
 test('a switch brings its dependencies along, as the backend does', () => {

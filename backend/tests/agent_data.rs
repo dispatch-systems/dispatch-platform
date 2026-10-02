@@ -509,6 +509,68 @@ async fn unclear_requests_are_refused_with_what_to_fix() {
 /// A question asked of the agent API, as a test asks it.
 type Question = Box<dyn FnOnce(&Store, &State, &Caller) -> data::Answer + Send>;
 
+#[tokio::test]
+async fn package_group_and_list_cursors_advance_independently_within_the_final_budget() {
+    let (_root, db) = common::seeded();
+    let world = synthetic::seed(&db).unwrap();
+    let me = caller(&db, &[s(&world, "dsp")], false);
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+    let who = me.clone();
+    let (status, first) = ask(&state, move |db, state| {
+        data::packages(
+            db,
+            state,
+            &who,
+            &json!({"group_by":"day,route","list":"true","limit":"1"}),
+        )
+    })
+    .await;
+    assert_eq!(status, 200, "{first}");
+    assert!(first.to_string().len() <= data::BUDGET);
+    let groups_cursor = first["groups"]["page"]["next_cursor"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let list_cursor = first["list"]["page"]["next_cursor"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let who = me.clone();
+    let (status, second) = ask(&state, move |db, state| data::packages(db, state, &who,
+        &json!({"group_by":"day,route","list":"true","limit":"1", "groups_cursor":groups_cursor}))).await;
+    assert_eq!(status, 200, "{second}");
+    assert!(second.to_string().len() <= data::BUDGET);
+    assert_eq!(second["list"]["rows"], first["list"]["rows"]);
+    assert_ne!(second["groups"]["rows"], first["groups"]["rows"]);
+    assert!(second["groups"]["page"].is_null(), "{second}");
+    let who = me.clone();
+    let (status, third) = ask(&state, move |db, state| {
+        data::packages(
+            db,
+            state,
+            &who,
+            &json!({"group_by":"day,route","list":"true","limit":"1", "cursor":list_cursor}),
+        )
+    })
+    .await;
+    assert_eq!(status, 200, "{third}");
+    assert_eq!(third["groups"], first["groups"]);
+    assert_ne!(third["list"]["rows"], first["list"]["rows"]);
+    let (status, invalid) = ask(&state, move |db, state| {
+        data::packages(
+            db,
+            state,
+            &me,
+            &json!({"group_by":"day,route", "groups_cursor":"100"}),
+        )
+    })
+    .await;
+    assert_eq!(status, 400);
+    assert_eq!(invalid["error"], "invalid_parameter");
+}
+
 /// Every tool's answer to a plain question stays small at a real DSP's size: two weeks of
 /// a dozen drivers' routes, timecards, meal breaks and inspections.
 #[tokio::test]
@@ -638,4 +700,209 @@ async fn answers_stay_within_their_budgets() {
     })
     .await;
     assert!(everything.to_string().len() <= data::BUDGET);
+}
+
+#[tokio::test]
+async fn meal_duration_answers_preserve_unknown_totals_and_overnight_clocks() {
+    let (_root, db, id) = ready();
+    let me = caller(&db, &[&id], false);
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+    let cases = [
+        (
+            "open",
+            json!([{"in":"08:00","inKind":"IN DAY","out":"12:00","outKind":"OUT LUNCH"}]),
+            None,
+        ),
+        (
+            "mixed",
+            json!([
+                {"in":"08:00","inKind":"IN DAY","out":"12:00","outKind":"OUT LUNCH"},
+                {"in":"12:30","inKind":"IN LUNCH","out":"14:00","outKind":"OUT LUNCH"}
+            ]),
+            None,
+        ),
+        (
+            "complete",
+            json!([{"in":"08:00","out":"12:00"},{"in":"12:30","out":"17:00"}]),
+            Some(30),
+        ),
+        (
+            "overnight",
+            json!([
+                {"in":"22:00","inKind":"IN DAY","out":"23:50","outKind":"OUT LUNCH"},
+                {"in":"00:20","inKind":"IN LUNCH","out":"06:00","outKind":"OUT DAY"}
+            ]),
+            Some(30),
+        ),
+    ];
+    for (case, punches, minutes) in cases {
+        let tenant = id.clone();
+        state.run(move |db| {
+            db.collector(&tenant, Provider::Paycom)?.exec(
+                "UPDATE timecards SET status='Complete',punches=? WHERE employee_code='E002' AND date=?",
+                [punches.to_string(), DAY.into()],
+            )?;
+            let cortex = db.collector(&tenant, Provider::Cortex)?;
+            cortex.exec("DELETE FROM meal_records", [])?;
+            let start = if case == "overnight" { "2026-09-12T23:50:00Z" } else { "2026-09-12T12:00:00Z" };
+            let end = match case {
+                "open" => None,
+                "overnight" => Some("2026-09-13T00:20:00Z"),
+                _ => Some("2026-09-12T12:30:00Z"),
+            };
+            cortex.exec(
+                "INSERT INTO meal_records SELECT id,'fixture-itinerary','first',NULL,?,?,NULL,'unavailable',? \
+                 FROM meal_publications WHERE active=1",
+                rusqlite::params![start,end,if end.is_some() { "unavailable" } else { "pending" }],
+            )?;
+            if case == "mixed" {
+                cortex.exec(
+                    "INSERT INTO meal_records SELECT id,'fixture-itinerary','second',NULL,\
+                     '2026-09-12T14:00:00Z',NULL,NULL,'unavailable','pending' FROM meal_publications WHERE active=1",
+                    [],
+                )?;
+            }
+            Ok(())
+        }).await.unwrap();
+        let who = me.clone();
+        let (status, cards) = ask(&state, move |db, state| {
+            data::timecards(
+                db,
+                state,
+                &who,
+                &json!({"date":DAY,"driver":"Fixture Driver"}),
+            )
+        })
+        .await;
+        assert_eq!(status, 200, "{case}: {cards}");
+        let table = &cards["timecards"];
+        let card = row(table, "date", DAY);
+        assert_eq!(
+            card[col(table, "lunch_minutes")],
+            json!(minutes),
+            "{case}: {cards}"
+        );
+        if case == "overnight" {
+            assert_eq!(card[col(table, "out")], "06:00 +1 day");
+        }
+        let who = me.clone();
+        let (status, meals) = ask(&state, move |db, state| {
+            data::meal_breaks(db, state, &who, &json!({"date":DAY}))
+        })
+        .await;
+        assert_eq!(status, 200, "{case}: {meals}");
+        let table = &meals["drivers"];
+        let meal = row(table, "driver", "Fixture Driver");
+        assert_eq!(
+            meal[col(table, "minutes")],
+            json!(minutes),
+            "{case}: {meals}"
+        );
+        if case == "overnight" {
+            assert_eq!(meal[col(table, "meal")], "23:50–00:20");
+        }
+        let who = me.clone();
+        let (status, totals) = ask(&state, move |db, state| {
+            data::team(
+                db,
+                state,
+                &who,
+                &json!({"date":DAY,"metrics":"lunch_minutes"}),
+            )
+        })
+        .await;
+        assert_eq!(status, 200, "{case}: {totals}");
+        let table = &totals["rows"];
+        assert_eq!(
+            row(table, "driver", "Fixture Driver")[col(table, "lunch_minutes")],
+            json!(minutes)
+        );
+        if minutes.is_none() {
+            assert!(
+                totals["totals"]["lunch_minutes"].is_null(),
+                "a partial sum must not become the team's total: {totals}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn driver_periods_keep_historical_sync_and_meal_context_across_batches() {
+    let (_root, db, id) = ready();
+    let mut history = workforce::fixture_date("UTC", Some("2026-09-05".parse().unwrap())).unwrap();
+    history["employees"][1]["name"] = json!("DRIVER, FIXTURE");
+    history["collectedAt"] = json!("2099-01-01T00:00:00Z");
+    db.publish(&id, &history).unwrap();
+    let employee = history["employees"][1].clone();
+    let sync = json!({
+        "employees":[employee], "from":"2026-09-06", "to":"2026-09-19",
+        "collectedAt":"2099-01-02T00:00:00Z",
+        "timecards": (6..=19).map(|day| json!({
+            "employeeCode":"E002","date":format!("2026-09-{day:02}"),"hours":6.5,
+            "status":"Complete","punches":[
+                {"in":"08:00","out":"12:00","hours":4},
+                {"in":"12:30","out":"15:00","hours":2.5}
+            ],
+        })).collect::<Vec<_>>()
+    });
+    db.collector(&id, Provider::Paycom)
+        .unwrap()
+        .exec(
+            "INSERT INTO employee_timecard_syncs VALUES ('E002','2026-09-06','2026-09-19',?,?)",
+            ["2099-01-02T00:00:00Z", sync.to_string().as_str()],
+        )
+        .unwrap();
+    for date in ["2026-09-01", "2026-09-08", DAY] {
+        let scope = Scope {
+            date: date.into(),
+            station: "TST1".into(),
+            service_area_id: "area-demo".into(),
+            provider: "provider-demo".into(),
+            timezone: "UTC".into(),
+        };
+        let mut capture = meals::fixture(&scope);
+        capture.itineraries[0].transporter_id = "driver-1".into();
+        capture.itineraries[0].driver = "Fixture Driver".into();
+        db.publish_meals(&id, &format!("period-{date}"), &capture, &scope)
+            .unwrap();
+    }
+    let me = caller(&db, &[&id], false);
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+    let who = me.clone();
+    let (status, report) = ask(&state, move |db, state| {
+        data::driver(
+            db,
+            state,
+            &who,
+            "Fixture Driver",
+            &json!({"from":"2026-09-01","to":DAY}),
+        )
+    })
+    .await;
+    assert_eq!(status, 200, "{report}");
+    let table = &report["days"];
+    assert_eq!(rows(table).len(), 12, "{report}");
+    let worked = col(table, "hours");
+    assert_eq!(row(table, "date", "2026-09-05")[worked], 8.0);
+    assert_eq!(row(table, "date", "2026-09-06")[worked], 6.5);
+    assert_eq!(row(table, "date", "2026-09-08")[worked], 6.5);
+    assert_eq!(row(table, "date", DAY)[worked], 6.5);
+    assert_eq!(report["coverage"]["timecards"]["collected"], 12);
+    assert_eq!(report["coverage"]["mealBreaks"]["collected"], 3);
+    let who = me.clone();
+    let (status, cards) = ask(&state, move |db, state| {
+        data::timecards(
+            db,
+            state,
+            &who,
+            &json!({"from":"2026-09-01","to":DAY,"driver":"Fixture Driver"}),
+        )
+    })
+    .await;
+    assert_eq!(status, 200, "{cards}");
+    assert_eq!(rows(&cards["timecards"]).len(), 12);
 }

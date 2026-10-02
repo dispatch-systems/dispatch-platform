@@ -10,7 +10,7 @@ use super::{
         outcome_of, reason_of,
     },
     scope::{DEFAULT_PERIOD, People, Period, Person, daily_limit, param, period, pick_dsp, today},
-    shape::{Table, hours, page, paged, understood},
+    shape::{BUDGET, Table, hours, offset_named, page, page_named, paged, understood},
 };
 use crate::{
     State,
@@ -171,19 +171,15 @@ fn gather(
         (vec![], Coverage::default())
     };
     let meals = if on.meal_breaks && wants("meal_breaks") {
-        let (mut rows, coverage) = facts::meal_breaks(db, dsp, period)?;
+        let sources = person.map(|p| {
+            p.paycom
+                .iter()
+                .map(|c| format!("paycom:{c}"))
+                .chain(p.amazon.iter().map(|id| format!("cortex:{id}")))
+                .collect::<Vec<_>>()
+        });
+        let (mut rows, coverage) = facts::meal_breaks_for(db, dsp, period, sources.as_deref())?;
         mark_routes(db, dsp, period, people, &mut rows)?;
-        let rows = match person {
-            Some(p) => rows
-                .into_iter()
-                .filter(|row| {
-                    let (kind, id) = row.source.split_once(':').unwrap_or(("", ""));
-                    (kind == "paycom" && p.paycom.iter().any(|c| c == id))
-                        || (kind == "cortex" && p.amazon.iter().any(|t| t == id))
-                })
-                .collect(),
-            None => rows,
-        };
         (rows, coverage)
     } else {
         (vec![], Coverage::default())
@@ -251,18 +247,14 @@ fn meal_span(meal: &MealDay) -> (Value, Value) {
             )
         })
         .collect();
-    let minutes: i64 = meal.meals.iter().filter_map(|m| m.minutes).sum();
+    let minutes = facts::total_minutes(meal.meals.iter().map(|m| m.minutes));
     (
         if spans.is_empty() {
             Value::Null
         } else {
             json!(spans.join(", "))
         },
-        if meal.meals.is_empty() {
-            Value::Null
-        } else {
-            json!(minutes)
-        },
+        json!(minutes),
     )
 }
 
@@ -435,7 +427,7 @@ impl Tally {
             "hours_worked" => cards.map(|c| hours(c.iter().map(|c| c.hours).sum())),
             "days_worked" => cards.map(|c| json!(c.iter().filter(|c| c.hours > 0.0).count())),
             "lunch_minutes" => {
-                cards.map(|c| json!(c.iter().filter_map(|c| c.lunch_minutes).sum::<i64>()))
+                cards.map(|c| json!(facts::total_minutes(c.iter().map(|c| c.lunch_minutes))))
             }
             "clock_in" => cards
                 .and_then(|c| c.first()?.clock_in.clone())
@@ -619,6 +611,15 @@ pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
     // The whole team's figure for each metric that adds up, so nobody adds the rows.
     let mut totals = Map::new();
     for (k, metric) in chosen.iter().enumerate().filter(|(_, m)| m.total != "day") {
+        if metric.name == "lunch_minutes" {
+            totals.insert(
+                metric.name.into(),
+                json!(facts::total_minutes(
+                    gathered.timecards.0.iter().map(|card| card.lunch_minutes)
+                )),
+            );
+            continue;
+        }
         let values: Vec<f64> = rows.iter().filter_map(|r| r.2[k].as_f64()).collect();
         let sum: f64 = values.iter().sum();
         let value = if values.is_empty() {
@@ -940,6 +941,14 @@ pub fn packages(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         .into());
     }
     let list = flag(query, "list");
+    if !param(query, "groups_cursor").is_empty() && (!list || groups.is_empty()) {
+        return Err(Refusal::new(
+            400,
+            "invalid_parameter",
+            "Use `groups_cursor` when requesting both `group_by` and `list=true`.",
+        )
+        .into());
+    }
     if groups.contains(&"address") && !caller.locations {
         return Err(locations_off().into());
     }
@@ -1054,10 +1063,22 @@ pub fn packages(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
             row.push(json!(count));
             table.push(row);
         }
-        // With a list as well, the cursor pages the list; the groups show their first page.
+        // Each table can advance independently when both are requested.
         if list {
             let total = table.rows.len();
-            page(&mut answer, "groups", table, 0, total, 100)?;
+            let offset = offset_named(query, "groups_cursor")?;
+            table.rows.drain(..offset.min(total));
+            // Leave room for package rows when both independently pageable tables are requested.
+            table = table.with_budget(BUDGET.saturating_sub(answer.to_string().len()) / 2);
+            page_named(
+                &mut answer,
+                "groups",
+                table,
+                offset,
+                total,
+                100,
+                "groups_cursor",
+            )?;
         } else {
             paged(&mut answer, "groups", table, query, 100)?;
         }

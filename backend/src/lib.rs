@@ -38,6 +38,12 @@ pub use error::{Code, Error, Result, ensure};
 use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::Semaphore;
 
+enum CacheChange {
+    All,
+    Bookkeeping,
+    Tenant(String, read_cache::DataDomain),
+}
+
 pub struct State {
     pub config: config::Config,
     pub key: Vec<u8>,
@@ -98,17 +104,37 @@ impl State {
         self: &Arc<Self>,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
     ) -> Result<T> {
-        self.database(true, f).await
+        self.database(true, CacheChange::All, f).await
+    }
+    /// Writes only reviewed bookkeeping: metrics, leases, outbox or invisible cleanup.
+    /// Authorization still reads the database on every request; this skips derived-data
+    /// invalidation, never the exclusive transition lock.
+    pub async fn run_bookkeeping<T: Send + 'static>(
+        self: &Arc<Self>,
+        f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
+    ) -> Result<T> {
+        self.database(true, CacheChange::Bookkeeping, f).await
+    }
+    /// A tenant mutation with known dependencies. Unknown writes must keep using `run`.
+    pub async fn run_scoped<T: Send + 'static>(
+        self: &Arc<Self>,
+        dsp: impl Into<String>,
+        domain: read_cache::DataDomain,
+        f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
+    ) -> Result<T> {
+        self.database(true, CacheChange::Tenant(dsp.into(), domain), f)
+            .await
     }
     pub async fn read<T: Send + 'static>(
         self: &Arc<Self>,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
     ) -> Result<T> {
-        self.database(false, f).await
+        self.database(false, CacheChange::Bookkeeping, f).await
     }
     async fn database<T: Send + 'static>(
         self: &Arc<Self>,
         write: bool,
+        change: CacheChange,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
     ) -> Result<T> {
         // Bound both queued requests and blocking threads. Short bursts wait without
@@ -150,10 +176,18 @@ impl State {
                     .map_err(|_| Error::new("platform_unavailable", 503))?;
                 lock_ms = waiting.elapsed().as_secs_f64() * 1000.0;
                 work_started = std::time::Instant::now();
-                // Advance even on errors: a multi-database operation may have partially written.
-                state
-                    .data_revision
-                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                // Invalidate before work, including errors after partially committed writes.
+                match change {
+                    CacheChange::All => {
+                        state
+                            .data_revision
+                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    CacheChange::Tenant(dsp, domain) => {
+                        state.read_cache.invalidate_tenant(&dsp, domain)
+                    }
+                    CacheChange::Bookkeeping => {}
+                }
                 f(&db)
             } else {
                 let _guard = state

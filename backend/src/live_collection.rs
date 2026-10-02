@@ -9,7 +9,9 @@ use super::{
 };
 use rusqlite::params;
 use serde_json::{Value, json};
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
+
+pub type LiveResults = Vec<(Value, Vec<Value>)>;
 
 // No collection survives a restart, so neither do its live rows.
 pub fn reset(db: &Db) -> Result<()> {
@@ -18,9 +20,9 @@ pub fn reset(db: &Db) -> Result<()> {
 }
 impl Store {
     pub fn start_live(&self, job: &str, owner: &str, metadata: &Value) -> Result<()> {
-        let dsp = self.guard_job(job, owner)?;
-        let row = self.job(job, None)?;
-        let db = self.collector(s(&dsp, "id"), Provider::from_job_kind(s(&row, "kind"))?.0)?;
+        let dsp = self.guard(job, owner)?;
+        let row = self.job_row(job, None)?;
+        let db = self.collector(&dsp.id, row.provider())?;
         db.transaction(|| {
             // Each provider has one running collection per DSP. Discard any old attempt.
             db.exec("DELETE FROM collection_live_runs", [])?;
@@ -38,51 +40,74 @@ impl Store {
         employee: &Value,
         records: &[Value],
     ) -> Result<()> {
-        let dsp = self.guard_job(job, owner)?;
-        let db = self.collector(s(&dsp, "id"), Provider::Paycom)?;
+        let dsp = self.guard(job, owner)?;
+        let db = self.collector(&dsp.id, Provider::Paycom)?;
         db.transaction(|| stage_paycom_page(&db, job, owner, employee, records))
     }
 
-    pub fn live_results(
+    pub fn live_results(&self, dsp: &str, provider: Provider, date: &str) -> Result<LiveResults> {
+        Ok(self
+            .live_results_range(dsp, provider, date, date)?
+            .remove(date)
+            .unwrap_or_default())
+    }
+    /// Reads each guarded live run once for a date range. Covered days retain
+    /// their metadata even before their first item has been staged.
+    pub fn live_results_range(
         &self,
         dsp: &str,
         provider: Provider,
-        date: &str,
-    ) -> Result<Vec<(Value, Vec<Value>)>> {
+        from: &str,
+        to: &str,
+    ) -> Result<BTreeMap<String, LiveResults>> {
+        let parse = |date: &str| {
+            chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
+                .map_err(|_| Error::new("invalid_date", 400))
+        };
+        let start = parse(from)?;
+        let end = parse(to)?;
         let db = self.collector(dsp, provider)?;
-        let mut out = vec![];
-        for job in self.jobs.all(
+        let mut out: BTreeMap<String, LiveResults> = BTreeMap::new();
+        for (job, owner) in self.jobs.query_as::<(String, String)>(
             "SELECT id,lease_owner FROM jobs WHERE dsp_id=? AND kind=? \
             AND status='running' AND lease_until>?",
             params![dsp, provider.job_kind(), db::now()],
         )? {
             // Includes current connection revision, actor permissions and lease ownership.
-            if self
-                .guard_job(s(&job, "id"), s(&job, "lease_owner"))
-                .is_err()
-            {
+            if self.guard(&job, &owner).is_err() {
                 continue;
             }
-            if let Some(run) = db.one(
+            if let Some((run,)) = db.one_as::<(String,)>(
                 "SELECT metadata FROM collection_live_runs WHERE \
                 job_id=? AND owner=?",
-                [s(&job, "id"), s(&job, "lease_owner")],
+                [&job, &owner],
             )? {
-                let metadata: Value = serde_json::from_str(s(&run, "metadata"))?;
-                if date < s(&metadata, "from") || date > s(&metadata, "to") {
+                let metadata: Value = serde_json::from_str(&run)?;
+                if to < s(&metadata, "from") || from > s(&metadata, "to") {
                     continue;
                 }
-                let items = db
-                    .all(
-                        "SELECT data FROM collection_live_items WHERE job_id=? \
-                    AND date=? ORDER BY \
-                    item_key",
-                        [s(&job, "id"), date],
-                    )?
-                    .into_iter()
-                    .map(|item| serde_json::from_str(s(&item, "data")).map_err(Into::into))
-                    .collect::<Result<Vec<Value>>>()?;
-                out.push((metadata, items));
+                let mut items: BTreeMap<String, Vec<Value>> = BTreeMap::new();
+                for (date, data) in db.query_as::<(String, String)>(
+                    "SELECT date,data FROM collection_live_items WHERE job_id=? \
+                     AND date BETWEEN ? AND ? ORDER BY date,item_key",
+                    [&job, from, to],
+                )? {
+                    items
+                        .entry(date)
+                        .or_default()
+                        .push(serde_json::from_str(&data)?);
+                }
+                let mut date = start;
+                while date <= end {
+                    let day = date.to_string();
+                    if day.as_str() >= s(&metadata, "from") && day.as_str() <= s(&metadata, "to") {
+                        out.entry(day.clone())
+                            .or_default()
+                            .push((metadata.clone(), items.remove(&day).unwrap_or_default()));
+                    }
+                    let Some(next) = date.succ_opt() else { break };
+                    date = next;
+                }
             }
         }
         Ok(out)
@@ -142,11 +167,15 @@ impl Writer {
         let metadata = json!({"from":scope.date,"to":scope.date,"scope":scope,"drivers":drivers});
         let job = self.job.clone();
         let owner = self.owner.clone();
+        let state = self.state.clone();
         self.state
-            .run(move |db| {
-                let row = db.job(&job, None)?;
-                let request: CollectionRequest = serde_json::from_str(s(&row, "request"))?;
+            .run_bookkeeping(move |db| {
+                let row = db.job_row(&job, None)?;
+                let request: CollectionRequest = serde_json::from_str(&row.request)?;
                 request.validate_scope(&scope)?;
+                state
+                    .read_cache
+                    .invalidate_tenant(&row.dsp_id, crate::read_cache::DataDomain::Live);
                 db.start_live(&job, &owner, &metadata)
             })
             .await
@@ -154,16 +183,20 @@ impl Writer {
     pub async fn cortex_drivers(&self, drivers: Value) -> Result<()> {
         let job = self.job.clone();
         let owner = self.owner.clone();
+        let state = self.state.clone();
         let dsp = self
             .state
-            .run(move |db| {
-                let dsp = db.guard_job(&job, &owner)?;
-                db.collector(s(&dsp, "id"), Provider::Cortex)?.exec(
+            .run_bookkeeping(move |db| {
+                let dsp = db.guard(&job, &owner)?;
+                state
+                    .read_cache
+                    .invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::Live);
+                db.collector(&dsp.id, Provider::Cortex)?.exec(
                     "UPDATE collection_live_runs \
                 SET metadata=json_set(metadata,'$.drivers',json(?1)) WHERE job_id=?2 AND owner=?3",
                     params![drivers.to_string(), job, owner],
                 )?;
-                Ok(s(&dsp, "id").to_owned())
+                Ok(dsp.id)
             })
             .await?;
         self.state
@@ -186,17 +219,21 @@ impl Writer {
         let capture = capture.clone();
         let job = self.job.clone();
         let owner = self.owner.clone();
+        let state = self.state.clone();
         let dsp = self
             .state
-            .run(move |db| {
-                let dsp = db.guard_job(&job, &owner)?;
-                let row = db.job(&job, None)?;
+            .run_bookkeeping(move |db| {
+                let dsp = db.guard(&job, &owner)?;
+                state
+                    .read_cache
+                    .invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::Live);
+                let row = db.job_row(&job, None)?;
                 ensure(
-                    s(&row, "kind") == Provider::Cortex.job_kind(),
+                    row.kind.as_str() == Provider::Cortex.job_kind(),
                     "unsupported_collector",
                     409,
                 )?;
-                let storage = db.collector(s(&dsp, "id"), Provider::Cortex)?;
+                let storage = db.collector(&dsp.id, Provider::Cortex)?;
                 let run = storage
                     .one(
                         "SELECT metadata FROM collection_live_runs WHERE job_id=? \
@@ -219,7 +256,7 @@ impl Writer {
                         owner
                     ],
                 )?;
-                Ok(s(&dsp, "id").to_owned())
+                Ok(dsp.id)
             })
             .await?;
         self.state.updates.changed(&dsp, change);
@@ -261,7 +298,7 @@ mod tests {
                 let old = workforce::fixture_date("UTC", Some("2026-01-19".parse().unwrap()))?;
                 db.publish(&dsp, &old)?;
                 let paycom = db.enqueue(&dsp, None, "live-paycom")?;
-                db.claim("paycom-owner", |_, _| true)?;
+                db.claim_job("paycom-owner", |_, _| true)?;
                 Ok((dsp, s(&paycom, "id").to_owned(), old))
             })
             .await?;
@@ -276,6 +313,23 @@ mod tests {
         let checkpoint = Checkpoint::new(state.clone(), &paycom_job, "paycom-owner");
         let resume = checkpoint
             .prepare(&period, old["employees"].as_array().unwrap(), "UTC")
+            .await?;
+        let tenant = dsp.clone();
+        state
+            .read(move |db| {
+                let live =
+                    db.live_results_range(&tenant, Provider::Paycom, "2026-01-05", "2026-01-20")?;
+                assert_eq!(live.len(), 14, "only metadata-covered days are included");
+                assert_eq!(
+                    live["2026-01-06"][0].0["roster"].as_array().unwrap().len(),
+                    12
+                );
+                assert!(
+                    live.values()
+                        .all(|runs| runs.len() == 1 && runs[0].1.is_empty())
+                );
+                Ok(())
+            })
             .await?;
         let mut updates = state.updates.subscribe(&dsp);
         let other_updates = state.updates.subscribe("unrelated-dsp");
@@ -302,6 +356,13 @@ mod tests {
                     .unwrap();
                 assert_eq!(row["hours"], 9.0);
                 assert_eq!(daily["collectedAt"], old_snapshot["collectedAt"]);
+                let range =
+                    db.live_results_range(&tenant, Provider::Paycom, "2026-01-18", "2026-01-20")?;
+                assert_eq!(range.len(), 2);
+                for day in ["2026-01-18", "2026-01-19"] {
+                    assert_eq!(range[day], db.live_results(&tenant, Provider::Paycom, day)?);
+                    assert_eq!(range[day][0].1.len(), 1);
+                }
                 let comparison = db
                     .meal_comparison(&tenant, "2026-01-19", "UTC")
                     .map(|value| serde_json::to_value(value).unwrap())?;
@@ -387,7 +448,7 @@ mod tests {
         let flex_job = state
             .run(move |db| {
                 let job = db.enqueue_meals(&tenant, None, "live-flex", &requested)?;
-                db.claim("flex-owner", |_, _| true)?;
+                db.claim_job("flex-owner", |_, _| true)?;
                 Ok(s(&job, "id").to_owned())
             })
             .await?;

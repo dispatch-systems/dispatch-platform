@@ -319,14 +319,14 @@ fn provider_jobs_bind_request_identity_and_connection_revision() {
             .code,
         "idempotency_conflict"
     );
-    db.claim("worker", |_, _| true).unwrap().unwrap();
-    db.guard_job(s(&job, "id"), "worker").unwrap();
+    db.claim_job("worker", |_, _| true).unwrap().unwrap();
+    db.guard(s(&job, "id"), "worker").unwrap();
     db.collector(&id, Provider::Cortex)
         .unwrap()
         .exec("UPDATE connections SET revision=revision+1", [])
         .unwrap();
     assert_eq!(
-        db.guard_job(s(&job, "id"), "worker").unwrap_err().code,
+        db.guard(s(&job, "id"), "worker").unwrap_err().code,
         "connection_changed"
     );
 }

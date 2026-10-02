@@ -24,8 +24,8 @@ impl Run<'_> {
         let job = self.job.to_owned();
         let owner = self.owner.to_owned();
         self.state
-            .run(move |db| {
-                db.guard_job(&job, &owner)?;
+            .run_bookkeeping(move |db| {
+                db.guard(&job, &owner)?;
                 db.progress(&job, &owner, progress, &message, ActiveJobStatus::Running)
             })
             .await

@@ -4,7 +4,7 @@ use super::scope::Period;
 use crate::{
     Result,
     collectors::Provider,
-    contracts::{Dsp, MealStatus},
+    contracts::{DailyTimecard, Dsp, MealStatus},
     db::{Store, n, s},
     workforce::assessment::paycom_day,
 };
@@ -41,6 +41,12 @@ pub fn clock(ms: Option<i64>, zone: chrono_tz::Tz) -> Option<String> {
 }
 fn minutes(seconds: Option<i64>) -> Option<i64> {
     seconds.map(|s| (s + 30) / 60)
+}
+/// A missing meal or any unfinished meal leaves its total duration unknown.
+pub fn total_minutes(values: impl Iterator<Item = Option<i64>>) -> Option<i64> {
+    let mut values = values.peekable();
+    values.peek()?;
+    values.sum()
 }
 pub fn zone(dsp: &Dsp) -> chrono_tz::Tz {
     dsp.timezone.parse().unwrap_or(chrono_tz::UTC)
@@ -197,8 +203,32 @@ pub struct TimecardDay {
     pub needs_review: bool,
 }
 fn clock_of(minute: i32, day: i32) -> String {
-    let next = if day > 0 { " +1 day" } else { "" };
+    let minute = minute.rem_euclid(1440);
+    let next = match day {
+        0 => String::new(),
+        1 => " +1 day".into(),
+        day => format!(" +{day} days"),
+    };
     format!("{:02}:{:02}{next}", minute / 60, minute % 60)
+}
+fn timecard_day(row: DailyTimecard) -> TimecardDay {
+    let card = row.card;
+    let assessed = paycom_day(&card.status, &card.punches);
+    let lunch = total_minutes(assessed.lunches.iter().map(|l| {
+        let (out, back) = (l.out.as_ref()?, l.clock_in.as_ref()?);
+        Some(i64::from(back.minute - out.minute))
+    }));
+    TimecardDay {
+        date: card.date,
+        employee_code: card.employee_code,
+        name: row.name,
+        hours: card.hours,
+        clock_in: assessed.in_day.as_ref().map(|c| clock_of(c.minute, c.day)),
+        clock_out: assessed.out_day.as_ref().map(|c| clock_of(c.minute, c.day)),
+        lunch_minutes: lunch,
+        status: card.status,
+        needs_review: assessed.review,
+    }
 }
 
 /// Timecards in a period, every employee's or only `codes`'.
@@ -210,38 +240,22 @@ pub fn timecards(
 ) -> Result<(Vec<TimecardDay>, Coverage)> {
     let mut found = vec![];
     let mut held = BTreeSet::new();
-    for day in period.days() {
-        let daily = db.daily(&dsp.id, &day, "employeeName", false)?;
-        if daily.available {
-            held.insert(day.clone());
-        }
-        for row in daily.rows {
-            let card = row.card;
-            if codes.is_some_and(|codes| !codes.contains(&card.employee_code)) {
-                continue;
+    // Raw source rows include punch arrays and source metadata. Convert each
+    // bounded batch before loading the next, even for a whole-team question.
+    let days = period.days();
+    for chunk in days.chunks(7) {
+        for (day, daily) in db.daily_range(
+            &dsp.id,
+            &chunk[0],
+            chunk.last().unwrap(),
+            "employeeName",
+            false,
+            codes,
+        )? {
+            if daily.available {
+                held.insert(day.clone());
             }
-            let assessed = paycom_day(&card.status, &card.punches);
-            let lunch: i64 = assessed
-                .lunches
-                .iter()
-                .filter_map(|l| {
-                    let (out, back) = (l.out.as_ref()?, l.clock_in.as_ref()?);
-                    Some(i64::from(
-                        (back.day - out.day) * 1440 + back.minute - out.minute,
-                    ))
-                })
-                .sum();
-            found.push(TimecardDay {
-                date: card.date,
-                employee_code: card.employee_code,
-                name: row.name,
-                hours: card.hours,
-                clock_in: assessed.in_day.as_ref().map(|c| clock_of(c.minute, c.day)),
-                clock_out: assessed.out_day.as_ref().map(|c| clock_of(c.minute, c.day)),
-                lunch_minutes: (!assessed.lunches.is_empty()).then_some(lunch),
-                status: card.status,
-                needs_review: assessed.review,
-            });
+            found.extend(daily.rows.into_iter().map(timecard_day));
         }
     }
     Ok((found, Coverage::of(true, held, period)))
@@ -272,6 +286,14 @@ pub struct MealTaken {
 }
 /// Every day's meal-break comparison in a period.
 pub fn meal_breaks(db: &Store, dsp: &Dsp, period: &Period) -> Result<(Vec<MealDay>, Coverage)> {
+    meal_breaks_for(db, dsp, period, None)
+}
+pub fn meal_breaks_for(
+    db: &Store,
+    dsp: &Dsp,
+    period: &Period,
+    sources: Option<&[String]>,
+) -> Result<(Vec<MealDay>, Coverage)> {
     let mut found = vec![];
     let mut held = BTreeSet::new();
     let zone = zone(dsp);
@@ -280,35 +302,44 @@ pub fn meal_breaks(db: &Store, dsp: &Dsp, period: &Period) -> Result<(Vec<MealDa
             .ok()
             .map(|t| t.with_timezone(&zone))
     };
-    for day in period.days() {
-        let comparison = db.meal_comparison(&dsp.id, &day, &dsp.timezone)?;
-        if !comparison.cortex_publications.is_empty() {
-            held.insert(day.clone());
-        }
-        for row in comparison.rows {
-            let meals = row
-                .source
-                .cortex
-                .iter()
-                .map(|meal| {
-                    let (start, end) = (local(&meal.start), meal.end.as_deref().and_then(local));
-                    MealTaken {
-                        start: start.map(|t| t.format("%H:%M").to_string()),
-                        end: end.map(|t| t.format("%H:%M").to_string()),
-                        minutes: start.zip(end).map(|(a, b)| (b - a).num_minutes()),
-                    }
-                })
-                .collect();
-            found.push(MealDay {
-                date: day.clone(),
-                source: row.source.id,
-                name: row.source.name,
-                status: row.assessment.status,
-                meals,
-                late_clock_in: row.assessment.late_in,
-                long_gap: row.assessment.long_gap,
-                cortex_route: false,
-            });
+    let days = period.days();
+    for chunk in days.chunks(7) {
+        for (day, comparison) in db.meal_comparisons(
+            &dsp.id,
+            &chunk[0],
+            chunk.last().unwrap(),
+            &dsp.timezone,
+            sources,
+        )? {
+            if !comparison.cortex_publications.is_empty() {
+                held.insert(day.clone());
+            }
+            for row in comparison.rows {
+                let meals = row
+                    .source
+                    .cortex
+                    .iter()
+                    .map(|meal| {
+                        let (start, end) =
+                            (local(&meal.start), meal.end.as_deref().and_then(local));
+                        MealTaken {
+                            start: start.map(|t| t.format("%H:%M").to_string()),
+                            end: end.map(|t| t.format("%H:%M").to_string()),
+                            minutes: start.zip(end).map(|(a, b)| (b - a).num_minutes()),
+                        }
+                    })
+                    .collect();
+                found.push(MealDay {
+                    date: day.clone(),
+                    source: row.source.id,
+                    name: row.source.name,
+                    status: row.assessment.status,
+                    meals,
+                    late_clock_in: row.assessment.late_in,
+                    long_gap: row.assessment.long_gap,
+                    cortex_route: false,
+                });
+            }
         }
     }
     Ok((found, Coverage::of(true, held, period)))
@@ -703,4 +734,65 @@ pub fn freshness(db: &Store, dsp: &Dsp) -> Result<Value> {
             "latestDay": r["day"], "checkedAt": r["checked_at"]
         })),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn card(punches: Value) -> TimecardDay {
+        timecard_day(
+            serde_json::from_value(json!({
+                "employeeCode":"E1", "date":"2026-09-12", "name":"Driver",
+                "hours":8, "status":"Complete", "punches":punches,
+            }))
+            .unwrap(),
+        )
+    }
+
+    #[test]
+    fn lunch_totals_distinguish_missing_open_mixed_complete_and_zero_durations() {
+        let cases = [
+            (json!([{"in":"08:00","out":"17:00"}]), None),
+            (
+                json!([{"in":"08:00","inKind":"IN DAY","out":"12:00","outKind":"OUT LUNCH"}]),
+                None,
+            ),
+            (
+                json!([
+                    {"in":"08:00","inKind":"IN DAY","out":"12:00","outKind":"OUT LUNCH"},
+                    {"in":"12:30","inKind":"IN LUNCH","out":"14:00","outKind":"OUT LUNCH"}
+                ]),
+                None,
+            ),
+            (
+                json!([{"in":"08:00","out":"12:00"},{"in":"12:30","out":"17:00"}]),
+                Some(30),
+            ),
+            (
+                json!([{"in":"08:00","out":"12:00"},{"in":"12:00","out":"17:00"}]),
+                Some(0),
+            ),
+        ];
+        for (punches, expected) in cases {
+            assert_eq!(card(punches.clone()).lunch_minutes, expected, "{punches}");
+        }
+        assert_eq!(total_minutes([Some(30), Some(15)].into_iter()), Some(45));
+        assert_eq!(total_minutes([Some(30), None].into_iter()), None);
+        assert_eq!(total_minutes([None].into_iter()), None);
+        assert_eq!(total_minutes([].into_iter()), None);
+    }
+
+    #[test]
+    fn overnight_lunch_uses_elapsed_minutes_and_local_clock_labels() {
+        let card = card(json!([
+            {"in":"22:00","inKind":"IN DAY","out":"23:50","outKind":"OUT LUNCH"},
+            {"in":"00:20","inKind":"IN LUNCH","out":"06:00","outKind":"OUT DAY"}
+        ]));
+        assert_eq!(card.lunch_minutes, Some(30));
+        assert_eq!(card.clock_in.as_deref(), Some("22:00"));
+        assert_eq!(card.clock_out.as_deref(), Some("06:00 +1 day"));
+        assert!(!card.needs_review);
+    }
 }

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { assessmentFixture } from '../testing/ci-tools.js';
 import { PAINT_BUDGET, WORKERS, browserTests, shards } from './browser-shards.js';
-import { coreTests, dashboardTests } from './test-plan.js';
+import { nodeTests, pythonTests, sourceLintCommands, type Command } from './execution-plan.js';
 
 // One job of the platform checks, or locally the whole suite in sequence. CI runs each mode
 // on its own runner: `build` packages the runtime, and the modes that need it download that
@@ -14,6 +14,29 @@ const modes = ['full', 'build', 'checks', 'browser', 'core', 'api', 'benchmark',
 if (!modes.includes(mode)) throw new Error('Unknown validation mode');
 const started = Date.now();
 const failures: string[] = [];
+const dashboardCommand = nodeTests('dashboard', {
+  concurrency: 1,
+  env: { DISPATCH_TEST_BINARY: '.build/services/rust/dispatch-backend' },
+});
+const coreCommand = nodeTests('core', { concurrency: os.availableParallelism() });
+const checkCommands: Command[] = [
+  { name: 'check:privacy', command: 'npm', args: ['run', 'check:privacy'] },
+  { name: 'check', command: 'npm', args: ['run', 'check'] },
+  { name: 'format:check', command: 'npm', args: ['run', 'format:check'] },
+  { name: 'test:artifact', command: 'npm', args: ['run', 'test:artifact'] },
+  ...sourceLintCommands,
+  dashboardCommand,
+];
+// Coverage tests inspect the same commands the runners execute, without starting servers,
+// compiling Rust, downloading browsers or reaching the dependency-audit service.
+if (process.argv.includes('--list')) {
+  const commands =
+    mode === 'checks' ? checkCommands : mode === 'api' ? [pythonTests, coreCommand] : [];
+  if (!['checks', 'api'].includes(mode))
+    throw new Error('Command listing requires checks or api mode');
+  process.stdout.write(`${JSON.stringify(commands)}\n`);
+  process.exit(0);
+}
 async function run(name: string, command: string, args: string[], env = process.env) {
   const start = Date.now();
   process.stdout.write(`[start] ${name}\n`);
@@ -30,20 +53,11 @@ async function run(name: string, command: string, args: string[], env = process.
 }
 const npm = (name: string, ...args: string[]) =>
   run(name, 'npm', ['run', name, ...(args.length ? ['--', ...args] : [])]);
+const execute = ({ name, command, args, env }: Command) =>
+  run(name, command, args, env ? { ...process.env, ...env } : process.env);
 /** Source privacy, types, formatting, bundle budget and dashboard logic against `.build`. */
 function checks() {
-  return Promise.all([
-    npm('check:privacy'),
-    npm('check'),
-    npm('format:check'),
-    npm('test:artifact'),
-    run(
-      'dashboard logic',
-      process.execPath,
-      ['node_modules/tsx/dist/cli.mjs', '--test', '--test-concurrency=1', ...dashboardTests],
-      { ...process.env, DISPATCH_TEST_BINARY: '.build/services/rust/dispatch-backend' },
-    ),
-  ]);
+  return Promise.all(checkCommands.map(execute));
 }
 /** The workload regression, against the build already in `.build`. */
 function benchmark() {
@@ -148,25 +162,10 @@ function core() {
 }
 /** The API tests against a debug backend, with the Python tooling tests and the npm audit. */
 async function api() {
-  const python = run('Python tests', 'python3', [
-    '-m',
-    'unittest',
-    'discover',
-    '-s',
-    'tests/tooling',
-    '-p',
-    '*_test.py',
-  ]);
+  const python = execute(pythonTests);
   const audit = run('dependency audit', 'npm', ['audit', '--audit-level=high']);
   if (await run('debug build', 'python3', ['tooling/cargo-build.py'])) {
-    await run('core API tests', process.execPath, [
-      'node_modules/tsx/dist/cli.mjs',
-      '--test',
-      // Every test file owns its servers, ports, state and mail, so files run in parallel.
-      `--test-concurrency=${os.availableParallelism()}`,
-      // The checks mode owns the dashboard logic tests.
-      ...coreTests(),
-    ]);
+    await execute(coreCommand);
   }
   await Promise.all([python, audit]);
 }

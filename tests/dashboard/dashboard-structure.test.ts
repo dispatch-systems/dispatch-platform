@@ -2,6 +2,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
+import { routeMeta, type RouteMeta } from '../../dashboard/src/app/route-meta.js';
+import {
+  dependencies,
+  moduleSpecifiers,
+  resolveModule,
+} from '../../tooling/testing/source-analysis.js';
 
 const source = 'dashboard/src';
 
@@ -21,16 +27,13 @@ function walk(directory: string): string[] {
 
 // Every module under dashboard/src with the dashboard modules it imports, type-only
 // imports included, as paths relative to dashboard/src.
-const modules: Module[] = walk(source).map((file) => {
-  const text = fs.readFileSync(file, 'utf8');
-  const imports: string[] = [];
-  for (const [, target] of text.matchAll(/(?:from|import)\s+'(\.[^']+)'/g)) {
-    const resolved = path.join(path.dirname(file), target!).replace(/\.js$/, '');
-    const found = ['.ts', '.tsx'].map((ext) => resolved + ext).find((name) => fs.existsSync(name));
-    if (found && found.startsWith(source + path.sep)) imports.push(path.relative(source, found));
-  }
-  return { file: path.relative(source, file), imports };
-});
+const root = path.resolve(source);
+const modules: Module[] = walk(source).map((file) => ({
+  file: path.relative(source, file),
+  imports: dependencies(file).flatMap(({ resolved }) =>
+    resolved?.startsWith(root + path.sep) ? [path.relative(root, resolved)] : [],
+  ),
+}));
 const area = (file: string) => file.split(path.sep)[0]!;
 const feature = (file: string) =>
   area(file) === 'features' ? file.split(path.sep)[1]! : undefined;
@@ -44,47 +47,44 @@ test('sign-in, DSP onboarding and member profiles own their screen dependencies'
     const files = walk(directory);
     assert(files.length > 0, `${screen} must have its own screen directory`);
     for (const file of files) {
-      const text = fs.readFileSync(file, 'utf8');
-      for (const [, , imported] of text.matchAll(
-        /(?:from\s+|import\s*(?:\(\s*)?)(['"])(\.[^'"]+)\1/g,
-      )) {
-        const target = path.resolve(path.dirname(file), imported!.split('?')[0]!);
-        if (target.startsWith(auth + path.sep))
+      for (const { specifier, target } of dependencies(file))
+        if (target?.startsWith(auth + path.sep))
           assert(
             target.startsWith(directory + path.sep),
-            `${file} imports ${imported}; each auth screen owns its forms, layouts, styles and artwork`,
+            `${file} imports ${specifier}; each auth screen owns its forms, layouts, styles and artwork`,
           );
-      }
     }
   }
 });
 
 // ui/ holds building blocks that would make sense unchanged in another app.
 test('ui components know nothing about the product', () => {
-  const files = fs.readdirSync(path.join(source, 'ui')).filter((file) => /\.tsx?$/.test(file));
+  const files = modules.filter(({ file }) => area(file) === 'ui');
   assert(files.length > 10, `found only ${files.length} ui files`);
-  for (const file of files) {
-    const text = fs.readFileSync(path.join(source, 'ui', file), 'utf8');
-    for (const [, target] of text.matchAll(/from '([^']+)'/g))
-      assert(
-        !target!.startsWith('.') || target!.startsWith('./') || target!.startsWith('../lib/'),
-        `ui/${file} imports ${target}; ui may import packages, ui and lib only`,
-      );
-  }
+  for (const { file } of files)
+    for (const { specifier, target } of dependencies(path.join(source, file)))
+      if (target)
+        assert(
+          [path.join(root, 'ui'), path.join(root, 'lib')].some(
+            (directory) => target.startsWith(directory + path.sep) || target === directory,
+          ),
+          `${file} imports ${specifier}; ui may import packages, ui and lib only`,
+        );
 });
 
 // lib/ is pure logic: no React product code, nothing from app, features, shell or ui.
 test('lib depends on nothing else in the dashboard', () => {
   const files = modules.filter(({ file }) => area(file) === 'lib');
   assert(files.length >= 4, `found only ${files.length} lib files`);
-  for (const { file } of files) {
-    const text = fs.readFileSync(path.join(source, file), 'utf8');
-    for (const [, target] of text.matchAll(/(?:from|import)\s+'([^']+)'/g))
-      assert(
-        !target!.startsWith('.') || target!.startsWith('./') || target!.startsWith('../../../'),
-        `${file} imports ${target}; lib may import packages, lib and shared contracts only`,
-      );
-  }
+  for (const { file } of files)
+    for (const { specifier, target } of dependencies(path.join(source, file)))
+      if (target)
+        assert(
+          [path.join(root, 'lib'), path.resolve('shared/contracts')].some(
+            (directory) => target.startsWith(directory + path.sep) || target === directory,
+          ),
+          `${file} imports ${specifier}; lib may import packages, lib and shared contracts only`,
+        );
 });
 
 // A feature that embeds another names it here, so a new edge is a visible decision.
@@ -153,16 +153,7 @@ test('no dashboard modules import each other in a cycle', () => {
 });
 
 test('every route is declared once and every parent is a route', () => {
-  const text = fs.readFileSync(path.join(source, 'app/route-meta.ts'), 'utf8');
-  const table = text.slice(text.indexOf('export const routeMeta = ['), text.indexOf('] as const'));
-  const entries = table
-    .split(/\n {2}\{\n/)
-    .slice(1)
-    .map((entry) => ({
-      id: /^ {4}id: '([^']+)'/m.exec(entry)?.[1],
-      scope: /^ {4}scope: '(dsp|platform)'/m.exec(entry)?.[1],
-      parent: /^ {4}parent: '([^']+)'/m.exec(entry)?.[1],
-    }));
+  const entries: readonly RouteMeta[] = routeMeta;
   assert(entries.length >= 10, `found only ${entries.length} routes`);
   for (const entry of entries) {
     assert(entry.id && entry.scope, `unreadable route entry: ${JSON.stringify(entry)}`);
@@ -187,15 +178,14 @@ test('contracts, tooling and services are independent of the dashboard', () => {
       .filter((name) => /\.(tsx?|m?js|rs)$/.test(name))
       .map((name) => path.join(directory, name));
     for (const file of files) {
-      const source = fs.readFileSync(file, 'utf8');
-      const targets = [
-        ...[...source.matchAll(/(?:from\s+|import\s*(?:\(\s*)?)['"](\.[^'"]+)['"]/g)].map(
-          (match) => match[1]!,
-        ),
-        ...[...source.matchAll(/include_(?:str|bytes)!\s*\(\s*"([^"]+)"/g)].map(
-          (match) => match[1]!,
-        ),
-      ];
+      // Rust embeds use macros, while TS/JS dependencies use the compiler's AST.
+      const targets = file.endsWith('.rs')
+        ? [
+            ...fs.readFileSync(file, 'utf8').matchAll(/include_(?:str|bytes)!\s*\(\s*"([^"]+)"/g),
+          ].map((match) => match[1]!)
+        : dependencies(file)
+            .map(({ specifier }) => specifier)
+            .filter((target) => target.startsWith('.'));
       for (const target of targets) {
         const resolved = path.resolve(path.dirname(file), target!);
         assert(
@@ -205,4 +195,37 @@ test('contracts, tooling and services are independent of the dashboard', () => {
       }
     }
   }
+});
+
+// These syntaxes used to escape the regex graph; comments are not dependencies.
+test('the architecture graph finds imports, exports, lazy imports and directory indexes', () => {
+  assert.deepEqual(
+    moduleSpecifiers(
+      `
+    import type { A } from "./types.js";
+    import './style.css';
+    export { B } from './reexport.js';
+    export * from "./all.js";
+    const lazy = () => import("./lazy.js");
+    type T = import('./type-only.js').T;
+    import legacy = require('./legacy.js');
+    // import ignored from './comment.js';
+    const unrelated = "from './text.js'";
+  `,
+      'fixture.ts',
+    ),
+    [
+      './types.js',
+      './style.css',
+      './reexport.js',
+      './all.js',
+      './lazy.js',
+      './type-only.js',
+      './legacy.js',
+    ],
+  );
+  const file = path.join(source, 'main.tsx');
+  assert.equal(resolveModule(file, './ui'), path.join(root, 'ui/index.ts'));
+  assert.equal(resolveModule(file, './app/routes.js'), path.join(root, 'app/routes.tsx'));
+  assert.equal(resolveModule(file, './lib/format.js?raw'), path.join(root, 'lib/format.ts'));
 });

@@ -1,7 +1,9 @@
 mod common;
 use common::{seeded, store};
 use dispatch_backend::{
+    collectors::Provider,
     db::{self, s},
+    jobs::JobFacts,
     schedules,
 };
 use serde_json::json;
@@ -33,15 +35,15 @@ fn queue_limits_and_authority_are_checked_again_before_publication() {
         db.enqueue(id, None, &format!("request-{i}")).unwrap();
     }
     assert_eq!(db.enqueue(id, None, "overflow").unwrap_err().status, 429);
-    let job = db.claim("worker", |_, _| true).unwrap().unwrap();
-    let jid = s(&job, "id");
-    db.guard_job(jid, "worker").unwrap();
-    assert!(db.claim("second", |_, _| true).unwrap().is_none());
+    let job = db.claim_job("worker", |_, _| true).unwrap().unwrap();
+    let jid = job.id.as_str();
+    db.guard(jid, "worker").unwrap();
+    assert!(db.claim_job("second", |_, _| true).unwrap().is_none());
     db.platform
         .exec("UPDATE users SET status='disabled' WHERE id=?", [actor])
         .unwrap();
     assert_eq!(
-        db.guard_job(jid, "worker").unwrap_err().code,
+        db.guard(jid, "worker").unwrap_err().code,
         "permission_denied"
     );
     db.platform
@@ -52,14 +54,11 @@ fn queue_limits_and_authority_are_checked_again_before_publication() {
         .exec("UPDATE connections SET revision=revision+1", [])
         .unwrap();
     assert_eq!(
-        db.guard_job(jid, "worker").unwrap_err().code,
+        db.guard(jid, "worker").unwrap_err().code,
         "connection_changed"
     );
-    db.cancel_job(jid, id).unwrap();
-    assert_eq!(
-        db.guard_job(jid, "worker").unwrap_err().code,
-        "job_cancelled"
-    );
+    db.cancel(jid, id).unwrap();
+    assert_eq!(db.guard(jid, "worker").unwrap_err().code, "job_cancelled");
 }
 
 #[test]
@@ -89,24 +88,23 @@ fn listed_jobs_respect_the_cap_scope_names_and_attempt_order() {
                 .unwrap();
         }
     }
-    let recent = db.list_jobs(None).unwrap();
-    assert_eq!(recent.as_array().unwrap().len(), 200);
-    assert_eq!(recent[0]["id"], "job-203");
+    let recent = db.recent_jobs(None).unwrap();
+    assert_eq!(recent.len(), 200);
+    assert_eq!(recent[0].id, "job-203");
     assert_eq!(
-        recent[0]["metrics"]
-            .as_array()
-            .unwrap()
+        recent[0]
+            .metrics
             .iter()
-            .map(|m| m["attempt"].clone())
+            .map(|m| m.attempt)
             .collect::<Vec<_>>(),
-        vec![json!(1), json!(2)]
+        vec![1, 2]
     );
     let dsp = &dsps[0];
-    let scoped = db.list_jobs(Some(s(dsp, "id"))).unwrap();
-    assert_eq!(scoped.as_array().unwrap().len(), 68);
-    for row in scoped.as_array().unwrap() {
-        assert_eq!(row["dspId"], dsp["id"]);
-        assert_eq!(row["dspName"], dsp["name"]);
+    let scoped = db.recent_jobs(Some(s(dsp, "id"))).unwrap();
+    assert_eq!(scoped.len(), 68);
+    for row in scoped {
+        assert_eq!(row.dsp_id, s(dsp, "id"));
+        assert_eq!(row.dsp_name, s(dsp, "name"));
     }
 }
 
@@ -114,8 +112,15 @@ fn listed_jobs_respect_the_cap_scope_names_and_attempt_order() {
 fn collection_outcomes_record_their_schedule_provider_date_and_duration() {
     let (_root, db) = store();
     let started = db::at(db::now() - 108_000);
-    let job = json!({"kind":"paycom.collect","idempotency_key":"manual","request":"{\"date\":\"2026-09-18\"}","started_at":started});
-    let (schedule, facts) = db.outcome_facts("missing", &job);
+    let job = JobFacts {
+        idempotency_key: "manual",
+        provider: Some(Provider::Paycom),
+        attempt: 1,
+        max_attempts: 1,
+        request: "{\"date\":\"2026-09-18\"}",
+        started_at: Some(&started),
+    };
+    let (schedule, facts) = db.job_facts("missing", &job);
     assert!(schedule.is_none());
     assert_eq!(
         facts,
@@ -125,8 +130,14 @@ fn collection_outcomes_record_their_schedule_provider_date_and_duration() {
             ("duration", None, Some("108".to_owned())),
         ]
     );
-    let job = json!({"kind":"cortex.meal_breaks.collect","idempotency_key":"schedule:gone:2026:flex:0","request":"{}","started_at":null});
-    let (schedule, facts) = db.outcome_facts("missing", &job);
+    let job = JobFacts {
+        idempotency_key: "schedule:gone:2026:flex:0",
+        provider: Some(Provider::Cortex),
+        request: "{}",
+        started_at: None,
+        ..job
+    };
+    let (schedule, facts) = db.job_facts("missing", &job);
     assert!(schedule.is_none());
     assert_eq!(facts, [("provider", None, Some("cortex".to_owned()))]);
 }
@@ -187,7 +198,7 @@ fn schedule_deadlines_track_changes_and_due_ticks_are_idempotent() {
         .unwrap();
     assert!(db.schedule_due(id).unwrap().unwrap() > db::now());
     assert!(db.schedule_due(id).unwrap().unwrap() > db::now());
-    assert_eq!(db.list_jobs(Some(id)).unwrap().as_array().unwrap().len(), 1);
+    assert_eq!(db.recent_jobs(Some(id)).unwrap().len(), 1);
     db.enable_collection_schedule(
         id,
         key,
@@ -219,9 +230,9 @@ fn nothing_collects_for_a_dsp_without_the_timecard() {
         .unwrap();
     let actor = s(&user, "id");
     db.enqueue(id, Some(actor), "request-0").unwrap();
-    let job = db.claim("worker", |_, _| true).unwrap().unwrap();
-    let jid = s(&job, "id");
-    db.guard_job(jid, "worker").unwrap();
+    let job = db.claim_job("worker", |_, _| true).unwrap().unwrap();
+    let jid = job.id.as_str();
+    db.guard(jid, "worker").unwrap();
     db.save_collection_schedule(
         id,
         None,
@@ -247,7 +258,7 @@ fn nothing_collects_for_a_dsp_without_the_timecard() {
         ["timecard"]
     );
     assert_eq!(
-        db.guard_job(jid, "worker").unwrap_err().code,
+        db.guard(jid, "worker").unwrap_err().code,
         "feature_disabled"
     );
     assert!(db.schedule_due(id).unwrap().is_none());
@@ -284,5 +295,5 @@ fn nothing_collects_for_a_dsp_without_the_timecard() {
             .iter()
             .any(|(dsp, _)| dsp == id)
     );
-    db.guard_job(jid, "worker").unwrap();
+    db.guard(jid, "worker").unwrap();
 }

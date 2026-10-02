@@ -394,6 +394,26 @@ impl Store {
                 [crypto::sha(token)],
             )?
             .ok_or_else(|| Error::new("agent_key_invalid", 401))?;
+        self.agent_caller(&row, client)
+    }
+
+    /// Refresh an admitted key while the caller holds the same State read lock
+    /// used for discovery or protected data. Admission's snapshot is not policy.
+    pub(crate) fn revalidate_agent(&self, caller: &Caller) -> Result<Caller> {
+        let row = self
+            .platform
+            .one(
+                "SELECT k.id,k.name,k.user_id,k.all_dsps,k.access,k.tools,k.locations,\
+             k.expires_at,k.revoked_at,u.platform_owner,u.status FROM agent_keys k \
+             JOIN users u ON u.id=k.user_id WHERE k.id=? AND k.user_id=?",
+                [&caller.key, &caller.user],
+            )?
+            .ok_or_else(|| Error::new("agent_key_invalid", 401))?;
+        self.agent_caller(&row, &caller.client)
+    }
+
+    fn agent_caller(&self, row: &serde_json::Value, client: &str) -> Result<Caller> {
+        let environment = self.config.env();
         let text = |name: &str| row[name].as_str().unwrap_or_default().to_owned();
         ensure(row["revoked_at"].is_null(), "agent_key_revoked", 401)?;
         let expires_at = row["expires_at"].as_str().map(str::to_owned);

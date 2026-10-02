@@ -141,21 +141,24 @@ test('member profile stays light and fits desktop and phone sizes in either devi
 }) => {
   await page.goto(await apiInvitation(dispatch));
   await expect(page.getByRole('heading', { name: 'Create your profile' })).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 800 });
   for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme });
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-    for (const [width, height] of [
-      [1440, 1000],
-      [1280, 800],
-      [1024, 600],
-      [700, 700],
-      [390, 844],
-      [320, 568],
-      [568, 320],
-    ]) {
-      await page.setViewportSize({ width: width!, height: height! });
-      await fits(page);
-    }
+  }
+  // The page has the same forced light theme in either device scheme. Check the
+  // full responsive layout once, after proving both overrides above.
+  for (const [width, height] of [
+    [1440, 1000],
+    [1280, 800],
+    [1024, 600],
+    [700, 700],
+    [390, 844],
+    [320, 568],
+    [568, 320],
+  ]) {
+    await page.setViewportSize({ width: width!, height: height! });
+    await fits(page);
   }
 });
 
