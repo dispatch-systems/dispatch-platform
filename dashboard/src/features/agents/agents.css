@@ -418,17 +418,18 @@
 
 /* Connected apps: whether Dispatch knows the app by its published address, and whether
    it is still signed in. */
-.agents-mark {
+.agents-named {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 4px 10px;
 }
-.agents-mark svg {
-  color: var(--success);
+.status-indicator.verified > i {
+  background: var(--success);
 }
-.agents-mark.warn,
-.agents-mark.warn svg {
-  color: var(--warning);
+.status-indicator.unverified > i,
+.status-indicator.signed_out > i {
+  background: var(--warning);
 }
 .agents-table .cell-end button.agents-revoke {
   padding: 4px 10px;
@@ -446,25 +447,13 @@
 }
 .agents-authorize-app {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
-}
-.agents-authorize-app > svg {
-  flex-shrink: 0;
-  color: var(--success);
+  gap: 6px 14px;
 }
 .agents-authorize-app h2 {
   font-size: 18px;
   font-weight: 600;
-}
-.agents-authorize-app p {
-  margin-top: 2px;
-  font-size: 13px;
-  color: var(--muted-foreground);
-}
-.agents-authorize-app.unverified > svg,
-.agents-authorize-app.unverified p {
-  color: var(--warning);
 }
 .agents-authorize .form-actions {
   margin-top: 0;

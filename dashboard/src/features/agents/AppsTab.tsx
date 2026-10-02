@@ -1,16 +1,10 @@
 import { useState } from 'react';
-import { BadgeCheck, LogOut, ShieldAlert } from 'lucide-react';
 import type { AgentKey } from '../../../../shared/contracts/index.js';
-import { DataState, Empty } from '../../ui/index.js';
+import { Badge, DataState, Empty } from '../../ui/index.js';
 import { useAgentKeys } from '../../app/endpoints.js';
-import { inUse, lastUsedText, reachText, toolLabels } from '../../lib/agents.js';
-import { dateFormatter } from '../../lib/date-format.js';
+import { expiryText, inUse, lastUsedText, reachText, toolLabels } from '../../lib/agents.js';
+import { calendarDay } from '../../lib/format.js';
 import { RevokeDialog } from './RevokeDialog.js';
-
-const day = (value: string) =>
-  dateFormatter('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(
-    new Date(value),
-  );
 
 /** Every app connected through "Sign in with Dispatch": what it reaches and when it was used. */
 export function AppsTab() {
@@ -18,7 +12,7 @@ export function AppsTab() {
   const [showEnded, setShowEnded] = useState(false);
   const [revoking, setRevoking] = useState<AgentKey | null>(null);
   return (
-    <DataState data={keys.data} error={keys.error}>
+    <DataState data={keys.data} error={keys.error} retry={keys.refresh}>
       {(data) => {
         const apps = data.keys.filter((key) => key.kind === 'app');
         const live = apps.filter((app) => inUse(app));
@@ -50,32 +44,27 @@ export function AppsTab() {
                   <tbody>
                     {rows.map((app) => {
                       const reach = reachText(app, data.dsps);
-                      const verified = Boolean(app.client?.verified);
                       // Out of renewals, the app has to connect again from its side.
                       const signedOut = inUse(app) && app.client?.status === 'signed_out';
                       return (
                         <tr key={app.id} className={inUse(app) ? undefined : 'ended'}>
                           <td>
-                            <strong>
-                              <bdi>{app.name}</bdi>
-                            </strong>
-                            {signedOut && (
-                              <small className="agents-mark warn">
-                                <LogOut size={13} aria-hidden="true" />
-                                Signed out — reconnect from the app
-                              </small>
-                            )}
+                            <span className="agents-named">
+                              <strong>
+                                <bdi>{app.name}</bdi>
+                              </strong>
+                              {signedOut && (
+                                <Badge value="signed_out">
+                                  Signed out — reconnect from the app
+                                </Badge>
+                              )}
+                            </span>
                           </td>
                           <td>
-                            <bdi>{app.client?.name ?? 'Unknown app'}</bdi>
-                            <small className={`agents-mark${verified ? '' : ' warn'}`}>
-                              {verified ? (
-                                <BadgeCheck size={13} aria-hidden="true" />
-                              ) : (
-                                <ShieldAlert size={13} aria-hidden="true" />
-                              )}
-                              {verified ? 'Verified' : 'Unverified'}
-                            </small>
+                            <span className="agents-named">
+                              <bdi>{app.client?.name ?? 'Unknown app'}</bdi>
+                              <Badge value={app.client?.verified ? 'verified' : 'unverified'} />
+                            </span>
                           </td>
                           <td>
                             {reach.count}
@@ -83,11 +72,10 @@ export function AppsTab() {
                           </td>
                           <td>{toolLabels[app.tools]}</td>
                           <td>{app.locations ? 'On' : 'Off'}</td>
-                          <td>{day(app.createdAt)}</td>
+                          <td>{calendarDay(app.createdAt)}</td>
                           <td>
-                            {app.revokedAt
-                              ? `Revoked ${day(app.revokedAt)}`
-                              : lastUsedText(app.lastUsedAt)}
+                            {/* Once it has ended: "Revoked Oct 2" or "Expired Oct 2". */}
+                            {inUse(app) ? lastUsedText(app.lastUsedAt) : expiryText(app)}
                             {app.lastClient && <small>{app.lastClient}</small>}
                           </td>
                           <td className="cell-end">
@@ -112,8 +100,8 @@ export function AppsTab() {
               <div className="agents-footer">
                 <button className="text-button" onClick={() => setShowEnded(!showEnded)}>
                   {showEnded
-                    ? 'Hide revoked apps'
-                    : `Show ${ended.length} revoked ${ended.length === 1 ? 'app' : 'apps'}`}
+                    ? 'Hide revoked and expired apps'
+                    : `Show ${ended.length} revoked or expired ${ended.length === 1 ? 'app' : 'apps'}`}
                 </button>
               </div>
             )}

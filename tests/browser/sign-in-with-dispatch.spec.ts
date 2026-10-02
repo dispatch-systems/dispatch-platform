@@ -36,7 +36,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
   expect(page.url()).toBe(approvalUrl);
 
   const approval = page.getByRole('form', { name: 'Claude Code' });
-  await expect(approval).toContainText('Verified app');
+  await expect(approval.getByText('Verified', { exact: true })).toBeVisible();
   await expect(approval.getByText('this computer', { exact: true })).toBeVisible();
   // Every request asks the owner to approve only what they started.
   await expect(
@@ -115,7 +115,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     .getByRole('dialog', { name: 'Revoke Laptop – Claude Code app?' })
     .getByRole('button', { name: 'Revoke app', exact: true })
     .click();
-  await expect(page.getByRole('button', { name: 'Show 1 revoked app' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Show 1 revoked or expired app' })).toBeVisible();
   expect((await request.get('/api/v1/whoami', { headers: bearer })).status()).toBe(401);
 });
 

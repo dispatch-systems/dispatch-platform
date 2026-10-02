@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Info, ShieldAlert, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { Info, TriangleAlert } from 'lucide-react';
 import type {
   AgentDsp,
   OAuthApproval,
@@ -17,8 +17,8 @@ import {
 import { hashQuery } from '../../app/navigation.js';
 import { useAction } from '../../app/useAction.js';
 import { blankKey } from '../../lib/agents.js';
-import { dateFormatter } from '../../lib/date-format.js';
-import { DataState, ErrorBox, Header } from '../../ui/index.js';
+import { calendarDay } from '../../lib/format.js';
+import { Badge, DataState, DetailList, ErrorBox, Header } from '../../ui/index.js';
 import { DspReach, LocationsSwitch, ToolChoice } from './KeyChoices.js';
 
 const again = 'Start the connection again from your app.';
@@ -71,7 +71,14 @@ function Authorization({ query }: { query: URLSearchParams }) {
     );
   const loaded = request.data && agents.data && { pending: request.data, dsps: agents.data.dsps };
   return (
-    <DataState data={loaded || undefined} error={request.error || agents.error}>
+    <DataState
+      data={loaded || undefined}
+      error={request.error || agents.error}
+      retry={() => {
+        request.refresh();
+        agents.refresh();
+      }}
+    >
       {({ pending, dsps }) => (
         <Approval request={pending} dsps={dsps} expire={() => setGone(true)} />
       )}
@@ -133,7 +140,6 @@ function Approval({
     { inline: true },
   );
   const busy = answer.busy || leaving;
-  const Mark = app.verified ? ShieldCheck : ShieldAlert;
   const name = <bdi>{app.name}</bdi>;
   return (
     <form
@@ -144,23 +150,21 @@ function Approval({
         if (ready) void answer.run(true);
       }}
     >
-      <div className={`agents-authorize-app${app.verified ? '' : ' unverified'}`}>
-        <Mark size={22} aria-hidden="true" />
-        <div>
-          <h2 id="agents-authorize-app">{name}</h2>
-          <p>{app.verified ? 'Verified app' : <>Unverified app — it says it is “{name}”</>}</p>
-        </div>
+      <div className="agents-authorize-app">
+        <h2 id="agents-authorize-app">{name}</h2>
+        <Badge value={app.verified ? 'verified' : 'unverified'} />
       </div>
-      <dl className="agents-facts">
-        <dt>Sends access to</dt>
-        <dd>
-          {app.redirectScheme
-            ? `an app on ${app.redirectHost} (${app.redirectScheme}://…)`
-            : app.redirectHost}
-        </dd>
-        <dt>Access</dt>
-        <dd>Read only</dd>
-      </dl>
+      <DetailList
+        items={[
+          [
+            'Sends access to',
+            app.redirectScheme
+              ? `an app on ${app.redirectHost} (${app.redirectScheme}://…)`
+              : app.redirectHost,
+          ],
+          ['Access', 'Read only'],
+        ]}
+      />
       <label>
         Connection name
         <input
@@ -178,14 +182,15 @@ function Approval({
         <div className="notice agents-notice" role="status">
           <TriangleAlert size={16} aria-hidden="true" />
           <span>
-            Approving replaces “<bdi>{replaces.name}</bdi>”, connected {day(replaces.connectedAt)}.
-            Its current connection stops working.
+            Approving replaces “<bdi>{replaces.name}</bdi>”, connected{' '}
+            {calendarDay(replaces.connectedAt)}. Its current connection stops working.
           </span>
         </div>
       )}
       <div className="notice agents-consent">
         <Info size={16} aria-hidden="true" />
         <span>
+          {!app.verified && <>Unverified app: it says it is “{name}”. </>}
           Only approve if you started connecting {name} yourself just now. If you didn’t, choose
           Deny.
           {app.redirectHost === 'this computer' &&
@@ -208,7 +213,3 @@ function Approval({
 
 const same = (a: OAuthReplaced | null, b: OAuthReplaced | null) =>
   a?.name === b?.name && a?.connectedAt === b?.connectedAt;
-const day = (value: string) =>
-  dateFormatter('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(
-    new Date(value),
-  );
