@@ -29,6 +29,26 @@ const EXAMPLES: &[(&str, &str, &str)] = &[
         "/api/v1/dvic?short=true",
     ),
     (
+        "Which addresses have given us repeated negative feedback?",
+        r#"customer_feedback(group_by: "address", min_count: 2)"#,
+        "/api/v1/feedback?group_by=address&min_count=2",
+    ),
+    (
+        "Which drivers didn't do contact compliance last week?",
+        r#"returns(contact: "missed", period: "last week", group_by: "driver")"#,
+        "/api/v1/returns?contact=missed&period=last%20week&group_by=driver",
+    ),
+    (
+        "Did Daniel get any Netradyne infractions last week?",
+        r#"safety_events(driver: "Daniel", period: "last week")"#,
+        "/api/v1/safety?driver=Daniel&period=last%20week",
+    ),
+    (
+        "Who scored lowest on last week's scorecard?",
+        r#"scorecard(week: "last week")"#,
+        "/api/v1/scorecard?week=last%20week",
+    ),
+    (
         "Who had the most stops yesterday?",
         r#"team_table(metrics: "stops_completed", date: "yesterday")"#,
         "/api/v1/team?metrics=stops_completed&date=yesterday",

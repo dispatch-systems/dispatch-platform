@@ -18,6 +18,34 @@ pub struct Param {
     pub kind: Kind,
     pub description: &'static str,
 }
+/// A source an agent reads, switched per DSP on the platform's DSPs page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Source {
+    Timecards,
+    MealBreaks,
+    Routes,
+    Dvic,
+    Scorecard,
+}
+impl Source {
+    pub const ALL: [Source; 5] = [
+        Source::Timecards,
+        Source::MealBreaks,
+        Source::Routes,
+        Source::Dvic,
+        Source::Scorecard,
+    ];
+    /// The switch's name on the platform's DSPs page.
+    pub fn switch(self) -> &'static str {
+        match self {
+            Source::Timecards => "Timecard",
+            Source::MealBreaks => "Timecard · Meal Breaks",
+            Source::Routes => "Routes",
+            Source::Dvic => "DVIC",
+            Source::Scorecard => "Scorecard",
+        }
+    }
+}
 #[derive(Clone, Copy, Debug)]
 pub struct Endpoint {
     pub id: &'static str,
@@ -25,6 +53,9 @@ pub struct Endpoint {
     pub tool: &'static str,
     /// In the Essential toolset, the few tools small models choose between best.
     pub essential: bool,
+    /// The one source it reads, refused for a DSP that has it switched off before the
+    /// endpoint is asked. `None` for those that read none, or several and say which are off.
+    pub source: Option<Source>,
     pub path: &'static str,
     pub summary: &'static str,
     pub description: &'static str,
@@ -108,6 +139,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         id: "whoami",
         tool: "whoami",
         essential: true,
+        source: None,
         path: "/api/v1/whoami",
         summary: "Who this key belongs to",
         description: "Use when you need the DSPs this key reaches, each DSP's date today or \
@@ -120,6 +152,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         id: "status",
         tool: "data_status",
         essential: false,
+        source: None,
         path: "/api/v1/status",
         summary: "How fresh each source is",
         description: "Use when asked how current the data is: which sources the DSP has on \
@@ -131,6 +164,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         id: "metrics",
         tool: "list_metrics",
         essential: false,
+        source: None,
         path: "/api/v1/metrics",
         summary: "Every metric and term",
         description: "Use when unsure what a team_table metric or an Amazon term means: each \
@@ -142,6 +176,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         id: "drivers",
         tool: "find_drivers",
         essential: true,
+        source: None,
         path: "/api/v1/drivers",
         summary: "Find drivers",
         description: "Use to look a driver up or list the DSP's people: name, Driver Match \
@@ -163,6 +198,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         id: "packages",
         tool: "packages",
         essential: true,
+        source: Some(Source::Routes),
         path: "/api/v1/packages",
         summary: "Count packages by what happened",
         description: "Use for questions about packages: how many a driver delivered, who \
@@ -216,6 +252,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         id: "driver",
         tool: "driver_report",
         essential: true,
+        source: None,
         path: "/api/v1/drivers/{driver}",
         summary: "One driver's days",
         description: "Use for how one driver did over some days, and their averages: one \
@@ -228,6 +265,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         id: "team",
         tool: "team_table",
         essential: true,
+        source: None,
         path: "/api/v1/team",
         summary: "Compare drivers",
         description: "Use to rank or compare drivers on chosen metrics: one row per driver, \
@@ -269,6 +307,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         id: "routes",
         tool: "route_day",
         essential: true,
+        source: Some(Source::Routes),
         path: "/api/v1/routes",
         summary: "A day's routes",
         description: "Use for one day's routes: each route's driver, packages delivered and \
@@ -280,6 +319,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         id: "route",
         tool: "route_stops",
         essential: false,
+        source: Some(Source::Routes),
         path: "/api/v1/routes/{route}",
         summary: "One route's packages",
         description: "Use for what happened on one route: outcomes, reasons and the packages \
@@ -292,6 +332,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         id: "package",
         tool: "find_package",
         essential: false,
+        source: Some(Source::Routes),
         path: "/api/v1/packages/{tracking}",
         summary: "Find a package",
         description: "Use for one tracking ID: who carried it, on which route and day, and \
@@ -307,6 +348,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         id: "timecards",
         tool: "timecards",
         essential: false,
+        source: Some(Source::Timecards),
         path: "/api/v1/timecards",
         summary: "Timecards",
         description: "Use for Paycom hours and punches: everyone's for one day, or one \
@@ -318,6 +360,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         id: "meal_breaks",
         tool: "meal_breaks",
         essential: false,
+        source: Some(Source::MealBreaks),
         path: "/api/v1/meal-breaks",
         summary: "Meal breaks",
         description: "Use for one day's meal breaks: Cortex's meal break beside Paycom's \
@@ -340,6 +383,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         id: "dvic",
         tool: "dvic_inspections",
         essential: true,
+        source: Some(Source::Dvic),
         path: "/api/v1/dvic",
         summary: "Vehicle inspections",
         description: "Use for DVIC questions, as which drivers were short: each driver's \
@@ -359,6 +403,176 @@ pub const ENDPOINTS: &[Endpoint] = &[
                 description: "Only drivers, or inspections, short of the minimum.",
             },
             DETAIL,
+            LIMIT,
+            CURSOR,
+        ],
+    },
+    Endpoint {
+        id: "feedback",
+        tool: "customer_feedback",
+        essential: false,
+        source: Some(Source::Scorecard),
+        path: "/api/v1/feedback",
+        summary: "Customer feedback (CDF)",
+        description: "Use for customer delivery feedback (CDF) from Amazon's weekly scorecard: \
+            how much negative feedback, of which kinds, for which drivers, and repeated \
+            feedback at the same address (group_by address, min_count 2; needs a key allowed \
+            addresses). CDF means negative feedback; ask for positive only when the user asks \
+            for praise.",
+        path_params: &[],
+        params: &[
+            DSP,
+            PERIOD,
+            DATE,
+            FROM,
+            TO,
+            DRIVER,
+            Param {
+                name: "feedback",
+                kind: Kind::Choice(&["negative", "positive", "all"]),
+                description: "negative (the default), positive or all.",
+            },
+            Param {
+                name: "type",
+                kind: Kind::Choice(super::scorecard::FEEDBACK_NAMES),
+                description: "One kind of feedback, as wrong_address or never_received.",
+            },
+            Param {
+                name: "impacting",
+                kind: Kind::Boolean,
+                description: "Only feedback that counts against the scorecard.",
+            },
+            Param {
+                name: "group_by",
+                kind: Kind::Text,
+                description: "Count per driver, address, type, week or day; two may be joined.",
+            },
+            Param {
+                name: "min_count",
+                kind: Kind::Integer(1, 100),
+                description: "Only groups with at least this many, as 2 for repeated feedback.",
+            },
+            Param {
+                name: "list",
+                kind: Kind::Boolean,
+                description: "Also list the feedback, a page at a time.",
+            },
+            LIMIT,
+            CURSOR,
+        ],
+    },
+    Endpoint {
+        id: "safety",
+        tool: "safety_events",
+        essential: false,
+        source: Some(Source::Scorecard),
+        path: "/api/v1/safety",
+        summary: "Netradyne safety events",
+        description: "Use for Netradyne safety infractions from Amazon's scorecard: speeding, \
+            distraction, sign violations, following distance, seatbelt. Gives counts by type; \
+            for one driver also each event with its severity and dispute outcome.",
+        path_params: &[],
+        params: &[
+            DSP,
+            PERIOD,
+            DATE,
+            FROM,
+            TO,
+            DRIVER,
+            Param {
+                name: "type",
+                kind: Kind::Text,
+                description: "One kind, as speeding, distraction or seatbelt.",
+            },
+            Param {
+                name: "group_by",
+                kind: Kind::Text,
+                description: "Count per driver, type, day or week; two may be joined.",
+            },
+            Param {
+                name: "list",
+                kind: Kind::Boolean,
+                description: "List the events, a page at a time.",
+            },
+            LIMIT,
+            CURSOR,
+        ],
+    },
+    Endpoint {
+        id: "returns",
+        tool: "returns",
+        essential: false,
+        source: Some(Source::Scorecard),
+        path: "/api/v1/returns",
+        summary: "Contact compliance and returns to station (RTS)",
+        description: "Use for contact compliance: which drivers didn't do it, that is returned \
+            packages without the required call or text (contact missed, group_by driver). \
+            Also Amazon's returns to station from the weekly scorecard, their reasons, and \
+            which returns hurt the completion rate (DCR). Amazon posts a week's scorecard after \
+            it ends: for packages returned last night or this week, use packages.",
+        path_params: &[],
+        params: &[
+            DSP,
+            PERIOD,
+            DATE,
+            FROM,
+            TO,
+            DRIVER,
+            Param {
+                name: "contact",
+                kind: Kind::Choice(&["missed", "compliant"]),
+                description: "missed: the driver did not call or text as required; compliant: \
+                    the return was excused because they did.",
+            },
+            Param {
+                name: "reason",
+                kind: Kind::Text,
+                description: "Amazon's RTS reason, as business_closed or object_missing.",
+            },
+            Param {
+                name: "impacting",
+                kind: Kind::Boolean,
+                description: "Only returns that hurt the completion rate (DCR).",
+            },
+            Param {
+                name: "group_by",
+                kind: Kind::Text,
+                description: "Count per driver, reason, coaching, week or day; two may be joined.",
+            },
+            Param {
+                name: "list",
+                kind: Kind::Boolean,
+                description: "Also list the returns, a page at a time.",
+            },
+            LIMIT,
+            CURSOR,
+        ],
+    },
+    Endpoint {
+        id: "scorecard",
+        tool: "scorecard",
+        essential: false,
+        source: Some(Source::Scorecard),
+        path: "/api/v1/scorecard",
+        summary: "A week's scorecard",
+        description: "Use for Amazon's weekly scorecard: the DSP's tier and focus areas, and each \
+            driver's overall tier, score and tiers for CDF, DSB, POD, RTS and safety, lowest \
+            scores first. Which drivers missed contact compliance is in returns; feedback, \
+            safety events and returns themselves have their own tools.",
+        path_params: &[],
+        params: &[
+            DSP,
+            Param {
+                name: "week",
+                kind: Kind::Text,
+                description: "An Amazon week as 2026-W39, last week, or latest (the default).",
+            },
+            DRIVER,
+            Param {
+                name: "below",
+                kind: Kind::Choice(&["platinum", "gold", "silver", "bronze"]),
+                description: "Only drivers whose overall tier is below this one.",
+            },
             LIMIT,
             CURSOR,
         ],

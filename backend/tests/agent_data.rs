@@ -906,3 +906,358 @@ async fn driver_periods_keep_historical_sync_and_meal_context_across_batches() {
     assert_eq!(status, 200, "{cards}");
     assert_eq!(rows(&cards["timecards"]).len(), 12);
 }
+
+/// The scorecard questions a DSP asks, answered small from the weekly scorecard: repeated
+/// feedback at an address, contact compliance, Netradyne events and the week's tiers.
+#[tokio::test]
+async fn scorecard_questions_come_back_small() {
+    let (_root, db) = common::seeded();
+    let world = synthetic::seed(&db).unwrap();
+    assert!(world["scorecard_weeks"].as_u64().unwrap() >= 1, "{world}");
+    let dsp = s(&world, "dsp").to_owned();
+    let me = caller(&db, &[&dsp], true);
+    let no_places = caller(&db, &[&dsp], false);
+    let actor = owner(&db);
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+    let asked = |answer: &Value| {
+        let size = answer.to_string().len();
+        eprintln!("{size} bytes: {answer}");
+        size
+    };
+
+    // Houses that complained more than once, from feedback joined to the routes' addresses.
+    let who = me.clone();
+    let (status, houses) = ask(&state, move |db, state| {
+        data::feedback(
+            db,
+            state,
+            &who,
+            &json!({"group_by": "address", "min_count": "2"}),
+        )
+    })
+    .await;
+    assert_eq!(status, 200, "{houses}");
+    assert!(asked(&houses) <= 2_000);
+    let groups = &houses["groups"];
+    // The three houses the synthetic DSP plants complaints at lead; others may repeat too.
+    let top: Vec<&str> = rows(groups)
+        .iter()
+        .take(3)
+        .map(|r| r[0].as_str().unwrap().split(',').next().unwrap())
+        .collect();
+    for house in [
+        "2007 Synthetic Ave",
+        "9003 Synthetic Ave",
+        "5012 Synthetic Ave",
+    ] {
+        assert!(top.contains(&house), "{house} in {houses}");
+    }
+    assert!(rows(groups).iter().all(|r| r[1].as_i64().unwrap() >= 2));
+    assert_eq!(houses["unplaced"], 0);
+
+    // Contact compliance: the drivers whose returns say they did not call or text.
+    let who = me.clone();
+    let (status, missed) = ask(&state, move |db, state| {
+        data::returns(
+            db,
+            state,
+            &who,
+            &json!({"contact": "missed", "group_by": "driver"}),
+        )
+    })
+    .await;
+    assert_eq!(status, 200, "{missed}");
+    assert!(asked(&missed) <= 2_000);
+    assert_eq!(missed["returns"], missed["contact_missed"]);
+    let total: i64 = rows(&missed["groups"])
+        .iter()
+        .map(|r| r[1].as_i64().unwrap())
+        .sum();
+    assert_eq!(missed["returns"].as_i64().unwrap(), total);
+
+    // One driver's Netradyne events come back one by one.
+    let who = me.clone();
+    let (status, safety) = ask(&state, move |db, state| {
+        data::safety(
+            db,
+            state,
+            &who,
+            &json!({"driver": "Taylor Brooks", "period": "last 14 days"}),
+        )
+    })
+    .await;
+    assert_eq!(status, 200, "{safety}");
+    assert!(asked(&safety) <= 2_000);
+    assert_eq!(
+        safety["events"].as_u64().unwrap() as usize,
+        rows(&safety["list"]).len()
+    );
+
+    // The latest week's scorecard, lowest scores first.
+    let who = me.clone();
+    let (status, week) = ask(&state, move |db, state| {
+        data::weekly(db, state, &who, &json!({}))
+    })
+    .await;
+    assert_eq!(status, 200, "{week}");
+    assert!(asked(&week) <= 3_000);
+    assert_eq!(week["posted"], true);
+    assert_eq!(week["dsp"]["contact_compliance"], "Silver");
+    let scores: Vec<f64> = rows(&week["drivers"])
+        .iter()
+        .map(|r| r[1].as_f64().unwrap())
+        .collect();
+    assert_eq!(scores.len(), 11);
+    assert!(scores.windows(2).all(|w| w[0] <= w[1]));
+
+    // Praise is counted only when asked for, as by naming a kind of it.
+    let who = me.clone();
+    let (status, praise) = ask(&state, move |db, state| {
+        data::feedback(db, state, &who, &json!({"type": "delivered_with_care"}))
+    })
+    .await;
+    assert_eq!(status, 200, "{praise}");
+    assert_eq!(praise["understood"]["feedback"], "positive");
+    assert!(praise["feedback"].as_u64().unwrap() > 0, "{praise}");
+
+    // A list beside groups is its first page only: the cursor pages the groups.
+    let who = me.clone();
+    let (status, both) = ask(&state, move |db, state| {
+        data::returns(
+            db,
+            state,
+            &who,
+            &json!({"group_by": "driver", "list": "true", "limit": "10"}),
+        )
+    })
+    .await;
+    assert_eq!(status, 200, "{both}");
+    assert!(both["returns"].as_u64().unwrap() > 10, "{both}");
+    assert_eq!(rows(&both["list"]).len(), 10);
+    assert!(both["list"]["page"].get("next_cursor").is_none(), "{both}");
+
+    // Approved disputes stay events but leave every count of what counts.
+    let who = me.clone();
+    let (status, events) = ask(&state, move |db, state| {
+        data::safety(db, state, &who, &json!({"group_by": "driver"}))
+    })
+    .await;
+    assert_eq!(status, 200, "{events}");
+    let sum = |table: &Value, column: &str| -> i64 {
+        let at = col(table, column);
+        rows(table).iter().map(|r| r[at].as_i64().unwrap()).sum()
+    };
+    assert_eq!(
+        sum(&events["by_type"], "counting"),
+        events["counting"].as_i64().unwrap()
+    );
+    assert_eq!(
+        sum(&events["groups"], "counting"),
+        events["counting"].as_i64().unwrap()
+    );
+    assert!(
+        events["counting"].as_i64() < events["events"].as_i64(),
+        "{events}"
+    );
+
+    // A type Amazon never recorded is refused; one it did, matched in part, is answered.
+    let who = me.clone();
+    let (status, body) = ask(&state, move |db, state| {
+        data::safety(db, state, &who, &json!({"type": "juggling"}))
+    })
+    .await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (400, Some("unknown_type"))
+    );
+    let who = me.clone();
+    let (status, body) = ask(&state, move |db, state| {
+        data::safety(
+            db,
+            state,
+            &who,
+            &json!({"type": "speeding", "period": "last week"}),
+        )
+    })
+    .await;
+    assert_eq!(status, 200, "{body}");
+
+    // This week's scorecard is not posted yet: refused as unknown, never answered as zero.
+    let who = me.clone();
+    let (status, recent) = ask(&state, move |db, state| {
+        data::returns(db, state, &who, &json!({"period": "today"}))
+    })
+    .await;
+    assert_eq!(
+        (status, recent["error"].as_str()),
+        (404, Some("not_posted_yet"))
+    );
+    let said = recent["message"].as_str().unwrap();
+    assert!(
+        said.contains("unknown, not zero") && said.contains("packages"),
+        "{said}"
+    );
+
+    // The status names the latest week collected.
+    let who = me.clone();
+    let (_, status) = ask(&state, move |db, _| data::status(db, &who, &json!({}))).await;
+    assert_eq!(status["sources"]["scorecard"]["enabled"], true);
+    assert_eq!(
+        status["sources"]["scorecard"]["latestWeek"],
+        week["understood"]["week"]
+    );
+
+    // Feedback by address needs a key allowed addresses.
+    let (status, body) = ask(&state, move |db, state| {
+        data::feedback(db, state, &no_places, &json!({"group_by": "address"}))
+    })
+    .await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (403, Some("locations_off"))
+    );
+
+    // Addresses come from the routes: with routes off there are none to give.
+    let off = dsp.clone();
+    let switcher = actor.clone();
+    state
+        .run(move |db| db.set_feature(&off, "routes", false, &switcher).map(|_| ()))
+        .await
+        .unwrap();
+    let who = me.clone();
+    let (status, body) = ask(&state, move |db, state| {
+        data::feedback(db, state, &who, &json!({"group_by": "address"}))
+    })
+    .await;
+    assert_eq!((status, body["error"].as_str()), (403, Some("source_off")));
+    let who = me.clone();
+    let (status, body) = ask(&state, move |db, state| {
+        data::feedback(db, state, &who, &json!({"list": "true"}))
+    })
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert!(
+        !body["list"]["columns"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("address"))
+    );
+
+    // The scorecard is its own feature: the Timecard switched off leaves it answering, and
+    // the Scorecard switched off refuses every scorecard tool by name.
+    let off = dsp.clone();
+    let switcher = actor.clone();
+    state
+        .run(move |db| {
+            db.set_feature(&off, "timecard", false, &switcher)
+                .map(|_| ())
+        })
+        .await
+        .unwrap();
+    let scorecard_tools = ["feedback", "safety", "returns", "scorecard"];
+    for id in scorecard_tools {
+        let who = me.clone();
+        let (status, body) = ask(&state, move |db, state| {
+            data::ask(data::catalog::endpoint(id), db, state, &who, "", &json!({}))
+        })
+        .await;
+        assert_eq!(status, 200, "{id}: {body}");
+    }
+    let off = dsp.clone();
+    state
+        .run(move |db| db.set_feature(&off, "scorecard", false, &actor).map(|_| ()))
+        .await
+        .unwrap();
+    for id in scorecard_tools {
+        let who = me.clone();
+        let (status, body) = ask(&state, move |db, state| {
+            data::ask(data::catalog::endpoint(id), db, state, &who, "", &json!({}))
+        })
+        .await;
+        assert_eq!(
+            (status, body["error"].as_str()),
+            (403, Some("source_off")),
+            "{id}"
+        );
+        assert!(
+            body["message"]
+                .as_str()
+                .unwrap()
+                .starts_with("Northline Logistics has Scorecard switched off"),
+            "{body}"
+        );
+    }
+    let (_, status) = ask(&state, move |db, _| data::status(db, &me, &json!({}))).await;
+    assert_eq!(status["sources"]["scorecard"], json!({"enabled": false}));
+}
+
+/// Every tool tells an agent when what it reads is switched off for the DSP: refused by the
+/// switch's name, or answered with that source's figures null and named. A new tool must
+/// decide which, or this fails.
+#[tokio::test]
+async fn every_tool_says_when_its_feature_is_switched_off() {
+    let (_root, db) = common::seeded();
+    let world = synthetic::seed(&db).unwrap();
+    let dsp = s(&world, "dsp").to_owned();
+    let me = caller(&db, &[&dsp], true);
+    let actor = owner(&db);
+    // Every page an agent reads; their tabs and Driver Match go with them.
+    for feature in ["timecard", "routes", "dvic", "scorecard"] {
+        db.set_feature(&dsp, feature, false, &actor).unwrap();
+    }
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+    for endpoint in data::catalog::ENDPOINTS {
+        let who = me.clone();
+        let named = match endpoint.id {
+            "driver" => "Taylor Brooks",
+            "route" => "SYN-1",
+            "package" => "TBA0000000000",
+            _ => "",
+        };
+        let (status, body) = ask(&state, move |db, state| {
+            data::ask(endpoint, db, state, &who, named, &json!({}))
+        })
+        .await;
+        let id = endpoint.id;
+        match (endpoint.source, id) {
+            (Some(source), _) => {
+                assert_eq!(
+                    (status, body["error"].as_str()),
+                    (403, Some("source_off")),
+                    "{id}: {body}"
+                );
+                let said = format!("Northline Logistics has {} switched off", source.switch());
+                assert!(
+                    body["message"].as_str().unwrap().starts_with(&said),
+                    "{id}: {body}"
+                );
+            }
+            (None, "whoami" | "metrics" | "drivers") => assert_eq!(status, 200, "{id}: {body}"),
+            (None, "status") => {
+                for key in ["timecards", "mealBreaks", "routes", "dvic", "scorecard"] {
+                    assert_eq!(body["sources"][key], json!({"enabled": false}), "{key}");
+                }
+            }
+            (None, "driver") => {
+                assert_eq!(status, 200, "{body}");
+                for (key, value) in body["totals"].as_object().unwrap() {
+                    assert!(value.is_null(), "{key} is unknown, not {value}");
+                }
+                assert_eq!(
+                    body["switched_off"],
+                    json!(["Routes", "Timecard", "Timecard · Meal Breaks", "DVIC"])
+                );
+            }
+            (None, "team") => assert_eq!(
+                (status, body["error"].as_str()),
+                (403, Some("source_off")),
+                "{body}"
+            ),
+            (None, other) => panic!("decide how `{other}` answers with its source switched off"),
+        }
+    }
+}

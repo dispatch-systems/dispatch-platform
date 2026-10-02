@@ -1,6 +1,6 @@
 //! The facts every answer is made of: each source's rows for a DSP's days, in the DSP's
 //! own time, with the days each source has. A source a DSP has switched off is left out.
-use super::scope::Period;
+use super::{Refusal, catalog::Source, scope::Period};
 use crate::{
     Result,
     collectors::Provider,
@@ -20,6 +20,7 @@ pub struct Sources {
     pub meal_breaks: bool,
     pub routes: bool,
     pub dvic: bool,
+    pub scorecard: bool,
 }
 impl Sources {
     pub fn of(db: &Store, dsp: &str) -> Result<Self> {
@@ -30,8 +31,33 @@ impl Sources {
             meal_breaks: has("timecard.meal_breaks"),
             routes: has("routes"),
             dvic: has("dvic"),
+            scorecard: has("scorecard"),
         })
     }
+    pub fn has(&self, source: Source) -> bool {
+        match source {
+            Source::Timecards => self.timecards,
+            Source::MealBreaks => self.meal_breaks,
+            Source::Routes => self.routes,
+            Source::Dvic => self.dvic,
+            Source::Scorecard => self.scorecard,
+        }
+    }
+}
+
+/// A source the DSP has switched off: refused by name, so the agent tells the user rather
+/// than answering from something else.
+pub fn switched_off(dsp: &Dsp, source: Source) -> Refusal {
+    Refusal::new(
+        403,
+        "source_off",
+        format!(
+            "{} has {} switched off, so nothing from it can be read. Tell the user it is \
+             switched off; don't work the answer out from other tools.",
+            dsp.name,
+            source.switch()
+        ),
+    )
 }
 
 /// A time of day where the DSP is, as "08:42", from epoch milliseconds.
@@ -720,6 +746,11 @@ pub fn freshness(db: &Store, dsp: &Dsp) -> Result<Value> {
         "SELECT max(max_date) day,max(checked_at) checked_at FROM dvic_reports WHERE station=?",
         [&station],
     )?;
+    let scorecard = db.scorecard(&dsp.id)?.one(
+        "SELECT max(week) week,max(collected_at) collected_at FROM scorecard_publications \
+         WHERE station=? AND active=1",
+        [&station],
+    )?;
     Ok(serde_json::json!({
         "timecards": paycom.map(|r| serde_json::json!({
             "collectedAt": r["collected_at"], "periodFrom": r["period_from"], "periodTo": r["period_to"]
@@ -732,6 +763,9 @@ pub fn freshness(db: &Store, dsp: &Dsp) -> Result<Value> {
         })),
         "dvic": dvic.filter(|r| !r["day"].is_null()).map(|r| serde_json::json!({
             "latestDay": r["day"], "checkedAt": r["checked_at"]
+        })),
+        "scorecard": scorecard.filter(|r| !r["week"].is_null()).map(|r| serde_json::json!({
+            "latestWeek": r["week"], "collectedAt": r["collected_at"]
         })),
     }))
 }
