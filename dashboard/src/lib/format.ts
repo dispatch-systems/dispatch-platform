@@ -73,6 +73,11 @@ export function elapsed(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   return minutes ? `${minutes}m ${seconds % 60}s` : `${seconds}s`;
 }
+/** The time left until `until`, as a countdown reads it: "9:42", and "0:00" once it has passed. */
+export function countdown(until: string, now = Date.now()) {
+  const seconds = Math.max(0, Math.ceil((Date.parse(until) - now) / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
 export const bytes = (value: number, unit: 'MiB' | 'GiB', digits = 0) =>
   `${(value / 1024 ** (unit === 'GiB' ? 3 : 2)).toFixed(digits)} ${unit}`;
 // Providers write "Last, First"; a name already in the chosen order is kept as written.

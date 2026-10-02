@@ -175,7 +175,7 @@ export const keepDriversApart = (code: string, other: string) =>
 
 const agents = '/api/platform/agents';
 /** Every agent key, and the DSPs a key can be given. */
-export const useAgentKeys = () => useData<AgentKeys>(agents);
+export const useAgentKeys = (poll = 0) => useData<AgentKeys>(agents, poll);
 /** A new key. Its token comes back this once. */
 export const createAgentKey = (request: AgentKeyRequest) =>
   api<AgentKeyCreated>(`${agents}/keys`, request);

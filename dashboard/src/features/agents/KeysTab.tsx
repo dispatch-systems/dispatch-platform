@@ -21,6 +21,7 @@ import {
 } from '../../lib/agents.js';
 import { KeyReady } from './KeyReady.js';
 import { KeySheet } from './KeySheet.js';
+import { UsingKeys } from './UsingKeys.js';
 
 const accessTones: Record<AgentAccess, string> = {
   read: 'access-read',
@@ -48,7 +49,8 @@ function Expiry({ agentKey }: { agentKey: AgentKey }) {
   return <>{text}</>;
 }
 
-/** Every key: what it may do, where it reaches, when it was last used and when it ends. */
+/** Every key: what it may do, where it reaches, when it was last used and when it ends; and,
+ * folded away, what an agent needs to use one. */
 export function KeysTab() {
   const keys = useAgentKeys();
   const [query, setQuery] = useState('');
@@ -66,7 +68,7 @@ export function KeysTab() {
   return (
     <DataState data={keys.data} error={keys.error} retry={keys.refresh}>
       {(data) => {
-        // Connected apps have a tab of their own.
+        // Apps have a tab of their own.
         const all = data.keys.filter((key) => key.kind === 'key');
         const live = all.filter((key) => inUse(key));
         const ended = all.filter((key) => !inUse(key));
@@ -183,6 +185,7 @@ export function KeysTab() {
                 )}
               </div>
             )}
+            <UsingKeys />
             {open === 'new' && (
               <KeySheet
                 dsps={data.dsps}

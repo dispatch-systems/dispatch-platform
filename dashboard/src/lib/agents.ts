@@ -3,6 +3,7 @@
 import type {
   AgentAccess,
   AgentActivity,
+  AgentClient,
   AgentDsp,
   AgentKey,
   AgentKeyRequest,
@@ -159,11 +160,32 @@ export const sameRequest = (a: AgentKeyRequest, b: AgentKeyRequest) =>
   JSON.stringify({ ...a, dsps: [...a.dsps].sort() }) ===
   JSON.stringify({ ...b, dsps: [...b.dsps].sort() });
 
-/** How each app signs in with Dispatch. A terminal app has its command, what happens next,
- * the way from a machine with no browser, and a prompt that asks the app to do it itself. */
+/** The apps "Connect an app" offers, in its order: each by the kind of app it is, the name it
+ * goes by here, and the name it signs in with. "Other app" is any app else. */
+export const connectApps = [
+  { id: 'chatgpt', label: 'ChatGPT', client: 'ChatGPT' },
+  { id: 'codex', label: 'Codex CLI', client: 'Codex' },
+  { id: 'claude-code', label: 'Claude Code', client: 'Claude Code' },
+  { id: 'hermes', label: 'Hermes', client: 'Hermes Agent' },
+  { id: 'other', label: 'Other app', client: null },
+] as const;
+export type ConnectApp = (typeof connectApps)[number];
+
+/** The known app a connected app is, by the name it signed in with; null for any other. */
+export const knownApp = (client: Pick<AgentClient, 'name'> | null) =>
+  connectApps.find((app) => app.client !== null && app.client === client?.name)?.id ?? null;
+
+/** Whether `key` is the app being connected as `app`: that known app, or any app for "Other
+ * app". */
+export const connectedAs = (key: AgentKey, app: ConnectApp['id']) =>
+  key.kind === 'app' && (app === 'other' || knownApp(key.client) === app);
+
+/** How each app signs in with Dispatch, and what the owner does once it asks to (`next`). A
+ * terminal app has its command, what happens next, the way from a machine with no browser, and
+ * a prompt that asks the app to do it itself. */
 export function signIns(origin: string) {
   const mcp = `${origin}/api/v1/mcp`;
-  const next = 'A Dispatch page opens — approve it there.';
+  const next = 'Approve it on the Dispatch page that opens';
   const approve = 'It opens a Dispatch page in my browser: tell me to approve it there.';
   const fallback = (login = '') =>
     `If it can't open a browser here, ${login}send me the link it prints, and when I paste back ` +
@@ -192,7 +214,7 @@ export function signIns(origin: string) {
     },
     {
       id: 'codex',
-      label: 'Codex',
+      label: 'Codex CLI',
       command: codex,
       next,
       remote: {
@@ -210,7 +232,7 @@ export function signIns(origin: string) {
       id: 'hermes',
       label: 'Hermes',
       command: `hermes mcp add dispatch --url ${mcp} --auth oauth --connect-timeout 300`,
-      next: 'A Dispatch page opens — approve it there, then answer Y to turn on the tools.',
+      next: `${next}, then answer Y to turn on the tools`,
       remote: { lead: 'Run the same command. With no browser to open, it prints a link.' },
       prompt: [
         'Connect Hermes to Dispatch for me.',
@@ -223,12 +245,7 @@ export function signIns(origin: string) {
       ].join('\n'),
     },
   ];
-  return {
-    mcp,
-    terminals,
-    json: JSON.stringify({ mcpServers: { dispatch: { url: mcp } } }, null, 2),
-    bridge: `npx -y mcp-remote ${mcp}`,
-  };
+  return { mcp, next, terminals, bridge: `npx -y mcp-remote ${mcp}` };
 }
 
 /** How each kind of agent connects with a key: its own setup, ready to paste. */
