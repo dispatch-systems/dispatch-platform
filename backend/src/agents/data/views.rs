@@ -19,7 +19,7 @@ use crate::{
     db::Store,
 };
 use serde_json::{Map, Value, json};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 /// A person as answers name them: their name, with their code when another has it too.
 fn label(people: &People, person: &Person) -> String {
@@ -29,16 +29,35 @@ fn label(people: &People, person: &Person) -> String {
         person.name.clone()
     }
 }
-/// Who a source's row belongs to: their Driver Match person, or the name and ID the source
-/// gave while nobody holds that ID yet.
-fn who(people: &People, source: DriverSource, id: &str, name: &str) -> String {
+/// The private identity and public label of a source row. Team aggregation must keep distinct
+/// unmatched provider identities separate without returning those identifiers to the caller.
+struct DriverGroup {
+    key: String,
+    label: String,
+}
+fn driver_group(people: &People, source: DriverSource, id: &str, name: &str) -> DriverGroup {
     match people.holder(source, id) {
-        Some(person) => label(people, person),
-        None => format!("{name} ({id})"),
+        Some(person) => DriverGroup {
+            key: format!("person:{}", person.code),
+            label: label(people, person),
+        },
+        None => DriverGroup {
+            key: format!("source:{}:{id}", source.as_str()),
+            label: if name.trim().is_empty() {
+                "Unknown driver".into()
+            } else {
+                format!("{} (unmatched)", name.trim())
+            },
+        },
     }
 }
+/// Who a source's row belongs to in ordinary answers. Provider IDs leave Dispatch only on an
+/// explicit ID request.
+fn who(people: &People, source: DriverSource, id: &str, name: &str) -> String {
+    driver_group(people, source, id, name).label
+}
 fn driver_json(person: &Person) -> Value {
-    json!({"code": person.code, "name": person.name, "paycom": person.paycom, "amazon": person.amazon})
+    json!({"code": person.code, "name": person.name})
 }
 fn one_day(period: &Period) -> Result<(), Refusal> {
     if period.from == period.to {
@@ -112,7 +131,13 @@ pub fn drivers(db: &Store, state: &State, caller: &Caller, query: &Value) -> Ans
     let dsp = pick_dsp(caller, param(query, "dsp"))?;
     let people = People::load(db, state, &dsp.id)?;
     let wanted = param(query, "q").to_lowercase();
-    let mut table = Table::new(&["code", "name", "match", "paycom", "amazon"]);
+    let include_ids = flag(query, "include_ids");
+    let columns: &[&str] = if include_ids {
+        &["code", "name", "match", "paycom", "amazon"]
+    } else {
+        &["code", "name", "match"]
+    };
+    let mut table = Table::new(columns);
     for p in people.list.iter().filter(|p| {
         wanted.is_empty()
             || p.name.to_lowercase().contains(&wanted)
@@ -122,13 +147,11 @@ pub fn drivers(db: &Store, state: &State, caller: &Caller, query: &Value) -> Ans
                 .chain(&p.amazon)
                 .any(|id| id.to_lowercase() == wanted)
     }) {
-        table.push(vec![
-            json!(p.code),
-            json!(p.name),
-            json!(p.status),
-            json!(p.paycom.join(", ")),
-            json!(p.amazon.join(", ")),
-        ]);
+        let mut row = vec![json!(p.code), json!(p.name), json!(p.status)];
+        if include_ids {
+            row.extend([json!(p.paycom.join(", ")), json!(p.amazon.join(", "))]);
+        }
+        table.push(row);
     }
     let mut answer = json!({"understood": understood(dsp, None), "found": table.rows.len()});
     paged(&mut answer, "drivers", table, query, 100)?;
@@ -418,6 +441,7 @@ pub fn driver(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &
 /// One driver's (or one driver-day's) numbers as `team` adds them up.
 #[derive(Default)]
 struct Tally {
+    label: String,
     routes: Vec<RouteDay>,
     timecards: Vec<TimecardDay>,
     meals: Vec<MealDay>,
@@ -470,14 +494,44 @@ fn tally<'a>(
     tallies: &'a mut BTreeMap<(String, String), Tally>,
     per_day: bool,
     date: &str,
-    whom: String,
+    driver: DriverGroup,
 ) -> &'a mut Tally {
     let day = if per_day {
         date.to_owned()
     } else {
         String::new()
     };
-    tallies.entry((day, whom)).or_default()
+    tallies.entry((day, driver.key)).or_insert_with(|| Tally {
+        label: driver.label,
+        ..Tally::default()
+    })
+}
+
+/// Public names for internally distinct rows. A repeated unmatched name gets a stable ordinal
+/// based on its private source identity; the identity itself never appears in the answer.
+fn display_names(tallies: &BTreeMap<(String, String), Tally>) -> HashMap<String, String> {
+    let mut identities: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for ((_, identity), tally) in tallies {
+        identities
+            .entry(tally.label.clone())
+            .or_default()
+            .insert(identity.clone());
+    }
+    let mut names = HashMap::new();
+    for (label, group) in identities {
+        let repeated = group.len() > 1;
+        for (index, identity) in group.into_iter().enumerate() {
+            let name = if !repeated {
+                label.clone()
+            } else if let Some(name) = label.strip_suffix(" (unmatched)") {
+                format!("{name} (unmatched {})", index + 1)
+            } else {
+                format!("{label} ({})", index + 1)
+            };
+            names.insert(identity, name);
+        }
+    }
+    names
 }
 
 /// `GET /api/v1/team`: chosen metrics for every driver, per driver or per driver per day.
@@ -558,27 +612,28 @@ pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
     }
     let people = People::load(db, state, &dsp.id)?;
     let gathered = gather(db, dsp, &period, &people, None, &sources)?;
-    // One tally per person, or per person per day, keyed by how answers name them.
+    // One tally per private identity, or per private identity per day. Display labels are not
+    // identities: two unmatched source records may have the same or no name.
     let mut tallies: BTreeMap<(String, String), Tally> = BTreeMap::new();
     for route in &gathered.routes.0 {
-        let whom = who(
+        let driver = driver_group(
             &people,
             DriverSource::Amazon,
             &route.transporter_id,
             &route.driver_name,
         );
-        tally(&mut tallies, per_day, &route.date, whom)
+        tally(&mut tallies, per_day, &route.date, driver)
             .routes
             .push(route.clone());
     }
     for card in &gathered.timecards.0 {
-        let whom = who(
+        let driver = driver_group(
             &people,
             DriverSource::Paycom,
             &card.employee_code,
             &card.name,
         );
-        tally(&mut tallies, per_day, &card.date, whom)
+        tally(&mut tallies, per_day, &card.date, driver)
             .timecards
             .push(card.clone());
     }
@@ -589,27 +644,32 @@ pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
         } else {
             DriverSource::Amazon
         };
-        let whom = who(&people, source, id, &meal.name);
-        tally(&mut tallies, per_day, &meal.date, whom)
+        let driver = driver_group(&people, source, id, &meal.name);
+        tally(&mut tallies, per_day, &meal.date, driver)
             .meals
             .push(meal.clone());
     }
     for inspection in &gathered.inspections.0 {
-        let whom = who(
+        let driver = driver_group(
             &people,
             DriverSource::Amazon,
             &inspection.transporter_id,
             &inspection.driver_name,
         );
-        tally(&mut tallies, per_day, &inspection.date, whom)
+        tally(&mut tallies, per_day, &inspection.date, driver)
             .inspections
             .push(inspection.clone());
     }
+    let display_names = display_names(&tallies);
     let mut rows: Vec<(String, String, Vec<Value>)> = tallies
         .into_iter()
-        .map(|((date, whom), t)| {
+        .map(|((date, identity), t)| {
             let values = chosen.iter().map(|m| t.value(m)).collect();
-            (date, whom, values)
+            let name = display_names
+                .get(&identity)
+                .cloned()
+                .expect("every tally has a display name");
+            (date, name, values)
         })
         .collect();
     rows.sort_by(|a, b| {

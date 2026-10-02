@@ -202,7 +202,7 @@ test('Connect an app shows each app’s steps, ready to copy, and copying lets a
   // ChatGPT: where to click, and the form's fields with the address to copy.
   await pick('ChatGPT', 'Connect ChatGPT');
   await expect(dialog.getByRole('list').first().getByRole('listitem')).toHaveText([
-    '1On chatgpt.com, open Plugins then Add then Create custom MCP serverNeeds ChatGPT Plus or higher.',
+    '1On chatgpt.com, open Plugins then Add then Create custom MCP serverAvailability depends on your current ChatGPT plan and workspace settings. Custom MCP apps are currently used on the web. Check OpenAI’s current availability.',
     `2Fill in the form, then click CreateNameDispatchURL${mcp}CopyAuthenticationOAuth`,
     '3Approve it on the Dispatch page that opens',
   ]);
@@ -274,14 +274,16 @@ test('the owner chooses which apps may connect', async ({ page }) => {
   const codex = allowed.getByRole('switch', { name: 'Codex', exact: true });
   await codex.click();
   await expect(codex).not.toBeChecked();
-  await expect(page.getByText('Codex may no longer connect')).toBeVisible();
+  await expect(
+    page.getByText('Codex may no longer make new connections; existing connections remain active'),
+  ).toBeVisible();
   await page.reload();
   await choose.click();
   await expect(codex).not.toBeChecked();
   await expect(allowed.getByRole('switch', { name: 'ChatGPT', exact: true })).toBeChecked();
   await codex.click();
   await expect(codex).toBeChecked();
-  await expect(page.getByText('Codex may connect')).toBeVisible();
+  await expect(page.getByText('Codex may make new connections')).toBeVisible();
   await page.reload();
   await choose.click();
   await expect(codex).toBeChecked();

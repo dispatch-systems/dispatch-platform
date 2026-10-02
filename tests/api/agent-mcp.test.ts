@@ -107,6 +107,7 @@ test('any MCP client reaches the agent API with a key, on every protocol version
     'driver_report',
     'dvic_inspections',
     'find_drivers',
+    'get_profile',
     'packages',
     'route_day',
     'team_table',
@@ -116,18 +117,22 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   assert.equal(missing.isError, true);
   assert.match(missing.content[0].text, /^unknown_tool/);
 
-  // Every answer arrives once, as compact JSON text: the one shape every client reads alike.
-  const read = (result: { content: { text: string }[] }) => JSON.parse(result.content[0]!.text);
+  // Current clients receive machine-readable structured data plus the complete text fallback:
+  // some hosts negotiate the modern protocol but still expose only text to their model. Older
+  // protocol clients keep the same compact JSON text they already consume.
+  const read = (result: { content: { text: string }[]; structuredContent?: unknown }) =>
+    result.structuredContent ?? JSON.parse(result.content[0]!.text);
   const found = await call(full, 'find_drivers', { q: 'a', limit: 5 });
   assert.equal(found.isError, false);
-  assert.equal(found.structuredContent, undefined);
-  const drivers = read(found);
+  assert.ok(found.structuredContent);
+  assert.deepEqual(JSON.parse(found.content[0].text), found.structuredContent);
+  const drivers = read(found) as any;
   assert.equal(drivers.understood.dsp, 'Northline Logistics');
   const name = drivers.drivers.columns.indexOf('name');
   const someone = drivers.drivers.rows[0][name] as string;
   const report = read(
     await call(full, 'driver_report', { driver: someone, period: 'last 7 days' }),
-  );
+  ) as any;
   assert.equal(report.understood.driver.name, someone);
   assert.equal(report.understood.days, 7);
   // A list where a comma-separated value belongs, as some models send, still works.
@@ -136,7 +141,15 @@ test('any MCP client reaches the agent API with a key, on every protocol version
     period: 'last 7 days',
   });
   assert.equal(table.isError, false, table.content[0].text);
-  assert.deepEqual(read(table).rows.columns, ['driver', 'hours_worked', 'days_worked']);
+  assert.deepEqual((read(table) as any).rows.columns, ['driver', 'hours_worked', 'days_worked']);
+  const legacy = await call(full, 'find_drivers', { q: 'a', limit: 1 }, '2025-03-26');
+  assert.equal(legacy.structuredContent, undefined);
+  assert.equal(JSON.parse(legacy.content[0].text).understood.dsp, 'Northline Logistics');
+
+  const profile = await call(essential, 'get_profile', {});
+  assert.notEqual(profile.structuredContent.id, owner.session.user.id);
+  assert.match(profile.structuredContent.id, /^profile_[A-Za-z0-9_-]+$/);
+  assert.deepEqual(JSON.parse(profile.content[0].text), profile.structuredContent);
 
   // Refusals come back as answers the model reads, with what to fix and the choices.
   const unknown = await call(full, 'team_table', { metrics: 'steps' });
@@ -224,7 +237,7 @@ test('any MCP client reaches the agent API with a key, on every protocol version
     { ...modern, 'mcp-method': 'tools/call', 'mcp-name': 'whoami' },
   );
   assert.equal(stateless.status, 200, JSON.stringify(stateless.body));
-  assert.equal(JSON.parse(stateless.body.result.content[0].text).key.tools, 'full');
+  assert.equal(stateless.body.result.structuredContent.key.tools, 'full');
 
   // Without a key, a client is told to bring one; a browser is refused outright.
   const keyless = await rpc(null, 'tools/list');

@@ -23,7 +23,10 @@ export function AllowedApps({ close }: { close: () => void }) {
       setChanged({ list, over: apps.data });
     },
     {
-      success: (app, allowed) => `${app.name} ${allowed ? 'may connect' : 'may no longer connect'}`,
+      success: (app, allowed) =>
+        allowed
+          ? `${app.name} may make new connections`
+          : `${app.name} may no longer make new connections; existing connections remain active`,
     },
   );
   const list = changed && changed.over === apps.data ? changed.list : apps.data?.apps;

@@ -32,6 +32,7 @@ const essentialTools = [
   'driver_report',
   'dvic_inspections',
   'find_drivers',
+  'get_profile',
   'packages',
   'route_day',
   'team_table',
@@ -351,7 +352,7 @@ test('Claude Code connects by its published document and reaches only what the o
   assert.deepEqual(waiting.app, {
     name: 'Claude Code',
     clientId: claudeCode,
-    verified: true,
+    known: true,
     redirectHost: 'this computer',
     redirectScheme: null,
   });
@@ -403,7 +404,8 @@ test('Claude Code connects by its published document and reaches only what the o
   assert.deepEqual(tools.sort(), essentialTools);
   const called = await c.rpc(access, 'tools/call', { name: 'whoami', arguments: {} });
   assert.equal(called.body.result.isError, false, JSON.stringify(called.body));
-  const me = JSON.parse(called.body.result.content[0].text) as AgentWhoami;
+  const me = called.body.result.structuredContent as AgentWhoami;
+  assert.deepEqual(JSON.parse(called.body.result.content[0].text), me);
   assert.deepEqual(me.key, {
     name: 'Laptop – Claude Code',
     access: 'read',
@@ -425,7 +427,7 @@ test('Claude Code connects by its published document and reaches only what the o
   assert.ok(app?.revokedAt, 'the replayed code revokes the app');
 });
 
-test('refresh tokens rotate, and a parallel refresh within the grace minute still works', async (t) => {
+test('refresh tokens rotate once, and replay ends the entire connection immediately', async (t) => {
   const f = await fixture();
   t.after(f.close);
   const c = await oauth(f);
@@ -448,21 +450,16 @@ test('refresh tokens rotate, and a parallel refresh within the grace minute stil
   assert.equal((await c.whoami(first.access_token)).status, 200);
   assert.equal((await c.whoami(rotated.access_token)).status, 200);
 
-  // A second process refreshing with the same token within the minute gets its own pair.
-  const parallel = await c.refresh(claudeCode, first.refresh_token);
-  assert.equal(parallel.status, 200, JSON.stringify(parallel.body));
-  const other = parallel.body as Tokens;
-  assert.notEqual(other.access_token, rotated.access_token);
-  assert.notEqual(other.refresh_token, rotated.refresh_token);
-  assert.equal((await c.whoami(other.access_token)).status, 200);
-
-  // The new refresh token carries on the chain, and every pair is the same connection.
-  const third = await c.refresh(claudeCode, rotated.refresh_token);
-  assert.equal(third.status, 200, JSON.stringify(third.body));
-  assert.equal((await c.whoami((third.body as Tokens).access_token)).status, 200);
+  // Reusing the consumed credential is treated as theft, not as a parallel refresh grace.
+  const replay = await c.refresh(claudeCode, first.refresh_token);
+  assert.deepEqual([replay.status, replay.body.error], [400, 'invalid_grant']);
+  c.refused(await c.whoami(first.access_token), 'access before the replay');
+  c.refused(await c.whoami(rotated.access_token), 'access minted by the replayed family');
+  const successor = await c.refresh(claudeCode, rotated.refresh_token);
+  assert.deepEqual([successor.status, successor.body.error], [400, 'invalid_grant']);
   const apps = await c.listed('Desktop – Claude Code');
   assert.equal(apps.length, 1);
-  assert.equal(apps[0]!.revokedAt, null);
+  assert.ok(apps[0]!.revokedAt);
 });
 
 test('an app signing out, or the owner revoking it, ends its access at once', async (t) => {
@@ -477,7 +474,7 @@ test('an app signing out, or the owner revoking it, ends its access at once', as
   assert.ok(listed);
   const app: AgentKey = listed;
   assert.equal(app.kind, 'app');
-  assert.deepEqual(app.client, { name: 'Claude Code', verified: true, status: 'connected' });
+  assert.deepEqual(app.client, { name: 'Claude Code', known: true, status: 'connected' });
   assert.equal(app.hint, '');
   assert.equal(app.access, 'read');
   assert.equal(app.revokedAt, null);
@@ -555,11 +552,18 @@ test('a bad authorization request never reaches an unknown app, and a known one 
   const elsewhere = c.request(claudeCode, 'https://evil.example/callback');
   assert.equal(await c.authorize(elsewhere.query), page('invalid_redirect'));
 
+  const missingResource = c.request(claudeCode, callback);
+  delete missingResource.query.resource;
+  const withoutResource = params(await c.authorize(missingResource.query));
+  assert.equal(withoutResource.get('error'), 'invalid_target');
+
   // Once the app and its redirect are good, the app hears what was wrong, with its state
   // and the issuer to check.
   for (const [change, error] of [
     [{ code_challenge: '' }, 'invalid_request'],
     [{ code_challenge_method: 'plain' }, 'invalid_request'],
+    [{ scope: 'offline_access' }, 'invalid_scope'],
+    [{ scope: 'dispatch admin' }, 'invalid_scope'],
     [{ resource: `${c.issuer}/api/v1` }, 'invalid_target'],
     [{ resource: 'https://evil.example/api/v1/mcp' }, 'invalid_target'],
   ] as const) {
@@ -609,7 +613,7 @@ test('apps register themselves only to come back to this computer', async (t) =>
     assert.deepEqual([refused.status, refused.body.error], [400, 'invalid_redirect_uri'], uri);
   }
 
-  // Cursor goes all the way: an unverified app, sent back to itself by its own scheme.
+  // Cursor goes all the way: app-provided metadata, sent back to itself by its own scheme.
   const clientId = cursor.body.client_id as string;
   const started = await c.begin(clientId, cursorRedirect);
   const shown = await c.owner.get(`/api/platform/oauth/requests/${started.id}`);
@@ -617,7 +621,7 @@ test('apps register themselves only to come back to this computer', async (t) =>
   assert.deepEqual((shown.value as OAuthRequest).app, {
     name: 'Cursor',
     clientId,
-    verified: false,
+    known: false,
     redirectHost: 'this computer',
     redirectScheme: 'cursor',
   });
@@ -635,7 +639,7 @@ test('apps register themselves only to come back to this computer', async (t) =>
   assert.equal((me.body as AgentWhoami).key.name, 'Cursor');
   const [app] = await c.listed('Cursor');
   assert.equal(app?.kind, 'app');
-  assert.deepEqual(app?.client, { name: 'Cursor', verified: false, status: 'connected' });
+  assert.deepEqual(app?.client, { name: 'Cursor', known: false, status: 'connected' });
 });
 
 test('ChatGPT connects through its own redirect and no other', async (t) => {
@@ -647,7 +651,7 @@ test('ChatGPT connects through its own redirect and no other', async (t) => {
   assert.deepEqual((shown.value as OAuthRequest).app, {
     name: 'ChatGPT',
     clientId: chatgpt,
-    verified: true,
+    known: true,
     redirectHost: 'chatgpt.com',
     redirectScheme: null,
   });
@@ -748,7 +752,7 @@ test('the platform owner is emailed when an app connects and when Dispatch disco
   assert.equal(connected.subject, '[Dispatch Dev] Claude Code connected to Dispatch');
   for (const line of [
     'Connection: Laptop – Claude Code',
-    'App: Claude Code (verified app)',
+    'App: Claude Code (known metadata)',
     'Sends access to: this computer',
     'DSPs: Northline Logistics',
     'Tools: Essential',

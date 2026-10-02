@@ -67,8 +67,8 @@ export function AppsTab() {
                           <tr key={app.id} className={inUse(app) ? undefined : 'ended'}>
                             <td>
                               <span className="agents-app-name">
-                                {/* Only an app Dispatch knows shows its own logo. */}
-                                <AppIcon app={app.client?.verified ? knownApp(app.client) : null} />
+                                {/* Only recognized published metadata gets an app logo. */}
+                                <AppIcon app={app.client?.known ? knownApp(app.client) : null} />
                                 <strong>
                                   <bdi>{app.name}</bdi>
                                 </strong>
@@ -82,7 +82,11 @@ export function AppsTab() {
                             <td>
                               <span className="agents-named">
                                 <bdi>{app.client?.name ?? 'Unknown app'}</bdi>
-                                <Badge value={app.client?.verified ? 'verified' : 'unverified'} />
+                                <Badge
+                                  value={app.client?.known ? 'known_metadata' : 'app_provided'}
+                                >
+                                  {app.client?.known ? 'Known metadata' : 'App-provided metadata'}
+                                </Badge>
                               </span>
                             </td>
                             <td>

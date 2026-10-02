@@ -160,10 +160,10 @@ fn agent_challenge(state: &State, response: &mut Response) {
                 headers.insert(header::WWW_AUTHENTICATE, value);
             }
         }
-        // Calls are counted by the minute, so the next minute starts a new count.
+        // Calls use a rolling minute. Sixty seconds is a safe upper bound even when the
+        // oldest admitted call is about to leave the window.
         429 => {
-            let wait = 60 - (crate::db::now() / 1000) % 60;
-            headers.insert(header::RETRY_AFTER, wait.into());
+            headers.insert(header::RETRY_AFTER, 60.into());
         }
         // The server is busy for a moment, as while a collection writes.
         503 => {

@@ -188,7 +188,7 @@ function Approval({
   );
   const busy = answer.busy || leaving;
   // An app Dispatch doesn't know, on a website: where access goes is what matters most.
-  const website = !app.verified && !app.redirectScheme && app.redirectHost !== 'this computer';
+  const website = !app.known && !app.redirectScheme && app.redirectHost !== 'this computer';
   const name = <bdi>{app.name}</bdi>;
   return (
     <form
@@ -201,7 +201,9 @@ function Approval({
     >
       <div className="agents-authorize-app">
         <h2 id="agents-authorize-app">{name}</h2>
-        <Badge value={app.verified ? 'verified' : 'unverified'} />
+        <Badge value={app.known ? 'known_metadata' : 'app_provided'}>
+          {app.known ? 'Known metadata' : 'App-provided metadata'}
+        </Badge>
       </div>
       {website && (
         <p className="agents-sends">
@@ -251,7 +253,14 @@ function Approval({
       <div className="notice agents-consent">
         <Info size={16} aria-hidden="true" />
         <span>
-          {!app.verified && <>Unverified app: it says it is “{name}”. </>}
+          {app.known ? (
+            <>
+              Dispatch recognizes this app’s published metadata, but public app identity is not
+              authenticated.{' '}
+            </>
+          ) : (
+            <>Unrecognized app: it says it is “{name}”. </>
+          )}
           Only approve if you started connecting {name} yourself just now. If you didn’t, choose
           Deny.
           {app.redirectHost === 'this computer' &&

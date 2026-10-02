@@ -488,7 +488,7 @@
   color: var(--muted-foreground);
 }
 
-/* Connected apps: whether Dispatch knows the app by its published address, and whether
+/* Connected apps: whether Dispatch recognizes the app's published metadata, and whether
    it is still signed in. */
 .agents-named {
   display: flex;
@@ -496,10 +496,10 @@
   align-items: center;
   gap: 4px 10px;
 }
-.status-indicator.verified > i {
+.status-indicator.known_metadata > i {
   background: var(--success);
 }
-.status-indicator.unverified > i,
+.status-indicator.app_provided > i,
 .status-indicator.signed_out > i {
   background: var(--warning);
 }

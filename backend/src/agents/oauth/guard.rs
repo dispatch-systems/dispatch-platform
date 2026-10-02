@@ -71,6 +71,12 @@ impl Store {
         let open_until = at(now() + PAIRING);
         self.platform.transaction(|| {
             let closed = self.oauth_pairing()?.open_until.is_none();
+            if closed {
+                // Registrations are invitations to this pairing attempt, not durable public
+                // inventory. A new window starts with its whole capacity available.
+                self.platform
+                    .exec("DELETE FROM oauth_clients WHERE last_used_at IS NULL", [])?;
+            }
             self.platform.exec(
                 "INSERT INTO oauth_pairing(id,open_until,opened_by,opened_at) VALUES (1,?1,?2,?3) \
                  ON CONFLICT(id) DO UPDATE SET open_until=?1,opened_by=?2,opened_at=?3",

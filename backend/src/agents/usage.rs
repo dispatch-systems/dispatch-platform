@@ -2,7 +2,10 @@
 //! count here is the whole count. Agent reads stay reads; once a minute the scheduler
 //! writes down when each key was last used.
 use crate::{Result, db::now, ensure};
-use std::{collections::HashMap, sync::Mutex};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::Mutex,
+};
 
 /// Calls a key may make in one minute.
 pub const PER_MINUTE: u32 = 120;
@@ -10,8 +13,7 @@ pub const PER_MINUTE: u32 = 120;
 #[derive(Default)]
 pub struct Usage(Mutex<HashMap<String, Use>>);
 struct Use {
-    minute: i64,
-    count: u32,
+    calls: VecDeque<i64>,
     at: i64,
     client: String,
     unsaved: bool,
@@ -20,26 +22,24 @@ struct Use {
 pub type LastUse = (i64, String);
 
 impl Usage {
-    /// Counts one call, or refuses it once the key has made `PER_MINUTE` this minute.
+    /// Counts one call, or refuses it once the key has made `PER_MINUTE` calls in the
+    /// preceding rolling minute.
     pub fn admit(&self, key: &str, client: &str) -> Result<()> {
         self.admit_at(key, client, now())
     }
     fn admit_at(&self, key: &str, client: &str, at: i64) -> Result<()> {
-        let minute = at / 60_000;
         let mut keys = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
         let entry = keys.entry(key.to_owned()).or_insert_with(|| Use {
-            minute,
-            count: 0,
+            calls: VecDeque::new(),
             at,
             client: String::new(),
             unsaved: false,
         });
-        if entry.minute != minute {
-            entry.minute = minute;
-            entry.count = 0;
+        while entry.calls.front().is_some_and(|seen| *seen <= at - 60_000) {
+            entry.calls.pop_front();
         }
-        ensure(entry.count < PER_MINUTE, "rate_limited", 429)?;
-        entry.count += 1;
+        ensure(entry.calls.len() < PER_MINUTE as usize, "rate_limited", 429)?;
+        entry.calls.push_back(at);
         entry.at = at;
         entry.client = client.to_owned();
         entry.unsaved = true;
@@ -80,7 +80,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_key_gets_a_minute_of_calls_then_waits() {
+    fn a_key_gets_a_rolling_minute_of_calls_then_waits() {
         let usage = Usage::default();
         let at = 1_790_000_000_000;
         for _ in 0..PER_MINUTE {
@@ -88,8 +88,28 @@ mod tests {
         }
         let refused = usage.admit_at("key_a", "curl", at + 1).unwrap_err();
         assert_eq!(refused.code, "rate_limited");
-        // The next minute starts a new count, and another key has its own.
+        // A wall-clock minute boundary cannot double the allowed burst. Calls age out only
+        // after their own rolling minute, and another key has its own allowance.
+        assert_eq!(
+            usage
+                .admit_at("key_a", "curl", at + 59_999)
+                .unwrap_err()
+                .code,
+            "rate_limited"
+        );
         usage.admit_at("key_a", "curl", at + 60_000).unwrap();
+        let boundary = Usage::default();
+        let minute = at - at.rem_euclid(60_000);
+        for _ in 0..PER_MINUTE {
+            boundary.admit_at("key_a", "curl", minute + 59_000).unwrap();
+        }
+        assert_eq!(
+            boundary
+                .admit_at("key_a", "curl", minute + 60_000)
+                .unwrap_err()
+                .code,
+            "rate_limited"
+        );
         usage.admit_at("key_b", "Codex 0.157", at).unwrap();
         let taken = usage.take();
         assert_eq!(taken.len(), 2);

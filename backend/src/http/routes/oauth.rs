@@ -6,7 +6,10 @@
 //! the kinds of app that may connect.
 use crate::{
     Result, State,
-    agents::oauth::{self, Answer, Query, Refusal},
+    agents::oauth::{
+        self, Answer, Query, Refusal,
+        limits::{Endpoint as Limited, Limits},
+    },
     contracts::{self, OAuthAppChoice, OAuthAppId, OAuthApproval},
     db::Store,
     http::{
@@ -21,7 +24,7 @@ use crate::{
 use axum::{
     Json,
     extract::Request,
-    http::{HeaderValue, Method, StatusCode, header, request::Parts},
+    http::{HeaderName, HeaderValue, Method, StatusCode, header, request::Parts},
     response::{IntoResponse, Response},
 };
 use serde_json::{Value, json};
@@ -92,6 +95,14 @@ async fn authorize(state: Arc<State>, request: Request) -> Response {
         Ok(ip) => ip,
         Err(error) => return middleware::failure(error),
     };
+    if state.oauth_limits.admit(Limited::Authorize, &ip).is_err() {
+        let response = Reply::redirect(format!(
+            "{}/#authorize?error=rate_limited",
+            oauth::issuer(&state.config)
+        ))
+        .into_response();
+        return middleware::noted(response, "rate_limited");
+    }
     let query = Query::parse(parts.uri.query().unwrap_or("").as_bytes());
     // Counted first, so no address makes Dispatch fetch an app's document more than it may;
     // then nothing is fetched for an app the owner does not let connect, or while the
@@ -177,8 +188,8 @@ fn this_browser<'a>(user: &User, input: &'a Input) -> Result<&'a str> {
 }
 
 async fn token(state: Arc<State>, request: Request) -> Response {
-    let answer = match form(&state, request, "/oauth/token").await {
-        Ok((_, form)) => state
+    let answer = match form(&state, request, "/oauth/token", Limited::Token).await {
+        Ok(form) => state
             .run_bookkeeping(move |db| Ok(db.oauth_token(&form)))
             .await
             .map_err(Refusal::from)
@@ -187,26 +198,26 @@ async fn token(state: Arc<State>, request: Request) -> Response {
     };
     match answer {
         Ok(tokens) => answered(200, tokens),
-        Err(refusal) => refused("token", refusal),
+        Err(refusal) => refused(&state.oauth_limits, "token", refusal),
     }
 }
 
 async fn register(state: Arc<State>, request: Request) -> Response {
     let (parts, body) = request.into_parts();
-    let read = async {
-        let ip = middleware::address(&state, &parts, "/oauth/register")?;
-        let body = middleware::bytes(body).await?;
-        Ok::<_, crate::Error>((ip, body))
+    let ip = match post_head(&state, &parts, "/oauth/register", Limited::Register) {
+        Ok(ip) => ip,
+        Err(error) => return refused(&state.oauth_limits, "register", error),
     };
-    let (ip, body) = match read.await {
-        Ok(read) => read,
-        Err(error) => return refused("register", error.into()),
+    let body = match middleware::bytes(body).await {
+        Ok(body) => body,
+        Err(error) => return refused(&state.oauth_limits, "register", error.into()),
     };
     let Some(metadata) = content_type(&parts, "application/json")
         .then(|| serde_json::from_slice::<Value>(&body).ok())
         .flatten()
     else {
         return refused(
+            &state.oauth_limits,
             "register",
             Refusal::new("invalid_client_metadata", "The body must be JSON"),
         );
@@ -223,14 +234,14 @@ async fn register(state: Arc<State>, request: Request) -> Response {
         .and_then(|answer| answer);
     match answer {
         Ok(client) => answered(201, client),
-        Err(refusal) => refused("register", refusal),
+        Err(refusal) => refused(&state.oauth_limits, "register", refusal),
     }
 }
 
 /// Always 200 for any token, known or not (RFC 7009 §2.2).
 async fn revoke(state: Arc<State>, request: Request) -> Response {
-    let answer = match form(&state, request, "/oauth/revoke").await {
-        Ok((_, form)) => state
+    let answer = match form(&state, request, "/oauth/revoke", Limited::Revoke).await {
+        Ok(form) => state
             .run_bookkeeping(move |db| Ok(db.revoke_oauth(&form)))
             .await
             .map_err(Refusal::from)
@@ -239,14 +250,21 @@ async fn revoke(state: Arc<State>, request: Request) -> Response {
     };
     match answer {
         Ok(()) => answered(200, json!({})),
-        Err(refusal) => refused("revoke", refusal),
+        Err(refusal) => refused(&state.oauth_limits, "revoke", refusal),
     }
 }
 
-/// A form post's parameters with the client's address, or why it is no form post.
-async fn form(state: &State, request: Request, pattern: &'static str) -> Answer<(String, Query)> {
+/// A form post's parameters, admitted before its body or the database is read. Browser form
+/// submissions from another site are not OAuth clients and cannot read the answer; refusing
+/// them prevents a webpage from enlisting visitors to spend Dispatch's OAuth budget.
+async fn form(
+    state: &State,
+    request: Request,
+    pattern: &'static str,
+    endpoint: Limited,
+) -> Answer<Query> {
     let (parts, body) = request.into_parts();
-    let ip = middleware::address(state, &parts, pattern)?;
+    post_head(state, &parts, pattern, endpoint)?;
     let body = middleware::bytes(body).await?;
     if !content_type(&parts, "application/x-www-form-urlencoded") {
         return Err(Refusal::new(
@@ -254,7 +272,38 @@ async fn form(state: &State, request: Request, pattern: &'static str) -> Answer<
             "The body must be application/x-www-form-urlencoded",
         ));
     }
-    Ok((ip, Query::parse(&body)))
+    Ok(Query::parse(&body))
+}
+/// Admits a public OAuth POST before its body is polled. Browser pages from another site are
+/// not protocol clients and may not enlist their visitors to spend the shared endpoint budget.
+fn post_head(
+    state: &State,
+    parts: &Parts,
+    pattern: &'static str,
+    endpoint: Limited,
+) -> Answer<String> {
+    let ip = middleware::address(state, parts, pattern)?;
+    if cross_site(parts, oauth::issuer(&state.config)) {
+        return Err(Refusal::new(
+            "invalid_request",
+            "Cross-site browser form posts are not accepted",
+        ));
+    }
+    state.oauth_limits.admit(endpoint, &ip)?;
+    Ok(ip)
+}
+fn cross_site(parts: &Parts, origin: &str) -> bool {
+    static SEC_FETCH_SITE: HeaderName = HeaderName::from_static("sec-fetch-site");
+    parts
+        .headers
+        .get(&SEC_FETCH_SITE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.eq_ignore_ascii_case("cross-site"))
+        || parts
+            .headers
+            .get(header::ORIGIN)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value != origin)
 }
 fn content_type(parts: &Parts, expected: &str) -> bool {
     parts
@@ -275,14 +324,23 @@ fn answered(status: u16, body: Value) -> Response {
     response
 }
 /// An OAuth error (RFC 6749 §5.2), written down with the endpoint, never with a token.
-fn refused(endpoint: &str, refusal: Refusal) -> Response {
-    observability::event(
-        "warn",
-        "oauth.refused",
-        json!({"endpoint":endpoint,"error":refusal.error,"description":refusal.description}),
-    );
+fn refused(limits: &Limits, endpoint: &str, refusal: Refusal) -> Response {
+    if let Some(sample) = limits.sample_refusal(endpoint, refusal.error) {
+        observability::event(
+            "warn",
+            "oauth.refused",
+            json!({"endpoint":endpoint,"error":refusal.error,
+                "description":refusal.description,"sample":sample}),
+        );
+    }
     let body = json!({"error":refusal.error,"error_description":refusal.description});
-    middleware::noted(answered(refusal.status, body), refusal.error)
+    let mut response = middleware::noted(answered(refusal.status, body), refusal.error);
+    if refusal.status == 429 {
+        response
+            .headers_mut()
+            .insert(header::RETRY_AFTER, HeaderValue::from_static("60"));
+    }
+    response
 }
 
 /// `?name=` asks what approving under that name would replace, as the owner edits it.

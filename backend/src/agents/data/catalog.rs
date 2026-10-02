@@ -180,8 +180,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
         path: "/api/v1/drivers",
         summary: "Find drivers",
         description: "Use to look a driver up or list the DSP's people: name, Driver Match \
-            code and the Paycom and Amazon IDs each holds. Other tools already accept a \
-            driver's name, so look up only when asked to.",
+            code and matching status. Other tools already accept a driver's name, so look up \
+            only when asked to. Provider IDs are included only when explicitly requested.",
         path_params: &[],
         params: &[
             DSP,
@@ -189,6 +189,12 @@ pub const ENDPOINTS: &[Endpoint] = &[
                 name: "q",
                 kind: Kind::Text,
                 description: "Part of a name, a code or an ID.",
+            },
+            Param {
+                name: "include_ids",
+                kind: Kind::Boolean,
+                description: "Include Paycom employee codes and Amazon transporter IDs only \
+                    when the user explicitly needs provider identifiers.",
             },
             LIMIT,
             CURSOR,
@@ -601,7 +607,7 @@ pub fn check(id: &str, query: &Value) -> Result<(), Refusal> {
         };
         let text = value.as_str().unwrap_or("").trim();
         let fits = match param.kind {
-            Kind::Text => text.len() <= 200,
+            Kind::Text => text.chars().count() <= 200,
             Kind::Integer(low, high) => {
                 text.parse::<i64>().is_ok_and(|n| (low..=high).contains(&n))
             }
@@ -851,7 +857,7 @@ pub fn metrics() -> Value {
 
 fn schema(kind: Kind) -> Value {
     match kind {
-        Kind::Text => json!({"type":"string"}),
+        Kind::Text => json!({"type":"string","maxLength":200}),
         Kind::Integer(low, high) => json!({"type":"integer","minimum":low,"maximum":high}),
         Kind::Boolean => json!({"type":"boolean"}),
         Kind::Choice(choices) => json!({"type":"string","enum":choices}),
@@ -885,6 +891,7 @@ pub fn input_schema(endpoint: &Endpoint) -> Map<String, Value> {
     let mut schema = Map::new();
     schema.insert("type".into(), json!("object"));
     schema.insert("properties".into(), Value::Object(properties));
+    schema.insert("additionalProperties".into(), json!(false));
     if !endpoint.path_params.is_empty() {
         let required: Vec<&str> = endpoint.path_params.iter().map(|p| p.name).collect();
         schema.insert("required".into(), json!(required));
@@ -932,7 +939,11 @@ pub fn openapi(origin: &str) -> Value {
         },
         "servers": [{"url": origin}],
         "security": [{"key": []}],
-        "components": {"securitySchemes": {"key": {"type":"http","scheme":"bearer","description":"An agent key made on the Agents page."}}},
+        "components": {"securitySchemes": {"key": {
+            "type": "http",
+            "scheme": "bearer",
+            "description": "An agent key made on the Agents page, or an OAuth access token issued by Sign in with Dispatch."
+        }}},
         "paths": paths,
     })
 }
@@ -994,6 +1005,13 @@ mod tests {
         );
         assert_eq!(
             check("dvic", &json!({"short":"maybe"})).unwrap_err().code,
+            "invalid_parameter"
+        );
+        assert!(check("drivers", &json!({"q":"é".repeat(200)})).is_ok());
+        assert_eq!(
+            check("drivers", &json!({"q":"é".repeat(201)}))
+                .unwrap_err()
+                .code,
             "invalid_parameter"
         );
     }
