@@ -371,6 +371,135 @@ async fn one_driver_is_one_person_across_every_source() {
 }
 
 #[tokio::test]
+async fn driver_identities_follow_live_sources_even_with_a_warm_cache() {
+    let (_root, db, id) = ready();
+    let me = caller(&db, &[&id], false);
+    let actor = owner(&db);
+    let config = db.config.clone();
+    let state = State::new(config).unwrap();
+
+    // Populate the Driver Match read cache while every source is visible.
+    let who = me.clone();
+    let (status, both) = ask(&state, move |db, state| {
+        data::drivers(db, state, &who, &json!({}))
+    })
+    .await;
+    assert_eq!(status, 200, "{both}");
+    let visible_count = both["found"].clone();
+    let person = row(&both["drivers"], "name", "Fixture Driver");
+    assert_eq!(person[col(&both["drivers"], "paycom")], "E002");
+    assert_eq!(person[col(&both["drivers"], "amazon")], "driver-1");
+    // Remove the durable link rows behind the cache. The remaining assertions can only
+    // see the seeded identities if People::load is reusing the warm Driver Match value.
+    db.dsp(&id)
+        .unwrap()
+        .exec("DELETE FROM person_ids", [])
+        .unwrap();
+
+    // With Paycom-backed pages off, its ID is neither returned nor accepted as a lookup.
+    // Change the persisted policy through the original Store rather than State::run: the
+    // latter increments data_revision and would invalidate the cache this test is probing.
+    db.set_feature(&id, "timecard", false, &actor).unwrap();
+    let who = me.clone();
+    let (_, amazon_only) = ask(&state, move |db, state| {
+        data::drivers(db, state, &who, &json!({"q":"driver-1"}))
+    })
+    .await;
+    let person = &rows(&amazon_only["drivers"])[0];
+    assert_eq!(person[col(&amazon_only["drivers"], "match")], "amazon_only");
+    assert_eq!(person[col(&amazon_only["drivers"], "paycom")], "");
+    assert_eq!(person[col(&amazon_only["drivers"], "amazon")], "driver-1");
+    let who = me.clone();
+    let (_, hidden) = ask(&state, move |db, state| {
+        data::drivers(db, state, &who, &json!({"q":"E002"}))
+    })
+    .await;
+    assert_eq!(hidden["found"], 0, "{hidden}");
+    let who = me.clone();
+    let (status, hidden) = ask(&state, move |db, state| {
+        data::driver(db, state, &who, "E002", &json!({"date":DAY}))
+    })
+    .await;
+    assert_eq!(
+        (status, hidden["error"].as_str()),
+        (404, Some("driver_not_found"))
+    );
+
+    // Paycom alone has the inverse projection, including a source-derived status.
+    db.set_feature(&id, "timecard", true, &actor).unwrap();
+    db.set_feature(&id, "timecard.meal_breaks", false, &actor)
+        .unwrap();
+    for feature in ["routes", "dvic", "scorecard"] {
+        db.set_feature(&id, feature, false, &actor).unwrap();
+    }
+    let who = me.clone();
+    let (_, paycom_only) = ask(&state, move |db, state| {
+        data::drivers(db, state, &who, &json!({"q":"E002"}))
+    })
+    .await;
+    let person = &rows(&paycom_only["drivers"])[0];
+    assert_eq!(person[col(&paycom_only["drivers"], "match")], "paycom_only");
+    assert_eq!(person[col(&paycom_only["drivers"], "paycom")], "E002");
+    assert_eq!(person[col(&paycom_only["drivers"], "amazon")], "");
+    let who = me.clone();
+    let (_, hidden) = ask(&state, move |db, state| {
+        data::drivers(db, state, &who, &json!({"q":"driver-1"}))
+    })
+    .await;
+    assert_eq!(hidden["found"], 0, "{hidden}");
+
+    // No identity-backed source means no stable code, name or provider ID is exposed.
+    db.set_feature(&id, "timecard", false, &actor).unwrap();
+    let who = me.clone();
+    let (_, none) = ask(&state, move |db, state| {
+        data::drivers(db, state, &who, &json!({}))
+    })
+    .await;
+    assert_eq!(none["found"], 0, "{none}");
+    let who = me.clone();
+    let (status, hidden) = ask(&state, move |db, state| {
+        data::driver(db, state, &who, "Fixture Driver", &json!({"date":DAY}))
+    })
+    .await;
+    assert_eq!(
+        (status, hidden["error"].as_str()),
+        (404, Some("driver_not_found"))
+    );
+
+    // Exercise repeated off/on transitions against that same cached identity set. Every
+    // read must apply the current persisted policy, never one from a prior iteration.
+    for iteration in 0..24 {
+        let visible = iteration % 2 == 0;
+        if visible {
+            db.enable_all_features(&id).unwrap();
+        } else {
+            for feature in ["timecard", "routes", "dvic", "scorecard"] {
+                db.set_feature(&id, feature, false, &actor).unwrap();
+            }
+        }
+        let who = me.clone();
+        let (_, answer) = ask(&state, move |db, state| {
+            data::drivers(db, state, &who, &json!({}))
+        })
+        .await;
+        assert_eq!(
+            answer["found"],
+            if visible {
+                visible_count.clone()
+            } else {
+                json!(0)
+            }
+        );
+        if !visible {
+            assert!(
+                rows(&answer["drivers"]).is_empty(),
+                "iteration {iteration}: {answer}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn unclear_requests_are_refused_with_what_to_fix() {
     let (_root, db, id) = ready();
     db.new_dsp("Cedar Ridge Delivery", "UTC", &owner(&db), false)
@@ -1236,20 +1365,22 @@ async fn every_tool_says_when_its_feature_is_switched_off() {
                     "{id}: {body}"
                 );
             }
-            (None, "whoami" | "metrics" | "drivers") => assert_eq!(status, 200, "{id}: {body}"),
+            (None, "whoami" | "metrics") => assert_eq!(status, 200, "{id}: {body}"),
+            (None, "drivers") => {
+                assert_eq!(status, 200, "{body}");
+                assert_eq!(body["found"], 0, "{body}");
+                assert!(rows(&body["drivers"]).is_empty(), "{body}");
+            }
             (None, "status") => {
                 for key in ["timecards", "mealBreaks", "routes", "dvic", "scorecard"] {
                     assert_eq!(body["sources"][key], json!({"enabled": false}), "{key}");
                 }
             }
             (None, "driver") => {
-                assert_eq!(status, 200, "{body}");
-                for (key, value) in body["totals"].as_object().unwrap() {
-                    assert!(value.is_null(), "{key} is unknown, not {value}");
-                }
                 assert_eq!(
-                    body["switched_off"],
-                    json!(["Routes", "Timecard", "Timecard · Meal Breaks", "DVIC"])
+                    (status, body["error"].as_str()),
+                    (404, Some("driver_not_found")),
+                    "{body}"
                 );
             }
             (None, "team") => assert_eq!(
