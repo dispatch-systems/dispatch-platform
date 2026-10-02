@@ -73,8 +73,12 @@ const shown = (day: string) => `${day.slice(5, 7)}/${day.slice(8)}/${day.slice(0
 export async function setDate(page: Page, day: string) {
   // By role: the open calendar's own label also contains the field's.
   const field = page.getByRole('textbox', { name: 'Paycom date' });
+  // A lazy tab retains its previous date field while that content is inert.
+  await expect.poll(() => field.evaluate((element) => !element.closest('[inert]'))).toBe(true);
   await field.fill(day);
+  await expect(field).toHaveValue(day);
   await field.press('Enter');
+  await expectDate(page, day);
 }
 /** The Timecard date, within `scope` when a page shows more than one, reads as this day. */
 export async function expectDate(scope: Page | Locator, day: string) {
