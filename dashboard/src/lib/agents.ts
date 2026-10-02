@@ -96,6 +96,19 @@ export function lastUsedText(value: string | null, now = Date.now()) {
   return monthDay(value, new Date(when).getFullYear() !== new Date(now).getFullYear());
 }
 
+const appKinds: Record<string, string> = {
+  chatgpt: 'ChatGPT',
+  codex: 'Codex',
+  'claude-code': 'Claude Code',
+  hermes: 'Hermes Agent',
+  local: 'apps on this computer',
+  web: 'websites and other apps',
+};
+/** A kind of app the owner lets connect, by its id, as a sentence names it: "this app" for
+ * a missing or unknown id. */
+export const appKindName = (id: string | null) =>
+  (id && Object.hasOwn(appKinds, id) && appKinds[id]) || 'this app';
+
 /** Where an agent's call went, as the Activity tab shows it: `rest:whoami` is the REST
  * endpoint whoami, `mcp:find_driver` the MCP tool find_driver. */
 export function surfaceOf(surface: string) {

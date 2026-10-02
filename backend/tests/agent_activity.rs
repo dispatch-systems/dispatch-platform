@@ -278,18 +278,9 @@ async fn rest_and_mcp_calls_are_held_then_written_with_their_dsp_and_outcome() {
     let elsewhere = server.rest(&token, "/api/v1/status?dsp=Nowhere").await;
     assert_eq!(elsewhere.body["error"], "dsp_not_found");
     // The MCP handshake and lists are no calls; a tool call is, refused or not.
-    assert_eq!(
-        server
-            .mcp(
-                &token,
-                "initialize",
-                json!({"protocolVersion":"2025-06-18",
-            "capabilities":{},"clientInfo":{"name":"claude-code","version":"2"}})
-            )
-            .await
-            .status,
-        200
-    );
+    let hello = json!({"protocolVersion":"2025-06-18","capabilities":{},
+        "clientInfo":{"name":"claude-code","version":"2"}});
+    assert_eq!(server.mcp(&token, "initialize", hello).await.status, 200);
     assert_eq!(
         server.mcp(&token, "tools/list", json!({})).await.status,
         200

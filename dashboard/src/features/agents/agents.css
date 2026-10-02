@@ -654,17 +654,6 @@
   font-weight: 600;
   overflow-wrap: anywhere;
 }
-/* Turned away while apps may not start connecting, with the way to let them. */
-.agents-closed {
-  display: grid;
-  justify-items: start;
-  gap: 14px;
-  color: var(--foreground);
-}
-.agents-closed .error {
-  margin: 0;
-}
-
 @media (max-width: 700px) {
   .agents-choices.two {
     grid-template-columns: 1fr;

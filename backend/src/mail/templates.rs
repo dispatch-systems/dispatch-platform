@@ -235,7 +235,10 @@ fn facts(rows: &[(&str, String)]) -> (String, String) {
         .iter()
         .map(|(label, value)| {
             format!(
-                r#"<tr><td style="padding:7px 16px 7px 0;border-bottom:1px solid {BORDER};font:400 13px/1.5 {FONT};color:{MUTED};white-space:nowrap;vertical-align:top">{}</td><td style="padding:7px 0;border-bottom:1px solid {BORDER};font:500 14px/1.5 {FONT};color:{INK}">{}</td></tr>"#,
+                "<tr><td style=\"padding:7px 16px 7px 0;border-bottom:1px solid {BORDER};\
+                 font:400 13px/1.5 {FONT};color:{MUTED};white-space:nowrap;vertical-align:top\">\
+                 {}</td><td style=\"padding:7px 0;border-bottom:1px solid {BORDER};\
+                 font:500 14px/1.5 {FONT};color:{INK}\">{}</td></tr>",
                 escape(label),
                 escape(value)
             )
@@ -244,7 +247,8 @@ fn facts(rows: &[(&str, String)]) -> (String, String) {
     (
         text,
         format!(
-            r#"<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 26px;border-top:1px solid {BORDER}">{html}</table>"#
+            "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" \
+             style=\"margin:0 0 26px;border-top:1px solid {BORDER}\">{html}</table>"
         ),
     )
 }
@@ -323,7 +327,8 @@ pub fn app_connected(app: &ConnectedApp) -> Message {
         format!("{} (unverified) connected to Dispatch", app.app)
     };
     let lead = format!(
-        "{} connected to Dispatch with Sign in with Dispatch, as \u{201c}{}\u{201d}. It can use Dispatch as described below until the connection is revoked.",
+        "{} connected to Dispatch with Sign in with Dispatch, as \u{201c}{}\u{201d}. It can use \
+         Dispatch as described below until the connection is revoked.",
         app.app, app.connection
     );
     let mut rows = vec![

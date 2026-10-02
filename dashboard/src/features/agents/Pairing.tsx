@@ -5,8 +5,8 @@ import { useAction } from '../../app/useAction.js';
 import { deviceTimezone, timeOfDay } from '../../lib/format.js';
 import { ErrorBox } from '../../ui/index.js';
 
-export const allowLabel = 'Allow connecting for 10 minutes';
-export const openUntilText = (until: string) =>
+const allowLabel = 'Allow connecting for 10 minutes';
+const openUntilText = (until: string) =>
   `Connecting is open until ${timeOfDay(until, deviceTimezone())}`;
 
 /** The ten minutes in which an app may start connecting: until when they run, and a way to

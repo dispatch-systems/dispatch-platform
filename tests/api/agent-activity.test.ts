@@ -87,10 +87,7 @@ test('the Activity log lists what a key called over REST and MCP, written down i
   const second: AgentActivityPage = await owner.read(
     `/api/platform/agents/activity?key=${key.id}&limit=1&before=${first.next}`,
   );
-  assert.deepEqual(
-    [second.rows[0]!.surface, second.next],
-    ['rest:status', null],
-  );
+  assert.deepEqual([second.rows[0]!.surface, second.next], ['rest:status', null]);
   assert.equal((await owner.get('/api/platform/agents/activity?outcome=maybe')).status, 400);
 
   // Only a platform owner reads it.

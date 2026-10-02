@@ -10,37 +10,54 @@ import { ApiError } from '../../app/api.js';
 import {
   approveOAuthRequest,
   denyOAuthRequest,
-  openOAuthPairing,
   readOAuthRequest,
   useAgentKeys,
   useOAuthRequest,
 } from '../../app/endpoints.js';
 import { hashQuery, platformHash } from '../../app/navigation.js';
 import { useAction } from '../../app/useAction.js';
-import { blankKey } from '../../lib/agents.js';
+import { appKindName, blankKey } from '../../lib/agents.js';
 import { calendarDay } from '../../lib/format.js';
 import { Badge, DataState, DetailList, ErrorBox, Header } from '../../ui/index.js';
 import { DspReach, LocationsSwitch, ToolChoice } from './KeyChoices.js';
-import { allowLabel, openUntilText } from './Pairing.js';
 
 const again = 'Start the connection again from your app.';
 const expired = `This request expired. ${again}`;
-/** Why Dispatch turned a request away before asking: `#authorize?error=<code>`. */
-const refusals: Record<string, ReactNode> = {
-  unknown_app: 'Dispatch doesn’t accept this app.',
-  app_not_allowed: (
-    <>
-      Dispatch doesn’t accept this app yet. Turn it on under{' '}
-      <a className="underlined-link" href={platformHash('agents', { tab: 'connect' })}>
-        Agents → Connect
-      </a>
-      .
-    </>
-  ),
-  app_unavailable: 'Dispatch couldn’t check this app right now. Try again in a few minutes.',
-  invalid_redirect: `This app asked to send access to an address it never registered. ${again}`,
-  rate_limited: `Too many connection attempts. Wait a few minutes, then ${again.toLowerCase()}`,
-};
+const connectTab = (
+  <a className="underlined-link" href={platformHash('agents', { tab: 'connect' })}>
+    Agents → Connect
+  </a>
+);
+/** Why Dispatch turned a request away before asking: `#authorize?error=<code>`, with the
+ * kind of app as `app=<id>` when it is one the owner turned off. */
+function refusal(error: string, app: string | null): ReactNode {
+  switch (error) {
+    case 'unknown_app':
+      return 'Dispatch doesn’t accept this app.';
+    // Opened only from Dispatch itself, never from a link an app or anyone else sent.
+    case 'pairing_closed':
+      return (
+        <>
+          Connecting is closed. Open {connectTab}, copy your app’s command or choose Allow
+          connecting, then start again from your app.
+        </>
+      );
+    case 'app_not_allowed':
+      return (
+        <>
+          Dispatch doesn’t accept {appKindName(app)} yet. Turn it on under {connectTab}.
+        </>
+      );
+    case 'app_unavailable':
+      return 'Dispatch couldn’t check this app right now. Try again in a few minutes.';
+    case 'invalid_redirect':
+      return `This app asked to send access to an address it never registered. ${again}`;
+    case 'rate_limited':
+      return `Too many connection attempts. Wait a few minutes, then ${again.toLowerCase()}`;
+    default:
+      return `This connection can’t go ahead. ${again}`;
+  }
+}
 
 /** Platform → Agents → an app asking to connect, opened from `#authorize?request=<id>`. */
 export function AuthorizePage() {
@@ -67,9 +84,8 @@ function Authorization({ query }: { query: URLSearchParams }) {
   const request = useOAuthRequest(error ? '' : id);
   const agents = useAgentKeys();
   const [gone, setGone] = useState(false);
-  if (error === 'pairing_closed') return <PairingClosed />;
   const problem: ReactNode = error
-    ? (refusals[error] ?? `This connection can’t go ahead. ${again}`)
+    ? refusal(error, query.get('app'))
     : !id
       ? `This link is incomplete. ${again}`
       : gone || request.errorCode === 'authorization_not_found'
@@ -95,29 +111,6 @@ function Authorization({ query }: { query: URLSearchParams }) {
         <Approval request={pending} dsps={dsps} expire={() => setGone(true)} />
       )}
     </DataState>
-  );
-}
-
-/** Turned away while apps may not start connecting: the owner lets them, then starts again. */
-function PairingClosed() {
-  const [until, setUntil] = useState<string | null>(null);
-  const allow = useAction(async () => setUntil((await openOAuthPairing()).openUntil), {
-    inline: true,
-  });
-  return (
-    <div className="notice agents-closed">
-      <p role="status">
-        {until
-          ? `${openUntilText(until)}. Now start again from your app.`
-          : 'Connecting is closed.'}
-      </p>
-      {!until && (
-        <button className="primary" disabled={allow.busy} onClick={() => void allow.run()}>
-          {allowLabel}
-        </button>
-      )}
-      <ErrorBox message={allow.error} />
-    </div>
   );
 }
 

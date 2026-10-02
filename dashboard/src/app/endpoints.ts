@@ -24,7 +24,11 @@ import type {
   AgentKeys,
   AgentKeysRevoked,
   AgentWhoami,
+  OAuthAllowedApps,
+  OAuthAppChoice,
   OAuthApproval,
+  OAuthPairing,
+  OAuthPairingOpened,
   OAuthRedirect,
   OAuthRequest,
   AuditPage,
@@ -57,11 +61,6 @@ import type {
 } from '../../../shared/contracts/index.js';
 import type { ScheduleInput } from '../../../shared/contracts/schedules.js';
 
-// TODO(oauth-guard): replace with the generated contracts once the backend lands them.
-type OAuthPairing = { openUntil: string | null };
-export type OAuthAppId = 'chatgpt' | 'codex' | 'claude-code' | 'hermes' | 'local' | 'web';
-export type OAuthAllowedApp = { id: OAuthAppId; name: string; allowed: boolean };
-type OAuthAllowedApps = { apps: OAuthAllowedApp[] };
 /** Whose calls the Activity tab lists, and whether only those Dispatch refused. */
 export type AgentActivityFilter = { key: string; outcome: '' | 'refused' };
 
@@ -199,12 +198,11 @@ const pairing = '/api/platform/oauth/pairing';
 /** Until when an app may start connecting; null while it may not. */
 export const useOAuthPairing = () => useData<OAuthPairing>(pairing);
 /** Lets apps start connecting for the next ten minutes. */
-export const openOAuthPairing = () => api<OAuthPairing>(pairing, {});
+export const openOAuthPairing = () => api<OAuthPairingOpened>(pairing, {});
 const oauthApps = '/api/platform/oauth/apps';
 /** Which apps may connect at all. */
 export const useOAuthApps = () => useData<OAuthAllowedApps>(oauthApps);
-export const allowOAuthApp = (id: OAuthAppId, allowed: boolean) =>
-  api<OAuthAllowedApps>(oauthApps, { id, allowed });
+export const allowOAuthApp = (choice: OAuthAppChoice) => api<OAuthAllowedApps>(oauthApps, choice);
 /** One page of the calls agents made, newest first; `next` reads the page after it. */
 export const agentActivityUrl = (filter: AgentActivityFilter, before?: string) => {
   const query = new URLSearchParams();

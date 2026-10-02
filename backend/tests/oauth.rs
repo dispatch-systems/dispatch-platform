@@ -800,12 +800,14 @@ async fn connecting_an_app_again_replaces_its_earlier_connection() {
         .map(|event| s(event, "action"))
         .filter(|action| action.starts_with("agent."))
         .collect();
+    // Newest first, after the owner opened the pairing window for the first connection.
     assert_eq!(
         actions,
         [
             "agent.app_connected",
             "agent.app_revoked",
-            "agent.app_connected"
+            "agent.app_connected",
+            "agent.pairing_opened"
         ]
     );
     let revoked = log
@@ -2017,7 +2019,9 @@ async fn websites_connect_only_when_allowed_and_only_from_public_addresses() {
     let owner = server.owner().await;
     let site = "https://tools.example.com/oauth/client.json";
     let callback = "https://tools.example.com/callback";
-    let public: std::net::IpAddr = "93.184.215.14".parse().unwrap();
+    let v4 = std::net::IpAddr::from;
+    let v6 = |address: &str| -> std::net::IpAddr { address.parse().unwrap() };
+    let public = v4([93, 184, 215, 14]);
     let mut internet = Internet::default();
     internet.hosts.insert("tools.example.com", vec![public]);
     internet.pages.insert(
@@ -2025,22 +2029,21 @@ async fn websites_connect_only_when_allowed_and_only_from_public_addresses() {
         (200, client_document(site, "Example Tools", callback)),
     );
     let refused = [
-        ("private.example.com", vec!["10.1.2.3"]),
-        ("loopback.example.com", vec!["127.0.0.1"]),
-        ("metadata.example.com", vec!["169.254.169.254"]),
-        ("shared.example.com", vec!["100.64.0.9"]),
-        ("documentation.example.com", vec!["192.0.2.10"]),
-        ("multicast.example.com", vec!["239.1.2.3"]),
-        ("loopback6.example.com", vec!["::1"]),
-        ("unique6.example.com", vec!["fd00:ec2::254"]),
-        ("linklocal6.example.com", vec!["fe80::1"]),
-        ("mapped6.example.com", vec!["::ffff:10.0.0.1"]),
-        ("mixed.example.com", vec!["93.184.215.14", "10.0.0.1"]),
+        ("private.example.com", vec![v4([10, 1, 2, 3])]),
+        ("loopback.example.com", vec![v4([127, 0, 0, 1])]),
+        ("metadata.example.com", vec![v4([169, 254, 169, 254])]),
+        ("shared.example.com", vec![v4([100, 64, 0, 9])]),
+        ("documentation.example.com", vec![v4([192, 0, 2, 10])]),
+        ("multicast.example.com", vec![v4([239, 1, 2, 3])]),
+        ("loopback6.example.com", vec![v6("::1")]),
+        ("unique6.example.com", vec![v6("fd00:ec2::254")]),
+        ("linklocal6.example.com", vec![v6("fe80::1")]),
+        ("mapped6.example.com", vec![v6("::ffff:a00:1")]),
+        ("mixed.example.com", vec![public, v4([10, 0, 0, 1])]),
         ("nowhere.example.com", vec![]),
     ];
     for (host, addresses) in &refused {
-        let addresses = addresses.iter().map(|a| a.parse().unwrap()).collect();
-        internet.hosts.insert(host, addresses);
+        internet.hosts.insert(host, addresses.clone());
         let url = format!("https://{host}/client.json");
         let document = client_document(&url, "Sneaky", &format!("https://{host}/cb"));
         internet.pages.insert(url, (200, document));
@@ -2196,9 +2199,9 @@ async fn websites_connect_only_when_allowed_and_only_from_public_addresses() {
     assert_eq!(shown.body["app"]["redirectHost"], "tools.example.com");
     assert_eq!(shown.body["app"]["verified"], false);
     for redirect in [
-        "https://10.0.0.1/cb",
+        "https://203.0.113.5/cb",
         "https://tools.example.com/cb#x",
-        "https://user@tools.example.com/cb",
+        "https://user@tools.dispatch.test/cb",
         "https://Tools.example.com/cb",
     ] {
         assert_eq!(
@@ -2415,4 +2418,46 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
         )
         .await;
     assert_eq!(notices(&server).await.len(), 10);
+}
+
+#[test]
+fn a_notice_waiting_to_be_sent_goes_only_to_a_platform_owner_still_active() {
+    let (_root, db) = common::seeded();
+    let user = |email: &str| {
+        let (id,): (String,) = db
+            .platform
+            .one_as("SELECT id FROM users WHERE email=?", [email])
+            .unwrap()
+            .unwrap();
+        id
+    };
+    let (owner, member) = (user("owner@dispatch.test"), user("member@dispatch.test"));
+    db.platform
+        .exec(
+            "INSERT INTO users(id,email,first_name,last_name,password,platform_owner,status,\
+             created_at) VALUES ('usr_gone','gone@dispatch.test','Gone','Owner','x',1,\
+             'disabled',?)",
+            [db::iso()],
+        )
+        .unwrap();
+    for (id, to) in [
+        ("mail_owner", owner.as_str()),
+        ("mail_member", member.as_str()),
+        ("mail_gone", "usr_gone"),
+    ] {
+        db.platform
+            .exec(
+                "INSERT INTO outbox(id,encrypted_message,available_at,created_at,kind,user_id) \
+                 VALUES (?1,'',?3,?3,'connected_app',?2)",
+                rusqlite::params![id, to, db::now()],
+            )
+            .unwrap();
+    }
+    dispatch_backend::mail::discard_stale(&db).unwrap();
+    let (left,): (String,) = db
+        .platform
+        .one_as("SELECT group_concat(id) FROM outbox", [])
+        .unwrap()
+        .unwrap();
+    assert_eq!(left, "mail_owner");
 }

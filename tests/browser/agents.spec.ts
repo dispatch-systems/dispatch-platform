@@ -87,7 +87,7 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   await expect(connect.getByRole('status')).toContainText('That key was revoked.');
 });
 
-test('the Connect tab signs each app in with one command or a few steps, ready to copy', async ({
+test('the Connect tab signs each app in with one command or a few steps, ready to copy, and copying lets apps connect for ten minutes', async ({
   page,
   baseURL,
 }) => {
@@ -99,8 +99,25 @@ test('the Connect tab signs each app in with one command or a few steps, ready t
   const signIn = page.getByRole('region', { name: 'Sign in', exact: true });
   await expect(signIn).toContainText('Recommended');
   const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
+  // Until the owner copies a way to sign in, or lets them, no app may start connecting.
+  const status = signIn.locator('.agents-pairing [aria-live]');
+  const openUntil = async (): Promise<string | null> =>
+    (await page.evaluate(() => fetch('/api/platform/oauth/pairing').then((r) => r.json())))
+      .openUntil;
+  await expect(status).toHaveText('');
+  expect(await openUntil()).toBeNull();
+  // Each copy, and the button, lets apps connect for the next ten minutes.
+  const opens = async (button: Locator) => {
+    const opened = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/platform/oauth/pairing',
+    );
+    await button.click();
+    expect((await opened).status()).toBe(200);
+  };
   const copy = async (panel: ReturnType<typeof signIn.getByRole>, name: string) => {
-    await panel.getByRole('button', { name, exact: true }).click();
+    await opens(panel.getByRole('button', { name, exact: true }));
     await expect(panel.getByRole('button', { name, exact: true })).toHaveText('Copied');
     return clipboard();
   };
@@ -121,6 +138,16 @@ test('the Connect tab signs each app in with one command or a few steps, ready t
     await expect(panel.locator('code').first()).toHaveText(command);
     await expect(panel).toContainText('A Dispatch page opens — approve it there');
     expect(await copy(panel, `Copy ${app} command`)).toBe(command);
+    if (index === 0) {
+      // The first copy opened connecting; the tab says until when.
+      await expect(status).toHaveText(/^Connecting is open until \d{1,2}:\d{2} [AP]M$/);
+      const until = await openUntil();
+      expect(Date.parse(until!) - Date.now()).toBeGreaterThan(9 * 60_000);
+      expect(Date.parse(until!) - Date.now()).toBeLessThanOrEqual(10 * 60_000);
+      await expect(status).toHaveText(
+        `Connecting is open until ${timeOfDay(until!, 'America/Chicago')}`,
+      );
+    }
     const prompt = await copy(panel, `Copy prompt for ${app}`);
     expect(prompt).toBe(prompts[index]!.prompt);
     expect(prompt).toContain(mcp);
@@ -151,54 +178,11 @@ test('the Connect tab signs each app in with one command or a few steps, ready t
   });
   expect(await copy(other, 'Copy local server command')).toBe(`npx -y mcp-remote ${mcp}`);
   await expect(other).toContainText('use a key below');
-});
 
-test('copying a way to sign in, or the button, lets apps start connecting for ten minutes', async ({
-  page,
-  baseURL,
-}) => {
-  await login(page);
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseURL });
-  await page.getByRole('link', { name: 'Agents', exact: true }).click();
-  await page.getByRole('tab', { name: 'Connect', exact: true }).click();
-  const signIn = page.getByRole('region', { name: 'Sign in', exact: true });
-  const status = signIn.locator('.agents-pairing [aria-live]');
-  const openUntil = async (): Promise<string | null> =>
-    (await page.evaluate(() => fetch('/api/platform/oauth/pairing').then((r) => r.json())))
-      .openUntil;
-  // Until the owner does something here, no app may start connecting.
-  await expect(status).toHaveText('');
-  expect(await openUntil()).toBeNull();
-
-  // Copying a command lets apps connect for ten minutes, and says until when.
-  const command = signIn.getByRole('button', { name: 'Copy Claude Code command', exact: true });
-  await command.click();
-  await expect(command).toHaveText('Copied');
-  await expect(status).toHaveText(/^Connecting is open until \d{1,2}:\d{2} [AP]M$/);
-  const until = await openUntil();
-  expect(Date.parse(until!) - Date.now()).toBeGreaterThan(9 * 60_000);
-  expect(Date.parse(until!) - Date.now()).toBeLessThanOrEqual(10 * 60_000);
-  await expect(status).toHaveText(
-    `Connecting is open until ${timeOfDay(until!, 'America/Chicago')}`,
-  );
-
-  // So does the button, and copying a prompt or an app's address; each extends the window.
-  const opens = async (button: Locator) => {
-    const opened = page.waitForResponse(
-      (response) =>
-        response.request().method() === 'POST' &&
-        new URL(response.url()).pathname === '/api/platform/oauth/pairing',
-    );
-    await button.click();
-    expect((await opened).status()).toBe(200);
-  };
+  // The button lets apps connect too, extending the window.
+  const before = Date.parse((await openUntil())!);
   await opens(signIn.getByRole('button', { name: 'Allow connecting for 10 minutes', exact: true }));
-  await opens(signIn.getByRole('button', { name: 'Copy prompt for Claude Code', exact: true }));
-  await signIn.getByRole('tab', { name: 'ChatGPT', exact: true }).click();
-  await opens(signIn.getByRole('button', { name: 'Copy MCP address', exact: true }));
-  await signIn.getByRole('tab', { name: 'Other apps', exact: true }).click();
-  await opens(signIn.getByRole('button', { name: 'Copy MCP address', exact: true }));
-  expect(Date.parse((await openUntil())!)).toBeGreaterThanOrEqual(Date.parse(until!));
+  expect(Date.parse((await openUntil())!)).toBeGreaterThanOrEqual(before);
   await expect(status).toHaveText(/^Connecting is open until \d{1,2}:\d{2} [AP]M$/);
 });
 

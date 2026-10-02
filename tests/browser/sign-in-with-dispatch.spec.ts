@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { platformHash } from '../../dashboard/src/app/navigation.js';
 import { test, expect, login, signIn } from './fixtures.js';
 
 const claudeCode = 'https://claude.ai/oauth/claude-code-client-metadata';
@@ -158,30 +159,39 @@ test('an app connects only while the owner lets apps connect and it is on; a web
   await login(page);
   await expect(page.getByRole('heading', { name: 'DSPs', exact: true })).toBeVisible();
 
-  // Closed, the request is turned away; the owner opens connecting, then starts again.
+  // Closed, the request is turned away. A link can't open connecting: only Dispatch's own
+  // Connect tab does, and then the owner starts again from the app.
   await page.goto(`/oauth/authorize?${query}`);
   await expect(page).toHaveURL(/#authorize\?error=pairing_closed/);
-  const closed = page.getByText('Connecting is closed.', { exact: true });
-  await expect(closed).toBeVisible();
-  await page.getByRole('button', { name: 'Allow connecting for 10 minutes', exact: true }).click();
-  await expect(closed).toHaveCount(0);
   await expect(
     page.getByText(
-      /^Connecting is open until \d{1,2}:\d{2} [AP]M\. Now start again from your app\.$/,
+      'Connecting is closed. Open Agents → Connect, copy your app’s command or choose Allow ' +
+        'connecting, then start again from your app.',
+      { exact: true },
     ),
   ).toBeVisible();
+  await expect(page.getByRole('button', { name: /Allow connecting/ })).toHaveCount(0);
+  const connect = page.getByRole('link', { name: 'Agents → Connect', exact: true });
+  await expect(connect).toHaveAttribute('href', platformHash('agents', { tab: 'connect' }));
+  await connect.click();
+  await expect(page.getByRole('tab', { name: 'Connect', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.getByRole('button', { name: 'Allow connecting for 10 minutes', exact: true }).click();
+  await expect(page.getByText(/^Connecting is open until \d{1,2}:\d{2} [AP]M$/)).toBeVisible();
   await page.goto(`/oauth/authorize?${query}`);
   await expect(page).toHaveURL(/#authorize\?request=/);
   await expect(page.getByRole('form', { name: 'Claude Code' })).toBeVisible();
 
-  // An app the owner turned off is turned away, with the way to turn it back on.
+  // An app the owner turned off is turned away by name, with the way to turn it back on.
   const owner = await dispatch.client();
   const off = await owner.post('/api/platform/oauth/apps', { id: 'claude-code', allowed: false });
   expect(off.status, off.body).toBe(200);
   await page.goto(`/oauth/authorize?${query}`);
-  await expect(page).toHaveURL(/#authorize\?error=app_not_allowed/);
+  await expect(page).toHaveURL(/#authorize\?error=app_not_allowed&app=claude-code/);
   await expect(
-    page.getByText('Dispatch doesn’t accept this app yet. Turn it on under Agents → Connect.', {
+    page.getByText('Dispatch doesn’t accept Claude Code yet. Turn it on under Agents → Connect.', {
       exact: true,
     }),
   ).toBeVisible();
@@ -199,6 +209,13 @@ test('an app connects only while the owner lets apps connect and it is on; a web
   await page.goto(`/oauth/authorize?${query}`);
   await expect(page).toHaveURL(/#authorize\?request=/);
   await expect(page.getByRole('form', { name: 'Claude Code' })).toBeVisible();
+  // A kind of app the page doesn't know is this app.
+  await page.goto(platformHash('authorize', { error: 'app_not_allowed', app: 'cursor' }));
+  await expect(
+    page.getByText('Dispatch doesn’t accept this app yet. Turn it on under Agents → Connect.', {
+      exact: true,
+    }),
+  ).toBeVisible();
 
   // A website, once websites may connect, shows first where it sends access.
   const web = await owner.post('/api/platform/oauth/apps', { id: 'web', allowed: true });

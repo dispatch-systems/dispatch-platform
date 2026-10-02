@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { allowOAuthApp, useOAuthApps, type OAuthAllowedApp } from '../../app/endpoints.js';
+import type { OAuthAllowedApp } from '../../../../shared/contracts/index.js';
+import { allowOAuthApp, useOAuthApps } from '../../app/endpoints.js';
 import { useAction } from '../../app/useAction.js';
 import { DataState } from '../../ui/index.js';
 
@@ -11,7 +12,7 @@ export function AllowedApps() {
   const [changed, setChanged] = useState<{ list: OAuthAllowedApp[]; over: unknown }>();
   const toggle = useAction(
     async (app: OAuthAllowedApp, allowed: boolean) => {
-      const { apps: list } = await allowOAuthApp(app.id, allowed);
+      const { apps: list } = await allowOAuthApp({ id: app.id, allowed });
       setChanged({ list, over: apps.data });
     },
     {

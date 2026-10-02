@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { AgentKey } from '../../shared/contracts/index.js';
 import {
+  appKindName,
   blankKey,
   daysLeft,
   expiryOf,
@@ -190,4 +191,17 @@ test('a call names the endpoint or tool it reached, and how', () => {
   // Anything else reads as it was recorded.
   assert.deepEqual(surfaceOf('openapi'), { via: '', name: 'openapi' });
   assert.deepEqual(surfaceOf('ws:stream'), { via: '', name: 'ws:stream' });
+});
+
+test('a kind of app the owner turned off is named in a sentence, or is this app', () => {
+  assert.equal(appKindName('chatgpt'), 'ChatGPT');
+  assert.equal(appKindName('codex'), 'Codex');
+  assert.equal(appKindName('claude-code'), 'Claude Code');
+  assert.equal(appKindName('hermes'), 'Hermes Agent');
+  assert.equal(appKindName('local'), 'apps on this computer');
+  assert.equal(appKindName('web'), 'websites and other apps');
+  assert.equal(appKindName(null), 'this app');
+  assert.equal(appKindName(''), 'this app');
+  assert.equal(appKindName('cursor'), 'this app');
+  assert.equal(appKindName('toString'), 'this app');
 });
