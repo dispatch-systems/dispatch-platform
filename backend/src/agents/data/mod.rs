@@ -5,8 +5,10 @@
 pub mod catalog;
 mod facts;
 mod scope;
+mod shape;
 mod views;
 
+pub use shape::BUDGET;
 pub use views::*;
 
 use crate::{Error, State, agents::Caller, db::Store};
@@ -94,6 +96,7 @@ pub fn ask(
         "routes" => routes(db, state, caller, query),
         "route" => route(db, state, caller, named, query),
         "package" => package(db, state, caller, named, query),
+        "packages" => packages(db, state, caller, query),
         "timecards" => timecards(db, state, caller, query),
         "meal_breaks" => meal_breaks(db, state, caller, query),
         "dvic" => dvic(db, state, caller, query),

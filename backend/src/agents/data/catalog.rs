@@ -36,46 +36,66 @@ pub struct Endpoint {
 const DSP: Param = Param {
     name: "dsp",
     kind: Kind::Text,
-    description: "The DSP, by id or name. Optional when the key reaches only one DSP.",
+    description: "The DSP, by name. Leave it out when the key reaches one DSP.",
 };
 const PERIOD: Param = Param {
     name: "period",
     kind: Kind::Text,
-    description: "The days to cover: today, yesterday, this week, last week, this month, \
-        last month, last N days, a date (2026-09-28), two dates (2026-09-01..2026-09-30) or an \
-        Amazon week (2026-W39). Weeks run Sunday to Saturday; days are the DSP's own.",
+    description: "The days as the user said them, read in the DSP's own time: yesterday, \
+        last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 \
+        or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.",
 };
 const DATE: Param = Param {
     name: "date",
     kind: Kind::Text,
-    description: "One day: today, yesterday or a date such as 2026-09-28, in the DSP's time.",
+    description: "One day: today, yesterday, last night or 2026-09-28.",
+};
+const DAY: Param = Param {
+    name: "date",
+    kind: Kind::Text,
+    description: "The day: yesterday, last night, today or 2026-09-28. Leave out for yesterday.",
 };
 const FROM: Param = Param {
     name: "from",
     kind: Kind::Text,
-    description: "The first day, as 2026-09-01. Use with `to` instead of `period`.",
+    description: "The first day, as 2026-09-01, with `to`; instead of `period`.",
 };
 const TO: Param = Param {
     name: "to",
     kind: Kind::Text,
-    description: "The last day, as 2026-09-30. Use with `from`.",
+    description: "The last day, as 2026-09-30, with `from`.",
 };
 const DRIVER: Param = Param {
     name: "driver",
     kind: Kind::Text,
-    description: "A driver: their name, Driver Match code, Paycom employee code or Amazon \
-        transporter ID. A name several drivers share is refused with the choices.",
+    description: "A driver as the user named them: a name or part of one, a Driver Match \
+        code, a Paycom employee code or an Amazon transporter ID.",
 };
 const LIMIT: Param = Param {
     name: "limit",
     kind: Kind::Integer(1, 500),
-    description: "The most rows to return.",
+    description: "The most rows to return, 1 to 500.",
+};
+const CURSOR: Param = Param {
+    name: "cursor",
+    kind: Kind::Text,
+    description: "The next_cursor an earlier answer gave, for its next page.",
+};
+const DETAIL: Param = Param {
+    name: "detail",
+    kind: Kind::Choice(&["summary", "full"]),
+    description: "summary (the default) or full, only when the user wants every row.",
 };
 
 const DRIVER_PATH: Param = Param {
     name: "driver",
     kind: Kind::Text,
     description: DRIVER.description,
+};
+const ROUTE_PATH: Param = Param {
+    name: "route",
+    kind: Kind::Text,
+    description: "The route code, as CX101, or the itinerary ID route_day gives.",
 };
 
 pub const ENDPOINTS: &[Endpoint] = &[
@@ -85,19 +105,20 @@ pub const ENDPOINTS: &[Endpoint] = &[
         essential: true,
         path: "/api/v1/whoami",
         summary: "Who this key belongs to",
-        description: "The key's access, the time, and each DSP it reaches with that DSP's \
-            own date and the features it has on. Call this first.",
+        description: "Use when you need the DSPs this key reaches, each DSP's date today or \
+            what its key may do. Questions about days need no call to this first: every \
+            answer says which days it read.",
         path_params: &[],
         params: &[],
     },
     Endpoint {
         id: "status",
         tool: "data_status",
-        essential: true,
+        essential: false,
         path: "/api/v1/status",
         summary: "How fresh each source is",
-        description: "Which sources the DSP has switched on, and when each last collected: \
-            Paycom timecards, Cortex meal breaks, routes and DVIC.",
+        description: "Use when asked how current the data is: which sources the DSP has on \
+            (Paycom timecards, Cortex meal breaks, routes, DVIC) and when each last collected.",
         path_params: &[],
         params: &[DSP],
     },
@@ -107,8 +128,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
         essential: false,
         path: "/api/v1/metrics",
         summary: "Every metric and term",
-        description: "Each metric `team` can show, with its source, unit and meaning, and a \
-            glossary of the Amazon terms answers use.",
+        description: "Use when unsure what a team_table metric or an Amazon term means: each \
+            metric's source, unit and meaning, and a glossary.",
         path_params: &[],
         params: &[],
     },
@@ -118,8 +139,9 @@ pub const ENDPOINTS: &[Endpoint] = &[
         essential: true,
         path: "/api/v1/drivers",
         summary: "Find drivers",
-        description: "Everyone in the DSP with a Driver Match code: their name, how they are \
-            matched, and every Paycom and Amazon ID they hold.",
+        description: "Use to look a driver up or list the DSP's people: name, Driver Match \
+            code and the Paycom and Amazon IDs each holds. Other tools already accept a \
+            driver's name, so look up only when asked to.",
         path_params: &[],
         params: &[
             DSP,
@@ -129,6 +151,59 @@ pub const ENDPOINTS: &[Endpoint] = &[
                 description: "Part of a name, a code or an ID.",
             },
             LIMIT,
+            CURSOR,
+        ],
+    },
+    Endpoint {
+        id: "packages",
+        tool: "packages",
+        essential: true,
+        path: "/api/v1/packages",
+        summary: "Count packages by what happened",
+        description: "Use for questions about packages: how many a driver delivered, who \
+            returned packages and why, how many were business closed. Answers a count, \
+            optionally grouped, from Amazon's record of every drop-off. Add list only when \
+            the user wants the packages themselves.",
+        path_params: &[],
+        params: &[
+            DSP,
+            PERIOD,
+            DATE,
+            FROM,
+            TO,
+            DRIVER,
+            Param {
+                name: "outcome",
+                kind: Kind::Choice(super::facts::OUTCOMES),
+                description: "delivered, returned (brought back to the station), attempted, \
+                    not_picked_up (missing at the station), cancelled or open (still out \
+                    when collected).",
+            },
+            Param {
+                name: "reason",
+                kind: Kind::Text,
+                description: "Amazon's reason, as business_closed, object_missing, damaged, \
+                    inaccessible_delivery_location, address_not_found or locker_issue; for \
+                    delivered packages, where they were left, as doorstep.",
+            },
+            Param {
+                name: "route",
+                kind: Kind::Text,
+                description: "A route code, as CX101.",
+            },
+            Param {
+                name: "group_by",
+                kind: Kind::Text,
+                description: "Count per driver, day, outcome, reason, route or address; two \
+                    may be joined, as driver,reason.",
+            },
+            Param {
+                name: "list",
+                kind: Kind::Boolean,
+                description: "Also list the packages, a page at a time.",
+            },
+            LIMIT,
+            CURSOR,
         ],
     },
     Endpoint {
@@ -137,21 +212,20 @@ pub const ENDPOINTS: &[Endpoint] = &[
         essential: true,
         path: "/api/v1/drivers/{driver}",
         summary: "One driver's days",
-        description: "Everything collected about one driver in a period: each day's routes \
-            with packages and stops, timecard, meal breaks and inspections, with totals and \
-            which days each source has. Defaults to the last 7 days.",
+        description: "Use for how one driver did over some days, and their averages: one \
+            line per day with their route, stops, packages delivered and undeliverable, hours, \
+            clock in and out, meal break and inspections, plus totals.",
         path_params: &[DRIVER_PATH],
-        params: &[DSP, PERIOD, DATE, FROM, TO],
+        params: &[DSP, PERIOD, DATE, FROM, TO, DETAIL, LIMIT, CURSOR],
     },
     Endpoint {
         id: "team",
         tool: "team_table",
         essential: true,
         path: "/api/v1/team",
-        summary: "Everyone's numbers",
-        description: "A table of metrics for every driver: one row per driver with totals for \
-            the period, or one row per driver per day, and the whole team's total for each \
-            metric. Defaults to yesterday's stops, packages and hours.",
+        summary: "Compare drivers",
+        description: "Use to rank or compare drivers on chosen metrics: one row per driver, \
+            or per driver per day, with the team's total for each metric.",
         path_params: &[],
         params: &[
             DSP,
@@ -162,19 +236,27 @@ pub const ENDPOINTS: &[Endpoint] = &[
             Param {
                 name: "metrics",
                 kind: Kind::Text,
-                description: "Comma-separated metric names; see /api/v1/metrics.",
+                description: "Comma-separated metric names; stops, packages and hours when \
+                    left out.",
             },
             Param {
                 name: "per",
                 kind: Kind::Choice(&["driver", "day"]),
-                description: "One row per driver (totals), or per driver per day.",
+                description: "driver (totals, the default) or day.",
             },
             Param {
                 name: "sort",
                 kind: Kind::Text,
-                description: "One of the metrics asked for, to sort by highest first, or `name`.",
+                description: "One of the metrics asked for, or name.",
+            },
+            Param {
+                name: "order",
+                kind: Kind::Choice(&["highest", "lowest"]),
+                description: "highest first (the default) or lowest first, as for who did the \
+                    fewest.",
             },
             LIMIT,
+            CURSOR,
         ],
     },
     Endpoint {
@@ -183,25 +265,22 @@ pub const ENDPOINTS: &[Endpoint] = &[
         essential: true,
         path: "/api/v1/routes",
         summary: "A day's routes",
-        description: "Every itinerary on one day: route, driver, packages, stops, times and \
-            breaks. Says whether the day is final or a snapshot of a day in progress.",
+        description: "Use for one day's routes: each route's driver, packages delivered and \
+            undeliverable, stops, departure and end, and whether the day is final.",
         path_params: &[],
-        params: &[DSP, DATE],
+        params: &[DSP, DAY, LIMIT, CURSOR],
     },
     Endpoint {
         id: "route",
         tool: "route_stops",
         essential: false,
-        path: "/api/v1/routes/{itinerary}",
-        summary: "One itinerary's stops",
-        description: "Each stop of one itinerary in order, with every package's outcome and \
-            scan time. Addresses and GPS appear only for keys allowed them.",
-        path_params: &[Param {
-            name: "itinerary",
-            kind: Kind::Text,
-            description: "The itinerary ID, from /api/v1/routes.",
-        }],
-        params: &[DSP, DATE],
+        path: "/api/v1/routes/{route}",
+        summary: "One route's packages",
+        description: "Use for what happened on one route: outcomes, reasons and the packages \
+            that were not delivered. detail full lists every package, only when the user \
+            asks for all of them. Addresses appear only for keys allowed them.",
+        path_params: &[ROUTE_PATH],
+        params: &[DSP, DAY, DETAIL, LIMIT, CURSOR],
     },
     Endpoint {
         id: "package",
@@ -209,8 +288,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
         essential: false,
         path: "/api/v1/packages/{tracking}",
         summary: "Find a package",
-        description: "Who carried a package, on which route and day, and what happened to \
-            it. Addresses and GPS appear only for keys allowed them.",
+        description: "Use for one tracking ID: who carried it, on which route and day, and \
+            what happened to it.",
         path_params: &[Param {
             name: "tracking",
             kind: Kind::Text,
@@ -224,10 +303,10 @@ pub const ENDPOINTS: &[Endpoint] = &[
         essential: false,
         path: "/api/v1/timecards",
         summary: "Timecards",
-        description: "Paycom timecards: everyone's for one day, or one driver's for a period \
-            with `driver`. Hours, clock in and out, and lunch minutes.",
+        description: "Use for Paycom hours and punches: everyone's for one day, or one \
+            driver's over a period with driver. Hours, clock in and out, lunch minutes.",
         path_params: &[],
-        params: &[DSP, DATE, DRIVER, PERIOD, FROM, TO],
+        params: &[DSP, DATE, DRIVER, PERIOD, FROM, TO, LIMIT, CURSOR],
     },
     Endpoint {
         id: "meal_breaks",
@@ -235,28 +314,31 @@ pub const ENDPOINTS: &[Endpoint] = &[
         essential: false,
         path: "/api/v1/meal-breaks",
         summary: "Meal breaks",
-        description: "One day's meal breaks for the drivers Cortex had a route for: what Cortex \
-            recorded beside Paycom's lunch punches, with the comparison's verdict for each. People \
-            Paycom has that day without a Cortex route, such as office staff, are listed apart.",
+        description: "Use for one day's meal breaks: Cortex's meal break beside Paycom's \
+            lunch punches and the comparison's verdict, for each driver Cortex had a route \
+            for.",
         path_params: &[],
         params: &[
             DSP,
-            DATE,
+            DAY,
             Param {
                 name: "issues",
                 kind: Kind::Boolean,
                 description: "Only drivers whose meal break needs a look.",
             },
+            LIMIT,
+            CURSOR,
         ],
     },
     Endpoint {
         id: "dvic",
         tool: "dvic_inspections",
-        essential: false,
+        essential: true,
         path: "/api/v1/dvic",
         summary: "Vehicle inspections",
-        description: "DVIC inspections in a period, with how long each took against the \
-            minimum. Defaults to the last 7 days.",
+        description: "Use for DVIC questions, as which drivers were short: each driver's \
+            inspections, how many were shorter than the minimum, and the shortest. detail \
+            full lists the inspections.",
         path_params: &[],
         params: &[
             DSP,
@@ -268,8 +350,11 @@ pub const ENDPOINTS: &[Endpoint] = &[
             Param {
                 name: "short",
                 kind: Kind::Boolean,
-                description: "Only inspections shorter than their minimum.",
+                description: "Only drivers, or inspections, short of the minimum.",
             },
+            DETAIL,
+            LIMIT,
+            CURSOR,
         ],
     },
 ];

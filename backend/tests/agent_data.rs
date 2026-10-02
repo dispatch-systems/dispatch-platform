@@ -4,7 +4,7 @@
 mod common;
 use dispatch_backend::{
     State,
-    agents::{Caller, data},
+    agents::{Caller, data, synthetic},
     collectors::Provider,
     contracts::AgentKeyRequest,
     db::{Store, s},
@@ -105,7 +105,7 @@ fn ready() -> (tempfile::TempDir, Store, String) {
 fn owner(db: &Store) -> String {
     let user = db
         .platform
-        .one("SELECT id FROM users WHERE email='owner@example.test'", [])
+        .one("SELECT id FROM users WHERE platform_owner=1 LIMIT 1", [])
         .unwrap()
         .unwrap();
     s(&user, "id").to_owned()
@@ -135,6 +135,26 @@ async fn ask(
         .unwrap()
 }
 
+/// A table's rows, and where a column sits in them.
+fn rows(table: &Value) -> &Vec<Value> {
+    table["rows"].as_array().unwrap()
+}
+fn col(table: &Value, name: &str) -> usize {
+    table["columns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|c| c == name)
+        .unwrap_or_else(|| panic!("no column {name} in {table}"))
+}
+fn row<'a>(table: &'a Value, column: &str, value: &str) -> &'a Value {
+    let at = col(table, column);
+    rows(table)
+        .iter()
+        .find(|r| r[at] == value)
+        .unwrap_or_else(|| panic!("no row with {column}={value} in {table}"))
+}
+
 #[tokio::test]
 async fn one_driver_is_one_person_across_every_source() {
     let (_root, db, id) = ready();
@@ -149,23 +169,28 @@ async fn one_driver_is_one_person_across_every_source() {
     })
     .await;
     assert_eq!(status, 200, "{report}");
-    assert_eq!(report["driver"]["paycomIds"], json!(["E002"]));
-    assert_eq!(report["driver"]["amazonIds"], json!(["driver-1"]));
-    assert_eq!(report["period"]["from"], DAY);
-    assert_eq!(report["period"]["days"], 1);
-    let day = &report["days"][0];
-    assert_eq!(day["date"], DAY);
-    assert_eq!(day["routes"][0]["transporterId"], "driver-1");
-    assert!(day["timecard"]["hours"].as_f64().unwrap() > 0.0);
-    assert!(day["mealBreaks"]["status"].is_string());
-    assert_eq!(day["inspections"].as_array().unwrap().len(), 2);
+    assert_eq!(report["understood"]["driver"]["paycom"], json!(["E002"]));
+    assert_eq!(
+        report["understood"]["driver"]["amazon"],
+        json!(["driver-1"])
+    );
+    assert_eq!(report["understood"]["from"], DAY);
+    // One line for the day, from every source.
+    let days = &report["days"];
+    let line = row(days, "date", DAY);
+    assert_eq!(line[col(days, "route")], "CX101");
+    assert!(line[col(days, "hours")].as_f64().unwrap() > 0.0);
+    assert_eq!(line[col(days, "inspections")], 2);
+    assert_eq!(line[col(days, "short")], 1);
     assert_eq!(report["totals"]["routes"], 1);
-    assert_eq!(report["totals"]["shortInspections"], 1);
-    // Each source says which days it holds; missing days never read as zero.
-    assert_eq!(report["coverage"]["routes"]["days"], json!([DAY]));
-    assert_eq!(report["coverage"]["timecards"]["days"], json!([DAY]));
+    assert_eq!(report["totals"]["short_inspections"], 1);
+    // Each source says how many of the days it holds; missing days are never zero.
+    assert_eq!(
+        report["coverage"]["routes"],
+        json!({"collected": 1, "of": 1})
+    );
 
-    // Everyone's numbers for the day, the joined driver in one row.
+    // Everyone's numbers, the joined driver in one row, the team's totals beside them.
     let who = me.clone();
     let (status, team) = ask(&state, move |db, state| {
         data::team(
@@ -177,37 +202,46 @@ async fn one_driver_is_one_person_across_every_source() {
     })
     .await;
     assert_eq!(status, 200, "{team}");
-    let rows = team["rows"].as_array().unwrap();
-    let joined = rows
-        .iter()
-        .find(|r| r["driver"]["name"] == "Fixture Driver")
-        .unwrap();
-    assert!(joined["stops_completed"].is_number());
-    assert!(joined["hours_worked"].as_f64().unwrap() > 0.0);
-    assert_eq!(joined["inspections"], 2);
-    // The team's own total for each metric, from every row.
+    let table = &team["rows"];
+    let joined = row(table, "driver", "Fixture Driver");
+    assert!(joined[col(table, "stops_completed")].is_number());
+    assert!(joined[col(table, "hours_worked")].as_f64().unwrap() > 0.0);
+    assert_eq!(joined[col(table, "inspections")], 2);
     assert_eq!(team["totals"]["inspections"], 2);
-    assert_eq!(team["rowCount"], rows.len());
-    let hours: f64 = rows.iter().filter_map(|r| r["hours_worked"].as_f64()).sum();
-    assert!((team["totals"]["hours_worked"].as_f64().unwrap() - hours).abs() < 0.01);
-    // Someone Paycom lists but who drove no route has hours and no stops, not zero stops.
-    let office = rows
-        .iter()
-        .find(|r| r["driver"]["name"] != "Fixture Driver" && r["hours_worked"].is_number())
-        .unwrap();
-    assert!(office["stops_completed"].is_null());
+    // Someone Paycom lists who drove no route has hours and no stops, not zero stops.
+    let (stops, worked) = (col(table, "stops_completed"), col(table, "hours_worked"));
+    assert!(
+        rows(table)
+            .iter()
+            .any(|r| r[worked].is_number() && r[stops].is_null())
+    );
     // Highest first by the first metric, those without it last.
-    let stops: Vec<Option<f64>> = rows.iter().map(|r| r["stops_completed"].as_f64()).collect();
-    let mut sorted = stops.clone();
-    sorted.sort_by(|a, b| match (a, b) {
-        (Some(x), Some(y)) => y.total_cmp(x),
-        (Some(_), None) => std::cmp::Ordering::Less,
-        (None, Some(_)) => std::cmp::Ordering::Greater,
-        _ => std::cmp::Ordering::Equal,
-    });
-    assert_eq!(stops, sorted);
+    let order: Vec<Option<f64>> = rows(table).iter().map(|r| r[stops].as_f64()).collect();
+    let first_none = order
+        .iter()
+        .position(Option::is_none)
+        .unwrap_or(order.len());
+    assert!(order[first_none..].iter().all(Option::is_none));
 
-    // The day's routes, and one itinerary without addresses for a key not allowed them.
+    // Lowest first when asked, and the answer says which way it sorted.
+    let who = me.clone();
+    let (_, fewest) = ask(&state, move |db, state| {
+        data::team(
+            db,
+            state,
+            &who,
+            &json!({"date": DAY, "metrics": "packages_delivered", "order": "lowest"}),
+        )
+    })
+    .await;
+    assert_eq!(fewest["sorted"], "by packages_delivered, lowest first");
+    let delivered: Vec<i64> = rows(&fewest["rows"])
+        .iter()
+        .filter_map(|r| r[1].as_i64())
+        .collect();
+    assert!(delivered.windows(2).all(|w| w[0] <= w[1]), "{fewest}");
+
+    // The day's routes, then one route's problems, with no addresses for this key.
     let who = me.clone();
     let (_, routes) = ask(&state, move |db, state| {
         data::routes(db, state, &who, &json!({"date": DAY}))
@@ -215,84 +249,125 @@ async fn one_driver_is_one_person_across_every_source() {
     .await;
     assert_eq!(routes["final"], true);
     assert_eq!(routes["totals"]["routes"], 2);
-    let itinerary = routes["itineraries"][0]["itinerary"]
-        .as_str()
-        .unwrap()
-        .to_owned();
     let who = me.clone();
-    let wanted = itinerary.clone();
-    let (_, stops) = ask(&state, move |db, state| {
-        data::route(db, state, &who, &wanted, &json!({"date": DAY}))
+    let (status, second) = ask(&state, move |db, state| {
+        data::route(db, state, &who, "cx102", &json!({"date": DAY}))
     })
     .await;
-    assert_eq!(stops["addresses"], false);
+    assert_eq!(status, 200, "{second}");
+    assert_eq!(second["driver"], "Second Driver");
+    assert_eq!(second["outcomes"], json!({"delivered": 1, "returned": 1}));
+    let problems = &second["not_delivered"];
+    assert_eq!(rows(problems).len(), 1);
     assert!(
-        stops["stops"]
+        !problems["columns"]
             .as_array()
             .unwrap()
-            .iter()
-            .all(|s| s["place"].is_null())
+            .contains(&json!("address"))
     );
-    // A package is found however its tracking ID is written.
-    let tracking = stops["stops"]
-        .as_array()
-        .unwrap()
+
+    // Packages: a count, grouped as asked, listed only when asked.
+    let who = me.clone();
+    let (status, counted) = ask(&state, move |db, state| {
+        data::packages(
+            db,
+            state,
+            &who,
+            &json!({"date": DAY, "group_by": "driver,outcome"}),
+        )
+    })
+    .await;
+    assert_eq!(status, 200, "{counted}");
+    assert_eq!(counted["packages"], 4);
+    assert!(counted.get("list").is_none());
+    let groups = &counted["groups"];
+    let returned = rows(groups)
         .iter()
-        .flat_map(|s| s["packages"].as_array().unwrap())
-        .find_map(|p| p["tracking"].as_str())
-        .unwrap()
-        .to_lowercase();
+        .find(|r| r[col(groups, "outcome")] == "returned")
+        .unwrap();
+    assert_eq!(returned[col(groups, "driver")], "Second Driver");
+    assert_eq!(returned[col(groups, "packages")], 1);
+    let who = me.clone();
+    let (_, mine) = ask(&state, move |db, state| {
+        data::packages(
+            db,
+            state,
+            &who,
+            &json!({"date": DAY, "driver": "Fixture Driver", "outcome": "delivered", "list": "true"}),
+        )
+    })
+    .await;
+    assert_eq!(mine["packages"], 2, "{mine}");
+    // Nothing with both an outcome and a reason: the answer says what that reason came with.
+    let who = me.clone();
+    let (_, none) = ask(&state, move |db, state| {
+        data::packages(
+            db,
+            state,
+            &who,
+            &json!({"date": DAY, "outcome": "returned", "reason": "doorstep"}),
+        )
+    })
+    .await;
+    assert_eq!(none["packages"], 0);
+    assert_eq!(
+        none["note"],
+        "None were returned. With that reason there were: 3 delivered."
+    );
+    assert_eq!(rows(&mine["list"]).len(), 2);
+    // A package is found however its tracking ID is written.
     let who = me.clone();
     let (status, package) = ask(&state, move |db, state| {
-        data::package(db, state, &who, &tracking, &json!({}))
+        data::package(db, state, &who, "tba000000000002", &json!({}))
     })
     .await;
     assert_eq!(status, 200, "{package}");
-    assert_eq!(package["events"][0]["itinerary"], itinerary.as_str());
-    assert!(package["events"][0]["place"].is_null());
+    // Its pickup at the station and its drop-off, on each route that carried it.
+    assert_eq!(rows(&package["events"]).len(), 4);
 
+    // Meal breaks only for drivers Cortex had a route for; nobody else is listed.
     let who = me.clone();
     let (_, meals) = ask(&state, move |db, state| {
         data::meal_breaks(db, state, &who, &json!({"date": DAY}))
     })
     .await;
     assert_eq!(meals["collected"], true);
-    // Only someone Cortex had a route for could have missed a meal break in it; the rest
-    // are listed apart.
-    let rows = meals["drivers"].as_array().unwrap();
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0]["driver"]["name"], "Fixture Driver");
-    assert_eq!(rows[0]["cortexRoute"], true);
-    let apart = meals["withoutRoute"].as_array().unwrap();
-    assert!(!apart.is_empty());
-    assert!(apart.iter().all(|p| p["name"] != "Fixture Driver"));
-    // A day nothing was collected for has no totals at all, never zeros.
+    let drivers = &meals["drivers"];
+    assert_eq!(rows(drivers).len(), 1);
+    assert_eq!(rows(drivers)[0][col(drivers, "driver")], "Fixture Driver");
+    assert!(meals.get("withoutRoute").is_none());
+
+    // DVIC per driver, the short ones counted.
     let who = me.clone();
+    let (_, dvic) = ask(&state, move |db, state| {
+        data::dvic(db, state, &who, &json!({"date": DAY, "short": "true"}))
+    })
+    .await;
+    assert_eq!(
+        (dvic["inspections"].clone(), dvic["short"].clone()),
+        (json!(2), json!(1))
+    );
+    assert_eq!(
+        rows(&dvic["drivers"]),
+        &vec![json!(["Fixture Driver", 2, 1, 41])]
+    );
+
+    let who = me.clone();
+    let (_, status_answer) = ask(&state, move |db, _| data::status(db, &who, &json!({}))).await;
+    assert_eq!(status_answer["sources"]["routes"]["latestDay"], DAY);
+    // A day nothing was collected for has no totals at all, never zeros.
+    let who = me;
     let (_, nothing) = ask(&state, move |db, state| {
         data::routes(db, state, &who, &json!({"date": "2026-09-13"}))
     })
     .await;
-    assert_eq!(
-        (nothing["collected"].clone(), nothing["totals"].clone()),
-        (json!(false), Value::Null)
-    );
+    assert_eq!(nothing["totals"], Value::Null);
     assert!(
         nothing["note"]
             .as_str()
             .unwrap()
             .contains("unknown, not zero")
     );
-    let who = me.clone();
-    let (_, dvic) = ask(&state, move |db, state| {
-        data::dvic(db, state, &who, &json!({"date": DAY, "short": "true"}))
-    })
-    .await;
-    assert_eq!(dvic["inspections"].as_array().unwrap().len(), 1);
-    assert_eq!(dvic["inspections"][0]["driver"]["name"], "Fixture Driver");
-    let who = me;
-    let (_, status_answer) = ask(&state, move |db, _| data::status(db, &who, &json!({}))).await;
-    assert_eq!(status_answer["sources"]["routes"]["latestDay"], DAY);
-    assert_eq!(status_answer["sources"]["timecards"]["enabled"], true);
 }
 
 #[tokio::test]
@@ -329,7 +404,7 @@ async fn unclear_requests_are_refused_with_what_to_fix() {
         (json!({"week": "39"}), "unknown_parameter"),
         (json!({"period": "someday"}), "invalid_period"),
         (
-            json!({"from": "2026-01-01", "to": "2026-09-01"}),
+            json!({"from": "2025-01-01", "to": "2026-09-01"}),
             "period_too_long",
         ),
         (json!({"sort": "mood"}), "invalid_sort"),
@@ -337,10 +412,33 @@ async fn unclear_requests_are_refused_with_what_to_fix() {
             json!({"metrics": "hours_worked", "sort": "stops_completed"}),
             "invalid_sort",
         ),
+        (json!({"cursor": "next"}), "invalid_cursor"),
+        // Hours are read a day at a time, so a year of them is refused.
+        (
+            json!({"metrics": "hours_worked", "period": "last 200 days"}),
+            "period_too_long",
+        ),
     ] {
         let who = one.clone();
         let answer = ask(&state, move |db, state| data::team(db, state, &who, &query)).await;
         assert_eq!(refused(answer), (400, code.to_owned()), "{code}");
+    }
+    for (query, status, code) in [
+        (json!({"reason": "lunch"}), 400, "unknown_reason"),
+        (json!({"group_by": "colour"}), 400, "invalid_group_by"),
+        (
+            json!({"group_by": "driver,day,route"}),
+            400,
+            "invalid_group_by",
+        ),
+        (json!({"outcome": "lost"}), 400, "invalid_parameter"),
+    ] {
+        let who = one.clone();
+        let answer = ask(&state, move |db, state| {
+            data::packages(db, state, &who, &query)
+        })
+        .await;
+        assert_eq!(refused(answer), (status, code.to_owned()), "{code}");
     }
     let who = one.clone();
     let answer = ask(&state, move |db, state| {
@@ -361,25 +459,183 @@ async fn unclear_requests_are_refused_with_what_to_fix() {
     })
     .await;
     assert_eq!(refused(answer), (400, "one_day_only".to_owned()));
-
-    // A key allowed addresses sees where each stop was.
-    let who = one;
-    let (_, routes) = ask(&state, move |db, state| {
-        data::routes(db, state, &who.clone(), &json!({"date": DAY})).and_then(|routes| {
-            let itinerary = routes["itineraries"][0]["itinerary"]
-                .as_str()
-                .unwrap()
-                .to_owned();
-            data::route(db, state, &who, &itinerary, &json!({"date": DAY}))
-        })
+    let who = one.clone();
+    let answer = ask(&state, move |db, state| {
+        data::route(db, state, &who, "CX999", &json!({"date": DAY}))
     })
     .await;
-    assert_eq!(routes["addresses"], true);
-    assert!(
-        routes["stops"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|s| s["place"].is_object())
-    );
+    assert_eq!(refused(answer.clone()), (404, "route_not_found".to_owned()));
+    assert_eq!(answer.1["choices"], json!(["CX101", "CX102"]));
+
+    // A key allowed addresses sees where each package went, and may group by address.
+    let who = one.clone();
+    let (_, all) = ask(&state, move |db, state| {
+        data::route(
+            db,
+            state,
+            &who,
+            "CX101",
+            &json!({"date": DAY, "detail": "full"}),
+        )
+    })
+    .await;
+    let list = &all["packages_list"];
+    let address = col(list, "address");
+    assert!(rows(list).iter().any(|r| r[address].is_string()));
+    let who = one;
+    let (status, places) = ask(&state, move |db, state| {
+        data::packages(
+            db,
+            state,
+            &who,
+            &json!({"date": DAY, "group_by": "address"}),
+        )
+    })
+    .await;
+    assert_eq!(status, 200, "{places}");
+    let who = everywhere;
+    let answer = ask(&state, move |db, state| {
+        data::packages(
+            db,
+            state,
+            &who,
+            &json!({"dsp": id, "date": DAY, "group_by": "address"}),
+        )
+    })
+    .await;
+    assert_eq!(refused(answer).1, "locations_off");
+}
+
+/// A question asked of the agent API, as a test asks it.
+type Question = Box<dyn FnOnce(&Store, &State, &Caller) -> data::Answer + Send>;
+
+/// Every tool's answer to a plain question stays small at a real DSP's size: two weeks of
+/// a dozen drivers' routes, timecards, meal breaks and inspections.
+#[tokio::test]
+async fn answers_stay_within_their_budgets() {
+    let (_root, db) = common::seeded();
+    let world = synthetic::seed(&db).unwrap();
+    let dsp = s(&world, "dsp").to_owned();
+    let me = caller(&db, &[&dsp], false);
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+    let last = s(&world, "to").to_owned();
+    // (question, the tool's answer, the most bytes it may take)
+    let cases: Vec<(&str, Question, usize)> = vec![
+        (
+            "packages delivered by a driver last 30 days",
+            Box::new(|db, state, who: &Caller| {
+                data::packages(
+                    db,
+                    state,
+                    who,
+                    &json!({"driver": "Taylor Brooks", "outcome": "delivered"}),
+                )
+            }),
+            1_000,
+        ),
+        (
+            "returns by reason last night",
+            Box::new(|db, state, who: &Caller| {
+                data::packages(
+                    db,
+                    state,
+                    who,
+                    &json!({"date": "last night", "outcome": "returned", "group_by": "driver,reason"}),
+                )
+            }),
+            2_000,
+        ),
+        (
+            "short DVIC drivers",
+            Box::new(|db, state, who: &Caller| {
+                data::dvic(db, state, who, &json!({"short": "true"}))
+            }),
+            2_000,
+        ),
+        (
+            "a driver's month",
+            Box::new(|db, state, who: &Caller| {
+                data::driver(db, state, who, "Taylor Brooks", &json!({}))
+            }),
+            5_000,
+        ),
+        (
+            "the team's month",
+            Box::new(|db, state, who: &Caller| data::team(db, state, who, &json!({}))),
+            3_000,
+        ),
+        (
+            "a day's routes",
+            Box::new(|db, state, who: &Caller| data::routes(db, state, who, &json!({}))),
+            3_000,
+        ),
+        (
+            "everyone's timecards for a day",
+            Box::new(|db, state, who: &Caller| data::timecards(db, state, who, &json!({}))),
+            3_000,
+        ),
+        (
+            "a day's meal breaks",
+            Box::new(|db, state, who: &Caller| data::meal_breaks(db, state, who, &json!({}))),
+            3_000,
+        ),
+        (
+            "everyone per day for two weeks",
+            Box::new(|db, state, who: &Caller| {
+                data::team(
+                    db,
+                    state,
+                    who,
+                    &json!({"period": "last 14 days", "per": "day", "metrics": "packages_delivered"}),
+                )
+            }),
+            data::BUDGET,
+        ),
+        (
+            "every package of a month",
+            Box::new(|db, state, who: &Caller| {
+                data::packages(db, state, who, &json!({"list": "true", "limit": "500"}))
+            }),
+            data::BUDGET,
+        ),
+    ];
+    for (question, tool, budget) in cases {
+        let who = me.clone();
+        let (status, answer) = ask(&state, move |db, state| tool(db, state, &who)).await;
+        assert_eq!(status, 200, "{question}: {answer}");
+        let size = answer.to_string().len();
+        eprintln!("{question}: {size} bytes");
+        assert!(
+            size <= budget,
+            "{question}: {size} bytes, budget {budget}\n{answer}"
+        );
+    }
+    // A route's problems come back small; every package of it only when asked, in pages.
+    let who = me.clone();
+    let day = last.clone();
+    let (_, routes) = ask(&state, move |db, state| {
+        data::routes(db, state, &who, &json!({"date": day}))
+    })
+    .await;
+    let code = rows(&routes["routes"])[0][0].as_str().unwrap().to_owned();
+    let (who, day, wanted) = (me.clone(), last.clone(), code.clone());
+    let (_, problems) = ask(&state, move |db, state| {
+        data::route(db, state, &who, &wanted, &json!({"date": day}))
+    })
+    .await;
+    assert!(problems.to_string().len() <= 2_000, "{problems}");
+    let (who, day) = (me, last);
+    let (_, everything) = ask(&state, move |db, state| {
+        data::route(
+            db,
+            state,
+            &who,
+            &code,
+            &json!({"date": day, "detail": "full", "limit": "500"}),
+        )
+    })
+    .await;
+    assert!(everything.to_string().len() <= data::BUDGET);
 }

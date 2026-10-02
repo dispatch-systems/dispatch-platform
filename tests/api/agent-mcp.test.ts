@@ -83,7 +83,7 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   assert.equal(hello.headers.get('mcp-session-id'), null);
   assert.equal(hello.body.result.protocolVersion, '2025-06-18');
   assert.equal(hello.body.result.serverInfo.name, 'dispatch');
-  assert.match(hello.body.result.instructions, /Call whoami first/);
+  assert.match(hello.body.result.instructions, /No date means the last 30 days/);
   assert.ok(hello.body.result.capabilities.tools && hello.body.result.capabilities.prompts);
   assert.equal((await rpc(full, 'notifications/initialized')).status, 202);
 
@@ -93,7 +93,7 @@ test('any MCP client reaches the agent API with a key, on every protocol version
     inputSchema: { type: string; properties: Record<string, { type: string }> };
     annotations: { readOnlyHint: boolean };
   }[];
-  assert.ok(listed.length >= 12);
+  assert.ok(listed.length >= 13);
   for (const tool of listed) {
     assert.match(tool.name, /^[a-z_]+$/);
     assert.equal(tool.inputSchema.type, 'object');
@@ -104,9 +104,10 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   }
   const few = (await rpc(essential, 'tools/list')).body.result.tools as { name: string }[];
   assert.deepEqual(few.map((tool) => tool.name).sort(), [
-    'data_status',
     'driver_report',
+    'dvic_inspections',
     'find_drivers',
+    'packages',
     'route_day',
     'team_table',
     'whoami',
@@ -115,25 +116,27 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   assert.equal(missing.isError, true);
   assert.match(missing.content[0].text, /^unknown_tool/);
 
-  // Every answer is data and the same data as text, for harnesses that show only text.
+  // Every answer arrives once, as compact JSON text: the one shape every client reads alike.
+  const read = (result: { content: { text: string }[] }) => JSON.parse(result.content[0]!.text);
   const found = await call(full, 'find_drivers', { q: 'a', limit: 5 });
   assert.equal(found.isError, false);
-  assert.deepEqual(JSON.parse(found.content[0].text), found.structuredContent);
-  assert.equal(found.structuredContent.dsp.name, 'Northline Logistics');
-  const someone = found.structuredContent.drivers[0] as { code: string; name: string };
-  const report = await call(full, 'driver_report', { driver: someone.name, period: 'last 7 days' });
-  assert.equal(report.structuredContent.driver.code, someone.code);
-  assert.equal(report.structuredContent.period.days, 7);
+  assert.equal(found.structuredContent, undefined);
+  const drivers = read(found);
+  assert.equal(drivers.understood.dsp, 'Northline Logistics');
+  const name = drivers.drivers.columns.indexOf('name');
+  const someone = drivers.drivers.rows[0][name] as string;
+  const report = read(
+    await call(full, 'driver_report', { driver: someone, period: 'last 7 days' }),
+  );
+  assert.equal(report.understood.driver.name, someone);
+  assert.equal(report.understood.days, 7);
   // A list where a comma-separated value belongs, as some models send, still works.
   const table = await call(full, 'team_table', {
     metrics: ['hours_worked', 'days_worked'],
     period: 'last 7 days',
   });
   assert.equal(table.isError, false, table.content[0].text);
-  assert.deepEqual(
-    table.structuredContent.metrics.map((m: { name: string }) => m.name),
-    ['hours_worked', 'days_worked'],
-  );
+  assert.deepEqual(read(table).rows.columns, ['driver', 'hours_worked', 'days_worked']);
 
   // Refusals come back as answers the model reads, with what to fix and the choices.
   const unknown = await call(full, 'team_table', { metrics: 'steps' });
@@ -208,7 +211,7 @@ test('any MCP client reaches the agent API with a key, on every protocol version
     { ...modern, 'mcp-method': 'tools/call', 'mcp-name': 'whoami' },
   );
   assert.equal(stateless.status, 200, JSON.stringify(stateless.body));
-  assert.equal(stateless.body.result.structuredContent.key.tools, 'full');
+  assert.equal(JSON.parse(stateless.body.result.content[0].text).key.tools, 'full');
 
   // Without a key, a client is told to bring one; a browser is refused outright.
   const keyless = await rpc(null, 'tools/list');

@@ -13,8 +13,14 @@ use chrono::{Datelike, Duration, NaiveDate};
 use serde_json::Value;
 use std::collections::HashMap;
 
-/// The longest period one request may cover.
-pub const LONGEST_DAYS: i64 = 92;
+/// The longest period one request may cover. Routes, packages and DVIC are read in one
+/// query whatever the period; timecards and meal breaks are read a day at a time, so a
+/// question that needs them stops at [`DAILY_LONGEST`].
+pub const LONGEST_DAYS: i64 = 366;
+/// The longest period for a question that reads timecards or meal breaks, day by day.
+pub const DAILY_LONGEST: i64 = 92;
+/// The period a question that names no days is about.
+pub const DEFAULT_PERIOD: &str = "last 30 days";
 
 /// A query parameter as text, trimmed; empty when absent.
 pub fn param<'a>(query: &'a Value, name: &str) -> &'a str {
@@ -107,9 +113,9 @@ impl Period {
     }
 }
 
-const FORMS: &str = "Write a period as today, yesterday, this week, last week, this month, \
-    last month, last N days, a date (2026-09-28), two dates (2026-09-01..2026-09-30) or an \
-    Amazon week (2026-W39). Weeks run Sunday to Saturday.";
+const FORMS: &str = "Write a period as today, yesterday (or last night), this week, last \
+    week, this month, last month, last N days, last N weeks, a date (2026-09-28), two dates \
+    (2026-09-01..2026-09-30) or an Amazon week (2026-W39). Weeks run Sunday to Saturday.";
 
 fn date(text: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(text, "%Y-%m-%d").ok()
@@ -135,9 +141,11 @@ pub fn read_period(text: &str, today: NaiveDate) -> Option<Period> {
         label: format!("{lower} ({day})"),
     };
     Some(match lower.as_str() {
-        "today" => one(today),
-        "yesterday" => one(today - Duration::days(1)),
+        "today" | "tonight" => one(today),
+        // A route day ends in the evening, so last night's routes are yesterday's.
+        "yesterday" | "last night" => one(today - Duration::days(1)),
         "this week" => span(sunday(today), today),
+        "past week" => span(today - Duration::days(6), today),
         "last week" => {
             let start = sunday(today) - Duration::days(7);
             span(start, start + Duration::days(6))
@@ -148,13 +156,18 @@ pub fn read_period(text: &str, today: NaiveDate) -> Option<Period> {
             span(month_start(end), end)
         }
         _ => {
-            if let Some(n) = lower
-                .strip_prefix("last ")
-                .or_else(|| lower.strip_prefix("past "))
-                .and_then(|rest| rest.strip_suffix(" days"))
-                .and_then(|n| n.trim().parse::<i64>().ok())
-                .filter(|n| (1..=LONGEST_DAYS).contains(n))
-            {
+            let counted = |unit: &str| {
+                lower
+                    .strip_prefix("last ")
+                    .or_else(|| lower.strip_prefix("past "))
+                    .and_then(|rest| {
+                        rest.strip_suffix(&format!(" {unit}s"))
+                            .or_else(|| rest.strip_suffix(&format!(" {unit}")))
+                    })
+                    .and_then(|n| n.trim().parse::<i64>().ok())
+            };
+            let days = counted("day").or_else(|| counted("week").and_then(|n| n.checked_mul(7)));
+            if let Some(n) = days.filter(|n| (1..=LONGEST_DAYS).contains(n)) {
                 return Some(span(today - Duration::days(n - 1), today));
             }
             if let Some((a, b)) = lower.split_once("..") {
@@ -181,6 +194,21 @@ pub fn read_period(text: &str, today: NaiveDate) -> Option<Period> {
             });
         }
     })
+}
+
+/// Refuses a period too long to read a day at a time, as timecards and meal breaks are.
+pub fn daily_limit(period: &Period) -> std::result::Result<(), Refusal> {
+    if (period.to - period.from).num_days() >= DAILY_LONGEST {
+        return Err(Refusal::new(
+            400,
+            "period_too_long",
+            format!(
+                "Hours and meal breaks are read a day at a time; ask about {DAILY_LONGEST} days \
+                 or fewer, or ask about routes and packages alone."
+            ),
+        ));
+    }
+    Ok(())
 }
 
 /// The period a request asks about: `period`, `date`, or `from` with `to`; `default` when
@@ -398,6 +426,26 @@ mod tests {
             ("2026-09-01".into(), "2026-09-15".into())
         );
         assert_eq!(read("2026-w39"), ("2026-09-20".into(), "2026-09-26".into()));
+        // How people ask about a route day, and longer spans.
+        assert_eq!(
+            read("last night"),
+            ("2026-09-30".into(), "2026-09-30".into())
+        );
+        assert_eq!(
+            read("past week"),
+            ("2026-09-25".into(), "2026-10-01".into())
+        );
+        assert_eq!(
+            read("last 2 weeks"),
+            ("2026-09-18".into(), "2026-10-01".into())
+        );
+        assert_eq!(
+            read("last 30 days"),
+            ("2026-09-02".into(), "2026-10-01".into())
+        );
+        // A count too large to be days is no period, not an overflow.
+        let today = NaiveDate::from_ymd_opt(2026, 10, 1).unwrap();
+        assert!(read_period("last 1317624576693539402 weeks", today).is_none());
         let today = NaiveDate::from_ymd_opt(2026, 10, 1).unwrap();
         for nonsense in [
             "soon",
@@ -409,7 +457,7 @@ mod tests {
         }
     }
     #[test]
-    fn a_period_is_one_form_and_at_most_92_days() {
+    fn a_period_is_one_form_and_at_most_a_year() {
         let today = NaiveDate::from_ymd_opt(2026, 10, 1).unwrap();
         let q = |v: Value| period(&v, today, "today");
         assert_eq!(q(serde_json::json!({})).unwrap().first(), "2026-10-01");
@@ -426,7 +474,7 @@ mod tests {
             "period_conflict"
         );
         assert_eq!(
-            q(serde_json::json!({"from":"2026-01-01","to":"2026-09-01"}))
+            q(serde_json::json!({"from":"2025-01-01","to":"2026-09-01"}))
                 .unwrap_err()
                 .code,
             "period_too_long"

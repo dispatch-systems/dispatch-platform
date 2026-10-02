@@ -70,17 +70,38 @@ pub struct RouteDay {
     pub overtime_minutes: Option<i64>,
 }
 /// Each day a source holds, and for routes whether the day is final or a snapshot.
-#[derive(Clone, Debug, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Default)]
 pub struct Coverage {
     pub enabled: bool,
     pub days: Vec<String>,
     pub missing: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub snapshots: Vec<String>,
 }
+/// Written compactly: how many of the days the source holds, and the missing and snapshot
+/// days as ranges, never every day by name.
+impl Serialize for Coverage {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        let mut out = serde_json::Map::new();
+        if !self.enabled {
+            out.insert("enabled".into(), Value::Bool(false));
+        } else {
+            out.insert("collected".into(), self.days.len().into());
+            out.insert("of".into(), (self.days.len() + self.missing.len()).into());
+            if !self.missing.is_empty() {
+                out.insert("missing".into(), super::shape::ranges(&self.missing));
+            }
+            if !self.snapshots.is_empty() {
+                out.insert("snapshots".into(), super::shape::ranges(&self.snapshots));
+            }
+        }
+        Value::Object(out).serialize(serializer)
+    }
+}
 impl Coverage {
-    fn of(enabled: bool, held: BTreeSet<String>, period: &Period) -> Self {
+    pub fn of(enabled: bool, held: BTreeSet<String>, period: &Period) -> Self {
         if !enabled {
             return Self::default();
         }
@@ -306,6 +327,289 @@ pub fn meal_routes(db: &Store, dsp: &Dsp, period: &Period) -> Result<BTreeSet<(S
         .iter()
         .map(|r| (s(r, "day").to_owned(), s(r, "id").to_owned()))
         .collect())
+}
+
+/// What happened to a package on a route day, from Amazon's record of its drop-off.
+pub const OUTCOMES: &[&str] = &[
+    "delivered",
+    "returned",
+    "attempted",
+    "not_picked_up",
+    "cancelled",
+    "open",
+];
+const OUTCOME: &str = "CASE t.task_state WHEN 'DELIVERED' THEN 'delivered' \
+    WHEN 'BACK_TO_ORIGIN' THEN 'returned' WHEN 'UNDELIVERABLE' THEN 'returned' \
+    WHEN 'DELIVERY_ATTEMPTED' THEN 'attempted' \
+    WHEN 'PICKUP_FAILED' THEN 'not_picked_up' WHEN 'NOT_DELIVERED' THEN 'cancelled' ELSE 'open' END";
+/// Why: Amazon's reason for a return or failure, or where a delivered package was left.
+const REASON: &str = "CASE WHEN t.state_context IS NULL OR t.state_context='NONE' THEN '' \
+    WHEN t.state_context LIKE 'DELIVERED_TO_%' THEN lower(substr(t.state_context,14)) \
+    ELSE lower(t.state_context) END";
+
+/// The outcome [`OUTCOME`] gives in SQL, for a task already read.
+pub fn outcome_of(state: Option<&str>) -> &'static str {
+    match state {
+        Some("DELIVERED") => "delivered",
+        Some("BACK_TO_ORIGIN" | "UNDELIVERABLE") => "returned",
+        Some("DELIVERY_ATTEMPTED") => "attempted",
+        Some("PICKUP_FAILED") => "not_picked_up",
+        Some("NOT_DELIVERED") => "cancelled",
+        _ => "open",
+    }
+}
+/// The reason [`REASON`] gives in SQL, for a task already read.
+pub fn reason_of(context: Option<&str>) -> String {
+    match context {
+        None | Some("NONE") => String::new(),
+        Some(context) => context
+            .strip_prefix("DELIVERED_TO_")
+            .unwrap_or(context)
+            .to_lowercase(),
+    }
+}
+/// A day's itineraries a route code or itinerary ID names, with their route and driver.
+pub fn find_itinerary(
+    db: &Store,
+    dsp: &Dsp,
+    day: &str,
+    wanted: &str,
+) -> Result<Vec<(String, String, String)>> {
+    let station = db.profile(&dsp.id)?.station_code;
+    let rows = db.routedata(&dsp.id)?.all(
+        "SELECT i.itinerary_id,COALESCE(i.route_code,'') route,i.driver_name FROM itineraries i \
+         JOIN route_publications p ON p.id=i.publication_id AND p.active=1 \
+         WHERE p.station=?1 AND p.day=?2 AND (i.itinerary_id=?3 OR upper(i.route_code)=upper(?3)) \
+         ORDER BY route",
+        [&station, day, wanted.trim()],
+    )?;
+    Ok(rows
+        .iter()
+        .map(|r| {
+            (
+                s(r, "itinerary_id").into(),
+                s(r, "route").into(),
+                s(r, "driver_name").into(),
+            )
+        })
+        .collect())
+}
+
+/// Which packages a question is about.
+#[derive(Default)]
+pub struct Packages<'a> {
+    pub drivers: Option<&'a [String]>,
+    pub outcome: Option<&'a str>,
+    pub reason: Option<&'a str>,
+    pub route: Option<&'a str>,
+}
+/// What packages can be grouped by, and the column each groups on.
+pub fn package_group(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "driver" => "t.transporter_id",
+        "day" => "t.day",
+        "outcome" => OUTCOME,
+        "reason" => REASON,
+        "route" => "COALESCE(i.route_code,'')",
+        "address" => "COALESCE(t.address_id,'')",
+        _ => return None,
+    })
+}
+fn package_scope(
+    dsp: &Dsp,
+    db: &Store,
+    period: &Period,
+    wanted: &Packages,
+) -> Result<(String, Vec<String>)> {
+    let station = db.profile(&dsp.id)?.station_code;
+    let mut sql = String::from(
+        " FROM tasks t JOIN route_publications p ON p.id=t.publication_id AND p.active=1 \
+         LEFT JOIN itineraries i ON i.publication_id=t.publication_id AND i.itinerary_id=t.itinerary_id \
+         WHERE p.station=? AND t.day BETWEEN ? AND ? AND t.task_type='DROP_OFF' AND t.active=1",
+    );
+    let mut params = vec![station, period.first(), period.last()];
+    if let Some(ids) = wanted.drivers {
+        sql.push_str(&format!(
+            " AND t.transporter_id IN ({})",
+            vec!["?"; ids.len().max(1)].join(",")
+        ));
+        params.extend(ids.iter().cloned());
+        if ids.is_empty() {
+            params.push(String::new());
+        }
+    }
+    if let Some(outcome) = wanted.outcome {
+        sql.push_str(&format!(" AND ({OUTCOME})=?"));
+        params.push(outcome.to_owned());
+    }
+    if let Some(reason) = wanted.reason {
+        sql.push_str(&format!(" AND ({REASON})=?"));
+        params.push(reason.to_owned());
+    }
+    if let Some(route) = wanted.route {
+        sql.push_str(" AND upper(COALESCE(i.route_code,''))=upper(?)");
+        params.push(route.to_owned());
+    }
+    Ok((sql, params))
+}
+/// Counts per group: the group's values, in the order asked, and how many packages.
+pub type Grouped = Vec<(Vec<String>, i64)>;
+/// How many packages a question covers, and their counts grouped by up to two columns,
+/// largest first.
+pub fn package_counts(
+    db: &Store,
+    dsp: &Dsp,
+    period: &Period,
+    wanted: &Packages,
+    groups: &[&str],
+) -> Result<(i64, Grouped)> {
+    let data = db.routedata(&dsp.id)?;
+    let (scope, params) = package_scope(dsp, db, period, wanted)?;
+    let total = data
+        .one(
+            &format!("SELECT COUNT(*) n{scope}"),
+            rusqlite::params_from_iter(&params),
+        )?
+        .map(|r| n(&r, "n"))
+        .unwrap_or(0);
+    if groups.is_empty() {
+        return Ok((total, vec![]));
+    }
+    let columns: Vec<String> = groups
+        .iter()
+        .enumerate()
+        .filter_map(|(k, g)| package_group(g).map(|c| format!("({c}) g{k}")))
+        .collect();
+    let keys: Vec<String> = (0..columns.len()).map(|k| format!("g{k}")).collect();
+    let rows = data.all(
+        &format!(
+            "SELECT {}, COUNT(*) n{scope} GROUP BY {} ORDER BY n DESC, {}",
+            columns.join(","),
+            keys.join(","),
+            keys.join(",")
+        ),
+        rusqlite::params_from_iter(&params),
+    )?;
+    Ok((
+        total,
+        rows.iter()
+            .map(|r| (keys.iter().map(|k| s(r, k).to_owned()).collect(), n(r, "n")))
+            .collect(),
+    ))
+}
+/// One package on a route day, for a list.
+pub struct PackageRow {
+    pub day: String,
+    pub tracking: String,
+    pub transporter_id: String,
+    pub driver_name: String,
+    pub route: String,
+    pub outcome: String,
+    pub reason: String,
+    pub at: Option<String>,
+    pub address_id: String,
+}
+/// The packages themselves, newest day first, a page at a time.
+pub fn package_rows(
+    db: &Store,
+    dsp: &Dsp,
+    period: &Period,
+    wanted: &Packages,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<PackageRow>> {
+    let data = db.routedata(&dsp.id)?;
+    let (scope, mut params) = package_scope(dsp, db, period, wanted)?;
+    params.push(limit.to_string());
+    params.push(offset.to_string());
+    let zone = zone(dsp);
+    Ok(data
+        .all(
+            &format!(
+                "SELECT t.day,COALESCE(t.tracking_id,'') tracking,t.transporter_id,\
+                 COALESCE(i.driver_name,'') driver_name,COALESCE(i.route_code,'') route,\
+                 ({OUTCOME}) outcome,({REASON}) reason,t.executed_at,COALESCE(t.address_id,'') address_id\
+                 {scope} ORDER BY t.day DESC,t.executed_at,t.task_id LIMIT ? OFFSET ?"
+            ),
+            rusqlite::params_from_iter(&params),
+        )?
+        .iter()
+        .map(|r| PackageRow {
+            day: s(r, "day").into(),
+            tracking: s(r, "tracking").into(),
+            transporter_id: s(r, "transporter_id").into(),
+            driver_name: s(r, "driver_name").into(),
+            route: s(r, "route").into(),
+            outcome: s(r, "outcome").into(),
+            reason: s(r, "reason").into(),
+            at: clock(r["executed_at"].as_i64(), zone),
+            address_id: s(r, "address_id").into(),
+        })
+        .collect())
+}
+/// Every reason Amazon has given at this DSP, for a request that names one it never gave.
+pub fn package_reasons(db: &Store, dsp: &Dsp) -> Result<Vec<String>> {
+    let data = db.routedata(&dsp.id)?;
+    Ok(data
+        .all(
+            &format!(
+                "SELECT DISTINCT ({REASON}) reason FROM tasks t WHERE t.task_type='DROP_OFF' \
+                 AND t.active=1 ORDER BY reason"
+            ),
+            [],
+        )?
+        .iter()
+        .map(|r| s(r, "reason").to_owned())
+        .filter(|r| !r.is_empty())
+        .collect())
+}
+/// One-line addresses, by the IDs Amazon gives them.
+pub fn addresses(
+    db: &Store,
+    dsp: &Dsp,
+    ids: &[String],
+) -> Result<std::collections::HashMap<String, String>> {
+    let data = db.routedata(&dsp.id)?;
+    let mut out = std::collections::HashMap::new();
+    for chunk in ids.chunks(400) {
+        let rows = data.all(
+            &format!(
+                "SELECT address_id,address1,address2,city,state,postal_code FROM addresses \
+                 WHERE address_id IN ({})",
+                vec!["?"; chunk.len()].join(",")
+            ),
+            rusqlite::params_from_iter(chunk),
+        )?;
+        for r in rows {
+            let parts: Vec<&str> = ["address1", "address2", "city", "state", "postal_code"]
+                .iter()
+                .map(|k| s(&r, k))
+                .filter(|v| !v.is_empty())
+                .collect();
+            out.insert(s(&r, "address_id").to_owned(), parts.join(", "));
+        }
+    }
+    Ok(out)
+}
+/// The days routes were collected for, and which of them are snapshots.
+pub fn route_coverage(db: &Store, dsp: &Dsp, period: &Period) -> Result<Coverage> {
+    let station = db.profile(&dsp.id)?.station_code;
+    let data = db.routedata(&dsp.id)?;
+    let published = data.all(
+        "SELECT day,mode FROM route_publications WHERE station=? AND active=1 AND day BETWEEN ? AND ?",
+        [&station, &period.first(), &period.last()],
+    )?;
+    let mut coverage = Coverage::of(
+        true,
+        published.iter().map(|r| s(r, "day").to_owned()).collect(),
+        period,
+    );
+    coverage.snapshots = published
+        .iter()
+        .filter(|r| s(r, "mode") == "snapshot")
+        .map(|r| s(r, "day").to_owned())
+        .collect();
+    Ok(coverage)
 }
 
 /// One vehicle inspection.
