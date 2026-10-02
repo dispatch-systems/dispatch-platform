@@ -53,6 +53,11 @@ pub(crate) trait Collector: Sync {
     fn job_kind_for(&self, _request: &Value) -> &'static str {
         self.job_kind()
     }
+    /// Adds current tenant context needed only while a queued request executes. The
+    /// persisted request stays compatible with the previous binary for rollback.
+    fn bind_request(&self, _: &Store, _: &str, request: &Value) -> Result<Value> {
+        Ok(request.clone())
+    }
     /// Databases beside its own, one per added collection.
     fn added_storages(&self) -> &'static [&'static AddedStorage] {
         &[]

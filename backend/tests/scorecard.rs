@@ -29,6 +29,12 @@ fn scope(request: &Request) -> Scope {
 /// A DSP with a station and an enabled Cortex connection.
 fn ready() -> (tempfile::TempDir, Store, String) {
     let (root, db, id) = common::bootstrapped();
+    db.platform
+        .exec(
+            "UPDATE dsps SET name='Fixture Delivery',timezone='America/Los_Angeles' WHERE id=?",
+            [&id],
+        )
+        .unwrap();
     db.set_profile(
         &id,
         json!({"stationCode":"TST1","abbreviation":"FXTR","setupRequired":false}),
@@ -44,11 +50,7 @@ fn ready() -> (tempfile::TempDir, Store, String) {
 fn publish(db: &Store, id: &str, key: &str, week: &str, capture: &Capture) -> String {
     let job = db.enqueue_scorecard(id, None, key, Some(week)).unwrap();
     let job = s(&job, "id").to_owned();
-    let queued: Request = Request::parse(
-        &serde_json::from_str(&db.job_row(&job, Some(id)).unwrap().request).unwrap(),
-    )
-    .unwrap()
-    .unwrap();
+    let queued = request(week);
     db.publish_scorecard(id, &job, capture, &scope(&queued))
         .unwrap();
     job
@@ -309,11 +311,7 @@ fn publication_rechecks_the_discovered_company_and_pinned_dsp_code() {
         .enqueue_scorecard(&id, None, "scope", Some(week))
         .unwrap();
     let job = s(&job, "id").to_owned();
-    let queued: Request = Request::parse(
-        &serde_json::from_str(&db.job_row(&job, Some(&id)).unwrap().request).unwrap(),
-    )
-    .unwrap()
-    .unwrap();
+    let queued = request(week);
     let expected = scope(&queued);
     let mut capture = scorecard::fixture(&queued).unwrap();
     capture.company_id = "company-foreign".into();
@@ -379,6 +377,17 @@ fn legacy_unverified_publications_are_quarantined_until_a_bound_recollection() {
     assert!(db.scorecard_weeks(&id).unwrap().weeks.is_empty());
     assert_eq!(db.scorecard_address(&id, "TST1").unwrap(), None);
 
+    let mut empty = scorecard::fixture(&request(&week)).unwrap();
+    empty.posted = false;
+    for dataset in &mut empty.datasets {
+        dataset.rows.clear();
+    }
+    publish(&db, &id, "verified-empty-after-legacy", &week, &empty);
+    let checked = db.scorecard_weeks(&id).unwrap();
+    assert_eq!(checked.weeks.len(), 1);
+    assert!(!checked.weeks[0].posted);
+    assert!(checked.weeks[0].publication.is_none());
+
     let capture = scorecard::fixture(&request(&week)).unwrap();
     publish(&db, &id, "verified-after-legacy", &week, &capture);
     assert_eq!(
@@ -409,10 +418,10 @@ fn a_schedule_queues_the_latest_week_until_it_is_published() {
     let jobs = db.scorecard_jobs(&id).unwrap();
     assert_eq!(jobs.len(), 1);
     assert_eq!(jobs[0].0, format!("scorecard:{latest}"));
-    let scheduled = Request::parse(&jobs[0].1).unwrap().unwrap();
-    assert_eq!(scheduled.week, latest);
-    assert_eq!(scheduled.station, "TST1");
-    assert_eq!(scheduled.dsp_abbreviation, "FXTR");
+    assert_eq!(
+        jobs[0].1,
+        json!({"collection":"scorecard","week":latest,"station":"TST1"})
+    );
     // Not posted yet: asked again once the recheck interval has passed.
     let mut empty = scorecard::fixture(&request(&latest)).unwrap();
     for dataset in &mut empty.datasets {

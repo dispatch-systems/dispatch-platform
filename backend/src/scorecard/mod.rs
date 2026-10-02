@@ -555,7 +555,7 @@ impl Store {
         ensure(!station.is_empty(), "scorecard_station_required", 409)?;
         Ok(station)
     }
-    pub(crate) fn scorecard_request(&self, id: &str, week: &str) -> Result<Value> {
+    pub(crate) fn bind_scorecard_request(&self, id: &str, week: &str) -> Result<Value> {
         let dsp = self.find_dsp(id)?;
         let profile = self.profile(id)?;
         ensure(
@@ -573,6 +573,12 @@ impl Store {
         };
         request.validate()?;
         Ok(serde_json::to_value(request)?)
+    }
+    pub(crate) fn scorecard_request(&self, id: &str, week: &str) -> Result<Value> {
+        let request = self.bind_scorecard_request(id, week)?;
+        // Keep the durable job payload readable by the previous binary. The worker
+        // binds live tenant context immediately before collection and publication.
+        Ok(json!({"collection":"scorecard","week":request["week"],"station":request["station"]}))
     }
     /// Queues `week`, or the most recent completed one, answering with the job.
     pub fn enqueue_scorecard(
@@ -643,6 +649,9 @@ impl Store {
         scope: &Scope,
     ) -> Result<()> {
         let request: Value = serde_json::from_str(&self.job_row(job, Some(id))?.request)?;
+        let request = Provider::Cortex
+            .collector()
+            .bind_request(self, id, &request)?;
         let request = Request::parse(&request)?.ok_or_else(|| Error::new("invalid_input", 400))?;
         capture.validate_scope(&request, scope)?;
         let db = self.scorecard(id)?;
@@ -653,7 +662,11 @@ impl Store {
                 db.exec(
                     "INSERT INTO scorecard_weeks(week,station,checked_at,posted,publication_id,scope_verified) \
                      VALUES (?,?,?,0,NULL,1) ON CONFLICT(week,station) DO UPDATE SET \
-                     checked_at=excluded.checked_at,scope_verified=1",
+                     checked_at=excluded.checked_at,\
+                     posted=CASE WHEN scorecard_weeks.scope_verified=1 THEN scorecard_weeks.posted ELSE 0 END,\
+                     publication_id=CASE WHEN scorecard_weeks.scope_verified=1 \
+                         THEN scorecard_weeks.publication_id ELSE NULL END,\
+                     scope_verified=1",
                     params![capture.week, capture.station, checked_at],
                 )?;
                 return Ok(());

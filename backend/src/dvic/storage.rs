@@ -19,7 +19,7 @@ impl Store {
         self.added_storage(id, Provider::Cortex, &STORAGE)
     }
 
-    pub(crate) fn dvic_request(&self, id: &str, weeks: Vec<String>) -> Result<Value> {
+    pub(crate) fn bind_dvic_request(&self, id: &str, weeks: Vec<String>) -> Result<Value> {
         let dsp = self.find_dsp(id)?;
         let profile = self.profile(id)?;
         ensure(
@@ -45,6 +45,12 @@ impl Store {
         };
         request.validate()?;
         Ok(serde_json::to_value(request)?)
+    }
+    pub(crate) fn dvic_request(&self, id: &str, weeks: Vec<String>) -> Result<Value> {
+        let request = self.bind_dvic_request(id, weeks)?;
+        // Keep the durable job payload readable by the previous binary. The worker
+        // binds live tenant context immediately before collection and publication.
+        Ok(json!({"collection":"dvic","station":request["station"],"weeks":request["weeks"]}))
     }
     pub fn enqueue_dvic(
         &self,
@@ -132,8 +138,12 @@ impl Store {
             "dvic_capture_invalid",
             502,
         )?;
-        let request = Request::parse(&serde_json::from_str(&job_row.request)?)?
-            .ok_or_else(|| Error::new("invalid_dvic_request", 400))?;
+        let request: Value = serde_json::from_str(&job_row.request)?;
+        let request = Provider::Cortex
+            .collector()
+            .bind_request(self, id, &request)?;
+        let request =
+            Request::parse(&request)?.ok_or_else(|| Error::new("invalid_dvic_request", 400))?;
         capture.validate_scope(&request, scope)?;
         let db = self.dvic(id)?;
         let checked = at(capture.finished_at);
@@ -203,7 +213,8 @@ impl Store {
                          inspection_status=excluded.inspection_status,end_time=excluded.end_time,\
                          duration_seconds=excluded.duration_seconds,minimum_seconds=excluded.minimum_seconds,short=excluded.short,\
                          report_date=excluded.report_date,source_modified_at=excluded.source_modified_at,\
-                         revision_id=excluded.revision_id,scope_verified=1 WHERE excluded.report_date>dvic_inspections.report_date OR \
+                         revision_id=excluded.revision_id,scope_verified=1 WHERE dvic_inspections.scope_verified=0 OR \
+                         excluded.report_date>dvic_inspections.report_date OR \
                          (excluded.report_date=dvic_inspections.report_date \
                          AND excluded.source_modified_at>=dvic_inspections.source_modified_at)",
                         params![capture.company_id,row.key(),row.dsp,row.station,row.start_date,row.transporter_id,
