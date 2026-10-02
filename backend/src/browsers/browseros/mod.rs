@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use std::{
     fs::{self, File, OpenOptions},
     os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     process::Stdio,
     sync::Arc,
     time::Duration,
@@ -264,12 +264,7 @@ const PAGE_TRACES: &[&str] = &[
 pub(crate) fn scrub(profile: &Path) -> Result<()> {
     let mut first = None;
     for entry in PAGE_TRACES {
-        let path = profile.join(entry);
-        let result = match fs::symlink_metadata(&path) {
-            Ok(meta) if meta.is_dir() => fs::remove_dir_all(&path),
-            Ok(_) => fs::remove_file(&path),
-            Err(error) => Err(error),
-        };
+        let result = remove_trace(profile, Path::new(entry));
         match result {
             Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
                 first.get_or_insert(error);
@@ -278,6 +273,62 @@ pub(crate) fn scrub(profile: &Path) -> Result<()> {
         }
     }
     first.map_or(Ok(()), |error| Err(error.into()))
+}
+/// Refuse to traverse a link (or a file standing in for a directory) anywhere
+/// before the trace itself. The final component may be a link: unlinking that
+/// component removes the profile entry without touching its target.
+fn remove_trace(profile: &Path, entry: &Path) -> std::io::Result<()> {
+    let mut components = Vec::new();
+    for component in entry.components() {
+        match component {
+            Component::Normal(name) => components.push(name),
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "browser trace path is not relative",
+                ));
+            }
+        }
+    }
+    let Some((final_name, ancestors)) = components.split_last() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "browser trace path is empty",
+        ));
+    };
+    let mut path = profile.to_path_buf();
+    for component in ancestors {
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "browser trace ancestor is not a directory",
+            ));
+        }
+        path.push(component);
+    }
+    let metadata = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "browser trace parent is not a directory",
+        ));
+    }
+    path.push(final_name);
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => fs::remove_file(path),
+        Ok(metadata) if metadata.is_dir() => fs::remove_dir_all(path),
+        Ok(_) => fs::remove_file(path),
+        Err(error) => Err(error),
+    }
 }
 /// A scrub that failed is reported, never fatal: the browser still starts or stops, and
 /// the next start or exit tries again.
@@ -668,6 +719,7 @@ pub async fn worker_main(mode: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::symlink;
     #[test]
     fn a_scrub_removes_every_page_trace_and_keeps_what_signing_in_needs() {
         use std::os::unix::fs::PermissionsExt;
@@ -693,6 +745,99 @@ mod tests {
         }
         assert!(scrub(profile.path()).is_ok());
         assert!(!default.join("Service Worker").exists());
+    }
+    #[test]
+    fn a_scrub_never_follows_ancestor_links_outside_the_profile() {
+        let root = tempfile::tempdir().unwrap();
+        let profile = root.path().join("profile");
+        let outside = root.path().join("outside");
+        fs::create_dir_all(&profile).unwrap();
+        fs::create_dir_all(outside.join("Cache")).unwrap();
+        fs::write(outside.join("Cache/sentinel"), b"outside").unwrap();
+        symlink(&outside, profile.join("Default")).unwrap();
+        fs::write(profile.join("BrowserMetrics"), b"inside").unwrap();
+
+        assert!(scrub(&profile).is_err());
+        assert_eq!(
+            fs::read(outside.join("Cache/sentinel")).unwrap(),
+            b"outside"
+        );
+        assert!(
+            fs::symlink_metadata(profile.join("Default"))
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert!(!profile.join("BrowserMetrics").exists());
+    }
+    #[test]
+    fn a_scrub_rejects_relative_dangling_and_nested_ancestor_links() {
+        let root = tempfile::tempdir().unwrap();
+        let profile = root.path().join("profile");
+        let outside = root.path().join("outside");
+        fs::create_dir_all(profile.join("Default")).unwrap();
+        fs::create_dir_all(profile.join("config")).unwrap();
+        fs::create_dir_all(outside.join("Crash Reports")).unwrap();
+        fs::write(outside.join("Crash Reports/sentinel"), b"outside").unwrap();
+        symlink("../../outside", profile.join("config/browser-os")).unwrap();
+
+        assert!(scrub(&profile).is_err());
+        assert_eq!(
+            fs::read(outside.join("Crash Reports/sentinel")).unwrap(),
+            b"outside"
+        );
+        fs::remove_file(profile.join("config/browser-os")).unwrap();
+        symlink(
+            root.path().join("missing"),
+            profile.join("config/browser-os"),
+        )
+        .unwrap();
+        assert!(scrub(&profile).is_err());
+        assert!(
+            fs::symlink_metadata(profile.join("config/browser-os"))
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+    }
+    #[test]
+    fn a_scrub_unlinks_a_final_link_without_touching_its_target() {
+        let root = tempfile::tempdir().unwrap();
+        let profile = root.path().join("profile");
+        let outside = root.path().join("outside");
+        fs::create_dir_all(profile.join("Default")).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("history"), b"outside").unwrap();
+        symlink(outside.join("history"), profile.join("Default/History")).unwrap();
+
+        assert!(scrub(&profile).is_ok());
+        assert!(!profile.join("Default/History").exists());
+        assert_eq!(fs::read(outside.join("history")).unwrap(), b"outside");
+    }
+    #[test]
+    fn a_scrub_refuses_non_directory_ancestors_and_a_linked_profile_root() {
+        let root = tempfile::tempdir().unwrap();
+        let profile = root.path().join("profile");
+        fs::create_dir_all(&profile).unwrap();
+        fs::write(profile.join("Default"), b"not a directory").unwrap();
+        fs::write(profile.join("BrowserMetrics"), b"safe trace").unwrap();
+
+        assert!(scrub(&profile).is_err());
+        assert_eq!(
+            fs::read(profile.join("Default")).unwrap(),
+            b"not a directory"
+        );
+        assert!(!profile.join("BrowserMetrics").exists());
+
+        fs::remove_file(profile.join("Default")).unwrap();
+        fs::write(profile.join("BrowserMetrics"), b"outside").unwrap();
+        let linked = root.path().join("linked-profile");
+        symlink(&profile, &linked).unwrap();
+        assert!(scrub(&linked).is_err());
+        assert_eq!(
+            fs::read(profile.join("BrowserMetrics")).unwrap(),
+            b"outside"
+        );
     }
     #[test]
     fn a_failed_start_names_the_workers_own_reason() {
