@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { assessmentFixture } from '../testing/ci-tools.js';
+import { manualBrowserSelection } from './browser-input.js';
 import { PAINT_BUDGET, WORKERS, browserTests, shards } from './browser-shards.js';
 import { nodeTests, pythonTests, sourceLintCommands, type Command } from './execution-plan.js';
 
@@ -116,7 +117,12 @@ async function browser() {
   if (!shard || Number(shard[1]) > Number(shard[2]))
     throw new Error('Browser shard required, as 1/6');
   const [index, count] = [Number(shard[1]), Number(shard[2])];
-  const only = process.argv.slice(4).filter(Boolean);
+  // workflow_dispatch passes its selector through the environment so a shell never parses it.
+  // Local callers can still pass normal Playwright arguments after the shard.
+  const only =
+    process.env.DISPATCH_BROWSER_SPEC === undefined
+      ? process.argv.slice(4).filter(Boolean)
+      : manualBrowserSelection(process.env.DISPATCH_BROWSER_SPEC);
   // The browser downloads and installs its system packages while Cargo compiles the
   // fixture; test:ui then finds the fixture already built.
   const fixture = assessmentFixture(process.env, process.cwd())

@@ -167,7 +167,9 @@ jobs:
       - name: Browser suite shard ${{ matrix.shard }} of 6
         env:
           DISPATCH_BROWSER_PACKAGES: ${{ runner.temp }}/browser-packages
-        run: npm run check:ci -- browser ${{ matrix.shard }}/6 ${{ inputs.spec }}
+          # Manual text is data, never part of the runner's shell program.
+          DISPATCH_BROWSER_SPEC: ${{ inputs.spec }}
+        run: npm run check:ci -- browser ${{ matrix.shard }}/6
       - name: Preserve failure traces
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
