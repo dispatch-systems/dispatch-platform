@@ -61,7 +61,6 @@ export const getCollectionUpdates = (after: string, signal: AbortSignal) =>
   );
 
 export const getSession = () => api<SessionView>('/api/session');
-export const getSecurityStatus = () => api<SecurityStatus>('/api/auth/security/status');
 export const useSecurityStatus = () => useData<SecurityStatus>('/api/auth/security/status');
 export const usePasskeys = () => useData<PasskeySummary[]>('/api/auth/security/passkeys');
 export const useAccountSessions = () => useData<AccountSession[]>('/api/auth/security/sessions');

@@ -24,7 +24,6 @@ function host<T>(...args: string[]): T {
     throw new Error(failure.stderr?.toString().trim() || 'Artifact verification failed');
   }
 }
-export const inventory = (root: string): Artifact['files'] => host('inventory', path.resolve(root));
 export const writeManifest = (root: string, version: string): Artifact =>
   host('write', path.resolve(root), version);
 export const verifyArtifact = (root: string): Artifact => host('verify', path.resolve(root));

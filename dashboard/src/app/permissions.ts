@@ -1,5 +1,10 @@
+import {
+  permissionLabels as generatedPermissionLabels,
+  permissionGroups as generatedPermissionGroups,
+  impliedPermissions as generatedImpliedPermissions,
+} from '../../../shared/contracts/generated/access-catalog.js';
 import type { DspView, Permission } from '../../../shared/contracts/index.js';
-import { featureCatalog, grants } from './features.js';
+import { grants } from './features.js';
 
 // A permission of a feature the DSP lacks is held by nobody, owners included.
 export const can = (view: DspView | undefined, permission: Permission) =>
@@ -12,50 +17,13 @@ export const can = (view: DspView | undefined, permission: Permission) =>
 export const visiblePermissions = (view: DspView, stored: readonly Permission[]) =>
   stored.filter((permission) => grants(view.features, permission));
 
-export const permissionLabels: Record<Permission, string> = {
-  'uniforms.view': 'View Uniform Inventory',
-  'uniforms.adjust': 'Adjust Uniform Inventory',
-  'uniforms.manage': 'Manage Uniform Inventory',
-  'timecard.view': 'View Timecard',
-  'timecard.manage': 'Manage Timecard',
-  'collections.run': 'Run Collections',
-  'routes.view': 'View Routes',
-  'routes.collect': 'Collect Routes',
-  'routes.manage': 'Manage Routes',
-  'dvic.view': 'View DVIC',
-  'dvic.collect': 'Collect DVIC',
-  'dvic.manage': 'Manage DVIC',
-  'scorecard.view': 'View Scorecard',
-  'scorecard.collect': 'Collect Scorecard',
-  'scorecard.manage': 'Manage Scorecard',
-  'driver_match.manage': 'Manage Driver Match',
-  'connections.manage': 'Manage Connections',
-  'members.invite': 'Invite Members',
-  'members.manage': 'Manage Members',
-  'roles.manage': 'Manage Roles',
-  'settings.manage': 'Manage DSP Settings',
-};
-/** The role sheet's sections. Every permission in the catalog belongs to exactly one. */
-export const permissionGroups: [string, Permission[]][] = [
-  ...featureCatalog
-    .filter((feature) => feature.kind === 'page')
-    .map((feature): [string, Permission[]] => [feature.label, feature.permissions]),
-  ['Connections', ['connections.manage']],
-  ['Team', ['members.invite', 'members.manage', 'roles.manage']],
-  ['DSP', ['settings.manage']],
-];
+export const permissionLabels: Record<Permission, string> = generatedPermissionLabels;
+/** The backend catalog owns the sections and each permission belongs to exactly one. */
+export const permissionGroups: readonly (readonly [string, readonly Permission[]])[] =
+  generatedPermissionGroups;
 /** The sections the role sheet shows a DSP: those whose permissions exist in it. */
 export const visiblePermissionGroups = (view: DspView) =>
   permissionGroups.filter(([, items]) => items.some((p) => grants(view.features, p)));
-/** Granting the key includes its value, mirroring `IMPLIED` in `backend/src/roles.rs`. */
-export const impliedPermissions: Partial<Record<Permission, Permission>> = {
-  'timecard.manage': 'timecard.view',
-  'uniforms.adjust': 'uniforms.view',
-  'uniforms.manage': 'uniforms.view',
-  'routes.collect': 'routes.view',
-  'routes.manage': 'routes.view',
-  'dvic.collect': 'dvic.view',
-  'dvic.manage': 'dvic.view',
-  'scorecard.collect': 'scorecard.view',
-  'scorecard.manage': 'scorecard.view',
-};
+/** Granting the key includes its value, from the backend's implication rules. */
+export const impliedPermissions: Partial<Record<Permission, Permission>> =
+  generatedImpliedPermissions;

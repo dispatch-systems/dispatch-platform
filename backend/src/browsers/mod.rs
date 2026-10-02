@@ -456,15 +456,19 @@ impl State {
                 let revision = session.revision;
                 let provider = session.provider;
                 let _ = self
-                    .run(move |db| {
-                        db.connection_state(
-                            &id,
-                            provider,
-                            revision,
-                            "error",
-                            Some("verification_expired"),
-                        )
-                    })
+                    .run_scoped(
+                        session.dsp.clone(),
+                        crate::read_cache::DataDomain::Tenant,
+                        move |db| {
+                            db.connection_state(
+                                &id,
+                                provider,
+                                revision,
+                                "error",
+                                Some("verification_expired"),
+                            )
+                        },
+                    )
                     .await;
             }
         }
@@ -499,7 +503,7 @@ impl State {
         let dsp = id.to_owned();
         let initial_authority = authority.clone();
         let (dsp, credentials, revision, run, profile) = self
-            .run(move |db| {
+            .run_bookkeeping(move |db| {
                 initial_authority.check(db, &dsp, provider)?;
                 let value = db.ensure_dsp_active(&dsp)?;
                 let connection = db
@@ -599,7 +603,7 @@ impl State {
             ensure(!session.closed(), "verification_expired", 409)?;
             let dsp = id.to_owned();
             let launch_authority = authority.clone();
-            self.run(move |db| {
+            self.run_scoped(id, crate::read_cache::DataDomain::Tenant, move |db| {
                 launch_authority.check(db, &dsp, provider)?;
                 let tenant = db.find_dsp(&dsp)?;
                 ensure(tenant.status == DspStatus::Active, "dsp_unavailable", 409)?;
@@ -702,10 +706,14 @@ impl State {
             result.as_ref().err().map(|e| e.code.clone())
         };
         let authority = authority.clone();
-        self.run(move |db| {
-            authority.check(db, &dsp, provider)?;
-            db.connection_state(&dsp, provider, revision, status, error.as_deref())
-        })
+        self.run_scoped(
+            dsp.clone(),
+            crate::read_cache::DataDomain::Tenant,
+            move |db| {
+                authority.check(db, &dsp, provider)?;
+                db.connection_state(&dsp, provider, revision, status, error.as_deref())
+            },
+        )
         .await
     }
 }

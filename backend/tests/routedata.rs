@@ -61,8 +61,8 @@ fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
     let (_root, db, id) = ready();
     let capture = routedata::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     let job = publish(&db, &id, "first", "2026-09-25", &capture);
-    let queued: Value = db.job(&job, Some(&id)).unwrap();
-    assert_eq!(queued["kind"], "cortex.routes.collect");
+    let queued = db.job_row(&job, Some(&id)).unwrap();
+    assert_eq!(queued.kind.as_str(), "cortex.routes.collect");
     let storage = db.routedata(&id).unwrap();
     let publication = storage
         .one("SELECT * FROM route_publications WHERE job_id=?", [&job])

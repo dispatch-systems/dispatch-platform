@@ -1,3 +1,7 @@
+import {
+  featureCatalog as generatedFeatureCatalog,
+  schedulesFeature as generatedSchedulesFeature,
+} from '../../../shared/contracts/generated/access-catalog.js';
 import type {
   ConnectionFeature,
   DspView,
@@ -12,93 +16,23 @@ type Entry<Kind, Id> = {
   label: string;
   kind: Kind;
   /** The permissions the feature owns; without it, nobody in the DSP holds them. */
-  permissions: Permission[];
+  permissions: readonly Permission[];
   /** What a page needs one enabled connection of. */
-  requires: string[];
+  requires: readonly string[];
 };
 export type PageEntry = Entry<'page', PageFeature> & { provides?: undefined };
 /** A tab of `page`, switched on its own; it exists only while its page is on too. */
 export type TabEntry = Entry<'tab', TabFeature> & { page: PageFeature; provides?: undefined };
 /** `provides` is what the connection supplies, one capability or several. */
-export type ConnectionEntry = Entry<'connection', ConnectionFeature> & { provides: string[] };
+export type ConnectionEntry = Entry<'connection', ConnectionFeature> & {
+  provides: readonly string[];
+};
 export type FeatureEntry = PageEntry | TabEntry | ConnectionEntry;
-const tab = (id: TabFeature, label: string, page: PageFeature): TabEntry => ({
-  id,
-  label,
-  kind: 'tab',
-  page,
-  permissions: [],
-  requires: [],
-});
-/** Mirrors `PAGES`, `TABS` and the collector registry in `backend/src/features.rs`. */
-export const featureCatalog: FeatureEntry[] = [
-  {
-    id: 'timecard',
-    label: 'Timecard',
-    kind: 'page',
-    permissions: ['timecard.view', 'timecard.manage', 'collections.run'],
-    requires: ['timecards', 'meal_breaks'],
-  },
-  {
-    id: 'uniforms',
-    label: 'Uniform Inventory',
-    kind: 'page',
-    permissions: ['uniforms.view', 'uniforms.adjust', 'uniforms.manage'],
-    requires: [],
-  },
-  {
-    id: 'routes',
-    label: 'Routes',
-    kind: 'page',
-    permissions: ['routes.view', 'routes.collect', 'routes.manage'],
-    requires: ['routes'],
-  },
-  {
-    id: 'dvic',
-    label: 'DVIC',
-    kind: 'page',
-    permissions: ['dvic.view', 'dvic.collect', 'dvic.manage'],
-    requires: ['dvic'],
-  },
-  {
-    id: 'scorecard',
-    label: 'Scorecard',
-    kind: 'page',
-    permissions: ['scorecard.view', 'scorecard.collect', 'scorecard.manage'],
-    requires: ['scorecard'],
-  },
-  {
-    id: 'driver_match',
-    label: 'Driver Match',
-    kind: 'page',
-    permissions: ['driver_match.manage'],
-    requires: ['timecards', 'routes'],
-  },
-  tab('timecard.daily', 'Timecard', 'timecard'),
-  tab('timecard.meal_breaks', 'Meal Breaks', 'timecard'),
-  tab('timecard.employees', 'Employee Search', 'timecard'),
-  tab('dvic.day', 'Day', 'dvic'),
-  tab('dvic.week', 'Week', 'dvic'),
-  {
-    id: 'paycom',
-    label: 'Paycom',
-    kind: 'connection',
-    permissions: [],
-    provides: ['timecards'],
-    requires: [],
-  },
-  {
-    id: 'cortex',
-    label: 'Cortex',
-    kind: 'connection',
-    permissions: [],
-    provides: ['meal_breaks', 'routes', 'dvic', 'scorecard'],
-    requires: [],
-  },
-];
-/** The page whose schedules, collections and jobs run; mirrors `SCHEDULES` in the backend. */
-export const schedulesFeature: PageFeature = 'timecard';
-/** Every capability a page requires has a label; the mirror test checks. */
+/** The backend-owned catalog, generated alongside the wire contracts. */
+export const featureCatalog: readonly FeatureEntry[] = generatedFeatureCatalog;
+/** The page whose schedules, collections and jobs run. */
+export const schedulesFeature: PageFeature = generatedSchedulesFeature;
+/** Every capability a page requires has a label; the catalog test checks. */
 const capabilities: Record<string, string> = {
   timecards: 'a timecard source',
   meal_breaks: 'a meal-break source',

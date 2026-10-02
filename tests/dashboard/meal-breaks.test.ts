@@ -26,6 +26,7 @@ test('gap labels round upwards to seconds without deciding whether the gap excee
     [300000, '5m'],
     [300001, '5m 1s'],
     [353000, '5m 53s'],
+    [360001, '6m 1s'],
     [78000, '1m 18s'],
   ] as const)
     assert.equal(gapLabel(ms), label);

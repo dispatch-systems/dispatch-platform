@@ -13,7 +13,7 @@ macro_rules! exported {
 }
 fn bindings() -> BTreeMap<PathBuf, String> {
     let cfg = ts_rs::Config::new();
-    exported!(
+    let mut bindings = exported!(
         &cfg,
         AgentAccess,
         AgentTools,
@@ -168,7 +168,98 @@ fn bindings() -> BTreeMap<PathBuf, String> {
         PasskeySummary,
         AuthenticatorSetup,
         AccountSession,
-    )
+    );
+    bindings.insert("access-catalog.ts".into(), access_catalog());
+    bindings
+}
+
+/// Runtime catalogs, exported from their actual values rather than Rust source formatting.
+fn access_catalog() -> String {
+    use crate::{features, roles};
+    use serde_json::json;
+    let catalog = features::catalog();
+    let ids = |kind| {
+        catalog
+            .iter()
+            .filter(|feature| match (feature.kind, kind) {
+                (features::Kind::Tab(_), features::Kind::Tab(_)) => true,
+                (actual, expected) => actual == expected,
+            })
+            .map(|feature| feature.id)
+            .collect::<Vec<_>>()
+    };
+    let entries: Vec<_> = catalog
+        .iter()
+        .map(|feature| {
+            let mut entry = json!({
+                "id": feature.id,
+                "label": feature.label,
+                "permissions": feature.permissions,
+                "requires": feature.requires,
+            });
+            match feature.kind {
+                features::Kind::Page => entry["kind"] = json!("page"),
+                features::Kind::Tab(page) => {
+                    entry["kind"] = json!("tab");
+                    entry["page"] = json!(page);
+                }
+                features::Kind::Connection => {
+                    entry["kind"] = json!("connection");
+                    entry["provides"] = json!(feature.provides);
+                }
+            }
+            entry
+        })
+        .collect();
+    let labels: BTreeMap<_, _> = roles::LABELS.iter().copied().collect();
+    let implied: BTreeMap<_, _> = roles::IMPLIED.iter().copied().collect();
+    let groups: Vec<_> = features::PAGES
+        .iter()
+        .map(|feature| (feature.label, feature.permissions))
+        .chain(roles::GROUPS.iter().copied())
+        .collect();
+    let mut grouped: Vec<_> = groups
+        .iter()
+        .flat_map(|(_, permissions)| *permissions)
+        .copied()
+        .collect();
+    let mut permissions = roles::PERMISSIONS.to_vec();
+    grouped.sort();
+    permissions.sort();
+    assert_eq!(
+        grouped, permissions,
+        "every permission belongs to one role-sheet section"
+    );
+    assert!(
+        implied
+            .iter()
+            .all(|(from, to)| labels.contains_key(from) && labels.contains_key(to))
+    );
+    let constants = [
+        ("pages", json!(ids(features::Kind::Page))),
+        ("pageTabs", json!(ids(features::Kind::Tab("")))),
+        ("connections", json!(ids(features::Kind::Connection))),
+        (
+            "features",
+            json!(catalog.iter().map(|feature| feature.id).collect::<Vec<_>>()),
+        ),
+        ("featureCatalog", json!(entries)),
+        ("schedulesFeature", json!(features::SCHEDULES)),
+        ("permissions", json!(roles::PERMISSIONS)),
+        ("permissionLabels", json!(labels)),
+        ("permissionGroups", json!(groups)),
+        ("impliedPermissions", json!(implied)),
+    ];
+    let mut text = "// Generated from backend feature, collector and permission catalogs.\n\
+                    // Run `npm run contracts:generate` after changing them.\n"
+        .to_owned();
+    for (name, value) in constants {
+        text.push_str(&format!(
+            "export const {name} = {} as const;\n",
+            serde_json::to_string_pretty(&value).unwrap()
+        ));
+    }
+    text
 }
 #[test]
 fn typescript_contracts_match_the_rust_types() {

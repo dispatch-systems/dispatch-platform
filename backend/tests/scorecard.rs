@@ -6,7 +6,7 @@ use dispatch_backend::{
     db::{Store, s},
     scorecard::{self, Capture, Request},
 };
-use serde_json::{Value, json};
+use serde_json::json;
 
 fn request(week: &str) -> Request {
     Request::parse(&json!({"collection":"scorecard","week":week,"station":"TST1"}))
@@ -40,8 +40,8 @@ fn a_posted_week_is_published_into_one_table_per_dataset_with_its_keys() {
     let (_root, db, id) = ready();
     let capture = scorecard::fixture(&request("2026-W38")).unwrap();
     let job = publish(&db, &id, "first", "2026-W38", &capture);
-    let queued: Value = db.job(&job, Some(&id)).unwrap();
-    assert_eq!(queued["kind"], "cortex.scorecard.collect");
+    let queued = db.job_row(&job, Some(&id)).unwrap();
+    assert_eq!(queued.kind.as_str(), "cortex.scorecard.collect");
     let storage = db.scorecard(&id).unwrap();
     let publication = storage
         .one(
@@ -193,6 +193,64 @@ fn collecting_a_week_again_supersedes_its_publication_and_keeps_the_history() {
             .unwrap(),
         1
     );
+}
+
+#[test]
+fn week_counts_use_capture_metadata_and_recover_missing_legacy_dataset_counts() {
+    let (_root, db, id) = ready();
+    let legacy = scorecard::fixture(&request("2026-W36")).unwrap();
+    let legacy_job = publish(&db, &id, "legacy", "2026-W36", &legacy);
+    let old = scorecard::fixture(&request("2026-W37")).unwrap();
+    publish(&db, &id, "old", "2026-W37", &old);
+    let mut current = old.clone();
+    current.datasets[1].rows.pop();
+    current.started_at += 1000;
+    current.finished_at += 2000;
+    publish(&db, &id, "current", "2026-W37", &current);
+    let storage = db.scorecard(&id).unwrap();
+    // Migration 0002 adopted old publications without source metadata. A
+    // partially missing catalog also falls back only for its missing dataset.
+    storage
+        .exec(
+            "DELETE FROM scorecard_sources WHERE publication_id IN \
+             (SELECT id FROM scorecard_publications WHERE job_id=?)",
+            [&legacy_job],
+        )
+        .unwrap();
+    storage
+        .exec(
+            "DELETE FROM scorecard_sources WHERE dataset='pickup_failures'",
+            [],
+        )
+        .unwrap();
+    let weeks = db.scorecard_weeks(&id).unwrap();
+    assert_eq!(
+        weeks
+            .weeks
+            .iter()
+            .map(|w| w.week.as_str())
+            .collect::<Vec<_>>(),
+        ["2026-W37", "2026-W36"]
+    );
+    for (week, capture) in weeks.weeks.iter().zip([&current, &legacy]) {
+        let publication = week.publication.as_ref().unwrap();
+        assert_eq!(publication.datasets.len(), scorecard::DATASETS.len());
+        for (dataset, count) in scorecard::DATASETS.iter().zip(&publication.datasets) {
+            let captured = capture
+                .datasets
+                .iter()
+                .find(|d| d.id == dataset.id)
+                .unwrap();
+            assert_eq!(count.id, dataset.id);
+            assert_eq!(
+                count.rows,
+                captured.rows.len(),
+                "{} {}",
+                week.week,
+                dataset.id
+            );
+        }
+    }
 }
 
 #[test]

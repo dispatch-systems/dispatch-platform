@@ -17,32 +17,40 @@ const ROLES: &str = "SELECT r.*,\
 
 // Every permission a DSP owner can grant. Owners implicitly hold all of them,
 // so additions here reach owners without touching stored roles.
-pub const PERMISSIONS: &[&str] = &[
-    "uniforms.view",
-    "uniforms.adjust",
-    "uniforms.manage",
-    "timecard.view",
-    "timecard.manage",
-    "collections.run",
-    "routes.view",
-    "routes.collect",
-    "routes.manage",
-    "dvic.view",
-    "dvic.collect",
-    "dvic.manage",
-    "scorecard.view",
-    "scorecard.collect",
-    "scorecard.manage",
-    "driver_match.manage",
-    "connections.manage",
-    "members.invite",
-    "members.manage",
-    "roles.manage",
-    "settings.manage",
-];
+macro_rules! permissions {
+    ($($id:literal => $label:literal),* $(,)?) => {
+        pub const PERMISSIONS: &[&str] = &[$($id),*];
+        // Build-time metadata for the generated dashboard catalog; not shipped at runtime.
+        #[cfg(test)]
+        pub(crate) const LABELS: &[(&str, &str)] = &[$(($id, $label)),*];
+    };
+}
+permissions! {
+    "uniforms.view" => "View Uniform Inventory",
+    "uniforms.adjust" => "Adjust Uniform Inventory",
+    "uniforms.manage" => "Manage Uniform Inventory",
+    "timecard.view" => "View Timecard",
+    "timecard.manage" => "Manage Timecard",
+    "collections.run" => "Run Collections",
+    "routes.view" => "View Routes",
+    "routes.collect" => "Collect Routes",
+    "routes.manage" => "Manage Routes",
+    "dvic.view" => "View DVIC",
+    "dvic.collect" => "Collect DVIC",
+    "dvic.manage" => "Manage DVIC",
+    "scorecard.view" => "View Scorecard",
+    "scorecard.collect" => "Collect Scorecard",
+    "scorecard.manage" => "Manage Scorecard",
+    "driver_match.manage" => "Manage Driver Match",
+    "connections.manage" => "Manage Connections",
+    "members.invite" => "Invite Members",
+    "members.manage" => "Manage Members",
+    "roles.manage" => "Manage Roles",
+    "settings.manage" => "Manage DSP Settings",
+}
 // Any membership satisfies this; it guards pages every member may open.
 pub const ACCESS: &str = "access";
-const IMPLIED: &[(&str, &str)] = &[
+pub(crate) const IMPLIED: &[(&str, &str)] = &[
     ("timecard.manage", "timecard.view"),
     ("uniforms.adjust", "uniforms.view"),
     ("uniforms.manage", "uniforms.view"),
@@ -52,6 +60,16 @@ const IMPLIED: &[(&str, &str)] = &[
     ("dvic.manage", "dvic.view"),
     ("scorecard.collect", "scorecard.view"),
     ("scorecard.manage", "scorecard.view"),
+];
+// Permissions outside a feature-owned page have these role-sheet sections.
+#[cfg(test)]
+pub(crate) const GROUPS: &[(&str, &[&str])] = &[
+    ("Connections", &["connections.manage"]),
+    (
+        "Team",
+        &["members.invite", "members.manage", "roles.manage"],
+    ),
+    ("DSP", &["settings.manage"]),
 ];
 const DEFAULTS: &[(&str, &str, &[&str])] = &[
     (

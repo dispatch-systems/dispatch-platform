@@ -64,12 +64,18 @@ export class ResponseCache {
 
   /** Also used for authoritative mutation acknowledgements and live snapshots. */
   put<T>(key: string, data: T): T {
+    this.supersede(key);
     return this.save(key, data);
   }
 
   alias(source: string, target: string) {
     const entry = this.entries.get(source);
+    // A cached alias seeds the view; an independent target read may hold fresher data.
     if (entry && source !== target) this.save(target, entry.snapshot.data, entry.expires);
+  }
+
+  private supersede(key: string) {
+    if (this.requests.has(key)) this.invalidate((candidate) => candidate === key);
   }
 
   private save<T>(key: string, data: T, expires = Date.now() + this.limits.freshMs): T {
@@ -96,7 +102,10 @@ export class ResponseCache {
   }
 
   private remove(key: string) {
-    this.bytes -= this.entries.get(key)?.bytes ?? 0;
+    const entry = this.entries.get(key);
+    this.bytes -= entry?.bytes ?? 0;
+    if (entry && this.listeners.has(key))
+      this.emptyEntries.set(key, { generation: entry.snapshot.generation });
     this.entries.delete(key);
   }
 

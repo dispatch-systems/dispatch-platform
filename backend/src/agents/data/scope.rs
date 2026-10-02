@@ -14,10 +14,10 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 /// The longest period one request may cover. Routes, packages and DVIC are read in one
-/// query whatever the period; timecards and meal breaks are read a day at a time, so a
-/// question that needs them stops at [`DAILY_LONGEST`].
+/// range. Timecards and meal breaks assess individual days, so a question that needs
+/// them stops at [`DAILY_LONGEST`].
 pub const LONGEST_DAYS: i64 = 366;
-/// The longest period for a question that reads timecards or meal breaks, day by day.
+/// The longest period for a question that assesses timecards or meal breaks.
 pub const DAILY_LONGEST: i64 = 92;
 /// The period a question that names no days is about.
 pub const DEFAULT_PERIOD: &str = "last 30 days";
@@ -196,7 +196,7 @@ pub fn read_period(text: &str, today: NaiveDate) -> Option<Period> {
     })
 }
 
-/// Refuses a period too long to read a day at a time, as timecards and meal breaks are.
+/// Bounds the daily assessments in a timecard or meal-break question.
 pub fn daily_limit(period: &Period) -> std::result::Result<(), Refusal> {
     if (period.to - period.from).num_days() >= DAILY_LONGEST {
         return Err(Refusal::new(
@@ -285,17 +285,17 @@ pub struct People {
     holders: HashMap<(DriverSource, String), usize>,
 }
 impl People {
-    /// The DSP's people, from Driver Match, kept until the next change to any data.
+    /// The DSP's people, from Driver Match, kept until a source or driver decision changes.
     pub fn load(db: &Store, state: &State, dsp: &str) -> Result<Self> {
         let revision = state
             .data_revision
             .load(std::sync::atomic::Ordering::Relaxed);
-        let matched: DriverMatch =
-            state
-                .read_cache
-                .read(format!("agent-people:{dsp}"), revision, || {
-                    db.driver_match(dsp)
-                })?;
+        let matched: DriverMatch = state.read_cache.read(
+            crate::read_cache::Scope::People(dsp.into()),
+            format!("agent-people:{dsp}"),
+            revision,
+            || db.driver_match(dsp),
+        )?;
         let mut list = vec![];
         let mut holders = HashMap::new();
         for driver in matched.drivers {

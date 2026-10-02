@@ -155,10 +155,6 @@ impl Store {
         let metrics = self.metrics(&row.id)?;
         PublicJob::new(row, name, metrics)
     }
-    /// `recent_jobs` as JSON, for the integration tests written against it.
-    pub fn list_jobs(&self, id: Option<&str>) -> Result<Value> {
-        Ok(serde_json::to_value(self.recent_jobs(id)?)?)
-    }
     pub fn recent_jobs(&self, id: Option<&str>) -> Result<Vec<PublicJob>> {
         let rows: Vec<JobRow> = match id {
             Some(id) => self.jobs.query_as(RECENT_FOR_DSP, [id])?,
@@ -203,13 +199,7 @@ impl Store {
             .one_as(JOB, params![id, dsp, dsp])?
             .ok_or_else(|| Error::new("job_not_found", 404))
     }
-    /// The raw row as JSON, for the integration tests written against it.
-    pub fn job(&self, id: &str, dsp: Option<&str>) -> Result<Value> {
-        self.jobs
-            .one(JOB, params![id, dsp, dsp])?
-            .ok_or_else(|| Error::new("job_not_found", 404))
-    }
-    /// The `enqueue_*` functions answer with JSON, for the integration tests written against them.
+    /// Queue helpers return the public JSON response used by collection requests.
     pub fn enqueue(&self, id: &str, actor: Option<&str>, key: &str) -> Result<Value> {
         self.enqueue_for(id, actor, key, Provider::Paycom, &json!({}))
     }
@@ -375,9 +365,6 @@ impl Store {
         self.jobs
             .exec(&format!("{CANCEL}{scope}"), bound.as_slice())
     }
-    pub fn cancel_job(&self, id: &str, dsp: &str) -> Result<Value> {
-        Ok(serde_json::to_value(self.cancel(id, dsp)?)?)
-    }
     pub fn cancel(&self, id: &str, dsp: &str) -> Result<PublicJob> {
         let row = self.job_row(id, Some(dsp))?;
         self.cancel_jobs(CancelJobs::Job { id, dsp })?;
@@ -447,10 +434,6 @@ impl Store {
         )?;
         Ok(dsp)
     }
-    /// `guard` answering with JSON, for the integration tests written against it.
-    pub fn guard_job(&self, id: &str, owner: &str) -> Result<Value> {
-        Ok(serde_json::to_value(self.guard(id, owner)?)?)
-    }
     pub fn recover_jobs(&self, all: bool) -> Result<()> {
         self.jobs.transaction(|| {
             if all {
@@ -493,17 +476,6 @@ impl Store {
             )?;
             Ok(Some(job))
         })
-    }
-    /// `claim_job` as the raw row in JSON, for the integration tests written against it.
-    pub fn claim(
-        &self,
-        owner: &str,
-        eligible: impl Fn(&str, Provider) -> bool,
-    ) -> Result<Option<Value>> {
-        let Some(job) = self.claim_job(owner, eligible)? else {
-            return Ok(None);
-        };
-        Ok(Some(self.job(&job.id, None)?))
     }
     pub fn progress(
         &self,
@@ -551,21 +523,6 @@ impl Store {
             provider.collector().discard(self, &row.dsp_id, Some(id))?;
         }
         Ok(())
-    }
-    /// `job_facts` for a job given as its raw row in JSON, as the integration tests give it.
-    pub fn outcome_facts(&self, dsp: &str, job: &Value) -> (Option<String>, Vec<AuditChange>) {
-        use crate::db::{n, s};
-        self.job_facts(
-            dsp,
-            &JobFacts {
-                idempotency_key: s(job, "idempotency_key"),
-                provider: Provider::from_job_kind(s(job, "kind")).ok().map(|(p, _)| p),
-                attempt: n(job, "attempt"),
-                max_attempts: n(job, "max_attempts"),
-                request: s(job, "request"),
-                started_at: job["started_at"].as_str(),
-            },
-        )
     }
     // What an outcome's log entry says beyond pass or fail: the schedule that
     // queued it, and the provider, collected date and run time.
