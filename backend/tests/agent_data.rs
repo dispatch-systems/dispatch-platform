@@ -700,6 +700,179 @@ async fn package_group_and_list_cursors_advance_independently_within_the_final_b
     assert_eq!(invalid["error"], "invalid_parameter");
 }
 
+#[tokio::test]
+async fn package_grouping_bounds_scan_work_and_raw_cardinality() {
+    let (_root, db, id) = ready();
+    let me = caller(&db, &[&id], true);
+    let route = db.routedata(&id).unwrap();
+    let config = db.config.clone();
+    let state = State::new(config).unwrap();
+
+    // Imported publication bookkeeping is only a hint: even a wildly overstated count must
+    // not reject a cheap query. The bounded exact query remains authoritative under load.
+    route
+        .exec(
+            "UPDATE route_publications SET task_count=2000001 WHERE active=1",
+            [],
+        )
+        .unwrap();
+    let started = std::time::Instant::now();
+    let mut burst = tokio::task::JoinSet::new();
+    for _ in 0..32 {
+        let shared = state.clone();
+        let who = me.clone();
+        burst.spawn(async move {
+            ask(&shared, move |db, state| {
+                data::packages(
+                    db,
+                    state,
+                    &who,
+                    &json!({"date":DAY,"group_by":"address,route"}),
+                )
+            })
+            .await
+        });
+    }
+    while let Some(answer) = burst.join_next().await {
+        let (status, body) = answer.unwrap();
+        assert_eq!(status, 200, "{body}");
+        assert!(body["packages"].as_i64().is_some(), "{body}");
+    }
+    assert!(
+        started.elapsed().as_secs() < 10,
+        "metadata-skew burst ran too long"
+    );
+
+    // Ten thousand distinct raw groups are exact and pageable. One more fails before
+    // address hydration or Driver Match merging can amplify memory further.
+    route.exec("DELETE FROM tasks", []).unwrap();
+    route
+        .exec(
+            "WITH digits(n) AS (VALUES(0),(1),(2),(3),(4),(5),(6),(7),(8),(9)), \
+             bulk(n) AS (SELECT a.n+10*b.n+100*c.n+1000*d.n FROM digits a CROSS JOIN \
+             digits b CROSS JOIN digits c CROSS JOIN digits d) \
+             INSERT INTO tasks(publication_id,day,itinerary_id,stop_id,task_id,transporter_id, \
+             tracking_id,task_type,task_state,state_context,address_id,events,active) \
+             SELECT p.id,p.day,'bulk-itinerary-'||n,'bulk-stop-'||n,'bulk-task-'||n, \
+             'bulk-driver',printf('TBA%012d',n),'DROP_OFF','DELIVERED','REASON_'||n, \
+             'bulk-address-'||n,'[]',1 \
+             FROM bulk CROSS JOIN (SELECT id,day FROM route_publications WHERE active=1 LIMIT 1) p",
+            [],
+        )
+        .unwrap();
+    // Deliberately under-report publication metadata: the query's own work/cardinality
+    // bounds remain authoritative if imported bookkeeping is stale or malformed.
+    route
+        .exec(
+            "UPDATE route_publications SET task_count=1 WHERE active=1",
+            [],
+        )
+        .unwrap();
+    let who = me.clone();
+    let (status, first) = ask(&state, move |db, state| {
+        data::packages(db, state, &who, &json!({"date":DAY,"group_by":"address"}))
+    })
+    .await;
+    assert_eq!(status, 200, "{first}");
+    assert_eq!(first["packages"], 10_000);
+    assert_eq!(rows(&first["groups"]).len(), 100);
+    assert!(first["groups"]["page"]["next_cursor"].is_string());
+    let who = me.clone();
+    let (status, last) = ask(&state, move |db, state| {
+        data::packages(
+            db,
+            state,
+            &who,
+            &json!({"date":DAY,"group_by":"address","cursor":"9900"}),
+        )
+    })
+    .await;
+    assert_eq!(status, 200, "{last}");
+    assert_eq!(rows(&last["groups"]).len(), 100);
+    assert!(last["groups"]["page"].is_null(), "{last}");
+
+    // Reason validation uses the same hard work budget, can find a late valid value without
+    // enumerating every distinct value, and never accepts data from an inactive/foreign feed.
+    route
+        .exec(
+            "INSERT INTO route_publications(id,job_id,day,station,service_area_id,provider, \
+             timezone,mode,started_at,collected_at,active,route_count,itinerary_count,stop_count, \
+             task_count,adapter_version) SELECT 'stale-publication','stale-job',day,'FOREIGN', \
+             service_area_id,provider,timezone,mode,started_at,collected_at,0,0,0,0,1, \
+             adapter_version FROM route_publications WHERE active=1 LIMIT 1",
+            [],
+        )
+        .unwrap();
+    route
+        .exec(
+            "INSERT INTO tasks(publication_id,day,itinerary_id,stop_id,task_id,transporter_id, \
+             tracking_id,task_type,task_state,state_context,address_id,events,active) SELECT id, \
+             day,'stale-itinerary','stale-stop','stale-task','stale-driver','TBA-stale', \
+             'DROP_OFF','DELIVERED','POISON_STALE','stale-address','[]',1 \
+             FROM route_publications WHERE id='stale-publication'",
+            [],
+        )
+        .unwrap();
+    let who = me.clone();
+    let (status, known_reason) = ask(&state, move |db, state| {
+        data::packages(db, state, &who, &json!({"date":DAY,"reason":"reason_9999"}))
+    })
+    .await;
+    assert_eq!(status, 200, "{known_reason}");
+    assert_eq!(known_reason["packages"], 1);
+    let who = me.clone();
+    let started = std::time::Instant::now();
+    let (status, stale_reason) = ask(&state, move |db, state| {
+        data::packages(
+            db,
+            state,
+            &who,
+            &json!({"date":DAY,"reason":"poison_stale"}),
+        )
+    })
+    .await;
+    assert_eq!(
+        (status, stale_reason["error"].as_str()),
+        (400, Some("unknown_reason")),
+        "{stale_reason}"
+    );
+    assert!(
+        stale_reason["choices"]
+            .as_array()
+            .is_some_and(|v| v.len() <= 100),
+        "{stale_reason}"
+    );
+    assert!(
+        started.elapsed().as_secs() < 10,
+        "reason refusal ran too long"
+    );
+
+    route
+        .exec(
+            "INSERT INTO tasks(publication_id,day,itinerary_id,stop_id,task_id,transporter_id, \
+             tracking_id,task_type,task_state,address_id,events,active) SELECT id,day, \
+             'overflow-itinerary','overflow-stop','overflow-task','bulk-driver','TBA-overflow', \
+             'DROP_OFF','DELIVERED','bulk-address-overflow','[]',1 FROM route_publications \
+             WHERE active=1 LIMIT 1",
+            [],
+        )
+        .unwrap();
+    let started = std::time::Instant::now();
+    let (status, refused) = ask(&state, move |db, state| {
+        data::packages(db, state, &me, &json!({"date":DAY,"group_by":"address"}))
+    })
+    .await;
+    assert_eq!(
+        (status, refused["error"].as_str()),
+        (422, Some("package_query_too_large")),
+        "{refused}"
+    );
+    assert!(
+        started.elapsed().as_secs() < 10,
+        "group refusal ran too long"
+    );
+}
+
 /// Every tool's answer to a plain question stays small at a real DSP's size: two weeks of
 /// a dozen drivers' routes, timecards, meal breaks and inspections.
 #[tokio::test]

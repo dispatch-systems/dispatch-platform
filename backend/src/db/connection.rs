@@ -139,6 +139,34 @@ impl Db {
             .query_map(p, row_json)?
             .collect::<std::result::Result<Vec<_>, _>>()?)
     }
+    /// Reads rows with a hard bound on SQLite virtual-machine work. The handler belongs to
+    /// this connection and is removed before it returns, including after an interrupted query.
+    pub fn all_bounded(&self, sql: &str, p: impl Params, max_ops: u64) -> Result<Vec<Value>> {
+        const INTERVAL: u64 = 1_000;
+        let mut callbacks_left = max_ops.div_ceil(INTERVAL).max(1);
+        self.0.progress_handler(
+            INTERVAL as i32,
+            Some(move || {
+                callbacks_left = callbacks_left.saturating_sub(1);
+                callbacks_left == 0
+            }),
+        )?;
+        let result = (|| {
+            let mut stmt = self.0.prepare_cached(sql)?;
+            stmt.query_map(p, row_json)?
+                .collect::<std::result::Result<Vec<_>, _>>()
+        })();
+        self.0.progress_handler(0, None::<fn() -> bool>)?;
+        match result {
+            Err(error)
+                if error.sqlite_error_code() == Some(rusqlite::ErrorCode::OperationInterrupted) =>
+            {
+                Err(crate::Error::new("query_limit_exceeded", 503))
+            }
+            Err(error) => Err(error.into()),
+            Ok(rows) => Ok(rows),
+        }
+    }
     pub fn one(&self, sql: &str, p: impl Params) -> Result<Option<Value>> {
         use rusqlite::OptionalExtension;
         Ok(self
@@ -199,5 +227,25 @@ pub fn flag(value: &Value, key: &str) -> bool {
 pub fn boolean(value: &mut Value, keys: &[&str]) {
     for key in keys {
         value[*key] = json!(flag(value, key));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_bounded_query_is_interrupted_and_leaves_the_connection_reusable() {
+        let db = Db(Connection::open_in_memory().unwrap());
+        let error = db
+            .all_bounded(
+                "WITH RECURSIVE n(v) AS (VALUES(1) UNION ALL SELECT v+1 FROM n WHERE v<10000) \
+                 SELECT sum(a.v*b.v) total FROM n a CROSS JOIN n b",
+                [],
+                1_000,
+            )
+            .unwrap_err();
+        assert_eq!(error.code, "query_limit_exceeded");
+        assert_eq!(n(&db.one("SELECT 1 n", []).unwrap().unwrap(), "n"), 1);
     }
 }
