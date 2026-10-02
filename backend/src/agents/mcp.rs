@@ -6,6 +6,7 @@
 use super::{
     Caller, activity,
     data::{self, Failure, catalog},
+    oauth,
 };
 use crate::{
     State,
@@ -19,9 +20,9 @@ use rmcp::{
     model::{
         CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock,
         GetPromptRequestParams, GetPromptResponse, GetPromptResult, Implementation,
-        ListPromptsResult, ListToolsResult, PaginatedRequestParams, Prompt, PromptArgument,
-        PromptMessage, ProtocolVersion, Role, ServerCapabilities, ServerConfig, Tool,
-        ToolAnnotations,
+        ListPromptsResult, ListToolsResult, MetaObject, PaginatedRequestParams, Prompt,
+        PromptArgument, PromptMessage, ProtocolVersion, Role, ServerCapabilities, ServerConfig,
+        Tool, ToolAnnotations,
     },
     service::RequestContext,
     transport::streamable_http_server::{
@@ -53,6 +54,7 @@ other tools.
 /// A last guard on an answer's size. Answers page themselves within
 /// `data::BUDGET`; one past twice that is a fault, refused rather than cut short.
 const LONGEST_ANSWER: usize = 2 * data::BUDGET;
+const PROFILE: &str = "get_profile";
 
 /// The MCP service: stateless, answering in JSON, refusing anything a browser sends. The
 /// Host was checked by the server's own gate before the request got here.
@@ -109,14 +111,34 @@ fn modern(context: &RequestContext<RoleServer>) -> bool {
         .is_some_and(|v| v.as_str() >= ProtocolVersion::V_2026_07_28.as_str())
 }
 
+/// Structured tool results and output schemas joined MCP in 2025-06-18. Older clients keep
+/// receiving the complete JSON as text, preserving the server's advertised legacy support.
+fn structured(context: &RequestContext<RoleServer>) -> bool {
+    context
+        .protocol_version()
+        .is_some_and(|v| v.as_str() >= ProtocolVersion::V_2025_06_18.as_str())
+}
+
 fn offered(tools: AgentTools) -> impl Iterator<Item = &'static catalog::Endpoint> {
     catalog::ENDPOINTS
         .iter()
         .filter(move |e| tools == AgentTools::Full || e.essential)
 }
 
-fn tool(endpoint: &catalog::Endpoint) -> Tool {
-    Tool::new(
+fn metadata(profile: bool) -> MetaObject {
+    let mut meta = Map::new();
+    meta.insert(
+        "securitySchemes".into(),
+        json!([{"type":"oauth2","scopes":[oauth::SCOPE]}]),
+    );
+    if profile {
+        meta.insert("openai/profile".into(), json!(true));
+    }
+    MetaObject(meta)
+}
+
+fn tool(endpoint: &catalog::Endpoint, with_output: bool) -> Tool {
+    let mut tool = Tool::new(
         endpoint.tool,
         endpoint.description,
         Arc::new(catalog::input_schema(endpoint)),
@@ -129,6 +151,54 @@ fn tool(endpoint: &catalog::Endpoint) -> Tool {
             .idempotent(true)
             .open_world(false),
     )
+    .with_meta(metadata(false));
+    if with_output {
+        tool = tool.with_raw_output_schema(Arc::new(
+            json!({"type":"object"}).as_object().unwrap().clone(),
+        ));
+    }
+    tool
+}
+
+fn profile_tool(with_output: bool) -> Tool {
+    let mut tool = Tool::new(
+        PROFILE,
+        "Return the stable Dispatch profile represented by this request's authenticated credentials.",
+        Arc::new(
+            json!({"type":"object","properties":{},"additionalProperties":false})
+                .as_object()
+                .unwrap()
+                .clone(),
+        ),
+    )
+    .with_title("Current Dispatch profile")
+    .with_annotations(
+        ToolAnnotations::with_title("Current Dispatch profile")
+            .read_only(true)
+            .destructive(false)
+            .idempotent(true)
+            .open_world(false),
+    )
+    .with_meta(metadata(true));
+    if with_output {
+        tool = tool.with_raw_output_schema(Arc::new(
+            json!({
+                "$schema":"https://json-schema.org/draft/2020-12/schema",
+                "type":"object",
+                "properties":{
+                    "id":{"type":"string","minLength":1,"pattern":"\\S",
+                        "description":"Opaque profile identifier, stable across refresh and reconnection."},
+                    "name":{"type":"string","description":"Display name for the authenticated profile."}
+                },
+                "required":["id"],
+                "additionalProperties":false
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        ));
+    }
+    tool
 }
 
 /// A tool's arguments as the endpoint's query: every value as text, the way a URL carries
@@ -189,6 +259,7 @@ impl Server {
         arguments: Option<Map<String, Value>>,
         caller: Caller,
         state: Arc<State>,
+        with_output: bool,
     ) -> Called {
         let name = name.to_owned();
         let label = name.clone();
@@ -196,12 +267,19 @@ impl Server {
         match state
             .read(move |db| {
                 let caller = db.revalidate_agent(&caller)?;
-                Ok(Self::call_current(&name, arguments, &caller, db, &shared))
+                Ok(Self::call_current(
+                    &name,
+                    arguments,
+                    &caller,
+                    db,
+                    &shared,
+                    with_output,
+                ))
             })
             .await
         {
             Ok(answer) => answer,
-            Err(error) => Self::answer(&label, Err(Failure::Failed(error))),
+            Err(error) => Self::answer(&label, Err(Failure::Failed(error)), with_output),
         }
     }
 
@@ -211,9 +289,25 @@ impl Server {
         caller: &Caller,
         db: &Store,
         state: &State,
+        with_output: bool,
     ) -> Called {
+        if name == PROFILE {
+            if arguments
+                .as_ref()
+                .is_some_and(|arguments| !arguments.is_empty())
+            {
+                return refused("unknown_parameter", "get_profile takes no arguments.", &[]);
+            }
+            return Self::answer(
+                PROFILE,
+                db.agent_profile(caller).map_err(Failure::Failed),
+                with_output,
+            );
+        }
         let Some(endpoint) = offered(caller.tools).find(|e| e.tool == name) else {
-            let names: Vec<String> = offered(caller.tools).map(|e| e.tool.to_owned()).collect();
+            let names: Vec<String> = std::iter::once(PROFILE.to_owned())
+                .chain(offered(caller.tools).map(|e| e.tool.to_owned()))
+                .collect();
             return refused(
                 "unknown_tool",
                 &format!("There is no tool `{name}` for this key."),
@@ -249,11 +343,12 @@ impl Server {
             ..Self::answer(
                 endpoint.tool,
                 data::ask(endpoint, db, state, caller, &named, &query),
+                with_output,
             )
         }
     }
 
-    fn answer(tool: &str, answer: data::Answer) -> Called {
+    fn answer(tool: &str, answer: data::Answer, with_output: bool) -> Called {
         match answer {
             Ok(value) => {
                 let text = value.to_string();
@@ -265,11 +360,18 @@ impl Server {
                         &[],
                     );
                 }
-                // Once, as compact JSON text: the one shape every client reads the same way.
-                // Sent as structured content as well, Codex's scripts and ChatGPT read it
-                // twice, and Claude Code and Codex's direct calls drop the text.
+                let result = if with_output {
+                    let mut result = CallToolResult::structured(value);
+                    // Keep the complete text fallback even when structuredContent is available.
+                    // Some current MCP hosts advertise the modern protocol but expose only text
+                    // tool content to their model; a marker here would silently hide the answer.
+                    result.content = vec![ContentBlock::text(text)];
+                    result
+                } else {
+                    CallToolResult::success(vec![ContentBlock::text(text)])
+                };
                 Called {
-                    result: CallToolResult::success(vec![ContentBlock::text(text)]),
+                    result,
                     dsp: None,
                     outcome: "ok".into(),
                 }
@@ -343,7 +445,23 @@ fn prompts() -> Vec<Prompt> {
     ]
 }
 
-fn prompt_text(name: &str, arguments: &Map<String, Value>) -> Option<String> {
+fn prompt_text(name: &str, arguments: &Map<String, Value>) -> Result<Option<String>, String> {
+    let allowed: &[&str] = match name {
+        "daily_summary" => &["date", "dsp"],
+        "driver_review" => &["driver", "period"],
+        _ => return Ok(None),
+    };
+    if let Some(name) = arguments
+        .keys()
+        .find(|name| !allowed.contains(&name.as_str()))
+    {
+        return Err(format!("unknown prompt argument `{name}`"));
+    }
+    for (name, value) in arguments {
+        if !value.is_string() || value.as_str().is_some_and(|value| value.len() > 200) {
+            return Err(format!("`{name}` must be a string of at most 200 bytes"));
+        }
+    }
     let given = |key: &str, default: &str| {
         arguments
             .get(key)
@@ -357,7 +475,7 @@ fn prompt_text(name: &str, arguments: &Map<String, Value>) -> Option<String> {
         dsp if dsp.is_empty() => String::new(),
         dsp => format!(" at {dsp}"),
     };
-    match name {
+    Ok(match name {
         "daily_summary" => Some(format!(
             "Using the Dispatch tools, summarize {}{dsp}. Call whoami first for the date. \
              Cover the routes run and whether the day is final, total stops and packages, \
@@ -375,7 +493,7 @@ fn prompt_text(name: &str, arguments: &Map<String, Value>) -> Option<String> {
             given("period", "last week")
         )),
         _ => None,
-    }
+    })
 }
 
 impl ServerHandler for Server {
@@ -397,11 +515,14 @@ impl ServerHandler for Server {
         request: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
         let (caller, state) = context(&request)?;
+        let with_output = structured(&request);
         let listed = state
             .read(move |db| {
                 let current = db.revalidate_agent(&caller)?;
                 Ok(ListToolsResult::with_all_items(
-                    offered(current.tools).map(tool).collect(),
+                    std::iter::once(profile_tool(with_output))
+                        .chain(offered(current.tools).map(|endpoint| tool(endpoint, with_output)))
+                        .collect(),
                 ))
             })
             .await
@@ -417,7 +538,11 @@ impl ServerHandler for Server {
     }
 
     fn get_tool(&self, name: &str) -> Option<Tool> {
-        catalog::tool(name).map(tool)
+        if name == PROFILE {
+            Some(profile_tool(false))
+        } else {
+            catalog::tool(name).map(|endpoint| tool(endpoint, false))
+        }
     }
 
     async fn call_tool(
@@ -426,8 +551,9 @@ impl ServerHandler for Server {
         request: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
         let (caller, state) = context(&request)?;
+        let with_output = structured(&request);
         let called = self
-            .call(&params.name, params.arguments, caller, state)
+            .call(&params.name, params.arguments, caller, state, with_output)
             .await;
         if let Some(trace) = trace(&request) {
             activity::note(&trace, called.dsp, &called.outcome);
@@ -457,7 +583,33 @@ impl ServerHandler for Server {
     ) -> Result<GetPromptResponse, ErrorData> {
         let arguments = request.arguments.unwrap_or_default();
         let text = prompt_text(&request.name, &arguments)
+            .map_err(|message| ErrorData::invalid_params(message, None))?
             .ok_or_else(|| ErrorData::invalid_params("unknown_prompt", None))?;
         Ok(GetPromptResult::new(vec![PromptMessage::new_text(Role::User, text)]).into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prompt_arguments_are_bounded_and_named() {
+        assert!(prompt_text("daily_summary", &Map::new()).unwrap().is_some());
+        assert!(
+            prompt_text(
+                "daily_summary",
+                &Map::from_iter([("other".into(), json!("x"))])
+            )
+            .is_err()
+        );
+        assert!(
+            prompt_text(
+                "driver_review",
+                &Map::from_iter([("driver".into(), json!("x".repeat(201)))])
+            )
+            .is_err()
+        );
+        assert!(prompt_text("missing", &Map::new()).unwrap().is_none());
     }
 }

@@ -40,6 +40,16 @@ class Monitor:
         rules = []
         if route == "/api/auth/login" and status in (401, 403, 429):
             rules.append(("authentication_failures", safe.get("account", safe.get("client")), 10, 300))
+        if route in ("/oauth/token", "/oauth/revoke") and status in (400, 401, 403, 429, 503):
+            rules.append(("oauth_failures", "global", 25, 60))
+        if route == "/oauth/authorize" and f.get("error") == "rate_limited":
+            rules.append(("oauth_authorization_pressure", "global", 5, 300))
+        if route == "/oauth/register" and status == 201:
+            rules.append(("oauth_registration_volume", "global", 20, 300))
+        if route == "/oauth/register" and status == 429:
+            rules.append(("oauth_registration_pressure", "global", 5, 300))
+        if route.startswith("/oauth/") and status == 503:
+            rules.append(("oauth_saturation", "global", 3, 60))
         if route == "/api/dsp/members/invite" and status < 300:
             rules.append(("invitation_burst", safe.get("actorId"), 20, 3600))
         if f.get("bulk") is True and status < 300:

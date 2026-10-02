@@ -629,8 +629,16 @@ async fn a_known_app_hears_what_was_wrong_with_its_request() {
     let params = server.authorize(&pairs).await.location();
     assert_eq!(param(&params, "error"), Some("invalid_request"));
     assert_eq!(param(&params, "state"), None);
-    // Without a resource or scope, the request stands: both are what Dispatch grants.
+    // MCP clients must name the protected resource. Scope may be omitted and defaults to the
+    // one Dispatch grants; an unknown scope is never silently ignored.
     let fields = with(&[("resource", None), ("scope", None)]);
+    let pairs: Vec<(&str, &str)> = fields
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let missing = server.authorize(&pairs).await.location();
+    assert_eq!(param(&missing, "error"), Some("invalid_target"));
+    let fields = with(&[("scope", None)]);
     let pairs: Vec<(&str, &str)> = fields
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
@@ -642,6 +650,20 @@ async fn a_known_app_hears_what_was_wrong_with_its_request() {
             .header("location")
             .contains("#authorize?request=")
     );
+    let fields = with(&[("scope", Some("dispatch other"))]);
+    let pairs: Vec<(&str, &str)> = fields
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let unknown = server.authorize(&pairs).await.location();
+    assert_eq!(param(&unknown, "error"), Some("invalid_scope"));
+    let fields = with(&[("scope", Some("offline_access"))]);
+    let pairs: Vec<(&str, &str)> = fields
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let incomplete = server.authorize(&pairs).await.location();
+    assert_eq!(param(&incomplete, "error"), Some("invalid_scope"));
 }
 
 #[tokio::test]
@@ -656,7 +678,7 @@ async fn the_owner_approves_once_and_the_code_is_redeemed_once() {
     assert_eq!(shown.status, 200, "{}", shown.body);
     assert_eq!(
         shown.body["app"],
-        json!({"name":"Claude Code","clientId":CLAUDE_CODE,"verified":true,
+        json!({"name":"Claude Code","clientId":CLAUDE_CODE,"known":true,
             "redirectHost":"this computer","redirectScheme":null})
     );
     assert_eq!(shown.body["id"], request);
@@ -712,6 +734,7 @@ async fn the_owner_approves_once_and_the_code_is_redeemed_once() {
                     ("redirect_uri", redirect),
                     ("code_verifier", verifier),
                     ("client_id", client),
+                    ("resource", &server.resource()),
                 ],
             )
             .await;
@@ -750,7 +773,7 @@ async fn the_owner_approves_once_and_the_code_is_redeemed_once() {
     assert_eq!(app["kind"], "app");
     assert_eq!(
         app["client"],
-        json!({"name":"Claude Code","verified":true,"status":"connected"})
+        json!({"name":"Claude Code","known":true,"status":"connected"})
     );
     assert_eq!(
         (app["name"].as_str(), app["hint"].as_str()),
@@ -1012,7 +1035,7 @@ async fn an_app_that_registers_again_replaces_its_earlier_connection() {
 }
 
 #[tokio::test]
-async fn an_unverified_app_never_replaces_a_known_one() {
+async fn an_unrecognized_app_never_replaces_a_known_one() {
     let server = Server::paired().await;
     let owner = server.owner().await;
     let local = "http://localhost:50004/callback";
@@ -1049,7 +1072,7 @@ async fn an_unverified_app_never_replaces_a_known_one() {
             ("Claude Code (other)".to_owned(), "Claude Code".to_owned()),
         ]
     );
-    // Nor does a known app replace an unverified one that took a name.
+    // Nor does a known app replace an unrecognized one that took a name.
     let request = server.requested(CHATGPT, CHATGPT_REDIRECT).await;
     let refused = server
         .as_owner(
@@ -1064,7 +1087,7 @@ async fn an_unverified_app_never_replaces_a_known_one() {
 
 #[tokio::test]
 async fn registrations_never_used_are_capped_across_every_address() {
-    let server = Server::start().await;
+    let server = Server::paired().await;
     server
         .state
         .run(|db| {
@@ -1094,13 +1117,14 @@ async fn registrations_never_used_are_capped_across_every_address() {
         (refused.status, s(&refused.body, "error")),
         (429, "too_many_registrations")
     );
-    // One given a token no longer counts against the cap.
+    // An unused registration belongs only to the short pairing attempt; stale rows are
+    // removed before capacity is counted.
     server
         .state
         .run(|db| {
             db.platform.exec(
-                "UPDATE oauth_clients SET last_used_at=? WHERE id=?",
-                [db::iso(), format!("dcr_{:032}", 0)],
+                "UPDATE oauth_clients SET created_at=? WHERE last_used_at IS NULL",
+                [db::at(db::now() - 16 * 60 * 1000)],
             )?;
             Ok(())
         })
@@ -1109,6 +1133,34 @@ async fn registrations_never_used_are_capped_across_every_address() {
     assert_eq!(
         registered(&server, "Cursor", "cursor://a/cb").await.len(),
         36
+    );
+}
+
+#[tokio::test]
+async fn registration_is_closed_until_the_owner_opens_pairing() {
+    let server = Server::start().await;
+    let answer = server
+        .send(
+            server
+                .client
+                .post(server.url("/oauth/register"))
+                .header("content-type", "application/json")
+                .body(
+                    json!({"client_name":"Cursor","redirect_uris":["cursor://a/cb"]}).to_string(),
+                ),
+        )
+        .await;
+    assert_eq!(
+        (answer.status, s(&answer.body, "error")),
+        (403, "registration_closed")
+    );
+    assert_eq!(
+        server
+            .state
+            .read(|db| db.platform.count("SELECT count(*) FROM oauth_clients", []))
+            .await
+            .unwrap(),
+        0
     );
 }
 
@@ -1171,7 +1223,7 @@ async fn authorization_requests_are_counted_by_address_before_any_app_is_looked_
     let challenge = crypto::s256(VERIFIER);
     let fields = server.request(CLAUDE_CODE, "http://localhost:1/callback", &challenge);
     let pairs: Vec<(&str, &str)> = fields.iter().map(|(k, v)| (*k, v.as_str())).collect();
-    for _ in 0..60 {
+    for _ in 0..30 {
         let answer = server.authorize(&pairs).await;
         assert!(answer.header("location").contains("#authorize?request="));
     }
@@ -1203,6 +1255,7 @@ async fn a_replay_with_the_wrong_verifier_ends_nothing() {
                 ("redirect_uri", CHATGPT_REDIRECT),
                 ("code_verifier", &"y".repeat(43)),
                 ("client_id", CHATGPT),
+                ("resource", &server.resource()),
             ],
         )
         .await;
@@ -1244,7 +1297,7 @@ async fn the_owner_can_deny_and_the_app_is_told() {
 }
 
 #[tokio::test]
-async fn refresh_tokens_rotate_with_a_minute_of_grace() {
+async fn refresh_tokens_are_single_use_and_replay_ends_the_family() {
     let server = Server::paired().await;
     let owner = server.owner().await;
     let local = "http://127.0.0.1:61001/callback";
@@ -1279,39 +1332,65 @@ async fn refresh_tokens_rotate_with_a_minute_of_grace() {
     assert_eq!(second.status, 200, "{}", second.body);
     assert_ne!(s(&second.body, "refresh_token"), refresh);
     assert_eq!(second.body["scope"], "dispatch");
-    // Within the minute, the same token brings another pair, for parallel refreshes.
-    let parallel = server.refresh(CLAUDE_CODE, refresh).await;
-    assert_eq!(parallel.status, 200, "{}", parallel.body);
-    for pair in [&second.body, &parallel.body] {
-        let token = s(pair, "access_token");
-        assert_eq!(server.bearer("/api/v1/whoami", token).await.status, 200);
-    }
-    // After it, presenting it again ends the app and every token it has.
-    let hash = crypto::sha(refresh);
-    server
-        .state
-        .run(move |db| {
-            db.platform.exec(
-                "UPDATE oauth_tokens SET used_at=? WHERE hash=?",
-                [db::at(db::now() - 61_000), hash],
-            )?;
-            Ok(())
-        })
-        .await
-        .unwrap();
-    let late = server.refresh(CLAUDE_CODE, refresh).await;
-    assert_eq!(s(&late.body, "error"), "invalid_grant");
-    for pair in [&second.body, &parallel.body] {
-        assert_eq!(
-            server
-                .bearer("/api/v1/whoami", s(pair, "access_token"))
-                .await
-                .status,
-            401
-        );
-        let gone = server.refresh(CLAUDE_CODE, s(pair, "refresh_token")).await;
-        assert_eq!(s(&gone.body, "error"), "invalid_grant");
-    }
+    assert_eq!(
+        server
+            .bearer("/api/v1/whoami", s(&second.body, "access_token"))
+            .await
+            .status,
+        200
+    );
+    // Reuse is a compromise signal even immediately after rotation: it revokes the connected
+    // app and the successor pair instead of minting an independent branch.
+    let replay = server.refresh(CLAUDE_CODE, refresh).await;
+    assert_eq!(s(&replay.body, "error"), "invalid_grant");
+    assert_eq!(
+        server
+            .bearer("/api/v1/whoami", s(&second.body, "access_token"))
+            .await
+            .status,
+        401
+    );
+    let gone = server
+        .refresh(CLAUDE_CODE, s(&second.body, "refresh_token"))
+        .await;
+    assert_eq!(s(&gone.body, "error"), "invalid_grant");
+}
+
+#[tokio::test]
+async fn simultaneous_refreshes_mint_once_and_then_end_the_compromised_family() {
+    let server = Server::paired().await;
+    let owner = server.owner().await;
+    let local = "http://127.0.0.1:61002/callback";
+    let first = server
+        .connect(&owner, CLAUDE_CODE, local, everything("Claude Code"))
+        .await;
+    let refresh = s(&first, "refresh_token").to_owned();
+
+    let (left, right) = tokio::join!(
+        server.refresh(CLAUDE_CODE, &refresh),
+        server.refresh(CLAUDE_CODE, &refresh),
+    );
+    let mut answers = [left, right];
+    answers.sort_by_key(|answer| answer.status);
+    assert_eq!(answers[0].status, 200, "{}", answers[0].body);
+    assert_eq!(
+        (answers[1].status, s(&answers[1].body, "error")),
+        (400, "invalid_grant")
+    );
+
+    // The losing replay is a compromise signal. Even the pair the winning request briefly
+    // minted is unusable by the time both calls return.
+    assert_eq!(
+        server
+            .bearer("/api/v1/whoami", s(&answers[0].body, "access_token"))
+            .await
+            .status,
+        401
+    );
+    let successor = server
+        .refresh(CLAUDE_CODE, s(&answers[0].body, "refresh_token"))
+        .await;
+    assert_eq!(s(&successor.body, "error"), "invalid_grant");
 }
 
 #[tokio::test]
@@ -1444,7 +1523,8 @@ async fn a_connected_app_reaches_only_what_the_owner_chose() {
         .filter(|endpoint| endpoint.essential)
         .map(|endpoint| endpoint.tool)
         .collect();
-    assert_eq!(tools, essential);
+    assert_eq!(tools[0], "get_profile");
+    assert_eq!(&tools[1..], essential);
     // Its calls count like a key's, under the connected app.
     let used = server.state.agents.last();
     let listed = server
@@ -1567,7 +1647,7 @@ async fn apps_register_themselves_only_to_come_back_to_this_computer() {
         .await;
     assert_eq!(
         shown.body["app"],
-        json!({"name":"Cursor","clientId":cursor_id,"verified":false,
+        json!({"name":"Cursor","clientId":cursor_id,"known":false,
             "redirectHost":"this computer","redirectScheme":"cursor"})
     );
     let code = server
@@ -1587,7 +1667,7 @@ async fn apps_register_themselves_only_to_come_back_to_this_computer() {
         answer.header("location"),
         format!("{}/#authorize?error=invalid_redirect", server.origin)
     );
-    // A loopback registration takes any port; it is shown as unverified, by its own name.
+    // A loopback registration takes any port; it is shown as app-provided, by its own name.
     let request = server
         .requested(&id, "http://127.0.0.1:27891/callback")
         .await;
@@ -1599,7 +1679,7 @@ async fn apps_register_themselves_only_to_come_back_to_this_computer() {
             json!({}),
         )
         .await;
-    assert_eq!(shown.body["app"]["verified"], false);
+    assert_eq!(shown.body["app"]["known"], false);
     assert_eq!(shown.body["app"]["name"], "Hermes Agent");
     // Registering is rate-limited by address.
     let mut last = 0;
@@ -1677,10 +1757,116 @@ async fn revoking_any_token_ends_the_app_and_unknown_tokens_are_fine() {
     let grant = server
         .form(
             "/oauth/token",
-            &[("grant_type", "password"), ("client_id", CLAUDE_CODE)],
+            &[
+                ("grant_type", "password"),
+                ("client_id", CLAUDE_CODE),
+                ("resource", &server.resource()),
+            ],
         )
         .await;
     assert_eq!(s(&grant.body, "error"), "unsupported_grant_type");
+}
+
+#[tokio::test]
+async fn token_ingress_rejects_cross_site_browsers_and_stops_before_database_saturation() {
+    let server = Server::start().await;
+    let resource = server.resource();
+    let cross_site = server
+        .send(
+            server
+                .client
+                .post(server.url("/oauth/token"))
+                .header("origin", "https://evil.example")
+                .header("sec-fetch-site", "cross-site")
+                .form(&[
+                    ("grant_type", "refresh_token"),
+                    ("refresh_token", "not-a-token"),
+                    ("client_id", CLAUDE_CODE),
+                    ("resource", resource.as_str()),
+                ]),
+        )
+        .await;
+    assert_eq!(
+        (cross_site.status, s(&cross_site.body, "error")),
+        (400, "invalid_request")
+    );
+
+    let fields = [
+        ("grant_type", "refresh_token"),
+        ("refresh_token", "not-a-token"),
+        ("client_id", CLAUDE_CODE),
+        ("resource", resource.as_str()),
+    ];
+    for _ in 0..120 {
+        assert_eq!(server.form("/oauth/token", &fields).await.status, 400);
+    }
+    let limited = server.form("/oauth/token", &fields).await;
+    assert_eq!(
+        (limited.status, s(&limited.body, "error")),
+        (429, "rate_limited")
+    );
+    assert_eq!(limited.header("retry-after"), "60");
+    // The process remains responsive and ordinary database reads are not queued behind more
+    // invalid token work once the pre-database budget is spent.
+    assert_eq!(server.get("/api/health").await.status, 200);
+}
+
+#[tokio::test]
+async fn registration_rejects_cross_site_browsers_before_spending_its_budget() {
+    let server = Server::paired().await;
+    for _ in 0..20 {
+        let refused = server
+            .send(
+                server
+                    .client
+                    .post(server.url("/oauth/register"))
+                    .header("origin", "https://evil.example")
+                    .header("sec-fetch-site", "cross-site")
+                    .form(&[("client_name", "Browser")]),
+            )
+            .await;
+        assert_eq!(
+            (refused.status, s(&refused.body, "error")),
+            (400, "invalid_request")
+        );
+    }
+
+    // Cross-site refusals consumed neither the process budget nor registration capacity. The
+    // same source can still use its complete durable allowance for real JSON registrations.
+    for index in 0..20 {
+        let answer = server
+            .send(
+                server
+                    .client
+                    .post(server.url("/oauth/register"))
+                    .header("content-type", "application/json")
+                    .body(
+                        json!({
+                            "client_name":format!("App {index}"),
+                            "redirect_uris":[format!("com.example.app{index}:/callback")]
+                        })
+                        .to_string(),
+                    ),
+            )
+            .await;
+        assert_eq!(answer.status, 201, "{index}: {}", answer.body);
+    }
+    let limited = server
+        .send(
+            server
+                .client
+                .post(server.url("/oauth/register"))
+                .header("content-type", "application/json")
+                .body(
+                    json!({"client_name":"One too many","redirect_uris":["com.example.last:/callback"]})
+                        .to_string(),
+                ),
+        )
+        .await;
+    assert_eq!(
+        (limited.status, s(&limited.body, "error")),
+        (429, "rate_limited")
+    );
 }
 
 #[test]
@@ -1742,7 +1928,7 @@ fn what_can_no_longer_be_used_is_pruned() {
             )
             .unwrap();
     }
-    // A day's grace for a registration never used.
+    // An unused registration is tied to its short pairing attempt.
     db.platform
         .exec(
             "INSERT INTO oauth_clients VALUES ('dcr_today','App','[]',?,NULL)",
@@ -1767,10 +1953,7 @@ fn what_can_no_longer_be_used_is_pruned() {
     assert_eq!(left("oauth_requests", "id"), ["waiting"]);
     assert_eq!(left("oauth_codes", "hash"), ["waiting"]);
     assert_eq!(left("oauth_tokens", "hash"), ["waiting"]);
-    assert_eq!(
-        left("oauth_clients", "id"),
-        ["dcr_new", "dcr_today", "dcr_used"]
-    );
+    assert_eq!(left("oauth_clients", "id"), ["dcr_new", "dcr_used"]);
 }
 
 /// Ends the pairing window, as ten minutes passing would.
@@ -1834,11 +2017,7 @@ async fn apps_ask_to_connect_only_while_the_pairing_window_is_open() {
         (shown.status, &shown.body),
         (200, &json!({"openUntil":null}))
     );
-    let cursor = "cursor://anysphere.cursor-retrieval/oauth/callback";
-    let registered_app = registered(&server, "Cursor", cursor).await;
-    for (client, redirect) in [(CLAUDE_CODE, local), (registered_app.as_str(), cursor)] {
-        assert_eq!(asked(&server, client, redirect).await, closed, "{client}");
-    }
+    assert_eq!(asked(&server, CLAUDE_CODE, local).await, closed);
     assert_eq!(requests().await.unwrap(), 0);
     // Only a platform owner opens it, and with no fresh verification: a session signed in a
     // day ago does.
@@ -1889,7 +2068,6 @@ async fn apps_ask_to_connect_only_while_the_pairing_window_is_open() {
     assert_eq!(renewed.status, 200, "{}", renewed.body);
     let access = s(&renewed.body, "access_token");
     assert_eq!(server.bearer("/api/v1/whoami", access).await.status, 200);
-    registered(&server, "Windsurf", "windsurf://codeium.windsurf/callback").await;
     let signed_out = server
         .form(
             "/oauth/revoke",
@@ -2161,7 +2339,7 @@ async fn websites_connect_only_when_allowed_and_only_from_public_addresses() {
     assert_eq!(allowed.status, 200, "{}", allowed.body);
 
     // On, its document is read from the address its host has, and from nowhere else; the
-    // owner sees an unverified app and where it sends access.
+    // The owner sees an unrecognized app and where it sends access.
     let request = server.requested(site, callback).await;
     assert_eq!(
         *internet.connected.lock().unwrap(),
@@ -2177,7 +2355,7 @@ async fn websites_connect_only_when_allowed_and_only_from_public_addresses() {
         .await;
     assert_eq!(
         shown.body["app"],
-        json!({"name":"Example Tools","clientId":site,"verified":false,
+        json!({"name":"Example Tools","clientId":site,"known":false,
             "redirectHost":"tools.example.com","redirectScheme":null})
     );
     let code = server
@@ -2253,7 +2431,7 @@ async fn websites_connect_only_when_allowed_and_only_from_public_addresses() {
         )
         .await;
     assert_eq!(shown.body["app"]["redirectHost"], "tools.example.com");
-    assert_eq!(shown.body["app"]["verified"], false);
+    assert_eq!(shown.body["app"]["known"], false);
     for redirect in [
         "https://203.0.113.5/cb",
         "https://tools.example.com/cb#x",
@@ -2399,7 +2577,7 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
         assert_eq!(subject, "[Dispatch Dev] Claude Code connected to Dispatch");
         for line in [
             "Connection: Laptop",
-            "App: Claude Code (verified app)",
+            "App: Claude Code (known metadata)",
             "Sends access to: this computer",
             "DSPs: Northline Logistics",
             "Tools: Essential",
@@ -2411,23 +2589,11 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
             assert!(text.contains(line), "{line}\n{text}");
         }
     }
-    // Renewing tells nobody; a rotated refresh token presented late ends the app, and the
+    // Renewing tells nobody; presenting a rotated refresh token again ends the app, and the
     // owners hear why.
     let refresh = s(&tokens.body, "refresh_token").to_owned();
     assert_eq!(server.refresh(CLAUDE_CODE, &refresh).await.status, 200);
     assert_eq!(notices(&server).await.len(), 2);
-    let hash = crypto::sha(&refresh);
-    server
-        .state
-        .run(move |db| {
-            db.platform.exec(
-                "UPDATE oauth_tokens SET used_at=? WHERE hash=?",
-                [db::at(db::now() - 61_000), hash],
-            )?;
-            Ok(())
-        })
-        .await
-        .unwrap();
     let late = server.refresh(CLAUDE_CODE, &refresh).await;
     assert_eq!(s(&late.body, "error"), "invalid_grant");
     let sent = notices(&server).await;

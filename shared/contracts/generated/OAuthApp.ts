@@ -2,9 +2,10 @@
 
 export type OAuthApp = { name: string, clientId: string,
 /**
- * Whether Dispatch knows the app, or only has its word for its name.
+ * Whether Dispatch recognizes the app's reviewed published metadata. Public app
+ * process identity is not authenticated by this value.
  */
-verified: boolean,
+known: boolean,
 /**
  * Where the approval is sent: "this computer" for an app on the owner's own computer,
  * otherwise the host, such as chatgpt.com.

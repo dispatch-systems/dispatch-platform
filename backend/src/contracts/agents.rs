@@ -35,15 +35,15 @@ text_enum! {
         SignedOut => "signed_out",
     }
 }
-/// The app behind a connected app: the name it goes by, whether Dispatch knows it (its
-/// published document) or only has its word (an app that registered itself), and whether
+/// The app behind a connected app: the name it goes by, whether Dispatch recognizes its
+/// published metadata or only has its word (an app that registered itself), and whether
 /// it is still signed in.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AgentClient {
     pub name: String,
-    pub verified: bool,
+    pub known: bool,
     pub status: AgentAppStatus,
 }
 
@@ -82,7 +82,7 @@ impl FromRow for AgentKey {
                 name: row
                     .get::<Option<String>>("client_name")?
                     .unwrap_or_default(),
-                verified: row.get::<i64>("client_verified")? == 1,
+                known: row.get::<i64>("client_verified")? == 1,
                 status: if row.get::<i64>("signed_in")? == 1 {
                     AgentAppStatus::Connected
                 } else {
@@ -222,8 +222,9 @@ pub struct OAuthReplaced {
 pub struct OAuthApp {
     pub name: String,
     pub client_id: String,
-    /// Whether Dispatch knows the app, or only has its word for its name.
-    pub verified: bool,
+    /// Whether Dispatch recognizes the app's reviewed published metadata. Public app
+    /// process identity is not authenticated by this value.
+    pub known: bool,
     /// Where the approval is sent: "this computer" for an app on the owner's own computer,
     /// otherwise the host, such as chatgpt.com.
     pub redirect_host: String,

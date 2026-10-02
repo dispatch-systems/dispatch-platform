@@ -2,8 +2,8 @@
 import type { AgentAppStatus } from "./AgentAppStatus";
 
 /**
- * The app behind a connected app: the name it goes by, whether Dispatch knows it (its
- * published document) or only has its word (an app that registered itself), and whether
+ * The app behind a connected app: the name it goes by, whether Dispatch recognizes its
+ * published metadata or only has its word (an app that registered itself), and whether
  * it is still signed in.
  */
-export type AgentClient = { name: string, verified: boolean, status: AgentAppStatus, };
+export type AgentClient = { name: string, known: boolean, status: AgentAppStatus, };

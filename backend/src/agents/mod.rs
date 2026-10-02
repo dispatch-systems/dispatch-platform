@@ -24,10 +24,11 @@ use crate::{
         AgentTools, AgentWhoami, AgentWhoamiDsp, AgentWhoamiKey, Dsp,
     },
     crypto,
-    db::{Store, at, iso, now},
+    db::{Store, at, iso, now, s},
     ensure,
 };
 use rusqlite::params;
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 /// Keys that may be in use at once.
@@ -510,6 +511,27 @@ impl Store {
             }
             Ok(())
         })
+    }
+
+    /// The pseudonymous platform-owner profile represented by an agent credential.
+    pub fn agent_profile(&self, caller: &Caller) -> Result<Value> {
+        let user = self
+            .platform
+            .one(
+                "SELECT id,first_name,last_name FROM users WHERE id=? AND status='active' \
+                 AND platform_owner=1",
+                [&caller.user],
+            )?
+            .ok_or_else(|| Error::new("agent_key_invalid", 401))?;
+        let name = format!("{} {}", s(&user, "first_name"), s(&user, "last_name"));
+        // Hosts need one stable profile id across refresh and reconnection, not Dispatch's
+        // internal user primary key. Domain separation keeps this opaque identifier unrelated
+        // to the signed request/account labels used elsewhere.
+        let id = format!(
+            "profile_{}",
+            crypto::sign(&self.key, &format!("agent-profile:{}", s(&user, "id")))
+        );
+        Ok(json!({"id":id,"name":name.trim()}))
     }
 
     /// What an agent is told about itself: its key, the time, and each DSP it reaches.

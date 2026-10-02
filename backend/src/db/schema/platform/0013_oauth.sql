@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS oauth_codes (
     key_id TEXT
 );
 -- oauth_tokens: a connected app's access tokens (an hour) and refresh tokens (30 days).
--- A refresh token's used_at is when it was first exchanged, replaced_at the last time.
+-- A refresh token's used_at and replaced_at record its one successful exchange.
 CREATE TABLE IF NOT EXISTS oauth_tokens (
     hash TEXT PRIMARY KEY,
     key_id TEXT NOT NULL REFERENCES agent_keys(id) ON DELETE CASCADE,

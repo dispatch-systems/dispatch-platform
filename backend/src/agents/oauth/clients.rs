@@ -24,12 +24,12 @@ use std::{
 };
 
 /// An app as an authorization names it: its client id, the name it goes by, whether Dispatch
-/// knows it or only has its word, and where it may be sent back to.
+/// recognizes its published metadata or only has its word, and where it may be sent back to.
 #[derive(Clone, Debug)]
 pub struct Client {
     pub id: String,
     pub name: String,
-    pub verified: bool,
+    pub known: bool,
     pub redirect_uris: Vec<String>,
 }
 
@@ -75,8 +75,13 @@ const MOST_REDIRECTS: usize = 5;
 const LONGEST_REDIRECT: usize = 512;
 /// Registrations not yet given a token, across every address, before registering waits.
 const MOST_UNUSED: i64 = 200;
+/// An unused registration belongs only to the short pairing attempt that created it.
+pub(super) const UNUSED_LIFETIME: i64 = 15 * 60 * 1000;
 /// Websites' documents kept at once, and fetched at once.
 const MOST_WEBSITES: usize = 256;
+/// Every request waiting for or performing a website-document fetch. Active network work is
+/// bounded more tightly below; this cap also bounds per-URL mutex and semaphore waiters.
+const WEBSITE_REQUESTS: usize = 32;
 const WEBSITE_FETCHES: usize = 4;
 /// Native apps known by a scheme without a dot, which RFC 8252 §7.1 would otherwise ask for.
 const NATIVE: &[&str] = &[
@@ -112,6 +117,7 @@ pub struct Documents {
     fetched: Mutex<HashMap<&'static str, Fetched>>,
     fetching: [tokio::sync::Mutex<()>; KNOWN.len()],
     websites: Mutex<HashMap<String, Website>>,
+    website_requests: tokio::sync::Semaphore,
     website_fetches: tokio::sync::Semaphore,
     /// Where websites' documents come from, when not the internet or fixture mode's.
     network: Mutex<Option<Arc<dyn Network>>>,
@@ -122,6 +128,7 @@ impl Default for Documents {
             fetched: Mutex::default(),
             fetching: Default::default(),
             websites: Mutex::default(),
+            website_requests: tokio::sync::Semaphore::new(WEBSITE_REQUESTS),
             website_fetches: tokio::sync::Semaphore::new(WEBSITE_FETCHES),
             network: Mutex::default(),
         }
@@ -180,7 +187,7 @@ impl Documents {
         index: usize,
         fetch: impl FnOnce() -> F,
     ) -> Found {
-        let (known, name, _) = KNOWN[index];
+        let (known, name, copy) = KNOWN[index];
         let entry = || {
             self.fetched
                 .lock()
@@ -195,17 +202,26 @@ impl Documents {
                 .unwrap_or_else(|poison| poison.into_inner())
                 .insert(known, entry);
         };
-        let parse = |body: &[u8]| document(known, name, body);
+        // A fetched known document may remove redirects, but it may not silently widen the
+        // reviewed embedded redirect boundary. A legitimate addition is picked up only after
+        // the embedded copy changes in a reviewed release.
+        let parse = |body: &[u8]| known_document(known, name, copy.as_bytes(), body);
         settle(known, &self.fetching[index], entry, keep, parse, fetch).await
     }
 
     /// A website's or other app's document, at any `https` URL on the public internet, read
     /// as the [`network`] module says. Only for an app the owner lets connect: such an app
-    /// is never verified. `unknown_app` for a URL no website's client id can be.
+    /// is never known. `unknown_app` for a URL no website's client id can be.
     pub async fn website(&self, config: &Config, url: &str) -> Found {
         let Some(target) = network::web_client_id(url) else {
             return Err("unknown_app");
         };
+        // Do not queue unbounded HTTP requests behind the active-fetch semaphore or one URL's
+        // mutex. A caller that cannot reserve its complete wait returns before cache mutation.
+        let _request = self
+            .website_requests
+            .try_acquire()
+            .map_err(|_| "app_unavailable")?;
         let network = self.network(config);
         self.resolve_website(url, || async move {
             let _slot = self
@@ -237,9 +253,10 @@ impl Documents {
                     .filter(|(_, website)| Arc::strong_count(&website.fetching) == 1)
                     .min_by_key(|(_, website)| website.asked)
                     .map(|(url, _)| url.clone());
-                if let Some(unused) = unused {
-                    websites.remove(&unused);
-                }
+                let Some(unused) = unused else {
+                    return Err("app_unavailable");
+                };
+                websites.remove(&unused);
             }
             let website = websites.entry(url.to_owned()).or_default();
             website.asked = now();
@@ -393,16 +410,26 @@ fn document(url: &str, fallback: &str, body: &[u8]) -> Option<Client> {
             .as_str()
             .and_then(display_name)
             .unwrap_or_else(|| fallback.to_owned()),
-        verified: true,
+        known: true,
         redirect_uris,
     })
 }
+/// A fetched known document constrained to the redirect boundary reviewed in `embedded`.
+fn known_document(url: &str, fallback: &str, embedded: &[u8], fetched: &[u8]) -> Option<Client> {
+    let baseline = document(url, fallback, embedded)?;
+    let client = document(url, fallback, fetched)?;
+    client
+        .redirect_uris
+        .iter()
+        .all(|redirect| allowed(&baseline.redirect_uris, redirect))
+        .then_some(client)
+}
 /// A website's or other app's client document: read as a known app's is, but only ever
-/// unverified, by the name it gives itself or else its host.
+/// app-provided metadata, by the name it gives itself or else its host.
 fn website_document(url: &str, body: &[u8]) -> Option<Client> {
     let host = url::Url::parse(url).ok()?.host_str()?.to_owned();
     Some(Client {
-        verified: false,
+        known: false,
         ..document(url, &host, body)?
     })
 }
@@ -551,7 +578,7 @@ impl Store {
         Ok(Some(Client {
             id: id.to_owned(),
             name: crate::db::s(&row, "name").to_owned(),
-            verified: false,
+            known: false,
             redirect_uris: serde_json::from_str(crate::db::s(&row, "redirect_uris"))?,
         }))
     }
@@ -561,6 +588,13 @@ impl Store {
     /// apps connect. Answers the registration as the client is to keep it.
     pub fn register_oauth_client(&self, metadata: &Value) -> Result<Answer<Value>> {
         let refused = |error, description: &str| Ok(Err(Refusal::new(error, description)));
+        if self.oauth_pairing()?.open_until.is_none() {
+            return Ok(Err(Refusal {
+                error: "registration_closed",
+                description: "Open Connect apps in Dispatch before registering an app".into(),
+                status: 403,
+            }));
+        }
         let strings = |key: &str| -> Option<Vec<&str>> {
             metadata[key]
                 .as_array()?
@@ -594,23 +628,32 @@ impl Store {
             );
         }
         let redirect_uris = strings("redirect_uris").unwrap_or_default();
+        let local = self.oauth_app_allowed(OAuthAppId::Local)?;
         let websites = self.oauth_app_allowed(OAuthAppId::Web)?;
         if redirect_uris.is_empty()
             || redirect_uris.len() > MOST_REDIRECTS
             || !redirect_uris
                 .iter()
-                .all(|uri| registrable(uri) || (websites && registrable_website(uri)))
+                .all(|uri| (local && registrable(uri)) || (websites && registrable_website(uri)))
         {
             return refused(
                 "invalid_redirect_uri",
-                if websites {
+                if local && websites {
                     "Up to 5 redirects, each a loopback http address, the app's own URI scheme \
                      or an https address"
-                } else {
+                } else if local {
                     "Up to 5 redirects, each a loopback http address or the app's own URI scheme"
+                } else if websites {
+                    "Up to 5 redirects, each an https address"
+                } else {
+                    "The owner is not accepting dynamically registered apps"
                 },
             );
         }
+        self.platform.exec(
+            "DELETE FROM oauth_clients WHERE last_used_at IS NULL AND created_at<?",
+            [at(now() - UNUSED_LIFETIME)],
+        )?;
         let unused = self.platform.count(
             "SELECT count(*) FROM oauth_clients WHERE last_used_at IS NULL",
             [],
@@ -666,7 +709,7 @@ mod tests {
     fn the_built_in_documents_are_the_known_apps_own() {
         for (url, name, copy) in KNOWN {
             let client = document(url, "Fallback", copy.as_bytes()).unwrap();
-            assert_eq!((client.name.as_str(), client.verified), (*name, true));
+            assert_eq!((client.name.as_str(), client.known), (*name, true));
             assert!(!client.redirect_uris.is_empty());
         }
         // A document naming another client, or none of its redirects, is no document.
@@ -689,6 +732,16 @@ mod tests {
         );
         let none = json!({"client_id":url,"redirect_uris":["cursor://x/cb"]});
         assert!(document(url, "x", none.to_string().as_bytes()).is_none());
+        let widened = json!({"client_id":url,"redirect_uris":["https://evil.example/cb"]});
+        assert!(
+            known_document(
+                url,
+                "ChatGPT",
+                copy.as_bytes(),
+                widened.to_string().as_bytes()
+            )
+            .is_none()
+        );
     }
 
     fn fetched(body: &str) -> impl Future<Output = Result<Vec<u8>>> {
@@ -773,6 +826,56 @@ mod tests {
             other.resolve(2, failed).await.unwrap_err(),
             "app_unavailable"
         );
+    }
+
+    #[tokio::test]
+    async fn website_document_waiters_and_cache_are_hard_bounded() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let documents = Documents::default();
+        let permits: Vec<_> = (0..WEBSITE_REQUESTS)
+            .map(|_| documents.website_requests.try_acquire().unwrap())
+            .collect();
+        assert!(documents.website_requests.try_acquire().is_err());
+        drop(permits);
+
+        // If every cached URL has a request holding its fetch mutex, a new URL is refused
+        // instead of making the nominal cache cap best-effort.
+        let mut held = Vec::with_capacity(MOST_WEBSITES);
+        {
+            let mut websites = documents.websites.lock().unwrap();
+            for index in 0..MOST_WEBSITES {
+                let website = Website::default();
+                held.push(website.fetching.clone());
+                websites.insert(format!("https://{index}.example/client.json"), website);
+            }
+        }
+        let fetched = AtomicBool::new(false);
+        assert_eq!(
+            documents
+                .resolve_website("https://overflow.example/client.json", || {
+                    fetched.store(true, Ordering::SeqCst);
+                    failed()
+                })
+                .await
+                .unwrap_err(),
+            "app_unavailable"
+        );
+        assert!(!fetched.load(Ordering::SeqCst));
+        assert_eq!(documents.websites.lock().unwrap().len(), MOST_WEBSITES);
+
+        // Once one entry is no longer in use, it can make room, but the map never grows.
+        held.pop();
+        assert_eq!(
+            documents
+                .resolve_website("https://replacement.example/client.json", failed)
+                .await
+                .unwrap_err(),
+            "app_unavailable"
+        );
+        let websites = documents.websites.lock().unwrap();
+        assert_eq!(websites.len(), MOST_WEBSITES);
+        assert!(websites.contains_key("https://replacement.example/client.json"));
     }
 
     #[test]

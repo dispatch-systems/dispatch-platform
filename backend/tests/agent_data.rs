@@ -169,11 +169,12 @@ async fn one_driver_is_one_person_across_every_source() {
     })
     .await;
     assert_eq!(status, 200, "{report}");
-    assert_eq!(report["understood"]["driver"]["paycom"], json!(["E002"]));
-    assert_eq!(
-        report["understood"]["driver"]["amazon"],
-        json!(["driver-1"])
-    );
+    let understood = &report["understood"]["driver"];
+    assert_eq!(understood["name"], "Fixture Driver");
+    let code = understood["code"].as_str().unwrap();
+    assert_eq!(code.len(), 6);
+    assert_ne!(code, "E002");
+    assert_ne!(code, "driver-1");
     assert_eq!(report["understood"]["from"], DAY);
     // One line for the day, from every source.
     let days = &report["days"];
@@ -371,6 +372,36 @@ async fn one_driver_is_one_person_across_every_source() {
 }
 
 #[tokio::test]
+async fn default_answers_never_expose_unmatched_provider_ids() {
+    let (_root, db, id) = ready();
+    let me = caller(&db, &[&id], false);
+    db.dsp(&id)
+        .unwrap()
+        .exec("DELETE FROM person_ids", [])
+        .unwrap();
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+
+    let who = me.clone();
+    let (status, routes) = ask(&state, move |db, state| {
+        data::routes(db, state, &who, &json!({"date": DAY}))
+    })
+    .await;
+    assert_eq!(status, 200, "{routes}");
+    let text = routes.to_string();
+    assert!(!text.contains("driver-1"), "{routes}");
+    assert!(!text.contains("driver-2"), "{routes}");
+    let table = &routes["routes"];
+    assert!(
+        rows(table).iter().all(|row| row[col(table, "driver")]
+            .as_str()
+            .is_some_and(|name| { name.ends_with(" (unmatched)") && !name.contains("driver-") })),
+        "{routes}"
+    );
+}
+
+#[tokio::test]
 async fn agents_never_see_legacy_unverified_provider_rows() {
     let (_root, db, id) = ready();
     let dvic = db.dvic(&id).unwrap();
@@ -461,13 +492,24 @@ async fn driver_identities_follow_live_sources_even_with_a_warm_cache() {
     let config = db.config.clone();
     let state = State::new(config).unwrap();
 
-    // Populate the Driver Match read cache while every source is visible.
+    // A broad list minimizes provider identifiers unless the caller explicitly asks for them.
     let who = me.clone();
-    let (status, both) = ask(&state, move |db, state| {
+    let (status, summary) = ask(&state, move |db, state| {
         data::drivers(db, state, &who, &json!({}))
     })
     .await;
-    assert_eq!(status, 200, "{both}");
+    assert_eq!(status, 200, "{summary}");
+    assert_eq!(
+        summary["drivers"]["columns"],
+        json!(["code", "name", "match"])
+    );
+    // Populate the Driver Match read cache while every source is visible, explicitly asking
+    // for the provider identifiers this policy-projection test inspects.
+    let who = me.clone();
+    let (_, both) = ask(&state, move |db, state| {
+        data::drivers(db, state, &who, &json!({"include_ids":"true"}))
+    })
+    .await;
     let visible_count = both["found"].clone();
     let person = row(&both["drivers"], "name", "Fixture Driver");
     assert_eq!(person[col(&both["drivers"], "paycom")], "E002");
@@ -485,7 +527,12 @@ async fn driver_identities_follow_live_sources_even_with_a_warm_cache() {
     db.set_feature(&id, "timecard", false, &actor).unwrap();
     let who = me.clone();
     let (_, amazon_only) = ask(&state, move |db, state| {
-        data::drivers(db, state, &who, &json!({"q":"driver-1"}))
+        data::drivers(
+            db,
+            state,
+            &who,
+            &json!({"q":"driver-1","include_ids":"true"}),
+        )
     })
     .await;
     let person = &rows(&amazon_only["drivers"])[0];
@@ -494,7 +541,7 @@ async fn driver_identities_follow_live_sources_even_with_a_warm_cache() {
     assert_eq!(person[col(&amazon_only["drivers"], "amazon")], "driver-1");
     let who = me.clone();
     let (_, hidden) = ask(&state, move |db, state| {
-        data::drivers(db, state, &who, &json!({"q":"E002"}))
+        data::drivers(db, state, &who, &json!({"q":"E002","include_ids":"true"}))
     })
     .await;
     assert_eq!(hidden["found"], 0, "{hidden}");
@@ -517,7 +564,7 @@ async fn driver_identities_follow_live_sources_even_with_a_warm_cache() {
     }
     let who = me.clone();
     let (_, paycom_only) = ask(&state, move |db, state| {
-        data::drivers(db, state, &who, &json!({"q":"E002"}))
+        data::drivers(db, state, &who, &json!({"q":"E002","include_ids":"true"}))
     })
     .await;
     let person = &rows(&paycom_only["drivers"])[0];

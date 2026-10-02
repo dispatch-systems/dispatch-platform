@@ -29,16 +29,17 @@ fn label(people: &People, person: &Person) -> String {
         person.name.clone()
     }
 }
-/// Who a source's row belongs to: their Driver Match person, or the name and ID the source
-/// gave while nobody holds that ID yet.
+/// Who a source's row belongs to: their Driver Match person, or the source's display name while
+/// nobody holds its provider ID yet. Provider IDs leave Dispatch only on an explicit ID request.
 fn who(people: &People, source: DriverSource, id: &str, name: &str) -> String {
     match people.holder(source, id) {
         Some(person) => label(people, person),
-        None => format!("{name} ({id})"),
+        None if name.trim().is_empty() => "Unknown driver".into(),
+        None => format!("{} (unmatched)", name.trim()),
     }
 }
 fn driver_json(person: &Person) -> Value {
-    json!({"code": person.code, "name": person.name, "paycom": person.paycom, "amazon": person.amazon})
+    json!({"code": person.code, "name": person.name})
 }
 fn one_day(period: &Period) -> Result<(), Refusal> {
     if period.from == period.to {
@@ -112,7 +113,13 @@ pub fn drivers(db: &Store, state: &State, caller: &Caller, query: &Value) -> Ans
     let dsp = pick_dsp(caller, param(query, "dsp"))?;
     let people = People::load(db, state, &dsp.id)?;
     let wanted = param(query, "q").to_lowercase();
-    let mut table = Table::new(&["code", "name", "match", "paycom", "amazon"]);
+    let include_ids = flag(query, "include_ids");
+    let columns: &[&str] = if include_ids {
+        &["code", "name", "match", "paycom", "amazon"]
+    } else {
+        &["code", "name", "match"]
+    };
+    let mut table = Table::new(columns);
     for p in people.list.iter().filter(|p| {
         wanted.is_empty()
             || p.name.to_lowercase().contains(&wanted)
@@ -122,13 +129,11 @@ pub fn drivers(db: &Store, state: &State, caller: &Caller, query: &Value) -> Ans
                 .chain(&p.amazon)
                 .any(|id| id.to_lowercase() == wanted)
     }) {
-        table.push(vec![
-            json!(p.code),
-            json!(p.name),
-            json!(p.status),
-            json!(p.paycom.join(", ")),
-            json!(p.amazon.join(", ")),
-        ]);
+        let mut row = vec![json!(p.code), json!(p.name), json!(p.status)];
+        if include_ids {
+            row.extend([json!(p.paycom.join(", ")), json!(p.amazon.join(", "))]);
+        }
+        table.push(row);
     }
     let mut answer = json!({"understood": understood(dsp, None), "found": table.rows.len()});
     paged(&mut answer, "drivers", table, query, 100)?;

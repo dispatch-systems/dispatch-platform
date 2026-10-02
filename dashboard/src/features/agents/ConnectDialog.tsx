@@ -274,7 +274,18 @@ function AppSteps({ app, onCopy }: { app: ConnectApp; onCopy: () => void }) {
             <kbd>Add</kbd>
             {then}
             <kbd>Create custom MCP server</kbd>
-            <p className="agents-step-note">Needs ChatGPT Plus or higher.</p>
+            <p className="agents-step-note">
+              Availability depends on your current ChatGPT plan and workspace settings. Custom MCP
+              apps are currently used on the web.{' '}
+              <a
+                href="https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Check OpenAI’s current availability
+              </a>
+              .
+            </p>
           </>,
           <>
             Fill in the form, then click <kbd>Create</kbd>

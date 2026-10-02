@@ -212,7 +212,7 @@ pub struct ConnectedApp<'a> {
     pub connection: &'a str,
     /// The app's name: Dispatch's for a known app, the app's own word for any other.
     pub app: &'a str,
-    pub verified: bool,
+    pub known: bool,
     /// Where it was sent its access: "this computer" or a website's host, when known.
     pub destination: Option<&'a str>,
     /// The DSPs it reaches by name; empty when it reaches all of them.
@@ -260,13 +260,13 @@ fn when(at: i64) -> String {
 }
 
 impl ConnectedApp<'_> {
-    /// The app as the owner should read it: an unverified one only by its own word.
+    /// The app as the owner should read it: an unrecognized one only by its own word.
     fn app_line(&self) -> String {
-        if self.verified {
-            format!("{} (verified app)", self.app)
+        if self.known {
+            format!("{} (known metadata)", self.app)
         } else {
             format!(
-                "Unverified app, which says it is \u{201c}{}\u{201d}",
+                "Unrecognized app, which says it is \u{201c}{}\u{201d}",
                 self.app
             )
         }
@@ -321,10 +321,10 @@ impl ConnectedApp<'_> {
 
 /// Tells a platform owner that an app connected to Dispatch, with what it reaches.
 pub fn app_connected(app: &ConnectedApp) -> Message {
-    let subject = if app.verified {
+    let subject = if app.known {
         format!("{} connected to Dispatch", app.app)
     } else {
-        format!("{} (unverified) connected to Dispatch", app.app)
+        format!("{} (unrecognized) connected to Dispatch", app.app)
     };
     let lead = format!(
         "{} connected to Dispatch with Sign in with Dispatch, as \u{201c}{}\u{201d}. It can use \
@@ -440,14 +440,14 @@ mod tests {
         );
     }
 
-    fn connected(verified: bool, dsps: &[String]) -> ConnectedApp<'_> {
+    fn connected(known: bool, dsps: &[String]) -> ConnectedApp<'_> {
         ConnectedApp {
             origin: "https://dispatch.test",
             dev: false,
             to: "owner@dispatch.test",
             connection: "Laptop <Claude>",
             app: "Claude Code",
-            verified,
+            known,
             destination: Some("this computer"),
             dsps,
             essential: true,
@@ -462,7 +462,7 @@ mod tests {
         assert_eq!(mail.subject, "Claude Code connected to Dispatch");
         for line in [
             "Connection: Laptop <Claude>",
-            "App: Claude Code (verified app)",
+            "App: Claude Code (known metadata)",
             "Sends access to: this computer",
             "DSPs: All DSPs",
             "Tools: Essential",
@@ -479,11 +479,11 @@ mod tests {
         let mail = app_connected(&connected(false, &names));
         assert_eq!(
             mail.subject,
-            "Claude Code (unverified) connected to Dispatch"
+            "Claude Code (unrecognized) connected to Dispatch"
         );
         assert!(
             mail.text
-                .contains("App: Unverified app, which says it is \u{201c}Claude Code\u{201d}")
+                .contains("App: Unrecognized app, which says it is \u{201c}Claude Code\u{201d}")
         );
         assert!(mail.text.contains(
             "DSPs: DSP 1, DSP 2, DSP 3, DSP 4, DSP 5, DSP 6, DSP 7, DSP 8, DSP 9, DSP 10 and 2 more"

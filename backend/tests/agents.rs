@@ -39,6 +39,16 @@ async fn admitted_mcp(
     method: &str,
     params: Value,
 ) -> Value {
+    admitted_mcp_version(state, caller, method, params, "2025-03-26").await
+}
+
+async fn admitted_mcp_version(
+    state: &std::sync::Arc<dispatch_backend::State>,
+    caller: &dispatch_backend::agents::Caller,
+    method: &str,
+    params: Value,
+    protocol: &str,
+) -> Value {
     use axum::{
         body::{Body, to_bytes},
         http::Request,
@@ -49,7 +59,7 @@ async fn admitted_mcp(
         .header("host", "dispatch.test")
         .header("content-type", "application/json")
         .header("accept", "application/json, text/event-stream")
-        .header("mcp-protocol-version", "2025-06-18")
+        .header("mcp-protocol-version", protocol)
         .body(Body::from(
             json!({"jsonrpc":"2.0","id":1,"method":method,"params":params}).to_string(),
         ))
@@ -61,6 +71,107 @@ async fn admitted_mcp(
     let body = to_bytes(response.into_body(), 100_000).await.unwrap();
     assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
     serde_json::from_slice(&body).unwrap()
+}
+
+#[tokio::test]
+async fn modern_mcp_exposes_a_stable_strict_profile_and_structured_results() {
+    use dispatch_backend::State;
+    let (_root, db, dsp) = bootstrapped();
+    let user = owner(&db);
+    let made = db
+        .create_agent_key(&user, &request(reach(&[&dsp])))
+        .unwrap();
+    let caller = db.authenticate_agent(&made.token, "test").unwrap();
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+
+    let listed = admitted_mcp_version(&state, &caller, "tools/list", json!({}), "2025-06-18").await;
+    let tools = listed["result"]["tools"].as_array().unwrap();
+    let profile = tools
+        .iter()
+        .find(|tool| tool["name"] == "get_profile")
+        .unwrap();
+    assert_eq!(profile["inputSchema"]["additionalProperties"], false);
+    assert_eq!(profile["outputSchema"]["required"], json!(["id"]));
+    assert_eq!(profile["outputSchema"]["additionalProperties"], false);
+    assert_eq!(profile["_meta"]["openai/profile"], true);
+    assert_eq!(
+        profile["_meta"]["securitySchemes"],
+        json!([{"type":"oauth2","scopes":["dispatch"]}])
+    );
+    let find = tools
+        .iter()
+        .find(|tool| tool["name"] == "find_drivers")
+        .unwrap();
+    assert_eq!(find["inputSchema"]["additionalProperties"], false);
+    assert_eq!(find["inputSchema"]["properties"]["q"]["maxLength"], 200);
+    assert_eq!(find["outputSchema"]["type"], "object");
+
+    let first = admitted_mcp_version(
+        &state,
+        &caller,
+        "tools/call",
+        json!({"name":"get_profile","arguments":{}}),
+        "2025-06-18",
+    )
+    .await;
+    let second = admitted_mcp_version(
+        &state,
+        &caller,
+        "tools/call",
+        json!({"name":"get_profile","arguments":{}}),
+        "2025-06-18",
+    )
+    .await;
+    let profile_value = &first["result"]["structuredContent"];
+    assert_ne!(profile_value["id"], user);
+    assert!(
+        profile_value["id"]
+            .as_str()
+            .is_some_and(|id| id.starts_with("profile_") && id.len() > "profile_".len())
+    );
+    assert_eq!(profile_value["name"], "Test Owner");
+    assert_eq!(profile_value, &second["result"]["structuredContent"]);
+    assert_eq!(
+        serde_json::from_str::<Value>(first["result"]["content"][0]["text"].as_str().unwrap())
+            .unwrap(),
+        *profile_value
+    );
+
+    let who = admitted_mcp_version(
+        &state,
+        &caller,
+        "tools/call",
+        json!({"name":"whoami","arguments":{}}),
+        "2025-06-18",
+    )
+    .await;
+    assert_eq!(
+        who["result"]["structuredContent"]["key"]["name"],
+        made.key.name
+    );
+    assert_eq!(
+        serde_json::from_str::<Value>(who["result"]["content"][0]["text"].as_str().unwrap())
+            .unwrap(),
+        who["result"]["structuredContent"]
+    );
+
+    let refused = admitted_mcp_version(
+        &state,
+        &caller,
+        "tools/call",
+        json!({"name":"get_profile","arguments":{"ignored":true}}),
+        "2025-06-18",
+    )
+    .await;
+    assert_eq!(refused["result"]["isError"], true);
+    assert!(
+        refused["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("unknown_parameter:")
+    );
 }
 
 #[tokio::test]

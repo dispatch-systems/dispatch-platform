@@ -37,6 +37,47 @@ class MonitorTests(unittest.TestCase):
         event["fields"].update(route="/api/dsp/members/{id}", method="POST", bulk=False)
         self.assertEqual(monitor.observe(event, 5)[0]["rule"], "access_changed")
 
+    def test_oauth_abuse_and_saturation_are_globally_bounded(self):
+        monitor = module.Monitor()
+        failed = {"event": "http.request", "fields": {
+            "route": "/oauth/token", "status": 401, "method": "POST",
+        }}
+        alerts = []
+        for second in range(25):
+            alerts.extend(monitor.observe(failed, second))
+        self.assertEqual(alerts, [{"rule": "oauth_failures", "windowSeconds": 60}])
+
+        busy = {"event": "http.request", "fields": {
+            "route": "/oauth/revoke", "status": 503, "method": "POST",
+        }}
+        alerts = []
+        for second in range(3):
+            alerts.extend(monitor.observe(busy, 100 + second))
+        self.assertTrue(any(alert["rule"] == "oauth_saturation" for alert in alerts))
+
+    def test_oauth_authorization_and_registration_warn_before_capacity_is_lost(self):
+        monitor = module.Monitor()
+        limited = {"event": "http.request", "fields": {
+            "route": "/oauth/authorize", "status": 303, "error": "rate_limited",
+            "method": "GET",
+        }}
+        alerts = []
+        for second in range(5):
+            alerts.extend(monitor.observe(limited, second))
+        self.assertEqual(alerts, [{
+            "rule": "oauth_authorization_pressure", "windowSeconds": 300,
+        }])
+
+        registered = {"event": "http.request", "fields": {
+            "route": "/oauth/register", "status": 201, "method": "POST",
+        }}
+        alerts = []
+        for second in range(20):
+            alerts.extend(monitor.observe(registered, 100 + second))
+        self.assertEqual(alerts, [{
+            "rule": "oauth_registration_volume", "windowSeconds": 300,
+        }])
+
     def test_remote_mail_contains_only_allowlisted_opaque_fields(self):
         calls = []
 

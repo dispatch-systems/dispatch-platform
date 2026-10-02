@@ -70,6 +70,8 @@ pub struct State {
     pub activity: agents::Activity,
     // The known apps' client documents, as last fetched.
     pub oauth: agents::oauth::Documents,
+    // Public OAuth requests admitted before they can consume database capacity.
+    pub oauth_limits: agents::oauth::limits::Limits,
 }
 impl State {
     pub fn new(config: config::Config) -> Result<Arc<Self>> {
@@ -106,6 +108,7 @@ impl State {
             agents: agents::Usage::default(),
             activity,
             oauth: agents::oauth::Documents::default(),
+            oauth_limits: agents::oauth::limits::Limits::default(),
         }))
     }
     pub async fn run<T: Send + 'static>(

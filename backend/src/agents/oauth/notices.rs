@@ -68,7 +68,7 @@ impl Store {
                 to,
                 connection: s(&app, "name"),
                 app: s(&app, "client_name"),
-                verified: app["client_verified"] == 1,
+                known: app["client_verified"] == 1,
                 destination: destination.as_deref(),
                 dsps: &dsps,
                 essential: s(&app, "tools") == "essential",

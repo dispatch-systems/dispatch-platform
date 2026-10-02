@@ -190,9 +190,9 @@ test('Connect an app offers the known apps first, and knows each by the name it 
     connectApps.map((app) => app.label),
     ['ChatGPT', 'Codex CLI', 'Claude Code', 'Hermes', 'Other app'],
   );
-  const client = (name: string, verified = true) => ({
+  const client = (name: string, known = true) => ({
     name,
-    verified,
+    known,
     status: 'connected' as const,
   });
   assert.equal(knownApp(client('Claude Code')), 'claude-code');

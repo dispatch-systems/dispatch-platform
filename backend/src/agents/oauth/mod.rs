@@ -6,6 +6,7 @@
 //! only while they have the pairing window open, for the kinds of app they let connect.
 pub mod clients;
 pub mod guard;
+pub mod limits;
 pub mod network;
 mod notices;
 
@@ -27,16 +28,14 @@ use clients::Client;
 use notices::Told;
 use serde_json::{Value, json};
 
-/// The one scope. Whatever an app asks for, it is what is granted.
+/// The one granted scope. `offline_access` is tolerated as a client hint because Dispatch
+/// always issues a rotating refresh token; no unadvertised data scope is accepted.
 pub const SCOPE: &str = "dispatch";
 const REQUEST_LIFETIME: i64 = 10 * 60 * 1000;
 const CODE_LIFETIME: i64 = 5 * 60 * 1000;
 /// Seconds, as the token endpoint says it.
 const ACCESS_SECONDS: i64 = 60 * 60;
 const REFRESH_LIFETIME: i64 = 30 * 24 * 60 * 60 * 1000;
-/// How long an exchanged refresh token may be exchanged again, for an app whose processes
-/// refresh at once. Presented any later, it ends the app.
-const REFRESH_GRACE: i64 = 60 * 1000;
 /// Used codes are kept this long past their expiry, so a replay still ends what they made.
 const CODE_KEPT: i64 = 24 * 60 * 60 * 1000;
 const STATE_LONGEST: usize = 2048;
@@ -133,6 +132,27 @@ impl From<Error> for Refusal {
 pub type Answer<T> = std::result::Result<T, Refusal>;
 fn grant(description: &str) -> Refusal {
     Refusal::new("invalid_grant", description)
+}
+
+/// A missing scope means the one advertised scope. Clients may also ask for the conventional
+/// `offline_access` hint; every other name is refused rather than silently broadened or ignored.
+fn check_scope(query: &Query) -> Answer<()> {
+    let Some(scope) = query.one("scope")? else {
+        return Ok(());
+    };
+    let scopes: Vec<_> = scope.split_ascii_whitespace().collect();
+    if scopes.contains(&SCOPE)
+        && scopes
+            .iter()
+            .all(|scope| matches!(*scope, SCOPE | "offline_access"))
+    {
+        Ok(())
+    } else {
+        Err(Refusal::new(
+            "invalid_scope",
+            "The only supported scope is dispatch",
+        ))
+    }
 }
 
 /// A query or form as sent, every parameter in order. An empty value counts as absent.
@@ -305,12 +325,14 @@ impl Store {
                 ));
             }
             let resource = resource(&self.config);
-            if query.all("resource").iter().any(|value| *value != resource) {
+            let resources = query.all("resource");
+            if resources.is_empty() || resources.iter().any(|value| *value != resource) {
                 return Err(Refusal::new(
                     "invalid_target",
-                    "The only resource is Dispatch's MCP endpoint",
+                    "resource must be Dispatch's MCP endpoint",
                 ));
             }
+            check_scope(query)?;
             if state.is_some_and(|state| state.len() > STATE_LONGEST) {
                 return Err(Refusal::new("invalid_request", "state is too long"));
             }
@@ -329,7 +351,7 @@ impl Store {
                 id,
                 client.id,
                 client.name,
-                i64::from(client.verified),
+                i64::from(client.known),
                 redirect_uri,
                 state,
                 challenge,
@@ -400,7 +422,7 @@ impl Store {
             app: OAuthApp {
                 name: s(&request, "client_name").to_owned(),
                 client_id: s(&request, "client_id").to_owned(),
-                verified: request["verified"] == 1,
+                known: request["verified"] == 1,
                 redirect_host,
                 redirect_scheme,
             },
@@ -496,15 +518,13 @@ impl Store {
     pub fn oauth_token(&self, form: &Query) -> Answer<Value> {
         let grant_type = form.required("grant_type")?;
         let client_id = form.required("client_id")?;
-        if form
-            .one("resource")?
-            .is_some_and(|value| value != resource(&self.config))
-        {
+        if form.one("resource")? != Some(resource(&self.config).as_str()) {
             return Err(Refusal::new(
                 "invalid_target",
-                "The only resource is Dispatch's MCP endpoint",
+                "resource must be Dispatch's MCP endpoint",
             ));
         }
+        check_scope(form)?;
         let known = clients::known(client_id)
             || (client_id.starts_with("dcr_") && self.registered_client(client_id)?.is_some())
             || (client_id.starts_with("https://") && self.website_approved(client_id)?);
@@ -651,9 +671,8 @@ impl Store {
         )? == 1)
     }
 
-    /// A refresh token for a new pair; the one presented is spent. Presented again within a
-    /// minute it brings another pair, as an app refreshing from several processes at once
-    /// does; any later, it ends the app.
+    /// A refresh token for a new pair. The one presented is spent exactly once; presenting it
+    /// again proves that the app's token family may be compromised and ends the connection.
     fn refresh(&self, form: &Query, client_id: &str) -> Answer<Value> {
         let presented = form.required("refresh_token")?;
         if !token::well_formed(presented, Kind::Refresh, self.config.env()) {
@@ -680,21 +699,28 @@ impl Store {
         if !live {
             return Err(grant("The connection was ended"));
         }
-        let key = s(&row, "key_id");
-        if row["used_at"]
-            .as_str()
-            .is_some_and(|used| used < at(now() - REFRESH_GRACE).as_str())
-        {
-            self.end_app(key, "refresh_reused")?;
+        let key = s(&row, "key_id").to_owned();
+        if !row["used_at"].is_null() {
+            self.end_app(&key, "refresh_reused")?;
             return Err(grant("The refresh token was already used"));
         }
-        Ok(self.platform.transaction(|| {
-            self.platform.exec(
-                "UPDATE oauth_tokens SET used_at=COALESCE(used_at,?1),replaced_at=?1 WHERE hash=?2",
-                [iso(), crypto::sha(presented)],
+        let hash = crypto::sha(presented);
+        match self.platform.transaction(|| {
+            let exchanged = self.platform.exec(
+                "UPDATE oauth_tokens SET used_at=?1,replaced_at=?1 \
+                 WHERE hash=?2 AND kind='refresh' AND used_at IS NULL",
+                [iso(), hash],
             )?;
-            self.issue_tokens(key, client_id)
-        })?)
+            ensure(exchanged == 1, "refresh_reused", 409)?;
+            self.issue_tokens(&key, client_id)
+        }) {
+            Ok(tokens) => Ok(tokens),
+            Err(error) if error.code == "refresh_reused" => {
+                self.end_app(&key, "refresh_reused")?;
+                Err(grant("The refresh token was already used"))
+            }
+            Err(error) => Err(error.into()),
+        }
     }
 
     /// The live connections a new connection named `name` replaces: the same app's, under the
@@ -842,7 +868,7 @@ impl Store {
 
     /// Removes what can no longer be used: requests past their ten minutes, codes a day past
     /// their expiry, expired tokens, and apps that registered themselves but were never given
-    /// a token within a day, or not for 90 days.
+    /// a token during their pairing attempt, or not for 90 days.
     pub fn prune_oauth(&self) -> Result<()> {
         let day = 24 * 60 * 60 * 1000;
         self.platform.transaction(|| {
@@ -857,7 +883,7 @@ impl Store {
             self.platform.exec(
                 "DELETE FROM oauth_clients WHERE (last_used_at IS NULL AND created_at<?1) \
                  OR last_used_at<?2",
-                [at(now() - day), at(now() - 90 * day)],
+                [at(now() - clients::UNUSED_LIFETIME), at(now() - 90 * day)],
             )?;
             Ok(())
         })
