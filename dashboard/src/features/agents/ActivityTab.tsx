@@ -53,12 +53,17 @@ const columns = (timeZone: string): TableColumn<AgentActivity>[] => [
   {
     id: 'outcome',
     header: 'Outcome',
-    cell: (call) =>
-      call.outcome === 'ok' ? (
-        <Badge value="succeeded">OK</Badge>
-      ) : (
-        <Badge value="failed">{call.outcome}</Badge>
-      ),
+    cell: (call) => (
+      <span className="agents-outcome">
+        {call.outcome === 'ok' ? (
+          <Badge value="succeeded">OK</Badge>
+        ) : (
+          <Badge value="failed">{call.outcome}</Badge>
+        )}
+        {/* It read a feature the DSP has switched off. */}
+        {call.bypassed && <span className="agents-bypassed">Bypassed</span>}
+      </span>
+    ),
   },
   {
     id: 'ms',

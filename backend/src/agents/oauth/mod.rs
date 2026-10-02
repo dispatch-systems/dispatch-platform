@@ -17,8 +17,8 @@ use crate::{
     Error, Result,
     config::Config,
     contracts::{
-        AgentAccess, AgentKeyRequest, AgentTools, OAuthApp, OAuthApproval, OAuthRedirect,
-        OAuthReplaced, OAuthRequest,
+        AgentAccess, AgentArea, AgentKeyRequest, AgentReads, OAuthApp, OAuthApproval,
+        OAuthRedirect, OAuthReplaced, OAuthRequest,
     },
     crypto,
     db::{Store, at, iso, now, s},
@@ -456,12 +456,14 @@ impl Store {
         )?;
         self.check_agent_key(None, &approval.key(), &replaced)?;
         let code = crypto::token()?;
+        // tools and locations as an older release redeems the code, as a key's are written.
         let choices = json!({
             "name": approval.name,
             "all_dsps": approval.all_dsps,
             "dsps": approval.dsps,
-            "tools": approval.tools,
-            "locations": approval.locations,
+            "reads": approval.reads,
+            "tools": "full",
+            "locations": approval.reads.has(AgentArea::Locations),
         });
         self.platform.transaction(|| {
             self.answer_request(id)?;
@@ -581,14 +583,25 @@ impl Store {
             return Err(grant("The owner no longer lets this kind of app connect"));
         }
         let choices: Value = serde_json::from_str(s(&row, "choices")).map_err(Error::from)?;
+        let reads = match choices.get("reads") {
+            Some(reads) => serde_json::from_value(reads.clone()).map_err(Error::from)?,
+            // Approved before reads were chosen, with tools and addresses: every kind of data,
+            // the addresses as chosen, and no bypassing.
+            None => AgentReads {
+                areas: AgentArea::ALL
+                    .into_iter()
+                    .filter(|area| *area != AgentArea::Locations || choices["locations"] == true)
+                    .collect(),
+                bypass: false,
+            },
+        };
         let key = AgentKeyRequest {
             name: s(&choices, "name").to_owned(),
             all_dsps: choices["all_dsps"] == true,
             dsps: serde_json::from_value(choices["dsps"].clone()).map_err(Error::from)?,
             access: AgentAccess::Read,
-            tools: AgentTools::parse(s(&choices, "tools"))
-                .ok_or_else(|| Error::new("invalid_stored_record", 500))?,
-            locations: choices["locations"] == true,
+            reads,
+            dsp_reads: vec![],
             expires_at: None,
         };
         let owner = s(&row, "approved_by");
@@ -628,10 +641,11 @@ impl Store {
             for earlier in &replaced {
                 self.end_app_within(Some(owner), earlier, "replaced")?;
             }
+            // tools and locations as an older release reads them, as a key's are.
             self.platform.exec(
                 "INSERT INTO agent_keys(id,name,hash,hint,user_id,all_dsps,access,tools,locations,\
-                 created_at,kind,client_id,client_name,client_verified) \
-                 VALUES (?,?,?,'',?,?,?,?,?,?,'app',?,?,?)",
+                 areas,bypass,created_at,kind,client_id,client_name,client_verified) \
+                 VALUES (?,?,?,'',?,?,?,'full',?,?,?,?,'app',?,?,?)",
                 rusqlite::params![
                     id,
                     key.name,
@@ -639,8 +653,9 @@ impl Store {
                     owner,
                     i64::from(key.all_dsps),
                     key.access,
-                    key.tools,
-                    i64::from(key.locations),
+                    i64::from(key.reads.has(AgentArea::Locations)),
+                    key.reads.areas_text(),
+                    i64::from(key.reads.bypass),
                     iso(),
                     client_id,
                     s(&row, "client_name"),
@@ -849,8 +864,8 @@ impl Store {
             .platform
             .one(
                 "SELECT t.expires_at token_expires_at,t.resource,k.id,k.name,k.user_id,k.all_dsps,\
-                 k.access,k.tools,k.locations,k.expires_at,k.revoked_at,u.platform_owner,u.status \
-                 FROM oauth_tokens t JOIN agent_keys k ON k.id=t.key_id \
+                 k.access,k.areas,k.bypass,k.locations,k.expires_at,k.revoked_at,u.platform_owner,\
+                 u.status FROM oauth_tokens t JOIN agent_keys k ON k.id=t.key_id \
                  JOIN users u ON u.id=k.user_id WHERE t.hash=? AND t.kind='access'",
                 [crypto::sha(token)],
             )?

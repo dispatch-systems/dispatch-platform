@@ -1,26 +1,28 @@
 import { useState } from 'react';
-import { Plus, SlidersHorizontal } from 'lucide-react';
+import { Pencil, Plus, SlidersHorizontal } from 'lucide-react';
 import type { AgentKey } from '../../../../shared/contracts/index.js';
 import { Badge, DataState, Empty } from '../../ui/index.js';
 import { useAgentKeys } from '../../app/endpoints.js';
 import {
+  accessText,
   expiryText,
   inUse,
   knownApp,
   lastUsedText,
   reachText,
-  toolLabels,
 } from '../../lib/agents.js';
 import { AllowedApps } from './AllowedApps.js';
 import { AppIcon } from './AppIcon.js';
 import { ConnectDialog } from './ConnectDialog.js';
+import { KeySheet } from './KeySheet.js';
 import { RevokeDialog } from './RevokeDialog.js';
 
-/** Every app connected through "Sign in with Dispatch": what it reaches and when it was used,
- * with the way to connect another and to choose which apps may. */
+/** Every app connected through "Sign in with Dispatch": what it reaches and reads and when it
+ * was used, with the way to change one, to connect another and to choose which apps may. */
 export function AppsTab() {
   const keys = useAgentKeys();
   const [showEnded, setShowEnded] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<AgentKey | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [choosing, setChoosing] = useState(false);
@@ -37,6 +39,7 @@ export function AppsTab() {
         const live = apps.filter((app) => inUse(app));
         const ended = apps.filter((app) => !inUse(app));
         const rows = [...live, ...(showEnded ? ended : [])];
+        const edited = live.find((app) => app.id === editing);
         return (
           <div className="agents">
             {apps.length === 0 ? (
@@ -51,16 +54,17 @@ export function AppsTab() {
                         <th>Name</th>
                         <th>App</th>
                         <th>DSPs</th>
-                        <th>Tools</th>
+                        <th>Access</th>
                         <th>Last used</th>
                         <th>
-                          <span className="sr-only">Revoke</span>
+                          <span className="sr-only">Edit or revoke</span>
                         </th>
                       </tr>
                     </thead>
                     <tbody>
                       {rows.map((app) => {
                         const reach = reachText(app, data.dsps);
+                        const access = accessText(app, data.dsps);
                         // Out of renewals, the app has to connect again from its side.
                         const signedOut = inUse(app) && app.client?.status === 'signed_out';
                         return (
@@ -69,14 +73,16 @@ export function AppsTab() {
                               <span className="agents-app-name">
                                 {/* Only recognized published metadata gets an app logo. */}
                                 <AppIcon app={app.client?.known ? knownApp(app.client) : null} />
-                                <strong>
-                                  <bdi>{app.name}</bdi>
-                                </strong>
-                                {signedOut && (
-                                  <Badge value="signed_out">
-                                    Signed out — reconnect from the app
-                                  </Badge>
-                                )}
+                                <span>
+                                  <strong>
+                                    <bdi>{app.name}</bdi>
+                                  </strong>
+                                  {signedOut && (
+                                    <Badge value="signed_out">
+                                      Signed out — reconnect from the app
+                                    </Badge>
+                                  )}
+                                </span>
                               </span>
                             </td>
                             <td>
@@ -94,8 +100,12 @@ export function AppsTab() {
                               {reach.names && <small>{reach.names}</small>}
                             </td>
                             <td>
-                              {toolLabels[app.tools]}
-                              {app.locations && <small>With delivery addresses and GPS</small>}
+                              {access.count}
+                              {access.note && (
+                                <small className={access.bypass ? 'agents-bypass' : undefined}>
+                                  {access.note}
+                                </small>
+                              )}
                             </td>
                             <td>
                               {/* Once it has ended: "Revoked Oct 2" or "Expired Oct 2". */}
@@ -104,13 +114,22 @@ export function AppsTab() {
                             </td>
                             <td className="cell-end">
                               {inUse(app) && (
-                                <button
-                                  className="agents-revoke"
-                                  aria-label={`Revoke ${app.name}`}
-                                  onClick={() => setRevoking(app)}
-                                >
-                                  Revoke
-                                </button>
+                                <span className="agents-row-actions">
+                                  <button
+                                    aria-label={`Edit ${app.name}`}
+                                    onClick={() => setEditing(app.id)}
+                                  >
+                                    <Pencil size={14} aria-hidden="true" />
+                                    Edit
+                                  </button>
+                                  <button
+                                    className="agents-revoke"
+                                    aria-label={`Revoke ${app.name}`}
+                                    onClick={() => setRevoking(app)}
+                                  >
+                                    Revoke
+                                  </button>
+                                </span>
                               )}
                             </td>
                           </tr>
@@ -134,6 +153,19 @@ export function AppsTab() {
                 </button>
               )}
             </div>
+            {edited && (
+              <KeySheet
+                key={edited.id}
+                dsps={data.dsps}
+                existing={edited}
+                close={() => setEditing(null)}
+                created={() => {}}
+                changed={() => {
+                  setEditing(null);
+                  keys.refresh();
+                }}
+              />
+            )}
             {revoking && (
               <RevokeDialog
                 agentKey={revoking}

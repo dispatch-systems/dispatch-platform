@@ -4,12 +4,12 @@ import type { AgentDsp, AgentKey } from '../../../../shared/contracts/index.js';
 import { useAgentKeys } from '../../app/endpoints.js';
 import { platformHash } from '../../app/navigation.js';
 import {
+  accessText,
   connectApps,
   connectedAs,
   inUse,
   reachText,
   signIns,
-  toolLabels,
   type ConnectApp,
 } from '../../lib/agents.js';
 import { countdown } from '../../lib/format.js';
@@ -367,7 +367,7 @@ function Status({
   );
 }
 
-/** The app connected: what it reaches, and how to start using it. */
+/** The app connected: what it reaches and reads, and how to start using it. */
 function Connected({
   agentKey,
   app,
@@ -400,7 +400,7 @@ function Connected({
         </p>
         <span className="agents-tags">
           <span className="agents-tag">{reachText(agentKey, dsps).count}</span>
-          <span className="agents-tag">{toolLabels[agentKey.tools]}</span>
+          <span className="agents-tag">{accessText(agentKey, dsps).count}</span>
         </span>
       </div>
       <div className="agents-connect-footer">

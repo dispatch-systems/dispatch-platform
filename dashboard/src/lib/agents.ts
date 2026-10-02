@@ -1,13 +1,17 @@
-// What the Agents page says about keys: their access, reach, last use and expiry, and how
-// an agent sets one up.
+// What the Agents page says about keys: their access, what they read, reach, last use and
+// expiry, and how an agent sets one up.
 import type {
   AgentAccess,
   AgentActivity,
+  AgentArea,
   AgentClient,
   AgentDsp,
+  AgentDspReads,
   AgentKey,
+  AgentKeyDsp,
   AgentKeyRequest,
-  AgentTools,
+  AgentReads,
+  AgentSource,
 } from '../../../shared/contracts/index.js';
 import { dateFormatter } from './date-format.js';
 import { utcDay } from './format.js';
@@ -16,10 +20,165 @@ export const accessLabels: Record<AgentAccess, string> = {
   read: 'Read only',
   operator: 'Operator',
 };
-export const toolLabels: Record<AgentTools, string> = {
-  full: 'Full tools',
-  essential: 'Essential tools',
+
+/** The kinds of data a key or app may read, in the order every list shows them. */
+export const agentAreas: readonly AgentArea[] = [
+  'routes',
+  'locations',
+  'timecards',
+  'meal_breaks',
+  'dvic',
+  'feedback',
+  'safety',
+  'returns',
+  'scorecard',
+];
+export const areaLabels: Record<AgentArea, string> = {
+  routes: 'Routes & packages',
+  locations: 'Delivery addresses & GPS',
+  timecards: 'Timecards',
+  meal_breaks: 'Meal breaks',
+  dvic: 'DVIC inspections',
+  feedback: 'Customer feedback',
+  safety: 'Safety events',
+  returns: 'Returns & contact compliance',
+  scorecard: 'Weekly scorecard',
 };
+/** What a kind of data holds, where its label alone doesn't say. */
+export const areaHints: Partial<Record<AgentArea, string>> = {
+  locations: 'Stop addresses and GPS points',
+};
+/** The feature each kind of data comes from, which a DSP may have switched off. */
+export const areaSources: Record<AgentArea, AgentSource> = {
+  routes: 'routes',
+  locations: 'routes',
+  timecards: 'timecards',
+  meal_breaks: 'meal_breaks',
+  dvic: 'dvic',
+  feedback: 'scorecard',
+  safety: 'scorecard',
+  returns: 'scorecard',
+  scorecard: 'scorecard',
+};
+export const sourceLabels: Record<AgentSource, string> = {
+  routes: 'Routes',
+  timecards: 'Timecard',
+  meal_breaks: 'Meal Breaks',
+  dvic: 'DVIC',
+  scorecard: 'Scorecard',
+};
+/** The kinds of data under the page that collects them, as the switches are grouped. `missing`
+ * names a whole group a key doesn't read. */
+export const areaGroups: readonly {
+  label: string;
+  missing: string;
+  areas: readonly AgentArea[];
+}[] = [
+  { label: 'Routes', missing: 'route data', areas: ['routes', 'locations'] },
+  { label: 'Timecard', missing: 'timecard data', areas: ['timecards', 'meal_breaks'] },
+  { label: 'DVIC', missing: 'DVIC inspections', areas: ['dvic'] },
+  {
+    label: 'Scorecard',
+    missing: 'scorecard data',
+    areas: ['feedback', 'safety', 'returns', 'scorecard'],
+  },
+];
+/** A kind of data a key doesn't read, as its table row names it. */
+const missingLabels: Record<AgentArea, string> = {
+  routes: 'routes',
+  locations: 'delivery addresses',
+  timecards: 'timecards',
+  meal_breaks: 'meal breaks',
+  dvic: 'DVIC inspections',
+  feedback: 'customer feedback',
+  safety: 'safety events',
+  returns: 'returns',
+  scorecard: 'weekly scorecard',
+};
+
+/** What a new key or app reads: everything but delivery addresses and GPS, and only where
+ * the DSP has the feature on. */
+export const defaultReads = (): AgentReads => ({
+  areas: agentAreas.filter((area) => area !== 'locations'),
+  bypass: false,
+});
+/** Kinds of data once each, in order. Addresses and GPS come only with routes. */
+export function canonicalAreas(areas: readonly AgentArea[]) {
+  const set = new Set(areas);
+  if (!set.has('routes')) set.delete('locations');
+  return agentAreas.filter((area) => set.has(area));
+}
+/** `areas` with one switched on or off; switching routes off switches addresses off too. */
+export const withArea = (areas: readonly AgentArea[], area: AgentArea, on: boolean) =>
+  canonicalAreas(on ? [...areas, area] : areas.filter((each) => each !== area));
+
+const and = (names: string[]) =>
+  names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : (names[0] ?? '');
+/** Small counts, as words. */
+const counts = ['no', 'one', 'two', 'three', 'four'];
+
+/** The features agents read from that a DSP has switched off, as the owner knows them: a
+ * page, or only its tab when the page itself is on. */
+function switchedOffNames(off: readonly AgentSource[]) {
+  return areaGroups.flatMap((group) => {
+    const sources = [...new Set(group.areas.map((area) => areaSources[area]))];
+    const here = sources.filter((source) => off.includes(source));
+    if (here.length === sources.length) return [group.label];
+    return here.map((source) => sourceLabels[source]);
+  });
+}
+/** The line under what a key reads at a DSP: which features are switched off there. */
+export function switchedOffText(dsp: Pick<AgentKeyDsp, 'name' | 'switchedOff'>) {
+  const names = switchedOffNames(dsp.switchedOff);
+  if (!names.length) return `Every feature is on at ${dsp.name}.`;
+  return `${and(names)} ${names.length === 1 ? 'is' : 'are'} switched off at ${dsp.name}.`;
+}
+/** What bypassing features does at a DSP with settings of its own: `who` reads the data of
+ * the features switched off there, which stopped collecting when they were. */
+export function bypassHere(who: string, dsp: Pick<AgentKeyDsp, 'switchedOff'>) {
+  const off = switchedOffNames(dsp.switchedOff).length;
+  const reads = `${who} reads every feature’s data here`;
+  if (!off) return `${reads}, even if one is switched off later. It only ever reads.`;
+  if (off === 1)
+    return (
+      `${reads}, including the one switched off. Its collection stays off, so that data ends ` +
+      'on the day it was switched off. It only ever reads.'
+    );
+  return (
+    `${reads}, including the ${counts[off]} switched off. Their collection stays off, so that ` +
+    'data ends on the day each was switched off. It only ever reads.'
+  );
+}
+
+/** How much a key or app reads, as its row says it: "All data" or "7 of 9 kinds", and a line
+ * naming the DSPs with settings of their own, else that it bypasses features, else the one or
+ * two things it doesn't read. `bypass` when any of its settings bypasses features. */
+export function accessText(
+  key: Pick<AgentKey, 'reads' | 'dspReads'>,
+  dsps: Pick<AgentDsp, 'id' | 'name'>[],
+) {
+  const areas = canonicalAreas(key.reads.areas);
+  const count =
+    areas.length === agentAreas.length
+      ? 'All data'
+      : `${areas.length} of ${agentAreas.length} kinds`;
+  const bypass = key.reads.bypass || key.dspReads.some((own) => own.bypass);
+  if (key.dspReads.length > 1)
+    return { count, note: `${key.dspReads.length} DSPs with own settings`, bypass };
+  const [own] = key.dspReads;
+  if (own) {
+    const name = dsps.find((dsp) => dsp.id === own.dsp)?.name ?? 'A removed DSP';
+    return { count, note: `${name}: own settings${own.bypass ? ', bypass on' : ''}`, bypass };
+  }
+  if (bypass) return { count, note: 'Bypass on', bypass };
+  const missing = areaGroups.flatMap((group) => {
+    const off = group.areas.filter((area) => !areas.includes(area));
+    if (off.length > 1 && off.length === group.areas.length) return [group.missing];
+    return off.map((area) => missingLabels[area]);
+  });
+  const note = missing.length && missing.length <= 2 ? `No ${missing.join(' or ')}` : '';
+  return { count, note, bypass };
+}
 
 const DAY = 86_400_000;
 /** How long a new key lasts, as the key sheet offers it. */
@@ -137,28 +296,48 @@ export function surfaceOf(surface: string) {
     : { via: '', name: surface };
 }
 
-/** A new key's starting point: read only, every tool, no addresses, 90 days. */
+/** A new key's starting point: read only, every DSP, the default reads, 90 days. */
 export const blankKey = (): AgentKeyRequest => ({
   name: '',
   allDsps: true,
   dsps: [],
   access: 'read',
-  tools: 'full',
-  locations: false,
+  reads: defaultReads(),
+  dspReads: [],
   expiresAt: null,
+});
+const ownReads = ({ dsp, areas, bypass }: AgentDspReads): AgentDspReads => ({
+  dsp,
+  areas: canonicalAreas(areas),
+  bypass,
 });
 export const requestOf = (key: AgentKey): AgentKeyRequest => ({
   name: key.name,
   allDsps: key.allDsps,
   dsps: [...key.dsps].sort(),
   access: key.access,
-  tools: key.tools,
-  locations: key.locations,
+  reads: { areas: canonicalAreas(key.reads.areas), bypass: key.reads.bypass },
+  dspReads: key.dspReads.map(ownReads),
   expiresAt: key.expiresAt,
 });
+/** The settings of their own that go with a key: only those of the DSPs it still reaches. A
+ * suspended or removed DSP isn't listed, but one the key reaches keeps its own settings, sent
+ * back as they are, for when it is active again. */
+export const reachedReads = (key: Pick<AgentKeyRequest, 'allDsps' | 'dsps' | 'dspReads'>) =>
+  key.dspReads.filter((own) => key.allDsps || key.dsps.includes(own.dsp));
+const comparable = (key: AgentKeyRequest) =>
+  JSON.stringify([
+    key.name,
+    key.allDsps,
+    [...key.dsps].sort(),
+    key.access,
+    canonicalAreas(key.reads.areas),
+    key.reads.bypass,
+    key.dspReads.map(ownReads).sort((a, b) => a.dsp.localeCompare(b.dsp)),
+    key.expiresAt,
+  ]);
 export const sameRequest = (a: AgentKeyRequest, b: AgentKeyRequest) =>
-  JSON.stringify({ ...a, dsps: [...a.dsps].sort() }) ===
-  JSON.stringify({ ...b, dsps: [...b.dsps].sort() });
+  comparable(a) === comparable(b);
 
 /** The apps "Connect an app" offers, in its order: each by the kind of app it is, the name it
  * goes by here, and the name it signs in with. "Other app" is any app else. */

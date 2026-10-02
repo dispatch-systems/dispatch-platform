@@ -5,6 +5,7 @@ import { elapsed, timeOfDay, title } from '../../lib/format.js';
 import { permissionLabels } from '../../app/permissions.js';
 import { featureLabel } from '../../app/features.js';
 import { paycomColumns } from '../../lib/paycom.js';
+import { agentAreas, areaLabels } from '../../lib/agents.js';
 
 export const views = new Set(['dsp.view_opened', 'dsp.owner_view_opened']);
 
@@ -118,6 +119,7 @@ const phrases: Record<string, (event: AuditEvent) => Part[]> = {
   'agent.key_updated': (e) => ['changed the agent key ', strong(e.target ?? 'a key')],
   'agent.key_revoked': (e) => ['revoked the agent key ', strong(e.target ?? 'a key')],
   'agent.app_connected': (e) => ['connected the app ', strong(e.target ?? 'an app')],
+  'agent.app_updated': (e) => ['changed the connected app ', strong(e.target ?? 'an app')],
   'agent.app_revoked': (e) => ['revoked the connected app ', strong(e.target ?? 'an app')],
   'agent.pairing_opened': () => ['let apps start connecting for 10 minutes'],
   'agent.app_allowed': (e) => ['let ', strong(e.target ?? 'an app'), ' connect'],
@@ -287,10 +289,15 @@ export const fields: Record<string, string> = {
   'paycom.late_da_time': 'Late DA time',
   'paycom.late_da_departments': 'Late DA departments',
   access: 'Access',
-  tools: 'Tools',
-  locations: 'Addresses and GPS',
   dsps: 'DSPs',
   expires: 'Expires',
+  // What an agent key or app reads, a kind of data each, and the DSPs' own settings.
+  ...Object.fromEntries(agentAreas.map((area) => [`reads.${area}`, areaLabels[area]])),
+  bypass: 'Bypass features',
+  dsp_reads: 'DSP settings',
+  // Earlier key changes, from before keys read by kind of data.
+  tools: 'Tools',
+  locations: 'Addresses and GPS',
 };
 const agentValues: Record<string, string> = {
   read: 'Read only',
@@ -301,6 +308,7 @@ const agentValues: Record<string, string> = {
   false: 'Off',
   never: 'Never',
 };
+const agentFields = ['access', 'expires', 'bypass', 'tools', 'locations'];
 const clockTime = (value: string) => timeOfDay(`2000-01-01T${value}:00Z`, 'UTC');
 const paycomValues: Record<string, string> = {
   true: 'On',
@@ -342,8 +350,7 @@ export function changeValue(field: string, value: string) {
     return dateFormatter('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(
       new Date(value),
     );
-  if (['access', 'tools', 'locations', 'expires'].includes(field))
-    return agentValues[value] ?? value;
+  if (agentFields.includes(field) || field.startsWith('reads.')) return agentValues[value] ?? value;
   return value;
 }
 export function changeText(change: AuditChange) {

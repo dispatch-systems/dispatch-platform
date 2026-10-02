@@ -4,6 +4,7 @@
 use super::clients;
 use crate::{
     Result,
+    contracts::AgentReads,
     db::{Store, now, s},
     mail::templates::{self as email, ConnectedApp},
     observability,
@@ -33,7 +34,7 @@ impl Store {
 
     fn try_tell_owners(&self, key: &str, told: Told) -> Result<()> {
         let Some(app) = self.platform.one(
-            "SELECT k.name,k.client_name,k.client_verified,k.all_dsps,k.tools,k.locations,\
+            "SELECT k.name,k.client_name,k.client_verified,k.all_dsps,k.areas,k.bypass,k.locations,\
              u.first_name||' '||u.last_name approved_by,\
              (SELECT redirect_uri FROM oauth_codes c WHERE c.key_id=k.id) redirect_uri \
              FROM agent_keys k JOIN users u ON u.id=k.user_id WHERE k.id=? AND k.kind='app'",
@@ -60,6 +61,11 @@ impl Store {
             Told::Disconnected { .. } => app["redirect_uri"].as_str(),
         };
         let destination = redirect_uri.map(|uri| clients::destination(uri).0);
+        let reads = AgentReads::stored_key(
+            s(&app, "areas"),
+            app["bypass"].as_i64().unwrap_or(0),
+            app["locations"].as_i64().unwrap_or(0),
+        );
         let at = now();
         self.notify_platform_owners(|to| {
             let described = ConnectedApp {
@@ -71,8 +77,7 @@ impl Store {
                 known: app["client_verified"] == 1,
                 destination: destination.as_deref(),
                 dsps: &dsps,
-                essential: s(&app, "tools") == "essential",
-                locations: app["locations"] == 1,
+                reads: &reads,
                 approved_by: s(&app, "approved_by"),
                 at,
             };

@@ -59,11 +59,11 @@ pub fn routes() -> Vec<Route> {
             Box::pin(revoke(state, request)) as Served
         }),
         read("/api/platform/oauth/requests/{id}", PlatformOwner, request),
-        // Approving makes something that acts for the owner, so it asks for recent
-        // verification as making a key does; refusing never does.
+        // Approving makes an app that only ever reads what the owner allows, as making a key
+        // does, so neither it nor refusing asks for recent verification.
         write(
             "/api/platform/oauth/requests/{id}/approve",
-            PlatformOwner,
+            PlatformRoutine,
             approve,
         ),
         write(
@@ -72,11 +72,11 @@ pub fn routes() -> Vec<Route> {
             deny,
         ),
         read("/api/platform/oauth/pairing", PlatformRoutine, pairing),
-        // Opening the window lets apps only ask; approving still asks for recent verification.
+        // Opening the window lets apps only ask; the owner still approves each.
         write("/api/platform/oauth/pairing", PlatformRoutine, open_pairing),
         read("/api/platform/oauth/apps", PlatformRoutine, apps),
-        // Letting a kind of app connect changes who may ask, so it asks for recent verification.
-        write("/api/platform/oauth/apps", PlatformOwner, allow_app),
+        // Letting a kind of app connect changes only who may ask.
+        write("/api/platform/oauth/apps", PlatformRoutine, allow_app),
     ]
 }
 

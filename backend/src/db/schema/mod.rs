@@ -85,6 +85,11 @@ pub const PLATFORM: &[Migration] = &[
         name: "agent_activity",
         apply: Sql(include_str!("platform/0015_agent_activity.sql")),
     },
+    Migration {
+        id: 16,
+        name: "agent_reads",
+        apply: Code(agent_reads),
+    },
 ];
 pub const JOBS: &[Migration] = &[
     Migration {
@@ -285,6 +290,32 @@ fn oauth(db: &Db) -> Result<()> {
 fn oauth_guard(db: &Db) -> Result<()> {
     add_column(db, "oauth_requests", "browser", "TEXT")?;
     db.0.execute_batch(include_str!("platform/0014_oauth_guard.sql"))?;
+    Ok(())
+}
+
+// areas and bypass: what a key or app reads, and whether it reads it where a DSP has the
+// feature switched off. A key an older release makes reads every kind but addresses.
+// bypassed: whether an agent's call read a switched-off feature so.
+fn agent_reads(db: &Db) -> Result<()> {
+    add_column(
+        db,
+        "agent_keys",
+        "areas",
+        "TEXT NOT NULL DEFAULT 'routes,timecards,meal_breaks,dvic,feedback,safety,returns,scorecard'",
+    )?;
+    add_column(
+        db,
+        "agent_keys",
+        "bypass",
+        "INTEGER NOT NULL DEFAULT 0 CHECK(bypass IN (0,1))",
+    )?;
+    add_column(
+        db,
+        "agent_activity",
+        "bypassed",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    db.0.execute_batch(include_str!("platform/0016_agent_reads.sql"))?;
     Ok(())
 }
 

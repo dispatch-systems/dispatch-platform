@@ -4,7 +4,7 @@
 // subscriptions), never an API key, so it runs here on demand and never in CI.
 //
 //   npm run agents:eval -- [--models claude:haiku,codex:gpt-6-luna] [--only id,id]
-//                          [--tools full|essential] [--parallel 4] [--rest]
+//                          [--parallel 4] [--rest]
 //
 // --rest also asks every question with no MCP at all: Claude Code with the Dispatch skill,
 // curl and a key, the way a harness without MCP would.
@@ -20,7 +20,6 @@ const { values } = parseArgs({
   options: {
     models: { type: 'string', default: 'claude:haiku,claude:sonnet,codex:gpt-6-luna' },
     only: { type: 'string' },
-    tools: { type: 'string', default: 'full' },
     parallel: { type: 'string', default: '4' },
     rest: { type: 'boolean', default: false },
     out: { type: 'string', default: path.join(os.tmpdir(), 'dispatch-agent-eval') },
@@ -83,9 +82,23 @@ async function main() {
       allDsps: false,
       dsps: [world.dsp],
       access: 'read',
-      tools: values.tools,
-      // Addresses on, as the owner's own key has them: feedback is asked about by address.
-      locations: true,
+      // Every kind of data, addresses included, as the owner's own key reads it: feedback is
+      // asked about by address.
+      reads: {
+        areas: [
+          'routes',
+          'locations',
+          'timecards',
+          'meal_breaks',
+          'dvic',
+          'feedback',
+          'safety',
+          'returns',
+          'scorecard',
+        ],
+        bypass: false,
+      },
+      dspReads: [],
       expiresAt: null,
     });
     if (made.status !== 200) throw new Error(made.body);

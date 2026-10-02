@@ -2,6 +2,7 @@
 //! metric with what it means. Requests are checked against it, the OpenAPI document is
 //! built from it, and later the MCP tools are too, so none of them can drift apart.
 use super::Refusal;
+use crate::contracts::AgentArea;
 use serde_json::{Map, Value, json};
 
 /// What a parameter holds.
@@ -18,44 +19,15 @@ pub struct Param {
     pub kind: Kind,
     pub description: &'static str,
 }
-/// A source an agent reads, switched per DSP on the platform's DSPs page.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Source {
-    Timecards,
-    MealBreaks,
-    Routes,
-    Dvic,
-    Scorecard,
-}
-impl Source {
-    pub const ALL: [Source; 5] = [
-        Source::Timecards,
-        Source::MealBreaks,
-        Source::Routes,
-        Source::Dvic,
-        Source::Scorecard,
-    ];
-    /// The switch's name on the platform's DSPs page.
-    pub fn switch(self) -> &'static str {
-        match self {
-            Source::Timecards => "Timecard",
-            Source::MealBreaks => "Timecard · Meal Breaks",
-            Source::Routes => "Routes",
-            Source::Dvic => "DVIC",
-            Source::Scorecard => "Scorecard",
-        }
-    }
-}
 #[derive(Clone, Copy, Debug)]
 pub struct Endpoint {
     pub id: &'static str,
     /// The MCP tool's name: snake_case, as every model and harness accepts.
     pub tool: &'static str,
-    /// In the Essential toolset, the few tools small models choose between best.
-    pub essential: bool,
-    /// The one source it reads, refused for a DSP that has it switched off before the
-    /// endpoint is asked. `None` for those that read none, or several and say which are off.
-    pub source: Option<Source>,
+    /// The one kind of data it reads, refused at a DSP where the key or app may not read it
+    /// before the endpoint is asked. `None` for those that read none, or several and say
+    /// which they could not read.
+    pub area: Option<AgentArea>,
     pub path: &'static str,
     pub summary: &'static str,
     pub description: &'static str,
@@ -138,33 +110,31 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "whoami",
         tool: "whoami",
-        essential: true,
-        source: None,
+        area: None,
         path: "/api/v1/whoami",
         summary: "Who this key belongs to",
         description: "Use when you need the DSPs this key reaches, each DSP's date today or \
-            what its key may do. Questions about days need no call to this first: every \
-            answer says which days it read.",
+            what the key may do and read there. Questions about days need no call to this \
+            first: every answer says which days it read.",
         path_params: &[],
         params: &[],
     },
     Endpoint {
         id: "status",
         tool: "data_status",
-        essential: false,
-        source: None,
+        area: None,
         path: "/api/v1/status",
         summary: "How fresh each source is",
         description: "Use when asked how current the data is: which sources the DSP has on \
-            (Paycom timecards, Cortex meal breaks, routes, DVIC) and when each last collected.",
+            (Paycom timecards, Cortex meal breaks, routes, DVIC, the scorecard), which this key \
+            reads there, and when each last collected.",
         path_params: &[],
         params: &[DSP],
     },
     Endpoint {
         id: "metrics",
         tool: "list_metrics",
-        essential: false,
-        source: None,
+        area: None,
         path: "/api/v1/metrics",
         summary: "Every metric and term",
         description: "Use when unsure what a team_table metric or an Amazon term means: each \
@@ -175,8 +145,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "drivers",
         tool: "find_drivers",
-        essential: true,
-        source: None,
+        area: None,
         path: "/api/v1/drivers",
         summary: "Find drivers",
         description: "Use to look a driver up or list the DSP's people: name, Driver Match \
@@ -203,8 +172,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "packages",
         tool: "packages",
-        essential: true,
-        source: Some(Source::Routes),
+        area: Some(AgentArea::Routes),
         path: "/api/v1/packages",
         summary: "Count packages by what happened",
         description: "Use for questions about packages: how many a driver delivered, who \
@@ -257,8 +225,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "driver",
         tool: "driver_report",
-        essential: true,
-        source: None,
+        area: None,
         path: "/api/v1/drivers/{driver}",
         summary: "One driver's days",
         description: "Use for how one driver did over some days, and their averages: one \
@@ -270,8 +237,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "team",
         tool: "team_table",
-        essential: true,
-        source: None,
+        area: None,
         path: "/api/v1/team",
         summary: "Compare drivers",
         description: "Use to rank or compare drivers on chosen metrics: one row per driver, \
@@ -312,8 +278,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "routes",
         tool: "route_day",
-        essential: true,
-        source: Some(Source::Routes),
+        area: Some(AgentArea::Routes),
         path: "/api/v1/routes",
         summary: "A day's routes",
         description: "Use for one day's routes: each route's driver, packages delivered and \
@@ -324,8 +289,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "route",
         tool: "route_stops",
-        essential: false,
-        source: Some(Source::Routes),
+        area: Some(AgentArea::Routes),
         path: "/api/v1/routes/{route}",
         summary: "One route's packages",
         description: "Use for what happened on one route: outcomes, reasons and the packages \
@@ -337,8 +301,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "package",
         tool: "find_package",
-        essential: false,
-        source: Some(Source::Routes),
+        area: Some(AgentArea::Routes),
         path: "/api/v1/packages/{tracking}",
         summary: "Find a package",
         description: "Use for one tracking ID: who carried it, on which route and day, and \
@@ -353,8 +316,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "timecards",
         tool: "timecards",
-        essential: false,
-        source: Some(Source::Timecards),
+        area: Some(AgentArea::Timecards),
         path: "/api/v1/timecards",
         summary: "Timecards",
         description: "Use for Paycom hours and punches: everyone's for one day, or one \
@@ -365,8 +327,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "meal_breaks",
         tool: "meal_breaks",
-        essential: false,
-        source: Some(Source::MealBreaks),
+        area: Some(AgentArea::MealBreaks),
         path: "/api/v1/meal-breaks",
         summary: "Meal breaks",
         description: "Use for one day's meal breaks: Cortex's meal break beside Paycom's \
@@ -388,8 +349,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "dvic",
         tool: "dvic_inspections",
-        essential: true,
-        source: Some(Source::Dvic),
+        area: Some(AgentArea::Dvic),
         path: "/api/v1/dvic",
         summary: "Vehicle inspections",
         description: "Use for DVIC questions, as which drivers were short: each driver's \
@@ -416,8 +376,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "feedback",
         tool: "customer_feedback",
-        essential: false,
-        source: Some(Source::Scorecard),
+        area: Some(AgentArea::Feedback),
         path: "/api/v1/feedback",
         summary: "Customer feedback (CDF)",
         description: "Use for customer delivery feedback (CDF) from Amazon's weekly scorecard: \
@@ -470,8 +429,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "safety",
         tool: "safety_events",
-        essential: false,
-        source: Some(Source::Scorecard),
+        area: Some(AgentArea::Safety),
         path: "/api/v1/safety",
         summary: "Netradyne safety events",
         description: "Use for Netradyne safety infractions from Amazon's scorecard: speeding, \
@@ -507,8 +465,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "returns",
         tool: "returns",
-        essential: false,
-        source: Some(Source::Scorecard),
+        area: Some(AgentArea::Returns),
         path: "/api/v1/returns",
         summary: "Contact compliance and returns to station (RTS)",
         description: "Use for contact compliance: which drivers didn't do it, that is returned \
@@ -557,8 +514,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "scorecard",
         tool: "scorecard",
-        essential: false,
-        source: Some(Source::Scorecard),
+        area: Some(AgentArea::Scorecard),
         path: "/api/v1/scorecard",
         summary: "A week's scorecard",
         description: "Use for Amazon's weekly scorecard: the DSP's tier and focus areas, and each \
@@ -635,11 +591,11 @@ pub fn flag(query: &Value, name: &str) -> bool {
     ["true", "1", "yes"].contains(&super::scope::param(query, name))
 }
 
-/// What a metric counts, where it comes from, and how a period adds it up.
+/// What a metric counts, the kind of data it comes from, and how a period adds it up.
 #[derive(Clone, Copy, Debug)]
 pub struct Metric {
     pub name: &'static str,
-    pub source: &'static str,
+    pub area: AgentArea,
     pub unit: &'static str,
     /// `sum` and `count` add up over a period; `day` metrics exist only per day.
     pub total: &'static str,
@@ -648,105 +604,105 @@ pub struct Metric {
 pub const METRICS: &[Metric] = &[
     Metric {
         name: "routes",
-        source: "routes",
+        area: AgentArea::Routes,
         unit: "itineraries",
         total: "count",
         description: "Itineraries the driver was assigned.",
     },
     Metric {
         name: "stops_completed",
-        source: "routes",
+        area: AgentArea::Routes,
         unit: "stops",
         total: "sum",
         description: "Delivery stops completed, as Amazon's itinerary summary counts them; the station pickup is not a stop.",
     },
     Metric {
         name: "stops_total",
-        source: "routes",
+        area: AgentArea::Routes,
         unit: "stops",
         total: "sum",
         description: "Delivery stops on the itinerary.",
     },
     Metric {
         name: "packages_delivered",
-        source: "routes",
+        area: AgentArea::Routes,
         unit: "packages",
         total: "sum",
         description: "Packages delivered, as Amazon's itinerary summary counts them.",
     },
     Metric {
         name: "packages_total",
-        source: "routes",
+        area: AgentArea::Routes,
         unit: "packages",
         total: "sum",
         description: "Packages on the itinerary.",
     },
     Metric {
         name: "packages_remaining",
-        source: "routes",
+        area: AgentArea::Routes,
         unit: "packages",
         total: "sum",
         description: "Packages not yet delivered or returned when the day was collected.",
     },
     Metric {
         name: "packages_undeliverable",
-        source: "routes",
+        area: AgentArea::Routes,
         unit: "packages",
         total: "sum",
         description: "Packages Amazon marked undeliverable.",
     },
     Metric {
         name: "break_minutes",
-        source: "routes",
+        area: AgentArea::Routes,
         unit: "minutes",
         total: "sum",
         description: "Break time Amazon recorded on the itinerary.",
     },
     Metric {
         name: "overtime_minutes",
-        source: "routes",
+        area: AgentArea::Routes,
         unit: "minutes",
         total: "sum",
         description: "Overtime Amazon recorded on the itinerary.",
     },
     Metric {
         name: "hours_worked",
-        source: "timecards",
+        area: AgentArea::Timecards,
         unit: "hours",
         total: "sum",
         description: "Hours on the Paycom timecard.",
     },
     Metric {
         name: "days_worked",
-        source: "timecards",
+        area: AgentArea::Timecards,
         unit: "days",
         total: "count",
         description: "Days with hours on the Paycom timecard.",
     },
     Metric {
         name: "lunch_minutes",
-        source: "timecards",
+        area: AgentArea::Timecards,
         unit: "minutes",
         total: "sum",
         description: "Minutes between Paycom's lunch out and lunch in punches.",
     },
     Metric {
         name: "clock_in",
-        source: "timecards",
+        area: AgentArea::Timecards,
         unit: "time",
         total: "day",
         description: "First clock in, in the DSP's time.",
     },
     Metric {
         name: "clock_out",
-        source: "timecards",
+        area: AgentArea::Timecards,
         unit: "time",
         total: "day",
         description: "Last clock out, in the DSP's time.",
     },
     Metric {
         name: "meal_issues",
-        source: "meal_breaks",
+        area: AgentArea::MealBreaks,
         unit: "days",
         total: "count",
         description: "Days the meal-break comparison found something to look at, among the \
@@ -754,21 +710,21 @@ pub const METRICS: &[Metric] = &[
     },
     Metric {
         name: "meal_status",
-        source: "meal_breaks",
+        area: AgentArea::MealBreaks,
         unit: "verdict",
         total: "day",
         description: "The meal-break comparison's verdict; see the glossary.",
     },
     Metric {
         name: "inspections",
-        source: "dvic",
+        area: AgentArea::Dvic,
         unit: "inspections",
         total: "sum",
         description: "DVIC inspections done.",
     },
     Metric {
         name: "short_inspections",
-        source: "dvic",
+        area: AgentArea::Dvic,
         unit: "inspections",
         total: "sum",
         description: "DVIC inspections shorter than their minimum.",
@@ -848,7 +804,7 @@ pub const GLOSSARY: &[(&str, &str)] = &[
 pub fn metrics() -> Value {
     json!({
         "metrics": METRICS.iter().map(|m| json!({
-            "name": m.name, "source": m.source, "unit": m.unit,
+            "name": m.name, "source": m.area.as_str(), "unit": m.unit,
             "total": m.total, "description": m.description
         })).collect::<Vec<_>>(),
         "glossary": GLOSSARY.iter().map(|(term, meaning)| json!({"term": term, "meaning": meaning})).collect::<Vec<_>>(),
@@ -922,6 +878,8 @@ pub fn openapi(origin: &str) -> Value {
                     "200": {"description": "The answer.", "content": {"application/json": {"schema": {"type":"object"}}}},
                     "400": {"description": "Something unclear; `message` says what and `choices` what it could mean."},
                     "401": {"description": "No key, or a key that is revoked, expired or not for this Dispatch."},
+                    "403": {"description": "Not for this key here: `not_allowed` when the key may not read it at \
+                        the DSP, `source_off` when the DSP has the feature switched off."},
                     "404": {"description": "Nothing by that name."},
                     "429": {"description": "Too many calls this minute; wait for `Retry-After` seconds."}
                 }
@@ -933,9 +891,11 @@ pub fn openapi(origin: &str) -> Value {
         "info": {
             "title": "Dispatch agent API",
             "version": "1",
-            "description": "Read a DSP's drivers, routes, timecards, meal breaks and DVIC. \
-                Every answer names the DSP, the days and the driver it understood, and which \
-                days each source has. Times are the DSP's own."
+            "description": "Read a DSP's drivers, routes, timecards, meal breaks, DVIC and \
+                scorecard, as far as the key may read them there. Every answer names the DSP, \
+                the days and the driver it understood, and which days each source has. An \
+                answer read from a feature the DSP has switched off, by a key that bypasses \
+                features, names it under `bypassed`. Times are the DSP's own."
         },
         "servers": [{"url": origin}],
         "security": [{"key": []}],

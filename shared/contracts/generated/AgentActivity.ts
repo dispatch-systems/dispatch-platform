@@ -8,5 +8,6 @@ import type { AgentDsp } from "./AgentDsp";
  * the code it was refused or failed with. `ms` is how long it took, `bytes` how much it
  * answered. A key's calls past 10,000 in a UTC day are not kept: one row with surface
  * `activity:capped` and outcome `capped`, at the first of them, marks the day capped.
+ * `bypassed` is whether it read a feature the DSP has switched off, by bypassing features.
  */
-export type AgentActivity = { at: string, key: AgentActivityKey, surface: string, dsp: AgentDsp | null, outcome: string, ms: number, bytes: number, };
+export type AgentActivity = { at: string, key: AgentActivityKey, surface: string, dsp: AgentDsp | null, outcome: string, ms: number, bytes: number, bypassed: boolean, };

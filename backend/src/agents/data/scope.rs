@@ -1,10 +1,13 @@
 //! What a request names, read the way a person writes it: the DSP, the days and the
 //! driver. Anything unclear is refused with what it could have meant.
-use super::{Refusal, facts::Sources};
+use super::{
+    Refusal,
+    access::{self, Access, Read},
+};
 use crate::{
     Result, State,
     agents::Caller,
-    contracts::{DriverMatch, DriverSource, DriverStatus, Dsp},
+    contracts::{AgentArea, AgentSource, DriverMatch, DriverSource, DriverStatus, Dsp},
     db::Store,
     driver_match::names::name_key,
     scorecard,
@@ -283,16 +286,45 @@ pub struct Person {
 pub struct People {
     pub list: Vec<Person>,
     holders: HashMap<(DriverSource, String), usize>,
+    /// The features whose IDs it holds only by bypassing them, as the DSP has them off.
+    bypassed: Vec<AgentSource>,
+}
+/// The kinds of data whose drivers Paycom's IDs name, and those Amazon's name.
+const PAYCOM: &[AgentArea] = &[AgentArea::Timecards, AgentArea::MealBreaks];
+const AMAZON: &[AgentArea] = &[
+    AgentArea::MealBreaks,
+    AgentArea::Routes,
+    AgentArea::Dvic,
+    AgentArea::Feedback,
+    AgentArea::Safety,
+    AgentArea::Returns,
+    AgentArea::Scorecard,
+];
+/// Whether the key or app reads a source's IDs at the DSP, with any kind of data they name
+/// drivers in, and the features it reads them from only by bypassing them: none when it reads
+/// any of them from a feature switched on.
+fn read_ids(access: &Access, areas: &[AgentArea]) -> (bool, Vec<AgentSource>) {
+    if areas.iter().any(|area| access.read(*area) == Read::On) {
+        return (true, vec![]);
+    }
+    let bypassed: Vec<AgentSource> = areas
+        .iter()
+        .filter(|area| access.read(**area) == Read::Bypassed)
+        .map(|area| area.source())
+        .collect();
+    (!bypassed.is_empty(), bypassed)
 }
 impl People {
-    /// The DSP's people, from Driver Match, kept until a source or driver decision changes.
-    pub fn load(db: &Store, state: &State, dsp: &str) -> Result<Self> {
+    /// The DSP's people, from Driver Match, kept until a source or driver decision changes,
+    /// with the IDs of the sources the key or app reads there.
+    pub fn load(db: &Store, state: &State, access: &Access) -> Result<Self> {
         // Driver Match deliberately keeps every collected identity while a source is off.
-        // Project that durable cache through the current feature policy on every read, so
-        // toggling a source takes effect immediately without invalidating or rebuilding it.
-        let sources = Sources::of(db, dsp)?;
-        let paycom_on = sources.timecards || sources.meal_breaks;
-        let amazon_on = sources.meal_breaks || sources.routes || sources.dvic || sources.scorecard;
+        // Project that durable cache through what the key or app reads at the DSP on every
+        // read, so a switch or an allowance changed takes effect at once without invalidating
+        // or rebuilding it.
+        let dsp = access.dsp.id.as_str();
+        let (paycom_on, paycom_bypassed) = read_ids(access, PAYCOM);
+        let (amazon_on, amazon_bypassed) = read_ids(access, AMAZON);
         let revision = state
             .data_revision
             .load(std::sync::atomic::Ordering::Relaxed);
@@ -304,6 +336,7 @@ impl People {
         )?;
         let mut list = vec![];
         let mut holders = HashMap::new();
+        let (mut paycom_held, mut amazon_held) = (false, false);
         for driver in matched.drivers {
             let visible =
                 |source: DriverSource| driver.ids.iter().filter(move |id| id.source == source);
@@ -320,6 +353,8 @@ impl People {
             if paycom.is_empty() && amazon.is_empty() {
                 continue;
             }
+            paycom_held |= !paycom.is_empty();
+            amazon_held |= !amazon.is_empty();
             let name = if paycom_on && amazon_on {
                 driver.name.clone()
             } else {
@@ -357,7 +392,32 @@ impl People {
             }
             list.push(person);
         }
-        Ok(Self { list, holders })
+        // A source's IDs held only by bypassing its features are named wherever they are used.
+        let mut bypassed: Vec<AgentSource> = vec![];
+        for (held, sources) in [
+            (paycom_held, paycom_bypassed),
+            (amazon_held, amazon_bypassed),
+        ] {
+            if held {
+                bypassed.extend(sources);
+            }
+        }
+        let bypassed = AgentSource::ALL
+            .into_iter()
+            .filter(|source| bypassed.contains(source))
+            .collect();
+        Ok(Self {
+            list,
+            holders,
+            bypassed,
+        })
+    }
+    /// Names under `bypassed` the features it holds IDs from only by bypassing them, as every
+    /// answer that finds or names drivers with these people does.
+    pub fn mark(&self, answer: &mut Value) {
+        for source in &self.bypassed {
+            access::bypassed(answer, *source);
+        }
     }
     /// Who holds an ID, if anyone does yet.
     pub fn holder(&self, source: DriverSource, id: &str) -> Option<&Person> {
@@ -541,6 +601,7 @@ mod tests {
         let people = People {
             holders: HashMap::new(),
             list,
+            bypassed: vec![],
         };
         assert_eq!(people.find("k4m7qz").unwrap().name, "Daniel Ortiz");
         assert_eq!(people.find("E003").unwrap().code, "T9X2PB");

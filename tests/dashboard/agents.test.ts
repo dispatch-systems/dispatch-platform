@@ -2,9 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { AgentKey } from '../../shared/contracts/index.js';
 import {
+  accessText,
   activityNote,
+  agentAreas,
   appKindName,
+  areaGroups,
+  areaLabels,
+  areaSources,
   blankKey,
+  bypassHere,
+  canonicalAreas,
   connectApps,
   connectedAs,
   daysLeft,
@@ -15,12 +22,16 @@ import {
   knownApp,
   lastUsedText,
   reachText,
+  reachedReads,
   requestOf,
   sameRequest,
   setups,
   signIns,
   surfaceOf,
+  switchedOffText,
+  withArea,
 } from '../../dashboard/src/lib/agents.js';
+import { changeText } from '../../dashboard/src/features/audit/wording.js';
 
 const now = Date.parse('2026-10-01T15:00:00');
 const DAY = 86_400_000;
@@ -31,8 +42,8 @@ const key = (change: Partial<AgentKey> = {}): AgentKey => ({
   name: 'Laptop – Claude Code',
   hint: 'x7Qp',
   access: 'read',
-  tools: 'full',
-  locations: false,
+  reads: { areas: [...agentAreas], bypass: false },
+  dspReads: [],
   allDsps: true,
   dsps: [],
   createdAt: '2026-09-02T10:00:00Z',
@@ -214,11 +225,257 @@ test('Connect an app offers the known apps first, and knows each by the name it 
 });
 
 test('a key sheet knows when nothing changed', () => {
-  const start = requestOf(key({ allDsps: false, dsps: ['dsp_b', 'dsp_a'] }));
+  const start = requestOf(
+    key({
+      allDsps: false,
+      dsps: ['dsp_b', 'dsp_a'],
+      dspReads: [
+        { dsp: 'dsp_b', areas: ['dvic', 'routes'], bypass: true },
+        { dsp: 'dsp_a', areas: [], bypass: false },
+      ],
+    }),
+  );
   assert.ok(sameRequest(start, { ...start, dsps: ['dsp_a', 'dsp_b'] }));
   assert.ok(!sameRequest(start, { ...start, access: 'operator' }));
+  // The DSPs' own settings in any order, and their kinds of data in any order, are the same.
+  assert.ok(
+    sameRequest(start, {
+      ...start,
+      dspReads: [
+        { dsp: 'dsp_a', areas: [], bypass: false },
+        { dsp: 'dsp_b', areas: ['routes', 'dvic', 'dvic'], bypass: true },
+      ],
+    }),
+  );
+  assert.ok(!sameRequest(start, { ...start, reads: { ...start.reads, bypass: true } }));
+  assert.ok(!sameRequest(start, { ...start, dspReads: start.dspReads.slice(1) }));
   assert.equal(blankKey().access, 'read');
   assert.equal(blankKey().allDsps, true);
+  // A new key or app reads everything but addresses and GPS, through no switched-off feature,
+  // and no DSP has settings of its own.
+  assert.deepEqual(blankKey().reads, {
+    areas: [
+      'routes',
+      'timecards',
+      'meal_breaks',
+      'dvic',
+      'feedback',
+      'safety',
+      'returns',
+      'scorecard',
+    ],
+    bypass: false,
+  });
+  assert.deepEqual(blankKey().dspReads, []);
+});
+
+test('a key keeps the own settings of the DSPs it still reaches, and only theirs', () => {
+  const dspReads: AgentKey['dspReads'] = [
+    { dsp: 'dsp_a', areas: [], bypass: false },
+    { dsp: 'dsp_b', areas: [], bypass: true },
+    // A suspended or removed DSP, which the page doesn't list.
+    { dsp: 'dsp_away', areas: ['dvic'], bypass: true },
+  ];
+  assert.deepEqual(
+    reachedReads({ allDsps: true, dsps: [], dspReads }).map((own) => own.dsp),
+    ['dsp_a', 'dsp_b', 'dsp_away'],
+  );
+  assert.deepEqual(
+    reachedReads({ allDsps: false, dsps: ['dsp_b', 'dsp_away'], dspReads }).map((own) => own.dsp),
+    ['dsp_b', 'dsp_away'],
+  );
+  assert.deepEqual(
+    reachedReads({ allDsps: false, dsps: ['dsp_b'], dspReads }).map((own) => own.dsp),
+    ['dsp_b'],
+  );
+  assert.deepEqual(reachedReads({ allDsps: false, dsps: [], dspReads }), []);
+
+  // A key reaching a DSP the page doesn't list opens unchanged, as the sheet compares it, and
+  // sends that DSP's own settings back as they were.
+  for (const reach of [
+    { allDsps: true, dsps: [] },
+    { allDsps: false, dsps: ['dsp_away', 'dsp_b'] },
+  ]) {
+    const start = requestOf(key({ ...reach, dspReads: dspReads.slice(1) }));
+    const sent = { ...start, dspReads: reachedReads(start) };
+    assert.ok(sameRequest(sent, start));
+    assert.deepEqual(
+      sent.dspReads.find((own) => own.dsp === 'dsp_away'),
+      { dsp: 'dsp_away', areas: ['dvic'], bypass: true },
+    );
+  }
+});
+
+test('the kinds of data come in one order, grouped under the feature that collects them', () => {
+  assert.deepEqual(agentAreas, [
+    'routes',
+    'locations',
+    'timecards',
+    'meal_breaks',
+    'dvic',
+    'feedback',
+    'safety',
+    'returns',
+    'scorecard',
+  ]);
+  // Every kind once, in its group, in the same order.
+  assert.deepEqual(
+    areaGroups.flatMap((group) => group.areas),
+    agentAreas,
+  );
+  assert.deepEqual(
+    areaGroups.map((group) => group.label),
+    ['Routes', 'Timecard', 'DVIC', 'Scorecard'],
+  );
+  assert.deepEqual(
+    agentAreas.map((area) => areaLabels[area]),
+    [
+      'Routes & packages',
+      'Delivery addresses & GPS',
+      'Timecards',
+      'Meal breaks',
+      'DVIC inspections',
+      'Customer feedback',
+      'Safety events',
+      'Returns & contact compliance',
+      'Weekly scorecard',
+    ],
+  );
+  assert.deepEqual(
+    agentAreas.map((area) => areaSources[area]),
+    [
+      'routes',
+      'routes',
+      'timecards',
+      'meal_breaks',
+      'dvic',
+      'scorecard',
+      'scorecard',
+      'scorecard',
+      'scorecard',
+    ],
+  );
+  // Switching keeps the order; addresses and GPS go with routes and need them back on.
+  assert.deepEqual(withArea(['dvic', 'routes'], 'timecards', true), [
+    'routes',
+    'timecards',
+    'dvic',
+  ]);
+  assert.deepEqual(withArea(['routes', 'locations', 'dvic'], 'routes', false), ['dvic']);
+  assert.deepEqual(withArea(['dvic'], 'locations', true), ['dvic']);
+  assert.deepEqual(withArea(['routes'], 'locations', true), ['routes', 'locations']);
+  assert.deepEqual(canonicalAreas(['scorecard', 'scorecard', 'routes']), ['routes', 'scorecard']);
+});
+
+test('a row says how much a key or app reads, and what to know about it', () => {
+  const dsps = [
+    { id: 'dsp_a', name: 'Summit Delivery' },
+    { id: 'dsp_b', name: 'Northline Logistics' },
+  ];
+  const reads = (areas: readonly (typeof agentAreas)[number][], bypass = false) =>
+    key({ reads: { areas: [...areas], bypass } });
+  const without = (...missing: string[]) => agentAreas.filter((area) => !missing.includes(area));
+  assert.deepEqual(accessText(reads(agentAreas), dsps), {
+    count: 'All data',
+    note: '',
+    bypass: false,
+  });
+  // One or two things it doesn't read are named; a whole group by what it holds.
+  assert.deepEqual(accessText(reads(without('locations')), dsps), {
+    count: '8 of 9 kinds',
+    note: 'No delivery addresses',
+    bypass: false,
+  });
+  assert.deepEqual(accessText(reads(without('feedback', 'safety', 'returns', 'scorecard')), dsps), {
+    count: '5 of 9 kinds',
+    note: 'No scorecard data',
+    bypass: false,
+  });
+  assert.equal(
+    accessText(reads(without('routes', 'locations', 'meal_breaks')), dsps).note,
+    'No route data or meal breaks',
+  );
+  assert.equal(accessText(reads(without('dvic', 'safety', 'returns')), dsps).note, '');
+  assert.deepEqual(accessText(reads([]), dsps), { count: '0 of 9 kinds', note: '', bypass: false });
+  // Bypassing features says so, in place of what it misses.
+  assert.deepEqual(accessText(reads(without('locations'), true), dsps), {
+    count: '8 of 9 kinds',
+    note: 'Bypass on',
+    bypass: true,
+  });
+  // DSPs with settings of their own come first: one by name, more by count.
+  const own = (dsp: string, bypass: boolean) => ({ dsp, areas: ['routes' as const], bypass });
+  assert.deepEqual(accessText(key({ dspReads: [own('dsp_a', true)] }), dsps), {
+    count: 'All data',
+    note: 'Summit Delivery: own settings, bypass on',
+    bypass: true,
+  });
+  assert.deepEqual(accessText(key({ dspReads: [own('dsp_b', false)] }), dsps), {
+    count: 'All data',
+    note: 'Northline Logistics: own settings',
+    bypass: false,
+  });
+  assert.deepEqual(
+    accessText(
+      key({ reads: { areas: [...agentAreas], bypass: true }, dspReads: [own('dsp_a', false)] }),
+      dsps,
+    ),
+    { count: 'All data', note: 'Summit Delivery: own settings', bypass: true },
+  );
+  assert.deepEqual(accessText(key({ dspReads: [own('dsp_a', false), own('dsp_b', true)] }), dsps), {
+    count: 'All data',
+    note: '2 DSPs with own settings',
+    bypass: true,
+  });
+});
+
+test('a DSP’s settings name the features it has switched off, and what bypassing them reads', () => {
+  const dsp = (
+    ...switchedOff: ('routes' | 'timecards' | 'meal_breaks' | 'dvic' | 'scorecard')[]
+  ) => ({
+    name: 'Summit Delivery',
+    switchedOff,
+  });
+  assert.equal(switchedOffText(dsp()), 'Every feature is on at Summit Delivery.');
+  assert.equal(switchedOffText(dsp('dvic')), 'DVIC is switched off at Summit Delivery.');
+  // A page switched off takes its tab with it, and is named once.
+  assert.equal(
+    switchedOffText(dsp('routes', 'timecards', 'meal_breaks', 'scorecard')),
+    'Routes, Timecard and Scorecard are switched off at Summit Delivery.',
+  );
+  assert.equal(
+    switchedOffText(dsp('meal_breaks', 'dvic')),
+    'Meal Breaks and DVIC are switched off at Summit Delivery.',
+  );
+  assert.equal(
+    bypassHere('ChatGPT', dsp('routes', 'timecards', 'meal_breaks', 'scorecard')),
+    'ChatGPT reads every feature’s data here, including the three switched off. Their ' +
+      'collection stays off, so that data ends on the day each was switched off. It only ever reads.',
+  );
+  assert.equal(
+    bypassHere('ChatGPT', dsp('dvic')),
+    'ChatGPT reads every feature’s data here, including the one switched off. Its collection ' +
+      'stays off, so that data ends on the day it was switched off. It only ever reads.',
+  );
+  assert.equal(
+    bypassHere('ChatGPT', dsp()),
+    'ChatGPT reads every feature’s data here, even if one is switched off later. It only ever reads.',
+  );
+});
+
+test('the audit log names what a key or app reads, and still reads older key changes', () => {
+  const change = (field: string, from: string | null, to: string | null) =>
+    changeText({ field, from, to });
+  assert.equal(change('reads.locations', 'false', 'true'), 'Delivery addresses & GPS Off → On');
+  assert.equal(change('reads.meal_breaks', 'true', 'false'), 'Meal breaks On → Off');
+  assert.equal(change('bypass', 'false', 'true'), 'Bypass features Off → On');
+  // A DSP's own settings read as the server wrote them.
+  assert.equal(
+    change('dsp_reads', 'none', 'Summit Delivery: 7 of 9, bypass on; Harbor Route Co: 9 of 9'),
+    'DSP settings none → Summit Delivery: 7 of 9, bypass on; Harbor Route Co: 9 of 9',
+  );
+  assert.equal(change('tools', 'full', 'essential'), 'Tools Full → Essential');
+  assert.equal(change('locations', 'false', 'true'), 'Addresses and GPS Off → On');
 });
 
 test('a call names the endpoint or tool it reached, and how', () => {

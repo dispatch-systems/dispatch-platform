@@ -824,12 +824,15 @@ mod tests {
     fn agent_keys_from_before_connected_apps_stay_keys() {
         let root = private();
         let new = Db::create(&root.path().join("new.sqlite"), Kind::Platform, "").unwrap();
-        // The release before Sign in with Dispatch: no OAuth tables, and keys of one kind.
+        // The release before Sign in with Dispatch: no OAuth tables, and keys of one kind
+        // that read no differently.
         let before: String = recorded(Kind::Platform)
             .replace(RECORD, "")
             .replace(
                 ", kind TEXT NOT NULL DEFAULT 'key' CHECK(kind IN ('key','app')), client_id TEXT, \
-                 client_name TEXT, client_verified INTEGER NOT NULL DEFAULT 0)",
+                 client_name TEXT, client_verified INTEGER NOT NULL DEFAULT 0, areas TEXT NOT \
+                 NULL DEFAULT 'routes,timecards,meal_breaks,dvic,feedback,safety,returns,\
+                 scorecard', bypass INTEGER NOT NULL DEFAULT 0 CHECK(bypass IN (0,1)))",
                 ")",
             )
             .lines()
@@ -857,6 +860,69 @@ mod tests {
             )
             .unwrap(),
             vec![json!({"kind":"key","client_id":null,"client_name":null,"client_verified":0})]
+        );
+    }
+
+    #[test]
+    fn agent_keys_from_before_reads_read_every_kind_with_their_addresses() {
+        let root = private();
+        let new = Db::create(&root.path().join("new.sqlite"), Kind::Platform, "").unwrap();
+        // The release before reads: tools and addresses on each key, no DSP's own settings,
+        // and calls never marked as bypassing features.
+        let before: String = recorded(Kind::Platform)
+            .replace(RECORD, "")
+            .replace(
+                ", areas TEXT NOT NULL DEFAULT 'routes,timecards,meal_breaks,dvic,feedback,\
+                 safety,returns,scorecard', bypass INTEGER NOT NULL DEFAULT 0 CHECK(bypass IN \
+                 (0,1)))",
+                ")",
+            )
+            .replace(" , bypassed INTEGER NOT NULL DEFAULT 0)", " )")
+            .lines()
+            .filter(|line| !line.contains("agent_key_dsp_reads"))
+            .map(|line| format!("{line}\n"))
+            .collect();
+        assert!(!before.contains("bypass") && !before.contains("areas"));
+        let file = root.path().join("platform.sqlite");
+        older(&file, Kind::Platform, &before);
+        rusqlite::Connection::open(&file)
+            .unwrap()
+            .execute_batch(
+                "INSERT INTO users(id,email,first_name,last_name,password,platform_owner,\
+                 created_at) VALUES ('u','owner@example.test','O','Wner','x',1,'then'); \
+                 INSERT INTO agent_keys(id,name,hash,hint,user_id,all_dsps,access,tools,\
+                 locations,created_at,kind) VALUES \
+                 ('essential','Essential','h1','abcd','u',1,'read','essential',0,'then','key'),\
+                 ('essential_places','Essential places','h2','abcd','u',1,'read','essential',1,\
+                 'then','key'),\
+                 ('full','Full','h3','abcd','u',1,'operator','full',0,'then','key'),\
+                 ('full_places','App','app:x','','u',0,'read','full',1,'then','app'); \
+                 INSERT INTO agent_activity(at,key_id,key_name,key_kind,surface,outcome,ms,bytes) \
+                 VALUES (1,'full','Full','key','rest:whoami','ok',1,1);",
+            )
+            .unwrap();
+        let db = Db::create(&file, Kind::Platform, "").unwrap();
+        assert_eq!(dump(&db), dump(&new));
+        let every = "routes,locations,timecards,meal_breaks,dvic,feedback,safety,returns,scorecard";
+        let unplaced = "routes,timecards,meal_breaks,dvic,feedback,safety,returns,scorecard";
+        assert_eq!(
+            db.all("SELECT id,areas,bypass FROM agent_keys ORDER BY id", [])
+                .unwrap(),
+            vec![
+                json!({"id":"essential","areas":unplaced,"bypass":0}),
+                json!({"id":"essential_places","areas":every,"bypass":0}),
+                json!({"id":"full","areas":unplaced,"bypass":0}),
+                json!({"id":"full_places","areas":every,"bypass":0}),
+            ]
+        );
+        assert_eq!(
+            db.all("SELECT bypassed FROM agent_activity", []).unwrap(),
+            vec![json!({"bypassed":0})]
+        );
+        assert_eq!(
+            db.all("SELECT count(*) n FROM agent_key_dsp_reads", [])
+                .unwrap(),
+            vec![json!({"n":0})]
         );
     }
 

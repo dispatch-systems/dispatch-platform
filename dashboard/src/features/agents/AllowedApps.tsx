@@ -11,8 +11,7 @@ const hints: Partial<Record<OAuthAppId, string>> = {
   web: 'Apps that sign in from a website',
 };
 
-/** The apps Dispatch lets sign in, each with its switch, in a sheet. Changing one asks for
- * recent verification, which the page's own prompt handles. */
+/** The apps Dispatch lets sign in, each with its switch, in a sheet. */
 export function AllowedApps({ close }: { close: () => void }) {
   const apps = useOAuthApps();
   // A change answers with the whole list, which stands until the list is next read.

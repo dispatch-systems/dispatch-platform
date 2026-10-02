@@ -61,7 +61,7 @@ pub struct Session;
 #[derive(Clone, Copy)]
 pub struct PlatformOwner;
 /// A platform owner doing a routine, reversible change that asks for no fresh
-/// verification: switching a DSP's features.
+/// verification: switching a DSP's features, or what agents may read.
 #[derive(Clone, Copy)]
 pub struct PlatformRoutine;
 #[derive(Clone, Copy)]
