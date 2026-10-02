@@ -5,9 +5,15 @@ import { dataCache } from '../../app/data-cache.js';
 import { readInspectionWeek } from '../../lib/dvic.js';
 import { performancePolicy } from '../../lib/performance-policy.js';
 
+function inspectionWeekUrl(from: string, to: string) {
+  return '/api/dsp/dvic/inspections?' + new URLSearchParams({ from, to, limit: '500' });
+}
+
+export const inspectionWeekCacheKey = (from: string, to: string) =>
+  inspectionWeekUrl(from, to) + '#complete-week';
+
 export function useInspections(from: string, to: string, publication: string, enabled: boolean) {
-  const query = new URLSearchParams({ from, to, limit: '500' }).toString();
-  const url = enabled ? '/api/dsp/dvic/inspections?' + query : '';
+  const url = enabled ? inspectionWeekUrl(from, to) : '';
   // An assembled array must never share an entry with a single API cursor-page response.
   const cacheKey = url ? url + '#complete-week' : '';
   // All assembled weeks follow the status publication, including weeks retained after navigation.

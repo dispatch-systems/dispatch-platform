@@ -1,12 +1,11 @@
 import { useEffect } from 'react';
 import { cancelPrefetches, prefetchData } from '../../app/prefetch.js';
-import { dataCache } from '../../app/data-cache.js';
 import { addDays } from '../../lib/calendar.js';
 
 /** Warm only the previous and next day, using the current filters and sort. */
 export function useAdjacentDays(url: string, date: string, today: string, loaded?: object) {
   const ready = Boolean(loaded);
-  const generation = dataCache.generation;
+  // Live invalidation refreshes the selected day; neighbors revalidate on selection.
   useEffect(() => {
     if (!ready) return;
     const owner = `days:${url}`;
@@ -18,5 +17,5 @@ export function useAdjacentDays(url: string, date: string, today: string, loaded
       { owner },
     );
     return () => cancelPrefetches(owner);
-  }, [url, date, today, ready, generation]);
+  }, [url, date, today, ready]);
 }

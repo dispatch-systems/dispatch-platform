@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, RefreshCw, Settings2 } from 'lucide-react';
 import type { DspView, Job } from '../../../../shared/contracts/index.js';
 import type { DvicStatus } from '../../../../shared/contracts/dvic.js';
-import { api, ApiError, useCachedData } from '../../app/api.js';
-import { useUpdateState } from '../../app/browser-update.js';
+import { api, ApiError, useCachedData, view as admittedToken } from '../../app/api.js';
+import { readUpdateState, useUpdateState } from '../../app/browser-update.js';
+import { dataCache } from '../../app/data-cache.js';
 import { hasFeature } from '../../app/features.js';
 import { can } from '../../app/permissions.js';
+import { dspHash } from '../../app/navigation.js';
 import { useAction } from '../../app/useAction.js';
 import {
   filterInspections,
@@ -24,7 +26,7 @@ import { CollectionSettings } from './CollectionSettings.js';
 import { DayDigest } from './DayDigest.js';
 import { InspectionDetail } from './InspectionDetail.js';
 import { WeekGrid } from './WeekGrid.js';
-import { useInspections } from './useInspections.js';
+import { inspectionWeekCacheKey, useInspections } from './useInspections.js';
 
 const activeJob = (job: Job) => ['queued', 'running', 'waiting_verification'].includes(job.status);
 // Each view is a tab the platform switches on its own; the page has at least one while on.
@@ -33,7 +35,44 @@ const views = [
   ['week', 'Week', 'dvic.week'],
 ] as const;
 
+function selectedWeek(status: DvicStatus | undefined, today: string, chosenWeek?: string) {
+  const latestDate = status?.reports
+    .map((report) => report.maxDate)
+    .filter((date): date is string => !!date && date <= today)
+    .sort()
+    .at(-1);
+  const start =
+    chosenWeek && chosenWeek >= '2000-01-02' && chosenWeek <= today
+      ? chosenWeek
+      : weekStart(latestDate ?? today);
+  return { start, latestDate };
+}
+
+let committed = false;
+/** A committed module and a complete selected week can render before the next paint. */
+export function isDvicPageReady(view: DspView) {
+  if (
+    !committed ||
+    admittedToken !== view.token ||
+    !can(view, 'dvic.view') ||
+    !views.some(([, , feature]) => hasFeature(view, feature))
+  )
+    return false;
+  const status = dataCache.peek('/api/dsp/dvic/status').data as DvicStatus | undefined;
+  if (status === undefined) return false;
+  const chosenWeek = readUpdateState<string | undefined>(
+    'dvic-week',
+    undefined,
+    dspHash(view.dsp.id, 'dvic'),
+  );
+  const { start } = selectedWeek(status, localDate(view.dsp.timezone), chosenWeek);
+  return dataCache.peek(inspectionWeekCacheKey(start, shiftDate(start, 6))).data !== undefined;
+}
+
 export function DvicPage({ view }: { view: DspView }) {
+  useLayoutEffect(() => {
+    committed = true;
+  }, []);
   const [collecting, setCollecting] = useState(false);
   const status = useCachedData<DvicStatus>(
     '/api/dsp/dvic/status',
@@ -54,15 +93,7 @@ export function DvicPage({ view }: { view: DspView }) {
   const [pending, setPending] = useState<Job>();
   const request = useRef<string | null>(null);
   const today = localDate(view.dsp.timezone);
-  const latestDate = status.data?.reports
-    .map((r) => r.maxDate)
-    .filter((date): date is string => !!date && date <= today)
-    .sort()
-    .at(-1);
-  const start =
-    chosenWeek && chosenWeek >= '2000-01-02' && chosenWeek <= today
-      ? chosenWeek
-      : weekStart(latestDate ?? today);
+  const { start, latestDate } = selectedWeek(status.data, today, chosenWeek);
   const days = useMemo(() => weekDays(start), [start]);
   const end = days[6]!;
   // The latest reported day in this week, else the last day that has happened.

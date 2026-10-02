@@ -58,7 +58,12 @@ const loadTimecard = (access?: Access) =>
     return module;
   });
 const loadTimecardSettings = () => import('../features/timecard/settings/index.js');
-const loadDvic = () => import('../features/dvic/index.js');
+let dvicReady: ((view: DspView) => boolean) | undefined;
+const loadDvic = () =>
+  import('../features/dvic/index.js').then((module) => {
+    dvicReady = module.isDvicPageReady;
+    return module;
+  });
 const DvicPage = lazy(() => loadDvic().then((module) => ({ default: module.DvicPage })));
 const PaycomPage = lazy(() => loadTimecard().then((module) => ({ default: module.PaycomPage })));
 const PaycomSettingsPage = lazy(() =>
@@ -188,10 +193,9 @@ export const findRoute = (scope: Route['scope'], page: string) =>
 export function canNavigateImmediately(scope: Route['scope'], page: string, access: Access) {
   return Boolean(
     scope === 'dsp' &&
-    page === 'paycom' &&
     access.view &&
-    timecardReady?.(access.view) &&
-    isTimecardDataReady(access.view),
+    ((page === 'paycom' && timecardReady?.(access.view) && isTimecardDataReady(access.view)) ||
+      (page === 'dvic' && dvicReady?.(access.view))),
   );
 }
 /** Code and authorized primary data start together, before the destination mounts. */

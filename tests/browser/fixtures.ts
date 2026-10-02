@@ -69,7 +69,7 @@ export async function openDsp(page: Page, name: string) {
 }
 
 const shown = (day: string) => `${day.slice(5, 7)}/${day.slice(8)}/${day.slice(0, 4)}`;
-/** Type a `YYYY-MM-DD` day into the Timecard date and commit it. */
+/** Type a date draft into the Timecard date and finish editing it. */
 export async function setDate(page: Page, day: string) {
   // By role: the open calendar's own label also contains the field's.
   const field = page.getByRole('textbox', { name: 'Paycom date' });
@@ -78,7 +78,8 @@ export async function setDate(page: Page, day: string) {
   await field.fill(day);
   await expect(field).toHaveValue(day);
   await field.press('Enter');
-  await expectDate(page, day);
+  // The calendar finishes editing accepted and rejected drafts; callers check the resulting day.
+  await expect(field).not.toHaveAttribute('data-typing');
 }
 /** The Timecard date, within `scope` when a page shows more than one, reads as this day. */
 export async function expectDate(scope: Page | Locator, day: string) {
