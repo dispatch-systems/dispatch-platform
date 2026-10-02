@@ -4,7 +4,7 @@ import http from 'node:http';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fixture, until } from '../support/support.js';
+import { fixture, prepare, until } from '../support/support.js';
 import { capturedMail } from '../support/mail-support.js';
 import worker from '../../services/cloudflare-mail/worker.js';
 import type { Env } from '../../services/cloudflare-mail/worker-configuration.js';
@@ -176,8 +176,8 @@ test('Cloudflare outbox sends HTML, retries failure and clears encrypted mail af
 });
 
 test('unsafe mail configuration is rejected without disclosing it', async (t) => {
-  const f = await fixture(false);
-  t.after(f.close);
+  const f = await prepare(false);
+  t.after(f.cleanup);
   const privateValue = 'smtp://private-password@relay.example';
   const result = spawnSync(f.binary, ['status'], {
     env: {

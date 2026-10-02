@@ -90,7 +90,7 @@ impl Default for MealMethod {
 }
 impl MealMethod {
     /// How meals were read before the hook: a rendered page per route, two windows.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "operator-probes"))]
     pub(crate) fn rendered() -> Self {
         Self {
             tabs: 2,

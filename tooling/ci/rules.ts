@@ -2,11 +2,12 @@ import { spawn } from 'node:child_process';
 import { nodeTests, pythonTests, sourceLintCommands, type Command } from './execution-plan.js';
 
 // Everything a push can fail on without a build: types, formatting, the source-wide rule
-// tests and the Python tooling tests, which take seconds and otherwise fail only in the queue.
+// tests and source-only Python tooling tests. Real compiler and installed-manager checks
+// run in the API job; this command never builds Rust.
 // About half a minute; run it before every push.
 const checks: Command[] = [
   { name: 'privacy', command: 'python3', args: ['tooling/security/scan.py'] },
-  pythonTests,
+  pythonTests('rules'),
   { name: 'types', command: 'npx', args: ['tsc', '--noEmit'] },
   { name: 'format', command: 'npx', args: ['prettier', '--check', '.'] },
   { name: 'Rust format', command: 'cargo', args: ['fmt', '--check'] },
@@ -19,9 +20,9 @@ if (process.argv.includes('--list')) {
 }
 const results = await Promise.all(
   checks.map(
-    ({ name, command, args }) =>
+    ({ name, command, args, env }) =>
       new Promise<string | undefined>((resolve) => {
-        const child = spawn(command, args, { stdio: 'inherit' });
+        const child = spawn(command, args, { stdio: 'inherit', env: { ...process.env, ...env } });
         child.once('error', () => resolve(name));
         child.once('exit', (code) => resolve(code === 0 ? undefined : name));
       }),

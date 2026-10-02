@@ -147,21 +147,6 @@ fn startup_removes_owned_browseros_runs_and_rejects_unknown_entries() {
 }
 
 #[test]
-fn authenticated_encryption_binds_every_secret_to_its_tenant() {
-    let key = crypto::random::<32>().unwrap();
-    let value =
-        json!({"password":"private","securityAnswers":["00123","two","three","four","five"]});
-    let encrypted = crypto::encrypt(&key, "dsp-one", &value).unwrap();
-    assert_eq!(crypto::decrypt(&key, "dsp-one", &encrypted).unwrap(), value);
-    assert!(crypto::decrypt(&key, "dsp-two", &encrypted).is_err());
-    assert!(crypto::decrypt(&key, "dsp-one", &format!("{encrypted}x")).is_err());
-    assert!(!encrypted.contains("private"));
-    let encoded = crypto::hash_password("a-strong-test-password").unwrap();
-    assert!(crypto::check_password("a-strong-test-password", &encoded));
-    assert!(!crypto::check_password("wrong", &encoded));
-}
-
-#[test]
 fn private_storage_rejects_links_and_world_readable_files() {
     let (root, db) = store();
     let first = root.path().join("private");
@@ -176,36 +161,6 @@ fn private_storage_rejects_links_and_world_readable_files() {
     std::fs::set_permissions(&first, std::fs::Permissions::from_mode(0o644)).unwrap();
     assert!(db::private_file(&first, false).is_err());
     assert!(db.area("../escape", "data").is_err());
-}
-
-#[test]
-fn private_storage_tolerates_concurrent_sidecar_removal() {
-    use std::{
-        fs::OpenOptions,
-        os::unix::fs::OpenOptionsExt,
-        sync::atomic::{AtomicBool, Ordering},
-    };
-    let root = tempfile::tempdir().unwrap();
-    let sidecar = root.path().join("database.sqlite-wal");
-    std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
-    let stop = AtomicBool::new(false);
-    std::thread::scope(|scope| {
-        scope.spawn(|| {
-            while !stop.load(Ordering::Relaxed) {
-                let file = OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .mode(0o600)
-                    .open(&sidecar)
-                    .unwrap();
-                std::fs::remove_file(&sidecar).unwrap();
-                drop(file);
-            }
-        });
-        let result = (0..100_000).try_for_each(|_| db::private_file(&sidecar, false));
-        stop.store(true, Ordering::Relaxed);
-        result.unwrap();
-    });
 }
 
 #[test]

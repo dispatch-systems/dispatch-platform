@@ -154,9 +154,6 @@ for (const width of [1440, 390]) {
         await expectPinned(table);
         await expectSteadyWhileScrolling(page, table);
         await expect(table.getByRole('columnheader')).toHaveCount(columns);
-        await page.screenshot({
-          path: test.info().outputPath(`${tab}-${width}-${banner ? 'banner' : 'member'}.png`),
-        });
 
         if (width < 700) {
           if (tab === 'Timecard') {

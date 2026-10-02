@@ -139,7 +139,7 @@ test('DVIC active polling accepts a status read that takes longer than its five-
   page,
   dispatch,
 }) => {
-  test.setTimeout(45000);
+  await page.clock.install();
   const { dsp } = await seedDvic(dispatch);
   const hold = gate();
   let requests = 0;
@@ -162,8 +162,10 @@ test('DVIC active polling accepts a status read that takes longer than its five-
   try {
     await enter(page, dsp.name);
     await expect(page.getByRole('button', { name: 'Syncing…', exact: true })).toBeDisabled();
-    await expect.poll(() => waiting, { timeout: 10000 }).toBe(true);
-    await page.waitForTimeout(6000);
+    await page.clock.fastForward(5000);
+    await expect.poll(() => waiting).toBe(true);
+    // Cross another complete polling interval while the second read is held.
+    await page.clock.fastForward(6000);
     expect(aborted).toBe(false);
     expect(requests).toBe(2);
     hold.release();

@@ -1,5 +1,5 @@
 mod common;
-use common::{bootstrapped, seeded};
+use common::bootstrapped;
 use dispatch_backend::{collectors::Provider, db::s, workforce};
 use serde_json::{Value, json};
 
@@ -317,18 +317,14 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
 
 #[test]
 fn settings_reject_unknown_fields_and_preserve_empty_driver_selection() {
-    let (_root, db) = seeded();
-    let dsp = db
-        .platform
-        .one("SELECT id FROM dsps WHERE permanent=1", [])
-        .unwrap()
-        .unwrap();
-    let id = s(&dsp, "id");
+    let (_root, db, id) = common::bootstrapped();
+    let id = id.as_str();
     let actor = db
         .platform
         .one("SELECT id FROM users WHERE platform_owner=1", [])
         .unwrap()
         .unwrap();
+    db.publish(id, &workforce::fixture("UTC").unwrap()).unwrap();
     let mut values = db.preferences(id).unwrap()["values"].clone();
     values["driver_departments"] = json!([]);
     db.save_preferences(id, s(&actor, "id"), 0, &values)
@@ -358,13 +354,8 @@ fn settings_reject_unknown_fields_and_preserve_empty_driver_selection() {
 
 #[test]
 fn retired_sync_preferences_are_not_returned_and_open_dashboards_may_still_send_them() {
-    let (_root, db) = seeded();
-    let dsp = db
-        .platform
-        .one("SELECT id FROM dsps WHERE permanent=1", [])
-        .unwrap()
-        .unwrap();
-    let id = s(&dsp, "id");
+    let (_root, db, id) = common::bootstrapped();
+    let id = id.as_str();
     let actor = db
         .platform
         .one("SELECT id FROM users WHERE platform_owner=1", [])
@@ -396,13 +387,8 @@ fn retired_sync_preferences_are_not_returned_and_open_dashboards_may_still_send_
 
 #[test]
 fn late_da_settings_default_for_older_preferences_and_validate() {
-    let (_root, db) = seeded();
-    let dsp = db
-        .platform
-        .one("SELECT id FROM dsps WHERE permanent=1", [])
-        .unwrap()
-        .unwrap();
-    let id = s(&dsp, "id");
+    let (_root, db, id) = common::bootstrapped();
+    let id = id.as_str();
     let actor = db
         .platform
         .one("SELECT id FROM users WHERE platform_owner=1", [])

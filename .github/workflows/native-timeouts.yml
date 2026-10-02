@@ -1,0 +1,37 @@
+name: Native timeout regression
+on:
+  schedule:
+    - cron: '17 7 * * 0'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Exact commit or branch to check; defaults to the selected workflow ref.
+        type: string
+        default: ''
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: native-timeout-${{ inputs.ref || github.sha }}
+  cancel-in-progress: true
+env:
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+jobs:
+  native-timeout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-tools
+      - uses: ./.github/actions/setup-build
+        with:
+          profile: debug
+          save: 'false'
+      - uses: ./.github/actions/setup-browseros
+      - name: Require the real timeout sentinel
+        run: npm run test:browseros -- --real-timeouts

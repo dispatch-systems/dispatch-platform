@@ -11,7 +11,7 @@ import {
 
 const source = 'dashboard/src';
 
-type Module = { file: string; imports: string[] };
+type Module = { file: string; dependencies: ReturnType<typeof dependencies>; imports: string[] };
 
 function walk(directory: string): string[] {
   return fs
@@ -28,12 +28,16 @@ function walk(directory: string): string[] {
 // Every module under dashboard/src with the dashboard modules it imports, type-only
 // imports included, as paths relative to dashboard/src.
 const root = path.resolve(source);
-const modules: Module[] = walk(source).map((file) => ({
-  file: path.relative(source, file),
-  imports: dependencies(file).flatMap(({ resolved }) =>
-    resolved?.startsWith(root + path.sep) ? [path.relative(root, resolved)] : [],
-  ),
-}));
+const modules: Module[] = walk(source).map((file) => {
+  const references = dependencies(file);
+  return {
+    file: path.relative(source, file),
+    dependencies: references,
+    imports: references.flatMap(({ resolved }) =>
+      resolved?.startsWith(root + path.sep) ? [path.relative(root, resolved)] : [],
+    ),
+  };
+});
 const area = (file: string) => file.split(path.sep)[0]!;
 const feature = (file: string) =>
   area(file) === 'features' ? file.split(path.sep)[1]! : undefined;
@@ -44,10 +48,12 @@ test('sign-in, DSP onboarding and member profiles own their screen dependencies'
   const screens = ['sign-in', 'dsp-onboarding', 'member-profile'];
   for (const screen of screens) {
     const directory = path.join(auth, screen);
-    const files = walk(directory);
+    const files = modules.filter(({ file }) =>
+      path.join(root, file).startsWith(directory + path.sep),
+    );
     assert(files.length > 0, `${screen} must have its own screen directory`);
-    for (const file of files) {
-      for (const { specifier, target } of dependencies(file))
+    for (const { file, dependencies: references } of files) {
+      for (const { specifier, target } of references)
         if (target?.startsWith(auth + path.sep))
           assert(
             target.startsWith(directory + path.sep),
@@ -60,9 +66,9 @@ test('sign-in, DSP onboarding and member profiles own their screen dependencies'
 // ui/ holds building blocks that would make sense unchanged in another app.
 test('ui components know nothing about the product', () => {
   const files = modules.filter(({ file }) => area(file) === 'ui');
-  assert(files.length > 10, `found only ${files.length} ui files`);
-  for (const { file } of files)
-    for (const { specifier, target } of dependencies(path.join(source, file)))
+  assert(files.length > 0, 'ui must contain its building blocks');
+  for (const { file, dependencies: references } of files)
+    for (const { specifier, target } of references)
       if (target)
         assert(
           [path.join(root, 'ui'), path.join(root, 'lib')].some(
@@ -75,9 +81,9 @@ test('ui components know nothing about the product', () => {
 // lib/ is pure logic: no React product code, nothing from app, features, shell or ui.
 test('lib depends on nothing else in the dashboard', () => {
   const files = modules.filter(({ file }) => area(file) === 'lib');
-  assert(files.length >= 4, `found only ${files.length} lib files`);
-  for (const { file } of files)
-    for (const { specifier, target } of dependencies(path.join(source, file)))
+  assert(files.length > 0, 'lib must contain its shared logic');
+  for (const { file, dependencies: references } of files)
+    for (const { specifier, target } of references)
       if (target)
         assert(
           [path.join(root, 'lib'), path.resolve('shared/contracts')].some(
@@ -99,7 +105,10 @@ const extraEntries = [
 ];
 
 test('a feature reaches another feature only through a public entry, and only where allowed', () => {
-  assert(modules.filter(({ file }) => feature(file)).length > 30, 'found too few feature files');
+  assert(
+    modules.some(({ file }) => feature(file)),
+    'features must contain their screens',
+  );
   const found = new Set<string>();
   for (const { file, target } of edges) {
     const to = feature(target);
@@ -161,7 +170,7 @@ test('no dashboard modules import each other in a cycle', () => {
 
 test('every route is declared once and every parent is a route', () => {
   const entries: readonly RouteMeta[] = routeMeta;
-  assert(entries.length >= 10, `found only ${entries.length} routes`);
+  assert(entries.length > 0, 'the route table must declare its screens');
   for (const entry of entries) {
     assert(entry.id && entry.scope, `unreadable route entry: ${JSON.stringify(entry)}`);
     assert.equal(

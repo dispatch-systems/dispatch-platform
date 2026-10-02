@@ -211,64 +211,65 @@ async function fillMemberProfile(page: Page) {
   await page.getByLabel('Confirm password', { exact: true }).fill(demo.password);
 }
 
-for (const colorScheme of ['light', 'dark'] as const) {
-  test(`desktop member completion shows a personalized badge then requires sign-in (${colorScheme})`, async ({
-    page,
-    dispatch,
-    context,
-  }) => {
-    const url = await apiInvitation(dispatch);
-    await context.clearCookies();
-    await page.emulateMedia({ colorScheme, reducedMotion: 'no-preference' });
-    await page.addInitScript((theme) => {
-      localStorage.setItem('dispatch-appearance:signed-out', theme);
-    }, colorScheme);
-    const logins: string[] = [];
-    const errors: string[] = [];
-    page.on('request', (request) => {
-      if (request.url().endsWith('/api/auth/login')) logins.push(request.url());
-    });
-    page.on('pageerror', (error) => errors.push(error.message));
-    await page.goto(url);
-    await fillMemberProfile(page);
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-    await page.getByRole('button', { name: 'Create profile', exact: true }).click();
-    const completion = page.getByRole('status', { name: 'Profile created' });
-    await expect(completion).toBeVisible();
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-    await expect(completion).toContainText('JamieMorgan');
-    await expect(completion).toContainText('Northline Logistics');
-    await expect(completion.locator('.member-completion-role')).toHaveText('Member');
-    await expect(completion.locator('.member-completion-facts')).toContainText('Station');
-    await expect(completion.locator('.member-completion-facts')).toContainText('Central Time');
-    await expect(completion.locator('.member-completion-facts')).toContainText('America/Chicago');
-    await expect(completion.getByText('Status', { exact: true })).toHaveCount(0);
-    await expect(page.locator('.member-profile-page')).toHaveAttribute('inert', '');
-    // The badge remains readable during its two-second hold after settling.
-    await page.waitForTimeout(3600);
-    await expect(completion.locator('.member-completion-badge')).toBeVisible();
-    await expect(page).toHaveURL(/#signin$/);
-    await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
-    await expect(page.locator('html')).toHaveAttribute('data-theme', colorScheme);
-    await expect(page.locator('.auth-panel .notice')).toHaveCount(0);
-    await expect(page.getByLabel('Email address')).toHaveValue('new-member@dispatch.test');
-    await expect(page.getByLabel('Password', { exact: true })).toBeFocused();
-    await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
-    await expect(
-      page.locator('.member-completion, .member-profile-page, .onboarding-page'),
-    ).toHaveCount(0);
-    expect((await page.request.get('/api/session')).status()).toBe(401);
-    expect(logins).toEqual([]);
-    expect(errors).toEqual([]);
-    await page.getByLabel('Password', { exact: true }).fill(demo.password);
-    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-    await expect(page).toHaveURL(/#dsp\/[^/]+\//);
-    expect(logins).toHaveLength(1);
-    const session = await (await page.request.get('/api/session')).json();
-    expect(session.user.email).toBe('new-member@dispatch.test');
-    expect(session.dsps).toHaveLength(1);
+// Both device themes are covered by the responsive profile test above. Dark signed-out
+// preference additionally proves that completion restores it after forcing light.
+test('desktop member completion shows a personalized badge then requires sign-in (dark)', async ({
+  page,
+  dispatch,
+  context,
+}) => {
+  const colorScheme = 'dark';
+  const url = await apiInvitation(dispatch);
+  await context.clearCookies();
+  await page.emulateMedia({ colorScheme, reducedMotion: 'no-preference' });
+  await page.addInitScript((theme) => {
+    localStorage.setItem('dispatch-appearance:signed-out', theme);
+  }, colorScheme);
+  const logins: string[] = [];
+  const errors: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().endsWith('/api/auth/login')) logins.push(request.url());
   });
-}
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto(url);
+  await fillMemberProfile(page);
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.getByRole('button', { name: 'Create profile', exact: true }).click();
+  const completion = page.getByRole('status', { name: 'Profile created' });
+  await expect(completion).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(completion).toContainText('JamieMorgan');
+  await expect(completion).toContainText('Northline Logistics');
+  await expect(completion.locator('.member-completion-role')).toHaveText('Member');
+  await expect(completion.locator('.member-completion-facts')).toContainText('Station');
+  await expect(completion.locator('.member-completion-facts')).toContainText('Central Time');
+  await expect(completion.locator('.member-completion-facts')).toContainText('America/Chicago');
+  await expect(completion.getByText('Status', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.member-profile-page')).toHaveAttribute('inert', '');
+  // The badge remains readable during its two-second hold after settling.
+  await page.waitForTimeout(3600);
+  await expect(completion.locator('.member-completion-badge')).toBeVisible();
+  await expect(page).toHaveURL(/#signin$/);
+  await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', colorScheme);
+  await expect(page.locator('.auth-panel .notice')).toHaveCount(0);
+  await expect(page.getByLabel('Email address')).toHaveValue('new-member@dispatch.test');
+  await expect(page.getByLabel('Password', { exact: true })).toBeFocused();
+  await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+  await expect(
+    page.locator('.member-completion, .member-profile-page, .onboarding-page'),
+  ).toHaveCount(0);
+  expect((await page.request.get('/api/session')).status()).toBe(401);
+  expect(logins).toEqual([]);
+  expect(errors).toEqual([]);
+  await page.getByLabel('Password', { exact: true }).fill(demo.password);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page).toHaveURL(/#dsp\/[^/]+\//);
+  expect(logins).toHaveLength(1);
+  const session = await (await page.request.get('/api/session')).json();
+  expect(session.user.email).toBe('new-member@dispatch.test');
+  expect(session.dsps).toHaveLength(1);
+});
 
 for (const variant of ['phone', 'reduced motion', 'unavailable artwork'] as const) {
   test(`member completion goes directly to sign-in with ${variant}`, async ({
@@ -284,8 +285,12 @@ for (const variant of ['phone', 'reduced motion', 'unavailable artwork'] as cons
     await page.emulateMedia({
       reducedMotion: variant === 'reduced motion' ? 'reduce' : 'no-preference',
     });
+    let failedArtwork = 0;
     if (variant === 'unavailable artwork')
-      await page.route('**/MemberProfileCompletion-*.js', (route) => route.abort());
+      await page.route('**/MemberProfileCompletion-*.js', (route) => {
+        failedArtwork++;
+        return route.abort();
+      });
     const assets: string[] = [];
     page.on('request', (request) => assets.push(request.url()));
     await page.goto(url);
@@ -304,6 +309,7 @@ for (const variant of ['phone', 'reduced motion', 'unavailable artwork'] as cons
     expect((await page.request.get('/api/session')).status()).toBe(401);
     if (variant !== 'unavailable artwork')
       expect(assets.filter((url) => /MemberProfileCompletion-/.test(url))).toEqual([]);
+    else expect(failedArtwork).toBe(1);
     if (variant === 'phone')
       expect(
         assets.filter((url) => /member-profile-map|login-van|renderer-.*\.js/.test(url)),

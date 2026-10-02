@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from runtime_artifact import host, install_management, verify_artifact, private_directory, command, require, write_json
+from runtime_artifact import host, install_management
 
 
 def main():

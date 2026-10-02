@@ -44,7 +44,7 @@ const dynamicClasses = new Set([
 ]);
 
 test('every dashboard CSS class occurs as a source token or is explicitly dynamic', () => {
-  const sourceFiles = ['dashboard/src', 'shared', 'tests/browser'].flatMap((directory) =>
+  const sourceFiles = ['dashboard/src', 'shared'].flatMap((directory) =>
     files(directory, /\.tsx?$/),
   );
   sourceFiles.push('backend/src/mail/templates.rs');

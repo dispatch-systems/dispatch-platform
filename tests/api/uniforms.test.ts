@@ -249,12 +249,47 @@ test('inventory history paginates and waiting reads reauthorize after a role cha
   const member = await f.client(demo.member);
   await member.select(north.id);
   assert.equal((await member.post(route, input)).status, 403);
-  for (let batch = 0; batch < 3; batch++) {
-    const responses = await Promise.all(
-      Array.from({ length: 20 }, () => member.post(stock, { delta: 1, requestId: randomUUID() })),
+  const adjusted = await member.post(stock, { delta: 1, requestId: randomUUID() });
+  assert.equal(adjusted.status, 200, adjusted.body);
+  assert.equal(adjusted.value.quantity, 1);
+  assert.equal(adjusted.value.revision, 2);
+  // Concurrency has its own test. Extend one real member adjustment just past the
+  // history page boundary, keeping the stock, revisions and journal consistent.
+  f.database(`dsps/${north.id}/data/dispatch.sqlite`, (db) => {
+    const original = db.prepare('SELECT * FROM uniform_events WHERE revision=2').get()!;
+    assert.equal(original.kind, 'adjusted');
+    assert.equal(original.variant_id, uniform.variants[0]!.id);
+    assert.equal(original.actor_id, member.session.user.id);
+    assert.equal(original.actor_name, 'Jordan Ellis');
+    assert.equal(original.delta, 1);
+    assert.equal(original.quantity, 1);
+    const insert = db.prepare(`INSERT INTO uniform_events
+      (revision,kind,uniform_id,uniform_name,variant_id,fit,size,delta,quantity,actor_id,actor_name,request_id,at)
+      SELECT ?,'adjusted',uniform_id,uniform_name,variant_id,fit,size,delta,?,actor_id,actor_name,?,at
+      FROM uniform_events WHERE revision=2`);
+    db.exec('BEGIN IMMEDIATE');
+    for (let quantity = 2; quantity <= 60; quantity++)
+      assert.equal(Number(insert.run(quantity + 1, quantity, randomUUID()).changes), 1);
+    assert.equal(
+      Number(
+        db.prepare('UPDATE uniform_inventory SET revision=61 WHERE id=1 AND revision=2').run()
+          .changes,
+      ),
+      1,
     );
-    assert(responses.every((r) => r.status === 200));
-  }
+    assert.equal(
+      Number(
+        db
+          .prepare(
+            'UPDATE uniform_variants SET quantity=60,revision=61 WHERE id=? AND quantity=1 AND revision=2',
+          )
+          .run(original.variant_id!).changes,
+      ),
+      1,
+    );
+    assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+    db.exec('COMMIT');
+  });
   const first = (await member.get(`${route}/history`)).value;
   assert.equal(first.events.length, 50);
   assert(first.events.every((e: { actorName: string }) => e.actorName === 'Jordan Ellis'));
@@ -262,6 +297,8 @@ test('inventory history paginates and waiting reads reauthorize after a role cha
   assert.equal(last.events.length, 11);
   assert.equal(last.nextBefore, null);
   assert.equal(new Set([...first.events, ...last.events].map((e) => e.revision)).size, 61);
+  assert.equal(first.events[0].quantity, 60);
+  assert.equal((await member.get(route)).value.uniforms[0].variants[0].quantity, 60);
   const pending = member.get(`${route}/updates?after=61`);
   await owner.select(north.id);
   const revoked = await owner.post(`/api/dsp/roles/${role.value.id}`, {

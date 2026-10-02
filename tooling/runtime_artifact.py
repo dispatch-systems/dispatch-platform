@@ -4,13 +4,9 @@ import functools
 import json
 import os
 from pathlib import Path
-import re
 import subprocess
 import sys
 import tempfile
-
-REPOSITORY = "dispatch-systems/dispatch-platform"
-STABLE = r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
 
 def require(value, message):
     if not value:
@@ -23,12 +19,6 @@ def command(*args, cwd=None, timeout=120, binary=False):
         problem = result.stderr if isinstance(result.stderr, str) else result.stderr.decode(errors="replace")
         raise RuntimeError(f"{' '.join(args[:3])} failed: {problem.strip()[-600:]}")
     return result.stdout if binary else result.stdout.strip()
-
-
-def github(endpoint, *args, binary=False, timeout=120):
-    """Authenticated repository API through the GitHub CLI."""
-    data = command("gh", "api", f"repos/{REPOSITORY}/{endpoint}", *args, binary=binary, timeout=timeout)
-    return data if binary else json.loads(data)
 
 
 def private_directory(directory):

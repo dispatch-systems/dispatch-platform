@@ -505,6 +505,17 @@ test(
     // Responses held until every tab has asked: how soon a tab starts is the machine's
     // pace, not the collector's, so the peak never rests on a fixed delay.
     const held: Record<string, (() => void)[]> = {};
+    const probed = new Set<string>();
+    const expired = new Set<string>();
+    const timers = new Set<NodeJS.Timeout>();
+    const releaseDay = (date: string) => {
+      probed.add(date);
+      for (const release of held[date]?.splice(0) ?? []) release();
+    };
+    t.after(() => {
+      for (const date of Object.keys(held)) releaseDay(date);
+      for (const timer of timers) clearTimeout(timer);
+    });
     let active = 0;
     let swiped = false;
     const route = (date: string, n: number) => {
@@ -541,15 +552,22 @@ test(
         reads[id] = (reads[id] || 0) + 1;
         if (id === swipe) swiped = true;
         peaks[date] = Math.max(peaks[date] ?? 0, ++active);
-        if (peaks[date]! < Math.min(3, routes(date).length))
+        // Hold the initial requests until the test observes the lane count. Bulk
+        // completeness reads need no artificial delay after that overlap probe.
+        if (!probed.has(date))
           await new Promise<void>((resolve) => {
-            (held[date] ??= []).push(resolve);
-            setTimeout(resolve, 15000);
+            const release = () => {
+              clearTimeout(timer);
+              timers.delete(timer);
+              resolve();
+            };
+            const timer = setTimeout(() => {
+              expired.add(date);
+              release();
+            }, 15000);
+            timers.add(timer);
+            (held[date] ??= []).push(release);
           });
-        else {
-          for (const release of held[date]?.splice(0) ?? []) release();
-          await new Promise((resolve) => setTimeout(resolve, 800));
-        }
         active--;
         const c = routes(date).find((r) => r.itineraryId === id)!;
         const meal = c.breaks[0]!;
@@ -579,7 +597,20 @@ test(
       return { html: executionPage(listProps(date, routes(date))) };
     });
     for (const [date, size] of Object.entries(sizes)) {
-      const job = await collect(date, `every-route-${date}`, 90000);
+      const collecting = collect(date, `every-route-${date}`, 90000);
+      void collecting.catch(() => {});
+      try {
+        await until(async () => (held[date]?.length ?? 0) >= Math.min(3, size), 30000);
+        // A real core round trip while the provider reads are held also proves
+        // that collection leaves the API responsive.
+        assert.equal((await owner.get('/api/platform/health')).status, 200);
+        assert(!expired.has(date), `${date}: health responds before held reads expire`);
+        assert.equal(active, Math.min(3, size), `${date}: reads remain held during health`);
+        assert.equal(peaks[date], Math.min(3, size));
+      } finally {
+        releaseDay(date);
+      }
+      const job = await collecting;
       assert.equal(job.status, 'succeeded', JSON.stringify(job));
       const count = size + (date === busy ? 1 : 0);
       const published = (await owner.get(`/api/dsp/cortex/meal-breaks?date=${date}`)).value;

@@ -124,19 +124,7 @@
       out.datasets.push(record);
       globalThis.__dispatchApi.partial = out;
     }
-    const [year, number] = input.week.split('-W').map(Number);
-    for (const delta of [1, 2, -1, -8, -18, -30]) {
-      let n = number + delta,
-        y = year;
-      if (n > 52) {
-        n -= 52;
-        y += 1;
-      }
-      if (n < 1) {
-        n += 52;
-        y -= 1;
-      }
-      const week = `${y}-W${String(n).padStart(2, '0')}`;
+    for (const { week, delta } of input.adjacentWeeks) {
       const record = { week, delta };
       for (const id of ['dsp_station_weekly_team', 'da_dsp_station_weekly_performance']) {
         try {

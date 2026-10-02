@@ -471,16 +471,16 @@ fn legacy_cli_defaults_and_explicit_stages_are_validated_before_effects() {
 
 #[test]
 fn release_origins_are_required_canonical_distinct_and_overridable() {
-    let f = Fixture::new();
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
     let args = vec![
         "status".into(),
         "--root".into(),
-        f.root.to_str().unwrap().into(),
+        root.to_str().unwrap().into(),
     ];
     assert!(Options::parse(&args).is_err());
-    assert!(f.system.calls.borrow().is_empty());
-    io::private_directory(&f.root.join("config")).unwrap();
-    let config = f.root.join("config/release.json");
+    io::private_directory(&root.join("config")).unwrap();
+    let config = root.join("config/release.json");
     for origin in [
         "",
         "http://dev.dispatch.test",
@@ -595,6 +595,9 @@ fn interrupted_preparation_is_atomic_and_retries_without_overwriting_assets() {
 
 #[test]
 fn corrupt_saved_assets_and_incomplete_legacy_directories_stop_without_deletion() {
+    let f = Fixture::new();
+    let release = f.release();
+    f.prepare();
     for name in [
         "dispatch-platform-1.0.0.tar.gz",
         "release.json",
@@ -603,15 +606,16 @@ fn corrupt_saved_assets_and_incomplete_legacy_directories_stop_without_deletion(
         "attestation.sigstore.jsonl",
         "SHA256SUMS",
     ] {
-        let f = Fixture::new();
-        let release = f.release();
-        f.prepare();
+        let original = fs::read(release.output.join(name)).unwrap();
         fs::write(release.output.join(name), "corrupted").unwrap();
         assert!(release.prepare(&f.system.commit).is_err());
         assert_eq!(
             fs::read_to_string(release.output.join(name)).unwrap(),
             "corrupted"
         );
+        fs::write(release.output.join(name), original).unwrap();
+        // Each case starts from the verified baseline, without losing its isolation.
+        release.prepared(None).unwrap();
     }
     let f = Fixture::new();
     let release = f.release();
@@ -698,10 +702,13 @@ fn delayed_draft_visibility_is_awaited_before_uploading() {
 
 #[test]
 fn conflicting_uploads_or_wrong_tags_never_publish() {
+    let f = Fixture::new();
+    let prepared = f.draft();
+    let release = f.release();
+    let baseline = f.system.listed.borrow().clone();
     for corruption in ["digest", "size", "state", "extra", "target", "tag"] {
-        let f = Fixture::new();
-        let prepared = f.draft();
-        let release = f.release();
+        *f.system.listed.borrow_mut() = baseline.clone();
+        f.system.wrong_tag.set(false);
         match corruption {
             "digest" => {
                 f.system.listed.borrow_mut()[0]["assets"][0]["digest"] = json!("sha256:bad")

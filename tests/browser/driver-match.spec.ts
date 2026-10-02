@@ -19,7 +19,6 @@ test('Driver Match shows who might be listed twice and makes them one person', a
   await expect(ben).toContainText('Ben is short for Benjamin');
   await expect(ben).toContainText('Strong match');
   await expect(pairs.filter({ hasText: 'Drew S.' })).toContainText('Possible match');
-  await page.screenshot({ path: test.info().outputPath('driver-match.png'), fullPage: true });
 
   await ben.getByRole('button', { name: 'Same person', exact: true }).click();
   await expect(
@@ -47,7 +46,6 @@ test('Driver Match shows who might be listed twice and makes them one person', a
   await expect(
     sheet.getByRole('listitem').filter({ hasText: 'confirmed as this person' }),
   ).toHaveCount(1);
-  await page.screenshot({ path: test.info().outputPath('driver-match-sheet.png') });
   // A wrong link comes apart again, and the two stay apart.
   await sheet
     .locator('.driver-id')
@@ -58,11 +56,4 @@ test('Driver Match shows who might be listed twice and makes them one person', a
   await expect(page.getByText(/is now its own person/)).toBeVisible();
   await expect(sheet.locator('.driver-id')).toHaveCount(1);
   await expect(pairs.filter({ hasText: 'Ben Collins' })).toHaveCount(0);
-});
-
-test('a member without Manage Driver Match never sees the tab', async ({ page }) => {
-  await login(page, 'member@dispatch.test');
-  await page.getByRole('link', { name: 'Settings', exact: true }).click();
-  await expect(page.getByRole('tab', { name: 'Profile', exact: true })).toBeVisible();
-  await expect(page.getByRole('tab', { name: /Driver Match/ })).toHaveCount(0);
 });

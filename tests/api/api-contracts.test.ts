@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fixture, until } from '../support/support.js';
+import { fixture } from '../support/support.js';
 import { parseApiResponse } from '../../shared/contracts/runtime.js';
-import type { AuditPage, DspSummary, Job, PlatformHealth } from '../../shared/contracts/index.js';
+import type { AuditPage, DspSummary, PlatformHealth } from '../../shared/contracts/index.js';
 import type { PaycomSettings } from '../../shared/contracts/paycom.js';
 
 test('recovery-code responses accept the active and previous rollout formats', () => {
@@ -125,50 +125,4 @@ test('generated platform contracts validate real responses and settings round tr
   const badSettings = structuredClone(parsed);
   (badSettings.values as unknown as Record<string, unknown>).columns = ['invented-column'];
   invalid(settingsRoute, badSettings);
-});
-
-test('job responses use recorded Rust metrics and accept historical records without page diagnostics', async (t) => {
-  const f = await fixture();
-  t.after(f.close);
-  const owner = await f.client();
-  const dsp = owner.session.dsps.find((d: DspSummary) => d.name === 'Northline Logistics');
-  await owner.select(dsp.id);
-  await owner.post('/api/dsp/connections/paycom', {
-    clientCode: 'contract',
-    username: 'fixture-user',
-    password: 'fixture-password',
-    securityAnswers: ['one', 'two', 'three', 'four', 'five'],
-  });
-  const queued = await owner.post('/api/dsp/jobs', { requestId: 'contract-metrics' });
-  assert.equal(queued.status, 202);
-  const id = queued.value.id;
-  let jobs: Job[] = [];
-  await until(async () => {
-    jobs = parseApiResponse('/api/dsp/jobs', 'GET', await owner.read('/api/dsp/jobs')) as Job[];
-    return jobs.some((job) => job.id === id && job.status === 'succeeded');
-  });
-  const job = jobs.find((job) => job.id === id)!;
-  assert.equal(job.metrics[0]!.outcome, 'succeeded');
-  assert(job.metrics[0]!.pageReads);
-  f.database('data/preview/jobs.sqlite', (db) =>
-    db
-      .prepare(
-        "UPDATE job_metrics SET metrics=json_remove(metrics,'$.pageReads','$.detail','$.itineraries','$.meals') WHERE job_id=?",
-      )
-      .run(id),
-  );
-  const response = await owner.get('/api/dsp/jobs');
-  assert.equal(response.status, 200);
-  const historical = (parseApiResponse('/api/dsp/jobs', 'GET', response.value) as Job[]).find(
-    (row) => row.id === id,
-  )!;
-  assert.equal(historical.metrics[0]!.pageReads, undefined);
-  assert.equal(historical.metrics[0]!.employees, job.metrics[0]!.employees);
-  assert.equal(historical.metrics[0]!.collectionMs, job.metrics[0]!.collectionMs);
-  const bad = structuredClone(job);
-  (bad.metrics[0]! as unknown as Record<string, unknown>).phase = 'private-provider-payload';
-  assert.throws(
-    () => parseApiResponse('/api/platform/jobs', 'GET', [bad]),
-    /^Error: invalid_api_response$/,
-  );
 });

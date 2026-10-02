@@ -20,6 +20,23 @@ const dashboardCommand = nodeTests('dashboard', {
   env: { DISPATCH_TEST_BINARY: '.build/services/rust/dispatch-backend' },
 });
 const coreCommand = nodeTests('core', { concurrency: os.availableParallelism() });
+const pythonCommands = [pythonTests('rules'), pythonTests('integration')];
+const rustCommands: Command[] = [
+  { name: 'check:rust', command: 'npm', args: ['run', 'check:rust'] },
+  {
+    name: 'operator probe compilation',
+    command: 'cargo',
+    args: [
+      'check',
+      '--locked',
+      '-p',
+      'dispatch-backend',
+      '--tests',
+      '--features',
+      'operator-probes',
+    ],
+  },
+];
 const checkCommands: Command[] = [
   { name: 'check:privacy', command: 'npm', args: ['run', 'check:privacy'] },
   { name: 'check', command: 'npm', args: ['run', 'check'] },
@@ -32,9 +49,15 @@ const checkCommands: Command[] = [
 // compiling Rust, downloading browsers or reaching the dependency-audit service.
 if (process.argv.includes('--list')) {
   const commands =
-    mode === 'checks' ? checkCommands : mode === 'api' ? [pythonTests, coreCommand] : [];
-  if (!['checks', 'api'].includes(mode))
-    throw new Error('Command listing requires checks or api mode');
+    mode === 'checks'
+      ? checkCommands
+      : mode === 'api'
+        ? [...pythonCommands, coreCommand]
+        : mode === 'core'
+          ? rustCommands
+          : [];
+  if (!['checks', 'api', 'core'].includes(mode))
+    throw new Error('Command listing requires checks, api or core mode');
   process.stdout.write(`${JSON.stringify(commands)}\n`);
   process.exit(0);
 }
@@ -163,12 +186,14 @@ async function browser() {
   }
 }
 /** Rust formatting, lints and tests: `npm run check:rust` compiles what it checks. */
-function core() {
-  return npm('check:rust');
+async function core() {
+  for (const command of rustCommands) if (!(await execute(command))) break;
 }
 /** The API tests against a debug backend, with the Python tooling tests and the npm audit. */
 async function api() {
-  const python = execute(pythonTests);
+  const python = (async () => {
+    for (const command of pythonCommands) await execute(command);
+  })();
   const audit = run('dependency audit', 'npm', ['audit', '--audit-level=high']);
   if (await run('debug build', 'python3', ['tooling/cargo-build.py'])) {
     await execute(coreCommand);

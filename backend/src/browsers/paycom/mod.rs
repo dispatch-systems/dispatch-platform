@@ -7,7 +7,7 @@ use super::{
     driver::{Collected, Driver as Drives, Pending, Run},
     page::{Page, call},
 };
-#[cfg(test)]
+#[cfg(all(test, feature = "operator-probes"))]
 mod benchmark;
 use super::browseros;
 use crate::{

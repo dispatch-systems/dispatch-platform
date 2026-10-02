@@ -1,4 +1,14 @@
-import { allTests, coreTests, dashboardTests, ruleTests, sourceLints } from './test-plan.js';
+import path from 'node:path';
+import {
+  allTests,
+  coreTests,
+  dashboardTests,
+  ruleTests,
+  sourceLints,
+  allPythonTests,
+  pythonRuleTests,
+  pythonIntegrationTests,
+} from './test-plan.js';
 
 export type Command = {
   name: string;
@@ -33,11 +43,20 @@ export function nodeTests(
   };
 }
 
-export const pythonTests: Command = {
-  name: 'Python tooling tests',
-  command: 'python3',
-  args: ['-m', 'unittest', 'discover', '-s', 'tests/tooling', '-p', '*_test.py'],
-};
+export function pythonTests(suite: 'all' | 'rules' | 'integration'): Command {
+  const files =
+    suite === 'all'
+      ? allPythonTests()
+      : suite === 'rules'
+        ? pythonRuleTests()
+        : pythonIntegrationTests;
+  return {
+    name: `Python ${suite} tests`,
+    command: 'python3',
+    args: ['-m', 'unittest', ...files.map((file) => path.basename(file, '.py'))],
+    env: { PYTHONPATH: path.resolve('tests/tooling') },
+  };
+}
 
 export const sourceLintCommands: Command[] = sourceLints.map((file) => ({
   name: file,

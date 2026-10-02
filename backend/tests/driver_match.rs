@@ -65,6 +65,11 @@ fn ready(saved: Option<Value>) -> (tempfile::TempDir, Store, String, Context) {
     }
     db.publish_meals(&id, "job-meals", &capture, &scope)
         .unwrap();
+    let context = context(&db, &id);
+    (root, db, id, context)
+}
+
+fn context(db: &Store, id: &str) -> Context {
     let owner = db
         .platform
         .one("SELECT id FROM users LIMIT 1", [])
@@ -80,9 +85,9 @@ fn ready(saved: Option<Value>) -> (tempfile::TempDir, Store, String, Context) {
         raw: String::new(),
         preview: None,
     };
-    let context = db.context(&auth, &id, "driver_match.manage").unwrap();
-    (root, db, id, context)
+    db.context(&auth, id, "driver_match.manage").unwrap()
 }
+
 /// The code holding an ID, in a Driver Match answer.
 fn code(result: &DriverMatch, source: DriverSource, id: &str) -> String {
     result
@@ -314,7 +319,9 @@ fn links_saved_on_the_meal_break_page_are_kept() {
 
 #[test]
 fn the_permission_exists_only_while_the_feature_is_on() {
-    let (_root, db, id, context) = ready(None);
+    let (_root, db, id) = common::bootstrapped();
+    db.enable_all_features(&id).unwrap();
+    let context = context(&db, &id);
     db.set_feature(&id, "driver_match", false, &context.auth.user.id)
         .unwrap();
     let refused = db.context(&context.auth, &id, "driver_match.manage").err();

@@ -7,6 +7,8 @@ const plan = JSON.parse(fs.readFileSync(new URL('./test-plan.json', import.meta.
   rules: string[];
   lint: string[];
   native: Record<string, string[]>;
+  nativeRealTimeout: { file: string; title: string };
+  pythonIntegration: string[];
   watch: { sources: string[]; tests: string[] }[];
 };
 
@@ -21,6 +23,21 @@ export const ruleTests = [...plan.dashboard, ...plan.rules];
 export const sourceLints = plan.lint;
 /** Native collector shards, run with a real browser by `npm run test:browseros`. */
 export const nativeShards = plan.native;
+export const nativeTests = Object.values(nativeShards).flat();
+/** One real wall-clock timeout regression, run on its dedicated scheduled/manual lane. */
+export const nativeRealTimeout = plan.nativeRealTimeout;
+/** Real compiler/installed-manager checks; source-only rules do not build Rust. */
+export const pythonIntegrationTests = plan.pythonIntegration;
+export function allPythonTests() {
+  return fs
+    .readdirSync('tests/tooling')
+    .filter((name) => name.endsWith('_test.py'))
+    .sort()
+    .map((name) => `tests/tooling/${name}`);
+}
+export function pythonRuleTests() {
+  return allPythonTests().filter((file) => !pythonIntegrationTests.includes(file));
+}
 /**
  * Sources whose changes break tests elsewhere, which `npm run pr:prepare` names with the
  * tests the diff changes. Each group comes from queue runs such changes failed.
@@ -36,5 +53,5 @@ export function allTests(directory = 'tests') {
 }
 
 export function coreTests() {
-  return allTests().filter((file) => !dashboardTests.includes(file));
+  return allTests().filter((file) => !dashboardTests.includes(file) && !nativeTests.includes(file));
 }

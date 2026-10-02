@@ -1,7 +1,10 @@
 # CI tooling
 
 One run per change, in the merge queue, on the exact squash commit the queue will push. Every
-suite runs every time; nothing runs on the PR itself. `.github/workflows/checks.yml` is the
+standard suite runs every time; nothing runs on the PR itself. The one real wall-clock
+native timeout sentinel runs separately each week and on manual dispatch through
+`.github/workflows/native-timeouts.yml`, which fails if that case is absent or skipped.
+`.github/workflows/checks.yml` is the
 whole pipeline, and `tooling/ci/checks.ts` runs one of its jobs by name, or locally the whole
 suite in sequence:
 
@@ -12,7 +15,7 @@ suite in sequence:
 | browser ×6      | `browser <n>/6 [spec]`                     | The browser suite against the packaged runtime.                               |
 | smoke           | `smoke`                                    | The package starts, signs in and serves, as a release asks.                   |
 | benchmark       | `benchmark`                                | The Rust workload budget.                                                     |
-| core            | `core`                                     | Rust formatting, lints and tests.                                             |
+| core            | `core`                                     | Rust formatting, lints, default tests and compile-only operator probes.       |
 | api             | `api`                                      | The API tests, the Python tooling tests, the npm audit.                       |
 | collectors ×5   | `npm run test:browseros -- --shard <name>` | The native collectors with a real browser.                                    |
 | rust-advisories |                                            | `cargo audit`.                                                                |
@@ -68,6 +71,20 @@ Run the tests with:
 cargo test --locked -p dispatch-ci -p dispatch-host
 python3 -m unittest discover -s tests/tooling -p '*_test.py'
 ```
+
+`check:rules` runs the source-only Python partition and every dashboard helper test without
+compiling Rust. The API job runs those Python modules and the separate real compiler and
+installed-manager modules once each. Native collector files run only in their collector
+shards, so the API job does not launch them merely to skip their browser cases.
+`tests/tooling/test-plan.test.ts` checks complete, disjoint file coverage against the commands
+the runners actually use. Real compiler/manager modules are listed under `pythonIntegration`
+in `test-plan.json`; the default unittest discovery command above still runs every module.
+
+The native timeout lane can be run with `npm run test:browseros -- --real-timeouts`, or by
+dispatching `native-timeouts.yml` with its optional exact `ref`. It selects only the sentinel,
+sets both native and real-timeout gates, and requires a passing JUnit case. Normal collector
+runs leave real wall-clock waits out. Live Rust operator probes require the explicit
+`operator-probes` feature; core CI typechecks them without executing them.
 
 `npm run check:privacy` scans publishable working files, also through `check:rules` before
 pushes and the required `checks` job. It downloads the checksum-pinned Gitleaks release in

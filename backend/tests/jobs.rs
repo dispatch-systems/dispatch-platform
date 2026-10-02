@@ -68,6 +68,7 @@ fn listed_jobs_respect_the_cap_scope_names_and_attempt_order() {
         .platform
         .all("SELECT id,name FROM dsps ORDER BY id", [])
         .unwrap();
+    let transaction = db.jobs.0.unchecked_transaction().unwrap();
     for index in 0..204 {
         let dsp = &dsps[index % dsps.len()];
         let job = format!("job-{index}");
@@ -88,6 +89,7 @@ fn listed_jobs_respect_the_cap_scope_names_and_attempt_order() {
                 .unwrap();
         }
     }
+    transaction.commit().unwrap();
     let recent = db.recent_jobs(None).unwrap();
     assert_eq!(recent.len(), 200);
     assert_eq!(recent[0].id, "job-203");

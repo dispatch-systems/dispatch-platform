@@ -13,6 +13,29 @@ fn env_path(name: &str) -> Result<PathBuf> {
         .map(PathBuf::from)
         .ok_or_else(|| Error::new("benchmark_configuration_required", 400))
 }
+fn concurrency_levels(value: &str) -> Result<Vec<usize>> {
+    let levels: Vec<usize> = value
+        .split(',')
+        .map(|part| {
+            part.trim()
+                .parse::<usize>()
+                .map_err(|_| Error::new("benchmark_configuration_required", 400))
+        })
+        .collect::<Result<_>>()?;
+    ensure(
+        !levels.is_empty() && levels.iter().all(|n| *n > 0),
+        "benchmark_configuration_required",
+        400,
+    )?;
+    Ok(levels)
+}
+#[test]
+fn concurrency_configuration_rejects_empty_invalid_and_zero_levels() {
+    for invalid in ["", "0", "2,0", "2,no", "2,,4"] {
+        assert!(concurrency_levels(invalid).is_err(), "{invalid}");
+    }
+    assert_eq!(concurrency_levels(" 2,4,6 ").unwrap(), [2, 4, 6]);
+}
 fn memory_tree(root: u32) -> [u64; 4] {
     let mut processes = Vec::new();
     for entry in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
@@ -627,6 +650,9 @@ async fn http_extraction_parity() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn http_concurrency() -> Result<()> {
+    let levels = concurrency_levels(
+        &std::env::var("DISPATCH_BENCHMARK_LEVELS").unwrap_or_else(|_| "2,4,6".into()),
+    )?;
     let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
     let profile = dsp.join("state/browsers/paycom-browseros");
     let runtime = browseros::Runtime::new(
@@ -673,29 +699,29 @@ async fn http_concurrency() -> Result<()> {
     let employees = Arc::new(roster.employees);
     let period = Arc::new(roster.period);
     let origin = driver.origin.clone();
-    let levels = std::env::var("DISPATCH_BENCHMARK_LEVELS").unwrap_or_else(|_| "2,4,6".into());
-    for (step, lanes) in levels
-        .split(',')
-        .filter_map(|v| v.trim().parse::<usize>().ok())
-        .enumerate()
-    {
+    for (step, lanes) in levels.into_iter().enumerate() {
         if step > 0 {
             sleep(Duration::from_secs(15)).await;
         }
         let next = Arc::new(AtomicU64::new(0));
+        let stopped = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let started = Instant::now();
         let mut tasks = tokio::task::JoinSet::new();
         for _ in 0..lanes {
-            let (http, employees, period, next, origin) = (
+            let (http, employees, period, next, origin, stopped) = (
                 http.clone(),
                 employees.clone(),
                 period.clone(),
                 next.clone(),
                 origin.clone(),
+                stopped.clone(),
             );
             tasks.spawn(async move {
                 let mut reads = Vec::new();
                 loop {
+                    if stopped.load(Ordering::SeqCst) {
+                        break;
+                    }
                     let index = next.fetch_add(1, Ordering::SeqCst) as usize;
                     let Some(employee) = employees.get(index) else {
                         break;
@@ -729,6 +755,9 @@ async fn http_concurrency() -> Result<()> {
                             .unwrap_or_else(|_| Err("extraction_stopped".into()))
                         }
                     };
+                    if outcome.is_err() {
+                        stopped.store(true, Ordering::SeqCst);
+                    }
                     reads.push((ms, outcome));
                 }
                 reads
@@ -754,8 +783,8 @@ async fn http_concurrency() -> Result<()> {
                 "p50Ms":times.get(times.len()/2),"p90Ms":times.get(times.len()*9/10),
                 "maxMs":times.last(),"refusals":refusals})
         );
-        if refusals.contains_key("unavailable") {
-            eprintln!("LEVEL {}", json!({"stopped":"provider_unavailable"}));
+        if !refusals.is_empty() {
+            eprintln!("LEVEL {}", json!({"stopped":"request_refused"}));
             break;
         }
     }

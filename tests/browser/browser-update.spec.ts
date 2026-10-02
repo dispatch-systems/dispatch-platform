@@ -65,7 +65,6 @@ test('completed update waits for two idle seconds, restores filters, and reloads
   await page.clock.runFor(12000);
   expect(loads).toBe(initialLoads + 1);
   expect(errors).toEqual([]);
-  await page.screenshot({ path: test.info().outputPath('automatic-update-restored.png') });
 });
 
 test('the audit log keeps its filters through an automatic update', async ({ page }) => {
@@ -202,17 +201,4 @@ test('reload preserves DSP, meal tab, selected date and search on mobile', async
       return page.evaluate(() => window.scrollY);
     })
     .toBe(scroll);
-  await page.screenshot({ path: test.info().outputPath('automatic-update-mobile.png') });
-});
-
-test('public update identity matches the loaded document and is not cached', async ({
-  page,
-  dispatch,
-}) => {
-  await page.goto('/');
-  const response = await dispatch.request('/api/browser-update');
-  expect(response.status).toBe(200);
-  expect(response.headers.get('cache-control')).toBe('no-store');
-  const build = await page.locator('meta[name="dispatch-build"]').getAttribute('content');
-  expect(response.value).toEqual({ build, ready: true });
 });

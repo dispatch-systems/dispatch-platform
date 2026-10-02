@@ -39,6 +39,7 @@ test('owner diagnostics shows pending mail, a failed delivery, and later recover
   mailWorker,
 }) => {
   test.setTimeout(60000);
+  await page.clock.install();
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
@@ -65,35 +66,41 @@ test('owner diagnostics shows pending mail, a failed delivery, and later recover
   f.database('data/platform/accounts.sqlite', (db) =>
     db.prepare("UPDATE outbox SET attempts=4,available_at=0 WHERE status='pending'").run(),
   );
-  await expect(field('Failed')).toHaveText('1', { timeout: 20000 });
+  // The mail worker still runs on real time. Advance only the dashboard's polling
+  // after the actual backend state changed; do not fabricate a delivery result.
+  await until(async () => (await owner.read('/api/platform/health')).mail.failed === 1);
+  await page.clock.fastForward(10000);
+  await expect(field('Failed')).toHaveText('1');
   await expect(field('Pending')).toHaveText('0');
   const message = mail.getByRole('row').filter({ hasText: 'diagnostics@example.test' });
   await expect(message).toContainText('Owner invitation');
   await expect(message).toContainText('Not delivered');
   await expect(message.getByRole('button', { name: 'Discard', exact: true })).toBeVisible();
-  await page.screenshot({
-    path: test.info().outputPath('dispatch-mail-diagnostics-desktop.png'),
-    fullPage: true,
-  });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(mail).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
-  await page.screenshot({
-    path: test.info().outputPath('dispatch-mail-diagnostics-mobile.png'),
-    fullPage: true,
-  });
   mailWorker.reject = false;
   await owner.post('/api/platform/dsps', { ownerEmail: 'recovered@example.test' });
-  await expect(field('Last delivered')).not.toHaveText('—', { timeout: 20000 });
+  await until(async () => !!(await owner.read('/api/platform/health')).mail.lastSuccessAt);
+  await page.clock.fastForward(10000);
+  await expect(field('Last delivered')).not.toHaveText('—');
   await expect(mail.getByRole('alert')).toHaveCount(0);
   await expect(field('Failed')).toHaveText('1'); // Previous failures remain accounted for.
   // Retrying hands the failed invitation back to the mailer, which now delivers it.
   await page.setViewportSize({ width: 1440, height: 1000 });
   await message.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(field('Failed')).toHaveText('0');
-  await expect(message).toContainText('Sent', { timeout: 20000 });
+  await until(async () => {
+    const messages = await owner.read('/api/platform/mail');
+    return messages.some(
+      (message: { recipient: string; status: string }) =>
+        message.recipient === 'diagnostics@example.test' && message.status === 'sent',
+    );
+  });
+  await page.clock.fastForward(10000);
+  await expect(message).toContainText('Sent');
   await page.getByRole('link', { name: 'Audit log', exact: true }).click();
   await expect(page.getByRole('main')).toContainText(
     'retried an email to diagnostics@example.test',

@@ -1,6 +1,7 @@
 name: Platform checks
 # One run per change, in the merge queue, on the exact squash commit the queue will push:
-# every suite, every time. Nothing runs on the PR itself. The gate publishes the tested
+# every regular suite, every time; the real timeout sentinel has its own weekly/manual lane.
+# Nothing runs on the PR itself. The gate publishes the tested
 # build, which Dev installs and a release stamps. Manual runs check a branch, or one suite
 # of it, on GitHub instead of on the machine that serves Dev.
 on:

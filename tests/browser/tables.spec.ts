@@ -1,11 +1,17 @@
 import fs from 'node:fs';
-import { test, expect, login, openDsp } from './fixtures.js';
+import { test, expect, openAuthenticatedDsp } from './fixtures.js';
 
-test('timecards export every column and row in the order shown', async ({ page }) => {
-  await login(page);
-  await openDsp(page, 'Northline Logistics');
-  await page.getByRole('link', { name: 'Timecard', exact: true }).click();
+test('timecards export every column and row in the order shown', async ({ page, dispatch }) => {
+  await openAuthenticatedDsp(page, dispatch, 'Northline Logistics');
   await expect(page.getByRole('button', { name: /View punches for/ })).toHaveCount(12);
+  // Export a changed order, so exporting unsorted backing rows fails.
+  await page.getByRole('button', { name: 'Hours', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Hours', exact: true }).first().click();
+  const shown = await page
+    .locator('.paycom-timecard-table tbody tr')
+    .evaluateAll((rows) =>
+      rows.map((row) => [...row.querySelectorAll('td')].map((cell) => cell.textContent!.trim())),
+    );
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export timecards', exact: true }).click();
   const file = await download;
@@ -15,13 +21,17 @@ test('timecards export every column and row in the order shown', async ({ page }
     '\uFEFF"Employee","Clock in","Lunch out","Lunch in","Clock out","Hours","Punch status"',
   );
   expect(lines).toHaveLength(13);
+  const exported = lines
+    .slice(1)
+    .map((line) =>
+      [...line.matchAll(/"((?:[^"]|"")*)"(?:,|$)/g)].map((cell) => cell[1]!.replaceAll('""', '"')),
+    );
+  expect(exported).toEqual(shown);
   await expect(page.getByLabel('Choose columns')).toHaveCount(0);
 });
 
-test('arrow keys, j and k move between the rows of a table', async ({ page }) => {
-  await login(page);
-  await openDsp(page, 'Northline Logistics');
-  await page.getByRole('link', { name: 'Timecard', exact: true }).click();
+test('arrow keys, j and k move between the rows of a table', async ({ page, dispatch }) => {
+  await openAuthenticatedDsp(page, dispatch, 'Northline Logistics');
   const rows = page.getByRole('button', { name: /View punches for/ });
   await expect(rows).toHaveCount(12);
   await rows.first().focus();
@@ -37,10 +47,11 @@ test('arrow keys, j and k move between the rows of a table', async ({ page }) =>
   await expect(rows.first()).toBeFocused();
 });
 
-test('meal break details span the table and the export splits each source', async ({ page }) => {
-  await login(page);
-  await openDsp(page, 'Northline Logistics');
-  await page.getByRole('link', { name: 'Timecard', exact: true }).click();
+test('meal break details span the table and the export splits each source', async ({
+  page,
+  dispatch,
+}) => {
+  await openAuthenticatedDsp(page, dispatch, 'Northline Logistics');
   await page.getByRole('tab', { name: 'Meal Breaks', exact: true }).click();
   const table = page.locator('.meal-table');
   await expect(table.getByRole('columnheader')).toHaveCount(8);

@@ -1,8 +1,10 @@
 """Rust owns cache/preflight policy; test compatibility entry points here."""
 import importlib.util
+import io
 from pathlib import Path
 import re
 import sys
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -59,21 +61,64 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(set(collectors.SHARDS["capacity"]), {
             "tests/providers/multi-dsp-browser.test.ts", "tests/providers/collection-throughput.test.ts",
         })
+        title = collectors.REAL_TIMEOUT["title"]
+        passed = f'<testsuites><testcase name="{title}" /></testsuites>'
+        collectors.require_real_timeout(passed)
+        for report in ["invalid", "<testsuites />", passed.replace(" />", "><skipped /></testcase>"),
+                       passed.replace(" />", "><failure /></testcase>"),
+                       passed.replace(" />", "><error /></testcase>"),
+                       f'<testsuites><testcase name="{title}" /><testcase name="{title}" /></testsuites>']:
+            with self.subTest(report=report), self.assertRaises(SystemExit):
+                collectors.require_real_timeout(report)
+        for real in [False, True]:
+            args = ["browseros-check.py", "--real-timeouts"] if real else ["browseros-check.py", "--shard", "paycom-recovery"]
+            done = subprocess.CompletedProcess([], 0, passed, "")
+            with patch.object(sys, "argv", args), patch.object(collectors.subprocess, "run", return_value=done) as run, \
+                    patch.dict(collectors.os.environ, {"DISPATCH_TEST_REAL_TIMEOUTS": "1"}), \
+                    patch.object(sys, "stdout", new_callable=io.StringIO):
+                collectors.main()
+            self.assertEqual(run.call_count, 2, "build and selected Node tests only; no live host probe")
+            command = run.call_args.args[0]
+            env = run.call_args.kwargs["env"]
+            self.assertEqual(env["DISPATCH_TEST_NATIVE"], "1")
+            if real:
+                self.assertEqual(env["DISPATCH_TEST_REAL_TIMEOUTS"], "1")
+                self.assertIn("--test-reporter=junit", command)
+                self.assertIn("--test-name-pattern=^" + re.escape(title) + "$", command)
+                self.assertEqual(command[-1], collectors.REAL_TIMEOUT["file"])
+            else:
+                self.assertNotIn("DISPATCH_TEST_REAL_TIMEOUTS", env)
+                self.assertNotIn("--test-reporter=junit", command)
 
     def test_ship_knows_every_job_the_gate_lets_fail(self):
         # pr:ship stops at a queue run's first failed job unless the gate lets that job fail.
-        workflow = (ROOT / ".github/workflows/checks.yml").read_text().split("\njobs:\n", 1)[1]
-        job, advisory = None, set()
-        for line in workflow.splitlines():
-            if re.fullmatch(r"  [a-z-]+:", line):
-                job = line.strip()[:-1]
-            elif line == "    continue-on-error: true":
-                advisory.add(job)
-        listed = re.search(r"const ADVISORY: &\[&str\] = &\[([^\]]*)\];",
+        workflow = (ROOT / ".github/workflows/checks.yml").read_text()
+        jobs = mapping_fields(mapping_fields(workflow)["jobs"][1])
+        advisory = {job for job, (_, body) in jobs.items()
+                    if mapping_fields(body).get("continue-on-error", ("false", ""))[0] == "true"}
+        listed = re.search(r"\bconst\s+ADVISORY\b[^=]*=\s*&\s*\[([^\]]*)\]",
                            (ROOT / "backend/ci/src/ship.rs").read_text())
         self.assertIsNotNone(listed)
         self.assertEqual(set(re.findall(r'"([a-z-]+)"', listed.group(1))), advisory)
         self.assertTrue(advisory)
+
+
+def mapping_fields(source):
+    """The direct fields of a YAML block mapping, independent of indentation width."""
+    lines = source.splitlines()
+    significant = [(i, line) for i, line in enumerate(lines)
+                   if line.strip() and not line.lstrip().startswith("#")]
+    if not significant:
+        return {}
+    indent = min(len(line) - len(line.lstrip()) for _, line in significant)
+    fields = [(i, line) for i, line in significant if len(line) - len(line.lstrip()) == indent]
+    result = {}
+    for at, (i, line) in enumerate(fields):
+        match = re.fullmatch(r"\s*([a-zA-Z_-]+):\s*(.*)", line)
+        if match:
+            end = fields[at + 1][0] if at + 1 < len(fields) else len(lines)
+            result[match[1]] = (match[2], "\n".join(lines[i + 1:end]))
+    return result
 
 
 if __name__ == "__main__":

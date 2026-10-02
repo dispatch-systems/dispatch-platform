@@ -25,6 +25,8 @@ export const built = {
 export type FixtureOptions = {
   /** `seed` loads the demo DSPs (default); false bootstraps an empty platform. */
   seed?: boolean;
+  /** False leaves the seeded fixture stopped so callers can prepare data before serving. */
+  start?: boolean;
   /** Added to, or replacing, the fixture environment. */
   env?: NodeJS.ProcessEnv;
   /** Defaults to DISPATCH_TEST_BINARY or the debug build. */
@@ -37,7 +39,10 @@ const defaultBinary = path.resolve(
 );
 export async function freePort() {
   const listener = net.createServer();
-  await new Promise<void>((resolve) => listener.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve, reject) => {
+    listener.once('error', reject);
+    listener.listen(0, '127.0.0.1', resolve);
+  });
   const port = (listener.address() as net.AddressInfo).port;
   await new Promise<void>((resolve) => listener.close(() => resolve()));
   return port;
@@ -48,56 +53,63 @@ export async function prepare(options: boolean | FixtureOptions = true) {
   const seed = typeof options === 'boolean' ? options : (options.seed ?? true);
   const overrides = typeof options === 'boolean' ? {} : (options.env ?? {});
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-fixture-'));
-  if (overrides.DISPATCH_FIXTURE_PROVIDER_URL) {
-    const executable = path.join(root, 'dispatch-backend');
-    fs.copyFileSync(binary, executable, fs.constants.COPYFILE_FICLONE);
-    fs.chmodSync(executable, 0o700);
-    binary = executable;
+  const cleanup = () => fs.rmSync(root, { recursive: true, force: true });
+  try {
+    if (overrides.DISPATCH_FIXTURE_PROVIDER_URL) {
+      const executable = path.join(root, 'dispatch-backend');
+      fs.copyFileSync(binary, executable, fs.constants.COPYFILE_FICLONE);
+      fs.chmodSync(executable, 0o700);
+      binary = executable;
+    }
+    const port = await freePort();
+    // Keep the server transport pinned to loopback, while advertising localhost as
+    // the application origin. WebAuthn permits localhost for development but does
+    // not permit an IP address as a relying-party ID.
+    const address = `http://127.0.0.1:${port}`;
+    const origin = `http://localhost:${port}`;
+    const env = {
+      ...process.env,
+      NODE_ENV: 'development',
+      DISPATCH_STANDALONE: '1',
+      DISPATCH_ENVIRONMENT: 'preview',
+      DISPATCH_DEV_MAIL_MODE: 'capture',
+      DISPATCH_PRODUCTION_MAIL_MODE: 'capture',
+      DISPATCH_STATE_ROOT: root,
+      DISPATCH_PROVIDER_MODE: 'fixture',
+      DISPATCH_ORIGIN: origin,
+      PORT: String(port),
+      ...overrides,
+    };
+    const cli = (args: string[], input?: string) =>
+      execFileSync(binary, args, { env, input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+    if (seed)
+      execFileSync(binary, ['seed'], {
+        env: { ...env, DISPATCH_PROVIDER_MODE: 'fixture' },
+        stdio: 'pipe',
+      });
+    else cli(['bootstrap', demo.email, 'Fresh', 'Owner'], demo.password);
+    return { root, binary, env, port, address, cli, cleanup };
+  } catch (error) {
+    cleanup();
+    throw error;
   }
-  const port = await freePort();
-  // Keep the server transport pinned to loopback, while advertising localhost as
-  // the application origin. WebAuthn permits localhost for development but does
-  // not permit an IP address as a relying-party ID.
-  const address = `http://127.0.0.1:${port}`;
-  const origin = `http://localhost:${port}`;
-  const env = {
-    ...process.env,
-    NODE_ENV: 'development',
-    DISPATCH_STANDALONE: '1',
-    DISPATCH_ENVIRONMENT: 'preview',
-    DISPATCH_DEV_MAIL_MODE: 'capture',
-    DISPATCH_PRODUCTION_MAIL_MODE: 'capture',
-    DISPATCH_STATE_ROOT: root,
-    DISPATCH_PROVIDER_MODE: 'fixture',
-    DISPATCH_ORIGIN: origin,
-    PORT: String(port),
-    ...overrides,
-  };
-  const cli = (args: string[], input?: string) =>
-    execFileSync(binary, args, { env, input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-  if (seed)
-    execFileSync(binary, ['seed'], {
-      env: { ...env, DISPATCH_PROVIDER_MODE: 'fixture' },
-      stdio: 'pipe',
-    });
-  else cli(['bootstrap', demo.email, 'Fresh', 'Owner'], demo.password);
-  return { root, binary, env, port, address, cli };
 }
 export async function fixture(options: boolean | FixtureOptions = true) {
-  const { root, binary, env, address, cli } = await prepare(options);
+  const { root, binary, env, address, cli, cleanup } = await prepare(options);
   let origin = address;
   const overrides = typeof options === 'boolean' ? {} : (options.env ?? {});
   const inherit = typeof options !== 'boolean' && options.output === 'inherit';
   const password = demo.password;
   let server: ChildProcess | undefined;
   let logs = '';
+  const requestTimeout = overrides.DISPATCH_FIXTURE_PROVIDER_URL ? 180000 : 15000;
   /** The untouched response, for pages and assets that are not JSON. */
   const raw = (url: string, body?: unknown, headers: Record<string, string> = {}) =>
     fetch(origin + url, {
       method: body === undefined ? 'GET' : 'POST',
       headers: { origin: env.DISPATCH_ORIGIN, 'content-type': 'application/json', ...headers },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(overrides.DISPATCH_FIXTURE_PROVIDER_URL ? 180000 : 15000),
+      signal: AbortSignal.timeout(requestTimeout),
     });
   const request = async (url: string, body?: unknown, headers: Record<string, string> = {}) => {
     if (headers.host) {
@@ -109,22 +121,48 @@ export async function fixture(options: boolean | FixtureOptions = true) {
         headers: Headers;
         value: any;
       }>((resolve, reject) => {
-        const req = http.request(origin + url, { headers }, (res) => {
-          let text = '';
-          res.on('data', (chunk) => (text += chunk));
-          res.on('end', () =>
-            resolve({
-              status: res.statusCode!,
-              statusCode: res.statusCode!,
-              body: text,
-              json: <T = any>() => JSON.parse(text) as T,
-              headers: new Headers(),
-              value: JSON.parse(text),
-            }),
-          );
-        });
+        const req = http.request(
+          origin + url,
+          {
+            method: body === undefined ? 'GET' : 'POST',
+            headers: {
+              origin: env.DISPATCH_ORIGIN,
+              'content-type': 'application/json',
+              ...headers,
+            },
+            signal: AbortSignal.timeout(requestTimeout),
+          },
+          (res) => {
+            let text = '';
+            const responseHeaders = new Headers();
+            for (const [name, values] of Object.entries(res.headers))
+              for (const value of Array.isArray(values)
+                ? values
+                : values === undefined
+                  ? []
+                  : [values])
+                responseHeaders.append(name, value);
+            res.once('error', reject);
+            res.on('data', (chunk) => (text += chunk));
+            res.on('end', () => {
+              try {
+                const value = JSON.parse(text);
+                resolve({
+                  status: res.statusCode!,
+                  statusCode: res.statusCode!,
+                  body: text,
+                  json: <T = any>() => JSON.parse(text) as T,
+                  headers: responseHeaders,
+                  value,
+                });
+              } catch (error) {
+                reject(error);
+              }
+            });
+          },
+        );
         req.once('error', reject);
-        req.end();
+        req.end(body === undefined ? undefined : JSON.stringify(body));
       });
     }
     const response = await raw(url, body, headers);
@@ -146,6 +184,10 @@ export async function fixture(options: boolean | FixtureOptions = true) {
       stdio: inherit ? ['ignore', 'inherit', 'inherit'] : ['ignore', 'pipe', 'pipe'],
     });
     server = child;
+    let startupError: Error | undefined;
+    child.once('error', (error) => {
+      startupError = error;
+    });
     const from = logs.length;
     // A browser that fails to start, or a request the server failed, says why only in the
     // server's log. Show those lines in the test output as they happen, so a failure on a
@@ -162,7 +204,8 @@ export async function fixture(options: boolean | FixtureOptions = true) {
     // this server binds, and would answer the health check in its place. Only this server's
     // own start line, logged once it holds the port, proves the answer is its own.
     await until(async () => {
-      if (child.exitCode !== null) return true;
+      if (startupError) throw startupError;
+      if (child.exitCode !== null || child.signalCode !== null) return true;
       if (!inherit && !logs.includes('"event":"core.started"', from)) return false;
       try {
         return (await request('/api/health')).status === 200;
@@ -170,7 +213,7 @@ export async function fixture(options: boolean | FixtureOptions = true) {
         return false;
       }
     });
-    if (child.exitCode === null) {
+    if (child.exitCode === null && child.signalCode === null) {
       served = true;
       return;
     }
@@ -188,16 +231,18 @@ export async function fixture(options: boolean | FixtureOptions = true) {
     return start();
   };
   const stop = async (signal: NodeJS.Signals = 'SIGTERM') => {
-    if (server && server.exitCode === null && server.signalCode === null) {
+    if (server?.pid && server.exitCode === null && server.signalCode === null) {
       const process = server;
       await new Promise<void>((resolve, reject) => {
+        let timeoutError: Error | undefined;
         const timer = setTimeout(() => {
+          timeoutError = new Error(`Server failed to stop: ${logs}`);
           process.kill('SIGKILL');
-          reject(new Error(`Server failed to stop: ${logs}`));
         }, 10000);
         process.once('exit', () => {
           clearTimeout(timer);
-          resolve();
+          if (timeoutError) reject(timeoutError);
+          else resolve();
         });
         process.kill(signal);
       });
@@ -254,7 +299,19 @@ export async function fixture(options: boolean | FixtureOptions = true) {
       },
     };
   };
-  await start();
+  const close = async () => {
+    try {
+      await stop();
+    } finally {
+      cleanup();
+    }
+  };
+  try {
+    if (typeof options === 'boolean' || options.start !== false) await start();
+  } catch (error) {
+    await close();
+    throw error;
+  }
   return {
     root,
     binary,
@@ -277,10 +334,7 @@ export async function fixture(options: boolean | FixtureOptions = true) {
           : resolve(),
       ),
     logs: () => logs,
-    close: async () => {
-      await stop();
-      fs.rmSync(root, { recursive: true, force: true });
-    },
+    close,
   };
 }
 export async function until(check: () => Promise<boolean>, timeout = 12000) {

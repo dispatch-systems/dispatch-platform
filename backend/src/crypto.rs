@@ -169,9 +169,17 @@ mod tests {
             "{hash}"
         );
         assert!(check_password("correct horse battery", &hash));
+        assert!(!check_password("wrong", &hash));
         assert_ne!(hash, hash_password("correct horse battery").unwrap());
         let sealed = encrypt(&key, "binding", &json!({"a":1})).unwrap();
         assert_eq!(decrypt(&key, "binding", &sealed).unwrap(), json!({"a":1}));
+        let secret =
+            json!({"password":"private","securityAnswers":["00123","two","three","four","five"]});
+        let sealed_secret = encrypt(&key, "dsp-one", &secret).unwrap();
+        assert_eq!(decrypt(&key, "dsp-one", &sealed_secret).unwrap(), secret);
+        assert!(decrypt(&key, "dsp-two", &sealed_secret).is_err());
+        assert!(decrypt(&key, "dsp-one", &format!("{sealed_secret}x")).is_err());
+        assert!(!sealed_secret.contains("private"));
         let (nonce, body) = sealed.split_once('.').unwrap();
         assert!(decrypt(&key, "binding", &format!("{nonce}A.{body}")).is_err());
     }

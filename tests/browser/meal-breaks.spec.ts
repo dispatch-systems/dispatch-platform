@@ -225,10 +225,6 @@ test('the meal table scrolls on phones without overflowing the page and renders 
   await page.setViewportSize({ width: 1586, height: 992 });
   await open(page);
   await expect(page.locator('.meal-table tbody > tr')).toHaveCount(5);
-  await page.screenshot({
-    path: test.info().outputPath('dispatch-meal-breaks-desktop.png'),
-    fullPage: true,
-  });
   // Include the review notice in the phone/dark layouts, as in the navigation case.
   data = {
     ...data,
@@ -241,10 +237,6 @@ test('the meal table scrolls on phones without overflowing the page and renders 
   await page.getByRole('button', { name: 'Refresh meal breaks', exact: true }).click();
   await expect(page.locator('.meal-link-notice')).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({
-    path: test.info().outputPath('dispatch-meal-breaks-mobile.png'),
-    fullPage: true,
-  });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const scroll = page.getByRole('region', { name: 'Meal break comparison', exact: true });
   expect(await scroll.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
@@ -256,10 +248,6 @@ test('the meal table scrolls on phones without overflowing the page and renders 
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.setViewportSize({ width: 1586, height: 992 });
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({
-    path: test.info().outputPath('dispatch-meal-breaks-dark.png'),
-    fullPage: true,
-  });
   expect(errors).toEqual([]);
 });
 test('Flex gap badges and employee filter preserve comparison statuses and expose later meals', async ({
@@ -308,10 +296,6 @@ test('Flex gap badges and employee filter preserve comparison statuses and expos
   await expect(page.getByRole('button', { name: 'Gaps > 5 min 3', exact: true })).toBeVisible();
   await expect(page.getByRole('columnheader')).toHaveCount(8);
   await page.emulateMedia({ colorScheme: 'dark' });
-  await page.screenshot({
-    path: test.info().outputPath('dispatch-flex-gaps-desktop.png'),
-    fullPage: true,
-  });
   await page.getByRole('button', { name: 'Gaps > 5 min 3', exact: true }).click();
   await expect(page.locator('.meal-table tbody > tr')).toHaveCount(3);
   await expect(page.getByRole('row').filter({ hasText: 'Casey Brooks' })).toContainText(
@@ -338,10 +322,6 @@ test('Flex gap badges and employee filter preserve comparison statuses and expos
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('button', { name: 'Gaps > 5 min 3', exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({
-    path: test.info().outputPath('dispatch-flex-gaps-mobile.png'),
-    fullPage: true,
-  });
 });
 test('each time opens the Paycom timecard, Cortex route or delivery stop it was read from', async ({
   page,
@@ -592,7 +572,6 @@ test('sync remains locked across dates, tabs and reloads until both sources stop
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
-    await page.screenshot({ path: test.info().outputPath(`sync-date-lock-${width}.png`) });
   }
   flexStatus = 'waiting_verification';
   await page.reload();
@@ -613,6 +592,7 @@ test('sync remains locked across dates, tabs and reloads until both sources stop
 test('shared date and sync controls survive tabs, navigation, reload and collection', async ({
   page,
 }) => {
+  await page.clock.install();
   let syncStatus = 'succeeded';
   let flexStatus = 'failed';
   let collectedAt = '2026-09-16T06:00:00Z';
@@ -707,10 +687,6 @@ test('shared date and sync controls survive tabs, navigation, reload and collect
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
-    await page.screenshot({
-      path: test.info().outputPath(`timecard-header-${viewport.width}.png`),
-      fullPage: true,
-    });
     await meals.click();
     await expect(page.locator('.meal-table tbody > tr')).toHaveCount(5);
     await expectDate(page, date);
@@ -723,10 +699,6 @@ test('shared date and sync controls survive tabs, navigation, reload and collect
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
-    await page.screenshot({
-      path: test.info().outputPath(`meal-header-${viewport.width}.png`),
-      fullPage: true,
-    });
   }
   await page.setViewportSize({ width: 1586, height: 992 });
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -747,6 +719,7 @@ test('shared date and sync controls survive tabs, navigation, reload and collect
   );
   syncStatus = 'succeeded';
   collectedAt = '2026-09-16T06:05:00Z';
+  await page.clock.fastForward(5000);
   await expect(page.getByRole('status', { name: 'Paycom sync', exact: true })).toContainText(
     'Paycom synced',
     { timeout: 10000 },
@@ -759,6 +732,7 @@ test('shared date and sync controls survive tabs, navigation, reload and collect
   );
   flexStatus = 'failed';
   await meals.click();
+  await page.clock.fastForward(5000);
   await expect.poll(() => mealReads, { timeout: 10000 }).toBeGreaterThan(before);
   await expect(sync).toBeEnabled({ timeout: 10000 });
   await expectDate(page, date);
