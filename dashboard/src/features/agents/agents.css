@@ -454,6 +454,11 @@
 .agents-remote[open] summary svg {
   transform: rotate(90deg);
 }
+@media (prefers-reduced-motion: reduce) {
+  .agents-remote summary svg {
+    transition: none;
+  }
+}
 .agents-remote > :not(summary) {
   margin-top: 10px;
 }

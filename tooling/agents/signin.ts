@@ -70,8 +70,10 @@ class Terminal {
   readonly child: ChildProcess;
   readonly done: Promise<number | null>;
   private readonly waiting = new Set<() => void>();
+  private failed = false;
   constructor(args: string[], env: NodeJS.ProcessEnv, cwd: string, pty = true) {
-    // A wide terminal, so no app wraps the long sign-in link across lines.
+    // A wide terminal, so no app wraps the long sign-in link across lines. The pseudo-terminal
+    // comes from util-linux `script`; BSD `script` (macOS) takes other flags and isn't supported.
     const command = `stty cols 4000 rows 50 2>/dev/null; exec ${args.map(quote).join(' ')}`;
     this.child = spawn(
       pty ? 'script' : args[0]!,
@@ -85,15 +87,22 @@ class Terminal {
     };
     this.child.stdout!.on('data', read(true));
     this.child.stderr!.on('data', read(false));
-    this.done = new Promise((resolve) =>
+    this.done = new Promise((resolve) => {
       this.child.on('close', (code) => {
         resolve(code);
         for (const wake of this.waiting) wake();
-      }),
-    );
+      });
+      // A command that can't start fails its client's step instead of the whole run.
+      this.child.on('error', (error) => {
+        this.failed = true;
+        this.text += `\n${error.message}\n`;
+        resolve(null);
+        for (const wake of this.waiting) wake();
+      });
+    });
   }
   get running() {
-    return this.child.exitCode === null && this.child.signalCode === null;
+    return !this.failed && this.child.exitCode === null && this.child.signalCode === null;
   }
   /** The first match of `pattern` in the output (or stdout alone), waiting up to `ms`. */
   until(pattern: RegExp, ms = 60_000, stdout = false) {
@@ -724,7 +733,9 @@ async function main() {
   const inherited = Object.fromEntries(
     Object.entries(process.env).filter(
       ([name]) =>
-        !/^(CLAUDE|ANTHROPIC|CODEX|OPENAI|MCP_|DBUS_SESSION|GNOME_KEYRING|SSH_AUTH)/.test(name),
+        !/^(CLAUDE|ANTHROPIC|CODEX|OPENAI|HERMES|MCP_|DBUS_SESSION|GNOME_KEYRING|SSH_AUTH)/.test(
+          name,
+        ),
     ),
   );
   const npmCache = execFileSync('npm', ['config', 'get', 'cache'], { encoding: 'utf8' }).trim();
@@ -771,6 +782,7 @@ async function main() {
         XDG_CACHE_HOME: path.join(home, '.cache'),
         CLAUDE_CONFIG_DIR: path.join(home, '.claude'),
         CODEX_HOME: path.join(home, '.codex'),
+        HERMES_HOME: path.join(home, '.hermes'),
         BROWSER: noBrowser,
         DISABLE_AUTOUPDATER: '1',
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
