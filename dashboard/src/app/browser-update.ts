@@ -1,5 +1,12 @@
 import { performancePolicy } from '../lib/performance-policy.js';
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import { onActivity } from './activity.js';
 
 const storageKey = 'dispatch:browser-update:v1';
@@ -23,12 +30,22 @@ try {
   // Restricted storage must not break the application.
 }
 
+// A pending navigation keeps the previous page mounted. Its state still belongs to the
+// committed page, even though the browser's hash already points to the destination.
+export const NavigationStateContext = createContext<string | undefined>(undefined);
+export function readUpdateState<T>(name: string, initial: T, hash = location.hash): T {
+  const key = `${hash.split('?')[0]}:${name}`;
+  const saved = restored[key] ?? navigationValues.get(key);
+  return saved !== undefined ? (saved as T) : initial;
+}
+
 // Only explicitly opted-in, non-sensitive navigation state is retained.
 export function useUpdateState<T>(
   name: string,
   initial: T | (() => T),
 ): [T, Dispatch<SetStateAction<T>>] {
-  const key = `${location.hash.split('?')[0]}:${name}`;
+  const hash = useContext(NavigationStateContext) ?? location.hash;
+  const key = `${hash.split('?')[0]}:${name}`;
   const [value, setValue] = useState<T>(() => {
     const saved = restored[key] ?? navigationValues.get(key);
     return saved !== undefined

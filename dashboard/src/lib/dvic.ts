@@ -1,16 +1,21 @@
 import type { DvicInspection, DvicInspections } from '../../../shared/contracts/dvic.js';
 import { shiftDate } from './meal-breaks.js';
+import { dateFormatter } from './date-format.js';
 
 export const weekStart = (date: string) =>
   shiftDate(date, -new Date(date + 'T12:00:00Z').getUTCDay());
 export const weekDays = (start: string) => Array.from({ length: 7 }, (_, i) => shiftDate(start, i));
 export const inspectionDate = (date: string, weekday = false) =>
-  new Intl.DateTimeFormat('en-US', {
+  dateFormatter('en-US', {
     timeZone: 'UTC',
     month: 'short',
     day: 'numeric',
     ...(weekday ? { weekday: 'short' } : {}),
   }).format(new Date(date + 'T12:00:00Z'));
+export const inspectionWeekday = (date: string) =>
+  dateFormatter('en-US', { timeZone: 'UTC', weekday: 'short' }).format(
+    new Date(date + 'T12:00:00Z'),
+  );
 
 // Amazon supplies wall times without an offset. Never pass them through the viewer's zone.
 export function inspectionClock(value: string) {
@@ -94,13 +99,21 @@ export const bandLabel: Record<Band, string> = {
 };
 export const bandRank: Record<Band, number> = { low: 0, mid: 1, high: 2 };
 
-export const shortestFirst = (rows: DvicInspection[]) =>
-  [...rows].sort(
-    (a, b) =>
-      inspectionShare(a) - inspectionShare(b) ||
-      a.startTime.localeCompare(b.startTime) ||
-      a.id.localeCompare(b.id),
-  );
+const shortestOrder = (a: DvicInspection, b: DvicInspection) =>
+  inspectionShare(a) - inspectionShare(b) ||
+  a.startTime.localeCompare(b.startTime) ||
+  a.id.localeCompare(b.id);
+export const shortestFirst = (rows: DvicInspection[]) => [...rows].sort(shortestOrder);
+
+/** Each driver's day cell keeps its shortest share without filtering or sorting the week again. */
+export function shortestByDay(rows: DvicInspection[]) {
+  const days = new Map<string, DvicInspection>();
+  for (const row of rows) {
+    const previous = days.get(row.startDate);
+    if (!previous || shortestOrder(row, previous) < 0) days.set(row.startDate, row);
+  }
+  return days;
+}
 
 const initialsOf = (row: DvicInspection) =>
   (row.driverName || row.driverId)
@@ -120,7 +133,11 @@ export interface DriverWeek {
 /** Drivers with the most short inspections first; a name change never splits a driver. */
 export function driversByCount(rows: DvicInspection[]): DriverWeek[] {
   const map = new Map<string, DvicInspection[]>();
-  for (const row of rows) map.set(row.driverId, [...(map.get(row.driverId) ?? []), row]);
+  for (const row of rows) {
+    const group = map.get(row.driverId);
+    if (group) group.push(row);
+    else map.set(row.driverId, [row]);
+  }
   return [...map.entries()]
     .map(([driverId, list]) => ({
       driverId,

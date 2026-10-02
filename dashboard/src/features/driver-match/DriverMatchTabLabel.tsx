@@ -1,8 +1,14 @@
-import { useDriverMatch } from '../../app/endpoints.js';
+import type { DriverCounts, DriverMatch } from '../../../../shared/contracts/index.js';
+import { useCachedData } from '../../app/api.js';
 
 /** The tab's name, with how many pairs wait for a decision. */
-export function DriverMatchTabLabel() {
-  const review = useDriverMatch().data?.counts.review ?? 0;
+export function DriverMatchTabLabel({ active }: { active: boolean }) {
+  // The open panel owns the full roster's polling; its badge shares that read.
+  const { data } = useCachedData<DriverMatch | DriverCounts>(
+    active ? '/api/dsp/driver-match' : '/api/dsp/driver-match/counts',
+    active ? -1 : 0,
+  );
+  const review = data ? ('counts' in data ? data.counts.review : data.review) : 0;
   return (
     <>
       Driver Match

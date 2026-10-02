@@ -68,7 +68,7 @@ export function MultiFactorPanel() {
         )}
       </div>
       <ErrorBox message={action.error || setupAction.error} />
-      <DataState data={status.data} error={status.error}>
+      <DataState data={status.data} error={status.error} retry={status.refresh}>
         {(security) => (
           <>
             <div className="security-row security-factor-row">
@@ -76,7 +76,7 @@ export function MultiFactorPanel() {
               <div className="security-row-copy">
                 <span>Passkeys</span>
                 <small>Use your device, password manager, or security key.</small>
-                <DataState data={passkeys.data} error={passkeys.error}>
+                <DataState data={passkeys.data} error={passkeys.error} retry={passkeys.refresh}>
                   {(items) => (
                     <div className="security-factor-list">
                       {items.map((key) => (

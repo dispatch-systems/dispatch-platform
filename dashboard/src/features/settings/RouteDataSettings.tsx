@@ -41,7 +41,7 @@ export function RouteDataSettings({ timeZone }: { timeZone: string }) {
   const retention = useRouteRetention();
   return (
     <div className="route-data-settings">
-      <DataState data={retention.data} error={retention.error}>
+      <DataState data={retention.data} error={retention.error} retry={retention.refresh}>
         {(current) => (
           <RetentionPanel current={current} timeZone={timeZone} saved={retention.refresh} />
         )}

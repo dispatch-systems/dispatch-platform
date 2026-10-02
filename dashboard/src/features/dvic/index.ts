@@ -1,2 +1,2 @@
-export { DvicPage } from './DvicPage.js';
+export { DvicPage, isDvicPageReady } from './DvicPage.js';
 import './dvic.css';

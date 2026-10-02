@@ -2,6 +2,7 @@ import { PasswordPanel } from './PasswordPanel.js';
 import { SessionsPanel } from './SessionsPanel.js';
 import { useAccountSessions } from '../../app/endpoints.js';
 import { MultiFactorPanel } from './MultiFactorPanel.js';
+import './security.css';
 
 export function SecuritySettings() {
   const sessions = useAccountSessions();

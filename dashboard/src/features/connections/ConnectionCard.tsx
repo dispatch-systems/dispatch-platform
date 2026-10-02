@@ -1,5 +1,6 @@
 import { BrowserVerification } from './BrowserVerification.js';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { performancePolicy } from '../../lib/performance-policy.js';
 import { Plug, RefreshCw } from 'lucide-react';
 import type { Connection } from '../../../../shared/contracts/index.js';
 import { api } from '../../app/api.js';
@@ -20,7 +21,12 @@ export function ConnectionCard({
 }) {
   const name = provider === 'paycom' ? 'Paycom' : 'Cortex';
   const endpoint = connectionUrl(provider);
-  const { data, error, refresh } = useConnection(provider, 4000);
+  const [poll, setPoll] = useState(performancePolicy.recoveryPollMs);
+  const { data, error, refresh } = useConnection(provider, poll);
+  useEffect(() => {
+    const active = data && ['signing_in', 'needs_verification'].includes(data.status);
+    setPoll(active ? 4000 : performancePolicy.recoveryPollMs);
+  }, [data?.status]);
   const [disconnecting, setDisconnecting] = useState(false);
   const [credentialError, setCredentialError] = useState('');
   const [saveError, setSaveError] = useState('');
@@ -84,7 +90,7 @@ export function ConnectionCard({
   }
   return (
     <>
-      <DataState data={data} error={error}>
+      <DataState data={data} error={error} retry={refresh}>
         {(data) => (
           <article className="archived-connection-card">
             <header>

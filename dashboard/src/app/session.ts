@@ -25,14 +25,15 @@ export function saveRole(dspId?: string, roleId?: string) {
     /* The role still applies until the page reloads. */
   }
 }
-export async function openView(session: SessionView, dspId: string) {
+export async function openView(session: SessionView, dspId: string, current = () => true) {
   const roleId = session.user.platformOwner ? savedRole(dspId) : undefined;
   if (!roleId) return openDsp(dspId);
   try {
     return await openDsp(dspId, roleId);
   } catch (error) {
     // The DSP deleted the role being looked through; owner access remains.
-    if (!(error instanceof ApiError) || error.code !== 'dsp_view_expired') throw error;
+    if (!(error instanceof ApiError) || error.code !== 'dsp_view_expired' || !current())
+      throw error;
     saveRole();
     return openDsp(dspId);
   }

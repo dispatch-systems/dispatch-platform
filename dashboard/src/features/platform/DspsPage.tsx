@@ -81,7 +81,7 @@ export function DspsPage() {
           </span>
         ))}
       </div>
-      <DataState data={data}>
+      <DataState data={data} failed={Boolean(error)} retry={refresh}>
         {() => (
           <div className={`dsps-master ${explicit ? 'chosen' : ''}`}>
             <DspListPane

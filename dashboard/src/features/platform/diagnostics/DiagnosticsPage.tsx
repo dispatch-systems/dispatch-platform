@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { hashQuery, replaceHashQuery } from '../../../app/navigation.js';
+import { hashQuery, parseHash, replaceHashQuery } from '../../../app/navigation.js';
 import { useData } from '../../../app/api.js';
 import { usePlatformJobs, usePlatformHealth } from '../../../app/endpoints.js';
-import { ErrorBox, Header, Loading, Tabs } from '../../../ui/index.js';
+import { DataState, ErrorBox, Header, Tabs } from '../../../ui/index.js';
 import { collectionHistory } from './collection-history.js';
 import type { Diagnostics } from './types.js';
 import { DiagnosticsCollections } from './DiagnosticsCollections.js';
@@ -32,7 +32,10 @@ export function DiagnosticsPage() {
   const sources = useMemo(() => collectionHistory(jobs.data ?? []), [jobs.data]);
   // A link to another tab changes only the address's query, which does not remount the page.
   useEffect(() => {
-    const changed = () => setPlace(addressed());
+    const changed = () => {
+      const target = parseHash(window.location.hash);
+      if (!target.dspId && target.page === 'jobs') setPlace(addressed());
+    };
     window.addEventListener('hashchange', changed);
     return () => window.removeEventListener('hashchange', changed);
   }, []);
@@ -42,6 +45,23 @@ export function DiagnosticsPage() {
   };
   const attention = sources.filter((source) => source.warnings.length).length;
   const mailFailed = health.data?.mail.failed ?? 0;
+  const overview =
+    health.data && diagnostics.data && jobs.data
+      ? { health: health.data, diagnostics: diagnostics.data, jobs: jobs.data }
+      : undefined;
+  const error =
+    place.tab === 'overview'
+      ? diagnostics.error || health.error || jobs.error
+      : place.tab === 'email'
+        ? health.error
+        : place.tab === 'collections'
+          ? jobs.error
+          : diagnostics.error;
+  const retry = () => {
+    health.refresh();
+    diagnostics.refresh();
+    jobs.refresh();
+  };
   const count = (text: string, value: number) => (
     <>
       {text}
@@ -62,44 +82,52 @@ export function DiagnosticsPage() {
           ['test-dsps', 'Test DSPs'],
         ]}
       />
-      <ErrorBox message={diagnostics.error || health.error || jobs.error} />
-      {place.tab === 'overview' &&
-        (health.data && diagnostics.data && jobs.data ? (
-          <DiagnosticsOverview
-            health={health.data}
-            diagnostics={diagnostics.data}
-            jobs={jobs.data}
-            sources={sources}
-            openSource={(source, run) => go('collections', source, run)}
-            openEmail={() => go('email')}
-          />
-        ) : (
-          <Loading />
-        ))}
-      {place.tab === 'collections' &&
-        (jobs.data ? (
-          <DiagnosticsCollections
-            key={place.run}
-            sources={sources}
-            selected={place.source}
-            run={place.run}
-            onSelect={(source) => go('collections', source)}
-          />
-        ) : (
-          <Loading />
-        ))}
-      {place.tab === 'email' &&
-        (health.data ? (
-          <DiagnosticsEmail mail={health.data.mail} onChanged={health.refresh} />
-        ) : (
-          <Loading />
-        ))}
-      {place.tab === 'test-dsps' &&
-        (diagnostics.data ? (
-          <DiagnosticsTestDsps diagnostics={diagnostics.data} refresh={diagnostics.refresh} />
-        ) : (
-          <Loading />
-        ))}
+      <ErrorBox message={error} />
+      {place.tab === 'overview' && (
+        <DataState
+          data={overview}
+          failed={Boolean(health.error || diagnostics.error || jobs.error)}
+          retry={retry}
+        >
+          {(data) => (
+            <DiagnosticsOverview
+              health={data.health}
+              diagnostics={data.diagnostics}
+              jobs={data.jobs}
+              sources={sources}
+              openSource={(source, run) => go('collections', source, run)}
+              openEmail={() => go('email')}
+            />
+          )}
+        </DataState>
+      )}
+      {place.tab === 'collections' && (
+        <DataState data={jobs.data} failed={Boolean(jobs.error)} retry={jobs.refresh}>
+          {() => (
+            <DiagnosticsCollections
+              key={place.run}
+              sources={sources}
+              selected={place.source}
+              run={place.run}
+              onSelect={(source) => go('collections', source)}
+            />
+          )}
+        </DataState>
+      )}
+      {place.tab === 'email' && (
+        <DataState data={health.data} failed={Boolean(health.error)} retry={health.refresh}>
+          {(data) => <DiagnosticsEmail mail={data.mail} onChanged={health.refresh} />}
+        </DataState>
+      )}
+      {place.tab === 'test-dsps' && (
+        <DataState
+          data={diagnostics.data}
+          failed={Boolean(diagnostics.error)}
+          retry={diagnostics.refresh}
+        >
+          {(data) => <DiagnosticsTestDsps diagnostics={data} refresh={diagnostics.refresh} />}
+        </DataState>
+      )}
     </>
   );
 }

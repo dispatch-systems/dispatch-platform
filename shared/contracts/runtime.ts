@@ -30,6 +30,7 @@ import {
   type AuthenticatorSetup,
   type PasskeySummary,
   type User,
+  type DriverCounts,
 } from './index.js';
 
 const text = z.string();
@@ -237,6 +238,16 @@ const collectionUpdatesSchema = z.object({
   ),
 }) satisfies z.ZodType<CollectionUpdates>;
 const okSchema = z.object({ ok: z.literal(true) });
+const driverCountsSchema = z.object({
+  all: count,
+  drivers: count,
+  matched: count,
+  review: count,
+  paycomOnly: count,
+  amazonOnly: count,
+  office: count,
+  former: count,
+}) satisfies z.ZodType<DriverCounts>;
 const jobsSchema = z.array(jobSchema);
 export function parseApiResponse(path: string, method: 'GET' | 'POST', value: unknown): unknown {
   const route = path.split('?')[0];
@@ -247,6 +258,7 @@ export function parseApiResponse(path: string, method: 'GET' | 'POST', value: un
     else if (route === '/api/auth/security/passkeys') schema = z.array(passkeySummary);
     else if (route === '/api/auth/security/sessions') schema = z.array(accountSession);
     else if (route === '/api/dsp/collection-updates') schema = collectionUpdatesSchema;
+    else if (route === '/api/dsp/driver-match/counts') schema = driverCountsSchema;
     else if (route === '/api/dsp/uniforms') schema = uniformInventorySchema;
     else if (route === '/api/dsp/uniforms/updates') schema = uniformUpdatesSchema;
     else if (route === '/api/dsp/uniforms/history') schema = uniformHistorySchema;

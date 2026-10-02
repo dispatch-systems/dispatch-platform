@@ -89,17 +89,24 @@ test('lib depends on nothing else in the dashboard', () => {
 
 // A feature that embeds another names it here, so a new edge is a visible decision.
 const embeds = ['settings -> connections', 'settings -> driver-match'];
+// Named public entries keep unrelated pages out of each other's lazy chunks. This
+// remains an explicit boundary: callers cannot reach arbitrary feature internals.
+const extraEntries = [
+  'features/platform/picker.ts',
+  'features/platform/diagnostics/index.ts',
+  'features/timecard/settings/index.ts',
+  'features/driver-match/badge.ts',
+];
 
-test('a feature reaches another feature only through its index, and only where allowed', () => {
+test('a feature reaches another feature only through a public entry, and only where allowed', () => {
   assert(modules.filter(({ file }) => feature(file)).length > 30, 'found too few feature files');
   const found = new Set<string>();
   for (const { file, target } of edges) {
     const to = feature(target);
     if (!to || to === feature(file)) continue;
-    assert.equal(
-      target,
-      path.join('features', to, 'index.ts'),
-      `${file} imports ${target}; import features/${to}/index.js instead`,
+    assert(
+      target === path.join('features', to, 'index.ts') || extraEntries.includes(target),
+      `${file} imports ${target}; use the feature's index or a declared public entry`,
     );
     const from = feature(file);
     if (!from) continue;

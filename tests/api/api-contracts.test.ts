@@ -15,6 +15,28 @@ test('recovery-code responses accept the active and previous rollout formats', (
   );
 });
 
+test('driver badge counts reject malformed responses without exposing their contents', () => {
+  const route = '/api/dsp/driver-match/counts';
+  const counts = {
+    all: 12,
+    drivers: 10,
+    matched: 6,
+    review: 2,
+    paycomOnly: 1,
+    amazonOnly: 1,
+    office: 2,
+    former: 0,
+  };
+  assert.deepEqual(parseApiResponse(route, 'GET', counts), counts);
+  for (const review of ['private-invalid-count', -1, 0.5, null])
+    assert.throws(
+      () => parseApiResponse(route, 'GET', { ...counts, review }),
+      /^Error: invalid_api_response$/,
+    );
+  const { former: _former, ...incomplete } = counts;
+  assert.throws(() => parseApiResponse(route, 'GET', incomplete), /^Error: invalid_api_response$/);
+});
+
 test('generated platform contracts validate real responses and settings round trips preserve every preference', async (t) => {
   const f = await fixture();
   t.after(f.close);

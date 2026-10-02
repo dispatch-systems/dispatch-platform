@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import { useUpdateState } from '../../app/browser-update.js';
 import { useDriverMatch } from '../../app/endpoints.js';
 import { useTableState } from '../../app/useTableState.js';
@@ -8,8 +8,8 @@ import {
   dataLabels,
   dataOrder,
   driverFilters,
-  driverMatches,
-  inFilter,
+  driverFilter,
+  driverSearchTerms,
   type DriverFilter,
 } from '../../lib/driver-match.js';
 import {
@@ -35,12 +35,36 @@ export function DriverMatchSettings({ timezone }: { timezone: string }) {
   const state = useTableState('driver-match', { id: 'name', desc: false });
   const today = dateFormatter('en-CA', { timeZone: timezone }).format(new Date());
   const drivers = useMemo(() => request.data?.drivers ?? [], [request.data]);
+  const prepared = useMemo(() => {
+    const counts = Object.fromEntries(driverFilters.map(([key]) => [key, 0])) as Record<
+      DriverFilter,
+      number
+    >;
+    counts.all = drivers.length;
+    const searchable = drivers.map((driver) => {
+      const kind = driverFilter(driver);
+      counts[kind]++;
+      return { driver, kind, terms: driverSearchTerms(driver) };
+    });
+    return { counts, searchable };
+  }, [drivers]);
+  const search = query.trim().toLocaleLowerCase('en-US');
+  const deferredSearch = useDeferredValue(search);
+  const searching = search !== deferredSearch;
   const rows = useMemo(
-    () => drivers.filter((driver) => inFilter(driver, filter) && driverMatches(driver, query)),
-    [drivers, filter, query],
+    () =>
+      prepared.searchable
+        .filter(
+          ({ kind, terms }) =>
+            (filter === 'all' || kind === filter) &&
+            terms.some((text) => text.includes(deferredSearch)),
+        )
+        .map(({ driver }) => driver),
+    [prepared, filter, deferredSearch],
   );
+  const columns = useMemo(() => driverColumns(setOpen, today), [today]);
   const table = useDataTable({
-    columns: driverColumns(setOpen, today),
+    columns,
     rows,
     rowId: (driver) => driver.code,
     state,
@@ -81,7 +105,7 @@ export function DriverMatchSettings({ timezone }: { timezone: string }) {
                       }}
                     >
                       {label}
-                      <span>{drivers.filter((driver) => inFilter(driver, key)).length}</span>
+                      <span>{prepared.counts[key]}</span>
                     </button>
                   ))}
                 </div>
@@ -100,7 +124,7 @@ export function DriverMatchSettings({ timezone }: { timezone: string }) {
                   Codes appear after the first Paycom or Amazon collection.
                 </Empty>
               ) : (
-                <div className="driver-table">
+                <div className="driver-table" aria-busy={searching} inert={searching}>
                   <div className="table-wrap">
                     <DataTable table={table} label="Drivers" />
                   </div>

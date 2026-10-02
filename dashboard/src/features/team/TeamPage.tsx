@@ -1,5 +1,5 @@
 import { performancePolicy } from '../../lib/performance-policy.js';
-import { useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import { RefreshCw, Plus, Ellipsis } from 'lucide-react';
 import type { DspView, Membership, Role } from '../../../../shared/contracts/index.js';
 import { useUpdateState } from '../../app/browser-update.js';
@@ -16,6 +16,7 @@ import {
   Popover,
   SearchInput,
   Tabs,
+  TablePagination,
   useDataTable,
   type TableColumn,
 } from '../../ui/index.js';
@@ -93,12 +94,21 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
     },
     { success: (_, role) => (role === null ? 'Member removed' : 'Role updated') },
   );
+  const searchable = useMemo(
+    () =>
+      data?.map((member) => ({
+        member,
+        text: `${member.name} ${member.email}`.toLowerCase(),
+      })) ?? [],
+    [data],
+  );
+  const searchText = search.toLowerCase();
+  const deferredSearch = useDeferredValue(searchText);
+  const searching = searchText !== deferredSearch;
   const members = useMemo(
     () =>
-      data?.filter((member) =>
-        `${member.name} ${member.email}`.toLowerCase().includes(search.toLowerCase()),
-      ) ?? [],
-    [data, search],
+      searchable.filter(({ text }) => text.includes(deferredSearch)).map(({ member }) => member),
+    [searchable, deferredSearch],
   );
   const memberColumns: TableColumn<Membership>[] = [
     {
@@ -154,6 +164,7 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
     columns: memberColumns,
     rows: members,
     rowId: (member) => member.id,
+    pageSize: 100,
   });
   const pending = useMemo(
     () =>
@@ -199,6 +210,7 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
     columns: invitationColumns,
     rows: pending,
     rowId: (invitation, index) => `${invitation.email}:${index}`,
+    pageSize: 100,
   });
   return (
     <>
@@ -235,16 +247,20 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
               label="Search members"
               placeholder="Search members"
               value={search}
-              onChange={setSearch}
+              onChange={(value) => {
+                setSearch(value);
+                memberTable.setPage(0);
+              }}
             />
             <button className="icon-button" aria-label="Refresh members" onClick={refresh}>
               <RefreshCw size={16} />
             </button>
           </div>
-          <DataState data={data}>
+          <DataState data={data} failed={Boolean(error)} retry={refresh}>
             {() => (
-              <div className="table-wrap">
-                <DataTable table={memberTable} />
+              <div className="table-wrap" aria-busy={searching} inert={searching}>
+                <DataTable table={memberTable} label="Team members" />
+                <TablePagination table={memberTable} />
                 {!members.length && (
                   <Empty title="No team members">
                     Invite a member to give them access to this DSP.
@@ -256,7 +272,14 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
         </>
       )}
       {tab === 'roles' && (
-        <RolesTab view={view} roles={roles.data} edit={setRoleEditor} remove={setRemovingRole} />
+        <RolesTab
+          view={view}
+          roles={roles.data}
+          failed={Boolean(roles.error)}
+          retry={roles.refresh}
+          edit={setRoleEditor}
+          remove={setRemovingRole}
+        />
       )}
       {roleEditor && (
         <RoleSheet
@@ -282,12 +305,21 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
               <RefreshCw size={16} />
             </button>
           </div>
-          <div className="table-wrap">
-            <DataTable table={invitationTable} />
-            {!pending.length && (
-              <Empty title="No invitations">Invite a team member to get started.</Empty>
+          <DataState
+            data={invitations.data}
+            failed={Boolean(invitations.error)}
+            retry={invitations.refresh}
+          >
+            {() => (
+              <div className="table-wrap">
+                <DataTable table={invitationTable} label="Pending invitations" />
+                <TablePagination table={invitationTable} />
+                {!pending.length && (
+                  <Empty title="No invitations">Invite a team member to get started.</Empty>
+                )}
+              </div>
             )}
-          </div>
+          </DataState>
         </>
       )}
       {revoking && (

@@ -1,5 +1,5 @@
 import { useUpdateState } from '../../../app/browser-update.js';
-import { useMemo } from 'react';
+import { useDeferredValue, useMemo } from 'react';
 import { AlertTriangle, ArrowRight, Download, Globe, Info, RefreshCw } from 'lucide-react';
 import { mealComparisonUrl, useMealComparison } from '../../../app/endpoints.js';
 import { dspHash, navigate } from '../../../app/navigation.js';
@@ -19,9 +19,13 @@ import { clockLabel, displayMeal } from '../../../lib/meal-breaks.js';
 import { type MealEmployee } from '../../../../../shared/contracts/meals.js';
 import type { PaycomPreferences } from '../../../../../shared/contracts/paycom.js';
 import { PaycomDateControls } from '../DateControls.js';
-import { MealDetail, mealColumns, mealLines } from './mealColumns.js';
+import { MealDetail, mealColumns, mealLines, type MealLine } from './mealColumns.js';
 import { useAdjacentDays } from '../useAdjacentDays.js';
 import './meal-breaks.css';
+
+const rowClassName = (_: MealLine, { depth }: { depth: number }) =>
+  depth ? 'meal-extra' : undefined;
+const renderDetail = (line: MealLine) => <MealDetail line={line} />;
 
 export function MealBreaksPage({
   date,
@@ -64,30 +68,41 @@ export function MealBreaksPage({
       ),
     [data, shownDate, nameOrder],
   );
-  const counts = {
-    all: rows.length,
-    late: rows.filter((r) => r.summary.lateIn).length,
-    different: rows.filter((r) => r.summary.different).length,
-    missing: rows.filter((r) => r.summary.missing).length,
-    gaps: rows.filter((r) => r.summary.longGap).length,
-  };
+  const prepared = useMemo(() => {
+    const counts = { all: rows.length, late: 0, different: 0, missing: 0, gaps: 0 };
+    const searchable = rows.map((line) => {
+      counts.late += Number(line.summary.lateIn);
+      counts.different += Number(line.summary.different);
+      counts.missing += Number(line.summary.missing);
+      counts.gaps += Number(line.summary.longGap);
+      return {
+        line,
+        text: `${line.name} ${line.row.paycom?.employeeCode ?? ''} ${line.row.cortex.map((m) => m.driverName).join(' ')}`.toLowerCase(),
+      };
+    });
+    return { counts, searchable };
+  }, [rows]);
+  const counts = prepared.counts;
+  const search = query.toLowerCase();
+  const deferredSearch = useDeferredValue(search);
+  const searching = deferredSearch !== search;
   const filtered = useMemo(
     () =>
-      rows.filter(
-        ({ row, summary, name }) =>
-          (filter === 'all' ||
-            (filter === 'late'
-              ? summary.lateIn
-              : filter === 'different'
-                ? summary.different
-                : filter === 'gaps'
-                  ? summary.longGap
-                  : summary.missing)) &&
-          `${name} ${row.paycom?.employeeCode ?? ''} ${row.cortex.map((m) => m.driverName).join(' ')}`
-            .toLowerCase()
-            .includes(query.toLowerCase()),
-      ),
-    [rows, filter, query],
+      prepared.searchable
+        .filter(
+          ({ line: { summary }, text }) =>
+            (filter === 'all' ||
+              (filter === 'late'
+                ? summary.lateIn
+                : filter === 'different'
+                  ? summary.different
+                  : filter === 'gaps'
+                    ? summary.longGap
+                    : summary.missing)) &&
+            text.includes(deferredSearch),
+        )
+        .map(({ line }) => line),
+    [prepared, filter, deferredSearch],
   );
   const table = useDataTable({
     columns: mealColumns,
@@ -125,7 +140,7 @@ export function MealBreaksPage({
         <button
           className="icon-button"
           aria-label="Export meal breaks"
-          disabled={!filtered.length}
+          disabled={!filtered.length || searching}
           onClick={() => downloadTable(table, `meal-breaks-${shownDate}.csv`)}
         >
           <Download size={16} />
@@ -206,7 +221,11 @@ export function MealBreaksPage({
                 : 'Choose another date to compare collected records.'}
             </Empty>
           ) : (
-            <div className="paycom-day-results" aria-busy={!current} inert={!current}>
+            <div
+              className="paycom-day-results"
+              aria-busy={!current || searching}
+              inert={!current || searching}
+            >
               {(!data.paycomCollectedAt || !data.cortexPublications.length) && (
                 <p className="meal-source-notice" role="status">
                   <AlertTriangle size={16} aria-hidden="true" />
@@ -228,8 +247,8 @@ export function MealBreaksPage({
                   stickyHeader
                   className="meal-table"
                   caption={`Meal breaks for ${shownDate}. Paycom local clock times and Flex station-local times, compared to the minute.`}
-                  rowClassName={(_, { depth }) => (depth ? 'meal-extra' : undefined)}
-                  renderDetail={(line) => <MealDetail line={line} />}
+                  rowClassName={rowClassName}
+                  renderDetail={renderDetail}
                   detailClassName="meal-detail"
                 />
               </div>

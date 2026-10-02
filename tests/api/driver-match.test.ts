@@ -14,6 +14,7 @@ test('Driver Match gives everyone a code and answers only to its own permission'
   await member.select(north.id);
   // A member's role holds no Driver Match permission.
   assert.equal((await member.get('/api/dsp/driver-match')).status, 403);
+  assert.equal((await member.get('/api/dsp/driver-match/counts')).status, 403);
   await owner.select(north.id);
   // The scheduler gives the demo's people their codes shortly after the server starts.
   let result!: DriverMatch;
@@ -23,6 +24,10 @@ test('Driver Match gives everyone a code and answers only to its own permission'
   });
   assert.ok(result.drivers.every((driver) => code.test(driver.code)));
   assert.equal(result.counts.all, result.drivers.length);
+  const counts = await owner.get('/api/dsp/driver-match/counts');
+  assert.equal(counts.status, 200, counts.body);
+  assert.deepEqual(counts.value, result.counts);
+  assert.equal('drivers' in counts.value && Array.isArray(counts.value.drivers), false);
   const [first, second] = result.drivers;
   const details: DriverDetails = (await owner.get(`/api/dsp/driver-match/drivers/${first!.code}`))
     .value;
@@ -72,6 +77,7 @@ test('Driver Match gives everyone a code and answers only to its own permission'
   await owner.post(url, { feature: 'driver_match', enabled: false });
   await owner.select(north.id);
   assert.equal((await owner.get('/api/dsp/driver-match')).status, 403);
+  assert.equal((await owner.get('/api/dsp/driver-match/counts')).status, 403);
   await owner.post(url, { feature: 'driver_match', enabled: true });
   await owner.select(north.id);
   const again: DriverMatch = (await owner.get('/api/dsp/driver-match')).value;

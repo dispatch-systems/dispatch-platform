@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import type { DvicInspection } from '../../../../shared/contracts/dvic.js';
 import {
@@ -92,7 +92,8 @@ export function DayDigest({
   filtered: boolean;
   onSelect: (row: DvicInspection) => void;
 }) {
-  const repeat = repeatDrivers(week, rows);
+  const repeat = useMemo(() => repeatDrivers(week, rows), [week, rows]);
+  const groups = useMemo(() => groupByVehicleClass(rows), [rows]);
   return (
     <>
       <div className="dvic-kpi">
@@ -107,9 +108,7 @@ export function DayDigest({
         </p>
       )}
       {rows.length ? (
-        groupByVehicleClass(rows).map((group) => (
-          <VehicleGroup key={group.vehicles} {...group} onSelect={onSelect} />
-        ))
+        groups.map((group) => <VehicleGroup key={group.vehicles} {...group} onSelect={onSelect} />)
       ) : (
         <Empty title={filtered ? 'No matching inspections' : 'No short inspections on this day'}>
           {filtered

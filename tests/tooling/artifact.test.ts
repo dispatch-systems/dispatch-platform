@@ -6,6 +6,10 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fixture } from '../support/support.js';
 import { verifyArtifact } from '../../tooling/build/artifact.js';
+import {
+  dashboardGraphSizes,
+  type DashboardAssets,
+} from '../../tooling/testing/dashboard-assets.js';
 
 test(
   'installed artifact serves the complete platform directly from Rust and has no Node runtime payload',
@@ -63,6 +67,57 @@ test(
       bytes.byteLength < 400_000,
       'main dashboard JavaScript stays below 400 KB before compression',
     );
+    const assets: DashboardAssets = JSON.parse(
+      fs.readFileSync(path.join(artifact, 'tooling/build-info.json'), 'utf8'),
+    ).dashboardAssets;
+    const graphs = [
+      { name: 'initial', entries: [], raw: 400_000, transferred: 115_000 },
+      {
+        name: 'DSP picker',
+        entries: ['src/features/platform/picker.ts'],
+        raw: 410_000,
+        transferred: 120_000,
+      },
+      {
+        name: 'Settings profile',
+        entries: ['src/features/settings/index.ts'],
+        raw: 440_000,
+        transferred: 130_000,
+      },
+      {
+        name: 'daily Timecard',
+        entries: ['src/features/timecard/index.ts', 'src/features/timecard/TimecardsPage.tsx'],
+        raw: 500_000,
+        transferred: 150_000,
+      },
+      {
+        name: 'Timecard settings',
+        entries: ['src/features/timecard/settings/index.ts'],
+        raw: 490_000,
+        transferred: 145_000,
+      },
+    ];
+    for (const graph of graphs) {
+      const size = dashboardGraphSizes(path.join(artifact, 'dashboard'), assets, [
+        'index.html',
+        ...graph.entries,
+      ]);
+      assert(
+        size.scripts.raw < graph.raw,
+        `${graph.name} complete JavaScript graph exceeds ${graph.raw} bytes`,
+      );
+      assert(
+        size.scripts.transferred < graph.transferred,
+        `${graph.name} transferred JavaScript graph exceeds ${graph.transferred} bytes`,
+      );
+      assert(
+        size.styles.raw < (graph.name === 'initial' ? 30_000 : 60_000),
+        `${graph.name} complete CSS graph exceeds its budget`,
+      );
+      t.diagnostic(
+        `${graph.name}: ${size.scripts.raw} raw / ${size.scripts.transferred} transferred JavaScript bytes`,
+      );
+    }
     const stylesheet = document.match(/href="(\.?\/assets\/[^"]+\.css)"/)![1]!;
     const styles = await fetch(new URL(stylesheet, f.env.DISPATCH_ORIGIN));
     assert(

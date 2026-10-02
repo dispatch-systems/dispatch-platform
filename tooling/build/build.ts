@@ -29,7 +29,17 @@ const manifest = await replaceBuild(out, async (staging) => {
     ['tooling/security/check-build-paths.py', path.join(staging, 'services/rust/dispatch-backend')],
     { stdio: 'inherit' },
   );
-  await viteBuild({ build: { outDir: path.join(staging, 'dashboard') } });
+  await viteBuild({
+    build: {
+      outDir: path.join(staging, 'dashboard'),
+      manifest: true,
+    },
+  });
+  // Test shared modules and route CSS too. Build metadata stays outside the served dashboard.
+  const assetsFile = path.join(staging, 'dashboard/.vite/manifest.json');
+  const dashboardAssets = JSON.parse(fs.readFileSync(assetsFile, 'utf8'));
+  fs.unlinkSync(assetsFile);
+  fs.rmdirSync(path.join(staging, 'dashboard/.vite'));
   await compressAssets(path.join(staging, 'dashboard/assets'));
   // Every copy of the build carries its license. Installed updaters accept new files only under
   // dashboard/, and the server does not serve this one.
@@ -38,7 +48,7 @@ const manifest = await replaceBuild(out, async (staging) => {
   const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   fs.writeFileSync(
     path.join(staging, 'tooling/build-info.json'),
-    JSON.stringify({ commit, hostManagement: 1 }) + '\n',
+    JSON.stringify({ commit, hostManagement: 1, dashboardAssets }) + '\n',
   );
   writeManifest(staging, JSON.parse(fs.readFileSync('package.json', 'utf8')).version);
 });

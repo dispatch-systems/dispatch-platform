@@ -1,31 +1,19 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { localDate, shiftDate } from '../../lib/meal-breaks.js';
+import {
+  paycomDateKey,
+  selectedPaycomDate,
+  validPaycomDate as validDay,
+} from '../../lib/paycom-date.js';
 import { DateField } from '../../ui/index.js';
-
-function validDay(value: string, today: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value < '2000-01-01' || value > today) return false;
-  try {
-    return shiftDate(value, 0) === value;
-  } catch {
-    return false;
-  }
-}
 
 // Collection accepts dates up to the DSP's business date, so a viewer in another
 // timezone must see and select the DSP's day rather than their own.
 export function usePaycomDate(dspId: string, timezone: string) {
   const today = localDate(timezone);
-  const key = `dispatch:paycom-date:${dspId}`;
-  const [selectedDate, setDate] = useState(() => {
-    try {
-      const saved = sessionStorage.getItem(key);
-      if (saved && validDay(saved, today)) return saved;
-    } catch {
-      // Date navigation still works when browser storage is unavailable.
-    }
-    return today;
-  });
+  const key = paycomDateKey(dspId);
+  const [selectedDate, setDate] = useState(() => selectedPaycomDate(dspId, timezone));
   const date = validDay(selectedDate, today) ? selectedDate : today;
   const selectDate = (value: string) => {
     if (!validDay(value, today)) return;
