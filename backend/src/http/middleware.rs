@@ -2,7 +2,7 @@
 //! log, the security headers, the Host and Origin checks, and the parsing of a
 //! request into an [`Input`].
 use super::input::Input;
-use crate::{Error, Result, State, crypto, ensure, observability};
+use crate::{Error, Result, State, agents::oauth, crypto, ensure, observability};
 use axum::{
     body::{Body, Bytes, to_bytes},
     extract::{ConnectInfo, Request, State as AxumState},
@@ -21,9 +21,12 @@ const BODY_TIMEOUT: Duration = Duration::from_secs(15);
 struct Failure(String);
 
 pub fn failure(error: Error) -> Response {
-    let code = Failure(error.code.clone());
-    let mut response = error.into_response();
-    response.extensions_mut().insert(code);
+    let code = error.code.clone();
+    noted(error.into_response(), &code)
+}
+/// A response a handler made itself, with the error code the request log should carry.
+pub fn noted(mut response: Response, code: &str) -> Response {
+    response.extensions_mut().insert(Failure(code.to_owned()));
     response
 }
 
@@ -63,7 +66,7 @@ pub async fn pipeline(
         Err(error) => failure(error),
     };
     if agent {
-        agent_challenge(&mut response);
+        agent_challenge(&state, &mut response);
     }
     let status = response.status().as_u16();
     let level = match status {
@@ -130,16 +133,32 @@ pub async fn pipeline(
     response
 }
 
-// What an agent needs to recover: the scheme to sign in with, and when to try again.
-fn agent_challenge(response: &mut Response) {
+// What an agent needs to recover: where and how to sign in, and when to try again. An MCP
+// client finds Dispatch's authorization server from the challenge's resource metadata. One
+// that sent a token hears it was refused, and refreshes it; one that sent none is not told
+// of an error (RFC 6750 §3.1).
+fn agent_challenge(state: &State, response: &mut Response) {
     let status = response.status().as_u16();
+    let refused = response
+        .extensions()
+        .get::<Failure>()
+        .is_some_and(|failure| failure.0 != "agent_key_required");
     let headers = response.headers_mut();
     match status {
         401 => {
-            headers.insert(
-                header::WWW_AUTHENTICATE,
-                "Bearer realm=\"Dispatch\"".parse().unwrap(),
+            let challenge = format!(
+                "Bearer realm=\"Dispatch\", resource_metadata=\"{}\", scope=\"{}\"{}",
+                oauth::resource_metadata(&state.config),
+                oauth::SCOPE,
+                if refused {
+                    ", error=\"invalid_token\""
+                } else {
+                    ""
+                }
             );
+            if let Ok(value) = challenge.parse() {
+                headers.insert(header::WWW_AUTHENTICATE, value);
+            }
         }
         // Calls are counted by the minute, so the next minute starts a new count.
         429 => {
@@ -226,12 +245,7 @@ pub fn head(state: &State, parts: &Parts, pattern: &'static str) -> Result<Input
         ensure(!query.contains_key(k.as_ref()), "invalid_input", 400)?;
         query.insert(k.into_owned(), json!(value));
     }
-    let peer = parts
-        .extensions
-        .get::<ConnectInfo<SocketAddr>>()
-        .map(|v| v.0.ip())
-        .ok_or_else(|| Error::new("client_address_unavailable", 500))?;
-    let ip = state.config.trusted_proxy.client_ip(peer, &parts.headers)?;
+    let ip = address(state, parts, pattern)?;
     let trace = parts
         .extensions
         .get::<observability::RequestTrace>()
@@ -253,6 +267,23 @@ pub fn head(state: &State, parts: &Parts, pattern: &'static str) -> Result<Input
         trace,
         pattern,
     })
+}
+
+/// The client's address, for a handler that reads its own request; the request log then
+/// names the route by its registered pattern.
+pub fn address(state: &State, parts: &Parts, pattern: &'static str) -> Result<String> {
+    if let Some(trace) = parts.extensions.get::<observability::RequestTrace>() {
+        trace
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .route = Some(pattern);
+    }
+    let peer = parts
+        .extensions
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|v| v.0.ip())
+        .ok_or_else(|| Error::new("client_address_unavailable", 500))?;
+    state.config.trusted_proxy.client_ip(peer, &parts.headers)
 }
 
 /// A request's body: at most 64 KiB, arriving within 15 seconds.

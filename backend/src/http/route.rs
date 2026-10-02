@@ -33,8 +33,8 @@ pub enum Access {
     PlatformOwner,
     /// A member looking at a DSP through a role holding one of the `|`-separated permissions.
     Dsp(&'static str),
-    /// An outside agent signed in with a key: `read` for any key, `operator` for a key
-    /// that may also run collections and test connections.
+    /// An outside agent signed in with a key, or a connected app with its access token:
+    /// `read` for any, `operator` for a key that may also run collections and test connections.
     Agent(&'static str),
 }
 
@@ -65,8 +65,8 @@ pub struct PlatformOwner;
 pub struct PlatformRoutine;
 #[derive(Clone, Copy)]
 pub struct Dsp(pub &'static str);
-/// An outside agent's key, never a browser session. `Agent::READ` is any key; a route
-/// that acts would ask for `AgentAccess::Operator`.
+/// An outside agent's key or a connected app's access token, never a browser session.
+/// `Agent::READ` is any; a route that acts would ask for `AgentAccess::Operator`.
 #[derive(Clone, Copy)]
 pub struct Agent(AgentAccess);
 impl Agent {
@@ -168,10 +168,10 @@ impl Grant for Agent {
     }
     fn authorize(self, db: &Store, input: &Input) -> Result<Caller> {
         let header = input.header("authorization");
-        let token = match header.split_once(' ') {
-            Some((scheme, token)) if scheme.eq_ignore_ascii_case("bearer") => token.trim(),
-            _ if header.is_empty() => input.header("x-api-key").trim(),
-            _ => "",
+        let (token, bearer) = match header.split_once(' ') {
+            Some((scheme, token)) if scheme.eq_ignore_ascii_case("bearer") => (token.trim(), true),
+            _ if header.is_empty() => (input.header("x-api-key").trim(), false),
+            _ => ("", false),
         };
         ensure(!token.is_empty(), "agent_key_required", 401)?;
         // A key and a session never travel together, so a browser can never lend its
@@ -181,8 +181,13 @@ impl Grant for Agent {
             "session_and_key",
             400,
         )?;
-        let caller =
-            db.authenticate_agent(token, &agents::client_label(input.header("user-agent")))?;
+        let client = agents::client_label(input.header("user-agent"));
+        // A connected app signs in with its OAuth access token, and only ever as a bearer.
+        let caller = if bearer && token.starts_with("dsa_") {
+            db.authenticate_app(token, &client)?
+        } else {
+            db.authenticate_agent(token, &client)?
+        };
         input
             .trace
             .lock()
@@ -256,6 +261,7 @@ enum Handler {
     Async(Box<dyn Fn(Arc<State>, Input) -> Pending + Send + Sync>),
     Memory(fn(&State) -> Reply),
     Protocol(Agent, fn(Request) -> Served),
+    Open(fn(Arc<State>, Request) -> Served),
 }
 
 pub struct Route {
@@ -365,6 +371,23 @@ pub fn agent_protocol(
         handler: Handler::Protocol(access, handler),
     }
 }
+/// A public `method path` whose requests the handler reads and answers itself, as OAuth's
+/// form posts and redirects need. Such a path sits outside `/api/`, so the JSON-only rule
+/// and the Origin check that guard the dashboard's API never apply to it.
+pub fn protocol(
+    method: Method,
+    path: &'static str,
+    handler: fn(Arc<State>, Request) -> Served,
+) -> Route {
+    Route {
+        method,
+        path,
+        access: Access::Public,
+        work: Work::Async,
+        invalidates_schedules: false,
+        handler: Handler::Open(handler),
+    }
+}
 /// A public `GET` answered from memory: no session, query, body or database.
 pub fn probe(path: &'static str, handler: fn(&State) -> Reply) -> Route {
     Route {
@@ -407,6 +430,7 @@ impl Route {
                 let request = self.signed(*access, state, request).await?;
                 return Ok(handler(request).await);
             }
+            Handler::Open(handler) => return Ok(handler(state, request).await),
             Handler::Blocking(handler) => handler.clone(),
         };
         let input = middleware::input(&state, request, self.path).await?;

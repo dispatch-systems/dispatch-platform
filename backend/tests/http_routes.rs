@@ -15,6 +15,19 @@ const WAKES_SCHEDULER: bool = true;
 
 type Row = (&'static str, &'static str, Access, Work, bool);
 
+// The only paths outside `/api/`: OAuth's discovery documents and endpoints, which MCP clients
+// find at fixed places and which must answer form posts from anywhere. All are public.
+const OUTSIDE_THE_API: &[&str] = &[
+    "/.well-known/oauth-protected-resource",
+    "/.well-known/oauth-protected-resource/api/v1/mcp",
+    "/.well-known/oauth-authorization-server",
+    "/.well-known/oauth-authorization-server/api/v1/mcp",
+    "/oauth/authorize",
+    "/oauth/token",
+    "/oauth/register",
+    "/oauth/revoke",
+];
+
 // Every endpoint: who may call it, which database access its work runs under,
 // and whether it wakes the scheduler. The list was written from the dispatcher
 // this table replaced, so it is the proof that no route changed its permission.
@@ -60,6 +73,17 @@ const INVENTORY: &[Row] = &[
     ("POST", "/api/platform/agents/revoke-all", PlatformOwner, Write, false),
     ("GET", "/api/platform/agents/skill", PlatformOwner, Read, false),
     ("GET", "/api/platform/agents/openapi.json", PlatformOwner, Read, false),
+    ("GET", "/.well-known/oauth-protected-resource", Public, Memory, false),
+    ("GET", "/.well-known/oauth-protected-resource/api/v1/mcp", Public, Memory, false),
+    ("GET", "/.well-known/oauth-authorization-server", Public, Memory, false),
+    ("GET", "/.well-known/oauth-authorization-server/api/v1/mcp", Public, Memory, false),
+    ("GET", "/oauth/authorize", Public, Async, false),
+    ("POST", "/oauth/token", Public, Async, false),
+    ("POST", "/oauth/register", Public, Async, false),
+    ("POST", "/oauth/revoke", Public, Async, false),
+    ("GET", "/api/platform/oauth/requests/{id}", PlatformOwner, Read, false),
+    ("POST", "/api/platform/oauth/requests/{id}/approve", PlatformOwner, Write, false),
+    ("POST", "/api/platform/oauth/requests/{id}/deny", PlatformOwner, Write, false),
     ("GET", "/api/v1/whoami", Agent("read"), Read, false),
     ("GET", "/api/v1/openapi.json", Agent("read"), Read, false),
     ("GET", "/api/v1/skill", Agent("read"), Read, false),
@@ -236,7 +260,12 @@ fn no_route_is_registered_twice_and_only_get_and_post_exist() {
             route.method,
             route.path
         );
-        assert!(route.path.starts_with("/api/"), "{}", route.path);
+        assert!(
+            route.path.starts_with("/api/")
+                || (OUTSIDE_THE_API.contains(&route.path) && route.access == Public),
+            "{}",
+            route.path
+        );
         // The Origin and CSRF checks rest on reads never changing anything for a session.
         if route.method == "GET" && route.work == Write {
             assert_eq!(route.access, Public, "{}", route.path);

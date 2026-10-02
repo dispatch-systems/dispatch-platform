@@ -66,6 +66,8 @@ pub struct State {
     pub presence: presence::Presence,
     // How much each agent key is used, until the scheduler writes it down.
     pub agents: agents::Usage,
+    // The known apps' client documents, as last fetched.
+    pub oauth: agents::oauth::Documents,
 }
 impl State {
     pub fn new(config: config::Config) -> Result<Arc<Self>> {
@@ -98,6 +100,7 @@ impl State {
             uniform_updates: live_updates::Updates::new()?,
             presence: presence::Presence::default(),
             agents: agents::Usage::default(),
+            oauth: agents::oauth::Documents::default(),
         }))
     }
     pub async fn run<T: Send + 'static>(

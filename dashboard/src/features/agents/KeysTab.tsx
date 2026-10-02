@@ -66,13 +66,15 @@ export function KeysTab() {
   return (
     <DataState data={keys.data} error={keys.error} retry={keys.refresh}>
       {(data) => {
-        const live = data.keys.filter((key) => inUse(key));
-        const ended = data.keys.filter((key) => !inUse(key));
+        // Connected apps have a tab of their own.
+        const all = data.keys.filter((key) => key.kind === 'key');
+        const live = all.filter((key) => inUse(key));
+        const ended = all.filter((key) => !inUse(key));
         const wanted = query.trim().toLocaleLowerCase('en-US');
         const rows = [...live, ...(showEnded ? ended : [])].filter(
           (key) => !wanted || key.name.toLocaleLowerCase('en-US').includes(wanted),
         );
-        const editing = data.keys.find((key) => key.id === open);
+        const editing = all.find((key) => key.id === open);
         return (
           <div className="agents">
             <div className="table-toolbar">
@@ -99,7 +101,7 @@ export function KeysTab() {
                   <button onClick={() => setOpen(key.id)}>Extend</button>
                 </div>
               ))}
-            {data.keys.length === 0 ? (
+            {all.length === 0 ? (
               <Empty title="No keys yet">
                 Make one key for each agent or device, so you can revoke one without the rest.
               </Empty>
@@ -162,7 +164,7 @@ export function KeysTab() {
                 </table>
               </div>
             )}
-            {data.keys.length > 0 && (
+            {all.length > 0 && (
               <div className="agents-footer">
                 {ended.length > 0 ? (
                   <button className="text-button" onClick={() => setShowEnded(!showEnded)}>
@@ -218,8 +220,8 @@ export function KeysTab() {
                   if (await revokeAll.run()) setRevokingAll(false);
                 }}
               >
-                Every agent using a key loses access at once. You’ll need new keys to connect them
-                again.
+                Every agent using a key, and every connected app, loses access at once. You’ll need
+                new keys, and to connect the apps again.
               </ConfirmDialog>
             )}
           </div>

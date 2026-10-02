@@ -117,6 +117,8 @@ const phrases: Record<string, (event: AuditEvent) => Part[]> = {
   'agent.key_created': (e) => ['created the agent key ', strong(e.target ?? 'a key')],
   'agent.key_updated': (e) => ['changed the agent key ', strong(e.target ?? 'a key')],
   'agent.key_revoked': (e) => ['revoked the agent key ', strong(e.target ?? 'a key')],
+  'agent.app_connected': (e) => ['connected the app ', strong(e.target ?? 'an app')],
+  'agent.app_revoked': (e) => ['revoked the connected app ', strong(e.target ?? 'an app')],
   'agent.keys_revoked': (e) => [
     'revoked ',
     strong(e.detail === '1' ? 'an agent key' : `${e.detail} agent keys`),
@@ -170,10 +172,19 @@ export const facts = new Set([
   'linked',
   'separated',
   'automatic',
+  'reason',
 ]);
 const fact = (event: AuditEvent, field: string) =>
   event.changes.find((change) => change.field === field)?.to ?? '';
 const collected: Record<string, string> = { paycom: 'Paycom', cortex: 'Meal break' };
+// Why Dispatch itself ended a connected app.
+const appEndings: Record<string, string> = {
+  replaced: 'Replaced by a new connection',
+  signed_out: 'The app signed out',
+  code_reused: 'Its sign-in code was used twice',
+  refresh_reused: 'An old token was used again',
+  token_reuse: 'An old token was used again',
+};
 function outcome(event: AuditEvent): Part[] {
   const attempt = event.action === 'collection.retrying' && fact(event, 'attempt');
   const result = attempt
@@ -366,6 +377,9 @@ export function notes(event: AuditEvent, platform: boolean): string[] {
       ? [`After ${Number.parseInt(fact(event, 'attempt'))} attempts`]
       : []),
     ...(fact(event, 'invitedBy') ? [`Invited by ${fact(event, 'invitedBy')}`] : []),
+    ...(event.action === 'agent.app_revoked' && fact(event, 'reason')
+      ? [appEndings[fact(event, 'reason')] ?? title(fact(event, 'reason'))]
+      : []),
     ...(event.action === 'employees.links_updated' ? linked(event) : []),
   ];
 }

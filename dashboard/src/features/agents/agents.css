@@ -1,4 +1,4 @@
-/* The Agents page: keys, the key sheet and the setup dialog. */
+/* The Agents page: keys, connected apps, the key sheet, the setup dialog and app approval. */
 .agents-tag {
   display: inline-flex;
   align-items: center;
@@ -414,6 +414,66 @@
 }
 .agents-files a:hover {
   background: var(--accent);
+}
+
+/* Connected apps: whether Dispatch knows the app by its published address, and whether
+   it is still signed in. */
+.agents-named {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.status-indicator.verified > i {
+  background: var(--success);
+}
+.status-indicator.unverified > i,
+.status-indicator.signed_out > i {
+  background: var(--warning);
+}
+.agents-table .cell-end button.agents-revoke {
+  padding: 4px 10px;
+  color: var(--destructive);
+}
+
+/* An app asking to connect: who it is, where access goes and what it may do. */
+.agents-authorize {
+  max-width: 560px;
+}
+.agents-authorize .agents-form {
+  padding: 22px 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.agents-authorize-app {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+.agents-authorize-app h2 {
+  font-size: 18px;
+  font-weight: 600;
+}
+.agents-authorize .form-actions {
+  margin-top: 0;
+}
+.agents-authorize .agents-notice {
+  margin: 0;
+}
+/* Asks the owner to approve only what they started, calmly. */
+.agents-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0;
+  background: var(--surface);
+  color: var(--foreground);
+}
+.agents-consent > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--primary);
 }
 
 @media (max-width: 700px) {

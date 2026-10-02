@@ -70,6 +70,11 @@ pub const PLATFORM: &[Migration] = &[
         name: "scorecard_feature",
         apply: Sql(include_str!("platform/0012_scorecard_feature.sql")),
     },
+    Migration {
+        id: 13,
+        name: "oauth",
+        apply: Code(oauth),
+    },
 ];
 pub const JOBS: &[Migration] = &[
     Migration {
@@ -226,6 +231,27 @@ fn outbox_context(db: &Db) -> Result<()> {
 fn audit_data_and_shown(db: &Db) -> Result<()> {
     add_column(db, "audit", "data", "TEXT")?;
     add_column(db, "audit", "shown", "INTEGER")
+}
+
+// kind: a key made on the Agents page, or an app the owner connected through OAuth, which
+// carries the app's client id, the name it goes by and whether Dispatch knows it.
+fn oauth(db: &Db) -> Result<()> {
+    add_column(
+        db,
+        "agent_keys",
+        "kind",
+        "TEXT NOT NULL DEFAULT 'key' CHECK(kind IN ('key','app'))",
+    )?;
+    add_column(db, "agent_keys", "client_id", "TEXT")?;
+    add_column(db, "agent_keys", "client_name", "TEXT")?;
+    add_column(
+        db,
+        "agent_keys",
+        "client_verified",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    db.0.execute_batch(include_str!("platform/0013_oauth.sql"))?;
+    Ok(())
 }
 
 fn security_hardening(db: &Db) -> Result<()> {

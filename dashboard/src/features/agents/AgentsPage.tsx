@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
 import { hashQuery, replaceHashQuery } from '../../app/navigation.js';
 import { Header, Tabs } from '../../ui/index.js';
+import { AppsTab } from './AppsTab.js';
 import { ConnectTab } from './ConnectTab.js';
 import { KeysTab } from './KeysTab.js';
 
-const tabs = ['keys', 'connect'];
+const tabs = ['keys', 'apps', 'connect'];
 const addressed = () => {
   const tab = hashQuery().get('tab') ?? '';
   return tabs.includes(tab) ? tab : 'keys';
 };
 
-/** Platform → Agents: the keys outside agents sign in with, and how to connect one. */
+/** Platform → Agents: the keys outside agents sign in with, the apps signed in with Dispatch,
+ * and how to connect one. */
 export function AgentsPage() {
   const [tab, setTab] = useState(addressed);
   // A link to another tab changes only the address's query, which does not remount the page.
@@ -31,10 +33,11 @@ export function AgentsPage() {
         }}
         items={[
           ['keys', 'Keys'],
+          ['apps', 'Connected apps'],
           ['connect', 'Connect'],
         ]}
       />
-      {tab === 'keys' ? <KeysTab /> : <ConnectTab />}
+      {tab === 'keys' ? <KeysTab /> : tab === 'apps' ? <AppsTab /> : <ConnectTab />}
     </>
   );
 }

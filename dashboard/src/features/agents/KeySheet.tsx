@@ -6,9 +6,9 @@ import type {
   AgentKeyCreated,
   AgentKeyRequest,
 } from '../../../../shared/contracts/index.js';
-import { ConfirmDialog, Modal } from '../../ui/index.js';
+import { Modal } from '../../ui/index.js';
 import { useAction } from '../../app/useAction.js';
-import { createAgentKey, revokeAgentKey, updateAgentKey } from '../../app/endpoints.js';
+import { createAgentKey, updateAgentKey } from '../../app/endpoints.js';
 import {
   blankKey,
   expiryChoices,
@@ -19,6 +19,8 @@ import {
   type ExpiryChoice,
 } from '../../lib/agents.js';
 import { dateFormatter } from '../../lib/date-format.js';
+import { DspReach, LocationsSwitch, ToolChoice } from './KeyChoices.js';
+import { RevokeDialog } from './RevokeDialog.js';
 
 const day = (value: string | null) =>
   value
@@ -71,15 +73,6 @@ export function KeySheet({
     },
     { success: existing ? 'Key updated' : undefined },
   );
-  const revoke = useAction(
-    async () => {
-      await revokeAgentKey(existing!.id);
-      changed();
-    },
-    { success: 'Key revoked' },
-  );
-  const toggle = (id: string, on: boolean) =>
-    set({ dsps: on ? [...form.dsps, id] : form.dsps.filter((dsp) => dsp !== id) });
   const days = (choice: ExpiryChoice) =>
     ['7', '30', '90', '365'].includes(choice) ? ` · ${day(expiryOf(choice, ''))}` : '';
   return (
@@ -115,48 +108,7 @@ export function KeySheet({
             onChange={(event) => set({ name: event.target.value })}
           />
         </label>
-        <fieldset>
-          <legend>DSPs</legend>
-          <div className="agents-choices">
-            <label className="agents-choice">
-              <input
-                type="radio"
-                name="dsps"
-                checked={form.allDsps}
-                onChange={() => set({ allDsps: true, dsps: [] })}
-              />
-              <span>
-                <strong>All DSPs</strong>
-                <small>Including DSPs added later</small>
-              </span>
-            </label>
-            <label className="agents-choice">
-              <input
-                type="radio"
-                name="dsps"
-                checked={!form.allDsps}
-                onChange={() => set({ allDsps: false })}
-              />
-              <span>
-                <strong>Choose DSPs</strong>
-                {!form.allDsps && (
-                  <span className="agents-dsps">
-                    {dsps.map((dsp) => (
-                      <label key={dsp.id}>
-                        <input
-                          type="checkbox"
-                          checked={form.dsps.includes(dsp.id)}
-                          onChange={(event) => toggle(dsp.id, event.target.checked)}
-                        />
-                        {dsp.name}
-                      </label>
-                    ))}
-                  </span>
-                )}
-              </span>
-            </label>
-          </div>
-        </fieldset>
+        <DspReach dsps={dsps} form={form} set={set} />
         <fieldset>
           <legend>Access</legend>
           <div className="agents-choices two">
@@ -186,30 +138,8 @@ export function KeySheet({
             </label>
           </div>
         </fieldset>
-        <div className="agents-row">
-          <span id="agents-tools">Tools</span>
-          <div className="agents-segmented" role="group" aria-labelledby="agents-tools">
-            {(['full', 'essential'] as const).map((tools) => (
-              <button
-                key={tools}
-                type="button"
-                aria-pressed={form.tools === tools}
-                onClick={() => set({ tools })}
-              >
-                {tools === 'full' ? 'Full' : 'Essential'}
-              </button>
-            ))}
-          </div>
-        </div>
-        <label className="agents-row">
-          Delivery addresses and GPS
-          <input
-            type="checkbox"
-            role="switch"
-            checked={form.locations}
-            onChange={(event) => set({ locations: event.target.checked })}
-          />
-        </label>
+        <ToolChoice form={form} set={set} />
+        <LocationsSwitch form={form} set={set} />
         <div className="agents-expiry">
           <label>
             Expires
@@ -278,18 +208,12 @@ export function KeySheet({
         </Modal>
       )}
       {revoking && existing && (
-        <ConfirmDialog
-          title={`Revoke ${existing.name}?`}
-          confirm="Revoke key"
-          tone="danger"
-          busy={revoke.busy}
-          onCancel={() => setRevoking(false)}
-          onConfirm={async () => {
-            if (await revoke.run()) setRevoking(false);
-          }}
-        >
-          Anything using it loses access at once. This can’t be undone.
-        </ConfirmDialog>
+        <RevokeDialog
+          agentKey={existing}
+          noun="key"
+          close={() => setRevoking(false)}
+          revoked={changed}
+        />
       )}
     </Modal>
   );

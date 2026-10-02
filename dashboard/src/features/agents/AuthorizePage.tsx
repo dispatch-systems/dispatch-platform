@@ -1,0 +1,215 @@
+import { useEffect, useState } from 'react';
+import { Info, TriangleAlert } from 'lucide-react';
+import type {
+  AgentDsp,
+  OAuthApproval,
+  OAuthReplaced,
+  OAuthRequest,
+} from '../../../../shared/contracts/index.js';
+import { ApiError } from '../../app/api.js';
+import {
+  approveOAuthRequest,
+  denyOAuthRequest,
+  readOAuthRequest,
+  useAgentKeys,
+  useOAuthRequest,
+} from '../../app/endpoints.js';
+import { hashQuery } from '../../app/navigation.js';
+import { useAction } from '../../app/useAction.js';
+import { blankKey } from '../../lib/agents.js';
+import { calendarDay } from '../../lib/format.js';
+import { Badge, DataState, DetailList, ErrorBox, Header } from '../../ui/index.js';
+import { DspReach, LocationsSwitch, ToolChoice } from './KeyChoices.js';
+
+const again = 'Start the connection again from your app.';
+const expired = `This request expired. ${again}`;
+/** Why Dispatch turned a request away before asking: `#authorize?error=<code>`. */
+const refusals: Record<string, string> = {
+  unknown_app: 'Dispatch doesn’t accept this app.',
+  app_unavailable: 'Dispatch couldn’t check this app right now. Try again in a few minutes.',
+  invalid_redirect: `This app asked to send access to an address it never registered. ${again}`,
+  rate_limited: `Too many connection attempts. Wait a few minutes, then ${again.toLowerCase()}`,
+};
+
+/** Platform → Agents → an app asking to connect, opened from `#authorize?request=<id>`. */
+export function AuthorizePage() {
+  const [query, setQuery] = useState(() => hashQuery().toString());
+  // Another request opened in this tab changes only the address's query.
+  useEffect(() => {
+    const changed = () => setQuery(hashQuery().toString());
+    window.addEventListener('hashchange', changed);
+    return () => window.removeEventListener('hashchange', changed);
+  }, []);
+  return (
+    <>
+      <Header title="Connect an app" />
+      <section className="agents-authorize">
+        <Authorization key={query} query={new URLSearchParams(query)} />
+      </section>
+    </>
+  );
+}
+
+function Authorization({ query }: { query: URLSearchParams }) {
+  const id = query.get('request') ?? '';
+  const error = query.get('error');
+  const request = useOAuthRequest(error ? '' : id);
+  const agents = useAgentKeys();
+  const [gone, setGone] = useState(false);
+  const problem = error
+    ? (refusals[error] ?? `This connection can’t go ahead. ${again}`)
+    : !id
+      ? `This link is incomplete. ${again}`
+      : gone || request.errorCode === 'authorization_not_found'
+        ? expired
+        : '';
+  if (problem)
+    return (
+      <p className="notice" role="status">
+        {problem}
+      </p>
+    );
+  const loaded = request.data && agents.data && { pending: request.data, dsps: agents.data.dsps };
+  return (
+    <DataState
+      data={loaded || undefined}
+      error={request.error || agents.error}
+      retry={() => {
+        request.refresh();
+        agents.refresh();
+      }}
+    >
+      {({ pending, dsps }) => (
+        <Approval request={pending} dsps={dsps} expire={() => setGone(true)} />
+      )}
+    </DataState>
+  );
+}
+
+function Approval({
+  request,
+  dsps,
+  expire,
+}: {
+  request: OAuthRequest;
+  dsps: AgentDsp[];
+  expire: () => void;
+}) {
+  const { app } = request;
+  const [form, setForm] = useState<OAuthApproval>(() => {
+    const { allDsps, dsps, tools, locations } = blankKey();
+    return { name: app.name, allDsps, dsps, tools, locations };
+  });
+  const [leaving, setLeaving] = useState(false);
+  // The connection approving would replace, as last checked for a name.
+  const [checked, setChecked] = useState({ name: app.name, replaces: request.replaces });
+  const set = (change: Partial<OAuthApproval>) => setForm((current) => ({ ...current, ...change }));
+  const approval = { ...form, name: form.name.trim() };
+  const ready = approval.name.length > 0 && (approval.allDsps || approval.dsps.length > 0);
+  const replaces = checked.name === approval.name ? checked.replaces : null;
+  const check = async (name: string) => {
+    const { replaces } = await readOAuthRequest(request.id, name);
+    setChecked({ name, replaces });
+    return replaces;
+  };
+  const gone = (error: unknown) => {
+    if (error instanceof ApiError && error.code === 'authorization_not_found') expire();
+  };
+  // A changed name asks again once the owner pauses; approving checks again regardless.
+  useEffect(() => {
+    if (!approval.name || approval.name === checked.name) return;
+    const timer = setTimeout(() => void check(approval.name).catch(gone), 400);
+    return () => clearTimeout(timer);
+  }, [approval.name, checked.name]);
+  // Either answer sends the browser back to the app, which reads it from the address.
+  const answer = useAction(
+    async (approve: boolean) => {
+      try {
+        // The owner approves only a replacement they were shown.
+        if (approve && !same(await check(approval.name), replaces)) return;
+        const { redirect } = approve
+          ? await approveOAuthRequest(request.id, approval)
+          : await denyOAuthRequest(request.id);
+        setLeaving(true);
+        window.location.assign(redirect);
+      } catch (error) {
+        gone(error);
+        throw error;
+      }
+    },
+    { inline: true },
+  );
+  const busy = answer.busy || leaving;
+  const name = <bdi>{app.name}</bdi>;
+  return (
+    <form
+      className="agents-form"
+      aria-labelledby="agents-authorize-app"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (ready) void answer.run(true);
+      }}
+    >
+      <div className="agents-authorize-app">
+        <h2 id="agents-authorize-app">{name}</h2>
+        <Badge value={app.verified ? 'verified' : 'unverified'} />
+      </div>
+      <DetailList
+        items={[
+          [
+            'Sends access to',
+            app.redirectScheme
+              ? `an app on ${app.redirectHost} (${app.redirectScheme}://…)`
+              : app.redirectHost,
+          ],
+          ['Access', 'Read only'],
+        ]}
+      />
+      <label>
+        Connection name
+        <input
+          name="name"
+          required
+          maxLength={80}
+          value={form.name}
+          onChange={(event) => set({ name: event.target.value })}
+        />
+      </label>
+      <DspReach dsps={dsps} form={form} set={set} />
+      <ToolChoice form={form} set={set} />
+      <LocationsSwitch form={form} set={set} />
+      {replaces && (
+        <div className="notice agents-notice" role="status">
+          <TriangleAlert size={16} aria-hidden="true" />
+          <span>
+            Approving replaces “<bdi>{replaces.name}</bdi>”, connected{' '}
+            {calendarDay(replaces.connectedAt)}. Its current connection stops working.
+          </span>
+        </div>
+      )}
+      <div className="notice agents-consent">
+        <Info size={16} aria-hidden="true" />
+        <span>
+          {!app.verified && <>Unverified app: it says it is “{name}”. </>}
+          Only approve if you started connecting {name} yourself just now. If you didn’t, choose
+          Deny.
+          {app.redirectHost === 'this computer' &&
+            ' Access will be sent to an app running on this computer.'}
+        </span>
+      </div>
+      <ErrorBox message={answer.error} />
+      {leaving && <p role="status">Sending you back to {name}…</p>}
+      <div className="form-actions">
+        <button type="button" disabled={busy} onClick={() => void answer.run(false)}>
+          Deny
+        </button>
+        <button className="primary" disabled={!ready || busy}>
+          Approve
+        </button>
+      </div>
+    </form>
+  );
+}
+
+const same = (a: OAuthReplaced | null, b: OAuthReplaced | null) =>
+  a?.name === b?.name && a?.connectedAt === b?.connectedAt;

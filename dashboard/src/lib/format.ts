@@ -16,6 +16,11 @@ export const time = (value: string | null | undefined, timeZone: string, empty =
         timeZone,
       }).format(new Date(value))
     : empty;
+/** "Oct 2, 2026", in the viewer's own time, as platform pages show a day. */
+export const calendarDay = (value: string) =>
+  dateFormatter('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(
+    new Date(value),
+  );
 export const timeOfDay = (value: string, timeZone: string) =>
   dateFormatter('en-US', { hour: 'numeric', minute: '2-digit', timeZone }).format(new Date(value));
 // "Pacific Time" for America/Los_Angeles; the zone ID when the runtime has no name for it.

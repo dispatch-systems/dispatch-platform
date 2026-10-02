@@ -1,0 +1,634 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import { fixture, freePort } from '../support/support.js';
+import type {
+  AgentKey,
+  AgentKeys,
+  AgentWhoami,
+  OAuthApproval,
+  OAuthRedirect,
+  OAuthRequest,
+} from '../../shared/contracts/index.js';
+
+// Sign in with Dispatch, driven over HTTP the way an MCP client drives it: a 401 that says
+// where to sign in, the discovery documents, the browser's trip through /oauth/authorize, the
+// owner's approval on the dashboard's API, then form posts to the token and revocation
+// endpoints, and the MCP endpoint with the access token.
+
+const claudeCode = 'https://claude.ai/oauth/claude-code-client-metadata';
+const chatgpt = 'https://chatgpt.com/oauth/client.json';
+const chatgptRedirect = 'https://chatgpt.com/connector_platform_oauth_redirect';
+const cursorRedirect = 'cursor://anysphere.cursor-retrieval/oauth/callback';
+// The tools an Essential key or app is offered, as agent-mcp.test.ts lists them for a key.
+const essentialTools = [
+  'driver_report',
+  'dvic_inspections',
+  'find_drivers',
+  'packages',
+  'route_day',
+  'team_table',
+  'whoami',
+];
+
+type App = Awaited<ReturnType<typeof fixture>>;
+type Answer = { status: number; headers: Headers; body: any };
+type Tokens = {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  refresh_token: string;
+  scope: string;
+};
+
+const everything = (name: string): OAuthApproval => ({
+  name,
+  allDsps: true,
+  dsps: [],
+  tools: 'full',
+  locations: true,
+});
+
+/** A PKCE pair as a client makes one: a random verifier and its S256 challenge. */
+function pkce() {
+  const verifier = crypto.randomBytes(32).toString('base64url');
+  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+  return { verifier, challenge };
+}
+/** A redirect's query parameters, whatever its scheme. */
+function params(location: string) {
+  const at = location.indexOf('?');
+  return new URLSearchParams(at < 0 ? '' : location.slice(at + 1));
+}
+
+/** The fixture as an MCP client and the platform owner meet it. */
+async function oauth(f: App) {
+  // The server listens on loopback and names itself by its origin, as behind a tunnel.
+  const server = `http://127.0.0.1:${f.env.PORT}`;
+  const issuer = f.env.DISPATCH_ORIGIN!;
+  const resource = `${issuer}/api/v1/mcp`;
+  const challenge = `Bearer realm="Dispatch", resource_metadata="${issuer}/.well-known/oauth-protected-resource/api/v1/mcp", scope="dispatch"`;
+  const owner = await f.client();
+  const { dsps } = (await owner.read('/api/platform/agents')) as AgentKeys;
+  const north = dsps.find((dsp) => dsp.name === 'Northline Logistics')!;
+
+  const answer = async (response: Response): Promise<Answer> => {
+    const text = await response.text();
+    const json = response.headers.get('content-type')?.startsWith('application/json');
+    return {
+      status: response.status,
+      headers: response.headers,
+      body: json ? JSON.parse(text) : text,
+    };
+  };
+  const get = async (path: string, headers: Record<string, string> = {}) =>
+    answer(await fetch(server + path, { redirect: 'manual', headers }));
+  /** A form post, as clients send to the token and revocation endpoints. */
+  const form = async (path: string, fields: Record<string, string>) =>
+    answer(
+      await fetch(server + path, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(fields).toString(),
+      }),
+    );
+  /** Where the authorization endpoint sends the browser. */
+  const authorize = async (query: Record<string, string> | [string, string][]) => {
+    const response = await fetch(`${server}/oauth/authorize?${new URLSearchParams(query)}`, {
+      redirect: 'manual',
+    });
+    const text = await response.text();
+    assert.equal(response.status, 302, text);
+    return response.headers.get('location')!;
+  };
+  /** An authorization request as a client sends one, with a PKCE pair and state of its own. */
+  const request = (clientId: string, redirectUri: string, extra: Record<string, string> = {}) => {
+    const { verifier, challenge } = pkce();
+    const state = crypto.randomBytes(16).toString('base64url');
+    const query: Record<string, string> = {
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      state,
+      resource,
+      ...extra,
+    };
+    return { verifier, state, query };
+  };
+  const approvalPage = `${issuer}/#authorize?request=`;
+  /** The request waiting on the approval page, from the browser's trip there. */
+  const begin = async (
+    clientId: string,
+    redirectUri: string,
+    extra: Record<string, string> = {},
+  ) => {
+    const sent = request(clientId, redirectUri, extra);
+    const location = await authorize(sent.query);
+    assert.ok(location.startsWith(approvalPage), location);
+    return { ...sent, id: location.slice(approvalPage.length) };
+  };
+  /** The owner approves: where the browser goes back to the app. */
+  const approve = async (id: string, choices: OAuthApproval) => {
+    const approved = await owner.post(`/api/platform/oauth/requests/${id}/approve`, choices);
+    assert.equal(approved.status, 200, approved.body);
+    return (approved.value as OAuthRedirect).redirect;
+  };
+  /** The code an approval's redirect carries, checked to bring back the state and issuer. */
+  const code = (redirect: string, state: string) => {
+    const back = params(redirect);
+    assert.equal(back.get('state'), state, redirect);
+    assert.equal(back.get('iss'), issuer, redirect);
+    assert.ok(back.get('code'), redirect);
+    return back.get('code')!;
+  };
+  const exchange = (clientId: string, redirectUri: string, grant: string, verifier: string) =>
+    form('/oauth/token', {
+      grant_type: 'authorization_code',
+      code: grant,
+      redirect_uri: redirectUri,
+      code_verifier: verifier,
+      client_id: clientId,
+      resource,
+    });
+  const refresh = (clientId: string, token: string, extra: Record<string, string> = {}) =>
+    form('/oauth/token', {
+      grant_type: 'refresh_token',
+      refresh_token: token,
+      client_id: clientId,
+      resource,
+      ...extra,
+    });
+  /** An app from its authorization request to its first tokens. */
+  const connect = async (clientId: string, redirectUri: string, choices: OAuthApproval) => {
+    const started = await begin(clientId, redirectUri);
+    const redirect = await approve(started.id, choices);
+    const tokens = await exchange(
+      clientId,
+      redirectUri,
+      code(redirect, started.state),
+      started.verifier,
+    );
+    assert.equal(tokens.status, 200, JSON.stringify(tokens.body));
+    return tokens.body as Tokens;
+  };
+  let id = 0;
+  /** A JSON-RPC message to the MCP endpoint, as agent-mcp.test.ts sends one. */
+  const rpc = async (token: string, method: string, rpcParams: object = {}) =>
+    answer(
+      await fetch(`${server}/api/v1/mcp`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+          'mcp-protocol-version': '2025-06-18',
+          'user-agent': 'claude-code/2.1.283',
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(
+          method.startsWith('notifications/')
+            ? { jsonrpc: '2.0', method, params: rpcParams }
+            : { jsonrpc: '2.0', id: ++id, method, params: rpcParams },
+        ),
+      }),
+    );
+  const whoami = (token: string) => get('/api/v1/whoami', { authorization: `Bearer ${token}` });
+  /** A token that no longer works: 401, and the challenge tells the client to sign in again. */
+  const refused = (answered: Answer, what: string) => {
+    assert.equal(answered.status, 401, `${what}: ${JSON.stringify(answered.body)}`);
+    assert.equal(answered.headers.get('www-authenticate'), `${challenge}, error="invalid_token"`);
+  };
+  /** The connection of this name, as the Agents page lists it. */
+  const listed = async (name: string) => {
+    const { keys } = (await owner.read('/api/platform/agents')) as AgentKeys;
+    return keys.filter((key) => key.name === name);
+  };
+  return {
+    server,
+    issuer,
+    resource,
+    challenge,
+    owner,
+    north,
+    get,
+    form,
+    authorize,
+    request,
+    begin,
+    approve,
+    code,
+    exchange,
+    refresh,
+    connect,
+    rpc,
+    whoami,
+    refused,
+    listed,
+  };
+}
+
+test('an MCP client finds where to sign in, and Dispatch says exactly what it supports', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const { issuer, resource, challenge, get } = await oauth(f);
+  assert.ok(!issuer.endsWith('/'));
+
+  // Without a token the MCP endpoint stays a 401, never metadata, and names its metadata and
+  // scope with no error, so the client starts signing in.
+  const bare = await get('/api/v1/mcp');
+  assert.equal(bare.status, 401);
+  const header = bare.headers.get('www-authenticate') ?? '';
+  assert.equal(header, challenge);
+  assert.match(header, / resource_metadata="[^"]+"/);
+  assert.match(header, / scope="dispatch"/);
+
+  const protectedResource = {
+    resource,
+    authorization_servers: [issuer],
+    scopes_supported: ['dispatch'],
+    bearer_methods_supported: ['header'],
+    resource_name: 'Dispatch',
+  };
+  const authorizationServer = {
+    issuer,
+    authorization_endpoint: `${issuer}/oauth/authorize`,
+    token_endpoint: `${issuer}/oauth/token`,
+    registration_endpoint: `${issuer}/oauth/register`,
+    revocation_endpoint: `${issuer}/oauth/revoke`,
+    response_types_supported: ['code'],
+    response_modes_supported: ['query'],
+    grant_types_supported: ['authorization_code', 'refresh_token'],
+    code_challenge_methods_supported: ['S256'],
+    token_endpoint_auth_methods_supported: ['none'],
+    revocation_endpoint_auth_methods_supported: ['none'],
+    scopes_supported: ['dispatch'],
+    client_id_metadata_document_supported: true,
+    authorization_response_iss_parameter_supported: true,
+  };
+  for (const [path, expected] of [
+    ['/.well-known/oauth-protected-resource', protectedResource],
+    ['/.well-known/oauth-protected-resource/api/v1/mcp', protectedResource],
+    ['/.well-known/oauth-authorization-server', authorizationServer],
+    ['/.well-known/oauth-authorization-server/api/v1/mcp', authorizationServer],
+  ] as const) {
+    const document = await get(path);
+    assert.equal(document.status, 200, path);
+    assert.match(document.headers.get('content-type') ?? '', /^application\/json/, path);
+    assert.deepEqual(document.body, expected, path);
+  }
+  // The challenge points at a document that is really there, on the issuer's origin.
+  const named = / resource_metadata="([^"]+)"/.exec(header)![1]!;
+  assert.ok(named.startsWith(`${issuer}/`), named);
+  assert.deepEqual((await get(named.slice(issuer.length))).body, protectedResource);
+
+  // No OpenID document: Claude Code would reject an incomplete one.
+  assert.equal((await get('/.well-known/openid-configuration')).status, 404);
+});
+
+test('Claude Code connects by its published document and reaches only what the owner chose', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const c = await oauth(f);
+  // Claude Code listens on a port of its own choosing; its document lists the portless URL.
+  const callback = `http://localhost:${await freePort()}/callback`;
+  const started = await c.begin(claudeCode, callback, {
+    scope: 'dispatch',
+    ui_locales: 'en-US',
+    ba_param: 'anything',
+  });
+
+  // The owner reads what is asking, then approves it with a narrower reach.
+  const shown = await c.owner.get(`/api/platform/oauth/requests/${started.id}`);
+  assert.equal(shown.status, 200, shown.body);
+  const waiting = shown.value as OAuthRequest;
+  assert.deepEqual(waiting.app, {
+    name: 'Claude Code',
+    clientId: claudeCode,
+    verified: true,
+    redirectHost: 'this computer',
+    redirectScheme: null,
+  });
+  assert.equal(waiting.id, started.id);
+  const expires = Date.parse(waiting.expiresAt) - Date.now();
+  assert.ok(expires > 9 * 60_000 && expires <= 10 * 60_000, waiting.expiresAt);
+  const redirect = await c.approve(started.id, {
+    name: 'Laptop – Claude Code',
+    allDsps: false,
+    dsps: [c.north.id],
+    tools: 'essential',
+    locations: false,
+  });
+  assert.ok(redirect.startsWith(`${callback}?`), redirect);
+  const code = c.code(redirect, started.state);
+
+  const tokens = await c.exchange(claudeCode, callback, code, started.verifier);
+  assert.equal(tokens.status, 200, JSON.stringify(tokens.body));
+  assert.equal(tokens.headers.get('cache-control'), 'no-store');
+  assert.equal(tokens.headers.get('pragma'), 'no-cache');
+  const issued = tokens.body as Tokens;
+  assert.deepEqual(Object.keys(issued).sort(), [
+    'access_token',
+    'expires_in',
+    'refresh_token',
+    'scope',
+    'token_type',
+  ]);
+  assert.equal(issued.token_type, 'Bearer');
+  assert.equal(issued.expires_in, 3600);
+  assert.equal(issued.scope, 'dispatch');
+  assert.match(issued.access_token, /^dsa_dev_[0-9A-Za-z]{38}$/);
+  assert.match(issued.refresh_token, /^dsr_dev_[0-9A-Za-z]{38}$/);
+
+  // The access token speaks MCP like a key with the same choices.
+  const access = issued.access_token;
+  const hello = await c.rpc(access, 'initialize', {
+    protocolVersion: '2025-06-18',
+    capabilities: {},
+    clientInfo: { name: 'claude-code', version: '2.1.283' },
+  });
+  assert.equal(hello.status, 200, JSON.stringify(hello.body));
+  assert.equal(hello.body.result.protocolVersion, '2025-06-18');
+  assert.equal(hello.body.result.serverInfo.name, 'dispatch');
+  assert.equal((await c.rpc(access, 'notifications/initialized')).status, 202);
+  const listed = await c.rpc(access, 'tools/list');
+  assert.equal(listed.status, 200, JSON.stringify(listed.body));
+  const tools = (listed.body.result.tools as { name: string }[]).map((tool) => tool.name);
+  assert.deepEqual(tools.sort(), essentialTools);
+  const called = await c.rpc(access, 'tools/call', { name: 'whoami', arguments: {} });
+  assert.equal(called.body.result.isError, false, JSON.stringify(called.body));
+  const me = JSON.parse(called.body.result.content[0].text) as AgentWhoami;
+  assert.deepEqual(me.key, {
+    name: 'Laptop – Claude Code',
+    access: 'read',
+    tools: 'essential',
+    locations: false,
+    expiresAt: null,
+  });
+  assert.deepEqual(
+    me.dsps.map((dsp) => dsp.id),
+    [c.north.id],
+  );
+
+  // The same code presented again, with everything right, ends the app it made.
+  const replay = await c.exchange(claudeCode, callback, code, started.verifier);
+  assert.deepEqual([replay.status, replay.body.error], [400, 'invalid_grant']);
+  c.refused(await c.rpc(access, 'tools/list'), 'MCP after the replay');
+  c.refused(await c.whoami(access), 'whoami after the replay');
+  const [app] = await c.listed('Laptop – Claude Code');
+  assert.ok(app?.revokedAt, 'the replayed code revokes the app');
+});
+
+test('refresh tokens rotate, and a parallel refresh within the grace minute still works', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const c = await oauth(f);
+  const callback = `http://127.0.0.1:${await freePort()}/callback`;
+  const first = await c.connect(claudeCode, callback, everything('Desktop – Claude Code'));
+
+  // Rotated: a new pair in the same shape, with any extra scope asked for ignored.
+  const second = await c.refresh(claudeCode, first.refresh_token, {
+    scope: 'dispatch offline_access',
+  });
+  assert.equal(second.status, 200, JSON.stringify(second.body));
+  assert.equal(second.headers.get('cache-control'), 'no-store');
+  const rotated = second.body as Tokens;
+  assert.equal(rotated.token_type, 'Bearer');
+  assert.equal(rotated.expires_in, 3600);
+  assert.equal(rotated.scope, 'dispatch');
+  assert.notEqual(rotated.access_token, first.access_token);
+  assert.notEqual(rotated.refresh_token, first.refresh_token);
+  // The old access token is not ended by the rotation; it lasts out its hour.
+  assert.equal((await c.whoami(first.access_token)).status, 200);
+  assert.equal((await c.whoami(rotated.access_token)).status, 200);
+
+  // A second process refreshing with the same token within the minute gets its own pair.
+  const parallel = await c.refresh(claudeCode, first.refresh_token);
+  assert.equal(parallel.status, 200, JSON.stringify(parallel.body));
+  const other = parallel.body as Tokens;
+  assert.notEqual(other.access_token, rotated.access_token);
+  assert.notEqual(other.refresh_token, rotated.refresh_token);
+  assert.equal((await c.whoami(other.access_token)).status, 200);
+
+  // The new refresh token carries on the chain, and every pair is the same connection.
+  const third = await c.refresh(claudeCode, rotated.refresh_token);
+  assert.equal(third.status, 200, JSON.stringify(third.body));
+  assert.equal((await c.whoami((third.body as Tokens).access_token)).status, 200);
+  const apps = await c.listed('Desktop – Claude Code');
+  assert.equal(apps.length, 1);
+  assert.equal(apps[0]!.revokedAt, null);
+});
+
+test('an app signing out, or the owner revoking it, ends its access at once', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const c = await oauth(f);
+  const callback = `http://localhost:${await freePort()}/callback`;
+
+  // Claude Code's `mcp logout` revokes its refresh token.
+  const laptop = await c.connect(claudeCode, callback, everything('Laptop – Claude Code'));
+  const [listed] = await c.listed('Laptop – Claude Code');
+  assert.ok(listed);
+  const app: AgentKey = listed;
+  assert.equal(app.kind, 'app');
+  assert.deepEqual(app.client, { name: 'Claude Code', verified: true, status: 'connected' });
+  assert.equal(app.hint, '');
+  assert.equal(app.access, 'read');
+  assert.equal(app.revokedAt, null);
+  const signedOut = await c.form('/oauth/revoke', {
+    token: laptop.refresh_token,
+    token_type_hint: 'refresh_token',
+    client_id: claudeCode,
+  });
+  assert.equal(signedOut.status, 200, JSON.stringify(signedOut.body));
+  c.refused(await c.rpc(laptop.access_token, 'tools/list'), 'MCP after signing out');
+  const renewed = await c.refresh(claudeCode, laptop.refresh_token);
+  assert.deepEqual([renewed.status, renewed.body.error], [400, 'invalid_grant']);
+  assert.ok((await c.listed('Laptop – Claude Code'))[0]!.revokedAt);
+  // A token Dispatch never issued is no error.
+  const unknown = await c.form('/oauth/revoke', { token: 'dsr_dev_unknown' });
+  assert.equal(unknown.status, 200);
+
+  // The owner revokes another connection from the Agents page.
+  const desktop = await c.connect(claudeCode, callback, everything('Desktop – Claude Code'));
+  assert.equal((await c.whoami(desktop.access_token)).status, 200);
+  const [connected] = await c.listed('Desktop – Claude Code');
+  assert.equal(connected?.kind, 'app');
+  const revoked = await c.owner.post(`/api/platform/agents/keys/${connected!.id}/revoke`);
+  assert.equal(revoked.status, 200, revoked.body);
+  c.refused(await c.rpc(desktop.access_token, 'tools/list'), 'MCP after the owner revoked it');
+  c.refused(await c.whoami(desktop.access_token), 'whoami after the owner revoked it');
+  const after = await c.refresh(claudeCode, desktop.refresh_token);
+  assert.deepEqual([after.status, after.body.error], [400, 'invalid_grant']);
+});
+
+test('connecting the same app again under the same name replaces the earlier connection', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const c = await oauth(f);
+  const callback = `http://localhost:${await freePort()}/callback`;
+  const earlier = await c.connect(claudeCode, callback, everything('Laptop – Claude Code'));
+  const other = await c.connect(claudeCode, callback, everything('Desktop – Claude Code'));
+  const [first] = await c.listed('Laptop – Claude Code');
+
+  // Claude Code signs in again, as after its tokens were lost; the owner approves it under
+  // the same name, now with the Essential tools.
+  const again = await c.connect(claudeCode, callback, {
+    ...everything('Laptop – Claude Code'),
+    tools: 'essential',
+  });
+  c.refused(await c.whoami(earlier.access_token), 'the replaced connection');
+  const renewed = await c.refresh(claudeCode, earlier.refresh_token);
+  assert.deepEqual([renewed.status, renewed.body.error], [400, 'invalid_grant']);
+  const me = await c.whoami(again.access_token);
+  assert.equal(me.status, 200, JSON.stringify(me.body));
+  assert.equal((me.body as AgentWhoami).key.tools, 'essential');
+
+  // One live connection of that name, the new one; the earlier one is listed as revoked.
+  const laptops = await c.listed('Laptop – Claude Code');
+  const live = laptops.filter((key) => key.revokedAt === null);
+  assert.equal(live.length, 1);
+  assert.notEqual(live[0]!.id, first!.id);
+  assert.equal(live[0]!.tools, 'essential');
+  assert.ok(laptops.find((key) => key.id === first!.id)?.revokedAt);
+  // A connection of the same app under another name is left alone.
+  assert.equal((await c.whoami(other.access_token)).status, 200);
+});
+
+test('a bad authorization request never reaches an unknown app, and a known one hears why', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const c = await oauth(f);
+  const callback = `http://localhost:${await freePort()}/callback`;
+  const page = (error: string) => `${c.issuer}/#authorize?error=${error}`;
+
+  // An app Dispatch doesn't know is never sent anything, even to the redirect it names.
+  const stranger = c.request('https://evil.example/client.json', 'https://evil.example/cb');
+  assert.equal(await c.authorize(stranger.query), page('unknown_app'));
+  // A known app sent somewhere its document doesn't list is not sent there.
+  const elsewhere = c.request(claudeCode, 'https://evil.example/callback');
+  assert.equal(await c.authorize(elsewhere.query), page('invalid_redirect'));
+
+  // Once the app and its redirect are good, the app hears what was wrong, with its state
+  // and the issuer to check.
+  for (const [change, error] of [
+    [{ code_challenge: '' }, 'invalid_request'],
+    [{ code_challenge_method: 'plain' }, 'invalid_request'],
+    [{ resource: `${c.issuer}/api/v1` }, 'invalid_target'],
+    [{ resource: 'https://evil.example/api/v1/mcp' }, 'invalid_target'],
+  ] as const) {
+    const sent = c.request(claudeCode, callback);
+    const query = Object.entries({ ...sent.query, ...change }).filter(([, value]) => value);
+    const location = await c.authorize(query);
+    assert.ok(location.startsWith(`${callback}?`), location);
+    const back = params(location);
+    assert.equal(back.get('error'), error, location);
+    assert.ok(back.get('error_description'), location);
+    assert.equal(back.get('state'), sent.state, location);
+    assert.equal(back.get('iss'), c.issuer, location);
+    assert.equal(back.get('code'), null, location);
+  }
+});
+
+test('apps register themselves only to come back to this computer', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const c = await oauth(f);
+  const register = async (metadata: object) => {
+    const response = await fetch(`${c.server}/oauth/register`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(metadata),
+    });
+    return { status: response.status, headers: response.headers, body: await response.json() };
+  };
+  const loopback = `http://127.0.0.1:${await freePort()}/callback`;
+  const local = await register({
+    client_name: 'mcp-remote',
+    redirect_uris: [loopback],
+    token_endpoint_auth_method: 'none',
+    grant_types: ['authorization_code', 'refresh_token'],
+    response_types: ['code'],
+  });
+  assert.equal(local.status, 201, JSON.stringify(local.body));
+  assert.equal(local.headers.get('cache-control'), 'no-store');
+  assert.match(local.body.client_id, /^dcr_/);
+  assert.deepEqual(local.body.redirect_uris, [loopback]);
+  assert.equal(local.body.token_endpoint_auth_method, 'none');
+  const cursor = await register({ client_name: 'Cursor', redirect_uris: [cursorRedirect] });
+  assert.equal(cursor.status, 201, JSON.stringify(cursor.body));
+  for (const uri of ['https://evil.example/cb', 'javascript:alert(1)']) {
+    const refused = await register({ client_name: 'Evil', redirect_uris: [uri] });
+    assert.deepEqual([refused.status, refused.body.error], [400, 'invalid_redirect_uri'], uri);
+  }
+
+  // Cursor goes all the way: an unverified app, sent back to itself by its own scheme.
+  const clientId = cursor.body.client_id as string;
+  const started = await c.begin(clientId, cursorRedirect);
+  const shown = await c.owner.get(`/api/platform/oauth/requests/${started.id}`);
+  assert.equal(shown.status, 200, shown.body);
+  assert.deepEqual((shown.value as OAuthRequest).app, {
+    name: 'Cursor',
+    clientId,
+    verified: false,
+    redirectHost: 'this computer',
+    redirectScheme: 'cursor',
+  });
+  const redirect = await c.approve(started.id, everything('Cursor'));
+  assert.ok(redirect.startsWith(`${cursorRedirect}?`), redirect);
+  const tokens = await c.exchange(
+    clientId,
+    cursorRedirect,
+    c.code(redirect, started.state),
+    started.verifier,
+  );
+  assert.equal(tokens.status, 200, JSON.stringify(tokens.body));
+  const me = await c.whoami((tokens.body as Tokens).access_token);
+  assert.equal(me.status, 200, JSON.stringify(me.body));
+  assert.equal((me.body as AgentWhoami).key.name, 'Cursor');
+  const [app] = await c.listed('Cursor');
+  assert.equal(app?.kind, 'app');
+  assert.deepEqual(app?.client, { name: 'Cursor', verified: false, status: 'connected' });
+});
+
+test('ChatGPT connects through its own redirect and no other', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const c = await oauth(f);
+  const started = await c.begin(chatgpt, chatgptRedirect, { ui_locales: 'en-US' });
+  const shown = await c.owner.get(`/api/platform/oauth/requests/${started.id}`);
+  assert.deepEqual((shown.value as OAuthRequest).app, {
+    name: 'ChatGPT',
+    clientId: chatgpt,
+    verified: true,
+    redirectHost: 'chatgpt.com',
+    redirectScheme: null,
+  });
+  const redirect = await c.approve(started.id, everything('ChatGPT'));
+  assert.ok(redirect.startsWith(`${chatgptRedirect}?`), redirect);
+  const tokens = await c.exchange(
+    chatgpt,
+    chatgptRedirect,
+    c.code(redirect, started.state),
+    started.verifier,
+  );
+  assert.equal(tokens.status, 200, JSON.stringify(tokens.body));
+  assert.equal((await c.whoami((tokens.body as Tokens).access_token)).status, 200);
+
+  // Any other chatgpt.com address is not ChatGPT's redirect.
+  for (const other of [
+    'https://chatgpt.com/other_oauth_redirect',
+    `${chatgptRedirect}/`,
+    'https://chatgpt.com:443/connector_platform_oauth_redirect',
+  ]) {
+    const sent = c.request(chatgpt, other);
+    assert.equal(
+      await c.authorize(sent.query),
+      `${c.issuer}/#authorize?error=invalid_redirect`,
+      other,
+    );
+  }
+});

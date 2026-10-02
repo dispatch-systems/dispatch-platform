@@ -65,6 +65,8 @@ enum Payload {
     Encoded(Bytes),
     /// A document saved as a file, such as an agent's skill, with its content type and name.
     File(&'static str, &'static str, String),
+    /// Where the browser goes instead: a URL the server built, never one a request named.
+    Redirect(String),
 }
 
 pub struct Reply {
@@ -110,6 +112,14 @@ impl Reply {
         Self {
             value: Payload::File(content_type, name, body),
             status: 200,
+            cookie: None,
+        }
+    }
+    /// A `302 Found` to `location`, which the server built from what it validated.
+    pub fn redirect(location: String) -> Self {
+        Self {
+            value: Payload::Redirect(location),
+            status: 302,
             cookie: None,
         }
     }
@@ -165,6 +175,9 @@ impl IntoResponse for Reply {
                 body,
             )
                 .into_response(),
+            Payload::Redirect(location) => {
+                (status, [(axum::http::header::LOCATION, location)]).into_response()
+            }
         };
         if let Some(cookie) = self.cookie
             && let Ok(value) = cookie.parse()
@@ -218,5 +231,16 @@ mod tests {
         assert_eq!(reply.headers()["set-cookie"], "test=value");
         let body = axum::body::to_bytes(reply.into_body(), 1024).await.unwrap();
         assert_eq!(serde_json::from_slice::<Value>(&body).unwrap(), value);
+    }
+    #[test]
+    fn redirects_name_where_to_go_and_carry_nothing_else() {
+        let reply =
+            Reply::redirect("https://d.example/#authorize?request=r".into()).into_response();
+        assert_eq!(reply.status(), 302);
+        assert_eq!(
+            reply.headers()["location"],
+            "https://d.example/#authorize?request=r"
+        );
+        assert!(reply.headers().get("content-type").is_none());
     }
 }
