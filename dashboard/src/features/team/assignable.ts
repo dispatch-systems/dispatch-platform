@@ -1,10 +1,10 @@
 import type { DspView, Role } from '../../../../shared/contracts/index.js';
-import { can, visiblePermissions } from '../../app/permissions.js';
 
 // Nobody hands out access they do not hold; the server enforces the same rule,
-// both within the DSP's features.
-export function assignable(view: DspView, role: Role) {
+// including stored grants whose features are currently switched off.
+export function assignable(view: DspView, role: Role, roles: readonly Role[]) {
+  const held = roles.find((candidate) => candidate.id === view.role.id)?.permissions ?? [];
   return role.owner
     ? view.role.owner
-    : visiblePermissions(view, role.permissions).every((p) => can(view, p));
+    : view.role.owner || role.permissions.every((permission) => held.includes(permission));
 }

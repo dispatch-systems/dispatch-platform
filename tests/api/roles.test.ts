@@ -119,7 +119,7 @@ test('custom roles gate tenant APIs and never grant more than the actor holds', 
   assert.equal((await named('Viewer')).members, 1);
 });
 
-test('role edits ask for no fresh verification and only deleting a role cancels its invitations', async (t) => {
+test('role edits need no fresh verification and invitations follow their sender authority', async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
@@ -193,21 +193,36 @@ test('role edits ask for no fresh verification and only deleting a role cancels 
     200,
   );
 
-  // The sender loses the right to invite, then leaves; Crew now grants more than they hold.
+  // An invitation never outlives its sender's authority, even when their account stays because
+  // they belong to another DSP. Platform-owner invitations remain usable through role edits.
   const memberRole = (await roles()).find((role) => role.name === 'Member')!;
   assert.equal((await write(`/api/dsp/members/${sender.id}`, { role: memberRole.id })).status, 200);
+  const burst = await Promise.all(
+    Array.from({ length: 32 }, (_, index) => f.request(`/api/invitations/${tokens[index % 2]}`)),
+  );
+  assert.deepEqual(
+    burst.map((result) => result.status),
+    Array.from({ length: 32 }, (_, index) => (index % 2 === 0 ? 200 : 404)),
+  );
   assert.equal((await write(`/api/dsp/members/${sender.id}`, { role: null })).status, 200);
-  for (const token of tokens)
-    assert.equal((await f.request(`/api/invitations/${token}`)).status, 200, token);
-  const accepted = await f.request(`/api/invitations/${tokens[1]}/accept`, {
+  assert.equal((await f.request(`/api/invitations/${tokens[0]}`)).status, 200);
+  assert.equal((await f.request(`/api/invitations/${tokens[1]}`)).status, 404);
+  assert.equal((await f.request(`/api/invitations/${tokens[2]}`)).status, 200);
+  const denied = await f.request(`/api/invitations/${tokens[1]}/accept`, {
     firstName: 'Casey',
     lastName: 'Rivers',
+    password: demo.password,
+  });
+  assert.equal(denied.status, 404, denied.body);
+  const accepted = await f.request(`/api/invitations/${tokens[0]}/accept`, {
+    firstName: 'Alex',
+    lastName: 'Rivera',
     password: demo.password,
   });
   assert.equal(accepted.status, 200, accepted.body);
   await owner.select(north.id);
   const joined = (await owner.get('/api/dsp/members')).value.find(
-    (m: { email: string }) => m.email === 'from-sender@dispatch.test',
+    (m: { email: string }) => m.email === 'from-owner@dispatch.test',
   );
   assert.equal(joined.roleId, crew.id);
 
@@ -217,6 +232,81 @@ test('role edits ask for no fresh verification and only deleting a role cancels 
   assert.equal((await f.request(`/api/invitations/${tokens[2]}`)).status, 404);
   assert.equal((await f.request(`/api/invitations/${tokens[0]}`)).status, 200);
   assert.equal((await write(`/api/dsp/roles/${crew.id}/remove`, {})).value.error, 'role_in_use');
+});
+
+test('disabled feature grants still count against the durable delegation ceiling', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const member = await f.client('member@dispatch.test');
+  const north = member.session.dsps[0];
+  await owner.select(north.id);
+  const privileged = (
+    await owner.post('/api/dsp/roles', {
+      name: 'Uniform Manager',
+      permissions: ['uniforms.manage'],
+    })
+  ).value;
+  const delegated = (
+    await owner.post('/api/dsp/roles', {
+      name: 'Role Manager',
+      permissions: ['members.invite', 'members.manage', 'roles.manage'],
+    })
+  ).value;
+  const membership = (await owner.get('/api/dsp/members')).value.find(
+    (row: { email: string }) => row.email === 'member@dispatch.test',
+  );
+  assert.equal(
+    (await owner.post(`/api/dsp/members/${membership.id}`, { role: delegated.id })).status,
+    200,
+  );
+  assert.equal(
+    (
+      await owner.post(`/api/platform/dsps/${north.id}/features`, {
+        feature: 'uniforms',
+        enabled: false,
+      })
+    ).status,
+    200,
+  );
+  await member.select(north.id);
+
+  for (const [url, body] of [
+    [`/api/dsp/roles/${privileged.id}`, { name: 'Hidden Uniform Manager', permissions: [] }],
+    [`/api/dsp/roles/${privileged.id}/remove`, {}],
+    [`/api/dsp/members/${membership.id}`, { role: privileged.id }],
+    ['/api/dsp/members/invite', { email: 'hidden@dispatch.test', role: privileged.id }],
+  ] as const) {
+    const result = await member.post(url, body);
+    assert.equal(result.status, 403, `${url}: ${result.body}`);
+    assert.equal(result.value.error, 'role_exceeds_permissions');
+  }
+
+  // Owners may still edit roles while a feature is off, and hidden grants remain stored.
+  await owner.select(north.id);
+  assert.equal(
+    (
+      await owner.post(`/api/dsp/roles/${privileged.id}`, {
+        name: 'Hidden Uniform Manager',
+        permissions: [],
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await owner.post(`/api/platform/dsps/${north.id}/features`, {
+        feature: 'uniforms',
+        enabled: true,
+      })
+    ).status,
+    200,
+  );
+  await owner.select(north.id);
+  const restored = (await owner.get('/api/dsp/roles')).value.find(
+    (role: Role) => role.id === privileged.id,
+  );
+  assert.deepEqual(restored.permissions, ['uniforms.view', 'uniforms.manage']);
 });
 
 test('memberships written without a role id resolve through the legacy role after restart', async (t) => {

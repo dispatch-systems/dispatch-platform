@@ -60,7 +60,7 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
     },
     { success: 'Role deleted' },
   );
-  const grantable = roles.data?.filter((role) => assignable(view, role)) ?? [];
+  const grantable = roles.data?.filter((role) => assignable(view, role, roles.data ?? [])) ?? [];
   const [search, setSearch] = useUpdateState('team-search', '');
   const [inviting, setInviting] = useState(false);
   const [editing, setEditing] = useState<Membership>();

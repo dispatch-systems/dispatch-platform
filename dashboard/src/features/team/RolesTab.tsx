@@ -91,7 +91,7 @@ export function RolesTab({
         return (
           manage &&
           !role.owner &&
-          assignable(view, role) && (
+          assignable(view, role, roles ?? none) && (
             <Popover
               className="row-menu"
               label={`Actions for ${role.name}`}
