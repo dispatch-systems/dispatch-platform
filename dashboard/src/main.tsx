@@ -11,7 +11,13 @@ import {
 } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { DspView, SessionView } from '../../shared/contracts/index.js';
-import { api, credentials, ApiError, view as admittedToken } from './app/api.js';
+import {
+  api,
+  credentials,
+  ApiError,
+  csrf as activeCsrf,
+  view as admittedToken,
+} from './app/api.js';
 import { FeedbackMessages, FeedbackProvider, useFeedback } from './app/feedback.js';
 import {
   dspHash,
@@ -94,7 +100,7 @@ function App() {
       const request = ++sessionRequest.current;
       admission.current++;
       cancelPrefetches();
-      credentials(navigationState.current.session?.csrf ?? '');
+      credentials(activeCsrf);
       setView(undefined);
       setSwitching(
         Boolean(parseHash(window.location.hash).dspId && navigationState.current.session),
@@ -173,7 +179,9 @@ function App() {
           pendingAdmission.current === admission.current;
         if (opening) void prepareRoute('dsp', next.page).catch(() => undefined);
         else admission.current++;
-        credentials(current.session?.csrf ?? '');
+        // A lazy security screen may not have committed the newly accepted session yet.
+        // Dropping the DSP view must preserve that session's live CSRF credential.
+        credentials(activeCsrf);
         setView(undefined);
         setSwitching(Boolean(next.dspId && current.session && (!sameWorkspace || opening)));
         setAddress(next);
