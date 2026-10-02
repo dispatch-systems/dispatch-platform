@@ -131,11 +131,16 @@ impl Driver {
         &mut self,
         request: &Request,
         run: &Run<'_>,
-    ) -> Result<Capture> {
+    ) -> Result<(Capture, crate::meals::Scope)> {
         request.validate()?;
         let started_at = now();
         run.progress(5, "Finding DVIC reports".into()).await?;
-        let api = self.performance_api(&request.station, run.metrics).await?;
+        let scope = self
+            .resolve_scope(&request.scope_request(), run.metrics)
+            .await?;
+        let api = self
+            .performance_api(&scope, &request.dsp_abbreviation, run.metrics)
+            .await?;
         let http = Http::signed_in(&self.browser, &self.origin).await?;
         let downloads = Http::cortex_reports(&self.origin)?;
         let job = run.job.to_owned();
@@ -268,8 +273,8 @@ impl Driver {
             finished_at: now().max(started_at),
             reports,
         };
-        capture.validate(request)?;
-        Ok(capture)
+        capture.validate_scope(request, &scope)?;
+        Ok((capture, scope))
     }
 }
 
@@ -282,6 +287,10 @@ mod tests {
             collection: Collection::Dvic,
             station: "TST1".into(),
             weeks: vec!["2026-W39".into()],
+            date: "2026-10-02".into(),
+            timezone: "America/Los_Angeles".into(),
+            dsp_name: "Fixture Delivery".into(),
+            dsp_abbreviation: "FXTR".into(),
         })
         .unwrap();
         let report = &capture.reports[0];

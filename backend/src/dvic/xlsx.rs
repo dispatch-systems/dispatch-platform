@@ -186,6 +186,10 @@ mod tests {
             collection: Collection::Dvic,
             station: "TST1".into(),
             weeks: vec!["2026-W39".into()],
+            date: "2026-10-02".into(),
+            timezone: "America/Los_Angeles".into(),
+            dsp_name: "Fixture Delivery".into(),
+            dsp_abbreviation: "FXTR".into(),
         };
         fixture(&request)
             .unwrap()

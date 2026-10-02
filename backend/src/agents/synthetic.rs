@@ -270,9 +270,9 @@ pub fn seed(db: &Store) -> Result<Value> {
     let (first, last) = (dates[0].to_string(), dates[dates.len() - 1].to_string());
     dvic.exec(
         "INSERT OR REPLACE INTO dvic_reports(id,company_id,dsp_code,station,source_key,name,week,\
-         report_date,modified_at,sha256,revision_id,row_count,short_count,min_date,max_date,checked_at) \
+         report_date,modified_at,sha256,revision_id,row_count,short_count,min_date,max_date,checked_at,scope_verified) \
          VALUES ('synthetic','synthetic','NLOG',?1,'synthetic','DVIC','synthetic',?3,0,'synthetic',\
-         'synthetic',0,0,?2,?3,?3)",
+         'synthetic',0,0,?2,?3,?3,1)",
         rusqlite::params![STATION, first, last],
     )?;
     dvic.exec(
@@ -290,8 +290,8 @@ pub fn seed(db: &Store) -> Result<Value> {
                 "INSERT OR REPLACE INTO dvic_inspections(company_id,inspection_key,dsp_code,station,\
                  start_date,transporter_id,transporter_name,vin,fleet_type,inspection_type,\
                  inspection_status,start_time,end_time,duration_seconds,minimum_seconds,short,\
-                 report_date,source_modified_at,revision_id) VALUES ('synthetic',?1,'NLOG',?2,?3,?4,?5,\
-                 ?6,'CDV','PRE_TRIP','COMPLETE',?7,?8,?9,90,?10,?3,0,'synthetic')",
+                 report_date,source_modified_at,revision_id,scope_verified) VALUES ('synthetic',?1,'NLOG',?2,?3,?4,?5,\
+                 ?6,'CDV','PRE_TRIP','COMPLETE',?7,?8,?9,90,?10,?3,0,'synthetic',1)",
                 rusqlite::params![
                     format!("synthetic-{date}-{i}"),
                     STATION,
@@ -459,7 +459,13 @@ fn scorecards(
                 _ => std::mem::take(&mut dataset.rows),
             };
         }
-        db.publish_scorecard(id, &job, &capture)?;
+        let scope = match request.scope_request() {
+            crate::meals::CollectionRequest::Discover(discovery) => {
+                discovery.scope("area-synthetic", "company-fixture")?
+            }
+            crate::meals::CollectionRequest::Scoped(scope) => scope,
+        };
+        db.publish_scorecard(id, &job, &capture, &scope)?;
         db.jobs
             .exec("UPDATE jobs SET status='succeeded' WHERE id=?", [&job])?;
     }
