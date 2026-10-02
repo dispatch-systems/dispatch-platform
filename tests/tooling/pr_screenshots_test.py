@@ -51,10 +51,7 @@ class PrScreenshotsTests(unittest.TestCase):
         base = Path(self.directory.name)
         self.root = base / "workspace/worktrees/pr-flow"
         self.root.mkdir(parents=True)
-        git("init", "-q", "-b", "pr-flow", cwd=self.root)
-        git("commit", "-q", "--allow-empty", "-m", "start", cwd=self.root,
-            env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
-                 "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"})
+        self._tree = None
         self.scratch = base / "scratch"
         self.review = base / "workspace/.privacy/export-review.json"
         self.review.parent.mkdir(parents=True)
@@ -65,8 +62,17 @@ class PrScreenshotsTests(unittest.TestCase):
                                            "DISPATCH_SCREENSHOTS_SETTINGS": str(self.settings)})
         self.env.start()
         self.addCleanup(self.env.stop)
-        self.tree = shots.Worktree(self.root)
         self.uploaded = []
+
+    @property
+    def tree(self):
+        if self._tree is None:
+            git("init", "-q", "-b", "pr-flow", cwd=self.root)
+            git("commit", "-q", "--allow-empty", "-m", "start", cwd=self.root,
+                env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+                     "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"})
+            self._tree = shots.Worktree(self.root)
+        return self._tree
 
     def uploader(self, settings, captured):
         self.uploaded.extend(f"{label}/{name}" for label, name, _ in captured)

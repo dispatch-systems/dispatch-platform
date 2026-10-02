@@ -128,16 +128,23 @@ test('mobile loads only the form; reset and password reveal still work', async (
   expect(assets.filter((url) => /login-van|renderer-.*\.js|\/van\/|three/.test(url))).toEqual([]);
 });
 
-test('graphics failure leaves a working sign-in form and a static van', async ({ page }) => {
-  await page.route('**/*login-van*.glb', (route) => route.abort());
-  await page.goto('/');
-  await expect(page.locator('.login-van img')).toBeVisible();
-  await signIn(page);
-  await expect(page.getByRole('heading', { name: 'DSPs', exact: true })).toBeVisible();
-});
-
 test.describe('desktop animation lifecycle', () => {
   test.use({ signInAnimation: true });
+  test('graphics failure leaves a working sign-in form and a static van', async ({ page }) => {
+    let failedModels = 0;
+    await page.route('**/*login-van*.glb', (route) => {
+      failedModels++;
+      return route.abort();
+    });
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.goto('/');
+    // Prove that the real renderer reached the failing model request.
+    await expect.poll(() => failedModels).toBe(1);
+    await expect(page.locator('.login-van img')).toBeVisible();
+    await signIn(page);
+    await expect(page.getByRole('heading', { name: 'DSPs', exact: true })).toBeVisible();
+  });
+
   test('autoplays in both themes and releases rendering on mobile and sign-in', async ({
     page,
   }) => {

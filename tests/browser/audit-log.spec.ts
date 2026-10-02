@@ -236,9 +236,7 @@ test('the audit log reads as sentences, shows what changed and folds repeated vi
   await expect(item(page, 'completed the DSP profile')).toContainText(
     'StationTST2·AbbreviationNLOG',
   );
-  await page.screenshot({ path: test.info().outputPath('audit-log.png'), fullPage: true });
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
-  await page.screenshot({ path: test.info().outputPath('audit-log-dark.png'), fullPage: true });
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
 
   await expect(page.getByText('Showing 14 of 24')).toBeVisible();
@@ -306,7 +304,6 @@ test('the audit log fits a phone', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page);
   await expect(item(page, 'changed Jordan Pike’s role')).toBeVisible();
-  await page.screenshot({ path: test.info().outputPath('audit-log-mobile.png'), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
@@ -411,10 +408,8 @@ test('audit access is only in the Platform Owner Dashboard, including old DSP li
       (value) => document.documentElement.setAttribute('data-theme', value),
       theme,
     );
-    await page.screenshot({ path: test.info().outputPath(`dsp-settings-${theme}.png`) });
   }
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: test.info().outputPath('dsp-settings-mobile.png') });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.setViewportSize({ width: 1440, height: 1000 });
 

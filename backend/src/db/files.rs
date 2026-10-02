@@ -51,7 +51,10 @@ pub fn private_file(path: &Path, create: bool) -> Result<()> {
             Err(e) => return Err(e.into()),
         }
     }
-    match fs::symlink_metadata(path) {
+    check_metadata(path, fs::symlink_metadata(path))
+}
+fn check_metadata(path: &Path, metadata: std::io::Result<fs::Metadata>) -> Result<()> {
+    match metadata {
         // SQLite removes its -wal, -shm and -journal files when a connection closes.
         // An lstat racing that unlink can still succeed and report no links; the
         // file is already gone, which is the same as not found.
@@ -122,41 +125,35 @@ pub fn key_file(path: &Path) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::time::Duration;
     #[test]
     fn a_file_deleted_during_the_check_is_absent_but_hard_links_stay_unsafe() {
         let root = tempfile::tempdir().unwrap();
         fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700)).unwrap();
         let path = root.path().join("dispatch.sqlite-wal");
-        let stop = AtomicBool::new(false);
-        std::thread::scope(|scope| {
-            scope.spawn(|| {
-                while !stop.load(Ordering::Relaxed) {
-                    drop(
-                        OpenOptions::new()
-                            .write(true)
-                            .create(true)
-                            .truncate(true)
-                            .mode(0o600)
-                            .open(&path),
-                    );
-                    let _ = fs::remove_file(&path);
-                }
-            });
-            // Stop the writer before asserting so a failure cannot leave it running.
-            let began = std::time::Instant::now();
-            let mut failed = None;
-            while failed.is_none() && began.elapsed() < Duration::from_secs(2) {
-                failed = private_file(&path, false).err();
-            }
-            stop.store(true, Ordering::Relaxed);
-            assert!(failed.is_none(), "a deleted file was reported unsafe");
-        });
-        fs::write(&path, "").unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&path)
+            .unwrap();
         private_file(&path, false).unwrap();
-        fs::hard_link(&path, root.path().join("link")).unwrap();
+        let link = root.path().join("link");
+        fs::hard_link(&path, &link).unwrap();
         assert!(private_file(&path, false).is_err());
+        fs::remove_file(link).unwrap();
+        fs::remove_file(&path).unwrap();
+        // fstat on the unlinked, still-open inode deterministically supplies the
+        // zero-link metadata that lstat can observe during a SQLite sidecar race.
+        let deleted = file.metadata().unwrap();
+        assert_eq!(deleted.nlink(), 0);
+        check_metadata(&path, Ok(deleted)).unwrap();
+        private_file(&path, false).unwrap();
+        assert!(
+            check_metadata(
+                &path,
+                Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+            )
+            .is_err()
+        );
     }
 }

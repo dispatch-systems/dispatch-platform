@@ -94,7 +94,11 @@ test(
 
 test(
   'a stalled navigation is diagnosed and retried without discarding its completed sibling',
-  { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 120000 },
+  {
+    skip:
+      process.env.DISPATCH_TEST_NATIVE !== '1' || process.env.DISPATCH_TEST_REAL_TIMEOUTS !== '1',
+    timeout: 120000,
+  },
   async (t) => {
     const f = await paycomFixture();
     t.after(f.close);

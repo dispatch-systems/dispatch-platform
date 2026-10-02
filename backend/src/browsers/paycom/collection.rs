@@ -23,6 +23,23 @@ const PAGE_RETRY: &[crate::Code] = &[
     crate::Code::ProviderContentMissing,
     crate::Code::BrowserNavigationPending,
 ];
+const NAVIGATION_TIMEOUT: Duration = Duration::from_secs(45);
+const CONTENT_TIMEOUT: Duration = Duration::from_secs(30);
+fn page_deadline(started: Instant, content: Option<Instant>, now: Instant) -> Result<()> {
+    if let Some(content) = content {
+        ensure(
+            now < content + CONTENT_TIMEOUT,
+            "provider_content_timeout",
+            504,
+        )
+    } else {
+        ensure(
+            now < started + NAVIGATION_TIMEOUT,
+            "provider_navigation_timeout",
+            504,
+        )
+    }
+}
 const API: &str = "https://time-and-attendance.paycomonline.net/api/cl/timecard-search/employees";
 /// Timecards read over HTTP at once. Paycom answered six together as fast as two
 /// (3.6 s against 3.5 s each for 100 employees) and refused none.
@@ -1112,19 +1129,7 @@ async fn read_once(
     let mut missing_since = None;
     let mut candidate: Option<(Vec<Value>, Instant)> = None;
     loop {
-        if let Some(content) = content_started {
-            ensure(
-                Instant::now() < content + Duration::from_secs(30),
-                "provider_content_timeout",
-                504,
-            )?;
-        } else {
-            ensure(
-                started.elapsed() < Duration::from_secs(45),
-                "provider_navigation_timeout",
-                504,
-            )?;
-        }
+        page_deadline(started, content_started, Instant::now())?;
         let frame = page.navigation(&previous_loader).await?;
         if frame.is_null() {
             sleep(Duration::from_millis(200)).await;
@@ -1215,6 +1220,52 @@ async fn extract(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test(start_paused = true)]
+    async fn page_deadlines_keep_navigation_and_content_failure_diagnostics() -> Result<()> {
+        use crate::contracts::PageStage;
+        assert_eq!(NAVIGATION_TIMEOUT, Duration::from_secs(45));
+        assert_eq!(CONTENT_TIMEOUT, Duration::from_secs(30));
+        let metrics = Recorder::new(&json!({"attempt":1}));
+        metrics.page_start(1, 1);
+        let started = Instant::now();
+        tokio::time::advance(Duration::from_millis(44_999)).await;
+        page_deadline(started, None, Instant::now())?;
+        tokio::time::advance(Duration::from_millis(1)).await;
+        let navigation = page_deadline(started, None, Instant::now()).unwrap_err();
+        assert!(navigation.is(crate::Code::ProviderNavigationTimeout));
+        assert_eq!(navigation.status, 504);
+        assert!(navigation.is_any(PAGE_RETRY));
+        metrics.page_finish(1, Some(&navigation.code));
+
+        metrics.page_start(2, 1);
+        let started = Instant::now();
+        tokio::time::advance(Duration::from_secs(44)).await;
+        page_deadline(started, None, Instant::now())?;
+        let content = Instant::now();
+        metrics.page_stage(2, "content");
+        // A completed navigation gets its own content budget, even after 45s total.
+        tokio::time::advance(Duration::from_millis(29_999)).await;
+        page_deadline(started, Some(content), Instant::now())?;
+        tokio::time::advance(Duration::from_millis(1)).await;
+        let content = page_deadline(started, Some(content), Instant::now()).unwrap_err();
+        assert!(content.is(crate::Code::ProviderContentTimeout));
+        assert_eq!(content.status, 504);
+        assert!(content.is_any(PAGE_RETRY));
+        metrics.page_finish(2, Some(&content.code));
+
+        let reads = metrics.snapshot().page_reads.unwrap();
+        assert!(reads.active.is_empty());
+        assert_eq!(reads.completed, 0);
+        assert_eq!(reads.failures.len(), 2);
+        for (failure, stage, error) in [
+            (&reads.failures[0], PageStage::Navigation, navigation),
+            (&reads.failures[1], PageStage::Content, content),
+        ] {
+            assert_eq!(failure.stage, stage);
+            assert_eq!(failure.error.as_deref(), Some(error.code.as_str()));
+        }
+        Ok(())
+    }
     fn body() -> Value {
         let mut body = json!({});
         for key in FIELDS {

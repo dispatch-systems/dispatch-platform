@@ -24,7 +24,7 @@ test('password, optional MFA, and sessions lay out safely on desktop and mobile'
   await expect(page.getByRole('heading', { name: 'Sessions', exact: true })).toBeVisible();
   await expect(page.getByText('Optional', { exact: true })).toBeVisible();
   await expect(page.getByText('Old security key', { exact: true })).toHaveCount(0);
-  await captureSettings(page);
+  await expectSettingsLayout(page);
   await page.getByRole('link', { name: 'DSPs', exact: true }).click();
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
@@ -203,7 +203,7 @@ function totp(secret: string) {
   return String((mac.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(6, '0');
 }
 
-async function captureSettings(page: Page) {
+async function expectSettingsLayout(page: Page) {
   for (const width of [1280, 700, 390]) {
     await page.setViewportSize({ width, height: 900 });
     for (const theme of ['light', 'dark']) {
@@ -218,11 +218,6 @@ async function captureSettings(page: Page) {
         .getByRole('region', { name: 'Sessions', exact: true })
         .boundingBox();
       expect(sessions!.y).toBeGreaterThanOrEqual(password!.y + password!.height);
-      await page.screenshot({
-        path: test.info().outputPath(`security-${width}-${theme}.png`),
-        fullPage: true,
-        animations: 'disabled',
-      });
       if (width !== 700) {
         await page.getByRole('button', { name: 'Change password', exact: true }).click();
         const dialog = page.getByRole('dialog', { name: 'Change password', exact: true });
@@ -230,10 +225,6 @@ async function captureSettings(page: Page) {
         const bounds = await dialog.boundingBox();
         expect(bounds!.x).toBeGreaterThanOrEqual(0);
         expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
-        await page.screenshot({
-          path: test.info().outputPath(`password-${width}-${theme}.png`),
-          animations: 'disabled',
-        });
         await page.keyboard.press('Escape');
         await expect(dialog).not.toBeVisible();
       }

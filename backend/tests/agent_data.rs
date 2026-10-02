@@ -723,9 +723,53 @@ type Question = Box<dyn FnOnce(&Store, &State, &Caller) -> data::Answer + Send>;
 
 #[tokio::test]
 async fn package_group_and_list_cursors_advance_independently_within_the_final_budget() {
-    let (_root, db) = common::seeded();
-    let world = synthetic::seed(&db).unwrap();
-    let me = caller(&db, &[s(&world, "dsp")], false);
+    let (_root, db, id) = ready();
+    // Group pages hold 100 rows. Just cross that boundary while exercising the
+    // real capture/stage/publication path, rather than seeding a month's workload.
+    let request = Request::parse(&json!({"collection":"routes","mode":"final","date":DAY,
+        "station":"TST1","timezone":"UTC","dspName":"Test Owner","dspAbbreviation":"NLOG"}))
+    .unwrap()
+    .unwrap();
+    let mut capture = routedata::fixture(&request).unwrap();
+    let summary = capture.summaries["itinerarySummaries"][0].clone();
+    let route = capture.route_summaries["rmsRouteSummaries"][0].clone();
+    let itinerary = capture.itineraries[0].clone();
+    let mut summaries = Vec::new();
+    let mut routes = Vec::new();
+    capture.itineraries.clear();
+    for index in 0..101 {
+        let id = format!("cursor-itinerary-{index}");
+        let code = format!("CUR{index:03}");
+        let mut summary = summary.clone();
+        summary["itineraryId"] = json!(id);
+        summary["routeCode"] = json!(code);
+        summary["routeCodes"] = json!([code]);
+        summaries.push(summary);
+        let mut route = route.clone();
+        route["routeCode"] = json!(code);
+        route["routeId"] = json!(format!("cursor-route-{index}"));
+        route["rmsRouteId"] = json!(format!("cursor-rms-{index}"));
+        route["transporters"][0]["itineraryId"] = json!(id);
+        routes.push(route);
+        let mut captured = itinerary.clone();
+        captured.id = id.clone();
+        captured.detail = captured
+            .detail
+            .replace("itinerary-1", &id)
+            .replace("CX101", &code)
+            .replace("TBA000000000001", &format!("TBA{index:010}01"))
+            .replace("TBA000000000002", &format!("TBA{index:010}02"));
+        capture.itineraries.push(captured);
+    }
+    capture.summaries["itinerarySummaries"] = json!(summaries);
+    capture.route_summaries["rmsRouteSummaries"] = json!(routes);
+    let jobs = db
+        .enqueue_routes(&id, None, "cursor-routes", Some(DAY), Mode::Final, 1)
+        .unwrap();
+    let job = s(&jobs[0], "id");
+    let staged = db.stage_routes(&id, job, capture).unwrap();
+    db.publish_routes(&id, job, &staged).unwrap();
+    let me = caller(&db, &[&id], false);
     let config = db.config.clone();
     drop(db);
     let state = State::new(config).unwrap();
@@ -735,7 +779,7 @@ async fn package_group_and_list_cursors_advance_independently_within_the_final_b
             db,
             state,
             &who,
-            &json!({"group_by":"day,route","list":"true","limit":"1"}),
+            &json!({"date":DAY,"group_by":"day,route","list":"true","limit":"1"}),
         )
     })
     .await;
@@ -751,7 +795,7 @@ async fn package_group_and_list_cursors_advance_independently_within_the_final_b
         .to_owned();
     let who = me.clone();
     let (status, second) = ask(&state, move |db, state| data::packages(db, state, &who,
-        &json!({"group_by":"day,route","list":"true","limit":"1", "groups_cursor":groups_cursor}))).await;
+        &json!({"date":DAY,"group_by":"day,route","list":"true","limit":"1", "groups_cursor":groups_cursor}))).await;
     assert_eq!(status, 200, "{second}");
     assert!(second.to_string().len() <= data::BUDGET);
     assert_eq!(second["list"]["rows"], first["list"]["rows"]);
@@ -763,7 +807,7 @@ async fn package_group_and_list_cursors_advance_independently_within_the_final_b
             db,
             state,
             &who,
-            &json!({"group_by":"day,route","list":"true","limit":"1", "cursor":list_cursor}),
+            &json!({"date":DAY,"group_by":"day,route","list":"true","limit":"1", "cursor":list_cursor}),
         )
     })
     .await;
@@ -775,7 +819,7 @@ async fn package_group_and_list_cursors_advance_independently_within_the_final_b
             db,
             state,
             &me,
-            &json!({"group_by":"day,route", "groups_cursor":"100"}),
+            &json!({"date":DAY,"group_by":"day,route", "groups_cursor":"100"}),
         )
     })
     .await;
@@ -1583,22 +1627,31 @@ async fn scorecard_questions_come_back_small() {
 /// decide which, or this fails.
 #[tokio::test]
 async fn every_tool_says_when_its_feature_is_switched_off() {
-    let (_root, db) = common::seeded();
-    let world = synthetic::seed(&db).unwrap();
-    let dsp = s(&world, "dsp").to_owned();
+    let (_root, db, dsp) = ready();
+    db.platform
+        .exec(
+            "UPDATE dsps SET name='Northline Logistics' WHERE id=?",
+            [&dsp],
+        )
+        .unwrap();
     let me = caller(&db, &[&dsp], true);
     let actor = owner(&db);
+    let state = State::new(db.config.clone()).unwrap();
+    let who = me.clone();
+    let (status, visible) = ask(&state, move |db, state| {
+        data::driver(db, state, &who, "Fixture Driver", &json!({"date":DAY}))
+    })
+    .await;
+    assert_eq!(status, 200, "{visible}");
     // Every page an agent reads; their tabs and Driver Match go with them.
     for feature in ["timecard", "routes", "dvic", "scorecard"] {
         db.set_feature(&dsp, feature, false, &actor).unwrap();
     }
-    let config = db.config.clone();
     drop(db);
-    let state = State::new(config).unwrap();
     for endpoint in data::catalog::ENDPOINTS {
         let who = me.clone();
         let named = match endpoint.id {
-            "driver" => "Taylor Brooks",
+            "driver" => "Fixture Driver",
             "route" => "SYN-1",
             "package" => "TBA0000000000",
             _ => "",

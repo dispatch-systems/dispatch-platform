@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { demo, fixture, until } from '../support/support.js';
+import { demo, fixture, prepare, until } from '../support/support.js';
 import { jobSchema, parseApiResponse, sessionSchema } from '../../shared/contracts/runtime.js';
 
 test('trusted tunnel clients have separate IP allowances and retain account throttling', async (t) => {
@@ -84,8 +84,8 @@ test('high-cardinality throttle input evicts noisy keys instead of exhausting ev
 });
 
 test('production rejects conflicting modes and unsafe defaults before opening storage', async (t) => {
-  const f = await fixture(false);
-  t.after(f.close);
+  const f = await prepare(false);
+  t.after(f.cleanup);
   const binary = path.resolve(process.env.DISPATCH_TEST_BINARY ?? 'target/debug/dispatch-backend');
   const production = {
     ...f.env,

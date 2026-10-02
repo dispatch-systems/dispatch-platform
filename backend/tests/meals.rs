@@ -1,32 +1,11 @@
+mod common;
 use dispatch_backend::{
     collectors::Provider,
-    config::Config,
-    db::{Store, now, s},
+    db::{now, s},
     meals::{self, Coverage, Meal, Scope},
-    operations,
 };
 use serde_json::json;
-use std::os::unix::fs::PermissionsExt;
-fn store() -> (tempfile::TempDir, Store, String) {
-    let root = tempfile::tempdir().unwrap();
-    std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
-    let mut c = Config::load().unwrap();
-    c.root = root.path().into();
-    c.fixture = true;
-    c.development = true;
-    c.environment = "preview".into();
-    let db = Store::initialize(c).unwrap();
-    let b = operations::bootstrap(
-        &db,
-        "owner@example.test",
-        "Test",
-        "Owner",
-        "test-password-long",
-    )
-    .unwrap();
-    let id = s(&b["dsp"], "id").to_owned();
-    (root, db, id)
-}
+
 fn scope() -> Scope {
     Scope {
         date: "2026-01-10".into(),
@@ -38,7 +17,7 @@ fn scope() -> Scope {
 }
 #[test]
 fn four_timestamps_multiple_meals_midnight_and_unknown_boundaries_survive_round_trip() {
-    let (_root, db, id) = store();
+    let (_root, db, id) = common::bootstrapped();
     let scope = scope();
     let mut c = meals::fixture(&scope);
     let route = &mut c.itineraries[0];
@@ -112,7 +91,7 @@ fn four_timestamps_multiple_meals_midnight_and_unknown_boundaries_survive_round_
 }
 #[test]
 fn itinerary_page_links_are_stored_returned_and_bound_to_the_route() {
-    let (_root, db, id) = store();
+    let (_root, db, id) = common::bootstrapped();
     let scope = scope();
     let mut c = meals::fixture(&scope);
     db.publish_meals(&id, "job-unlinked", &c, &scope).unwrap();
@@ -156,7 +135,7 @@ fn itinerary_page_links_are_stored_returned_and_bound_to_the_route() {
 }
 #[test]
 fn deliveries_open_the_route_at_the_stop_that_held_them() {
-    let (_root, db, id) = store();
+    let (_root, db, id) = common::bootstrapped();
     let scope = scope();
     let mut c = meals::fixture(&scope);
     let url = format!(
@@ -252,7 +231,7 @@ fn deliveries_open_the_route_at_the_stop_that_held_them() {
 }
 #[test]
 fn invalid_or_shrinking_refresh_preserves_publication_and_retention_is_bounded() {
-    let (_root, db, id) = store();
+    let (_root, db, id) = common::bootstrapped();
     let scope = scope();
     let c = meals::fixture(&scope);
     db.publish_meals(&id, "original", &c, &scope).unwrap();
@@ -299,7 +278,7 @@ fn invalid_or_shrinking_refresh_preserves_publication_and_retention_is_bounded()
 }
 #[test]
 fn provider_jobs_bind_request_identity_and_connection_revision() {
-    let (_root, db, id) = store();
+    let (_root, db, id) = common::bootstrapped();
     let scope = scope();
     db.collector(&id, Provider::Cortex)
         .unwrap()

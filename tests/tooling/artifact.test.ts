@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fixture } from '../support/support.js';
-import { verifyArtifact } from '../../tooling/build/artifact.js';
+import { verifyArtifact, writeManifest } from '../../tooling/build/artifact.js';
 import {
   dashboardGraphSizes,
   type DashboardAssets,
@@ -22,9 +22,6 @@ test(
     ]);
     const manifest = verifyArtifact(artifact);
     assert.equal(manifest.format, 3);
-    // The updater owns verification and restores executable permissions lost by extraction.
-    const script = `import importlib.util; from pathlib import Path; s=importlib.util.spec_from_file_location('u','tooling/update-dev.py'); u=importlib.util.module_from_spec(s); s.loader.exec_module(u); m=u.verify_artifact(Path('.build')); assert m['format']==3`;
-    execFileSync('python3', ['-c', script]);
     const f = await fixture({
       seed: false,
       binary: path.join(artifact, 'services/rust/dispatch-backend'),
@@ -59,6 +56,14 @@ test(
     const document = await html.text();
     assert.match(document, /<div id="root">/);
     assert.equal(html.headers.get('cache-control'), 'no-store');
+    const build = document.match(
+      /<meta\s+name="dispatch-build"\s+content="([^"]+)"\s*\/?\s*>/,
+    )?.[1];
+    assert(build, 'the served document carries its build identity');
+    const update = await f.request('/api/browser-update');
+    assert.equal(update.status, 200);
+    assert.equal(update.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(update.value, { build, ready: true });
     const asset = document.match(/src="(\.?\/assets\/[^"]+\.js)"/)![1]!;
     const url = new URL(asset, f.env.DISPATCH_ORIGIN!);
     const get = await fetch(url, { headers: { 'accept-encoding': 'identity' } });
@@ -202,11 +207,18 @@ test(
     assert.equal(JSON.parse(f.cli(['status'])).runtime, 'rust');
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-bad-artifact-'));
     t.after(() => fs.rmSync(scratch, { recursive: true, force: true }));
-    fs.cpSync(artifact, path.join(scratch, 'artifact'), { recursive: true });
-    fs.appendFileSync(path.join(scratch, 'artifact/services/rust/dispatch-backend'), 'tampered');
-    assert.throws(
-      () => verifyArtifact(path.join(scratch, 'artifact')),
-      /Artifact file verification failed/,
-    );
+    const candidate = path.join(scratch, 'artifact');
+    for (const [name, contents] of Object.entries({
+      'services/rust/dispatch-backend': '#!/bin/sh\nexit 91\n',
+      'dashboard/index.html': '<div id="root"></div>',
+      'tooling/build-info.json': JSON.stringify({ commit }),
+    })) {
+      const file = path.join(candidate, name);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, contents);
+    }
+    writeManifest(candidate, manifest.version);
+    fs.appendFileSync(path.join(candidate, 'services/rust/dispatch-backend'), 'tampered');
+    assert.throws(() => verifyArtifact(candidate), /Artifact file verification failed/);
   },
 );

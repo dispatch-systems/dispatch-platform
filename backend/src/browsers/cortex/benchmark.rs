@@ -8,6 +8,72 @@ fn env_path(name: &str) -> Result<PathBuf> {
         .map(PathBuf::from)
         .ok_or_else(|| Error::new("benchmark_configuration_required", 400))
 }
+// Drop also stops the blocking sampler if a collection is cancelled or unwinds.
+struct Sampling(std::sync::Arc<std::sync::atomic::AtomicBool>);
+impl Drop for Sampling {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+fn response_bytes(body: &Value) -> Result<Vec<u8>> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    if body["base64Encoded"] == true {
+        STANDARD
+            .decode(s(body, "body"))
+            .map_err(|_| Error::new("benchmark_response_unreadable", 502))
+    } else {
+        Ok(s(body, "body").as_bytes().to_vec())
+    }
+}
+fn tab_pair(value: &str) -> Result<Vec<usize>> {
+    let tabs: Vec<usize> = value
+        .split(',')
+        .map(|part| {
+            part.trim()
+                .parse::<usize>()
+                .map_err(|_| Error::new("benchmark_configuration_required", 400))
+        })
+        .collect::<Result<_>>()?;
+    ensure(
+        tabs.len() == 2 && tabs.iter().all(|n| *n > 0),
+        "benchmark_configuration_required",
+        400,
+    )?;
+    Ok(tabs)
+}
+fn adjacent_week(week: &str, delta: i64) -> Result<String> {
+    let (year, number) = crate::scorecard::parse_week(week)?;
+    let day = chrono::NaiveDate::from_isoywd_opt(year, number, chrono::Weekday::Mon)
+        .ok_or_else(|| Error::new("invalid_week", 400))?;
+    let shifted = day
+        .checked_add_signed(chrono::Duration::weeks(delta))
+        .ok_or_else(|| Error::new("invalid_week", 400))?;
+    Ok(crate::dvic::report_week(shifted))
+}
+#[test]
+fn probe_inputs_and_response_decoding_preserve_boundaries() {
+    for invalid in ["", "1", "1,2,3", "0,2", "a,2", "1,,2"] {
+        assert!(tab_pair(invalid).is_err(), "{invalid}");
+    }
+    assert_eq!(tab_pair(" 1, 2 ").unwrap(), [1, 2]);
+    assert_eq!(
+        response_bytes(&json!({"body":"eyJhIjoxfQ==","base64Encoded":true})).unwrap(),
+        br#"{"a":1}"#
+    );
+    assert_eq!(
+        response_bytes(&json!({"body":"{\"a\":1}"})).unwrap(),
+        br#"{"a":1}"#
+    );
+    assert!(response_bytes(&json!({"body":"?","base64Encoded":true})).is_err());
+    for (week, delta, expected) in [
+        ("2026-W52", 1, "2026-W53"),
+        ("2026-W53", 1, "2027-W01"),
+        ("2027-W01", -1, "2026-W53"),
+        ("2025-W52", 1, "2026-W01"),
+    ] {
+        assert_eq!(adjacent_week(week, delta).unwrap(), expected);
+    }
+}
 /// The requests a tab's document made, from its own resource timing: data requests
 /// by masked address (a path segment with a digit is an identifier; query values
 /// are dropped) with their largest size and time, and other kinds counted.
@@ -215,6 +281,8 @@ fn differences(a: &Value, b: &Value, path: &str, out: &mut std::collections::BTr
 #[tokio::test]
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn compare_tabs() -> Result<()> {
+    let runs =
+        tab_pair(&std::env::var("DISPATCH_BENCHMARK_TABS").unwrap_or_else(|_| "1,2".into()))?;
     let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
     let profile = dsp.join("state/browsers/cortex-browseros");
     let runtime = browseros::Runtime::new(
@@ -275,8 +343,7 @@ async fn compare_tabs() -> Result<()> {
             .await?;
         eprintln!("PARITY {}", json!({"amazonListsRoutes":listed}));
         let mut captures = Vec::new();
-        let runs = std::env::var("DISPATCH_BENCHMARK_TABS").unwrap_or_else(|_| "1,2".into());
-        for tabs in runs.split(',').filter_map(|v| v.trim().parse::<usize>().ok()) {
+        for tabs in runs {
             let metrics = Recorder::new(&json!({}));
             let started = Instant::now();
             let method = collection::MealMethod {
@@ -648,7 +715,11 @@ async fn probe_scorecard_api() -> Result<()> {
                 break company.clone();
             }
         };
-        let input = json!({"company":company,"week":week,"station":station,"firstDay":first_day,"lastDay":last_day});
+        let adjacent = [1, 2, -1, -8, -18, -30].into_iter()
+            .map(|delta| Ok(json!({"delta":delta,"week":adjacent_week(&week, delta)?})))
+            .collect::<Result<Vec<_>>>()?;
+        let input = json!({"company":company,"week":week,"station":station,
+            "firstDay":first_day,"lastDay":last_day,"adjacentWeeks":adjacent});
         driver.browser.evaluate(&page.id, &call(API_SHAPES, &input)).await?;
         let started = Instant::now();
         let probe = loop {
@@ -896,7 +967,6 @@ async fn load_routes_page(
     url: &str,
     saved: &mut usize,
 ) -> Result<Vec<(String, Option<Value>)>> {
-    use base64::{Engine, engine::general_purpose::STANDARD};
     let page = &driver.page;
     let patterns: Vec<Value> = ["XHR", "Fetch"]
         .iter()
@@ -950,10 +1020,7 @@ async fn load_routes_page(
                 .await;
         }
         let bytes = match body {
-            Ok(body) if body["base64Encoded"] == true => {
-                STANDARD.decode(s(&body, "body")).unwrap_or_default()
-            }
-            Ok(body) => s(&body, "body").as_bytes().to_vec(),
+            Ok(body) => response_bytes(&body)?,
             Err(error) => {
                 eprintln!(
                     "ROUTES {}",
@@ -1045,15 +1112,14 @@ async fn capture_routes_responses(
         }
         let mut record = json!({"page":label,"response":described});
         if let Some(body) = body {
-            let text = s(&body, "body").to_owned();
-            record["bytes"] = json!(text.len());
-            if let Ok(value) = serde_json::from_str::<Value>(&text) {
+            let bytes = response_bytes(&body)?;
+            record["bytes"] = json!(bytes.len());
+            if let Ok(value) = serde_json::from_slice::<Value>(&bytes) {
                 record["shape"] = shape(&value, 0);
             }
             if let Some(output) = output {
                 *saved += 1;
-                record["saved"] =
-                    save_capture(output, label, *saved, "application/json", text.as_bytes())?;
+                record["saved"] = save_capture(output, label, *saved, "application/json", &bytes)?;
             }
         }
         eprintln!("ROUTES {}", serde_json::to_string(&record)?);
@@ -1385,6 +1451,7 @@ async fn measure_route_method() -> Result<()> {
         );
         let pid = driver.browser.process_id();
         let sampling = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let sampling_guard = Sampling(sampling.clone());
         let sampler = {
             let sampling = sampling.clone();
             tokio::task::spawn_blocking(move || {
@@ -1414,17 +1481,19 @@ async fn measure_route_method() -> Result<()> {
         };
         let metrics = Recorder::new(&json!({}));
         let started = Instant::now();
-        let capture = driver
-            .collect_routes_with(&request, &method, &metrics, |_, _| async { Ok(()) })
-            .await;
+        let capture = tokio::time::timeout(Duration::from_secs(600),
+            driver.collect_routes_with(&request, &method, &metrics, |_, _| async { Ok(()) }))
+            .await.map_err(|_| Error::new("benchmark_deadline", 504)).and_then(|result| result);
         let collect_ms = started.elapsed().as_millis();
         let browser_cpu_usec = cgroup_cpu_usec(&cgroup) - cpu_before;
-        let capture = capture?;
         let started = Instant::now();
-        let prepared = crate::routedata::prepare(&capture)?;
+        let prepared = capture.and_then(|capture| {
+            crate::routedata::prepare(&capture).map(|prepared| (capture, prepared))
+        });
         let prepare_ms = started.elapsed().as_millis();
-        sampling.store(false, std::sync::atomic::Ordering::Relaxed);
+        drop(sampling_guard);
         let (max_pss, avg_pss, max_own) = sampler.await.unwrap_or((0, 0, 0));
+        let (capture, prepared) = prepared?;
         let peak_bytes: u64 = {
             use std::io::{Read, Seek};
             let mut text = String::new();
@@ -1587,6 +1656,7 @@ async fn measure_meal_method() -> Result<()> {
         );
         let pid = driver.browser.process_id();
         let sampling = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let sampling_guard = Sampling(sampling.clone());
         let sampler = {
             let sampling = sampling.clone();
             tokio::task::spawn_blocking(move || {
@@ -1625,7 +1695,7 @@ async fn measure_meal_method() -> Result<()> {
         .and_then(|result| result);
         let collect_ms = started.elapsed().as_millis();
         let cpu = cgroup_cpu_usec(&cgroup) - cpu_before;
-        sampling.store(false, std::sync::atomic::Ordering::Relaxed);
+        drop(sampling_guard);
         let (max_pss, avg_pss) = sampler.await.unwrap_or((0, 0));
         let capture = collected?;
         let peak_bytes: u64 = {

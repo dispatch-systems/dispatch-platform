@@ -1,11 +1,14 @@
 {
   "dashboard": [
+    "tests/dashboard/agents.test.ts",
     "tests/dashboard/calendar.test.ts",
     "tests/dashboard/collection-history.test.ts",
+    "tests/dashboard/csv.test.ts",
     "tests/dashboard/dashboard-format.test.ts",
     "tests/dashboard/dashboard-structure.test.ts",
     "tests/dashboard/data-policy.test.ts",
     "tests/dashboard/diagnostics.test.ts",
+    "tests/dashboard/driver-match.test.ts",
     "tests/dashboard/dvic.test.ts",
     "tests/dashboard/features.test.ts",
     "tests/dashboard/meal-breaks.test.ts",
@@ -13,6 +16,10 @@
     "tests/dashboard/response-cache.test.ts",
     "tests/dashboard/uniforms.test.ts",
     "tests/dashboard/unused-css.test.ts"
+  ],
+  "pythonIntegration": [
+    "tests/tooling/compiler_paths_integration_test.py",
+    "tests/tooling/production_launcher_integration_test.py"
   ],
   "rules": [
     "tests/api/audit-actions.test.ts",
@@ -37,6 +44,10 @@
       "tests/providers/multi-dsp-browser.test.ts",
       "tests/providers/collection-throughput.test.ts"
     ]
+  },
+  "nativeRealTimeout": {
+    "file": "tests/providers/native-browser-recovery.test.ts",
+    "title": "a stalled navigation is diagnosed and retried without discarding its completed sibling"
   },
   "watch": [
     {

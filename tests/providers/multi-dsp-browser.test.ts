@@ -10,7 +10,10 @@ test(
   { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 300000 },
   async (t) => {
     const count = Number(process.env.DISPATCH_CAPACITY_EMPLOYEES ?? 21);
-    assert(Number.isInteger(count) && count >= 3 && count <= 500);
+    assert(
+      Number.isInteger(count) && count >= 20 && count <= 500,
+      'Capacity needs at least 20 employees to exercise the six-lane HTTP collector',
+    );
     const f = await paycomFixture();
     t.after(f.close);
     f.state.timecardDelayMs = 350;

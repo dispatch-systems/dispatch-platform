@@ -29,7 +29,6 @@ test('the platform switches a DSPâ€™s pages, tabs and connections, and the teamâ
     'Scorecardneeds a scorecard source',
     'Driver Matchneeds a route source',
   ]);
-  await page.screenshot({ path: test.info().outputPath('switch-off.png') });
   await off.getByRole('button', { name: 'Switch off', exact: true }).click();
   await expect(cortex).not.toBeChecked();
   for (const name of ['Timecard', 'Routes', 'DVIC', 'Scorecard', 'Driver Match'])
@@ -40,7 +39,6 @@ test('the platform switches a DSPâ€™s pages, tabs and connections, and the teamâ
   // A page switched off keeps its tabs' switches, which wait for it.
   await expect(pane.getByRole('switch', { name: 'Meal Breaks tab', exact: true })).toBeChecked();
   await expect(pane.getByRole('switch', { name: 'Meal Breaks tab', exact: true })).toBeDisabled();
-  await page.screenshot({ path: test.info().outputPath('features-tab.png') });
 
   const context = await browser.newContext();
   const member = await context.newPage();
@@ -93,7 +91,6 @@ test('the platform switches a DSPâ€™s pages, tabs and connections, and the teamâ
   await tab('Meal Breaks').click();
   const last = page.getByRole('dialog', { name: 'Switch off Meal Breaks tab?' });
   await expect(last.getByRole('listitem')).toHaveText(['Timecardhas no other tab on']);
-  await page.screenshot({ path: test.info().outputPath('last-tab.png') });
   await last.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(tab('Meal Breaks')).toBeChecked();
   await tab('Timecard').click();

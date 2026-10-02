@@ -849,6 +849,80 @@ async fn signing_in_and_out_sets_and_clears_the_session_cookie() {
 }
 
 #[tokio::test]
+async fn open_update_waits_reauthorize_after_the_session_expires() {
+    let server = Server::start().await;
+    let dsp = server.dsp("Northline Logistics").await;
+    for uniforms in [false, true] {
+        let who = server.member("owner@dispatch.test").await;
+        let endpoint = if uniforms {
+            "/api/dsp/uniforms/updates"
+        } else {
+            "/api/dsp/collection-updates"
+        };
+        let initial_path = if uniforms {
+            endpoint.to_owned()
+        } else {
+            format!("{endpoint}?after=initial")
+        };
+        let initial = server.send(Call::get(&initial_path).who(&who)).await;
+        assert_eq!(initial.status, 200, "{}", initial.body);
+        let after = if uniforms {
+            initial.body["revision"].as_i64().unwrap().to_string()
+        } else {
+            s(&initial.body, "revision").to_owned()
+        };
+        let path = format!("{endpoint}?after={after}");
+        let request = server.send(Call::get(&path).who(&who));
+        tokio::pin!(request);
+        let updates = if uniforms {
+            &server.state.uniform_updates
+        } else {
+            &server.state.updates
+        };
+        // The waiter permit is acquired only after successful authorization. On this
+        // current-thread runtime, yielding with an empty DB queue lets the handler
+        // finish its initial reads and enter the watch wait before access is revoked.
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                tokio::select! {
+                    biased;
+                    answer = &mut request => panic!("wait returned before revocation: {}", answer.body),
+                    _ = tokio::task::yield_now() => {}
+                }
+                if updates.slots.available_permits() == 127
+                    && server.state.db_queue.available_permits() == 64
+                {
+                    tokio::select! {
+                        biased;
+                        answer = &mut request => panic!("wait returned before revocation: {}", answer.body),
+                        _ = tokio::task::yield_now() => {}
+                    }
+                    if server.state.db_queue.available_permits() == 64 {
+                        break;
+                    }
+                }
+            }
+        }).await.unwrap();
+        let hash = crypto::sha(who.cookie.strip_prefix("dispatch_session=").unwrap());
+        server
+            .state
+            .run(move |db| {
+                db.platform
+                    .exec("UPDATE sessions SET expires_at=0 WHERE hash=?", [hash])?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        updates.notify(&dsp);
+        let answer = tokio::time::timeout(std::time::Duration::from_secs(5), request)
+            .await
+            .unwrap();
+        assert_eq!((answer.status, answer.error()), (401, "sign_in_required"));
+        assert_eq!(updates.slots.available_permits(), 128);
+    }
+}
+
+#[tokio::test]
 async fn remembered_sessions_have_a_fixed_seven_day_deadline() {
     let server = Server::start().await;
     for value in [json!("true"), json!(1), Value::Null] {

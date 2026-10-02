@@ -21,8 +21,13 @@ test('Rust API enforces login, origin, host, CSRF, tenant views and membership p
   );
   assert.equal((await f.request('/api/health', undefined, { host: 'evil.test' })).status, 400);
   assert.equal(
-    (await f.request('/api/auth/login', { email: 'owner@dispatch.test', password, extra: true }))
-      .status,
+    (
+      await f.request(
+        '/api/auth/login',
+        { email: 'owner@dispatch.test', password, extra: true },
+        { host: new URL(f.env.DISPATCH_ORIGIN).host },
+      )
+    ).status,
     400,
   );
   const owner = await f.client();

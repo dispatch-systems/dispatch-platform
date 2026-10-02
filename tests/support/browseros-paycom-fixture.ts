@@ -374,13 +374,23 @@ export async function paycomFixture(
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const url = `http://fixture.dispatch.invalid:${(server.address() as AddressInfo).port}`;
-  const platform = await fixture({
-    env: {
-      DISPATCH_FIXTURE_PROVIDER_URL: url,
-      DISPATCH_BWRAP_EXECUTABLE:
-        process.env.DISPATCH_BWRAP_EXECUTABLE ?? '/usr/local/libexec/dispatch-dev/bwrap',
-    },
-  });
+  const closeProvider = async () => {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  };
+  let platform: Awaited<ReturnType<typeof fixture>>;
+  try {
+    platform = await fixture({
+      env: {
+        DISPATCH_FIXTURE_PROVIDER_URL: url,
+        DISPATCH_BWRAP_EXECUTABLE:
+          process.env.DISPATCH_BWRAP_EXECUTABLE ?? '/usr/local/libexec/dispatch-dev/bwrap',
+      },
+    });
+  } catch (error) {
+    await closeProvider();
+    throw error;
+  }
   return {
     ...platform,
     events,
@@ -389,8 +399,7 @@ export async function paycomFixture(
       try {
         await platform.close();
       } finally {
-        server.closeAllConnections();
-        await new Promise<void>((resolve) => server.close(() => resolve()));
+        await closeProvider();
       }
     },
   };

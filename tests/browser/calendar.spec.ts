@@ -1,4 +1,4 @@
-import { test, expect, login, openDsp, expectDate, setDate } from './fixtures.js';
+import { test, expect, openAuthenticatedDsp, expectDate, setDate } from './fixtures.js';
 import {
   addDays,
   dayLabel,
@@ -7,10 +7,11 @@ import {
   parseDay,
 } from '../../dashboard/src/lib/calendar.js';
 
-test('the date opens a calendar that picks past days and refuses future ones', async ({ page }) => {
-  await login(page);
-  await openDsp(page, 'Northline Logistics');
-  await page.getByRole('link', { name: 'Timecard', exact: true }).click();
+test('the date opens a calendar that picks past days and refuses future ones', async ({
+  page,
+  dispatch,
+}) => {
+  await openAuthenticatedDsp(page, dispatch, 'Northline Logistics');
   const field = page.getByLabel('Paycom date');
   const today = parseDay(await field.inputValue())!;
   const calendar = page.getByRole('dialog', { name: 'Choose paycom date' });
@@ -84,10 +85,8 @@ test('the date opens a calendar that picks past days and refuses future ones', a
   await expectDate(page, yesterday);
 });
 
-test('the calendar can be driven from the keyboard', async ({ page }) => {
-  await login(page);
-  await openDsp(page, 'Northline Logistics');
-  await page.getByRole('link', { name: 'Timecard', exact: true }).click();
+test('the calendar can be driven from the keyboard', async ({ page, dispatch }) => {
+  await openAuthenticatedDsp(page, dispatch, 'Northline Logistics');
   const field = page.getByLabel('Paycom date');
   const today = parseDay(await field.inputValue())!;
   const calendar = page.getByRole('dialog', { name: 'Choose paycom date' });

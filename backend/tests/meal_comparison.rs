@@ -1,35 +1,14 @@
+mod common;
 use dispatch_backend::{
     accounts::{Auth, Context},
     collectors::Provider,
-    config::Config,
     contracts::DriverSource,
     db::{Store, s},
     meals::{self, Scope},
-    operations, workforce,
+    workforce,
 };
 use serde_json::{Value, json};
-use std::os::unix::fs::PermissionsExt;
 
-fn store() -> (tempfile::TempDir, Store, String) {
-    let root = tempfile::tempdir().unwrap();
-    std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
-    let mut config = Config::load().unwrap();
-    config.root = root.path().into();
-    config.fixture = true;
-    config.development = true;
-    config.environment = "preview".into();
-    let store = Store::initialize(config).unwrap();
-    let bootstrap = operations::bootstrap(
-        &store,
-        "owner@example.test",
-        "Test",
-        "Owner",
-        "test-password-long",
-    )
-    .unwrap();
-    let id = s(&bootstrap["dsp"], "id").to_owned();
-    (root, store, id)
-}
 /// A day in the demo period of Sep 6 to 19, 2026, within a week of its start.
 const DEMO_DAY: chrono::NaiveDate = chrono::NaiveDate::from_ymd_opt(2026, 9, 12).unwrap();
 fn actor(db: &Store) -> String {
@@ -104,7 +83,7 @@ fn rows(data: &Value) -> &Vec<Value> {
 }
 #[test]
 fn drivers_join_employees_through_driver_match_and_names_cover_the_rest() {
-    let (_root, db, id) = store();
+    let (_root, db, id) = common::bootstrapped();
     let (date, transporter) = seed(&db, &id);
     let compare = |db: &Store| {
         db.meal_comparison(&id, &date, "UTC")
@@ -200,7 +179,7 @@ fn add_driver(db: &Store, id: &str, transporter: &str, name: &str) {
 }
 #[test]
 fn a_driver_driver_match_has_not_reached_never_takes_an_employee_it_gave_someone() {
-    let (_root, db, id) = store();
+    let (_root, db, id) = common::bootstrapped();
     let (date, _) = seed(&db, &id);
     // Driver Match joins "Luis Hernandez" to the employee by a name variant.
     let mut roster = workforce::fixture_date("America/Los_Angeles", Some(DEMO_DAY)).unwrap();
@@ -235,7 +214,7 @@ fn a_driver_driver_match_has_not_reached_never_takes_an_employee_it_gave_someone
 }
 #[test]
 fn newer_empty_scope_suppresses_stale_meals_and_latest_paycom_period_wins() {
-    let (_root, db, id) = store();
+    let (_root, db, id) = common::bootstrapped();
     let (date, _) = seed(&db, &id);
     let scope = Scope {
         date: date.clone(),
@@ -275,7 +254,7 @@ fn newer_empty_scope_suppresses_stale_meals_and_latest_paycom_period_wins() {
 
 #[test]
 fn ambiguity_includes_employees_without_punches_and_drivers_without_meals() {
-    let (_root, db, id) = store();
+    let (_root, db, id) = common::bootstrapped();
     let (date, _) = seed(&db, &id);
     let paycom = db.collector(&id, Provider::Paycom).unwrap();
     paycom

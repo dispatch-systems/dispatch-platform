@@ -238,11 +238,6 @@ test('employee workspace navigates real period history, resets selection, filter
           .getByRole('region', { name: 'Timecard punches' })
           .evaluate((element) => element.scrollWidth <= element.clientWidth),
       ).toBe(true);
-    await page.screenshot({
-      animations: 'disabled',
-      path: test.info().outputPath(`employees-${theme}-${width}.png`),
-      fullPage: true,
-    });
   }
   const punches = page.getByRole('region', { name: 'Timecard punches' });
   await punches.focus();

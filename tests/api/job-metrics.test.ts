@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture, until, seedQueuedJob } from '../support/support.js';
+import { parseApiResponse } from '../../shared/contracts/runtime.js';
 import type { Job } from '../../shared/contracts/index.js';
 
 const credentials = {
@@ -9,7 +10,7 @@ const credentials = {
   password: 'metrics-secret',
   securityAnswers: ['one', 'two', 'three', 'four', 'five'],
 };
-test('collection metrics survive restart and an additive upgrade preserves old jobs', async (t) => {
+test('collection metrics survive restart, validate historical responses and preserve old jobs on upgrade', async (t) => {
   const f = await fixture();
   t.after(f.close);
   let owner = await f.client();
@@ -20,12 +21,17 @@ test('collection metrics survive restart and an additive upgrade preserves old j
     'ready',
   );
   // A completed first week supplies seven records for each of the twelve employees.
-  const id = (
-    await owner.post('/api/dsp/jobs', { requestId: 'metrics-success', date: '2026-01-17' })
-  ).value.id;
+  const queued = await owner.post('/api/dsp/jobs', {
+    requestId: 'metrics-success',
+    date: '2026-01-17',
+  });
+  assert.equal(queued.status, 202, queued.body);
+  const id = queued.value.id;
   let job: Job;
   await until(async () => {
-    job = (await owner.read('/api/dsp/jobs')).find((j: Job) => j.id === id);
+    job = (
+      parseApiResponse('/api/dsp/jobs', 'GET', await owner.read('/api/dsp/jobs')) as Job[]
+    ).find((j) => j.id === id)!;
     return job.status === 'succeeded';
   });
   const metrics = job!.metrics;
@@ -52,6 +58,28 @@ test('collection metrics survive restart and an additive upgrade preserves old j
   assert.deepEqual(
     (await owner.get('/api/dsp/jobs')).value.find((j: Job) => j.id === id).metrics,
     metrics,
+  );
+  assert(value.pageReads);
+  f.database('data/preview/jobs.sqlite', (db) =>
+    db
+      .prepare(
+        "UPDATE job_metrics SET metrics=json_remove(metrics,'$.pageReads','$.detail','$.itineraries','$.meals') WHERE job_id=?",
+      )
+      .run(id),
+  );
+  const response = await owner.get('/api/dsp/jobs');
+  assert.equal(response.status, 200);
+  const historical = (parseApiResponse('/api/dsp/jobs', 'GET', response.value) as Job[]).find(
+    (row) => row.id === id,
+  )!;
+  assert.equal(historical.metrics[0]!.pageReads, undefined);
+  assert.equal(historical.metrics[0]!.employees, value.employees);
+  assert.equal(historical.metrics[0]!.collectionMs, value.collectionMs);
+  const bad = structuredClone(job!);
+  (bad.metrics[0]! as unknown as Record<string, unknown>).phase = 'private-provider-payload';
+  assert.throws(
+    () => parseApiResponse('/api/platform/jobs', 'GET', [bad]),
+    /^Error: invalid_api_response$/,
   );
   await f.stop();
   // A database from a release without job_metrics: that release recorded no migrations either.

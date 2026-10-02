@@ -5,6 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { fixture, until } from '../support/support.js';
+import { fileContainsAny } from '../support/files.js';
 
 // What only the collected rows carry, so any copy of them outside the databases shows.
 const MARKERS = ['TBA-SCORECARD-MARKER-1', 'Scorecard Marker Driver', 'QUALITY-MARKER-NOTE'];
@@ -140,7 +141,8 @@ test(
         seen.overview++;
         const code = company === 'company-1' ? 'NLOG' : 'FOREIGN';
         return html(
-          `<main>Overview</main><script>for(let i=0;i<12;i++) fetch('/performance/api/${version}/getData?dataSetId=dsp_station_weekly_quality&dsp=${code}&from=2026-W38&station=${station}&timeFrame=Weekly&to=2026-W38',{credentials:'include'});</script>`,
+          // A sibling request still exercises draining paused events after discovery.
+          `<main>Overview</main><script>for(let i=0;i<2;i++) fetch('/performance/api/${version}/getData?dataSetId=dsp_station_weekly_quality&dsp=${code}&from=2026-W38&station=${station}&timeFrame=Weekly&to=2026-W38',{credentials:'include'});</script>`,
         );
       }
       const api = url.pathname.match(/^\/performance\/api\/([^/]+)\/getData$/);
@@ -337,8 +339,7 @@ test(
         const file = path.join(dir, entry.name);
         if (entry.isDirectory()) walk(file);
         else if (entry.isFile() && !file.startsWith(database)) {
-          const bytes = fs.readFileSync(file);
-          if (needles.some((n) => bytes.includes(n))) holding.push(path.relative(f.root, file));
+          if (fileContainsAny(file, needles)) holding.push(path.relative(f.root, file));
         }
       }
     };

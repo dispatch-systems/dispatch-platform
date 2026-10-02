@@ -1,5 +1,5 @@
 import type { Locator } from '@playwright/test';
-import { test, expect, login, openDsp } from './fixtures.js';
+import { test, expect, openAuthenticatedDsp } from './fixtures.js';
 
 function holdResponse() {
   let release!: () => void;
@@ -9,7 +9,9 @@ function holdResponse() {
   return { promise, release, waiting: false };
 }
 
-for (const width of [1280, 390, 320]) {
+// Desktop and the narrowest supported phone cover both loading layouts; the ordinary
+// Employees and sticky-header tests retain intermediate phone widths.
+for (const width of [1280, 320]) {
   test(`employee and period changes keep the layout and scroll position at ${width}px`, async ({
     page,
     dispatch,
@@ -69,9 +71,7 @@ for (const width of [1280, 390, 320]) {
         });
       } else await route.continue();
     });
-    await login(page);
-    await openDsp(page, 'Northline Logistics');
-    await page.getByRole('link', { name: 'Timecard', exact: true }).click();
+    await openAuthenticatedDsp(page, dispatch, 'Northline Logistics');
     await page.getByRole('tab', { name: 'Employees', exact: true }).click();
     await page.setViewportSize({ width, height: 1000 });
     const detail = page.getByRole('region', { name: 'Employee details', exact: true });

@@ -29,10 +29,6 @@ test('owner dashboard, search, workforce, timecards, connection verification and
   await expect(page.getByRole('heading', { name: 'DSPs', exact: true })).toBeVisible();
   const list = page.getByRole('region', { name: 'DSPs', exact: true });
   await expect(list.getByRole('button', { name: /Northline Logistics/ })).toBeVisible();
-  await page.screenshot({
-    path: test.info().outputPath('dispatch-dashboard-desktop.png'),
-    fullPage: true,
-  });
   await page.getByLabel('Search DSPs').fill('Summit');
   await expect(list.locator('.dsp-row')).toHaveCount(1);
   await page.getByLabel('Search DSPs').fill('');
@@ -93,10 +89,6 @@ test('owner dashboard, search, workforce, timecards, connection verification and
     'Flex synced',
     { timeout: 15000 },
   );
-  await page.screenshot({
-    path: test.info().outputPath('sync-both-providers.png'),
-    fullPage: true,
-  });
   await page.getByRole('button', { name: 'Exit view', exact: true }).click();
   await page.getByRole('link', { name: 'Diagnostics', exact: true }).click();
   // Overview links to the source's newest run, which arrives expanded.
@@ -116,10 +108,6 @@ test('owner dashboard, search, workforce, timecards, connection verification and
   );
   await expect(collections).toContainText('Queue wait');
   await expect(collections).toContainText('Not sampled');
-  await page.screenshot({
-    path: test.info().outputPath('dispatch-job-metrics.png'),
-    fullPage: true,
-  });
   await expect(collections).toContainText('Where the time went');
   expect(errors).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
@@ -135,14 +123,12 @@ test('member lands in own DSP, cannot see privileged navigation, mobile drawer w
     page.getByRole('heading', { name: 'Currently under development', exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Open navigation' }).click();
-  await expect(page.getByRole('link', { name: 'Connections', exact: true })).toHaveCount(0);
+  for (const name of ['DSPs', 'Diagnostics', 'Agents', 'Audit log', 'Team & Roles'])
+    await expect(page.getByRole('link', { name, exact: true })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'DSP viewing mode' })).toHaveCount(0);
   await page.getByRole('link', { name: 'Timecard', exact: true }).click();
   await page.getByRole('tab', { name: 'Employees', exact: true }).click();
   await expect(page.getByLabel('Search employees')).toBeVisible();
-  await page.screenshot({
-    path: test.info().outputPath('dispatch-dashboard-mobile.png'),
-    fullPage: true,
-  });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
@@ -202,7 +188,6 @@ test('platform owner looks through a DSP role until they leave the DSP', async (
     'Auditor',
     'Exit view',
   ]);
-  await page.screenshot({ path: test.info().outputPath('view-as-role-menu.png') });
   await banner.getByRole('button', { name: 'Auditor', exact: true }).click();
   await expect(banner).toContainText('Viewing Northline Logistics as Auditor');
   await expect(menu).toHaveText('Auditor');
@@ -269,12 +254,21 @@ test('create a DSP and accept its owner invitation while another account is sign
   ).toBeVisible();
 });
 
-test('the account menu closes on a press outside it and on Escape', async ({ page }) => {
+test('the account menu links the build source and closes outside or on Escape', async ({
+  page,
+}) => {
   await login(page);
   const menu = page.locator('details.account-menu');
   const trigger = menu.locator('summary');
   await trigger.click();
   await expect(menu.locator('.account-popover')).toBeVisible();
+  const source = menu.locator('.account-popover a').filter({ hasText: 'Source code' });
+  await expect(source).toHaveAttribute('target', '_blank');
+  // A packaged build names its commit; a checkout links the repository.
+  await expect(source).toHaveAttribute(
+    'href',
+    /^https:\/\/github\.com\/dispatch-systems\/dispatch-platform(\/tree\/[0-9a-f]{40})?$/,
+  );
   await page.getByRole('heading', { name: 'DSPs', exact: true }).click();
   await expect(menu.locator('.account-popover')).toBeHidden();
   await trigger.click();
@@ -282,17 +276,6 @@ test('the account menu closes on a press outside it and on Escape', async ({ pag
   await page.keyboard.press('Escape');
   await expect(menu.locator('.account-popover')).toBeHidden();
   await expect(trigger).toBeFocused();
-});
-test('the account menu links the running build’s source in a new tab', async ({ page }) => {
-  await login(page);
-  await page.locator('details.account-menu summary').click();
-  const source = page.locator('.account-popover a').filter({ hasText: 'Source code' });
-  await expect(source).toHaveAttribute('target', '_blank');
-  // A packaged build names its commit; a server running from a checkout links the repository.
-  await expect(source).toHaveAttribute(
-    'href',
-    /^https:\/\/github\.com\/dispatch-systems\/dispatch-platform(\/tree\/[0-9a-f]{40})?$/,
-  );
 });
 test('archived account tabs preserve names and appearance preferences', async ({ page }) => {
   await login(page);
@@ -376,10 +359,6 @@ test('Timecard schedules can be created, edited, paused and deleted', async ({ p
   await expect(lateDas.getByRole('checkbox', { name: /^Delivery/ })).toBeChecked();
   await expect(lateDas.getByRole('checkbox', { name: /^Operations/ })).not.toBeChecked();
   await lateDas.getByRole('checkbox', { name: /^Operations/ }).check();
-  await page.screenshot({
-    path: test.info().outputPath('dispatch-late-das-settings.png'),
-    fullPage: true,
-  });
   await lateDas.getByRole('button', { name: 'Discard', exact: true }).click();
   await page.getByRole('button', { name: 'New schedule', exact: true }).first().click();
   let dialog = page.getByRole('dialog', { name: 'New schedule', exact: true });

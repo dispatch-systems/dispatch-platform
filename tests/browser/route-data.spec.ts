@@ -37,9 +37,12 @@ test('a manager keeps route data until they choose a retention window', async ({
   await expect(page.getByText('Route data retention saved', { exact: true }).first()).toBeVisible();
 });
 
-test('a member without Manage Routes never sees the Data tab', async ({ page }) => {
+test('a member without management permissions never sees Data or Driver Match tabs', async ({
+  page,
+}) => {
   await login(page, 'member@dispatch.test');
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Profile', exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Data', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: /Driver Match/ })).toHaveCount(0);
 });

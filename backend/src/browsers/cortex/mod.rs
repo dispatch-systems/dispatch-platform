@@ -1,5 +1,5 @@
 //! Cortex authentication, meal evidence, the scorecard and daily routes from Amazon Logistics.
-#[cfg(test)]
+#[cfg(all(test, feature = "operator-probes"))]
 mod benchmark;
 mod collection;
 mod discovery;

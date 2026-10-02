@@ -81,7 +81,7 @@ impl Default for Method {
 }
 impl Method {
     /// How days were read before in-app moves: a page load per itinerary, two windows.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "operator-probes"))]
     pub(crate) fn reload() -> Self {
         Self {
             navigation: Navigation::Reload,

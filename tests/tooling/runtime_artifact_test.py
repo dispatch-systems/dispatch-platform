@@ -2,7 +2,6 @@ import io
 import json
 import os
 from pathlib import Path
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -18,10 +17,6 @@ class SharedToolingTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="dispatch-runtime-artifact-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.commit = "a" * 40
-        self.run = {"id": 5, "run_attempt": 1, "head_sha": self.commit, "event": "push", "head_branch": "main",
-                    "status": "completed", "conclusion": "success",
-                    "head_repository": {"full_name": runtime.REPOSITORY}}
 
     def test_host_passes_on_what_it_reports_beside_a_success(self):
         process = unittest.mock.Mock(returncode=0)
@@ -70,28 +65,6 @@ class SharedToolingTests(unittest.TestCase):
                     self.assertEqual(runtime.host_binary.__wrapped__(), self.root / "target/release/dispatch-host",
                                      untrusted)
             self.assertEqual(build.call_count, 4)
-
-
-    def test_github_reads_this_repository_and_reports_why_the_cli_failed(self):
-        done = lambda code, out, err: subprocess.CompletedProcess([], code, out, err)
-        with patch.object(runtime.subprocess, "run", return_value=done(0, '{"id": 7}\n', "")) as run:
-            self.assertEqual(runtime.github("releases/7", "--method", "PATCH", timeout=20), {"id": 7})
-            self.assertEqual(run.call_args.args[0], ("gh", "api", f"repos/{runtime.REPOSITORY}/releases/7",
-                                                     "--method", "PATCH"))
-            self.assertEqual(run.call_args.kwargs["timeout"], 20)
-        with patch.object(runtime.subprocess, "run", return_value=done(0, b"PK\x03\x04 \n", b"")) as run:
-            self.assertEqual(runtime.github("actions/artifacts/1/zip", binary=True), b"PK\x03\x04 \n")
-            self.assertFalse(run.call_args.kwargs["text"])
-        for error in ["HTTP 404: Not Found", b"HTTP 404: Not Found"]:
-            with patch.object(runtime.subprocess, "run", return_value=done(1, "", error)), \
-                    self.assertRaisesRegex(RuntimeError, "gh api repos/.* failed: HTTP 404: Not Found"):
-                runtime.github("missing", binary=isinstance(error, bytes))
-
-
-    def test_stable_versions_exclude_prereleases_and_padded_numbers(self):
-        for value, stable in {"0.0.9": True, "10.20.30": True, "0.1.0-dev.0": False, "1.2": False,
-                              "01.2.3": False, "v1.2.3": False, "1.2.3\n": False}.items():
-            self.assertEqual(bool(runtime.re.fullmatch(runtime.STABLE, value)), stable, value)
 
 
 if __name__ == "__main__":

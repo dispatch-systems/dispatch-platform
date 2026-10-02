@@ -52,22 +52,24 @@ test('owner onboarding stays light and fits desktop and phone viewports, includi
   for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme });
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-    for (const [width, height] of [
-      [3840, 2160],
-      [2560, 1080],
-      [1440, 1000],
-      [1366, 768],
-      [1024, 600],
-      [701, 480],
-      [700, 700],
-      [390, 844],
-      [320, 568],
-      [568, 320],
-    ]) {
-      await page.setViewportSize({ width: width!, height: height! });
-      await fits(page);
-      await expect(page.locator('.onboarding-map')).toHaveCount(width! > 700 ? 1 : 0);
-    }
+  }
+  // Onboarding forces light appearance for both device preferences; exercise each
+  // geometry once while keeping every breakpoint, landscape and small-screen sample.
+  for (const [width, height] of [
+    [3840, 2160],
+    [2560, 1080],
+    [1440, 1000],
+    [1366, 768],
+    [1024, 600],
+    [701, 480],
+    [700, 700],
+    [390, 844],
+    [320, 568],
+    [568, 320],
+  ]) {
+    await page.setViewportSize({ width: width!, height: height! });
+    await fits(page);
+    await expect(page.locator('.onboarding-map')).toHaveCount(width! > 700 ? 1 : 0);
   }
   await page.setViewportSize({ width: 390, height: 600 });
   await page.getByLabel('DSP name', { exact: true }).fill('Responsive Logistics');
@@ -131,31 +133,55 @@ test('phones skip the map download; widening loads one shared map and theme chan
 
 test('desktop reveals map and form together and remains usable if the map fails', async ({
   page,
+  browser,
   dispatch,
 }) => {
   const url = await ownerInvitation(page, dispatch.root);
+  // SVG <use> consumers may include their region fragment in the routed URL.
+  const mapAsset = /\/onboarding-map-[^/]+\.svg(?:[#?].*)?$/;
   let release!: () => void;
+  let waiting = false;
   const delayed = new Promise<void>((resolve) => {
     release = resolve;
   });
-  await page.route('**/onboarding-map-*.svg', async (route) => {
+  await page.route(mapAsset, async (route) => {
+    waiting = true;
     await delayed;
     await route.continue();
   });
-  await page.goto(url, { waitUntil: 'domcontentloaded' });
-  const heading = page.getByRole('heading', { name: 'Set up your DSP' });
-  await expect(page.locator('.onboarding-page')).toHaveAttribute('data-ready', 'false');
-  await expect(heading).toBeHidden();
-  await expect(page.locator('.onboarding-map')).toBeHidden();
-  release();
-  await expect(heading).toBeVisible();
-  await expect(page.locator('.onboarding-map')).toBeVisible();
-  await fits(page);
-  await page.unroute('**/onboarding-map-*.svg');
-  await page.route('**/onboarding-map-*.svg', (route) => route.abort());
-  await page.goto(url, { waitUntil: 'domcontentloaded' });
-  await expect(heading).toBeVisible();
-  await page
-    .getByLabel('DSP name', { exact: true })
-    .fill('Available even without the illustration');
+  try {
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    const heading = page.getByRole('heading', { name: 'Set up your DSP' });
+    await expect.poll(() => waiting).toBe(true);
+    await expect(page.locator('.onboarding-page')).toHaveAttribute('data-ready', 'false');
+    await expect(heading).toBeHidden();
+    await expect(page.locator('.onboarding-map')).toBeHidden();
+    release();
+    await expect(heading).toBeVisible();
+    await expect(page.locator('.onboarding-map')).toBeVisible();
+    await fits(page);
+  } finally {
+    release();
+  }
+  await page.unroute(mapAsset);
+  // Invitations remove their token from the live hash. A fresh context opens the
+  // original address without reusing the successful page's map or image cache.
+  const failedContext = await browser.newContext({ viewport: page.viewportSize()! });
+  try {
+    const failedPage = await failedContext.newPage();
+    let failedMaps = 0;
+    await failedPage.route(mapAsset, (route) => {
+      failedMaps++;
+      return route.abort();
+    });
+    await failedPage.goto(url, { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => failedMaps).toBeGreaterThan(0);
+    await expect(failedPage.getByRole('heading', { name: 'Set up your DSP' })).toBeVisible();
+    await fits(failedPage);
+    await failedPage
+      .getByLabel('DSP name', { exact: true })
+      .fill('Available even without the illustration');
+  } finally {
+    await failedContext.close();
+  }
 });

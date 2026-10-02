@@ -6,23 +6,28 @@ import { localDate } from '../../dashboard/src/lib/meal-breaks.js';
 import { fixture, until } from '../support/support.js';
 
 test('employee directory can load the full roster beyond the API page limit', async (t) => {
-  const f = await fixture();
+  const f = await fixture({ start: false });
   t.after(f.close);
-  const owner = await f.client();
-  const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
-  await owner.select(north.id);
-  await f.stop();
+  const north = f.database(
+    'data/platform/accounts.sqlite',
+    (db) =>
+      db.prepare("SELECT id FROM dsps WHERE name='Northline Logistics'").get() as { id: string },
+  );
   f.collector(north.id, (db) => {
     const publication = db.prepare('SELECT id FROM publications WHERE active=1').get() as {
       id: string;
     };
     const insert = db.prepare('INSERT INTO employees VALUES (?,?,?,?,?,?,?)');
+    db.exec('BEGIN');
     for (let i = 0; i < 125; i++) {
       const code = `R${String(i).padStart(3, '0')}`;
       insert.run(publication.id, code, `Roster ${code}`, 'Delivery', 'Driver', '', i % 2);
     }
+    db.exec('COMMIT');
   });
   await f.start();
+  const owner = await f.client();
+  await owner.select(north.id);
   const all = (await owner.get('/api/dsp/employees?limit=all')).value;
   assert.equal(all.total, 137);
   assert.equal(all.employees.length, 137);
@@ -116,9 +121,8 @@ test('Rust workforce settings enforce revisions, filter employees and timecards,
 });
 
 test('Unicode employee sorting agrees with the dashboard locale and preserves display-name behavior', async (t) => {
-  const f = await fixture();
+  const f = await fixture({ start: false });
   t.after(f.close);
-  await f.stop();
   const names = [
     'zoë Z',
     'Álvaro Q',

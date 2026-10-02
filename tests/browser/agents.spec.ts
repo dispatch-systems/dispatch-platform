@@ -33,7 +33,6 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   await ready.getByRole('tab', { name: 'Claude Code', exact: true }).click();
   await ready.getByRole('button', { name: 'Send test request' }).click();
   await expect(ready.getByRole('status')).toContainText('Connected · Read only · 1 DSP');
-  await page.screenshot({ path: test.info().outputPath('agents-ready.png') });
   await ready.getByRole('button', { name: 'Done', exact: true }).click();
 
   const row = page.getByRole('row').filter({ hasText: 'Laptop – Claude Code' });

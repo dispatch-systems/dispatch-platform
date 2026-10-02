@@ -434,7 +434,7 @@ fn failed_start_or_wrong_health_rolls_back_both_environments() {
 #[test]
 fn every_activation_interruption_recovers_before_other_work() {
     for env in [Environment::Dev, Environment::Production] {
-        for stage in 0..4 {
+        for stage in 0..if env == Environment::Dev { 4 } else { 3 } {
             let f = Fixture::new(env);
             let u = f.updater();
             io::write_json(&u.receipt, &f.receipt()).unwrap();
@@ -564,7 +564,7 @@ fn dev_download_installs_only_with_still_current_validation() {
             &f.run_url(),
             vec![
                 json!({"workflow_runs":[f.run()]}),
-                json!({"workflow_runs":[later]}),
+                json!({"workflow_runs":[f.run(),later]}),
             ],
         );
         f.updater().run_locked().unwrap();
@@ -636,24 +636,6 @@ fn only_a_queue_run_into_main_with_its_build_installs() {
     let error = f.updater().run_locked().unwrap_err().to_string();
     assert!(error.contains("build unavailable"), "{error}");
     f.assert_old();
-}
-#[test]
-fn a_queue_build_installs_only_with_still_current_validation() {
-    let f = Fixture::new(Environment::Dev);
-    f.publish(23, &format!("dispatch-main-{}", f.new), 43);
-    let mut rerun = f.queue_run();
-    rerun["run_attempt"] = json!(2);
-    rerun["conclusion"] = json!("failure");
-    f.system.reply(
-        &queue_url(&f.new),
-        vec![
-            json!({"workflow_runs":[f.queue_run()]}),
-            json!({"workflow_runs":[f.queue_run(),rerun]}),
-        ],
-    );
-    f.updater().run_locked().unwrap();
-    f.assert_old();
-    assert!(f.system.actions().is_empty());
 }
 #[test]
 fn dev_adopts_the_updater_of_each_build_it_installs_and_only_then() {

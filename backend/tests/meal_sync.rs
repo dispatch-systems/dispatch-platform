@@ -1,32 +1,14 @@
+mod common;
 use dispatch_backend::{
     collectors::Provider,
-    config::Config,
     contracts::PublicJob,
     db::{Store, s},
     meals::{self, Scope},
-    operations,
 };
 use serde_json::{Value, json};
-use std::os::unix::fs::PermissionsExt;
 
 fn fixture() -> (tempfile::TempDir, Store, String, String) {
-    let root = tempfile::tempdir().unwrap();
-    std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
-    let mut config = Config::load().unwrap();
-    config.root = root.path().into();
-    config.fixture = true;
-    config.development = true;
-    config.environment = "preview".into();
-    let db = Store::initialize(config).unwrap();
-    let boot = operations::bootstrap(
-        &db,
-        "owner@example.test",
-        "Test",
-        "Owner",
-        "test-password-long",
-    )
-    .unwrap();
-    let id = s(&boot["dsp"], "id").to_owned();
+    let (root, db, id) = common::bootstrapped();
     let actor = s(
         &db.platform
             .one("SELECT id FROM users LIMIT 1", [])

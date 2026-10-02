@@ -1,4 +1,5 @@
 import { test, expect, login, openDsp } from './fixtures.js';
+import type { Request } from '@playwright/test';
 
 const enter = async (page: Parameters<typeof login>[0]) => {
   await login(page);
@@ -9,6 +10,7 @@ const enter = async (page: Parameters<typeof login>[0]) => {
 test('timecards paint while connection status waits and sorting makes no data request', async ({
   page,
 }) => {
+  await page.clock.install();
   let release!: () => void;
   const hold = new Promise<void>((resolve) => {
     release = resolve;
@@ -18,15 +20,39 @@ test('timecards paint while connection status waits and sorting makes no data re
     await route.continue();
   });
   const requests: string[] = [];
+  const pending = new Set<Request>();
   page.on('request', (request) => {
-    if (request.url().includes('/api/dsp/timecards?')) requests.push(request.url());
+    if (request.url().includes('/api/dsp/timecards?')) {
+      requests.push(request.url());
+      pending.add(request);
+    }
   });
+  page.on('requestfinished', (request) => pending.delete(request));
+  page.on('requestfailed', (request) => pending.delete(request));
   try {
     await enter(page);
-    await expect(page.locator('.paycom-timecard-table tbody tr').first()).toBeVisible();
-    // Optional adjacent-day preloads use the canonical name order too.
-    await page.getByRole('button', { name: 'Hours', exact: true }).first().click();
-    await expect(page.locator('.paycom-timecard-table tbody tr').first()).toBeVisible();
+    const rows = page.locator('.paycom-timecard-table tbody tr');
+    await expect(rows).toHaveCount(12);
+    const hours = () =>
+      rows.evaluateAll((rows) =>
+        rows.map((row) => Number(row.querySelectorAll('td')[5]!.textContent)),
+      );
+    const baseline = await hours();
+    expect(new Set(baseline).size).toBeGreaterThan(1);
+    // Drain delayed adjacent-day warmups before distinguishing them from sorting.
+    for (let step = 0; step < 2; step++) {
+      await page.clock.fastForward(1000);
+      await expect.poll(() => pending.size).toBe(0);
+    }
+    const before = requests.length;
+    expect(before).toBeGreaterThan(0);
+    const sort = page.getByRole('button', { name: 'Hours', exact: true }).first();
+    await sort.click();
+    await expect.poll(hours).toEqual([...baseline].sort((a, b) => a - b));
+    await sort.click();
+    await expect.poll(hours).toEqual([...baseline].sort((a, b) => b - a));
+    await page.clock.fastForward(1000);
+    expect(requests).toHaveLength(before);
     expect(requests.every((url) => new URL(url).searchParams.get('sort') === 'name')).toBe(true);
   } finally {
     release();
@@ -76,17 +102,9 @@ test('3000 employees use bounded pages, debounced search, and retain navigation 
   await page.getByRole('link', { name: 'Timecard', exact: true }).click();
   await expect(search).toHaveValue('Driver');
   await expect(people.first()).toContainText('Driver 0101');
-  await page.screenshot({
-    animations: 'disabled',
-    path: test.info().outputPath('employees-desktop.png'),
-  });
   for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.screenshot({
-      animations: 'disabled',
-      path: test.info().outputPath(`employees-${colorScheme}-mobile.png`),
-    });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
