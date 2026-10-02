@@ -52,8 +52,16 @@ const ACCEPTED_INVITATION: &str = "SELECT i.email,d.name dspName,COALESCE(r.name
 
 /// What a queued message is for. Diagnostics joins it back to the invitation or account.
 enum MailContext<'a> {
-    Invitation { hash: &'a str },
-    Reset { user: &'a str },
+    Invitation {
+        hash: &'a str,
+    },
+    Reset {
+        user: &'a str,
+    },
+    /// A notice to a platform owner about an app connected to Dispatch.
+    ConnectedApp {
+        user: &'a str,
+    },
 }
 
 /// A row of `users`, with the password hash: it never leaves the backend.
@@ -191,6 +199,7 @@ impl Store {
         let (kind, invitation, user) = match context {
             MailContext::Invitation { hash } => ("invitation", Some(hash), None),
             MailContext::Reset { user } => ("reset", None, Some(user)),
+            MailContext::ConnectedApp { user } => ("connected_app", None, Some(user)),
         };
         // Invitation traffic has its own ceiling; recovery keeps reserved capacity.
         ensure(
@@ -208,5 +217,36 @@ impl Store {
         )?;
         self.mail_queued();
         Ok(())
+    }
+
+    /// Emails every active platform owner a notice about a connected app, `message` written
+    /// for each address, when email is on. What it reports has already happened, so a notice
+    /// that cannot be queued is noted in the log and never fails the caller.
+    pub(crate) fn notify_platform_owners(&self, message: impl Fn(&str) -> email::Message) {
+        if !self.config.mail_available() {
+            return;
+        }
+        let skipped = |error: Error| {
+            crate::observability::event(
+                "warn",
+                "mail.notice_skipped",
+                json!({"kind":"connected_app","error":error.code}),
+            );
+        };
+        let owners = match self.platform.query_as::<(String, String)>(
+            "SELECT id,email FROM users WHERE platform_owner=1 AND status='active' ORDER BY email",
+            [],
+        ) {
+            Ok(owners) => owners,
+            Err(error) => return skipped(error),
+        };
+        for (user, to) in owners {
+            let mail = message(&to);
+            if let Err(error) =
+                self.queue_mail(&to, &mail, MailContext::ConnectedApp { user: &user })
+            {
+                skipped(error);
+            }
+        }
     }
 }

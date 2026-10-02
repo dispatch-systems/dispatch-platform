@@ -23,6 +23,16 @@ export const calendarDay = (value: string) =>
   );
 export const timeOfDay = (value: string, timeZone: string) =>
   dateFormatter('en-US', { hour: 'numeric', minute: '2-digit', timeZone }).format(new Date(value));
+// To the second, for logs whose entries come many to a minute.
+export const timeWithSeconds = (value: string, timeZone: string) =>
+  dateFormatter('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    timeZone,
+  }).format(new Date(value));
 // "Pacific Time" for America/Los_Angeles; the zone ID when the runtime has no name for it.
 export const timezoneName = (timeZone: string) => {
   try {

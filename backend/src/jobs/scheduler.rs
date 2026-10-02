@@ -1,6 +1,7 @@
 use super::executor::execute;
 use crate::{
     Error, Result, State,
+    agents::activity,
     contracts::JobRow,
     crypto,
     db::{FromRow, Row, now},
@@ -56,6 +57,8 @@ struct Scheduler {
     // Collections give new drivers their codes as they finish; this catches up anything
     // they missed, and every DSP's existing data on the first pass after startup.
     drivers_matched: i64,
+    // When agents' calls were last written down for the Activity log.
+    activity_written: i64,
 }
 impl Scheduler {
     async fn cleanup(&mut self) {
@@ -109,8 +112,31 @@ impl Scheduler {
             self.state.agents.unsaved(&agent_keys);
             failed("checkpoint_cleanup_failed", &error);
         }
+        // Agents' calls past 90 days, a step a minute, apart from the rest so a long
+        // backlog never holds the lock for the other cleanup.
+        if let Err(error) = self
+            .state
+            .run_bookkeeping(|db| db.prune_agent_activity())
+            .await
+        {
+            failed("agent_activity_prune_failed", &error);
+        }
         self.clean_route_data().await;
         self.match_drivers().await;
+    }
+    /// Writes down agents' calls for the Activity log every five seconds, or sooner once a
+    /// batch is waiting: one write for many calls, never one per call.
+    async fn write_activity(&mut self) {
+        let waiting = self.state.activity.pending();
+        if waiting == 0
+            || (waiting < activity::BATCH && now() - self.activity_written < activity::EVERY_MS)
+        {
+            return;
+        }
+        self.activity_written = now();
+        if let Err(error) = activity::flush(&self.state).await {
+            failed("agent_activity_failed", &error);
+        }
     }
     /// Gives every ID each DSP's collections hold a Driver Match code, hourly.
     async fn match_drivers(&mut self) {
@@ -332,6 +358,7 @@ pub async fn start(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<boo
         audit_pruned: 0,
         routes_expired: 0,
         drivers_matched: 0,
+        activity_written: 0,
     };
     let mut timer = tokio::time::interval(Duration::from_secs(1));
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -349,8 +376,15 @@ pub async fn start(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<boo
                 }
             },
             _ = checkpoint_cleanup.tick() => scheduler.cleanup().await,
-            _ = timer.tick() => scheduler.tick().await,
+            _ = timer.tick() => {
+                scheduler.write_activity().await;
+                scheduler.tick().await;
+            },
         }
+    }
+    // What agents called since the last write is not lost to a restart.
+    if let Err(error) = activity::flush(&scheduler.state).await {
+        failed("agent_activity_failed", &error);
     }
     scheduler.state.browsers.close().await;
     while scheduler.tasks.join_next().await.is_some() {}

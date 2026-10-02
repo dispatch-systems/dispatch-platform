@@ -14,6 +14,7 @@ import {
   sameRequest,
   setups,
   signIns,
+  surfaceOf,
 } from '../../dashboard/src/lib/agents.js';
 
 const now = Date.parse('2026-10-01T15:00:00');
@@ -180,4 +181,13 @@ test('a key sheet knows when nothing changed', () => {
   assert.ok(!sameRequest(start, { ...start, access: 'operator' }));
   assert.equal(blankKey().access, 'read');
   assert.equal(blankKey().allDsps, true);
+});
+
+test('a call names the endpoint or tool it reached, and how', () => {
+  assert.deepEqual(surfaceOf('rest:whoami'), { via: 'REST', name: 'whoami' });
+  assert.deepEqual(surfaceOf('mcp:find_driver'), { via: 'MCP', name: 'find_driver' });
+  assert.deepEqual(surfaceOf('mcp:unknown'), { via: 'MCP', name: 'unknown' });
+  // Anything else reads as it was recorded.
+  assert.deepEqual(surfaceOf('openapi'), { via: '', name: 'openapi' });
+  assert.deepEqual(surfaceOf('ws:stream'), { via: '', name: 'ws:stream' });
 });

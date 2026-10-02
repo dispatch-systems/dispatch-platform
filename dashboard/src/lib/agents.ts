@@ -96,6 +96,17 @@ export function lastUsedText(value: string | null, now = Date.now()) {
   return monthDay(value, new Date(when).getFullYear() !== new Date(now).getFullYear());
 }
 
+/** Where an agent's call went, as the Activity tab shows it: `rest:whoami` is the REST
+ * endpoint whoami, `mcp:find_driver` the MCP tool find_driver. */
+export function surfaceOf(surface: string) {
+  const split = surface.indexOf(':');
+  const via = split < 0 ? '' : surface.slice(0, split);
+  const labels: Record<string, string> = { rest: 'REST', mcp: 'MCP' };
+  return labels[via]
+    ? { via: labels[via], name: surface.slice(split + 1) }
+    : { via: '', name: surface };
+}
+
 /** A new key's starting point: read only, every tool, no addresses, 90 days. */
 export const blankKey = (): AgentKeyRequest => ({
   name: '',

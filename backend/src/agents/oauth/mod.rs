@@ -2,8 +2,12 @@
 //! platform owner approves becomes a connected app: an agent key with no static token, that
 //! signs in with an access token good for an hour and renews it with a refresh token good for
 //! 30 days, each renewal bringing a new one. It reaches what the owner chose, like a key, and
-//! stops when revoked like one. Only the platform owner approves, on the dashboard.
+//! stops when revoked like one. Only the platform owner approves, on the dashboard, and
+//! only while they have the pairing window open, for the kinds of app they let connect.
 pub mod clients;
+pub mod guard;
+pub mod network;
+mod notices;
 
 pub use clients::Documents;
 
@@ -20,6 +24,7 @@ use crate::{
     ensure,
 };
 use clients::Client;
+use notices::Told;
 use serde_json::{Value, json};
 
 /// The one scope. Whatever an app asks for, it is what is granted.
@@ -124,6 +129,7 @@ fn grant(description: &str) -> Refusal {
 }
 
 /// A query or form as sent, every parameter in order. An empty value counts as absent.
+#[derive(Clone)]
 pub struct Query(Vec<(String, String)>);
 impl Query {
     pub fn parse(text: &[u8]) -> Self {
@@ -192,7 +198,9 @@ impl Store {
     /// Where an authorization request sends the browser: to the approval page with the
     /// request waiting there, or back to the app with why not. Until the app and its redirect
     /// are known good, a refusal goes to Dispatch's own page and never to the app. A known
-    /// app's client comes as `document`, read from its published document beforehand.
+    /// app's or a website's client comes as `document`, read from its published document
+    /// beforehand. Nothing is stored unless the pairing window is open and the owner lets
+    /// this kind of app connect.
     pub fn authorize_oauth(
         &self,
         query: &Query,
@@ -200,6 +208,10 @@ impl Store {
     ) -> Result<String> {
         let origin = issuer(&self.config);
         let page = |error: &str| Ok(format!("{origin}/#authorize?error={error}"));
+        // Asked again: the window may have closed while the document was fetched.
+        if let Err(refused) = self.admit_authorize(query)? {
+            return Ok(refused);
+        }
         let Ok(Some(client_id)) = query.one("client_id") else {
             return page("unknown_app");
         };
@@ -444,7 +456,8 @@ impl Store {
             ));
         }
         let known = clients::known(client_id)
-            || (client_id.starts_with("dcr_") && self.registered_client(client_id)?.is_some());
+            || (client_id.starts_with("dcr_") && self.registered_client(client_id)?.is_some())
+            || (client_id.starts_with("https://") && self.website_approved(client_id)?);
         if !known {
             return Err(Refusal::new(
                 "invalid_client",
@@ -572,7 +585,17 @@ impl Store {
             )?;
             self.issue_tokens(&id, client_id)
         })?;
+        self.tell_owners(&id, Told::Connected { redirect_uri });
         Ok(tokens)
+    }
+
+    /// Whether a website's client id was ever approved, and so may use the token endpoint.
+    fn website_approved(&self, client_id: &str) -> Result<bool> {
+        Ok(self.platform.count(
+            "SELECT EXISTS(SELECT 1 FROM oauth_codes WHERE client_id=?1) \
+             OR EXISTS(SELECT 1 FROM agent_keys WHERE kind='app' AND client_id=?1)",
+            [client_id],
+        )? == 1)
     }
 
     /// A refresh token for a new pair; the one presented is spent. Presented again within a
@@ -678,14 +701,20 @@ impl Store {
     }
 
     /// Ends a connected app from the protocol's side: a code or refresh token replayed, or the
-    /// app signing out. Its tokens stop at once.
+    /// app signing out. Its tokens stop at once. A replay is Dispatch's own doing, so the
+    /// platform owners are told why.
     fn end_app(&self, key: &str, reason: &str) -> Result<()> {
-        self.platform
-            .transaction(|| self.end_app_within(None, key, reason))
+        let ended = self
+            .platform
+            .transaction(|| self.end_app_within(None, key, reason))?;
+        if ended && matches!(reason, "code_reused" | "refresh_reused") {
+            self.tell_owners(key, Told::Disconnected { reason });
+        }
+        Ok(())
     }
     /// The same inside a transaction the caller holds, such as the one connecting the app's
-    /// replacement. `actor` is the owner when it is their doing.
-    fn end_app_within(&self, actor: Option<&str>, key: &str, reason: &str) -> Result<()> {
+    /// replacement. `actor` is the owner when it is their doing. Whether it was live until now.
+    fn end_app_within(&self, actor: Option<&str>, key: &str, reason: &str) -> Result<bool> {
         let ended = self.platform.exec(
             "UPDATE agent_keys SET revoked_at=? WHERE id=? AND kind='app' AND revoked_at IS NULL",
             [iso(), key.to_owned()],
@@ -706,7 +735,7 @@ impl Store {
                 &[("reason", None, Some(reason.to_owned()))],
             )?;
         }
-        Ok(())
+        Ok(ended > 0)
     }
 
     /// Revocation (RFC 7009): any token of a connected app ends the whole app, as an app

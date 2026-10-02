@@ -238,6 +238,57 @@ pub struct OAuthRedirect {
     pub redirect: String,
 }
 
+/// The window in which apps may ask to connect: open until this time, or closed (null).
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthPairing {
+    pub open_until: Option<String>,
+}
+/// The window just opened or extended, and when it now closes.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthPairingOpened {
+    pub open_until: String,
+}
+text_enum! {
+    #[cfg_attr(test, derive(ts_rs::TS))]
+    /// A kind of app the platform owner lets connect: one of the four known apps, apps on the
+    /// owner's own computer that register themselves, or websites and other apps.
+    pub enum OAuthAppId {
+        Chatgpt => "chatgpt",
+        Codex => "codex",
+        ClaudeCode => "claude-code",
+        Hermes => "hermes",
+        Local => "local",
+        Web => "web",
+    }
+}
+/// A kind of app as the Connect tab lists it, and whether it may connect.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthAllowedApp {
+    pub id: OAuthAppId,
+    pub name: String,
+    pub allowed: bool,
+}
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthAllowedApps {
+    pub apps: Vec<OAuthAllowedApp>,
+}
+/// The platform owner lets a kind of app connect, or stops it.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OAuthAppChoice {
+    pub id: OAuthAppId,
+    pub allowed: bool,
+}
+
 /// How many keys were revoked.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -277,4 +328,39 @@ pub struct AgentWhoamiDsp {
     pub timezone: String,
     pub today: String,
     pub features: Vec<String>,
+}
+
+/// A key or connected app as the Activity log names it.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct AgentActivityKey {
+    pub id: String,
+    pub name: String,
+    pub kind: AgentKeyKind,
+}
+/// One call an agent made: when it started, with which key or app, to which endpoint
+/// (`rest:<endpoint>`) or tool (`mcp:<tool>`), about which DSP, and how it ended: `ok`, or
+/// the code it was refused or failed with. `ms` is how long it took, `bytes` how much it
+/// answered.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct AgentActivity {
+    pub at: String,
+    pub key: AgentActivityKey,
+    pub surface: String,
+    pub dsp: Option<AgentDsp>,
+    pub outcome: String,
+    pub ms: u32,
+    pub bytes: u32,
+}
+/// A page of the Activity log, newest first. `next` is the `before` that reads the page
+/// after it; null on the last.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct AgentActivityPage {
+    pub rows: Vec<AgentActivity>,
+    pub next: Option<String>,
 }

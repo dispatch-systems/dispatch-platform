@@ -4,6 +4,7 @@
 mod common;
 use dispatch_backend::{
     State,
+    agents::oauth::network::{Network, Pending},
     config::Config,
     crypto,
     db::{self, Store, s},
@@ -89,8 +90,31 @@ impl Server {
                 .unwrap(),
         }
     }
+    /// A server whose platform owner has opened the pairing window, as apps need to ask.
+    async fn paired() -> Self {
+        let server = Self::start().await;
+        server.open_pairing().await;
+        server
+    }
+    /// The platform owner opens the pairing window, as the Connect tab does.
+    async fn open_pairing(&self) {
+        self.state
+            .run(|db| {
+                let (owner,): (String,) = db
+                    .platform
+                    .one_as("SELECT id FROM users WHERE email='owner@dispatch.test'", [])?
+                    .unwrap();
+                db.open_oauth_pairing(&owner)
+            })
+            .await
+            .unwrap();
+    }
     /// A session row written directly, so tests do not pay for password hashing.
     async fn owner(&self) -> Owner {
+        self.signed_in(db::now()).await
+    }
+    /// The platform owner's session, signed in at `created_at`.
+    async fn signed_in(&self, created_at: i64) -> Owner {
         let raw = crypto::token().unwrap();
         let token = raw.clone();
         self.state
@@ -109,7 +133,7 @@ impl Server {
                         s(&user, "id"),
                         db::n(&user, "version"),
                         db::now() + 600000,
-                        db::now()
+                        created_at
                     ],
                 )?;
                 Ok(())
@@ -406,7 +430,7 @@ async fn the_mcp_endpoint_challenges_with_where_to_sign_in() {
 
 #[tokio::test]
 async fn refused_apps_and_redirects_never_go_back_to_the_app() {
-    let server = Server::start().await;
+    let server = Server::paired().await;
     let challenge = crypto::s256(VERIFIER);
     let page = |error: &str| format!("{}/#authorize?error={error}", server.origin);
     let local = "http://localhost:61234/callback";
@@ -481,7 +505,7 @@ async fn refused_apps_and_redirects_never_go_back_to_the_app() {
 
 #[tokio::test]
 async fn a_known_app_hears_what_was_wrong_with_its_request() {
-    let server = Server::start().await;
+    let server = Server::paired().await;
     let local = "http://localhost:61234/callback";
     let challenge = crypto::s256(VERIFIER);
     let base = server.request(CLAUDE_CODE, local, &challenge);
@@ -577,7 +601,7 @@ async fn a_known_app_hears_what_was_wrong_with_its_request() {
 
 #[tokio::test]
 async fn the_owner_approves_once_and_the_code_is_redeemed_once() {
-    let server = Server::start().await;
+    let server = Server::paired().await;
     let owner = server.owner().await;
     // Claude Code's document lists portless loopback redirects; any port is the same one.
     let local = "http://localhost:61234/callback";
@@ -697,7 +721,7 @@ async fn the_owner_approves_once_and_the_code_is_redeemed_once() {
 
 #[tokio::test]
 async fn connecting_an_app_again_replaces_its_earlier_connection() {
-    let server = Server::start().await;
+    let server = Server::paired().await;
     let owner = server.owner().await;
     let local = "http://localhost:50002/callback";
     let first = server
@@ -800,7 +824,7 @@ async fn connecting_an_app_again_replaces_its_earlier_connection() {
 
 #[tokio::test]
 async fn a_name_a_key_or_another_app_holds_stays_taken() {
-    let server = Server::start().await;
+    let server = Server::paired().await;
     let owner = server.owner().await;
     let local = "http://localhost:50003/callback";
     server
@@ -883,7 +907,7 @@ async fn live_apps(server: &Server, owner: &Owner) -> Vec<(String, String)> {
 
 #[tokio::test]
 async fn an_app_that_registers_again_replaces_its_earlier_connection() {
-    let server = Server::start().await;
+    let server = Server::paired().await;
     let owner = server.owner().await;
     let cursor = "cursor://anysphere.cursor-retrieval/oauth/callback";
     let first = registered(&server, "Cursor", cursor).await;
@@ -933,7 +957,7 @@ async fn an_app_that_registers_again_replaces_its_earlier_connection() {
 
 #[tokio::test]
 async fn an_unverified_app_never_replaces_a_known_one() {
-    let server = Server::start().await;
+    let server = Server::paired().await;
     let owner = server.owner().await;
     let local = "http://localhost:50004/callback";
     server
@@ -1034,7 +1058,7 @@ async fn registrations_never_used_are_capped_across_every_address() {
 
 #[tokio::test]
 async fn the_approval_page_says_what_approving_would_replace() {
-    let server = Server::start().await;
+    let server = Server::paired().await;
     let owner = server.owner().await;
     let local = "http://localhost:50005/callback";
     let fresh = server.requested(CLAUDE_CODE, local).await;
@@ -1087,7 +1111,7 @@ async fn the_approval_page_says_what_approving_would_replace() {
 
 #[tokio::test]
 async fn authorization_requests_are_counted_by_address_before_any_app_is_looked_up() {
-    let server = Server::start().await;
+    let server = Server::paired().await;
     let challenge = crypto::s256(VERIFIER);
     let fields = server.request(CLAUDE_CODE, "http://localhost:1/callback", &challenge);
     let pairs: Vec<(&str, &str)> = fields.iter().map(|(k, v)| (*k, v.as_str())).collect();
@@ -1106,7 +1130,7 @@ async fn authorization_requests_are_counted_by_address_before_any_app_is_looked_
 
 #[tokio::test]
 async fn a_replay_with_the_wrong_verifier_ends_nothing() {
-    let server = Server::start().await;
+    let server = Server::paired().await;
     let owner = server.owner().await;
     let request = server.requested(CHATGPT, CHATGPT_REDIRECT).await;
     let code = server
@@ -1133,7 +1157,7 @@ async fn a_replay_with_the_wrong_verifier_ends_nothing() {
 
 #[tokio::test]
 async fn the_owner_can_deny_and_the_app_is_told() {
-    let server = Server::start().await;
+    let server = Server::paired().await;
     let owner = server.owner().await;
     let request = server.requested(CHATGPT, CHATGPT_REDIRECT).await;
     let shown = server
@@ -1165,7 +1189,7 @@ async fn the_owner_can_deny_and_the_app_is_told() {
 
 #[tokio::test]
 async fn refresh_tokens_rotate_with_a_minute_of_grace() {
-    let server = Server::start().await;
+    let server = Server::paired().await;
     let owner = server.owner().await;
     let local = "http://127.0.0.1:61001/callback";
     let first = server
@@ -1236,7 +1260,7 @@ async fn refresh_tokens_rotate_with_a_minute_of_grace() {
 
 #[tokio::test]
 async fn expired_or_revoked_access_ends_with_invalid_token() {
-    let server = Server::start().await;
+    let server = Server::paired().await;
     let owner = server.owner().await;
     let local = "http://localhost:50000/callback";
     let tokens = server
@@ -1323,7 +1347,7 @@ async fn expired_or_revoked_access_ends_with_invalid_token() {
 
 #[tokio::test]
 async fn a_connected_app_reaches_only_what_the_owner_chose() {
-    let server = Server::start().await;
+    let server = Server::paired().await;
     let owner = server.owner().await;
     let north = server.dsp("Northline Logistics").await;
     let tokens = server
@@ -1378,7 +1402,7 @@ async fn a_connected_app_reaches_only_what_the_owner_chose() {
 
 #[tokio::test]
 async fn apps_register_themselves_only_to_come_back_to_this_computer() {
-    let server = Server::start().await;
+    let server = Server::paired().await;
     let owner = server.owner().await;
     let register = |body: Value| {
         server.send(
@@ -1533,7 +1557,7 @@ async fn apps_register_themselves_only_to_come_back_to_this_computer() {
 
 #[tokio::test]
 async fn revoking_any_token_ends_the_app_and_unknown_tokens_are_fine() {
-    let server = Server::start().await;
+    let server = Server::paired().await;
     let owner = server.owner().await;
     let local = "http://localhost:50001/callback";
     let tokens = server
@@ -1689,4 +1713,706 @@ fn what_can_no_longer_be_used_is_pruned() {
         left("oauth_clients", "id"),
         ["dcr_new", "dcr_today", "dcr_used"]
     );
+}
+
+/// Ends the pairing window, as ten minutes passing would.
+async fn close_pairing(server: &Server) {
+    server
+        .state
+        .run(|db| {
+            db.platform.exec(
+                "UPDATE oauth_pairing SET open_until=?",
+                [db::at(db::now() - 1000)],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+}
+/// The location an authorization request is sent to, for `client` at `redirect`.
+async fn asked(server: &Server, client: &str, redirect: &str) -> String {
+    let challenge = crypto::s256(VERIFIER);
+    let fields = server.request(client, redirect, &challenge);
+    let pairs: Vec<(&str, &str)> = fields.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let answer = server.authorize(&pairs).await;
+    assert_eq!(answer.status, 302, "{}", answer.body);
+    answer.header("location").to_owned()
+}
+/// The owner's audited actions with this prefix, oldest first.
+async fn logged(server: &Server, prefix: &'static str) -> Vec<(String, String)> {
+    let log = server
+        .state
+        .read(|db| common::audits(db, None))
+        .await
+        .unwrap();
+    let mut actions: Vec<(String, String)> = log
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| s(event, "action").starts_with(prefix))
+        .map(|event| (s(event, "action").to_owned(), s(event, "target").to_owned()))
+        .collect();
+    actions.reverse();
+    actions
+}
+const DAY: i64 = 24 * 60 * 60 * 1000;
+
+#[tokio::test]
+async fn apps_ask_to_connect_only_while_the_pairing_window_is_open() {
+    let server = Server::start().await;
+    let owner = server.owner().await;
+    let local = "http://localhost:50010/callback";
+    let closed = format!("{}/#authorize?error=pairing_closed", server.origin);
+    let pairing = "/api/platform/oauth/pairing";
+    let requests = || {
+        server
+            .state
+            .read(|db| db.platform.count("SELECT count(*) FROM oauth_requests", []))
+    };
+    // Closed until the owner opens it: the browser goes to Dispatch's page, never to the
+    // app, and nothing is stored.
+    let shown = server.as_owner(&owner, "GET", pairing, json!({})).await;
+    assert_eq!(
+        (shown.status, &shown.body),
+        (200, &json!({"openUntil":null}))
+    );
+    let cursor = "cursor://anysphere.cursor-retrieval/oauth/callback";
+    let registered_app = registered(&server, "Cursor", cursor).await;
+    for (client, redirect) in [(CLAUDE_CODE, local), (registered_app.as_str(), cursor)] {
+        assert_eq!(asked(&server, client, redirect).await, closed, "{client}");
+    }
+    assert_eq!(requests().await.unwrap(), 0);
+    // Only a platform owner opens it, and with no fresh verification: a session signed in a
+    // day ago does.
+    assert_eq!(server.get(pairing).await.status, 401);
+    let earlier = server.signed_in(db::now() - DAY).await;
+    let opened = server.as_owner(&earlier, "POST", pairing, json!({})).await;
+    assert_eq!(opened.status, 200, "{}", opened.body);
+    let until = s(&opened.body, "openUntil").to_owned();
+    let left = chrono::DateTime::parse_from_rfc3339(&until)
+        .unwrap()
+        .timestamp_millis()
+        - db::now();
+    assert!(left > 9 * 60_000 && left <= 10 * 60_000, "{until}");
+    let shown = server.as_owner(&owner, "GET", pairing, json!({})).await;
+    assert_eq!(shown.body, json!({"openUntil":until}));
+    let refused = server
+        .as_owner(&owner, "POST", pairing, json!({"minutes":60}))
+        .await;
+    assert_eq!(refused.status, 400);
+    // Open, an app asks and its request waits for the owner.
+    let request = server.requested(CLAUDE_CODE, local).await;
+    assert_eq!(requests().await.unwrap(), 1);
+    // Opening it again keeps it open ten minutes from then; the log has the one opening.
+    let again = server.as_owner(&owner, "POST", pairing, json!({})).await;
+    let extended = s(&again.body, "openUntil").to_owned();
+    assert!(extended >= until, "{extended} {until}");
+    assert_eq!(
+        logged(&server, "agent.pairing").await,
+        [("agent.pairing_opened".to_owned(), String::new())]
+    );
+    // It is stored, so a restart keeps it open.
+    let restarted = State::new(server.state.config.clone()).unwrap();
+    let kept = restarted.read(|db| db.oauth_pairing()).await.unwrap();
+    assert_eq!(kept.open_until, Some(extended));
+    // Closed again, nothing more may ask; but the request made while it was open is still
+    // approved, and the app signs in, renews and signs out without the window.
+    close_pairing(&server).await;
+    assert_eq!(asked(&server, CLAUDE_CODE, local).await, closed);
+    assert_eq!(requests().await.unwrap(), 1);
+    let code = server
+        .approved(&owner, &request, everything("Claude Code"))
+        .await;
+    let tokens = server.exchange(CLAUDE_CODE, local, &code).await;
+    assert_eq!(tokens.status, 200, "{}", tokens.body);
+    let renewed = server
+        .refresh(CLAUDE_CODE, s(&tokens.body, "refresh_token"))
+        .await;
+    assert_eq!(renewed.status, 200, "{}", renewed.body);
+    let access = s(&renewed.body, "access_token");
+    assert_eq!(server.bearer("/api/v1/whoami", access).await.status, 200);
+    registered(&server, "Windsurf", "windsurf://codeium.windsurf/callback").await;
+    let signed_out = server
+        .form(
+            "/oauth/revoke",
+            &[("token", access), ("client_id", CLAUDE_CODE)],
+        )
+        .await;
+    assert_eq!(signed_out.status, 200);
+    assert_eq!(server.bearer("/api/v1/whoami", access).await.status, 401);
+    // Reopened after closing, the opening is logged again.
+    server.as_owner(&owner, "POST", pairing, json!({})).await;
+    assert_eq!(logged(&server, "agent.pairing").await.len(), 2);
+}
+
+#[tokio::test]
+async fn the_owner_chooses_which_kinds_of_app_may_connect() {
+    let server = Server::paired().await;
+    let owner = server.owner().await;
+    let path = "/api/platform/oauth/apps";
+    let listed = server.as_owner(&owner, "GET", path, json!({})).await;
+    assert_eq!(listed.status, 200, "{}", listed.body);
+    let defaults = json!({"apps":[
+        {"id":"chatgpt","name":"ChatGPT","allowed":true},
+        {"id":"codex","name":"Codex","allowed":true},
+        {"id":"claude-code","name":"Claude Code","allowed":true},
+        {"id":"hermes","name":"Hermes Agent","allowed":true},
+        {"id":"local","name":"Apps on this computer","allowed":true},
+        {"id":"web","name":"Websites and other apps","allowed":false},
+    ]});
+    assert_eq!(listed.body, defaults);
+    assert_eq!(server.get(path).await.status, 401);
+    // Choosing asks for recent verification, as approving does.
+    let earlier = server.signed_in(db::now() - DAY).await;
+    let stale = server
+        .as_owner(
+            &earlier,
+            "POST",
+            path,
+            json!({"id":"claude-code","allowed":false}),
+        )
+        .await;
+    assert_eq!(
+        (stale.status, s(&stale.body, "error")),
+        (403, "sign_in_again")
+    );
+    for body in [
+        json!({"id":"cursor","allowed":false}),
+        json!({"id":"codex"}),
+        json!({"id":"codex","allowed":"no"}),
+        json!({"id":"codex","allowed":false,"until":1}),
+    ] {
+        let refused = server.as_owner(&owner, "POST", path, body.clone()).await;
+        assert_eq!(
+            (refused.status, s(&refused.body, "error")),
+            (400, "invalid_input"),
+            "{body}"
+        );
+    }
+    assert_eq!(
+        server.as_owner(&owner, "GET", path, json!({})).await.body,
+        defaults
+    );
+    // An app connected before its kind is turned off stays connected, and renews.
+    let local = "http://localhost:50011/callback";
+    let tokens = server
+        .connect(&owner, CLAUDE_CODE, local, everything("Claude Code"))
+        .await;
+    let cursor = "cursor://anysphere.cursor-retrieval/oauth/callback";
+    let registered_app = registered(&server, "Cursor", cursor).await;
+    for id in ["claude-code", "local"] {
+        let changed = server
+            .as_owner(&owner, "POST", path, json!({"id":id,"allowed":false}))
+            .await;
+        assert_eq!(changed.status, 200, "{}", changed.body);
+        let app = changed.body["apps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|app| app["id"] == id)
+            .unwrap()
+            .clone();
+        assert_eq!(app["allowed"], false);
+    }
+    // Turned off, an app is refused on Dispatch's page, which names it; the others ask.
+    let page = |app: &str| {
+        format!(
+            "{}/#authorize?error=app_not_allowed&app={app}",
+            server.origin
+        )
+    };
+    assert_eq!(
+        asked(&server, CLAUDE_CODE, local).await,
+        page("claude-code")
+    );
+    assert_eq!(asked(&server, &registered_app, cursor).await, page("local"));
+    server.requested(CHATGPT, CHATGPT_REDIRECT).await;
+    let renewed = server
+        .refresh(CLAUDE_CODE, s(&tokens, "refresh_token"))
+        .await;
+    assert_eq!(renewed.status, 200, "{}", renewed.body);
+    // Turned on again, it asks again. Choosing what is already chosen changes nothing.
+    for _ in 0..2 {
+        let changed = server
+            .as_owner(
+                &owner,
+                "POST",
+                path,
+                json!({"id":"claude-code","allowed":true}),
+            )
+            .await;
+        assert_eq!(changed.status, 200, "{}", changed.body);
+    }
+    server.requested(CLAUDE_CODE, local).await;
+    let changes: Vec<(String, String)> = logged(&server, "agent.app_")
+        .await
+        .into_iter()
+        .filter(|(action, _)| action.ends_with("allowed"))
+        .collect();
+    assert_eq!(
+        changes,
+        [
+            ("agent.app_disallowed".to_owned(), "Claude Code".to_owned()),
+            (
+                "agent.app_disallowed".to_owned(),
+                "Apps on this computer".to_owned()
+            ),
+            ("agent.app_allowed".to_owned(), "Claude Code".to_owned()),
+        ]
+    );
+}
+
+/// The internet as a test sees it: each host's addresses and each URL's answer, with every
+/// host looked up and every address connected to.
+#[derive(Default)]
+struct Internet {
+    hosts: std::collections::HashMap<&'static str, Vec<std::net::IpAddr>>,
+    pages: std::collections::HashMap<String, (u16, Vec<u8>)>,
+    resolved: std::sync::Mutex<Vec<String>>,
+    connected: std::sync::Mutex<Vec<(String, std::net::SocketAddr)>>,
+}
+impl Network for Internet {
+    fn resolve<'a>(
+        &'a self,
+        host: &'a str,
+    ) -> Pending<'a, dispatch_backend::Result<Vec<std::net::IpAddr>>> {
+        Box::pin(async move {
+            self.resolved.lock().unwrap().push(host.to_owned());
+            self.hosts
+                .get(host)
+                .cloned()
+                .ok_or_else(|| dispatch_backend::Error::new("app_unavailable", 502))
+        })
+    }
+    fn get<'a>(
+        &'a self,
+        url: &'a url::Url,
+        address: std::net::SocketAddr,
+        limit: usize,
+    ) -> Pending<'a, dispatch_backend::Result<(u16, Vec<u8>)>> {
+        Box::pin(async move {
+            self.connected
+                .lock()
+                .unwrap()
+                .push((url.to_string(), address));
+            let (status, mut body) = self
+                .pages
+                .get(url.as_str())
+                .cloned()
+                .unwrap_or((404, Vec::new()));
+            body.truncate(limit + 1);
+            Ok((status, body))
+        })
+    }
+}
+fn client_document(client_id: &str, name: &str, redirect: &str) -> Vec<u8> {
+    json!({"client_id":client_id,"client_name":name,"redirect_uris":[redirect]})
+        .to_string()
+        .into_bytes()
+}
+
+#[tokio::test]
+async fn websites_connect_only_when_allowed_and_only_from_public_addresses() {
+    let server = Server::paired().await;
+    let owner = server.owner().await;
+    let site = "https://tools.example.com/oauth/client.json";
+    let callback = "https://tools.example.com/callback";
+    let public: std::net::IpAddr = "93.184.215.14".parse().unwrap();
+    let mut internet = Internet::default();
+    internet.hosts.insert("tools.example.com", vec![public]);
+    internet.pages.insert(
+        site.into(),
+        (200, client_document(site, "Example Tools", callback)),
+    );
+    let refused = [
+        ("private.example.com", vec!["10.1.2.3"]),
+        ("loopback.example.com", vec!["127.0.0.1"]),
+        ("metadata.example.com", vec!["169.254.169.254"]),
+        ("shared.example.com", vec!["100.64.0.9"]),
+        ("documentation.example.com", vec!["192.0.2.10"]),
+        ("multicast.example.com", vec!["239.1.2.3"]),
+        ("loopback6.example.com", vec!["::1"]),
+        ("unique6.example.com", vec!["fd00:ec2::254"]),
+        ("linklocal6.example.com", vec!["fe80::1"]),
+        ("mapped6.example.com", vec!["::ffff:10.0.0.1"]),
+        ("mixed.example.com", vec!["93.184.215.14", "10.0.0.1"]),
+        ("nowhere.example.com", vec![]),
+    ];
+    for (host, addresses) in &refused {
+        let addresses = addresses.iter().map(|a| a.parse().unwrap()).collect();
+        internet.hosts.insert(host, addresses);
+        let url = format!("https://{host}/client.json");
+        let document = client_document(&url, "Sneaky", &format!("https://{host}/cb"));
+        internet.pages.insert(url, (200, document));
+    }
+    for host in [
+        "moved.example.com",
+        "large.example.com",
+        "other.example.com",
+    ] {
+        internet.hosts.insert(host, vec![public]);
+    }
+    internet.pages.insert(
+        "https://moved.example.com/client.json".into(),
+        (302, Vec::new()),
+    );
+    let mut large = client_document(
+        "https://large.example.com/client.json",
+        "Large",
+        "https://large.example.com/cb",
+    );
+    large.resize(64 * 1024 + 1, b' ');
+    internet
+        .pages
+        .insert("https://large.example.com/client.json".into(), (200, large));
+    internet.pages.insert(
+        "https://other.example.com/client.json".into(),
+        (200, client_document(site, "Other", callback)),
+    );
+    let internet = Arc::new(internet);
+    server.state.oauth.use_network(internet.clone());
+    let page = |error: &str| format!("{}/#authorize?error={error}", server.origin);
+    let register = |redirect: &str| {
+        server.send(
+            server
+                .client
+                .post(server.url("/oauth/register"))
+                .header("content-type", "application/json")
+                .body(json!({"client_name":"Web tool","redirect_uris":[redirect]}).to_string()),
+        )
+    };
+
+    // Off by default: a website's client id is no app Dispatch knows, nothing is fetched for
+    // it, and no app registers a website's redirect.
+    assert_eq!(asked(&server, site, callback).await, page("unknown_app"));
+    assert!(internet.resolved.lock().unwrap().is_empty());
+    let dcr = "https://tools.example.com/dcr/callback";
+    assert_eq!(
+        s(&register(dcr).await.body, "error"),
+        "invalid_redirect_uri"
+    );
+    let allowed = server
+        .as_owner(
+            &owner,
+            "POST",
+            "/api/platform/oauth/apps",
+            json!({"id":"web","allowed":true}),
+        )
+        .await;
+    assert_eq!(allowed.status, 200, "{}", allowed.body);
+
+    // On, its document is read from the address its host has, and from nowhere else; the
+    // owner sees an unverified app and where it sends access.
+    let request = server.requested(site, callback).await;
+    assert_eq!(
+        *internet.connected.lock().unwrap(),
+        [(site.to_owned(), std::net::SocketAddr::new(public, 443))]
+    );
+    let shown = server
+        .as_owner(
+            &owner,
+            "GET",
+            &format!("/api/platform/oauth/requests/{request}"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(
+        shown.body["app"],
+        json!({"name":"Example Tools","clientId":site,"verified":false,
+            "redirectHost":"tools.example.com","redirectScheme":null})
+    );
+    let code = server
+        .approved(&owner, &request, everything("Example Tools"))
+        .await;
+    let tokens = server.exchange(site, callback, &code).await;
+    assert_eq!(tokens.status, 200, "{}", tokens.body);
+    let renewed = server.refresh(site, s(&tokens.body, "refresh_token")).await;
+    assert_eq!(renewed.status, 200, "{}", renewed.body);
+    let access = s(&renewed.body, "access_token").to_owned();
+    assert_eq!(server.bearer("/api/v1/whoami", &access).await.status, 200);
+    assert_eq!(
+        live_apps(&server, &owner).await,
+        [("Example Tools".to_owned(), "Example Tools".to_owned())]
+    );
+    // Its document is kept for the hour: asking again fetches nothing.
+    server.requested(site, callback).await;
+    assert_eq!(internet.connected.lock().unwrap().len(), 1);
+    // A host with any address that is not public is never connected to; nor is a redirect
+    // followed, a document longer than 64 KiB read, or another app's document taken.
+    for host in refused.iter().map(|(host, _)| *host).chain([
+        "moved.example.com",
+        "large.example.com",
+        "other.example.com",
+    ]) {
+        let url = format!("https://{host}/client.json");
+        let location = asked(&server, &url, &format!("https://{host}/cb")).await;
+        assert_eq!(location, page("app_unavailable"), "{host}");
+        assert!(internet.resolved.lock().unwrap().contains(&host.to_owned()));
+    }
+    let connected: Vec<String> = internet
+        .connected
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(url, _)| url.clone())
+        .collect();
+    assert_eq!(
+        connected,
+        [
+            site,
+            "https://moved.example.com/client.json",
+            "https://large.example.com/client.json",
+            "https://other.example.com/client.json",
+        ]
+    );
+    // An address, plain http, a query or a known app's lookalike is no website's client id,
+    // or no known app.
+    for client in [
+        "https://127.0.0.1/client.json",
+        "https://[::1]/client.json",
+        "http://tools.example.com/oauth/client.json",
+        "https://tools.example.com/oauth/client.json?x=1",
+        "https://tools.example.com:8443/oauth/client.json",
+    ] {
+        assert_eq!(
+            asked(&server, client, callback).await,
+            page("unknown_app"),
+            "{client}"
+        );
+    }
+    // An app registers a website's redirect while websites may connect, and is shown by it.
+    let registered_web = register(dcr).await;
+    assert_eq!(registered_web.status, 201, "{}", registered_web.body);
+    let registered_id = s(&registered_web.body, "client_id").to_owned();
+    let request = server.requested(&registered_id, dcr).await;
+    let shown = server
+        .as_owner(
+            &owner,
+            "GET",
+            &format!("/api/platform/oauth/requests/{request}"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(shown.body["app"]["redirectHost"], "tools.example.com");
+    assert_eq!(shown.body["app"]["verified"], false);
+    for redirect in [
+        "https://10.0.0.1/cb",
+        "https://tools.example.com/cb#x",
+        "https://user@tools.example.com/cb",
+        "https://Tools.example.com/cb",
+    ] {
+        assert_eq!(
+            s(&register(redirect).await.body, "error"),
+            "invalid_redirect_uri",
+            "{redirect}"
+        );
+    }
+    // Off again, no website asks; one already connected stays connected.
+    server
+        .as_owner(
+            &owner,
+            "POST",
+            "/api/platform/oauth/apps",
+            json!({"id":"web","allowed":false}),
+        )
+        .await;
+    assert_eq!(asked(&server, site, callback).await, page("unknown_app"));
+    assert_eq!(
+        asked(&server, &registered_id, dcr).await,
+        format!("{}&app=web", page("app_not_allowed"))
+    );
+    assert_eq!(server.bearer("/api/v1/whoami", &access).await.status, 200);
+}
+
+#[tokio::test]
+async fn in_fixture_mode_the_sample_website_connects_without_the_network() {
+    let server = Server::paired().await;
+    let owner = server.owner().await;
+    server
+        .as_owner(
+            &owner,
+            "POST",
+            "/api/platform/oauth/apps",
+            json!({"id":"web","allowed":true}),
+        )
+        .await;
+    let site = dispatch_backend::agents::oauth::network::FIXTURE_APP;
+    let callback = "https://app.dispatch.test/oauth/callback";
+    let tokens = server
+        .connect(&owner, site, callback, everything("Example web app"))
+        .await;
+    assert_eq!(
+        server
+            .bearer("/api/v1/whoami", s(&tokens, "access_token"))
+            .await
+            .status,
+        200
+    );
+    let unknown = asked(
+        &server,
+        "https://elsewhere.example.com/client.json",
+        callback,
+    )
+    .await;
+    assert_eq!(
+        unknown,
+        format!("{}/#authorize?error=app_unavailable", server.origin)
+    );
+}
+
+/// The notices queued for platform owners about connected apps: recipient, subject, text.
+async fn notices(server: &Server) -> Vec<(String, String, String)> {
+    let key = server.state.key.clone();
+    server
+        .state
+        .read(move |db| {
+            Ok(db
+                .platform
+                .all(
+                    "SELECT id,encrypted_message,user_id FROM outbox WHERE kind='connected_app' \
+                     ORDER BY created_at,id",
+                    [],
+                )?
+                .iter()
+                .map(|row| {
+                    let mail =
+                        crypto::decrypt(&key, s(row, "id"), s(row, "encrypted_message")).unwrap();
+                    (
+                        s(&mail, "to").to_owned(),
+                        s(&mail, "subject").to_owned(),
+                        s(&mail, "text").to_owned(),
+                    )
+                })
+                .collect())
+        })
+        .await
+        .unwrap()
+}
+
+/// The texts of the notices with this subject.
+fn told<'a>(sent: &'a [(String, String, String)], subject: &str) -> Vec<&'a str> {
+    sent.iter()
+        .filter(|(_, sent, _)| sent == subject)
+        .map(|(.., text)| text.as_str())
+        .collect()
+}
+
+#[tokio::test]
+async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() {
+    let server = Server::paired().await;
+    let owner = server.owner().await;
+    // Every active platform owner hears; a member, or an owner no longer active, does not.
+    server
+        .state
+        .run(|db| {
+            for (id, email, owner, status) in [
+                ("usr_second", "second@dispatch.test", 1, "active"),
+                ("usr_gone", "gone@dispatch.test", 1, "disabled"),
+            ] {
+                db.platform.exec(
+                    "INSERT INTO users(id,email,first_name,last_name,password,platform_owner,\
+                     status,created_at) VALUES (?,?,'Other','Owner','x',?,?,?)",
+                    rusqlite::params![id, email, owner, status, db::iso()],
+                )?;
+            }
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let north = server.dsp("Northline Logistics").await;
+    let local = "http://localhost:50012/callback";
+    let request = server.requested(CLAUDE_CODE, local).await;
+    let code = server
+        .approved(
+            &owner,
+            &request,
+            json!({"name":"Laptop","allDsps":false,"dsps":[north],"tools":"essential",
+                "locations":false}),
+        )
+        .await;
+    let tokens = server.exchange(CLAUDE_CODE, local, &code).await;
+    assert_eq!(tokens.status, 200, "{}", tokens.body);
+    let mut sent = notices(&server).await;
+    sent.sort();
+    let recipients: Vec<&str> = sent.iter().map(|(to, ..)| to.as_str()).collect();
+    assert_eq!(recipients, ["owner@dispatch.test", "second@dispatch.test"]);
+    for (to, subject, text) in &sent {
+        assert_eq!(subject, "[Dispatch Dev] Claude Code connected to Dispatch");
+        for line in [
+            "Connection: Laptop",
+            "App: Claude Code (verified app)",
+            "Sends access to: this computer",
+            "DSPs: Northline Logistics",
+            "Tools: Essential",
+            "Delivery addresses and GPS: Not included",
+            "Approved by: Platform Owner",
+            &format!("{}/#agents?tab=apps", server.origin),
+            &format!("This notice was sent to {to}"),
+        ] {
+            assert!(text.contains(line), "{line}\n{text}");
+        }
+    }
+    // Renewing tells nobody; a rotated refresh token presented late ends the app, and the
+    // owners hear why.
+    let refresh = s(&tokens.body, "refresh_token").to_owned();
+    assert_eq!(server.refresh(CLAUDE_CODE, &refresh).await.status, 200);
+    assert_eq!(notices(&server).await.len(), 2);
+    let hash = crypto::sha(&refresh);
+    server
+        .state
+        .run(move |db| {
+            db.platform.exec(
+                "UPDATE oauth_tokens SET used_at=? WHERE hash=?",
+                [db::at(db::now() - 61_000), hash],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let late = server.refresh(CLAUDE_CODE, &refresh).await;
+    assert_eq!(s(&late.body, "error"), "invalid_grant");
+    let sent = notices(&server).await;
+    assert_eq!(sent.len(), 4);
+    let ended = told(&sent, "[Dispatch Dev] Dispatch disconnected Claude Code");
+    assert_eq!(ended.len(), 2);
+    for text in ended {
+        assert!(text.contains("already used was presented again"), "{text}");
+        assert!(text.contains("Connection: Laptop"), "{text}");
+    }
+    // A replayed code ends what it made, and they hear that too, once.
+    let request = server.requested(CHATGPT, CHATGPT_REDIRECT).await;
+    let code = server
+        .approved(&owner, &request, everything("ChatGPT"))
+        .await;
+    assert_eq!(
+        server
+            .exchange(CHATGPT, CHATGPT_REDIRECT, &code)
+            .await
+            .status,
+        200
+    );
+    for _ in 0..2 {
+        let replay = server.exchange(CHATGPT, CHATGPT_REDIRECT, &code).await;
+        assert_eq!(s(&replay.body, "error"), "invalid_grant");
+    }
+    let sent = notices(&server).await;
+    assert_eq!(sent.len(), 8);
+    let ended = told(&sent, "[Dispatch Dev] Dispatch disconnected ChatGPT");
+    assert_eq!(ended.len(), 2);
+    for text in ended {
+        assert!(text.contains("one-time code"), "{text}");
+        assert!(text.contains("Sent access to: chatgpt.com"), "{text}");
+    }
+    // An app signing out, or the owner revoking one, is no news to them.
+    let signed_in = server
+        .connect(&owner, CLAUDE_CODE, local, everything("Desktop"))
+        .await;
+    assert_eq!(notices(&server).await.len(), 10);
+    server
+        .form(
+            "/oauth/revoke",
+            &[("token", s(&signed_in, "refresh_token"))],
+        )
+        .await;
+    assert_eq!(notices(&server).await.len(), 10);
 }

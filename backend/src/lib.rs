@@ -66,6 +66,8 @@ pub struct State {
     pub presence: presence::Presence,
     // How much each agent key is used, until the scheduler writes it down.
     pub agents: agents::Usage,
+    // The calls agents made, until the scheduler writes them down.
+    pub activity: agents::Activity,
     // The known apps' client documents, as last fetched.
     pub oauth: agents::oauth::Documents,
 }
@@ -100,6 +102,7 @@ impl State {
             uniform_updates: live_updates::Updates::new()?,
             presence: presence::Presence::default(),
             agents: agents::Usage::default(),
+            activity: agents::Activity::default(),
             oauth: agents::oauth::Documents::default(),
         }))
     }

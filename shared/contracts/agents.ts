@@ -1,4 +1,7 @@
 export type { AgentAccess } from './generated/AgentAccess.js';
+export type { AgentActivity } from './generated/AgentActivity.js';
+export type { AgentActivityKey } from './generated/AgentActivityKey.js';
+export type { AgentActivityPage } from './generated/AgentActivityPage.js';
 export type { AgentAppStatus } from './generated/AgentAppStatus.js';
 export type { AgentClient } from './generated/AgentClient.js';
 export type { AgentDsp } from './generated/AgentDsp.js';

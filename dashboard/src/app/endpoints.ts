@@ -17,6 +17,7 @@ import { useEffect } from 'react';
 import { cancelPrefetches, prefetchData } from './prefetch.js';
 import { dataCache } from './data-cache.js';
 import type {
+  AgentActivityPage,
   AgentKey,
   AgentKeyCreated,
   AgentKeyRequest,
@@ -55,6 +56,14 @@ import type {
   DriverSource,
 } from '../../../shared/contracts/index.js';
 import type { ScheduleInput } from '../../../shared/contracts/schedules.js';
+
+// TODO(oauth-guard): replace with the generated contracts once the backend lands them.
+type OAuthPairing = { openUntil: string | null };
+export type OAuthAppId = 'chatgpt' | 'codex' | 'claude-code' | 'hermes' | 'local' | 'web';
+export type OAuthAllowedApp = { id: OAuthAppId; name: string; allowed: boolean };
+type OAuthAllowedApps = { apps: OAuthAllowedApp[] };
+/** Whose calls the Activity tab lists, and whether only those Dispatch refused. */
+export type AgentActivityFilter = { key: string; outcome: '' | 'refused' };
 
 export const getCollectionUpdates = (after: string, signal: AbortSignal) =>
   api<CollectionUpdates>(
@@ -186,6 +195,29 @@ export const readOAuthRequest = (id: string, name: string) =>
 export const approveOAuthRequest = (id: string, approval: OAuthApproval) =>
   api<OAuthRedirect>(`${oauthRequest(id)}/approve`, approval);
 export const denyOAuthRequest = (id: string) => api<OAuthRedirect>(`${oauthRequest(id)}/deny`, {});
+const pairing = '/api/platform/oauth/pairing';
+/** Until when an app may start connecting; null while it may not. */
+export const useOAuthPairing = () => useData<OAuthPairing>(pairing);
+/** Lets apps start connecting for the next ten minutes. */
+export const openOAuthPairing = () => api<OAuthPairing>(pairing, {});
+const oauthApps = '/api/platform/oauth/apps';
+/** Which apps may connect at all. */
+export const useOAuthApps = () => useData<OAuthAllowedApps>(oauthApps);
+export const allowOAuthApp = (id: OAuthAppId, allowed: boolean) =>
+  api<OAuthAllowedApps>(oauthApps, { id, allowed });
+/** One page of the calls agents made, newest first; `next` reads the page after it. */
+export const agentActivityUrl = (filter: AgentActivityFilter, before?: string) => {
+  const query = new URLSearchParams();
+  if (filter.key) query.set('key', filter.key);
+  if (filter.outcome) query.set('outcome', filter.outcome);
+  if (before) query.set('before', before);
+  const text = query.toString();
+  return `${agents}/activity${text ? `?${text}` : ''}`;
+};
+export const useAgentActivity = (filter: AgentActivityFilter) =>
+  useData<AgentActivityPage>(agentActivityUrl(filter));
+export const readAgentActivity = (filter: AgentActivityFilter, before: string) =>
+  api<AgentActivityPage>(agentActivityUrl(filter, before));
 /** Asks Dispatch who `token` belongs to, as an agent would: with the key alone, never the
  * dashboard's session, which the server would refuse beside a key. */
 export async function agentWhoami(

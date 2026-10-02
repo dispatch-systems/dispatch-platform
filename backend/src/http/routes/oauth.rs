@@ -2,11 +2,12 @@
 //! to, and the platform owner's answer to an app asking to connect. The OAuth endpoints sit
 //! outside `/api/`, whose JSON-only and Origin rules would refuse every client's form posts;
 //! each reads its own request and answers as RFC 6749 says. Their rows feed no cached read,
-//! so they write as bookkeeping.
+//! so they write as bookkeeping. The owner also opens the pairing window here, and chooses
+//! the kinds of app that may connect.
 use crate::{
     Result, State,
     agents::oauth::{self, Answer, Query, Refusal},
-    contracts::OAuthApproval,
+    contracts::{self, OAuthAppChoice, OAuthAppId, OAuthApproval},
     db::Store,
     http::{
         input::{Input, Reply, optional_text},
@@ -67,6 +68,12 @@ pub fn routes() -> Vec<Route> {
             PlatformRoutine,
             deny,
         ),
+        read("/api/platform/oauth/pairing", PlatformRoutine, pairing),
+        // Opening the window lets apps only ask; approving still asks for recent verification.
+        write("/api/platform/oauth/pairing", PlatformRoutine, open_pairing),
+        read("/api/platform/oauth/apps", PlatformRoutine, apps),
+        // Letting a kind of app connect changes who may ask, so it asks for recent verification.
+        write("/api/platform/oauth/apps", PlatformOwner, allow_app),
     ]
 }
 
@@ -85,21 +92,29 @@ async fn authorize(state: Arc<State>, request: Request) -> Response {
         Ok(ip) => ip,
         Err(error) => return middleware::failure(error),
     };
-    // Counted first, so no address makes Dispatch fetch an app's document more than it may.
-    match state
-        .run_bookkeeping(move |db| db.throttle_authorize(&ip))
-        .await
-    {
-        Ok(Some(location)) => return Reply::redirect(location).into_response(),
-        Ok(None) => {}
-        Err(error) => return middleware::failure(error),
-    }
     let query = Query::parse(parts.uri.query().unwrap_or("").as_bytes());
-    // A known app's document is read before the database is opened, never while it is held.
+    // Counted first, so no address makes Dispatch fetch an app's document more than it may;
+    // then nothing is fetched for an app the owner does not let connect, or while the
+    // pairing window is closed.
+    let asked = query.clone();
+    let admitted = state
+        .run_bookkeeping(move |db| match db.throttle_authorize(&ip)? {
+            Some(limited) => Ok(Err(limited)),
+            None => db.admit_authorize(&asked),
+        })
+        .await;
+    let app = match admitted {
+        Ok(Ok(app)) => app,
+        Ok(Err(location)) => return Reply::redirect(location).into_response(),
+        Err(error) => return middleware::failure(error),
+    };
+    // An app's document is read before the database is opened, never while it is held.
     let document = match query.one("client_id") {
-        Ok(Some(id)) if id.starts_with("https://") => {
-            Some(state.oauth.client(&state.config, id).await)
-        }
+        Ok(Some(id)) if id.starts_with("https://") => Some(if app == OAuthAppId::Web {
+            state.oauth.website(&state.config, id).await
+        } else {
+            state.oauth.client(&state.config, id).await
+        }),
         _ => None,
     };
     let location = state
@@ -233,4 +248,20 @@ fn approve(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
 fn deny(db: &Store, _: &User, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
     Reply::of(&db.deny_oauth(input.param("id"))?)
+}
+
+fn pairing(db: &Store, _: &User, _: &Input) -> Result<Reply> {
+    Reply::of(&db.oauth_pairing()?)
+}
+/// Opens the window for ten minutes, or keeps it open that long from now.
+fn open_pairing(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &[])?;
+    Reply::of(&db.open_oauth_pairing(owner.actor())?)
+}
+fn apps(db: &Store, _: &User, _: &Input) -> Result<Reply> {
+    Reply::of(&db.oauth_apps()?)
+}
+fn allow_app(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
+    let choice: OAuthAppChoice = contracts::request(&input.body)?;
+    Reply::of(&db.allow_oauth_app(owner.actor(), &choice)?)
 }

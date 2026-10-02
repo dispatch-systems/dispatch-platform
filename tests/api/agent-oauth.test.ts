@@ -1,12 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { fixture, freePort } from '../support/support.js';
+import { capturedMail } from '../support/mail-support.js';
 import type {
   AgentKey,
   AgentKeys,
   AgentWhoami,
+  OAuthAllowedApps,
   OAuthApproval,
+  OAuthPairing,
+  OAuthPairingOpened,
   OAuthRedirect,
   OAuthRequest,
 } from '../../shared/contracts/index.js';
@@ -14,7 +20,8 @@ import type {
 // Sign in with Dispatch, driven over HTTP the way an MCP client drives it: a 401 that says
 // where to sign in, the discovery documents, the browser's trip through /oauth/authorize, the
 // owner's approval on the dashboard's API, then form posts to the token and revocation
-// endpoints, and the MCP endpoint with the access token.
+// endpoints, and the MCP endpoint with the access token. Apps ask only while the owner has
+// the pairing window open, so each test opens it first unless it is about the window.
 
 const claudeCode = 'https://claude.ai/oauth/claude-code-client-metadata';
 const chatgpt = 'https://chatgpt.com/oauth/client.json';
@@ -61,14 +68,37 @@ function params(location: string) {
   return new URLSearchParams(at < 0 ? '' : location.slice(at + 1));
 }
 
-/** The fixture as an MCP client and the platform owner meet it. */
-async function oauth(f: App) {
+/** The platform owner opens the pairing window, as copying a sign-in command does. */
+async function openPairing(owner: Awaited<ReturnType<App['client']>>) {
+  const opened = await owner.post('/api/platform/oauth/pairing');
+  assert.equal(opened.status, 200, opened.body);
+  return (opened.value as OAuthPairingOpened).openUntil;
+}
+
+/** The captured email to `to` with this subject, once the mailer has delivered it. */
+async function mailed(root: string, to: string, subject: string) {
+  const directory = path.join(root, 'data/platform/development-mail');
+  const deadline = Date.now() + 12000;
+  while (Date.now() < deadline) {
+    for (const name of fs.existsSync(directory) ? fs.readdirSync(directory) : []) {
+      if (!name.endsWith('.json')) continue;
+      const message = JSON.parse(fs.readFileSync(path.join(directory, name), 'utf8'));
+      if (message.to === to && message.subject === subject) return message as { text: string };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`No email "${subject}" was delivered to ${to}`);
+}
+
+/** The fixture as an MCP client and the platform owner meet it, the pairing window open. */
+async function oauth(f: App, { paired = true } = {}) {
   // The server listens on loopback and names itself by its origin, as behind a tunnel.
   const server = `http://127.0.0.1:${f.env.PORT}`;
   const issuer = f.env.DISPATCH_ORIGIN!;
   const resource = `${issuer}/api/v1/mcp`;
   const challenge = `Bearer realm="Dispatch", resource_metadata="${issuer}/.well-known/oauth-protected-resource/api/v1/mcp", scope="dispatch"`;
   const owner = await f.client();
+  if (paired) await openPairing(owner);
   const { dsps } = (await owner.read('/api/platform/agents')) as AgentKeys;
   const north = dsps.find((dsp) => dsp.name === 'Northline Logistics')!;
 
@@ -631,4 +661,101 @@ test('ChatGPT connects through its own redirect and no other', async (t) => {
       other,
     );
   }
+});
+
+test('apps ask to connect only while the owner has the pairing window open', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const c = await oauth(f, { paired: false });
+  const callback = `http://localhost:${await freePort()}/callback`;
+  const page = (error: string) => `${c.issuer}/#authorize?error=${error}`;
+
+  // Closed: the browser lands on Dispatch's page, never at the app.
+  assert.deepEqual((await c.owner.read('/api/platform/oauth/pairing')) as OAuthPairing, {
+    openUntil: null,
+  });
+  assert.equal(await c.authorize(c.request(claudeCode, callback).query), page('pairing_closed'));
+
+  // The owner opens it for ten minutes, and the app asks again.
+  const openUntil = await openPairing(c.owner);
+  const left = Date.parse(openUntil) - Date.now();
+  assert.ok(left > 9 * 60_000 && left <= 10 * 60_000, openUntil);
+  assert.deepEqual((await c.owner.read('/api/platform/oauth/pairing')) as OAuthPairing, {
+    openUntil,
+  });
+  const tokens = await c.connect(claudeCode, callback, everything('Laptop – Claude Code'));
+  assert.equal((await c.whoami(tokens.access_token)).status, 200);
+
+  // A kind of app the owner turns off is refused by name, while others still ask.
+  const apps = (await c.owner.read('/api/platform/oauth/apps')) as OAuthAllowedApps;
+  assert.deepEqual(
+    apps.apps.map((app) => [app.id, app.allowed]),
+    [
+      ['chatgpt', true],
+      ['codex', true],
+      ['claude-code', true],
+      ['hermes', true],
+      ['local', true],
+      ['web', false],
+    ],
+  );
+  const off = await c.owner.post('/api/platform/oauth/apps', { id: 'claude-code', allowed: false });
+  assert.equal(off.status, 200, off.body);
+  assert.equal(
+    await c.authorize(c.request(claudeCode, callback).query),
+    `${page('app_not_allowed')}&app=claude-code`,
+  );
+  assert.ok((await c.begin(chatgpt, chatgptRedirect)).id);
+  // Websites stay unknown until the owner lets them connect.
+  assert.equal(
+    await c.authorize(c.request('https://app.dispatch.test/oauth/client.json', callback).query),
+    page('unknown_app'),
+  );
+  // Renewing never needs the window or the app's kind turned on.
+  const renewed = await c.refresh(claudeCode, tokens.refresh_token);
+  assert.equal(renewed.status, 200, JSON.stringify(renewed.body));
+});
+
+test('the platform owner is emailed when an app connects and when Dispatch disconnects it', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const c = await oauth(f);
+  const callback = `http://127.0.0.1:${await freePort()}/callback`;
+  const owner = c.owner.session.user.email as string;
+
+  const tokens = await c.connect(claudeCode, callback, {
+    name: 'Laptop – Claude Code',
+    allDsps: false,
+    dsps: [c.north.id],
+    tools: 'essential',
+    locations: false,
+  });
+  const connected = await capturedMail(f.root, owner);
+  assert.equal(connected.subject, '[Dispatch Dev] Claude Code connected to Dispatch');
+  for (const line of [
+    'Connection: Laptop – Claude Code',
+    'App: Claude Code (verified app)',
+    'Sends access to: this computer',
+    'DSPs: Northline Logistics',
+    'Tools: Essential',
+    'Delivery addresses and GPS: Not included',
+    `${c.issuer}/#agents?tab=apps`,
+  ]) {
+    assert.ok(connected.text.includes(line), `${line}\n${connected.text}`);
+  }
+  assert.ok(connected.html.includes('Review connected apps'));
+
+  // The connection's own code presented again: Dispatch ends it and says why.
+  const started = await c.begin(chatgpt, chatgptRedirect);
+  const code = c.code(await c.approve(started.id, everything('ChatGPT')), started.state);
+  const exchanged = await c.exchange(chatgpt, chatgptRedirect, code, started.verifier);
+  assert.equal(exchanged.status, 200, JSON.stringify(exchanged.body));
+  await mailed(f.root, owner, '[Dispatch Dev] ChatGPT connected to Dispatch');
+  const replay = await c.exchange(chatgpt, chatgptRedirect, code, started.verifier);
+  assert.equal(replay.body.error, 'invalid_grant');
+  const disconnected = await mailed(f.root, owner, '[Dispatch Dev] Dispatch disconnected ChatGPT');
+  assert.ok(disconnected.text.includes('one-time code'), disconnected.text);
+  assert.ok(disconnected.text.includes('Sent access to: chatgpt.com'), disconnected.text);
+  c.refused(await c.whoami((exchanged.body as Tokens).access_token), 'the replayed app');
+  assert.equal((await c.whoami(tokens.access_token)).status, 200);
 });

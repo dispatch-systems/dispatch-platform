@@ -6,11 +6,14 @@ export function CopyButton({
   text,
   label,
   children = 'Copy',
+  onCopy,
 }: {
   text: string;
   label: string;
   /** What the button says before it copies. */
   children?: string;
+  /** Runs alongside the copy, which never waits for it. */
+  onCopy?: () => void;
 }) {
   const [copied, setCopied] = useState<'idle' | 'copied' | 'failed'>('idle');
   return (
@@ -19,7 +22,9 @@ export function CopyButton({
       aria-label={label}
       onClick={async () => {
         try {
-          await navigator.clipboard.writeText(text);
+          const copying = navigator.clipboard.writeText(text);
+          onCopy?.();
+          await copying;
           setCopied('copied');
         } catch {
           setCopied('failed');

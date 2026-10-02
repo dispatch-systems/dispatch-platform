@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Info, TriangleAlert } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Globe, Info, TriangleAlert } from 'lucide-react';
 import type {
   AgentDsp,
   OAuthApproval,
@@ -10,22 +10,33 @@ import { ApiError } from '../../app/api.js';
 import {
   approveOAuthRequest,
   denyOAuthRequest,
+  openOAuthPairing,
   readOAuthRequest,
   useAgentKeys,
   useOAuthRequest,
 } from '../../app/endpoints.js';
-import { hashQuery } from '../../app/navigation.js';
+import { hashQuery, platformHash } from '../../app/navigation.js';
 import { useAction } from '../../app/useAction.js';
 import { blankKey } from '../../lib/agents.js';
 import { calendarDay } from '../../lib/format.js';
 import { Badge, DataState, DetailList, ErrorBox, Header } from '../../ui/index.js';
 import { DspReach, LocationsSwitch, ToolChoice } from './KeyChoices.js';
+import { allowLabel, openUntilText } from './Pairing.js';
 
 const again = 'Start the connection again from your app.';
 const expired = `This request expired. ${again}`;
 /** Why Dispatch turned a request away before asking: `#authorize?error=<code>`. */
-const refusals: Record<string, string> = {
+const refusals: Record<string, ReactNode> = {
   unknown_app: 'Dispatch doesn’t accept this app.',
+  app_not_allowed: (
+    <>
+      Dispatch doesn’t accept this app yet. Turn it on under{' '}
+      <a className="underlined-link" href={platformHash('agents', { tab: 'connect' })}>
+        Agents → Connect
+      </a>
+      .
+    </>
+  ),
   app_unavailable: 'Dispatch couldn’t check this app right now. Try again in a few minutes.',
   invalid_redirect: `This app asked to send access to an address it never registered. ${again}`,
   rate_limited: `Too many connection attempts. Wait a few minutes, then ${again.toLowerCase()}`,
@@ -56,7 +67,8 @@ function Authorization({ query }: { query: URLSearchParams }) {
   const request = useOAuthRequest(error ? '' : id);
   const agents = useAgentKeys();
   const [gone, setGone] = useState(false);
-  const problem = error
+  if (error === 'pairing_closed') return <PairingClosed />;
+  const problem: ReactNode = error
     ? (refusals[error] ?? `This connection can’t go ahead. ${again}`)
     : !id
       ? `This link is incomplete. ${again}`
@@ -83,6 +95,29 @@ function Authorization({ query }: { query: URLSearchParams }) {
         <Approval request={pending} dsps={dsps} expire={() => setGone(true)} />
       )}
     </DataState>
+  );
+}
+
+/** Turned away while apps may not start connecting: the owner lets them, then starts again. */
+function PairingClosed() {
+  const [until, setUntil] = useState<string | null>(null);
+  const allow = useAction(async () => setUntil((await openOAuthPairing()).openUntil), {
+    inline: true,
+  });
+  return (
+    <div className="notice agents-closed">
+      <p role="status">
+        {until
+          ? `${openUntilText(until)}. Now start again from your app.`
+          : 'Connecting is closed.'}
+      </p>
+      {!until && (
+        <button className="primary" disabled={allow.busy} onClick={() => void allow.run()}>
+          {allowLabel}
+        </button>
+      )}
+      <ErrorBox message={allow.error} />
+    </div>
   );
 }
 
@@ -140,6 +175,8 @@ function Approval({
     { inline: true },
   );
   const busy = answer.busy || leaving;
+  // An app Dispatch doesn't know, on a website: where access goes is what matters most.
+  const website = !app.verified && !app.redirectScheme && app.redirectHost !== 'this computer';
   const name = <bdi>{app.name}</bdi>;
   return (
     <form
@@ -154,14 +191,26 @@ function Approval({
         <h2 id="agents-authorize-app">{name}</h2>
         <Badge value={app.verified ? 'verified' : 'unverified'} />
       </div>
+      {website && (
+        <p className="agents-sends">
+          <Globe size={18} aria-hidden="true" />
+          <span>
+            Sends access to: <strong>{app.redirectHost}</strong>
+          </span>
+        </p>
+      )}
       <DetailList
         items={[
-          [
-            'Sends access to',
-            app.redirectScheme
-              ? `an app on ${app.redirectHost} (${app.redirectScheme}://…)`
-              : app.redirectHost,
-          ],
+          ...(website
+            ? []
+            : ([
+                [
+                  'Sends access to',
+                  app.redirectScheme
+                    ? `an app on ${app.redirectHost} (${app.redirectScheme}://…)`
+                    : app.redirectHost,
+                ],
+              ] as [string, ReactNode][])),
           ['Access', 'Read only'],
         ]}
       />

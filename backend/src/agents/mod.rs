@@ -3,6 +3,8 @@
 //! owner; reaches the DSPs it was given, active ones of this environment only; and stops
 //! once it expires or is revoked. Nothing an agent does appears in a DSP's activity log.
 //! An app the owner connects with Sign in with Dispatch (`oauth`) is a key of kind `app`.
+//! What keys and apps call is kept for the Agents page's Activity log (`activity`).
+pub mod activity;
 pub mod data;
 pub mod mcp;
 pub mod oauth;
@@ -11,6 +13,7 @@ pub mod synthetic;
 mod token;
 mod usage;
 
+pub use activity::Activity;
 pub use usage::{LastUse, PER_MINUTE, Usage};
 
 use crate::{

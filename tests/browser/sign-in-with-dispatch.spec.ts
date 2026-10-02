@@ -9,6 +9,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
   page,
   request,
   baseURL,
+  dispatch,
 }) => {
   const verifier = crypto.randomBytes(32).toString('base64url');
   const state = crypto.randomBytes(16).toString('base64url');
@@ -26,6 +27,10 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
   await page.route('http://localhost:43821/**', (route) =>
     route.fulfill({ contentType: 'text/html', body: '<p>Authentication complete.</p>' }),
   );
+
+  // The owner lets apps start connecting, as copying a way to sign in from the Connect tab does.
+  const owner = await dispatch.client();
+  expect((await owner.post('/api/platform/oauth/pairing')).status).toBe(200);
 
   // Signed out, the request waits through sign-in on the approval page.
   await page.goto(`/oauth/authorize?${query(state)}`);
@@ -134,4 +139,83 @@ test('Dispatch turns away an app it does not know, without sending the browser t
   await page.goto(`/oauth/authorize?${query}`);
   await expect(page).toHaveURL(/#authorize\?error=/);
   await expect(page.getByText('Dispatch doesn’t accept this app.')).toBeVisible();
+});
+
+test('an app connects only while the owner lets apps connect and it is on; a website says where access goes', async ({
+  page,
+  dispatch,
+  baseURL,
+}) => {
+  const query = new URLSearchParams({
+    response_type: 'code',
+    client_id: claudeCode,
+    redirect_uri: callback,
+    code_challenge: crypto.createHash('sha256').update('verifier').digest('base64url'),
+    code_challenge_method: 'S256',
+    state: 'closed',
+    resource: `${baseURL}/api/v1/mcp`,
+  });
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'DSPs', exact: true })).toBeVisible();
+
+  // Closed, the request is turned away; the owner opens connecting, then starts again.
+  await page.goto(`/oauth/authorize?${query}`);
+  await expect(page).toHaveURL(/#authorize\?error=pairing_closed/);
+  const closed = page.getByText('Connecting is closed.', { exact: true });
+  await expect(closed).toBeVisible();
+  await page.getByRole('button', { name: 'Allow connecting for 10 minutes', exact: true }).click();
+  await expect(closed).toHaveCount(0);
+  await expect(
+    page.getByText(
+      /^Connecting is open until \d{1,2}:\d{2} [AP]M\. Now start again from your app\.$/,
+    ),
+  ).toBeVisible();
+  await page.goto(`/oauth/authorize?${query}`);
+  await expect(page).toHaveURL(/#authorize\?request=/);
+  await expect(page.getByRole('form', { name: 'Claude Code' })).toBeVisible();
+
+  // An app the owner turned off is turned away, with the way to turn it back on.
+  const owner = await dispatch.client();
+  const off = await owner.post('/api/platform/oauth/apps', { id: 'claude-code', allowed: false });
+  expect(off.status, off.body).toBe(200);
+  await page.goto(`/oauth/authorize?${query}`);
+  await expect(page).toHaveURL(/#authorize\?error=app_not_allowed/);
+  await expect(
+    page.getByText('Dispatch doesn’t accept this app yet. Turn it on under Agents → Connect.', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.getByRole('link', { name: 'Agents → Connect', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Connect', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  const claude = page
+    .getByRole('region', { name: 'Apps that may connect', exact: true })
+    .getByRole('switch', { name: 'Claude Code', exact: true });
+  await expect(claude).not.toBeChecked();
+  await claude.click();
+  await expect(claude).toBeChecked();
+  await page.goto(`/oauth/authorize?${query}`);
+  await expect(page).toHaveURL(/#authorize\?request=/);
+  await expect(page.getByRole('form', { name: 'Claude Code' })).toBeVisible();
+
+  // A website, once websites may connect, shows first where it sends access.
+  const web = await owner.post('/api/platform/oauth/apps', { id: 'web', allowed: true });
+  expect(web.status, web.body).toBe(200);
+  const site = 'https://app.example.com/callback';
+  const registered = await dispatch.request('/oauth/register', {
+    client_name: 'Route Planner',
+    redirect_uris: [site],
+    token_endpoint_auth_method: 'none',
+    grant_types: ['authorization_code', 'refresh_token'],
+    response_types: ['code'],
+  });
+  expect(registered.status, registered.body).toBe(201);
+  query.set('client_id', registered.value.client_id);
+  query.set('redirect_uri', site);
+  await page.goto(`/oauth/authorize?${query}`);
+  const website = page.getByRole('form', { name: 'Route Planner' });
+  await expect(website).toContainText('Unverified app — it says it is “Route Planner”');
+  await expect(website.locator('.agents-sends')).toHaveText('Sends access to: app.example.com');
 });

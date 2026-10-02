@@ -75,6 +75,16 @@ pub const PLATFORM: &[Migration] = &[
         name: "oauth",
         apply: Code(oauth),
     },
+    Migration {
+        id: 14,
+        name: "oauth_guard",
+        apply: Sql(include_str!("platform/0014_oauth_guard.sql")),
+    },
+    Migration {
+        id: 15,
+        name: "agent_activity",
+        apply: Sql(include_str!("platform/0015_agent_activity.sql")),
+    },
 ];
 pub const JOBS: &[Migration] = &[
     Migration {
