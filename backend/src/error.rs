@@ -49,6 +49,7 @@ codes! {
     CortexProviderAmbiguous => "cortex_provider_ambiguous",
     CortexInvalidMealEvidence => "cortex_invalid_meal_evidence",
     CortexInvalidIdentity => "cortex_invalid_identity",
+    QueryLimitExceeded => "query_limit_exceeded",
     InvalidCortexScope => "invalid_cortex_scope",
     DvicSourceChanged => "dvic_source_changed",
     ScorecardApiUnreadable => "scorecard_api_unreadable",

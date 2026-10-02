@@ -2,7 +2,7 @@
 //! own time, with the days each source has. A source a DSP has switched off is left out.
 use super::{Failure, Refusal, catalog::Source, scope::Period};
 use crate::{
-    Result,
+    Code, Result,
     collectors::Provider,
     contracts::{DailyTimecard, Dsp, MealStatus},
     db::{Store, n, s},
@@ -523,7 +523,7 @@ fn package_too_large(message: &str) -> Failure {
 
 fn package_query<T>(result: Result<T>) -> std::result::Result<T, Failure> {
     result.map_err(|error| {
-        if error.code == "query_limit_exceeded" {
+        if error.is(Code::QueryLimitExceeded) {
             package_too_large(
                 "That package question needs too much database work at once. Ask about fewer \
                  days, then continue with the next period.",

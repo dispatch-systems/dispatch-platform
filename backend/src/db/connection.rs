@@ -161,7 +161,7 @@ impl Db {
             Err(error)
                 if error.sqlite_error_code() == Some(rusqlite::ErrorCode::OperationInterrupted) =>
             {
-                Err(crate::Error::new("query_limit_exceeded", 503))
+                Err(crate::Error::new(crate::Code::QueryLimitExceeded, 503))
             }
             Err(error) => Err(error.into()),
             Ok(rows) => Ok(rows),
@@ -245,7 +245,7 @@ mod tests {
                 1_000,
             )
             .unwrap_err();
-        assert_eq!(error.code, "query_limit_exceeded");
+        assert!(error.is(crate::Code::QueryLimitExceeded));
         assert_eq!(n(&db.one("SELECT 1 n", []).unwrap().unwrap(), "n"), 1);
     }
 }
