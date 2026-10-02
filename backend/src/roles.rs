@@ -30,6 +30,9 @@ pub const PERMISSIONS: &[&str] = &[
     "dvic.view",
     "dvic.collect",
     "dvic.manage",
+    "scorecard.view",
+    "scorecard.collect",
+    "scorecard.manage",
     "driver_match.manage",
     "connections.manage",
     "members.invite",
@@ -47,6 +50,8 @@ const IMPLIED: &[(&str, &str)] = &[
     ("routes.manage", "routes.view"),
     ("dvic.collect", "dvic.view"),
     ("dvic.manage", "dvic.view"),
+    ("scorecard.collect", "scorecard.view"),
+    ("scorecard.manage", "scorecard.view"),
 ];
 const DEFAULTS: &[(&str, &str, &[&str])] = &[
     (

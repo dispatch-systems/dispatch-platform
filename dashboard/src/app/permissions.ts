@@ -25,6 +25,9 @@ export const permissionLabels: Record<Permission, string> = {
   'dvic.view': 'View DVIC',
   'dvic.collect': 'Collect DVIC',
   'dvic.manage': 'Manage DVIC',
+  'scorecard.view': 'View Scorecard',
+  'scorecard.collect': 'Collect Scorecard',
+  'scorecard.manage': 'Manage Scorecard',
   'driver_match.manage': 'Manage Driver Match',
   'connections.manage': 'Manage Connections',
   'members.invite': 'Invite Members',
@@ -53,4 +56,6 @@ export const impliedPermissions: Partial<Record<Permission, Permission>> = {
   'routes.manage': 'routes.view',
   'dvic.collect': 'dvic.view',
   'dvic.manage': 'dvic.view',
+  'scorecard.collect': 'scorecard.view',
+  'scorecard.manage': 'scorecard.view',
 };

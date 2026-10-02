@@ -61,6 +61,13 @@ export const featureCatalog: FeatureEntry[] = [
     requires: ['dvic'],
   },
   {
+    id: 'scorecard',
+    label: 'Scorecard',
+    kind: 'page',
+    permissions: ['scorecard.view', 'scorecard.collect', 'scorecard.manage'],
+    requires: ['scorecard'],
+  },
+  {
     id: 'driver_match',
     label: 'Driver Match',
     kind: 'page',
@@ -85,7 +92,7 @@ export const featureCatalog: FeatureEntry[] = [
     label: 'Cortex',
     kind: 'connection',
     permissions: [],
-    provides: ['meal_breaks', 'routes', 'dvic'],
+    provides: ['meal_breaks', 'routes', 'dvic', 'scorecard'],
     requires: [],
   },
 ];
@@ -97,6 +104,7 @@ const capabilities: Record<string, string> = {
   meal_breaks: 'a meal-break source',
   routes: 'a route source',
   dvic: 'a DVIC source',
+  scorecard: 'a scorecard source',
 };
 export const capabilityLabel = (capability: string) => capabilities[capability] ?? capability;
 /** The tabs of `page`, in catalog order. */

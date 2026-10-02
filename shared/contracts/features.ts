@@ -1,5 +1,12 @@
 /** The features a DSP may have, mirroring the catalog in `backend/src/features.rs`. */
-export const pages = ['timecard', 'uniforms', 'routes', 'dvic', 'driver_match'] as const;
+export const pages = [
+  'timecard',
+  'uniforms',
+  'routes',
+  'dvic',
+  'scorecard',
+  'driver_match',
+] as const;
 export const pageTabs = [
   'timecard.daily',
   'timecard.meal_breaks',

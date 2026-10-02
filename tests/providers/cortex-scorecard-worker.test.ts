@@ -194,7 +194,7 @@ test(
     });
     assert.equal(saved.value.status, 'ready', saved.body);
     const job = async (id: string) =>
-      (await owner.read('/api/dsp/jobs')).find((j: any) => j.id === id);
+      (await owner.read('/api/dsp/scorecard/jobs')).find((j: any) => j.id === id);
     const collect = async (requestId: string, week: string) => {
       const queued = await owner.post('/api/dsp/scorecard/collect', { requestId, week });
       assert.equal(queued.status, 202, queued.body);
@@ -296,7 +296,10 @@ test(
     }, 120000);
     const retried = await job(refused.value.id);
     assert.equal(retried.status, 'queued');
-    assert.equal((await owner.post(`/api/dsp/jobs/${refused.value.id}/cancel`, {})).status, 200);
+    assert.equal(
+      (await owner.post(`/api/dsp/scorecard/jobs/${refused.value.id}/cancel`, {})).status,
+      200,
+    );
     assert.equal(
       stored().publications.some((p) => p.week === '2026-W35'),
       false,

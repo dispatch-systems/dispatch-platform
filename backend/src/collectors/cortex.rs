@@ -27,7 +27,7 @@ impl Collector for Cortex {
         "Cortex"
     }
     fn capabilities(&self) -> &'static [&'static str] {
-        &["meal_breaks", "routes", "dvic"]
+        &["meal_breaks", "routes", "dvic", "scorecard"]
     }
     fn job_kind(&self) -> &'static str {
         "cortex.meal_breaks.collect"
