@@ -680,15 +680,48 @@ impl Store {
         let today = self.scorecard_today(id)?;
         let station = self.profile(id)?.station_code;
         let db = self.scorecard(id)?;
-        // Row counts by publication and dataset, one query per table.
+        let states = db.all(
+            "SELECT w.week,w.checked_at,w.posted,p.id,p.station,p.dsp_code,p.collected_at,p.row_count \
+             FROM scorecard_weeks w LEFT JOIN scorecard_publications p \
+             ON p.week=w.week AND p.station=w.station AND p.active=1 \
+             WHERE w.station=? ORDER BY w.week DESC",
+            [&station],
+        )?;
+        let publications: Vec<&str> = states
+            .iter()
+            .filter_map(|state| state["id"].as_str())
+            .collect();
+        // Current publications record their dataset counts at capture time. Older
+        // publications adopted before source metadata existed need a bounded fallback.
         let mut counts: HashMap<(String, String), usize> = HashMap::new();
+        for row in db.all(
+            "SELECT publication_id,dataset,row_count FROM scorecard_sources \
+             WHERE publication_id IN (SELECT value FROM json_each(?))",
+            [serde_json::to_string(&publications)?],
+        )? {
+            counts.insert(
+                (s(&row, "publication_id").into(), s(&row, "dataset").into()),
+                row["row_count"].as_i64().unwrap_or(0) as usize,
+            );
+        }
         for dataset in DATASETS {
+            let missing: Vec<&str> = publications
+                .iter()
+                .copied()
+                .filter(|publication| {
+                    !counts.contains_key(&(publication.to_string(), dataset.id.to_string()))
+                })
+                .collect();
+            if missing.is_empty() {
+                continue;
+            }
             for row in db.all(
                 &format!(
-                    "SELECT publication_id,count(*) rows FROM {} GROUP BY publication_id",
+                    "SELECT publication_id,count(*) rows FROM {} \
+                     WHERE publication_id IN (SELECT value FROM json_each(?)) GROUP BY publication_id",
                     dataset.table
                 ),
-                [],
+                [serde_json::to_string(&missing)?],
             )? {
                 counts.insert(
                     (s(&row, "publication_id").to_owned(), dataset.id.to_owned()),
@@ -697,13 +730,7 @@ impl Store {
             }
         }
         let mut weeks = Vec::new();
-        for state in db.all(
-            "SELECT w.week,w.checked_at,w.posted,p.id,p.station,p.dsp_code,p.collected_at,p.row_count \
-             FROM scorecard_weeks w LEFT JOIN scorecard_publications p \
-             ON p.week=w.week AND p.station=w.station AND p.active=1 \
-             WHERE w.station=? ORDER BY w.week DESC",
-            [&station],
-        )? {
+        for state in states {
             let publication = state["id"].as_str().map(|publication| {
                 let datasets: Vec<ScorecardDatasetCount> = DATASETS
                     .iter()

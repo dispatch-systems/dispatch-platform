@@ -6,7 +6,7 @@ use crate::{
     collectors::Provider,
     contracts::{LateRule, MealComparison, MealSource},
     db::{Store, s},
-    validate as v, workforce,
+    workforce,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -101,12 +101,120 @@ fn match_drivers(drivers: &mut BTreeMap<String, Value>, roster: &[Value], settin
 
 impl Store {
     pub fn meal_comparison(&self, id: &str, date: &str, timezone: &str) -> Result<MealComparison> {
-        v::date(date)?;
+        Ok(self
+            .meal_comparisons(id, date, date, timezone, None)?
+            .remove(date)
+            .unwrap())
+    }
+    /// Batch source reads over the period. Matching keeps the full roster and
+    /// every source identity; selection limits cards and final assessments.
+    pub fn meal_comparisons(
+        &self,
+        id: &str,
+        from: &str,
+        to: &str,
+        timezone: &str,
+        selected: Option<&[String]>,
+    ) -> Result<BTreeMap<String, MealComparison>> {
+        let codes = selected.map(|sources| {
+            sources
+                .iter()
+                .filter_map(|source| source.strip_prefix("paycom:").map(str::to_owned))
+                .collect::<Vec<_>>()
+        });
+        let days = self.daily_sources(id, from, to, codes.as_deref())?;
         let cortex = self.collector(id, Provider::Cortex)?;
-        let links = self
-            .dsp(id)?
-            .setting(LINKS, json!({"revision":0,"links":[]}))?;
-        let (publication, roster, cards) = self.daily_source(id, date)?;
+        let mut publications: BTreeMap<String, Vec<Value>> = BTreeMap::new();
+        let mut ids = vec![];
+        for mut publication in cortex.all(
+            "SELECT id,report_date date,station,service_area_id serviceAreaId,provider,timezone,\
+             collected_at collectedAt FROM meal_publications WHERE report_date BETWEEN ? AND ? \
+             AND active=1 ORDER BY report_date,collected_at DESC,id DESC",
+            [from, to],
+        )? {
+            let date = s(&publication, "date").to_owned();
+            ids.push(s(&publication, "id").to_owned());
+            publication.as_object_mut().unwrap().remove("date");
+            publications.entry(date).or_default().push(publication);
+        }
+        let ids = serde_json::to_string(&ids)?;
+        let mut meals: HashMap<(String, String), Vec<Value>> = HashMap::new();
+        for mut meal in cortex.all(
+            "SELECT m.publication_id,m.itinerary_id,m.meal_id mealId,m.last_delivery_at lastDelivery,\
+             m.started_at start,m.ended_at end,m.first_delivery_at firstDelivery,\
+             m.before_status beforeStatus,m.after_status afterStatus,t.last_delivery_stop lastDeliveryStop,\
+             t.first_delivery_stop firstDeliveryStop FROM meal_records m \
+             LEFT JOIN meal_stops t USING(publication_id,itinerary_id,meal_id) \
+             WHERE m.publication_id IN (SELECT value FROM json_each(?)) \
+             ORDER BY m.publication_id,m.itinerary_id,m.started_at,m.meal_id",
+            [&ids],
+        )? {
+            let key = (s(&meal, "publication_id").to_owned(), s(&meal, "itinerary_id").to_owned());
+            for field in ["publication_id", "itinerary_id"] {
+                meal.as_object_mut().unwrap().remove(field);
+            }
+            meals.entry(key).or_default().push(meal);
+        }
+        let mut itineraries: HashMap<String, Vec<Value>> = HashMap::new();
+        for mut itinerary in cortex.all(
+            "SELECT i.publication_id,i.itinerary_id,i.transporter_id,i.driver_name,u.url sourceUrl \
+             FROM meal_itineraries i LEFT JOIN meal_sources u \
+             ON u.publication_id=i.publication_id AND u.itinerary_id=i.itinerary_id \
+             WHERE i.publication_id IN (SELECT value FROM json_each(?)) \
+             ORDER BY i.publication_id,i.itinerary_id",
+            [&ids],
+        )? {
+            let publication = s(&itinerary, "publication_id").to_owned();
+            itinerary.as_object_mut().unwrap().remove("publication_id");
+            itineraries.entry(publication).or_default().push(itinerary);
+        }
+        let preferences = self.preference_values(id)?;
+        let late = LateRule {
+            time: s(&preferences["values"], "late_da_time").into(),
+            departments: serde_json::from_value(
+                preferences["values"]["late_da_departments"].clone(),
+            )?,
+        };
+        let mut context = ComparisonContext {
+            timezone, selected, meals, itineraries, late,
+            links: self.dsp(id)?.setting(LINKS, json!({"revision":0,"links":[]}))?,
+            known: self.driver_links(id)?,
+            latest_zone: cortex.one(
+                "SELECT timezone FROM meal_publications WHERE active=1                  ORDER BY collected_at DESC,id DESC LIMIT 1", [],
+            )?,
+        };
+        let mut live = self.live_results_range(id, Provider::Cortex, from, to)?;
+        days.into_iter()
+            .map(|(date, source)| {
+                let publications = publications.remove(&date).unwrap_or_default();
+                let live = live.remove(&date).unwrap_or_default();
+                let comparison = context.day(&date, source, &publications, &live)?;
+                Ok((date, comparison))
+            })
+            .collect()
+    }
+}
+struct ComparisonContext<'a> {
+    timezone: &'a str,
+    selected: Option<&'a [String]>,
+    links: Value,
+    known: BTreeMap<String, (Vec<String>, bool)>,
+    late: LateRule,
+    latest_zone: Option<Value>,
+    meals: HashMap<(String, String), Vec<Value>>,
+    itineraries: HashMap<String, Vec<Value>>,
+}
+impl ComparisonContext<'_> {
+    fn day(
+        &mut self,
+        date: &str,
+        source: workforce::DailySource,
+        publications: &[Value],
+        live: &crate::live_collection::LiveResults,
+    ) -> Result<MealComparison> {
+        let publication = source.publication;
+        let roster: Vec<Value> = source.roster.values().cloned().collect();
+        let cards = source.rows.into_values();
         let mut rows = BTreeMap::new();
         for row in cards {
             if !row["punches"].as_array().is_some_and(|p| {
@@ -121,19 +229,12 @@ impl Store {
                 json!({"id":key,"name":row["name"],"paycom":row,"cortex":[]}),
             );
         }
-        let publications = cortex.all(
-            "SELECT id,station,service_area_id \
-            serviceAreaId,provider,timezone,collected_at collectedAt FROM meal_publications \
-            WHERE report_date=? AND active=1 ORDER BY collected_at DESC,id DESC",
-            [date],
-        )?;
         // Broader and narrower provider scopes may observe the same itinerary.
         // The newest observation wins, including a newer snapshot with no meal.
         let mut itineraries = HashSet::new();
         let mut drivers = BTreeMap::new();
         let mut observations = vec![];
-        let live = self.live_results(id, Provider::Cortex, date)?;
-        for (metadata, captures) in &live {
+        for (metadata, captures) in live {
             for driver in metadata["drivers"].as_array().into_iter().flatten() {
                 drivers.insert(s(driver, "id").to_owned(), driver.clone());
             }
@@ -160,37 +261,20 @@ impl Store {
                 }
             }
         }
-        for p in &publications {
-            let mut by_itinerary: HashMap<String, Vec<Value>> = HashMap::new();
-            for mut meal in cortex.all(
-                "SELECT m.itinerary_id,m.meal_id mealId,m.last_delivery_at \
-                lastDelivery,m.started_at start,m.ended_at end,m.first_delivery_at \
-                firstDelivery,m.before_status beforeStatus,m.after_status afterStatus,\
-                t.last_delivery_stop lastDeliveryStop,t.first_delivery_stop firstDeliveryStop \
-                FROM meal_records m LEFT JOIN meal_stops t USING(publication_id,itinerary_id,meal_id) \
-                WHERE m.publication_id=? ORDER BY m.itinerary_id,m.started_at,m.meal_id",
-                [s(p, "id")],
-            )? {
-                let id = s(&meal, "itinerary_id").to_owned();
-                meal.as_object_mut().unwrap().remove("itinerary_id");
-                by_itinerary.entry(id).or_default().push(meal);
-            }
-            for itinerary in cortex.all(
-                "SELECT \
-                i.itinerary_id,i.transporter_id,i.driver_name,u.url sourceUrl FROM \
-                meal_itineraries i LEFT JOIN meal_sources u ON \
-                u.publication_id=i.publication_id AND u.itinerary_id=i.itinerary_id WHERE \
-                i.publication_id=? ORDER BY i.itinerary_id",
-                [s(p, "id")],
-            )? {
+        for p in publications {
+            for itinerary in self.itineraries.remove(s(p, "id")).unwrap_or_default() {
                 if !itineraries.insert((
                     s(p, "serviceAreaId").to_owned(),
                     s(&itinerary, "itinerary_id").to_owned(),
                 )) {
                     continue;
                 }
-                let meals = by_itinerary
-                    .remove(s(&itinerary, "itinerary_id"))
+                let meals = self
+                    .meals
+                    .remove(&(
+                        s(p, "id").to_owned(),
+                        s(&itinerary, "itinerary_id").to_owned(),
+                    ))
                     .unwrap_or_default();
                 let transporter = s(&itinerary, "transporter_id");
                 // Include meal-free drivers in uniqueness checks so a name shared by
@@ -203,10 +287,10 @@ impl Store {
         }
         // Names join the drivers Driver Match has not given a person yet, such as those of
         // a collection still running; Driver Match decides for every driver it knows.
-        match_drivers(&mut drivers, &roster, &links);
-        let known = self.driver_links(id)?;
+        match_drivers(&mut drivers, &roster, &self.links);
+        let known = &self.known;
         let listed: HashSet<&str> = roster.iter().map(|e| s(e, "code")).collect();
-        let separate: HashSet<&str> = links["separate"]
+        let separate: HashSet<&str> = self.links["separate"]
             .as_array()
             .into_iter()
             .flatten()
@@ -299,26 +383,20 @@ impl Store {
         rows.sort_by(|a, b| {
             workforce::compare(s(a, "name"), s(b, "name")).then_with(|| s(a, "id").cmp(s(b, "id")))
         });
-        let latest_zone = cortex.one(
-            "SELECT timezone FROM meal_publications WHERE active=1 \
-            ORDER BY collected_at DESC,id DESC LIMIT 1",
-            [],
-        )?;
         let live_zone = live.first().map(|(meta, _)| &meta["scope"]);
         let zone = live_zone
-            .or(publications.first().or(latest_zone.as_ref()))
+            .or(publications.first().or(self.latest_zone.as_ref()))
             .map(|p| s(p, "timezone"))
-            .unwrap_or(timezone);
-        let preferences = self.preference_values(id)?;
-        let late = LateRule {
-            time: s(&preferences["values"], "late_da_time").into(),
-            departments: serde_json::from_value(
-                preferences["values"]["late_da_departments"].clone(),
-            )?,
-        };
+            .unwrap_or(self.timezone);
         let rows = rows
             .into_iter()
-            .map(|row| Ok(serde_json::from_value::<MealSource>(row)?.assessed(date, Some(&late))))
+            .filter(|row| {
+                self.selected
+                    .is_none_or(|selected| selected.iter().any(|id| id == s(row, "id")))
+            })
+            .map(|row| {
+                Ok(serde_json::from_value::<MealSource>(row)?.assessed(date, Some(&self.late)))
+            })
             .collect::<Result<Vec<_>>>()?;
         Ok(MealComparison {
             date: date.into(),

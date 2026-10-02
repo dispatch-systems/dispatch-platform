@@ -143,7 +143,7 @@ impl Driver {
         let company = api.company_id.clone();
         let known = run
             .state
-            .run(move |store| {
+            .read(move |store| {
                 let dsp = store.job_row(&job, None)?.dsp_id;
                 store.dvic_known(&dsp, &station, &company)
             })

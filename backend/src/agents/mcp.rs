@@ -7,7 +7,7 @@ use super::{
     Caller,
     data::{self, Failure, catalog},
 };
-use crate::{State, contracts::AgentTools, observability};
+use crate::{State, contracts::AgentTools, db::Store, observability};
 use axum::{body::Body, extract::Request, http::request::Parts, response::Response};
 use rmcp::{
     ErrorData, RoleServer, ServerHandler,
@@ -143,6 +143,10 @@ fn refused(code: &str, message: &str, choices: &[String]) -> CallToolResult {
     if !choices.is_empty() {
         text.push_str(&format!("\nChoices: {}", choices.join("; ")));
     }
+    if text.len() > data::BUDGET {
+        text = "answer_too_large: The refusal is too large; shorten the request or ask more specifically."
+            .to_owned();
+    }
     CallToolResult::error(vec![ContentBlock::text(text)])
 }
 
@@ -153,6 +157,28 @@ impl Server {
         arguments: Option<Map<String, Value>>,
         caller: Caller,
         state: Arc<State>,
+    ) -> CallToolResult {
+        let name = name.to_owned();
+        let label = name.clone();
+        let shared = state.clone();
+        match state
+            .read(move |db| {
+                let caller = db.revalidate_agent(&caller)?;
+                Ok(Self::call_current(&name, arguments, &caller, db, &shared))
+            })
+            .await
+        {
+            Ok(answer) => answer,
+            Err(error) => Self::answer(&label, Err(Failure::Failed(error))),
+        }
+    }
+
+    fn call_current(
+        name: &str,
+        arguments: Option<Map<String, Value>>,
+        caller: &Caller,
+        db: &Store,
+        state: &State,
     ) -> CallToolResult {
         let Some(endpoint) = offered(caller.tools).find(|e| e.tool == name) else {
             let names: Vec<String> = offered(caller.tools).map(|e| e.tool.to_owned()).collect();
@@ -179,23 +205,13 @@ impl Server {
             },
             None => String::new(),
         };
-        let shared = state.clone();
-        let asked = state
-            .read(move |db| {
-                Ok(data::ask(
-                    endpoint,
-                    db,
-                    &shared,
-                    &caller,
-                    &named,
-                    &Value::Object(query),
-                ))
-            })
-            .await;
-        let answer = match asked {
-            Ok(answer) => answer,
-            Err(error) => Err(Failure::Failed(error)),
-        };
+        Self::answer(
+            endpoint.tool,
+            data::ask(endpoint, db, state, caller, &named, &Value::Object(query)),
+        )
+    }
+
+    fn answer(tool: &str, answer: data::Answer) -> CallToolResult {
         match answer {
             Ok(value) => {
                 let text = value.to_string();
@@ -232,7 +248,7 @@ impl Server {
                 observability::event(
                     "warn",
                     "agent.tool_failed",
-                    json!({"tool": endpoint.tool, "error": error.code}),
+                    json!({"tool": tool, "error": error.code}),
                 );
                 let wait = if error.code == "platform_busy" {
                     "Dispatch is busy collecting; try again in a few seconds."
@@ -334,8 +350,16 @@ impl ServerHandler for Server {
         _request: Option<PaginatedRequestParams>,
         request: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        let (caller, _) = context(&request)?;
-        let listed = ListToolsResult::with_all_items(offered(caller.tools).map(tool).collect());
+        let (caller, state) = context(&request)?;
+        let listed = state
+            .read(move |db| {
+                let current = db.revalidate_agent(&caller)?;
+                Ok(ListToolsResult::with_all_items(
+                    offered(current.tools).map(tool).collect(),
+                ))
+            })
+            .await
+            .map_err(|error| ErrorData::internal_error(error.code, None))?;
         // The tools follow the key, whose toolset the owner can change.
         Ok(if modern(&request) {
             listed

@@ -5,6 +5,7 @@ use crate::{
     crypto,
     db::{FromRow, Row, now},
     job_statuses,
+    read_cache::DataDomain,
 };
 use rusqlite::params;
 use serde_json::json;
@@ -64,9 +65,13 @@ impl Scheduler {
         }
         let agents_used = self.state.agents.take();
         let agent_keys: Vec<String> = agents_used.iter().map(|(key, _)| key.clone()).collect();
+        let cache_state = self.state.clone();
         let result = self
             .state
-            .run(move |db| {
+            .run_bookkeeping(move |db| {
+                // Expired invitations may change an owner shown in session listings.
+                // Token/checkpoint/audit cleanup does not change provider-derived data.
+                cache_state.read_cache.invalidate_listings();
                 if prune_audit {
                     db.prune_audit()?;
                 }
@@ -132,7 +137,9 @@ impl Scheduler {
             let matched = match self.state.read(move |db| db.driver_sources(&reading)).await {
                 Ok(found) => {
                     self.state
-                        .run(move |db| db.assign_drivers(&dsp, found))
+                        .run_scoped(dsp.clone(), DataDomain::Drivers, move |db| {
+                            db.assign_drivers(&dsp, found)
+                        })
                         .await
                 }
                 Err(error) => Err(error),
@@ -165,16 +172,30 @@ impl Scheduler {
         for (dsp,) in dsps {
             if expire {
                 let id = dsp.clone();
-                if let Err(error) = self.state.run(move |db| db.expire_routes(&id)).await {
+                if let Err(error) = self
+                    .state
+                    .run_scoped(dsp.clone(), DataDomain::Routes, move |db| {
+                        db.expire_routes(&id)
+                    })
+                    .await
+                {
                     failed("routes_expiry_failed", &error);
                 }
             }
             // A day of rows is a few dozen steps; the rest waits for the next minute.
+            let mut selected = None;
             for _ in 0..200 {
                 let id = dsp.clone();
-                match self.state.run(move |db| db.sweep_routes(&id)).await {
-                    Ok(true) => continue,
-                    Ok(false) => break,
+                match self
+                    .state
+                    .run_bookkeeping(move |db| {
+                        let more = db.sweep_routes_step(&id, &mut selected)?;
+                        Ok((more, selected))
+                    })
+                    .await
+                {
+                    Ok((true, next)) => selected = next,
+                    Ok((false, _)) => break,
                     Err(error) => {
                         failed("routes_cleanup_failed", &error);
                         break;
@@ -206,7 +227,12 @@ impl Scheduler {
             .collect();
         for id in due {
             let dsp = id.clone();
-            match state.run(move |db| db.schedule_due(&dsp)).await {
+            match state
+                .run_scoped(id.clone(), DataDomain::Schedules, move |db| {
+                    db.schedule_due(&dsp)
+                })
+                .await
+            {
                 Ok(Some(next)) => {
                     self.deadlines.insert(id, next);
                 }
@@ -225,7 +251,7 @@ impl Scheduler {
         let owner = self.owner.clone();
         let running = self.running_dsps.clone();
         self.state
-            .run(move |db| {
+            .run_bookkeeping(move |db| {
                 let memory_ready = (pool.config.fixture && pool.config.fixture_url.is_none())
                     || pool.browsers.admission().can_start;
                 let message = if memory_ready {
@@ -262,7 +288,10 @@ impl Scheduler {
             Err(error) => return failed("job_poll_failed", &error),
         };
         if ready.expired
-            && let Err(error) = self.state.run(|db| db.recover_jobs(false)).await
+            && let Err(error) = self
+                .state
+                .run_bookkeeping(|db| db.recover_jobs(false))
+                .await
         {
             failed("job_recovery_failed", &error);
         }

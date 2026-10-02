@@ -4,26 +4,8 @@ import type { Role as GeneratedRole } from './generated/Role';
 import type { DspView as GeneratedDspView } from './generated/DspView';
 export type { PublicUser as User } from './generated/PublicUser';
 export type { Member as Membership } from './generated/Member';
-export const permissions = [
-  'uniforms.view',
-  'uniforms.adjust',
-  'uniforms.manage',
-  'timecard.view',
-  'timecard.manage',
-  'collections.run',
-  'routes.view',
-  'routes.collect',
-  'routes.manage',
-  'dvic.view',
-  'dvic.collect',
-  'dvic.manage',
-  'driver_match.manage',
-  'connections.manage',
-  'members.invite',
-  'members.manage',
-  'roles.manage',
-  'settings.manage',
-] as const;
+import { permissions } from './generated/access-catalog.js';
+export { permissions };
 export type Permission = (typeof permissions)[number];
 /** `members` and `invitations` are counted by the role list only; a saved role has null. */
 export type Role = Narrow<GeneratedRole, { permissions: Permission[] }>;

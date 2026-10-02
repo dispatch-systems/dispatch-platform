@@ -134,6 +134,26 @@ test('timecard URL aliases reuse data without extending its freshness', async (t
   assert.deepEqual(await cache.read('dated', async () => ({ hours: 9 })), { hours: 9 });
 });
 
+test('a cached URL alias leaves a pending target read able to publish fresher data', async () => {
+  const cache = new ResponseCache(limits);
+  await cache.read('latest', async () => ({ revision: 1 }));
+  const pending = deferred<{ revision: number }>();
+  let signal!: AbortSignal;
+  const read = cache.read('dated', (request) => {
+    signal = request;
+    return pending.promise;
+  });
+  await Promise.resolve();
+  const generation = cache.peek('dated').generation;
+  cache.alias('latest', 'dated');
+  assert.equal(signal.aborted, false);
+  assert.equal(cache.peek('dated').generation, generation);
+  assert.deepEqual(cache.peek('dated').data, { revision: 1 });
+  pending.resolve({ revision: 2 });
+  await read;
+  assert.deepEqual(cache.peek('dated').data, { revision: 2 });
+});
+
 test('scoped invalidation preserves unrelated pending requests and data identities', async () => {
   const cache = new ResponseCache(limits);
   const pending = deferred<number>();
@@ -150,4 +170,42 @@ test('scoped invalidation preserves unrelated pending requests and data identiti
   await cache.read('day', async () => ({ hours: 8 }), true);
   assert.equal(cache.peek('day').data, old);
   assert.equal(notifications, 0);
+});
+
+test('an active view keeps its scoped invalidation generation after eviction or an oversized update', async () => {
+  const cache = new ResponseCache({ ...limits, entries: 1 });
+  const unsubscribe = cache.subscribe('day', () => {});
+  await cache.read('day', async () => 8);
+  cache.invalidate((key) => key === 'day');
+  const generation = cache.peek('day').generation;
+  await cache.read('other', async () => 9);
+  assert.equal(cache.peek('day').data, undefined);
+  assert.equal(cache.peek('day').generation, generation);
+  await cache.read('day', async () => 10);
+  cache.put('day', 'x'.repeat(limits.bytes));
+  assert.equal(cache.peek('day').data, undefined);
+  assert.equal(cache.peek('day').generation, generation);
+  unsubscribe();
+});
+
+test('authoritative updates supersede older reads without invalidating unrelated views', async () => {
+  const cache = new ResponseCache(limits);
+  cache.subscribe('day', () => {});
+  await cache.read('team', async () => ({ hours: 20 }));
+  const team = cache.peek('team');
+  const pending = deferred<{ revision: number }>();
+  let signal!: AbortSignal;
+  const old = cache.read('day', (request) => {
+    signal = request;
+    return pending.promise;
+  });
+  await Promise.resolve();
+  const generation = cache.peek('day').generation;
+  cache.put('day', { revision: 2 });
+  assert.equal(signal.aborted, true);
+  assert.notEqual(cache.peek('day').generation, generation);
+  pending.resolve({ revision: 1 });
+  await old;
+  assert.deepEqual(cache.peek('day').data, { revision: 2 });
+  assert.equal(cache.peek('team'), team);
 });

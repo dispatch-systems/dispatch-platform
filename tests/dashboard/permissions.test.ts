@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import { permissions } from '../../shared/contracts/accounts.js';
 import {
   impliedPermissions,
@@ -15,16 +14,20 @@ test('every permission has a label and one section in the role sheet', () => {
   assert.deepEqual(Object.keys(permissionLabels).sort(), [...permissions].sort());
 });
 
-test('the dashboard mirrors the backend permission catalog and its implications', () => {
-  const roles = fs.readFileSync('backend/src/roles.rs', 'utf8');
-  const catalog = /PERMISSIONS: &\[&str\] = &\[([^\]]*)\]/.exec(roles)![1]!;
-  assert.deepEqual(
-    [...catalog.matchAll(/"([^"]+)"/g)].map((m) => m[1]),
-    [...permissions],
-  );
-  const implied = /IMPLIED: &\[\(&str, &str\)\] = &\[([^\]]*)\]/.exec(roles)![1]!;
-  assert.deepEqual(
-    Object.fromEntries([...implied.matchAll(/\("([^"]+)", "([^"]+)"\)/g)].map((m) => [m[1], m[2]])),
-    impliedPermissions,
-  );
+test('generated permission implications refer to known grants and cannot cycle', () => {
+  for (const [grant, implied] of Object.entries(impliedPermissions)) {
+    assert(permissions.includes(grant as (typeof permissions)[number]));
+    assert(permissions.includes(implied));
+    const trail = new Set<string>([grant]);
+    let next: string | undefined = implied;
+    while (next) {
+      assert(!trail.has(next), `permission implication cycle from ${grant}`);
+      trail.add(next);
+      next = impliedPermissions[next as (typeof permissions)[number]];
+    }
+  }
+  assert.equal(impliedPermissions['timecard.manage'], 'timecard.view');
+  assert.equal(impliedPermissions['uniforms.adjust'], 'uniforms.view');
+  assert.equal(impliedPermissions['routes.collect'], 'routes.view');
+  assert.equal(impliedPermissions['dvic.collect'], 'dvic.view');
 });

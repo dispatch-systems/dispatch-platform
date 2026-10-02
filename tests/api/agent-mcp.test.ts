@@ -147,6 +147,19 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   const bare = await call(full, 'driver_report', {});
   assert.match(bare.content[0].text, /^missing_parameter/);
 
+  // Refusals obey the same budget even when a model sends a long name or object.
+  const longName = 'x'.repeat(25_000);
+  for (const [tool, arguments_] of [
+    ['packages', { [longName]: '1' }],
+    ['packages', { [longName]: {} }],
+    [longName, {}],
+  ] as const) {
+    const result = await call(full, tool, arguments_);
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /^answer_too_large:/);
+    assert.ok(Buffer.byteLength(result.content[0].text) <= 24_000);
+  }
+
   // Ready-made requests a harness can offer as commands.
   const prompts = (await rpc(full, 'prompts/list')).body.result.prompts as { name: string }[];
   assert.deepEqual(

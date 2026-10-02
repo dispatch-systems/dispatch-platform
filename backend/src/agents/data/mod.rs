@@ -41,6 +41,12 @@ impl Refusal {
         if !self.choices.is_empty() {
             body["choices"] = json!(self.choices);
         }
+        if let Err(refusal) = shape::check_budget(&body) {
+            return (
+                refusal.status,
+                json!({"error":refusal.code,"message":refusal.message}),
+            );
+        }
         (self.status, body)
     }
 }
@@ -83,7 +89,7 @@ pub fn ask(
     named: &str,
     query: &Value,
 ) -> Answer {
-    match endpoint.id {
+    let answer: Answer = match endpoint.id {
         "whoami" => {
             catalog::check("whoami", query)?;
             Ok(json!(db.agent_whoami(caller)?))
@@ -101,5 +107,8 @@ pub fn ask(
         "meal_breaks" => meal_breaks(db, state, caller, query),
         "dvic" => dvic(db, state, caller, query),
         other => Err(Error::new(format!("unanswered_endpoint_{other}"), 500).into()),
-    }
+    };
+    let answer = answer?;
+    shape::check_budget(&answer)?;
+    Ok(answer)
 }

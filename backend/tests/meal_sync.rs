@@ -1,6 +1,7 @@
 use dispatch_backend::{
     collectors::Provider,
     config::Config,
+    contracts::PublicJob,
     db::{Store, s},
     meals::{self, Scope},
     operations,
@@ -58,8 +59,8 @@ fn seed(db: &Store, id: &str, date: &str, index: usize) {
     )
     .unwrap();
 }
-fn jobs(db: &Store, id: &str) -> Vec<Value> {
-    db.list_jobs(Some(id)).unwrap().as_array().unwrap().clone()
+fn jobs(db: &Store, id: &str) -> Vec<PublicJob> {
+    db.recent_jobs(Some(id)).unwrap()
 }
 #[test]
 fn first_sync_discovers_from_tenant_profile_and_replays_after_publication() {
@@ -76,8 +77,8 @@ fn first_sync_discovers_from_tenant_profile_and_replays_after_publication() {
         .enqueue_meal_sync(&id, &actor, "first:ñ", "2026-01-11")
         .unwrap();
     assert_eq!(queued["jobs"].as_array().unwrap().len(), 2);
-    let row = db.job(s(&queued["jobs"][1], "id"), Some(&id)).unwrap();
-    let request: Value = serde_json::from_str(s(&row, "request")).unwrap();
+    let row = db.job_row(s(&queued["jobs"][1], "id"), Some(&id)).unwrap();
+    let request: Value = serde_json::from_str(&row.request).unwrap();
     assert_eq!(request["station"], "TST1");
     assert_eq!(request["dspAbbreviation"], "NLOG");
     assert_eq!(request["dspName"], db.get_dsp(&id).unwrap()["name"]);
@@ -134,10 +135,10 @@ fn combined_sync_reuses_tenant_scope_records_date_and_is_idempotent() {
         "sync_in_progress"
     );
     for job in queued["jobs"].as_array().unwrap() {
-        let row = db.job(s(job, "id"), Some(&id)).unwrap();
-        let request: Value = serde_json::from_str(s(&row, "request")).unwrap();
+        let row = db.job_row(s(job, "id"), Some(&id)).unwrap();
+        let request: Value = serde_json::from_str(&row.request).unwrap();
         assert_eq!(request["date"], "2026-01-11");
-        if row["kind"] == "cortex.meal_breaks.collect" {
+        if row.kind.as_str() == "cortex.meal_breaks.collect" {
             assert_eq!(request["serviceAreaId"], "area-1");
             assert_eq!(request["timezone"], "America/Los_Angeles");
         }
@@ -209,11 +210,8 @@ fn invalid_dates_missing_connections_and_capacity_never_queue_half_a_sync() {
     );
     assert_eq!(
         json!({"date":"2026-01-09"}),
-        serde_json::from_str::<Value>(s(
-            &db.job(s(&jobs(&db, &id)[0], "id"), None).unwrap(),
-            "request"
-        ))
-        .unwrap()
+        serde_json::from_str::<Value>(&db.job_row(&jobs(&db, &id)[0].id, None).unwrap().request)
+            .unwrap()
     );
 }
 
@@ -321,6 +319,6 @@ fn manual_sync_lock_and_original_date_follow_the_entire_batch() {
             .enqueue(&id, Some(&actor), &format!("after-{status}"))
             .unwrap();
         assert_eq!(next["status"], "queued");
-        db.cancel_job(s(&next, "id"), &id).unwrap();
+        db.cancel(s(&next, "id"), &id).unwrap();
     }
 }

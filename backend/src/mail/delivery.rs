@@ -44,7 +44,7 @@ pub async fn mailer(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<bo
             }
         }
         let pending = state
-            .run(|db| {
+            .run_bookkeeping(|db| {
                 super::discard_stale(db)?;
                 db.platform.all(
                     "SELECT id,encrypted_message,attempts \
@@ -92,7 +92,9 @@ pub async fn mailer(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<bo
                 json!({"mailId":id,"attempt":attempts+1,"error":error}),
             );
             if let Err(error) = state
-                .run(move |db| super::record_delivery(db, &id, attempts, error.as_deref()))
+                .run_bookkeeping(move |db| {
+                    super::record_delivery(db, &id, attempts, error.as_deref())
+                })
                 .await
             {
                 again = false;

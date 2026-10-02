@@ -690,7 +690,7 @@ pub async fn stage(
     let count = itineraries.len();
     let (d, j, o) = (dsp.to_owned(), job.to_owned(), owner.to_owned());
     let staged = state
-        .run(move |db| {
+        .run_scoped(dsp, crate::read_cache::DataDomain::Routes, move |db| {
             db.guard(&j, &o)?;
             db.stage_routes_start(&d, &j, &capture, count)
         })
@@ -707,7 +707,7 @@ pub async fn stage(
             staged.clone(),
         );
         state
-            .run(move |db| {
+            .run_scoped(dsp, crate::read_cache::DataDomain::Routes, move |db| {
                 db.guard(&j, &o)?;
                 db.stage_routes_itinerary(&d, &staged, &shaped)
             })
@@ -1141,6 +1141,15 @@ impl Store {
     /// replaced, a retention window retired, or a job left unfinished. Answers whether
     /// more remains. A publication whose job still runs is being staged and is kept.
     pub fn sweep_routes(&self, id: &str) -> Result<bool> {
+        self.sweep_routes_step(id, &mut None)
+    }
+    /// Reuse the chosen publication during a scheduler batch. Every step checks its
+    /// activity and job again, because another transition can run between deletions.
+    pub(crate) fn sweep_routes_step(
+        &self,
+        id: &str,
+        selected: &mut Option<String>,
+    ) -> Result<bool> {
         const BATCH: i64 = 2000;
         let db = self.routedata(id)?;
         let running: Vec<String> = self
@@ -1155,18 +1164,32 @@ impl Store {
             .into_iter()
             .map(|(job,)| job)
             .collect();
-        let Some(publication) = db
-            .all(
-                "SELECT id,job_id FROM route_publications WHERE active=0 ORDER BY collected_at",
-                [],
-            )?
-            .into_iter()
-            .find(|row| !running.iter().any(|job| job == s(row, "job_id")))
-        else {
+        let retained = match selected.as_deref() {
+            Some(publication) => db
+                .one_as::<(String, String)>(
+                    "SELECT id,job_id FROM route_publications WHERE id=? AND active=0",
+                    [publication],
+                )?
+                .filter(|(_, job)| !running.contains(job))
+                .map(|(publication, _)| publication),
+            None => None,
+        };
+        let publication = match retained {
+            Some(publication) => Some(publication),
+            None => db
+                .one_as::<(String,)>(
+                    "SELECT id FROM route_publications WHERE active=0 AND \
+                 job_id NOT IN (SELECT value FROM json_each(?)) ORDER BY collected_at,id LIMIT 1",
+                    [serde_json::to_string(&running)?],
+                )?
+                .map(|(publication,)| publication),
+        };
+        let Some(publication) = publication else {
+            *selected = None;
             return Ok(false);
         };
-        let publication = s(&publication, "id").to_owned();
-        db.transaction(|| {
+        *selected = Some(publication.clone());
+        let remaining = db.transaction(|| {
             for table in [
                 "tasks",
                 "stops",
@@ -1185,12 +1208,15 @@ impl Store {
                     params![publication, BATCH],
                 )?;
                 if removed > 0 {
-                    return Ok(());
+                    return Ok(true);
                 }
             }
             db.exec("DELETE FROM route_publications WHERE id=?", [&publication])?;
-            Ok(())
+            Ok(false)
         })?;
+        if !remaining {
+            *selected = None;
+        }
         Ok(true)
     }
     /// Rebuilds every active publication's rows, or one day's, from the responses it
@@ -2251,6 +2277,102 @@ fn unknown_stop_rows(detail: &Value) -> Vec<UnknownStopRow> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn retained_sweep_selection_rechecks_running_jobs_and_publication_activity() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        crate::db::private_dir(root.path()).unwrap();
+        let mut config = crate::config::Config::load().unwrap();
+        config.root = root.path().into();
+        config.fixture = true;
+        config.development = true;
+        config.environment = "preview".into();
+        let db = Store::initialize(config).unwrap();
+        let bootstrap = crate::operations::bootstrap(
+            &db,
+            "sweep@example.test",
+            "Sweep",
+            "Owner",
+            "sweep-password-test",
+        )
+        .unwrap();
+        let dsp = s(&bootstrap["dsp"], "id");
+        db.set_profile(
+            dsp,
+            json!({"stationCode":"TST1","abbreviation":"NLOG","setupRequired":false}),
+        )
+        .unwrap();
+        db.collector(dsp, crate::collectors::Provider::Cortex)
+            .unwrap()
+            .exec("UPDATE connections SET enabled=1,status='ready'", [])
+            .unwrap();
+        let queued = db
+            .enqueue_routes(
+                dsp,
+                None,
+                "sweep-selection",
+                Some("2026-09-25"),
+                Mode::Final,
+                1,
+            )
+            .unwrap();
+        let job = s(&queued[0], "id");
+        let staged = db
+            .stage_routes(dsp, job, fixture(&request(Mode::Final)).unwrap())
+            .unwrap();
+        db.jobs
+            .exec("UPDATE jobs SET status='failed' WHERE id=?", [job])
+            .unwrap();
+        let mut selected = None;
+        assert!(db.sweep_routes_step(dsp, &mut selected).unwrap());
+        assert_eq!(selected.as_deref(), Some(staged.publication.as_str()));
+        let remaining = || {
+            db.routedata(dsp)
+                .unwrap()
+                .count("SELECT count(*) FROM stops", [])
+                .unwrap()
+        };
+        let stops = remaining();
+        assert!(stops > 0);
+        // An intervening job transition must protect even the retained candidate.
+        db.jobs
+            .exec("UPDATE jobs SET status='queued' WHERE id=?", [job])
+            .unwrap();
+        assert!(!db.sweep_routes_step(dsp, &mut selected).unwrap());
+        assert_eq!(remaining(), stops);
+        assert!(selected.is_none());
+        db.jobs
+            .exec("UPDATE jobs SET status='failed' WHERE id=?", [job])
+            .unwrap();
+        selected = Some(staged.publication.clone());
+        db.routedata(dsp)
+            .unwrap()
+            .exec(
+                "UPDATE route_publications SET active=1 WHERE id=?",
+                [&staged.publication],
+            )
+            .unwrap();
+        assert!(!db.sweep_routes_step(dsp, &mut selected).unwrap());
+        assert_eq!(remaining(), stops);
+        assert!(selected.is_none());
+        db.routedata(dsp)
+            .unwrap()
+            .exec(
+                "UPDATE route_publications SET active=0 WHERE id=?",
+                [&staged.publication],
+            )
+            .unwrap();
+        while db.sweep_routes_step(dsp, &mut selected).unwrap() {}
+        assert!(selected.is_none());
+        assert_eq!(
+            db.routedata(dsp)
+                .unwrap()
+                .count("SELECT count(*) FROM route_publications", [])
+                .unwrap(),
+            0
+        );
+    }
     fn request(mode: Mode) -> Request {
         Request {
             collection: Collection::Routes,

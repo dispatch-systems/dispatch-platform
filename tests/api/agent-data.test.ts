@@ -26,6 +26,11 @@ test('an agent reads a DSP by asking in its own words, and is told what to fix',
   const one = await key('Northline only', [north.id]);
   const every = await key('Every DSP', []);
 
+  const oversized = await one(`/api/v1/packages?${'x'.repeat(25_000)}=1`);
+  assert.equal(oversized.status, 400, oversized.body);
+  assert.equal(oversized.value.error, 'answer_too_large');
+  assert.ok(Buffer.byteLength(oversized.body) <= 24_000);
+
   // The description an agent or its harness loads, every operation behind the key.
   const spec = await one('/api/v1/openapi.json');
   assert.equal(spec.status, 200, spec.body);

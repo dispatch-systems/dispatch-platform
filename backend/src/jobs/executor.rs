@@ -6,6 +6,7 @@ use crate::{
     db::now,
     ensure,
     job_metrics::{self, Phase, Recorder},
+    read_cache::DataDomain,
 };
 use rusqlite::params;
 use serde_json::{Value, json};
@@ -15,11 +16,12 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
     let dsp = job.dsp_id.clone();
     let metrics = Recorder::start(&job);
     let provider: Provider = job.provider();
+    let domain = DataDomain::collection(job.kind);
     let task = async {
         let jid = id.clone();
         let worker = owner.clone();
         state
-            .run(move |db| db.guard(&jid, &worker).map(|_| ()))
+            .read(move |db| db.guard(&jid, &worker).map(|_| ()))
             .await?;
         metrics.phase(Phase::Authentication);
         let session = state
@@ -38,7 +40,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
             let jid = id.clone();
             let worker = owner.clone();
             state
-                .run(move |db| {
+                .run_bookkeeping(move |db| {
                     db.progress(
                         &jid,
                         &worker,
@@ -58,7 +60,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
         let request: Value = serde_json::from_str(&job.request)?;
         let message = provider.collector().progress(&request);
         state
-            .run(move |db| {
+            .run_bookkeeping(move |db| {
                 db.guard(&jid, &worker)?;
                 db.progress(&jid, &worker, 10, message, ActiveJobStatus::Running)
             })
@@ -81,7 +83,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
         let tenant = dsp.clone();
         let completed_metrics = metrics.clone();
         state
-            .run(move |db| {
+            .run_scoped(dsp.clone(), domain, move |db| {
                 db.guard(&jid, &worker)?;
                 provider.collector().publish(db, &tenant, &jid, collected)?;
                 completed_metrics.finish("succeeded", None);
@@ -112,11 +114,11 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
                     }
                 }
                 let jid=id.clone(); let worker=owner.clone(); let snapshot=metrics.snapshot();
-                let _=state.run(move|db|db.save_metrics(&jid,&worker,&snapshot)).await;
+                let _=state.run_bookkeeping(move|db|db.save_metrics(&jid,&worker,&snapshot)).await;
             },
             _=heartbeat.tick()=>{
                 let jid=id.clone();let worker=owner.clone();
-                let guard=state.run(move|db|{db.guard(&jid,&worker)?;db.jobs.exec("UPDATE \
+                let guard=state.run_bookkeeping(move|db|{db.guard(&jid,&worker)?;db.jobs.exec("UPDATE \
                     jobs SET lease_until=? WHERE id=? AND lease_owner=?",params![now()+120000,jid,worker])?;Ok(())}).await;
                 // A publication may have finished the job while this waited for the lock:
                 // the task's own outcome then stands, not the lease it released.
@@ -135,7 +137,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
         let jid = id.clone();
         let worker = owner.clone();
         let attempt = job.attempt;
-        let deferred=state.run(move |db| db.jobs.transaction(|| {
+        let deferred=state.run_bookkeeping(move |db| db.jobs.transaction(|| {
             let changed=db.jobs.exec("UPDATE jobs SET \
                 status='queued',attempt=attempt-1,started_at=NULL,lease_owner=NULL,lease_until=NULL,\
                 available_at=?,message='Waiting for browser resources' WHERE id=? AND lease_owner=? AND \
@@ -150,7 +152,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
     if let Err(error) = &result {
         let jid = id.clone();
         let cancelled = state
-            .run(move |db| Ok(db.job_row(&jid, None)?.status == JobStatus::Cancelled))
+            .read(move |db| Ok(db.job_row(&jid, None)?.status == JobStatus::Cancelled))
             .await
             .unwrap_or(false);
         metrics.finish(
@@ -197,7 +199,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
         roster: provider == Provider::Paycom && request.get("employeeCode").is_none(),
     };
     let _ = state
-        .run(move |db| {
+        .run_scoped(dsp.clone(), domain, move |db| {
             if let Some(ref error) = error {
                 db.jobs.transaction(|| {
                     db.save_metrics(&id, &owner, &snapshot)?;
@@ -236,7 +238,13 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
     if succeeded {
         let (reading, tenant) = (changed_dsp.clone(), changed_dsp.clone());
         let matched = match state.read(move |db| db.driver_sources(&reading)).await {
-            Ok(found) => state.run(move |db| db.assign_drivers(&tenant, found)).await,
+            Ok(found) => {
+                state
+                    .run_scoped(changed_dsp.clone(), DataDomain::Drivers, move |db| {
+                        db.assign_drivers(&tenant, found)
+                    })
+                    .await
+            }
             Err(error) => Err(error),
         };
         if let Err(error) = matched {

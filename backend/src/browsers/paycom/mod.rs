@@ -399,8 +399,8 @@ impl Drives for Driver {
                 let employee = run
                     .state
                     .read(move |store| {
-                        let dsp = store.guard_job(&job, &owner)?;
-                        store.paycom_employee(s(&dsp, "id"), &code)
+                        let dsp = store.guard(&job, &owner)?;
+                        store.paycom_employee(&dsp.id, &code)
                     })
                     .await?;
                 let data = self

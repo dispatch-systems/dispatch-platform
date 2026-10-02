@@ -32,6 +32,262 @@ fn refused(db: &Store, token: &str) -> String {
     db.authenticate_agent(token, "curl 8.5").unwrap_err().code
 }
 
+/// Replay the policy snapshot left by admission, after a committed policy change.
+async fn admitted_mcp(
+    state: &std::sync::Arc<dispatch_backend::State>,
+    caller: &dispatch_backend::agents::Caller,
+    method: &str,
+    params: Value,
+) -> Value {
+    use axum::{
+        body::{Body, to_bytes},
+        http::Request,
+    };
+    let mut request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/mcp")
+        .header("host", "dispatch.test")
+        .header("content-type", "application/json")
+        .header("accept", "application/json, text/event-stream")
+        .header("mcp-protocol-version", "2025-06-18")
+        .body(Body::from(
+            json!({"jsonrpc":"2.0","id":1,"method":method,"params":params}).to_string(),
+        ))
+        .unwrap();
+    request.extensions_mut().insert(state.clone());
+    request.extensions_mut().insert(caller.clone());
+    let response = dispatch_backend::agents::mcp::serve(request).await;
+    let status = response.status();
+    let body = to_bytes(response.into_body(), 100_000).await.unwrap();
+    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+    serde_json::from_slice(&body).unwrap()
+}
+
+#[tokio::test]
+async fn mcp_revalidates_admitted_keys_before_protected_reads_and_discovery() {
+    use dispatch_backend::State;
+    for change in ["revoked", "expired", "inactive_owner", "demoted_owner"] {
+        let (_root, db, dsp) = bootstrapped();
+        let user = owner(&db);
+        let made = db
+            .create_agent_key(&user, &request(reach(&[&dsp])))
+            .unwrap();
+        let caller = db.authenticate_agent(&made.token, "test").unwrap();
+        let config = db.config.clone();
+        drop(db);
+        let state = State::new(config).unwrap();
+        let normal = admitted_mcp(&state, &caller, "tools/call", json!({"name":"whoami"})).await;
+        assert_ne!(normal["result"]["isError"], true, "{normal}");
+        assert!(
+            normal["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains(&dsp)
+        );
+        state
+            .run(move |db| {
+                match change {
+                    "revoked" => {
+                        db.revoke_agent_key(&user, &made.key.id)?;
+                    }
+                    "expired" => {
+                        db.platform.exec(
+                            "UPDATE agent_keys SET expires_at=? WHERE id=?",
+                            [db::at(db::now() - 1000), made.key.id],
+                        )?;
+                    }
+                    "inactive_owner" => {
+                        db.platform
+                            .exec("UPDATE users SET status='disabled' WHERE id=?", [&user])?;
+                    }
+                    _ => {
+                        db.platform
+                            .exec("UPDATE users SET platform_owner=0 WHERE id=?", [&user])?;
+                    }
+                }
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let code = match change {
+            "revoked" => "agent_key_revoked",
+            "expired" => "agent_key_expired",
+            _ => "agent_key_invalid",
+        };
+        let denied = admitted_mcp(&state, &caller, "tools/call", json!({"name":"whoami"})).await;
+        assert_eq!(denied["result"]["isError"], true, "{change}: {denied}");
+        assert!(
+            denied["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .starts_with(code),
+            "{denied}"
+        );
+        let listed = admitted_mcp(&state, &caller, "tools/list", json!({})).await;
+        assert_eq!(listed["error"]["message"], code, "{listed}");
+        assert!(listed["result"].is_null());
+    }
+}
+
+#[tokio::test]
+async fn mcp_uses_current_toolset_and_dsp_reach_for_an_admitted_caller() {
+    use dispatch_backend::State;
+    let (_root, db, dsp) = bootstrapped();
+    let user = owner(&db);
+    let made = db
+        .create_agent_key(&user, &request(reach(&[&dsp])))
+        .unwrap();
+    let caller = db.authenticate_agent(&made.token, "test").unwrap();
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+    let full = admitted_mcp(&state, &caller, "tools/list", json!({})).await;
+    let tool = dispatch_backend::agents::data::catalog::ENDPOINTS
+        .iter()
+        .find(|tool| !tool.essential)
+        .unwrap()
+        .tool;
+    assert!(
+        full["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["name"] == tool)
+    );
+    state
+        .run(move |db| {
+            let mut body = reach(&[&dsp]);
+            body["tools"] = json!("essential");
+            db.update_agent_key(&user, &made.key.id, &request(body))?;
+            db.platform
+                .exec("UPDATE dsps SET status='suspended' WHERE id=?", [&dsp])?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let listed = admitted_mcp(&state, &caller, "tools/list", json!({})).await;
+    assert!(
+        !listed["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["name"] == tool)
+    );
+    let hidden = admitted_mcp(&state, &caller, "tools/call", json!({"name":tool})).await;
+    assert_eq!(hidden["result"]["isError"], true);
+    assert!(
+        hidden["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("unknown_tool:")
+    );
+    let who = admitted_mcp(&state, &caller, "tools/call", json!({"name":"whoami"})).await;
+    let current: Value =
+        serde_json::from_str(who["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(current["dsps"], json!([]));
+}
+
+#[tokio::test]
+async fn mcp_rechecks_location_policy_and_changed_dsp_grants() {
+    use dispatch_backend::State;
+    let (_root, db, dsp) = bootstrapped();
+    db.enable_all_features(&dsp).unwrap();
+    let user = owner(&db);
+    let second = db.new_dsp("Other DSP", "UTC", &user, false).unwrap().id;
+    let mut body = reach(&[&dsp]);
+    body["locations"] = json!(true);
+    let made = db.create_agent_key(&user, &request(body.clone())).unwrap();
+    let caller = db.authenticate_agent(&made.token, "test").unwrap();
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+    let normal = admitted_mcp(
+        &state,
+        &caller,
+        "tools/call",
+        json!({"name":"packages","arguments":{"date":"2026-09-12","list":true}}),
+    )
+    .await;
+    let value: Value =
+        serde_json::from_str(normal["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert!(
+        value["list"]["columns"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("address")),
+        "{normal}"
+    );
+    body["locations"] = json!(false);
+    let key = made.key.id.clone();
+    let actor = user.clone();
+    state
+        .run(move |db| {
+            db.update_agent_key(&actor, &key, &request(body))?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let current = admitted_mcp(
+        &state,
+        &caller,
+        "tools/call",
+        json!({"name":"packages","arguments":{"date":"2026-09-12","list":true}}),
+    )
+    .await;
+    let value: Value =
+        serde_json::from_str(current["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert!(
+        !value["list"]["columns"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("address")),
+        "{current}"
+    );
+    let grouping = admitted_mcp(
+        &state,
+        &caller,
+        "tools/call",
+        json!({"name":"packages","arguments":{"date":"2026-09-12","group_by":"address"}}),
+    )
+    .await;
+    assert_eq!(grouping["result"]["isError"], true, "{grouping}");
+    assert!(
+        grouping["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("locations_off:"),
+        "{grouping}"
+    );
+    let granted = second.clone();
+    state
+        .run(move |db| {
+            db.update_agent_key(&user, &made.key.id, &request(reach(&[&granted])))?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let who = admitted_mcp(&state, &caller, "tools/call", json!({"name":"whoami"})).await;
+    let value: Value =
+        serde_json::from_str(who["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(value["dsps"][0]["id"], second);
+    assert_eq!(value["dsps"].as_array().unwrap().len(), 1);
+    let foreign = admitted_mcp(
+        &state,
+        &caller,
+        "tools/call",
+        json!({"name":"find_drivers","arguments":{"dsp":dsp}}),
+    )
+    .await;
+    assert_eq!(foreign["result"]["isError"], true, "{foreign}");
+    assert!(
+        foreign["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("dsp_not_found:"),
+        "{foreign}"
+    );
+}
+
 #[test]
 fn a_key_is_shown_once_kept_as_a_hash_and_reaches_only_its_dsps() {
     let (_root, db, first) = bootstrapped();
