@@ -82,7 +82,8 @@ async function main() {
       dsps: [world.dsp],
       access: 'read',
       tools: values.tools,
-      locations: false,
+      // Addresses on, as the owner's own key has them: feedback is asked about by address.
+      locations: true,
       expiresAt: null,
     });
     if (made.status !== 200) throw new Error(made.body);

@@ -46,6 +46,7 @@ export function questions(world: World): Question[] {
   const paycom = open(world, 'paycom');
   const cortex = open(world, 'cortex');
   const dvic = open(world, 'dvic');
+  const scorecard = open(world, 'scorecard');
   try {
     const yesterday = world.to;
     const today = day(world.to, 1);
@@ -179,6 +180,58 @@ export function questions(world: World): Question[] {
          AND t.day BETWEEN ? AND ? GROUP BY reason ORDER BY n DESC`,
       )
       .all(day(world.to, -13), world.to) as { reason: string; n: number }[];
+    // Amazon's weekly scorecard: rows of the week's active publication, dated by `date`.
+    const scored = (table: string, date: string, from: string, to: string) =>
+      scorecard
+        .prepare(
+          `SELECT x.tracking_id tracking, x.row FROM ${table} x
+           JOIN scorecard_publications p ON p.id=x.publication_id AND p.active=1
+           WHERE substr(json_extract(x.row,'$.${date}'),1,10) BETWEEN ? AND ?`,
+        )
+        .all(from, to)
+        .map((r: any) => ({ tracking: r.tracking as string, ...JSON.parse(r.row) }));
+    // Negative feedback placed at the house it was delivered to, as the route recorded it.
+    const addressOf = routes.prepare(
+      `SELECT t.address_id FROM tasks t JOIN route_publications p ON p.id=t.publication_id AND p.active=1
+       WHERE t.tracking_id=? AND t.task_type='DROP_OFF' AND t.active=1 LIMIT 1`,
+    );
+    const complaints = new Map<string, number>();
+    for (const row of scored('customer_feedback', 'delivery_time', world.from, world.to)) {
+      if (row.negative_feedback_flag !== 1) continue;
+      const at = (addressOf.get(row.tracking) as { address_id: string } | undefined)?.address_id;
+      if (at) complaints.set(at, (complaints.get(at) ?? 0) + 1);
+    }
+    const lastWeekReturns = scored(
+      'returns_to_station',
+      'delivery_planned_date',
+      lastSunday,
+      lastSaturday,
+    );
+    const missedContact = [
+      ...new Set(
+        lastWeekReturns
+          .filter((row) => /contact|call|text/i.test(row.weekly_coaching ?? ''))
+          .map((row) => row.da_name as string),
+      ),
+    ].sort();
+    const counted = new Map<string, number>();
+    for (const row of scored('safety_events', 'data_date', lastSunday, lastSaturday))
+      if (row.final_resolution !== 'Dispute Approved')
+        counted.set(row.da_name, (counted.get(row.da_name) ?? 0) + 1);
+    const unsafe = top([...counted].map(([name, value]) => ({ name, value }))).sort()[0] ?? middle;
+    const latestWeek = (
+      scorecard
+        .prepare('SELECT MAX(week) week FROM scorecard_publications WHERE active=1')
+        .get() as { week: string }
+    ).week;
+    const cards = (
+      scorecard
+        .prepare(
+          `SELECT x.row FROM driver_scorecards x
+           JOIN scorecard_publications p ON p.id=x.publication_id AND p.active=1 WHERE p.week=?`,
+        )
+        .all(latestWeek) as { row: string }[]
+    ).map((r) => JSON.parse(r.row));
     const fortnight = `from ${world.from} to ${world.to}`;
     const week = `from ${weekFrom} to ${yesterday}`;
     const hoursWeek = hours(weekFrom, yesterday);
@@ -243,6 +296,44 @@ export function questions(world: World): Question[] {
         format: "full names separated by commas, or 'none'",
         grade: 'names',
         expected: [short.join(', ') || 'none'],
+      },
+      {
+        id: 'repeat_feedback_addresses',
+        ask: 'How many addresses have given us negative customer feedback more than once?',
+        format: 'a whole number, 0 if none',
+        grade: 'number',
+        expected: [String([...complaints.values()].filter((n) => n > 1).length)],
+      },
+      {
+        id: 'contact_missed_last_week',
+        ask: "Give me all drivers who didn't do contact compliance last week.",
+        format: "full names separated by commas, or 'none'",
+        grade: 'names',
+        expected: [missedContact.join(', ') || 'none'],
+      },
+      {
+        id: 'driver_safety_last_week',
+        ask: `Did ${unsafe} get any Netradyne safety infractions last week? How many count against them?`,
+        format: 'a whole number, 0 if none',
+        grade: 'number',
+        expected: [String(counted.get(unsafe) ?? 0)],
+      },
+      {
+        id: 'returns_hurting_dcr',
+        ask: 'How many returned packages counted against our DCR last week?',
+        format: 'a whole number, 0 if none',
+        grade: 'number',
+        expected: [String(lastWeekReturns.filter((row) => row.impacting_dcr === 'Y').length)],
+      },
+      {
+        id: 'lowest_scorecard',
+        ask: 'Who had the lowest overall score on our latest weekly scorecard?',
+        format: "the driver's full name",
+        grade: 'name',
+        expected: top(
+          cards.map((row) => ({ name: row.da_name, value: row.da_overall_score })),
+          true,
+        ),
       },
       {
         id: 'top_stops_yesterday',
@@ -418,7 +509,7 @@ export function questions(world: World): Question[] {
       },
     ];
   } finally {
-    for (const db of [routes, paycom, cortex, dvic]) db.close();
+    for (const db of [routes, paycom, cortex, dvic, scorecard]) db.close();
   }
 }
 

@@ -309,11 +309,194 @@ pub fn seed(db: &Store) -> Result<Value> {
         }
     }
     drop(dvic);
+    let weeks = scorecards(db, &id, &dates, &drivers, &transporter, today)?;
     let matched = db.match_drivers(&id)?;
     Ok(
         json!({"dsp": id, "from": first, "to": last, "timecards": timecards.len(),
-        "routes": routes, "inspections": inspections, "matched": matched}),
+        "routes": routes, "inspections": inspections, "scorecard_weeks": weeks, "matched": matched}),
     )
+}
+
+/// Amazon's weekly scorecard for each completed week the routes cover, through the
+/// collection's own publishing: customer feedback on delivered packages (repeated at a few
+/// houses), a return-to-station row for every package brought back, Netradyne events and
+/// each driver's tiers.
+fn scorecards(
+    db: &Store,
+    id: &str,
+    dates: &[NaiveDate],
+    drivers: &[(u64, String, String)],
+    transporter: &dyn Fn(u64) -> String,
+    today: NaiveDate,
+) -> Result<usize> {
+    let completed = crate::scorecard::last_completed_week(today);
+    let mut weeks: Vec<String> = dates
+        .iter()
+        .map(|date| {
+            let saturday =
+                *date + Duration::days(i64::from(6 - date.weekday().num_days_from_sunday()));
+            let iso = saturday.iso_week();
+            format!("{}-W{:02}", iso.year(), iso.week())
+        })
+        .filter(|week| *week <= completed)
+        .collect();
+    weeks.dedup();
+    let tiers = ["Platinum", "Platinum", "Platinum", "Gold", "Silver"];
+    for week in &weeks {
+        let (sunday, saturday) = crate::scorecard::week_days(week)?;
+        let jobs =
+            db.enqueue_scorecard(id, None, &format!("synthetic-scorecard:{week}"), Some(week))?;
+        let job = s(&jobs, "id").to_owned();
+        let request: Value = serde_json::from_str(&db.job_row(&job, Some(id))?.request)?;
+        let request = crate::scorecard::Request::parse(&request)?
+            .ok_or_else(|| Error::new("invalid_input", 400))?;
+        let mut capture = crate::scorecard::fixture(&request)?;
+        let (mut feedback, mut returns, mut events, mut cards) = (vec![], vec![], vec![], vec![]);
+        for (d, date) in dates.iter().enumerate() {
+            if *date < sunday || *date > saturday {
+                continue;
+            }
+            let d = d as i64;
+            for (i, _, name) in drivers {
+                let Some(day) = plan(*i, d) else {
+                    continue;
+                };
+                for n in 1..=day.stops {
+                    let missed = n > day.stops - day.missed;
+                    let pick = roll((*i << 40) + ((d as u64) << 20) + n as u64);
+                    if missed {
+                        let context = context_at(*i, d, n, true);
+                        for k in 0..packages_at(*i, d, n) {
+                            let coaching = match pick % 4 {
+                                0 => "No contact attempted",
+                                1 => "No text attempted after unsuccessful call attempt",
+                                _ => "",
+                            };
+                            returns.push(json!({"transporter_id": transporter(*i), "da_name": name,
+                                "tracking_id": tracking(*date, *i, n, k), "data_date": week,
+                                "delivery_planned_date": date.to_string(),
+                                "rts_reason_code": context.replace('_', " "),
+                                "impacting_dcr": if coaching.is_empty() && pick.is_multiple_of(3) { "N" } else { "Y" },
+                                "weekly_coaching": coaching,
+                                "weekly_exemption_reason": if coaching.is_empty() && pick.is_multiple_of(3) {
+                                    "Contact Compliant" } else { "No Exemption Applied" },
+                                "weekly_exemption": i64::from(coaching.is_empty() && pick.is_multiple_of(3))}));
+                        }
+                        continue;
+                    }
+                    // Feedback on about one delivery in forty, and on every delivery to three
+                    // houses, so those houses complain week after week.
+                    let repeat = matches!((*i, n), (2, 7) | (5, 12) | (9, 3));
+                    if !repeat && !pick.is_multiple_of(40) {
+                        continue;
+                    }
+                    let negative = repeat || pick.is_multiple_of(3);
+                    let kind = [
+                        "driver_mishandled_package",
+                        "never_received_delivery",
+                        "delivered_to_wrong_address",
+                        "not_delivered_to_preferred_location",
+                    ][(pick % 4) as usize];
+                    let mut row = json!({"transporter_id": transporter(*i), "da_name": name,
+                        "tracking_id": tracking(*date, *i, n, 0), "data_date": week,
+                        "delivery_time": format!("{date} {}:00.0", hhmm(day.departed + 40)),
+                        "negative_feedback_flag": i64::from(negative),
+                        "cdf_impact_flag": if negative { "Y" } else { "N" },
+                        "da_attributable_flag": i64::from(negative)});
+                    row[if negative {
+                        kind
+                    } else {
+                        "delivered_with_care"
+                    }] = json!(1);
+                    feedback.push(row);
+                }
+                // A Netradyne event on about one day in five.
+                let pick = roll((*i << 8) + d as u64 + 77);
+                if pick.is_multiple_of(5) {
+                    let (kind, subtype) = [
+                        ("SPEEDING-VIOLATIONS", "Above Posted Speed Limit"),
+                        ("DRIVER-DISTRACTION", "Looking At Phone"),
+                        ("SIGN-VIOLATIONS", "Stop Sign Rolling Stop"),
+                        ("FOLLOWING-DISTANCE", "From Front"),
+                        ("SEATBELT-COMPLIANCE", "Driver Not Wearing Seatbelt"),
+                    ][((pick >> 8) % 5) as usize];
+                    let resolution = ["None", "None", "Dispute Denied", "Dispute Approved"]
+                        [((pick >> 20) % 4) as usize];
+                    events.push(json!({"transporter_id": transporter(*i), "da_name": name,
+                        "event_id": format!("{}{d:02}", 9_000_000 + i), "data_date": date.to_string(),
+                        "event_start_time_local": format!("{date} {}:00", hhmm(day.departed + 90)),
+                        "type": kind, "subtype": subtype,
+                        "severity": if (pick >> 16).is_multiple_of(3) { "MODERATE" } else { "SEVERE" },
+                        "final_resolution": resolution,
+                        "oss_impact_flag": 1}));
+                }
+            }
+        }
+        for (i, _, name) in drivers {
+            let pick = roll((*i << 4) + week.len() as u64 + u64::from(sunday.ordinal()));
+            cards.push(json!({"transporter_id": transporter(*i), "da_name": name, "data_date": week,
+                "week": week[6..].parse::<i64>().unwrap_or(0), "year": sunday.year(),
+                "da_overall_tier": tiers[(pick % 5) as usize], "da_overall_score": 80.0 + (pick % 200) as f64 / 10.0,
+                "cdf_dpmo_tier": tiers[((pick >> 4) % 5) as usize], "dsb_tier": "Platinum",
+                "pod_tier": tiers[((pick >> 8) % 5) as usize], "rts_tier": tiers[((pick >> 12) % 5) as usize],
+                "speeding_tier": "Platinum", "seatbelt_tier": "Platinum", "delivered": 900 + (pick % 300)}));
+        }
+        for dataset in &mut capture.datasets {
+            dataset.rows = match dataset.id.as_str() {
+                "da_dsp_station_weekly_performance" => cards.clone(),
+                "da_dsp_weekly_cdf_deep_dive" => feedback.clone(),
+                "da_dsp_weekly_rts_deep_dive" => returns.clone(),
+                "da_dsp_station_daily_safety_oss_events_intraday" => events.clone(),
+                "dsp_station_weekly_quality" => {
+                    vec![json!({"dsp_code": "NLOG", "station_code": STATION,
+                    "data_date": week, "dsp_final_score": 91.2, "dsp_final_tier": "Platinum",
+                    "dcr_tier": "Gold", "cc_tier": "Silver", "dsb_tier": "Platinum", "pod_tier": "Gold",
+                    "rts_tier": "Gold", "focus_area_1": "Contact Compliance", "focus_area_2": "Photo-On-Delivery"})]
+                }
+                "da_dsp_station_weekly_safety_oss_v2"
+                | "da_dsp_station_daily_dsb_dnr_tba"
+                | "da_dsp_daily_psb_stop" => vec![],
+                _ => std::mem::take(&mut dataset.rows),
+            };
+        }
+        db.publish_scorecard(id, &job, &capture)?;
+        db.jobs
+            .exec("UPDATE jobs SET status='succeeded' WHERE id=?", [&job])?;
+    }
+    Ok(weeks.len())
+}
+
+/// How many packages a stop holds, the same on every run.
+fn packages_at(driver: u64, day: i64, stop: i64) -> i64 {
+    1 + (roll((driver << 32) + ((day as u64) << 16) + stop as u64) % 2) as i64
+}
+/// Amazon's reason a stop's packages came back, or where they were left.
+fn context_at(driver: u64, day: i64, stop: i64, missed: bool) -> &'static str {
+    let why = roll(((day as u64) << 24) + (driver << 12) + stop as u64);
+    if missed {
+        [
+            "BUSINESS_CLOSED",
+            "OBJECT_MISSING",
+            "DAMAGED",
+            "INACCESSIBLE_DELIVERY_LOCATION",
+            "ADDRESS_NOT_FOUND",
+        ][(why % 5) as usize]
+    } else {
+        [
+            "DELIVERED_TO_DOORSTEP",
+            "DELIVERED_TO_DOORSTEP",
+            "DELIVERED_TO_DOORSTEP",
+            "DELIVERED_TO_SAFE_LOCATION",
+            "DELIVERED_TO_HOUSEHOLD_MEMBER",
+        ][(why % 5) as usize]
+    }
+}
+fn tracking(date: NaiveDate, driver: u64, stop: i64, k: i64) -> String {
+    format!("TBA{:04}{:02}{:03}{}", date.ordinal(), driver, stop, k)
+}
+/// A driver's stop is the same house every day, so feedback can repeat at an address.
+fn address_id(driver: u64, stop: i64) -> String {
+    format!("synthetic-address-{driver}-{stop}")
 }
 
 type Summaries = (Value, Value);
@@ -352,7 +535,7 @@ fn routes_day(
         for n in 1..=day.stops {
             let when = depart + 35 * 60_000 + n * stop_gap;
             let missed = n > day.stops - day.missed;
-            let count = 1 + (roll((*i << 32) + (d << 16) as u64 + n as u64) % 2) as i64;
+            let count = packages_at(*i, d, n);
             // As Cortex records them: a package brought back is BACK_TO_ORIGIN with Amazon's
             // reason, a delivered one says where it was left.
             let state = if missed {
@@ -360,31 +543,14 @@ fn routes_day(
             } else {
                 "DELIVERED"
             };
-            let why = roll(((d as u64) << 24) + (*i << 12) + n as u64);
-            let context = if missed {
-                [
-                    "BUSINESS_CLOSED",
-                    "OBJECT_MISSING",
-                    "DAMAGED",
-                    "INACCESSIBLE_DELIVERY_LOCATION",
-                    "ADDRESS_NOT_FOUND",
-                ][(why % 5) as usize]
-            } else {
-                [
-                    "DELIVERED_TO_DOORSTEP",
-                    "DELIVERED_TO_DOORSTEP",
-                    "DELIVERED_TO_DOORSTEP",
-                    "DELIVERED_TO_SAFE_LOCATION",
-                    "DELIVERED_TO_HOUSEHOLD_MEMBER",
-                ][(why % 5) as usize]
-            };
+            let context = context_at(*i, d, n, missed);
             let tasks: Vec<Value> = (0..count)
                 .map(|k| {
-                    let tracking = format!("TBA{:04}{:02}{:03}{}", date.ordinal(), i, n, k);
+                    let tracking = tracking(date, *i, n, k);
                     json!({"taskId": format!("{id}-{n}-{k}"), "transporterId": null,
                         "referenceId": format!("{id}-{n}-{k}"), "taskType": "DROP_OFF", "taskState": state,
                         "taskStateContext": context,
-                        "executionStatus": "COMPLETE", "addressId": format!("{id}-a{n}"),
+                        "executionStatus": "COMPLETE", "addressId": address_id(*i, n),
                         "promiseType": "STANDARD", "windowStartTime": depart, "windowEndTime": depart + 43_200_000,
                         "actualExecutionTime": when, "executionGeocode": {"latitude": 41.8, "longitude": -87.6, "scope": 0},
                         "recentTaskEvents": [{"taskState": state, "taskStateContext": "NONE", "executionTime": when}],
@@ -400,10 +566,10 @@ fn routes_day(
             } else {
                 packages.0 += count;
             }
-            addresses.push(json!({"addressId": format!("{id}-a{n}"), "address1": format!("{} Synthetic Ave", 100 + n),
+            addresses.push(json!({"addressId": address_id(*i, n), "address1": format!("{} Synthetic Ave", 1000 * i + n as u64),
                 "address2": null, "address3": null, "city": "Example", "state": "IL", "postalCode": "60000",
                 "geocode": {"latitude": 41.8, "longitude": -87.6, "scope": 0}}));
-            stops.push(json!({"stopId": format!("{id}-{n}"), "sequenceNumber": n, "addressId": format!("{id}-a{n}"),
+            stops.push(json!({"stopId": format!("{id}-{n}"), "sequenceNumber": n, "addressId": address_id(*i, n),
                 "itineraryStopType": "DROP_OFF", "routeCode": route, "plannedStartTime": when,
                 "plannedEndTime": when + 300_000, "expectedStartTime": when, "actualStartTime": when,
                 "highValueStopFlag": false, "tasks": tasks}));

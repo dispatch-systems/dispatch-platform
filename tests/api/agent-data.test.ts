@@ -37,7 +37,15 @@ test('an agent reads a DSP by asking in its own words, and is told what to fix',
   assert.equal(spec.value.openapi, '3.1.0');
   assert.equal(spec.value.components.securitySchemes.key.scheme, 'bearer');
   const paths = Object.keys(spec.value.paths);
-  for (const path of ['/api/v1/team', '/api/v1/drivers/{driver}', '/api/v1/meal-breaks'])
+  for (const path of [
+    '/api/v1/team',
+    '/api/v1/drivers/{driver}',
+    '/api/v1/meal-breaks',
+    '/api/v1/feedback',
+    '/api/v1/safety',
+    '/api/v1/returns',
+    '/api/v1/scorecard',
+  ])
     assert.ok(paths.includes(path), path);
   for (const operation of Object.values(spec.value.paths) as { get: { operationId: string } }[])
     assert.ok(operation.get.operationId);
@@ -79,4 +87,9 @@ test('an agent reads a DSP by asking in its own words, and is told what to fix',
   assert.deepEqual([unknown.status, unknown.value.error], [400, 'unknown_metric']);
   const nobody = await one('/api/v1/drivers/Nobody%20Anywhere');
   assert.deepEqual([nobody.status, nobody.value.error], [404, 'driver_not_found']);
+  // The scorecard's tools check their words like every other.
+  const contact = await one('/api/v1/returns?contact=maybe');
+  assert.deepEqual([contact.status, contact.value.error], [400, 'invalid_parameter']);
+  const places = await one('/api/v1/feedback?group_by=address');
+  assert.deepEqual([places.status, places.value.error], [403, 'locations_off']);
 });

@@ -5,9 +5,11 @@
 pub mod catalog;
 mod facts;
 mod scope;
+mod scorecard;
 mod shape;
 mod views;
 
+pub use scorecard::{feedback, returns, safety, weekly};
 pub use shape::BUDGET;
 pub use views::*;
 
@@ -89,6 +91,14 @@ pub fn ask(
     named: &str,
     query: &Value,
 ) -> Answer {
+    // A tool that reads one source answers only while the DSP has it switched on: the one
+    // place every tool is gated, so none can forget.
+    if let Some(source) = endpoint.source {
+        let dsp = scope::pick_dsp(caller, scope::param(query, "dsp"))?;
+        if !facts::Sources::of(db, &dsp.id)?.has(source) {
+            return Err(facts::switched_off(dsp, source).into());
+        }
+    }
     let answer: Answer = match endpoint.id {
         "whoami" => {
             catalog::check("whoami", query)?;
@@ -103,6 +113,10 @@ pub fn ask(
         "route" => route(db, state, caller, named, query),
         "package" => package(db, state, caller, named, query),
         "packages" => packages(db, state, caller, query),
+        "feedback" => scorecard::feedback(db, state, caller, query),
+        "safety" => scorecard::safety(db, state, caller, query),
+        "returns" => scorecard::returns(db, state, caller, query),
+        "scorecard" => scorecard::weekly(db, state, caller, query),
         "timecards" => timecards(db, state, caller, query),
         "meal_breaks" => meal_breaks(db, state, caller, query),
         "dvic" => dvic(db, state, caller, query),

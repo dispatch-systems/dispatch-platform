@@ -4,7 +4,7 @@
 //! Every row of detail waits for a request that asks for it.
 use super::{
     Answer, Refusal,
-    catalog::{self, METRICS, Metric, flag},
+    catalog::{self, METRICS, Metric, Source, flag},
     facts::{
         self, Coverage, Inspection, MealDay, Packages, RouteDay, Sources, TimecardDay, clock,
         outcome_of, reason_of,
@@ -39,13 +39,6 @@ fn who(people: &People, source: DriverSource, id: &str, name: &str) -> String {
 }
 fn driver_json(person: &Person) -> Value {
     json!({"code": person.code, "name": person.name, "paycom": person.paycom, "amazon": person.amazon})
-}
-fn not_on(source: &str) -> Refusal {
-    Refusal::new(
-        403,
-        "source_off",
-        format!("This DSP has {source} switched off."),
-    )
 }
 fn one_day(period: &Period) -> Result<(), Refusal> {
     if period.from == period.to {
@@ -102,6 +95,7 @@ pub fn status(db: &Store, caller: &Caller, query: &Value) -> Answer {
             "mealBreaks": source(on.meal_breaks, "mealBreaks"),
             "routes": source(on.routes, "routes"),
             "dvic": source(on.dvic, "dvic"),
+            "scorecard": source(on.scorecard, "scorecard"),
         }
     }))
 }
@@ -288,21 +282,47 @@ pub fn driver(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &
     let worked: f64 = gathered.timecards.0.iter().map(|c| c.hours).sum();
     let mut head = understood(dsp, Some(&period));
     head.insert("driver".into(), driver_json(person));
+    // A source switched off is unknown, never zero: its figures are null and it is named.
+    let on = Sources::of(db, &dsp.id)?;
+    let known = |source: Source, value: Value| if on.has(source) { value } else { Value::Null };
     let mut answer = json!({
         "understood": head,
         "totals": {
-            "routes": routes.len(),
-            "stops_completed": sum(|r| r.stops_completed),
-            "packages_delivered": sum(|r| r.packages_delivered),
-            "packages_undeliverable": sum(|r| r.packages_undeliverable),
-            "hours_worked": hours(worked),
-            "days_worked": gathered.timecards.0.iter().filter(|c| c.hours > 0.0).count(),
-            "meal_issues": gathered.meals.0.iter().filter(|m| meal_issue(m)).count(),
-            "inspections": gathered.inspections.0.len(),
-            "short_inspections": gathered.inspections.0.iter().filter(|i| i.short).count(),
+            "routes": known(Source::Routes, json!(routes.len())),
+            "stops_completed": known(Source::Routes, json!(sum(|r| r.stops_completed))),
+            "packages_delivered": known(Source::Routes, json!(sum(|r| r.packages_delivered))),
+            "packages_undeliverable":
+                known(Source::Routes, json!(sum(|r| r.packages_undeliverable))),
+            "hours_worked": known(Source::Timecards, hours(worked)),
+            "days_worked": known(
+                Source::Timecards,
+                json!(gathered.timecards.0.iter().filter(|c| c.hours > 0.0).count()),
+            ),
+            "meal_issues": known(
+                Source::MealBreaks,
+                json!(gathered.meals.0.iter().filter(|m| meal_issue(m)).count()),
+            ),
+            "inspections": known(Source::Dvic, json!(gathered.inspections.0.len())),
+            "short_inspections": known(
+                Source::Dvic,
+                json!(gathered.inspections.0.iter().filter(|i| i.short).count()),
+            ),
         },
         "coverage": coverage(&gathered),
     });
+    let off: Vec<&str> = [
+        Source::Routes,
+        Source::Timecards,
+        Source::MealBreaks,
+        Source::Dvic,
+    ]
+    .into_iter()
+    .filter(|s| !on.has(*s))
+    .map(Source::switch)
+    .collect();
+    if !off.is_empty() {
+        answer["switched_off"] = json!(off);
+    }
     if param(query, "detail") == "full" {
         // Every record the sources hold, day by day.
         let mut days: BTreeMap<String, Map<String, Value>> = BTreeMap::new();
@@ -526,14 +546,14 @@ pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
         daily_limit(&period)?;
     }
     let on = Sources::of(db, &dsp.id)?;
-    for (source, enabled, label) in [
-        ("routes", on.routes, "routes"),
-        ("timecards", on.timecards, "timecards"),
-        ("meal_breaks", on.meal_breaks, "meal breaks"),
-        ("dvic", on.dvic, "DVIC"),
+    for (name, source) in [
+        ("routes", Source::Routes),
+        ("timecards", Source::Timecards),
+        ("meal_breaks", Source::MealBreaks),
+        ("dvic", Source::Dvic),
     ] {
-        if sources.contains(&source) && !enabled {
-            return Err(not_on(label).into());
+        if sources.contains(&name) && !on.has(source) {
+            return Err(facts::switched_off(dsp, source).into());
         }
     }
     let people = People::load(db, state, &dsp.id)?;
@@ -665,9 +685,6 @@ pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
 pub fn routes(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("routes", query)?;
     let dsp = pick_dsp(caller, param(query, "dsp"))?;
-    if !Sources::of(db, &dsp.id)?.routes {
-        return Err(not_on("routes").into());
-    }
     let period = period(query, today(dsp), "yesterday")?;
     one_day(&period)?;
     let people = People::load(db, state, &dsp.id)?;
@@ -730,9 +747,6 @@ pub fn routes(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
 pub fn route(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &Value) -> Answer {
     catalog::check("route", query)?;
     let dsp = pick_dsp(caller, param(query, "dsp"))?;
-    if !Sources::of(db, &dsp.id)?.routes {
-        return Err(not_on("routes").into());
-    }
     let period = period(query, today(dsp), "yesterday")?;
     one_day(&period)?;
     let day = period.first();
@@ -842,9 +856,6 @@ pub fn package(
 ) -> Answer {
     catalog::check("package", query)?;
     let dsp = pick_dsp(caller, param(query, "dsp"))?;
-    if !Sources::of(db, &dsp.id)?.routes {
-        return Err(not_on("routes").into());
-    }
     // Amazon writes tracking IDs in capitals; an agent may not.
     let tracking = tracking.trim().to_uppercase();
     let found = db.route_package(&dsp.id, &tracking)?;
@@ -892,9 +903,6 @@ pub fn package(
 pub fn packages(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("packages", query)?;
     let dsp = pick_dsp(caller, param(query, "dsp"))?;
-    if !Sources::of(db, &dsp.id)?.routes {
-        return Err(not_on("routes").into());
-    }
     let period = period(query, today(dsp), DEFAULT_PERIOD)?;
     let people = People::load(db, state, &dsp.id)?;
     let named = param(query, "driver");
@@ -1129,9 +1137,6 @@ pub fn packages(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
 pub fn timecards(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("timecards", query)?;
     let dsp = pick_dsp(caller, param(query, "dsp"))?;
-    if !Sources::of(db, &dsp.id)?.timecards {
-        return Err(not_on("timecards").into());
-    }
     let people = People::load(db, state, &dsp.id)?;
     let named = param(query, "driver");
     let person = if named.is_empty() {
@@ -1192,9 +1197,6 @@ pub fn timecards(db: &Store, state: &State, caller: &Caller, query: &Value) -> A
 pub fn meal_breaks(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("meal_breaks", query)?;
     let dsp = pick_dsp(caller, param(query, "dsp"))?;
-    if !Sources::of(db, &dsp.id)?.meal_breaks {
-        return Err(not_on("meal breaks").into());
-    }
     let period = period(query, today(dsp), "yesterday")?;
     one_day(&period)?;
     let people = People::load(db, state, &dsp.id)?;
@@ -1246,9 +1248,6 @@ pub fn meal_breaks(db: &Store, state: &State, caller: &Caller, query: &Value) ->
 pub fn dvic(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("dvic", query)?;
     let dsp = pick_dsp(caller, param(query, "dsp"))?;
-    if !Sources::of(db, &dsp.id)?.dvic {
-        return Err(not_on("DVIC").into());
-    }
     let people = People::load(db, state, &dsp.id)?;
     let named = param(query, "driver");
     let person = if named.is_empty() {
