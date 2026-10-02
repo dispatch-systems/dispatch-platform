@@ -4,18 +4,19 @@
 //! Every row of detail waits for a request that asks for it.
 use super::{
     Answer, Refusal,
-    catalog::{self, METRICS, Metric, Source, flag},
+    access::{self, Access, Read},
+    catalog::{self, METRICS, Metric, flag},
     facts::{
-        self, Coverage, Inspection, MealDay, Packages, RouteDay, Sources, TimecardDay, clock,
-        outcome_of, reason_of,
+        self, Coverage, Inspection, MealDay, Packages, RouteDay, TimecardDay, clock, outcome_of,
+        reason_of,
     },
-    scope::{DEFAULT_PERIOD, People, Period, Person, daily_limit, param, period, pick_dsp, today},
+    scope::{DEFAULT_PERIOD, People, Period, Person, daily_limit, param, period, today},
     shape::{BUDGET, Table, hours, offset_named, page, page_named, paged, understood},
 };
 use crate::{
     State,
     agents::Caller,
-    contracts::{DriverSource, Dsp, MealStatus, RouteAddress},
+    contracts::{AgentArea, AgentSource, DriverSource, Dsp, MealStatus, RouteAddress},
     db::Store,
 };
 use serde_json::{Map, Value, json};
@@ -84,23 +85,17 @@ fn address_line(address: &RouteAddress) -> String {
     .collect::<Vec<_>>()
     .join(", ")
 }
-fn locations_off() -> Refusal {
-    Refusal::new(
-        403,
-        "locations_off",
-        "This key is not allowed addresses; ask without them.",
-    )
-}
-
-/// `GET /api/v1/status`: which sources are on and how fresh each is.
+/// `GET /api/v1/status`: which sources are on, which the key or app reads, and how fresh
+/// each it reads is.
 pub fn status(db: &Store, caller: &Caller, query: &Value) -> Answer {
     catalog::check("status", query)?;
-    let dsp = pick_dsp(caller, param(query, "dsp"))?;
-    let on = Sources::of(db, &dsp.id)?;
+    let access = Access::of(db, caller, query)?;
+    let dsp = access.dsp;
     let fresh = facts::freshness(db, dsp)?;
-    let source = |enabled: bool, key: &str| {
-        let mut value = json!({"enabled": enabled});
-        if enabled && let Some(found) = fresh[key].as_object() {
+    let source = |source: AgentSource, key: &str| {
+        let reads = access.reads_from(source);
+        let mut value = json!({"enabled": access.on(source), "reads": reads});
+        if reads && let Some(found) = fresh[key].as_object() {
             for (k, v) in found {
                 value[k] = v.clone();
             }
@@ -110,11 +105,11 @@ pub fn status(db: &Store, caller: &Caller, query: &Value) -> Answer {
     Ok(json!({
         "understood": understood(dsp, None),
         "sources": {
-            "timecards": source(on.timecards, "timecards"),
-            "mealBreaks": source(on.meal_breaks, "mealBreaks"),
-            "routes": source(on.routes, "routes"),
-            "dvic": source(on.dvic, "dvic"),
-            "scorecard": source(on.scorecard, "scorecard"),
+            "timecards": source(AgentSource::Timecards, "timecards"),
+            "mealBreaks": source(AgentSource::MealBreaks, "mealBreaks"),
+            "routes": source(AgentSource::Routes, "routes"),
+            "dvic": source(AgentSource::Dvic, "dvic"),
+            "scorecard": source(AgentSource::Scorecard, "scorecard"),
         }
     }))
 }
@@ -128,8 +123,9 @@ pub fn metrics(query: &Value) -> Answer {
 /// `GET /api/v1/drivers`: everyone with a code, or those a search finds.
 pub fn drivers(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("drivers", query)?;
-    let dsp = pick_dsp(caller, param(query, "dsp"))?;
-    let people = People::load(db, state, &dsp.id)?;
+    let access = Access::of(db, caller, query)?;
+    let dsp = access.dsp;
+    let people = People::load(db, state, &access)?;
     let wanted = param(query, "q").to_lowercase();
     let include_ids = flag(query, "include_ids");
     let columns: &[&str] = if include_ids {
@@ -164,30 +160,30 @@ struct Gathered {
     meals: (Vec<MealDay>, Coverage),
     inspections: (Vec<Inspection>, Coverage),
 }
-/// What each switched-on source holds for the period, all of it or one person's.
+/// What each source holds for the period, all of it or one person's: those of `wanted`, the
+/// kinds of data the answer reads.
 fn gather(
     db: &Store,
     dsp: &Dsp,
     period: &Period,
     people: &People,
     person: Option<&Person>,
-    wanted: &[&str],
+    wanted: &[AgentArea],
 ) -> crate::Result<Gathered> {
-    let on = Sources::of(db, &dsp.id)?;
-    let wants = |source: &str| wanted.contains(&source);
+    let wants = |area: AgentArea| wanted.contains(&area);
     let amazon = person.map(|p| p.amazon.as_slice());
     let paycom = person.map(|p| p.paycom.as_slice());
-    let routes = if on.routes && wants("routes") {
+    let routes = if wants(AgentArea::Routes) {
         facts::routes(db, dsp, period, amazon)?
     } else {
         (vec![], Coverage::default())
     };
-    let timecards = if on.timecards && wants("timecards") {
+    let timecards = if wants(AgentArea::Timecards) {
         facts::timecards(db, dsp, period, paycom)?
     } else {
         (vec![], Coverage::default())
     };
-    let meals = if on.meal_breaks && wants("meal_breaks") {
+    let meals = if wants(AgentArea::MealBreaks) {
         let sources = person.map(|p| {
             p.paycom
                 .iter()
@@ -201,7 +197,7 @@ fn gather(
     } else {
         (vec![], Coverage::default())
     };
-    let inspections = if on.dvic && wants("dvic") {
+    let inspections = if wants(AgentArea::Dvic) {
         facts::inspections(db, dsp, period, amazon)?
     } else {
         (vec![], Coverage::default())
@@ -221,7 +217,13 @@ fn coverage(gathered: &Gathered) -> Value {
         "dvic": gathered.inspections.1,
     })
 }
-const ALL: &[&str] = &["routes", "timecards", "meal_breaks", "dvic"];
+/// The kinds of data a driver's days and the team's table are made of.
+const DAILY: [AgentArea; 4] = [
+    AgentArea::Routes,
+    AgentArea::Timecards,
+    AgentArea::MealBreaks,
+    AgentArea::Dvic,
+];
 
 /// Marks each meal row whose person Cortex had a route for that day.
 fn mark_routes(
@@ -294,57 +296,72 @@ struct Line {
 /// `GET /api/v1/drivers/{driver}`: one driver's days, one line each, with totals.
 pub fn driver(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &Value) -> Answer {
     catalog::check("driver", query)?;
-    let dsp = pick_dsp(caller, param(query, "dsp"))?;
-    let people = People::load(db, state, &dsp.id)?;
+    let access = Access::of(db, caller, query)?;
+    let dsp = access.dsp;
+    let people = People::load(db, state, &access)?;
     let person = people.find(wanted)?;
     let period = period(query, today(dsp), DEFAULT_PERIOD)?;
     daily_limit(&period)?;
-    let gathered = gather(db, dsp, &period, &people, Some(person), ALL)?;
+    let read: Vec<AgentArea> = DAILY
+        .into_iter()
+        .filter(|area| access.reads(*area))
+        .collect();
+    let gathered = gather(db, dsp, &period, &people, Some(person), &read)?;
     let routes = &gathered.routes.0;
     let sum = |f: fn(&RouteDay) -> i64| routes.iter().map(f).sum::<i64>();
     let worked: f64 = gathered.timecards.0.iter().map(|c| c.hours).sum();
     let mut head = understood(dsp, Some(&period));
     head.insert("driver".into(), driver_json(person));
-    // A source switched off is unknown, never zero: its figures are null and it is named.
-    let on = Sources::of(db, &dsp.id)?;
-    let known = |source: Source, value: Value| if on.has(source) { value } else { Value::Null };
+    // A source not read is unknown, never zero: its figures are null, and it is named as not
+    // allowed or switched off. One read by bypassing its feature is named too.
+    let known = |area: AgentArea, value: Value| {
+        if read.contains(&area) {
+            value
+        } else {
+            Value::Null
+        }
+    };
     let mut answer = json!({
         "understood": head,
         "totals": {
-            "routes": known(Source::Routes, json!(routes.len())),
-            "stops_completed": known(Source::Routes, json!(sum(|r| r.stops_completed))),
-            "packages_delivered": known(Source::Routes, json!(sum(|r| r.packages_delivered))),
+            "routes": known(AgentArea::Routes, json!(routes.len())),
+            "stops_completed": known(AgentArea::Routes, json!(sum(|r| r.stops_completed))),
+            "packages_delivered": known(AgentArea::Routes, json!(sum(|r| r.packages_delivered))),
             "packages_undeliverable":
-                known(Source::Routes, json!(sum(|r| r.packages_undeliverable))),
-            "hours_worked": known(Source::Timecards, hours(worked)),
+                known(AgentArea::Routes, json!(sum(|r| r.packages_undeliverable))),
+            "hours_worked": known(AgentArea::Timecards, hours(worked)),
             "days_worked": known(
-                Source::Timecards,
+                AgentArea::Timecards,
                 json!(gathered.timecards.0.iter().filter(|c| c.hours > 0.0).count()),
             ),
             "meal_issues": known(
-                Source::MealBreaks,
+                AgentArea::MealBreaks,
                 json!(gathered.meals.0.iter().filter(|m| meal_issue(m)).count()),
             ),
-            "inspections": known(Source::Dvic, json!(gathered.inspections.0.len())),
+            "inspections": known(AgentArea::Dvic, json!(gathered.inspections.0.len())),
             "short_inspections": known(
-                Source::Dvic,
+                AgentArea::Dvic,
                 json!(gathered.inspections.0.iter().filter(|i| i.short).count()),
             ),
         },
         "coverage": coverage(&gathered),
     });
-    let off: Vec<&str> = [
-        Source::Routes,
-        Source::Timecards,
-        Source::MealBreaks,
-        Source::Dvic,
-    ]
-    .into_iter()
-    .filter(|s| !on.has(*s))
-    .map(Source::switch)
-    .collect();
-    if !off.is_empty() {
-        answer["switched_off"] = json!(off);
+    let named = |how: Read, name: fn(AgentArea) -> &'static str| -> Vec<&str> {
+        DAILY
+            .into_iter()
+            .filter(|area| access.read(*area) == how)
+            .map(name)
+            .collect()
+    };
+    let switch = |area: AgentArea| area.source().switch();
+    for (key, names) in [
+        ("not_allowed", named(Read::NotAllowed, AgentArea::label)),
+        ("switched_off", named(Read::Off, switch)),
+        ("bypassed", named(Read::Bypassed, switch)),
+    ] {
+        if !names.is_empty() {
+            answer[key] = json!(names);
+        }
     }
     if param(query, "detail") == "full" {
         // Every record the sources hold, day by day.
@@ -537,7 +554,8 @@ fn display_names(tallies: &BTreeMap<(String, String), Tally>) -> HashMap<String,
 /// `GET /api/v1/team`: chosen metrics for every driver, per driver or per driver per day.
 pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("team", query)?;
-    let dsp = pick_dsp(caller, param(query, "dsp"))?;
+    let access = Access::of(db, caller, query)?;
+    let dsp = access.dsp;
     let period = period(query, today(dsp), DEFAULT_PERIOD)?;
     let per_day = param(query, "per") == "day";
     let asked = param(query, "metrics");
@@ -595,23 +613,23 @@ pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
         )
         .into());
     }
-    let sources: Vec<&str> = chosen.iter().map(|m| m.source).collect();
-    if sources.contains(&"timecards") || sources.contains(&"meal_breaks") {
+    let areas: Vec<AgentArea> = DAILY
+        .into_iter()
+        .filter(|area| chosen.iter().any(|m| m.area == *area))
+        .collect();
+    if areas.contains(&AgentArea::Timecards) || areas.contains(&AgentArea::MealBreaks) {
         daily_limit(&period)?;
     }
-    let on = Sources::of(db, &dsp.id)?;
-    for (name, source) in [
-        ("routes", Source::Routes),
-        ("timecards", Source::Timecards),
-        ("meal_breaks", Source::MealBreaks),
-        ("dvic", Source::Dvic),
-    ] {
-        if sources.contains(&name) && !on.has(source) {
-            return Err(facts::switched_off(dsp, source).into());
+    // A metric whose data can't be read here is refused; one read by bypassing its feature
+    // is answered, and the feature named.
+    let mut bypassed = vec![];
+    for area in &areas {
+        if access.check(*area)? == Read::Bypassed {
+            bypassed.push(area.source());
         }
     }
-    let people = People::load(db, state, &dsp.id)?;
-    let gathered = gather(db, dsp, &period, &people, None, &sources)?;
+    let people = People::load(db, state, &access)?;
+    let gathered = gather(db, dsp, &period, &people, None, &areas)?;
     // One tally per private identity, or per private identity per day. Display labels are not
     // identities: two unmatched source records may have the same or no name.
     let mut tallies: BTreeMap<(String, String), Tally> = BTreeMap::new();
@@ -737,6 +755,9 @@ pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
         "totals": totals,
         "coverage": coverage(&gathered),
     });
+    for source in bypassed {
+        access::bypassed(&mut answer, source);
+    }
     paged(&mut answer, "rows", table, query, 100)?;
     Ok(answer)
 }
@@ -744,10 +765,11 @@ pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
 /// `GET /api/v1/routes`: one day's routes, one line each.
 pub fn routes(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("routes", query)?;
-    let dsp = pick_dsp(caller, param(query, "dsp"))?;
+    let access = Access::of(db, caller, query)?;
+    let dsp = access.dsp;
     let period = period(query, today(dsp), "yesterday")?;
     one_day(&period)?;
-    let people = People::load(db, state, &dsp.id)?;
+    let people = People::load(db, state, &access)?;
     let (found, coverage) = facts::routes(db, dsp, &period, None)?;
     let collected = !coverage.days.is_empty();
     let sum = |f: fn(&RouteDay) -> i64| found.iter().map(f).sum::<i64>();
@@ -806,7 +828,8 @@ pub fn routes(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
 /// `GET /api/v1/routes/{route}`: what happened on one route, its problems first.
 pub fn route(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &Value) -> Answer {
     catalog::check("route", query)?;
-    let dsp = pick_dsp(caller, param(query, "dsp"))?;
+    let access = Access::of(db, caller, query)?;
+    let dsp = access.dsp;
     let period = period(query, today(dsp), "yesterday")?;
     one_day(&period)?;
     let day = period.first();
@@ -845,11 +868,12 @@ pub fn route(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &V
         )
         .into());
     };
-    let people = People::load(db, state, &dsp.id)?;
+    let people = People::load(db, state, &access)?;
     let zone = facts::zone(dsp);
     let full = param(query, "detail") == "full";
+    let places = access.reads(AgentArea::Locations);
     let mut columns = vec!["stop", "tracking", "outcome", "reason", "at"];
-    if caller.locations {
+    if places {
         columns.push("address");
     }
     let mut table = Table::new(&columns);
@@ -878,7 +902,7 @@ pub fn route(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &V
                     json!(reason),
                     json!(clock(task.executed_at, zone)),
                 ];
-                if caller.locations {
+                if places {
                     row.push(json!(stop.address.as_ref().map(address_line)));
                 }
                 table.push(row);
@@ -915,7 +939,8 @@ pub fn package(
     query: &Value,
 ) -> Answer {
     catalog::check("package", query)?;
-    let dsp = pick_dsp(caller, param(query, "dsp"))?;
+    let access = Access::of(db, caller, query)?;
+    let dsp = access.dsp;
     // Amazon writes tracking IDs in capitals; an agent may not.
     let tracking = tracking.trim().to_uppercase();
     let found = db.route_package(&dsp.id, &tracking)?;
@@ -927,10 +952,11 @@ pub fn package(
         )
         .into());
     }
-    let people = People::load(db, state, &dsp.id)?;
+    let people = People::load(db, state, &access)?;
     let zone = facts::zone(dsp);
+    let places = access.reads(AgentArea::Locations);
     let mut columns = vec!["date", "route", "driver", "outcome", "reason", "at"];
-    if caller.locations {
+    if places {
         columns.push("address");
     }
     let mut table = Table::new(&columns);
@@ -948,7 +974,7 @@ pub fn package(
             json!(reason_of(e.task.state_context.as_deref())),
             json!(clock(e.task.executed_at, zone)),
         ];
-        if caller.locations {
+        if places {
             row.push(json!(e.address.as_ref().map(address_line)));
         }
         table.push(row);
@@ -962,9 +988,10 @@ pub fn package(
 /// packages themselves only when asked.
 pub fn packages(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("packages", query)?;
-    let dsp = pick_dsp(caller, param(query, "dsp"))?;
+    let access = Access::of(db, caller, query)?;
+    let dsp = access.dsp;
     let period = period(query, today(dsp), DEFAULT_PERIOD)?;
-    let people = People::load(db, state, &dsp.id)?;
+    let people = People::load(db, state, &access)?;
     let named = param(query, "driver");
     let person = if named.is_empty() {
         None
@@ -1016,9 +1043,10 @@ pub fn packages(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         )
         .into());
     }
-    if groups.contains(&"address") && !caller.locations {
-        return Err(locations_off().into());
+    if groups.contains(&"address") {
+        access.check(AgentArea::Locations)?;
     }
+    let places = access.reads(AgentArea::Locations);
     let wanted = Packages {
         drivers: person.map(|p| p.amazon.as_slice()),
         outcome,
@@ -1157,10 +1185,10 @@ pub fn packages(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         let mut columns = vec![
             "date", "tracking", "driver", "route", "outcome", "reason", "at",
         ];
-        if caller.locations {
+        if places {
             columns.push("address");
         }
-        let addresses = if caller.locations {
+        let addresses = if places {
             let ids: Vec<String> = rows.iter().map(|r| r.address_id.clone()).collect();
             facts::addresses(db, dsp, &ids)?
         } else {
@@ -1182,7 +1210,7 @@ pub fn packages(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
                 json!(r.reason),
                 json!(r.at),
             ];
-            if caller.locations {
+            if places {
                 row.push(json!(addresses.get(&r.address_id)));
             }
             table.push(row);
@@ -1195,8 +1223,9 @@ pub fn packages(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
 /// `GET /api/v1/timecards`: everyone's for a day, or one driver's for a period.
 pub fn timecards(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("timecards", query)?;
-    let dsp = pick_dsp(caller, param(query, "dsp"))?;
-    let people = People::load(db, state, &dsp.id)?;
+    let access = Access::of(db, caller, query)?;
+    let dsp = access.dsp;
+    let people = People::load(db, state, &access)?;
     let named = param(query, "driver");
     let person = if named.is_empty() {
         None
@@ -1255,10 +1284,11 @@ pub fn timecards(db: &Store, state: &State, caller: &Caller, query: &Value) -> A
 /// `GET /api/v1/meal-breaks`: one day's comparison for the drivers Cortex had a route for.
 pub fn meal_breaks(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("meal_breaks", query)?;
-    let dsp = pick_dsp(caller, param(query, "dsp"))?;
+    let access = Access::of(db, caller, query)?;
+    let dsp = access.dsp;
     let period = period(query, today(dsp), "yesterday")?;
     one_day(&period)?;
-    let people = People::load(db, state, &dsp.id)?;
+    let people = People::load(db, state, &access)?;
     let (mut rows, coverage) = facts::meal_breaks(db, dsp, &period)?;
     mark_routes(db, dsp, &period, &people, &mut rows)?;
     let issues = flag(query, "issues");
@@ -1306,8 +1336,9 @@ pub fn meal_breaks(db: &Store, state: &State, caller: &Caller, query: &Value) ->
 /// `GET /api/v1/dvic`: inspections in a period, per driver, the short ones counted.
 pub fn dvic(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("dvic", query)?;
-    let dsp = pick_dsp(caller, param(query, "dsp"))?;
-    let people = People::load(db, state, &dsp.id)?;
+    let access = Access::of(db, caller, query)?;
+    let dsp = access.dsp;
+    let people = People::load(db, state, &access)?;
     let named = param(query, "driver");
     let person = if named.is_empty() {
         None

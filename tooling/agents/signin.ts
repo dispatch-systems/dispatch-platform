@@ -168,7 +168,7 @@ function run(args: string[], env: NodeJS.ProcessEnv, cwd: string, ms = 60_000) {
 
 /**
  * The owner's side, in a browser: open the app's sign-in link, sign in, approve it for the
- * one DSP with the Essential tools, and answer where the browser is sent back to the app.
+ * one DSP reading what a new app reads, and answer where the browser is sent back to the app.
  * With `stop`, the browser goes no further than that address, as when the app is elsewhere.
  */
 async function approve(browser: Browser, link: string, stop: boolean, shot?: string) {
@@ -194,7 +194,6 @@ async function approve(browser: Browser, link: string, stop: boolean, shot?: str
       .filter({ has: page.getByRole('button', { name: 'Approve', exact: true }) });
     await form.getByText('Choose DSPs', { exact: true }).click();
     await form.getByRole('checkbox', { name: DSP }).check();
-    await form.getByRole('button', { name: 'Essential', exact: true }).click();
     // Only an app Dispatch doesn't know is called unverified, in words, on the page.
     const verified = (await form.getByText(/Unverified app/).count()) === 0;
     if (shot) await page.screenshot({ path: shot });
@@ -878,15 +877,20 @@ async function main() {
         (key) => key.kind === 'app' && !key.revokedAt && key.client?.name === client.app,
       );
       const app = apps[0];
+      // Approved as a new app reads: every kind of data but delivery addresses, bypassing none.
+      const reads = app?.reads as { areas: string[]; bypass: boolean } | undefined;
       step(
         'connected app',
         apps.length === 1 &&
           app.client.verified === client.verified &&
           app.client.status === 'connected' &&
-          app.tools === 'essential',
+          reads?.areas.length === 8 &&
+          !reads.areas.includes('locations') &&
+          !reads.bypass,
         app
           ? `kind ${app.kind}, ${app.client.name}, ${app.client.verified ? 'verified' : 'unverified'}, ` +
-              `${app.client.status}, ${app.tools} tools, last used by ${app.lastClient ?? 'nothing yet'}`
+              `${app.client.status}, reads ${reads?.areas.length} of 9 kinds, ` +
+              `last used by ${app.lastClient ?? 'nothing yet'}`
           : 'not listed',
       );
     }

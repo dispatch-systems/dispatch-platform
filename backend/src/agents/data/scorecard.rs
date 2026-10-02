@@ -4,15 +4,16 @@
 //! route questions do.
 use super::{
     Answer, Refusal,
-    catalog::{self, Source, flag},
+    access::{self, Access, Read},
+    catalog::{self, flag},
     facts,
-    scope::{DEFAULT_PERIOD, People, Period, param, period, pick_dsp, today},
+    scope::{DEFAULT_PERIOD, People, Period, param, period, today},
     shape::{Table, limit, page, paged, understood},
 };
 use crate::{
     State,
     agents::Caller,
-    contracts::{DriverSource, Dsp},
+    contracts::{AgentArea, AgentSource, DriverSource, Dsp},
     db::{Store, s},
     scorecard,
 };
@@ -351,9 +352,10 @@ fn places(db: &Store, dsp: &Dsp, tracking: &[String]) -> crate::Result<HashMap<S
 /// `GET /api/v1/feedback`: customer delivery feedback (CDF), counted and grouped.
 pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("feedback", query)?;
-    let dsp = pick_dsp(caller, param(query, "dsp"))?;
+    let access = Access::of(db, caller, query)?;
+    let dsp = access.dsp;
     let period = period(query, today(dsp), DEFAULT_PERIOD)?;
-    let people = People::load(db, state, &dsp.id)?;
+    let people = People::load(db, state, &access)?;
     let person = person_ids(&people, query)?;
     let wanted_type = param(query, "type");
     // A kind of praise is counted among the praise unless the question says otherwise.
@@ -366,20 +368,11 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         other => other,
     };
     let groups = groups_of(query, &["driver", "address", "type", "week", "day"])?;
-    if groups.contains(&"address") && !caller.locations {
-        return Err(Refusal::new(
-            403,
-            "locations_off",
-            "This key is not allowed addresses; ask without them.",
-        )
-        .into());
+    // Addresses come from the stored routes, so only as the key or app reads those.
+    if groups.contains(&"address") {
+        access.check(AgentArea::Locations)?;
     }
-    // Addresses come from the stored routes, so only while the DSP has routes on.
-    let routes_on = facts::Sources::of(db, &dsp.id)?.routes;
-    if groups.contains(&"address") && !routes_on {
-        return Err(facts::switched_off(dsp, Source::Routes).into());
-    }
-    let placed = caller.locations && routes_on;
+    let placed = access.reads(AgentArea::Locations);
     let min = param(query, "min_count").parse::<i64>().unwrap_or(1);
     let impacting = flag(query, "impacting");
     let coverage = weeks(db, dsp, &period)?;
@@ -417,7 +410,8 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         kept.push((row, kinds));
     }
     let tracking: Vec<String> = kept.iter().map(|(r, _)| r.tracking_id.clone()).collect();
-    let addresses = if placed && (groups.contains(&"address") || flag(query, "list")) {
+    let looked_up = placed && (groups.contains(&"address") || flag(query, "list"));
+    let addresses = if looked_up {
         places(db, dsp, &tracking)?
     } else {
         HashMap::new()
@@ -435,6 +429,9 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         "feedback": kept.len(),
         "coverage": coverage,
     });
+    if looked_up && access.read(AgentArea::Locations) == Read::Bypassed {
+        access::bypassed(&mut answer, AgentSource::Routes);
+    }
     if !groups.is_empty() {
         let mut counted: HashMap<Vec<String>, i64> = HashMap::new();
         let mut unplaced = 0;
@@ -529,9 +526,10 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
 /// `GET /api/v1/safety`: Netradyne safety events, counted, grouped or listed.
 pub fn safety(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("safety", query)?;
-    let dsp = pick_dsp(caller, param(query, "dsp"))?;
+    let access = Access::of(db, caller, query)?;
+    let dsp = access.dsp;
     let period = period(query, today(dsp), DEFAULT_PERIOD)?;
-    let people = People::load(db, state, &dsp.id)?;
+    let people = People::load(db, state, &access)?;
     let person = person_ids(&people, query)?;
     let groups = groups_of(query, &["driver", "type", "day", "week"])?;
     let wanted_type = snake(param(query, "type"));
@@ -658,9 +656,10 @@ fn missed_contact(coaching: &str) -> bool {
 /// `GET /api/v1/returns`: Amazon's returns to station (RTS), with contact compliance.
 pub fn returns(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("returns", query)?;
-    let dsp = pick_dsp(caller, param(query, "dsp"))?;
+    let access = Access::of(db, caller, query)?;
+    let dsp = access.dsp;
     let period = period(query, today(dsp), DEFAULT_PERIOD)?;
-    let people = People::load(db, state, &dsp.id)?;
+    let people = People::load(db, state, &access)?;
     let person = person_ids(&people, query)?;
     let groups = groups_of(query, &["driver", "reason", "coaching", "week", "day"])?;
     let contact = param(query, "contact");
@@ -796,7 +795,8 @@ const TIERS: &[(&str, &str)] = &[
 /// `GET /api/v1/scorecard`: one week's scorecard, the DSP's and each driver's tiers.
 pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("scorecard", query)?;
-    let dsp = pick_dsp(caller, param(query, "dsp"))?;
+    let access = Access::of(db, caller, query)?;
+    let dsp = access.dsp;
     let station = db.profile(&dsp.id)?.station_code;
     let data = db.scorecard(&dsp.id)?;
     let posted: Vec<String> = data
@@ -881,7 +881,7 @@ pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
             json!("in returns, with contact missed"),
         );
     }
-    let people = People::load(db, state, &dsp.id)?;
+    let people = People::load(db, state, &access)?;
     let person = person_ids(&people, query)?;
     let below = param(query, "below");
     let below_rank = if below.is_empty() {

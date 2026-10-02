@@ -1,5 +1,7 @@
 // Transactional email bodies. Mail clients ignore stylesheets and SVG, so the
 // layout is nested tables with inline styles and the mark is a hosted PNG.
+use crate::contracts::{AgentArea, AgentReads};
+
 const FONT: &str =
     "Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 const INK: &str = "#171b25";
@@ -217,8 +219,8 @@ pub struct ConnectedApp<'a> {
     pub destination: Option<&'a str>,
     /// The DSPs it reaches by name; empty when it reaches all of them.
     pub dsps: &'a [String],
-    pub essential: bool,
-    pub locations: bool,
+    /// What it reads at a DSP without settings of its own.
+    pub reads: &'a AgentReads,
     pub approved_by: &'a str,
     /// When it connected or was disconnected, in milliseconds.
     pub at: i64,
@@ -283,6 +285,20 @@ impl ConnectedApp<'_> {
             ),
         }
     }
+    /// What it reads, in words: all data or the kinds of it, and whether it bypasses features.
+    fn access(&self) -> String {
+        let kinds: Vec<&str> = self.reads.areas.iter().map(|area| area.label()).collect();
+        let reads = match kinds.len() {
+            0 => "Reads nothing".to_owned(),
+            count if count == AgentArea::ALL.len() => "Reads all data".to_owned(),
+            _ => format!("Reads {}", kinds.join(", ")),
+        };
+        if self.reads.bypass {
+            format!("{reads}. Bypasses switched-off features.")
+        } else {
+            reads
+        }
+    }
     fn link(&self) -> String {
         format!("{}/#agents?tab=apps", self.origin)
     }
@@ -338,19 +354,7 @@ pub fn app_connected(app: &ConnectedApp) -> Message {
     rows.extend(app.destination.map(|to| ("Sends access to", to.to_owned())));
     rows.extend([
         ("DSPs", app.reach()),
-        (
-            "Tools",
-            if app.essential { "Essential" } else { "Full" }.to_owned(),
-        ),
-        (
-            "Delivery addresses and GPS",
-            if app.locations {
-                "Included"
-            } else {
-                "Not included"
-            }
-            .to_owned(),
-        ),
+        ("Access", app.access()),
         ("Approved by", app.approved_by.to_owned()),
         ("Connected", when(app.at)),
     ]);
@@ -383,7 +387,7 @@ pub fn app_disconnected(app: &ConnectedApp, reason: &str) -> Message {
         ("App", app.app_line()),
     ];
     rows.extend(app.destination.map(|to| ("Sent access to", to.to_owned())));
-    rows.push(("Disconnected", when(app.at)));
+    rows.extend([("Access", app.access()), ("Disconnected", when(app.at))]);
     app.message(
         subject,
         lead,
@@ -440,7 +444,7 @@ mod tests {
         );
     }
 
-    fn connected(known: bool, dsps: &[String]) -> ConnectedApp<'_> {
+    fn connected<'a>(known: bool, dsps: &'a [String], reads: &'a AgentReads) -> ConnectedApp<'a> {
         ConnectedApp {
             origin: "https://dispatch.test",
             dev: false,
@@ -450,23 +454,28 @@ mod tests {
             known,
             destination: Some("this computer"),
             dsps,
-            essential: true,
-            locations: false,
+            reads,
             approved_by: "Platform Owner",
             at: 1_790_337_600_000,
         }
     }
+    fn reading(areas: &[AgentArea], bypass: bool) -> AgentReads {
+        AgentReads {
+            areas: areas.to_vec(),
+            bypass,
+        }
+    }
     #[test]
     fn a_connected_app_is_described_plainly_and_escaped() {
-        let mail = app_connected(&connected(true, &[]));
+        let some = reading(&[AgentArea::Routes, AgentArea::Timecards], false);
+        let mail = app_connected(&connected(true, &[], &some));
         assert_eq!(mail.subject, "Claude Code connected to Dispatch");
         for line in [
             "Connection: Laptop <Claude>",
             "App: Claude Code (known metadata)",
             "Sends access to: this computer",
             "DSPs: All DSPs",
-            "Tools: Essential",
-            "Delivery addresses and GPS: Not included",
+            "Access: Reads Routes & packages, Timecards\n",
             "Approved by: Platform Owner",
             "Connected: September 25, 2026 at 12:00 PM UTC",
             "Review connected apps: https://dispatch.test/#agents?tab=apps",
@@ -475,8 +484,17 @@ mod tests {
         }
         assert!(mail.html.contains("Laptop &lt;Claude&gt;") && !mail.html.contains("<Claude>"));
         assert!(mail.text.ends_with(NO_REPLY) && mail.html.contains(NO_REPLY));
+        // Every kind of data reads as all of it; bypassing features is said beside it.
+        let everything = reading(&AgentArea::ALL, true);
+        let mail = app_connected(&connected(true, &[], &everything));
+        assert!(
+            mail.text
+                .contains("Access: Reads all data. Bypasses switched-off features.\n"),
+            "{}",
+            mail.text
+        );
         let names: Vec<String> = (1..=12).map(|n| format!("DSP {n}")).collect();
-        let mail = app_connected(&connected(false, &names));
+        let mail = app_connected(&connected(false, &names, &some));
         assert_eq!(
             mail.subject,
             "Claude Code (unrecognized) connected to Dispatch"
@@ -491,10 +509,16 @@ mod tests {
     }
     #[test]
     fn a_disconnected_app_says_why_in_plain_words() {
-        let app = connected(true, &[]);
+        let nothing = reading(&[], false);
+        let app = connected(true, &[], &nothing);
         let mail = app_disconnected(&app, "refresh_reused");
         assert_eq!(mail.subject, "Dispatch disconnected Claude Code");
         assert!(mail.text.contains("already used was presented again"));
+        assert!(
+            mail.text.contains("Access: Reads nothing\n"),
+            "{}",
+            mail.text
+        );
         assert!(
             app_disconnected(&app, "code_reused")
                 .text

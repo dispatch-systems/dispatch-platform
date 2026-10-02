@@ -6,6 +6,7 @@ use dispatch_backend::{
     State,
     agents::oauth::network::{Network, Pending},
     config::Config,
+    contracts::AgentArea,
     crypto,
     db::{self, Store, s},
     operations,
@@ -374,8 +375,20 @@ impl Server {
         .await
     }
 }
+/// Every kind of data there is, delivery addresses included.
+const EVERY: &[&str] = &[
+    "routes",
+    "locations",
+    "timecards",
+    "meal_breaks",
+    "dvic",
+    "feedback",
+    "safety",
+    "returns",
+    "scorecard",
+];
 fn everything(name: &str) -> Value {
-    json!({"name":name,"allDsps":true,"dsps":[],"tools":"full","locations":true})
+    json!({"name":name,"allDsps":true,"dsps":[],"reads":{"areas":EVERY,"bypass":false}})
 }
 
 #[tokio::test]
@@ -914,8 +927,8 @@ async fn a_name_a_key_or_another_app_holds_stays_taken() {
             &owner,
             "POST",
             "/api/platform/agents/keys",
-            json!({"name":"Desk key","allDsps":true,"dsps":[],"access":"read","tools":"full",
-                "locations":false,"expiresAt":null}),
+            json!({"name":"Desk key","allDsps":true,"dsps":[],"access":"read",
+                "reads":{"areas":["routes"],"bypass":false},"dspReads":[],"expiresAt":null}),
         )
         .await;
     assert_eq!(key.status, 200, "{}", key.body);
@@ -1476,10 +1489,14 @@ async fn expired_or_revoked_access_ends_with_invalid_token() {
             "POST",
             &format!("/api/platform/agents/keys/{id}"),
             json!({"name":"Claude Code","allDsps":true,"dsps":[],"access":"operator",
-                "tools":"full","locations":true,"expiresAt":null}),
+                "reads":{"areas":EVERY,"bypass":false},"dspReads":[],"expiresAt":null}),
         )
         .await;
-    assert_eq!(s(&edited.body, "error"), "connected_app_not_editable");
+    // An app is edited like a key, but only ever reads.
+    assert_eq!(
+        (edited.status, s(&edited.body, "error")),
+        (400, "invalid_input")
+    );
     let revoked = server
         .as_owner(
             &owner,
@@ -1512,8 +1529,8 @@ async fn a_connected_app_reaches_only_what_the_owner_chose() {
             &owner,
             CHATGPT,
             CHATGPT_REDIRECT,
-            json!({"name":"ChatGPT","allDsps":false,"dsps":[north],"tools":"essential",
-                "locations":false}),
+            json!({"name":"ChatGPT","allDsps":false,"dsps":[north],
+                "reads":{"areas":["dvic","routes","dvic"],"bypass":false}}),
         )
         .await;
     let access = s(&tokens, "access_token");
@@ -1521,8 +1538,7 @@ async fn a_connected_app_reaches_only_what_the_owner_chose() {
     assert_eq!(whoami.status, 200, "{}", whoami.body);
     assert_eq!(
         whoami.body["key"],
-        json!({"name":"ChatGPT","access":"read","tools":"essential","locations":false,
-            "expiresAt":null})
+        json!({"name":"ChatGPT","access":"read","expiresAt":null})
     );
     let dsps: Vec<&str> = whoami.body["dsps"]
         .as_array()
@@ -1531,7 +1547,10 @@ async fn a_connected_app_reaches_only_what_the_owner_chose() {
         .map(|dsp| s(dsp, "id"))
         .collect();
     assert_eq!(dsps, [north.as_str()]);
-    // MCP offers the essential tools only, and answers whoami the same way.
+    // What the owner approved it to read, each kind once in its order.
+    let reads = json!({"areas":["routes","dvic"],"bypass":false});
+    assert_eq!(whoami.body["dsps"][0]["reads"], reads);
+    // MCP offers the tools that read nothing in particular, and those of what it reads.
     let listed = server.mcp(access, "tools/list").await;
     assert_eq!(listed.status, 200, "{}", listed.body);
     let tools: Vec<&str> = listed.body["result"]["tools"]
@@ -1540,13 +1559,18 @@ async fn a_connected_app_reaches_only_what_the_owner_chose() {
         .iter()
         .map(|tool| s(tool, "name"))
         .collect();
-    let essential: Vec<&str> = dispatch_backend::agents::data::catalog::ENDPOINTS
+    let read: Vec<&str> = dispatch_backend::agents::data::catalog::ENDPOINTS
         .iter()
-        .filter(|endpoint| endpoint.essential)
+        .filter(|endpoint| {
+            endpoint
+                .area
+                .is_none_or(|area| [AgentArea::Routes, AgentArea::Dvic].contains(&area))
+        })
         .map(|endpoint| endpoint.tool)
         .collect();
     assert_eq!(tools[0], "get_profile");
-    assert_eq!(&tools[1..], essential);
+    assert_eq!(&tools[1..], read);
+    assert!(tools.contains(&"route_day") && !tools.contains(&"timecards"));
     // Its calls count like a key's, under the connected app.
     let used = server.state.agents.last();
     let listed = server
@@ -1556,6 +1580,7 @@ async fn a_connected_app_reaches_only_what_the_owner_chose() {
     assert!(used.contains_key(s(app, "id")));
     assert!(app["lastUsedAt"].is_string());
     assert_eq!(app["dsps"], json!([north]));
+    assert_eq!((&app["reads"], &app["dspReads"]), (&reads, &json!([])));
 }
 
 #[tokio::test]
@@ -2120,20 +2145,8 @@ async fn the_owner_chooses_which_kinds_of_app_may_connect() {
     ]});
     assert_eq!(listed.body, defaults);
     assert_eq!(server.get(path).await.status, 401);
-    // Choosing asks for recent verification, as approving does.
+    // Choosing is routine, as approving is: a session signed in a day ago chooses below.
     let earlier = server.signed_in(db::now() - DAY).await;
-    let stale = server
-        .as_owner(
-            &earlier,
-            "POST",
-            path,
-            json!({"id":"claude-code","allowed":false}),
-        )
-        .await;
-    assert_eq!(
-        (stale.status, s(&stale.body, "error")),
-        (403, "sign_in_again")
-    );
     for body in [
         json!({"id":"cursor","allowed":false}),
         json!({"id":"codex"}),
@@ -2160,7 +2173,7 @@ async fn the_owner_chooses_which_kinds_of_app_may_connect() {
     let registered_app = registered(&server, "Cursor", cursor).await;
     for id in ["claude-code", "local"] {
         let changed = server
-            .as_owner(&owner, "POST", path, json!({"id":id,"allowed":false}))
+            .as_owner(&earlier, "POST", path, json!({"id":id,"allowed":false}))
             .await;
         assert_eq!(changed.status, 200, "{}", changed.body);
         let app = changed.body["apps"]
@@ -2585,8 +2598,8 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
         .approved(
             &owner,
             &request,
-            json!({"name":"Laptop","allDsps":false,"dsps":[north],"tools":"essential",
-                "locations":false}),
+            json!({"name":"Laptop","allDsps":false,"dsps":[north],
+                "reads":{"areas":["routes","timecards"],"bypass":true}}),
         )
         .await;
     let tokens = server.exchange(CLAUDE_CODE, local, &code).await;
@@ -2602,8 +2615,7 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
             "App: Claude Code (known metadata)",
             "Sends access to: this computer",
             "DSPs: Northline Logistics",
-            "Tools: Essential",
-            "Delivery addresses and GPS: Not included",
+            "Access: Reads Routes & packages, Timecards. Bypasses switched-off features.",
             "Approved by: Platform Owner",
             &format!("{}/#agents?tab=apps", server.origin),
             &format!("This notice was sent to {to}"),
@@ -2948,4 +2960,244 @@ async fn turning_a_kind_of_app_off_stops_its_waiting_requests_and_codes() {
         )
         .await;
     assert_eq!(s(&refused.body, "error"), "app_not_allowed");
+}
+
+/// What the Agents page lists of one key or app, by name.
+async fn listed_key(server: &Server, owner: &Owner, name: &str) -> Value {
+    let listed = server
+        .as_owner(owner, "GET", "/api/platform/agents", json!({}))
+        .await;
+    listed.body["keys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|key| key["name"] == name && key["revokedAt"].is_null())
+        .unwrap_or_else(|| panic!("no {name} in {}", listed.body))
+        .clone()
+}
+
+#[tokio::test]
+async fn an_approval_keeps_what_it_reads_and_one_from_before_reads_everything() {
+    let server = Server::paired().await;
+    let owner = server.owner().await;
+    let local = "http://localhost:50020/callback";
+    let request = server.requested(CLAUDE_CODE, local).await;
+    let code = server
+        .approved(
+            &owner,
+            &request,
+            json!({"name":"Laptop","allDsps":true,"dsps":[],
+                "reads":{"areas":["timecards","routes"],"bypass":true}}),
+        )
+        .await;
+    // The code carries the choices, reads among them, until the app redeems it.
+    let hash = crypto::sha(&code);
+    let choices = server
+        .state
+        .read(move |db| {
+            db.platform
+                .one("SELECT choices FROM oauth_codes WHERE hash=?", [hash])
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let choices: Value = serde_json::from_str(s(&choices, "choices")).unwrap();
+    assert_eq!(
+        choices,
+        json!({"name":"Laptop","all_dsps":true,"dsps":[],
+            "reads":{"areas":["routes","timecards"],"bypass":true}})
+    );
+    let tokens = server.exchange(CLAUDE_CODE, local, &code).await;
+    assert_eq!(tokens.status, 200, "{}", tokens.body);
+    let app = listed_key(&server, &owner, "Laptop").await;
+    assert_eq!(
+        (&app["reads"], &app["dspReads"]),
+        (
+            &json!({"areas":["routes","timecards"],"bypass":true}),
+            &json!([])
+        )
+    );
+
+    // A code approved before this release, with tools and addresses, reads every kind of
+    // data, addresses as they were chosen, and bypasses nothing.
+    for (name, locations, areas) in [
+        ("Desk", true, EVERY.to_vec()),
+        (
+            "Tablet",
+            false,
+            EVERY[..1].iter().chain(&EVERY[2..]).copied().collect(),
+        ),
+    ] {
+        let request = server.requested(CHATGPT, CHATGPT_REDIRECT).await;
+        let code = server.approved(&owner, &request, everything(name)).await;
+        let old = json!({"name":name,"all_dsps":true,"dsps":[],"tools":"essential",
+            "locations":locations})
+        .to_string();
+        let hash = crypto::sha(&code);
+        server
+            .state
+            .run(move |db| {
+                db.platform
+                    .exec("UPDATE oauth_codes SET choices=? WHERE hash=?", [old, hash])?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let tokens = server.exchange(CHATGPT, CHATGPT_REDIRECT, &code).await;
+        assert_eq!(tokens.status, 200, "{}", tokens.body);
+        let app = listed_key(&server, &owner, name).await;
+        assert_eq!(
+            app["reads"],
+            json!({"areas":areas,"bypass":false}),
+            "{name}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_connected_app_is_edited_like_a_key_but_only_ever_reads_and_never_expires() {
+    let server = Server::paired().await;
+    let owner = server.owner().await;
+    let north = server.dsp("Northline Logistics").await;
+    let summit = server.dsp("Summit Delivery").await;
+    let local = "http://localhost:50021/callback";
+    let tokens = server
+        .connect(
+            &owner,
+            CLAUDE_CODE,
+            local,
+            json!({"name":"Laptop","allDsps":false,"dsps":[north],
+                "reads":{"areas":["routes","timecards"],"bypass":false}}),
+        )
+        .await;
+    let access = s(&tokens, "access_token").to_owned();
+    let id = s(&listed_key(&server, &owner, "Laptop").await, "id").to_owned();
+    let path = format!("/api/platform/agents/keys/{id}");
+    let edit = |change: Value| {
+        let mut body = json!({"name":"Laptop","allDsps":false,"dsps":[north],"access":"read",
+            "reads":{"areas":["routes","timecards"],"bypass":false},"dspReads":[],
+            "expiresAt":null});
+        for (field, value) in change.as_object().unwrap() {
+            body[field] = value.clone();
+        }
+        body
+    };
+    // Never an operator, never an expiry, and never settings for a DSP it doesn't reach.
+    for refused in [
+        json!({"access":"operator"}),
+        json!({"expiresAt":"2030-01-01T00:00:00Z"}),
+        json!({"dspReads":[{"dsp":summit,"areas":[],"bypass":false}]}),
+        json!({"dspReads":[{"dsp":north,"areas":[],"bypass":false},
+            {"dsp":north,"areas":["dvic"],"bypass":false}]}),
+    ] {
+        let answer = server
+            .as_owner(&owner, "POST", &path, edit(refused.clone()))
+            .await;
+        assert_eq!(
+            (answer.status, s(&answer.body, "error")),
+            (400, "invalid_input"),
+            "{refused}"
+        );
+    }
+    // Renamed, reaching another DSP, with Summit's own settings: the next call reads them.
+    let edited = server
+        .as_owner(
+            &owner,
+            "POST",
+            &path,
+            edit(json!({"name":"Laptop – Claude Code","dsps":[north, summit],
+                "dspReads":[{"dsp":summit,"areas":["dvic"],"bypass":true}]})),
+        )
+        .await;
+    assert_eq!(edited.status, 200, "{}", edited.body);
+    assert_eq!(edited.body["kind"], "app");
+    assert_eq!(
+        edited.body["dspReads"],
+        json!([{"dsp":summit,"areas":["dvic"],"bypass":true}])
+    );
+    let whoami = server.bearer("/api/v1/whoami", &access).await;
+    let reads: Vec<(&str, &Value)> = whoami.body["dsps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|dsp| (s(dsp, "name"), &dsp["reads"]))
+        .collect();
+    assert_eq!(
+        reads,
+        [
+            (
+                "Northline Logistics",
+                &json!({"areas":["routes","timecards"],"bypass":false})
+            ),
+            ("Summit Delivery", &json!({"areas":["dvic"],"bypass":true})),
+        ]
+    );
+    assert_eq!(
+        logged(&server, "agent.app_updated").await,
+        [(
+            "agent.app_updated".to_owned(),
+            "Laptop – Claude Code".to_owned()
+        )]
+    );
+}
+
+#[tokio::test]
+async fn agents_ask_for_no_recent_verification_while_removing_a_dsp_still_does() {
+    let server = Server::paired().await;
+    let earlier = server.signed_in(db::now() - DAY).await;
+    let north = server.dsp("Northline Logistics").await;
+    let key = |name: &str| {
+        json!({"name":name,"allDsps":true,"dsps":[],"access":"read",
+            "reads":{"areas":["routes"],"bypass":false},"dspReads":[],"expiresAt":null})
+    };
+    // A day after signing in, the owner makes and edits a key, approves an app and edits it.
+    let made = server
+        .as_owner(&earlier, "POST", "/api/platform/agents/keys", key("Desk"))
+        .await;
+    assert_eq!(made.status, 200, "{}", made.body);
+    let id = s(&made.body["key"], "id");
+    let mut wider = key("Desk");
+    wider["reads"]["bypass"] = json!(true);
+    let edited = server
+        .as_owner(
+            &earlier,
+            "POST",
+            &format!("/api/platform/agents/keys/{id}"),
+            wider,
+        )
+        .await;
+    assert_eq!(edited.status, 200, "{}", edited.body);
+    let local = "http://localhost:50022/callback";
+    let request = server.requested(CLAUDE_CODE, local).await;
+    let code = server
+        .approved(&earlier, &request, everything("Laptop"))
+        .await;
+    assert_eq!(server.exchange(CLAUDE_CODE, local, &code).await.status, 200);
+    let app = s(&listed_key(&server, &earlier, "Laptop").await, "id").to_owned();
+    let mut narrower = key("Laptop");
+    narrower["reads"]["areas"] = json!(["dvic"]);
+    let app_edited = server
+        .as_owner(
+            &earlier,
+            "POST",
+            &format!("/api/platform/agents/keys/{app}"),
+            narrower,
+        )
+        .await;
+    assert_eq!(app_edited.status, 200, "{}", app_edited.body);
+    // Removing a DSP and the account's own security still ask.
+    for (path, body) in [
+        (format!("/api/platform/dsps/{north}/remove"), json!({})),
+        (
+            "/api/auth/security/authenticator/register/start".to_owned(),
+            json!({}),
+        ),
+    ] {
+        let stale = server.as_owner(&earlier, "POST", &path, body).await;
+        assert_eq!(
+            (stale.status, s(&stale.body, "error")),
+            (403, "sign_in_again"),
+            "{path}"
+        );
+    }
 }

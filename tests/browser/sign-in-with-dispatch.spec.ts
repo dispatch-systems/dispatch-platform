@@ -75,8 +75,41 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     await name.fill('Laptop – Claude Code app');
     await approval.getByText('Choose DSPs', { exact: true }).click();
     await approval.getByRole('checkbox', { name: 'Northline Logistics' }).check();
-    await approval.getByRole('button', { name: 'Essential', exact: true }).click();
+    // It reads everything but delivery addresses and GPS, and bypasses no feature, unless the
+    // owner says otherwise; a DSP gets its own settings afterwards.
+    const reads = approval.getByRole('group', { name: 'What it can read', exact: true });
+    await expect(reads).toHaveAccessibleDescription(
+      'Applies to every DSP it reaches. To give a DSP its own settings, edit the app afterwards ' +
+        'in Agents → Apps.',
+    );
+    const kinds = reads.getByRole('switch');
+    await expect(kinds).toHaveCount(9);
+    for (const [index, on] of [true, false, true, true, true, true, true, true, true].entries())
+      await expect(kinds.nth(index)).toBeChecked({ checked: on });
+    await expect(approval.getByRole('switch', { name: 'Bypass features' })).not.toBeChecked();
+    await reads.getByRole('switch', { name: 'Delivery addresses & GPS', exact: true }).click();
+    await reads.getByRole('switch', { name: 'Weekly scorecard', exact: true }).click();
+    const approved = page.waitForRequest(
+      (sent) => sent.method() === 'POST' && sent.url().endsWith('/approve'),
+    );
     await approval.getByRole('button', { name: 'Approve', exact: true }).click();
+    expect((await approved).postDataJSON()).toMatchObject({
+      name: 'Laptop – Claude Code app',
+      allDsps: false,
+      reads: {
+        areas: [
+          'routes',
+          'locations',
+          'timecards',
+          'meal_breaks',
+          'dvic',
+          'feedback',
+          'safety',
+          'returns',
+        ],
+        bypass: false,
+      },
+    });
 
     // The browser goes back to the app with a code for it, its state and the issuer.
     await page.waitForURL((url) => url.href.startsWith(`${callback}?`));
@@ -106,7 +139,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     const connected = connecting.getByRole('status').filter({ hasText: 'is connected' });
     await expect(connected.getByRole('heading')).toHaveText('Claude Code is connected');
     await expect(connected).toContainText('Start a new Claude Code session to use Dispatch.');
-    await expect(connected.locator('.agents-tag')).toHaveText(['1 DSP', 'Essential tools']);
+    await expect(connected.locator('.agents-tag')).toHaveText(['1 DSP', '8 of 9 kinds']);
     await connecting.getByRole('button', { name: 'Done', exact: true }).click();
     await expect(connecting).toHaveCount(0);
 
@@ -143,7 +176,8 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     await expect(row).toContainText('Claude Code');
     await expect(row).toContainText('Known metadata');
     await expect(row).toContainText('Northline Logistics');
-    await expect(row).toContainText('Essential tools');
+    await expect(row).toContainText('8 of 9 kinds');
+    await expect(row).toContainText('No weekly scorecard');
     // An app with recognized metadata shows its own logo.
     await expect(row.locator('img')).toHaveAttribute('src', /claude-[\w-]+\.png$/);
     await row.getByRole('button', { name: 'Revoke Laptop – Claude Code app', exact: true }).click();

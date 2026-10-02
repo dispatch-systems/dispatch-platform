@@ -12,6 +12,9 @@ use serde_json::{Map, Value, json};
 /// limit for one tool result (Codex cuts at about 40 KB, Claude Code warns at 10,000 tokens,
 /// Hermes moves results over 50,000 characters to a file).
 pub const BUDGET: usize = 24_000;
+/// Room a page leaves within the budget for `bypassed`, which the gate adds to an answer
+/// read by bypassing its feature once the answer is made: every switch's name fits.
+const BYPASSED_ROOM: usize = 100;
 
 /// A table: the column names once, then one array of values per row.
 pub struct Table {
@@ -121,12 +124,13 @@ pub fn page_named(
     };
     answer[key] = value(shown);
     // Count the final page, including its metadata and every other table in the answer.
-    if answer.to_string().len() > BUDGET || answer[key].to_string().len() > table.budget {
+    let room = BUDGET - BYPASSED_ROOM;
+    if answer.to_string().len() > room || answer[key].to_string().len() > table.budget {
         let (mut low, mut high) = (0, shown);
         while low < high {
             let middle = (low + high).div_ceil(2);
             answer[key] = value(middle);
-            if answer.to_string().len() <= BUDGET && answer[key].to_string().len() <= table.budget {
+            if answer.to_string().len() <= room && answer[key].to_string().len() <= table.budget {
                 low = middle;
             } else {
                 high = middle - 1;
@@ -233,6 +237,13 @@ mod tests {
         assert!(answer.to_string().len() <= BUDGET);
         let shown = answer["rows"]["rows"].as_array().unwrap().len();
         assert!(shown > 300 && shown < 500, "{shown}");
+        // With room left for every feature a gate may name as bypassed.
+        let switches: Vec<&str> = crate::contracts::AgentSource::ALL
+            .into_iter()
+            .map(|source| source.switch())
+            .collect();
+        answer["bypassed"] = json!(switches);
+        assert!(answer.to_string().len() <= BUDGET);
         // The cursor belongs to the table it pages.
         assert_eq!(answer["rows"]["page"]["next_cursor"], shown.to_string());
         assert!(answer["rows"]["note"].as_str().unwrap().contains("of 2000"));

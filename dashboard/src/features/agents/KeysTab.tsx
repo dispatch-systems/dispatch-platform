@@ -1,23 +1,18 @@
 import { useState } from 'react';
 import { ChevronRight, Clock, Plus, Power, TriangleAlert } from 'lucide-react';
-import type {
-  AgentAccess,
-  AgentKey,
-  AgentKeyCreated,
-  AgentTools,
-} from '../../../../shared/contracts/index.js';
+import type { AgentAccess, AgentKey, AgentKeyCreated } from '../../../../shared/contracts/index.js';
 import { ConfirmDialog, DataState, Empty, SearchInput } from '../../ui/index.js';
 import { useAction } from '../../app/useAction.js';
 import { revokeAllAgentKeys, useAgentKeys } from '../../app/endpoints.js';
 import {
   accessLabels,
+  accessText,
   daysLeft,
   expiryText,
   inUse,
   keyState,
   lastUsedText,
   reachText,
-  toolLabels,
 } from '../../lib/agents.js';
 import { KeyReady } from './KeyReady.js';
 import { KeySheet } from './KeySheet.js';
@@ -27,7 +22,6 @@ const accessTones: Record<AgentAccess, string> = {
   read: 'access-read',
   operator: 'access-operator',
 };
-const toolTones: Record<AgentTools, string> = { full: '', essential: 'tools-essential' };
 
 function Expiry({ agentKey }: { agentKey: AgentKey }) {
   const state = keyState(agentKey);
@@ -49,8 +43,8 @@ function Expiry({ agentKey }: { agentKey: AgentKey }) {
   return <>{text}</>;
 }
 
-/** Every key: what it may do, where it reaches, when it was last used and when it ends; and,
- * folded away, what an agent needs to use one. */
+/** Every key: what it may do and read, where it reaches, when it was last used and when it
+ * ends; and, folded away, what an agent needs to use one. */
 export function KeysTab() {
   const keys = useAgentKeys();
   const [query, setQuery] = useState('');
@@ -126,6 +120,7 @@ export function KeysTab() {
                     <tbody>
                       {rows.map((key) => {
                         const reach = reachText(key, data.dsps);
+                        const access = accessText(key, data.dsps);
                         return (
                           <tr key={key.id} className={inUse(key) ? undefined : 'ended'}>
                             <td>
@@ -139,10 +134,13 @@ export function KeysTab() {
                                 <span className={`agents-tag ${accessTones[key.access]}`}>
                                   {accessLabels[key.access]}
                                 </span>
-                                <span className={`agents-tag ${toolTones[key.tools]}`}>
-                                  {toolLabels[key.tools]}
-                                </span>
+                                {access.count}
                               </div>
+                              {access.note && (
+                                <small className={access.bypass ? 'agents-bypass' : undefined}>
+                                  {access.note}
+                                </small>
+                              )}
                             </td>
                             <td>
                               {reach.count}

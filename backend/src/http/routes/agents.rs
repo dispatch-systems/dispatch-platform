@@ -1,6 +1,7 @@
 //! Agent keys and the agent API: the platform owner's Agents page, everything an agent
-//! reads under `/api/v1/`, and the MCP server at `/api/v1/mcp`. Making or widening a key asks for
-//! recent verification; revoking never does.
+//! reads under `/api/v1/`, and the MCP server at `/api/v1/mcp`. Nothing on the Agents page asks
+//! for recent verification: a key only ever reads what the owner allows, and stops at once
+//! when revoked.
 use crate::{
     Result,
     agents::{
@@ -24,8 +25,8 @@ use axum::{extract::Request, http::Method};
 pub fn routes() -> Vec<Route> {
     let mut routes = vec![
         read("/api/platform/agents", PlatformOwner, keys),
-        write("/api/platform/agents/keys", PlatformOwner, create),
-        write("/api/platform/agents/keys/{id}", PlatformOwner, update),
+        write("/api/platform/agents/keys", PlatformRoutine, create),
+        write("/api/platform/agents/keys/{id}", PlatformRoutine, update),
         write(
             "/api/platform/agents/keys/{id}/revoke",
             PlatformRoutine,
@@ -118,15 +119,15 @@ fn activity_query(q: &serde_json::Value) -> Result<ActivityQuery> {
     })
 }
 /// What an agent reads: the answer, or a refusal that says what to fix. The Activity log
-/// notes the DSP it was about and how it ended.
+/// notes the DSP it was about, how it ended, and whether it bypassed features.
 fn reply(trace: &RequestTrace, dsp: Option<AgentDsp>, answer: data::Answer) -> Result<Reply> {
     let settled = data::settle(answer);
-    let outcome = match &settled {
-        Ok((200, _)) => "ok",
-        Ok((_, body)) => body["error"].as_str().unwrap_or("refused"),
-        Err(error) => error.code.as_str(),
+    let (outcome, bypassed) = match &settled {
+        Ok((200, body)) => ("ok", data::bypassed(body)),
+        Ok((_, body)) => (body["error"].as_str().unwrap_or("refused"), false),
+        Err(error) => (error.code.as_str(), false),
     };
-    activity::note(trace, dsp, outcome);
+    activity::note(trace, dsp, outcome, bypassed);
     let (status, body) = settled?;
     Ok(Reply::status(body, status))
 }

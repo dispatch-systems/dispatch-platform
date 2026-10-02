@@ -18,8 +18,8 @@ test('the Activity log lists what a key called over REST and MCP, written down i
     allDsps: false,
     dsps: [north.id],
     access: 'read',
-    tools: 'full',
-    locations: false,
+    reads: { areas: ['routes', 'timecards', 'dvic'], bypass: false },
+    dspReads: [],
     expiresAt: null,
   });
   assert.equal(made.status, 200, made.body);
@@ -65,6 +65,8 @@ test('the Activity log lists what a key called over REST and MCP, written down i
   assert.deepEqual(rest!.key, { id: key.id, name: 'Laptop – Claude Code', kind: 'key' });
   assert.equal(rest!.dsp!.id, north.id);
   assert.equal(rest!.bytes, Buffer.byteLength(answered));
+  // Neither read a switched-off feature by bypassing features.
+  assert.ok(page.rows.every((row) => row.bypassed === false));
   assert.ok(rest!.ms >= 0 && tool!.bytes > 0);
   assert.ok(Date.parse(tool!.at) >= Date.parse(rest!.at));
   assert.equal(page.next, null);

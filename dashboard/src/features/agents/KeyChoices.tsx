@@ -1,12 +1,27 @@
 import { useId } from 'react';
-import type { AgentDsp, AgentKeyRequest } from '../../../../shared/contracts/index.js';
+import { TriangleAlert } from 'lucide-react';
+import type {
+  AgentArea,
+  AgentDsp,
+  AgentKeyRequest,
+  AgentSource,
+} from '../../../../shared/contracts/index.js';
+import { areaGroups, areaHints, areaLabels, areaSources, withArea } from '../../lib/agents.js';
 
-/** What a key or a connected app reaches and answers with, as both of their forms offer it. */
-type Scope = Pick<AgentKeyRequest, 'allDsps' | 'dsps' | 'tools' | 'locations'>;
-type Props = { form: Scope; set: (change: Partial<Scope>) => void };
+/** Where an app asking to connect reaches. */
+type Scope = Pick<AgentKeyRequest, 'allDsps' | 'dsps'>;
 
-/** Every DSP, those added later included, or the chosen ones. */
-export function DspReach({ dsps, form, set }: Props & { dsps: AgentDsp[] }) {
+/** Every DSP, those added later included, or the chosen ones, as an app is approved: a DSP
+ * gets settings of its own only once the app is connected (`DspList`). */
+export function DspReach({
+  dsps,
+  form,
+  set,
+}: {
+  dsps: AgentDsp[];
+  form: Scope;
+  set: (change: Partial<Scope>) => void;
+}) {
   const toggle = (id: string, on: boolean) =>
     set({ dsps: on ? [...form.dsps, id] : form.dsps.filter((dsp) => dsp !== id) });
   return (
@@ -55,38 +70,123 @@ export function DspReach({ dsps, form, set }: Props & { dsps: AgentDsp[] }) {
   );
 }
 
-/** Full or Essential tools. */
-export function ToolChoice({ form, set }: Props) {
-  const id = useId();
+function SwitchedOff({ id }: { id: string }) {
   return (
-    <div className="agents-row">
-      <span id={id}>Tools</span>
-      <div className="agents-segmented" role="group" aria-labelledby={id}>
-        {(['full', 'essential'] as const).map((tools) => (
-          <button
-            key={tools}
-            type="button"
-            aria-pressed={form.tools === tools}
-            onClick={() => set({ tools })}
-          >
-            {tools === 'full' ? 'Full' : 'Essential'}
-          </button>
-        ))}
-      </div>
-    </div>
+    <span className="agents-off" id={id}>
+      <TriangleAlert size={13} aria-hidden="true" />
+      Switched off here
+    </span>
   );
 }
 
-/** Whether answers carry delivery addresses and GPS. */
-export function LocationsSwitch({ form, set }: Props) {
+/**
+ * What a key or app may read, a switch each under the feature that collects it. Without `set`
+ * the switches only show `areas`. `off` marks the features a DSP has switched off: a whole group,
+ * or one kind of data when only its own feature is.
+ */
+export function ReadChoices({
+  legend,
+  hint,
+  areas,
+  set,
+  off,
+}: {
+  legend: string;
+  hint: string;
+  areas: readonly AgentArea[];
+  set?: (areas: AgentArea[]) => void;
+  off?: readonly AgentSource[];
+}) {
+  const id = useId();
+  const isOff = (area: AgentArea) => off?.includes(areaSources[area]) ?? false;
   return (
-    <label className="agents-row">
-      Delivery addresses and GPS
+    <fieldset aria-describedby={`${id}-hint`}>
+      <legend>{legend}</legend>
+      <p className="agents-hint" id={`${id}-hint`}>
+        {hint}
+      </p>
+      <div className={`agents-reads${set ? '' : ' following'}`}>
+        {areaGroups.map((group) => {
+          const groupId = `${id}-${group.label}`;
+          const allOff = group.areas.every(isOff);
+          return (
+            <div
+              key={group.label}
+              className="agents-reads-group"
+              role="group"
+              aria-labelledby={groupId}
+              aria-describedby={allOff ? `${groupId}-off` : undefined}
+            >
+              <header>
+                <span id={groupId}>{group.label}</span>
+                {allOff && <SwitchedOff id={`${groupId}-off`} />}
+              </header>
+              {group.areas.map((area) => {
+                const about = areaHints[area] && `${id}-${area}-hint`;
+                const offHere = !allOff && isOff(area) && `${id}-${area}-off`;
+                return (
+                  <label key={area} className="agents-read">
+                    <span>
+                      <span id={`${id}-${area}`}>{areaLabels[area]}</span>
+                      {about && <small id={about}>{areaHints[area]}</small>}
+                      {offHere && <SwitchedOff id={offHere} />}
+                    </span>
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      aria-labelledby={`${id}-${area}`}
+                      aria-describedby={[about, offHere].filter(Boolean).join(' ') || undefined}
+                      checked={areas.includes(area)}
+                      // Addresses and GPS come only with routes.
+                      disabled={!set || (area === 'locations' && !areas.includes('routes'))}
+                      onChange={(event) => set?.(withArea(areas, area, event.target.checked))}
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+/** What bypassing features does, wherever a key or app reads. */
+export const bypassHint =
+  'Reads every feature’s data, Routes and Scorecard included, even where a DSP has switched ' +
+  'the feature off. It only ever reads.';
+
+/** One switch in a box, with what it does under it: bypassing features, which turns the box
+ * amber while on, or a DSP following the key's settings. Without `set` it only shows `on`. */
+export function SwitchBox({
+  label,
+  hint,
+  on,
+  set,
+  tone,
+}: {
+  label: string;
+  hint: string;
+  on: boolean;
+  set?: (on: boolean) => void;
+  tone: 'bypass' | 'follow';
+}) {
+  const id = useId();
+  return (
+    <label className={`agents-box ${tone}${on ? ' on' : ''}`}>
+      <span>
+        <span id={`${id}-label`}>{label}</span>
+        <small id={`${id}-hint`}>{hint}</small>
+      </span>
       <input
         type="checkbox"
         role="switch"
-        checked={form.locations}
-        onChange={(event) => set({ locations: event.target.checked })}
+        aria-labelledby={`${id}-label`}
+        aria-describedby={`${id}-hint`}
+        checked={on}
+        disabled={!set}
+        onChange={(event) => set?.(event.target.checked)}
       />
     </label>
   );

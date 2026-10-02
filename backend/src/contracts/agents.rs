@@ -11,10 +11,147 @@ text_enum! {
 }
 text_enum! {
     #[cfg_attr(test, derive(ts_rs::TS))]
-    /// The tools an agent is offered: all of them, or a few for small models.
-    pub enum AgentTools {
-        Full => "full",
-        Essential => "essential",
+    /// A kind of data a key or app may read. `locations` is the delivery addresses and GPS
+    /// that route answers carry, and only matters with `routes`.
+    pub enum AgentArea {
+        Routes => "routes",
+        Locations => "locations",
+        Timecards => "timecards",
+        MealBreaks => "meal_breaks",
+        Dvic => "dvic",
+        Feedback => "feedback",
+        Safety => "safety",
+        Returns => "returns",
+        Scorecard => "scorecard",
+    }
+}
+text_enum! {
+    #[cfg_attr(test, derive(ts_rs::TS))]
+    /// A feature switched per DSP that agents read data from: Routes, Timecard, its Meal
+    /// Breaks tab, DVIC and Scorecard.
+    pub enum AgentSource {
+        Routes => "routes",
+        Timecards => "timecards",
+        MealBreaks => "meal_breaks",
+        Dvic => "dvic",
+        Scorecard => "scorecard",
+    }
+}
+/// What a key or app may read: the kinds of data, and whether it bypasses features, reading
+/// them even where a DSP has the feature switched off. Bypassing only ever reads.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AgentReads {
+    pub areas: Vec<AgentArea>,
+    pub bypass: bool,
+}
+/// A DSP's own settings, read in place of the key's or app's own.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AgentDspReads {
+    pub dsp: String,
+    pub areas: Vec<AgentArea>,
+    pub bypass: bool,
+}
+
+impl AgentArea {
+    /// Every kind, in the order they are listed everywhere.
+    pub const ALL: [AgentArea; 9] = [
+        Self::Routes,
+        Self::Locations,
+        Self::Timecards,
+        Self::MealBreaks,
+        Self::Dvic,
+        Self::Feedback,
+        Self::Safety,
+        Self::Returns,
+        Self::Scorecard,
+    ];
+    /// The kind as the Agents page names it.
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Routes => "Routes & packages",
+            Self::Locations => "Delivery addresses & GPS",
+            Self::Timecards => "Timecards",
+            Self::MealBreaks => "Meal breaks",
+            Self::Dvic => "DVIC inspections",
+            Self::Feedback => "Customer feedback",
+            Self::Safety => "Safety events",
+            Self::Returns => "Returns & contact compliance",
+            Self::Scorecard => "Weekly scorecard",
+        }
+    }
+    /// The feature it is read from.
+    pub const fn source(self) -> AgentSource {
+        match self {
+            Self::Routes | Self::Locations => AgentSource::Routes,
+            Self::Timecards => AgentSource::Timecards,
+            Self::MealBreaks => AgentSource::MealBreaks,
+            Self::Dvic => AgentSource::Dvic,
+            Self::Feedback | Self::Safety | Self::Returns | Self::Scorecard => {
+                AgentSource::Scorecard
+            }
+        }
+    }
+}
+impl AgentSource {
+    /// Every feature agents read from, in the order they are listed everywhere.
+    pub const ALL: [AgentSource; 5] = [
+        Self::Routes,
+        Self::Timecards,
+        Self::MealBreaks,
+        Self::Dvic,
+        Self::Scorecard,
+    ];
+    /// The switch's name on the platform's DSPs page.
+    pub const fn switch(self) -> &'static str {
+        match self {
+            Self::Routes => "Routes",
+            Self::Timecards => "Timecard",
+            Self::MealBreaks => "Timecard · Meal Breaks",
+            Self::Dvic => "DVIC",
+            Self::Scorecard => "Scorecard",
+        }
+    }
+}
+/// Kinds of data once each, in their order.
+fn canonical(areas: &[AgentArea]) -> Vec<AgentArea> {
+    AgentArea::ALL
+        .into_iter()
+        .filter(|area| areas.contains(area))
+        .collect()
+}
+impl AgentReads {
+    /// Reads as the database keeps them: the kinds comma-separated, and bypass as 0 or 1.
+    /// A kind this release doesn't know, as a newer one may write, is left out.
+    pub fn stored(areas: &str, bypass: i64) -> Self {
+        let areas: Vec<AgentArea> = areas.split(',').filter_map(AgentArea::parse).collect();
+        Self {
+            areas: canonical(&areas),
+            bypass: bypass == 1,
+        }
+    }
+    /// The kinds as the database keeps them.
+    pub fn areas_text(&self) -> String {
+        canonical(&self.areas)
+            .iter()
+            .map(|area| area.as_str())
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+    pub fn has(&self, area: AgentArea) -> bool {
+        self.areas.contains(&area)
+    }
+}
+impl AgentDspReads {
+    /// The settings alone, without their DSP.
+    pub fn reads(&self) -> AgentReads {
+        AgentReads {
+            areas: self.areas.clone(),
+            bypass: self.bypass,
+        }
     }
 }
 
@@ -61,9 +198,10 @@ pub struct AgentKey {
     /// The key's last four characters.
     pub hint: String,
     pub access: AgentAccess,
-    pub tools: AgentTools,
-    /// Whether answers carry delivery addresses and GPS.
-    pub locations: bool,
+    /// What it reads at every DSP without settings of its own.
+    pub reads: AgentReads,
+    /// The DSPs with settings of their own.
+    pub dsp_reads: Vec<AgentDspReads>,
     /// Every DSP, those added later included; otherwise only `dsps`.
     pub all_dsps: bool,
     pub dsps: Vec<String>,
@@ -97,8 +235,8 @@ impl FromRow for AgentKey {
             name: row.get("name")?,
             hint: row.get("hint")?,
             access: row.get("access")?,
-            tools: row.get("tools")?,
-            locations: row.get::<i64>("locations")? == 1,
+            reads: AgentReads::stored(&row.get::<String>("areas")?, row.get("bypass")?),
+            dsp_reads: vec![],
             all_dsps: row.get::<i64>("all_dsps")? == 1,
             dsps: vec![],
             created_at: row.get("created_at")?,
@@ -109,7 +247,7 @@ impl FromRow for AgentKey {
         })
     }
 }
-/// A DSP a key can be given.
+/// A DSP as the Activity log names it.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
@@ -117,13 +255,22 @@ pub struct AgentDsp {
     pub id: String,
     pub name: String,
 }
+/// A DSP a key can be given, with the features it has switched off that agents read from.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct AgentKeyDsp {
+    pub id: String,
+    pub name: String,
+    pub switched_off: Vec<AgentSource>,
+}
 /// The Agents page: every key, newest first, and the DSPs a key can be given.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AgentKeys {
     pub keys: Vec<AgentKey>,
-    pub dsps: Vec<AgentDsp>,
+    pub dsps: Vec<AgentKeyDsp>,
 }
 /// A new key: the key itself, shown this once, and the key as the page lists it.
 #[derive(Clone, Debug, Serialize)]
@@ -142,8 +289,8 @@ pub struct AgentKeyRequest {
     pub all_dsps: bool,
     pub dsps: Vec<String>,
     pub access: AgentAccess,
-    pub tools: AgentTools,
-    pub locations: bool,
+    pub reads: AgentReads,
+    pub dsp_reads: Vec<AgentDspReads>,
     pub expires_at: Option<String>,
 }
 impl AgentKeyRequest {
@@ -158,11 +305,27 @@ impl AgentKeyRequest {
             "invalid_input",
             400,
         )?;
+        input.reads.areas = canonical(&input.reads.areas);
+        // A DSP has settings of its own once, kept in the order they are listed back.
+        ensure(input.dsp_reads.len() <= 500, "invalid_input", 400)?;
+        input.dsp_reads.sort_by(|a, b| a.dsp.cmp(&b.dsp));
+        ensure(
+            input
+                .dsp_reads
+                .windows(2)
+                .all(|pair| pair[0].dsp != pair[1].dsp),
+            "invalid_input",
+            400,
+        )?;
+        for own in &mut input.dsp_reads {
+            own.areas = canonical(&own.areas);
+        }
         Ok(input)
     }
 }
 /// What the platform owner grants an app they approve: the choices a key is made with,
-/// always read-only and never expiring.
+/// always read-only and never expiring. A DSP is given settings of its own afterwards, by
+/// editing the app.
 #[derive(Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -170,8 +333,7 @@ pub struct OAuthApproval {
     pub name: String,
     pub all_dsps: bool,
     pub dsps: Vec<String>,
-    pub tools: AgentTools,
-    pub locations: bool,
+    pub reads: AgentReads,
 }
 impl OAuthApproval {
     pub fn parse(value: &Value) -> Result<Self> {
@@ -182,6 +344,7 @@ impl OAuthApproval {
             "invalid_input",
             400,
         )?;
+        input.reads.areas = canonical(&input.reads.areas);
         Ok(input)
     }
     /// The same choices as a key's, checked by the same rules.
@@ -191,8 +354,8 @@ impl OAuthApproval {
             all_dsps: self.all_dsps,
             dsps: self.dsps.clone(),
             access: AgentAccess::Read,
-            tools: self.tools,
-            locations: self.locations,
+            reads: self.reads.clone(),
+            dsp_reads: vec![],
             expires_at: None,
         }
     }
@@ -314,12 +477,10 @@ pub struct AgentWhoami {
 pub struct AgentWhoamiKey {
     pub name: String,
     pub access: AgentAccess,
-    pub tools: AgentTools,
-    pub locations: bool,
     pub expires_at: Option<String>,
 }
 /// A DSP as an agent sees it: its local date, so "today" and "yesterday" mean the DSP's,
-/// and the features it has switched on.
+/// the features it has switched on, and what this key or app reads there.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
@@ -329,6 +490,7 @@ pub struct AgentWhoamiDsp {
     pub timezone: String,
     pub today: String,
     pub features: Vec<String>,
+    pub reads: AgentReads,
 }
 
 /// A key or connected app as the Activity log names it.
@@ -345,6 +507,7 @@ pub struct AgentActivityKey {
 /// the code it was refused or failed with. `ms` is how long it took, `bytes` how much it
 /// answered. A key's calls past 10,000 in a UTC day are not kept: one row with surface
 /// `activity:capped` and outcome `capped`, at the first of them, marks the day capped.
+/// `bypassed` is whether it read a feature the DSP has switched off, by bypassing features.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
@@ -356,6 +519,7 @@ pub struct AgentActivity {
     pub outcome: String,
     pub ms: u32,
     pub bytes: u32,
+    pub bypassed: bool,
 }
 /// A page of the Activity log, newest first. `next` is the `before` that reads the page
 /// after it; null on the last.

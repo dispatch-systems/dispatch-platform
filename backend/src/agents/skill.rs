@@ -116,7 +116,10 @@ pub fn skill(origin: &str) -> String {
         };
         out.push_str(&format!(
             "- `{}` ({}, from {}{per}): {}\n",
-            metric.name, metric.unit, metric.source, metric.description
+            metric.name,
+            metric.unit,
+            metric.area.as_str(),
+            metric.description
         ));
     }
     out.push_str("\n## Terms\n\n");

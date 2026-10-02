@@ -1,15 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture } from '../support/support.js';
-import type { AgentKeyCreated, AgentKeys, AgentWhoami } from '../../shared/contracts/index.js';
+import type {
+  AgentKeyCreated,
+  AgentKeyRequest,
+  AgentKeys,
+  AgentWhoami,
+} from '../../shared/contracts/index.js';
 
-const body = (dsps: string[]) => ({
+const body = (dsps: string[]): AgentKeyRequest => ({
   name: 'Laptop – Claude Code',
   allDsps: dsps.length === 0,
   dsps,
   access: 'read',
-  tools: 'full',
-  locations: false,
+  reads: {
+    areas: [
+      'routes',
+      'timecards',
+      'meal_breaks',
+      'dvic',
+      'feedback',
+      'safety',
+      'returns',
+      'scorecard',
+    ],
+    bypass: false,
+  },
+  dspReads: [],
   expiresAt: null,
 });
 

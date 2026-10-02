@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture } from '../support/support.js';
-import type { AgentKeyCreated, AgentKeys } from '../../shared/contracts/index.js';
+import type { AgentArea, AgentKeyCreated, AgentKeys } from '../../shared/contracts/index.js';
 
 type Rpc = { status: number; headers: Headers; body: any };
 
@@ -11,14 +11,14 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   const owner = await f.client();
   const { dsps }: AgentKeys = (await owner.get('/api/platform/agents')).value;
   const north = dsps.find((dsp) => dsp.name === 'Northline Logistics')!;
-  const key = async (name: string, tools: 'full' | 'essential') => {
+  const key = async (name: string, areas: AgentArea[]) => {
     const made = await owner.post('/api/platform/agents/keys', {
       name,
       allDsps: false,
       dsps: [north.id],
       access: 'read',
-      tools,
-      locations: false,
+      reads: { areas, bypass: false },
+      dspReads: [],
       expiresAt: null,
     });
     assert.equal(made.status, 200, made.body);
@@ -27,8 +27,17 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   // The server listens on loopback and names itself by its origin, as behind a tunnel.
   const server = `http://127.0.0.1:${f.env.PORT}`;
   const origin = f.env.DISPATCH_ORIGIN!;
-  const full = await key('Laptop – Claude Code', 'full');
-  const essential = await key('Home server – Hermes', 'essential');
+  const full = await key('Laptop – Claude Code', [
+    'routes',
+    'timecards',
+    'meal_breaks',
+    'dvic',
+    'feedback',
+    'safety',
+    'returns',
+    'scorecard',
+  ]);
+  const routes = await key('Home server – Hermes', ['routes', 'dvic']);
   let id = 0;
   const rpc = async (
     token: string | null,
@@ -87,7 +96,8 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   assert.ok(hello.body.result.capabilities.tools && hello.body.result.capabilities.prompts);
   assert.equal((await rpc(full, 'notifications/initialized')).status, 202);
 
-  // Full keys get every tool, Essential keys the few small models choose between best.
+  // A key reading every kind of data gets every tool; one reading a few, the tools of those
+  // and the ones that read nothing in particular.
   const listed = (await rpc(full, 'tools/list')).body.result.tools as {
     name: string;
     inputSchema: { type: string; properties: Record<string, { type: string }> };
@@ -102,20 +112,28 @@ test('any MCP client reaches the agent API with a key, on every protocol version
     for (const property of Object.values(tool.inputSchema.properties))
       assert.ok(['string', 'integer', 'boolean'].includes(property.type), tool.name);
   }
-  const few = (await rpc(essential, 'tools/list')).body.result.tools as { name: string }[];
+  const few = (await rpc(routes, 'tools/list')).body.result.tools as { name: string }[];
   assert.deepEqual(few.map((tool) => tool.name).sort(), [
+    'data_status',
     'driver_report',
     'dvic_inspections',
     'find_drivers',
+    'find_package',
     'get_profile',
+    'list_metrics',
     'packages',
     'route_day',
+    'route_stops',
     'team_table',
     'whoami',
   ]);
-  const missing = await call(essential, 'timecards', {});
+  // A tool it isn't offered is refused as not allowed, saying who may allow it.
+  const missing = await call(routes, 'timecards', {});
   assert.equal(missing.isError, true);
-  assert.match(missing.content[0].text, /^unknown_tool/);
+  assert.match(
+    missing.content[0].text,
+    /^not_allowed: Home server – Hermes can't read Timecards at Northline Logistics\. Tell the user/,
+  );
 
   // Current clients receive machine-readable structured data plus the complete text fallback:
   // some hosts negotiate the modern protocol but still expose only text to their model. Older
@@ -237,7 +255,9 @@ test('any MCP client reaches the agent API with a key, on every protocol version
     { ...modern, 'mcp-method': 'tools/call', 'mcp-name': 'whoami' },
   );
   assert.equal(stateless.status, 200, JSON.stringify(stateless.body));
-  assert.equal(stateless.body.result.structuredContent.key.tools, 'full');
+  const stated = stateless.body.result.structuredContent;
+  assert.equal(stated.key.name, 'Laptop – Claude Code');
+  assert.equal(stated.dsps[0].reads.areas.length, 8);
 
   // Without a key, a client is told to bring one; a browser is refused outright.
   const keyless = await rpc(null, 'tools/list');
@@ -262,6 +282,9 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   const text = await skill.text();
   assert.match(text, /^---\nname: dispatch\n/);
   assert.ok(text.includes(`${origin}/api/v1/mcp`));
+  // It says what each way of not reading something means.
+  for (const word of ['not_allowed', 'source_off', 'bypassed'])
+    assert.ok(text.includes(word), word);
   // The Agents page downloads the same file.
   const download = await fetch(`${server}/api/platform/agents/skill`, {
     headers: { cookie: owner.headers.cookie! },

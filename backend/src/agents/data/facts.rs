@@ -1,6 +1,6 @@
 //! The facts every answer is made of: each source's rows for a DSP's days, in the DSP's
-//! own time, with the days each source has. A source a DSP has switched off is left out.
-use super::{Failure, Refusal, catalog::Source, scope::Period};
+//! own time, with the days each source has. Which of them an answer may read is `access`'s.
+use super::{Failure, Refusal, scope::Period};
 use crate::{
     Code, Result,
     collectors::Provider,
@@ -11,54 +11,6 @@ use crate::{
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeSet;
-
-/// The sources a DSP has switched on, as agents may read them.
-#[derive(Clone, Copy, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Sources {
-    pub timecards: bool,
-    pub meal_breaks: bool,
-    pub routes: bool,
-    pub dvic: bool,
-    pub scorecard: bool,
-}
-impl Sources {
-    pub fn of(db: &Store, dsp: &str) -> Result<Self> {
-        let on = db.features(dsp)?;
-        let has = |id: &str| on.iter().any(|f| f == id);
-        Ok(Self {
-            timecards: has("timecard.daily") || has("timecard.employees"),
-            meal_breaks: has("timecard.meal_breaks"),
-            routes: has("routes"),
-            dvic: has("dvic"),
-            scorecard: has("scorecard"),
-        })
-    }
-    pub fn has(&self, source: Source) -> bool {
-        match source {
-            Source::Timecards => self.timecards,
-            Source::MealBreaks => self.meal_breaks,
-            Source::Routes => self.routes,
-            Source::Dvic => self.dvic,
-            Source::Scorecard => self.scorecard,
-        }
-    }
-}
-
-/// A source the DSP has switched off: refused by name, so the agent tells the user rather
-/// than answering from something else.
-pub fn switched_off(dsp: &Dsp, source: Source) -> Refusal {
-    Refusal::new(
-        403,
-        "source_off",
-        format!(
-            "{} has {} switched off, so nothing from it can be read. Tell the user it is \
-             switched off; don't work the answer out from other tools.",
-            dsp.name,
-            source.switch()
-        ),
-    )
-}
 
 /// A time of day where the DSP is, as "08:42", from epoch milliseconds.
 pub fn clock(ms: Option<i64>, zone: chrono_tz::Tz) -> Option<String> {

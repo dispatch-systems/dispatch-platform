@@ -15,8 +15,21 @@ test('an agent reads a DSP by asking in its own words, and is told what to fix',
       allDsps: reach.length === 0,
       dsps: reach,
       access: 'read',
-      tools: 'full',
-      locations: false,
+      // Every kind of data but delivery addresses, as a new key starts.
+      reads: {
+        areas: [
+          'routes',
+          'timecards',
+          'meal_breaks',
+          'dvic',
+          'feedback',
+          'safety',
+          'returns',
+          'scorecard',
+        ],
+        bypass: false,
+      },
+      dspReads: [],
       expiresAt: null,
     });
     assert.equal(made.status, 200, made.body);
@@ -91,5 +104,6 @@ test('an agent reads a DSP by asking in its own words, and is told what to fix',
   const contact = await one('/api/v1/returns?contact=maybe');
   assert.deepEqual([contact.status, contact.value.error], [400, 'invalid_parameter']);
   const places = await one('/api/v1/feedback?group_by=address');
-  assert.deepEqual([places.status, places.value.error], [403, 'locations_off']);
+  assert.deepEqual([places.status, places.value.error], [403, 'not_allowed']);
+  assert.match(places.value.message, /^Northline only can't read Delivery addresses & GPS at /);
 });

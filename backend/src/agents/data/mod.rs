@@ -2,6 +2,7 @@
 //! and named the way a person asks for them. Each answer says what it understood (the DSP,
 //! the days, the driver) and which days each source has, so missing data never reads as
 //! zero. Requests that leave something unclear are refused with the choices, never guessed.
+mod access;
 pub mod catalog;
 mod facts;
 mod scope;
@@ -9,11 +10,13 @@ mod scorecard;
 mod shape;
 mod views;
 
+pub use access::switched_on;
 pub use scorecard::{feedback, returns, safety, weekly};
 pub use shape::BUDGET;
 pub use views::*;
 
 use crate::{Error, State, agents::Caller, contracts::AgentDsp, db::Store};
+use access::{Access, Read};
 use serde_json::{Value, json};
 
 /// A request an agent can fix: what was unclear, in words it can repeat, and what it could
@@ -104,14 +107,13 @@ pub fn ask(
     named: &str,
     query: &Value,
 ) -> Answer {
-    // A tool that reads one source answers only while the DSP has it switched on: the one
-    // place every tool is gated, so none can forget.
-    if let Some(source) = endpoint.source {
-        let dsp = scope::pick_dsp(caller, scope::param(query, "dsp"))?;
-        if !facts::Sources::of(db, &dsp.id)?.has(source) {
-            return Err(facts::switched_off(dsp, source).into());
-        }
-    }
+    // A tool that reads one kind of data answers only where the key or app is allowed it and
+    // the DSP has its feature on, or it bypasses features: the one place every such tool is
+    // gated, so none can forget. Those that read several gate each in their answer.
+    let read = match endpoint.area {
+        Some(area) => Access::of(db, caller, query)?.check(area)?,
+        None => Read::On,
+    };
     let answer: Answer = match endpoint.id {
         "whoami" => {
             catalog::check("whoami", query)?;
@@ -135,7 +137,16 @@ pub fn ask(
         "dvic" => dvic(db, state, caller, query),
         other => Err(Error::new(format!("unanswered_endpoint_{other}"), 500).into()),
     };
-    let answer = answer?;
+    let mut answer = answer?;
+    if let (Some(area), Read::Bypassed) = (endpoint.area, read) {
+        access::bypassed(&mut answer, area.source());
+    }
     shape::check_budget(&answer)?;
     Ok(answer)
+}
+
+/// Whether an answer read a feature the DSP has switched off, by bypassing features: it names
+/// them under `bypassed`, and the Activity log marks the call.
+pub fn bypassed(answer: &Value) -> bool {
+    answer.get("bypassed").is_some()
 }

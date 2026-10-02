@@ -6,7 +6,7 @@ use dispatch_backend::{
     State,
     agents::{Caller, data, synthetic},
     collectors::Provider,
-    contracts::AgentKeyRequest,
+    contracts::{AgentArea, AgentKeyRequest},
     db::{Store, s},
     meals::{self, Scope},
     routedata::{self, Mode, Request},
@@ -111,12 +111,27 @@ fn owner(db: &Store) -> String {
     s(&user, "id").to_owned()
 }
 
-/// A key's caller, as the access check would sign it in.
+/// A key's caller reading every kind of data, delivery addresses only with `locations`, as
+/// the access check would sign it in.
 fn caller(db: &Store, dsps: &[&str], locations: bool) -> Caller {
+    let areas: Vec<&str> = AgentArea::ALL
+        .iter()
+        .filter(|area| locations || **area != AgentArea::Locations)
+        .map(|area| area.as_str())
+        .collect();
+    reading(
+        db,
+        &format!("key {}", dsps.len() * 2 + usize::from(locations)),
+        dsps,
+        json!({"areas": areas, "bypass": false}),
+        json!([]),
+    )
+}
+/// A key's caller reading as `reads` says, and as `own` says at DSPs with settings of their own.
+fn reading(db: &Store, name: &str, dsps: &[&str], reads: Value, own: Value) -> Caller {
     let request = AgentKeyRequest::parse(&json!({
-        "name": format!("key {}", dsps.len() * 2 + usize::from(locations)),
-        "allDsps": dsps.is_empty(), "dsps": dsps, "access": "read", "tools": "full",
-        "locations": locations, "expiresAt": null,
+        "name": name, "allDsps": dsps.is_empty(), "dsps": dsps, "access": "read",
+        "reads": reads, "dspReads": own, "expiresAt": null,
     }))
     .unwrap();
     let made = db.create_agent_key(&owner(db), &request).unwrap();
@@ -801,7 +816,7 @@ async fn unclear_requests_are_refused_with_what_to_fix() {
         )
     })
     .await;
-    assert_eq!(refused(answer).1, "locations_off");
+    assert_eq!(refused(answer).1, "not_allowed");
 }
 
 /// A question asked of the agent API, as a test asks it.
@@ -1629,10 +1644,7 @@ async fn scorecard_questions_come_back_small() {
         data::feedback(db, state, &no_places, &json!({"group_by": "address"}))
     })
     .await;
-    assert_eq!(
-        (status, body["error"].as_str()),
-        (403, Some("locations_off"))
-    );
+    assert_eq!((status, body["error"].as_str()), (403, Some("not_allowed")));
 
     // Addresses come from the routes: with routes off there are none to give.
     let off = dsp.clone();
@@ -1705,7 +1717,10 @@ async fn scorecard_questions_come_back_small() {
         );
     }
     let (_, status) = ask(&state, move |db, _| data::status(db, &me, &json!({}))).await;
-    assert_eq!(status["sources"]["scorecard"], json!({"enabled": false}));
+    assert_eq!(
+        status["sources"]["scorecard"],
+        json!({"enabled": false, "reads": false})
+    );
 }
 
 /// Every tool tells an agent when what it reads is switched off for the DSP: refused by the
@@ -1747,14 +1762,17 @@ async fn every_tool_says_when_its_feature_is_switched_off() {
         })
         .await;
         let id = endpoint.id;
-        match (endpoint.source, id) {
-            (Some(source), _) => {
+        match (endpoint.area, id) {
+            (Some(area), _) => {
                 assert_eq!(
                     (status, body["error"].as_str()),
                     (403, Some("source_off")),
                     "{id}: {body}"
                 );
-                let said = format!("Northline Logistics has {} switched off", source.switch());
+                let said = format!(
+                    "Northline Logistics has {} switched off",
+                    area.source().switch()
+                );
                 assert!(
                     body["message"].as_str().unwrap().starts_with(&said),
                     "{id}: {body}"
@@ -1768,7 +1786,11 @@ async fn every_tool_says_when_its_feature_is_switched_off() {
             }
             (None, "status") => {
                 for key in ["timecards", "mealBreaks", "routes", "dvic", "scorecard"] {
-                    assert_eq!(body["sources"][key], json!({"enabled": false}), "{key}");
+                    assert_eq!(
+                        body["sources"][key],
+                        json!({"enabled": false, "reads": false}),
+                        "{key}"
+                    );
                 }
             }
             (None, "driver") => {
@@ -1784,6 +1806,140 @@ async fn every_tool_says_when_its_feature_is_switched_off() {
                 "{body}"
             ),
             (None, other) => panic!("decide how `{other}` answers with its source switched off"),
+        }
+    }
+}
+
+/// Every way a key meets one kind of data at a DSP, here DVIC: allowed it or not, the
+/// feature on or off, bypassing features or not; through its own tool, a driver's report and
+/// the team's table. Not allowed comes first; switched off is refused or named unless it
+/// bypasses, and then it is read and named as bypassed.
+#[tokio::test]
+async fn a_kind_of_data_reads_as_allowed_switched_on_or_bypassed() {
+    let (_root, db, id) = ready();
+    let mut keys = vec![];
+    for (allowed, bypass) in [(true, false), (true, true), (false, false), (false, true)] {
+        let areas: Vec<&str> = AgentArea::ALL
+            .iter()
+            .filter(|area| **area != AgentArea::Locations)
+            .filter(|area| allowed || **area != AgentArea::Dvic)
+            .map(|area| area.as_str())
+            .collect();
+        let name = format!("gate {allowed} {bypass}");
+        let reads = json!({"areas": areas, "bypass": bypass});
+        keys.push((
+            allowed,
+            bypass,
+            reading(&db, &name, &[&id], reads, json!([])),
+        ));
+    }
+    let actor = owner(&db);
+    let state = State::new(db.config.clone()).unwrap();
+    for on in [true, false] {
+        if !on {
+            db.set_feature(&id, "dvic", false, &actor).unwrap();
+        }
+        for (allowed, bypass, who) in &keys {
+            let (allowed, bypass) = (*allowed, *bypass);
+            let case = format!("allowed {allowed}, on {on}, bypass {bypass}");
+            let asked = who.clone();
+            let (status, own) = ask(&state, move |db, state| {
+                let endpoint = data::catalog::endpoint("dvic");
+                data::ask(endpoint, db, state, &asked, "", &json!({"date": DAY}))
+            })
+            .await;
+            let asked = who.clone();
+            let (_, report) = ask(&state, move |db, state| {
+                data::driver(db, state, &asked, "Fixture Driver", &json!({"date": DAY}))
+            })
+            .await;
+            let asked = who.clone();
+            let (team_status, team) = ask(&state, move |db, state| {
+                data::team(
+                    db,
+                    state,
+                    &asked,
+                    &json!({"date": DAY, "metrics": "inspections"}),
+                )
+            })
+            .await;
+            let asked = who.clone();
+            let (_, status_answer) =
+                ask(&state, move |db, _| data::status(db, &asked, &json!({}))).await;
+            let reads = allowed && (on || bypass);
+            assert_eq!(
+                (
+                    &status_answer["sources"]["dvic"]["enabled"],
+                    &status_answer["sources"]["dvic"]["reads"]
+                ),
+                (&json!(on), &json!(reads)),
+                "{case}"
+            );
+            let lists = |answer: &Value| {
+                ["not_allowed", "switched_off", "bypassed"]
+                    .map(|key| answer.get(key).cloned().unwrap_or(Value::Null))
+            };
+            match (allowed, on, bypass) {
+                (false, ..) => {
+                    assert_eq!(
+                        (status, own["error"].as_str()),
+                        (403, Some("not_allowed")),
+                        "{case}: {own}"
+                    );
+                    assert_eq!(report["totals"]["inspections"], Value::Null, "{case}");
+                    assert_eq!(
+                        lists(&report),
+                        [json!(["DVIC inspections"]), Value::Null, Value::Null],
+                        "{case}"
+                    );
+                    assert_eq!(
+                        (team_status, team["error"].as_str()),
+                        (403, Some("not_allowed")),
+                        "{case}"
+                    );
+                }
+                (true, true, _) => {
+                    assert_eq!((status, &own["inspections"]), (200, &json!(2)), "{case}");
+                    assert!(own.get("bypassed").is_none(), "{case}: {own}");
+                    assert_eq!(report["totals"]["inspections"], 2, "{case}");
+                    assert_eq!(lists(&report), [Value::Null, Value::Null, Value::Null]);
+                    assert_eq!(team_status, 200, "{case}: {team}");
+                    assert_eq!(team["totals"]["inspections"], 2, "{case}");
+                    assert!(team.get("bypassed").is_none(), "{case}: {team}");
+                }
+                (true, false, false) => {
+                    assert_eq!(
+                        (status, own["error"].as_str()),
+                        (403, Some("source_off")),
+                        "{case}"
+                    );
+                    assert_eq!(report["totals"]["inspections"], Value::Null, "{case}");
+                    assert_eq!(
+                        lists(&report),
+                        [Value::Null, json!(["DVIC"]), Value::Null],
+                        "{case}"
+                    );
+                    assert_eq!(
+                        (team_status, team["error"].as_str()),
+                        (403, Some("source_off")),
+                        "{case}"
+                    );
+                }
+                (true, false, true) => {
+                    // The data a switched-off feature collected, until it was switched off.
+                    assert_eq!((status, &own["inspections"]), (200, &json!(2)), "{case}");
+                    assert_eq!(own["bypassed"], json!(["DVIC"]), "{case}");
+                    assert_eq!(report["totals"]["inspections"], 2, "{case}");
+                    assert_eq!(
+                        lists(&report),
+                        [Value::Null, Value::Null, json!(["DVIC"])],
+                        "{case}"
+                    );
+                    assert_eq!(team_status, 200, "{case}: {team}");
+                    assert_eq!(team["totals"]["inspections"], 2, "{case}");
+                    assert_eq!(team["bypassed"], json!(["DVIC"]), "{case}");
+                }
+            }
         }
     }
 }

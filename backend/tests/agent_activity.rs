@@ -122,8 +122,14 @@ impl Server {
     }
     /// A key made the way the Agents page makes one, reaching `dsps` (every DSP when empty).
     async fn key(&self, name: &str, dsps: Vec<String>) -> (String, String) {
+        let reads = json!({"areas":["routes","timecards","meal_breaks","dvic","feedback",
+            "safety","returns","scorecard"],"bypass":false});
+        self.key_reading(name, dsps, reads).await
+    }
+    /// The same, reading as `reads` says at every DSP.
+    async fn key_reading(&self, name: &str, dsps: Vec<String>, reads: Value) -> (String, String) {
         let request = AgentKeyRequest::parse(&json!({"name":name,"allDsps":dsps.is_empty(),
-            "dsps":dsps,"access":"read","tools":"full","locations":false,"expiresAt":null}))
+            "dsps":dsps,"access":"read","reads":reads,"dspReads":[],"expiresAt":null}))
         .unwrap();
         self.state
             .run(move |db| {
@@ -420,6 +426,7 @@ async fn the_log_pages_newest_first_and_narrows_to_a_key_or_to_refusals() {
             surface: format!("rest:call{n}"),
             dsp: None,
             outcome: if n % 2 == 0 { "ok" } else { "unknown_metric" }.into(),
+            bypassed: false,
             ms: 1,
             bytes: 2,
         })
@@ -520,6 +527,7 @@ async fn a_key_past_its_days_calls_is_capped_and_a_restart_keeps_the_cap() {
         surface: "rest:whoami".into(),
         dsp: None,
         outcome: "ok".into(),
+        bypassed: false,
         ms: 1,
         bytes: 1,
     };
@@ -611,6 +619,7 @@ async fn calls_past_ninety_days_are_forgotten() {
         surface: format!("rest:{}", age / day),
         dsp: None,
         outcome: "ok".into(),
+        bypassed: false,
         ms: 1,
         bytes: 1,
     };
@@ -674,4 +683,61 @@ async fn reading_the_log_reads_one_index_in_order() {
     }
     assert!(plans[1].contains("agent_activity_key"), "{}", plans[1]);
     assert!(plans[2].contains("agent_activity_refused"), "{}", plans[2]);
+}
+
+#[tokio::test]
+async fn a_call_that_read_a_switched_off_feature_by_bypassing_it_is_marked() {
+    let server = Server::start().await;
+    let cookie = server.owner().await;
+    let north = server.dsp("Northline Logistics").await;
+    let reads = json!({"areas":["timecards","dvic"],"bypass":true});
+    let (key, token) = server
+        .key_reading("Nightly report", vec![north.clone()], reads)
+        .await;
+    // Northline switches DVIC off; the key reads it anyway, and the answer says so.
+    server
+        .state
+        .run(move |db| {
+            let (owner,): (String,) = db
+                .platform
+                .one_as("SELECT id FROM users WHERE email='owner@dispatch.test'", [])?
+                .unwrap();
+            db.set_feature(&north, "dvic", false, &owner).map(|_| ())
+        })
+        .await
+        .unwrap();
+    let rest = server.rest(&token, "/api/v1/dvic").await;
+    assert_eq!(rest.status, 200, "{}", rest.body);
+    assert_eq!(rest.body["bypassed"], json!(["DVIC"]));
+    let tool = server.tool(&token, "dvic_inspections", json!({})).await;
+    let text = tool.body["result"]["content"][0]["text"].as_str().unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(text).unwrap()["bypassed"],
+        json!(["DVIC"])
+    );
+    // Timecards are on: read as ever, unmarked. A refusal bypasses nothing.
+    let cards = server.rest(&token, "/api/v1/timecards").await;
+    assert_eq!(cards.status, 200, "{}", cards.body);
+    assert!(cards.body.get("bypassed").is_none());
+    let routes = server.rest(&token, "/api/v1/routes").await;
+    assert_eq!(routes.body["error"], "not_allowed");
+    activity::flush(&server.state).await.unwrap();
+    let log = server.log(&cookie, &format!("?key={key}")).await;
+    let mut marked: Vec<(String, bool)> = log.body["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| (s(row, "surface").to_owned(), row["bypassed"] == true))
+        .collect();
+    marked.reverse();
+    let expected: Vec<(String, bool)> = [
+        ("rest:dvic", true),
+        ("mcp:dvic_inspections", true),
+        ("rest:timecards", false),
+        ("rest:routes", false),
+    ]
+    .into_iter()
+    .map(|(surface, bypassed)| (surface.to_owned(), bypassed))
+    .collect();
+    assert_eq!(marked, expected);
 }

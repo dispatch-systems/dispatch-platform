@@ -1,10 +1,10 @@
 //! What a request names, read the way a person writes it: the DSP, the days and the
 //! driver. Anything unclear is refused with what it could have meant.
-use super::{Refusal, facts::Sources};
+use super::{Refusal, access::Access};
 use crate::{
     Result, State,
     agents::Caller,
-    contracts::{DriverMatch, DriverSource, DriverStatus, Dsp},
+    contracts::{AgentArea, DriverMatch, DriverSource, DriverStatus, Dsp},
     db::Store,
     driver_match::names::name_key,
     scorecard,
@@ -285,14 +285,25 @@ pub struct People {
     holders: HashMap<(DriverSource, String), usize>,
 }
 impl People {
-    /// The DSP's people, from Driver Match, kept until a source or driver decision changes.
-    pub fn load(db: &Store, state: &State, dsp: &str) -> Result<Self> {
+    /// The DSP's people, from Driver Match, kept until a source or driver decision changes,
+    /// with the IDs of the sources the key or app reads there.
+    pub fn load(db: &Store, state: &State, access: &Access) -> Result<Self> {
         // Driver Match deliberately keeps every collected identity while a source is off.
-        // Project that durable cache through the current feature policy on every read, so
-        // toggling a source takes effect immediately without invalidating or rebuilding it.
-        let sources = Sources::of(db, dsp)?;
-        let paycom_on = sources.timecards || sources.meal_breaks;
-        let amazon_on = sources.meal_breaks || sources.routes || sources.dvic || sources.scorecard;
+        // Project that durable cache through what the key or app reads at the DSP on every
+        // read, so a switch or an allowance changed takes effect at once without invalidating
+        // or rebuilding it.
+        let dsp = access.dsp.id.as_str();
+        let reads = |areas: &[AgentArea]| areas.iter().any(|area| access.reads(*area));
+        let paycom_on = reads(&[AgentArea::Timecards, AgentArea::MealBreaks]);
+        let amazon_on = reads(&[
+            AgentArea::MealBreaks,
+            AgentArea::Routes,
+            AgentArea::Dvic,
+            AgentArea::Feedback,
+            AgentArea::Safety,
+            AgentArea::Returns,
+            AgentArea::Scorecard,
+        ]);
         let revision = state
             .data_revision
             .load(std::sync::atomic::Ordering::Relaxed);
