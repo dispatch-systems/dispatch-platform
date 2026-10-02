@@ -18,7 +18,8 @@ export const dspHash = (
   page: DspRouteId = destinations.get(dspId) ?? 'overview',
   query?: Record<string, string>,
 ) => `#dsp/${dspId}/${page}${query ? `?${new URLSearchParams(query)}` : ''}`;
-export const platformHash = (page: PlatformRouteId = 'dsps') => `#${page}`;
+export const platformHash = (page: PlatformRouteId = 'dsps', query?: Record<string, string>) =>
+  `#${page}${query ? `?${new URLSearchParams(query)}` : ''}`;
 export const signInHash = '#signin';
 
 export function navigate(hash: string) {

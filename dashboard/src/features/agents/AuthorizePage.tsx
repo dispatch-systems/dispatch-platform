@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Info, TriangleAlert } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Globe, Info, TriangleAlert } from 'lucide-react';
 import type {
   AgentDsp,
   OAuthApproval,
@@ -14,22 +14,61 @@ import {
   useAgentKeys,
   useOAuthRequest,
 } from '../../app/endpoints.js';
-import { hashQuery } from '../../app/navigation.js';
+import { hashQuery, platformHash } from '../../app/navigation.js';
 import { useAction } from '../../app/useAction.js';
-import { blankKey } from '../../lib/agents.js';
+import { appKindName, blankKey } from '../../lib/agents.js';
 import { calendarDay } from '../../lib/format.js';
 import { Badge, DataState, DetailList, ErrorBox, Header } from '../../ui/index.js';
 import { DspReach, LocationsSwitch, ToolChoice } from './KeyChoices.js';
 
 const again = 'Start the connection again from your app.';
 const expired = `This request expired. ${again}`;
-/** Why Dispatch turned a request away before asking: `#authorize?error=<code>`. */
-const refusals: Record<string, string> = {
-  unknown_app: 'Dispatch doesn’t accept this app.',
-  app_unavailable: 'Dispatch couldn’t check this app right now. Try again in a few minutes.',
-  invalid_redirect: `This app asked to send access to an address it never registered. ${again}`,
-  rate_limited: `Too many connection attempts. Wait a few minutes, then ${again.toLowerCase()}`,
-};
+/** A request is answered only in the browser that started it, and only while it waits, so
+ * a link to it sent elsewhere, or opened late, asks nothing. */
+const elsewhere = (
+  <>
+    This approval isn’t open in this browser, or it has expired. Start connecting again from your
+    app, and approve it in the browser that opens.{' '}
+    <a className="underlined-link" href={platformHash('agents')}>
+      Back to Agents
+    </a>
+  </>
+);
+const connectTab = (
+  <a className="underlined-link" href={platformHash('agents', { tab: 'connect' })}>
+    Agents → Connect
+  </a>
+);
+/** Why Dispatch turned a request away before asking: `#authorize?error=<code>`, with the
+ * kind of app as `app=<id>` when it is one the owner turned off. */
+function refusal(error: string, app: string | null): ReactNode {
+  switch (error) {
+    case 'unknown_app':
+      return 'Dispatch doesn’t accept this app.';
+    // Opened only from Dispatch itself, never from a link an app or anyone else sent.
+    case 'pairing_closed':
+      return (
+        <>
+          Connecting is closed. Open {connectTab}, copy your app’s command or choose Allow
+          connecting, then start again from your app.
+        </>
+      );
+    case 'app_not_allowed':
+      return (
+        <>
+          Dispatch doesn’t accept {appKindName(app)} yet. Turn it on under {connectTab}.
+        </>
+      );
+    case 'app_unavailable':
+      return 'Dispatch couldn’t check this app right now. Try again in a few minutes.';
+    case 'invalid_redirect':
+      return `This app asked to send access to an address it never registered. ${again}`;
+    case 'rate_limited':
+      return `Too many connection attempts. Wait a few minutes, then ${again.toLowerCase()}`;
+    default:
+      return `This connection can’t go ahead. ${again}`;
+  }
+}
 
 /** Platform → Agents → an app asking to connect, opened from `#authorize?request=<id>`. */
 export function AuthorizePage() {
@@ -55,14 +94,18 @@ function Authorization({ query }: { query: URLSearchParams }) {
   const error = query.get('error');
   const request = useOAuthRequest(error ? '' : id);
   const agents = useAgentKeys();
-  const [gone, setGone] = useState(false);
-  const problem = error
-    ? (refusals[error] ?? `This connection can’t go ahead. ${again}`)
+  // Why a request that was asked can no longer be answered here.
+  const [ended, setEnded] = useState('');
+  const reason = ended || request.errorCode;
+  const problem: ReactNode = error
+    ? refusal(error, query.get('app'))
     : !id
       ? `This link is incomplete. ${again}`
-      : gone || request.errorCode === 'authorization_not_found'
+      : reason === 'authorization_not_found'
         ? expired
-        : '';
+        : reason === 'wrong_browser'
+          ? elsewhere
+          : '';
   if (problem)
     return (
       <p className="notice" role="status">
@@ -79,9 +122,7 @@ function Authorization({ query }: { query: URLSearchParams }) {
         agents.refresh();
       }}
     >
-      {({ pending, dsps }) => (
-        <Approval request={pending} dsps={dsps} expire={() => setGone(true)} />
-      )}
+      {({ pending, dsps }) => <Approval request={pending} dsps={dsps} end={setEnded} />}
     </DataState>
   );
 }
@@ -89,11 +130,12 @@ function Authorization({ query }: { query: URLSearchParams }) {
 function Approval({
   request,
   dsps,
-  expire,
+  end,
 }: {
   request: OAuthRequest;
   dsps: AgentDsp[];
-  expire: () => void;
+  /** The request can't be answered here any more, for this reason. */
+  end: (code: string) => void;
 }) {
   const { app } = request;
   const [form, setForm] = useState<OAuthApproval>(() => {
@@ -113,7 +155,11 @@ function Approval({
     return replaces;
   };
   const gone = (error: unknown) => {
-    if (error instanceof ApiError && error.code === 'authorization_not_found') expire();
+    if (
+      error instanceof ApiError &&
+      ['authorization_not_found', 'wrong_browser'].includes(error.code)
+    )
+      end(error.code);
   };
   // A changed name asks again once the owner pauses; approving checks again regardless.
   useEffect(() => {
@@ -140,6 +186,8 @@ function Approval({
     { inline: true },
   );
   const busy = answer.busy || leaving;
+  // An app Dispatch doesn't know, on a website: where access goes is what matters most.
+  const website = !app.verified && !app.redirectScheme && app.redirectHost !== 'this computer';
   const name = <bdi>{app.name}</bdi>;
   return (
     <form
@@ -154,14 +202,26 @@ function Approval({
         <h2 id="agents-authorize-app">{name}</h2>
         <Badge value={app.verified ? 'verified' : 'unverified'} />
       </div>
+      {website && (
+        <p className="agents-sends">
+          <Globe size={18} aria-hidden="true" />
+          <span>
+            Sends access to: <strong>{app.redirectHost}</strong>
+          </span>
+        </p>
+      )}
       <DetailList
         items={[
-          [
-            'Sends access to',
-            app.redirectScheme
-              ? `an app on ${app.redirectHost} (${app.redirectScheme}://…)`
-              : app.redirectHost,
-          ],
+          ...(website
+            ? []
+            : ([
+                [
+                  'Sends access to',
+                  app.redirectScheme
+                    ? `an app on ${app.redirectHost} (${app.redirectScheme}://…)`
+                    : app.redirectHost,
+                ],
+              ] as [string, ReactNode][])),
           ['Access', 'Read only'],
         ]}
       />

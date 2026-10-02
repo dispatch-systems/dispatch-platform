@@ -1,5 +1,7 @@
 import fs from 'node:fs';
+import type { Locator } from '@playwright/test';
 import { signIns } from '../../dashboard/src/lib/agents.js';
+import { timeOfDay, utcDay } from '../../dashboard/src/lib/format.js';
 import { test, expect, login } from './fixtures.js';
 
 test('the platform owner makes a key, sees it once, tests it, changes and revokes it', async ({
@@ -85,7 +87,7 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   await expect(connect.getByRole('status')).toContainText('That key was revoked.');
 });
 
-test('the Connect tab signs each app in with one command or a few steps, ready to copy', async ({
+test('the Connect tab signs each app in with one command or a few steps, ready to copy, and copying lets apps connect for ten minutes', async ({
   page,
   baseURL,
 }) => {
@@ -97,8 +99,25 @@ test('the Connect tab signs each app in with one command or a few steps, ready t
   const signIn = page.getByRole('region', { name: 'Sign in', exact: true });
   await expect(signIn).toContainText('Recommended');
   const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
+  // Until the owner copies a way to sign in, or lets them, no app may start connecting.
+  const status = signIn.locator('.agents-pairing [aria-live]');
+  const openUntil = async (): Promise<string | null> =>
+    (await page.evaluate(() => fetch('/api/platform/oauth/pairing').then((r) => r.json())))
+      .openUntil;
+  await expect(status).toHaveText('');
+  expect(await openUntil()).toBeNull();
+  // Each copy, and the button, lets apps connect for the next ten minutes.
+  const opens = async (button: Locator) => {
+    const opened = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/platform/oauth/pairing',
+    );
+    await button.click();
+    expect((await opened).status()).toBe(200);
+  };
   const copy = async (panel: ReturnType<typeof signIn.getByRole>, name: string) => {
-    await panel.getByRole('button', { name, exact: true }).click();
+    await opens(panel.getByRole('button', { name, exact: true }));
     await expect(panel.getByRole('button', { name, exact: true })).toHaveText('Copied');
     return clipboard();
   };
@@ -119,6 +138,16 @@ test('the Connect tab signs each app in with one command or a few steps, ready t
     await expect(panel.locator('code').first()).toHaveText(command);
     await expect(panel).toContainText('A Dispatch page opens — approve it there');
     expect(await copy(panel, `Copy ${app} command`)).toBe(command);
+    if (index === 0) {
+      // The first copy opened connecting; the tab says until when.
+      await expect(status).toHaveText(/^Connecting is open until \d{1,2}:\d{2} [AP]M$/);
+      const until = await openUntil();
+      expect(Date.parse(until!) - Date.now()).toBeGreaterThan(9 * 60_000);
+      expect(Date.parse(until!) - Date.now()).toBeLessThanOrEqual(10 * 60_000);
+      await expect(status).toHaveText(
+        `Connecting is open until ${timeOfDay(until!, 'America/Chicago')}`,
+      );
+    }
     const prompt = await copy(panel, `Copy prompt for ${app}`);
     expect(prompt).toBe(prompts[index]!.prompt);
     expect(prompt).toContain(mcp);
@@ -149,4 +178,108 @@ test('the Connect tab signs each app in with one command or a few steps, ready t
   });
   expect(await copy(other, 'Copy local server command')).toBe(`npx -y mcp-remote ${mcp}`);
   await expect(other).toContainText('use a key below');
+
+  // The button lets apps connect too, extending the window.
+  const before = Date.parse((await openUntil())!);
+  await opens(signIn.getByRole('button', { name: 'Allow connecting for 10 minutes', exact: true }));
+  expect(Date.parse((await openUntil())!)).toBeGreaterThanOrEqual(before);
+  await expect(status).toHaveText(/^Connecting is open until \d{1,2}:\d{2} [AP]M$/);
+});
+
+test('the owner chooses which apps may connect', async ({ page }) => {
+  await login(page);
+  await page.getByRole('link', { name: 'Agents', exact: true }).click();
+  await page.getByRole('tab', { name: 'Connect', exact: true }).click();
+  const allowed = page.getByRole('region', { name: 'Apps that may connect', exact: true });
+  // The four known apps and apps on this computer may; websites and other apps may not.
+  const apps = [
+    ['ChatGPT', true],
+    ['Codex', true],
+    ['Claude Code', true],
+    ['Hermes Agent', true],
+    ['Apps on this computer', true],
+    ['Websites and other apps', false],
+  ] as const;
+  await expect(allowed.getByRole('switch')).toHaveCount(apps.length);
+  for (const [name, on] of apps)
+    await expect(allowed.getByRole('switch', { name, exact: true })).toBeChecked({ checked: on });
+
+  // Turned off, an app stays off until it is turned back on.
+  const codex = allowed.getByRole('switch', { name: 'Codex', exact: true });
+  await codex.click();
+  await expect(codex).not.toBeChecked();
+  await expect(page.getByText('Codex may no longer connect')).toBeVisible();
+  await page.reload();
+  await expect(codex).not.toBeChecked();
+  await expect(allowed.getByRole('switch', { name: 'ChatGPT', exact: true })).toBeChecked();
+  await codex.click();
+  await expect(codex).toBeChecked();
+  await expect(page.getByText('Codex may connect')).toBeVisible();
+  await page.reload();
+  await expect(codex).toBeChecked();
+});
+
+test('the Activity tab lists each call a key makes, and what Dispatch answered', async ({
+  page,
+  dispatch,
+}) => {
+  await login(page);
+  await page.getByRole('link', { name: 'Agents', exact: true }).click();
+  await page.getByRole('tab', { name: 'Activity', exact: true }).click();
+  await expect(page.getByText('No agent calls yet')).toBeVisible();
+
+  const owner = await dispatch.client();
+  const made = await owner.post('/api/platform/agents/keys', {
+    name: 'Nightly report script',
+    allDsps: true,
+    dsps: [],
+    access: 'read',
+    tools: 'full',
+    locations: false,
+    expiresAt: null,
+  });
+  expect(made.status, made.body).toBe(200);
+  const call = await dispatch.request('/api/v1/whoami', undefined, {
+    authorization: `Bearer ${made.value.token}`,
+  });
+  expect(call.status, call.body).toBe(200);
+
+  // Calls are written a moment after they're made; the tab reads them when it opens.
+  const row = page.getByRole('row').filter({ hasText: 'Nightly report script' });
+  await expect(async () => {
+    await page.getByRole('tab', { name: 'Keys', exact: true }).click();
+    await page.getByRole('tab', { name: 'Activity', exact: true }).click();
+    await expect(row).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 20_000 });
+  await expect(row).toContainText('Key');
+  await expect(row).toContainText('whoami');
+  await expect(row).toContainText('OK');
+  await expect(row).toContainText(/\d+ ms/);
+
+  // Filtered to the key, and to refusals, of which it has none.
+  await page.getByLabel('Connection').selectOption({ label: 'Nightly report script' });
+  await expect(row).toBeVisible();
+  await page.getByRole('button', { name: 'Refused', exact: true }).click();
+  await expect(page.getByText('No matching calls')).toBeVisible();
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await expect(row).toBeVisible();
+
+  // A key past 10,000 calls a UTC day is noted once, across the table rather than as a call.
+  const capped = new Date().toISOString();
+  dispatch.database('data/platform/accounts.sqlite', (db) =>
+    db
+      .prepare(
+        `INSERT INTO agent_activity(at,key_id,key_name,key_kind,surface,outcome,ms,bytes)
+         VALUES (?,?,?,'key','activity:capped','capped',0,0)`,
+      )
+      .run(Date.parse(capped), made.value.key.id, 'Nightly report script'),
+  );
+  await page.getByRole('tab', { name: 'Keys', exact: true }).click();
+  await page.getByRole('tab', { name: 'Activity', exact: true }).click();
+  const note = page.getByRole('row').filter({ hasText: 'Over 10,000 calls' });
+  await expect(note.getByRole('cell')).toHaveCount(1);
+  await expect(note).toHaveText(
+    `Over 10,000 calls from Nightly report script on ${utcDay(capped)} (UTC); later calls that day aren’t listed.`,
+  );
+  await expect(page.getByRole('row')).toHaveCount(3);
 });

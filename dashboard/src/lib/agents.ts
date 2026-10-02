@@ -2,12 +2,14 @@
 // an agent sets one up.
 import type {
   AgentAccess,
+  AgentActivity,
   AgentDsp,
   AgentKey,
   AgentKeyRequest,
   AgentTools,
 } from '../../../shared/contracts/index.js';
 import { dateFormatter } from './date-format.js';
+import { utcDay } from './format.js';
 
 export const accessLabels: Record<AgentAccess, string> = {
   read: 'Read only',
@@ -94,6 +96,44 @@ export function lastUsedText(value: string | null, now = Date.now()) {
   if (day(when) === day(now)) return `Today, ${clock}`;
   if (day(when) === day(now - DAY)) return `Yesterday, ${clock}`;
   return monthDay(value, new Date(when).getFullYear() !== new Date(now).getFullYear());
+}
+
+/** What the Activity tab says in place of a call: the row that marks a key or app past its
+ * 10,000 recorded calls in a UTC day, after which its calls that day go unlisted. The day is
+ * named as UTC counts it, since the viewer's own day ends at another time. Null for a call. */
+export function activityNote(
+  call: Pick<AgentActivity, 'at' | 'outcome' | 'key'>,
+  now = Date.now(),
+) {
+  if (call.outcome !== 'capped') return null;
+  return (
+    `Over 10,000 calls from ${call.key.name} on ${utcDay(call.at, now)} (UTC); ` +
+    'later calls that day aren’t listed.'
+  );
+}
+
+const appKinds: Record<string, string> = {
+  chatgpt: 'ChatGPT',
+  codex: 'Codex',
+  'claude-code': 'Claude Code',
+  hermes: 'Hermes Agent',
+  local: 'apps on this computer',
+  web: 'websites and other apps',
+};
+/** A kind of app the owner lets connect, by its id, as a sentence names it: "this app" for
+ * a missing or unknown id. */
+export const appKindName = (id: string | null) =>
+  (id && Object.hasOwn(appKinds, id) && appKinds[id]) || 'this app';
+
+/** Where an agent's call went, as the Activity tab shows it: `rest:whoami` is the REST
+ * endpoint whoami, `mcp:find_driver` the MCP tool find_driver. */
+export function surfaceOf(surface: string) {
+  const split = surface.indexOf(':');
+  const via = split < 0 ? '' : surface.slice(0, split);
+  const labels: Record<string, string> = { rest: 'REST', mcp: 'MCP' };
+  return labels[via]
+    ? { via: labels[via], name: surface.slice(split + 1) }
+    : { via: '', name: surface };
 }
 
 /** A new key's starting point: read only, every tool, no addresses, 90 days. */

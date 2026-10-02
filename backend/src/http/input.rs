@@ -147,7 +147,7 @@ impl Reply {
             "{name}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0{secure}"
         ))
     }
-    fn cookie(mut self, cookie: String) -> Self {
+    pub(super) fn cookie(mut self, cookie: String) -> Self {
         self.cookie = Some(cookie);
         self
     }

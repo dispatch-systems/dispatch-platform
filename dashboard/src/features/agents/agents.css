@@ -1,4 +1,5 @@
-/* The Agents page: keys, connected apps, the key sheet, the setup dialog and app approval. */
+/* The Agents page: keys, connected apps, their calls, the key sheet, the setup dialog and app
+   approval. */
 .agents-tag {
   display: inline-flex;
   align-items: center;
@@ -210,7 +211,7 @@
   color: var(--primary);
   font-weight: 550;
 }
-.agents-form input[role='switch'] {
+:is(.agents-form, .agents-allowed) input[role='switch'] {
   appearance: none;
   position: relative;
   width: 28px;
@@ -224,7 +225,7 @@
   flex-shrink: 0;
   cursor: pointer;
 }
-.agents-form input[role='switch']::before {
+:is(.agents-form, .agents-allowed) input[role='switch']::before {
   content: '';
   position: absolute;
   top: 2px;
@@ -234,11 +235,11 @@
   border-radius: 50%;
   background: var(--foreground);
 }
-.agents-form input[role='switch']:checked {
+:is(.agents-form, .agents-allowed) input[role='switch']:checked {
   background: var(--primary);
   border-color: var(--primary);
 }
-.agents-form input[role='switch']:checked::before {
+:is(.agents-form, .agents-allowed) input[role='switch']:checked::before {
   left: 14px;
   background: var(--primary-foreground);
 }
@@ -500,6 +501,48 @@
   background: var(--accent);
 }
 
+/* Whether apps may start connecting now, beneath the ways to sign in. */
+.agents-pairing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.agents-pairing button {
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+.agents-pairing .error {
+  flex-basis: 100%;
+  margin: 0;
+}
+/* The apps that may sign in, a switch each. */
+.agents-allowed {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 4px 24px;
+  padding: 0;
+  list-style: none;
+}
+.agents-allowed label {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 13px;
+  font-weight: 450;
+  cursor: pointer;
+}
+.agents-allowed input[role='switch']:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* Connected apps: whether Dispatch knows the app by its published address, and whether
    it is still signed in. */
 .agents-named {
@@ -560,6 +603,61 @@
   color: var(--primary);
 }
 
+/* An app's call: who made it, as a key or an app. */
+.agents-filters {
+  justify-content: flex-start;
+}
+.agents-caller {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-weight: 500;
+}
+.agents-calls td {
+  white-space: nowrap;
+}
+.agents-surface {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.agents-surface small {
+  display: inline;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 500;
+}
+.agents-calls tr.agents-note td {
+  color: var(--muted-foreground);
+  white-space: normal;
+}
+.agents-calls td.agents-wrap {
+  min-width: 180px;
+  white-space: normal;
+}
+
+/* A website Dispatch doesn't know: where access goes, before anything else. */
+.agents-sends {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius);
+  background: var(--warning-surface);
+  font-size: 14px;
+}
+.agents-sends > svg {
+  flex-shrink: 0;
+  color: var(--warning);
+}
+.agents-sends strong {
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
 @media (max-width: 700px) {
   .agents-choices.two {
     grid-template-columns: 1fr;

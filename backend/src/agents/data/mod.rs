@@ -13,7 +13,7 @@ pub use scorecard::{feedback, returns, safety, weekly};
 pub use shape::BUDGET;
 pub use views::*;
 
-use crate::{Error, State, agents::Caller, db::Store};
+use crate::{Error, State, agents::Caller, contracts::AgentDsp, db::Store};
 use serde_json::{Value, json};
 
 /// A request an agent can fix: what was unclear, in words it can repeat, and what it could
@@ -79,6 +79,19 @@ pub fn settle(answer: Answer) -> crate::Result<(u16, Value)> {
         Err(Failure::Refused(refusal)) => Ok(refusal.body()),
         Err(Failure::Failed(error)) => Err(error),
     }
+}
+
+/// The DSP a request is about, as its answer reads it: the one named with `dsp`, or the key's
+/// only one. None for an endpoint about no one DSP, or a request that leaves it unclear.
+pub fn about(endpoint: &catalog::Endpoint, caller: &Caller, query: &Value) -> Option<AgentDsp> {
+    if !endpoint.params.iter().any(|param| param.name == "dsp") {
+        return None;
+    }
+    let dsp = scope::pick_dsp(caller, scope::param(query, "dsp")).ok()?;
+    Some(AgentDsp {
+        id: dsp.id.clone(),
+        name: dsp.name.clone(),
+    })
 }
 
 /// Answers one endpoint of the catalog, as its REST route and its MCP tool both ask it.

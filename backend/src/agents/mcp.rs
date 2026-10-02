@@ -4,10 +4,15 @@
 //! calling accepts them. The key was checked before a request gets here; the caller and the
 //! server's state ride in the request's extensions.
 use super::{
-    Caller,
+    Caller, activity,
     data::{self, Failure, catalog},
 };
-use crate::{State, contracts::AgentTools, db::Store, observability};
+use crate::{
+    State,
+    contracts::{AgentDsp, AgentTools},
+    db::Store,
+    observability::{self, RequestTrace},
+};
 use axum::{body::Body, extract::Request, http::request::Parts, response::Response};
 use rmcp::{
     ErrorData, RoleServer, ServerHandler,
@@ -86,6 +91,16 @@ fn context(context: &RequestContext<RoleServer>) -> Result<(Caller, Arc<State>),
         .ok_or_else(|| ErrorData::internal_error("agent_key_required", None))
 }
 
+/// The request's trace, where the Activity log's note of a call is kept.
+fn trace(context: &RequestContext<RoleServer>) -> Option<RequestTrace> {
+    context
+        .extensions
+        .get::<Parts>()?
+        .extensions
+        .get::<RequestTrace>()
+        .cloned()
+}
+
 /// Whether the request speaks 2026-07-28 or later, whose list results must say how long
 /// they may be cached and by whom.
 fn modern(context: &RequestContext<RoleServer>) -> bool {
@@ -141,16 +156,30 @@ fn query(arguments: Option<Map<String, Value>>) -> Result<Map<String, Value>, St
     Ok(query)
 }
 
-fn refused(code: &str, message: &str, choices: &[String]) -> CallToolResult {
+/// A tool's answer, with what the Activity log keeps of it: the DSP it was about and how it
+/// ended, `ok` or the code the agent was told.
+struct Called {
+    result: CallToolResult,
+    dsp: Option<AgentDsp>,
+    outcome: String,
+}
+
+fn refused(code: &str, message: &str, choices: &[String]) -> Called {
+    let mut code = code;
     let mut text = format!("{code}: {message}");
     if !choices.is_empty() {
         text.push_str(&format!("\nChoices: {}", choices.join("; ")));
     }
     if text.len() > data::BUDGET {
+        code = "answer_too_large";
         text = "answer_too_large: The refusal is too large; shorten the request or ask more specifically."
             .to_owned();
     }
-    CallToolResult::error(vec![ContentBlock::text(text)])
+    Called {
+        result: CallToolResult::error(vec![ContentBlock::text(text)]),
+        dsp: None,
+        outcome: code.to_owned(),
+    }
 }
 
 impl Server {
@@ -160,7 +189,7 @@ impl Server {
         arguments: Option<Map<String, Value>>,
         caller: Caller,
         state: Arc<State>,
-    ) -> CallToolResult {
+    ) -> Called {
         let name = name.to_owned();
         let label = name.clone();
         let shared = state.clone();
@@ -182,7 +211,7 @@ impl Server {
         caller: &Caller,
         db: &Store,
         state: &State,
-    ) -> CallToolResult {
+    ) -> Called {
         let Some(endpoint) = offered(caller.tools).find(|e| e.tool == name) else {
             let names: Vec<String> = offered(caller.tools).map(|e| e.tool.to_owned()).collect();
             return refused(
@@ -195,26 +224,36 @@ impl Server {
             Ok(query) => query,
             Err(message) => return refused("invalid_parameter", &message, &[]),
         };
-        let named = match endpoint.path_params.first() {
-            Some(param) => match query.remove(param.name) {
-                Some(Value::String(text)) if !text.trim().is_empty() => text,
-                _ => {
-                    return refused(
+        let named = endpoint
+            .path_params
+            .first()
+            .map(|param| (param.name, query.remove(param.name)));
+        let query = Value::Object(query);
+        let dsp = data::about(endpoint, caller, &query);
+        let named = match named {
+            Some((_, Some(Value::String(text)))) if !text.trim().is_empty() => text,
+            Some((param, _)) => {
+                return Called {
+                    dsp,
+                    ..refused(
                         "missing_parameter",
-                        &format!("{} needs `{}`.", endpoint.tool, param.name),
+                        &format!("{} needs `{param}`.", endpoint.tool),
                         &[],
-                    );
-                }
-            },
+                    )
+                };
+            }
             None => String::new(),
         };
-        Self::answer(
-            endpoint.tool,
-            data::ask(endpoint, db, state, caller, &named, &Value::Object(query)),
-        )
+        Called {
+            dsp,
+            ..Self::answer(
+                endpoint.tool,
+                data::ask(endpoint, db, state, caller, &named, &query),
+            )
+        }
     }
 
-    fn answer(tool: &str, answer: data::Answer) -> CallToolResult {
+    fn answer(tool: &str, answer: data::Answer) -> Called {
         match answer {
             Ok(value) => {
                 let text = value.to_string();
@@ -229,7 +268,11 @@ impl Server {
                 // Once, as compact JSON text: the one shape every client reads the same way.
                 // Sent as structured content as well, Codex's scripts and ChatGPT read it
                 // twice, and Claude Code and Codex's direct calls drop the text.
-                CallToolResult::success(vec![ContentBlock::text(text)])
+                Called {
+                    result: CallToolResult::success(vec![ContentBlock::text(text)]),
+                    dsp: None,
+                    outcome: "ok".into(),
+                }
             }
             Err(Failure::Refused(refusal)) => {
                 let (_, body) = refusal.body();
@@ -383,10 +426,13 @@ impl ServerHandler for Server {
         request: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
         let (caller, state) = context(&request)?;
-        Ok(self
+        let called = self
             .call(&params.name, params.arguments, caller, state)
-            .await
-            .into())
+            .await;
+        if let Some(trace) = trace(&request) {
+            activity::note(&trace, called.dsp, &called.outcome);
+        }
+        Ok(called.result.into())
     }
 
     async fn list_prompts(

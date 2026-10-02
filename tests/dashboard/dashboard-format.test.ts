@@ -7,7 +7,9 @@ import {
   personName,
   time,
   timeOfDay,
+  timeWithSeconds,
   title,
+  utcDay,
 } from '../../dashboard/src/lib/format.js';
 import { backoff } from '../../dashboard/src/lib/backoff.js';
 import { messageOf } from '../../dashboard/src/lib/errors.js';
@@ -37,6 +39,13 @@ test('timestamps read in the timezone they are given', () => {
   assert.equal(time('2026-09-18T15:03:25Z', 'UTC'), 'Sep 18, 3:03 PM');
   assert.equal(timeOfDay('2026-09-18T15:03:25Z', 'America/Los_Angeles'), '8:03 AM');
   assert.equal(timeOfDay('2000-01-01T00:00:00Z', 'UTC'), '12:00 AM');
+  // A log with many entries a minute reads to the second.
+  assert.equal(timeWithSeconds('2026-09-18T15:03:25Z', 'America/Chicago'), 'Sep 18, 10:03:25 AM');
+  assert.equal(timeWithSeconds('2026-09-18T00:00:07.900Z', 'UTC'), 'Sep 18, 12:00:07 AM');
+  // A UTC day, whatever the viewer's clock, with its year only outside the current UTC year.
+  const now = Date.parse('2026-01-01T02:00:00Z');
+  assert.equal(utcDay('2026-01-01T00:30:00Z', now), 'Jan 1');
+  assert.equal(utcDay('2025-12-31T23:59:59Z', now), 'Dec 31, 2025');
 });
 
 test('a missing timestamp reads Never unless the caller words it', () => {

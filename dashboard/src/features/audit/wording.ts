@@ -119,6 +119,9 @@ const phrases: Record<string, (event: AuditEvent) => Part[]> = {
   'agent.key_revoked': (e) => ['revoked the agent key ', strong(e.target ?? 'a key')],
   'agent.app_connected': (e) => ['connected the app ', strong(e.target ?? 'an app')],
   'agent.app_revoked': (e) => ['revoked the connected app ', strong(e.target ?? 'an app')],
+  'agent.pairing_opened': () => ['let apps start connecting for 10 minutes'],
+  'agent.app_allowed': (e) => ['let ', strong(e.target ?? 'an app'), ' connect'],
+  'agent.app_disallowed': (e) => ['stopped ', strong(e.target ?? 'an app'), ' from connecting'],
   'agent.keys_revoked': (e) => [
     'revoked ',
     strong(e.detail === '1' ? 'an agent key' : `${e.detail} agent keys`),
@@ -173,6 +176,7 @@ export const facts = new Set([
   'separated',
   'automatic',
   'reason',
+  'openUntil',
 ]);
 const fact = (event: AuditEvent, field: string) =>
   event.changes.find((change) => change.field === field)?.to ?? '';

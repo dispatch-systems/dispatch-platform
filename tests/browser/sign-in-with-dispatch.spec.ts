@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { platformHash } from '../../dashboard/src/app/navigation.js';
 import { test, expect, login, signIn } from './fixtures.js';
 
 const claudeCode = 'https://claude.ai/oauth/claude-code-client-metadata';
@@ -9,6 +10,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
   page,
   request,
   baseURL,
+  dispatch,
 }) => {
   const verifier = crypto.randomBytes(32).toString('base64url');
   const state = crypto.randomBytes(16).toString('base64url');
@@ -26,6 +28,10 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
   await page.route('http://localhost:43821/**', (route) =>
     route.fulfill({ contentType: 'text/html', body: '<p>Authentication complete.</p>' }),
   );
+
+  // The owner lets apps start connecting, as copying a way to sign in from the Connect tab does.
+  const owner = await dispatch.client();
+  expect((await owner.post('/api/platform/oauth/pairing')).status).toBe(200);
 
   // Signed out, the request waits through sign-in on the approval page.
   await page.goto(`/oauth/authorize?${query(state)}`);
@@ -77,10 +83,12 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
   const bearer = { Authorization: `Bearer ${(await token.json()).access_token}` };
   expect((await request.get('/api/v1/whoami', { headers: bearer })).status()).toBe(200);
 
-  // An answered request can't be answered again.
+  // An answered request can't be answered again: answering it let go of this browser.
   await page.goto(approvalUrl);
   await expect(
-    page.getByText('This request expired. Start the connection again from your app.'),
+    page.getByText(
+      /^This approval isn’t open in this browser, or it has expired\. Start connecting again from your app, and approve it in the browser that opens\./,
+    ),
   ).toBeVisible();
 
   // Connecting it again under that name says which connection it replaces; the owner denies.
@@ -134,4 +142,120 @@ test('Dispatch turns away an app it does not know, without sending the browser t
   await page.goto(`/oauth/authorize?${query}`);
   await expect(page).toHaveURL(/#authorize\?error=/);
   await expect(page.getByText('Dispatch doesn’t accept this app.')).toBeVisible();
+});
+
+test('an app connects only while the owner lets apps connect and it is on, and only in its own browser; a website says where access goes', async ({
+  page,
+  request,
+  dispatch,
+  baseURL,
+}) => {
+  const query = new URLSearchParams({
+    response_type: 'code',
+    client_id: claudeCode,
+    redirect_uri: callback,
+    code_challenge: crypto.createHash('sha256').update('verifier').digest('base64url'),
+    code_challenge_method: 'S256',
+    state: 'closed',
+    resource: `${baseURL}/api/v1/mcp`,
+  });
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'DSPs', exact: true })).toBeVisible();
+
+  // Closed, the request is turned away. A link can't open connecting: only Dispatch's own
+  // Connect tab does, and then the owner starts again from the app.
+  await page.goto(`/oauth/authorize?${query}`);
+  await expect(page).toHaveURL(/#authorize\?error=pairing_closed/);
+  await expect(
+    page.getByText(
+      'Connecting is closed. Open Agents → Connect, copy your app’s command or choose Allow ' +
+        'connecting, then start again from your app.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: /Allow connecting/ })).toHaveCount(0);
+  const connect = page.getByRole('link', { name: 'Agents → Connect', exact: true });
+  await expect(connect).toHaveAttribute('href', platformHash('agents', { tab: 'connect' }));
+  await connect.click();
+  await expect(page.getByRole('tab', { name: 'Connect', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.getByRole('button', { name: 'Allow connecting for 10 minutes', exact: true }).click();
+  await expect(page.getByText(/^Connecting is open until \d{1,2}:\d{2} [AP]M$/)).toBeVisible();
+  await page.goto(`/oauth/authorize?${query}`);
+  await expect(page).toHaveURL(/#authorize\?request=/);
+  await expect(page.getByRole('form', { name: 'Claude Code' })).toBeVisible();
+
+  // An app the owner turned off is turned away by name, with the way to turn it back on.
+  const owner = await dispatch.client();
+  const off = await owner.post('/api/platform/oauth/apps', { id: 'claude-code', allowed: false });
+  expect(off.status, off.body).toBe(200);
+  await page.goto(`/oauth/authorize?${query}`);
+  await expect(page).toHaveURL(/#authorize\?error=app_not_allowed&app=claude-code/);
+  await expect(
+    page.getByText('Dispatch doesn’t accept Claude Code yet. Turn it on under Agents → Connect.', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.getByRole('link', { name: 'Agents → Connect', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Connect', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  const claude = page
+    .getByRole('region', { name: 'Apps that may connect', exact: true })
+    .getByRole('switch', { name: 'Claude Code', exact: true });
+  await expect(claude).not.toBeChecked();
+  await claude.click();
+  await expect(claude).toBeChecked();
+  await page.goto(`/oauth/authorize?${query}`);
+  await expect(page).toHaveURL(/#authorize\?request=/);
+  await expect(page.getByRole('form', { name: 'Claude Code' })).toBeVisible();
+  // A kind of app the page doesn't know is this app.
+  await page.goto(platformHash('authorize', { error: 'app_not_allowed', app: 'cursor' }));
+  await expect(
+    page.getByText('Dispatch doesn’t accept this app yet. Turn it on under Agents → Connect.', {
+      exact: true,
+    }),
+  ).toBeVisible();
+
+  // A request is answered only in the browser that started it: its link, opened in another,
+  // asks nothing there.
+  const started = await request.get(`/oauth/authorize?${query}`, { maxRedirects: 0 });
+  expect(started.status()).toBe(302);
+  const elsewhere = started.headers()['location']!;
+  expect(elsewhere).toMatch(/#authorize\?request=/);
+  await page.goto(elsewhere);
+  await expect(
+    page.getByText(
+      /^This approval isn’t open in this browser, or it has expired\. Start connecting again from your app, and approve it in the browser that opens\./,
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Back to Agents', exact: true })).toHaveAttribute(
+    'href',
+    platformHash('agents'),
+  );
+  await expect(page.getByRole('form')).toHaveCount(0);
+  await expect(page.locator('.agents-authorize').getByRole('button')).toHaveCount(0);
+
+  // A website, once websites may connect, shows first where it sends access.
+  const web = await owner.post('/api/platform/oauth/apps', { id: 'web', allowed: true });
+  expect(web.status, web.body).toBe(200);
+  const site = 'https://app.example.com/callback';
+  const registered = await dispatch.request('/oauth/register', {
+    client_name: 'Route Planner',
+    redirect_uris: [site],
+    token_endpoint_auth_method: 'none',
+    grant_types: ['authorization_code', 'refresh_token'],
+    response_types: ['code'],
+  });
+  expect(registered.status, registered.body).toBe(201);
+  query.set('client_id', registered.value.client_id);
+  query.set('redirect_uri', site);
+  await page.goto(`/oauth/authorize?${query}`);
+  const website = page.getByRole('form', { name: 'Route Planner' });
+  await expect(website.getByText('Unverified', { exact: true })).toBeVisible();
+  await expect(website).toContainText('Unverified app: it says it is “Route Planner”.');
+  await expect(website.locator('.agents-sends')).toHaveText('Sends access to: app.example.com');
 });

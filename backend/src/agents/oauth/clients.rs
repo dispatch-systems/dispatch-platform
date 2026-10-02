@@ -1,16 +1,27 @@
 //! The apps that may ask to connect. Four known apps by their published client documents
-//! (CIMD), fetched from here and never from a browser; and apps that register themselves
-//! (RFC 7591), which may only send the owner back to an app on the owner's own computer.
-use super::{Answer, Refusal};
+//! (CIMD), fetched from here and never from a browser; apps that register themselves
+//! (RFC 7591), which may only send the owner back to an app on the owner's own computer; and,
+//! once the owner lets them, websites and other apps, by a client document anywhere on the
+//! public internet or by registering a website's redirect.
+use super::{
+    Answer, Refusal,
+    network::{self, Network},
+};
 use crate::{
     Error, Result,
     config::Config,
+    contracts::OAuthAppId,
     crypto,
     db::{Store, at, iso, now},
     ensure, observability,
 };
 use serde_json::{Value, json};
-use std::{collections::HashMap, future::Future, sync::Mutex, time::Duration};
+use std::{
+    collections::HashMap,
+    future::Future,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 /// An app as an authorization names it: its client id, the name it goes by, whether Dispatch
 /// knows it or only has its word, and where it may be sent back to.
@@ -46,6 +57,13 @@ const KNOWN: &[(&str, &str, &str)] = &[
         include_str!("clients/hermes.json"),
     ),
 ];
+/// Which kind of app each known app is, in the same order, for the owner's choice of apps.
+const KNOWN_APPS: [OAuthAppId; KNOWN.len()] = [
+    OAuthAppId::Chatgpt,
+    OAuthAppId::Codex,
+    OAuthAppId::ClaudeCode,
+    OAuthAppId::Hermes,
+];
 /// A document is fetched again after an hour, and while that fails the last one serves a day.
 /// A failed fetch is not tried again for a minute.
 const FRESH: i64 = 60 * 60 * 1000;
@@ -57,6 +75,9 @@ const MOST_REDIRECTS: usize = 5;
 const LONGEST_REDIRECT: usize = 512;
 /// Registrations not yet given a token, across every address, before registering waits.
 const MOST_UNUSED: i64 = 200;
+/// Websites' documents kept at once, and fetched at once.
+const MOST_WEBSITES: usize = 256;
+const WEBSITE_FETCHES: usize = 4;
 /// Native apps known by a scheme without a dot, which RFC 8252 §7.1 would otherwise ask for.
 const NATIVE: &[&str] = &[
     "cursor",
@@ -85,11 +106,34 @@ const LOOPBACK: &[&str] = &["localhost", "127.0.0.1", "[::1]"];
 type Found = std::result::Result<Client, &'static str>;
 
 /// The known apps' documents as last fetched, and when a fetch last failed. One fetch per
-/// app runs at a time; the requests that wait for it take its answer.
-#[derive(Default)]
+/// app runs at a time; the requests that wait for it take its answer. Websites' documents
+/// are kept the same way, by URL, a few hundred at most.
 pub struct Documents {
     fetched: Mutex<HashMap<&'static str, Fetched>>,
     fetching: [tokio::sync::Mutex<()>; KNOWN.len()],
+    websites: Mutex<HashMap<String, Website>>,
+    website_fetches: tokio::sync::Semaphore,
+    /// Where websites' documents come from, when not the internet or fixture mode's.
+    network: Mutex<Option<Arc<dyn Network>>>,
+}
+impl Default for Documents {
+    fn default() -> Self {
+        Self {
+            fetched: Mutex::default(),
+            fetching: Default::default(),
+            websites: Mutex::default(),
+            website_fetches: tokio::sync::Semaphore::new(WEBSITE_FETCHES),
+            network: Mutex::default(),
+        }
+    }
+}
+/// A website's document as last fetched, the fetch under way for it, and when it was last
+/// asked for, so the longest unused goes first when too many are kept.
+#[derive(Default)]
+struct Website {
+    fetched: Fetched,
+    fetching: Arc<tokio::sync::Mutex<()>>,
+    asked: i64,
 }
 #[derive(Clone, Default)]
 struct Fetched {
@@ -145,46 +189,154 @@ impl Documents {
                 .cloned()
                 .unwrap_or_default()
         };
-        if let Some(found) = entry().settled() {
-            return found;
-        }
-        let _only = self.fetching[index].lock().await;
-        // Whoever fetched while this request waited has settled it.
-        let mut entry = entry();
-        if let Some(found) = entry.settled() {
-            return found;
-        }
-        let found = match fetch()
-            .await
-            .ok()
-            .and_then(|body| document(known, name, &body))
-        {
-            Some(client) => {
-                entry.document = Some((now(), client.clone()));
-                entry.failed = None;
-                Ok(client)
+        let keep = |entry| {
+            self.fetched
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .insert(known, entry);
+        };
+        let parse = |body: &[u8]| document(known, name, body);
+        settle(known, &self.fetching[index], entry, keep, parse, fetch).await
+    }
+
+    /// A website's or other app's document, at any `https` URL on the public internet, read
+    /// as the [`network`] module says. Only for an app the owner lets connect: such an app
+    /// is never verified. `unknown_app` for a URL no website's client id can be.
+    pub async fn website(&self, config: &Config, url: &str) -> Found {
+        let Some(target) = network::web_client_id(url) else {
+            return Err("unknown_app");
+        };
+        let network = self.network(config);
+        self.resolve_website(url, || async move {
+            let _slot = self
+                .website_fetches
+                .acquire()
+                .await
+                .map_err(|_| Error::new("app_unavailable", 502))?;
+            network::fetch(network.as_ref(), &target, LARGEST).await
+        })
+        .await
+    }
+
+    async fn resolve_website<F: Future<Output = Result<Vec<u8>>>>(
+        &self,
+        url: &str,
+        fetch: impl FnOnce() -> F,
+    ) -> Found {
+        let websites = || {
+            self.websites
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+        };
+        let fetching = {
+            let mut websites = websites();
+            if !websites.contains_key(url) && websites.len() >= MOST_WEBSITES {
+                // The longest unused that no request is fetching makes room.
+                let unused = websites
+                    .iter()
+                    .filter(|(_, website)| Arc::strong_count(&website.fetching) == 1)
+                    .min_by_key(|(_, website)| website.asked)
+                    .map(|(url, _)| url.clone());
+                if let Some(unused) = unused {
+                    websites.remove(&unused);
+                }
             }
-            None => {
-                observability::event(
-                    "warn",
-                    "oauth.client_document_failed",
-                    json!({"clientId":known}),
-                );
-                entry.failed = Some(now());
-                entry.kept()
+            let website = websites.entry(url.to_owned()).or_default();
+            website.asked = now();
+            website.fetching.clone()
+        };
+        let entry = || {
+            websites()
+                .get(url)
+                .map(|website| website.fetched.clone())
+                .unwrap_or_default()
+        };
+        let keep = |fetched| {
+            if let Some(website) = websites().get_mut(url) {
+                website.fetched = fetched;
             }
         };
-        self.fetched
+        settle(
+            url,
+            &fetching,
+            entry,
+            keep,
+            |body| website_document(url, body),
+            fetch,
+        )
+        .await
+    }
+
+    /// Tests read websites' documents from `network` instead of the internet.
+    pub fn use_network(&self, network: Arc<dyn Network>) {
+        *self
+            .network
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner()) = Some(network);
+    }
+    fn network(&self, config: &Config) -> Arc<dyn Network> {
+        let chosen = self
+            .network
             .lock()
             .unwrap_or_else(|poison| poison.into_inner())
-            .insert(known, entry);
-        found
+            .clone();
+        chosen.unwrap_or_else(|| {
+            if config.fixture {
+                Arc::new(network::Fixture)
+            } else {
+                Arc::new(network::Internet)
+            }
+        })
     }
+}
+
+/// An app's document as `entry` holds it, or fetched under `fetching` when that is not
+/// settled, and given to `keep`. Requests that waited for a fetch take its answer.
+async fn settle<F: Future<Output = Result<Vec<u8>>>>(
+    url: &str,
+    fetching: &tokio::sync::Mutex<()>,
+    entry: impl Fn() -> Fetched,
+    keep: impl FnOnce(Fetched),
+    parse: impl FnOnce(&[u8]) -> Option<Client>,
+    fetch: impl FnOnce() -> F,
+) -> Found {
+    if let Some(found) = entry().settled() {
+        return found;
+    }
+    let _only = fetching.lock().await;
+    // Whoever fetched while this request waited has settled it.
+    let mut entry = entry();
+    if let Some(found) = entry.settled() {
+        return found;
+    }
+    let found = match fetch().await.ok().and_then(|body| parse(&body)) {
+        Some(client) => {
+            entry.document = Some((now(), client.clone()));
+            entry.failed = None;
+            Ok(client)
+        }
+        None => {
+            observability::event(
+                "warn",
+                "oauth.client_document_failed",
+                json!({"clientId":url}),
+            );
+            entry.failed = Some(now());
+            entry.kept()
+        }
+    };
+    keep(entry);
+    found
 }
 
 /// Whether `url` is a known app's client document.
 pub fn known(url: &str) -> bool {
     KNOWN.iter().any(|(known, ..)| *known == url)
+}
+/// The known app whose client document is at `url`, as the owner's choice of apps names it.
+pub fn known_app(url: &str) -> Option<OAuthAppId> {
+    let index = KNOWN.iter().position(|(known, ..)| *known == url)?;
+    Some(KNOWN_APPS[index])
 }
 
 /// A client document's body: HTTPS only, no redirects, within 5 seconds and 64 KiB.
@@ -243,6 +395,15 @@ fn document(url: &str, fallback: &str, body: &[u8]) -> Option<Client> {
             .unwrap_or_else(|| fallback.to_owned()),
         verified: true,
         redirect_uris,
+    })
+}
+/// A website's or other app's client document: read as a known app's is, but only ever
+/// unverified, by the name it gives itself or else its host.
+fn website_document(url: &str, body: &[u8]) -> Option<Client> {
+    let host = url::Url::parse(url).ok()?.host_str()?.to_owned();
+    Some(Client {
+        verified: false,
+        ..document(url, &host, body)?
     })
 }
 
@@ -346,6 +507,21 @@ fn registrable(uri: &str) -> bool {
         }
 }
 
+/// Whether an app that registered itself may be sent back to `uri` as a website: an `https`
+/// address written exactly as the URL standard writes it, naming its host by a dotted name,
+/// with no credentials or fragment. Only while the owner lets websites and other apps connect.
+fn registrable_website(uri: &str) -> bool {
+    uri.len() <= LONGEST_REDIRECT
+        && url::Url::parse(uri).is_ok_and(|url| {
+            url.scheme() == "https"
+                && url.as_str() == uri
+                && matches!(url.host(), Some(url::Host::Domain(host)) if host.contains('.'))
+                && url.username().is_empty()
+                && url.password().is_none()
+                && url.fragment().is_none()
+        })
+}
+
 /// Where a redirect sends the owner, as the approval page says it: "this computer" for a
 /// loopback address or an app's own scheme, with that scheme, and otherwise the host.
 pub fn destination(uri: &str) -> (String, Option<String>) {
@@ -381,7 +557,8 @@ impl Store {
     }
 
     /// Registers an app (RFC 7591): only a public client, whose every redirect opens an app on
-    /// the owner's own computer. Answers the registration as the client is to keep it.
+    /// the owner's own computer, or is a website's while the owner lets websites and other
+    /// apps connect. Answers the registration as the client is to keep it.
     pub fn register_oauth_client(&self, metadata: &Value) -> Result<Answer<Value>> {
         let refused = |error, description: &str| Ok(Err(Refusal::new(error, description)));
         let strings = |key: &str| -> Option<Vec<&str>> {
@@ -417,13 +594,21 @@ impl Store {
             );
         }
         let redirect_uris = strings("redirect_uris").unwrap_or_default();
+        let websites = self.oauth_app_allowed(OAuthAppId::Web)?;
         if redirect_uris.is_empty()
             || redirect_uris.len() > MOST_REDIRECTS
-            || !redirect_uris.iter().all(|uri| registrable(uri))
+            || !redirect_uris
+                .iter()
+                .all(|uri| registrable(uri) || (websites && registrable_website(uri)))
         {
             return refused(
                 "invalid_redirect_uri",
-                "Up to 5 redirects, each a loopback http address or the app's own URI scheme",
+                if websites {
+                    "Up to 5 redirects, each a loopback http address, the app's own URI scheme \
+                     or an https address"
+                } else {
+                    "Up to 5 redirects, each a loopback http address or the app's own URI scheme"
+                },
             );
         }
         let unused = self.platform.count(

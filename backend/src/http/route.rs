@@ -8,14 +8,15 @@ use super::{
 use crate::{
     Result, State,
     accounts::{Auth, Context},
-    agents::{self, Caller},
-    contracts::AgentAccess,
+    agents::{self, Caller, activity},
+    contracts::{AgentAccess, AgentActivityKey, AgentKeyKind},
     crypto,
     db::Store,
     ensure,
+    observability::RequestTrace,
 };
 use axum::{
-    body::Body,
+    body::{Body, HttpBody},
     extract::Request,
     http::Method,
     response::{IntoResponse, Response},
@@ -183,16 +184,28 @@ impl Grant for Agent {
         )?;
         let client = agents::client_label(input.header("user-agent"));
         // A connected app signs in with its OAuth access token, and only ever as a bearer.
-        let caller = if bearer && token.starts_with("dsa_") {
+        let app = bearer && token.starts_with("dsa_");
+        let caller = if app {
             db.authenticate_app(token, &client)?
         } else {
             db.authenticate_agent(token, &client)?
         };
-        input
-            .trace
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .actor = Some(format!("agent:{}", caller.key));
+        {
+            let mut trace = input
+                .trace
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner());
+            trace.actor = Some(format!("agent:{}", caller.key));
+            trace.agent.key = Some(AgentActivityKey {
+                id: caller.key.clone(),
+                name: caller.name.clone(),
+                kind: if app {
+                    AgentKeyKind::App
+                } else {
+                    AgentKeyKind::Key
+                },
+            });
+        }
         ensure(
             self.0 == AgentAccess::Read || caller.access == AgentAccess::Operator,
             "agent_read_only",
@@ -414,10 +427,40 @@ impl Route {
         self
     }
     pub(super) async fn serve(&self, state: Arc<State>, request: Request) -> Response {
-        match self.answer(state, request).await {
-            Ok(response) => response,
-            Err(error) => middleware::failure(error),
+        // An agent's call is noted as the request goes, and recorded for the Activity log
+        // once answered: in memory, so recording it never waits for the database.
+        let call = matches!(self.access, Access::Agent(_)).then(|| {
+            let trace = request.extensions().get::<RequestTrace>().cloned();
+            (crate::db::now(), std::time::Instant::now(), trace)
+        });
+        let (response, failed) = match self.answer(state.clone(), request).await {
+            Ok(response) => (response, None),
+            Err(error) => {
+                let code = error.code.clone();
+                (middleware::failure(error), Some(code))
+            }
+        };
+        if let Some((at, started, Some(trace))) = call {
+            let noted = std::mem::take(
+                &mut trace
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner())
+                    .agent,
+            );
+            let size = response.body().size_hint();
+            state.activity.finish(
+                noted,
+                activity::Answered {
+                    path: self.path,
+                    at,
+                    ms: started.elapsed().as_millis(),
+                    bytes: size.exact().unwrap_or(size.lower()),
+                    status: response.status().as_u16(),
+                    failed: failed.as_deref(),
+                },
+            );
         }
+        response
     }
     async fn answer(&self, state: Arc<State>, request: Request) -> Result<Response> {
         let handler = match &self.handler {
@@ -454,6 +497,16 @@ impl Route {
         let (mut parts, body) = request.into_parts();
         let input = middleware::head(&state, &parts, self.path)?;
         let body = middleware::bytes(body).await?;
+        // The tool an MCP message calls, if any, for the Activity log, before the key is
+        // even counted: a call refused for its rate is still that tool's.
+        if let Some(tool) = activity::tool_call(&body) {
+            input
+                .trace
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .agent
+                .surface = Some(tool);
+        }
         let shared = state.clone();
         let caller = state
             .read(move |db| {

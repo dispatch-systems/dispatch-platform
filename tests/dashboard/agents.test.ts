@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { AgentKey } from '../../shared/contracts/index.js';
 import {
+  activityNote,
+  appKindName,
   blankKey,
   daysLeft,
   expiryOf,
@@ -14,6 +16,7 @@ import {
   sameRequest,
   setups,
   signIns,
+  surfaceOf,
 } from '../../dashboard/src/lib/agents.js';
 
 const now = Date.parse('2026-10-01T15:00:00');
@@ -180,4 +183,56 @@ test('a key sheet knows when nothing changed', () => {
   assert.ok(!sameRequest(start, { ...start, access: 'operator' }));
   assert.equal(blankKey().access, 'read');
   assert.equal(blankKey().allDsps, true);
+});
+
+test('a call names the endpoint or tool it reached, and how', () => {
+  assert.deepEqual(surfaceOf('rest:whoami'), { via: 'REST', name: 'whoami' });
+  assert.deepEqual(surfaceOf('mcp:find_driver'), { via: 'MCP', name: 'find_driver' });
+  assert.deepEqual(surfaceOf('mcp:unknown'), { via: 'MCP', name: 'unknown' });
+  // Anything else reads as it was recorded.
+  assert.deepEqual(surfaceOf('openapi'), { via: '', name: 'openapi' });
+  assert.deepEqual(surfaceOf('ws:stream'), { via: '', name: 'ws:stream' });
+});
+
+test('a kind of app the owner turned off is named in a sentence, or is this app', () => {
+  assert.equal(appKindName('chatgpt'), 'ChatGPT');
+  assert.equal(appKindName('codex'), 'Codex');
+  assert.equal(appKindName('claude-code'), 'Claude Code');
+  assert.equal(appKindName('hermes'), 'Hermes Agent');
+  assert.equal(appKindName('local'), 'apps on this computer');
+  assert.equal(appKindName('web'), 'websites and other apps');
+  assert.equal(appKindName(null), 'this app');
+  assert.equal(appKindName(''), 'this app');
+  assert.equal(appKindName('cursor'), 'this app');
+  assert.equal(appKindName('toString'), 'this app');
+});
+
+test('a key or app past 10,000 calls a UTC day is a note in the Activity log, not a call', () => {
+  const now = Date.parse('2026-10-02T15:00:00Z');
+  const marker = {
+    at: '2026-10-02T14:12:09Z',
+    outcome: 'capped',
+    key: { id: 'agentkey_1', name: 'Nightly report script', kind: 'key' as const },
+  };
+  // The day is always named, as UTC counts it, since the cap starts again at UTC midnight.
+  assert.equal(
+    activityNote(marker, now),
+    'Over 10,000 calls from Nightly report script on Oct 2 (UTC); later calls that day aren’t listed.',
+  );
+  // Early UTC on Oct 2 is still Oct 1 in Chicago, but the cap counts Oct 2.
+  assert.equal(
+    activityNote({ ...marker, at: '2026-10-02T03:00:00Z' }, now),
+    'Over 10,000 calls from Nightly report script on Oct 2 (UTC); later calls that day aren’t listed.',
+  );
+  assert.equal(
+    activityNote({ ...marker, at: '2026-10-01T23:59:00Z' }, now),
+    'Over 10,000 calls from Nightly report script on Oct 1 (UTC); later calls that day aren’t listed.',
+  );
+  // Another year names its year.
+  assert.equal(
+    activityNote({ ...marker, at: '2025-12-31T23:30:00Z' }, now),
+    'Over 10,000 calls from Nightly report script on Dec 31, 2025 (UTC); later calls that day aren’t listed.',
+  );
+  for (const outcome of ['ok', 'rate_limited'])
+    assert.equal(activityNote({ ...marker, outcome }, now), null);
 });

@@ -3,15 +3,20 @@
 //! recent verification; revoking never does.
 use crate::{
     Result,
-    agents::{data, mcp, skill},
-    contracts::{AgentKeyRequest, AgentKeysRevoked},
+    agents::{
+        activity::{self, ActivityQuery, Outcomes},
+        data, mcp, skill,
+    },
+    contracts::{AgentDsp, AgentKeyRequest, AgentKeysRevoked},
     db::Store,
+    ensure,
     http::{
-        input::{Input, Reply},
+        input::{Input, Reply, optional_text, query_number},
         route::{
             Agent, PlatformOwner, PlatformRoutine, Route, Served, User, agent_protocol, read, write,
         },
     },
+    observability::RequestTrace,
     validate as v,
 };
 use axum::{extract::Request, http::Method};
@@ -30,6 +35,11 @@ pub fn routes() -> Vec<Route> {
             "/api/platform/agents/revoke-all",
             PlatformRoutine,
             revoke_all,
+        ),
+        read(
+            "/api/platform/agents/activity",
+            PlatformRoutine,
+            |db, _, input| Reply::of(&db.agent_activity(&activity_query(&input.query)?)?),
         ),
         read("/api/platform/agents/skill", PlatformOwner, |db, _, _| {
             Ok(skill_file(db))
@@ -54,14 +64,12 @@ pub fn routes() -> Vec<Route> {
                 .first()
                 .map(|param| decoded(input.param(param.name)))
                 .unwrap_or_default();
-            reply(data::ask(
-                endpoint,
-                db,
-                agent.state,
-                agent,
-                &named,
-                &input.query,
-            ))
+            let dsp = data::about(endpoint, agent, &input.query);
+            reply(
+                &input.trace,
+                dsp,
+                data::ask(endpoint, db, agent.state, agent, &named, &input.query),
+            )
         })
     }));
     routes
@@ -88,9 +96,38 @@ fn revoke_all(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
         revoked: db.revoke_agent_keys(Some(owner.actor()), None)?,
     })
 }
-/// What an agent reads: the answer, or a refusal that says what to fix.
-fn reply(answer: data::Answer) -> Result<Reply> {
-    let (status, body) = data::settle(answer)?;
+/// What `GET /api/platform/agents/activity` asks for: `key`, `outcome` (`ok` or `refused`),
+/// `before` (a page's `next`) and `limit`, 1 to 200.
+fn activity_query(q: &serde_json::Value) -> Result<ActivityQuery> {
+    v::fields(q, &["key", "outcome", "before", "limit"])?;
+    let key = optional_text(q, "key", 100)?;
+    let outcomes = match optional_text(q, "outcome", 10)? {
+        "" => Outcomes::All,
+        "ok" => Outcomes::Ok,
+        "refused" => Outcomes::Refused,
+        _ => return Err(crate::Error::new("invalid_input", 400)),
+    };
+    let before = optional_text(q, "before", 40)?;
+    let cursor = activity::cursor(before);
+    ensure(before.is_empty() || cursor.is_some(), "invalid_input", 400)?;
+    Ok(ActivityQuery {
+        key: (!key.is_empty()).then(|| key.to_owned()),
+        outcomes,
+        before: cursor,
+        limit: query_number(q, "limit", 50, 1, 200)?,
+    })
+}
+/// What an agent reads: the answer, or a refusal that says what to fix. The Activity log
+/// notes the DSP it was about and how it ended.
+fn reply(trace: &RequestTrace, dsp: Option<AgentDsp>, answer: data::Answer) -> Result<Reply> {
+    let settled = data::settle(answer);
+    let outcome = match &settled {
+        Ok((200, _)) => "ok",
+        Ok((_, body)) => body["error"].as_str().unwrap_or("refused"),
+        Err(error) => error.code.as_str(),
+    };
+    activity::note(trace, dsp, outcome);
+    let (status, body) = settled?;
     Ok(Reply::status(body, status))
 }
 fn openapi(db: &Store) -> Reply {

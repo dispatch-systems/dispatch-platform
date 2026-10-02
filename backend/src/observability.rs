@@ -8,6 +8,8 @@ pub struct RequestContext {
     pub account: Option<String>,
     pub route: Option<&'static str>,
     pub bulk: bool,
+    /// An agent's call, as the request notes it for the Agents page's Activity log.
+    pub agent: crate::agents::activity::Noted,
 }
 pub type RequestTrace = std::sync::Arc<std::sync::Mutex<RequestContext>>;
 

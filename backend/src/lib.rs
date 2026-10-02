@@ -66,6 +66,8 @@ pub struct State {
     pub presence: presence::Presence,
     // How much each agent key is used, until the scheduler writes it down.
     pub agents: agents::Usage,
+    // The calls agents made, until the scheduler writes them down.
+    pub activity: agents::Activity,
     // The known apps' client documents, as last fetched.
     pub oauth: agents::oauth::Documents,
 }
@@ -81,6 +83,8 @@ impl State {
                     status='error',error='verification_expired' WHERE status IN ('signing_in','needs_verification')",[])?;
             }
         }
+        // Each key's calls recorded today, so a restart keeps its daily cap.
+        let activity = agents::Activity::seeded(&store)?;
         Ok(Arc::new(Self {
             key: store.key.clone(),
             assets: http::assets(&config.dashboard, &config.release)?,
@@ -100,6 +104,7 @@ impl State {
             uniform_updates: live_updates::Updates::new()?,
             presence: presence::Presence::default(),
             agents: agents::Usage::default(),
+            activity,
             oauth: agents::oauth::Documents::default(),
         }))
     }
