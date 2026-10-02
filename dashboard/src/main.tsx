@@ -10,6 +10,7 @@ import {
   useTransition,
 } from 'react';
 import { createRoot } from 'react-dom/client';
+import { flushSync } from 'react-dom';
 import type { DspView, SessionView } from '../../shared/contracts/index.js';
 import {
   api,
@@ -27,7 +28,7 @@ import {
   platformHash,
   rememberDestination,
 } from './app/navigation.js';
-import { Page, findRoute, navigation, prepareRoute } from './app/routes.js';
+import { Page, canNavigateImmediately, findRoute, navigation, prepareRoute } from './app/routes.js';
 import type { DspRouteId } from './app/route-meta.js';
 import { routeLabel } from './app/route-meta.js';
 const loadAuth = () => import('./features/auth/index.js');
@@ -158,16 +159,15 @@ function App() {
           (current.view?.dsp.id === next.dspId && current.view.token === admittedToken));
       cancelPrefetches();
       if (sameScope && current.session) {
-        void prepareRoute(
-          next.dspId ? 'dsp' : 'platform',
-          next.page,
-          {
-            session: current.session,
-            view: next.dspId ? current.view : undefined,
-          },
-          true,
-        ).catch(() => undefined);
-        startTransition(() => setAddress(next));
+        const scope = next.dspId ? 'dsp' : 'platform';
+        const access = {
+          session: current.session,
+          view: next.dspId ? current.view : undefined,
+        };
+        const ready = canNavigateImmediately(scope, next.page, access);
+        void prepareRoute(scope, next.page, access, true).catch(() => undefined);
+        if (ready) flushSync(() => setAddress(next));
+        else startTransition(() => setAddress(next));
       } else {
         // A workspace/security boundary must discard the previous page immediately.
         // Changing pages while this same workspace is opening keeps its admission;

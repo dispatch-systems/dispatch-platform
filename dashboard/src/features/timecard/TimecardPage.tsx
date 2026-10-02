@@ -1,6 +1,14 @@
 import { performancePolicy } from '../../lib/performance-policy.js';
 import { readUpdateState, useUpdateState } from '../../app/browser-update.js';
-import { lazy, Suspense, useEffect, useState, useTransition } from 'react';
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useTransition,
+  type ReactNode,
+} from 'react';
 import { ArrowRight, RefreshCw, Settings } from 'lucide-react';
 import type {
   Connection,
@@ -47,15 +55,31 @@ const tabs = [
   ['employees', 'Employees', 'timecard.employees'],
 ] as const;
 
-export function preloadTimecardPage(view: DspView) {
+function selectedTimecardTab(view: DspView) {
   const selected = readUpdateState<string | undefined>(
     'paycom-tab',
     undefined,
     dspHash(view.dsp.id, 'paycom'),
   );
   const shown = tabs.filter(([, , feature]) => hasFeature(view, feature));
-  const tab = shown.some(([id]) => id === selected) ? selected! : (shown[0]?.[0] ?? 'timecards');
-  return loadTab(tab);
+  return shown.some(([id]) => id === selected) ? selected! : (shown[0]?.[0] ?? 'timecards');
+}
+
+const committedTabs = new Set<string>();
+function CommittedTab({ tab, children }: { tab: string; children: ReactNode }) {
+  useLayoutEffect(() => {
+    committedTabs.add(tab);
+  }, [tab]);
+  return children;
+}
+
+export function preloadTimecardPage(view: DspView) {
+  return loadTab(selectedTimecardTab(view));
+}
+
+/** Import completion alone does not mean React has resolved the selected lazy component. */
+export function isTimecardPageReady(view: DspView) {
+  return committedTabs.has(selectedTimecardTab(view));
 }
 
 export function PaycomPage({ view }: { view: DspView }) {
@@ -232,16 +256,18 @@ export function PaycomPage({ view }: { view: DspView }) {
       <div aria-busy={pending || undefined} inert={pending}>
         <Suspense fallback={<Loading />}>
           {tab === 'meal-breaks' ? (
-            <MealBreaksPage
-              date={date}
-              today={today}
-              onDateChange={selectDate}
-              refreshKey={refreshKey}
-              timezone={view.dsp.timezone}
-              dspId={view.dsp.id}
-              canMatch={can(view, 'driver_match.manage')}
-              preferences={preferences.data?.values ?? paycomDefaults}
-            />
+            <CommittedTab tab={tab}>
+              <MealBreaksPage
+                date={date}
+                today={today}
+                onDateChange={selectDate}
+                refreshKey={refreshKey}
+                timezone={view.dsp.timezone}
+                dspId={view.dsp.id}
+                canMatch={can(view, 'driver_match.manage')}
+                preferences={preferences.data?.values ?? paycomDefaults}
+              />
+            </CommittedTab>
           ) : canConnect && data && !data.enabled && !overview.data?.workforce.collectedAt ? (
             <button
               className="primary paycom-connect"
@@ -251,53 +277,55 @@ export function PaycomPage({ view }: { view: DspView }) {
               <ArrowRight size={16} />
             </button>
           ) : (
-            <div className="embedded-page">
-              {tab === 'employees' ? (
-                <EmployeesPage
-                  refreshKey={`${refreshKey}:${syncRevision}`}
-                  actions={(timecard) => (
-                    <>
-                      {canCollect && (
-                        <SourceSyncStatus
-                          name="Paycom"
-                          source={
-                            sourceState?.paycom && {
-                              ...sourceState.paycom,
-                              collectedAt: timecard?.collectedAt ?? null,
-                              job: timecard?.syncStatus ? { status: timecard.syncStatus } : null,
-                              active:
-                                !!timecard?.syncStatus &&
-                                ['queued', 'running', 'waiting_verification'].includes(
-                                  timecard.syncStatus,
-                                ),
-                              jobDate: timecard?.period.from ?? null,
+            <CommittedTab tab={tab}>
+              <div className="embedded-page">
+                {tab === 'employees' ? (
+                  <EmployeesPage
+                    refreshKey={`${refreshKey}:${syncRevision}`}
+                    actions={(timecard) => (
+                      <>
+                        {canCollect && (
+                          <SourceSyncStatus
+                            name="Paycom"
+                            source={
+                              sourceState?.paycom && {
+                                ...sourceState.paycom,
+                                collectedAt: timecard?.collectedAt ?? null,
+                                job: timecard?.syncStatus ? { status: timecard.syncStatus } : null,
+                                active:
+                                  !!timecard?.syncStatus &&
+                                  ['queued', 'running', 'waiting_verification'].includes(
+                                    timecard.syncStatus,
+                                  ),
+                                jobDate: timecard?.period.from ?? null,
+                              }
                             }
-                          }
-                          timezone={view.dsp.timezone}
-                          compact
-                        />
-                      )}
-                      {canCollect && sourceState?.flex.active && (
-                        <SourceSyncStatus
-                          name="Flex"
-                          source={sourceState.flex}
-                          timezone={view.dsp.timezone}
-                        />
-                      )}
-                      {syncButton(timecard)}
-                    </>
-                  )}
-                />
-              ) : (
-                <TimecardsPage
-                  date={date}
-                  onDateChange={selectDate}
-                  refreshKey={refreshKey}
-                  timezone={view.dsp.timezone}
-                  preferences={preferences.data?.values ?? paycomDefaults}
-                />
-              )}
-            </div>
+                            timezone={view.dsp.timezone}
+                            compact
+                          />
+                        )}
+                        {canCollect && sourceState?.flex.active && (
+                          <SourceSyncStatus
+                            name="Flex"
+                            source={sourceState.flex}
+                            timezone={view.dsp.timezone}
+                          />
+                        )}
+                        {syncButton(timecard)}
+                      </>
+                    )}
+                  />
+                ) : (
+                  <TimecardsPage
+                    date={date}
+                    onDateChange={selectDate}
+                    refreshKey={refreshKey}
+                    timezone={view.dsp.timezone}
+                    preferences={preferences.data?.values ?? paycomDefaults}
+                  />
+                )}
+              </div>
+            </CommittedTab>
           )}
         </Suspense>
       </div>

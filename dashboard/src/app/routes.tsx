@@ -20,7 +20,7 @@ import { hasFeature } from './features.js';
 import { can } from './permissions.js';
 import { routeMeta, type DspRouteId, type PlatformRouteId, type RouteMeta } from './route-meta.js';
 import { NavigationStateContext } from './browser-update.js';
-import { prefetchRouteData } from './route-prefetch.js';
+import { isTimecardDataReady, prefetchRouteData } from './route-prefetch.js';
 
 const loadAgents = () => import('../features/agents/index.js');
 const AgentsPage = lazy(() => loadAgents().then((module) => ({ default: module.AgentsPage })));
@@ -50,8 +50,10 @@ const loadUniforms = () => import('../features/uniforms/index.js');
 const UniformInventoryPage = lazy(() =>
   loadUniforms().then((module) => ({ default: module.UniformInventoryPage })),
 );
+let timecardReady: ((view: DspView) => boolean) | undefined;
 const loadTimecard = (access?: Access) =>
   import('../features/timecard/index.js').then(async (module) => {
+    timecardReady = module.isTimecardPageReady;
     if (access?.view) await module.preloadTimecardPage(access.view);
     return module;
   });
@@ -182,6 +184,16 @@ const allowed = (route: Route, access: Access) => !route.permission || route.per
 
 export const findRoute = (scope: Route['scope'], page: string) =>
   table.find((route) => route.scope === scope && route.id === page);
+/** A previously rendered tab with admitted cached data can commit before the next paint. */
+export function canNavigateImmediately(scope: Route['scope'], page: string, access: Access) {
+  return Boolean(
+    scope === 'dsp' &&
+    page === 'paycom' &&
+    access.view &&
+    timecardReady?.(access.view) &&
+    isTimecardDataReady(access.view),
+  );
+}
 /** Code and authorized primary data start together, before the destination mounts. */
 export function prepareRoute(
   scope: Route['scope'],

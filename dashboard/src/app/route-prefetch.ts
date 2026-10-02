@@ -19,8 +19,8 @@ function warm(urls: string[], owner: string, immediate: boolean) {
 }
 const admitted = (view?: DspView): view is DspView => Boolean(view && admittedToken === view.token);
 
-export function prefetchTimecardTab(tab: string, date: string, view: DspView, immediate = false) {
-  if (!admitted(view) || !can(view, 'timecard.view')) return;
+function timecardUrls(tab: string, date: string, view: DspView): string[] {
+  if (!admitted(view) || !can(view, 'timecard.view')) return [];
   const urls = ['/api/dsp/paycom/settings'];
   if (tab === 'timecards' && hasFeature(view, 'timecard.daily')) urls.push(dailyTimecardsUrl(date));
   else if (tab === 'meal-breaks' && hasFeature(view, 'timecard.meal_breaks'))
@@ -40,8 +40,35 @@ export function prefetchTimecardTab(tab: string, date: string, view: DspView, im
       { code: string; period?: { from: string; to: string } | null } | undefined
     >('employee-selection', undefined, hash);
     if (selection?.code) urls.push(employeeTimecardUrl(selection.code, selection.period));
-  } else return;
-  warm(urls, 'route:paycom', immediate);
+  } else return [];
+  return urls;
+}
+
+export function prefetchTimecardTab(tab: string, date: string, view: DspView, immediate = false) {
+  warm(timecardUrls(tab, date, view), 'route:paycom', immediate);
+}
+
+function selectedTimecardTab(view: DspView) {
+  const preferred = readUpdateState<string | undefined>(
+    'paycom-tab',
+    undefined,
+    dspHash(view.dsp.id, 'paycom'),
+  );
+  const choices = [
+    ['timecards', 'timecard.daily'],
+    ['meal-breaks', 'timecard.meal_breaks'],
+    ['employees', 'timecard.employees'],
+  ] as const;
+  const shown = choices.filter(([, feature]) => hasFeature(view, feature));
+  return shown.find(([tab]) => tab === preferred)?.[0] ?? shown[0]?.[0];
+}
+
+/** A warm return may commit immediately only when every selected read belongs to this admission. */
+export function isTimecardDataReady(view: DspView) {
+  const tab = selectedTimecardTab(view);
+  if (!tab) return false;
+  const urls = timecardUrls(tab, selectedPaycomDate(view.dsp.id, view.dsp.timezone), view);
+  return urls.length > 0 && urls.every((url) => dataCache.peek(url).data !== undefined);
 }
 
 export function prefetchSettingsTab(
@@ -75,15 +102,7 @@ export function prefetchRouteData(
   }
   if (!admitted(view)) return;
   if (page === 'paycom') {
-    const hash = dspHash(view.dsp.id, 'paycom');
-    const preferred = readUpdateState<string | undefined>('paycom-tab', undefined, hash);
-    const choices = [
-      ['timecards', 'timecard.daily'],
-      ['meal-breaks', 'timecard.meal_breaks'],
-      ['employees', 'timecard.employees'],
-    ] as const;
-    const shown = choices.filter(([, feature]) => hasFeature(view, feature));
-    const tab = shown.find(([tab]) => tab === preferred)?.[0] ?? shown[0]?.[0];
+    const tab = selectedTimecardTab(view);
     if (tab)
       prefetchTimecardTab(tab, selectedPaycomDate(view.dsp.id, view.dsp.timezone), view, immediate);
   } else if (page === 'dvic' && can(view, 'dvic.view'))
