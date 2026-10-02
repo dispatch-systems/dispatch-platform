@@ -706,6 +706,8 @@ impl Store {
         }
         let hash = crypto::sha(presented);
         match self.platform.transaction(|| {
+            // Only the transaction that wins this unused-row compare-and-swap writes either
+            // exchange marker and issues the replacement pair.
             let exchanged = self.platform.exec(
                 "UPDATE oauth_tokens SET used_at=?1,replaced_at=?1 \
                  WHERE hash=?2 AND kind='refresh' AND used_at IS NULL",

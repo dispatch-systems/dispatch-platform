@@ -38,6 +38,8 @@ type Run = {
   seconds: number;
   /** How much the model read from Dispatch: the answers' characters, all calls together. */
   bytes: number;
+  /** Whether the tool results contained the question's required adversarial evidence. */
+  requiredEvidenceObserved?: boolean;
   error?: string;
 };
 
@@ -127,6 +129,12 @@ async function main() {
       const tools: string[] = [];
       let text = '';
       let bytes = 0;
+      let evidenceObserved = question.requiredToolEvidence === undefined;
+      const observe = (content: string) => {
+        bytes += Buffer.byteLength(content, 'utf8');
+        if (question.requiredToolEvidence && content.includes(question.requiredToolEvidence))
+          evidenceObserved = true;
+      };
       if (client === 'claude' || client === 'rest') {
         // Only the tools the round is about: Dispatch's MCP tools, or curl. Nothing else, so
         // a run cannot wander into other tools or other sessions on this machine.
@@ -188,11 +196,10 @@ async function main() {
           if (event.type === 'user')
             for (const part of event.message.content ?? [])
               if (part.type === 'tool_result')
-                bytes += Buffer.byteLength(
+                observe(
                   typeof part.content === 'string'
                     ? part.content
                     : (part.content ?? []).map((c: { text?: string }) => c.text ?? '').join(''),
-                  'utf8',
                 );
           if (event.type === 'result') text = event.result ?? '';
         }
@@ -228,8 +235,7 @@ async function main() {
           const item = event.item ?? {};
           if (event.type === 'item.completed' && item.type === 'mcp_tool_call') {
             tools.push(`${item.tool}${JSON.stringify(item.arguments ?? {})}`);
-            for (const c of item.result?.content ?? [])
-              bytes += Buffer.byteLength(c.text ?? '', 'utf8');
+            for (const c of item.result?.content ?? []) observe(c.text ?? '');
           }
           if (event.type === 'item.completed' && item.type === 'agent_message') text = item.text;
         }
@@ -239,10 +245,11 @@ async function main() {
         model,
         question,
         answer,
-        correct: check(question, answer),
+        correct: check(question, answer) && evidenceObserved,
         tools,
         seconds: Math.round((Date.now() - started) / 100) / 10,
         bytes,
+        ...(question.requiredToolEvidence ? { requiredEvidenceObserved: evidenceObserved } : {}),
         ...(answer === null ? { error: text.slice(-300) } : {}),
       };
     };
@@ -263,7 +270,10 @@ async function main() {
               `${String(run.seconds).padStart(5)}s ${String(run.bytes).padStart(6)}B  ${run.tools.join(' > ')}` +
               (run.correct
                 ? ''
-                : `\n      said ${JSON.stringify(run.answer)}, expected ${run.question.expected.join(' | ')}`),
+                : `\n      said ${JSON.stringify(run.answer)}, expected ${run.question.expected.join(' | ')}` +
+                  (run.requiredEvidenceObserved === false
+                    ? '; required tool evidence was not observed'
+                    : '')),
           );
         }
       }),
@@ -293,7 +303,11 @@ function report(runs: Run[], models: string[], asked: Question[]) {
   lines.push('', '## Misses', '');
   for (const run of runs.filter((run) => !run.correct))
     lines.push(
-      `- **${run.model}** ${run.question.id}: said ${JSON.stringify(run.answer)}, expected ${run.question.expected.join(' | ')} (${run.tools.join(' > ') || 'no tools'})`,
+      `- **${run.model}** ${run.question.id}: said ${JSON.stringify(run.answer)}, expected ${run.question.expected.join(' | ')}` +
+        (run.requiredEvidenceObserved === false
+          ? '; required tool evidence was not observed'
+          : '') +
+        ` (${run.tools.join(' > ') || 'no tools'})`,
     );
   lines.push(
     '',

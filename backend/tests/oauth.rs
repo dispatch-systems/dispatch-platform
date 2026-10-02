@@ -1237,6 +1237,28 @@ async fn authorization_requests_are_counted_by_address_before_any_app_is_looked_
 }
 
 #[tokio::test]
+async fn the_durable_authorization_quota_still_allows_sixty_requests() {
+    let server = Server::start().await;
+    for _ in 0..60 {
+        let redirect = server
+            .state
+            .run(|db| db.throttle_authorize("198.51.100.42"))
+            .await
+            .unwrap();
+        assert_eq!(redirect, None);
+    }
+    let redirect = server
+        .state
+        .run(|db| db.throttle_authorize("198.51.100.42"))
+        .await
+        .unwrap();
+    assert_eq!(
+        redirect,
+        Some(format!("{}/#authorize?error=rate_limited", server.origin))
+    );
+}
+
+#[tokio::test]
 async fn a_replay_with_the_wrong_verifier_ends_nothing() {
     let server = Server::paired().await;
     let owner = server.owner().await;

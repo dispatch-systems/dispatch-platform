@@ -399,6 +399,45 @@ async fn default_answers_never_expose_unmatched_provider_ids() {
             .is_some_and(|name| { name.ends_with(" (unmatched)") && !name.contains("driver-") })),
         "{routes}"
     );
+
+    // Equal public names remain separate team rows. Their provider IDs stay private; stable
+    // ordinals make the otherwise identical labels distinguishable.
+    let dsp = id.clone();
+    state
+        .run(move |db| {
+            db.routedata(&dsp)?.exec(
+                "UPDATE itineraries SET driver_name='Same Driver' \
+                 WHERE transporter_id IN ('driver-1','driver-2')",
+                [],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let who = me;
+    let (status, team) = ask(&state, move |db, state| {
+        data::team(
+            db,
+            state,
+            &who,
+            &json!({"date": DAY, "metrics": "routes", "sort": "name"}),
+        )
+    })
+    .await;
+    assert_eq!(status, 200, "{team}");
+    let text = team.to_string();
+    assert!(!text.contains("driver-1"), "{team}");
+    assert!(!text.contains("driver-2"), "{team}");
+    let table = &team["rows"];
+    let same: Vec<&str> = rows(table)
+        .iter()
+        .filter_map(|row| row[col(table, "driver")].as_str())
+        .filter(|name| name.starts_with("Same Driver"))
+        .collect();
+    assert_eq!(
+        same,
+        ["Same Driver (unmatched 1)", "Same Driver (unmatched 2)"]
+    );
 }
 
 #[tokio::test]

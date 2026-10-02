@@ -607,7 +607,7 @@ pub fn check(id: &str, query: &Value) -> Result<(), Refusal> {
         };
         let text = value.as_str().unwrap_or("").trim();
         let fits = match param.kind {
-            Kind::Text => text.len() <= 200,
+            Kind::Text => text.chars().count() <= 200,
             Kind::Integer(low, high) => {
                 text.parse::<i64>().is_ok_and(|n| (low..=high).contains(&n))
             }
@@ -1005,6 +1005,13 @@ mod tests {
         );
         assert_eq!(
             check("dvic", &json!({"short":"maybe"})).unwrap_err().code,
+            "invalid_parameter"
+        );
+        assert!(check("drivers", &json!({"q":"é".repeat(200)})).is_ok());
+        assert_eq!(
+            check("drivers", &json!({"q":"é".repeat(201)}))
+                .unwrap_err()
+                .code,
             "invalid_parameter"
         );
     }
