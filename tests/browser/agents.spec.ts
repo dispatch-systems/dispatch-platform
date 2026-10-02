@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { signIns } from '../../dashboard/src/lib/agents.js';
 import { test, expect, login } from './fixtures.js';
 
 test('the platform owner makes a key, sees it once, tests it, changes and revokes it', async ({
@@ -53,7 +54,7 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
 
   // Testing a key from the Connect tab answers as an agent would.
   await page.getByRole('tab', { name: 'Connect', exact: true }).click();
-  const connect = page.getByRole('region', { name: 'Agents and scripts' });
+  const connect = page.getByRole('region', { name: 'Keys', exact: true });
   await connect.getByLabel('Key to test').fill(token!);
   await connect.getByRole('button', { name: 'Test key', exact: true }).click();
   await expect(connect.getByRole('status')).toContainText('Connected · Operator · 1 DSP');
@@ -83,4 +84,70 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   await connect.getByLabel('Key to test').fill(token!);
   await connect.getByRole('button', { name: 'Test key', exact: true }).click();
   await expect(connect.getByRole('status')).toContainText('That key was revoked.');
+});
+
+test('the Connect tab signs each app in with one command or a few steps, ready to copy', async ({
+  page,
+  baseURL,
+}) => {
+  const mcp = `${baseURL}/api/v1/mcp`;
+  await login(page);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseURL });
+  await page.getByRole('link', { name: 'Agents', exact: true }).click();
+  await page.getByRole('tab', { name: 'Connect', exact: true }).click();
+  const signIn = page.getByRole('region', { name: 'Sign in', exact: true });
+  await expect(signIn).toContainText('Recommended');
+  const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
+  const copy = async (panel: ReturnType<typeof signIn.getByRole>, name: string) => {
+    await panel.getByRole('button', { name, exact: true }).click();
+    await expect(panel.getByRole('button', { name, exact: true })).toHaveText('Copied');
+    return clipboard();
+  };
+
+  // Each terminal app: its one command, what happens next, and a prompt that asks it to run it.
+  const commands = [
+    [
+      'Claude Code',
+      `claude mcp add --transport http --scope user dispatch ${mcp} && claude mcp login dispatch`,
+    ],
+    ['Codex', `codex mcp add dispatch --url ${mcp}`],
+    ['Hermes', `hermes mcp add dispatch --url ${mcp} --auth oauth --connect-timeout 300`],
+  ] as const;
+  const prompts = signIns(baseURL!).terminals;
+  for (const [index, [app, command]] of commands.entries()) {
+    await signIn.getByRole('tab', { name: app, exact: true }).click();
+    const panel = signIn.getByRole('tabpanel', { name: app, exact: true });
+    await expect(panel.locator('code').first()).toHaveText(command);
+    await expect(panel).toContainText('A Dispatch page opens — approve it there');
+    expect(await copy(panel, `Copy ${app} command`)).toBe(command);
+    const prompt = await copy(panel, `Copy prompt for ${app}`);
+    expect(prompt).toBe(prompts[index]!.prompt);
+    expect(prompt).toContain(mcp);
+  }
+  // From a machine with no browser: the link is opened anywhere and the address pasted back.
+  await signIn.getByRole('tab', { name: 'Codex', exact: true }).click();
+  const codex = signIn.getByRole('tabpanel', { name: 'Codex', exact: true });
+  await codex.getByText('On another machine?').click();
+  expect(await copy(codex, 'Copy Codex remote command')).toBe(
+    'codex mcp login dispatch --no-browser',
+  );
+  await expect(codex).toContainText('paste it into the terminal');
+
+  // ChatGPT: a few steps, with the address to copy.
+  await signIn.getByRole('tab', { name: 'ChatGPT', exact: true }).click();
+  const chatgpt = signIn.getByRole('tabpanel', { name: 'ChatGPT', exact: true });
+  await expect(chatgpt).toContainText('Create custom MCP server');
+  await expect(chatgpt).toContainText('Authentication: OAuth');
+  await expect(chatgpt).toContainText('Needs ChatGPT Plus, Pro, Business or Enterprise.');
+  expect(await copy(chatgpt, 'Copy MCP address')).toBe(mcp);
+
+  // Any other app: the address, a JSON entry, and a local bridge.
+  await signIn.getByRole('tab', { name: 'Other apps', exact: true }).click();
+  const other = signIn.getByRole('tabpanel', { name: 'Other apps', exact: true });
+  expect(await copy(other, 'Copy MCP address')).toBe(mcp);
+  expect(JSON.parse(await copy(other, 'Copy JSON config'))).toEqual({
+    mcpServers: { dispatch: { url: mcp } },
+  });
+  expect(await copy(other, 'Copy local server command')).toBe(`npx -y mcp-remote ${mcp}`);
+  await expect(other).toContainText('use a key below');
 });

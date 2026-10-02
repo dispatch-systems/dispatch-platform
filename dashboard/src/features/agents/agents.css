@@ -366,10 +366,22 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
+.agents-connect + .agents-connect {
+  margin-top: 16px;
+}
+.agents-connect-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
 .agents-connect h2 {
   margin-bottom: 16px;
   font-size: 16px;
   font-weight: 600;
+}
+.agents-connect-title h2 {
+  margin-bottom: 0;
 }
 .agents-endpoint {
   display: grid;
@@ -391,6 +403,78 @@
 .agents-endpoint:first-of-type {
   margin-top: 20px;
 }
+/* Signing an app in: its command or steps, a prompt for the app, and the way from another
+   machine. */
+.agents-signin {
+  display: grid;
+  gap: 12px;
+  font-size: 13px;
+}
+.agents-line {
+  padding: 4px 4px 4px 12px;
+}
+.agents-line code {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+.agents-line code span {
+  white-space: nowrap;
+}
+.agents-prompt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  color: var(--muted-foreground);
+}
+.agents-prompt button {
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.agents-remote summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-weight: 500;
+  cursor: pointer;
+  list-style: none;
+}
+.agents-remote summary::-webkit-details-marker {
+  display: none;
+}
+.agents-remote summary:hover {
+  color: var(--foreground);
+}
+.agents-remote summary svg {
+  transition: transform var(--motion-duration);
+}
+.agents-remote[open] summary svg {
+  transform: rotate(90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .agents-remote summary svg {
+    transition: none;
+  }
+}
+.agents-remote > :not(summary) {
+  margin-top: 10px;
+}
+.agents-steps {
+  display: grid;
+  gap: 10px;
+  padding-left: 20px;
+  list-style: decimal;
+}
+.agents-steps li::marker {
+  color: var(--muted-foreground);
+}
+.agents-steps .agents-key {
+  margin-top: 6px;
+}
+
 /* Links that fetch a file, drawn as the dashboard's buttons. */
 .agents-files {
   display: flex;

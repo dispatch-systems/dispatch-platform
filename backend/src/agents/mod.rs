@@ -64,6 +64,11 @@ pub fn client_label(user_agent: &str) -> String {
         ("cursor", "Cursor"),
         ("curl", "curl"),
         ("wget", "Wget"),
+        // Python HTTP libraries name themselves `python-<library>` with the library's version;
+        // the standard library's `Python-urllib/<version>` carries Python's, so it stays Python.
+        ("python-httpx2", "HTTPX2"),
+        ("python-httpx", "httpx"),
+        ("python-requests", "requests"),
         ("python", "Python"),
         ("node", "Node.js"),
         ("undici", "Node.js"),
@@ -550,6 +555,10 @@ mod tests {
             "Codex 0.157"
         );
         assert_eq!(client_label("curl/8.5.0"), "curl 8.5");
+        assert_eq!(client_label("python-httpx2/2.7.0"), "HTTPX2 2.7");
+        assert_eq!(client_label("python-httpx/0.28.1"), "httpx 0.28");
+        assert_eq!(client_label("python-requests/2.32.3"), "requests 2.32");
+        assert_eq!(client_label("Python-urllib/3.12"), "Python 3.12");
         assert_eq!(client_label("Mozilla/5.0 (X11; Linux x86_64)"), "Browser");
         assert_eq!(client_label("my-agent/1.0-beta"), "my-agent 1");
         assert_eq!(client_label("<script>/1"), "script 1");
