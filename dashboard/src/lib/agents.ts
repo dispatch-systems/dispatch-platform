@@ -119,6 +119,78 @@ export const sameRequest = (a: AgentKeyRequest, b: AgentKeyRequest) =>
   JSON.stringify({ ...a, dsps: [...a.dsps].sort() }) ===
   JSON.stringify({ ...b, dsps: [...b.dsps].sort() });
 
+/** How each app signs in with Dispatch. A terminal app has its command, what happens next,
+ * the way from a machine with no browser, and a prompt that asks the app to do it itself. */
+export function signIns(origin: string) {
+  const mcp = `${origin}/api/v1/mcp`;
+  const next = 'A Dispatch page opens — approve it there.';
+  const approve = 'It opens a Dispatch page in my browser: tell me to approve it there.';
+  const fallback = (login = '') =>
+    `If it can't open a browser here, ${login}send me the link it prints, and when I paste back ` +
+    'the address my browser ends on, enter it at its prompt or open it with curl on this machine.';
+  const claude = `claude mcp add --transport http --scope user dispatch ${mcp}`;
+  const codex = `codex mcp add dispatch --url ${mcp}`;
+  const terminals = [
+    {
+      id: 'claude-code',
+      label: 'Claude Code',
+      command: `${claude} && claude mcp login dispatch`,
+      next,
+      remote: {
+        lead: 'Run this instead.',
+        command: `${claude} && claude mcp login dispatch --no-browser`,
+      },
+      prompt: [
+        'Connect Claude Code to Dispatch for me.',
+        `1. Run: ${claude}`,
+        "2. Sign in with `claude mcp login dispatch`. It needs a real terminal; if you can't " +
+          'give it one (with script or tmux, say), ask me to run it in my own terminal, or ' +
+          '/mcp in a new Claude Code session.',
+        `3. ${approve} ${fallback('use `claude mcp login dispatch --no-browser`, ')}`,
+        '4. Then tell me to restart Claude Code to load the Dispatch tools.',
+      ].join('\n'),
+    },
+    {
+      id: 'codex',
+      label: 'Codex',
+      command: codex,
+      next,
+      remote: {
+        lead: 'Run the command above and press Ctrl+C when it shows a link. Then run this.',
+        command: 'codex mcp login dispatch --no-browser',
+      },
+      prompt: [
+        'Connect Codex to Dispatch for me.',
+        `1. Run: ${codex}`,
+        `2. ${approve} ${fallback('stop it and run `codex mcp login dispatch --no-browser`, ')}`,
+        '3. Then tell me to restart Codex to load the Dispatch tools.',
+      ].join('\n'),
+    },
+    {
+      id: 'hermes',
+      label: 'Hermes',
+      command: `hermes mcp add dispatch --url ${mcp} --auth oauth --connect-timeout 300`,
+      next: 'A Dispatch page opens — approve it there, then answer Y to turn on the tools.',
+      remote: { lead: 'Run the same command. With no browser to open, it prints a link.' },
+      prompt: [
+        'Connect Hermes to Dispatch for me.',
+        '1. Add this under mcp_servers in ~/.hermes/config.yaml, keeping everything else:',
+        '  dispatch:',
+        `    url: "${mcp}"`,
+        '    auth: oauth',
+        `2. Run \`hermes mcp login dispatch\`. ${approve} ${fallback()}`,
+        '3. Then tell me to run /reload-mcp to load the Dispatch tools.',
+      ].join('\n'),
+    },
+  ];
+  return {
+    mcp,
+    terminals,
+    json: JSON.stringify({ mcpServers: { dispatch: { url: mcp } } }, null, 2),
+    bridge: `npx -y mcp-remote ${mcp}`,
+  };
+}
+
 /** How each kind of agent connects with a key: its own setup, ready to paste. */
 export function setups(origin: string, token: string) {
   const mcp = `${origin}/api/v1/mcp`;

@@ -2,7 +2,16 @@ import { useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 
 /** Copies `text`, and says so for a moment. */
-export function CopyButton({ text, label }: { text: string; label: string }) {
+export function CopyButton({
+  text,
+  label,
+  children = 'Copy',
+}: {
+  text: string;
+  label: string;
+  /** What the button says before it copies. */
+  children?: string;
+}) {
   const [copied, setCopied] = useState<'idle' | 'copied' | 'failed'>('idle');
   return (
     <button
@@ -19,7 +28,7 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
       }}
     >
       {copied === 'copied' ? <Check size={14} /> : <Copy size={14} />}
-      {copied === 'copied' ? 'Copied' : copied === 'failed' ? 'Copy failed' : 'Copy'}
+      {copied === 'copied' ? 'Copied' : copied === 'failed' ? 'Copy failed' : children}
     </button>
   );
 }
