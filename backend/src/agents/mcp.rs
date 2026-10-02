@@ -366,6 +366,7 @@ impl Server {
         match answer {
             Ok(value) => {
                 let text = value.to_string();
+                let bypassed = data::bypassed(&value);
                 if text.len() > LONGEST_ANSWER {
                     return refused(
                         "answer_too_large",
@@ -388,7 +389,7 @@ impl Server {
                     result,
                     dsp: None,
                     outcome: "ok".into(),
-                    bypassed: data::bypassed(&value),
+                    bypassed,
                 }
             }
             Err(Failure::Refused(refusal)) => {

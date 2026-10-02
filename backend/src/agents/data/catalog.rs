@@ -878,7 +878,8 @@ pub fn openapi(origin: &str) -> Value {
                     "200": {"description": "The answer.", "content": {"application/json": {"schema": {"type":"object"}}}},
                     "400": {"description": "Something unclear; `message` says what and `choices` what it could mean."},
                     "401": {"description": "No key, or a key that is revoked, expired or not for this Dispatch."},
-                    "403": {"description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."},
+                    "403": {"description": "Not for this key here: `not_allowed` when the key may not read it at \
+                        the DSP, `source_off` when the DSP has the feature switched off."},
                     "404": {"description": "Nothing by that name."},
                     "429": {"description": "Too many calls this minute; wait for `Retry-After` seconds."}
                 }

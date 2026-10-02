@@ -453,7 +453,7 @@ test('the owner changes what a connected app reads, and gives a DSP settings of 
   await expect(row).toContainText('No delivery addresses');
   await row.getByRole('button', { name: 'Edit Laptop – Claude Code', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Laptop – Claude Code' });
-  await expect(sheet.getByText('Verified', { exact: true })).toBeVisible();
+  await expect(sheet.getByText('Known metadata', { exact: true })).toBeVisible();
   // An app only ever reads, and never expires.
   await expect(sheet.getByRole('radio', { name: /Operator/ })).toHaveCount(0);
   await expect(sheet.getByLabel('Expires')).toHaveCount(0);

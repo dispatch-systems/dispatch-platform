@@ -981,6 +981,7 @@ async fn tools_are_listed_where_any_dsp_the_key_reaches_lets_it_read_them() {
             "driver_report",
             "find_drivers",
             "find_package",
+            "get_profile",
             "list_metrics",
             "packages",
             "route_day",

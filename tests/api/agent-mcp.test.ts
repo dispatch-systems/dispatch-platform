@@ -164,7 +164,7 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   assert.equal(legacy.structuredContent, undefined);
   assert.equal(JSON.parse(legacy.content[0].text).understood.dsp, 'Northline Logistics');
 
-  const profile = await call(essential, 'get_profile', {});
+  const profile = await call(routes, 'get_profile', {});
   assert.notEqual(profile.structuredContent.id, owner.session.user.id);
   assert.match(profile.structuredContent.id, /^profile_[A-Za-z0-9_-]+$/);
   assert.deepEqual(JSON.parse(profile.content[0].text), profile.structuredContent);
