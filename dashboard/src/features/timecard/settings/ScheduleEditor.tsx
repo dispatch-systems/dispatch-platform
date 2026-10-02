@@ -43,11 +43,10 @@ export function ScheduleEditor({
         }
       : newSchedule(),
   );
-  // A scorecard or routes schedule keeps its collection; the editor changes its timing only.
-  const fixed = draft.collection === 'scorecard' || draft.collection === 'routes';
-  const scorecard = fixed;
-  const [paycom, setPaycom] = useState(!scorecard && draft.collection !== 'meal_break');
-  const [meal, setMeal] = useState(!scorecard && draft.collection !== 'paycom');
+  // A routes schedule keeps its collection; the editor changes its timing only.
+  const fixed = draft.collection === 'routes';
+  const [paycom, setPaycom] = useState(!fixed && draft.collection !== 'meal_break');
+  const [meal, setMeal] = useState(!fixed && draft.collection !== 'paycom');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [stale, setStale] = useState(false);
@@ -102,7 +101,7 @@ export function ScheduleEditor({
   const edit = <K extends keyof ScheduleInput>(key: K, value: ScheduleInput[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
   async function submit(remove = false) {
-    if (!remove && !scorecard && !paycom && !meal) {
+    if (!remove && !fixed && !paycom && !meal) {
       setError('Select Paycom, Meal Break, or both.');
       return;
     }
@@ -160,10 +159,8 @@ export function ScheduleEditor({
           </label>
           <fieldset className="schedule-choice-group">
             <legend>Collect</legend>
-            {scorecard ? (
-              <p className="schedule-checks">
-                {draft.collection === 'routes' ? 'Daily routes' : 'Weekly scorecard'}
-              </p>
+            {fixed ? (
+              <p className="schedule-checks">Daily routes</p>
             ) : (
               <div className="schedule-checks">
                 <label>

@@ -37,8 +37,13 @@ fn all_jobs(db: &Store, _: &User, _: &Input) -> Result<Reply> {
     Reply::of(&db.recent_jobs(None)?)
 }
 
+/// Jobs listed and cancelled only through their own feature's routes, never these.
+pub(super) const OWN: &[&str] = &[crate::scorecard::JOB_KIND];
+
 fn jobs(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    Reply::of(&db.recent_jobs(Some(c.dsp_id()))?)
+    let mut jobs = db.recent_jobs(Some(c.dsp_id()))?;
+    jobs.retain(|job| !OWN.contains(&job.kind.as_str()));
+    Reply::of(&jobs)
 }
 
 fn collect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -72,10 +77,14 @@ pub(super) async fn cancel_kind(
             v::fields(&input.body, &[])?;
             let row = db.job_row(&job, Some(&c.dsp.id))?;
             // A page's own route cancels only its kind. The generic route cancels a job
-            // another page owns only for a member who also holds that page's permission.
+            // another page owns only for a member who also holds that page's permission,
+            // and never one whose feature keeps its jobs to its own routes.
             let required = crate::features::collection_permission(row.kind.as_str());
             crate::ensure(
-                kind.map_or_else(|| c.allows(&required), |kind| row.kind.as_str() == kind),
+                kind.map_or_else(
+                    || c.allows(&required) && !OWN.contains(&row.kind.as_str()),
+                    |kind| row.kind.as_str() == kind,
+                ),
                 "permission_denied",
                 403,
             )?;

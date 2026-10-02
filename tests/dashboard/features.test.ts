@@ -55,6 +55,7 @@ test('a switch brings its dependencies along, as the backend does', () => {
     { feature: 'timecard', enabled: false },
     { feature: 'routes', enabled: false },
     { feature: 'dvic', enabled: false },
+    { feature: 'scorecard', enabled: false },
     { feature: 'driver_match', enabled: false },
   ]);
   // Driver Match needs both sides: losing Paycom takes it too.

@@ -771,13 +771,52 @@ mod tests {
             vec![
                 json!({"dsp_id":"dsp_a","feature":"cortex","enabled":1}),
                 json!({"dsp_id":"dsp_a","feature":"paycom","enabled":1}),
+                json!({"dsp_id":"dsp_a","feature":"scorecard","enabled":1}),
                 json!({"dsp_id":"dsp_a","feature":"timecard","enabled":1}),
                 json!({"dsp_id":"dsp_a","feature":"uniforms","enabled":1}),
                 json!({"dsp_id":"dsp_b","feature":"cortex","enabled":1}),
                 json!({"dsp_id":"dsp_b","feature":"paycom","enabled":1}),
+                json!({"dsp_id":"dsp_b","feature":"scorecard","enabled":1}),
                 json!({"dsp_id":"dsp_b","feature":"timecard","enabled":1}),
                 json!({"dsp_id":"dsp_b","feature":"uniforms","enabled":0}),
             ]
+        );
+    }
+
+    #[test]
+    fn the_scorecard_switch_starts_on_wherever_the_timecard_was() {
+        let root = private();
+        let file = root.path().join("platform.sqlite");
+        let db = Db::create(&file, Kind::Platform, "").unwrap();
+        // The release before the switch: Timecard on for one DSP, off for another and never
+        // switched for a third; a role granting the timecard.
+        db.0.execute_batch(
+            "DELETE FROM schema_migrations WHERE id=12; \
+             INSERT INTO dsps(id,name,environment,status,timezone,created_at) VALUES \
+             ('dsp_on','On','preview','active','UTC','2026-01-01'),\
+             ('dsp_off','Off','preview','active','UTC','2026-01-01'),\
+             ('dsp_new','New','preview','active','UTC','2026-01-01'); \
+             INSERT INTO dsp_features(dsp_id,feature,enabled,changed_at) VALUES \
+             ('dsp_on','timecard',1,'2026-01-02'),('dsp_off','timecard',0,'2026-01-02'); \
+             INSERT INTO roles(id,dsp_id,name,permissions,system,created_at) VALUES \
+             ('manager','dsp_on','Manager','[\"timecard.manage\",\"collections.run\"]',0,'2026-01-02');",
+        )
+        .unwrap();
+        migrate(&db, Kind::Platform).unwrap();
+        assert_eq!(
+            db.all(
+                "SELECT dsp_id FROM dsp_features WHERE feature='scorecard' AND enabled=1",
+                []
+            )
+            .unwrap(),
+            vec![json!({"dsp_id":"dsp_on"})]
+        );
+        // The scorecard's permissions owe nothing to the timecard's.
+        assert_eq!(
+            db.one("SELECT permissions FROM roles WHERE id='manager'", [])
+                .unwrap()
+                .unwrap()["permissions"],
+            json!("[\"timecard.manage\",\"collections.run\"]")
         );
     }
 

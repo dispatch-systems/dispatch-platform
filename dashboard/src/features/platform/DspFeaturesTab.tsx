@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  Award,
   CalendarDays,
   ClipboardCheck,
   Fingerprint,
@@ -29,6 +30,7 @@ const icons: Record<PageFeature, LucideIcon> = {
   uniforms: Shirt,
   routes: Route,
   dvic: ClipboardCheck,
+  scorecard: Award,
   driver_match: Fingerprint,
 };
 const pages = featureCatalog.filter((f): f is PageEntry => f.kind === 'page');

@@ -14,6 +14,8 @@ use std::collections::HashMap;
 
 const RECENT: &str = "SELECT * FROM jobs ORDER BY created_at DESC LIMIT 200";
 const RECENT_FOR_DSP: &str = "SELECT * FROM jobs WHERE dsp_id=? ORDER BY created_at DESC LIMIT 200";
+const RECENT_OF_KIND: &str =
+    "SELECT * FROM jobs WHERE dsp_id=? AND kind=? ORDER BY created_at DESC LIMIT 200";
 const DSP_NAMES: &str = "SELECT id,name FROM dsps WHERE id IN (SELECT value FROM json_each(?))";
 const METRICS: &str = "SELECT job_id,metrics FROM job_metrics \
     WHERE job_id IN (SELECT value FROM json_each(?)) ORDER BY attempt";
@@ -158,6 +160,13 @@ impl Store {
             Some(id) => self.jobs.query_as(RECENT_FOR_DSP, [id])?,
             None => self.jobs.query_as(RECENT, [])?,
         };
+        self.public_jobs(rows)
+    }
+    /// A DSP's recent jobs of one kind, however many of other kinds came since.
+    pub fn recent_jobs_of(&self, id: &str, kind: &str) -> Result<Vec<PublicJob>> {
+        self.public_jobs(self.jobs.query_as(RECENT_OF_KIND, [id, kind])?)
+    }
+    fn public_jobs(&self, rows: Vec<JobRow>) -> Result<Vec<PublicJob>> {
         if rows.is_empty() {
             return Ok(Vec::new());
         }

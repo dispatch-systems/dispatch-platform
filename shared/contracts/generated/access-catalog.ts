@@ -5,6 +5,7 @@ export const pages = [
   "uniforms",
   "routes",
   "dvic",
+  "scorecard",
   "driver_match"
 ] as const;
 export const pageTabs = [
@@ -23,6 +24,7 @@ export const features = [
   "uniforms",
   "routes",
   "dvic",
+  "scorecard",
   "driver_match",
   "timecard.daily",
   "timecard.meal_breaks",
@@ -81,6 +83,19 @@ export const featureCatalog = [
     ],
     "requires": [
       "dvic"
+    ],
+    "kind": "page"
+  },
+  {
+    "id": "scorecard",
+    "label": "Scorecard",
+    "permissions": [
+      "scorecard.view",
+      "scorecard.collect",
+      "scorecard.manage"
+    ],
+    "requires": [
+      "scorecard"
     ],
     "kind": "page"
   },
@@ -155,7 +170,8 @@ export const featureCatalog = [
     "provides": [
       "meal_breaks",
       "routes",
-      "dvic"
+      "dvic",
+      "scorecard"
     ]
   }
 ] as const;
@@ -173,6 +189,9 @@ export const permissions = [
   "dvic.view",
   "dvic.collect",
   "dvic.manage",
+  "scorecard.view",
+  "scorecard.collect",
+  "scorecard.manage",
   "driver_match.manage",
   "connections.manage",
   "members.invite",
@@ -193,6 +212,9 @@ export const permissionLabels = {
   "routes.collect": "Collect Routes",
   "routes.manage": "Manage Routes",
   "routes.view": "View Routes",
+  "scorecard.collect": "Collect Scorecard",
+  "scorecard.manage": "Manage Scorecard",
+  "scorecard.view": "View Scorecard",
   "settings.manage": "Manage DSP Settings",
   "timecard.manage": "Manage Timecard",
   "timecard.view": "View Timecard",
@@ -234,6 +256,14 @@ export const permissionGroups = [
     ]
   ],
   [
+    "Scorecard",
+    [
+      "scorecard.view",
+      "scorecard.collect",
+      "scorecard.manage"
+    ]
+  ],
+  [
     "Driver Match",
     [
       "driver_match.manage"
@@ -265,6 +295,8 @@ export const impliedPermissions = {
   "dvic.manage": "dvic.view",
   "routes.collect": "routes.view",
   "routes.manage": "routes.view",
+  "scorecard.collect": "scorecard.view",
+  "scorecard.manage": "scorecard.view",
   "timecard.manage": "timecard.view",
   "uniforms.adjust": "uniforms.view",
   "uniforms.manage": "uniforms.view"

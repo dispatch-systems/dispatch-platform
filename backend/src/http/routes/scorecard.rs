@@ -1,25 +1,36 @@
-//! Weekly scorecards: what is stored, and collecting a week.
+//! Weekly scorecards: what is stored, collecting a week, and its jobs. The scorecard is a
+//! feature of its own; nothing here asks for another's permission.
 use crate::{
-    Result,
+    Result, State,
     db::Store,
     http::{
         input::{Input, Reply},
-        route::{Dsp, Member, Route, read, write},
+        route::{Dsp, Member, Route, async_post, read, write},
     },
     scorecard, validate as v,
 };
+use std::sync::Arc;
 
-const RUN: Dsp = Dsp("collections.run");
+const VIEW: Dsp = Dsp("scorecard.view");
+const COLLECT: Dsp = Dsp("scorecard.collect");
 
 pub fn routes() -> Vec<Route> {
     vec![
-        read("/api/dsp/scorecard/weeks", Dsp("timecard.view"), weeks),
-        write("/api/dsp/scorecard/collect", RUN, collect),
+        read("/api/dsp/scorecard/weeks", VIEW, weeks),
+        read("/api/dsp/scorecard/jobs", VIEW, jobs),
+        write("/api/dsp/scorecard/collect", COLLECT, collect),
+        async_post("/api/dsp/scorecard/jobs/{id}/cancel", COLLECT, cancel),
     ]
 }
 
 fn weeks(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
     Reply::of(&db.scorecard_weeks(c.dsp_id())?)
+}
+fn jobs(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
+    Reply::of(&db.recent_jobs_of(c.dsp_id(), scorecard::JOB_KIND)?)
+}
+async fn cancel(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    super::jobs::cancel_kind(state, input, access, Some(scorecard::JOB_KIND)).await
 }
 
 /// Queues one week, the most recent completed one unless `week` names another.

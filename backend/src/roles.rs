@@ -38,6 +38,9 @@ permissions! {
     "dvic.view" => "View DVIC",
     "dvic.collect" => "Collect DVIC",
     "dvic.manage" => "Manage DVIC",
+    "scorecard.view" => "View Scorecard",
+    "scorecard.collect" => "Collect Scorecard",
+    "scorecard.manage" => "Manage Scorecard",
     "driver_match.manage" => "Manage Driver Match",
     "connections.manage" => "Manage Connections",
     "members.invite" => "Invite Members",
@@ -55,6 +58,8 @@ pub(crate) const IMPLIED: &[(&str, &str)] = &[
     ("routes.manage", "routes.view"),
     ("dvic.collect", "dvic.view"),
     ("dvic.manage", "dvic.view"),
+    ("scorecard.collect", "scorecard.view"),
+    ("scorecard.manage", "scorecard.view"),
 ];
 // Permissions outside a feature-owned page have these role-sheet sections.
 #[cfg(test)]

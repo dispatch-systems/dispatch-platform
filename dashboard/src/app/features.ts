@@ -38,6 +38,7 @@ const capabilities: Record<string, string> = {
   meal_breaks: 'a meal-break source',
   routes: 'a route source',
   dvic: 'a DVIC source',
+  scorecard: 'a scorecard source',
 };
 export const capabilityLabel = (capability: string) => capabilities[capability] ?? capability;
 /** The tabs of `page`, in catalog order. */

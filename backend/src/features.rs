@@ -75,6 +75,17 @@ pub const PAGES: &[Feature] = &[
         requires: &["dvic"],
         default: false,
     },
+    // Amazon's weekly scorecard: no page of its own yet, but its collection, its schedules
+    // and its weeks, apart from the Timecard page.
+    Feature {
+        id: "scorecard",
+        label: "Scorecard",
+        kind: Kind::Page,
+        permissions: &["scorecard.view", "scorecard.collect", "scorecard.manage"],
+        provides: &[],
+        requires: &["scorecard"],
+        default: false,
+    },
     // A tab of Settings, not a page of its own: it matches Paycom's employees to the
     // drivers Amazon's routes and other collections name.
     Feature {
@@ -131,6 +142,7 @@ pub const SCHEDULES: &str = "timecard";
 const COLLECTION_PAGES: &[(&str, &str, &str)] = &[
     ("routes", "cortex.routes.collect", "routes"),
     ("dvic", "cortex.dvic.collect", "dvic"),
+    ("scorecard", "cortex.scorecard.collect", "scorecard"),
 ];
 pub fn automation(kind_or_collection: &str) -> &'static str {
     COLLECTION_PAGES

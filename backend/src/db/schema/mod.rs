@@ -65,6 +65,11 @@ pub const PLATFORM: &[Migration] = &[
         name: "agent_keys",
         apply: Sql(include_str!("platform/0011_agent_keys.sql")),
     },
+    Migration {
+        id: 12,
+        name: "scorecard_feature",
+        apply: Sql(include_str!("platform/0012_scorecard_feature.sql")),
+    },
 ];
 pub const JOBS: &[Migration] = &[
     Migration {

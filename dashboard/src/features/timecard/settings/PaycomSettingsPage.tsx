@@ -33,10 +33,10 @@ function repeat(schedule: ScheduleInput) {
     : `Every ${minutes} minutes`;
 }
 function CollectionLabels({ collection }: Pick<ScheduleInput, 'collection'>) {
-  if (collection === 'scorecard' || collection === 'routes')
+  if (collection === 'routes')
     return (
       <div className="schedule-collections">
-        <span className="schedule-tag">{collection === 'routes' ? 'Routes' : 'Scorecard'}</span>
+        <span className="schedule-tag">Routes</span>
       </div>
     );
   return (
