@@ -83,10 +83,12 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
   const bearer = { Authorization: `Bearer ${(await token.json()).access_token}` };
   expect((await request.get('/api/v1/whoami', { headers: bearer })).status()).toBe(200);
 
-  // An answered request can't be answered again.
+  // An answered request can't be answered again: answering it let go of this browser.
   await page.goto(approvalUrl);
   await expect(
-    page.getByText('This request expired. Start the connection again from your app.'),
+    page.getByText(
+      /^This approval isn’t open in this browser, or it has expired\. Start connecting again from your app, and approve it in the browser that opens\./,
+    ),
   ).toBeVisible();
 
   // Connecting it again under that name says which connection it replaces; the owner denies.
@@ -142,8 +144,9 @@ test('Dispatch turns away an app it does not know, without sending the browser t
   await expect(page.getByText('Dispatch doesn’t accept this app.')).toBeVisible();
 });
 
-test('an app connects only while the owner lets apps connect and it is on; a website says where access goes', async ({
+test('an app connects only while the owner lets apps connect and it is on, and only in its own browser; a website says where access goes', async ({
   page,
+  request,
   dispatch,
   baseURL,
 }) => {
@@ -217,6 +220,25 @@ test('an app connects only while the owner lets apps connect and it is on; a web
     }),
   ).toBeVisible();
 
+  // A request is answered only in the browser that started it: its link, opened in another,
+  // asks nothing there.
+  const started = await request.get(`/oauth/authorize?${query}`, { maxRedirects: 0 });
+  expect(started.status()).toBe(302);
+  const elsewhere = started.headers()['location']!;
+  expect(elsewhere).toMatch(/#authorize\?request=/);
+  await page.goto(elsewhere);
+  await expect(
+    page.getByText(
+      /^This approval isn’t open in this browser, or it has expired\. Start connecting again from your app, and approve it in the browser that opens\./,
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Back to Agents', exact: true })).toHaveAttribute(
+    'href',
+    platformHash('agents'),
+  );
+  await expect(page.getByRole('form')).toHaveCount(0);
+  await expect(page.locator('.agents-authorize').getByRole('button')).toHaveCount(0);
+
   // A website, once websites may connect, shows first where it sends access.
   const web = await owner.post('/api/platform/oauth/apps', { id: 'web', allowed: true });
   expect(web.status, web.body).toBe(200);
@@ -233,6 +255,7 @@ test('an app connects only while the owner lets apps connect and it is on; a web
   query.set('redirect_uri', site);
   await page.goto(`/oauth/authorize?${query}`);
   const website = page.getByRole('form', { name: 'Route Planner' });
-  await expect(website).toContainText('Unverified app — it says it is “Route Planner”');
+  await expect(website.getByText('Unverified', { exact: true })).toBeVisible();
+  await expect(website).toContainText('Unverified app: it says it is “Route Planner”.');
   await expect(website.locator('.agents-sends')).toHaveText('Sends access to: app.example.com');
 });

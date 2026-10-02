@@ -342,7 +342,8 @@ pub struct AgentActivityKey {
 /// One call an agent made: when it started, with which key or app, to which endpoint
 /// (`rest:<endpoint>`) or tool (`mcp:<tool>`), about which DSP, and how it ended: `ok`, or
 /// the code it was refused or failed with. `ms` is how long it took, `bytes` how much it
-/// answered.
+/// answered. A key's calls past 10,000 in a UTC day are not kept: one row with surface
+/// `activity:capped` and outcome `capped`, at the first of them, marks the day capped.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]

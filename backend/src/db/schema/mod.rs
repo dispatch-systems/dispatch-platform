@@ -78,7 +78,7 @@ pub const PLATFORM: &[Migration] = &[
     Migration {
         id: 14,
         name: "oauth_guard",
-        apply: Sql(include_str!("platform/0014_oauth_guard.sql")),
+        apply: Code(oauth_guard),
     },
     Migration {
         id: 15,
@@ -278,6 +278,13 @@ fn oauth(db: &Db) -> Result<()> {
         "INTEGER NOT NULL DEFAULT 0",
     )?;
     db.0.execute_batch(include_str!("platform/0013_oauth.sql"))?;
+    Ok(())
+}
+// browser: the SHA-256 of the nonce the browser that asked to connect was given in a cookie,
+// so that only that browser sees or answers the request.
+fn oauth_guard(db: &Db) -> Result<()> {
+    add_column(db, "oauth_requests", "browser", "TEXT")?;
+    db.0.execute_batch(include_str!("platform/0014_oauth_guard.sql"))?;
     Ok(())
 }
 

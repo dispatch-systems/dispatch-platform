@@ -7,7 +7,7 @@ import {
   type AgentActivityFilter,
 } from '../../app/endpoints.js';
 import { useAction } from '../../app/useAction.js';
-import { surfaceOf } from '../../lib/agents.js';
+import { activityNote, surfaceOf } from '../../lib/agents.js';
 import { deviceTimezone, duration, timeWithSeconds } from '../../lib/format.js';
 import {
   Badge,
@@ -71,6 +71,7 @@ const columns = (timeZone: string): TableColumn<AgentActivity>[] => [
 
 /** Every call a key or connected app made, newest first, a page at a time. */
 export function ActivityTab() {
+  const timeZone = deviceTimezone();
   const agents = useAgentKeys();
   const [filter, setFilter] = useState<AgentActivityFilter>({ key: '', outcome: '' });
   const first = useAgentActivity(filter);
@@ -90,7 +91,7 @@ export function ActivityTab() {
   const page = first.data ?? first.stale;
   const rows = page ? [...page.rows, ...(extra?.rows ?? [])] : [];
   const table = useDataTable({
-    columns: columns(deviceTimezone()),
+    columns: columns(timeZone),
     rows,
     rowId: (call, index) => `${call.at} ${call.key.id} ${index}`,
   });
@@ -150,7 +151,13 @@ export function ActivityTab() {
           ) : (
             <>
               <div className="table-wrap">
-                <DataTable table={table} className="agents-calls" label="Agent calls" />
+                <DataTable
+                  table={table}
+                  className="agents-calls"
+                  label="Agent calls"
+                  rowClassName={(call) => (call.outcome === 'capped' ? 'agents-note' : undefined)}
+                  renderNote={(call) => activityNote(call, timeZone)}
+                />
               </div>
               <ErrorBox message={load.error} />
               {next && (

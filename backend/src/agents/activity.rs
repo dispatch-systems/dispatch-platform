@@ -3,7 +3,8 @@
 //! DSP, how it ended, how long it took and how much it answered; never what it asked beyond
 //! the endpoint or tool, and never a token. A request notes its call as it goes and records it
 //! here, in memory, once answered. The scheduler writes calls down in batches, so an agent's
-//! read never waits for the platform's write lock. Calls are kept 90 days.
+//! read never waits for the platform's write lock. Calls are kept 90 days, and at most
+//! `DAILY` of each key's a day, so one busy key cannot fill the disk.
 use super::data::catalog;
 use crate::{
     Result, State,
@@ -28,6 +29,13 @@ pub const EVERY_MS: i64 = 5_000;
 pub const KEPT_MS: i64 = 90 * 86_400_000;
 /// Old calls removed at once, so pruning holds the platform lock only briefly.
 const PRUNE_STEP: i64 = 10_000;
+/// Calls kept of each key a UTC day. The next is kept as one row that marks the day capped
+/// (`CAPPED_SURFACE`, outcome `CAPPED`), and the rest of the day's are only counted.
+pub const DAILY: u32 = 10_000;
+/// The surface and outcome of the row that marks a key's day capped.
+pub const CAPPED_SURFACE: &str = "activity:capped";
+pub const CAPPED: &str = "capped";
+const DAY_MS: i64 = 86_400_000;
 
 /// A call waiting to be written down.
 #[derive(Clone, Debug)]
@@ -74,18 +82,43 @@ struct Held {
     /// The minute each key was last recorded refused for its rate, so a client that keeps
     /// trying is recorded once a minute.
     limited: HashMap<String, i64>,
+    /// The UTC day each key last called on, and how many of its calls were recorded that
+    /// day, the capped day's marker included.
+    days: HashMap<String, (i64, u32)>,
+    /// Calls not kept since the last take, their key past its day's cap.
+    capped: u64,
 }
-/// Calls taken to be written down, oldest first, and how many were dropped before them.
+/// Calls taken to be written down, oldest first; how many were dropped before them, the
+/// buffer full; and how many were not kept, their key past its day's cap.
 pub struct Taken {
     pub calls: Vec<Call>,
     pub dropped: u64,
+    pub capped: u64,
 }
 
 impl Activity {
     fn held(&self) -> MutexGuard<'_, Held> {
         self.0.lock().unwrap_or_else(|poison| poison.into_inner())
     }
-    /// Holds a call until the scheduler writes it down.
+    /// Counts each key's calls recorded today as the database holds them, so a restart
+    /// keeps its cap. One count a key, read from the key's own index.
+    pub fn seeded(db: &Store) -> Result<Self> {
+        let day = now().div_euclid(DAY_MS);
+        let counts: Vec<(String, i64)> = db.platform.query_as(
+            "SELECT k.id,(SELECT count(*) FROM agent_activity a WHERE a.key_id=k.id \
+             AND a.at>=?) FROM agent_keys k",
+            [day * DAY_MS],
+        )?;
+        let activity = Self::default();
+        activity.held().days = counts
+            .into_iter()
+            .filter(|(_, count)| *count > 0)
+            .map(|(key, count)| (key, (day, u32::try_from(count).unwrap_or(u32::MAX))))
+            .collect();
+        Ok(activity)
+    }
+    /// Holds a call until the scheduler writes it down: at most `DAILY` of a key's a day,
+    /// then one that marks the day capped.
     pub fn record(&self, call: Call) {
         let mut held = self.held();
         if call.outcome == "rate_limited" {
@@ -96,6 +129,32 @@ impl Activity {
             held.limited.retain(|_, limited| *limited == minute);
             held.limited.insert(call.key.id.clone(), minute);
         }
+        let day = call.at.div_euclid(DAY_MS);
+        let today = held.days.entry(call.key.id.clone()).or_insert((day, 0));
+        // A call that started before midnight and ended after counts toward the new day.
+        if day > today.0 {
+            *today = (day, 0);
+        }
+        today.1 = today.1.saturating_add(1);
+        let count = today.1;
+        let call = match count.cmp(&(DAILY + 1)) {
+            std::cmp::Ordering::Less => call,
+            std::cmp::Ordering::Equal => {
+                held.capped += 1;
+                Call {
+                    surface: CAPPED_SURFACE.into(),
+                    dsp: None,
+                    outcome: CAPPED.into(),
+                    ms: 0,
+                    bytes: 0,
+                    ..call
+                }
+            }
+            std::cmp::Ordering::Greater => {
+                held.capped += 1;
+                return;
+            }
+        };
         held.calls.push_back(call);
         held.bound();
     }
@@ -143,6 +202,7 @@ impl Activity {
         Taken {
             calls: held.calls.drain(..count).collect(),
             dropped: std::mem::take(&mut held.dropped),
+            capped: std::mem::take(&mut held.capped),
         }
     }
     /// Holds calls again, ahead of any recorded since, after writing them down failed.
@@ -218,6 +278,13 @@ pub async fn flush(state: &Arc<State>) -> Result<usize> {
                 json!({"dropped": taken.dropped}),
             );
         }
+        if taken.capped > 0 {
+            observability::event(
+                "warn",
+                "agent.activity_capped",
+                json!({"capped": taken.capped}),
+            );
+        }
         let count = taken.calls.len();
         if count == 0 {
             break;
@@ -239,7 +306,8 @@ pub async fn flush(state: &Arc<State>) -> Result<usize> {
     Ok(written)
 }
 
-/// Which calls a page lists, by how they ended.
+/// Which calls a page lists, by how they ended. A capped day's marker is listed whichever
+/// is asked for, since the calls it stands for ended every way.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Outcomes {
     #[default]
@@ -348,7 +416,7 @@ impl Store {
         }
         match query.outcomes {
             Outcomes::All => {}
-            Outcomes::Ok => sql.push_str(" AND a.outcome='ok'"),
+            Outcomes::Ok => sql.push_str(" AND a.outcome IN ('ok','capped')"),
             Outcomes::Refused => sql.push_str(" AND a.outcome<>'ok'"),
         }
         if let Some((before, id)) = query.before {
@@ -398,8 +466,10 @@ mod tests {
     #[test]
     fn a_full_buffer_drops_the_oldest_and_counts_them() {
         let activity = Activity::default();
+        // Two keys, so neither passes its day's cap.
+        let key = |at: i64| if at % 2 == 0 { "key_a" } else { "key_b" };
         for at in 0..HELD as i64 + 5 {
-            activity.record(call(at, "key_a", "ok"));
+            activity.record(call(at, key(at), "ok"));
         }
         assert_eq!(activity.pending(), HELD);
         let taken = activity.take(BATCH);
@@ -412,7 +482,7 @@ mod tests {
         let again = activity.take(1);
         assert_eq!((again.calls[0].at, again.dropped), (5, 0));
         // Held again when full, the oldest of them go first.
-        activity.record(call(HELD as i64 + 5, "key_a", "ok"));
+        activity.record(call(HELD as i64 + 5, key(HELD as i64 + 5), "ok"));
         activity.restore(again.calls);
         let last = activity.take(HELD);
         assert_eq!((last.calls[0].at, last.dropped), (6, 1));
@@ -443,6 +513,50 @@ mod tests {
         };
         assert_eq!((limited("key_a"), limited("key_b")), (2, 1));
         assert_eq!(outcomes.iter().filter(|(_, o)| o == "ok").count(), 3);
+    }
+
+    #[test]
+    fn a_key_keeps_its_days_first_calls_then_one_row_that_marks_the_day_capped() {
+        let activity = Activity::default();
+        let day = 1_790_000_000_000 / DAY_MS * DAY_MS;
+        for n in 0..i64::from(DAILY) {
+            activity.record(call(day + n, "key_a", "ok"));
+        }
+        let first = activity.take(HELD);
+        assert_eq!((first.calls.len(), first.capped), (DAILY as usize, 0));
+        // A refusal repeated within its minute is not one more call.
+        for n in 0..5 {
+            activity.record(call(day + 50_000 + n, "key_a", "rate_limited"));
+            activity.record(call(day + 50_000 + n, "key_a", "ok"));
+        }
+        activity.record(call(day + 60_000, "key_b", "ok"));
+        activity.record(call(day + DAY_MS, "key_a", "ok"));
+        let taken = activity.take(HELD);
+        assert_eq!(taken.capped, 6);
+        let seen: Vec<(&str, &str, &str, i64)> = taken
+            .calls
+            .iter()
+            .map(|c| {
+                (
+                    c.key.id.as_str(),
+                    c.surface.as_str(),
+                    c.outcome.as_str(),
+                    c.at,
+                )
+            })
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                ("key_a", CAPPED_SURFACE, CAPPED, day + 50_000),
+                ("key_b", "rest:whoami", "ok", day + 60_000),
+                ("key_a", "rest:whoami", "ok", day + DAY_MS),
+            ]
+        );
+        assert_eq!((taken.calls[0].ms, taken.calls[0].bytes), (0, 0));
+        // A call that started the day before is still today's, and does not reopen it.
+        activity.record(call(day + DAY_MS - 1, "key_a", "ok"));
+        assert_eq!(activity.take(HELD).calls[0].at, day + DAY_MS - 1);
     }
 
     #[test]

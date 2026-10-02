@@ -4,7 +4,8 @@
 -- the call was refused or failed with; ms is how long it took and bytes how much it answered.
 -- The key's and the DSP's names are kept as they were, for a key or DSP gone since. Nothing
 -- the agent asked beyond the endpoint or tool is kept, and never a token. Calls are written
--- from memory in batches, never one at a time.
+-- from memory in batches, never one at a time. At most 10,000 of a key's calls are kept a
+-- UTC day; then one row, surface 'activity:capped' and outcome 'capped', marks the day.
 CREATE TABLE IF NOT EXISTS agent_activity (
     id INTEGER PRIMARY KEY,
     at INTEGER NOT NULL,

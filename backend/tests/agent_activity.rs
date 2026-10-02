@@ -503,6 +503,101 @@ async fn the_log_pages_newest_first_and_narrows_to_a_key_or_to_refusals() {
 }
 
 #[tokio::test]
+async fn a_key_past_its_days_calls_is_capped_and_a_restart_keeps_the_cap() {
+    let server = Server::start().await;
+    let cookie = server.owner().await;
+    let (busy, _) = server.key("Busy", vec![]).await;
+    let (quiet, _) = server.key("Quiet", vec![]).await;
+    let day = 86_400_000;
+    let midnight = db::now() / day * day;
+    let call = |key: &str, at: i64| activity::Call {
+        at,
+        key: AgentActivityKey {
+            id: key.into(),
+            name: "Key".into(),
+            kind: AgentKeyKind::Key,
+        },
+        surface: "rest:whoami".into(),
+        dsp: None,
+        outcome: "ok".into(),
+        ms: 1,
+        bytes: 1,
+    };
+    // All but one of today's calls, as the server wrote them before it restarted, and
+    // yesterday's, which count toward no cap of today's.
+    let earlier: Vec<activity::Call> = (0..i64::from(activity::DAILY) - 1)
+        .map(|_| call(&busy, midnight))
+        .chain((0..5).map(|_| call(&busy, midnight - 1000)))
+        .collect();
+    server
+        .state
+        .run(move |db| db.record_agent_activity(&earlier))
+        .await
+        .unwrap();
+    let restarted = State::new(server.state.config.clone()).unwrap();
+    let now = db::now();
+    if now / day * day != midnight {
+        return; // The day turned while the test ran.
+    }
+    for n in 0..3 {
+        restarted.activity.record(call(&busy, now + n));
+    }
+    restarted.activity.record(call(&quiet, now + 3));
+    // The day's last call, then the row that marks it capped; the third is only counted.
+    assert_eq!(activity::flush(&restarted).await.unwrap(), 3);
+    let counted = busy.clone();
+    let today = server
+        .state
+        .read(move |db| {
+            db.platform.count(
+                "SELECT count(*) FROM agent_activity WHERE key_id=? AND at>=?",
+                rusqlite::params![counted, midnight],
+            )
+        })
+        .await
+        .unwrap();
+    assert_eq!(today, i64::from(activity::DAILY) + 1);
+
+    let listed = |answer: Answer| -> Vec<(String, String, String)> {
+        assert_eq!(answer.status, 200, "{}", answer.body);
+        answer.body["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| {
+                (
+                    s(row, "surface").to_owned(),
+                    s(row, "outcome").to_owned(),
+                    s(&row["key"], "name").to_owned(),
+                )
+            })
+            .collect()
+    };
+    let row = |surface: &str, outcome: &str, name: &str| {
+        (surface.to_owned(), outcome.to_owned(), name.to_owned())
+    };
+    let marker = row("activity:capped", "capped", "Busy");
+    let last = row("rest:whoami", "ok", "Busy");
+    assert_eq!(
+        listed(server.log(&cookie, "?limit=3").await),
+        [
+            row("rest:whoami", "ok", "Quiet"),
+            marker.clone(),
+            last.clone()
+        ]
+    );
+    // The marker stands for calls that ended every way, so either filter lists it.
+    let refused = listed(server.log(&cookie, "?outcome=refused").await);
+    assert_eq!(refused, std::slice::from_ref(&marker));
+    let only = format!("?key={busy}&outcome=ok&limit=2");
+    assert_eq!(listed(server.log(&cookie, &only).await), [marker, last]);
+    let capped = &server.log(&cookie, "?outcome=refused").await.body["rows"][0];
+    assert_eq!(s(capped, "at"), db::at(now + 1));
+    assert_eq!((&capped["ms"], &capped["bytes"]), (&json!(0), &json!(0)));
+    assert_eq!(capped["dsp"], Value::Null);
+}
+
+#[tokio::test]
 async fn calls_past_ninety_days_are_forgotten() {
     let server = Server::start().await;
     let day = 86_400_000;

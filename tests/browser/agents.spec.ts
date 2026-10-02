@@ -263,4 +263,22 @@ test('the Activity tab lists each call a key makes, and what Dispatch answered',
   await expect(page.getByText('No matching calls')).toBeVisible();
   await page.getByRole('button', { name: 'All', exact: true }).click();
   await expect(row).toBeVisible();
+
+  // A key past 10,000 calls a day is noted once, across the table rather than as a call.
+  dispatch.database('data/platform/accounts.sqlite', (db) =>
+    db
+      .prepare(
+        `INSERT INTO agent_activity(at,key_id,key_name,key_kind,surface,outcome,ms,bytes)
+         VALUES (?,?,?,'key','activity:capped','capped',0,0)`,
+      )
+      .run(Date.now(), made.value.key.id, 'Nightly report script'),
+  );
+  await page.getByRole('tab', { name: 'Keys', exact: true }).click();
+  await page.getByRole('tab', { name: 'Activity', exact: true }).click();
+  const note = page.getByRole('row').filter({ hasText: 'Over 10,000 calls' });
+  await expect(note.getByRole('cell')).toHaveCount(1);
+  await expect(note).toHaveText(
+    'Over 10,000 calls today from Nightly report script; later calls today aren’t listed.',
+  );
+  await expect(page.getByRole('row')).toHaveCount(3);
 });

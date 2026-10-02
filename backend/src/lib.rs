@@ -83,6 +83,8 @@ impl State {
                     status='error',error='verification_expired' WHERE status IN ('signing_in','needs_verification')",[])?;
             }
         }
+        // Each key's calls recorded today, so a restart keeps its daily cap.
+        let activity = agents::Activity::seeded(&store)?;
         Ok(Arc::new(Self {
             key: store.key.clone(),
             assets: http::assets(&config.dashboard, &config.release)?,
@@ -102,7 +104,7 @@ impl State {
             uniform_updates: live_updates::Updates::new()?,
             presence: presence::Presence::default(),
             agents: agents::Usage::default(),
-            activity: agents::Activity::default(),
+            activity,
             oauth: agents::oauth::Documents::default(),
         }))
     }

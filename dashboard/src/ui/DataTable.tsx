@@ -42,6 +42,7 @@ export function DataTable<T>({
   className,
   stickyHeader = false,
   rowClassName,
+  renderNote,
   renderDetail,
   detailClassName,
 }: {
@@ -53,6 +54,9 @@ export function DataTable<T>({
   /** Pin column headings during page scroll, below any data-sticky-banner element. */
   stickyHeader?: boolean;
   rowClassName?: (row: T, context: RowContext) => string | undefined;
+  /** A row this answers for is drawn as one cell across the full width, in place of its
+   * columns: a note in the list rather than an entry of it. */
+  renderNote?: (row: T) => ReactNode;
   /** Drawn across the full width beneath an expanded row and its sub-rows. */
   renderDetail?: (row: T) => ReactNode;
   detailClassName?: string;
@@ -78,6 +82,15 @@ export function DataTable<T>({
         if (open) body.push(detail(open));
         open = renderDetail && row.context.expanded ? row : undefined;
       }
+      const note = renderNote?.(row.data);
+      if (note) {
+        body.push(
+          <tr key={row.id} className={rowClassName?.(row.data, row.context)}>
+            <td colSpan={columns.length}>{note}</td>
+          </tr>,
+        );
+        continue;
+      }
       body.push(
         <tr key={row.id} className={rowClassName?.(row.data, row.context)}>
           {columns.map((column) =>
@@ -100,7 +113,7 @@ export function DataTable<T>({
     }
     if (open) body.push(detail(open));
     return body;
-  }, [table.rows, columns, rowClassName, renderDetail, detailClassName]);
+  }, [table.rows, columns, rowClassName, renderNote, renderDetail, detailClassName]);
   const headings = columns.map((column) => {
     const direction = table.sort?.id === column.id ? (table.sort.desc ? 'desc' : 'asc') : undefined;
     return column.sortable ? (

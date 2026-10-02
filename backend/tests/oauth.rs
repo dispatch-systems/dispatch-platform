@@ -23,7 +23,12 @@ struct Server {
     origin: String,
     state: Arc<State>,
     client: reqwest::Client,
+    /// The cookie the owner's browser keeps for the request it last brought from an app:
+    /// set by the authorization endpoint, cleared by an answer, sent with the owner's calls.
+    browser: std::sync::Mutex<Option<String>>,
 }
+/// The browser's cookie for an authorization request, as development names it.
+const BROWSER_COOKIE: &str = "dispatch_oauth_request=";
 struct Owner {
     cookie: String,
     csrf: String,
@@ -80,6 +85,7 @@ impl Server {
             .into_make_service_with_connect_info::<std::net::SocketAddr>();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Self {
+            browser: std::sync::Mutex::default(),
             _root: root,
             origin: format!("http://127.0.0.1:{port}"),
             state,
@@ -186,7 +192,30 @@ impl Server {
                 .header("x-csrf-token", &owner.csrf)
                 .body(body.to_string())
         };
-        self.send(request.header("cookie", &owner.cookie)).await
+        let cookie = match self.browser() {
+            Some(browser) => format!("{}; {browser}", owner.cookie),
+            None => owner.cookie.clone(),
+        };
+        let answer = self.send(request.header("cookie", cookie)).await;
+        self.keep_browser(&answer);
+        answer
+    }
+    /// The owner's browser's cookie for its request, as it would send it.
+    fn browser(&self) -> Option<String> {
+        self.browser.lock().unwrap().clone()
+    }
+    fn set_browser(&self, cookie: Option<String>) {
+        *self.browser.lock().unwrap() = cookie;
+    }
+    /// Keeps or clears the request's cookie as an answer says, as a browser does.
+    fn keep_browser(&self, answer: &Answer) {
+        for value in answer.headers.get_all("set-cookie") {
+            let value = value.to_str().unwrap();
+            let pair = value.split(';').next().unwrap();
+            if let Some(held) = pair.strip_prefix(BROWSER_COOKIE) {
+                self.set_browser((!held.is_empty()).then(|| pair.to_owned()));
+            }
+        }
     }
     async fn form(&self, path: &str, fields: &[(&str, &str)]) -> Answer {
         let body = url::form_urlencoded::Serializer::new(String::new())
@@ -204,7 +233,10 @@ impl Server {
         let query = url::form_urlencoded::Serializer::new(String::new())
             .extend_pairs(fields)
             .finish();
-        self.get(&format!("/oauth/authorize?{query}")).await
+        let answer = self.get(&format!("/oauth/authorize?{query}")).await;
+        // The owner's browser follows the app's link.
+        self.keep_browser(&answer);
+        answer
     }
     async fn dsp(&self, name: &'static str) -> String {
         self.state
@@ -625,10 +657,19 @@ async fn the_owner_approves_once_and_the_code_is_redeemed_once() {
         .as_owner(&owner, "POST", &format!("{path}/approve"), bad)
         .await;
     assert_eq!(refused.status, 400, "{}", refused.body);
+    let held = server.browser();
     let code = server
         .approved(&owner, &request, everything("Claude Code"))
         .await;
-    // Answered, the request is gone.
+    // Answered, the request is gone: the browser no longer holds it, and even its old
+    // cookie finds nothing.
+    assert_eq!(server.browser(), None);
+    let answer = server.as_owner(&owner, "GET", &path, json!({})).await;
+    assert_eq!(
+        (answer.status, s(&answer.body, "error")),
+        (403, "wrong_browser")
+    );
+    server.set_browser(held);
     for (method, suffix, body) in [
         ("GET", "", json!({})),
         ("POST", "/approve", everything("Again")),
@@ -1653,7 +1694,9 @@ fn what_can_no_longer_be_used_is_pruned() {
     for (id, at) in [("expired", &old), ("waiting", &soon)] {
         db.platform
             .exec(
-                "INSERT INTO oauth_requests VALUES (?,'c','C',1,'r',NULL,'x','res','dispatch',?,?)",
+                "INSERT INTO oauth_requests(id,client_id,client_name,verified,redirect_uri,state,\
+                 code_challenge,resource,scope,created_at,expires_at) \
+                 VALUES (?,'c','C',1,'r',NULL,'x','res','dispatch',?,?)",
                 [id, at.as_str(), at.as_str()],
             )
             .unwrap();
@@ -2460,4 +2503,197 @@ fn a_notice_waiting_to_be_sent_goes_only_to_a_platform_owner_still_active() {
         .unwrap()
         .unwrap();
     assert_eq!(left, "mail_owner");
+}
+
+#[tokio::test]
+async fn only_the_browser_that_brought_a_request_sees_or_answers_it() {
+    let server = Server::paired().await;
+    let owner = server.owner().await;
+    let local = "http://localhost:50013/callback";
+    let challenge = crypto::s256(VERIFIER);
+    let fields = server.request(CLAUDE_CODE, local, &challenge);
+    let pairs: Vec<(&str, &str)> = fields.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let started = server.authorize(&pairs).await;
+    let first = started
+        .header("location")
+        .rsplit_once("request=")
+        .unwrap()
+        .1
+        .to_owned();
+    // The browser the app sent is given the request and a nonce for it, for ten minutes.
+    let cookie = started.header("set-cookie").to_owned();
+    let (value, attributes) = cookie.split_once(';').unwrap();
+    let nonce = value
+        .strip_prefix(&format!("{BROWSER_COOKIE}{first}."))
+        .unwrap()
+        .to_owned();
+    assert_eq!(nonce.len(), 43);
+    assert_eq!(attributes, " Path=/; HttpOnly; SameSite=Lax; Max-Age=600");
+    let stored = server
+        .state
+        .read(|db| {
+            db.platform
+                .one_as::<(String,)>("SELECT browser FROM oauth_requests", [])
+        })
+        .await
+        .unwrap()
+        .unwrap()
+        .0;
+    assert_eq!(stored, crypto::sha(&nonce));
+    let path = |id: &str, suffix: &str| format!("/api/platform/oauth/requests/{id}{suffix}");
+    let refused = |answer: Answer| {
+        assert_eq!(
+            (answer.status, s(&answer.body, "error")),
+            (403, "wrong_browser"),
+            "{}",
+            answer.body
+        );
+    };
+    let answers = [
+        ("GET", "", json!({})),
+        ("POST", "/approve", everything("Claude Code")),
+        ("POST", "/deny", json!({})),
+    ];
+    // The owner signed in elsewhere, such as from a link someone sent them, cannot.
+    server.set_browser(None);
+    for (method, suffix, body) in &answers {
+        refused(
+            server
+                .as_owner(&owner, method, &path(&first, suffix), body.clone())
+                .await,
+        );
+    }
+    // Nor can a browser holding another request, or its nonce under this request's id.
+    let second = server.requested(CHATGPT, CHATGPT_REDIRECT).await;
+    let other = server.browser().unwrap();
+    let other_nonce = other.rsplit_once('.').unwrap().1;
+    for held in [
+        other.clone(),
+        format!("{BROWSER_COOKIE}{first}.{other_nonce}"),
+        format!("{BROWSER_COOKIE}{first}"),
+        format!("{BROWSER_COOKIE}{first}.{nonce}; {BROWSER_COOKIE}{first}.{nonce}"),
+    ] {
+        server.set_browser(Some(held));
+        for (method, suffix, body) in &answers {
+            refused(
+                server
+                    .as_owner(&owner, method, &path(&first, suffix), body.clone())
+                    .await,
+            );
+        }
+    }
+    // Both requests still wait: refusing the wrong browser changed nothing.
+    server.set_browser(Some(value.to_owned()));
+    let shown = server
+        .as_owner(&owner, "GET", &path(&first, ""), json!({}))
+        .await;
+    assert_eq!(shown.status, 200, "{}", shown.body);
+    // Answered, the cookie is cleared; the request is gone, and its old cookie finds nothing.
+    let approved = server
+        .as_owner(
+            &owner,
+            "POST",
+            &path(&first, "/approve"),
+            everything("Claude Code"),
+        )
+        .await;
+    assert_eq!(approved.status, 200, "{}", approved.body);
+    assert_eq!(
+        approved.header("set-cookie"),
+        "dispatch_oauth_request=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
+    );
+    assert_eq!(server.browser(), None);
+    refused(
+        server
+            .as_owner(&owner, "GET", &path(&first, ""), json!({}))
+            .await,
+    );
+    server.set_browser(Some(value.to_owned()));
+    let gone = server
+        .as_owner(&owner, "GET", &path(&first, ""), json!({}))
+        .await;
+    assert_eq!(
+        (gone.status, s(&gone.body, "error")),
+        (404, "authorization_not_found")
+    );
+    // Denying clears it too.
+    server.set_browser(Some(other));
+    let denied = server
+        .as_owner(&owner, "POST", &path(&second, "/deny"), json!({}))
+        .await;
+    assert_eq!(denied.status, 200, "{}", denied.body);
+    assert_eq!(server.browser(), None);
+    // A refused authorization sets no cookie.
+    let closed = server
+        .authorize(&[("client_id", "evil"), ("redirect_uri", local)])
+        .await;
+    assert_eq!(closed.header("set-cookie"), "");
+}
+
+#[tokio::test]
+async fn turning_a_kind_of_app_off_stops_its_waiting_requests_and_codes() {
+    let server = Server::paired().await;
+    let owner = server.owner().await;
+    let local = "http://localhost:50014/callback";
+    let choose = |allowed: bool| {
+        server.as_owner(
+            &owner,
+            "POST",
+            "/api/platform/oauth/apps",
+            json!({"id":"claude-code","allowed":allowed}),
+        )
+    };
+    // A request waiting when its kind is turned off cannot be approved; it can still be
+    // approved once the kind is on again.
+    let request = server.requested(CLAUDE_CODE, local).await;
+    assert_eq!(choose(false).await.status, 200);
+    let refused = server
+        .as_owner(
+            &owner,
+            "POST",
+            &format!("/api/platform/oauth/requests/{request}/approve"),
+            everything("Claude Code"),
+        )
+        .await;
+    assert_eq!(
+        (refused.status, s(&refused.body, "error")),
+        (403, "app_not_allowed")
+    );
+    assert_eq!(choose(true).await.status, 200);
+    let code = server
+        .approved(&owner, &request, everything("Claude Code"))
+        .await;
+    // A code not yet exchanged when its kind is turned off is refused, and makes nothing.
+    assert_eq!(choose(false).await.status, 200);
+    let exchanged = server.exchange(CLAUDE_CODE, local, &code).await;
+    assert_eq!(
+        (exchanged.status, s(&exchanged.body, "error")),
+        (400, "invalid_grant")
+    );
+    assert!(live_apps(&server, &owner).await.is_empty());
+    assert_eq!(choose(true).await.status, 200);
+    let exchanged = server.exchange(CLAUDE_CODE, local, &code).await;
+    assert_eq!(exchanged.status, 200, "{}", exchanged.body);
+    // An app that registered itself is held to its own kind the same way.
+    let cursor = "cursor://anysphere.cursor-retrieval/oauth/callback";
+    let registered_app = registered(&server, "Cursor", cursor).await;
+    let request = server.requested(&registered_app, cursor).await;
+    let local_off = server
+        .as_owner(
+            &owner,
+            "POST",
+            "/api/platform/oauth/apps",
+            json!({"id":"local","allowed":false}),
+        )
+        .await;
+    assert_eq!(local_off.status, 200);
+    let refused = server
+        .as_owner(
+            &owner,
+            "POST",
+            &format!("/api/platform/oauth/requests/{request}/approve"),
+            everything("Cursor"),
+        )
+        .await;
+    assert_eq!(s(&refused.body, "error"), "app_not_allowed");
 }

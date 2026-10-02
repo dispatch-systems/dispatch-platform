@@ -6,6 +6,7 @@ import type { AgentDsp } from "./AgentDsp";
  * One call an agent made: when it started, with which key or app, to which endpoint
  * (`rest:<endpoint>`) or tool (`mcp:<tool>`), about which DSP, and how it ended: `ok`, or
  * the code it was refused or failed with. `ms` is how long it took, `bytes` how much it
- * answered.
+ * answered. A key's calls past 10,000 in a UTC day are not kept: one row with surface
+ * `activity:capped` and outcome `capped`, at the first of them, marks the day capped.
  */
 export type AgentActivity = { at: string, key: AgentActivityKey, surface: string, dsp: AgentDsp | null, outcome: string, ms: number, bytes: number, };

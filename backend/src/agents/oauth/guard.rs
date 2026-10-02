@@ -99,6 +99,14 @@ impl Store {
         Ok(chosen.map_or(named(app).1, |(allowed,)| allowed == 1))
     }
 
+    /// Whether the owner lets the app with this client id connect, sent back to this redirect.
+    pub fn oauth_client_allowed(&self, client_id: &str, redirect_uri: &str) -> Result<bool> {
+        match app_of(client_id, Some(redirect_uri)) {
+            Some(app) => self.oauth_app_allowed(app),
+            None => Ok(false),
+        }
+    }
+
     /// Every kind of app, and whether it may connect.
     pub fn oauth_apps(&self) -> Result<OAuthAllowedApps> {
         let chosen: HashMap<String, bool> = self

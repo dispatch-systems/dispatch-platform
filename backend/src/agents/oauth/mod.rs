@@ -41,6 +41,13 @@ const REFRESH_GRACE: i64 = 60 * 1000;
 const CODE_KEPT: i64 = 24 * 60 * 60 * 1000;
 const STATE_LONGEST: usize = 2048;
 
+/// Where an authorization request sends the browser and, when it made a request, what the
+/// browser keeps to show it is the one the app sent: `<request id>.<nonce>`, for a cookie.
+pub struct Authorized {
+    pub location: String,
+    pub browser: Option<String>,
+}
+
 /// The issuer: the origin exactly as configured, which never ends in a slash.
 pub fn issuer(config: &Config) -> &str {
     &config.origin
@@ -200,17 +207,38 @@ impl Store {
     /// are known good, a refusal goes to Dispatch's own page and never to the app. A known
     /// app's or a website's client comes as `document`, read from its published document
     /// beforehand. Nothing is stored unless the pairing window is open and the owner lets
-    /// this kind of app connect.
+    /// this kind of app connect. A request is bound to the browser that brought it, by a
+    /// nonce only that browser is given: a link to it sent to anyone else is no use.
     pub fn authorize_oauth(
         &self,
         query: &Query,
         document: Option<std::result::Result<Client, &'static str>>,
-    ) -> Result<String> {
+    ) -> Result<Authorized> {
+        let nonce = crypto::token()?;
+        Ok(match self.request_oauth(query, document, &nonce)? {
+            Ok(id) => Authorized {
+                location: format!("{}/#authorize?request={id}", issuer(&self.config)),
+                browser: Some(format!("{id}.{nonce}")),
+            },
+            Err(location) => Authorized {
+                location,
+                browser: None,
+            },
+        })
+    }
+    /// The request made, waiting for the owner in the browser given `nonce`; or where a
+    /// refused one goes.
+    fn request_oauth(
+        &self,
+        query: &Query,
+        document: Option<std::result::Result<Client, &'static str>>,
+        nonce: &str,
+    ) -> Result<std::result::Result<String, String>> {
         let origin = issuer(&self.config);
-        let page = |error: &str| Ok(format!("{origin}/#authorize?error={error}"));
+        let page = |error: &str| Ok(Err(format!("{origin}/#authorize?error={error}")));
         // Asked again: the window may have closed while the document was fetched.
         if let Err(refused) = self.admit_authorize(query)? {
-            return Ok(refused);
+            return Ok(Err(refused));
         }
         let Ok(Some(client_id)) = query.one("client_id") else {
             return page("unknown_app");
@@ -231,7 +259,7 @@ impl Store {
         // From here on the app hears why, at the redirect it registered.
         let state = query.one("state").ok().flatten();
         let back = |error: &str, description: &str| {
-            Ok(redirect(
+            Ok(Err(redirect(
                 redirect_uri,
                 &[
                     ("error", Some(error)),
@@ -239,7 +267,7 @@ impl Store {
                     ("state", state),
                     ("iss", Some(origin)),
                 ],
-            ))
+            )))
         };
         let checked = (|| -> Answer<(&str, String)> {
             for name in [
@@ -295,7 +323,8 @@ impl Store {
         let id = crypto::id("authreq")?;
         self.platform.exec(
             "INSERT INTO oauth_requests(id,client_id,client_name,verified,redirect_uri,state,\
-             code_challenge,resource,scope,created_at,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+             code_challenge,resource,scope,created_at,expires_at,browser) \
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             rusqlite::params![
                 id,
                 client.id,
@@ -307,20 +336,29 @@ impl Store {
                 resource,
                 SCOPE,
                 iso(),
-                at(now() + REQUEST_LIFETIME)
+                at(now() + REQUEST_LIFETIME),
+                crypto::sha(nonce)
             ],
         )?;
-        Ok(format!("{origin}/#authorize?request={id}"))
+        Ok(Ok(id))
     }
 
-    /// A request still waiting for the owner's answer.
-    fn waiting_request(&self, id: &str) -> Result<Value> {
-        self.platform
+    /// A request still waiting for the owner's answer, in the browser the app sent to
+    /// Dispatch: `browser` is the nonce that browser was given. Any other browser, such as
+    /// one that was sent a link to the request, is refused.
+    fn waiting_request(&self, id: &str, browser: &str) -> Result<Value> {
+        let request = self
+            .platform
             .one(
                 "SELECT * FROM oauth_requests WHERE id=? AND expires_at>?",
                 [id.to_owned(), iso()],
             )?
-            .ok_or_else(|| Error::new("authorization_not_found", 404))
+            .ok_or_else(|| Error::new("authorization_not_found", 404))?;
+        let held = request["browser"]
+            .as_str()
+            .is_some_and(|hash| crypto::equal(hash, &crypto::sha(browser)));
+        ensure(held, "wrong_browser", 403)?;
+        Ok(request)
     }
     /// Answers a request once: a second answer finds nothing.
     fn answer_request(&self, id: &str) -> Result<()> {
@@ -333,8 +371,13 @@ impl Store {
 
     /// An app asking to connect, as the approval page shows it, with the connection that
     /// approving it as `name` would replace. `name` is the app's own name unless given.
-    pub fn oauth_request(&self, id: &str, name: Option<&str>) -> Result<OAuthRequest> {
-        let request = self.waiting_request(id)?;
+    pub fn oauth_request(
+        &self,
+        id: &str,
+        name: Option<&str>,
+        browser: &str,
+    ) -> Result<OAuthRequest> {
+        let request = self.waiting_request(id, browser)?;
         let (redirect_host, redirect_scheme) = clients::destination(s(&request, "redirect_uri"));
         let replaced = self.replaced_apps(
             name.unwrap_or(s(&request, "client_name")),
@@ -367,14 +410,21 @@ impl Store {
     }
 
     /// The owner approves: a code the app redeems once, within five minutes, for the
-    /// connected app made with these choices. Checked as a new key is.
+    /// connected app made with these choices. Checked as a new key is, and refused if the
+    /// owner has since stopped this kind of app from connecting.
     pub fn approve_oauth(
         &self,
         owner: &str,
         id: &str,
         approval: &OAuthApproval,
+        browser: &str,
     ) -> Result<OAuthRedirect> {
-        let request = self.waiting_request(id)?;
+        let request = self.waiting_request(id, browser)?;
+        ensure(
+            self.oauth_client_allowed(s(&request, "client_id"), s(&request, "redirect_uri"))?,
+            "app_not_allowed",
+            403,
+        )?;
         // Connecting an app again under its name replaces its earlier connection.
         let replaced = self.replaced_apps(
             &approval.name,
@@ -426,8 +476,8 @@ impl Store {
     }
 
     /// The owner refuses: the app is told so.
-    pub fn deny_oauth(&self, id: &str) -> Result<OAuthRedirect> {
-        let request = self.waiting_request(id)?;
+    pub fn deny_oauth(&self, id: &str, browser: &str) -> Result<OAuthRedirect> {
+        let request = self.waiting_request(id, browser)?;
         self.answer_request(id)?;
         Ok(OAuthRedirect {
             redirect: redirect(
@@ -506,6 +556,9 @@ impl Store {
         }
         if s(&row, "expires_at") <= iso().as_str() {
             return Err(grant("The code expired"));
+        }
+        if !self.oauth_client_allowed(client_id, redirect_uri)? {
+            return Err(grant("The owner no longer lets this kind of app connect"));
         }
         let choices: Value = serde_json::from_str(s(&row, "choices")).map_err(Error::from)?;
         let key = AgentKeyRequest {

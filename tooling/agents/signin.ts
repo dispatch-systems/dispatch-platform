@@ -806,6 +806,9 @@ async function main() {
             );
             await adding.stop(0);
           }
+          // Connecting is open for ten minutes from the owner's side, as copying a command does.
+          const opened = await owner.post('/api/platform/oauth/pairing', {});
+          if (opened.status !== 200) throw new Error(`pairing: ${opened.status} ${opened.body}`);
           terminal = new Terminal(client.signin(mcp), env, cwd, client.pty !== false);
           const escaped = origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const link = (await terminal.until(new RegExp(`${escaped}/oauth/authorize\\?\\S+`)))[0];

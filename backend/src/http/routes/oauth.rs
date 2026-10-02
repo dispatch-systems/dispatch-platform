@@ -117,12 +117,63 @@ async fn authorize(state: Arc<State>, request: Request) -> Response {
         }),
         _ => None,
     };
-    let location = state
+    let authorized = state
         .run_bookkeeping(move |db| db.authorize_oauth(&query, document))
         .await;
-    match location {
-        Ok(location) => Reply::redirect(location).into_response(),
+    match authorized {
+        Ok(authorized) => {
+            let mut response = Reply::redirect(authorized.location).into_response();
+            // The browser that brought the request is the one that may answer it.
+            if let Some(value) = authorized.browser
+                && let Ok(cookie) =
+                    browser_cookie(state.config.development, &value, BROWSER_SECONDS).parse()
+            {
+                response.headers_mut().insert(header::SET_COOKIE, cookie);
+            }
+            response
+        }
         Err(error) => middleware::failure(error),
+    }
+}
+
+/// How long a browser holds its request: as long as the request waits.
+const BROWSER_SECONDS: i64 = 10 * 60;
+/// The cookie naming the request this browser brought and the nonce it was given for it.
+/// `SameSite=Lax`, since the browser arrives from the app's own site, and otherwise like the
+/// session's: `__Host-` and `Secure` except in development, which serves plain http.
+fn browser_name(development: bool) -> &'static str {
+    if development {
+        "dispatch_oauth_request"
+    } else {
+        "__Host-dispatch_oauth_request"
+    }
+}
+fn browser_cookie(development: bool, value: &str, seconds: i64) -> String {
+    let secure = if development { "" } else { "; Secure" };
+    format!(
+        "{}={value}; Path=/; HttpOnly; SameSite=Lax; Max-Age={seconds}{secure}",
+        browser_name(development)
+    )
+}
+/// The nonce this browser holds for the request the path names. A browser holding none,
+/// or one for another request, did not bring this request: `wrong_browser`.
+fn this_browser<'a>(user: &User, input: &'a Input) -> Result<&'a str> {
+    let prefix = format!("{}=", browser_name(user.state.config.development));
+    let mut held = input
+        .headers
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(';'))
+        .map(str::trim)
+        .filter_map(|part| part.strip_prefix(prefix.as_str()));
+    let only = match (held.next(), held.next()) {
+        (Some(value), None) => value,
+        _ => "",
+    };
+    match only.split_once('.') {
+        Some((id, nonce)) if id == input.param("id") && !nonce.is_empty() => Ok(nonce),
+        _ => Err(crate::Error::new("wrong_browser", 403)),
     }
 }
 
@@ -236,18 +287,25 @@ fn refused(endpoint: &str, refusal: Refusal) -> Response {
 }
 
 /// `?name=` asks what approving under that name would replace, as the owner edits it.
-fn request(db: &Store, _: &User, input: &Input) -> Result<Reply> {
+/// Only in the browser that brought the request, as approving and denying are.
+fn request(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
+    let browser = this_browser(owner, input)?;
     let name = optional_text(&input.query, "name", 80)?.trim();
     let name = (!name.is_empty()).then_some(name);
-    Reply::of(&db.oauth_request(input.param("id"), name)?)
+    Reply::of(&db.oauth_request(input.param("id"), name, browser)?)
 }
+/// Answered, the request is gone, and so is the browser's cookie for it.
 fn approve(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
+    let browser = this_browser(owner, input)?;
     let approval = OAuthApproval::parse(&input.body)?;
-    Reply::of(&db.approve_oauth(owner.actor(), input.param("id"), &approval)?)
+    let redirect = db.approve_oauth(owner.actor(), input.param("id"), &approval, browser)?;
+    Ok(Reply::of(&redirect)?.cookie(browser_cookie(owner.state.config.development, "", 0)))
 }
-fn deny(db: &Store, _: &User, input: &Input) -> Result<Reply> {
+fn deny(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
+    let browser = this_browser(owner, input)?;
     v::fields(&input.body, &[])?;
-    Reply::of(&db.deny_oauth(input.param("id"))?)
+    let redirect = db.deny_oauth(input.param("id"), browser)?;
+    Ok(Reply::of(&redirect)?.cookie(browser_cookie(owner.state.config.development, "", 0)))
 }
 
 fn pairing(db: &Store, _: &User, _: &Input) -> Result<Reply> {
@@ -264,4 +322,22 @@ fn apps(db: &Store, _: &User, _: &Input) -> Result<Reply> {
 fn allow_app(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     let choice: OAuthAppChoice = contracts::request(&input.body)?;
     Reply::of(&db.allow_oauth_app(owner.actor(), &choice)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_request_cookie_is_the_sessions_kind_but_survives_the_trip_from_the_app() {
+        assert_eq!(
+            browser_cookie(false, "authreq_1.n", BROWSER_SECONDS),
+            "__Host-dispatch_oauth_request=authreq_1.n; Path=/; HttpOnly; SameSite=Lax; \
+             Max-Age=600; Secure"
+        );
+        assert_eq!(
+            browser_cookie(true, "", 0),
+            "dispatch_oauth_request=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
+        );
+    }
 }

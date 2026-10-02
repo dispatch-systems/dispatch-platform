@@ -23,6 +23,17 @@ import { DspReach, LocationsSwitch, ToolChoice } from './KeyChoices.js';
 
 const again = 'Start the connection again from your app.';
 const expired = `This request expired. ${again}`;
+/** A request is answered only in the browser that started it, and only while it waits, so
+ * a link to it sent elsewhere, or opened late, asks nothing. */
+const elsewhere = (
+  <>
+    This approval isn’t open in this browser, or it has expired. Start connecting again from your
+    app, and approve it in the browser that opens.{' '}
+    <a className="underlined-link" href={platformHash('agents')}>
+      Back to Agents
+    </a>
+  </>
+);
 const connectTab = (
   <a className="underlined-link" href={platformHash('agents', { tab: 'connect' })}>
     Agents → Connect
@@ -83,14 +94,18 @@ function Authorization({ query }: { query: URLSearchParams }) {
   const error = query.get('error');
   const request = useOAuthRequest(error ? '' : id);
   const agents = useAgentKeys();
-  const [gone, setGone] = useState(false);
+  // Why a request that was asked can no longer be answered here.
+  const [ended, setEnded] = useState('');
+  const reason = ended || request.errorCode;
   const problem: ReactNode = error
     ? refusal(error, query.get('app'))
     : !id
       ? `This link is incomplete. ${again}`
-      : gone || request.errorCode === 'authorization_not_found'
+      : reason === 'authorization_not_found'
         ? expired
-        : '';
+        : reason === 'wrong_browser'
+          ? elsewhere
+          : '';
   if (problem)
     return (
       <p className="notice" role="status">
@@ -107,9 +122,7 @@ function Authorization({ query }: { query: URLSearchParams }) {
         agents.refresh();
       }}
     >
-      {({ pending, dsps }) => (
-        <Approval request={pending} dsps={dsps} expire={() => setGone(true)} />
-      )}
+      {({ pending, dsps }) => <Approval request={pending} dsps={dsps} end={setEnded} />}
     </DataState>
   );
 }
@@ -117,11 +130,12 @@ function Authorization({ query }: { query: URLSearchParams }) {
 function Approval({
   request,
   dsps,
-  expire,
+  end,
 }: {
   request: OAuthRequest;
   dsps: AgentDsp[];
-  expire: () => void;
+  /** The request can't be answered here any more, for this reason. */
+  end: (code: string) => void;
 }) {
   const { app } = request;
   const [form, setForm] = useState<OAuthApproval>(() => {
@@ -141,7 +155,11 @@ function Approval({
     return replaces;
   };
   const gone = (error: unknown) => {
-    if (error instanceof ApiError && error.code === 'authorization_not_found') expire();
+    if (
+      error instanceof ApiError &&
+      ['authorization_not_found', 'wrong_browser'].includes(error.code)
+    )
+      end(error.code);
   };
   // A changed name asks again once the owner pauses; approving checks again regardless.
   useEffect(() => {

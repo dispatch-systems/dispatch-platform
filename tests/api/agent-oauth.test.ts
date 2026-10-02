@@ -101,6 +101,14 @@ async function oauth(f: App, { paired = true } = {}) {
   if (paired) await openPairing(owner);
   const { dsps } = (await owner.read('/api/platform/agents')) as AgentKeys;
   const north = dsps.find((dsp) => dsp.name === 'Northline Logistics')!;
+  // The owner's browser: its session, and the cookie the authorization endpoint gives it for
+  // the request it brought, which only that browser may see or answer. An answer clears it.
+  const session = owner.headers.cookie!;
+  const keep = (headers: Headers) => {
+    const pair = (headers.get('set-cookie') ?? '').split(';')[0]!;
+    if (!pair.startsWith('dispatch_oauth_request=')) return;
+    owner.headers.cookie = pair.endsWith('=') ? session : `${session}; ${pair}`;
+  };
 
   const answer = async (response: Response): Promise<Answer> => {
     const text = await response.text();
@@ -130,6 +138,7 @@ async function oauth(f: App, { paired = true } = {}) {
     });
     const text = await response.text();
     assert.equal(response.status, 302, text);
+    keep(response.headers);
     return response.headers.get('location')!;
   };
   /** An authorization request as a client sends one, with a PKCE pair and state of its own. */
@@ -164,6 +173,7 @@ async function oauth(f: App, { paired = true } = {}) {
   const approve = async (id: string, choices: OAuthApproval) => {
     const approved = await owner.post(`/api/platform/oauth/requests/${id}/approve`, choices);
     assert.equal(approved.status, 200, approved.body);
+    keep(approved.headers);
     return (approved.value as OAuthRedirect).redirect;
   };
   /** The code an approval's redirect carries, checked to bring back the state and issuer. */
@@ -758,4 +768,32 @@ test('the platform owner is emailed when an app connects and when Dispatch disco
   assert.ok(disconnected.text.includes('Sent access to: chatgpt.com'), disconnected.text);
   c.refused(await c.whoami((exchanged.body as Tokens).access_token), 'the replayed app');
   assert.equal((await c.whoami(tokens.access_token)).status, 200);
+});
+
+test('a request opens only in the browser the app sent to Dispatch', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const c = await oauth(f);
+  const callback = `http://localhost:${await freePort()}/callback`;
+  const started = await c.begin(claudeCode, callback);
+  const path = `/api/platform/oauth/requests/${started.id}`;
+  // The browser the app sent holds the request; the same owner signed in anywhere else, as
+  // from a link someone sent them, does not.
+  const held = c.owner.headers.cookie!;
+  assert.match(held, new RegExp(`; dispatch_oauth_request=${started.id}\\.[\\w-]{43}$`));
+  const elsewhere = await f.client();
+  for (const answered of [
+    await elsewhere.get(path),
+    await elsewhere.post(`${path}/approve`, everything('Claude Code')),
+    await elsewhere.post(`${path}/deny`),
+  ]) {
+    assert.deepEqual([answered.status, answered.value.error], [403, 'wrong_browser']);
+  }
+  assert.equal((await c.owner.get(path)).status, 200);
+  // Approved, the cookie is cleared, and the request no longer opens.
+  const redirect = await c.approve(started.id, everything('Claude Code'));
+  assert.ok(redirect.startsWith(`${callback}?`), redirect);
+  assert.ok(!c.owner.headers.cookie!.includes('dispatch_oauth_request'));
+  const after = await c.owner.get(path);
+  assert.deepEqual([after.status, after.value.error], [403, 'wrong_browser']);
 });
