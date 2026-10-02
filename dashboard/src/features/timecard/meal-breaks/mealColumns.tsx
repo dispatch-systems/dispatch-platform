@@ -43,10 +43,23 @@ const sortHeader = {
     </span>
   ),
 };
-const delivery = (line: MealLine, side: 'lastDelivery' | 'firstDelivery') =>
-  line.pair.cortex
-    ? cortexClock(line.pair.cortex[side], line.date, line.pair.cortex.timezone)
-    : null;
+// Format only clocks that are displayed, sorted or exported; a prepared line's date and zone never change.
+const deliveryClocks = new WeakMap<
+  MealLine,
+  Partial<Record<'lastDelivery' | 'firstDelivery', ClockTime | null>>
+>();
+const delivery = (line: MealLine, side: 'lastDelivery' | 'firstDelivery') => {
+  let clocks = deliveryClocks.get(line);
+  if (!clocks) {
+    clocks = {};
+    deliveryClocks.set(line, clocks);
+  }
+  if (clocks[side] === undefined)
+    clocks[side] = line.pair.cortex
+      ? cortexClock(line.pair.cortex[side], line.date, line.pair.cortex.timezone)
+      : null;
+  return clocks[side];
+};
 // A Paycom time opens the employee's timecard, and a Flex time the route its meal was read
 // from, at the stop of a delivery when that stop was read. A missing time opens it too,
 // whenever that timecard or meal exists.

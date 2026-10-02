@@ -32,6 +32,8 @@ const filterOf: Record<DriverStatus, DriverFilter> = {
 export const inFilter = (driver: Driver, filter: DriverFilter) =>
   filter === 'all' || filterOf[driver.status] === filter;
 
+export const driverFilter = (driver: Driver): DriverFilter => filterOf[driver.status];
+
 export const statusLabels: Record<DriverStatus, string> = {
   matched: 'Name match',
   variant: 'Name variant',
@@ -135,12 +137,14 @@ export function goesBy(driver: Driver) {
 }
 
 /** Whether a search finds someone: by any name a source writes, their code or an ID. */
+export const driverSearchTerms = (driver: Driver) =>
+  [driver.name, driver.code, ...driver.ids.flatMap((id) => [id.id, id.name])].map((text) =>
+    text.toLocaleLowerCase('en-US'),
+  );
 export function driverMatches(driver: Driver, query: string) {
   const wanted = query.trim().toLocaleLowerCase('en-US');
   if (!wanted) return true;
-  return [driver.name, driver.code, ...driver.ids.flatMap((id) => [id.id, id.name])].some((text) =>
-    text.toLocaleLowerCase('en-US').includes(wanted),
-  );
+  return driverSearchTerms(driver).some((text) => text.includes(wanted));
 }
 
 const sourceName = { paycom: 'Paycom', amazon: 'Amazon' };

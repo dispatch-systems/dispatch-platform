@@ -13,10 +13,14 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { DspView, Feature, SessionView } from '../../../shared/contracts/index.js';
-import { ErrorBox, Loading, PageBoundary } from '../ui/index.js';
+import { ErrorBox } from '../ui/ErrorBox.js';
+import { Loading } from '../ui/Loading.js';
+import { PageBoundary } from '../ui/PageBoundary.js';
 import { hasFeature } from './features.js';
 import { can } from './permissions.js';
 import { routeMeta, type DspRouteId, type PlatformRouteId, type RouteMeta } from './route-meta.js';
+import { NavigationStateContext } from './browser-update.js';
+import { prefetchRouteData } from './route-prefetch.js';
 
 const loadAgents = () => import('../features/agents/index.js');
 const AgentsPage = lazy(() => loadAgents().then((module) => ({ default: module.AgentsPage })));
@@ -25,12 +29,18 @@ const AuditPage = lazy(() => loadAudit().then((module) => ({ default: module.Aud
 const loadHome = () => import('../features/home/index.js');
 const HomePage = lazy(() => loadHome().then((module) => ({ default: module.HomePage })));
 const loadPlatform = () => import('../features/platform/index.js');
+const loadDiagnostics = () => import('../features/platform/diagnostics/index.js');
+const loadPicker = () => import('../features/platform/picker.js');
 const DiagnosticsPage = lazy(() =>
-  loadPlatform().then((module) => ({ default: module.DiagnosticsPage })),
+  loadDiagnostics().then((module) => ({ default: module.DiagnosticsPage })),
 );
 const DspsPage = lazy(() => loadPlatform().then((module) => ({ default: module.DspsPage })));
-const DspPicker = lazy(() => loadPlatform().then((module) => ({ default: module.DspPicker })));
-const loadSettings = () => import('../features/settings/index.js');
+const DspPicker = lazy(() => loadPicker().then((module) => ({ default: module.DspPicker })));
+const loadSettings = (access?: Access) =>
+  import('../features/settings/index.js').then(async (module) => {
+    await module.preloadSettingsPage(access?.view);
+    return module;
+  });
 const SettingsPage = lazy(() =>
   loadSettings().then((module) => ({ default: module.SettingsPage })),
 );
@@ -40,12 +50,17 @@ const loadUniforms = () => import('../features/uniforms/index.js');
 const UniformInventoryPage = lazy(() =>
   loadUniforms().then((module) => ({ default: module.UniformInventoryPage })),
 );
-const loadTimecard = () => import('../features/timecard/index.js');
+const loadTimecard = (access?: Access) =>
+  import('../features/timecard/index.js').then(async (module) => {
+    if (access?.view) await module.preloadTimecardPage(access.view);
+    return module;
+  });
+const loadTimecardSettings = () => import('../features/timecard/settings/index.js');
 const loadDvic = () => import('../features/dvic/index.js');
 const DvicPage = lazy(() => loadDvic().then((module) => ({ default: module.DvicPage })));
 const PaycomPage = lazy(() => loadTimecard().then((module) => ({ default: module.PaycomPage })));
 const PaycomSettingsPage = lazy(() =>
-  loadTimecard().then((module) => ({ default: module.PaycomSettingsPage })),
+  loadTimecardSettings().then((module) => ({ default: module.PaycomSettingsPage })),
 );
 
 type Access = { session: SessionView; view?: DspView };
@@ -53,7 +68,7 @@ type PageContext = { session: SessionView };
 type DspPageContext = PageContext & { view: DspView; reopen: () => Promise<void> };
 type Entry<Context> = {
   icon?: LucideIcon;
-  preload: () => Promise<unknown>;
+  preload: (access?: Access) => Promise<unknown>;
   /** Whether the sidebar lists the page. */
   nav: boolean | ((access: Access) => boolean);
   /** Who may open the page; omitted means everyone in the scope. */
@@ -102,7 +117,7 @@ const dspPages: Record<DspRouteId, Entry<DspPageContext>> = {
     render: ({ view }) => <PaycomPage view={view} />,
   },
   'paycom-settings': {
-    preload: loadTimecard,
+    preload: loadTimecardSettings,
     nav: false,
     feature: 'timecard',
     permission: ({ view }) => can(view, 'timecard.manage'),
@@ -125,14 +140,14 @@ const dspPages: Record<DspRouteId, Entry<DspPageContext>> = {
 };
 const platformPages: Record<PlatformRouteId, Entry<PageContext>> = {
   dsps: {
-    preload: loadPlatform,
+    preload: (access) => (access?.session.user.platformOwner ? loadPlatform() : loadPicker()),
     icon: Building2,
     nav: true,
     render: ({ session }) =>
       session.user.platformOwner ? <DspsPage /> : <DspPicker session={session} />,
   },
   jobs: {
-    preload: loadPlatform,
+    preload: loadDiagnostics,
     icon: FlaskConical,
     nav: true,
     permission: platformOwner,
@@ -167,13 +182,27 @@ const allowed = (route: Route, access: Access) => !route.permission || route.per
 
 export const findRoute = (scope: Route['scope'], page: string) =>
   table.find((route) => route.scope === scope && route.id === page);
+/** Code and authorized primary data start together, before the destination mounts. */
+export function prepareRoute(
+  scope: Route['scope'],
+  page: string,
+  access?: Access,
+  immediate = false,
+) {
+  const route = findRoute(scope, page);
+  if (!route || (access && !allowed(route, access))) return Promise.resolve();
+  if (access) prefetchRouteData(page, access.view, access.session, immediate);
+  return route.preload(access);
+}
 export const navigation = (scope: Route['scope'], access: Access) =>
-  table.filter(
-    (route) =>
-      route.scope === scope &&
-      (typeof route.nav === 'function' ? route.nav(access) : route.nav) &&
-      allowed(route, access),
-  );
+  table
+    .filter(
+      (route) =>
+        route.scope === scope &&
+        (typeof route.nav === 'function' ? route.nav(access) : route.nav) &&
+        allowed(route, access),
+    )
+    .map((route) => ({ ...route, preload: () => prepareRoute(scope, route.id, access) }));
 
 /** The page for an address, or the app's wording for one this person cannot open. */
 function PageContent({
@@ -204,10 +233,13 @@ function PageContent({
 }
 
 export function Page(props: Parameters<typeof PageContent>[0]) {
+  const address = props.view ? `#dsp/${props.view.dsp.id}/${props.page}` : `#${props.page}`;
   return (
-    <PageBoundary key={props.page}>
+    <PageBoundary resetKey={props.page}>
       <Suspense fallback={<Loading />}>
-        <PageContent {...props} />
+        <NavigationStateContext value={address}>
+          <PageContent {...props} />
+        </NavigationStateContext>
       </Suspense>
     </PageBoundary>
   );

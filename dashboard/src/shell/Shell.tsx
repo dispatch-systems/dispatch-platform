@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Menu, X, ChevronDown, LogOut, Eye, ArrowUpRight, type LucideIcon } from 'lucide-react';
 import type { DspView, SessionView } from '../../../shared/contracts/index.js';
 import { Brand } from '../app/Brand.js';
-import { Popover, useFocusTrap } from '../ui/index.js';
+import { Popover } from '../ui/Popover.js';
+import { useFocusTrap } from '../ui/useFocusTrap.js';
 import { dspHash, platformHash } from '../app/navigation.js';
 import { sourceLink } from '../lib/source.js';
 import type { DspRouteId, PlatformRouteId } from '../app/route-meta.js';
@@ -15,6 +16,7 @@ export function Shell({
   page,
   current,
   label,
+  pending = false,
   navigation,
   logout,
   exitView,
@@ -28,6 +30,7 @@ export function Shell({
   /** The navigation item the open page belongs to. */
   current: string;
   label: string;
+  pending?: boolean;
   navigation: readonly {
     id: string;
     label: string;
@@ -95,6 +98,7 @@ export function Shell({
               className="nav-item"
               aria-current={current === id ? 'page' : undefined}
               onPointerEnter={() => void preload().catch(() => undefined)}
+              onPointerDown={() => void preload().catch(() => undefined)}
               onFocus={() => void preload().catch(() => undefined)}
               onClick={() => setMobile(false)}
             >
@@ -183,8 +187,19 @@ export function Shell({
             <span aria-hidden="true">/</span>
             <strong>{label}</strong>
           </div>
+          {pending && (
+            <span className="navigation-progress" role="status">
+              Opening page…
+            </span>
+          )}
         </header>
-        <main id="main-content" className="page-container" tabIndex={-1}>
+        <main
+          id="main-content"
+          className="page-container"
+          tabIndex={-1}
+          aria-busy={pending || undefined}
+          inert={pending}
+        >
           {children}
         </main>
       </div>

@@ -15,6 +15,7 @@ const MANAGE: Dsp = Dsp("driver_match.manage");
 pub fn routes() -> Vec<Route> {
     vec![
         read("/api/dsp/driver-match", MANAGE, overview),
+        read("/api/dsp/driver-match/counts", MANAGE, counts),
         read("/api/dsp/driver-match/drivers/{code}", MANAGE, details),
         write("/api/dsp/driver-match/merge", MANAGE, merge),
         write("/api/dsp/driver-match/split", MANAGE, split),
@@ -23,6 +24,9 @@ pub fn routes() -> Vec<Route> {
 }
 fn overview(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
     Reply::of(&db.driver_match(c.dsp_id())?)
+}
+fn counts(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
+    Reply::of(&db.driver_counts(c.dsp_id())?)
 }
 fn details(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     Reply::of(&db.driver_details(c.dsp_id(), input.param("code"))?)

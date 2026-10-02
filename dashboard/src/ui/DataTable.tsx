@@ -1,4 +1,4 @@
-import type { KeyboardEvent, ReactNode } from 'react';
+import { useMemo, type KeyboardEvent, type ReactNode } from 'react';
 import { Pagination } from './Pagination.js';
 import { SortHeader } from './SortHeader.js';
 import { useStickyTableHeader } from './useStickyTableHeader.js';
@@ -59,45 +59,48 @@ export function DataTable<T>({
 }) {
   const tableRef = useStickyTableHeader(stickyHeader);
   const columns = table.columns;
-  const cellClass = (column: TableColumn<T>, row: T, context: RowContext) =>
-    classes(
-      typeof column.className === 'function' ? column.className(row, context) : column.className,
-      column.sticky && 'sticky-column',
+  const body = useMemo(() => {
+    const cellClass = (column: TableColumn<T>, row: T, context: RowContext) =>
+      classes(
+        typeof column.className === 'function' ? column.className(row, context) : column.className,
+        column.sticky && 'sticky-column',
+      );
+    const detail = (row: { id: string; data: T }) => (
+      <tr key={`${row.id}:detail`} className={detailClassName}>
+        <td colSpan={columns.length}>{renderDetail!(row.data)}</td>
+      </tr>
     );
-  const detail = (row: { id: string; data: T }) => (
-    <tr key={`${row.id}:detail`} className={detailClassName}>
-      <td colSpan={columns.length}>{renderDetail!(row.data)}</td>
-    </tr>
-  );
-  // An expanded row's detail follows its sub-rows, so it waits for the next top-level row.
-  const body: ReactNode[] = [];
-  let open: { id: string; data: T } | undefined;
-  for (const row of table.rows) {
-    if (!row.context.depth) {
-      if (open) body.push(detail(open));
-      open = renderDetail && row.context.expanded ? row : undefined;
+    // An expanded row's detail follows its sub-rows, so it waits for the next top-level row.
+    const body: ReactNode[] = [];
+    let open: { id: string; data: T } | undefined;
+    for (const row of table.rows) {
+      if (!row.context.depth) {
+        if (open) body.push(detail(open));
+        open = renderDetail && row.context.expanded ? row : undefined;
+      }
+      body.push(
+        <tr key={row.id} className={rowClassName?.(row.data, row.context)}>
+          {columns.map((column) =>
+            column.rowHeader ? (
+              <th key={column.id} scope="row" className={cellClass(column, row.data, row.context)}>
+                {column.cell(row.data, row.context)}
+              </th>
+            ) : (
+              <td
+                key={column.id}
+                className={cellClass(column, row.data, row.context)}
+                data-label={column.dataLabel}
+              >
+                {column.cell(row.data, row.context)}
+              </td>
+            ),
+          )}
+        </tr>,
+      );
     }
-    body.push(
-      <tr key={row.id} className={rowClassName?.(row.data, row.context)}>
-        {columns.map((column) =>
-          column.rowHeader ? (
-            <th key={column.id} scope="row" className={cellClass(column, row.data, row.context)}>
-              {column.cell(row.data, row.context)}
-            </th>
-          ) : (
-            <td
-              key={column.id}
-              className={cellClass(column, row.data, row.context)}
-              data-label={column.dataLabel}
-            >
-              {column.cell(row.data, row.context)}
-            </td>
-          ),
-        )}
-      </tr>,
-    );
-  }
-  if (open) body.push(detail(open));
+    if (open) body.push(detail(open));
+    return body;
+  }, [table.rows, columns, rowClassName, renderDetail, detailClassName]);
   const headings = columns.map((column) => {
     const direction = table.sort?.id === column.id ? (table.sort.desc ? 'desc' : 'asc') : undefined;
     return column.sortable ? (

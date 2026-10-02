@@ -1,6 +1,6 @@
 import { performancePolicy } from '../../lib/performance-policy.js';
-import { useUpdateState } from '../../app/browser-update.js';
-import { useEffect, useState } from 'react';
+import { readUpdateState, useUpdateState } from '../../app/browser-update.js';
+import { lazy, Suspense, useEffect, useState, useTransition } from 'react';
 import { ArrowRight, RefreshCw, Settings } from 'lucide-react';
 import type {
   Connection,
@@ -14,17 +14,31 @@ import { syncEmployeeTimecard, usePaycomSettings } from '../../app/endpoints.js'
 import { dataCache } from '../../app/data-cache.js';
 import { collectionData } from '../../lib/data-policy.js';
 import { useCollectionUpdates } from '../../app/live-collection.js';
-import { ErrorBox, Header, Tabs } from '../../ui/index.js';
+import { ErrorBox, Header, Loading, Tabs } from '../../ui/index.js';
 import { can } from '../../app/permissions.js';
 import { randomId } from '../../lib/random-id.js';
 import { timecardPeriod } from '../../lib/timecard-format.js';
-import { EmployeesPage } from './EmployeesPage.js';
-import { TimecardsPage } from './TimecardsPage.js';
-import { MealBreaksPage } from './meal-breaks/MealBreaksPage.js';
+import { prefetchRouteData, prefetchTimecardTab } from '../../app/route-prefetch.js';
 import { usePaycomDate } from './DateControls.js';
 import { useAction } from '../../app/useAction.js';
 import { dspHash, navigate } from '../../app/navigation.js';
 import { SourceSyncStatus, type SyncSource } from './SourceSyncStatus.js';
+
+const loadEmployees = () => import('./EmployeesPage.js');
+const loadTimecards = () => import('./TimecardsPage.js');
+const loadMeals = () => import('./meal-breaks/MealBreaksPage.js');
+const loadSettings = () => import('./settings/index.js');
+const EmployeesPage = lazy(() => loadEmployees().then((m) => ({ default: m.EmployeesPage })));
+const TimecardsPage = lazy(() => loadTimecards().then((m) => ({ default: m.TimecardsPage })));
+const MealBreaksPage = lazy(() => loadMeals().then((m) => ({ default: m.MealBreaksPage })));
+
+function loadTab(tab: string) {
+  return tab === 'employees'
+    ? loadEmployees()
+    : tab === 'meal-breaks'
+      ? loadMeals()
+      : loadTimecards();
+}
 
 // Each is a tab the platform switches on its own; the page has at least one while on.
 const tabs = [
@@ -33,9 +47,21 @@ const tabs = [
   ['employees', 'Employees', 'timecard.employees'],
 ] as const;
 
+export function preloadTimecardPage(view: DspView) {
+  const selected = readUpdateState<string | undefined>(
+    'paycom-tab',
+    undefined,
+    dspHash(view.dsp.id, 'paycom'),
+  );
+  const shown = tabs.filter(([, , feature]) => hasFeature(view, feature));
+  const tab = shown.some(([id]) => id === selected) ? selected! : (shown[0]?.[0] ?? 'timecards');
+  return loadTab(tab);
+}
+
 export function PaycomPage({ view }: { view: DspView }) {
   const canCollect = can(view, 'collections.run');
   const [selectedTab, setTab] = useUpdateState<string | undefined>('paycom-tab', undefined);
+  const [pending, startTransition] = useTransition();
   const { date, today, selectDate } = usePaycomDate(view.dsp.id, view.dsp.timezone);
   const preferences = usePaycomSettings();
   useCollectionUpdates();
@@ -168,7 +194,17 @@ export function PaycomPage({ view }: { view: DspView }) {
         )}
         {daily && syncButton()}
         {can(view, 'timecard.manage') && (
-          <button onClick={() => navigate(dspHash(view.dsp.id, 'paycom-settings'))}>
+          <button
+            onPointerEnter={() => {
+              void loadSettings().catch(() => undefined);
+              prefetchRouteData('paycom-settings', view);
+            }}
+            onFocus={() => {
+              void loadSettings().catch(() => undefined);
+              prefetchRouteData('paycom-settings', view);
+            }}
+            onClick={() => navigate(dspHash(view.dsp.id, 'paycom-settings'))}
+          >
             {daily && <Settings size={16} />}
             Settings
           </button>
@@ -178,81 +214,93 @@ export function PaycomPage({ view }: { view: DspView }) {
       {canCollect && <ErrorBox message={syncState.error} />}
       <Tabs
         value={tab}
-        onChange={setTab}
+        onIntent={(value) => {
+          void loadTab(value).catch(() => undefined);
+          prefetchTimecardTab(value, date, view);
+        }}
+        onChange={(value) => {
+          void loadTab(value).catch(() => undefined);
+          prefetchTimecardTab(value, date, view, true);
+          startTransition(() => setTab(value));
+        }}
         items={shownTabs.map(([id, label]) => [id, label])}
         label="Timecard"
       />
       {canCollect && syncUnavailable && (
         <p className="paycom-sync-unavailable muted">{syncUnavailable}</p>
       )}
-      {tab === 'meal-breaks' ? (
-        <MealBreaksPage
-          date={date}
-          today={today}
-          onDateChange={selectDate}
-          refreshKey={refreshKey}
-          timezone={view.dsp.timezone}
-          dspId={view.dsp.id}
-          canMatch={can(view, 'driver_match.manage')}
-          preferences={preferences.data?.values ?? paycomDefaults}
-        />
-      ) : canConnect && data && !data.enabled && !overview.data?.workforce.collectedAt ? (
-        <button
-          className="primary paycom-connect"
-          onClick={() => navigate(dspHash(view.dsp.id, 'settings', { tab: 'connections' }))}
-        >
-          Connect Paycom
-          <ArrowRight size={16} />
-        </button>
-      ) : (
-        <div className="embedded-page">
-          {tab === 'employees' ? (
-            <EmployeesPage
-              refreshKey={`${refreshKey}:${syncRevision}`}
-              actions={(timecard) => (
-                <>
-                  {canCollect && (
-                    <SourceSyncStatus
-                      name="Paycom"
-                      source={
-                        sourceState?.paycom && {
-                          ...sourceState.paycom,
-                          collectedAt: timecard?.collectedAt ?? null,
-                          job: timecard?.syncStatus ? { status: timecard.syncStatus } : null,
-                          active:
-                            !!timecard?.syncStatus &&
-                            ['queued', 'running', 'waiting_verification'].includes(
-                              timecard.syncStatus,
-                            ),
-                          jobDate: timecard?.period.from ?? null,
-                        }
-                      }
-                      timezone={view.dsp.timezone}
-                      compact
-                    />
-                  )}
-                  {canCollect && sourceState?.flex.active && (
-                    <SourceSyncStatus
-                      name="Flex"
-                      source={sourceState.flex}
-                      timezone={view.dsp.timezone}
-                    />
-                  )}
-                  {syncButton(timecard)}
-                </>
-              )}
-            />
-          ) : (
-            <TimecardsPage
+      <div aria-busy={pending || undefined} inert={pending}>
+        <Suspense fallback={<Loading />}>
+          {tab === 'meal-breaks' ? (
+            <MealBreaksPage
               date={date}
+              today={today}
               onDateChange={selectDate}
               refreshKey={refreshKey}
               timezone={view.dsp.timezone}
+              dspId={view.dsp.id}
+              canMatch={can(view, 'driver_match.manage')}
               preferences={preferences.data?.values ?? paycomDefaults}
             />
+          ) : canConnect && data && !data.enabled && !overview.data?.workforce.collectedAt ? (
+            <button
+              className="primary paycom-connect"
+              onClick={() => navigate(dspHash(view.dsp.id, 'settings', { tab: 'connections' }))}
+            >
+              Connect Paycom
+              <ArrowRight size={16} />
+            </button>
+          ) : (
+            <div className="embedded-page">
+              {tab === 'employees' ? (
+                <EmployeesPage
+                  refreshKey={`${refreshKey}:${syncRevision}`}
+                  actions={(timecard) => (
+                    <>
+                      {canCollect && (
+                        <SourceSyncStatus
+                          name="Paycom"
+                          source={
+                            sourceState?.paycom && {
+                              ...sourceState.paycom,
+                              collectedAt: timecard?.collectedAt ?? null,
+                              job: timecard?.syncStatus ? { status: timecard.syncStatus } : null,
+                              active:
+                                !!timecard?.syncStatus &&
+                                ['queued', 'running', 'waiting_verification'].includes(
+                                  timecard.syncStatus,
+                                ),
+                              jobDate: timecard?.period.from ?? null,
+                            }
+                          }
+                          timezone={view.dsp.timezone}
+                          compact
+                        />
+                      )}
+                      {canCollect && sourceState?.flex.active && (
+                        <SourceSyncStatus
+                          name="Flex"
+                          source={sourceState.flex}
+                          timezone={view.dsp.timezone}
+                        />
+                      )}
+                      {syncButton(timecard)}
+                    </>
+                  )}
+                />
+              ) : (
+                <TimecardsPage
+                  date={date}
+                  onDateChange={selectDate}
+                  refreshKey={refreshKey}
+                  timezone={view.dsp.timezone}
+                  preferences={preferences.data?.values ?? paycomDefaults}
+                />
+              )}
+            </div>
           )}
-        </div>
-      )}
+        </Suspense>
+      </div>
     </div>
   );
 }

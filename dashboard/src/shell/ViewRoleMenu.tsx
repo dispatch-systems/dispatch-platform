@@ -1,6 +1,6 @@
 import { Check, ChevronDown } from 'lucide-react';
 import type { DspView } from '../../../shared/contracts/index.js';
-import { Popover } from '../ui/index.js';
+import { Popover } from '../ui/Popover.js';
 
 // Lets a platform owner look through any role the DSP has, custom ones included.
 export function ViewRoleMenu({

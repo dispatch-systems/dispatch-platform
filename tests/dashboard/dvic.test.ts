@@ -7,10 +7,13 @@ import {
   inspectionBand,
   inspectionClock,
   inspectionDuration,
+  inspectionDate,
+  inspectionWeekday,
   inspectionShortfall,
   readInspectionWeek,
   repeatDrivers,
   shortestFirst,
+  shortestByDay,
   weekDays,
   weekStart,
 } from '../../dashboard/src/lib/dvic.js';
@@ -38,6 +41,9 @@ test('inspection weeks use Sunday dates across year and DST boundaries; source c
   assert.equal(weekStart('2026-09-26'), '2026-09-20');
   assert.equal(weekStart('2027-01-01'), '2026-12-27');
   assert.equal(weekDays('2026-03-08').at(-1), '2026-03-14');
+  assert.equal(inspectionDate('2026-09-26'), 'Sep 26');
+  assert.equal(inspectionDate('2026-09-26', true), 'Sat, Sep 26');
+  assert.equal(inspectionWeekday('2026-09-26'), 'Sat');
   assert.equal(inspectionClock('2026-09-26 23:59:01'), '11:59:01 PM');
   assert.equal(inspectionClock('2026-09-27T00:00:15'), '12:00:15 AM');
   assert.equal(inspectionDuration(89.9999), '1m 29s');
@@ -168,4 +174,25 @@ test('repeat drivers and driver grouping follow identity, not the displayed name
     groupByVehicleClass([row('v')]).map((group) => group.vehicles),
     ['non-dot'],
   );
+});
+
+test('day cells keep the same minimum share and deterministic ties as the full inspection ordering', () => {
+  const rows = [
+    { ...row('z'), startDate: '2026-09-25', durationSeconds: 20 },
+    { ...row('b'), durationSeconds: 30 },
+    { ...row('a'), durationSeconds: 30 },
+    { ...row('step', 'SV'), minimumSeconds: 300 as const, durationSeconds: 100 },
+    { ...row('early'), durationSeconds: 30, startTime: '2026-09-26 08:00:00' },
+  ];
+  const before = rows.map((item) => item.id);
+  const cells = shortestByDay(rows);
+  for (const day of ['2026-09-25', '2026-09-26'])
+    assert.equal(cells.get(day), shortestFirst(rows.filter((item) => item.startDate === day))[0]);
+  assert.equal(cells.get('2026-09-26')?.id, 'early');
+  assert.deepEqual(
+    rows.map((item) => item.id),
+    before,
+    'Grouping must not reorder source rows',
+  );
+  assert.equal(shortestByDay([]).size, 0);
 });

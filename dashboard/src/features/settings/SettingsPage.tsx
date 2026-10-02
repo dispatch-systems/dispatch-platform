@@ -1,18 +1,51 @@
-import { useState, type ReactNode } from 'react';
+import { lazy, Suspense, useState, useTransition, type ReactNode } from 'react';
 import type { DspView, SessionView } from '../../../../shared/contracts/index.js';
-import { Header, Tabs } from '../../ui/index.js';
+import { Header, Loading, Tabs } from '../../ui/index.js';
 import { can } from '../../app/permissions.js';
 import { connectionFeatures } from '../../app/features.js';
-import { ConnectionsPage } from '../connections/index.js';
-import { DriverMatchSettings, DriverMatchTabLabel } from '../driver-match/index.js';
-import { ThemeSection } from './ThemeSection.js';
+import { DriverMatchTabLabel } from '../driver-match/badge.js';
 import { hashQuery, replaceHashQuery } from '../../app/navigation.js';
 import { ProfileBadge } from './ProfileBadge.js';
-import { SecuritySettings } from './SecuritySettings.js';
-import { RouteDataSettings } from './RouteDataSettings.js';
+import { prefetchSettingsTab } from '../../app/route-prefetch.js';
+
+const loadConnections = () => import('../connections/index.js');
+const loadDriverMatch = () => import('../driver-match/index.js');
+const loadSecurity = () => import('./SecuritySettings.js');
+const loadRouteData = () => import('./RouteDataSettings.js');
+const loadTheme = () => import('./ThemeSection.js');
+const ConnectionsPage = lazy(() => loadConnections().then((m) => ({ default: m.ConnectionsPage })));
+const DriverMatchSettings = lazy(() =>
+  loadDriverMatch().then((m) => ({ default: m.DriverMatchSettings })),
+);
+const SecuritySettings = lazy(() => loadSecurity().then((m) => ({ default: m.SecuritySettings })));
+const RouteDataSettings = lazy(() =>
+  loadRouteData().then((m) => ({ default: m.RouteDataSettings })),
+);
+const ThemeSection = lazy(() => loadTheme().then((m) => ({ default: m.ThemeSection })));
+
+const panels: Record<string, () => Promise<unknown>> = {
+  connections: loadConnections,
+  'driver-match': loadDriverMatch,
+  security: loadSecurity,
+  data: loadRouteData,
+  theme: loadTheme,
+};
+const loadTab = (tab: string) => panels[tab]?.() ?? Promise.resolve();
+
+export function preloadSettingsPage(view?: DspView) {
+  const tab = hashQuery().get('tab') || 'general';
+  if (
+    (tab === 'connections' && !can(view, 'connections.manage')) ||
+    (tab === 'driver-match' && !can(view, 'driver_match.manage')) ||
+    (tab === 'data' && !can(view, 'routes.manage'))
+  )
+    return Promise.resolve();
+  return loadTab(tab);
+}
 
 export function SettingsPage({ session, view }: { session: SessionView; view?: DspView }) {
   const [requestedTab, setTab] = useState(hashQuery().get('tab') || 'general');
+  const [pending, startTransition] = useTransition();
   const connections = can(view, 'connections.manage');
   const routeData = can(view, 'routes.manage');
   const driverMatch = can(view, 'driver_match.manage');
@@ -21,7 +54,14 @@ export function SettingsPage({ session, view }: { session: SessionView; view?: D
     ['general', 'Profile'],
     ['security', 'Security'],
     ...(connections ? [['connections', 'Connections'] as const] : []),
-    ...(driverMatch ? [['driver-match', <DriverMatchTabLabel key="label" />] as const] : []),
+    ...(driverMatch
+      ? [
+          [
+            'driver-match',
+            <DriverMatchTabLabel key="label" active={requestedTab === 'driver-match'} />,
+          ] as const,
+        ]
+      : []),
     ...(routeData ? [['data', 'Data'] as const] : []),
     ['theme', 'Theme'],
   ];
@@ -31,29 +71,41 @@ export function SettingsPage({ session, view }: { session: SessionView; view?: D
       <Header title="Settings" />
       <Tabs
         value={tab}
+        onIntent={(value) => {
+          void loadTab(value).catch(() => undefined);
+          prefetchSettingsTab(value, view, session);
+        }}
         onChange={(value) => {
-          setTab(value);
+          void loadTab(value).catch(() => undefined);
+          prefetchSettingsTab(value, view, session, true);
           replaceHashQuery({ tab: value });
+          startTransition(() => setTab(value));
         }}
         items={tabs}
         label="Settings"
       />
-      {tab === 'general' && <ProfileBadge session={session} view={view} />}
-      {tab === 'security' && <SecuritySettings />}
-      {tab === 'connections' && connections && view && (
-        <div className="settings-connections">
-          <ConnectionsPage
-            development={session.providerMode === 'fixture'}
-            timezone={view.dsp.timezone}
-            providers={connectionFeatures(view.features).map((f) => f.id)}
-          />
-        </div>
-      )}
-      {tab === 'driver-match' && driverMatch && view && (
-        <DriverMatchSettings timezone={view.dsp.timezone} />
-      )}
-      {tab === 'data' && routeData && view && <RouteDataSettings timeZone={view.dsp.timezone} />}
-      {tab === 'theme' && <ThemeSection userId={session.user.id} />}
+      <div aria-busy={pending || undefined} inert={pending}>
+        <Suspense fallback={<Loading />}>
+          {tab === 'general' && <ProfileBadge session={session} view={view} />}
+          {tab === 'security' && <SecuritySettings />}
+          {tab === 'connections' && connections && view && (
+            <div className="settings-connections">
+              <ConnectionsPage
+                development={session.providerMode === 'fixture'}
+                timezone={view.dsp.timezone}
+                providers={connectionFeatures(view.features).map((f) => f.id)}
+              />
+            </div>
+          )}
+          {tab === 'driver-match' && driverMatch && view && (
+            <DriverMatchSettings timezone={view.dsp.timezone} />
+          )}
+          {tab === 'data' && routeData && view && (
+            <RouteDataSettings timeZone={view.dsp.timezone} />
+          )}
+          {tab === 'theme' && <ThemeSection userId={session.user.id} />}
+        </Suspense>
+      </div>
     </>
   );
 }

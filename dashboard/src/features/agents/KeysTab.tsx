@@ -64,7 +64,7 @@ export function KeysTab() {
     { success: 'Every key was revoked' },
   );
   return (
-    <DataState data={keys.data} error={keys.error}>
+    <DataState data={keys.data} error={keys.error} retry={keys.refresh}>
       {(data) => {
         const live = data.keys.filter((key) => inUse(key));
         const ended = data.keys.filter((key) => !inUse(key));

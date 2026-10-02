@@ -7,6 +7,7 @@ import { backoff } from '../lib/backoff.js';
 import { dataCache } from './data-cache.js';
 import { clearDestinations } from './navigation.js';
 import { mutationAffects } from '../lib/data-policy.js';
+import { useReadAvailability } from '../lib/read-availability.js';
 export let csrf = '',
   view = '';
 export function credentials(nextCsrf: string, nextView = '') {
@@ -123,13 +124,19 @@ const recoveryCodeResponses = new Set([
 export function errorLabel(code: string): string | undefined {
   return labels[code];
 }
-export async function api<T>(url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+export async function api<T>(
+  url: string,
+  body?: unknown,
+  signal?: AbortSignal,
+  priority: 'auto' | 'high' | 'low' = 'auto',
+): Promise<T> {
   const finish = body === undefined ? undefined : beginBrowserWrite();
   const requestView = view;
   try {
     const response = await fetch(url, {
       method: body === undefined ? 'GET' : 'POST',
       credentials: 'same-origin',
+      priority,
       headers: {
         ...(body !== undefined ? { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf } : {}),
         ...(body !== undefined && recoveryCodeResponses.has(url)
@@ -190,8 +197,13 @@ export async function api<T>(url: string, body?: unknown, signal?: AbortSignal):
   }
 }
 /** Opt in to bounded session memory and background revalidation. */
-export function useCachedData<T>(url: string, poll = 0, refreshKey?: string | null) {
-  return useData<T>(url, poll, refreshKey, url, true);
+export function useCachedData<T>(
+  url: string,
+  poll = 0,
+  refreshKey?: string | null,
+  load?: (signal: AbortSignal) => Promise<T>,
+) {
+  return useData<T>(url, poll, refreshKey, url, true, load);
 }
 
 export function useData<T>(
@@ -200,7 +212,9 @@ export function useData<T>(
   refreshKey?: string | null,
   dataScope?: string,
   cache = false,
+  load?: (signal: AbortSignal) => Promise<T>,
 ) {
+  const availability = useReadAvailability();
   const cached = useSyncExternalStore(
     useCallback(
       (listener) => (cache ? dataCache.subscribe(url, listener) : () => {}),
@@ -209,8 +223,9 @@ export function useData<T>(
     useCallback(() => (cache ? dataCache.peek(url) : undefined), [cache, url]),
   );
   const generation = cached?.generation ?? 0;
-  const session = cache ? dataCache.session : 0;
-  const scope = cache ? url : dataScope;
+  const session = dataCache.session;
+  const scope = cache ? url : (dataScope ?? url);
+  const reader = useRef<(force?: boolean) => Promise<void>>(undefined);
   const previous = useRef<{ url: string; refreshKey?: string | null; revision: number }>(undefined);
   const [result, setResult] = useState<{
       data: T;
@@ -218,8 +233,12 @@ export function useData<T>(
       session: number;
       refreshKey?: string | null;
     }>(),
-    [error, setError] = useState(''),
-    [errorCode, setErrorCode] = useState(''),
+    [failure, setFailure] = useState<{
+      message: string;
+      code: string;
+      scope: string;
+      session: number;
+    }>(),
     [revision, setRevision] = useState(0);
   const refresh = useCallback(() => setRevision((v) => v + 1), []);
   useEffect(() => {
@@ -229,8 +248,7 @@ export function useData<T>(
     previous.current = { url, refreshKey, revision };
     const controller = new AbortController();
     let active = true;
-    setError('');
-    setErrorCode('');
+    setFailure(undefined);
     let reading = false;
     let failures = 0;
     let retry: ReturnType<typeof setTimeout> | undefined;
@@ -238,9 +256,10 @@ export function useData<T>(
       if (!url || reading || document.hidden || !navigator.onLine) return;
       reading = true;
       try {
+        const request = load ?? ((signal: AbortSignal) => api<T>(url, undefined, signal));
         const value = cache
-          ? await dataCache.read(url, (signal) => api<T>(url, undefined, signal), force)
-          : await api<T>(url, undefined, controller.signal);
+          ? await dataCache.read(url, request, force)
+          : await request(controller.signal);
         if (
           active &&
           (!cache ||
@@ -254,8 +273,7 @@ export function useData<T>(
               ? previous
               : { data: value, scope, session, refreshKey },
           );
-          setError('');
-          setErrorCode('');
+          setFailure(undefined);
           failures = 0;
           if (retry) clearTimeout(retry);
         }
@@ -267,8 +285,12 @@ export function useData<T>(
           error instanceof Error &&
           error.name !== 'AbortError'
         ) {
-          setError(error.message);
-          setErrorCode(error instanceof ApiError ? error.code : '');
+          setFailure({
+            message: error.message,
+            code: error instanceof ApiError ? error.code : '',
+            scope,
+            session,
+          });
           // A missed table response must recover even when no further driver arrives.
           if (!(error instanceof ApiError) || error.status >= 500 || error.status === 429) {
             if (retry) clearTimeout(retry);
@@ -279,29 +301,48 @@ export function useData<T>(
         reading = false;
       }
     };
+    reader.current = read;
     const visible = () => {
       if (!document.hidden) void read(true);
     };
     document.addEventListener('visibilitychange', visible);
     window.addEventListener('online', visible);
     void read(force);
-    // Active cached views periodically revalidate, including changes made in another browser.
-    const interval = poll < 0 ? 0 : poll || (cache ? performancePolicy.recoveryPollMs : 0);
-    const timer = interval ? setInterval(() => void read(true), interval) : undefined;
     return () => {
       active = false;
       controller.abort();
       document.removeEventListener('visibilitychange', visible);
       window.removeEventListener('online', visible);
-      if (timer) clearInterval(timer);
+      if (reader.current === read) reader.current = undefined;
       if (retry) clearTimeout(retry);
     };
-  }, [url, revision, poll, refreshKey, scope, cache, generation, session]);
+  }, [url, revision, refreshKey, scope, cache, generation, session, load]);
+  // Changing the active/idle cadence must never abort an in-progress read.
+  useEffect(() => {
+    const interval = poll < 0 ? 0 : poll || (cache ? performancePolicy.recoveryPollMs : 0);
+    if (!interval) return;
+    const timer = setInterval(() => void reader.current?.(true), interval);
+    return () => clearInterval(timer);
+  }, [poll, cache]);
   // A date-scoped view can keep its controls mounted without showing the previous day's rows.
   const shown = result?.session === session ? result : undefined;
   const data =
     (cached?.data as T | undefined) ?? (shown?.scope === scope ? shown?.data : undefined);
+  const currentFailure =
+    failure?.scope === scope && failure.session === session ? failure : undefined;
+  const error = currentFailure?.message ?? '';
+  const errorCode = currentFailure?.code ?? '';
   // The previous scope's value lets a view hold its layout, marked busy, until the new one lands.
   const stale = data || error ? undefined : shown?.data;
-  return { data, stale, error, errorCode, refresh, validatedKey: shown?.refreshKey };
+  const paused = Boolean(url) && availability !== 'ready';
+  return {
+    data,
+    stale,
+    error,
+    errorCode,
+    refresh,
+    paused,
+    loading: Boolean(url) && data === undefined && !error && !paused,
+    validatedKey: shown?.refreshKey,
+  };
 }

@@ -7,10 +7,11 @@ import type {
 } from '../../../../shared/contracts/index.js';
 import { useUpdateState } from '../../app/browser-update.js';
 import { employeeTimecardUrl, useEmployeeTimecard, useEmployees } from '../../app/endpoints.js';
-import { prefetchData } from '../../app/prefetch.js';
+import { cancelPrefetches, prefetchData } from '../../app/prefetch.js';
 import { DataState, Empty, Pagination, SearchInput } from '../../ui/index.js';
 import { EmployeeAvatar } from './EmployeeAvatar.js';
 import { EmployeeDetail } from './EmployeeDetail.js';
+import './employees.css';
 
 const statuses = ['all', 'active', 'inactive'] as const;
 export function EmployeesPage({
@@ -56,18 +57,23 @@ export function EmployeesPage({
   useEffect(() => {
     const list = directory.current;
     if (!list) return;
+    const owner = 'employees:directory';
     const observer = new IntersectionObserver(
       (entries) => {
         prefetchData(
           entries
             .filter((entry) => entry.isIntersecting)
             .map((entry) => employeeTimecardUrl((entry.target as HTMLElement).dataset.employee!)),
+          { owner },
         );
       },
       { root: list },
     );
     list.querySelectorAll('[data-employee]').forEach((button) => observer.observe(button));
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      cancelPrefetches(owner);
+    };
   }, [visibleCodes]);
   return (
     <section className="employees-page" aria-label="Employees">
@@ -134,8 +140,18 @@ export function EmployeesPage({
                           data-employee={person.code}
                           aria-pressed={person.code === employee.code}
                           onClick={() => setSelection({ code: person.code, period: null })}
-                          onPointerEnter={() => prefetchData([employeeTimecardUrl(person.code)])}
-                          onFocus={() => prefetchData([employeeTimecardUrl(person.code)])}
+                          onPointerEnter={() =>
+                            prefetchData([employeeTimecardUrl(person.code)], {
+                              owner: 'employees:directory',
+                              priority: true,
+                            })
+                          }
+                          onFocus={() =>
+                            prefetchData([employeeTimecardUrl(person.code)], {
+                              owner: 'employees:directory',
+                              priority: true,
+                            })
+                          }
                         >
                           <EmployeeAvatar name={person.name} />
                           <span>{person.name}</span>

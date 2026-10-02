@@ -1,5 +1,34 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
+// Share dismissal listeners across row menus, including the gap before a native toggle reaches React.
+const popovers = new Set<HTMLDetailsElement>();
+function dismiss(event: PointerEvent) {
+  for (const element of popovers)
+    if (element.open && !element.contains(event.target as Node)) element.open = false;
+}
+function escape(event: globalThis.KeyboardEvent) {
+  if (event.key !== 'Escape') return;
+  for (const element of popovers) {
+    if (!element.open) continue;
+    element.open = false;
+    element.querySelector('summary')!.focus();
+  }
+}
+function register(element: HTMLDetailsElement) {
+  if (!popovers.size) {
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('keydown', escape);
+  }
+  popovers.add(element);
+  return () => {
+    popovers.delete(element);
+    if (!popovers.size) {
+      document.removeEventListener('pointerdown', dismiss);
+      document.removeEventListener('keydown', escape);
+    }
+  };
+}
+
 /** A `<details>` menu that closes on Escape, on a press outside it, and once an item is chosen. */
 export function Popover({
   label,
@@ -60,21 +89,7 @@ export function Popover({
   // The browser opens the menu before its toggle event reaches React, so these listen from
   // the start and read the element: a key pressed in that gap still closes it.
   useEffect(() => {
-    const element = details.current!;
-    const dismiss = (event: PointerEvent) => {
-      if (element.open && !element.contains(event.target as Node)) element.open = false;
-    };
-    const escape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || !element.open) return;
-      element.open = false;
-      element.querySelector('summary')!.focus();
-    };
-    document.addEventListener('pointerdown', dismiss);
-    document.addEventListener('keydown', escape);
-    return () => {
-      document.removeEventListener('pointerdown', dismiss);
-      document.removeEventListener('keydown', escape);
-    };
+    return register(details.current!);
   }, []);
   return (
     <details

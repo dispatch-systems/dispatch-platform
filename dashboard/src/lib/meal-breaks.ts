@@ -81,11 +81,14 @@ export function cortexClock(value: string | null, date: string, zone: string): C
     day * 1440 +
     Number(parts.find((p) => p.type === 'hour')!.value) * 60 +
     Number(parts.find((p) => p.type === 'minute')!.value);
+  let detail: string | undefined;
   return {
     minute,
     day,
     label: label(minute),
-    detail: `${dateFormatter('en-US', { timeZone: zone, dateStyle: 'medium', timeStyle: 'long' }).format(d)} · ${zone}`,
+    get detail() {
+      return (detail ??= `${dateFormatter('en-US', { timeZone: zone, dateStyle: 'medium', timeStyle: 'long' }).format(d)} · ${zone}`);
+    },
   };
 }
 const statusLabels = {
@@ -133,10 +136,13 @@ export function displayMeal(row: MealEmployee) {
       const lunch = pair.lunchIndex === null ? undefined : paycom.lunches[pair.lunchIndex];
       const flexClock = (clock: AssessedClock | null, instant?: string | null) => {
         if (!clock || !cortex || !instant) return null;
+        let detail: string | undefined;
         return {
           ...clock,
           label: label(clock.minute),
-          detail: `${dateFormatter('en-US', { timeZone: cortex.timezone, dateStyle: 'medium', timeStyle: 'long' }).format(new Date(instant))} · ${cortex.timezone}`,
+          get detail() {
+            return (detail ??= `${dateFormatter('en-US', { timeZone: cortex.timezone, dateStyle: 'medium', timeStyle: 'long' }).format(new Date(instant))} · ${cortex.timezone}`);
+          },
         };
       };
       return {

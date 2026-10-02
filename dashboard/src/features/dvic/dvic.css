@@ -303,6 +303,19 @@
   background: var(--card);
   overflow: auto;
 }
+.dvic-grid-pagination > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 12px;
+  font-size: 12px;
+}
+.dvic-grid-pagination span {
+  margin-right: auto;
+  color: var(--muted-foreground);
+}
 .dvic-grid {
   width: 100%;
   border-collapse: separate;

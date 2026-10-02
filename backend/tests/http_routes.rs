@@ -148,6 +148,7 @@ const INVENTORY: &[Row] = &[
     ("POST", "/api/dsp/dvic/schedules/{key}/enabled", Dsp("dvic.manage"), Write, WAKES_SCHEDULER),
     ("POST", "/api/dsp/dvic/schedules/{key}/remove", Dsp("dvic.manage"), Write, WAKES_SCHEDULER),
     ("GET", "/api/dsp/driver-match", Dsp("driver_match.manage"), Read, false),
+    ("GET", "/api/dsp/driver-match/counts", Dsp("driver_match.manage"), Read, false),
     ("GET", "/api/dsp/driver-match/drivers/{code}", Dsp("driver_match.manage"), Read, false),
     ("POST", "/api/dsp/driver-match/merge", Dsp("driver_match.manage"), Write, false),
     ("POST", "/api/dsp/driver-match/split", Dsp("driver_match.manage"), Write, false),

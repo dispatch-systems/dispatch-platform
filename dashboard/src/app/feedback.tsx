@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { X } from 'lucide-react';
 import { messageOf } from '../lib/errors.js';
-import { ErrorBox } from '../ui/index.js';
+import { ErrorBox } from '../ui/ErrorBox.js';
 
 type Feedback = {
   error: string;

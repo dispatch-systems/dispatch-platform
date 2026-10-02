@@ -1,8 +1,17 @@
 import { useBrowserUpdate, clearNavigationState } from './app/browser-update.js';
-import { lazy, Suspense, useState, useEffect, useLayoutEffect, useCallback } from 'react';
+import {
+  lazy,
+  Suspense,
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useRef,
+  useTransition,
+} from 'react';
 import { createRoot } from 'react-dom/client';
 import type { DspView, SessionView } from '../../shared/contracts/index.js';
-import { api, credentials, ApiError } from './app/api.js';
+import { api, credentials, ApiError, view as admittedToken } from './app/api.js';
 import { FeedbackMessages, FeedbackProvider, useFeedback } from './app/feedback.js';
 import {
   dspHash,
@@ -12,20 +21,19 @@ import {
   platformHash,
   rememberDestination,
 } from './app/navigation.js';
-import { Page, findRoute, navigation } from './app/routes.js';
+import { Page, findRoute, navigation, prepareRoute } from './app/routes.js';
 import type { DspRouteId } from './app/route-meta.js';
 import { routeLabel } from './app/route-meta.js';
-const AuthScreen = lazy(() =>
-  import('./features/auth/index.js').then((module) => ({ default: module.AuthScreen })),
-);
-const DspOnboarding = lazy(() =>
-  import('./features/auth/index.js').then((module) => ({ default: module.DspOnboarding })),
-);
+const loadAuth = () => import('./features/auth/index.js');
+const AuthScreen = lazy(() => loadAuth().then((module) => ({ default: module.AuthScreen })));
+const DspOnboarding = lazy(() => loadAuth().then((module) => ({ default: module.DspOnboarding })));
 const SecurityPrompt = lazy(() =>
-  import('./features/auth/index.js').then((module) => ({ default: module.SecurityPrompt })),
+  loadAuth().then((module) => ({ default: module.SecurityPrompt })),
 );
 import { messageOf } from './lib/errors.js';
-import { Loading, Modal, PageBoundary } from './ui/index.js';
+import { Loading } from './ui/Loading.js';
+import { Modal } from './ui/Modal.js';
+import { PageBoundary } from './ui/PageBoundary.js';
 import { can } from './app/permissions.js';
 import { hasFeature } from './app/features.js';
 import './styles.css';
@@ -35,7 +43,12 @@ import { restoreAppearance } from './app/appearance.js';
 import { leavePresence, usePresence } from './app/presence.js';
 import { openView, saveRole } from './app/session.js';
 import { getSession } from './app/endpoints.js';
+import { cancelPrefetches } from './app/prefetch.js';
 function App() {
+  const [pending, startTransition] = useTransition();
+  const admission = useRef(0);
+  const pendingAdmission = useRef<number>(undefined);
+  const sessionRequest = useRef(0);
   const [reauthenticate, setReauthenticate] = useState(false);
   const [session, setSession] = useState<Session | null>(),
     [view, setView] = useState<DspView>(),
@@ -61,6 +74,10 @@ function App() {
     address.route.startsWith('invite?') ||
     address.route.startsWith('reset?');
   const onboarding = address.route.startsWith('invite?') || (!showAuth && setupRequired);
+  const navigationState = useRef({ address, session, view, showAuth, securityRequired });
+  useLayoutEffect(() => {
+    navigationState.current = { address, session, view, showAuth, securityRequired };
+  }, [address, session, view, showAuth, securityRequired]);
   useLayoutEffect(() => {
     const apply = () => restoreAppearance(session?.user.id, onboarding ? 'light' : undefined);
     const media = matchMedia('(prefers-color-scheme: dark)');
@@ -74,10 +91,20 @@ function App() {
   }, [session?.user.id, onboarding]);
   const load = useCallback(
     async (afterLogin = false) => {
+      const request = ++sessionRequest.current;
+      admission.current++;
+      cancelPrefetches();
+      credentials(navigationState.current.session?.csrf ?? '');
+      setView(undefined);
+      setSwitching(
+        Boolean(parseHash(window.location.hash).dspId && navigationState.current.session),
+      );
       setSessionError('');
       try {
         const next = await getSession();
+        if (request !== sessionRequest.current) return;
         credentials(next.csrf);
+        setView(undefined);
         setSession(next);
         if (
           !next.user.platformOwner &&
@@ -87,6 +114,8 @@ function App() {
         )
           navigate(dspHash(next.dsps[0]!.id));
       } catch (error) {
+        if (request !== sessionRequest.current) return;
+        setSwitching(false);
         if (error instanceof ApiError && error.status === 401) {
           credentials('');
           setSession(null);
@@ -100,13 +129,60 @@ function App() {
   );
   useEffect(() => {
     void load();
+    const initial = parseHash(window.location.hash);
+    // Session and code are independent. In particular, sign-in should not wait for
+    // the session's unauthenticated response before downloading its form.
+    if (!initial.dspId) void loadAuth().catch(() => undefined);
+    else void prepareRoute('dsp', initial.page).catch(() => undefined);
+  }, [load]);
+  useEffect(() => {
     const changed = () => {
-      setAddress(parseHash(window.location.hash));
+      const next = parseHash(window.location.hash);
+      const current = navigationState.current;
+      const auth = /^(?:signin$|invite\?|reset\?)/.test(next.route);
+      const sameWorkspace =
+        Boolean(current.session) &&
+        !current.showAuth &&
+        !current.securityRequired &&
+        !auth &&
+        current.address.dspId === next.dspId;
+      const sameScope =
+        sameWorkspace &&
+        (!next.dspId ||
+          (current.view?.dsp.id === next.dspId && current.view.token === admittedToken));
+      cancelPrefetches();
+      if (sameScope && current.session) {
+        void prepareRoute(
+          next.dspId ? 'dsp' : 'platform',
+          next.page,
+          {
+            session: current.session,
+            view: next.dspId ? current.view : undefined,
+          },
+          true,
+        ).catch(() => undefined);
+        startTransition(() => setAddress(next));
+      } else {
+        // A workspace/security boundary must discard the previous page immediately.
+        // Changing pages while this same workspace is opening keeps its admission;
+        // its eventual response opens the latest address rather than leaving a spinner.
+        const opening =
+          sameWorkspace &&
+          next.dspId &&
+          !admittedToken &&
+          pendingAdmission.current === admission.current;
+        if (opening) void prepareRoute('dsp', next.page).catch(() => undefined);
+        else admission.current++;
+        credentials(current.session?.csrf ?? '');
+        setView(undefined);
+        setSwitching(Boolean(next.dspId && current.session && (!sameWorkspace || opening)));
+        setAddress(next);
+      }
       fail('');
     };
     window.addEventListener('hashchange', changed);
     return () => window.removeEventListener('hashchange', changed);
-  }, [load, fail]);
+  }, [fail, startTransition]);
   useEffect(() => {
     const verify = () => setReauthenticate(true);
     const required = () => void load();
@@ -121,11 +197,17 @@ function App() {
   }, [load]);
   const { route, dspId, page } = address;
   useEffect(() => {
-    if (session && !showAuth)
-      void findRoute(dspId ? 'dsp' : 'platform', page)
-        ?.preload()
-        .catch(() => undefined);
-  }, [session, showAuth, dspId, page]);
+    if (session && !showAuth && !securityRequired)
+      void prepareRoute(
+        dspId ? 'dsp' : 'platform',
+        page,
+        {
+          session,
+          view: dspId ? view : undefined,
+        },
+        true,
+      ).catch(() => undefined);
+  }, [session, showAuth, securityRequired, dspId, page, view]);
   useEffect(() => {
     if (!view || !dspId) return;
     const route = findRoute('dsp', page);
@@ -143,12 +225,46 @@ function App() {
   // A platform owner looking into a DSP is never shown to its team.
   usePresence(session?.user.platformOwner ? undefined : view?.token);
   const reopen = useCallback(async () => {
-    if (!session || !dspId) return;
-    const next = await openView(session, dspId);
-    if (parseHash(window.location.hash).dspId !== dspId) return;
-    credentials(session.csrf, next.token);
-    setView(next);
-  }, [session, dspId]);
+    if (
+      !session ||
+      !dspId ||
+      showAuth ||
+      securityRequired ||
+      navigationState.current.session !== session ||
+      parseHash(window.location.hash).dspId !== dspId
+    )
+      return;
+    const request = ++admission.current;
+    pendingAdmission.current = request;
+    const current = () =>
+      request === admission.current &&
+      navigationState.current.session === session &&
+      !navigationState.current.showAuth &&
+      !navigationState.current.securityRequired &&
+      parseHash(window.location.hash).dspId === dspId;
+    // Role changes and expired views immediately stop using the old admission.
+    cancelPrefetches();
+    credentials(session.csrf);
+    setView(undefined);
+    setSwitching(true);
+    try {
+      const next = await openView(session, dspId, current);
+      if (!current()) return;
+      credentials(session.csrf, next.token);
+      void prepareRoute(
+        'dsp',
+        parseHash(window.location.hash).page,
+        { session, view: next },
+        true,
+      ).catch(() => undefined);
+      setView(next);
+    } catch (error) {
+      if (current()) throw error;
+    } finally {
+      if (pendingAdmission.current === request) pendingAdmission.current = undefined;
+      if (current()) setSwitching(false);
+    }
+  }, [session, dspId, showAuth, securityRequired]);
   useEffect(() => {
     // Role and membership edits expire every open view of the DSP; reopening
     // picks up the member's new permissions without a manual reload.
@@ -158,38 +274,35 @@ function App() {
   }, [reopen]);
   useEffect(() => {
     const signedOut = () => {
+      admission.current++;
+      sessionRequest.current++;
+      cancelPrefetches();
       credentials('');
       setSession(null);
       setView(undefined);
+      setSwitching(false);
     };
     window.addEventListener('dispatch-signed-out', signedOut);
     return () => window.removeEventListener('dispatch-signed-out', signedOut);
   }, []);
   useEffect(() => {
+    admission.current++;
     setView(undefined);
     if (!dspId) saveRole();
-    if (!session || securityRequired) return;
+    if (!session || securityRequired || showAuth) {
+      setSwitching(false);
+      return;
+    }
     credentials(session.csrf);
-    if (!dspId) return;
-    let active = true;
-    setSwitching(true);
-    void openView(session, dspId)
-      .then((next) => {
-        if (active) {
-          credentials(session.csrf, next.token);
-          setView(next);
-        }
-      })
-      .catch((error) => {
-        if (active) fail(messageOf(error));
-      })
-      .finally(() => {
-        if (active) setSwitching(false);
-      });
+    if (!dspId) {
+      setSwitching(false);
+      return;
+    }
+    void reopen().catch((error) => fail(messageOf(error)));
     return () => {
-      active = false;
+      admission.current++;
     };
-  }, [session, dspId, fail, securityRequired]);
+  }, [session, dspId, fail, securityRequired, showAuth, reopen]);
   if (session === undefined)
     return (
       <>
@@ -202,20 +315,14 @@ function App() {
     return (
       <SecurityPrompt security={session.security} complete={() => load(true)} signOut={logout} />
     );
-  if (setupRequired)
-    return (
-      <DspOnboarding
-        complete={async () => {
-          await load();
-          await reopen();
-        }}
-        signOut={logout}
-      />
-    );
+  if (setupRequired) return <DspOnboarding complete={() => load()} signOut={logout} />;
   const scope = dspId ? 'dsp' : 'platform';
   async function logout() {
     await leavePresence();
     await api('/api/auth/logout', {});
+    admission.current++;
+    sessionRequest.current++;
+    cancelPrefetches();
     credentials('');
     setSession(null);
     setView(undefined);
@@ -229,6 +336,7 @@ function App() {
       page={page}
       current={findRoute(scope, page)?.parent ?? page}
       label={routeLabel(scope, page)}
+      pending={pending}
       navigation={navigation(scope, { session, view })}
       logout={() => void perform(logout)}
       exitView={() => navigate(platformHash())}
@@ -263,7 +371,7 @@ function App() {
         switching ? (
           <Loading />
         ) : view ? (
-          <div key={`${view.dsp.id}:${view.dsp.revision}:${view.role.id}`}>
+          <div key={view.token}>
             <Page session={session} view={view} page={page} reopen={reopen} />
           </div>
         ) : (

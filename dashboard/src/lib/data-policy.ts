@@ -56,6 +56,7 @@ export function mutationAffects(mutation: string, url: string) {
       '/api/dsp/jobs',
       '/api/dsp/paycom/status',
       '/api/dsp/schedules',
+      '/api/dsp/dvic/',
     );
   if (write.startsWith('/api/dsp/schedules')) return begins(url, '/api/dsp/schedules');
   if (begins(write, '/api/dsp/members', '/api/dsp/roles', '/api/dsp/invitations'))

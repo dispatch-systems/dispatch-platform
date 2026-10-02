@@ -17,9 +17,9 @@ export function UniformHistory({
   const query = useUniformHistory(before, revision);
   return (
     <Modal title="Inventory history" variant="sheet" onClose={onClose}>
-      <DataState data={query.data} error={query.error}>
+      <DataState data={query.data ?? query.stale} error={query.error} retry={query.refresh}>
         {(data) => (
-          <>
+          <div aria-busy={!query.data} inert={!query.data}>
             {!data.events.length && <Empty title="No inventory changes yet" />}
             <ol className="uniform-history">
               {data.events.map((event) => (
@@ -58,7 +58,7 @@ export function UniformHistory({
                 <button onClick={() => setBefore(data.nextBefore)}>Older changes</button>
               )}
             </div>
-          </>
+          </div>
         )}
       </DataState>
     </Modal>

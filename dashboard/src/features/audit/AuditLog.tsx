@@ -118,6 +118,9 @@ export function AuditLog() {
   // A new filter starts from the first page; a restored one keeps its place.
   const filters = [area, actor, range, q, within, subject?.key, subject?.name].join('\n');
   const applied = useRef(filters);
+  // The read happens before the reset effect renders again; never request a new
+  // filter with the previous filter's expanded limit.
+  const effectiveLimit = applied.current === filters ? limit : PAGE;
   useEffect(() => {
     if (applied.current !== filters) setLimit(PAGE);
     applied.current = filters;
@@ -138,8 +141,10 @@ export function AuditLog() {
     }
     return params;
   }, [area, actor, q, range, within, subject]);
-  const { data, stale, error } = useAuditPage(query, limit);
+  const { data, stale, error, refresh, paused } = useAuditPage(query, effectiveLimit);
   const page = data ?? stale;
+  const pending = search.trim() !== q || !data;
+  const busy = pending && !paused && !error;
 
   const clock = (at: string) => timeOfDay(at, timeZone);
   const dayKey = dateFormatter('en-CA', { timeZone });
@@ -219,7 +224,7 @@ export function AuditLog() {
   const everything = areas.reduce((sum, [id]) => sum + (counts[id] ?? 0), 0);
   const filtered = Boolean(area || actor || q || within || subject || range !== 'all');
   return (
-    <div className="audit-log" aria-busy={!data && Boolean(stale)}>
+    <div className="audit-log" aria-busy={busy && Boolean(page)}>
       <ErrorBox message={error || download.error || truncated} />
       <div className="audit-toolbar">
         <SearchInput
@@ -264,7 +269,10 @@ export function AuditLog() {
           </select>
           <ChevronDown size={16} aria-hidden />
         </label>
-        <button onClick={() => void download.run()} disabled={download.busy || !page?.total}>
+        <button
+          onClick={() => void download.run()}
+          disabled={download.busy || pending || paused || !data?.total}
+        >
           <Download size={16} />
           Export
         </button>
@@ -304,12 +312,17 @@ export function AuditLog() {
           </button>
         )}
       </div>
-      <DataState data={page} failed={Boolean(error)}>
+      {paused && pending && page && (
+        <p className="notice" role="status">
+          Activity loading is paused. It will resume when this page is visible and you’re online.
+        </p>
+      )}
+      <DataState data={page} failed={Boolean(error)} retry={refresh}>
         {(page) =>
           !page.events.length ? (
             <Empty title={filtered ? 'No matching activity' : 'No activity yet'} />
           ) : (
-            <>
+            <div className="audit-results" aria-busy={busy} inert={pending}>
               {days.map((group) => (
                 <section key={group.label} aria-label={group.label}>
                   <h2 className="audit-day">{group.label}</h2>
@@ -445,13 +458,13 @@ export function AuditLog() {
               ))}
               <p className="audit-more">
                 Showing {page.events.length} of {page.total}
-                {page.events.length < page.total && limit < LOAD_LIMIT && (
+                {page.events.length < page.total && effectiveLimit < LOAD_LIMIT && (
                   <button onClick={() => setLimit((value) => Math.min(LOAD_LIMIT, value + PAGE))}>
                     Load more
                   </button>
                 )}
               </p>
-            </>
+            </div>
           )
         }
       </DataState>

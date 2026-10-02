@@ -1,62 +1,35 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { DvicInspection, DvicInspections } from '../../../../shared/contracts/dvic.js';
-import { api } from '../../app/api.js';
+import { useCallback, useEffect } from 'react';
+import type { DvicInspections } from '../../../../shared/contracts/dvic.js';
+import { api, useCachedData } from '../../app/api.js';
+import { dataCache } from '../../app/data-cache.js';
 import { readInspectionWeek } from '../../lib/dvic.js';
-import { messageOf } from '../../lib/errors.js';
 import { performancePolicy } from '../../lib/performance-policy.js';
 
-export function useInspections(from: string, to: string, publication: string) {
-  const [result, setResult] = useState<{ from: string; rows: DvicInspection[] }>();
-  const [failure, setFailure] = useState<{ from: string; message: string }>();
-  const [revision, setRevision] = useState(0);
-  const refresh = useCallback(() => setRevision((n) => n + 1), []);
+export function useInspections(from: string, to: string, publication: string, enabled: boolean) {
+  const query = new URLSearchParams({ from, to, limit: '500' }).toString();
+  const url = enabled ? '/api/dsp/dvic/inspections?' + query : '';
+  // An assembled array must never share an entry with a single API cursor-page response.
+  const cacheKey = url ? url + '#complete-week' : '';
+  // All assembled weeks follow the status publication, including weeks retained after navigation.
   useEffect(() => {
-    const controller = new AbortController();
-    let reading = false;
-    async function read() {
-      if (reading || document.hidden || !navigator.onLine) return;
-      reading = true;
-      try {
-        const rows = await readInspectionWeek((after) => {
-          const query = new URLSearchParams({
-            from,
-            to,
-            limit: '500',
-            ...(after ? { after } : {}),
-          });
-          return api<DvicInspections>(
-            '/api/dsp/dvic/inspections?' + query,
+    if (enabled)
+      dataCache.observeVersion('dvic', publication, (key) =>
+        key.startsWith('/api/dsp/dvic/inspections?'),
+      );
+  }, [enabled, publication]);
+  const load = useCallback(
+    (signal: AbortSignal) =>
+      readInspectionWeek(
+        (after) =>
+          api<DvicInspections>(
+            url + (after ? '&after=' + encodeURIComponent(after) : ''),
             undefined,
-            controller.signal,
-          );
-        }, controller.signal);
-        if (!controller.signal.aborted) {
-          setResult({ from, rows });
-          setFailure(undefined);
-        }
-      } catch (cause) {
-        if (!controller.signal.aborted) setFailure({ from, message: messageOf(cause) });
-      } finally {
-        reading = false;
-      }
-    }
-    void read();
-    const timer = setInterval(() => void read(), performancePolicy.recoveryPollMs);
-    const visible = () => {
-      if (!document.hidden) void read();
-    };
-    document.addEventListener('visibilitychange', visible);
-    window.addEventListener('online', visible);
-    return () => {
-      controller.abort();
-      clearInterval(timer);
-      document.removeEventListener('visibilitychange', visible);
-      window.removeEventListener('online', visible);
-    };
-  }, [from, to, publication, revision]);
-  return {
-    rows: result?.from === from ? result.rows : undefined,
-    error: failure?.from === from ? failure.message : '',
-    refresh,
-  };
+            signal,
+          ),
+        signal,
+      ),
+    [url],
+  );
+  const result = useCachedData(cacheKey, performancePolicy.recoveryPollMs, publication, load);
+  return { ...result, rows: result.data };
 }

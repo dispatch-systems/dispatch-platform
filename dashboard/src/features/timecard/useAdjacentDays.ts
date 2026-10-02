@@ -1,18 +1,22 @@
-import { useEffect, useRef } from 'react';
-import { prefetchData } from '../../app/prefetch.js';
+import { useEffect } from 'react';
+import { cancelPrefetches, prefetchData } from '../../app/prefetch.js';
+import { dataCache } from '../../app/data-cache.js';
 import { addDays } from '../../lib/calendar.js';
 
 /** Warm only the previous and next day, using the current filters and sort. */
 export function useAdjacentDays(url: string, date: string, today: string, loaded?: object) {
-  const warmed = useRef('');
+  const ready = Boolean(loaded);
+  const generation = dataCache.generation;
   useEffect(() => {
-    if (!loaded || warmed.current === url) return;
-    warmed.current = url;
+    if (!ready) return;
+    const owner = `days:${url}`;
     prefetchData(
       [-1, 1]
         .map((offset) => addDays(date, offset))
         .filter((day) => day <= today)
         .map((day) => url.replace(`date=${date}`, `date=${day}`)),
+      { owner },
     );
-  }, [url, date, today, loaded]);
+    return () => cancelPrefetches(owner);
+  }, [url, date, today, ready, generation]);
 }

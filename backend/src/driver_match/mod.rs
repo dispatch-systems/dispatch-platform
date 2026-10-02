@@ -517,6 +517,11 @@ impl Store {
         Ok(self.overview(dsp)?.result)
     }
 
+    /// The Settings tab badge uses the same decisions without transferring the roster.
+    pub fn driver_counts(&self, dsp: &str) -> Result<DriverCounts> {
+        Ok(self.overview(dsp)?.result.counts)
+    }
+
     /// The code a merged person's IDs went to, followed to the end.
     fn surviving(&self, db: &Db, code: &str) -> Result<String> {
         let mut code = code.to_owned();

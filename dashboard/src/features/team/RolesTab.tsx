@@ -44,11 +44,15 @@ function PermissionSummary({ view, role }: { view: DspView; role: Role }) {
 export function RolesTab({
   view,
   roles,
+  failed,
+  retry,
   edit,
   remove,
 }: {
   view: DspView;
   roles?: Role[];
+  failed?: boolean;
+  retry?: () => void;
   edit: (role: Role) => void;
   remove: (role: Role) => void;
 }) {
@@ -111,7 +115,7 @@ export function RolesTab({
   ];
   const table = useDataTable({ columns, rows: roles ?? none, rowId: (role) => role.id });
   return (
-    <DataState data={roles}>
+    <DataState data={roles} failed={failed} retry={retry}>
       {(roles) => (
         <div className="table-wrap role-table">
           <DataTable table={table} />

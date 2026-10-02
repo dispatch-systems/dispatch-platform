@@ -302,3 +302,6 @@ button.audit-row[aria-expanded='true'] {
     gap: 0;
   }
 }
+.audit-results[aria-busy='true'] {
+  opacity: 0.55;
+}

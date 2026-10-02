@@ -159,6 +159,12 @@
   outline: none;
   margin: 0 auto;
 }
+.navigation-progress {
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  white-space: nowrap;
+}
 .mobile-menu {
   display: none;
 }

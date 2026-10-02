@@ -33,7 +33,7 @@ export function SessionsPanel({ sessions }: { sessions: ReturnType<typeof useAcc
         )}
       </div>
       <ErrorBox message={action.error} />
-      <DataState data={sessions.data} error={sessions.error}>
+      <DataState data={sessions.data} error={sessions.error} retry={sessions.refresh}>
         {(items) => (
           <div className="security-session-list">
             {items

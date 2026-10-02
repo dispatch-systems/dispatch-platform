@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, RefreshCw, Settings2 } from 'lucide-react';
 import type { DspView, Job } from '../../../../shared/contracts/index.js';
 import type { DvicStatus } from '../../../../shared/contracts/dvic.js';
-import { api, ApiError, useData } from '../../app/api.js';
+import { api, ApiError, useCachedData } from '../../app/api.js';
+import { useUpdateState } from '../../app/browser-update.js';
 import { hasFeature } from '../../app/features.js';
 import { can } from '../../app/permissions.js';
 import { useAction } from '../../app/useAction.js';
 import {
   filterInspections,
   inspectionDate,
+  inspectionWeekday,
   weekDays,
   weekStart,
   type VehicleClass,
@@ -32,16 +34,21 @@ const views = [
 ] as const;
 
 export function DvicPage({ view }: { view: DspView }) {
-  const status = useData<DvicStatus>('/api/dsp/dvic/status', performancePolicy.recoveryPollMs);
+  const [collecting, setCollecting] = useState(false);
+  const status = useCachedData<DvicStatus>(
+    '/api/dsp/dvic/status',
+    collecting ? performancePolicy.activeCollectionPollMs : performancePolicy.recoveryPollMs,
+  );
   const shownViews = views.filter(([, , feature]) => hasFeature(view, feature));
-  const [chosenTab, setTab] = useState<'day' | 'week'>('day');
+  const [chosenTab, setTab] = useUpdateState<'day' | 'week'>('dvic-tab', 'day');
   const tab = shownViews.some(([id]) => id === chosenTab)
     ? chosenTab
     : (shownViews[0]?.[0] ?? chosenTab);
-  const [chosenWeek, setChosenWeek] = useState<string>();
-  const [chosenDay, setChosenDay] = useState<string>();
-  const [query, setQuery] = useState('');
-  const [vehicles, setVehicles] = useState<VehicleClass>('');
+  const [chosenWeek, setChosenWeek] = useUpdateState<string | undefined>('dvic-week', undefined);
+  const [chosenDay, setChosenDay] = useUpdateState<string | undefined>('dvic-day', undefined);
+  const [query, setQuery] = useUpdateState('dvic-query', '');
+  const [vehicles, setVehicles] = useUpdateState<VehicleClass>('dvic-vehicles', '');
+  const [page, setPage] = useUpdateState('dvic-week-page', 0);
   const [selected, setSelected] = useState<string>();
   const [settings, setSettings] = useState(false);
   const [pending, setPending] = useState<Job>();
@@ -52,15 +59,19 @@ export function DvicPage({ view }: { view: DspView }) {
     .filter((date): date is string => !!date && date <= today)
     .sort()
     .at(-1);
-  const start = chosenWeek ?? weekStart(latestDate ?? today);
-  const days = weekDays(start);
+  const start =
+    chosenWeek && chosenWeek >= '2000-01-02' && chosenWeek <= today
+      ? chosenWeek
+      : weekStart(latestDate ?? today);
+  const days = useMemo(() => weekDays(start), [start]);
   const end = days[6]!;
   // The latest reported day in this week, else the last day that has happened.
   const day =
-    chosenDay ??
-    (latestDate && latestDate >= start && latestDate <= end
-      ? latestDate
-      : ([...days].reverse().find((date) => date <= today) ?? start));
+    chosenDay && chosenDay >= start && chosenDay <= end && chosenDay <= today
+      ? chosenDay
+      : latestDate && latestDate >= start && latestDate <= end
+        ? latestDate
+        : ([...days].reverse().find((date) => date <= today) ?? start);
   const jobs = status.data?.jobs ?? [];
   const pendingStatus = jobs.find((job) => job.id === pending?.id) ?? pending;
   const running =
@@ -74,19 +85,29 @@ export function DvicPage({ view }: { view: DspView }) {
     .map((week) => week.checkedAt)
     .sort()
     .at(-1);
-  const inspections = useInspections(start, end, (completed ?? '') + ':' + (checked ?? ''));
-  const rows = filterInspections(inspections.rows ?? [], query, vehicles);
-  const dayRows = rows.filter((row) => row.startDate === day);
+  const inspections = useInspections(
+    start,
+    end,
+    (completed ?? '') + ':' + (checked ?? ''),
+    status.data !== undefined,
+  );
+  const rows = useMemo(
+    () => filterInspections(inspections.rows ?? [], query, vehicles),
+    [inspections.rows, query, vehicles],
+  );
+  const dayRows = useMemo(() => rows.filter((row) => row.startDate === day), [rows, day]);
+  const counts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of rows) counts.set(row.startDate, (counts.get(row.startDate) ?? 0) + 1);
+    return counts;
+  }, [rows]);
   const filtered = !!(query || vehicles);
   const shown = tab === 'day' ? dayRows : rows;
   const detail = inspections.rows?.find((row) => row.id === selected);
   const newest = jobs[0];
   const canCollect = can(view, 'dvic.collect');
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(status.refresh, performancePolicy.activeCollectionPollMs);
-    return () => clearInterval(timer);
-  }, [running?.id, status.refresh]);
+  const active = Boolean(running);
+  useEffect(() => setCollecting(active), [active]);
   const sync = useAction(
     async () => {
       request.current ??= randomId();
@@ -116,6 +137,7 @@ export function DvicPage({ view }: { view: DspView }) {
     setChosenWeek(weekStart(date));
     setChosenDay(undefined);
     setSelected(undefined);
+    setPage(0);
   };
   return (
     <div className="dvic-page">
@@ -144,24 +166,24 @@ export function DvicPage({ view }: { view: DspView }) {
           <button
             className="icon-button"
             aria-label="Previous week"
-            disabled={start <= '2000-01-02'}
+            disabled={!status.data || start <= '2000-01-02'}
             onClick={() => selectWeek(shiftDate(start, -7))}
           >
             <ChevronLeft size={16} />
           </button>
           <span className="dvic-week-label">
-            {inspectionDate(start)} – {inspectionDate(end)}
+            {status.data ? `${inspectionDate(start)} – ${inspectionDate(end)}` : '—'}
           </span>
           <button
             className="icon-button"
             aria-label="Next week"
-            disabled={end >= today}
+            disabled={!status.data || end >= today}
             onClick={() => selectWeek(shiftDate(start, 7))}
           >
             <ChevronRight size={16} />
           </button>
           <button
-            disabled={start === weekStart(latestDate ?? today)}
+            disabled={!status.data || start === weekStart(latestDate ?? today)}
             onClick={() => selectWeek(latestDate ?? today)}
             title="The most recent week with reported inspections"
           >
@@ -216,16 +238,12 @@ export function DvicPage({ view }: { view: DspView }) {
                 setSelected(undefined);
               }}
             >
-              <span>
-                {new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'short' }).format(
-                  new Date(date + 'T12:00:00Z'),
-                )}
-              </span>
+              <span>{inspectionWeekday(date)}</span>
               <strong>{Number(date.slice(8))}</strong>
               <small>
                 {inspections.rows === undefined || date > today
                   ? '—'
-                  : rows.filter((row) => row.startDate === date).length + ' short'}
+                  : (counts.get(date) ?? 0) + ' short'}
               </small>
             </button>
           ))}
@@ -236,12 +254,18 @@ export function DvicPage({ view }: { view: DspView }) {
           label="Search drivers"
           placeholder="Search drivers…"
           value={query}
-          onChange={setQuery}
+          onChange={(value) => {
+            setQuery(value);
+            setPage(0);
+          }}
         />
         <select
           aria-label="Vehicle type"
           value={vehicles}
-          onChange={(e) => setVehicles(e.target.value as VehicleClass)}
+          onChange={(e) => {
+            setVehicles(e.target.value as VehicleClass);
+            setPage(0);
+          }}
         >
           <option value="">All vehicles</option>
           <option value="dot">DOT</option>
@@ -261,7 +285,13 @@ export function DvicPage({ view }: { view: DspView }) {
       />
       {inspections.error && <button onClick={inspections.refresh}>Retry inspections</button>}
       {inspections.rows === undefined ? (
-        !inspections.error && <Loading />
+        !inspections.error &&
+        !status.error &&
+        (status.paused || inspections.paused ? (
+          <p className="muted">Inspections will load when you reconnect.</p>
+        ) : (
+          <Loading />
+        ))
       ) : (
         <>
           {tab === 'day' ? (
@@ -282,6 +312,8 @@ export function DvicPage({ view }: { view: DspView }) {
               rows={rows}
               today={today}
               filtered={filtered}
+              page={page}
+              onPageChange={setPage}
               onSelect={(row) => setSelected(row.id)}
             />
           )}

@@ -14,7 +14,7 @@ import type { RouteRetention } from '../../../shared/contracts/routes.js';
 // `useData` directly; move one here when its response gains a generated type.
 import { api, useCachedData, useData } from './api.js';
 import { useEffect } from 'react';
-import { prefetchData } from './prefetch.js';
+import { cancelPrefetches, prefetchData } from './prefetch.js';
 import { dataCache } from './data-cache.js';
 import type {
   AgentKey,
@@ -86,11 +86,15 @@ export const useEmployeeTimecard = (
   const previous = result.data?.previousPeriod;
   const next = result.data?.nextPeriod;
   useEffect(() => {
+    if (!code) return;
+    const owner = `periods:${code}`;
     prefetchData(
       [previous, next]
         .filter((period) => period != null)
         .map((period) => employeeTimecardUrl(code, period)),
+      { owner },
     );
+    return () => cancelPrefetches(owner);
   }, [code, previous?.from, previous?.to, next?.from, next?.to]);
   return result;
 };

@@ -76,7 +76,7 @@ export function DriverSheet({
         )
       }
     >
-      <DataState data={details.data} error={details.error}>
+      <DataState data={details.data} error={details.error} retry={details.refresh}>
         {(data) => (
           <>
             <section className="driver-sheet-section" aria-labelledby="driver-ids">

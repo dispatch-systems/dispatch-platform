@@ -59,7 +59,7 @@ export function UniformInventoryPage({ view }: { view: DspView }) {
           )}
         </div>
       </Header>
-      <DataState data={inventory.data} error={inventory.error}>
+      <DataState data={inventory.data} error={inventory.error} retry={inventory.refresh}>
         {(data) =>
           active ? (
             <div className="uniform-browser">

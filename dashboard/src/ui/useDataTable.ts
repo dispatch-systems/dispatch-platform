@@ -152,6 +152,13 @@ export function useDataTable<T extends RowData>({
   const count = total ?? rows.length;
   // A page left over from a longer list falls back to the last page that still has rows.
   const page = Math.min(state.page, Math.max(0, Math.ceil(count / pageSize) - 1));
+  const sortId = state.sort?.id;
+  const sortDesc = state.sort?.desc;
+  const sortingState = useMemo(
+    () => (sortId !== undefined ? [{ id: sortId, desc: Boolean(sortDesc) }] : []),
+    [sortId, sortDesc],
+  );
+  const pagination = useMemo(() => ({ pageIndex: page, pageSize }), [page, pageSize]);
   const table = useTable({
     features,
     columns: defs,
@@ -168,25 +175,34 @@ export function useDataTable<T extends RowData>({
     autoResetPageIndex: false,
     autoResetExpanded: false,
     state: {
-      sorting: state.sort ? [state.sort] : [],
-      pagination: { pageIndex: page, pageSize },
+      sorting: sortingState,
+      pagination,
       expanded,
     },
     onExpandedChange: (next) =>
       setExpanded((current) => (typeof next === 'function' ? next(current) : next)),
   });
+  const visible = table.getRowModel().rows;
+  const visibleRows = useMemo(
+    () =>
+      visible.map((row) => ({
+        id: row.id,
+        data: row.original,
+        context: {
+          depth: row.depth,
+          expanded: row.getIsExpanded(),
+          toggle: () => row.toggleExpanded(),
+        },
+      })),
+    [visible, expanded],
+  );
   return {
     columns,
-    rows: table.getRowModel().rows.map((row) => ({
-      id: row.id,
-      data: row.original,
-      context: {
-        depth: row.depth,
-        expanded: row.getIsExpanded(),
-        toggle: () => row.toggleExpanded(),
-      },
-    })),
-    allRows: table.getPrePaginatedRowModel().rows.map((row) => row.original),
+    rows: visibleRows,
+    // Sorting/paging never need an extra full-roster copy; exports request it only on demand.
+    get allRows() {
+      return table.getPrePaginatedRowModel().rows.map((row) => row.original);
+    },
     sort: state.sort,
     toggleSort: (id) => {
       state.setSort({ id, desc: state.sort?.id === id && !state.sort.desc });
