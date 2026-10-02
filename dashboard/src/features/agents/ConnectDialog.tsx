@@ -20,6 +20,8 @@ import { usePairing } from './Pairing.js';
 
 /** How often the dialog looks for the app while it may connect. */
 const POLL_MS = 2500;
+/** How far the server's clock may run from the browser's when telling a new app from an old one. */
+const CLOCK_MARGIN_MS = 30_000;
 
 /** Re-renders every `ms` while `ms` is set, for what reads the clock. */
 function useTick(ms: number) {
@@ -118,10 +120,18 @@ export function ConnectDialog({ close, connected }: { close: () => void; connect
   // While an app may connect, the dialog looks for it among the apps connected since it opened.
   const keys = useAgentKeys(steps && open ? POLL_MS : 0);
   const [known, setKnown] = useState<Set<string>>();
+  const opened = useRef(Date.now());
   useEffect(() => {
     if (!keys.data) return;
     if (!known) {
-      setKnown(new Set(keys.data.keys.map((key) => key.id)));
+      // What was there before the dialog opened, even if the first list arrives after the app
+      // has connected: anything made since (with a margin for the server's clock) is new.
+      const before = opened.current - CLOCK_MARGIN_MS;
+      setKnown(
+        new Set(
+          keys.data.keys.filter((key) => Date.parse(key.createdAt) < before).map((key) => key.id),
+        ),
+      );
       return;
     }
     if (!app || done) return;

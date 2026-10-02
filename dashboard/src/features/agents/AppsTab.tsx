@@ -40,9 +40,7 @@ export function AppsTab() {
         return (
           <div className="agents">
             {apps.length === 0 ? (
-              <Empty title="No apps connected yet" action={connect}>
-                Use Dispatch from ChatGPT, Claude Code and other AI apps.
-              </Empty>
+              <Empty title="No apps connected yet" action={connect} />
             ) : (
               <>
                 <div className="table-toolbar agents-apps-toolbar">{connect}</div>

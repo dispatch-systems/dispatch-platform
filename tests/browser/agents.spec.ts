@@ -122,9 +122,8 @@ test('Connect an app shows each app’s steps, ready to copy, and copying lets a
   await page.getByRole('link', { name: 'Agents', exact: true }).click();
   // With no app connected yet, Apps offers to connect one.
   await expect(page.getByRole('heading', { name: 'No apps connected yet' })).toBeVisible();
-  await expect(
-    page.getByText('Use Dispatch from ChatGPT, Claude Code and other AI apps.'),
-  ).toBeVisible();
+  // Only the title and its button: no description under it.
+  await expect(page.locator('.empty p')).toHaveCount(0);
   await page.getByRole('button', { name: 'Connect an app', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toHaveAccessibleName('Connect an app');
