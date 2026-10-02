@@ -16,6 +16,8 @@ const RECENT: &str = "SELECT * FROM jobs ORDER BY created_at DESC LIMIT 200";
 const RECENT_FOR_DSP: &str = "SELECT * FROM jobs WHERE dsp_id=? ORDER BY created_at DESC LIMIT 200";
 const RECENT_OF_KIND: &str =
     "SELECT * FROM jobs WHERE dsp_id=? AND kind=? ORDER BY created_at DESC LIMIT 200";
+const RECENT_IN: &str = "SELECT * FROM jobs WHERE dsp_id=? \
+    AND kind IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC LIMIT 200";
 const DSP_NAMES: &str = "SELECT id,name FROM dsps WHERE id IN (SELECT value FROM json_each(?))";
 const METRICS: &str = "SELECT job_id,metrics FROM job_metrics \
     WHERE job_id IN (SELECT value FROM json_each(?)) ORDER BY attempt";
@@ -165,6 +167,11 @@ impl Store {
     /// A DSP's recent jobs of one kind, however many of other kinds came since.
     pub fn recent_jobs_of(&self, id: &str, kind: &str) -> Result<Vec<PublicJob>> {
         self.public_jobs(self.jobs.query_as(RECENT_OF_KIND, [id, kind])?)
+    }
+    /// A DSP's recent jobs of these kinds, however many of others came since.
+    pub fn recent_jobs_in(&self, id: &str, kinds: &[&str]) -> Result<Vec<PublicJob>> {
+        let kinds = serde_json::to_string(kinds)?;
+        self.public_jobs(self.jobs.query_as(RECENT_IN, [id, kinds.as_str()])?)
     }
     fn public_jobs(&self, rows: Vec<JobRow>) -> Result<Vec<PublicJob>> {
         if rows.is_empty() {

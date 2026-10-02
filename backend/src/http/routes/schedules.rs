@@ -1,8 +1,7 @@
 //! Collection schedules. Every change here wakes the scheduler; a preview changes nothing.
-//! The timecard page manages its collections' schedules and the routes page its own;
-//! either permission opens the list, and a change needs the one its collection belongs to.
-//! DVIC and the scorecard have routes of their own, behind their own permissions; the
-//! scorecard's schedules are never the generic routes'.
+//! The generic routes are the timecard page's alone. Routes, DVIC and the scorecard have
+//! routes of their own, behind their own permissions, and the generic routes never touch
+//! their schedules.
 use crate::{
     Result,
     db::Store,
@@ -14,7 +13,8 @@ use crate::{
     validate as v,
 };
 
-const MANAGE: Dsp = Dsp("timecard.manage|routes.manage|dvic.manage");
+const MANAGE: Dsp = Dsp("timecard.manage");
+const ROUTES: Dsp = Dsp("routes.manage");
 const SCORECARD: Dsp = Dsp("scorecard.manage");
 
 /// The permission a schedule of `collection` needs, checked against the member's role
@@ -62,6 +62,12 @@ pub fn routes() -> Vec<Route> {
             remove,
         )
         .invalidates_schedules(),
+        read("/api/dsp/routes/schedules", ROUTES, schedules),
+        write("/api/dsp/routes/schedules", ROUTES, create).invalidates_schedules(),
+        write("/api/dsp/routes/schedules/preview", ROUTES, preview),
+        write("/api/dsp/routes/schedules/{key}", ROUTES, update).invalidates_schedules(),
+        write("/api/dsp/routes/schedules/{key}/enabled", ROUTES, toggle).invalidates_schedules(),
+        write("/api/dsp/routes/schedules/{key}/remove", ROUTES, remove).invalidates_schedules(),
         read("/api/dsp/schedules", MANAGE, schedules),
         write("/api/dsp/schedules", MANAGE, create).invalidates_schedules(),
         write("/api/dsp/schedules/preview", MANAGE, preview),
@@ -75,20 +81,21 @@ fn schedules(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let mut result = db.collection_schedules(c.dsp_id())?;
     let home = home(input);
     result.schedules.retain(|s| {
-        let collection = s.collection.as_str();
-        let here = match home {
-            Some(own) => collection == own,
-            None => !OWN.contains(&collection),
-        };
-        here && c.can(&format!(
-            "{}.manage",
-            crate::features::automation(collection)
-        ))
+        let page = crate::features::automation(s.collection.as_str());
+        page == home && c.can(&format!("{page}.manage"))
     });
     Reply::of(&result)
 }
 
 fn preview(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    // A schedule named for its timing is read only through its own feature's routes.
+    if input.body.get("scheduleId").is_some() {
+        let key = v::text(&input.body, "scheduleId", 1, 128)?;
+        scope(
+            input,
+            db.collection_schedule(c.dsp_id(), key)?.collection.as_str(),
+        )?;
+    }
     Reply::of(&db.preview_schedule(c.dsp_id(), &input.body)?)
 }
 
@@ -179,21 +186,22 @@ fn remove(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     Ok(Reply::ok())
 }
 
-/// The collections whose schedules have routes of their own, under `/api/dsp/<collection>/`.
-const OWN: &[&str] = &["dvic", "scorecard"];
-fn home(input: &Input) -> Option<&'static str> {
-    OWN.iter()
-        .copied()
-        .find(|own| input.path.starts_with(&format!("/api/dsp/{own}/")))
+/// The feature whose schedule routes a request came to: one with a collection of its own,
+/// under `/api/dsp/<feature>/schedules`, or the timecard page's generic ones.
+fn home(input: &Input) -> &'static str {
+    let segment = input
+        .path
+        .strip_prefix("/api/dsp/")
+        .and_then(|rest| rest.split('/').next())
+        .unwrap_or("");
+    crate::features::automation(segment)
 }
-/// A collection's own routes change only its schedules. The generic routes change every
-/// other collection's, and DVIC's as they always have, but never the scorecard's.
+/// Each feature's routes change only the schedules of the collections it owns, as the
+/// catalog says, so a feature added later is apart from the generic routes without a list
+/// to keep.
 fn scope(input: &Input, collection: &str) -> Result<()> {
     crate::ensure(
-        match home(input) {
-            Some(own) => collection == own,
-            None => collection != "scorecard",
-        },
+        crate::features::automation(collection) == home(input),
         "permission_denied",
         403,
     )

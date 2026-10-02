@@ -59,12 +59,16 @@ test('a day of routes is collected on request, stored in normalized rows and lis
       .value[0].id,
     job.id,
   );
+  // Its jobs are Routes' own: listed by its routes, never the timecard's.
+  const jobOf = async (id: string) =>
+    (await owner.read('/api/dsp/routes/jobs')).find((j: any) => j.id === id);
   await until(async () => {
-    const current = (await owner.read('/api/dsp/jobs')).find((j: any) => j.id === job.id);
+    const current = await jobOf(job.id);
     assert.notEqual(current.status, 'failed', JSON.stringify(current));
     return current.status === 'succeeded';
   });
-  const finished = (await owner.get('/api/dsp/jobs')).value.find((j: any) => j.id === job.id);
+  assert.ok(!(await owner.read('/api/dsp/jobs')).some((j: any) => j.id === job.id));
+  const finished = await jobOf(job.id);
   assert.equal(finished.metrics.at(-1).itineraries, 2);
   const days = (await owner.get('/api/dsp/routes/days')).value;
   assert.equal(days.days.length, 1);
@@ -140,13 +144,101 @@ test('a day of routes is collected on request, stored in normalized rows and lis
   });
   assert.equal(range.status, 202, range.body);
   assert.equal(range.value.length, 3);
-  // A member without the collect permission can read the days but not collect.
+  // A member without Routes' permissions neither reads the days nor collects.
   const member = await f.client('member@dispatch.test');
   await member.select(dsp.id);
   assert.equal((await member.get('/api/dsp/routes/days')).status, 403);
   assert.equal((await member.post('/api/dsp/routes/collect', { requestId: 'member' })).status, 403);
-  // A routes schedule is its own collection and needs the connection.
-  const schedule = await owner.post('/api/dsp/schedules', {
+  // A routes schedule is its own collection, behind its own routes, and needs the connection.
+  const body = {
+    name: 'Routes',
+    collection: 'routes',
+    cadence: 'daily',
+    intervalMinutes: null,
+    localTime: '05:00',
+    enabled: true,
+  };
+  const refused = await owner.post('/api/dsp/schedules', body);
+  assert.equal(refused.status, 403, refused.body);
+  assert.equal(refused.value.error, 'permission_denied');
+  const schedule = await owner.post('/api/dsp/routes/schedules', body);
+  assert.equal(schedule.status, 201, schedule.body);
+  assert.equal(schedule.value.collection, 'routes');
+  assert.equal(
+    (await owner.post('/api/dsp/routes/schedules', { ...body, collection: 'paycom' })).status,
+    403,
+  );
+  assert.ok(
+    !(await owner.get('/api/dsp/schedules')).value.schedules.some(
+      (s: any) => s.id === schedule.value.id,
+    ),
+  );
+  const scheduled = async () =>
+    (await owner.get('/api/dsp/routes/schedules')).value.schedules.find(
+      (s: any) => s.id === schedule.value.id,
+    );
+  assert.equal((await scheduled()).enabled, true);
+  assert.equal(
+    (await owner.post('/api/dsp/connections/cortex/disable', { removeCredentials: false })).status,
+    200,
+  );
+  assert.equal((await scheduled()).enabled, false);
+  // The audit names the collection request.
+  const events = (await owner.get('/api/platform/audit?limit=50')).value.events;
+  assert.ok(
+    events.some(
+      (e: any) => e.action === 'routes.collection_requested' && e.detail === '2026-09-25',
+    ),
+  );
+});
+
+test("routes' schedules and jobs stay when the timecard is switched off, and only Routes' own route cancels its job", async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const dsp = owner.session.dsps.find((d: any) => d.name === 'Northline Logistics');
+  await owner.select(dsp.id);
+  assert.equal((await owner.post('/api/dsp/connections/cortex', cortex)).value.status, 'ready');
+  assert.equal(
+    (
+      await owner.post('/api/dsp/profile', {
+        name: dsp.name,
+        abbreviation: 'NLL',
+        stationCode: 'TST1',
+        timezone: dsp.timezone,
+      })
+    ).status,
+    200,
+  );
+  await owner.select(dsp.id);
+  const queued = await owner.post('/api/dsp/routes/collect', {
+    requestId: 'cancel-me',
+    date: '2026-09-25',
+  });
+  assert.equal(queued.status, 202, queued.body);
+  const id = queued.value[0].id;
+  const jobOf = async () =>
+    (await owner.read('/api/dsp/routes/jobs')).find((j: any) => j.id === id);
+  await until(async () => {
+    const job = await jobOf();
+    assert.notEqual(job.status, 'failed', JSON.stringify(job));
+    return job.status === 'succeeded';
+  });
+  // The job waits again, far off, so a cancel has something to stop; a timecard job sits
+  // beside it.
+  await f.stop();
+  f.database('data/preview/jobs.sqlite', (db) => {
+    db.prepare(
+      "UPDATE jobs SET status='queued',completed_at=NULL,lease_owner=NULL,lease_until=NULL,available_at=? WHERE id=?",
+    ).run(4102444800000, id);
+    db.prepare(
+      "INSERT INTO jobs(id,dsp_id,environment,kind,status,available_at,created_at,release,connection_revision,idempotency_key) VALUES ('timecard-job',?,'preview','paycom.collect','succeeded',0,?,'test',1,'timecard-job')",
+    ).run(dsp.id, new Date().toISOString());
+  });
+  await f.start();
+  await owner.select(dsp.id);
+  assert.equal((await jobOf()).status, 'queued');
+  const schedule = await owner.post('/api/dsp/routes/schedules', {
     name: 'Routes',
     collection: 'routes',
     cadence: 'daily',
@@ -155,20 +247,55 @@ test('a day of routes is collected on request, stored in normalized rows and lis
     enabled: true,
   });
   assert.equal(schedule.status, 201, schedule.body);
-  assert.equal(schedule.value.collection, 'routes');
-  assert.equal(
-    (await owner.post('/api/dsp/connections/cortex/disable', { removeCredentials: false })).status,
-    200,
-  );
-  const rows = (await owner.get('/api/dsp/schedules')).value.schedules;
-  assert.equal(rows.find((s: any) => s.id === schedule.value.id).enabled, false);
-  // The audit names the collection request.
-  const events = (await owner.get('/api/platform/audit?limit=50')).value.events;
-  assert.ok(
-    events.some(
-      (e: any) => e.action === 'routes.collection_requested' && e.detail === '2026-09-25',
-    ),
-  );
+  const scheduled = async () =>
+    (await owner.read('/api/dsp/routes/schedules')).schedules.find(
+      (s: any) => s.id === schedule.value.id,
+    );
+  // The generic route refuses it even to the owner, who holds the timecard's permissions.
+  assert.equal((await owner.post(`/api/dsp/jobs/${id}/cancel`, {})).status, 403);
+  assert.equal((await jobOf()).status, 'queued');
+  // Neither's routes reach the other's: Routes' cancel takes only its own jobs, no schedule
+  // moves across, and no preview reads across.
+  assert.equal((await owner.post('/api/dsp/routes/jobs/timecard-job/cancel', {})).status, 403);
+  assert.ok(!(await owner.read('/api/dsp/routes/jobs')).some((j: any) => j.id === 'timecard-job'));
+  assert.ok((await owner.read('/api/dsp/jobs')).some((j: any) => j.id === 'timecard-job'));
+  const timing = { cadence: 'daily', intervalMinutes: null, localTime: '06:00' };
+  const paycom = await owner.post('/api/dsp/schedules', {
+    name: 'Paycom',
+    collection: 'paycom',
+    enabled: true,
+    ...timing,
+  });
+  assert.equal(paycom.status, 201, paycom.body);
+  const move = (url: string, from: any, collection: string) =>
+    owner.post(`${url}/${from.id}`, {
+      name: from.name,
+      collection,
+      enabled: true,
+      revision: from.revision,
+      ...timing,
+    });
+  assert.equal((await move('/api/dsp/schedules', paycom.value, 'routes')).status, 403);
+  assert.equal((await move('/api/dsp/routes/schedules', schedule.value, 'paycom')).status, 403);
+  const preview = { scheduleId: schedule.value.id, ...timing };
+  assert.equal((await owner.post('/api/dsp/schedules/preview', preview)).status, 403);
+  assert.equal((await owner.post('/api/dsp/routes/schedules/preview', preview)).status, 200);
+
+  // The timecard switched off takes its own routes and leaves Routes' schedules and jobs.
+  const switches = `/api/platform/dsps/${dsp.id}/features`;
+  assert.equal((await owner.post(switches, { feature: 'timecard', enabled: false })).status, 200);
+  await owner.select(dsp.id);
+  assert.equal((await owner.get('/api/dsp/schedules')).status, 403);
+  assert.equal((await owner.get('/api/dsp/routes/schedules')).status, 200);
+  assert.equal((await owner.get('/api/dsp/routes/jobs')).status, 200);
+  assert.equal((await scheduled()).enabled, true);
+  assert.equal((await jobOf()).status, 'queued');
+
+  // Routes' own route cancels it.
+  const cancelled = await owner.post(`/api/dsp/routes/jobs/${id}/cancel`, {});
+  assert.equal(cancelled.status, 200, cancelled.body);
+  assert.equal(cancelled.value.status, 'cancelled');
+  assert.equal((await jobOf()).status, 'cancelled');
 });
 
 test('route data is kept until the DSP chooses a retention window, which only managers change', async (t) => {

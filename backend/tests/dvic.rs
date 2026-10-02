@@ -1,7 +1,7 @@
 mod common;
 use dispatch_backend::{
     collectors::Provider,
-    db::{Store, s},
+    db::{self, Store, s},
     dvic::{self, Capture, Request},
 };
 use serde_json::json;
@@ -178,6 +178,32 @@ fn publication_rejects_wrong_scope_and_reads_are_paginated_and_isolated() {
     );
     db.set_profile(&id, json!({"stationCode":"TST2"})).unwrap();
     assert_eq!(db.dvic_status(&id).unwrap().short_inspections, 0);
+}
+
+#[test]
+fn the_status_keeps_its_jobs_however_many_of_other_kinds_came_since() {
+    let (_root, db, id) = ready();
+    let job = db.enqueue_dvic(&id, None, "busy", None, 2).unwrap();
+    let job = s(&job, "id").to_owned();
+    // A busy DSP: more newer jobs of another kind than the latest 200 hold.
+    for index in 0..201 {
+        let other = format!("paycom-{index}");
+        db.jobs.exec("INSERT INTO jobs(id,dsp_id,environment,kind,status,available_at,created_at,release,connection_revision,idempotency_key) VALUES (?,?,'preview','paycom.collect','succeeded',0,?,'test',1,?)",rusqlite::params![other,id,db::at(db::now()+1000+index),other]).unwrap();
+    }
+    let listed = |jobs: Vec<dispatch_backend::contracts::PublicJob>| {
+        jobs.into_iter().map(|j| j.id).collect::<Vec<_>>()
+    };
+    assert!(!listed(db.recent_jobs(Some(&id)).unwrap()).contains(&job));
+    assert_eq!(listed(db.dvic_status(&id).unwrap().jobs), [job]);
+    // The other way round: the Timecard's list keeps its own jobs however many DVIC jobs
+    // came since.
+    for index in 0..201 {
+        let other = format!("dvic-{index}");
+        db.jobs.exec("INSERT INTO jobs(id,dsp_id,environment,kind,status,available_at,created_at,release,connection_revision,idempotency_key) VALUES (?,?,'preview','cortex.dvic.collect','succeeded',0,?,'test',1,?)",rusqlite::params![other,id,db::at(db::now()+5000+index),other]).unwrap();
+    }
+    let others = listed(db.recent_jobs_in(&id, &["paycom.collect"]).unwrap());
+    assert_eq!(others.len(), 200);
+    assert!(others.iter().all(|j| j.starts_with("paycom-")));
 }
 
 #[test]

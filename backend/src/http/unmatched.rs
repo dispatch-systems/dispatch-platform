@@ -58,6 +58,7 @@ fn area_permission(input: &Input) -> &'static str {
         ("dvic", Some("schedules"), _) => "dvic.manage",
         ("dvic", _, true) => "dvic.collect",
         ("dvic", ..) => "dvic.view",
+        ("routes", Some("schedules"), _) => "routes.manage",
         ("routes", _, true) => "routes.collect",
         ("routes", ..) => "routes.view",
         ("scorecard", Some("schedules"), _) => "scorecard.manage",

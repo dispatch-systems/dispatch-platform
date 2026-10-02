@@ -213,7 +213,7 @@ impl Store {
                     shortCount,min_date AS minDate,max_date AS maxDate,checked_at AS checkedAt FROM dvic_reports WHERE \
                     station=? ORDER BY report_date DESC LIMIT 366")?
                 .into_iter().map(serde_json::from_value).collect::<std::result::Result<_,_>>()?,
-            jobs: self.recent_jobs(Some(id))?.into_iter().filter(|j|j.kind.as_str()==JOB_KIND).collect(),
+            jobs: self.recent_jobs_of(id, JOB_KIND)?,
             station,
         })
     }
