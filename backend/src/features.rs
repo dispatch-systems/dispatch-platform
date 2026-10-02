@@ -136,9 +136,10 @@ fn tabs(page: &str) -> impl Iterator<Item = &'static Feature> {
         .filter(move |t| matches!(t.kind, Kind::Tab(p) if p == page))
 }
 /// The page whose schedules, collections and jobs run. Nothing collects without it,
-/// except the collections another page owns (`automation`).
+/// except the collections another feature owns (`automation`).
 pub const SCHEDULES: &str = "timecard";
-/// Collections owned by a feature other than the timecard page.
+/// The routes, DVIC and scorecard collections, each owned by its own feature rather than the
+/// timecard page. Their schedules and jobs have routes of their own.
 const COLLECTION_PAGES: &[(&str, &str, &str)] = &[
     ("routes", "cortex.routes.collect", "routes"),
     ("dvic", "cortex.dvic.collect", "dvic"),

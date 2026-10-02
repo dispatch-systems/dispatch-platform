@@ -43,10 +43,8 @@ export function ScheduleEditor({
         }
       : newSchedule(),
   );
-  // A routes schedule keeps its collection; the editor changes its timing only.
-  const fixed = draft.collection === 'routes';
-  const [paycom, setPaycom] = useState(!fixed && draft.collection !== 'meal_break');
-  const [meal, setMeal] = useState(!fixed && draft.collection !== 'paycom');
+  const [paycom, setPaycom] = useState(draft.collection !== 'meal_break');
+  const [meal, setMeal] = useState(draft.collection !== 'paycom');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [stale, setStale] = useState(false);
@@ -101,7 +99,7 @@ export function ScheduleEditor({
   const edit = <K extends keyof ScheduleInput>(key: K, value: ScheduleInput[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
   async function submit(remove = false) {
-    if (!remove && !fixed && !paycom && !meal) {
+    if (!remove && !paycom && !meal) {
       setError('Select Paycom, Meal Break, or both.');
       return;
     }
@@ -113,13 +111,7 @@ export function ScheduleEditor({
         await saveSchedule(schedule?.id, {
           ...draft,
           name: draft.name.trim(),
-          collection: fixed
-            ? draft.collection
-            : paycom && meal
-              ? 'both'
-              : paycom
-                ? 'paycom'
-                : 'meal_break',
+          collection: paycom && meal ? 'both' : paycom ? 'paycom' : 'meal_break',
           ...(schedule ? { revision: schedule.revision } : {}),
         });
       onSaved(remove ? 'Schedule deleted' : schedule ? 'Schedule saved' : 'Schedule created');
@@ -159,28 +151,24 @@ export function ScheduleEditor({
           </label>
           <fieldset className="schedule-choice-group">
             <legend>Collect</legend>
-            {fixed ? (
-              <p className="schedule-checks">Daily routes</p>
-            ) : (
-              <div className="schedule-checks">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={paycom}
-                    onChange={(event) => setPaycom(event.target.checked)}
-                  />
-                  Paycom
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={meal}
-                    onChange={(event) => setMeal(event.target.checked)}
-                  />
-                  Meal Break
-                </label>
-              </div>
-            )}
+            <div className="schedule-checks">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={paycom}
+                  onChange={(event) => setPaycom(event.target.checked)}
+                />
+                Paycom
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={meal}
+                  onChange={(event) => setMeal(event.target.checked)}
+                />
+                Meal Break
+              </label>
+            </div>
           </fieldset>
           <fieldset className="schedule-choice-group">
             <legend>Repeat</legend>

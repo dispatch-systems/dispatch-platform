@@ -1,16 +1,17 @@
-//! Daily routes: what is stored, and collecting a day. The collection is `routes` here
-//! and in its paths; its module and database are `routedata`.
+//! Daily routes: what is stored, collecting a day, and its jobs. The collection is `routes`
+//! here and in its paths; its module and database are `routedata`.
 use crate::{
-    Error, Result,
+    Error, Result, State,
     db::Store,
     ensure,
     http::{
         input::{Input, Reply},
-        route::{Dsp, Member, Route, read, write},
+        route::{Dsp, Member, Route, async_post, read, write},
     },
     routedata::{self, MAX_DAYS_PER_REQUEST, Mode},
     validate as v,
 };
+use std::sync::Arc;
 
 const VIEW: Dsp = Dsp("routes.view");
 const COLLECT: Dsp = Dsp("routes.collect");
@@ -27,6 +28,8 @@ pub fn routes() -> Vec<Route> {
         ),
         read("/api/dsp/routes/packages/{tracking}", VIEW, package),
         write("/api/dsp/routes/collect", COLLECT, collect),
+        read("/api/dsp/routes/jobs", VIEW, jobs),
+        async_post("/api/dsp/routes/jobs/{id}/cancel", COLLECT, cancel),
         read("/api/dsp/routes/retention", MANAGE, retention),
         write("/api/dsp/routes/retention", MANAGE, set_retention),
     ]
@@ -60,6 +63,13 @@ fn day(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         .route_day(c.dsp_id(), day)?
         .ok_or_else(|| Error::new("not_found", 404))?;
     Reply::of(&view)
+}
+
+fn jobs(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
+    Reply::of(&db.recent_jobs_of(c.dsp_id(), routedata::JOB_KIND)?)
+}
+async fn cancel(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    super::jobs::cancel_kind(state, input, access, Some(routedata::JOB_KIND)).await
 }
 
 fn retention(db: &Store, c: &Member, _: &Input) -> Result<Reply> {

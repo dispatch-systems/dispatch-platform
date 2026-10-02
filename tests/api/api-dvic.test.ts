@@ -92,7 +92,9 @@ test('DVIC collects into its own database and schedules run independently of tim
   assert.equal(created.status, 201, created.body);
   const key = created.value.id;
   assert.equal((await member.get(`${base}/schedules`)).value.schedules.length, 1);
+  // The generic routes are the timecard's: even the owner neither creates nor lists one there.
   await owner.select(dsp.id);
+  assert.equal((await owner.post('/api/dsp/schedules', schedule)).status, 403);
   assert.equal((await owner.get('/api/dsp/schedules')).value.schedules.length, 0);
   assert.equal(
     (await member.post(`${base}/schedules`, { ...schedule, collection: 'paycom' })).status,
@@ -171,7 +173,7 @@ test('DVIC collects into its own database and schedules run independently of tim
   );
 });
 
-test("the generic cancel route needs the job kind's own permission; switching DVIC off drops what its jobs kept", async (t) => {
+test("the generic cancel route never cancels a DVIC job, only DVIC's own route does; switching DVIC off drops what its jobs kept", async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
@@ -199,7 +201,7 @@ test("the generic cancel route needs the job kind's own permission; switching DV
     assert.notEqual(job?.status, 'failed', JSON.stringify(job));
     return job?.status === 'succeeded';
   });
-  // collections.run alone cancels timecard jobs, not a job another page owns.
+  // collections.run cancels timecard jobs, never a job DVIC owns.
   const role = (await owner.get('/api/dsp/roles')).value.find((r: any) => r.name === 'Member');
   const grant = async (permissions: string[]) => {
     await owner.select(dsp.id);
@@ -219,12 +221,13 @@ test("the generic cancel route needs the job kind's own permission; switching DV
     const reply = await member.post(`/api/dsp/dvic/jobs/${id}/cancel`, {});
     assert.equal(reply.status, 403, reply.body);
   }
-  // The page's own permission cancels through either route; the owner holds both.
+  // With DVIC's own permission too, only DVIC's route cancels it; the generic route
+  // refuses it even to the owner, who holds every permission.
   await grant(['collections.run', 'dvic.collect']);
   await member.select(dsp.id);
   {
     const reply = await member.post(`/api/dsp/jobs/${id}/cancel`, {});
-    assert.equal(reply.status, 200, reply.body);
+    assert.equal(reply.status, 403, reply.body);
   }
   {
     const reply = await member.post(`/api/dsp/dvic/jobs/${id}/cancel`, {});
@@ -233,7 +236,7 @@ test("the generic cancel route needs the job kind's own permission; switching DV
   await owner.select(dsp.id);
   {
     const reply = await owner.post(`/api/dsp/jobs/${id}/cancel`, {});
-    assert.equal(reply.status, 200, reply.body);
+    assert.equal(reply.status, 403, reply.body);
   }
   // Switching the page off cancels its waiting job and drops the live run it kept,
   // which a worker's own finish would no longer do once the lease is gone.
@@ -250,24 +253,13 @@ test("the generic cancel route needs the job kind's own permission; switching DV
   );
   await f.start();
   await owner.select(dsp.id);
-  assert.equal(
-    (await owner.get('/api/dsp/jobs')).value.find((j: any) => j.id === id).status,
-    'queued',
-  );
-  assert.equal(
-    (
-      await owner.post(`/api/platform/dsps/${dsp.id}/features`, {
-        feature: 'dvic',
-        enabled: false,
-      })
-    ).status,
-    200,
-  );
-  await owner.select(dsp.id);
-  assert.equal(
-    (await owner.get('/api/dsp/jobs')).value.find((j: any) => j.id === id).status,
-    'cancelled',
-  );
+  // DVIC's status lists its jobs; the generic list never does.
+  const jobOf = async () =>
+    (await owner.read('/api/dsp/dvic/status')).jobs.find((j: any) => j.id === id);
+  assert.equal((await jobOf()).status, 'queued');
+  assert.ok(!(await owner.read('/api/dsp/jobs')).some((j: any) => j.id === id));
+  const switches = `/api/platform/dsps/${dsp.id}/features`;
+  assert.equal((await owner.post(switches, { feature: 'dvic', enabled: false })).status, 200);
   assert.equal(
     f.database(
       `dsps/${dsp.id}/data/cortex/cortex.sqlite`,
@@ -275,4 +267,9 @@ test("the generic cancel route needs the job kind's own permission; switching DV
     ),
     0,
   );
+  // Switched back on, its status shows the job the switch cancelled.
+  assert.equal((await owner.post(switches, { feature: 'dvic', enabled: true })).status, 200);
+  await owner.select(dsp.id);
+  assert.equal((await jobOf()).status, 'cancelled');
+  assert.ok(!(await owner.read('/api/dsp/jobs')).some((j: any) => j.id === id));
 });
