@@ -265,7 +265,7 @@ impl Store {
             if all {
                 "all DSPs".to_owned()
             } else {
-                format!("{} DSPs", dsps.len())
+                format!("[{}]", dsps.join(", "))
             }
         };
         let mut changes: Vec<AuditChange> = vec![];

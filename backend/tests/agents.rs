@@ -503,6 +503,96 @@ fn keys_are_recorded_on_the_platform_and_never_in_a_dsp() {
 }
 
 #[test]
+fn key_scope_audits_compare_exact_canonical_dsp_sets() {
+    let (_root, db, first) = bootstrapped();
+    let user = owner(&db);
+    let second = db
+        .new_dsp("Second Delivery", "UTC", &user, false)
+        .unwrap()
+        .id;
+    let third = db
+        .new_dsp("Third Delivery", "UTC", &user, false)
+        .unwrap()
+        .id;
+    let made = db
+        .create_agent_key(&user, &request(reach(&[&second, &first])))
+        .unwrap();
+
+    // Order and duplicates are normalized before comparison and persistence.
+    let no_op = reach(&[&first, &second, &first]);
+    let unchanged = db
+        .update_agent_key(&user, &made.key.id, &request(no_op))
+        .unwrap();
+    let mut expected = vec![first.clone(), second.clone()];
+    expected.sort();
+    assert_eq!(unchanged.dsps, expected);
+    assert!(
+        audits(&db, None)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|event| s(event, "action") != "agent.key_updated")
+    );
+
+    // A same-cardinality substitution is a material change and names both exact sets.
+    let changed = db
+        .update_agent_key(&user, &made.key.id, &request(reach(&[&third, &second])))
+        .unwrap();
+    let mut replacement = vec![second.clone(), third.clone()];
+    replacement.sort();
+    assert_eq!(changed.dsps, replacement);
+    let events = audits(&db, None).unwrap();
+    let updates: Vec<&Value> = events
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| s(event, "action") == "agent.key_updated")
+        .collect();
+    assert_eq!(updates.len(), 1, "{events}");
+    assert_eq!(
+        updates[0]["changes"],
+        json!([{
+            "field":"dsps",
+            "from":format!("[{}]", expected.join(", ")),
+            "to":format!("[{}]", replacement.join(", ")),
+        }])
+    );
+
+    // A duplicate-only request becomes a one-DSP scope and logs that effective result.
+    let narrowed = db
+        .update_agent_key(&user, &made.key.id, &request(reach(&[&third, &third])))
+        .unwrap();
+    assert_eq!(narrowed.dsps.as_slice(), std::slice::from_ref(&third));
+    let events = audits(&db, None).unwrap();
+    let newest = events
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|event| s(event, "action") == "agent.key_updated")
+        .unwrap();
+    assert_eq!(
+        newest["changes"],
+        json!([{
+            "field":"dsps",
+            "from":format!("[{}]", replacement.join(", ")),
+            "to":format!("[{third}]"),
+        }])
+    );
+
+    // The raw request bound cannot be bypassed by sending one ID hundreds of times.
+    let too_many = vec![third; 501];
+    let mut oversized = reach(&[]);
+    oversized["allDsps"] = json!(false);
+    oversized["dsps"] = json!(too_many);
+    let error = match AgentKeyRequest::parse(&oversized) {
+        Ok(_) => panic!("oversized duplicate scope was accepted"),
+        Err(error) => error,
+    };
+    assert_eq!(error.code, "invalid_input");
+}
+
+#[test]
 fn last_use_is_written_down_and_never_goes_back() {
     let (_root, db, dsp) = bootstrapped();
     let user = owner(&db);

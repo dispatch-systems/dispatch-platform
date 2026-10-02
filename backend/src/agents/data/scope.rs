@@ -1,6 +1,6 @@
 //! What a request names, read the way a person writes it: the DSP, the days and the
 //! driver. Anything unclear is refused with what it could have meant.
-use super::Refusal;
+use super::{Refusal, facts::Sources};
 use crate::{
     Result, State,
     agents::Caller,
@@ -287,6 +287,12 @@ pub struct People {
 impl People {
     /// The DSP's people, from Driver Match, kept until a source or driver decision changes.
     pub fn load(db: &Store, state: &State, dsp: &str) -> Result<Self> {
+        // Driver Match deliberately keeps every collected identity while a source is off.
+        // Project that durable cache through the current feature policy on every read, so
+        // toggling a source takes effect immediately without invalidating or rebuilding it.
+        let sources = Sources::of(db, dsp)?;
+        let paycom_on = sources.timecards || sources.meal_breaks;
+        let amazon_on = sources.meal_breaks || sources.routes || sources.dvic || sources.scorecard;
         let revision = state
             .data_revision
             .load(std::sync::atomic::Ordering::Relaxed);
@@ -299,22 +305,54 @@ impl People {
         let mut list = vec![];
         let mut holders = HashMap::new();
         for driver in matched.drivers {
-            let of = |source: DriverSource| -> Vec<String> {
-                driver
-                    .ids
+            let visible =
+                |source: DriverSource| driver.ids.iter().filter(move |id| id.source == source);
+            let paycom = if paycom_on {
+                visible(DriverSource::Paycom).collect::<Vec<_>>()
+            } else {
+                vec![]
+            };
+            let amazon = if amazon_on {
+                visible(DriverSource::Amazon).collect::<Vec<_>>()
+            } else {
+                vec![]
+            };
+            if paycom.is_empty() && amazon.is_empty() {
+                continue;
+            }
+            let name = if paycom_on && amazon_on {
+                driver.name.clone()
+            } else {
+                paycom
                     .iter()
-                    .filter(|id| id.source == source)
-                    .map(|id| id.id.clone())
-                    .collect()
+                    .chain(&amazon)
+                    .map(|id| id.name.trim())
+                    .find(|name| !name.is_empty())
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| {
+                        paycom
+                            .first()
+                            .or_else(|| amazon.first())
+                            .map_or_else(|| driver.code.clone(), |id| id.id.clone())
+                    })
+            };
+            let status = match (paycom_on, amazon_on, driver.status) {
+                (true, true, status) => status,
+                (true, false, DriverStatus::Former) => DriverStatus::Former,
+                (true, false, DriverStatus::Office) => DriverStatus::Office,
+                (true, false, _) => DriverStatus::PaycomOnly,
+                (false, true, DriverStatus::Former) => DriverStatus::Former,
+                (false, true, _) => DriverStatus::AmazonOnly,
+                (false, false, _) => unreachable!("a person without visible IDs was omitted"),
             };
             let person = Person {
                 code: driver.code.clone(),
-                name: driver.name.clone(),
-                status: driver.status,
-                paycom: of(DriverSource::Paycom),
-                amazon: of(DriverSource::Amazon),
+                name,
+                status,
+                paycom: paycom.iter().map(|id| id.id.clone()).collect(),
+                amazon: amazon.iter().map(|id| id.id.clone()).collect(),
             };
-            for id in &driver.ids {
+            for id in paycom.into_iter().chain(amazon) {
                 holders.insert((id.source, id.id.clone()), list.len());
             }
             list.push(person);

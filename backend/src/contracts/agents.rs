@@ -100,8 +100,11 @@ impl AgentKeyRequest {
     pub fn parse(value: &Value) -> Result<Self> {
         let mut input: Self = request(value)?;
         input.name = v::name(value, "name", 80)?;
+        ensure(input.dsps.len() <= 500, "invalid_input", 400)?;
+        input.dsps.sort();
+        input.dsps.dedup();
         ensure(
-            input.all_dsps == input.dsps.is_empty() && input.dsps.len() <= 500,
+            input.all_dsps == input.dsps.is_empty(),
             "invalid_input",
             400,
         )?;
