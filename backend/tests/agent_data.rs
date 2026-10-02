@@ -325,7 +325,7 @@ async fn one_driver_is_one_person_across_every_source() {
     // Its pickup at the station and its drop-off, on each route that carried it.
     assert_eq!(rows(&package["events"]).len(), 4);
 
-    // Meal breaks only for drivers Cortex had a route for; the rest listed apart.
+    // Meal breaks only for drivers Cortex had a route for; nobody else is listed.
     let who = me.clone();
     let (_, meals) = ask(&state, move |db, state| {
         data::meal_breaks(db, state, &who, &json!({"date": DAY}))
@@ -335,7 +335,7 @@ async fn one_driver_is_one_person_across_every_source() {
     let drivers = &meals["drivers"];
     assert_eq!(rows(drivers).len(), 1);
     assert_eq!(rows(drivers)[0][col(drivers, "driver")], "Fixture Driver");
-    assert!(meals.get("without_route").is_none());
+    assert!(meals.get("withoutRoute").is_none());
 
     // DVIC per driver, the short ones counted.
     let who = me.clone();
@@ -413,6 +413,11 @@ async fn unclear_requests_are_refused_with_what_to_fix() {
             "invalid_sort",
         ),
         (json!({"cursor": "next"}), "invalid_cursor"),
+        // Hours are read a day at a time, so a year of them is refused.
+        (
+            json!({"metrics": "hours_worked", "period": "last 200 days"}),
+            "period_too_long",
+        ),
     ] {
         let who = one.clone();
         let answer = ask(&state, move |db, state| data::team(db, state, &who, &query)).await;

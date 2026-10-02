@@ -71,7 +71,8 @@ pub fn limit(query: &Value, default: usize) -> usize {
 
 /// Puts one page of `table` into `answer` under `key`. `table` holds the rows from `offset`
 /// on, and `total` counts every row there is. Rows past `limit`, or past the budget, wait
-/// for the next page, which the answer names with `next_cursor` and says so in words.
+/// for the next page, which the table itself names with `next_cursor` and says so in words,
+/// so two tables in one answer never share a cursor.
 pub fn page(
     answer: &mut Value,
     key: &str,
@@ -79,7 +80,7 @@ pub fn page(
     offset: usize,
     total: usize,
     limit: usize,
-) {
+) -> Result<(), Refusal> {
     table.rows.truncate(limit);
     let mut shown = table.rows.len();
     answer[key] = table.value(&table.rows[..shown]);
@@ -97,18 +98,27 @@ pub fn page(
             }
         }
         shown = low;
-        answer[key] = table.value(&table.rows[..shown]);
     }
     let next = offset + shown;
+    if shown == 0 && next < total {
+        // A cursor that cannot move on would send an agent round the same page.
+        return Err(Refusal::new(
+            400,
+            "answer_too_large",
+            "One row is larger than an answer may hold; ask for the summary instead.",
+        ));
+    }
+    let mut value = table.value(&table.rows[..shown]);
     if next < total {
-        answer["page"] =
-            json!({"returned": shown, "total": total, "next_cursor": next.to_string()});
-        answer["note"] = json!(format!(
+        value["page"] = json!({"returned": shown, "total": total, "next_cursor": next.to_string()});
+        value["note"] = json!(format!(
             "Rows {}–{} of {total}. Ask again with cursor \"{next}\" for the next page.",
             offset + 1,
             next
         ));
     }
+    answer[key] = value;
+    Ok(())
 }
 /// [`page`] for rows already in memory: skips to the request's cursor first.
 pub fn paged(
@@ -128,8 +138,7 @@ pub fn paged(
         start,
         total,
         limit(query, default_limit),
-    );
-    Ok(())
+    )
 }
 
 /// Consecutive dates written as ranges, as "2026-09-01..2026-09-04", at most ten of them.
@@ -181,18 +190,30 @@ mod tests {
             table.push(vec![json!(n), json!("x".repeat(40))]);
         }
         let mut answer = json!({"understood": {}});
-        page(&mut answer, "rows", table, 0, 2_000, 500);
+        page(&mut answer, "rows", table, 0, 2_000, 500).unwrap();
         assert!(answer.to_string().len() <= BUDGET);
         let shown = answer["rows"]["rows"].as_array().unwrap().len();
         assert!(shown > 300 && shown < 500, "{shown}");
-        assert_eq!(answer["page"]["next_cursor"], shown.to_string());
-        assert!(answer["note"].as_str().unwrap().contains("of 2000"));
+        // The cursor belongs to the table it pages.
+        assert_eq!(answer["rows"]["page"]["next_cursor"], shown.to_string());
+        assert!(answer["rows"]["note"].as_str().unwrap().contains("of 2000"));
+        assert!(answer.get("page").is_none());
 
         let mut small = Table::new(&["n"]);
         small.push(vec![json!(1)]);
         let mut answer = json!({});
-        page(&mut answer, "rows", small, 0, 1, 50);
-        assert!(answer.get("page").is_none());
+        page(&mut answer, "rows", small, 0, 1, 50).unwrap();
+        assert!(answer["rows"].get("page").is_none());
+
+        // A row past the budget alone is refused, never a cursor that stays put.
+        let mut huge = Table::new(&["text"]);
+        huge.push(vec![json!("x".repeat(BUDGET))]);
+        huge.push(vec![json!("y")]);
+        let mut answer = json!({});
+        assert_eq!(
+            page(&mut answer, "rows", huge, 0, 2, 50).unwrap_err().code,
+            "answer_too_large"
+        );
     }
     #[test]
     fn days_read_as_ranges() {

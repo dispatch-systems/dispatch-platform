@@ -13,9 +13,12 @@ use chrono::{Datelike, Duration, NaiveDate};
 use serde_json::Value;
 use std::collections::HashMap;
 
-/// The longest period one request may cover. Answers add up or page their rows, so a
-/// long period costs no more to read than a short one.
+/// The longest period one request may cover. Routes, packages and DVIC are read in one
+/// query whatever the period; timecards and meal breaks are read a day at a time, so a
+/// question that needs them stops at [`DAILY_LONGEST`].
 pub const LONGEST_DAYS: i64 = 366;
+/// The longest period for a question that reads timecards or meal breaks, day by day.
+pub const DAILY_LONGEST: i64 = 92;
 /// The period a question that names no days is about.
 pub const DEFAULT_PERIOD: &str = "last 30 days";
 
@@ -163,7 +166,7 @@ pub fn read_period(text: &str, today: NaiveDate) -> Option<Period> {
                     })
                     .and_then(|n| n.trim().parse::<i64>().ok())
             };
-            let days = counted("day").or_else(|| counted("week").map(|n| n * 7));
+            let days = counted("day").or_else(|| counted("week").and_then(|n| n.checked_mul(7)));
             if let Some(n) = days.filter(|n| (1..=LONGEST_DAYS).contains(n)) {
                 return Some(span(today - Duration::days(n - 1), today));
             }
@@ -191,6 +194,21 @@ pub fn read_period(text: &str, today: NaiveDate) -> Option<Period> {
             });
         }
     })
+}
+
+/// Refuses a period too long to read a day at a time, as timecards and meal breaks are.
+pub fn daily_limit(period: &Period) -> std::result::Result<(), Refusal> {
+    if (period.to - period.from).num_days() >= DAILY_LONGEST {
+        return Err(Refusal::new(
+            400,
+            "period_too_long",
+            format!(
+                "Hours and meal breaks are read a day at a time; ask about {DAILY_LONGEST} days \
+                 or fewer, or ask about routes and packages alone."
+            ),
+        ));
+    }
+    Ok(())
 }
 
 /// The period a request asks about: `period`, `date`, or `from` with `to`; `default` when
@@ -425,6 +443,9 @@ mod tests {
             read("last 30 days"),
             ("2026-09-02".into(), "2026-10-01".into())
         );
+        // A count too large to be days is no period, not an overflow.
+        let today = NaiveDate::from_ymd_opt(2026, 10, 1).unwrap();
+        assert!(read_period("last 1317624576693539402 weeks", today).is_none());
         let today = NaiveDate::from_ymd_opt(2026, 10, 1).unwrap();
         for nonsense in [
             "soon",

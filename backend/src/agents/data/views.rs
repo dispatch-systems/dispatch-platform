@@ -9,7 +9,7 @@ use super::{
         self, Coverage, Inspection, MealDay, Packages, RouteDay, Sources, TimecardDay, clock,
         outcome_of, reason_of,
     },
-    scope::{DEFAULT_PERIOD, People, Period, Person, param, period, pick_dsp, today},
+    scope::{DEFAULT_PERIOD, People, Period, Person, daily_limit, param, period, pick_dsp, today},
     shape::{Table, hours, page, paged, understood},
 };
 use crate::{
@@ -289,6 +289,7 @@ pub fn driver(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &
     let people = People::load(db, state, &dsp.id)?;
     let person = people.find(wanted)?;
     let period = period(query, today(dsp), DEFAULT_PERIOD)?;
+    daily_limit(&period)?;
     let gathered = gather(db, dsp, &period, &people, Some(person), ALL)?;
     let routes = &gathered.routes.0;
     let sum = |f: fn(&RouteDay) -> i64| routes.iter().map(f).sum::<i64>();
@@ -529,6 +530,9 @@ pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
         .into());
     }
     let sources: Vec<&str> = chosen.iter().map(|m| m.source).collect();
+    if sources.contains(&"timecards") || sources.contains(&"meal_breaks") {
+        daily_limit(&period)?;
+    }
     let on = Sources::of(db, &dsp.id)?;
     for (source, enabled, label) in [
         ("routes", on.routes, "routes"),
@@ -1053,7 +1057,7 @@ pub fn packages(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         // With a list as well, the cursor pages the list; the groups show their first page.
         if list {
             let total = table.rows.len();
-            page(&mut answer, "groups", table, 0, total, 100);
+            page(&mut answer, "groups", table, 0, total, 100)?;
         } else {
             paged(&mut answer, "groups", table, query, 100)?;
         }
@@ -1095,7 +1099,7 @@ pub fn packages(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
             }
             table.push(row);
         }
-        page(&mut answer, "list", table, offset, total as usize, limit);
+        page(&mut answer, "list", table, offset, total as usize, limit)?;
     }
     Ok(answer)
 }
@@ -1126,6 +1130,7 @@ pub fn timecards(db: &Store, state: &State, caller: &Caller, query: &Value) -> A
     if person.is_none() {
         one_day(&period)?;
     }
+    daily_limit(&period)?;
     let (cards, coverage) =
         facts::timecards(db, dsp, &period, person.map(|p| p.paycom.as_slice()))?;
     let first = if person.is_some() { "date" } else { "driver" };

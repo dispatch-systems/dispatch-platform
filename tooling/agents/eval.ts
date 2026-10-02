@@ -187,11 +187,12 @@ async function main() {
           if (event.type === 'user')
             for (const part of event.message.content ?? [])
               if (part.type === 'tool_result')
-                bytes += (
+                bytes += Buffer.byteLength(
                   typeof part.content === 'string'
                     ? part.content
-                    : (part.content ?? []).map((c: { text?: string }) => c.text ?? '').join('')
-                ).length;
+                    : (part.content ?? []).map((c: { text?: string }) => c.text ?? '').join(''),
+                  'utf8',
+                );
           if (event.type === 'result') text = event.result ?? '';
         }
       } else if (client === 'codex') {
@@ -226,7 +227,8 @@ async function main() {
           const item = event.item ?? {};
           if (event.type === 'item.completed' && item.type === 'mcp_tool_call') {
             tools.push(`${item.tool}${JSON.stringify(item.arguments ?? {})}`);
-            for (const c of item.result?.content ?? []) bytes += (c.text ?? '').length;
+            for (const c of item.result?.content ?? [])
+              bytes += Buffer.byteLength(c.text ?? '', 'utf8');
           }
           if (event.type === 'item.completed' && item.type === 'agent_message') text = item.text;
         }
