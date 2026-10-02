@@ -21,6 +21,18 @@ export const calendarDay = (value: string) =>
   dateFormatter('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(
     new Date(value),
   );
+/** "Oct 2", or "Oct 2, 2025" outside the current year: the day as UTC counts it, for
+ * limits that start again at UTC midnight. */
+export function utcDay(value: string, now = Date.now()) {
+  const at = Date.parse(value);
+  const year = (ms: number) => new Date(ms).getUTCFullYear();
+  return dateFormatter('en-US', {
+    month: 'short',
+    day: 'numeric',
+    ...(year(at) === year(now) ? {} : { year: 'numeric' }),
+    timeZone: 'UTC',
+  }).format(at);
+}
 export const timeOfDay = (value: string, timeZone: string) =>
   dateFormatter('en-US', { hour: 'numeric', minute: '2-digit', timeZone }).format(new Date(value));
 // To the second, for logs whose entries come many to a minute.

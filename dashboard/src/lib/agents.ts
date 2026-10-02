@@ -9,6 +9,7 @@ import type {
   AgentTools,
 } from '../../../shared/contracts/index.js';
 import { dateFormatter } from './date-format.js';
+import { utcDay } from './format.js';
 
 export const accessLabels: Record<AgentAccess, string> = {
   read: 'Read only',
@@ -98,26 +99,17 @@ export function lastUsedText(value: string | null, now = Date.now()) {
 }
 
 /** What the Activity tab says in place of a call: the row that marks a key or app past its
- * 10,000 recorded calls in a day, after which its calls go unlisted. Null for a call. */
+ * 10,000 recorded calls in a UTC day, after which its calls that day go unlisted. The day is
+ * named as UTC counts it, since the viewer's own day ends at another time. Null for a call. */
 export function activityNote(
   call: Pick<AgentActivity, 'at' | 'outcome' | 'key'>,
-  timeZone: string,
   now = Date.now(),
 ) {
   if (call.outcome !== 'capped') return null;
-  const day = (options: Intl.DateTimeFormatOptions, at: number) =>
-    dateFormatter('en-US', { ...options, timeZone }).format(at);
-  const at = Date.parse(call.at);
-  const whole = { year: 'numeric', month: '2-digit', day: '2-digit' } as const;
-  const from = `from ${call.key.name}`;
-  if (day(whole, at) === day(whole, now))
-    return `Over 10,000 calls today ${from}; later calls today aren’t listed.`;
-  const thisYear = day({ year: 'numeric' }, at) === day({ year: 'numeric' }, now);
-  const date = day(
-    { month: 'short', day: 'numeric', ...(thisYear ? {} : { year: 'numeric' }) },
-    at,
+  return (
+    `Over 10,000 calls from ${call.key.name} on ${utcDay(call.at, now)} (UTC); ` +
+    'later calls that day aren’t listed.'
   );
-  return `Over 10,000 calls on ${date} ${from}; later calls that day aren’t listed.`;
 }
 
 const appKinds: Record<string, string> = {

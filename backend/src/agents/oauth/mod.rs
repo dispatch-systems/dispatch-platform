@@ -42,10 +42,10 @@ const CODE_KEPT: i64 = 24 * 60 * 60 * 1000;
 const STATE_LONGEST: usize = 2048;
 
 /// Where an authorization request sends the browser and, when it made a request, what the
-/// browser keeps to show it is the one the app sent: `<request id>.<nonce>`, for a cookie.
+/// browser keeps to show it is the one the app sent: the request's id and its nonce.
 pub struct Authorized {
     pub location: String,
-    pub browser: Option<String>,
+    pub browser: Option<(String, String)>,
 }
 
 /// The issuer: the origin exactly as configured, which never ends in a slash.
@@ -218,7 +218,7 @@ impl Store {
         Ok(match self.request_oauth(query, document, &nonce)? {
             Ok(id) => Authorized {
                 location: format!("{}/#authorize?request={id}", issuer(&self.config)),
-                browser: Some(format!("{id}.{nonce}")),
+                browser: Some((id, nonce)),
             },
             Err(location) => Authorized {
                 location,

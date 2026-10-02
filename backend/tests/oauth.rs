@@ -23,12 +23,15 @@ struct Server {
     origin: String,
     state: Arc<State>,
     client: reqwest::Client,
-    /// The cookie the owner's browser keeps for the request it last brought from an app:
-    /// set by the authorization endpoint, cleared by an answer, sent with the owner's calls.
-    browser: std::sync::Mutex<Option<String>>,
+    /// The cookies the owner's browser keeps for the requests it brought from apps, one per
+    /// request as `name=nonce`: set by the authorization endpoint, cleared by an answer, sent
+    /// with the owner's calls.
+    browser: std::sync::Mutex<Vec<String>>,
 }
-/// The browser's cookie for an authorization request, as development names it.
-const BROWSER_COOKIE: &str = "dispatch_oauth_request=";
+/// The name of a browser's cookie for an authorization request, as development names it.
+fn browser_cookie(request: &str) -> String {
+    format!("dispatch_oauth_request_{request}")
+}
 struct Owner {
     cookie: String,
     csrf: String,
@@ -192,28 +195,38 @@ impl Server {
                 .header("x-csrf-token", &owner.csrf)
                 .body(body.to_string())
         };
-        let cookie = match self.browser() {
-            Some(browser) => format!("{}; {browser}", owner.cookie),
-            None => owner.cookie.clone(),
-        };
+        let cookie = [owner.cookie.clone()]
+            .into_iter()
+            .chain(self.browser())
+            .collect::<Vec<_>>()
+            .join("; ");
         let answer = self.send(request.header("cookie", cookie)).await;
         self.keep_browser(&answer);
         answer
     }
-    /// The owner's browser's cookie for its request, as it would send it.
-    fn browser(&self) -> Option<String> {
+    /// The owner's browser's cookies for its requests, as it would send them.
+    fn browser(&self) -> Vec<String> {
         self.browser.lock().unwrap().clone()
     }
-    fn set_browser(&self, cookie: Option<String>) {
-        *self.browser.lock().unwrap() = cookie;
+    fn set_browser(&self, cookies: &[String]) {
+        *self.browser.lock().unwrap() = cookies.to_vec();
     }
-    /// Keeps or clears the request's cookie as an answer says, as a browser does.
+    /// Keeps or clears a request's cookie as an answer says, as a browser does, leaving the
+    /// others it holds alone.
     fn keep_browser(&self, answer: &Answer) {
         for value in answer.headers.get_all("set-cookie") {
             let value = value.to_str().unwrap();
             let pair = value.split(';').next().unwrap();
-            if let Some(held) = pair.strip_prefix(BROWSER_COOKIE) {
-                self.set_browser((!held.is_empty()).then(|| pair.to_owned()));
+            let Some((name, nonce)) = pair.split_once('=') else {
+                continue;
+            };
+            if !name.starts_with("dispatch_oauth_request_") {
+                continue;
+            }
+            let mut held = self.browser.lock().unwrap();
+            held.retain(|cookie| !cookie.starts_with(&format!("{name}=")));
+            if !nonce.is_empty() {
+                held.push(pair.to_owned());
             }
         }
     }
@@ -663,13 +676,13 @@ async fn the_owner_approves_once_and_the_code_is_redeemed_once() {
         .await;
     // Answered, the request is gone: the browser no longer holds it, and even its old
     // cookie finds nothing.
-    assert_eq!(server.browser(), None);
+    assert!(server.browser().is_empty());
     let answer = server.as_owner(&owner, "GET", &path, json!({})).await;
     assert_eq!(
         (answer.status, s(&answer.body, "error")),
         (403, "wrong_browser")
     );
-    server.set_browser(held);
+    server.set_browser(&held);
     for (method, suffix, body) in [
         ("GET", "", json!({})),
         ("POST", "/approve", everything("Again")),
@@ -2505,6 +2518,12 @@ fn a_notice_waiting_to_be_sent_goes_only_to_a_platform_owner_still_active() {
     assert_eq!(left, "mail_owner");
 }
 
+/// The request an authorization's redirect names.
+fn request_id(answer: &Answer) -> String {
+    let location = answer.header("location");
+    location.rsplit_once("request=").unwrap().1.to_owned()
+}
+
 #[tokio::test]
 async fn only_the_browser_that_brought_a_request_sees_or_answers_it() {
     let server = Server::paired().await;
@@ -2514,17 +2533,13 @@ async fn only_the_browser_that_brought_a_request_sees_or_answers_it() {
     let fields = server.request(CLAUDE_CODE, local, &challenge);
     let pairs: Vec<(&str, &str)> = fields.iter().map(|(k, v)| (*k, v.as_str())).collect();
     let started = server.authorize(&pairs).await;
-    let first = started
-        .header("location")
-        .rsplit_once("request=")
-        .unwrap()
-        .1
-        .to_owned();
-    // The browser the app sent is given the request and a nonce for it, for ten minutes.
+    let first = request_id(&started);
+    // The browser the app sent is given a nonce for the request, in a cookie named for it,
+    // for ten minutes.
     let cookie = started.header("set-cookie").to_owned();
     let (value, attributes) = cookie.split_once(';').unwrap();
     let nonce = value
-        .strip_prefix(&format!("{BROWSER_COOKIE}{first}."))
+        .strip_prefix(&format!("{}=", browser_cookie(&first)))
         .unwrap()
         .to_owned();
     assert_eq!(nonce.len(), 43);
@@ -2555,7 +2570,8 @@ async fn only_the_browser_that_brought_a_request_sees_or_answers_it() {
         ("POST", "/deny", json!({})),
     ];
     // The owner signed in elsewhere, such as from a link someone sent them, cannot.
-    server.set_browser(None);
+    let held = server.browser();
+    server.set_browser(&[]);
     for (method, suffix, body) in &answers {
         refused(
             server
@@ -2563,17 +2579,19 @@ async fn only_the_browser_that_brought_a_request_sees_or_answers_it() {
                 .await,
         );
     }
-    // Nor can a browser holding another request, or its nonce under this request's id.
+    // Nor can a browser holding only another request's cookie, that request's nonce under
+    // this request's name, an empty one, or this one twice.
     let second = server.requested(CHATGPT, CHATGPT_REDIRECT).await;
-    let other = server.browser().unwrap();
-    let other_nonce = other.rsplit_once('.').unwrap().1;
-    for held in [
+    let other = server.browser();
+    let other_nonce = other[0].split_once('=').unwrap().1.to_owned();
+    let name = browser_cookie(&first);
+    for cookies in [
         other.clone(),
-        format!("{BROWSER_COOKIE}{first}.{other_nonce}"),
-        format!("{BROWSER_COOKIE}{first}"),
-        format!("{BROWSER_COOKIE}{first}.{nonce}; {BROWSER_COOKIE}{first}.{nonce}"),
+        vec![format!("{name}={other_nonce}")],
+        vec![format!("{name}=")],
+        vec![value.to_owned(), value.to_owned()],
     ] {
-        server.set_browser(Some(held));
+        server.set_browser(&cookies);
         for (method, suffix, body) in &answers {
             refused(
                 server
@@ -2583,12 +2601,12 @@ async fn only_the_browser_that_brought_a_request_sees_or_answers_it() {
         }
     }
     // Both requests still wait: refusing the wrong browser changed nothing.
-    server.set_browser(Some(value.to_owned()));
+    server.set_browser(&held);
     let shown = server
         .as_owner(&owner, "GET", &path(&first, ""), json!({}))
         .await;
     assert_eq!(shown.status, 200, "{}", shown.body);
-    // Answered, the cookie is cleared; the request is gone, and its old cookie finds nothing.
+    // Answered, its cookie is cleared; the request is gone, and its old cookie finds nothing.
     let approved = server
         .as_owner(
             &owner,
@@ -2600,15 +2618,15 @@ async fn only_the_browser_that_brought_a_request_sees_or_answers_it() {
     assert_eq!(approved.status, 200, "{}", approved.body);
     assert_eq!(
         approved.header("set-cookie"),
-        "dispatch_oauth_request=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
+        format!("{name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0")
     );
-    assert_eq!(server.browser(), None);
+    assert!(server.browser().is_empty());
     refused(
         server
             .as_owner(&owner, "GET", &path(&first, ""), json!({}))
             .await,
     );
-    server.set_browser(Some(value.to_owned()));
+    server.set_browser(&held);
     let gone = server
         .as_owner(&owner, "GET", &path(&first, ""), json!({}))
         .await;
@@ -2616,18 +2634,64 @@ async fn only_the_browser_that_brought_a_request_sees_or_answers_it() {
         (gone.status, s(&gone.body, "error")),
         (404, "authorization_not_found")
     );
-    // Denying clears it too.
-    server.set_browser(Some(other));
+    // Denying clears its own cookie too.
+    server.set_browser(&other);
     let denied = server
         .as_owner(&owner, "POST", &path(&second, "/deny"), json!({}))
         .await;
     assert_eq!(denied.status, 200, "{}", denied.body);
-    assert_eq!(server.browser(), None);
+    assert!(server.browser().is_empty());
     // A refused authorization sets no cookie.
     let closed = server
         .authorize(&[("client_id", "evil"), ("redirect_uri", local)])
         .await;
     assert_eq!(closed.header("set-cookie"), "");
+}
+
+#[tokio::test]
+async fn apps_started_together_in_one_browser_are_each_approved_in_either_order() {
+    let server = Server::paired().await;
+    let owner = server.owner().await;
+    let local = "http://localhost:50015/callback";
+    for first_answered in [true, false] {
+        // The owner copies one app's sign-in command, then another's, before approving either.
+        let first = server.requested(CLAUDE_CODE, local).await;
+        let second = server.requested(CHATGPT, CHATGPT_REDIRECT).await;
+        assert_eq!(server.browser().len(), 2);
+        for id in [&first, &second] {
+            let shown = server
+                .as_owner(
+                    &owner,
+                    "GET",
+                    &format!("/api/platform/oauth/requests/{id}"),
+                    json!({}),
+                )
+                .await;
+            assert_eq!(shown.status, 200, "{}", shown.body);
+        }
+        let order = if first_answered {
+            [&first, &second]
+        } else {
+            [&second, &first]
+        };
+        // Each approval clears its own cookie and leaves the other one's.
+        for (answered, id) in order.into_iter().enumerate() {
+            let suffix = if answered == 0 { "a" } else { "b" };
+            let name = format!("App {first_answered} {suffix}");
+            let approved = server
+                .as_owner(
+                    &owner,
+                    "POST",
+                    &format!("/api/platform/oauth/requests/{id}/approve"),
+                    everything(&name),
+                )
+                .await;
+            assert_eq!(approved.status, 200, "{}", approved.body);
+            let left: Vec<String> = server.browser();
+            assert_eq!(left.len(), 1 - answered, "{left:?}");
+            assert!(left.iter().all(|cookie| !cookie.contains(id.as_str())));
+        }
+    }
 }
 
 #[tokio::test]

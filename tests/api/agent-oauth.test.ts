@@ -101,13 +101,17 @@ async function oauth(f: App, { paired = true } = {}) {
   if (paired) await openPairing(owner);
   const { dsps } = (await owner.read('/api/platform/agents')) as AgentKeys;
   const north = dsps.find((dsp) => dsp.name === 'Northline Logistics')!;
-  // The owner's browser: its session, and the cookie the authorization endpoint gives it for
-  // the request it brought, which only that browser may see or answer. An answer clears it.
+  // The owner's browser: its session, and a cookie named for each request it brought, which
+  // only that browser may see or answer. An answer clears that request's cookie alone.
   const session = owner.headers.cookie!;
+  const requests = new Map<string, string>();
   const keep = (headers: Headers) => {
     const pair = (headers.get('set-cookie') ?? '').split(';')[0]!;
-    if (!pair.startsWith('dispatch_oauth_request=')) return;
-    owner.headers.cookie = pair.endsWith('=') ? session : `${session}; ${pair}`;
+    const [name = '', nonce = ''] = pair.split('=');
+    if (!name.startsWith('dispatch_oauth_request_')) return;
+    if (nonce) requests.set(name, pair);
+    else requests.delete(name);
+    owner.headers.cookie = [session, ...requests.values()].join('; ');
   };
 
   const answer = async (response: Response): Promise<Answer> => {
@@ -780,7 +784,7 @@ test('a request opens only in the browser the app sent to Dispatch', async (t) =
   // The browser the app sent holds the request; the same owner signed in anywhere else, as
   // from a link someone sent them, does not.
   const held = c.owner.headers.cookie!;
-  assert.match(held, new RegExp(`; dispatch_oauth_request=${started.id}\\.[\\w-]{43}$`));
+  assert.match(held, new RegExp(`; dispatch_oauth_request_${started.id}=[\\w-]{43}$`));
   const elsewhere = await f.client();
   for (const answered of [
     await elsewhere.get(path),
@@ -790,10 +794,17 @@ test('a request opens only in the browser the app sent to Dispatch', async (t) =
     assert.deepEqual([answered.status, answered.value.error], [403, 'wrong_browser']);
   }
   assert.equal((await c.owner.get(path)).status, 200);
-  // Approved, the cookie is cleared, and the request no longer opens.
+  // A second app started in the same browser before the first is approved: both open, and
+  // each approval clears only its own cookie.
+  const second = await c.begin(chatgpt, chatgptRedirect);
+  assert.equal((await c.owner.get(`/api/platform/oauth/requests/${second.id}`)).status, 200);
+  assert.equal((await c.owner.get(path)).status, 200);
   const redirect = await c.approve(started.id, everything('Claude Code'));
   assert.ok(redirect.startsWith(`${callback}?`), redirect);
-  assert.ok(!c.owner.headers.cookie!.includes('dispatch_oauth_request'));
+  assert.ok(!c.owner.headers.cookie!.includes(started.id));
+  assert.ok(c.owner.headers.cookie!.includes(second.id));
   const after = await c.owner.get(path);
   assert.deepEqual([after.status, after.value.error], [403, 'wrong_browser']);
+  await c.approve(second.id, everything('ChatGPT'));
+  assert.equal(c.owner.headers.cookie, held.split('; dispatch_oauth_request_')[0]);
 });

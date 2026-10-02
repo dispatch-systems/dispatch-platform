@@ -207,31 +207,32 @@ test('a kind of app the owner turned off is named in a sentence, or is this app'
   assert.equal(appKindName('toString'), 'this app');
 });
 
-test('a key or app past 10,000 calls a day is a note in the Activity log, not a call', () => {
+test('a key or app past 10,000 calls a UTC day is a note in the Activity log, not a call', () => {
   const now = Date.parse('2026-10-02T15:00:00Z');
   const marker = {
     at: '2026-10-02T14:12:09Z',
     outcome: 'capped',
     key: { id: 'agentkey_1', name: 'Nightly report script', kind: 'key' as const },
   };
+  // The day is always named, as UTC counts it, since the cap starts again at UTC midnight.
   assert.equal(
-    activityNote(marker, 'America/Chicago', now),
-    'Over 10,000 calls today from Nightly report script; later calls today aren’t listed.',
+    activityNote(marker, now),
+    'Over 10,000 calls from Nightly report script on Oct 2 (UTC); later calls that day aren’t listed.',
   );
-  // Another day names its date, and another year its year.
+  // Early UTC on Oct 2 is still Oct 1 in Chicago, but the cap counts Oct 2.
   assert.equal(
-    activityNote({ ...marker, at: '2026-09-30T23:59:00Z' }, 'UTC', now),
-    'Over 10,000 calls on Sep 30 from Nightly report script; later calls that day aren’t listed.',
+    activityNote({ ...marker, at: '2026-10-02T03:00:00Z' }, now),
+    'Over 10,000 calls from Nightly report script on Oct 2 (UTC); later calls that day aren’t listed.',
   );
   assert.equal(
-    activityNote({ ...marker, at: '2025-12-31T12:00:00Z' }, 'UTC', now),
-    'Over 10,000 calls on Dec 31, 2025 from Nightly report script; later calls that day aren’t listed.',
+    activityNote({ ...marker, at: '2026-10-01T23:59:00Z' }, now),
+    'Over 10,000 calls from Nightly report script on Oct 1 (UTC); later calls that day aren’t listed.',
   );
-  // The day is the viewer's: early UTC on Oct 2 is still Oct 1 in Chicago.
-  assert.match(
-    activityNote({ ...marker, at: '2026-10-02T03:00:00Z' }, 'America/Chicago', now)!,
-    /^Over 10,000 calls on Oct 1 /,
+  // Another year names its year.
+  assert.equal(
+    activityNote({ ...marker, at: '2025-12-31T23:30:00Z' }, now),
+    'Over 10,000 calls from Nightly report script on Dec 31, 2025 (UTC); later calls that day aren’t listed.',
   );
   for (const outcome of ['ok', 'rate_limited'])
-    assert.equal(activityNote({ ...marker, outcome }, 'UTC', now), null);
+    assert.equal(activityNote({ ...marker, outcome }, now), null);
 });

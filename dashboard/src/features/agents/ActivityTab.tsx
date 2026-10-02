@@ -156,7 +156,7 @@ export function ActivityTab() {
                   className="agents-calls"
                   label="Agent calls"
                   rowClassName={(call) => (call.outcome === 'capped' ? 'agents-note' : undefined)}
-                  renderNote={(call) => activityNote(call, timeZone)}
+                  renderNote={(call) => activityNote(call)}
                 />
               </div>
               <ErrorBox message={load.error} />
