@@ -506,6 +506,7 @@ test(
     // pace, not the collector's, so the peak never rests on a fixed delay.
     const held: Record<string, (() => void)[]> = {};
     const probed = new Set<string>();
+    const expired = new Set<string>();
     const timers = new Set<NodeJS.Timeout>();
     const releaseDay = (date: string) => {
       probed.add(date);
@@ -560,7 +561,10 @@ test(
               timers.delete(timer);
               resolve();
             };
-            const timer = setTimeout(release, 15000);
+            const timer = setTimeout(() => {
+              expired.add(date);
+              release();
+            }, 15000);
             timers.add(timer);
             (held[date] ??= []).push(release);
           });
@@ -600,6 +604,8 @@ test(
         // A real core round trip while the provider reads are held also proves
         // that collection leaves the API responsive.
         assert.equal((await owner.get('/api/platform/health')).status, 200);
+        assert(!expired.has(date), `${date}: health responds before held reads expire`);
+        assert.equal(active, Math.min(3, size), `${date}: reads remain held during health`);
         assert.equal(peaks[date], Math.min(3, size));
       } finally {
         releaseDay(date);
