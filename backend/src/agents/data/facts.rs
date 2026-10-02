@@ -1,8 +1,8 @@
 //! The facts every answer is made of: each source's rows for a DSP's days, in the DSP's
 //! own time, with the days each source has. A source a DSP has switched off is left out.
-use super::{Refusal, catalog::Source, scope::Period};
+use super::{Failure, Refusal, catalog::Source, scope::Period};
 use crate::{
-    Result,
+    Code, Result,
     collectors::Provider,
     contracts::{DailyTimecard, Dsp, MealStatus},
     db::{Store, n, s},
@@ -511,6 +511,29 @@ fn package_scope(
 }
 /// Counts per group: the group's values, in the order asked, and how many packages.
 pub type Grouped = Vec<(Vec<String>, i64)>;
+/// A normal month at a large station still fits, while one request cannot scan an
+/// arbitrarily large retained history or materialize an arbitrary number of groups.
+const PACKAGE_CANDIDATE_LIMIT: i64 = 2_000_000;
+const PACKAGE_GROUP_LIMIT: usize = 10_000;
+const PACKAGE_QUERY_OPS: u64 = 25_000_000;
+
+fn package_too_large(message: &str) -> Failure {
+    Refusal::new(422, "package_query_too_large", message).into()
+}
+
+fn package_query<T>(result: Result<T>) -> std::result::Result<T, Failure> {
+    result.map_err(|error| {
+        if error.is(Code::QueryLimitExceeded) {
+            package_too_large(
+                "That package question needs too much database work at once. Ask about fewer \
+                 days, then continue with the next period.",
+            )
+        } else {
+            error.into()
+        }
+    })
+}
+
 /// How many packages a question covers, and their counts grouped by up to two columns,
 /// largest first.
 pub fn package_counts(
@@ -519,16 +542,23 @@ pub fn package_counts(
     period: &Period,
     wanted: &Packages,
     groups: &[&str],
-) -> Result<(i64, Grouped)> {
+) -> std::result::Result<(i64, Grouped), Failure> {
     let data = db.routedata(&dsp.id)?;
     let (scope, params) = package_scope(dsp, db, period, wanted)?;
-    let total = data
-        .one(
-            &format!("SELECT COUNT(*) n{scope}"),
-            rusqlite::params_from_iter(&params),
-        )?
-        .map(|r| n(&r, "n"))
-        .unwrap_or(0);
+    let total = package_query(data.all_bounded(
+        &format!("SELECT COUNT(*) n{scope}"),
+        rusqlite::params_from_iter(&params),
+        PACKAGE_QUERY_OPS,
+    ))?
+    .first()
+    .map(|r| n(r, "n"))
+    .unwrap_or(0);
+    if total > PACKAGE_CANDIDATE_LIMIT {
+        return Err(package_too_large(
+            "That package question covers too much route data at once. Ask about fewer days \
+             or add a driver, route, outcome or reason filter.",
+        ));
+    }
     if groups.is_empty() {
         return Ok((total, vec![]));
     }
@@ -538,15 +568,23 @@ pub fn package_counts(
         .filter_map(|(k, g)| package_group(g).map(|c| format!("({c}) g{k}")))
         .collect();
     let keys: Vec<String> = (0..columns.len()).map(|k| format!("g{k}")).collect();
-    let rows = data.all(
+    let rows = package_query(data.all_bounded(
         &format!(
-            "SELECT {}, COUNT(*) n{scope} GROUP BY {} ORDER BY n DESC, {}",
+            "SELECT {}, COUNT(*) n{scope} GROUP BY {} ORDER BY n DESC, {} LIMIT {}",
             columns.join(","),
             keys.join(","),
-            keys.join(",")
+            keys.join(","),
+            PACKAGE_GROUP_LIMIT + 1,
         ),
         rusqlite::params_from_iter(&params),
-    )?;
+        PACKAGE_QUERY_OPS,
+    ))?;
+    if rows.len() > PACKAGE_GROUP_LIMIT {
+        return Err(package_too_large(
+            "That package grouping has too many distinct results. Ask about fewer days or \
+             group by fewer fields.",
+        ));
+    }
     Ok((
         total,
         rows.iter()
@@ -574,14 +612,13 @@ pub fn package_rows(
     wanted: &Packages,
     offset: usize,
     limit: usize,
-) -> Result<Vec<PackageRow>> {
+) -> std::result::Result<Vec<PackageRow>, Failure> {
     let data = db.routedata(&dsp.id)?;
     let (scope, mut params) = package_scope(dsp, db, period, wanted)?;
     params.push(limit.to_string());
     params.push(offset.to_string());
     let zone = zone(dsp);
-    Ok(data
-        .all(
+    Ok(package_query(data.all_bounded(
             &format!(
                 "SELECT t.day,COALESCE(t.tracking_id,'') tracking,t.transporter_id,\
                  COALESCE(i.driver_name,'') driver_name,COALESCE(i.route_code,'') route,\
@@ -589,7 +626,8 @@ pub fn package_rows(
                  {scope} ORDER BY t.day DESC,t.executed_at,t.task_id LIMIT ? OFFSET ?"
             ),
             rusqlite::params_from_iter(&params),
-        )?
+            PACKAGE_QUERY_OPS,
+        ))?
         .iter()
         .map(|r| PackageRow {
             day: s(r, "day").into(),
@@ -604,21 +642,37 @@ pub fn package_rows(
         })
         .collect())
 }
-/// Every reason Amazon has given at this DSP, for a request that names one it never gave.
-pub fn package_reasons(db: &Store, dsp: &Dsp) -> Result<Vec<String>> {
+/// `None` when Amazon has given this reason at the DSP. Otherwise a bounded set of choices
+/// for correcting it. Both probes share the package query work budget and ignore stale or
+/// foreign publications.
+pub fn unknown_package_reason_choices(
+    db: &Store,
+    dsp: &Dsp,
+    wanted: &str,
+) -> std::result::Result<Option<Vec<String>>, Failure> {
     let data = db.routedata(&dsp.id)?;
-    Ok(data
-        .all(
-            &format!(
-                "SELECT DISTINCT ({REASON}) reason FROM tasks t WHERE t.task_type='DROP_OFF' \
-                 AND t.active=1 ORDER BY reason"
-            ),
-            [],
-        )?
-        .iter()
-        .map(|r| s(r, "reason").to_owned())
-        .filter(|r| !r.is_empty())
-        .collect())
+    let station = db.profile(&dsp.id)?.station_code;
+    let scope = " FROM tasks t JOIN route_publications p ON p.id=t.publication_id AND p.active=1 \
+                 WHERE p.station=? AND t.task_type='DROP_OFF' AND t.active=1";
+    let present = package_query(data.all_bounded(
+        &format!("SELECT 1 present{scope} AND ({REASON})=? LIMIT 1"),
+        [station.as_str(), wanted],
+        PACKAGE_QUERY_OPS,
+    ))?;
+    if !present.is_empty() {
+        return Ok(None);
+    }
+    let rows = package_query(data.all_bounded(
+        &format!("SELECT DISTINCT ({REASON}) reason{scope} LIMIT 100"),
+        [station],
+        PACKAGE_QUERY_OPS,
+    ))?;
+    Ok(Some(
+        rows.iter()
+            .map(|r| s(r, "reason").to_owned())
+            .filter(|r| !r.is_empty())
+            .collect(),
+    ))
 }
 /// One-line addresses, by the IDs Amazon gives them.
 pub fn addresses(

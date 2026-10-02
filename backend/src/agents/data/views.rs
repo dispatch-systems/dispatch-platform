@@ -918,17 +918,16 @@ pub fn packages(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         .to_lowercase()
         .replace([' ', '-'], "_");
     let reason = Some(reason).filter(|r| !r.is_empty());
-    if let Some(wanted) = &reason {
-        let known = facts::package_reasons(db, dsp)?;
-        if !known.contains(wanted) {
-            return Err(Refusal::new(
-                400,
-                "unknown_reason",
-                format!("Amazon has never given the reason `{wanted}` here."),
-            )
-            .choices(known)
-            .into());
-        }
+    if let Some(wanted) = &reason
+        && let Some(known) = facts::unknown_package_reason_choices(db, dsp, wanted)?
+    {
+        return Err(Refusal::new(
+            400,
+            "unknown_reason",
+            format!("Amazon has never given the reason `{wanted}` here."),
+        )
+        .choices(known)
+        .into());
     }
     let groups: Vec<&str> = param(query, "group_by")
         .split(',')
