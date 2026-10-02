@@ -1,5 +1,5 @@
 import { useId, useRef, type ReactNode } from 'react';
-import { X } from 'lucide-react';
+import { ArrowLeft, X } from 'lucide-react';
 import { useFocusTrap } from './useFocusTrap.js';
 
 export function Modal({
@@ -10,6 +10,7 @@ export function Modal({
   description,
   dismissible = true,
   initialFocus = 'input,button,select',
+  onBack,
 }: {
   title: ReactNode;
   description?: string;
@@ -18,6 +19,8 @@ export function Modal({
   children: ReactNode;
   onClose: () => void;
   variant?: 'dialog' | 'sheet' | 'browser';
+  /** A dialog in steps: goes back a step, from an arrow before the title. */
+  onBack?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const headingId = useId();
@@ -40,7 +43,16 @@ export function Modal({
         aria-labelledby={headingId}
       >
         <div className="modal-heading" data-slot={variant === 'sheet' ? 'sheet-header' : undefined}>
-          <h2 id={headingId}>{title}</h2>
+          {onBack ? (
+            <div className="modal-title">
+              <button className="icon-button" aria-label="Back" onClick={onBack}>
+                <ArrowLeft size={18} />
+              </button>
+              <h2 id={headingId}>{title}</h2>
+            </div>
+          ) : (
+            <h2 id={headingId}>{title}</h2>
+          )}
           {description && <p className="muted">{description}</p>}
           {variant !== 'sheet' && dismissible && (
             <button className="icon-button" aria-label="Close dialog" onClick={onClose}>

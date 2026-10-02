@@ -5,11 +5,14 @@ import {
   activityNote,
   appKindName,
   blankKey,
+  connectApps,
+  connectedAs,
   daysLeft,
   expiryOf,
   expiryText,
   inUse,
   keyState,
+  knownApp,
   lastUsedText,
   reachText,
   requestOf,
@@ -108,7 +111,7 @@ test('each app signs in with one command, a way from another machine and a promp
   const [claude, codex, hermes] = ways.terminals;
   assert.deepEqual(
     ways.terminals.map((app) => app.label),
-    ['Claude Code', 'Codex', 'Hermes'],
+    ['Claude Code', 'Codex CLI', 'Hermes'],
   );
   assert.equal(
     claude!.command,
@@ -126,7 +129,13 @@ test('each app signs in with one command, a way from another machine and a promp
   );
   // Hermes asks for the address itself when it can't open a browser.
   assert.equal(hermes!.remote.command, undefined);
-  for (const app of ways.terminals) assert.match(app.next, /^A Dispatch page opens — approve it/);
+  assert.equal(ways.next, 'Approve it on the Dispatch page that opens');
+  assert.equal(claude!.next, 'Approve it on the Dispatch page that opens');
+  assert.equal(codex!.next, 'Approve it on the Dispatch page that opens');
+  assert.equal(
+    hermes!.next,
+    'Approve it on the Dispatch page that opens, then answer Y to turn on the tools',
+  );
 
   // Each prompt asks the app to run the setup, say when to approve, and fall back to the link.
   assert.equal(
@@ -172,9 +181,36 @@ test('each app signs in with one command, a way from another machine and a promp
     ].join('\n'),
   );
 
-  // Any other app takes the address, as a JSON entry or through a local bridge.
-  assert.deepEqual(JSON.parse(ways.json), { mcpServers: { dispatch: { url: mcp } } });
+  // Any other app takes the address, or runs it through a local bridge.
   assert.equal(ways.bridge, `npx -y mcp-remote ${mcp}`);
+});
+
+test('Connect an app offers the known apps first, and knows each by the name it signs in with', () => {
+  assert.deepEqual(
+    connectApps.map((app) => app.label),
+    ['ChatGPT', 'Codex CLI', 'Claude Code', 'Hermes', 'Other app'],
+  );
+  const client = (name: string, verified = true) => ({
+    name,
+    verified,
+    status: 'connected' as const,
+  });
+  assert.equal(knownApp(client('Claude Code')), 'claude-code');
+  assert.equal(knownApp(client('Codex')), 'codex');
+  assert.equal(knownApp(client('Hermes Agent', false)), 'hermes');
+  assert.equal(knownApp(client('ChatGPT')), 'chatgpt');
+  assert.equal(knownApp(client('Cursor', false)), null);
+  assert.equal(knownApp(null), null);
+
+  // A new connection is the app being connected when it is that app; any app is "Other app".
+  const app = (name: string) => key({ kind: 'app', client: client(name) });
+  assert.ok(connectedAs(app('Claude Code'), 'claude-code'));
+  assert.ok(!connectedAs(app('Claude Code'), 'codex'));
+  assert.ok(!connectedAs(app('Cursor'), 'claude-code'));
+  assert.ok(connectedAs(app('Cursor'), 'other'));
+  assert.ok(connectedAs(app('Claude Code'), 'other'));
+  // A key is never an app connecting.
+  assert.ok(!connectedAs(key(), 'other'));
 });
 
 test('a key sheet knows when nothing changed', () => {

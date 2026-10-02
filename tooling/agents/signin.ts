@@ -1,15 +1,15 @@
 // Sign in with Dispatch, proved with the real apps. Each MCP client installed here signs in
 // to a private Dispatch server the way its user would, with no key: it adds the server and
 // prints the sign-in link, a browser signs in as the platform owner and approves it, and the
-// app finishes on its own. Then the app connects and calls a tool, and the owner's Connected
-// apps list shows it. Every app runs in a temporary home of its own, so the user's own
+// app finishes on its own. Then the app connects and calls a tool, and the owner's Apps list
+// shows it. Every app runs in a temporary home of its own, so the user's own
 // configuration and sign-ins are never read or changed. It runs here on demand, never in CI.
 //
 //   npm run agents:signin -- [--clients claude,codex] [--hermes] [--mcp-remote] [--paste]
 //                            [--build | --artifact <dir>] [--keep]
 //
 // By default each app takes the approval back on its own listener, as on the user's own
-// computer, after the command the Connect tab gives. --paste takes the remote (SSH) way: the
+// computer, after the command Connect an app gives. --paste takes the remote (SSH) way: the
 // browser stops at the address the app is sent back to, and that address is pasted into the
 // app. --hermes adds Hermes Agent (if `hermes` is on PATH) and --mcp-remote adds the
 // mcp-remote bridge (through npx).
@@ -530,7 +530,7 @@ function codexCalls(output: string): Call {
 const ASK = `Use the Dispatch whoami tool and reply with the DSP name only.`;
 
 type Client = {
-  /** The app's name on the approval page and in Connected apps. */
+  /** The app's name on the approval page and in the Apps list. */
   app: string;
   /** Whether Dispatch knows it by its published document. */
   verified: boolean;

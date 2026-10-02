@@ -1,5 +1,5 @@
-/* The Agents page: keys, connected apps, their calls, the key sheet, the setup dialog and app
-   approval. */
+/* The Agents page: connected apps and connecting one, keys, their calls, the key sheet, the
+   setup dialog and app approval. */
 .agents-tag {
   display: inline-flex;
   align-items: center;
@@ -119,6 +119,7 @@
   padding: 4px 12px;
 }
 .agents-footer button.text-button {
+  padding: 4px 8px;
   color: var(--muted-foreground);
 }
 
@@ -360,30 +361,6 @@
   flex-shrink: 0;
   color: var(--warning);
 }
-.agents-connect {
-  max-width: 860px;
-  margin-top: 24px;
-  padding: 22px 24px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-.agents-connect + .agents-connect {
-  margin-top: 16px;
-}
-.agents-connect-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-.agents-connect h2 {
-  margin-bottom: 16px;
-  font-size: 16px;
-  font-weight: 600;
-}
-.agents-connect-title h2 {
-  margin-bottom: 0;
-}
 .agents-endpoint {
   display: grid;
   grid-template-columns: 90px 1fr;
@@ -401,16 +378,7 @@
 .agents-setup .restored-tabs {
   margin-bottom: 14px;
 }
-.agents-endpoint:first-of-type {
-  margin-top: 20px;
-}
-/* Signing an app in: its command or steps, a prompt for the app, and the way from another
-   machine. */
-.agents-signin {
-  display: grid;
-  gap: 12px;
-  font-size: 13px;
-}
+/* A line to copy in the steps of connecting an app. */
 .agents-line {
   padding: 4px 4px 4px 12px;
 }
@@ -419,19 +387,6 @@
   overflow-wrap: anywhere;
 }
 .agents-line code span {
-  white-space: nowrap;
-}
-.agents-prompt {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 10px;
-  color: var(--muted-foreground);
-}
-.agents-prompt button {
-  min-height: 32px;
-  padding: 4px 12px;
-  font-size: 13px;
   white-space: nowrap;
 }
 .agents-remote summary {
@@ -463,18 +418,6 @@
 .agents-remote > :not(summary) {
   margin-top: 10px;
 }
-.agents-steps {
-  display: grid;
-  gap: 10px;
-  padding-left: 20px;
-  list-style: decimal;
-}
-.agents-steps li::marker {
-  color: var(--muted-foreground);
-}
-.agents-steps .agents-key {
-  margin-top: 6px;
-}
 
 /* Links that fetch a file, drawn as the dashboard's buttons. */
 .agents-files {
@@ -501,46 +444,48 @@
   background: var(--accent);
 }
 
-/* Whether apps may start connecting now, beneath the ways to sign in. */
-.agents-pairing {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 14px;
-  margin-top: 18px;
-  padding-top: 16px;
+/* The apps that may sign in, a switch each, in a narrow sheet. */
+.modal.side-sheet:has(.agents-allowed-sheet) {
+  width: 420px;
+}
+.agents-allowed li + li {
   border-top: 1px solid var(--border);
-  font-size: 13px;
-}
-.agents-pairing button {
-  min-height: 32px;
-  padding: 4px 12px;
-  font-size: 13px;
-}
-.agents-pairing .error {
-  flex-basis: 100%;
-  margin: 0;
-}
-/* The apps that may sign in, a switch each. */
-.agents-allowed {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 4px 24px;
-  padding: 0;
-  list-style: none;
 }
 .agents-allowed label {
   flex-direction: row;
   align-items: center;
-  gap: 10px;
-  padding: 6px 0;
-  font-size: 13px;
-  font-weight: 450;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 0;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
+}
+.agents-allowed li:first-child label {
+  padding-top: 2px;
+}
+.agents-allowed-app {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.agents-allowed small {
+  display: block;
+  margin-top: 1px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted-foreground);
 }
 .agents-allowed input[role='switch']:disabled {
   opacity: 0.5;
   cursor: default;
+}
+.agents-allowed-note {
+  margin-top: 6px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--muted-foreground);
 }
 
 /* Connected apps: whether Dispatch knows the app by its published address, and whether
@@ -665,5 +610,351 @@
   .agents-endpoint {
     grid-template-columns: 1fr;
     gap: 6px;
+  }
+}
+
+/* A kind of app: its logo, or a plain icon drawn as the dashboard's DSP avatar. */
+.agents-logo,
+.agents-icon {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 6px;
+}
+.agents-logo {
+  display: block;
+  object-fit: cover;
+}
+.agents-logo.large,
+.agents-icon.large {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+  border-radius: 10px;
+}
+.agents-logo.shaped {
+  border-radius: 0;
+  object-fit: contain;
+}
+.agents-icon.tone-0 {
+  --identity-ink: var(--muted-foreground);
+  --identity-surface: var(--muted);
+}
+/* A logo drawn for each theme shows only in its own. */
+.agents-logo.logo-dark,
+[data-theme='dark'] .agents-logo.logo-light {
+  display: none;
+}
+[data-theme='dark'] .agents-logo.logo-dark {
+  display: block;
+}
+
+/* Connected apps. */
+.agents-apps-toolbar {
+  justify-content: flex-end;
+}
+.agents-app-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+.agents-footer button.agents-quiet {
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.agents-footer button.agents-quiet:hover {
+  background: transparent;
+  color: var(--foreground);
+}
+.agents > .empty:has(> button) {
+  padding: 72px 24px 64px;
+}
+.agents > .empty > button {
+  margin-top: 8px;
+}
+
+/* Connecting an app: which app, its steps, and the live line at the foot. */
+.modal:has(> .agents-connect) {
+  width: 760px;
+  padding: 0;
+}
+.modal:has(> .agents-connect) > .modal-heading {
+  margin: 0;
+  padding: 24px 28px 0;
+}
+.agents-connect-body {
+  padding: 22px 28px 28px;
+}
+.agents-connect-legend {
+  margin-bottom: 14px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.agents-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 10px;
+}
+.agents-tile {
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 22px 8px 18px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.agents-tile:hover {
+  border-color: var(--input);
+}
+.agents-steps {
+  display: grid;
+  gap: 20px;
+}
+.agents-steps > li {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+.agents-step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.agents-steps > li > div {
+  min-width: 0;
+  padding-top: 1px;
+  font-size: 14px;
+}
+.agents-steps > li > div > .agents-key {
+  margin-top: 10px;
+}
+:is(.agents-steps, .agents-more) .agents-line {
+  padding: 8px 6px 8px 14px;
+}
+:is(.agents-steps, .agents-more) .agents-line code {
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+:is(.agents-steps, .agents-more, .agents-aside, .agents-using-body) .agents-key button {
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+.agents-steps a,
+.agents-link {
+  color: var(--primary);
+  font-weight: 500;
+}
+.agents-steps kbd {
+  font-family: var(--font-family);
+  font-weight: 600;
+}
+.agents-path {
+  display: inline-block;
+  vertical-align: -2px;
+  margin: 0 3px;
+  color: var(--muted-foreground);
+}
+.agents-step-note {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+/* Name, URL and authentication, as ChatGPT's form asks for them. */
+.agents-fields {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+.agents-fields > div {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  align-items: center;
+  gap: 14px;
+}
+.agents-fields dt {
+  color: var(--muted-foreground);
+}
+.agents-fields dd {
+  min-width: 0;
+  font-weight: 500;
+}
+.agents-steps .agents-fields .agents-line {
+  padding: 4px 4px 4px 12px;
+  font-weight: 400;
+}
+/* The other ways, folded away. */
+.agents-more {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  margin-top: 26px;
+  font-size: 13px;
+}
+.agents-more > details {
+  max-width: 100%;
+}
+.agents-more > details[open]:not(:last-child) {
+  margin-bottom: 10px;
+}
+.agents-more p {
+  color: var(--muted-foreground);
+}
+.agents-prompt {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.agents-more details > button {
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+.agents-aside {
+  display: grid;
+  gap: 8px;
+  margin-top: 26px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.agents-aside p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.agents-aside code {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--muted);
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.agents-aside button {
+  min-height: 26px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.agents-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+}
+.agents-connect-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 28px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.agents-connect-status > svg {
+  flex-shrink: 0;
+  color: var(--primary);
+}
+.agents-connect-status.failed {
+  color: var(--destructive);
+}
+.agents-left {
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+/* Connected. */
+.agents-connect-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 36px 28px 40px;
+  text-align: center;
+}
+.agents-done-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 12px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
+}
+.agents-connect-done h3 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.25px;
+}
+.agents-connect-done p {
+  color: var(--muted-foreground);
+}
+.agents-connect-done .agents-tags {
+  justify-content: center;
+  margin: 10px 0 2px;
+}
+.agents-connect-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 28px;
+  border-top: 1px solid var(--border);
+}
+
+/* Keys: what an agent needs to use one, folded away beneath them. */
+.agents-using {
+  margin-top: 22px;
+}
+.agents-using > summary {
+  padding-left: 6px;
+  font-size: 14px;
+}
+.agents-using > summary .muted {
+  font-weight: 400;
+}
+.agents-using-body {
+  max-width: 760px;
+  padding: 20px 22px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.agents-using-body .agents-endpoint {
+  grid-template-columns: 74px 1fr;
+  margin-top: 10px;
+}
+.agents-using-body .agents-endpoint:first-child {
+  margin-top: 0;
+}
+@media (max-width: 700px) {
+  .agents-using-body .agents-endpoint,
+  .agents-fields > div {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  /* A command may break between words when no part of it fits a narrow screen. */
+  .agents-line code > span {
+    white-space: normal;
   }
 }

@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { platformHash } from '../../dashboard/src/app/navigation.js';
-import { test, expect, login, signIn } from './fixtures.js';
+import { test, expect, demo, login, signIn } from './fixtures.js';
 
 const claudeCode = 'https://claude.ai/oauth/claude-code-client-metadata';
 // Claude Code's own listener on this computer; the test answers for it.
@@ -10,7 +10,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
   page,
   request,
   baseURL,
-  dispatch,
+  browser,
 }) => {
   const verifier = crypto.randomBytes(32).toString('base64url');
   const state = crypto.randomBytes(16).toString('base64url');
@@ -29,102 +29,134 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     route.fulfill({ contentType: 'text/html', body: '<p>Authentication complete.</p>' }),
   );
 
-  // The owner lets apps start connecting, as copying a way to sign in from the Connect tab does.
-  const owner = await dispatch.client();
-  expect((await owner.post('/api/platform/oauth/pairing')).status).toBe(200);
+  // On the dashboard in their own browser, the owner starts connecting Claude Code: copying its
+  // command lets apps connect, and the dialog waits for it while the app signs in from `page`.
+  const owner = await browser.newContext({ baseURL });
+  try {
+    await owner.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseURL });
+    const dashboard = await owner.newPage();
+    const signedIn = await dashboard.request.post('/api/auth/login', {
+      headers: { origin: baseURL! },
+      data: { email: demo.email, password: demo.password },
+    });
+    expect(signedIn.status()).toBe(200);
+    await dashboard.goto(`/${platformHash('agents')}`);
+    await expect(dashboard.getByRole('heading', { name: 'No apps connected yet' })).toBeVisible();
+    await dashboard.getByRole('button', { name: 'Connect an app', exact: true }).click();
+    const connecting = dashboard.getByRole('dialog');
+    await connecting.getByRole('button', { name: 'Claude Code', exact: true }).click();
+    await connecting.getByRole('button', { name: 'Copy Claude Code command', exact: true }).click();
+    await expect(connecting.locator('.agents-connect-status')).toHaveText(
+      /^Waiting for Claude Code to connect…\((10:00|9:[0-5]\d) left\)$/,
+    );
 
-  // Signed out, the request waits through sign-in on the approval page.
-  await page.goto(`/oauth/authorize?${query(state)}`);
-  await expect(page).toHaveURL(/#authorize\?request=/);
-  const approvalUrl = page.url();
-  await signIn(page);
-  await expect(page.getByRole('heading', { name: 'Connect an app', level: 1 })).toBeVisible();
-  expect(page.url()).toBe(approvalUrl);
+    // Signed out, the request waits through sign-in on the approval page.
+    await page.goto(`/oauth/authorize?${query(state)}`);
+    await expect(page).toHaveURL(/#authorize\?request=/);
+    const approvalUrl = page.url();
+    await signIn(page);
+    await expect(page.getByRole('heading', { name: 'Connect an app', level: 1 })).toBeVisible();
+    expect(page.url()).toBe(approvalUrl);
 
-  const approval = page.getByRole('form', { name: 'Claude Code' });
-  await expect(approval.getByText('Verified', { exact: true })).toBeVisible();
-  await expect(approval.getByText('this computer', { exact: true })).toBeVisible();
-  // Every request asks the owner to approve only what they started.
-  await expect(
-    approval.getByText(
-      'Only approve if you started connecting Claude Code yourself just now. If you didn’t, ' +
-        'choose Deny. Access will be sent to an app running on this computer.',
-    ),
-  ).toBeVisible();
-  await expect(approval.getByText(/^Approving replaces/)).toHaveCount(0);
-  const name = approval.getByLabel('Connection name');
-  await expect(name).toHaveValue('Claude Code');
-  await name.fill('Laptop – Claude Code app');
-  await approval.getByText('Choose DSPs', { exact: true }).click();
-  await approval.getByRole('checkbox', { name: 'Northline Logistics' }).check();
-  await approval.getByRole('button', { name: 'Essential', exact: true }).click();
-  await approval.getByRole('button', { name: 'Approve', exact: true }).click();
+    const approval = page.getByRole('form', { name: 'Claude Code' });
+    await expect(approval.getByText('Verified', { exact: true })).toBeVisible();
+    await expect(approval.getByText('this computer', { exact: true })).toBeVisible();
+    // Every request asks the owner to approve only what they started.
+    await expect(
+      approval.getByText(
+        'Only approve if you started connecting Claude Code yourself just now. If you didn’t, ' +
+          'choose Deny. Access will be sent to an app running on this computer.',
+      ),
+    ).toBeVisible();
+    await expect(approval.getByText(/^Approving replaces/)).toHaveCount(0);
+    const name = approval.getByLabel('Connection name');
+    await expect(name).toHaveValue('Claude Code');
+    await name.fill('Laptop – Claude Code app');
+    await approval.getByText('Choose DSPs', { exact: true }).click();
+    await approval.getByRole('checkbox', { name: 'Northline Logistics' }).check();
+    await approval.getByRole('button', { name: 'Essential', exact: true }).click();
+    await approval.getByRole('button', { name: 'Approve', exact: true }).click();
 
-  // The browser goes back to the app with a code for it, its state and the issuer.
-  await page.waitForURL((url) => url.href.startsWith(`${callback}?`));
-  const answer = new URL(page.url());
-  expect(answer.searchParams.get('state')).toBe(state);
-  expect(answer.searchParams.get('iss')).toBe(baseURL);
-  const code = answer.searchParams.get('code');
-  expect(code).toBeTruthy();
+    // The browser goes back to the app with a code for it, its state and the issuer.
+    await page.waitForURL((url) => url.href.startsWith(`${callback}?`));
+    const answer = new URL(page.url());
+    expect(answer.searchParams.get('state')).toBe(state);
+    expect(answer.searchParams.get('iss')).toBe(baseURL);
+    const code = answer.searchParams.get('code');
+    expect(code).toBeTruthy();
 
-  // The app redeems the code, and its token reads Dispatch.
-  const token = await request.post('/oauth/token', {
-    form: {
-      grant_type: 'authorization_code',
-      code: code!,
-      redirect_uri: callback,
-      code_verifier: verifier,
-      client_id: claudeCode,
-      resource,
-    },
-  });
-  expect(token.status(), await token.text()).toBe(200);
-  const bearer = { Authorization: `Bearer ${(await token.json()).access_token}` };
-  expect((await request.get('/api/v1/whoami', { headers: bearer })).status()).toBe(200);
+    // The app redeems the code, and its token reads Dispatch.
+    const token = await request.post('/oauth/token', {
+      form: {
+        grant_type: 'authorization_code',
+        code: code!,
+        redirect_uri: callback,
+        code_verifier: verifier,
+        client_id: claudeCode,
+        resource,
+      },
+    });
+    expect(token.status(), await token.text()).toBe(200);
+    const bearer = { Authorization: `Bearer ${(await token.json()).access_token}` };
+    expect((await request.get('/api/v1/whoami', { headers: bearer })).status()).toBe(200);
 
-  // An answered request can't be answered again: answering it let go of this browser.
-  await page.goto(approvalUrl);
-  await expect(
-    page.getByText(
-      /^This approval isn’t open in this browser, or it has expired\. Start connecting again from your app, and approve it in the browser that opens\./,
-    ),
-  ).toBeVisible();
+    // The owner's dialog sees it connect, and what it reaches; Done shows it in the list.
+    await expect(connecting).toHaveAccessibleName('Connect Claude Code');
+    const connected = connecting.getByRole('status').filter({ hasText: 'is connected' });
+    await expect(connected.getByRole('heading')).toHaveText('Claude Code is connected');
+    await expect(connected).toContainText('Start a new Claude Code session to use Dispatch.');
+    await expect(connected.locator('.agents-tag')).toHaveText(['1 DSP', 'Essential tools']);
+    await connecting.getByRole('button', { name: 'Done', exact: true }).click();
+    await expect(connecting).toHaveCount(0);
 
-  // Connecting it again under that name says which connection it replaces; the owner denies.
-  await page.goto(`/oauth/authorize?${query('again')}`);
-  const again = page.getByRole('form', { name: 'Claude Code' });
-  await expect(again.getByText(/^Approving replaces/)).toHaveCount(0);
-  await again.getByLabel('Connection name').fill('Laptop – Claude Code app');
-  await expect(again.getByText(/^Approving replaces/)).toHaveText(
-    /^Approving replaces “Laptop – Claude Code app”, connected \w{3} \d{1,2}, \d{4}\. Its current connection stops working\.$/,
-  );
-  await again.getByRole('button', { name: 'Deny', exact: true }).click();
-  await page.waitForURL((url) => url.href.startsWith(`${callback}?`));
-  const denied = new URL(page.url()).searchParams;
-  expect([denied.get('error'), denied.get('state'), denied.get('iss')]).toEqual([
-    'access_denied',
-    'again',
-    baseURL,
-  ]);
+    // An answered request can't be answered again: answering it let go of this browser.
+    await page.goto(approvalUrl);
+    await expect(
+      page.getByText(
+        /^This approval isn’t open in this browser, or it has expired\. Start connecting again from your app, and approve it in the browser that opens\./,
+      ),
+    ).toBeVisible();
 
-  // The app is a connected app, not a key, and revoking it ends its access at once.
-  await page.goto('/');
-  await page.getByRole('link', { name: 'Agents', exact: true }).click();
-  await expect(page.getByText('No keys yet')).toBeVisible();
-  await page.getByRole('tab', { name: 'Connected apps', exact: true }).click();
-  const row = page.getByRole('row').filter({ hasText: 'Laptop – Claude Code app' });
-  await expect(row).toContainText('Claude Code');
-  await expect(row).toContainText('Verified');
-  await expect(row).toContainText('Northline Logistics');
-  await expect(row).toContainText('Essential tools');
-  await row.getByRole('button', { name: 'Revoke Laptop – Claude Code app', exact: true }).click();
-  await page
-    .getByRole('dialog', { name: 'Revoke Laptop – Claude Code app?' })
-    .getByRole('button', { name: 'Revoke app', exact: true })
-    .click();
-  await expect(page.getByRole('button', { name: 'Show 1 revoked or expired app' })).toBeVisible();
-  expect((await request.get('/api/v1/whoami', { headers: bearer })).status()).toBe(401);
+    // Connecting it again under that name says which connection it replaces; the owner denies.
+    await page.goto(`/oauth/authorize?${query('again')}`);
+    const again = page.getByRole('form', { name: 'Claude Code' });
+    await expect(again.getByText(/^Approving replaces/)).toHaveCount(0);
+    await again.getByLabel('Connection name').fill('Laptop – Claude Code app');
+    await expect(again.getByText(/^Approving replaces/)).toHaveText(
+      /^Approving replaces “Laptop – Claude Code app”, connected \w{3} \d{1,2}, \d{4}\. Its current connection stops working\.$/,
+    );
+    await again.getByRole('button', { name: 'Deny', exact: true }).click();
+    await page.waitForURL((url) => url.href.startsWith(`${callback}?`));
+    const denied = new URL(page.url()).searchParams;
+    expect([denied.get('error'), denied.get('state'), denied.get('iss')]).toEqual([
+      'access_denied',
+      'again',
+      baseURL,
+    ]);
+
+    // The app is a connected app, not a key, and revoking it ends its access at once.
+    await dashboard.getByRole('tab', { name: 'Keys', exact: true }).click();
+    await expect(dashboard.getByText('No keys yet')).toBeVisible();
+    await dashboard.getByRole('tab', { name: 'Apps', exact: true }).click();
+    const row = dashboard.getByRole('row').filter({ hasText: 'Laptop – Claude Code app' });
+    await expect(row).toContainText('Claude Code');
+    await expect(row).toContainText('Verified');
+    await expect(row).toContainText('Northline Logistics');
+    await expect(row).toContainText('Essential tools');
+    // A verified app shows its own logo.
+    await expect(row.locator('img')).toHaveAttribute('src', /claude-[\w-]+\.png$/);
+    await row.getByRole('button', { name: 'Revoke Laptop – Claude Code app', exact: true }).click();
+    await dashboard
+      .getByRole('dialog', { name: 'Revoke Laptop – Claude Code app?' })
+      .getByRole('button', { name: 'Revoke app', exact: true })
+      .click();
+    await expect(
+      dashboard.getByRole('button', { name: 'Show 1 revoked or expired app' }),
+    ).toBeVisible();
+    expect((await request.get('/api/v1/whoami', { headers: bearer })).status()).toBe(401);
+  } finally {
+    await owner.close();
+  }
 });
 
 test('Dispatch turns away an app it does not know, without sending the browser to it', async ({
@@ -160,29 +192,35 @@ test('an app connects only while the owner lets apps connect and it is on, and o
     resource: `${baseURL}/api/v1/mcp`,
   });
   await login(page);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseURL });
   await expect(page.getByRole('heading', { name: 'DSPs', exact: true })).toBeVisible();
 
   // Closed, the request is turned away. A link can't open connecting: only Dispatch's own
-  // Connect tab does, and then the owner starts again from the app.
+  // Connect an app does, and then the owner starts again from the app.
   await page.goto(`/oauth/authorize?${query}`);
   await expect(page).toHaveURL(/#authorize\?error=pairing_closed/);
   await expect(
     page.getByText(
-      'Connecting is closed. Open Agents → Connect, copy your app’s command or choose Allow ' +
-        'connecting, then start again from your app.',
+      'Connecting is closed. Open Agents → Apps → Connect an app, copy your app’s command, ' +
+        'then start again from your app.',
       { exact: true },
     ),
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: /Allow connecting/ })).toHaveCount(0);
-  const connect = page.getByRole('link', { name: 'Agents → Connect', exact: true });
-  await expect(connect).toHaveAttribute('href', platformHash('agents', { tab: 'connect' }));
-  await connect.click();
-  await expect(page.getByRole('tab', { name: 'Connect', exact: true })).toHaveAttribute(
+  await expect(page.locator('.agents-authorize').getByRole('button')).toHaveCount(0);
+  const apps = page.getByRole('link', { name: 'Agents → Apps', exact: true });
+  await expect(apps).toHaveAttribute('href', platformHash('agents', { tab: 'apps' }));
+  await apps.click();
+  await expect(page.getByRole('tab', { name: 'Apps', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
-  await page.getByRole('button', { name: 'Allow connecting for 10 minutes', exact: true }).click();
-  await expect(page.getByText(/^Connecting is open until \d{1,2}:\d{2} [AP]M$/)).toBeVisible();
+  await page.getByRole('button', { name: 'Connect an app', exact: true }).click();
+  const connecting = page.getByRole('dialog');
+  await connecting.getByRole('button', { name: 'Claude Code', exact: true }).click();
+  await connecting.getByRole('button', { name: 'Copy Claude Code command', exact: true }).click();
+  await expect(connecting.locator('.agents-connect-status')).toHaveText(
+    /^Waiting for Claude Code to connect…\((10:00|9:[0-5]\d) left\)$/,
+  );
   await page.goto(`/oauth/authorize?${query}`);
   await expect(page).toHaveURL(/#authorize\?request=/);
   await expect(page.getByRole('form', { name: 'Claude Code' })).toBeVisible();
@@ -194,17 +232,20 @@ test('an app connects only while the owner lets apps connect and it is on, and o
   await page.goto(`/oauth/authorize?${query}`);
   await expect(page).toHaveURL(/#authorize\?error=app_not_allowed&app=claude-code/);
   await expect(
-    page.getByText('Dispatch doesn’t accept Claude Code yet. Turn it on under Agents → Connect.', {
-      exact: true,
-    }),
+    page.getByText(
+      'Dispatch doesn’t accept Claude Code yet. Turn it on under Agents → Apps → Choose which ' +
+        'apps may connect.',
+      { exact: true },
+    ),
   ).toBeVisible();
-  await page.getByRole('link', { name: 'Agents → Connect', exact: true }).click();
-  await expect(page.getByRole('tab', { name: 'Connect', exact: true })).toHaveAttribute(
+  await page.getByRole('link', { name: 'Agents → Apps', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Apps', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
+  await page.getByRole('button', { name: 'Choose which apps may connect', exact: true }).click();
   const claude = page
-    .getByRole('region', { name: 'Apps that may connect', exact: true })
+    .getByRole('dialog', { name: 'Apps that may connect', exact: true })
     .getByRole('switch', { name: 'Claude Code', exact: true });
   await expect(claude).not.toBeChecked();
   await claude.click();
@@ -215,9 +256,11 @@ test('an app connects only while the owner lets apps connect and it is on, and o
   // A kind of app the page doesn't know is this app.
   await page.goto(platformHash('authorize', { error: 'app_not_allowed', app: 'cursor' }));
   await expect(
-    page.getByText('Dispatch doesn’t accept this app yet. Turn it on under Agents → Connect.', {
-      exact: true,
-    }),
+    page.getByText(
+      'Dispatch doesn’t accept this app yet. Turn it on under Agents → Apps → Choose which apps ' +
+        'may connect.',
+      { exact: true },
+    ),
   ).toBeVisible();
 
   // A request is answered only in the browser that started it: its link, opened in another,

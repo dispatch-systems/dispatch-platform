@@ -1,27 +1,25 @@
-import { useEffect } from 'react';
-import { Clock } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { openOAuthPairing, useOAuthPairing } from '../../app/endpoints.js';
 import { useAction } from '../../app/useAction.js';
-import { deviceTimezone, timeOfDay } from '../../lib/format.js';
-import { ErrorBox } from '../../ui/index.js';
 
-const allowLabel = 'Allow connecting for 10 minutes';
-const openUntilText = (until: string) =>
-  `Connecting is open until ${timeOfDay(until, deviceTimezone())}`;
+const later = (a: string | null, b: string | null) =>
+  a && b ? (Date.parse(a) >= Date.parse(b) ? a : b) : (a ?? b);
 
 /** The ten minutes in which an app may start connecting: until when they run, and a way to
- * start or extend them. */
+ * start or extend them. The window only ever closes when its time runs out. */
 export function usePairing() {
   const pairing = useOAuthPairing();
   const { refresh } = pairing;
+  // Until when opening it here said, which stands before the window is next read.
+  const [opened, setOpened] = useState<string | null>(null);
   const allow = useAction(
     async () => {
-      await openOAuthPairing();
+      setOpened((await openOAuthPairing()).openUntil);
       refresh();
     },
     { inline: true },
   );
-  const until = pairing.data?.openUntil ?? null;
+  const until = later(pairing.data?.openUntil ?? null, opened);
   // Read again once the window closes, so what the page says closes with it.
   useEffect(() => {
     if (!until) return;
@@ -29,18 +27,4 @@ export function usePairing() {
     return () => clearTimeout(timer);
   }, [until, refresh]);
   return { until, open: () => void allow.run(), busy: allow.busy, error: allow.error };
-}
-
-/** Whether apps may start connecting now, and the button that lets them. */
-export function PairingLine({ pairing }: { pairing: ReturnType<typeof usePairing> }) {
-  return (
-    <div className="agents-pairing">
-      <button type="button" disabled={pairing.busy} onClick={pairing.open}>
-        <Clock size={14} aria-hidden="true" />
-        {allowLabel}
-      </button>
-      <span aria-live="polite">{pairing.until && openUntilText(pairing.until)}</span>
-      <ErrorBox message={pairing.error} />
-    </div>
-  );
 }

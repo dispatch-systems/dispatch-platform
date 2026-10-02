@@ -47,6 +47,16 @@
   border: 0;
   padding: 4px;
 }
+.modal-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.modal .modal-heading .modal-title button {
+  margin-left: -6px;
+  color: var(--muted-foreground);
+}
 @media (max-width: 760px) {
   .modal-backdrop {
     padding: 12px;

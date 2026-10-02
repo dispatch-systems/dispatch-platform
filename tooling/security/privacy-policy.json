@@ -85,6 +85,11 @@
   "assets": {
     "dashboard/public/assets/email-mark.png": "eb0c4e4bd09371d8c36029ab72d29155fa15d430e72f26d72ce95d2c6dafb4b8",
     "dashboard/public/assets/inter.woff2": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62",
+    "dashboard/src/features/agents/assets/chatgpt.png": "39b3400f67fc0a68eb1aa17c6b0fd97d7d6cb01185fac5cd081a489f679ee149",
+    "dashboard/src/features/agents/assets/claude.png": "f0ca759eb54d5ae41e22dc2bf1c2e7eed86f1bda37c4996dde3a5124b1058edf",
+    "dashboard/src/features/agents/assets/codex.png": "664b9ef580a30ec83aeff50eef66483877efdd18044f13701b925d656a933f18",
+    "dashboard/src/features/agents/assets/hermes-dark.png": "d2a857c3e5022cc82b8485cf35fbf06259f59caf837c2dd62bf52edad74ffb19",
+    "dashboard/src/features/agents/assets/hermes-light.png": "e23546ebc4a180230d47bc3b304f0727aec28e0b468deb9147f35a3e34cd0809",
     "dashboard/src/features/auth/dsp-onboarding/assets/onboarding-map.svg": "451032a8babc646c24644699e4817fecfdc9851e4e3109d7141ffc9a70fe991b",
     "dashboard/src/features/auth/member-profile/assets/member-profile-map.svg": "1a8e01c2c9a349ba968645d1948fb71c7240035933390e031e5ef0dbf99a1faf",
     "dashboard/src/features/auth/sign-in/assets/login-van-poster.png": "b2f96ee29f7b4b8ca2661ef94760fd6bb52db810b54e047ab440658e456a4d84",

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   bytes,
+  countdown,
   duration,
   elapsed,
   personName,
@@ -66,6 +67,15 @@ test('measured durations keep their precision and recorded seconds stay whole', 
   assert.equal(duration(200_000), '3m 20s');
   assert.equal(elapsed(45), '45s');
   assert.equal(elapsed(200), '3m 20s');
+});
+
+test('a countdown reads minutes and seconds left, and stops at 0:00', () => {
+  const now = Date.parse('2026-10-02T15:00:00Z');
+  assert.equal(countdown('2026-10-02T15:10:00Z', now), '10:00');
+  assert.equal(countdown('2026-10-02T15:09:42Z', now), '9:42');
+  // A part second still left counts as a second.
+  assert.equal(countdown('2026-10-02T15:00:05.200Z', now), '0:06');
+  assert.equal(countdown('2026-10-02T14:59:00Z', now), '0:00');
 });
 
 test('byte counts use binary units', () => {

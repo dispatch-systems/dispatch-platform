@@ -34,9 +34,9 @@ const elsewhere = (
     </a>
   </>
 );
-const connectTab = (
-  <a className="underlined-link" href={platformHash('agents', { tab: 'connect' })}>
-    Agents → Connect
+const appsTab = (
+  <a className="underlined-link" href={platformHash('agents', { tab: 'apps' })}>
+    Agents → Apps
   </a>
 );
 /** Why Dispatch turned a request away before asking: `#authorize?error=<code>`, with the
@@ -49,14 +49,15 @@ function refusal(error: string, app: string | null): ReactNode {
     case 'pairing_closed':
       return (
         <>
-          Connecting is closed. Open {connectTab}, copy your app’s command or choose Allow
-          connecting, then start again from your app.
+          Connecting is closed. Open {appsTab} → Connect an app, copy your app’s command, then start
+          again from your app.
         </>
       );
     case 'app_not_allowed':
       return (
         <>
-          Dispatch doesn’t accept {appKindName(app)} yet. Turn it on under {connectTab}.
+          Dispatch doesn’t accept {appKindName(app)} yet. Turn it on under {appsTab} → Choose which
+          apps may connect.
         </>
       );
     case 'app_unavailable':
