@@ -82,6 +82,15 @@ pub fn available_space(path: &Path) -> Result<u64> {
     let stat = unsafe { stat.assume_init() };
     Ok(stat.f_bavail * stat.f_frsize)
 }
+
+fn table_exists(connection: &rusqlite::Connection, name: &str) -> Result<bool> {
+    Ok(connection.query_row(
+        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?",
+        [name],
+        |row| row.get::<_, i64>(0),
+    )? > 0)
+}
+
 pub fn bootstrap(
     db: &Store,
     email: &str,
@@ -316,16 +325,16 @@ pub fn restore(source: &Path, target: &Path) -> Result<Value> {
             "DELETE FROM sessions;DELETE FROM resets;DELETE FROM invitations;DELETE FROM outbox;",
         )?;
         // Agent keys end like sessions do. A backup older than them has none.
-        let keyed: i64 = db.query_row(
-            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='agent_keys'",
-            [],
-            |row| row.get(0),
-        )?;
-        if keyed > 0 {
+        if table_exists(&db, "agent_keys")? {
             db.execute(
                 "UPDATE agent_keys SET revoked_at=?1 WHERE revoked_at IS NULL",
                 [iso()],
             )?;
+        }
+        // An unspent OAuth code is a short-lived bearer capability that can mint a new key.
+        // Old backups predate OAuth, so invalidate it only when the table was present.
+        if table_exists(&db, "oauth_codes")? {
+            db.execute("DELETE FROM oauth_codes WHERE used_at IS NULL", [])?;
         }
     }
     for env in ["preview", "production"] {

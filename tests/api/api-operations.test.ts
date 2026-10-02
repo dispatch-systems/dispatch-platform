@@ -37,10 +37,38 @@ test('Rust backup and restore validate checksums, exclude runtime locks and revo
     fs.rmSync(restored, { recursive: true, force: true });
   });
   await f.stop();
+  const source = new DatabaseSync(path.join(f.root, 'data/platform/accounts.sqlite'));
+  source.exec(`
+    INSERT INTO oauth_codes(
+      hash,client_id,client_name,client_verified,redirect_uri,code_challenge,resource,choices,
+      approved_by,created_at,expires_at,used_at
+    ) VALUES
+      ('unused-approval','client','Client',0,'http://127.0.0.1/callback','challenge',
+       'https://dispatch.test/api','{}','owner',datetime('now'),datetime('now','+5 minutes'),NULL),
+      ('used-approval','client','Client',0,'http://127.0.0.1/callback','challenge',
+       'https://dispatch.test/api','{}','owner',datetime('now'),datetime('now','+5 minutes'),datetime('now'));
+  `);
+  source.close();
   f.cli(['backup', backup]);
   f.cli(['restore', backup, restored]);
   const db = new DatabaseSync(path.join(restored, 'data/platform/accounts.sqlite'));
   assert.equal((db.prepare('SELECT count(*) n FROM sessions').get() as { n: number }).n, 0);
+  assert.equal(
+    (
+      db.prepare("SELECT count(*) n FROM oauth_codes WHERE hash='unused-approval'").get() as {
+        n: number;
+      }
+    ).n,
+    0,
+  );
+  assert.equal(
+    (
+      db.prepare("SELECT count(*) n FROM oauth_codes WHERE hash='used-approval'").get() as {
+        n: number;
+      }
+    ).n,
+    1,
+  );
   db.close();
   const manifest = JSON.parse(fs.readFileSync(path.join(backup, 'backup.json'), 'utf8'));
   assert(!manifest.files.some((file: { path: string }) => file.path.endsWith('.lock')));
@@ -64,6 +92,26 @@ test('Rust backup and restore validate checksums, exclude runtime locks and revo
   assert.equal(fs.existsSync(restored), false);
   await f.start();
   assert.equal((await owner.get('/api/session')).status, 200);
+});
+
+test('restore accepts a backup from before OAuth tables existed', async (t) => {
+  const f = await fixture(false);
+  t.after(f.close);
+  const backup = `${f.root}-pre-oauth-backup`,
+    restored = `${f.root}-pre-oauth-restored`;
+  t.after(() => {
+    fs.rmSync(backup, { recursive: true, force: true });
+    fs.rmSync(restored, { recursive: true, force: true });
+  });
+  await f.stop();
+  const db = new DatabaseSync(path.join(f.root, 'data/platform/accounts.sqlite'));
+  db.exec(
+    'DROP TABLE oauth_tokens; DROP TABLE oauth_codes; DROP TABLE oauth_requests; DROP TABLE oauth_clients;',
+  );
+  db.close();
+  f.cli(['backup', backup]);
+  f.cli(['restore', backup, restored]);
+  assert(fs.existsSync(path.join(restored, 'data/platform/accounts.sqlite')));
 });
 
 test('SQLite write contention leaves health responsive and the pending write recovers after unlock', async (t) => {
