@@ -1,5 +1,5 @@
 import { PaycomDateControls } from '../../DateControls.js';
-import { localDate } from '../../meal-breaks.js';
+import { localDate } from '../../../../../core/shell/frontend/lib/day.js';
 import { useMemo, useState } from 'react';
 import { Download, Globe, Info } from 'lucide-react';
 import type { DailyTimecard } from '../../../../../shared/contracts/index.js';

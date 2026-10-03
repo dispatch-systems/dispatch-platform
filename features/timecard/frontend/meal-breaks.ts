@@ -1,4 +1,7 @@
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
+import { localDate } from '../../../core/shell/frontend/lib/day.js';
+import { employeeName } from './paycom.js';
+import type { PaycomPreferences } from '../../../shared/contracts/paycom.js';
 import type { AssessedClock, PaycomDay } from '../../../shared/contracts/workforce.js';
 import type {
   DeliveryGap as Gap,
@@ -33,18 +36,12 @@ export function fullName(name: string) {
     .trim()
     .replace(/\s+/g, ' ');
 }
-export function localDate(timezone: string, now = new Date()) {
-  return dateFormatter('en-CA', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(now);
-}
-export function shiftDate(date: string, days: number) {
-  const d = new Date(`${date}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
+// Providers write "Last, First"; a name already in the chosen order is kept as written.
+export function personName(name: string, order: PaycomPreferences['name_order']) {
+  const value = fullName(name);
+  return order === 'last_first' && name.includes(',') && value.includes(' ')
+    ? name
+    : employeeName(value, order);
 }
 function label(minute: number) {
   const m = ((minute % 1440) + 1440) % 1440,

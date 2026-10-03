@@ -25,7 +25,7 @@ import {
   weekStart,
   type VehicleClass,
 } from './dvic.js';
-import { localDate, shiftDate } from '../../timecard/frontend/meal-breaks.js';
+import { localDate, shiftDate } from '../../../core/shell/frontend/lib/day.js';
 import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 import { randomId } from '../../../core/shell/frontend/lib/random-id.js';
 import { time } from '../../../core/shell/frontend/lib/format.js';

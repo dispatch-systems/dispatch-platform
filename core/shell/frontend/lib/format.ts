@@ -1,7 +1,4 @@
 import { dateFormatter } from './date-format.js';
-import { fullName } from '../../../../features/timecard/frontend/meal-breaks.js';
-import { employeeName } from '../../../../features/timecard/frontend/paycom.js';
-import { type PaycomPreferences } from '../../../../shared/contracts/paycom.js';
 
 // Platform owner pages span every DSP, so they show the viewer's device time.
 export const deviceTimezone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -80,10 +77,3 @@ export function countdown(until: string, now = Date.now()) {
 }
 export const bytes = (value: number, unit: 'MiB' | 'GiB', digits = 0) =>
   `${(value / 1024 ** (unit === 'GiB' ? 3 : 2)).toFixed(digits)} ${unit}`;
-// Providers write "Last, First"; a name already in the chosen order is kept as written.
-export function personName(name: string, order: PaycomPreferences['name_order']) {
-  const value = fullName(name);
-  return order === 'last_first' && name.includes(',') && value.includes(' ')
-    ? name
-    : employeeName(value, order);
-}

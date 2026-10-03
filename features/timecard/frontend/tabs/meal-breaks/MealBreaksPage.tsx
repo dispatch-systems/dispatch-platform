@@ -14,8 +14,8 @@ import {
   TablePagination,
   useDataTable,
 } from '../../../../../core/shell/frontend/ui/index.js';
-import { personName, time } from '../../../../../core/shell/frontend/lib/format.js';
-import { clockLabel, displayMeal } from '../../meal-breaks.js';
+import { time } from '../../../../../core/shell/frontend/lib/format.js';
+import { clockLabel, displayMeal, personName } from '../../meal-breaks.js';
 import { type MealEmployee } from '../../../../../shared/contracts/meals.js';
 import type { PaycomPreferences } from '../../../../../shared/contracts/paycom.js';
 import { PaycomDateControls } from '../../DateControls.js';

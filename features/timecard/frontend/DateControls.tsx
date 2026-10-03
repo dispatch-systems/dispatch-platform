@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { localDate, shiftDate } from './meal-breaks.js';
+import { localDate, shiftDate } from '../../../core/shell/frontend/lib/day.js';
 import { paycomDateKey, selectedPaycomDate, validPaycomDate as validDay } from './paycom-date.js';
 import { DateField } from '../../../core/shell/frontend/ui/index.js';
 

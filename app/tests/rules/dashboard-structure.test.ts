@@ -93,14 +93,9 @@ const doors = (directory: string) => [
   path.join(directory, 'api', 'client.ts'),
 ];
 
-// Edges the conversion removes when it splits these files: core naming a feature, and DVIC
-// borrowing Timecard's date helpers (localDate and shiftDate go to core).
+// Edges the conversion removes when it splits these files: core naming a feature.
 const pending = [
   'core/platform_owner/frontend/audit/wording.ts -> features/timecard/frontend/paycom.ts',
-  'core/shell/frontend/lib/format.ts -> features/timecard/frontend/meal-breaks.ts',
-  'core/shell/frontend/lib/format.ts -> features/timecard/frontend/paycom.ts',
-  'features/dvic/frontend/DvicPage.tsx -> features/timecard/frontend/meal-breaks.ts',
-  'features/dvic/frontend/dvic.ts -> features/timecard/frontend/meal-breaks.ts',
 ];
 const isPending = (file: string, target: string) => pending.includes(`${file} -> ${target}`);
 
