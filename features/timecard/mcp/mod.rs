@@ -52,4 +52,5 @@ pub const MCP: Mcp = Mcp {
     metrics: catalog::METRICS,
     terms: catalog::TERMS,
     daily: &[&facts::TimecardDays, &facts::MealDays],
+    ..Mcp::NONE
 };

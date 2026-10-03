@@ -19,8 +19,6 @@ use crate::{
     db::{Store, s},
     weeks,
 };
-// A4: Routes' addresses, until it answers for them.
-use crate::feature_manifests::routes::mcp::{LOCATIONS, SOURCE as ROUTES_SOURCE};
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -320,36 +318,6 @@ fn count_table(groups: &[&'static str], counted: HashMap<Vec<String>, i64>, extr
     table
 }
 
-/// Each delivered package's address, by tracking ID, from the routes that carried it.
-fn places(db: &Store, dsp: &Dsp, tracking: &[String]) -> crate::Result<HashMap<String, String>> {
-    let data = db.routedata(&dsp.id)?;
-    let mut ids: HashMap<String, String> = HashMap::new();
-    for chunk in tracking.chunks(400) {
-        let rows = data.all(
-            &format!(
-                "SELECT t.tracking_id,t.address_id FROM tasks t \
-                 JOIN route_publications p ON p.id=t.publication_id AND p.active=1 \
-                 WHERE t.task_type='DROP_OFF' AND t.active=1 AND t.address_id IS NOT NULL \
-                 AND t.tracking_id IN ({}) ORDER BY t.task_state='DELIVERED'",
-                vec!["?"; chunk.len()].join(",")
-            ),
-            rusqlite::params_from_iter(chunk),
-        )?;
-        // The delivered drop-off last, so it is the one kept.
-        for r in rows {
-            ids.insert(
-                s(&r, "tracking_id").to_owned(),
-                s(&r, "address_id").to_owned(),
-            );
-        }
-    }
-    let lines = facts::addresses(db, dsp, &ids.values().cloned().collect::<Vec<_>>())?;
-    Ok(ids
-        .into_iter()
-        .filter_map(|(tracking, id)| lines.get(&id).map(|line| (tracking, line.clone())))
-        .collect())
-}
-
 /// `GET /api/v1/feedback`: customer delivery feedback (CDF), counted and grouped.
 pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("feedback", query)?;
@@ -370,10 +338,11 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
     };
     let groups = groups_of(query, &["driver", "address", "type", "week", "day"])?;
     // Addresses come from the stored routes, so only as the key or app reads those.
+    let places = facts::places();
     if groups.contains(&"address") {
-        access.check(LOCATIONS)?;
+        access.check(places.area)?;
     }
-    let placed = access.reads(LOCATIONS);
+    let placed = access.reads(places.area);
     let min = param(query, "min_count").parse::<i64>().unwrap_or(1);
     let impacting = flag(query, "impacting");
     let coverage = weeks(db, dsp, &period)?;
@@ -413,7 +382,7 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
     let tracking: Vec<String> = kept.iter().map(|(r, _)| r.tracking_id.clone()).collect();
     let looked_up = placed && (groups.contains(&"address") || flag(query, "list"));
     let addresses = if looked_up {
-        places(db, dsp, &tracking)?
+        (places.of)(db, dsp, &tracking)?
     } else {
         HashMap::new()
     };
@@ -431,8 +400,8 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         "coverage": coverage,
     });
     people.mark(&mut answer);
-    if looked_up && access.read(LOCATIONS) == Read::Bypassed {
-        access::bypassed(&mut answer, ROUTES_SOURCE);
+    if looked_up && access.read(places.area) == Read::Bypassed {
+        access::bypassed(&mut answer, places.area.source());
     }
     if !groups.is_empty() {
         let mut counted: HashMap<Vec<String>, i64> = HashMap::new();

@@ -1,13 +1,9 @@
 //! Routes' part of the agent catalog: its endpoints, its metrics for team_table and the
 //! words its answers use.
-use super::ROUTES;
-use crate::agents::data::{
-    self,
-    catalog::{
-        CURSOR, DATE, DAY, DETAIL, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param,
-        TO, Term,
-    },
-    facts,
+use super::{ROUTES, facts, views};
+use crate::agents::data::catalog::{
+    CURSOR, DATE, DAY, DETAIL, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param, TO,
+    Term,
 };
 
 const GROUPS_CURSOR: Param = Param {
@@ -75,7 +71,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
             GROUPS_CURSOR,
         ],
         order: 50,
-        answer: |db, state, caller, _, query| data::packages(db, state, caller, query),
+        answer: |db, state, caller, _, query| views::packages(db, state, caller, query),
     },
     Endpoint {
         id: "routes",
@@ -88,7 +84,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         path_params: &[],
         params: &[DSP, DAY, LIMIT, CURSOR],
         order: 80,
-        answer: |db, state, caller, _, query| data::routes(db, state, caller, query),
+        answer: |db, state, caller, _, query| views::routes(db, state, caller, query),
     },
     Endpoint {
         id: "route",
@@ -102,7 +98,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         path_params: &[ROUTE_PATH],
         params: &[DSP, DAY, DETAIL, LIMIT, CURSOR],
         order: 90,
-        answer: |db, state, caller, named, query| data::route(db, state, caller, named, query),
+        answer: |db, state, caller, named, query| views::route(db, state, caller, named, query),
     },
     Endpoint {
         id: "package",
@@ -119,7 +115,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         }],
         params: &[DSP],
         order: 100,
-        answer: |db, state, caller, named, query| data::package(db, state, caller, named, query),
+        answer: |db, state, caller, named, query| views::package(db, state, caller, named, query),
     },
 ];
 

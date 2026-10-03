@@ -1,9 +1,11 @@
 //! What agents can ask of Routes: each day's routes and packages, and the delivery
 //! addresses with them.
 mod catalog;
+mod facts;
+pub mod views;
 
 use crate::{
-    agents::{Mcp, data},
+    agents::{Mcp, data::facts::Places},
     contracts::{AgentArea, AgentSource, DriverSource, ReadSource, ReadToggle},
 };
 
@@ -13,7 +15,7 @@ pub const SOURCE: AgentSource = AgentSource::new(&ReadSource {
     order: 10,
     features: &["routes"],
     key: "routes",
-    fresh: data::facts::fresh_routes,
+    fresh: facts::fresh,
 });
 pub const ROUTES: AgentArea = AgentArea::new(&ReadToggle {
     id: "routes",
@@ -39,5 +41,9 @@ pub const MCP: Mcp = Mcp {
     endpoints: catalog::ENDPOINTS,
     metrics: catalog::METRICS,
     terms: catalog::TERMS,
-    daily: &[&data::RouteDays],
+    daily: &[&facts::RouteDays],
+    places: Some(Places {
+        area: LOCATIONS,
+        of: facts::places,
+    }),
 };

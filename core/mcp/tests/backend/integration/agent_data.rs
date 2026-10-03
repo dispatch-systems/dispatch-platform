@@ -26,6 +26,7 @@ mod data {
     pub use dispatch_backend::agents::data::*;
     pub use dispatch_backend::feature_manifests::{
         dvic::mcp::views::dvic,
+        routes::mcp::views::{package, packages, route, routes},
         scorecard::mcp::scorecard::{feedback, returns, safety, weekly},
         timecard::mcp::views::{meal_breaks, timecards},
     };

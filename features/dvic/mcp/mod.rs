@@ -32,4 +32,5 @@ pub const MCP: Mcp = Mcp {
     metrics: catalog::METRICS,
     terms: catalog::TERMS,
     daily: &[&facts::InspectionDays],
+    ..Mcp::NONE
 };

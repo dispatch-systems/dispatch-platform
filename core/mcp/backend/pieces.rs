@@ -3,7 +3,7 @@
 //! every feature's, so each is listed once.
 use super::data::{
     catalog::{self, Endpoint, Metric, Term},
-    facts::Daily,
+    facts::{Daily, Places},
 };
 use crate::{
     contracts::{AgentArea, AgentSource},
@@ -23,6 +23,9 @@ pub struct Mcp {
     pub terms: &'static [Term],
     /// Its facts by driver and day, for the answers that join every feature's.
     pub daily: &'static [&'static dyn Daily],
+    /// Where packages were delivered, for the answers of other features that place what
+    /// they count.
+    pub places: Option<Places>,
 }
 impl Mcp {
     pub const NONE: Self = Self {
@@ -32,13 +35,15 @@ impl Mcp {
         metrics: &[],
         terms: &[],
         daily: &[],
+        places: None,
     };
 }
 
 /// Panics unless every kind and source is declared once, in a place of its own, and every
 /// kind is read from a declared source, with a declared kind if any; and unless every
 /// endpoint and term has a place of its own, every endpoint and metric reads a declared
-/// kind, and each kind has facts by driver and day once at most.
+/// kind, each kind has facts by driver and day once at most, and one feature at most says
+/// where packages were delivered.
 pub fn check(features: &[&Feature]) {
     let areas: Vec<AgentArea> = features
         .iter()
@@ -99,6 +104,10 @@ pub fn check(features: &[&Feature]) {
             metric.name
         );
     }
+    assert!(
+        mcp().filter(|mcp| mcp.places.is_some()).count() <= 1,
+        "more than one feature answers where packages were delivered"
+    );
     let daily: Vec<AgentArea> = mcp().flat_map(|mcp| mcp.daily).map(|d| d.area()).collect();
     for (index, area) in daily.iter().enumerate() {
         assert!(
