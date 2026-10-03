@@ -136,6 +136,9 @@ pub struct Feature {
     pub schedules: bool,
     /// The permissions it owns, for the role sheet.
     pub permissions: &'static [Permission],
+    /// The permissions that may follow its collections' progress as it arrives, through
+    /// the collection updates the dashboard waits on.
+    pub live: &'static [&'static str],
     /// The collections it keeps.
     pub keeps: &'static [&'static dyn Keeper],
 }
@@ -148,6 +151,7 @@ pub const fn feature(name: &'static str) -> Feature {
         tabs: &[],
         schedules: false,
         permissions: &[],
+        live: &[],
         keeps: &[],
     }
 }

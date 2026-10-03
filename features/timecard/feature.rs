@@ -21,6 +21,8 @@ pub const FEATURE: Feature = Feature {
         perm("timecard.manage", "Manage Timecard", 21).implies(&["timecard.view"]),
         perm("collections.run", "Run Collections", 22).defaults(&[Manager]),
     ],
+    // Collection progress refreshes both the timecard pages and the collections page.
+    live: &["timecard.view", "collections.run"],
     keeps: &[
         &crate::workforce::keeper::Timecards,
         &crate::meals::keeper::MealBreaks,

@@ -6,13 +6,21 @@ use crate::{
         input::{Input, Reply},
         route::{Dsp, Grant, Route, async_get, async_post, probe},
     },
+    manifest::registry,
     roles, validate as v,
 };
 use serde_json::json;
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, LazyLock},
+    time::Duration,
+};
 
-// Collection progress refreshes both the timecard pages and the collections page.
-const LIVE_UPDATES: &str = "timecard.view|collections.run";
+// Collection progress refreshes the pages that follow it live, as their features declare.
+static LIVE_UPDATES: LazyLock<String> = LazyLock::new(|| {
+    let features = registry().features.iter();
+    let permissions: Vec<_> = features.flat_map(|feature| feature.live).copied().collect();
+    permissions.join("|")
+});
 
 pub fn routes() -> Vec<Route> {
     vec![
@@ -20,7 +28,7 @@ pub fn routes() -> Vec<Route> {
         probe("/api/browser-update", browser_update),
         async_get(
             "/api/dsp/collection-updates",
-            Dsp(LIVE_UPDATES),
+            Dsp(LIVE_UPDATES.as_str()),
             collection_updates,
         ),
         async_post("/api/dsp/presence", Dsp(roles::ACCESS), presence),
