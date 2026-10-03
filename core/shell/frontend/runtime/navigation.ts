@@ -1,8 +1,8 @@
-import type { DspRouteId, PlatformRouteId } from './slots.js';
+import { routeOf, type DspRouteId, type PlatformRouteId } from './slots.js';
 
 const destinations = new Map<string, DspRouteId>();
 export function rememberDestination(dspId: string, page: DspRouteId) {
-  if (page === 'overview' || page === 'paycom-settings') return;
+  if (routeOf('dsp', page)?.remembered === false) return;
   destinations.delete(dspId);
   destinations.set(dspId, page);
   while (destinations.size > 100) destinations.delete(destinations.keys().next().value!);

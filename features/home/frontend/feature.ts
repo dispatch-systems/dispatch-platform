@@ -20,6 +20,8 @@ export const feature: FrontendFeature = {
       label: 'Home Page',
       icon: House,
       nav: true,
+      // A DSP opens here anyway.
+      remembered: false,
       preload: load,
       render: () => createElement(HomePage),
     },

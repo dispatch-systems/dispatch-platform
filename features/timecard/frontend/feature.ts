@@ -49,6 +49,7 @@ export const feature: FrontendFeature = {
       label: 'Timecard',
       parent: 'paycom',
       nav: false,
+      remembered: false,
       feature: 'timecard',
       permission: ({ view }) => can(view, 'timecard.manage'),
       preload: loadSettings,

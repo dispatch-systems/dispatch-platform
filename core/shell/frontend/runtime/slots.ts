@@ -61,6 +61,8 @@ export type DspRoute = Page<DspPageContext> & {
   scope: 'dsp';
   /** A page rendered before, whose admitted data is cached, may commit before the next paint. */
   ready?: (view: DspView) => boolean;
+  /** Whether opening the DSP again returns here, as to the last page open; omitted, it does. */
+  remembered?: boolean;
   /** Called only for the admitted view. */
   prefetch?: (prefetch: RoutePrefetch & { view: DspView }) => void;
 };

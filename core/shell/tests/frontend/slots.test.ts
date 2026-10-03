@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Award, Shirt } from 'lucide-react';
+import { dspHash, rememberDestination } from '../../frontend/runtime/navigation.js';
 import {
   collectionAffects,
   collectionData,
@@ -20,6 +21,7 @@ import {
   switchIcon,
   type CollectionLabels,
   type ConnectionCard,
+  type DspRoute,
   type ReadToggles,
 } from '../../frontend/runtime/slots.js';
 
@@ -168,4 +170,22 @@ test('a capability is named by the first connection listed that provides it', ()
   assert.equal(capabilityLabelOf('photos'), 'a photo source');
   assert.equal(capabilityLabelOf('notes'), 'a notes source');
   assert.equal(capabilityLabelOf('maps'), undefined);
+});
+
+test('opening a DSP again returns to the last page open, unless that page is not remembered', () => {
+  const page = (id: DspRoute['id'], remembered?: boolean): DspRoute => ({
+    id,
+    scope: 'dsp',
+    label: id,
+    nav: true,
+    preload: () => Promise.resolve(),
+    render: () => null,
+    ...(remembered === undefined ? {} : { remembered }),
+  });
+  installFeatures([{ name: 'alpha', routes: [page('team'), page('settings', false)] }]);
+  assert.equal(dspHash('dsp_fixture'), '#dsp/dsp_fixture/overview');
+  rememberDestination('dsp_fixture', 'team');
+  assert.equal(dspHash('dsp_fixture'), '#dsp/dsp_fixture/team');
+  rememberDestination('dsp_fixture', 'settings');
+  assert.equal(dspHash('dsp_fixture'), '#dsp/dsp_fixture/team');
 });
