@@ -19,7 +19,9 @@ const loadPicker = () => import('./dsps/picker.js');
 const loadDiagnostics = () => import('./diagnostics/index.js');
 const loadAgents = () => import('./agents/index.js');
 const loadAudit = () => import('./audit/index.js');
-const loadSettings = () => import('./settings/index.js');
+// The page and the tab it opens on load together, so the page opens whole.
+const loadSettings = () =>
+  Promise.all([import('./settings/index.js'), preloadTab()]).then(([module]) => module);
 const DspsPage = lazy(() => loadDsps().then((module) => ({ default: module.DspsPage })));
 const DspPicker = lazy(() => loadPicker().then((module) => ({ default: module.DspPicker })));
 const DiagnosticsPage = lazy(() =>
@@ -101,8 +103,7 @@ export const feature: FrontendFeature = {
       label: 'Settings',
       icon: Settings,
       nav: platformOwner,
-      // The page and the tab it opens on load together.
-      preload: () => Promise.all([loadSettings(), preloadTab()]),
+      preload: loadSettings,
       render: ({ session }) => createElement(SettingsPage, { session }),
     },
   ],

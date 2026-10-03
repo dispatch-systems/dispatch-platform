@@ -82,7 +82,12 @@ test(
       },
       {
         name: 'Settings profile',
-        entries: ['../../features/settings/frontend/index.ts'],
+        // The page, the Profile panel and Driver Match's tab badge load together.
+        entries: [
+          '../../features/settings/frontend/index.ts',
+          '../../core/accounts/frontend/settings/ProfileBadge.tsx',
+          '../../features/driver_match/frontend/badge.ts',
+        ],
         raw: 440_000,
         transferred: 130_000,
       },

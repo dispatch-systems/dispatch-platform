@@ -5,10 +5,14 @@ import { feature as uniforms } from '../../features/uniforms/frontend/feature.js
 import { feature as dvic } from '../../features/dvic/frontend/feature.js';
 import { feature as team } from '../../features/team/frontend/feature.js';
 import { feature as settings } from '../../features/settings/frontend/feature.js';
+import { feature as driverMatch } from '../../features/driver_match/frontend/feature.js';
+import { feature as routes } from '../../features/routes/frontend/feature.js';
+import { feature as accounts } from '../../core/accounts/frontend/feature.js';
+import { feature as collection } from '../../core/collection/frontend/feature.js';
 import { feature as platformOwner } from '../../core/platform_owner/frontend/feature.js';
 
 // Every owner's frontend manifest: the features, then core's parts with screens. The order is
-// the sidebar's.
+// the sidebar's, and the order in which Settings tabs warm their reads.
 export const features: readonly FrontendFeature[] = [
   home,
   timecard,
@@ -16,5 +20,9 @@ export const features: readonly FrontendFeature[] = [
   dvic,
   team,
   settings,
+  driverMatch,
+  routes,
+  accounts,
+  collection,
   platformOwner,
 ];

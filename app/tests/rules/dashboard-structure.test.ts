@@ -26,7 +26,8 @@ const clients = owners
   .map((directory) => path.join(directory, 'api', 'client.ts'))
   .filter((file) => fs.existsSync(file));
 const SHELL = path.join('core', 'shell', 'frontend');
-const FEATURES = path.join('app', 'frontend', 'features.ts');
+const APP = path.join('app', 'frontend');
+const FEATURES = path.join(APP, 'features.ts');
 
 type Module = {
   file: string;
@@ -159,29 +160,19 @@ test('lib depends on nothing else in the frontend', () => {
         );
 });
 
-// A feature that embeds another names it here, so a new edge is a visible decision.
-const embeds = [
-  'features/settings -> features/driver_match',
-  'features/settings -> features/routes',
-];
 // Besides each owner's front doors, named public entries keep unrelated pages out of each
 // other's lazy chunks. This remains an explicit boundary: callers cannot reach arbitrary
 // internals of another owner.
 const entries = [
-  'core/accounts/frontend/settings/ProfileBadge.tsx',
-  'core/accounts/frontend/settings/SecuritySettings.tsx',
-  'core/accounts/frontend/settings/ThemeSection.tsx',
+  // The account's Settings panels, which the platform owner's Settings page shows too.
   'core/accounts/frontend/settings/tabs.ts',
-  'features/driver_match/frontend/badge.ts',
-  'features/routes/frontend/settings/RouteDataSettings.tsx',
 ];
 
-test('an owner reaches another only through a front door or public entry, and a feature another only where allowed', () => {
+test('an owner reaches another only through a front door or public entry, and a feature never another', () => {
   assert(
     modules.some(({ file }) => layer(file) === 'features'),
     'features must contain their screens',
   );
-  const found = new Set<string>();
   for (const { file, target } of edges) {
     const to = unit(target);
     if (!to || to === unit(file) || isPending(file, target)) continue;
@@ -189,15 +180,12 @@ test('an owner reaches another only through a front door or public entry, and a 
       doors(to).includes(target) || entries.includes(target),
       `${file} imports ${target}; use the owner's feature.ts, index.ts, api/client.ts or a declared public entry`,
     );
-    if (layer(file) !== 'features' || layer(target) !== 'features') continue;
-    const edge = `${unit(file)} -> ${to}`;
+    // Features meet only in the slots their hosts offer.
     assert(
-      embeds.includes(edge),
-      `${file} imports ${target}; move what they share to core, or allow the edge`,
+      layer(file) !== 'features' || layer(target) !== 'features',
+      `${file} imports ${target}; move what they share to core, or fill a slot`,
     );
-    found.add(edge);
   }
-  assert.deepEqual([...found].sort(), embeds, 'an allowed feature edge is no longer used');
 });
 
 test("features and collectors build on core's ui, lib, runtime and public entries only", () => {
@@ -205,7 +193,7 @@ test("features and collectors build on core's ui, lib, runtime and public entrie
     if (isPending(file, target) || owner(target) === owner(file)) continue;
     if (layer(file) === 'features')
       assert(
-        ['core', 'features'].includes(layer(target)) && shellArea(target) !== 'shell',
+        layer(target) === 'core' && shellArea(target) !== 'shell',
         `${file} imports ${target}; a feature may import core's ui, lib, runtime and public entries, and itself`,
       );
     if (layer(file) === 'collectors')
@@ -235,9 +223,13 @@ test('only the app lists the features, and core knows only core', () => {
 });
 
 // A manifest is loaded up front, so it stays small: the pages it names load when opened.
-test('the app lists every manifest, and a manifest loads its pages lazily', () => {
+test('every owner with screens has a manifest, the app lists them all, and each loads its pages lazily', () => {
   const manifests = modules.filter(({ file }) => path.basename(file) === 'feature.ts');
-  assert(manifests.length > 0, 'owners must declare their screens in frontend/feature.ts');
+  for (const directory of frontends.filter((frontend) => ![SHELL, APP].includes(frontend)))
+    assert(
+      fs.existsSync(path.join(directory, 'feature.ts')),
+      `${directory} has screens; declare them in ${directory}/feature.ts`,
+    );
   for (const { file } of manifests)
     assert.equal(file, path.join(owner(file)!, 'frontend', 'feature.ts'));
   const listed = modules.find(({ file }) => file === FEATURES)!.eager;

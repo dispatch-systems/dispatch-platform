@@ -1,2 +1,1 @@
-import './settings.css';
-export { SettingsPage, preloadSettingsPage } from './SettingsPage.js';
+export { SettingsPage } from './SettingsPage.js';

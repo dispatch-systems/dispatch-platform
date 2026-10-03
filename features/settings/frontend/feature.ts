@@ -1,7 +1,7 @@
 import { createElement, lazy } from 'react';
 import { Settings } from 'lucide-react';
 import type { Access, FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
-import { prefetchSettings } from './prefetch.js';
+import { prefetchSettings, preloadSettingsTab } from './tabs.js';
 
 declare module '../../../core/shell/frontend/runtime/slots.js' {
   interface DspPages {
@@ -9,11 +9,9 @@ declare module '../../../core/shell/frontend/runtime/slots.js' {
   }
 }
 
+// The page and the tab it opens on load together, so the page opens whole.
 const load = (access?: Access) =>
-  import('./index.js').then(async (module) => {
-    await module.preloadSettingsPage(access?.view);
-    return module;
-  });
+  Promise.all([import('./index.js'), preloadSettingsTab(access?.view)]).then(([module]) => module);
 const SettingsPage = lazy(() => load().then((module) => ({ default: module.SettingsPage })));
 
 export const feature: FrontendFeature = {

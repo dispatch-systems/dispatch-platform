@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import type { DspView, Feature, SessionView } from '../../../../shared/contracts/index.js';
 
@@ -68,9 +68,20 @@ export type SettingsTab = {
   /** The tab's address, `?tab=<id>`. It never changes, so links to it keep working. */
   id: string;
   label: string;
+  /** Draws the label with more beside it, such as a count, once loaded; until then `label`. */
+  badge?: { load: () => Promise<unknown>; Label: ComponentType<{ active: boolean }> };
+  /** Where the tab sits among the page's tabs, lowest first. */
+  order: number;
+  /** Who sees the tab; omitted means everyone. */
+  visible?: (view?: DspView) => boolean;
   /** Loads the panel's code. */
   load: () => Promise<unknown>;
   render: (context: SettingsContext) => ReactNode;
+  /**
+   * The reads to warm, for the admitted view, while `tab` is about to open. A tab may name its
+   * badge's reads whichever tab that is.
+   */
+  prefetch?: (tab: string, view: DspView) => string[];
 };
 
 /** An owner's frontend: what it puts in each slot. */
@@ -79,6 +90,8 @@ export type FrontendFeature = {
   name: string;
   /** Its pages, in sidebar order. */
   routes?: readonly Route[];
+  /** Its tabs on a DSP's Settings page. */
+  settingsTabs?: readonly SettingsTab[];
 };
 
 let installed: readonly FrontendFeature[] = [];
@@ -96,3 +109,6 @@ export function routeOf(scope: Route['scope'], page: string): Route | undefined 
       if (route.scope === scope && route.id === page) return route;
   return undefined;
 }
+
+/** Every owner's tabs on a DSP's Settings page, in the order the owners are listed. */
+export const settingsTabs = () => installed.flatMap((feature) => feature.settingsTabs ?? []);

@@ -185,3 +185,7 @@
     max-height: 48dvh;
   }
 }
+
+.settings-connections > .page-heading {
+  display: none;
+}

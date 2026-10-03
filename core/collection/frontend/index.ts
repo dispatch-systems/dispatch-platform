@@ -1,2 +1,2 @@
 import './connections.css';
-export { ConnectionsPage } from './ConnectionsPage.js';
+export { ConnectionsTab } from './ConnectionsTab.js';
