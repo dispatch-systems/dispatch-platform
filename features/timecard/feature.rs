@@ -2,10 +2,14 @@
 use crate::{
     collectors::{cortex, paycom},
     db::{Migration, Migrations, migrations::Apply::Sql},
+    driver_match,
     manifest::{
         DefaultRole::{Manager, Member},
         Feature, Switch, feature, perm, tab,
     },
+    meals,
+    read_cache::{Cached, DataDomain, Evicted::By, LISTINGS},
+    workforce,
 };
 
 pub const FEATURE: Feature = Feature {
@@ -27,10 +31,7 @@ pub const FEATURE: Feature = Feature {
     ],
     // Collection progress refreshes both the timecard pages and the collections page.
     live: &["timecard.view", "collections.run"],
-    keeps: &[
-        &crate::workforce::keeper::Timecards,
-        &crate::meals::keeper::MealBreaks,
-    ],
+    keeps: &[&workforce::keeper::Timecards, &meals::keeper::MealBreaks],
     // Its tables live in the collectors' databases, beside what each collection reads.
     migrations: &[
         Migrations {
@@ -59,6 +60,24 @@ pub const FEATURE: Feature = Feature {
                 name: "meal_stops",
                 apply: Sql(include_str!("migrations/cortex/0002_meal_stops.sql")),
             }],
+        },
+    ],
+    domains: &[workforce::DOMAIN, meals::DOMAIN],
+    cached: &[
+        // The DSP listings' collection dates are its timecards'.
+        Cached {
+            read: LISTINGS,
+            evicted: By(&[workforce::DOMAIN]),
+        },
+        Cached {
+            read: meals::CACHED,
+            evicted: By(&[
+                workforce::DOMAIN,
+                meals::DOMAIN,
+                DataDomain::LIVE,
+                driver_match::DOMAIN,
+                DataDomain::TENANT,
+            ]),
         },
     ],
     ..feature("timecard")

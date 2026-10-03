@@ -20,6 +20,9 @@ pub(crate) mod sync;
 #[path = "timecards.rs"]
 pub(crate) mod timecards;
 
+/// Paycom's employees, timecards and preferences, as Timecard keeps them.
+pub const DOMAIN: crate::read_cache::DataDomain = crate::read_cache::DataDomain::new("paycom");
+
 pub(crate) use daily::cards;
 pub use preferences::defaults;
 pub(crate) use range::DailySource;

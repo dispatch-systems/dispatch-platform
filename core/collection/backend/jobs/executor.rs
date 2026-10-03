@@ -246,9 +246,11 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
         let matched = match state.read(move |db| db.driver_sources(&reading)).await {
             Ok(found) => {
                 state
-                    .run_scoped(changed_dsp.clone(), DataDomain::Drivers, move |db| {
-                        db.assign_drivers(&tenant, found)
-                    })
+                    .run_scoped(
+                        changed_dsp.clone(),
+                        crate::driver_match::DOMAIN,
+                        move |db| db.assign_drivers(&tenant, found),
+                    )
                     .await
             }
             Err(error) => Err(error),

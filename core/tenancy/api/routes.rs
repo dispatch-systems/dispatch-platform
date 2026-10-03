@@ -97,7 +97,7 @@ fn open_dsp(db: &Store, user: &User, input: &Input) -> Result<Reply> {
 // Authorization still runs on every request; keys cannot share membership-specific listings.
 pub(super) fn summaries(db: &Store, user: &User) -> Result<Vec<crate::contracts::DspSummary>> {
     user.state.read_cache.read(
-        crate::read_cache::Scope::Listings,
+        crate::read_cache::Scope::listings(),
         format!("dsps:{}:{}", user.actor(), user.user.platform_owner),
         user.state
             .data_revision

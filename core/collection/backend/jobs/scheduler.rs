@@ -168,7 +168,7 @@ impl Scheduler {
             let matched = match self.state.read(move |db| db.driver_sources(&reading)).await {
                 Ok(found) => {
                     self.state
-                        .run_scoped(dsp.clone(), DataDomain::Drivers, move |db| {
+                        .run_scoped(dsp.clone(), crate::driver_match::DOMAIN, move |db| {
                             db.assign_drivers(&dsp, found)
                         })
                         .await
@@ -205,7 +205,7 @@ impl Scheduler {
                 let id = dsp.clone();
                 if let Err(error) = self
                     .state
-                    .run_scoped(dsp.clone(), DataDomain::Routes, move |db| {
+                    .run_scoped(dsp.clone(), crate::routedata::DOMAIN, move |db| {
                         db.expire_routes(&id)
                     })
                     .await
@@ -259,7 +259,7 @@ impl Scheduler {
         for id in due {
             let dsp = id.clone();
             match state
-                .run_scoped(id.clone(), DataDomain::Schedules, move |db| {
+                .run_scoped(id.clone(), DataDomain::SCHEDULES, move |db| {
                     db.schedule_due(&dsp)
                 })
                 .await

@@ -6,6 +6,7 @@ use crate::{
     collectors::AddedStorage,
     db::{self, Db, Kind, Migration, Migrations, Store},
     job_metrics::Counts,
+    read_cache::{self, Cached, DataDomain},
 };
 use serde_json::Value;
 use std::{
@@ -89,6 +90,16 @@ impl Registry {
     pub fn migrations(&self, kind: Kind) -> Vec<Migration> {
         db::migrations::ledger(kind, self.migration_lists())
     }
+    /// Every domain a reviewed write may name: core's, then each feature's.
+    pub fn domains(&self) -> impl Iterator<Item = DataDomain> {
+        let features = self.features.iter().flat_map(|feature| feature.domains);
+        read_cache::DOMAINS.iter().chain(features).copied()
+    }
+    /// What evicts each cached read: core's declarations, then each feature's.
+    pub fn cached(&self) -> impl Iterator<Item = &'static Cached> {
+        let features = self.features.iter().flat_map(|feature| feature.cached);
+        read_cache::CACHED.iter().chain(features)
+    }
     /// Every permission as declared: core's own, then each feature's, in the registry's
     /// order. Lists of permissions follow their `order` instead.
     pub fn permissions(&self) -> impl Iterator<Item = &'static Permission> {
@@ -98,8 +109,8 @@ impl Registry {
     /// Panics unless every collection has exactly one keeper, every keeper keeps a
     /// registered collection, one page runs the schedules, only a page has tabs, every
     /// permission has an id and an order of its own and implies only permissions that
-    /// exist, and every database is declared once, with migrations numbered from 1
-    /// without a gap or a repeat.
+    /// exist, every database is declared once, with migrations numbered from 1 without a
+    /// gap or a repeat, and every domain is declared once and before it is named.
     pub fn check(&self) {
         let kinds: Vec<&str> = self
             .collectors
@@ -165,6 +176,29 @@ impl Registry {
                 owned.kind.name()
             );
         }
+        let domains: Vec<DataDomain> = self.domains().collect();
+        for (index, domain) in domains.iter().enumerate() {
+            assert!(
+                !domains[..index].contains(domain),
+                "the {} domain is declared twice",
+                domain.id()
+            );
+        }
+        let named = self
+            .keepers()
+            .map(|keeper| keeper.domain())
+            .chain(self.cached().flat_map(|cached| match cached.evicted {
+                read_cache::Evicted::By(named) | read_cache::Evicted::ByAllBut(named) => {
+                    named.iter().copied()
+                }
+            }));
+        for domain in named {
+            assert!(
+                domains.contains(&domain),
+                "the {} domain is named but not declared",
+                domain.id()
+            );
+        }
     }
 }
 
@@ -188,6 +222,10 @@ pub struct Feature {
     pub keeps: &'static [&'static dyn Keeper],
     /// What it adds to databases: its own, kept beside a collector's, or another owner's.
     pub migrations: &'static [Migrations],
+    /// The kinds of data its reviewed writes change, for the read cache.
+    pub domains: &'static [DataDomain],
+    /// What evicts the reads it caches, and any other owner's read its data feeds.
+    pub cached: &'static [Cached],
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
@@ -201,6 +239,8 @@ pub const fn feature(name: &'static str) -> Feature {
         live: &[],
         keeps: &[],
         migrations: &[],
+        domains: &[],
+        cached: &[],
     }
 }
 
@@ -407,6 +447,11 @@ pub trait Keeper: Sync {
     /// The permission its collection runs under: what a member needs to queue or cancel
     /// it, and what a job a member queued still needs when it runs.
     fn permission(&self) -> &'static str;
+    /// What publishing its collection changes, for the read cache. Without one of its own,
+    /// it evicts every read the DSP's settings do.
+    fn domain(&self) -> DataDomain {
+        DataDomain::TENANT
+    }
     /// Adds current tenant context needed only while a queued request executes. The
     /// persisted request stays compatible with the previous binary for rollback.
     fn bind(&self, _: &Store, _dsp: &str, request: &Value) -> Result<Value> {

@@ -41,5 +41,6 @@ pub const FEATURE: Feature = Feature {
             },
         ],
     }],
+    domains: &[dvic::DOMAIN],
     ..feature("dvic")
 };

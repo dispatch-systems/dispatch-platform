@@ -117,7 +117,7 @@ impl Checkpoint {
         let state = self.state.clone();
         let (dsp, resume) = self.state.run_bookkeeping(move |db| {
             let dsp=db.guard(&job,&owner)?;
-            state.read_cache.invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::Live);
+            state.read_cache.invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::LIVE);
             let row=db.job_row(&job,None)?;
             ensure(row.kind.as_str()==paycom::PROVIDER.job_kind(),"unsupported_collector",409)?;
             let tenant=dsp.id.as_str();
@@ -193,7 +193,7 @@ impl Checkpoint {
                 let dsp = db.guard(&job, &owner)?;
                 state
                     .read_cache
-                    .invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::Live);
+                    .invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::LIVE);
                 let row = db.job_row(&job, None)?;
                 let storage = db.collector(&dsp.id, paycom::PROVIDER)?;
                 // Save resume data and visible results with one transaction per driver.

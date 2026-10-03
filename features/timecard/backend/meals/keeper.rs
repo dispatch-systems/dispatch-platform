@@ -6,6 +6,7 @@ use crate::{
     db::Store,
     ensure,
     manifest::Keeper,
+    read_cache::DataDomain,
 };
 use serde_json::Value;
 
@@ -16,6 +17,9 @@ impl Keeper for MealBreaks {
     }
     fn permission(&self) -> &'static str {
         "collections.run"
+    }
+    fn domain(&self) -> DataDomain {
+        super::DOMAIN
     }
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
         let Collected { data, scope } = collected;

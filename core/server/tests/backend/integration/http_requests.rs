@@ -243,7 +243,7 @@ impl Server {
 
 #[tokio::test]
 async fn meal_cache_rechecks_live_visibility_after_lease_bookkeeping_and_authorizes_hits() {
-    use dispatch_backend::read_cache::DataDomain;
+    use dispatch_backend::workforce;
     let server = Server::start().await;
     let member = server.member("member@dispatch.test").await;
     let dsp = server.dsp("Northline Logistics").await;
@@ -270,7 +270,7 @@ async fn meal_cache_rechecks_live_visibility_after_lease_bookkeeping_and_authori
     let day = date.clone();
     let job = server
         .state
-        .run_scoped(dsp.clone(), DataDomain::Paycom, move |db| {
+        .run_scoped(dsp.clone(), workforce::DOMAIN, move |db| {
             let queued = db.enqueue(&tenant, None, "meal-cache-live")?;
             let job = db
                 .claim_job("meal-cache-owner", |id, provider| {

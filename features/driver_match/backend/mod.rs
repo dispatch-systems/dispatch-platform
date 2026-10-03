@@ -20,6 +20,7 @@ use crate::{
     crypto,
     db::{Db, FromRow, Row, Store, iso},
     ensure, names,
+    read_cache::DataDomain,
 };
 use matching::{Member, Saved};
 use rusqlite::params;
@@ -27,6 +28,8 @@ use serde_json::{Value, json};
 use sources::{Days, Identity, Key, Seen};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Driver codes, the decisions about them and the IDs they lead to.
+pub const DOMAIN: DataDomain = DataDomain::new("drivers");
 /// When collected data was last checked for new IDs.
 const CHECKED: &str = "driver_match.checked_at";
 /// Links saved on the meal-break page before Driver Match, which reads them as decisions and

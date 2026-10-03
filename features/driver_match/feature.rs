@@ -31,5 +31,6 @@ pub const FEATURE: Feature = Feature {
             }],
         },
     ],
+    domains: &[crate::driver_match::DOMAIN],
     ..feature("driver_match")
 };

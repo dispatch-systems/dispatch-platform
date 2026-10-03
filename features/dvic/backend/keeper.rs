@@ -9,6 +9,7 @@ use crate::{
     db::{Store, s},
     ensure,
     manifest::Keeper,
+    read_cache::DataDomain,
 };
 use serde_json::Value;
 
@@ -19,6 +20,9 @@ impl Keeper for Dvic {
     }
     fn permission(&self) -> &'static str {
         "dvic.collect"
+    }
+    fn domain(&self) -> DataDomain {
+        super::DOMAIN
     }
     fn bind(&self, store: &Store, dsp: &str, request: &Value) -> Result<Value> {
         let station = request["station"]

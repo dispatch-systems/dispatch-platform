@@ -27,6 +27,7 @@ use crate::{
     },
     db::{Db, DspLease, Kind, Store, at, migrations::add_column, s},
     ensure,
+    read_cache::DataDomain,
 };
 use chrono::{Duration, NaiveDate};
 use rusqlite::params;
@@ -35,6 +36,8 @@ use serde_json::{Map, Value, json};
 use std::io::Write;
 
 pub const COLLECTION: &str = "routes";
+/// The routes, itineraries and packages it keeps.
+pub const DOMAIN: DataDomain = DataDomain::new("routes");
 /// What shaped a publication's rows. 2 keys tasks by itinerary and keeps their events
 /// as triples; a reprocess brings an older publication up to date.
 pub const ADAPTER_VERSION: i64 = 2;
@@ -303,7 +306,7 @@ pub async fn stage(
     let count = itineraries.len();
     let (d, j, o) = (dsp.to_owned(), job.to_owned(), owner.to_owned());
     let staged = state
-        .run_scoped(dsp, crate::read_cache::DataDomain::Routes, move |db| {
+        .run_scoped(dsp, DOMAIN, move |db| {
             db.guard(&j, &o)?;
             db.stage_routes_start(&d, &j, &capture, count)
         })
@@ -320,7 +323,7 @@ pub async fn stage(
             staged.clone(),
         );
         state
-            .run_scoped(dsp, crate::read_cache::DataDomain::Routes, move |db| {
+            .run_scoped(dsp, DOMAIN, move |db| {
                 db.guard(&j, &o)?;
                 db.stage_routes_itinerary(&d, &staged, &shaped)
             })

@@ -329,7 +329,7 @@ impl People {
             .data_revision
             .load(std::sync::atomic::Ordering::Relaxed);
         let matched: DriverMatch = state.read_cache.read(
-            crate::read_cache::Scope::People(dsp.into()),
+            crate::read_cache::Scope::tenant(crate::read_cache::PEOPLE, dsp),
             format!("agent-people:{dsp}"),
             revision,
             // A4: Driver Match's codes, until it fills the identity slot.

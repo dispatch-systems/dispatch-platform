@@ -1,7 +1,7 @@
 //! Bounded derived reads shared across database workers. Call only after authorization,
 //! while holding State's transition read lock. Unknown writes advance the global
 //! revision; reviewed writes evict the scopes that depend on their changed data.
-use crate::Result;
+use crate::{Result, manifest::registry};
 use serde::Serialize;
 use std::any::Any;
 use std::{
@@ -18,44 +18,94 @@ struct Entry {
     value: Box<dyn Any + Send>,
     bytes: usize,
 }
-/// The full dependency set of a derived read, independent of its response key.
+/// A cached read: what it reads, named by the id its dependencies are declared under
+/// (`Cached`), and for which DSP. The DSP listings are every DSP's at once.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Scope {
-    /// Includes memberships, features, profile, connections and collection dates.
-    Listings,
-    /// Paycom (including live pages), Cortex meals, driver links and preferences.
-    Meals(String),
-    /// Driver decisions/preferences and identities/activity from every collection.
-    People(String),
+pub struct Scope {
+    read: &'static str,
+    dsp: Option<String>,
 }
-/// A reviewed business-data mutation. Use State::run for anything not covered here.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DataDomain {
-    Paycom,
-    Meals,
-    /// Temporary Paycom pages/Cortex itineraries; Driver Match reads publications.
-    Live,
-    Routes,
-    Scorecard,
-    Dvic,
-    Drivers,
-    /// Profile, features, connections, permissions or other tenant-wide settings.
-    Tenant,
-    /// Only scheduled collection dates, also shown in session DSP listings.
-    Schedules,
-}
-impl DataDomain {
-    /// A new registered collection keeps the conservative tenant-wide dependency set.
-    pub fn collection(kind: crate::contracts::JobKind) -> Self {
-        match kind.as_str() {
-            "paycom.collect" => Self::Paycom,
-            "cortex.meal_breaks.collect" => Self::Meals,
-            "cortex.routes.collect" => Self::Routes,
-            "cortex.scorecard.collect" => Self::Scorecard,
-            "cortex.dvic.collect" => Self::Dvic,
-            _ => Self::Tenant,
+impl Scope {
+    /// Every DSP's listing: memberships, features, profile, connections and collection
+    /// dates.
+    pub fn listings() -> Self {
+        Self {
+            read: LISTINGS,
+            dsp: None,
         }
     }
+    /// One DSP's `read`.
+    pub fn tenant(read: &'static str, dsp: impl Into<String>) -> Self {
+        Self {
+            read,
+            dsp: Some(dsp.into()),
+        }
+    }
+}
+/// The DSP listings' cached read.
+pub const LISTINGS: &str = "listings";
+/// A DSP's people: driver decisions/preferences and identities/activity from every
+/// collection.
+pub const PEOPLE: &str = "people";
+
+/// A kind of data a reviewed write changes, named by the id its owner declares: core's
+/// here, a feature's in its manifest. Use State::run for anything not covered by one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DataDomain(&'static str);
+impl DataDomain {
+    /// Temporary pages and itineraries a collection shows while it runs.
+    pub const LIVE: Self = Self("live");
+    /// Profile, features, connections, permissions or other tenant-wide settings.
+    pub const TENANT: Self = Self("tenant");
+    /// Only scheduled collection dates, also shown in session DSP listings.
+    pub const SCHEDULES: Self = Self("schedules");
+    pub const fn new(id: &'static str) -> Self {
+        Self(id)
+    }
+    pub fn id(self) -> &'static str {
+        self.0
+    }
+    /// What a finished collection of `kind` writes, as its keeper declares. A keeper that
+    /// declares none keeps the conservative tenant-wide dependency set.
+    pub fn collection(kind: crate::contracts::JobKind) -> Self {
+        registry().keeper(kind.as_str()).domain()
+    }
+}
+/// Core's own domains, beside the features'.
+pub const DOMAINS: &[DataDomain] = &[DataDomain::LIVE, DataDomain::TENANT, DataDomain::SCHEDULES];
+
+/// Which writes evict a cached read, as an owner that knows of the dependency declares it.
+/// A read is evicted by a write any of its declarations names.
+pub struct Cached {
+    pub read: &'static str,
+    pub evicted: Evicted,
+}
+pub enum Evicted {
+    /// By writes to these domains.
+    By(&'static [DataDomain]),
+    /// By writes to any domain but these.
+    ByAllBut(&'static [DataDomain]),
+}
+/// What core declares of its own cached reads.
+pub const CACHED: &[Cached] = &[
+    Cached {
+        read: LISTINGS,
+        evicted: Evicted::By(&[DataDomain::TENANT, DataDomain::SCHEDULES]),
+    },
+    // Driver Match reads publications, never a collection's live pages.
+    Cached {
+        read: PEOPLE,
+        evicted: Evicted::ByAllBut(&[DataDomain::SCHEDULES, DataDomain::LIVE]),
+    },
+];
+fn evicts(read: &str, domain: DataDomain) -> bool {
+    registry()
+        .cached()
+        .filter(|cached| cached.read == read)
+        .any(|cached| match cached.evicted {
+            Evicted::By(domains) => domains.contains(&domain),
+            Evicted::ByAllBut(domains) => !domains.contains(&domain),
+        })
 }
 #[derive(Default)]
 pub struct ReadCache {
@@ -66,32 +116,17 @@ impl ReadCache {
     /// errors too: a later database may fail after an earlier one committed.
     pub fn invalidate_tenant(&self, dsp: &str, domain: DataDomain) {
         if let Ok(mut entries) = self.entries.lock() {
-            entries.retain(|entry| !match &entry.scope {
-                Scope::Listings => matches!(
-                    domain,
-                    DataDomain::Paycom | DataDomain::Tenant | DataDomain::Schedules
-                ),
-                Scope::Meals(tenant) => {
-                    tenant == dsp
-                        && matches!(
-                            domain,
-                            DataDomain::Paycom
-                                | DataDomain::Meals
-                                | DataDomain::Live
-                                | DataDomain::Drivers
-                                | DataDomain::Tenant
-                        )
-                }
-                Scope::People(tenant) => {
-                    tenant == dsp && !matches!(domain, DataDomain::Schedules | DataDomain::Live)
-                }
+            entries.retain(|entry| {
+                let scope = &entry.scope;
+                !(scope.dsp.as_deref().is_none_or(|tenant| tenant == dsp)
+                    && evicts(scope.read, domain))
             });
         }
     }
     /// Expired invitations can change the owner shown in any user's DSP listing.
     pub fn invalidate_listings(&self) {
         if let Ok(mut entries) = self.entries.lock() {
-            entries.retain(|entry| entry.scope != Scope::Listings);
+            entries.retain(|entry| entry.scope != Scope::listings());
         }
     }
     pub fn read<T: Serialize + Clone + Send + 'static>(
@@ -177,7 +212,7 @@ impl ReadCache {
 mod tests {
     use super::*;
     fn meals(dsp: &str) -> Scope {
-        Scope::Meals(dsp.into())
+        Scope::tenant("meals", dsp)
     }
     #[test]
     fn reuses_matching_reads_but_not_another_revision_or_tenant() {
@@ -243,23 +278,26 @@ mod tests {
     #[test]
     fn dependencies_cover_every_source_without_evicting_other_tenants() {
         for (domain, expected) in [
-            (DataDomain::Paycom, [false, false, false, true, true]),
-            (DataDomain::Meals, [true, false, false, true, true]),
-            (DataDomain::Live, [true, false, true, true, true]),
-            (DataDomain::Routes, [true, true, false, true, true]),
-            (DataDomain::Scorecard, [true, true, false, true, true]),
-            (DataDomain::Dvic, [true, true, false, true, true]),
-            (DataDomain::Drivers, [true, false, false, true, true]),
-            (DataDomain::Tenant, [false, false, false, true, true]),
-            (DataDomain::Schedules, [false, true, true, true, true]),
+            (DataDomain::new("paycom"), [false, false, false, true, true]),
+            (DataDomain::new("meals"), [true, false, false, true, true]),
+            (DataDomain::LIVE, [true, false, true, true, true]),
+            (DataDomain::new("routes"), [true, true, false, true, true]),
+            (
+                DataDomain::new("scorecard"),
+                [true, true, false, true, true],
+            ),
+            (DataDomain::new("dvic"), [true, true, false, true, true]),
+            (DataDomain::new("drivers"), [true, false, false, true, true]),
+            (DataDomain::TENANT, [false, false, false, true, true]),
+            (DataDomain::SCHEDULES, [false, true, true, true, true]),
         ] {
             let cache = ReadCache::default();
             let scopes = [
-                Scope::Listings,
+                Scope::listings(),
                 meals("a"),
-                Scope::People("a".into()),
+                Scope::tenant(PEOPLE, "a"),
                 meals("b"),
-                Scope::People("b".into()),
+                Scope::tenant(PEOPLE, "b"),
             ];
             for scope in &scopes {
                 cache
@@ -356,7 +394,7 @@ mod tests {
         assert_eq!(cached("b").await.unwrap(), "UTC");
         assert_eq!(loads.load(Ordering::Relaxed), 2);
         let failed: Result<()> = state
-            .run_scoped("a", DataDomain::Tenant, |db| {
+            .run_scoped("a", DataDomain::TENANT, |db| {
                 db.platform.exec(
                     "UPDATE dsps SET timezone='America/New_York' WHERE id='a'",
                     [],

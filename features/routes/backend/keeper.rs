@@ -9,6 +9,7 @@ use crate::{
     },
     db::Store,
     manifest::Keeper,
+    read_cache::DataDomain,
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -20,6 +21,9 @@ impl Keeper for Routes {
     }
     fn permission(&self) -> &'static str {
         "routes.collect"
+    }
+    fn domain(&self) -> DataDomain {
+        super::DOMAIN
     }
     fn stage<'a>(
         &'a self,

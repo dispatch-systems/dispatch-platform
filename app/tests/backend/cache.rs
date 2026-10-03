@@ -4,7 +4,8 @@
 use crate::{
     collectors::Provider,
     contracts::JobKind,
-    read_cache::{DataDomain, ReadCache, Scope},
+    manifest::registry,
+    read_cache::{self, DataDomain, ReadCache, Scope},
 };
 
 /// For a write to each domain for DSP `a`: whether it evicts the DSP listings, `a`'s
@@ -30,24 +31,16 @@ const COLLECTIONS: &[(&str, &str)] = &[
 ];
 
 fn domain(name: &str) -> DataDomain {
-    match name {
-        "paycom" => DataDomain::Paycom,
-        "meals" => DataDomain::Meals,
-        "live" => DataDomain::Live,
-        "routes" => DataDomain::Routes,
-        "scorecard" => DataDomain::Scorecard,
-        "dvic" => DataDomain::Dvic,
-        "drivers" => DataDomain::Drivers,
-        "tenant" => DataDomain::Tenant,
-        "schedules" => DataDomain::Schedules,
-        _ => panic!("no domain {name}"),
-    }
+    registry()
+        .domains()
+        .find(|domain| domain.id() == name)
+        .unwrap_or_else(|| panic!("no domain {name}"))
 }
 fn scope(read: &str, dsp: &str) -> Scope {
     match read {
-        "listings" => Scope::Listings,
-        "meals" => Scope::Meals(dsp.into()),
-        "people" => Scope::People(dsp.into()),
+        "listings" => Scope::listings(),
+        "meals" => Scope::tenant(crate::meals::CACHED, dsp),
+        "people" => Scope::tenant(read_cache::PEOPLE, dsp),
         _ => panic!("no cached read {read}"),
     }
 }

@@ -16,11 +16,18 @@ use crate::{
     },
     db::{Store, at, s},
     ensure,
+    read_cache::DataDomain,
 };
 use chrono::NaiveDate;
 use rusqlite::params;
 use serde_json::{Value, json};
 use std::collections::HashSet;
+
+/// Cortex's meal breaks, as Timecard keeps them.
+pub const DOMAIN: DataDomain = DataDomain::new("meals");
+/// A DSP's meal-break reads: Paycom (including live pages), Cortex meals, driver links and
+/// preferences.
+pub const CACHED: &str = "meals";
 
 struct Boundaries {
     prior: Option<i64>,

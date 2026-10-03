@@ -42,5 +42,6 @@ pub const FEATURE: Feature = Feature {
             },
         ],
     }],
+    domains: &[scorecard::DOMAIN],
     ..feature("scorecard")
 };

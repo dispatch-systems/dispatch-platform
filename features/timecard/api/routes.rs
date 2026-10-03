@@ -199,7 +199,7 @@ fn meal_comparison(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         return Reply::of(&db.meal_comparison(c.dsp_id(), date, c.dsp.timezone.as_str())?);
     }
     let comparison = c.state.read_cache.json(
-        crate::read_cache::Scope::Meals(c.dsp_id().into()),
+        crate::read_cache::Scope::tenant(crate::meals::CACHED, c.dsp_id()),
         format!("meals:{}:{}:{}", c.dsp_id(), date, c.dsp.timezone),
         c.state
             .data_revision

@@ -8,6 +8,7 @@ use crate::{
     },
     db::{Store, s},
     manifest::Keeper,
+    read_cache::DataDomain,
 };
 use serde_json::{Value, json};
 
@@ -18,6 +19,9 @@ impl Keeper for Timecards {
     }
     fn permission(&self) -> &'static str {
         "collections.run"
+    }
+    fn domain(&self) -> DataDomain {
+        super::DOMAIN
     }
     /// The employee a single-employee sync reads, as the latest publication holds them.
     fn kept(&self, store: &Store, dsp: &str, question: &Value) -> Result<Value> {

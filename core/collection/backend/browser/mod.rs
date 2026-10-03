@@ -462,7 +462,7 @@ impl State {
                 let _ = self
                     .run_scoped(
                         session.dsp.clone(),
-                        crate::read_cache::DataDomain::Tenant,
+                        crate::read_cache::DataDomain::TENANT,
                         move |db| {
                             db.connection_state(
                                 &id,
@@ -607,7 +607,7 @@ impl State {
             ensure(!session.closed(), "verification_expired", 409)?;
             let dsp = id.to_owned();
             let launch_authority = authority.clone();
-            self.run_scoped(id, crate::read_cache::DataDomain::Tenant, move |db| {
+            self.run_scoped(id, crate::read_cache::DataDomain::TENANT, move |db| {
                 launch_authority.check(db, &dsp, provider)?;
                 let tenant = db.find_dsp(&dsp)?;
                 ensure(tenant.status == DspStatus::Active, "dsp_unavailable", 409)?;
@@ -712,7 +712,7 @@ impl State {
         let authority = authority.clone();
         self.run_scoped(
             dsp.clone(),
-            crate::read_cache::DataDomain::Tenant,
+            crate::read_cache::DataDomain::TENANT,
             move |db| {
                 authority.check(db, &dsp, provider)?;
                 db.connection_state(&dsp, provider, revision, status, error.as_deref())

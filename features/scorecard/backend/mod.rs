@@ -19,6 +19,7 @@ use crate::{
     db::{Db, DspLease, Kind, Store, at, migrations::add_column, now, s},
     ensure,
     manifest::Keeper,
+    read_cache::DataDomain,
     weeks::{last_completed_week, week_or_latest},
 };
 use chrono::NaiveDate;
@@ -27,6 +28,8 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 
 pub const ADAPTER_VERSION: i64 = 1;
+/// The scorecard weeks it keeps.
+pub const DOMAIN: DataDomain = DataDomain::new("scorecard");
 /// The scorecard database beside `cortex.sqlite`.
 pub const DATABASE: Kind = Kind::new("scorecard", 1);
 pub static STORAGE: AddedStorage = AddedStorage {

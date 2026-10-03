@@ -36,7 +36,7 @@ impl Writer {
                 request.validate_scope(&scope)?;
                 state
                     .read_cache
-                    .invalidate_tenant(&row.dsp_id, crate::read_cache::DataDomain::Live);
+                    .invalidate_tenant(&row.dsp_id, crate::read_cache::DataDomain::LIVE);
                 db.start_live(&job, &owner, &metadata)
             })
             .await
@@ -51,7 +51,7 @@ impl Writer {
                 let dsp = db.guard(&job, &owner)?;
                 state
                     .read_cache
-                    .invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::Live);
+                    .invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::LIVE);
                 db.collector(&dsp.id, PROVIDER)?.exec(
                     "UPDATE collection_live_runs \
                 SET metadata=json_set(metadata,'$.drivers',json(?1)) WHERE job_id=?2 AND owner=?3",
@@ -88,7 +88,7 @@ impl Writer {
                 let dsp = db.guard(&job, &owner)?;
                 state
                     .read_cache
-                    .invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::Live);
+                    .invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::LIVE);
                 let row = db.job_row(&job, None)?;
                 ensure(
                     row.kind.as_str() == PROVIDER.job_kind(),

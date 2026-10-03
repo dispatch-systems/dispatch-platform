@@ -16,10 +16,14 @@ use crate::{
         },
     },
     db::{Db, Kind, migrations::add_column},
-    ensure, validate, weeks,
+    ensure,
+    read_cache::DataDomain,
+    validate, weeks,
 };
 use serde_json::{Value, json};
 
+/// The inspections it keeps.
+pub const DOMAIN: DataDomain = DataDomain::new("dvic");
 /// The DVIC database beside `cortex.sqlite`.
 pub const DATABASE: Kind = Kind::new("dvic", 1);
 pub static STORAGE: AddedStorage = AddedStorage {
