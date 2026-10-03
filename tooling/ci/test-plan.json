@@ -27,6 +27,8 @@
     "app/tests/rules/anatomy.test.ts",
     "app/tests/rules/audit-actions.test.ts",
     "app/tests/rules/collections.test.ts",
+    "app/tests/rules/dependencies.test.ts",
+    "app/tests/rules/encapsulation.test.ts",
     "app/tests/rules/migrations.test.ts",
     "app/tests/rules/names.test.ts",
     "app/tests/rules/slots.test.ts",

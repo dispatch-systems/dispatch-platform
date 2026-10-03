@@ -58,6 +58,74 @@
         "core/tenancy has no README.md": "A5"
       }
     },
+    "dependencies": {
+      "rust": {
+        "collectors/cortex names features/routes": "Phase B",
+        "core/collection names collectors/cortex": "Phase B",
+        "core/collection names collectors/paycom": "Phase B",
+        "core/collection's tests name collectors/cortex": "A6",
+        "core/collection's tests name collectors/paycom": "A6",
+        "core/collection's tests name features/timecard": "A6",
+        "core/db's tests name app": "A6",
+        "core/db's tests name collectors/cortex": "A6",
+        "core/db's tests name collectors/paycom": "A6",
+        "core/db's tests name features/dvic": "A6",
+        "core/db's tests name features/routes": "A6",
+        "core/db's tests name features/scorecard": "A6",
+        "core/manifest names app": "Phase B",
+        "core/mcp names app": "Phase B",
+        "core/mcp names collectors/cortex": "A4c",
+        "core/mcp names collectors/paycom": "A4c",
+        "core/mcp names features/driver_match": "A4c",
+        "core/mcp names features/routes": "A4c",
+        "core/mcp names features/scorecard": "A4c",
+        "core/mcp names features/timecard": "A4c",
+        "core/mcp's tests name app": "A6",
+        "core/mcp's tests name collectors/cortex": "A6",
+        "core/mcp's tests name collectors/paycom": "A6",
+        "core/server names app": "Phase B",
+        "core/server's tests name app": "A6",
+        "core/server's tests name collectors/paycom": "A6",
+        "core/server's tests name features/timecard": "A6",
+        "features/driver_match names collectors/cortex": "A5",
+        "features/driver_match names collectors/paycom": "A5",
+        "features/driver_match's tests name collectors/cortex": "A6",
+        "features/driver_match's tests name collectors/paycom": "A6",
+        "features/routes's tests name app": "A6",
+        "features/timecard names features/driver_match": "A5"
+      }
+    },
+    "encapsulation": {
+      "typescript": {
+        "collectors/cortex's tests import collectors/paycom": "A6",
+        "core/accounts imports shared/contracts": "Phase B",
+        "core/collection imports shared/contracts": "Phase B",
+        "core/collection's tests import collectors/paycom": "A6",
+        "core/collection's tests import shared/contracts": "Phase B",
+        "core/mcp's tests import shared/contracts": "Phase B",
+        "core/platform_owner imports shared/contracts": "Phase B",
+        "core/platform_owner's tests import shared/contracts": "Phase B",
+        "core/server's tests import shared/contracts": "Phase B",
+        "core/shell imports shared/contracts": "Phase B",
+        "core/shell's tests import shared/contracts": "Phase B",
+        "core/tenancy's tests import features/team": "A6",
+        "core/tenancy's tests import shared/contracts": "Phase B",
+        "features/driver_match imports shared/contracts": "Phase B",
+        "features/driver_match's tests import shared/contracts": "Phase B",
+        "features/dvic imports shared/contracts": "Phase B",
+        "features/dvic's tests import shared/contracts": "Phase B",
+        "features/routes imports shared/contracts": "Phase B",
+        "features/settings imports shared/contracts": "Phase B",
+        "features/team imports shared/contracts": "Phase B",
+        "features/timecard imports shared/contracts": "Phase B",
+        "features/timecard's tests import shared/contracts": "Phase B",
+        "features/uniforms imports shared/contracts": "Phase B",
+        "features/uniforms's tests import shared/contracts": "Phase B"
+      },
+      "lists": {
+        "core/collection/backend/registry.rs lists collectors/cortex, collectors/paycom": "Phase B"
+      }
+    },
     "names": {
       "retired names": {
         "file core/accounts/api/routes/auth.rs is named auth": "Phase B",
