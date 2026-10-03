@@ -62,30 +62,47 @@ pub fn affected(changed: &[String], plan: &Value) -> Vec<String> {
     }
     let mut crates = BTreeSet::new();
     for file in changed {
+        let collector = file
+            .strip_prefix("collectors/")
+            .and_then(|rest| rest.split_once('/'))
+            .map(|(site, _)| site);
         if file.starts_with("ops/host-manager/") {
-            crates.insert("dispatch-host");
+            crates.insert("dispatch-host".to_owned());
         } else if file.starts_with("tooling/ci/dispatch-ci/") {
-            crates.insert("dispatch-ci");
+            crates.insert("dispatch-ci".to_owned());
         } else if file.starts_with("core/") && !frontend(Path::new(file)) {
             // Core's crate, and the app's, which builds on it.
-            crates.extend(["dispatch-core", "dispatch-backend"]);
-        } else if ["app/", "collectors/", "features/"]
+            crates.extend(["dispatch-core".to_owned(), "dispatch-backend".to_owned()]);
+        } else if let Some(site) = collector
+            && !frontend(Path::new(file))
+        {
+            // The collector's crate, and the app's, which builds on it.
+            crates.extend([
+                format!("dispatch-{}", site.replace('_', "-")),
+                "dispatch-backend".to_owned(),
+            ]);
+        } else if ["app/", "features/"]
             .iter()
             .any(|root| file.starts_with(root))
             && !frontend(Path::new(file))
         {
-            crates.insert("dispatch-backend");
+            crates.insert("dispatch-backend".to_owned());
         } else if matches!(
             file.as_str(),
             "Cargo.toml" | "Cargo.lock" | "rust-toolchain.toml"
         ) || file.starts_with(".cargo/")
         {
-            crates.extend([
-                "dispatch-backend",
-                "dispatch-ci",
-                "dispatch-core",
-                "dispatch-host",
-            ]);
+            crates.extend(
+                [
+                    "dispatch-backend",
+                    "dispatch-ci",
+                    "dispatch-core",
+                    "dispatch-cortex",
+                    "dispatch-host",
+                    "dispatch-paycom",
+                ]
+                .map(str::to_owned),
+            );
         }
     }
     let mut commands = vec![];
@@ -289,7 +306,7 @@ mod tests {
             changed(&["Cargo.lock", "tooling/tests/test-plan.test.ts"]),
             [
                 "cargo clippy --locked --all-targets -- -D warnings",
-                "cargo test --locked -p dispatch-backend -p dispatch-ci -p dispatch-core -p dispatch-host",
+                "cargo test --locked -p dispatch-backend -p dispatch-ci -p dispatch-core -p dispatch-cortex -p dispatch-host -p dispatch-paycom",
             ]
         );
         assert_eq!(
@@ -299,6 +316,12 @@ mod tests {
             ])[1],
             "cargo test --locked -p dispatch-host"
         );
+        // A collector's change runs its crate's tests, and the app's.
+        assert_eq!(
+            changed(&["collectors/paycom/connection/mod.rs"])[1],
+            "cargo test --locked -p dispatch-backend -p dispatch-paycom"
+        );
+        assert!(changed(&["collectors/cortex/frontend/CortexCard.tsx"]).is_empty());
         assert!(changed(&["docs/readme.md", "dashboard/src/app/App.tsx"]).is_empty());
         // Frontend code in an owner's directory never asks for the Rust checks.
         assert!(

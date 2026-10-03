@@ -74,6 +74,7 @@ test("a feature's list names its Rust, API, frontend and browser tests, each whe
 test("a collector's list runs its sharded native suites through their shards and the rest with node", () => {
   const { status, commands } = list('collector', 'cortex', '--no-build');
   assert.equal(status, 0);
+  assert.equal(commands[0], 'cargo test --locked -p dispatch-cortex');
   const native = owned('collectors/cortex/tests/native', /\.test\.ts$/);
   const sharded = Object.entries(shards).filter(([, files]) =>
     files.some((file) => native.includes(file)),

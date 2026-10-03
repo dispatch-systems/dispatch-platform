@@ -159,11 +159,17 @@ test('every test file is run by exactly one check of full validation and none is
     ({ name }) => name === 'operator probe compilation',
   );
   assert(operator, 'operator probes must compile in CI without executing');
+  // The probes live in the collectors, whose own tests hold most of them; the app runs those
+  // that measure a feature's part too.
   assert.deepEqual(operator.args, [
     'check',
     '--locked',
     '-p',
     'dispatch-backend',
+    '-p',
+    'dispatch-cortex',
+    '-p',
+    'dispatch-paycom',
     '--tests',
     '--features',
     'operator-probes',
