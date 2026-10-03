@@ -1,6 +1,6 @@
 //! Driver Match: every ID the collections hold gets one person's code, certain names join
 //! on their own, and the rest wait for a decision that merges, splits or keeps apart.
-#[path = "../../../../../core/db/tests/support/common.rs"]
+#[path = "../../../../core/db/tests/support/common.rs"]
 mod common;
 use dispatch_backend::{
     accounts::{Auth, Context},

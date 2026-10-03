@@ -103,7 +103,7 @@ path = "../../app/tests/backend/integration/contracts.rs"
 
 [[test]]
 name = "driver_match"
-path = "../../features/driver_match/tests/backend/integration/driver_match.rs"
+path = "../../app/tests/backend/integration/driver_match.rs"
 
 [[test]]
 name = "dvic"

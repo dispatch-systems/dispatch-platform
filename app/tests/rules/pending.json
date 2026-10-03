@@ -78,8 +78,6 @@
         "core/server's tests name app": "A6",
         "core/server's tests name collectors/paycom": "A6",
         "core/server's tests name features/timecard": "A6",
-        "features/driver_match's tests name collectors/cortex": "A6",
-        "features/driver_match's tests name collectors/paycom": "A6",
         "features/routes's tests name app": "A6"
       }
     },
@@ -165,7 +163,6 @@
         "core/server's tests name tables of collectors/paycom": "A6",
         "core/tenancy names tables of collectors/cortex or collectors/paycom": "Phase B",
         "features/driver_match names tables of core": "A5",
-        "features/driver_match's tests name tables of core": "A6",
         "features/dvic names tables of core": "A5",
         "features/dvic's tests name tables of collectors/cortex or collectors/paycom": "A6",
         "features/dvic's tests name tables of core": "A6",
@@ -261,7 +258,6 @@
         "core/mcp's integration tests are tests of app/backend/Cargo.toml": "Phase B",
         "core/platform_owner's integration tests are tests of app/backend/Cargo.toml": "Phase B",
         "core/server's integration tests are tests of app/backend/Cargo.toml": "Phase B",
-        "features/driver_match's integration tests are tests of app/backend/Cargo.toml": "Phase B",
         "features/dvic's integration tests are tests of app/backend/Cargo.toml": "Phase B",
         "features/routes's integration tests are tests of app/backend/Cargo.toml": "Phase B",
         "features/scorecard's integration tests are tests of app/backend/Cargo.toml": "Phase B",
