@@ -1,0 +1,47 @@
+//! What agents can ask of {{label}}: its endpoint, and the kind of data a key or app may be
+//! allowed to read. The MCP server, the OpenAPI document, the skill and the Agents page's read
+//! toggles are built from it.
+mod catalog;
+mod views;
+
+use dispatch_core::{
+    Result,
+    accounts::api::types::Dsp,
+    db::Store,
+    mcp::{
+        Mcp,
+        api::types::{AgentArea, AgentSource, ReadSource, ReadToggle},
+    },
+};
+use serde_json::Value;
+
+/// {{label}}'s switch, as agents read from it.
+pub(crate) const SOURCE: AgentSource = AgentSource::new(&ReadSource {
+    id: "{{name}}",
+    switch: "{{label}}",
+    order: {{agentOrder}},
+    features: &["{{name}}"],
+    key: "{{name}}",
+    fresh,
+});
+/// The read toggle a key or app needs to read {{label}}. Permanent: keys and apps store it.
+pub(crate) const {{constant}}: AgentArea = AgentArea::new(&ReadToggle {
+    id: "{{name}}",
+    label: "{{label}}",
+    order: {{agentOrder}},
+    source: SOURCE,
+    with: None,
+    names: &[],
+});
+
+pub(crate) const MCP: Mcp = Mcp {
+    reads: &[{{constant}}],
+    sources: &[SOURCE],
+    endpoints: catalog::ENDPOINTS,
+    ..Mcp::NONE
+};
+
+/// When it last brought something in for the DSP, for the status answer.
+fn fresh(_: &Store, _: &Dsp, _: &str) -> Result<Option<Value>> {
+    Ok(None)
+}

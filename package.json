@@ -20,6 +20,7 @@
     "test:smoke": "tsx tooling/testing/browser-check.ts --smoke-only",
     "test:browseros": "python3 tooling/ci/browseros-check.py",
     "test:artifact": "DISPATCH_TEST_ARTIFACT=1 tsx --test tooling/tests/artifact.test.ts",
+    "new:feature": "tsx tooling/scaffold/new-feature.ts",
     "predev": "python3 tooling/build/cargo-build.py",
     "pretest": "python3 tooling/build/cargo-build.py",
     "benchmark:rust": "python3 tooling/build/cargo-build.py --release && tsx tooling/benchmarks/benchmark-rust.ts",

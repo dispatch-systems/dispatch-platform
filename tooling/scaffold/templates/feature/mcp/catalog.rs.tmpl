@@ -1,0 +1,16 @@
+//! {{label}}'s part of the agent catalog: its endpoint, also an MCP tool.
+use super::{{{constant}}, views};
+use dispatch_core::mcp::data::catalog::{DSP, Endpoint};
+
+pub(super) const ENDPOINTS: &[Endpoint] = &[Endpoint {
+    id: "{{name}}",
+    tool: "{{name}}",
+    area: Some({{constant}}),
+    path: "/api/v1/{{slug}}",
+    summary: "{{label}}",
+    description: "Use for questions about {{label}}: what it holds for the DSP.",
+    path_params: &[],
+    params: &[DSP],
+    order: {{agentOrder}},
+    answer: |db, _, caller, _, query| views::{{name}}(db, caller, query),
+}];
