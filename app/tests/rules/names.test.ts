@@ -4,7 +4,7 @@ import ts from 'typescript';
 import { readCrate } from './support/cargo.js';
 import { collectorManifest, featureManifest } from './support/manifests.js';
 import { holds, pendingNames } from './support/pending.js';
-import { collectors, features, files, isFile, owners, read } from './support/repo.js';
+import { collectors, features, files, isFile, owners, read, templated } from './support/repo.js';
 import { lexFile, modDeclarations, rust } from './support/rust.js';
 
 /** A name's words, at separators and CamelCase: `RouteDataSettings` is route, data, settings. */
@@ -72,7 +72,7 @@ test('a retired name comes back as no module, file or folder', () => {
         found.push(`${what} ${at} is named ${old}`);
   };
   const folders = new Set<string>();
-  for (const file of files) {
+  for (const file of files.map(templated)) {
     const parts = file.split('/');
     parts.slice(0, -1).forEach((_, index) => folders.add(parts.slice(0, index + 1).join('/')));
     // A file's name without its extensions: `api-workforce.test.ts` is api-workforce.

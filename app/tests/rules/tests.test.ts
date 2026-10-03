@@ -1,6 +1,6 @@
 import test from 'node:test';
 import { holds, pendingNames } from './support/pending.js';
-import { files, isDirectory, ownerOf, owners } from './support/repo.js';
+import { files, isDirectory, ownerOf, owners, templated } from './support/repo.js';
 import { lexFile, rust, testAttributes } from './support/rust.js';
 
 // plans/restructure/structure.md, "Tests": the folder decides how a test runs.
@@ -26,7 +26,7 @@ function placed(file: string) {
 
 test("test code sits in an owner's tests/<kind>/, the tooling's or the hosts' tests/", () => {
   const stray: string[] = [];
-  for (const file of files) {
+  for (const file of files.map(templated)) {
     const at = placed(file);
     const tool = toolTests.find((directory) => file.startsWith(`${directory}/`));
     const testFile = /\.(test|spec)\.tsx?$|_test\.py$/.test(file);

@@ -43,6 +43,16 @@ export function entries(directory: string): string[] {
 export const join = (from: string, target: string) =>
   path.posix.normalize(path.posix.join(path.posix.dirname(from), target));
 
+/**
+ * Where a scaffolding template lands: `tooling/scaffold/templates/feature/<path>.tmpl` is
+ * `features/<name>/<path>`, and likewise for a collector, so templates keep the owners' rules.
+ * Any other file is where it is.
+ */
+export function templated(file: string): string {
+  const match = /^tooling\/scaffold\/templates\/(feature|collector)\/(.+?)(\.tmpl)?$/.exec(file);
+  return match ? `${match[1]}s/template/${match[2]}` : file;
+}
+
 export type Layer = 'app' | 'core' | 'collector' | 'feature';
 /**
  * What owns a file: the app, a core part, a collector or a feature. Tooling, ops, services
