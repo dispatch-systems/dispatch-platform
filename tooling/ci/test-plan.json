@@ -1,6 +1,7 @@
 {
   "dashboard": [
     "app/tests/frontend/agents.test.ts",
+    "core/platform_owner/tests/frontend/audit-wording.test.ts",
     "core/shell/tests/frontend/calendar.test.ts",
     "core/platform_owner/tests/frontend/collection-history.test.ts",
     "core/shell/tests/frontend/csv.test.ts",

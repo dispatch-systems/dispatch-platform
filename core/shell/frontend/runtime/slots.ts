@@ -118,6 +118,10 @@ export type AuditWording = {
   fields?: Record<string, string>;
   /** How a value of one of its fields reads; undefined leaves it to the log. */
   value?: (field: string, value: string, words: AuditWords) => string | undefined;
+  /** What its events add to their second line, after the log's own notes. */
+  notes?: (event: AuditEvent) => string[];
+  /** How a collection's outcome names it, by the connection that ran it: "Paycom" collection. */
+  collected?: Record<string, string>;
 };
 
 /** A kind of data agents may read, as the Agents page shows its switch. */
