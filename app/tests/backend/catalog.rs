@@ -232,6 +232,10 @@ fn each_collection_is_run_by_the_page_that_keeps_it() {
 
 #[test]
 fn schedules_collect_the_same_collections() {
+    let all: Vec<_> = ScheduleCollection::all()
+        .map(ScheduleCollection::as_str)
+        .collect();
+    assert_eq!(all, SCHEDULE_COLLECTIONS);
     for collection in SCHEDULE_COLLECTIONS {
         let parsed = ScheduleCollection::parse(collection).unwrap();
         assert_eq!(parsed.as_str(), *collection);

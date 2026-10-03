@@ -1,6 +1,7 @@
 use crate::{
     Result,
     db::{FromRow, Row},
+    manifest::registry,
     text_enum,
 };
 use serde::Serialize;
@@ -108,17 +109,83 @@ text_enum! {
         Error => "error",
     }
 }
-// A4: the schedule collections, until the registry declares them.
-text_enum! {
-    /// What a schedule collects: one provider's data, or every scheduled provider's.
-    #[cfg_attr(test, derive(ts_rs::TS))]
-        pub enum ScheduleCollection {
-        Paycom => "paycom",
-        MealBreak => "meal_break",
-        Both => "both",
-        Scorecard => "scorecard",
-        Routes => "routes",
-        Dvic => "dvic",
+/// What a schedule collects: one provider's data, or every scheduled provider's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ScheduleCollection(&'static str);
+impl ScheduleCollection {
+    /// Every collector's main collection, together.
+    pub const BOTH: Self = Self("both");
+    /// Every collection a schedule may name, as the registry declares them: each
+    /// collector's main collection, `both`, then the others. Each is one a feature keeps,
+    /// as the registry makes sure.
+    pub fn all() -> impl Iterator<Item = Self> {
+        let collections = |main: bool| {
+            registry().collectors.iter().flat_map(move |collector| {
+                let collections = collector.collections().iter().enumerate();
+                collections
+                    .filter(move |(index, _)| (*index == 0) == main)
+                    .map(|(_, collection)| Self(collection.schedule))
+            })
+        };
+        collections(true)
+            .chain([Self::BOTH])
+            .chain(collections(false))
+    }
+    pub fn parse(text: &str) -> Option<Self> {
+        Self::all().find(|collection| collection.0 == text)
+    }
+    pub const fn as_str(self) -> &'static str {
+        self.0
+    }
+}
+impl Serialize for ScheduleCollection {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.0)
+    }
+}
+impl rusqlite::types::FromSql for ScheduleCollection {
+    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
+        value
+            .as_str()
+            .and_then(|text| Self::parse(text).ok_or(rusqlite::types::FromSqlError::InvalidType))
+    }
+}
+impl rusqlite::types::ToSql for ScheduleCollection {
+    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        Ok(self.0.into())
+    }
+}
+// Its TypeScript is the union of the registry's collections, in their order.
+#[cfg(test)]
+impl ts_rs::TS for ScheduleCollection {
+    type WithoutGenerics = Self;
+    type OptionInnerType = Self;
+    const IS_ENUM: bool = true;
+    fn docs() -> Option<String> {
+        Some(
+            "/**\n * What a schedule collects: one provider's data, or every scheduled \
+             provider's.\n */\n"
+                .to_owned(),
+        )
+    }
+    fn name(_: &ts_rs::Config) -> String {
+        "ScheduleCollection".to_owned()
+    }
+    fn inline(_: &ts_rs::Config) -> String {
+        let collections: Vec<_> = Self::all().map(|c| format!("{:?}", c.0)).collect();
+        collections.join(" | ")
+    }
+    fn decl(cfg: &ts_rs::Config) -> String {
+        format!("type ScheduleCollection = {};", Self::inline(cfg))
+    }
+    fn decl_concrete(cfg: &ts_rs::Config) -> String {
+        Self::decl(cfg)
+    }
+    fn output_path() -> Option<std::path::PathBuf> {
+        Some("ScheduleCollection.ts".into())
     }
 }
 text_enum! {

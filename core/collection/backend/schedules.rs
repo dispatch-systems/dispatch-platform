@@ -229,7 +229,7 @@ impl Store {
                 .iter()
                 .enumerate()
                 .filter(move |(index, scheduled)| {
-                    if collection == ScheduleCollection::Both {
+                    if collection == ScheduleCollection::BOTH {
                         *index == 0
                     } else {
                         collection.as_str() == scheduled.schedule
@@ -317,19 +317,10 @@ impl Store {
             ],
         )?;
         let name = v::name(value, "name", 60)?;
-        // A4: the schedule collections, until the registry declares them.
-        let collection = v::choice(
-            value,
-            "collection",
-            &[
-                "paycom",
-                "meal_break",
-                "both",
-                "scorecard",
-                "routes",
-                "dvic",
-            ],
-        )?;
+        let choices: Vec<_> = ScheduleCollection::all()
+            .map(ScheduleCollection::as_str)
+            .collect();
+        let collection = v::choice(value, "collection", &choices)?;
         let collection = ScheduleCollection::parse(collection)
             .ok_or_else(|| Error::new("invalid_input", 400))?;
         let requested = timing(value)?;
