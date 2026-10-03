@@ -52,7 +52,7 @@ const LABELS: &[(&str, &str)] = &[
 ];
 
 fn label(path: &str) -> &'static str {
-    crate::observability::route(path)
+    crate::http::request_label(path)
 }
 
 #[test]

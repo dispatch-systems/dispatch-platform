@@ -279,12 +279,30 @@ enum Handler {
     Open(fn(Arc<State>, Request) -> Served),
 }
 
+/// The paths a logged route covers, and the route the request log names them by.
+pub(super) struct LogLabel {
+    prefix: &'static str,
+    /// Every path that begins with `prefix`, rather than only `prefix` itself.
+    beneath: bool,
+    label: String,
+}
+impl LogLabel {
+    pub(super) fn names(&self, path: &str) -> Option<&str> {
+        let covered = if self.beneath {
+            path.starts_with(self.prefix)
+        } else {
+            path == self.prefix
+        };
+        covered.then_some(self.label.as_str())
+    }
+}
 pub struct Route {
     pub method: Method,
     pub path: &'static str,
     pub access: Access,
     pub work: Work,
     pub invalidates_schedules: bool,
+    logged: bool,
     handler: Handler,
 }
 
@@ -306,6 +324,7 @@ fn blocking<A: Grant>(
         access: access.access(),
         work,
         invalidates_schedules: false,
+        logged: false,
         handler: Handler::Blocking(Arc::new(handler)),
     }
 }
@@ -341,6 +360,7 @@ where
         access: access.access(),
         work: Work::Async,
         invalidates_schedules: false,
+        logged: false,
         handler: Handler::Async(Box::new(handler)),
     }
 }
@@ -383,6 +403,7 @@ pub fn agent_protocol(
         access: access.access(),
         work: Work::Async,
         invalidates_schedules: false,
+        logged: false,
         handler: Handler::Protocol(access, handler),
     }
 }
@@ -400,6 +421,7 @@ pub fn protocol(
         access: Access::Public,
         work: Work::Async,
         invalidates_schedules: false,
+        logged: false,
         handler: Handler::Open(handler),
     }
 }
@@ -411,6 +433,7 @@ pub fn probe(path: &'static str, handler: fn(&State) -> Reply) -> Route {
         access: Access::Public,
         work: Work::Memory,
         invalidates_schedules: false,
+        logged: false,
         handler: Handler::Memory(handler),
     }
 }
@@ -421,6 +444,37 @@ impl Route {
     pub fn invalidates_schedules(mut self) -> Self {
         self.invalidates_schedules = true;
         self
+    }
+    /// Names its requests in the request log by its pattern even when one is refused before
+    /// the route reads it, each `{name}` spelled `:name`. A pattern's parameter must end it,
+    /// and names every path beneath the part before it.
+    pub fn logged(mut self) -> Self {
+        self.logged = true;
+        self
+    }
+    /// How the request log names the paths it covers, when it is logged.
+    pub(super) fn log_label(&self) -> Option<LogLabel> {
+        if !self.logged {
+            return None;
+        }
+        let Some(start) = self.path.find('{') else {
+            return Some(LogLabel {
+                prefix: self.path,
+                beneath: false,
+                label: self.path.to_owned(),
+            });
+        };
+        let name = self.path[start..]
+            .strip_prefix('{')
+            .and_then(|rest| rest.strip_suffix('}'))
+            .filter(|name| !name.contains(['/', '{', '}']))
+            .unwrap_or_else(|| panic!("{}: a logged pattern's parameter ends it", self.path));
+        let prefix = &self.path[..start];
+        Some(LogLabel {
+            prefix,
+            beneath: true,
+            label: format!("{prefix}:{name}"),
+        })
     }
     /// Answers `GET` although it was registered with `write`, for a read that
     /// still has to record something.

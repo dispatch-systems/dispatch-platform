@@ -17,7 +17,7 @@ mod unmatched;
 pub use assets::{Asset, assets, browser_update_ready};
 pub use route::{Access, Route, Work, needs_recent_verification};
 
-use crate::State;
+use crate::{State, observability};
 use axum::{
     Router,
     extract::{Request, State as AxumState},
@@ -25,11 +25,25 @@ use axum::{
     response::Response,
     routing::{MethodFilter, MethodRouter, any},
 };
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, LazyLock},
+};
 
 /// Every registered route. `app/tests/backend/integration/http_routes.rs` holds the expected list.
 pub fn table() -> Vec<Route> {
     routes::all()
+}
+
+/// The route the request log names a request by until its route reads it: a logged route's
+/// pattern, or else what `observability::route` makes of the path.
+pub fn request_label(path: &str) -> &'static str {
+    static LOGGED: LazyLock<Vec<route::LogLabel>> =
+        LazyLock::new(|| table().iter().filter_map(Route::log_label).collect());
+    LOGGED
+        .iter()
+        .find_map(|logged| logged.names(path))
+        .unwrap_or_else(|| observability::route(path))
 }
 
 pub fn router(state: Arc<State>) -> Router {

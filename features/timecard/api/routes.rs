@@ -44,20 +44,20 @@ const SORTS: &[&str] = &[
 
 pub fn routes() -> Vec<Route> {
     let mut routes = vec![
-        read("/api/dsp/employees", VIEW, employees),
-        read("/api/dsp/employees/{code}", VIEW, employee),
+        read("/api/dsp/employees", VIEW, employees).logged(),
+        read("/api/dsp/employees/{code}", VIEW, employee).logged(),
         write(
             "/api/dsp/employees/{code}/sync",
             Dsp("collections.run"),
             sync_employee,
         ),
-        read("/api/dsp/timecards", VIEW, timecards),
+        read("/api/dsp/timecards", VIEW, timecards).logged(),
         read("/api/dsp/paycom/status", VIEW, paycom_status),
-        read("/api/dsp/paycom/settings", VIEW, paycom_settings),
+        read("/api/dsp/paycom/settings", VIEW, paycom_settings).logged(),
         write("/api/dsp/paycom/settings", MANAGE, save_paycom_settings),
-        read("/api/dsp/paycom/meal-breaks", VIEW, meal_comparison),
+        read("/api/dsp/paycom/meal-breaks", VIEW, meal_comparison).logged(),
         read("/api/dsp/cortex/meal-breaks", VIEW, cortex_meal_breaks),
-        job_list("/api/dsp/jobs", RUN, KINDS),
+        job_list("/api/dsp/jobs", RUN, KINDS).logged(),
         write("/api/dsp/jobs", RUN, collect),
         job_cancel("/api/dsp/jobs/{id}/cancel", RUN, KINDS),
         read("/api/dsp/jobs/meal-breaks", VIEW, meal_sync_status),

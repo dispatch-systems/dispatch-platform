@@ -36,7 +36,7 @@ pub async fn pipeline(
     next: Next,
 ) -> Response {
     let started = std::time::Instant::now();
-    let route = observability::route(request.uri().path());
+    let route = super::request_label(request.uri().path());
     let method = request.method().clone();
     let trace = observability::RequestTrace::default();
     request.extensions_mut().insert(trace.clone());

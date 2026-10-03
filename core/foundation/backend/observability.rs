@@ -20,6 +20,9 @@ pub fn event(level: &str, event: &str, fields: Value) {
     );
 }
 
+/// What the request log names a request by until its route reads it, for core's own paths
+/// and otherwise by the part of the API it is in. A feature's route names its own
+/// (`Route::logged`).
 pub fn route(path: &str) -> &'static str {
     match path {
         "/api/health" => "/api/health",
@@ -30,15 +33,9 @@ pub fn route(path: &str) -> &'static str {
         "/api/auth/reset-password" => "/api/auth/reset-password",
         "/api/session" => "/api/session",
         "/api/session/dsp" => "/api/session/dsp",
-        "/api/dsp/jobs" => "/api/dsp/jobs",
-        "/api/dsp/paycom/meal-breaks" => "/api/dsp/paycom/meal-breaks",
-        "/api/dsp/paycom/settings" => "/api/dsp/paycom/settings",
-        "/api/dsp/timecards" => "/api/dsp/timecards",
-        "/api/dsp/employees" => "/api/dsp/employees",
         "/api/dsp/collection-updates" => "/api/dsp/collection-updates",
         "/api/platform/health" => "/api/platform/health",
         _ if path.starts_with("/api/invitations/") => "/api/invitations/:token/*",
-        _ if path.starts_with("/api/dsp/employees/") => "/api/dsp/employees/:code",
         _ if path.starts_with("/api/dsp/") => "/api/dsp/*",
         _ if path.starts_with("/api/platform/") => "/api/platform/*",
         "/" => "/",
