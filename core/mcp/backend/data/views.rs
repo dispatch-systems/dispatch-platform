@@ -6,10 +6,7 @@ use super::{
     Answer, Refusal,
     access::{self, Access, Read},
     catalog::{self, METRICS, Metric, flag},
-    facts::{
-        self, Coverage, Daily, Facts, MealDay, Packages, RouteDay, TimecardDay, clock, outcome_of,
-        reason_of,
-    },
+    facts::{self, Coverage, Daily, Facts, Packages, RouteDay, clock, outcome_of, reason_of},
     scope::{
         DEFAULT_PERIOD, DriverGroup, People, Period, Person, daily_limit, driver_group, label,
         one_day, param, period, today, who,
@@ -19,15 +16,12 @@ use super::{
 use crate::{
     State,
     agents::Caller,
-    contracts::{AgentArea, DriverSource, Dsp, MealStatus, RouteAddress},
+    contracts::{AgentArea, DriverSource, Dsp, RouteAddress},
     db::Store,
     manifest::registry,
 };
 // A4: the features' views and their sources' names, until each feature answers for its own.
-use crate::feature_manifests::{
-    routes::mcp::{LOCATIONS, ROUTES},
-    timecard::mcp::{MEAL_BREAKS, TIMECARDS},
-};
+use crate::feature_manifests::routes::mcp::{LOCATIONS, ROUTES};
 use serde_json::{Map, Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -161,58 +155,6 @@ fn coverage(gathered: &[Box<dyn Facts>]) -> Value {
     Value::Object(out)
 }
 
-/// Marks each meal row whose person Cortex had a route for that day.
-fn mark_routes(
-    db: &Store,
-    dsp: &Dsp,
-    period: &Period,
-    people: &People,
-    meals: &mut [MealDay],
-) -> crate::Result<()> {
-    let routes = facts::meal_routes(db, dsp, period)?;
-    for meal in meals {
-        let (kind, id) = meal.source.split_once(':').unwrap_or(("", ""));
-        let ids: Vec<String> = if kind == "cortex" {
-            vec![id.to_owned()]
-        } else {
-            people
-                .holder(DriverSource::Paycom, id)
-                .map(|p| p.amazon.clone())
-                .unwrap_or_default()
-        };
-        meal.cortex_route = ids
-            .into_iter()
-            .any(|id| routes.contains(&(meal.date.clone(), id)));
-    }
-    Ok(())
-}
-/// A meal break to look at: the comparison found something on a day the driver had a route.
-fn meal_issue(meal: &MealDay) -> bool {
-    meal.cortex_route && meal.status != MealStatus::Same
-}
-fn meal_span(meal: &MealDay) -> (Value, Value) {
-    let spans: Vec<String> = meal
-        .meals
-        .iter()
-        .map(|m| {
-            format!(
-                "{}–{}",
-                m.start.as_deref().unwrap_or("?"),
-                m.end.as_deref().unwrap_or("?")
-            )
-        })
-        .collect();
-    let minutes = facts::total_minutes(meal.meals.iter().map(|m| m.minutes));
-    (
-        if spans.is_empty() {
-            Value::Null
-        } else {
-            json!(spans.join(", "))
-        },
-        json!(minutes),
-    )
-}
-
 /// Routes driven, for a driver's days and the team's table.
 pub struct RouteDays;
 struct Routed(Vec<RouteDay>, Coverage);
@@ -321,186 +263,6 @@ impl Facts for Routed {
             "packages_undeliverable" => sum(|r| r.packages_undeliverable),
             "break_minutes" => opt_sum(|r| r.break_minutes),
             "overtime_minutes" => opt_sum(|r| r.overtime_minutes),
-            _ => None,
-        }
-    }
-}
-
-/// Timecards, for a driver's days and the team's table.
-pub struct TimecardDays;
-struct Carded(Vec<TimecardDay>, Coverage);
-impl Daily for TimecardDays {
-    fn area(&self) -> AgentArea {
-        TIMECARDS
-    }
-    fn coverage(&self) -> &'static str {
-        "timecards"
-    }
-    fn records(&self) -> &'static str {
-        "timecards"
-    }
-    fn columns(&self) -> &'static [&'static str] {
-        &["hours", "in", "out"]
-    }
-    fn assessed(&self) -> bool {
-        true
-    }
-    fn pooled(&self) -> &'static [&'static str] {
-        &["lunch_minutes"]
-    }
-    fn gather(
-        &self,
-        db: &Store,
-        dsp: &Dsp,
-        period: &Period,
-        _: &People,
-        person: Option<&Person>,
-    ) -> crate::Result<Box<dyn Facts>> {
-        let (rows, coverage) =
-            facts::timecards(db, dsp, period, person.map(|p| p.paycom.as_slice()))?;
-        Ok(Box::new(Carded(rows, coverage)))
-    }
-    fn none(&self) -> Box<dyn Facts> {
-        Box::new(Carded(vec![], Coverage::default()))
-    }
-}
-impl Facts for Carded {
-    fn coverage(&self) -> &Coverage {
-        &self.1
-    }
-    fn count(&self) -> usize {
-        self.0.len()
-    }
-    fn whose(&self, record: usize) -> (&str, DriverSource, &str, &str) {
-        let card = &self.0[record];
-        (
-            &card.date,
-            DriverSource::Paycom,
-            &card.employee_code,
-            &card.name,
-        )
-    }
-    fn record(&self, record: usize) -> Value {
-        json!(self.0[record])
-    }
-    fn line(&self, records: &[usize]) -> Vec<Value> {
-        let (mut worked, mut clock_in, mut clock_out) = (None, None, None);
-        for card in records.iter().map(|&r| &self.0[r]) {
-            worked = Some(worked.unwrap_or(0.0) + card.hours);
-            clock_in = clock_in.take().or(card.clock_in.clone());
-            clock_out = card.clock_out.clone().or(clock_out.take());
-        }
-        vec![
-            worked.map(hours).unwrap_or(Value::Null),
-            json!(clock_in),
-            json!(clock_out),
-        ]
-    }
-    fn totals(&self) -> Vec<(&'static str, Value)> {
-        let worked: f64 = self.0.iter().map(|c| c.hours).sum();
-        vec![
-            ("hours_worked", hours(worked)),
-            (
-                "days_worked",
-                json!(self.0.iter().filter(|c| c.hours > 0.0).count()),
-            ),
-        ]
-    }
-    fn metric(&self, name: &str, records: &[usize]) -> Option<Value> {
-        let cards = || records.iter().map(|&r| &self.0[r]);
-        match name {
-            "hours_worked" => Some(hours(cards().map(|c| c.hours).sum())),
-            "days_worked" => Some(json!(cards().filter(|c| c.hours > 0.0).count())),
-            "lunch_minutes" => Some(json!(facts::total_minutes(
-                cards().map(|c| c.lunch_minutes)
-            ))),
-            "clock_in" => self.0[*records.first()?].clock_in.clone().map(Value::from),
-            "clock_out" => self.0[*records.last()?].clock_out.clone().map(Value::from),
-            _ => None,
-        }
-    }
-}
-
-/// Meal breaks, for a driver's days and the team's table: each day's comparison, marked
-/// where Cortex had a route for the person.
-pub struct MealDays;
-struct Compared(Vec<MealDay>, Coverage);
-impl Daily for MealDays {
-    fn area(&self) -> AgentArea {
-        MEAL_BREAKS
-    }
-    fn coverage(&self) -> &'static str {
-        "mealBreaks"
-    }
-    fn records(&self) -> &'static str {
-        "mealBreaks"
-    }
-    fn columns(&self) -> &'static [&'static str] {
-        &["meal"]
-    }
-    fn assessed(&self) -> bool {
-        true
-    }
-    fn gather(
-        &self,
-        db: &Store,
-        dsp: &Dsp,
-        period: &Period,
-        people: &People,
-        person: Option<&Person>,
-    ) -> crate::Result<Box<dyn Facts>> {
-        let sources = person.map(|p| {
-            p.paycom
-                .iter()
-                .map(|c| format!("paycom:{c}"))
-                .chain(p.amazon.iter().map(|id| format!("cortex:{id}")))
-                .collect::<Vec<_>>()
-        });
-        let (mut rows, coverage) = facts::meal_breaks_for(db, dsp, period, sources.as_deref())?;
-        mark_routes(db, dsp, period, people, &mut rows)?;
-        Ok(Box::new(Compared(rows, coverage)))
-    }
-    fn none(&self) -> Box<dyn Facts> {
-        Box::new(Compared(vec![], Coverage::default()))
-    }
-}
-impl Facts for Compared {
-    fn coverage(&self) -> &Coverage {
-        &self.1
-    }
-    fn count(&self) -> usize {
-        self.0.len()
-    }
-    fn whose(&self, record: usize) -> (&str, DriverSource, &str, &str) {
-        let meal = &self.0[record];
-        let (kind, id) = meal.source.split_once(':').unwrap_or(("", ""));
-        let source = if kind == "paycom" {
-            DriverSource::Paycom
-        } else {
-            DriverSource::Amazon
-        };
-        (&meal.date, source, id, &meal.name)
-    }
-    fn record(&self, record: usize) -> Value {
-        json!(self.0[record])
-    }
-    fn lined(&self, record: usize) -> bool {
-        self.0[record].cortex_route
-    }
-    fn line(&self, records: &[usize]) -> Vec<Value> {
-        vec![json!(records.last().map(|&r| self.0[r].status))]
-    }
-    fn totals(&self) -> Vec<(&'static str, Value)> {
-        vec![(
-            "meal_issues",
-            json!(self.0.iter().filter(|m| meal_issue(m)).count()),
-        )]
-    }
-    fn metric(&self, name: &str, records: &[usize]) -> Option<Value> {
-        let meals = || records.iter().map(|&r| &self.0[r]);
-        match name {
-            "meal_issues" => Some(json!(meals().filter(|m| meal_issue(m)).count())),
-            "meal_status" => meals().next().map(|m| json!(m.status)),
             _ => None,
         }
     }
@@ -1312,120 +1074,5 @@ pub fn packages(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         }
         page(&mut answer, "list", table, offset, total as usize, limit)?;
     }
-    Ok(answer)
-}
-
-/// `GET /api/v1/timecards`: everyone's for a day, or one driver's for a period.
-pub fn timecards(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
-    catalog::check("timecards", query)?;
-    let access = Access::of(db, caller, query)?;
-    let dsp = access.dsp;
-    let people = People::load(db, state, &access)?;
-    let named = param(query, "driver");
-    let person = if named.is_empty() {
-        None
-    } else {
-        Some(people.find(named)?)
-    };
-    let period = period(
-        query,
-        today(dsp),
-        if person.is_some() {
-            DEFAULT_PERIOD
-        } else {
-            "yesterday"
-        },
-    )?;
-    if person.is_none() {
-        one_day(&period)?;
-    }
-    daily_limit(&period)?;
-    let (cards, coverage) =
-        facts::timecards(db, dsp, &period, person.map(|p| p.paycom.as_slice()))?;
-    let first = if person.is_some() { "date" } else { "driver" };
-    let mut table = Table::new(&[first, "hours", "in", "out", "lunch_minutes", "needs_review"]);
-    for card in &cards {
-        table.push(vec![
-            if person.is_some() {
-                json!(card.date)
-            } else {
-                json!(who(
-                    &people,
-                    DriverSource::Paycom,
-                    &card.employee_code,
-                    &card.name
-                ))
-            },
-            hours(card.hours),
-            json!(card.clock_in),
-            json!(card.clock_out),
-            json!(card.lunch_minutes),
-            json!(card.needs_review),
-        ]);
-    }
-    let mut head = understood(dsp, Some(&period));
-    if let Some(person) = person {
-        head.insert("driver".into(), json!(label(&people, person)));
-    }
-    let mut answer = json!({
-        "understood": head,
-        "hours": hours(cards.iter().map(|c| c.hours).sum()),
-        "coverage": coverage,
-    });
-    people.mark(&mut answer);
-    paged(&mut answer, "timecards", table, query, 100)?;
-    Ok(answer)
-}
-
-/// `GET /api/v1/meal-breaks`: one day's comparison for the drivers Cortex had a route for.
-pub fn meal_breaks(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
-    catalog::check("meal_breaks", query)?;
-    let access = Access::of(db, caller, query)?;
-    let dsp = access.dsp;
-    let period = period(query, today(dsp), "yesterday")?;
-    one_day(&period)?;
-    let people = People::load(db, state, &access)?;
-    let (mut rows, coverage) = facts::meal_breaks(db, dsp, &period)?;
-    mark_routes(db, dsp, &period, &people, &mut rows)?;
-    let issues = flag(query, "issues");
-    let whom = |row: &MealDay| {
-        let (kind, id) = row.source.split_once(':').unwrap_or(("", ""));
-        let source = if kind == "paycom" {
-            DriverSource::Paycom
-        } else {
-            DriverSource::Amazon
-        };
-        who(&people, source, id, &row.name)
-    };
-    let mut table = Table::new(&[
-        "driver",
-        "status",
-        "meal",
-        "minutes",
-        "late_clock_in",
-        "long_gap",
-    ]);
-    for row in rows
-        .iter()
-        .filter(|r| r.cortex_route && (!issues || meal_issue(r)))
-    {
-        let (span, minutes) = meal_span(row);
-        table.push(vec![
-            json!(whom(row)),
-            json!(row.status),
-            span,
-            minutes,
-            json!(row.late_clock_in),
-            json!(row.long_gap),
-        ]);
-    }
-    // Only those Cortex had a route for: office staff with lunch punches are no meal
-    // question, and listing them apart read to models as missed meals.
-    let mut answer = json!({
-        "understood": understood(dsp, Some(&period)),
-        "collected": !coverage.days.is_empty(),
-    });
-    people.mark(&mut answer);
-    paged(&mut answer, "drivers", table, query, 100)?;
     Ok(answer)
 }

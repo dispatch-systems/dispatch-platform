@@ -1,12 +1,8 @@
 //! Timecard's part of the agent catalog: its endpoints, its metrics for team_table and
 //! the words its answers use.
-use super::{MEAL_BREAKS, TIMECARDS};
-use crate::agents::data::{
-    self,
-    catalog::{
-        CURSOR, DATE, DAY, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param, TO,
-        Term,
-    },
+use super::{MEAL_BREAKS, TIMECARDS, views};
+use crate::agents::data::catalog::{
+    CURSOR, DATE, DAY, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param, TO, Term,
 };
 
 pub const ENDPOINTS: &[Endpoint] = &[
@@ -21,7 +17,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         path_params: &[],
         params: &[DSP, DATE, DRIVER, PERIOD, FROM, TO, LIMIT, CURSOR],
         order: 110,
-        answer: |db, state, caller, _, query| data::timecards(db, state, caller, query),
+        answer: |db, state, caller, _, query| views::timecards(db, state, caller, query),
     },
     Endpoint {
         id: "meal_breaks",
@@ -45,7 +41,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
             CURSOR,
         ],
         order: 120,
-        answer: |db, state, caller, _, query| data::meal_breaks(db, state, caller, query),
+        answer: |db, state, caller, _, query| views::meal_breaks(db, state, caller, query),
     },
 ];
 

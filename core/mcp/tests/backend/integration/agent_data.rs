@@ -27,6 +27,7 @@ mod data {
     pub use dispatch_backend::feature_manifests::{
         dvic::mcp::views::dvic,
         scorecard::mcp::scorecard::{feedback, returns, safety, weekly},
+        timecard::mcp::views::{meal_breaks, timecards},
     };
 }
 
