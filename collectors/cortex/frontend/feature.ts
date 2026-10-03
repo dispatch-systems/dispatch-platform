@@ -14,6 +14,12 @@ export const feature: FrontendFeature = {
     render: (context) => createElement(CortexCard, { ...context, read }),
   },
   auditWording: () => import('./audit-wording.js').then((module) => module.wording),
+  capabilities: {
+    meal_breaks: 'a meal-break source',
+    routes: 'a route source',
+    dvic: 'a DVIC source',
+    scorecard: 'a scorecard source',
+  },
   errors: {
     cortex_station_unavailable:
       'Your saved station was not found in Cortex. Check your DSP profile and Cortex access.',

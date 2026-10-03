@@ -213,6 +213,8 @@ export type FrontendFeature = {
   connectionCard?: ConnectionCard;
   /** The collections it runs. */
   collections?: readonly CollectionLabels[];
+  /** How a page that needs a capability its connection provides names it: "a route source". */
+  capabilities?: Record<string, string>;
   /** How the response cache treats its reads. */
   cache?: CacheRules;
   /** Its reads that wait for a change before they answer, by path prefix. */
@@ -277,6 +279,9 @@ function first(read: (feature: FrontendFeature) => string | undefined) {
 /** What an owner's error code says. */
 export const errorLabelOf = (code: string) =>
   first((feature) => feature.errors?.[code] ?? feature.scheduleIssues?.[code]);
+/** How a page that needs a capability names it. */
+export const capabilityLabelOf = (capability: string) =>
+  first((feature) => feature.capabilities?.[capability]);
 /** Why a schedule of an owner's collections waits. */
 export const scheduleIssueOf = (code: string) => first((feature) => feature.scheduleIssues?.[code]);
 

@@ -8,6 +8,7 @@ import {
 } from '../../frontend/runtime/data-policy.js';
 import {
   cacheRules,
+  capabilityLabelOf,
   collectionLabels,
   connectionCard,
   connectionCards,
@@ -157,4 +158,14 @@ test('an owner says what its error codes, schedule issues and long reads are', (
   assert.equal(errorLabelOf('unknown'), undefined);
   assert.equal(isLongPoll('/api/dsp/gamma/updates?after=1'), true);
   assert.equal(isLongPoll('/api/dsp/gamma'), false);
+});
+
+test('a capability is named by the first connection listed that provides it', () => {
+  installFeatures([
+    { name: 'alpha', capabilities: { photos: 'a photo source' } },
+    { name: 'beta', capabilities: { photos: 'another photo source', notes: 'a notes source' } },
+  ]);
+  assert.equal(capabilityLabelOf('photos'), 'a photo source');
+  assert.equal(capabilityLabelOf('notes'), 'a notes source');
+  assert.equal(capabilityLabelOf('maps'), undefined);
 });

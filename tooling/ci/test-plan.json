@@ -12,7 +12,7 @@
     "core/platform_owner/tests/frontend/diagnostics.test.ts",
     "features/driver_match/tests/frontend/driver-match.test.ts",
     "features/dvic/tests/frontend/dvic.test.ts",
-    "core/tenancy/tests/frontend/features.test.ts",
+    "app/tests/frontend/features.test.ts",
     "features/timecard/tests/frontend/meal-breaks.test.ts",
     "core/tenancy/tests/frontend/permissions.test.ts",
     "core/shell/tests/frontend/response-cache.test.ts",
@@ -73,7 +73,7 @@
         "core/platform_owner/tests/api/features.test.ts",
         "core/tenancy/tests/api/roles.test.ts",
         "core/platform_owner/tests/browser/dsp-features.spec.ts",
-        "core/tenancy/tests/frontend/features.test.ts",
+        "app/tests/frontend/features.test.ts",
         "core/tenancy/tests/frontend/permissions.test.ts"
       ]
     }
