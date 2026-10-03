@@ -17,24 +17,41 @@ fn invalid_record() -> Error {
     Error::new("invalid_stored_record", 500)
 }
 
+#[path = "../../../core/accounts/api/types.rs"]
 mod accounts;
+#[path = "../../../core/mcp/api/types.rs"]
 mod agents;
+#[path = "../../../features/timecard/api/assessment.rs"]
 mod assessment;
+#[path = "../../../core/tenancy/api/audit.rs"]
 mod audit;
+#[path = "../../../core/collection/api/types.rs"]
 mod collections;
+#[path = "../../../features/driver_match/api/types.rs"]
 mod driver_match;
+#[path = "../../../features/dvic/api/types.rs"]
 mod dvic;
 #[cfg(test)]
 mod generated;
+#[path = "../../../core/collection/api/jobs.rs"]
 mod jobs;
+#[path = "../../../features/timecard/api/meals.rs"]
 mod meals;
+#[path = "../../../core/collection/api/metrics.rs"]
 mod metrics;
+#[path = "../../../core/platform_owner/api/types.rs"]
 mod platform;
+#[path = "../../../core/accounts/api/requests.rs"]
 mod requests;
+#[path = "../../../features/routes/api/types.rs"]
 mod routedata;
+#[path = "../../../features/scorecard/api/types.rs"]
 mod scorecard;
+#[path = "../../../features/timecard/api/settings.rs"]
 mod settings;
+#[path = "../../../features/uniforms/api/types.rs"]
 mod uniforms;
+#[path = "../../../features/timecard/api/types.rs"]
 mod workforce;
 
 pub use accounts::*;

@@ -284,7 +284,11 @@ fn access_catalog() -> String {
 }
 #[test]
 fn typescript_contracts_match_the_rust_types() {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../shared/contracts/generated");
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .find(|dir| dir.join("Cargo.lock").is_file())
+        .expect("repository root")
+        .join("shared/contracts/generated");
     let bindings = bindings();
     if std::env::var_os("DISPATCH_UPDATE_CONTRACTS").is_some() {
         let _ = std::fs::remove_dir_all(&dir);

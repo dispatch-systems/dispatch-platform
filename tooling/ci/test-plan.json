@@ -52,8 +52,8 @@
   "watch": [
     {
       "sources": [
-        "backend/src/features.rs",
-        "backend/src/roles.rs",
+        "core/tenancy/backend/catalog.rs",
+        "core/tenancy/backend/roles.rs",
         "dashboard/src/app/features.ts",
         "dashboard/src/app/permissions.ts",
         "shared/contracts/accounts.ts",

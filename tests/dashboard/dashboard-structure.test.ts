@@ -188,7 +188,15 @@ test('every route is declared once and every parent is a route', () => {
 
 // Shared wire types and non-browser programs cannot depend on screen implementations.
 test('contracts, tooling and services are independent of the dashboard', () => {
-  for (const directory of ['shared', 'tooling', 'services', 'backend/src']) {
+  for (const directory of [
+    'shared',
+    'tooling',
+    'services',
+    'backend/src',
+    'core',
+    'collectors',
+    'features',
+  ]) {
     const files = fs
       .readdirSync(directory, { recursive: true, encoding: 'utf8' })
       .filter((name) => /\.(tsx?|m?js|rs)$/.test(name))

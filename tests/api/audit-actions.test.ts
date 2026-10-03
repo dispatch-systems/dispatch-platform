@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { permissions } from '../../shared/contracts/index.js';
+import { rustSourceRoots } from '../../tooling/ci/source-lines.js';
 
 // Read the complete argument list, regardless of formatting, without including the next statement.
 function auditCalls(source: string): string[] {
@@ -28,10 +29,14 @@ function auditCalls(source: string): string[] {
 // The audit log writes each event as a sentence. An action the backend records
 // without wording would fall back to its raw id, so every one must be covered.
 test('every audit action the backend records has wording in the audit log', () => {
-  const sources = fs
-    .readdirSync('backend/src', { recursive: true, encoding: 'utf8' })
-    .filter((file) => file.endsWith('.rs'))
-    .map((file) => fs.readFileSync(path.join('backend/src', file), 'utf8'))
+  const sources = rustSourceRoots
+    .filter((root) => fs.existsSync(root))
+    .flatMap((root) =>
+      fs
+        .readdirSync(root, { recursive: true, encoding: 'utf8' })
+        .filter((file) => file.endsWith('.rs') && !/(^|\/)tests\//.test(file))
+        .map((file) => fs.readFileSync(path.join(root, file), 'utf8')),
+    )
     .join('\n');
   const recorded = new Set<string>();
   for (const call of auditCalls(sources))

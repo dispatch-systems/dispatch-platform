@@ -19,6 +19,9 @@ const INPUTS: &[&str] = &[
     "tooling/update-dev.py",
     "tooling/update-production.py",
 ];
+/// Every directory the Rust workspace compiles from: crates, their modules, the files they
+/// embed, migrations and tests.
+pub const SOURCE_ROOTS: &[&str] = &["backend", "core", "collectors", "features"];
 fn walk(root: &Path, files: &mut BTreeSet<PathBuf>) -> Result<()> {
     if !root.is_dir() {
         return Ok(());
@@ -79,7 +82,7 @@ pub fn fingerprint(
 ) -> Result<String> {
     let mut digest = Sha256::new();
     digest.update(serde_json::to_vec(&(
-        4,
+        5,
         profile,
         compiler,
         std::env::consts::OS,
@@ -87,7 +90,9 @@ pub fn fingerprint(
         flags(env),
     ))?);
     let mut files: BTreeSet<_> = INPUTS.iter().map(|name| root.join(name)).collect();
-    walk(&root.join("backend"), &mut files)?;
+    for source in SOURCE_ROOTS {
+        walk(&root.join(source), &mut files)?;
+    }
     walk(&root.join(".cargo"), &mut files)?;
     files.extend(configs(root, env)?);
     for file in files {
@@ -118,22 +123,20 @@ fn normalized(path: &Path) -> PathBuf {
     }
     result
 }
-fn external(value: &toml::Value, manifest: &Path, backend: &Path) -> bool {
+fn external(value: &toml::Value, manifest: &Path, sources: &[PathBuf]) -> bool {
     match value {
         toml::Value::Table(values) => values.iter().any(|(key, value)| {
             (key == "path"
                 && value.as_str().is_some_and(|path| {
                     let path = manifest.parent().unwrap().join(path);
-                    !path
-                        .canonicalize()
-                        .unwrap_or_else(|_| normalized(&path))
-                        .starts_with(backend)
+                    let path = path.canonicalize().unwrap_or_else(|_| normalized(&path));
+                    !sources.iter().any(|source| path.starts_with(source))
                 }))
-                || external(value, manifest, backend)
+                || external(value, manifest, sources)
         }),
         toml::Value::Array(values) => values
             .iter()
-            .any(|value| external(value, manifest, backend)),
+            .any(|value| external(value, manifest, sources)),
         _ => false,
     }
 }
@@ -203,14 +206,19 @@ pub fn eligible(root: &Path, env: &Environment, allow_ci: bool) -> Result<bool> 
         return Ok(false);
     }
     let mut files = BTreeSet::new();
-    walk(&root.join("backend"), &mut files)?;
+    for source in SOURCE_ROOTS {
+        walk(&root.join(source), &mut files)?;
+    }
     if files
         .iter()
         .any(|p| p.is_symlink() || p.file_name().is_some_and(|n| n == "build.rs"))
     {
         return Ok(false);
     }
-    let backend = root.join("backend");
+    let sources: Vec<_> = SOURCE_ROOTS
+        .iter()
+        .map(|source| root.join(source))
+        .collect();
     for manifest in [root.join("Cargo.toml")].into_iter().chain(
         files
             .into_iter()
@@ -219,7 +227,7 @@ pub fn eligible(root: &Path, env: &Environment, allow_ci: bool) -> Result<bool> 
         let value: toml::Value = toml::from_str(&fs::read_to_string(&manifest)?)?;
         let build = value.get("package").and_then(|v| v.get("build"));
         if build.is_some_and(|v| v.as_bool() != Some(false))
-            || external(&value, &manifest, &backend)
+            || external(&value, &manifest, &sources)
         {
             return Ok(false);
         }

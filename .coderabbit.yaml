@@ -55,7 +55,7 @@ reviews:
         loosened assertion, a skipped or removed test, a raised limit or budget, or a new
         suppression such as `#[allow]`, `eslint-disable`, `@ts-ignore` or `@ts-expect-error`.
         Flag each and ask why it is needed. (workflow.md)
-    - path: 'backend/src/db/schema/**'
+    - path: '**/migrations/**'
       instructions: |
         Production rolls back one release, so each release must open, and leave usable, the
         previous release's data (database.md):
@@ -69,7 +69,7 @@ reviews:
           copying rows with an explicit column list, rebuilding referencing tables before
           their parent, and recreating the indexes, as `jobs/0002_scorecard_kind.sql` does.
           The release that rebuilds must not write the new values yet.
-    - path: 'backend/src/**'
+    - path: '{core,collectors,features,backend/src}/**/*.rs'
       instructions: |
         - Logs and request events never carry request bodies, raw emails or IP addresses,
           cookies, tokens or employee records. Session identifiers shown to users are HMAC
@@ -81,24 +81,24 @@ reviews:
           enroll or lock an account implicitly. (security.md)
         - Compare errors with `error.is(Code::X)`, never by their text. Never hard-code job
           titles; customizable roles stay in the role system. (codebase.md, security.md)
-    - path: 'backend/src/http/routes/**'
+    - path: '{**/api/routes.rs,**/api/routes/**}'
       instructions: |
         A route's access (`Public`, `Session`, `PlatformOwner` or `Dsp("permission")`) must be
         no broader than what it reads or changes. Work that waits outside the database uses
         `async_get`/`async_post` and re-authorizes after each wait. A new route needs its row
-        in `backend/tests/http_routes.rs`. A password change verifies the current password.
+        in `app/tests/backend/integration/http_routes.rs`. A password change verifies the current password.
         Security routes are exempt from the normal MFA gate only so verification can complete;
         enrollment, factor removal, recovery-code replacement and session revocation must
         enforce their own recent-authentication requirement.
         (codebase.md, security.md)
-    - path: '{backend/src/roles.rs,shared/contracts/accounts.ts,dashboard/src/app/permissions.ts}'
+    - path: '{core/tenancy/backend/roles.rs,shared/contracts/accounts.ts,dashboard/src/app/permissions.ts}'
       instructions: |
-        A permission lives in all three of `backend/src/roles.rs`, `shared/contracts/accounts.ts`
+        A permission lives in all three of `core/tenancy/backend/roles.rs`, `shared/contracts/accounts.ts`
         and `dashboard/src/app/permissions.ts`, with a label. A feature's permissions take their
         role-sheet section from the feature catalog; only a permission of no feature is listed in
         `permissionGroups` directly. Flag a change that updates one file without the others.
         (dispatch-features skill)
-    - path: 'backend/src/browsers/paycom/{extract.rs,timecard.js}'
+    - path: 'collectors/paycom/{collections/timecards/extract.rs,scripts/timecard.js}'
       instructions: |
         `extract.rs` ports `timecard.js`'s detached reading. A change to one must be matched in
         the other and proved with `http_extraction_parity`. (dispatch-collectors skill)

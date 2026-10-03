@@ -65,7 +65,10 @@ pub fn affected(changed: &[String], plan: &Value) -> Vec<String> {
             crates.insert("dispatch-host");
         } else if file.starts_with("backend/ci/") {
             crates.insert("dispatch-ci");
-        } else if file.starts_with("backend/") {
+        } else if ["backend/", "core/", "collectors/", "features/"]
+            .iter()
+            .any(|root| file.starts_with(root))
+        {
             crates.insert("dispatch-backend");
         } else if matches!(
             file.as_str(),

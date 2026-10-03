@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 // The scripts as the collection calls them: without the `;` that ends each file.
 const source = (name: string) =>
-  fs.readFileSync(`backend/src/browsers/cortex/${name}`, 'utf8').trim().replace(/;$/, '');
+  fs.readFileSync(`collectors/cortex/scripts/${name}`, 'utf8').trim().replace(/;$/, '');
 const script = source('meal.js');
 const rules = source('meal_rules.js');
 const hook = source('meal_hook.js');

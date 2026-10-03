@@ -47,7 +47,7 @@ test('every dashboard CSS class occurs as a source token or is explicitly dynami
   const sourceFiles = ['dashboard/src', 'shared'].flatMap((directory) =>
     files(directory, /\.tsx?$/),
   );
-  sourceFiles.push('backend/src/mail/templates.rs');
+  sourceFiles.push('core/server/backend/mail/templates.rs');
   const tokens = new Set(
     sourceFiles.flatMap((file) => fs.readFileSync(file, 'utf8').match(/[A-Za-z0-9_-]+/g) ?? []),
   );
