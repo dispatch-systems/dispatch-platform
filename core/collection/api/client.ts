@@ -33,8 +33,5 @@ export const removeSchedule = (id: string, revision: number) =>
 
 export const connectionUrl = (provider: Connection['provider']) =>
   `/api/dsp/connections/${provider}`;
-export const useConnection = (provider: Connection['provider'], poll = 0) =>
-  useCachedData<Connection>(
-    provider === 'paycom' ? '/api/dsp/connections' : connectionUrl(provider),
-    poll,
-  );
+/** A connection's state, at the address its collector reads it from. */
+export const useConnection = (read: string, poll = 0) => useCachedData<Connection>(read, poll);

@@ -4,6 +4,7 @@ import type {
   AgentArea,
   AgentSource,
   AuditEvent,
+  ConnectionFeature,
   DspView,
   Feature,
   PageFeature,
@@ -146,6 +147,19 @@ export type ReadToggles = {
   toggles: readonly ReadToggle[];
 };
 
+/** What a connection's card is drawn with on a DSP's Connections page. */
+export type ConnectionCardContext = { development: boolean; timezone: string };
+/** A collector's card on a DSP's Connections page. */
+export type ConnectionCard = {
+  /** The connection's catalog id. */
+  provider: ConnectionFeature;
+  /** The read the card shows, warmed while the Connections tab is about to open. */
+  read: string;
+  /** Loads the card's code. */
+  load: () => Promise<unknown>;
+  render: (context: ConnectionCardContext) => ReactNode;
+};
+
 /** An owner's frontend: what it puts in each slot. */
 export type FrontendFeature = {
   /** The owner's directory name. */
@@ -160,6 +174,8 @@ export type FrontendFeature = {
   readToggles?: ReadToggles;
   /** Its page's switch, as the platform owner's DSPs page lists it. */
   switch?: { id: PageFeature; icon: LucideIcon };
+  /** Its connection's card. */
+  connectionCard?: ConnectionCard;
 };
 
 let installed: readonly FrontendFeature[] = [];
@@ -184,6 +200,13 @@ export const settingsTabs = () => installed.flatMap((feature) => feature.setting
 /** The icon of a page's switch. */
 export const switchIcon = (id: string) =>
   installed.find((feature) => feature.switch?.id === id)?.switch?.icon;
+
+/** Every collector's connection card, in the order the collectors are listed. */
+export const connectionCards = () =>
+  installed.flatMap((feature) => (feature.connectionCard ? [feature.connectionCard] : []));
+/** The card of a connection. */
+export const connectionCard = (provider: string) =>
+  connectionCards().find((card) => card.provider === provider);
 
 /** Every owner's kinds of data agents may read, group by group in their order. */
 export const readToggles = () =>

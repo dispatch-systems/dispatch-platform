@@ -8,12 +8,14 @@ import { feature as settings } from '../../features/settings/frontend/feature.js
 import { feature as driverMatch } from '../../features/driver_match/frontend/feature.js';
 import { feature as routes } from '../../features/routes/frontend/feature.js';
 import { feature as scorecard } from '../../features/scorecard/frontend/feature.js';
+import { feature as paycom } from '../../collectors/paycom/frontend/feature.js';
+import { feature as cortex } from '../../collectors/cortex/frontend/feature.js';
 import { feature as accounts } from '../../core/accounts/frontend/feature.js';
 import { feature as collection } from '../../core/collection/frontend/feature.js';
 import { feature as platformOwner } from '../../core/platform_owner/frontend/feature.js';
 
-// Every owner's frontend manifest: the features, then core's parts with screens. The order is
-// the sidebar's, and the order in which Settings tabs warm their reads.
+// Every owner's frontend manifest: the features, the collectors, then core's parts with screens.
+// The order is the sidebar's, and the order in which Settings tabs warm their reads.
 export const features: readonly FrontendFeature[] = [
   home,
   timecard,
@@ -24,6 +26,8 @@ export const features: readonly FrontendFeature[] = [
   driverMatch,
   routes,
   scorecard,
+  paycom,
+  cortex,
   accounts,
   collection,
   platformOwner,

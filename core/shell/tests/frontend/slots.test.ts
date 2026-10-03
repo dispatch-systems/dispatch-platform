@@ -2,9 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Award, Shirt } from 'lucide-react';
 import {
+  connectionCard,
+  connectionCards,
   installFeatures,
   readToggles,
   switchIcon,
+  type ConnectionCard,
   type ReadToggles,
 } from '../../frontend/runtime/slots.js';
 
@@ -39,4 +42,24 @@ test("a page's switch shows the icon its feature declares", () => {
   assert.equal(switchIcon('uniforms'), Shirt);
   assert.equal(switchIcon('scorecard'), Award);
   assert.equal(switchIcon('timecard'), undefined);
+});
+
+test('connection cards come in the order their collectors are listed', () => {
+  const card = (provider: ConnectionCard['provider']): ConnectionCard => ({
+    provider,
+    read: `/api/dsp/connections/${provider}`,
+    load: () => Promise.resolve(),
+    render: () => provider,
+  });
+  installFeatures([
+    { name: 'gamma', connectionCard: card('cortex') },
+    { name: 'beta' },
+    { name: 'alpha', connectionCard: card('paycom') },
+  ]);
+  assert.deepEqual(
+    connectionCards().map((each) => each.provider),
+    ['cortex', 'paycom'],
+  );
+  assert.equal(connectionCard('paycom')?.read, '/api/dsp/connections/paycom');
+  assert.equal(connectionCard('other'), undefined);
 });
