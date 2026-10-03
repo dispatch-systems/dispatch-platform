@@ -36,7 +36,9 @@ dispatch-timecard = { path = "../../features/timecard" }
 dispatch-uniforms = { path = "../../features/uniforms" }
 axum = { workspace = true }
 libc = { workspace = true }
-serde_json = { workspace = true }
+# What it prints, and the access catalog its export writes, keep the order their fields are
+# written in.
+serde_json = { workspace = true, features = ["preserve_order"] }
 tokio = { workspace = true }
 
 [dev-dependencies]

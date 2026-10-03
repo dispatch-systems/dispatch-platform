@@ -14,4 +14,5 @@ doctest = false
 # Core alone: it declares no collector or feature.
 [dependencies]
 dispatch-core = { path = "../../core" }
-serde_json = { workspace = true }
+# Its answers keep the order their fields are written in.
+serde_json = { workspace = true, features = ["preserve_order"] }
