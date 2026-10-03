@@ -1,6 +1,6 @@
 {
   "dashboard": [
-    "core/platform_owner/tests/frontend/agents.test.ts",
+    "app/tests/frontend/agents.test.ts",
     "core/shell/tests/frontend/calendar.test.ts",
     "core/platform_owner/tests/frontend/collection-history.test.ts",
     "core/shell/tests/frontend/csv.test.ts",
@@ -15,6 +15,8 @@
     "features/timecard/tests/frontend/meal-breaks.test.ts",
     "core/tenancy/tests/frontend/permissions.test.ts",
     "core/shell/tests/frontend/response-cache.test.ts",
+    "app/tests/frontend/slots.test.ts",
+    "core/shell/tests/frontend/slots.test.ts",
     "features/timecard/tests/frontend/timecard-format.test.ts",
     "features/uniforms/tests/frontend/uniforms.test.ts",
     "app/tests/rules/unused-css.test.ts"

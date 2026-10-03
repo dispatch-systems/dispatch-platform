@@ -1,6 +1,8 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import type {
+  AgentArea,
+  AgentSource,
   AuditEvent,
   DspView,
   Feature,
@@ -115,6 +117,34 @@ export type AuditWording = {
   value?: (field: string, value: string, words: AuditWords) => string | undefined;
 };
 
+/** A kind of data agents may read, as the Agents page shows its switch. */
+export type ReadToggle = {
+  /** Permanent: keys, apps and the audit log store it. */
+  id: AgentArea;
+  label: string;
+  /** What it holds, where its label alone doesn't say. */
+  hint?: string;
+  /** How a key's row names it when the key doesn't read it. */
+  missing: string;
+  /** The switch it is read from, which a DSP may have switched off. */
+  source: AgentSource;
+  /** The kind it comes with and only matters beside: it is allowed only with that one. */
+  with?: AgentArea;
+  /** A new key or app leaves it off. */
+  optIn?: boolean;
+};
+/** An owner's kinds of data agents may read, under its name on the Agents page. */
+export type ReadToggles = {
+  label: string;
+  /** How a key's row names the whole group when the key reads none of it. */
+  missing: string;
+  /** Where the group sits among the others, lowest first. */
+  order: number;
+  /** Each of its switches' names, said alone when only that one is off. */
+  sources: Partial<Record<AgentSource, string>>;
+  toggles: readonly ReadToggle[];
+};
+
 /** An owner's frontend: what it puts in each slot. */
 export type FrontendFeature = {
   /** The owner's directory name. */
@@ -125,6 +155,8 @@ export type FrontendFeature = {
   settingsTabs?: readonly SettingsTab[];
   /** Loads how its events read in the audit log. */
   auditWording?: () => Promise<AuditWording>;
+  /** The kinds of its data agents may read. */
+  readToggles?: ReadToggles;
 };
 
 let installed: readonly FrontendFeature[] = [];
@@ -145,6 +177,12 @@ export function routeOf(scope: Route['scope'], page: string): Route | undefined 
 
 /** Every owner's tabs on a DSP's Settings page, in the order the owners are listed. */
 export const settingsTabs = () => installed.flatMap((feature) => feature.settingsTabs ?? []);
+
+/** Every owner's kinds of data agents may read, group by group in their order. */
+export const readToggles = () =>
+  installed
+    .flatMap((feature) => (feature.readToggles ? [feature.readToggles] : []))
+    .sort((a, b) => a.order - b.order);
 
 let wordingLoad: Promise<readonly AuditWording[]> | undefined;
 /** Loads every owner's audit wording, once; a failed load is tried again next time. */

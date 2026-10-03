@@ -38,4 +38,13 @@ export const feature: FrontendFeature = {
     },
   ],
   auditWording: () => import('./audit-wording.js').then((module) => module.wording),
+  readToggles: {
+    label: 'DVIC',
+    missing: 'DVIC inspections',
+    order: 40,
+    sources: { dvic: 'DVIC' },
+    toggles: [
+      { id: 'dvic', label: 'DVIC inspections', missing: 'DVIC inspections', source: 'dvic' },
+    ],
+  },
 };

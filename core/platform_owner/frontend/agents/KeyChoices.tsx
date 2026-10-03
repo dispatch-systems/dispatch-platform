@@ -6,7 +6,7 @@ import type {
   AgentKeyRequest,
   AgentSource,
 } from '../../../../shared/contracts/index.js';
-import { areaGroups, areaHints, areaLabels, areaSources, withArea } from './agents.js';
+import { areaGroups, areaHints, areaLabels, areaSources, areaWith, withArea } from './agents.js';
 
 /** Where an app asking to connect reaches. */
 type Scope = Pick<AgentKeyRequest, 'allDsps' | 'dsps'>;
@@ -124,6 +124,7 @@ export function ReadChoices({
               {group.areas.map((area) => {
                 const about = areaHints[area] && `${id}-${area}-hint`;
                 const offHere = !allOff && isOff(area) && `${id}-${area}-off`;
+                const needs = areaWith[area];
                 return (
                   <label key={area} className="agents-read">
                     <span>
@@ -137,8 +138,8 @@ export function ReadChoices({
                       aria-labelledby={`${id}-${area}`}
                       aria-describedby={[about, offHere].filter(Boolean).join(' ') || undefined}
                       checked={areas.includes(area)}
-                      // Addresses and GPS come only with routes.
-                      disabled={!set || (area === 'locations' && !areas.includes('routes'))}
+                      // A kind that comes with another needs that one on.
+                      disabled={!set || (needs !== undefined && !areas.includes(needs))}
                       onChange={(event) => set?.(withArea(areas, area, event.target.checked))}
                     />
                   </label>
