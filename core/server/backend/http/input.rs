@@ -100,7 +100,7 @@ impl Reply {
         }
     }
     /// JSON already serialized by a trusted response producer, never raw request input.
-    pub(super) fn encoded(value: Bytes) -> Self {
+    pub(crate) fn encoded(value: Bytes) -> Self {
         Self {
             value: Payload::Encoded(value),
             status: 200,

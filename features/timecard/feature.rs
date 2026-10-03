@@ -14,6 +14,8 @@ use crate::{
     workforce,
 };
 
+#[path = "api/routes.rs"]
+mod api;
 #[path = "mcp/mod.rs"]
 pub mod mcp;
 
@@ -36,6 +38,7 @@ pub const FEATURE: Feature = Feature {
         perm("timecard.manage", "Manage Timecard", 21).implies(&["timecard.view"]),
         perm("collections.run", "Run Collections", 22).defaults(&[Manager]),
     ],
+    routes: api::routes,
     // Collection progress refreshes both the timecard pages and the collections page.
     live: &["timecard.view", "collections.run"],
     keeps: &[&workforce::keeper::Timecards, &meals::keeper::MealBreaks],

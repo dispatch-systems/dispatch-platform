@@ -9,9 +9,6 @@ mod backend;
 mod mcp;
 {{/mcp}}
 
-{{#api}}
-pub use api::routes::routes;
-{{/api}}
 {{#tables}}
 pub use backend::storage::{{storageExports}};
 {{/tables}}
@@ -41,6 +38,9 @@ pub const FEATURE: Feature = Feature {
 {{/keeps}}
     ],
 {{/permission}}
+{{#api}}
+    routes: api::routes::routes,
+{{/api}}
 {{#keeps}}
     keeps: &[&backend::keeper::{{pascal}}Keeper],
 {{/keeps}}

@@ -154,15 +154,21 @@ test('--api writes one endpoint behind the view permission, its client function 
   assert.match(apiTest, /assert\.equal\(\(await member\.get\(route\)\)\.status, 403\);/);
   const manifest = file(plan, 'features/parking/feature.rs');
   assert.match(manifest, /^mod api;$/m);
-  assert.match(manifest, /^pub use api::routes::routes;$/m);
+  assert.match(manifest, /^    routes: api::routes::routes,$/m);
   assert.match(
     file(plan, 'features/parking/Cargo.toml'),
     /\[dev-dependencies\][^[]*ts-rs = \{ workspace = true \}/,
   );
-  const assembly = [...plan.changes.keys()].find((name) =>
-    /dispatch_parking::routes\(\),/.test(file(plan, name)),
+  // Its manifest brings its routes: in app/, only its listing and the inventory change.
+  assert.deepEqual(
+    [...plan.changes.keys()].sort(),
+    [
+      'Cargo.toml',
+      'app/backend/Cargo.toml',
+      registry,
+      'app/tests/backend/integration/http_routes.rs',
+    ].sort(),
   );
-  assert(assembly, 'the route table lists its routes');
   assert.match(
     file(plan, 'app/tests/backend/integration/http_routes.rs'),
     /\("GET", "\/api\/dsp\/parking", Dsp\("parking.view"\), Read, false\),\n\];/,

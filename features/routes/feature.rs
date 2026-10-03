@@ -8,6 +8,8 @@ use crate::{
     routedata,
 };
 
+#[path = "api/routes.rs"]
+mod api;
 #[path = "mcp/mod.rs"]
 pub mod mcp;
 
@@ -22,6 +24,7 @@ pub const FEATURE: Feature = Feature {
         perm("routes.collect", "Collect Routes", 31).implies(&["routes.view"]),
         perm("routes.manage", "Manage Routes", 32).implies(&["routes.view"]),
     ],
+    routes: api::routes,
     keeps: &[&crate::routedata::keeper::Routes],
     migrations: &[Migrations {
         kind: routedata::DATABASE,

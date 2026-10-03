@@ -28,7 +28,6 @@ import {
   pageOf,
   parseArguments,
   repositoryRoot,
-  routeAssembly,
   routeInventory,
   run,
   template,
@@ -325,8 +324,8 @@ export async function planFeature(root: string, argv: string[]) {
   }
   formatRust(plan);
 
-  // List it in app/: the workspace, the app's dependencies, the registry, the route table and
-  // its inventory, and the frontend's list.
+  // List it in app/: the workspace, the app's dependencies, the registry, the route table's
+  // inventory and the frontend's list. Its manifest brings its routes.
   const change = async (file: string, edit: (text: string) => string) =>
     plan.changes.set(file, await format(file, edit(current(plan, root, file))));
   await change('Cargo.toml', (text) => addWorkspaceMember(text, dir));
@@ -342,12 +341,6 @@ export async function planFeature(root: string, argv: string[]) {
       registry,
     ),
   );
-  if (values.api) {
-    const routes = holding(root, routeAssembly, /fn all\(\) -> Vec<Route>/);
-    await change(routes, (text) =>
-      appendToList(text, /fn all\(\) -> Vec<Route> \{\s*\[/, `${ident}::routes(),`, routes),
-    );
-  }
   const rows = [
     ...(values.api ? [`("GET", "${values.apiPath}", Dsp("${name}.view"), Read, false),`] : []),
     ...(values.mcp ? [`("GET", "/api/v1/${slug}", Agent("read"), Read, false),`] : []),

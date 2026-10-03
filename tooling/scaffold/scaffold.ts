@@ -355,13 +355,8 @@ export function holding(root: string, candidates: string[], pattern: RegExp) {
   if (!file) throw new Error(`None of ${candidates.join(', ')} holds ${pattern}`);
   return file;
 }
-/** Where the app's backend lists every collector and feature, and assembles the route table. */
+/** Where the app's backend lists every collector and feature. */
 export const appBackend = ['app/backend/features.rs', 'app/backend/lib.rs'];
-export const routeAssembly = [
-  'app/backend/routes.rs',
-  'app/backend/features.rs',
-  'app/backend/lib.rs',
-];
 export const routeInventory = 'app/tests/backend/integration/http_routes.rs';
 export const frontendList = 'app/frontend/features.ts';
 

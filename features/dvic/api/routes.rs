@@ -1,5 +1,4 @@
 //! DVIC collection controls and read APIs; no dashboard is required.
-use super::{jobs::job_cancel, schedules::schedule_routes};
 use crate::{
     Result,
     collectors::cortex::dvic,
@@ -8,6 +7,7 @@ use crate::{
     http::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, read, write},
+        routes::{jobs::job_cancel, schedules::schedule_routes},
     },
     validate as v,
 };

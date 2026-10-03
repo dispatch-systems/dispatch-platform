@@ -7,6 +7,9 @@ use crate::{
     },
 };
 
+#[path = "api/routes.rs"]
+mod api;
+
 pub const FEATURE: Feature = Feature {
     switch: Some(Switch {
         id: "uniforms",
@@ -20,6 +23,7 @@ pub const FEATURE: Feature = Feature {
             .defaults(&[Manager]),
         perm("uniforms.manage", "Manage Uniform Inventory", 12).implies(&["uniforms.view"]),
     ],
+    routes: api::routes,
     migrations: &[Migrations {
         kind: Kind::DSP,
         list: &[Migration {

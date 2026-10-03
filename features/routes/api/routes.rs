@@ -1,9 +1,5 @@
 //! Daily routes: what is stored, collecting a day, and its jobs. The collection is `routes`
 //! here and in its paths; its module and database are `routedata`.
-use super::{
-    jobs::{job_cancel, job_list},
-    schedules::schedule_routes,
-};
 use crate::{
     Error, Result,
     collectors::cortex::routes::{JOB_KIND, Mode, token},
@@ -12,6 +8,10 @@ use crate::{
     http::{
         input::{Input, Reply},
         route::{Dsp, Member, PlatformOwner, Route, User, read, write},
+        routes::{
+            jobs::{job_cancel, job_list},
+            schedules::schedule_routes,
+        },
     },
     routedata::{self, MAX_DAYS_PER_REQUEST, RoutesStore},
     validate as v,

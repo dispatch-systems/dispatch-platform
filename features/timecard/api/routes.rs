@@ -1,10 +1,5 @@
 //! What Paycom and Cortex collected: employees, timecards, meal breaks and the Paycom
 //! preferences, and the jobs and schedules that collect them.
-use super::{
-    connections,
-    jobs::{job_cancel, job_list},
-    schedules::schedule_routes,
-};
 use crate::{
     Error, Result,
     collectors::{
@@ -16,6 +11,11 @@ use crate::{
     http::{
         input::{Input, Reply, descending, optional, optional_text, query_number},
         route::{Dsp, Member, Route, read, write},
+        routes::{
+            connections,
+            jobs::{job_cancel, job_list},
+            schedules::schedule_routes,
+        },
     },
     validate as v,
     workforce::TimecardStore,

@@ -8,6 +8,8 @@ use crate::{
     scorecard,
 };
 
+#[path = "api/routes.rs"]
+mod api;
 #[path = "mcp/mod.rs"]
 pub mod mcp;
 
@@ -24,6 +26,7 @@ pub const FEATURE: Feature = Feature {
         perm("scorecard.collect", "Collect Scorecard", 51).implies(&["scorecard.view"]),
         perm("scorecard.manage", "Manage Scorecard", 52).implies(&["scorecard.view"]),
     ],
+    routes: api::routes,
     keeps: &[&crate::scorecard::keeper::Scorecard],
     migrations: &[Migrations {
         kind: scorecard::DATABASE,

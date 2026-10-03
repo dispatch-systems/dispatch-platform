@@ -9,6 +9,8 @@ use crate::{
     manifest::{Audit, Commands, Feature, Switch, feature, perm, tab},
 };
 
+#[path = "api/routes.rs"]
+mod api;
 #[path = "mcp/mod.rs"]
 pub mod mcp;
 
@@ -24,6 +26,7 @@ pub const FEATURE: Feature = Feature {
         perm("dvic.collect", "Collect DVIC", 41).implies(&["dvic.view"]),
         perm("dvic.manage", "Manage DVIC", 42).implies(&["dvic.view"]),
     ],
+    routes: api::routes,
     keeps: &[&crate::dvic::keeper::Dvic],
     migrations: &[Migrations {
         kind: dvic::DATABASE,

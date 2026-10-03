@@ -11,6 +11,7 @@ use crate::{
     config::Config,
     contracts::AuditArea,
     db::{self, Db, Kind, Migration, Migrations, Store},
+    http::Route,
     job_metrics::Counts,
     read_cache::{self, Cached, DataDomain},
 };
@@ -284,6 +285,8 @@ pub struct Feature {
     pub schedules: bool,
     /// The permissions it owns, for the role sheet.
     pub permissions: &'static [Permission],
+    /// Its endpoints, each with its path and access. The app serves every feature's.
+    pub routes: fn() -> Vec<Route>,
     /// The permissions that may follow its collections' progress as it arrives, through
     /// the collection updates the dashboard waits on.
     pub live: &'static [&'static str],
@@ -322,6 +325,7 @@ pub const fn feature(name: &'static str) -> Feature {
         tabs: &[],
         schedules: false,
         permissions: &[],
+        routes: Vec::new,
         live: &[],
         keeps: &[],
         migrations: &[],

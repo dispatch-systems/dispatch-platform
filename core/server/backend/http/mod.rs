@@ -1,16 +1,16 @@
-//! The HTTP layer. `routes/` lists every endpoint next to its handler,
-//! `route` is how they are registered, `middleware` is what every request
-//! passes through, and whatever matches no route is an asset or `unmatched`.
+//! The HTTP layer. `routes` lists core's endpoints next to their handlers and every
+//! feature's from its manifest, `route` is how they are registered, `middleware` is what
+//! every request passes through, and whatever matches no route is an asset or `unmatched`.
 #[path = "assets.rs"]
 mod assets;
 #[path = "input.rs"]
-mod input;
+pub mod input;
 #[path = "middleware.rs"]
 mod middleware;
 #[path = "route.rs"]
-mod route;
+pub mod route;
 #[path = "../../../../app/backend/routes.rs"]
-mod routes;
+pub(crate) mod routes;
 #[path = "unmatched.rs"]
 mod unmatched;
 

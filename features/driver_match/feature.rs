@@ -5,6 +5,8 @@ use crate::{
     manifest::{Audit, Feature, Switch, feature, perm},
 };
 
+#[path = "api/routes.rs"]
+mod api;
 #[path = "mcp/mod.rs"]
 pub mod mcp;
 
@@ -17,6 +19,7 @@ pub const FEATURE: Feature = Feature {
         requires: &["timecards", "routes"],
     }),
     permissions: &[perm("driver_match.manage", "Manage Driver Match", 60)],
+    routes: api::routes,
     migrations: &[
         Migrations {
             kind: Kind::PLATFORM,

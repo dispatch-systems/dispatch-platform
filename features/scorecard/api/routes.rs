@@ -1,9 +1,5 @@
 //! Weekly scorecards: what is stored, collecting a week, and its jobs. The scorecard is a
 //! feature of its own; nothing here asks for another's permission.
-use super::{
-    jobs::{job_cancel, job_list},
-    schedules::schedule_routes,
-};
 use crate::{
     Result,
     collectors::cortex::scorecard,
@@ -11,6 +7,10 @@ use crate::{
     http::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, read, write},
+        routes::{
+            jobs::{job_cancel, job_list},
+            schedules::schedule_routes,
+        },
     },
     scorecard::ScorecardStore,
     validate as v, weeks,

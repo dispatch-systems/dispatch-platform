@@ -1,6 +1,9 @@
 //! Team & Roles: a DSP's members and the roles that grant their permissions.
 use crate::manifest::{Feature, feature, perm};
 
+#[path = "api/routes.rs"]
+pub mod api;
+
 pub const FEATURE: Feature = Feature {
     permissions: &[
         perm("members.invite", "Invite Members", 80)
@@ -12,5 +15,6 @@ pub const FEATURE: Feature = Feature {
             .recently_verified(),
         perm("roles.manage", "Manage Roles", 82).group("Team"),
     ],
+    routes: api::routes,
     ..feature("team")
 };
