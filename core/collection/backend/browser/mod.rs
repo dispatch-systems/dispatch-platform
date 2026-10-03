@@ -371,6 +371,15 @@ impl Store {
         )?;
         Ok(())
     }
+    /// Marks a connection ready on fixture credentials, verified now, as a development
+    /// seed's DSP shows it.
+    pub fn connect_demo(&self, id: &str, provider: Provider, label: &str) -> Result<()> {
+        self.collector(id, provider)?.exec(
+            "UPDATE connections SET enabled=1,status='ready',account_label=?,verified_at=?",
+            [label, &iso()],
+        )?;
+        Ok(())
+    }
     pub fn save_credentials(&self, c: &Context, value: &Value, provider: Provider) -> Result<()> {
         self.revalidate(c, "connections.manage")?;
         provider.validate_credentials(value)?;

@@ -135,6 +135,32 @@ pub(crate) fn added_identity(
     )
 }
 
+/// The row a new database of a DSP's is created with, naming the DSP, the provider and
+/// the storage it holds, so that it cannot pass for another's. Ids are compiled code or
+/// validated, so they are safe SQL literals.
+pub fn identity_seed(dsp: &str, provider: Provider, source: &str) -> String {
+    format!(
+        "INSERT INTO storage_identity VALUES ('{dsp}','{}','{source}');",
+        provider.id()
+    )
+}
+/// The connection row a collector's new database is created with, not yet connected.
+pub fn connection_seed(provider: Provider) -> String {
+    format!(
+        "INSERT INTO connections(provider,updated_at) VALUES ('{}','{}');",
+        provider.id(),
+        db::iso()
+    )
+}
+/// Adds the provider's connection row, not yet connected, unless it has one.
+pub fn add_connection(db: &Db, provider: Provider) -> Result<()> {
+    db.exec(
+        "INSERT OR IGNORE INTO connections(provider,updated_at) VALUES (?,?)",
+        [provider.id(), &db::iso()],
+    )?;
+    Ok(())
+}
+
 /// Operator/benchmark read-only path resolution.
 pub fn database_path(dsp_root: &Path, provider: Provider) -> Result<PathBuf> {
     let id = dsp_root.file_name().and_then(|s| s.to_str()).unwrap_or("");
@@ -218,15 +244,10 @@ impl Store {
                 ensure(marker.is_null(), "unsupported_storage_layout", 503)?;
                 let data = self.area(id, "data")?;
                 db::private_dir(&data.join(storage.id))?;
-                let seed = format!(
-                    "INSERT INTO storage_identity VALUES ('{id}','{}','{}');",
-                    provider.id(),
-                    storage.source
-                );
                 let target = Db::create(
                     &data.join(storage.id).join(format!("{}.sqlite", storage.id)),
                     storage.kind,
-                    &seed,
+                    &identity_seed(id, provider, storage.source),
                 )?;
                 added_identity(&target, id, provider, storage)?;
                 drop(target);

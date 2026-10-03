@@ -24,7 +24,8 @@ use crate::{
         egress::HostPolicy,
         http::RequestHosts,
     },
-    db::{self, Db, Kind, Migration, Migrations, migrations::Apply::Sql},
+    collectors,
+    db::{Db, Kind, Migration, Migrations, migrations::Apply::Sql},
     ensure,
     job_metrics::Counts,
     manifest::{Collection, Collector},
@@ -151,11 +152,13 @@ impl Collector for Cortex {
     fn migrations(&self) -> &'static [Migrations] {
         MIGRATIONS
     }
+    // Its connection row commits with its schema: an added collector's storage counts as
+    // created only once it holds one.
     fn seed(&self, dsp: &str) -> String {
         format!(
-            "INSERT INTO storage_identity VALUES ('{dsp}','cortex','cortex-v1');\nINSERT \
-                INTO connections(provider,updated_at) VALUES ('cortex','{}');",
-            db::iso()
+            "{}\n{}",
+            collectors::identity_seed(dsp, PROVIDER, "cortex-v1"),
+            collectors::connection_seed(PROVIDER)
         )
     }
     fn marker(&self) -> Option<&'static str> {

@@ -230,14 +230,7 @@ impl Checkpoint {
                     )?;
                     // Expiry limits resume reuse, not validated live visibility. An old
                     // checkpoint token must never write into a replacement run.
-                    if storage
-                        .one(
-                            "SELECT 1 FROM collection_live_runs WHERE job_id=? AND \
-                json_extract(metadata,'$.checkpointToken')=?",
-                            [&job, &token],
-                        )?
-                        .is_some()
-                    {
+                    if live_collection::run_marked(&storage, &job, "checkpointToken", &token)? {
                         stage_paycom_page(&storage, &job, &owner, &employee, &records)?;
                     }
                     Ok(())

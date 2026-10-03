@@ -5,8 +5,7 @@ use super::{
     discovery::{CollectionRequest, Scope},
     meals::Capture,
 };
-use crate::{Error, Result, State, db::s, ensure, live_collection};
-use rusqlite::params;
+use crate::{Error, Result, State, ensure, live_collection};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -52,10 +51,12 @@ impl Writer {
                 state
                     .read_cache
                     .invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::LIVE);
-                db.collector(&dsp.id, PROVIDER)?.exec(
-                    "UPDATE collection_live_runs \
-                SET metadata=json_set(metadata,'$.drivers',json(?1)) WHERE job_id=?2 AND owner=?3",
-                    params![drivers.to_string(), job, owner],
+                live_collection::set_run_field(
+                    &*db.collector(&dsp.id, PROVIDER)?,
+                    &job,
+                    &owner,
+                    "drivers",
+                    &drivers,
                 )?;
                 Ok(dsp.id)
             })
@@ -96,14 +97,9 @@ impl Writer {
                     409,
                 )?;
                 let storage = db.collector(&dsp.id, PROVIDER)?;
-                let run = storage
-                    .one(
-                        "SELECT metadata FROM collection_live_runs WHERE job_id=? \
-                AND owner=?",
-                        [&job, &owner],
-                    )?
+                let run = live_collection::run_metadata(&storage, &job, &owner)?
                     .ok_or_else(|| Error::new("invalid_live_capture", 502))?;
-                let metadata: Value = serde_json::from_str(s(&run, "metadata"))?;
+                let metadata: Value = serde_json::from_str(&run)?;
                 let expected: Scope = serde_json::from_value(metadata["scope"].clone())?;
                 capture.validate(&expected)?;
                 live_collection::stage_item(

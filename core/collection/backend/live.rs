@@ -64,11 +64,7 @@ impl Store {
             if self.guard(&job, &owner).is_err() {
                 continue;
             }
-            if let Some((run,)) = db.one_as::<(String,)>(
-                "SELECT metadata FROM collection_live_runs WHERE \
-                job_id=? AND owner=?",
-                [&job, &owner],
-            )? {
+            if let Some(run) = run_metadata(&db, &job, &owner)? {
                 let metadata: Value = serde_json::from_str(&run)?;
                 if to < s(&metadata, "from") || from > s(&metadata, "to") {
                     continue;
@@ -106,6 +102,34 @@ impl Store {
         )?;
         Ok(())
     }
+}
+
+/// A live run's metadata, while the run is still `owner`'s.
+pub fn run_metadata(db: &Db, job: &str, owner: &str) -> Result<Option<String>> {
+    let run: Option<(String,)> = db.one_as(
+        "SELECT metadata FROM collection_live_runs WHERE job_id=? AND owner=?",
+        [job, owner],
+    )?;
+    Ok(run.map(|(metadata,)| metadata))
+}
+/// Sets one field of a live run's metadata, while the run is still `owner`'s.
+pub fn set_run_field(db: &Db, job: &str, owner: &str, field: &str, value: &Value) -> Result<()> {
+    db.exec(
+        "UPDATE collection_live_runs SET metadata=json_set(metadata,?1,json(?2)) \
+        WHERE job_id=?3 AND owner=?4",
+        params![format!("$.{field}"), value.to_string(), job, owner],
+    )?;
+    Ok(())
+}
+/// Whether the job's live run holds `value` in one field of its metadata, such as a token
+/// only the attempt that started it knows.
+pub fn run_marked(db: &Db, job: &str, field: &str, value: &str) -> Result<bool> {
+    Ok(db
+        .one(
+            "SELECT 1 FROM collection_live_runs WHERE job_id=? AND json_extract(metadata,?)=?",
+            params![job, format!("$.{field}"), value],
+        )?
+        .is_some())
 }
 
 /// Stages one validated item of a live run, while the run is still `owner`'s. A later

@@ -18,8 +18,8 @@ use crate::{
         http::RequestHosts,
         paycom,
     },
-    crypto,
-    db::{self, Db, Kind, Migration, Migrations, Store, iso, migrations::Apply::Sql, s},
+    collectors, crypto,
+    db::{self, Db, Kind, Migration, Migrations, Store, migrations::Apply::Sql, s},
     ensure,
     job_metrics::Counts,
     manifest::{Collection, Collector},
@@ -105,7 +105,7 @@ impl Collector for Paycom {
         MIGRATIONS
     }
     fn seed(&self, dsp: &str) -> String {
-        format!("INSERT INTO storage_identity VALUES ('{dsp}','paycom','paycom-v1');")
+        collectors::identity_seed(dsp, PROVIDER, "paycom-v1")
     }
     fn marker(&self) -> Option<&'static str> {
         None
@@ -115,10 +115,7 @@ impl Collector for Paycom {
     }
     fn provision(&self, store: &Store, dsp: &str, timezone: &str) -> Result<()> {
         let db = store.collector(dsp, PROVIDER)?;
-        db.exec(
-            "INSERT OR IGNORE INTO connections(provider,updated_at) VALUES ('paycom',?)",
-            [iso()],
-        )?;
+        collectors::add_connection(&db, PROVIDER)?;
         // v0.0.9 reads this row on every Paycom status request. Drop it, and the
         // table, once a release without that reader has shipped.
         db.exec(
@@ -136,11 +133,7 @@ impl Collector for Paycom {
             &area.join("paycom.enc"),
             crypto::encrypt(&key, &format!("{dsp}:paycom:2"), &credentials)?.as_bytes(),
         )?;
-        store.collector(dsp, PROVIDER)?.exec(
-            "UPDATE connections SET enabled=1,status='ready',account_label='DEMO1',verified_at=?",
-            [iso()],
-        )?;
-        Ok(())
+        store.connect_demo(dsp, PROVIDER, "DEMO1")
     }
     fn browser_entries(&self) -> &'static [&'static str] {
         &[
