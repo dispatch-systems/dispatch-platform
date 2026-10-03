@@ -20,6 +20,10 @@ pub const FEATURE: Feature = Feature {
     }),
     permissions: &[perm("driver_match.manage", "Manage Driver Match", 60)],
     routes: api::routes,
+    tables: &[
+        ("platform", &["driver_codes"]),
+        ("dsp", &["people", "person_ids", "people_apart"]),
+    ],
     migrations: &[
         Migrations {
             kind: Kind::PLATFORM,

@@ -190,6 +190,7 @@ test('--tables dsp writes the next migration of the DSP database, a storage modu
     /CREATE TABLE IF NOT EXISTS parking_items \(/,
   );
   const manifest = file(plan, 'features/parking/feature.rs');
+  assert.match(manifest, /tables: &\[\("dsp", &\["parking_items"\]\)\],/);
   assert.match(manifest, /kind: Kind::DSP,/);
   assert.match(
     manifest,

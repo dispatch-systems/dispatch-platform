@@ -11,9 +11,9 @@ use dispatch_core::{
             browseros::{self, NetworkPolicy},
             egress::HostPolicy,
         },
-        registry::Provider,
+        registry::{Provider, connection_seed, identity_seed},
     },
-    db::{self, Kind, Migration, Migrations, migrations::Apply::Sql},
+    db::{Kind, Migration, Migrations, migrations::Apply::Sql},
     foundation::validate as v,
     manifest::{Collection, Collector},
 };
@@ -70,11 +70,13 @@ impl Collector for {{pascal}} {
     fn migrations(&self) -> &'static [Migrations] {
         MIGRATIONS
     }
+    // Its connection row commits with its schema: an added collector's storage counts as
+    // created only once it holds one.
     fn seed(&self, dsp: &str) -> String {
         format!(
-            "INSERT INTO storage_identity VALUES ('{dsp}','{{name}}','{{name}}-v1');\nINSERT \
-                INTO connections(provider,updated_at) VALUES ('{{name}}','{}');",
-            db::iso()
+            "{}\n{}",
+            identity_seed(dsp, PROVIDER, "{{name}}-v1"),
+            connection_seed(PROVIDER)
         )
     }
     fn marker(&self) -> Option<&'static str> {

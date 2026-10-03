@@ -131,6 +131,9 @@ mod registry_checks;
 #[path = "../tests/backend/request_log.rs"]
 mod request_log;
 #[cfg(test)]
+#[path = "../tests/backend/tables.rs"]
+mod tables;
+#[cfg(test)]
 #[path = "../tests/backend/verification.rs"]
 mod verification;
 #[cfg(test)]

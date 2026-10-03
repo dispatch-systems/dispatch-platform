@@ -43,6 +43,33 @@ pub const FEATURE: Feature = Feature {
     live: &["timecard.view", "collections.run"],
     keeps: &[&workforce::keeper::Timecards, &meals::keeper::MealBreaks],
     // Its tables live in the collectors' databases, beside what each collection reads.
+    tables: &[
+        (
+            "paycom",
+            &[
+                "publications",
+                "employees",
+                "timecards",
+                "timecard_sources",
+                "employee_timecard_syncs",
+                "settings",
+            ],
+        ),
+        (
+            "cortex",
+            &[
+                "meal_schema",
+                "meal_publications",
+                "meal_itineraries",
+                "meal_delivery_events",
+                "meal_breaks",
+                "meal_record_schema",
+                "meal_records",
+                "meal_sources",
+                "meal_stops",
+            ],
+        ),
+    ],
     migrations: &[
         Migrations {
             kind: paycom::DATABASE,

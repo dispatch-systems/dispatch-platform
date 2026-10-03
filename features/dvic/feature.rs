@@ -28,6 +28,17 @@ pub const FEATURE: Feature = Feature {
     ],
     routes: api::routes,
     keeps: &[&crate::dvic::keeper::Dvic],
+    tables: &[(
+        "dvic",
+        &[
+            "dvic_reports",
+            "dvic_revisions",
+            "dvic_inspections",
+            "dvic_weeks",
+            "dvic_runs",
+            "dvic_hidden_drivers",
+        ],
+    )],
     migrations: &[Migrations {
         kind: dvic::DATABASE,
         list: &[

@@ -22,7 +22,7 @@ use crate::{
     db::{self, Db, Kind, Migration, Migrations, Store, migrations::Apply::Sql, s},
     ensure,
     job_metrics::Counts,
-    manifest::{Collection, Collector},
+    manifest::{Collection, Collector, Tables},
     validate as v,
 };
 use serde_json::{Value, json};
@@ -77,6 +77,17 @@ const MIGRATIONS: &[Migrations] = &[Migrations {
     }],
 }];
 
+/// What it keeps in its database, beside core's and its collection's keeper's: where an
+/// unfinished collection resumes from, and the schedule v0.0.9 still reads.
+const TABLES: Tables = &[(
+    "paycom",
+    &[
+        "collection_checkpoints",
+        "collection_checkpoint_pages",
+        "schedules",
+    ],
+)];
+
 /// What it reads: the timecards of a pay period, or of one employee's.
 static COLLECTIONS: [Collection; 1] = [Collection {
     job_kind: timecards::JOB_KIND,
@@ -103,6 +114,9 @@ impl Collector for Paycom {
     }
     fn migrations(&self) -> &'static [Migrations] {
         MIGRATIONS
+    }
+    fn tables(&self) -> Tables {
+        TABLES
     }
     fn seed(&self, dsp: &str) -> String {
         collectors::identity_seed(dsp, PROVIDER, "paycom-v1")

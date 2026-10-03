@@ -26,6 +26,24 @@ pub const FEATURE: Feature = Feature {
     ],
     routes: api::routes,
     keeps: &[&crate::routedata::keeper::Routes],
+    tables: &[(
+        "routedata",
+        &[
+            "routedata_schema",
+            "route_publications",
+            "routes",
+            "itineraries",
+            "stops",
+            "tasks",
+            "addresses",
+            "drivers",
+            "driver_days",
+            "route_raw",
+            "breaks",
+            "unknown_stops",
+            "route_retention",
+        ],
+    )],
     migrations: &[Migrations {
         kind: routedata::DATABASE,
         list: &[

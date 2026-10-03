@@ -45,6 +45,7 @@ pub const FEATURE: Feature = Feature {
     keeps: &[&backend::keeper::{{pascal}}Keeper],
 {{/keeps}}
 {{#tables}}
+    tables: &[("{{database}}", &["{{table}}"])],
     migrations: &[Migrations {
         kind: {{kind}},
         list: &[Migration {

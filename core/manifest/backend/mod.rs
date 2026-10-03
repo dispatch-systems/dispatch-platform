@@ -101,6 +101,25 @@ impl Registry {
     pub fn migrations(&self, kind: Kind) -> Vec<Migration> {
         db::migrations::ledger(kind, self.migration_lists())
     }
+    /// Every table an owner declares, as its owner, database and name: core's, then each
+    /// collector's, then each feature's. Core's owner is `core`; a database `*` is every
+    /// database that holds the table.
+    pub fn tables(&self) -> Vec<(&'static str, &'static str, &'static str)> {
+        let owned = |owner: &'static str, tables: Tables| {
+            tables.iter().flat_map(move |(database, names)| {
+                names.iter().map(move |table| (owner, *database, *table))
+            })
+        };
+        let collectors = self
+            .collectors
+            .iter()
+            .flat_map(|c| owned(c.id(), c.tables()));
+        let features = self.features.iter().flat_map(|f| owned(f.name, f.tables));
+        owned("core", db::CORE_TABLES)
+            .chain(collectors)
+            .chain(features)
+            .collect()
+    }
     /// Every domain a reviewed write may name: core's, then each feature's.
     pub fn domains(&self) -> impl Iterator<Item = DataDomain> {
         let features = self.features.iter().flat_map(|feature| feature.domains);
@@ -139,10 +158,10 @@ impl Registry {
     /// feature depends only on registered features and collectors, every permission has an
     /// id and an order of its own and implies only permissions that exist, one lets
     /// members invite, every database is declared once, with migrations numbered from 1
-    /// without a gap or a repeat, every domain is declared once and before it is named,
-    /// every audit prefix is a dotted name listed under an area other than settings, each
-    /// kind of data that names people has a place of its own, and what agents may read is
-    /// declared as `agents::pieces::check` asks.
+    /// without a gap or a repeat, every table is declared once, every domain is declared
+    /// once and before it is named, every audit prefix is a dotted name listed under an
+    /// area other than settings, each kind of data that names people has a place of its
+    /// own, and what agents may read is declared as `agents::pieces::check` asks.
     pub fn check(&self) {
         let kinds: Vec<&str> = self
             .collectors
@@ -221,6 +240,19 @@ impl Registry {
                 owned.kind.name()
             );
         }
+        let tables = self.tables();
+        for (index, (owner, database, table)) in tables.iter().enumerate() {
+            assert!(
+                *database != "*" || *owner == "core",
+                "{owner} declares {table} in every database, as only core may"
+            );
+            for (other, elsewhere, _) in tables[..index].iter().filter(|(_, _, t)| t == table) {
+                assert!(
+                    database != elsewhere && *database != "*" && *elsewhere != "*",
+                    "{database}/{table} is declared by {other} and {owner}"
+                );
+            }
+        }
         let domains: Vec<DataDomain> = self.domains().collect();
         for (index, domain) in domains.iter().enumerate() {
             assert!(
@@ -294,6 +326,8 @@ pub struct Feature {
     pub keeps: &'static [&'static dyn Keeper],
     /// What it adds to databases: its own, kept beside a collector's, or another owner's.
     pub migrations: &'static [Migrations],
+    /// The tables it keeps, wherever they are, and no other owner's code runs SQL on.
+    pub tables: Tables,
     /// The kinds of data its reviewed writes change, for the read cache.
     pub domains: &'static [DataDomain],
     /// What evicts the reads it caches, and any other owner's read its data feeds.
@@ -329,6 +363,7 @@ pub const fn feature(name: &'static str) -> Feature {
         live: &[],
         keeps: &[],
         migrations: &[],
+        tables: &[],
         domains: &[],
         cached: &[],
         maintenance: &[],
@@ -340,6 +375,11 @@ pub const fn feature(name: &'static str) -> Feature {
         people: &[],
     }
 }
+
+/// The tables an owner keeps, by the database that holds them: `&[("paycom",
+/// &["employees", …])]`. Only the owner's code runs SQL on them. Core alone also names the
+/// database `"*"`: every database that holds the table, beside the tables of their owners.
+pub type Tables = &'static [(&'static str, &'static [&'static str])];
 
 /// Fills one DSP, given its timezone, with what a feature shows.
 pub type Demo = fn(&Store, &str, &str) -> Result<()>;
@@ -519,6 +559,10 @@ pub trait Collector: Sync {
     fn database(&self) -> Kind;
     /// What it adds to databases, starting with its own's baseline.
     fn migrations(&self) -> &'static [Migrations];
+    /// The tables it keeps in its database, beside core's and its collections' keepers'.
+    fn tables(&self) -> Tables {
+        &[]
+    }
     /// Written into a new database with its schema. Must identify the storage.
     fn seed(&self, dsp: &str) -> String;
     /// The DSP setting recording that this storage was added to an existing DSP.

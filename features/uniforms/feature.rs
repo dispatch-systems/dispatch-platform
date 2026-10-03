@@ -24,6 +24,15 @@ pub const FEATURE: Feature = Feature {
         perm("uniforms.manage", "Manage Uniform Inventory", 12).implies(&["uniforms.view"]),
     ],
     routes: api::routes,
+    tables: &[(
+        "dsp",
+        &[
+            "uniform_inventory",
+            "uniforms",
+            "uniform_variants",
+            "uniform_events",
+        ],
+    )],
     migrations: &[Migrations {
         kind: Kind::DSP,
         list: &[Migration {

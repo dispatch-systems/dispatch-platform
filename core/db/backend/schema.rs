@@ -6,7 +6,7 @@ use super::{
     Db,
     migrations::{Apply::Code, Apply::Sql, Kind, Migration, Migrations, add_column},
 };
-use crate::Result;
+use crate::{Result, manifest::Tables};
 
 /// The platform's accounts, the environment's jobs and each DSP's own database.
 pub const DATABASES: &[Kind] = &[Kind::PLATFORM, Kind::JOBS, Kind::DSP];
@@ -23,6 +23,59 @@ pub const MIGRATIONS: &[Migrations] = &[
         kind: Kind::DSP,
         list: DSP,
     },
+];
+
+/// The tables core keeps: in its own databases, and in every database that holds them,
+/// beside the tables of the owner that declares the database. Core's parts share them, as
+/// they share its databases.
+pub const TABLES: Tables = &[
+    (
+        "platform",
+        &[
+            "users",
+            "sessions",
+            "session_metadata",
+            "session_security",
+            "resets",
+            "throttle",
+            "passkeys",
+            "account_passkeys",
+            "authenticator_apps",
+            "recovery_codes",
+            "security_challenges",
+            "dsps",
+            "dsp_features",
+            "memberships",
+            "roles",
+            "invitations",
+            "audit",
+            "outbox",
+            "agent_keys",
+            "agent_key_dsps",
+            "agent_key_dsp_reads",
+            "agent_activity",
+            "oauth_apps",
+            "oauth_clients",
+            "oauth_codes",
+            "oauth_pairing",
+            "oauth_requests",
+            "oauth_tokens",
+        ],
+    ),
+    ("jobs", &["jobs", "job_metrics"]),
+    ("dsp", &["settings", "collection_schedules"]),
+    // Every database records the migrations it ran, and each of a DSP's whose it is. Each
+    // collector's holds its connection and its running collection's live results.
+    (
+        "*",
+        &[
+            "schema_migrations",
+            "storage_identity",
+            "connections",
+            "collection_live_runs",
+            "collection_live_items",
+        ],
+    ),
 ];
 
 const PLATFORM: &[Migration] = &[

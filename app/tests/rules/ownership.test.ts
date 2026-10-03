@@ -11,10 +11,11 @@ import { createdTables, isSql, namedTables } from './support/sql.js';
 // functions, never its SQL. plans/restructure/structure.md, "Data".
 //
 // A table's owner is the owner that declares it in its manifest (`tables: &[("paycom",
-// &["employees", …])]`), or else the owner whose migrations create it. Shipped migrations
-// keep their SQL for good, wherever it now belongs, so they claim tables but are not held
-// to the rule. A name no owner creates, such as a test's deliberately missing table, is no
-// one's table.
+// &["employees", …])]`, or a collector's or core's `TABLES: Tables = &[…]`; the database
+// `"*"` is every database that holds the table), or else the owner whose migrations create
+// it. Shipped migrations keep their SQL for good, wherever it now belongs, so they claim
+// tables but are not held to the rule. A name no owner creates, such as a test's
+// deliberately missing table, is no one's table.
 
 /** Tables two owners declare, which therefore have no one owner. */
 const twice = new Set<string>();
@@ -30,20 +31,27 @@ function owners(): Map<string, Set<string>> {
   };
   for (const file of files.filter(productRust)) {
     const { masked } = lexFile(file);
-    for (const field of masked.matchAll(/\btables\s*:\s*&\s*\[/g)) {
+    for (const field of masked.matchAll(/\b(?:tables\s*:|TABLES\s*:\s*Tables\s*=)\s*&\s*\[/g)) {
       if (inTest(file, field.index)) continue;
       const open = field.index + field[0].length - 1;
       const close = closing(masked, open);
-      // Each `("database", &["table", …])`.
+      // Each `("database", &["table", …])`, as rustfmt may write it, with trailing commas.
       for (const tuple of masked
         .slice(open, close)
-        .matchAll(/\(\s*"[^"]*"\s*,\s*&\s*\[[^\]]*\]\s*\)/g)) {
+        .matchAll(/\(\s*"[^"]*"\s*,\s*&\s*\[[^\]]*\]\s*,?\s*\)/g)) {
         const start = open + tuple.index;
         const [database, ...names] = stringsIn({ file, start, end: start + tuple[0].length });
         for (const name of names) declare(`${database}/${name}`, speaker(file));
       }
     }
   }
+  const tableOf = (key: string) => key.slice(key.indexOf('/') + 1);
+  // A table declared for every database belongs to no one else in any of them.
+  for (const [key, owner] of declared)
+    if (key.startsWith('*/'))
+      for (const [other, by] of declared)
+        if (other !== key && tableOf(other) === tableOf(key) && by !== owner)
+          twice.add(`${key} is declared by ${owner} and ${other} by ${by}`);
   const created = new Map<string, Set<string>>();
   const claim = (key: string, owner: string) =>
     created.set(key, new Set([...(created.get(key) ?? []), owner]));
@@ -57,9 +65,13 @@ function owners(): Map<string, Set<string>> {
       if (isSql(literal.value))
         for (const table of createdTables(literal.value)) claim(`?/${table}`, speaker(file));
   for (const [key, owner] of declared) created.set(key, new Set([owner]));
+  for (const [key, owner] of declared)
+    if (key.startsWith('*/'))
+      for (const other of created.keys())
+        if (tableOf(other) === tableOf(key)) created.set(other, new Set([owner]));
   const byName = new Map<string, Set<string>>();
   for (const [key, claims] of created) {
-    const table = key.slice(key.indexOf('/') + 1);
+    const table = tableOf(key);
     byName.set(table, new Set([...(byName.get(table) ?? []), ...claims]));
   }
   return byName;
