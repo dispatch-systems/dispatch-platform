@@ -61,11 +61,11 @@ pub fn affected(changed: &[String], plan: &Value) -> Vec<String> {
     }
     let mut crates = BTreeSet::new();
     for file in changed {
-        if file.starts_with("backend/host/") {
+        if file.starts_with("ops/host-manager/") {
             crates.insert("dispatch-host");
-        } else if file.starts_with("backend/ci/") {
+        } else if file.starts_with("tooling/ci/dispatch-ci/") {
             crates.insert("dispatch-ci");
-        } else if ["backend/", "core/", "collectors/", "features/"]
+        } else if ["app/", "core/", "collectors/", "features/"]
             .iter()
             .any(|root| file.starts_with(root))
         {
@@ -252,7 +252,7 @@ mod tests {
             "dashboard": ["tests/dashboard/features.test.ts"],
             "rules": ["tests/tooling/test-plan.test.ts"],
             "native": {"cortex": ["tests/providers/cortex-worker.test.ts"]},
-            "watch": [{"sources": ["backend/src/roles.rs"], "tests": [
+            "watch": [{"sources": ["core/tenancy/backend/roles.rs"], "tests": [
                 "tests/api/roles.test.ts", "tests/browser/dsp-features.spec.ts",
                 "tests/dashboard/features.test.ts"]}]
         });
@@ -262,7 +262,7 @@ mod tests {
         };
         assert_eq!(
             changed(&[
-                "backend/src/roles.rs",
+                "core/tenancy/backend/roles.rs",
                 "tests/providers/cortex-worker.test.ts"
             ]),
             [
@@ -282,7 +282,10 @@ mod tests {
             ]
         );
         assert_eq!(
-            changed(&["backend/host/src/updater.rs", "tests/browser/roles.spec.ts"])[1],
+            changed(&[
+                "ops/host-manager/src/updater.rs",
+                "tests/browser/roles.spec.ts"
+            ])[1],
             "cargo test --locked -p dispatch-host"
         );
         assert!(changed(&["docs/readme.md", "dashboard/src/app/App.tsx"]).is_empty());

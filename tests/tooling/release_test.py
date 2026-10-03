@@ -1,4 +1,4 @@
-"""The release policy/recovery suite lives in backend/host/src/release/tests.rs."""
+"""The release policy/recovery suite lives in ops/host-manager/src/release/tests.rs."""
 import importlib.util
 from pathlib import Path
 import unittest

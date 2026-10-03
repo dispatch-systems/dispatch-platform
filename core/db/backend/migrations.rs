@@ -336,7 +336,7 @@ mod tests {
     }
 
     /// Startup and provisioning, exactly as the core runs them. Every schema change
-    /// shows up in review as a change to backend/tests/schema. After adding a
+    /// shows up in review as a change to core/db/tests/backend/schema. After adding a
     /// migration, rewrite the snapshots with
     /// `DISPATCH_UPDATE_SCHEMA=1 cargo test --locked -j 3 --lib db::migrations`.
     #[test]

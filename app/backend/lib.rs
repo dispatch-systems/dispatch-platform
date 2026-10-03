@@ -6,6 +6,7 @@ pub mod agents;
 pub mod audit;
 #[path = "../../core/collection/backend/browser/mod.rs"]
 pub mod browsers;
+#[path = "cli.rs"]
 pub mod cli;
 #[path = "../../core/collection/backend/checkpoint.rs"]
 pub mod collection_checkpoint;
@@ -13,6 +14,7 @@ pub mod collection_checkpoint;
 pub mod collectors;
 #[path = "../../core/foundation/backend/config/mod.rs"]
 pub mod config;
+#[path = "contracts.rs"]
 pub mod contracts;
 #[path = "../../core/foundation/backend/crypto.rs"]
 pub mod crypto;

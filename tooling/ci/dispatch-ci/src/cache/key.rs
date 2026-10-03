@@ -21,7 +21,14 @@ const INPUTS: &[&str] = &[
 ];
 /// Every directory the Rust workspace compiles from: crates, their modules, the files they
 /// embed, migrations and tests.
-pub const SOURCE_ROOTS: &[&str] = &["backend", "core", "collectors", "features"];
+pub const SOURCE_ROOTS: &[&str] = &[
+    "app",
+    "core",
+    "collectors",
+    "features",
+    "ops/host-manager",
+    "tooling/ci/dispatch-ci",
+];
 fn walk(root: &Path, files: &mut BTreeSet<PathBuf>) -> Result<()> {
     if !root.is_dir() {
         return Ok(());
@@ -199,10 +206,22 @@ pub fn eligible(root: &Path, env: &Environment, allow_ci: bool) -> Result<bool> 
         .flatten()
         .filter_map(toml::Value::as_str)
         .collect();
-    if members != ["backend"]
-        && members != ["backend", "backend/host"]
-        && members != ["backend", "backend/host", "backend/ci"]
-    {
+    // Every member, globs included, must sit inside the fingerprinted source roots.
+    let within = |member: &str| {
+        let literal = member
+            .split(['*', '?', '['])
+            .next()
+            .unwrap_or_default()
+            .trim_end_matches('/');
+        !literal.is_empty()
+            && !literal
+                .split('/')
+                .any(|part| part.is_empty() || part == "." || part == "..")
+            && SOURCE_ROOTS
+                .iter()
+                .any(|source| literal == *source || literal.starts_with(&format!("{source}/")))
+    };
+    if members.is_empty() || !members.iter().all(|member| within(member)) {
         return Ok(false);
     }
     let mut files = BTreeSet::new();

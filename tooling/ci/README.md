@@ -38,7 +38,7 @@ The ruleset expects the `platform` check on a PR head before the queue admits it
 nothing; the queue's own gate decides, and a PR queued before it passed is dropped as an
 invalid merge commit.
 
-`backend/ci` builds as `dispatch-ci` and holds what runs on this machine: the Rust build
+`tooling/ci/dispatch-ci` builds as `dispatch-ci` and holds what runs on this machine: the Rust build
 cache and compiler fingerprint (`cargo-build.py`), the PR preflight (`npm run pr:prepare`) and
 the ship command. `npm run pr:ship -- <number>` reads the PR from GitHub's API every 20
 seconds, adds it to the merge queue once its admission check passed and GitHub knows it merges

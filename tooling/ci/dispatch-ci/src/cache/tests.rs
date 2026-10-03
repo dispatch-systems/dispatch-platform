@@ -17,20 +17,20 @@ impl Fixture {
     fn new() -> Self {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("repo");
-        fs::create_dir_all(root.join("backend/src")).unwrap();
+        fs::create_dir_all(root.join("app/backend")).unwrap();
         fs::create_dir_all(root.join("tooling")).unwrap();
         fs::create_dir_all(root.join(".git")).unwrap();
         fs::write(
             root.join("Cargo.toml"),
-            "[workspace]\nmembers = [\"backend\"]\n",
+            "[workspace]\nmembers = [\"app/backend\"]\n",
         )
         .unwrap();
         fs::write(
-            root.join("backend/Cargo.toml"),
+            root.join("app/backend/Cargo.toml"),
             "[package]\nname = \"fixture\"\n",
         )
         .unwrap();
-        fs::write(root.join("backend/src/main.rs"), "one").unwrap();
+        fs::write(root.join("app/backend/main.rs"), "one").unwrap();
         let env = [(
             "CARGO_HOME".into(),
             temp.path().join("cargo-home").to_str().unwrap().into(),
@@ -49,7 +49,7 @@ impl Fixture {
         build_with_limit(&self.root, false, &self.env, self, 2).unwrap();
     }
     fn source(&self, text: &str) {
-        fs::write(self.root.join("backend/src/main.rs"), text).unwrap();
+        fs::write(self.root.join("app/backend/main.rs"), text).unwrap();
     }
     fn store(&self) -> PathBuf {
         self.root.join(".git/dispatch-rust-builds")
@@ -74,7 +74,7 @@ impl Runner for Fixture {
                 fs::create_dir_all(&target)?;
                 fs::write(
                     target.join("dispatch-backend"),
-                    fs::read(self.root.join("backend/src/main.rs"))?,
+                    fs::read(self.root.join("app/backend/main.rs"))?,
                 )?;
                 if self.change_during_build.get() {
                     self.source("changed mid-build");
@@ -115,7 +115,7 @@ fn custom_build_inputs_and_untracked_external_sources_disable_reuse() {
         env.insert(key.into(), value.into());
         assert!(!eligible(&f.root, &env, false).unwrap(), "{key}");
     }
-    for name in ["backend/build.rs", "backend/linked"] {
+    for name in ["app/backend/build.rs", "app/backend/linked"] {
         let path = f.root.join(name);
         if name.ends_with("linked") {
             symlink(f.temp.path(), &path).unwrap();
@@ -125,20 +125,44 @@ fn custom_build_inputs_and_untracked_external_sources_disable_reuse() {
         assert!(!eligible(&f.root, &f.env, false).unwrap());
         fs::remove_file(path).unwrap();
     }
-    fs::create_dir_all(f.root.join("backend/host")).unwrap();
-    fs::create_dir_all(f.root.join("backend/ci")).unwrap();
+    fs::create_dir_all(f.root.join("ops/host-manager")).unwrap();
+    fs::create_dir_all(f.root.join("tooling/ci/dispatch-ci")).unwrap();
+    fs::create_dir_all(f.root.join("features/one")).unwrap();
     fs::write(
         f.root.join("Cargo.toml"),
-        "[workspace]\nmembers = [\"backend\", \"backend/host\", \"backend/ci\"]\n",
+        "[workspace]\nmembers = [\"app/backend\", \"ops/host-manager\", \"tooling/ci/dispatch-ci\", \"features/*\"]\n",
     )
     .unwrap();
     fs::write(
-        f.root.join("backend/Cargo.toml"),
-        "[dependencies]\nhost = { path = \"host\" }\n",
+        f.root.join("app/backend/Cargo.toml"),
+        "[dependencies]\nhost = { path = \"../../ops/host-manager\" }\none = { path = \"../../features/one\" }\n",
     )
     .unwrap();
-    let manifest = f.root.join("backend/host/Cargo.toml");
-    fs::write(&manifest, "[dependencies]\nci = { path = \"../ci\" }\n").unwrap();
+    let manifest = f.root.join("ops/host-manager/Cargo.toml");
+    fs::write(
+        &manifest,
+        "[dependencies]\nci = { path = \"../../tooling/ci/dispatch-ci\" }\n",
+    )
+    .unwrap();
+    assert!(eligible(&f.root, &f.env, false).unwrap());
+    // A member outside the fingerprinted roots, or one that escapes them, disables reuse.
+    for members in [
+        "\"app/backend\", \"elsewhere\"",
+        "\"app/../outside\"",
+        "\"*\"",
+    ] {
+        fs::write(
+            f.root.join("Cargo.toml"),
+            format!("[workspace]\nmembers = [{members}]\n"),
+        )
+        .unwrap();
+        assert!(!eligible(&f.root, &f.env, false).unwrap(), "{members}");
+    }
+    fs::write(
+        f.root.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"app/backend\", \"ops/host-manager\", \"tooling/ci/dispatch-ci\"]\n",
+    )
+    .unwrap();
     assert!(eligible(&f.root, &f.env, false).unwrap());
     for text in [
         "[dependencies]\nexternal = { path = \"../../../outside\" }\n",
@@ -178,10 +202,10 @@ fn every_rust_and_embedded_launcher_input_is_fingerprinted_but_dashboard_is_not(
     for name in [
         "Cargo.lock",
         "rust-toolchain.toml",
-        "backend/src/provider.js",
-        "backend/schema.sql",
-        "backend/host/src/management.rs",
-        "backend/ci/src/cache.rs",
+        "app/backend/provider.js",
+        "core/db/migrations/schema.sql",
+        "ops/host-manager/src/management.rs",
+        "tooling/ci/dispatch-ci/src/cache.rs",
         "core/foundation/backend/error.rs",
         "collectors/cortex/scripts/meal.js",
         "features/dvic/migrations/dvic/0001_baseline.sql",

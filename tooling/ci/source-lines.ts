@@ -9,7 +9,7 @@ export const lineExceptions: ReadonlyMap<string, number> = new Map([
   ['collectors/paycom/collections/timecards/collect.rs', 3],
 ]);
 /** Where the product's Rust lives, relative to the repository root. */
-export const rustSourceRoots = ['backend/src', 'core', 'collectors', 'features'];
+export const rustSourceRoots = ['app', 'core', 'collectors', 'features'];
 
 export function sourceLineViolations(
   root = '.',

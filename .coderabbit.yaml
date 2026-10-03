@@ -69,7 +69,7 @@ reviews:
           copying rows with an explicit column list, rebuilding referencing tables before
           their parent, and recreating the indexes, as `jobs/0002_scorecard_kind.sql` does.
           The release that rebuilds must not write the new values yet.
-    - path: '{core,collectors,features,backend/src}/**/*.rs'
+    - path: '{app,core,collectors,features}/**/*.rs'
       instructions: |
         - Logs and request events never carry request bodies, raw emails or IP addresses,
           cookies, tokens or employee records. Session identifiers shown to users are HMAC

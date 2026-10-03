@@ -10,13 +10,13 @@
   ],
   "exceptions": [
     {
-      "path": "backend/ci/src/lib.rs",
+      "path": "tooling/ci/dispatch-ci/src/lib.rs",
       "rule": "known-private-identity",
       "lineSha256": "acd8dd2f910848bfe7a4e564c6ee700302052de555cc9987fe38101175ed0e0a",
       "reason": "Legacy repository identity required to verify existing updater receipts and provenance."
     },
     {
-      "path": "backend/host/src/tests.rs",
+      "path": "ops/host-manager/src/tests.rs",
       "rule": "known-private-identity",
       "lineSha256": "fbce8a461a3d13f3ca84abab2a3847458778fea1bfb798927431b7199e43e528",
       "reason": "Exercise validation of the legacy repository identity."

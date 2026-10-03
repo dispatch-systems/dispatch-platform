@@ -1,4 +1,4 @@
-//! Guardrails for the route table in `backend/src/http/routes/`.
+//! Guardrails for the route table every owner's `api/routes` registers into.
 use dispatch_backend::{
     http::{
         Access::{self, Agent, Dsp, PlatformOwner, Public, Session},

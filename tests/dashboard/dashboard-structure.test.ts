@@ -192,7 +192,7 @@ test('contracts, tooling and services are independent of the dashboard', () => {
     'shared',
     'tooling',
     'services',
-    'backend/src',
+    'app',
     'core',
     'collectors',
     'features',

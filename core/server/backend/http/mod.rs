@@ -9,7 +9,7 @@ mod input;
 mod middleware;
 #[path = "route.rs"]
 mod route;
-#[path = "../../../../backend/src/http/routes/mod.rs"]
+#[path = "../../../../app/backend/routes.rs"]
 mod routes;
 #[path = "unmatched.rs"]
 mod unmatched;
@@ -27,7 +27,7 @@ use axum::{
 };
 use std::{collections::BTreeMap, sync::Arc};
 
-/// Every registered route. `backend/tests/http_routes.rs` holds the expected list.
+/// Every registered route. `app/tests/backend/integration/http_routes.rs` holds the expected list.
 pub fn table() -> Vec<Route> {
     routes::all()
 }

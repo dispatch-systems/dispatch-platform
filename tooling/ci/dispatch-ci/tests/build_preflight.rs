@@ -27,19 +27,19 @@ fn native_build_shares_verified_copies_across_worktrees_and_rebuilds_changed_inp
     let one = temp.path().join("one");
     let two = temp.path().join("two");
     let bin = temp.path().join("bin");
-    fs::create_dir_all(one.join("backend/src")).unwrap();
+    fs::create_dir_all(one.join("app/backend")).unwrap();
     fs::create_dir(&bin).unwrap();
     fs::write(
         one.join("Cargo.toml"),
-        "[workspace]\nmembers = ['backend']\n",
+        "[workspace]\nmembers = ['app/backend']\n",
     )
     .unwrap();
     fs::write(
-        one.join("backend/Cargo.toml"),
+        one.join("app/backend/Cargo.toml"),
         "[package]\nname = 'dispatch-backend'\n",
     )
     .unwrap();
-    fs::write(one.join("backend/src/main.rs"), "first input").unwrap();
+    fs::write(one.join("app/backend/main.rs"), "first input").unwrap();
     git(&one, &["init", "-q"]);
     git(&one, &["add", "."]);
     git(
@@ -63,7 +63,7 @@ fn native_build_shares_verified_copies_across_worktrees_and_rebuilds_changed_inp
     executable(&bin.join("ld"), "#!/bin/sh\necho pinned-ld\n");
     executable(
         &bin.join("cargo"),
-        "#!/bin/sh\nset -eu\nprintf x >> \"$BUILDS\"\nmkdir -p target/release\ncp backend/src/main.rs target/release/dispatch-backend\n",
+        "#!/bin/sh\nset -eu\nprintf x >> \"$BUILDS\"\nmkdir -p target/release\ncp app/backend/main.rs target/release/dispatch-backend\n",
     );
     let builds = temp.path().join("build-count");
     let run = |root: &Path| {
@@ -83,7 +83,7 @@ fn native_build_shares_verified_copies_across_worktrees_and_rebuilds_changed_inp
     fs::write(&target, "local corruption").unwrap();
     run(&two);
     assert_eq!(fs::read(&target).unwrap(), b"first input");
-    fs::write(two.join("backend/src/main.rs"), "changed input").unwrap();
+    fs::write(two.join("app/backend/main.rs"), "changed input").unwrap();
     run(&two);
     assert_eq!(fs::read(&target).unwrap(), b"changed input");
     assert_eq!(fs::read(&builds).unwrap(), b"xx");

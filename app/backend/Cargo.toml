@@ -10,12 +10,19 @@ license = "FSL-1.1-ALv2"
 autotests = false
 autoexamples = false
 
+[lib]
+path = "lib.rs"
+
+[[bin]]
+name = "dispatch-backend"
+path = "main.rs"
+
 [features]
 # Private live-provider diagnostics are compiled only when an operator asks for them.
 operator-probes = []
 
 [dependencies]
-dispatch-host = { path = "host" }
+dispatch-host = { path = "../../ops/host-manager" }
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
 rusqlite = { version = "0.40", features = ["bundled", "functions", "collation", "hooks"] }
 serde = { version = "1", features = ["derive"] }
@@ -56,108 +63,108 @@ ts-rs = { version = "12", default-features = false, features = ["serde-compat"] 
 
 [[test]]
 name = "accounts"
-path = "../core/accounts/tests/backend/integration/accounts.rs"
+path = "../../core/accounts/tests/backend/integration/accounts.rs"
 
 [[test]]
 name = "agent_activity"
-path = "../core/mcp/tests/backend/integration/agent_activity.rs"
+path = "../../core/mcp/tests/backend/integration/agent_activity.rs"
 
 [[test]]
 name = "agent_data"
-path = "../core/mcp/tests/backend/integration/agent_data.rs"
+path = "../../core/mcp/tests/backend/integration/agent_data.rs"
 
 [[test]]
 name = "agents"
-path = "../core/mcp/tests/backend/integration/agents.rs"
+path = "../../core/mcp/tests/backend/integration/agents.rs"
 
 [[test]]
 name = "audit"
-path = "../core/platform_owner/tests/backend/integration/audit.rs"
+path = "../../core/platform_owner/tests/backend/integration/audit.rs"
 
 [[test]]
 name = "browser_update"
-path = "../core/server/tests/backend/integration/browser_update.rs"
+path = "../../core/server/tests/backend/integration/browser_update.rs"
 
 [[test]]
 name = "browseros_host"
-path = "../core/collection/tests/backend/integration/browseros_host.rs"
+path = "../../core/collection/tests/backend/integration/browseros_host.rs"
 
 [[test]]
 name = "browseros_worker"
-path = "../core/collection/tests/backend/integration/browseros_worker.rs"
+path = "../../core/collection/tests/backend/integration/browseros_worker.rs"
 
 [[test]]
 name = "contracts"
-path = "../app/tests/backend/integration/contracts.rs"
+path = "../../app/tests/backend/integration/contracts.rs"
 
 [[test]]
 name = "driver_match"
-path = "../features/driver_match/tests/backend/integration/driver_match.rs"
+path = "../../features/driver_match/tests/backend/integration/driver_match.rs"
 
 [[test]]
 name = "dvic"
-path = "../features/dvic/tests/backend/integration/dvic.rs"
+path = "../../features/dvic/tests/backend/integration/dvic.rs"
 
 [[test]]
 name = "egress"
-path = "../core/collection/tests/backend/integration/egress.rs"
+path = "../../core/collection/tests/backend/integration/egress.rs"
 
 [[test]]
 name = "http_requests"
-path = "../core/server/tests/backend/integration/http_requests.rs"
+path = "../../core/server/tests/backend/integration/http_requests.rs"
 
 [[test]]
 name = "http_routes"
-path = "../app/tests/backend/integration/http_routes.rs"
+path = "../../app/tests/backend/integration/http_routes.rs"
 
 [[test]]
 name = "jobs"
-path = "../core/collection/tests/backend/integration/jobs.rs"
+path = "../../core/collection/tests/backend/integration/jobs.rs"
 
 [[test]]
 name = "mail"
-path = "../core/server/tests/backend/integration/mail.rs"
+path = "../../core/server/tests/backend/integration/mail.rs"
 
 [[test]]
 name = "meal_comparison"
-path = "../features/timecard/tests/backend/integration/meal_comparison.rs"
+path = "../../features/timecard/tests/backend/integration/meal_comparison.rs"
 
 [[test]]
 name = "meal_sync"
-path = "../features/timecard/tests/backend/integration/meal_sync.rs"
+path = "../../features/timecard/tests/backend/integration/meal_sync.rs"
 
 [[test]]
 name = "meals"
-path = "../features/timecard/tests/backend/integration/meals.rs"
+path = "../../features/timecard/tests/backend/integration/meals.rs"
 
 [[test]]
 name = "network_policy"
-path = "../core/collection/tests/backend/integration/network_policy.rs"
+path = "../../core/collection/tests/backend/integration/network_policy.rs"
 
 [[test]]
 name = "oauth"
-path = "../core/mcp/tests/backend/integration/oauth.rs"
+path = "../../core/mcp/tests/backend/integration/oauth.rs"
 
 [[test]]
 name = "punches"
-path = "../features/timecard/tests/backend/integration/punches.rs"
+path = "../../features/timecard/tests/backend/integration/punches.rs"
 
 [[test]]
 name = "range_reads"
-path = "../features/timecard/tests/backend/integration/range_reads.rs"
+path = "../../features/timecard/tests/backend/integration/range_reads.rs"
 
 [[test]]
 name = "routes"
-path = "../features/routes/tests/backend/integration/routes.rs"
+path = "../../features/routes/tests/backend/integration/routes.rs"
 
 [[test]]
 name = "scorecard"
-path = "../features/scorecard/tests/backend/integration/scorecard.rs"
+path = "../../features/scorecard/tests/backend/integration/scorecard.rs"
 
 [[test]]
 name = "storage"
-path = "../core/db/tests/backend/integration/storage.rs"
+path = "../../core/db/tests/backend/integration/storage.rs"
 
 [[example]]
 name = "assessment-fixture"
-path = "../features/timecard/tests/support/assessment-fixture.rs"
+path = "../../features/timecard/tests/support/assessment-fixture.rs"

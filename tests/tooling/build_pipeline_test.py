@@ -97,7 +97,7 @@ class PipelineTests(unittest.TestCase):
         advisory = {job for job, (_, body) in jobs.items()
                     if mapping_fields(body).get("continue-on-error", ("false", ""))[0] == "true"}
         listed = re.search(r"\bconst\s+ADVISORY\b[^=]*=\s*&\s*\[([^\]]*)\]",
-                           (ROOT / "backend/ci/src/ship.rs").read_text())
+                           (ROOT / "tooling/ci/dispatch-ci/src/ship.rs").read_text())
         self.assertIsNotNone(listed)
         self.assertEqual(set(re.findall(r'"([a-z-]+)"', listed.group(1))), advisory)
         self.assertTrue(advisory)

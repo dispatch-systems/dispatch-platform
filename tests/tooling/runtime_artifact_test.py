@@ -28,8 +28,8 @@ class SharedToolingTests(unittest.TestCase):
         self.assertEqual(stderr.getvalue(), "Installed the new build\n")
 
     def test_source_verifier_uses_cargos_configured_output_and_never_a_stale_default(self):
-        (self.root / "backend/host").mkdir(parents=True)
-        (self.root / "backend/host/Cargo.toml").touch()
+        (self.root / "ops/host-manager").mkdir(parents=True)
+        (self.root / "ops/host-manager/Cargo.toml").touch()
         (self.root / "tooling").mkdir()
         custom = self.root / "custom-target"
         with patch.object(runtime, "__file__", str(self.root / "tooling/runtime_artifact.py")), \
@@ -40,8 +40,8 @@ class SharedToolingTests(unittest.TestCase):
                                           cwd=self.root, stdout=sys.stderr)
 
     def test_source_verifier_prefers_a_restored_host_only_from_its_own_ci_cache(self):
-        (self.root / "backend/host").mkdir(parents=True)
-        (self.root / "backend/host/Cargo.toml").touch()
+        (self.root / "ops/host-manager").mkdir(parents=True)
+        (self.root / "ops/host-manager/Cargo.toml").touch()
         (self.root / "tooling").mkdir()
         tools = self.root / ".ci-tools"
         binary = tools / "tools/dispatch-host"

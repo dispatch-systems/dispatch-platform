@@ -58,7 +58,7 @@
         "dashboard/src/app/permissions.ts",
         "shared/contracts/accounts.ts",
         "shared/contracts/features.ts",
-        "backend/src/contracts/generated.rs",
+        "app/backend/export.rs",
         "shared/contracts/generated/access-catalog.ts"
       ],
       "tests": [

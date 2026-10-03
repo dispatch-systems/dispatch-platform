@@ -9,7 +9,7 @@ publish = false
 license = "FSL-1.1-ALv2"
 
 [dependencies]
-dispatch-ci = { path = "../ci" }
+dispatch-ci = { path = "../../tooling/ci/dispatch-ci" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.11"

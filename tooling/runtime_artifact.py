@@ -1,5 +1,5 @@
 """The launchers' way to the Rust host manager, from a checkout or an installed management
-directory. Artifact policy and the updaters live in backend/host."""
+directory. Artifact policy and the updaters live in ops/host-manager."""
 import functools
 import json
 import os
@@ -69,7 +69,7 @@ def prebuilt_host(root):
 def host_binary():
     tooling = Path(__file__).resolve().parent
     root = tooling.parent
-    if (root / "backend/host/Cargo.toml").is_file():
+    if (root / "ops/host-manager/Cargo.toml").is_file():
         # Build from this checkout, never search the candidate being verified.
         restored = prebuilt_host(root)
         if restored is not None:
