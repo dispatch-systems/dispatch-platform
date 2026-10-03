@@ -5,6 +5,7 @@ use super::*;
 use crate::collections::meals::collect as collection;
 use dispatch_core::collection::browser::page::call;
 use tokio::time::sleep;
+
 fn response_bytes(body: &Value) -> Result<Vec<u8>> {
     use base64::{Engine, engine::general_purpose::STANDARD};
     if body["base64Encoded"] == true {

@@ -2,7 +2,7 @@ use super::{
     capture::{Capture, Itinerary},
     live::Writer,
 };
-use crate::{codes, connection::Driver, discovery::Scope};
+use crate::{codes, collections::routes::collect::MOVE, connection::Driver, discovery::Scope};
 use dispatch_core::{
     Error, Result,
     collection::{
@@ -213,10 +213,7 @@ impl Driver {
             let told = self.browser.evaluate(&page.id, &expect).await;
             let moved = told.is_ok_and(|v| v == true)
                 && page
-                    .evaluate(&call(
-                        crate::collections::routes::collect::MOVE,
-                        &json!(url),
-                    ))
+                    .evaluate(&call(MOVE, &json!(url)))
                     .await
                     .is_ok_and(|v| v == true);
             if moved && let Some(result) = self.hook_result(page, candidate, metrics).await? {

@@ -48,10 +48,10 @@ pub fn install() {
 /// Core's test support, for this crate's module tests.
 #[cfg(test)]
 use dispatch_core::testing;
-/// Every module test in this crate's test binary, the app's own and, until each feature and
-/// collector is a crate of its own, theirs, runs under the app's registry, which holds every
-/// part a test names. It is installed before the first test starts, as the app installs it
-/// before it serves, so no test can install a smaller one first.
+/// Every module test in this crate's test binary, the app's own and, until each feature is a
+/// crate of its own, theirs, runs under the app's registry, which holds every part a test
+/// names. It is installed before the first test starts, as the app installs it before it
+/// serves, so no test can install a smaller one first.
 #[cfg(test)]
 #[used]
 #[unsafe(link_section = ".init_array")]

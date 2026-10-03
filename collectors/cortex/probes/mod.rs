@@ -88,6 +88,7 @@ fn own_rss() -> u64 {
 // (systemd-run --user --scope) so CPU and peak memory cover this process and its
 // browser. Prints times, CPU, memory, bytes through the egress proxy, and digests of
 // what was read and of the rows it becomes; never a value.
+//
 // `prepare` is how the feature that keeps the routes shapes a day into its rows: what
 // the probe times and digests. `sent` and `received` count the bytes through the egress
 // proxy, which only test builds count.

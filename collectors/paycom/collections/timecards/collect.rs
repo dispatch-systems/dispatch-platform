@@ -4,23 +4,25 @@ use crate::{
     connection::{Driver, SEARCH},
 };
 use chrono::{Datelike, NaiveDate};
-use dispatch_core::collection::browser::http::{Http, Refusal};
-use dispatch_core::collection::metrics::Recorder;
 use dispatch_core::{
     Error, Result,
-    collection::browser::{
-        Run,
-        page::{Page, call},
+    collection::{
+        browser::{
+            Run,
+            http::{Http, Refusal},
+            page::{Page, call},
+        },
+        metrics::Recorder,
     },
     db::{self, s},
     ensure,
 };
 use serde_json::{Value, json};
-use std::time::Duration;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     future::Future,
     sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
+    time::Duration,
 };
 use tokio::time::{Instant, sleep};
 // A timecard page that is still rendering reads as one of these; wait for it to settle.
