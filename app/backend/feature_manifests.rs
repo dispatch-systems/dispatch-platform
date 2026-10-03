@@ -8,8 +8,6 @@ pub mod dvic;
 pub mod routes;
 #[path = "../../features/scorecard/feature.rs"]
 pub mod scorecard;
-#[path = "../../features/team/feature.rs"]
-pub mod team;
 #[path = "../../features/timecard/feature.rs"]
 pub mod timecard;
 #[path = "../../features/uniforms/feature.rs"]

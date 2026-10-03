@@ -1,6 +1,6 @@
 //! What a path no route matches asks for. Core lists its own routes and every feature's, and
 //! asks the app only about the DSP area's old answers.
-use crate::feature_manifests::team::api::TEAM;
+use dispatch_team::TEAM;
 
 /// What each part of the DSP area asked for before routes carried their own access, for a
 /// path no route matches. New routes never come here; this only keeps old answers the same.

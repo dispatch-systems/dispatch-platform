@@ -607,6 +607,7 @@ dependencies = [
  "dispatch-host",
  "dispatch-paycom",
  "dispatch-settings",
+ "dispatch-team",
  "flate2",
  "libc",
  "reqwest",
@@ -739,6 +740,14 @@ name = "dispatch-settings"
 version = "0.0.0"
 dependencies = [
  "dispatch-core",
+]
+
+[[package]]
+name = "dispatch-team"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
+ "serde_json",
 ]
 
 [[package]]

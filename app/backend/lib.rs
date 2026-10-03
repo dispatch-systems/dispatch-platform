@@ -32,7 +32,7 @@ pub static REGISTRY: Registry = Registry {
         &feature_manifests::dvic::FEATURE,
         &feature_manifests::scorecard::FEATURE,
         &feature_manifests::driver_match::FEATURE,
-        &feature_manifests::team::FEATURE,
+        &dispatch_team::FEATURE,
         &dispatch_settings::FEATURE,
         &dispatch_home::FEATURE,
     ],

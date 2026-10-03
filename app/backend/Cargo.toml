@@ -27,6 +27,7 @@ dispatch-home = { path = "../../features/home" }
 dispatch-host = { path = "../../ops/host-manager" }
 dispatch-paycom = { path = "../../collectors/paycom" }
 dispatch-settings = { path = "../../features/settings" }
+dispatch-team = { path = "../../features/team" }
 axum = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }

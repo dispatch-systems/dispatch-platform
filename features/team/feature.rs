@@ -1,8 +1,11 @@
 //! Team & Roles: a DSP's members and the roles that grant their permissions.
-use dispatch_core::manifest::{Feature, feature, perm};
+mod api;
 
-#[path = "api/routes.rs"]
-pub mod api;
+/// Who may read the member and role lists, which the app names for a DSP path no route
+/// matches too.
+pub use api::routes::TEAM;
+
+use dispatch_core::manifest::{Feature, feature, perm};
 
 pub const FEATURE: Feature = Feature {
     permissions: &[
@@ -15,6 +18,6 @@ pub const FEATURE: Feature = Feature {
             .recently_verified(),
         perm("roles.manage", "Manage Roles", 82).group("Team"),
     ],
-    routes: api::routes,
+    routes: api::routes::routes,
     ..feature("team")
 };
