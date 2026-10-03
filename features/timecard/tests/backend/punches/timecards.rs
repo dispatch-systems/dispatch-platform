@@ -9,6 +9,16 @@ fn private() -> tempfile::TempDir {
 
 #[test]
 fn employee_history_uses_the_code_index() {
+    crate::testing::install(
+        &[
+            &crate::collectors::paycom::COLLECTOR,
+            &crate::collectors::cortex::COLLECTOR,
+        ],
+        &[
+            &crate::feature_manifests::driver_match::FEATURE,
+            &crate::feature_manifests::timecard::FEATURE,
+        ],
+    );
     let root = private();
     let file = root.path().join("paycom.sqlite");
     let db = Db::create(&file, crate::collectors::paycom::DATABASE, "").unwrap();

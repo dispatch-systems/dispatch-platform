@@ -116,6 +116,7 @@ fn a_key_keeps_its_days_first_calls_then_one_row_that_marks_the_day_capped() {
 
 #[test]
 fn calls_are_named_by_endpoint_or_tool_and_never_by_what_they_ask() {
+    crate::testing::install(&[], &[]);
     assert_eq!(surface("/api/v1/whoami").unwrap(), "rest:whoami");
     assert_eq!(surface("/api/v1/drivers/{driver}").unwrap(), "rest:driver");
     assert_eq!(surface("/api/v1/skill").unwrap(), "rest:skill");

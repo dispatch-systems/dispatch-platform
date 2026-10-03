@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Duration};
 #[tokio::test]
 async fn password_work_is_bounded_without_holding_database_slots() {
+    crate::testing::install(&[], &[]);
     let root = tempfile::tempdir().unwrap();
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();

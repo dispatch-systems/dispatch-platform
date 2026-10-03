@@ -116,6 +116,7 @@ fn a_kind_gathers_its_owners_migrations_in_order() {
 
 #[test]
 fn concurrent_legacy_dsp_adoption_accepts_the_identity_committed_while_waiting() {
+    crate::testing::install(&[], &[]);
     let root = private();
     let file = root.path().join("dsp.sqlite");
     let id = format!("dsp_{}", "1".repeat(32));
@@ -147,6 +148,7 @@ fn concurrent_legacy_dsp_adoption_accepts_the_identity_committed_while_waiting()
 
 #[test]
 fn jobs_and_schedules_from_before_the_scorecard_keep_their_rows_through_the_rebuild() {
+    crate::testing::install(&[], &[]);
     let root = private();
     // v0.0.9 names neither the scorecard job kind nor the scorecard collection.
     let jobs_schema = before_open_kinds(recorded(Kind::JOBS))
@@ -219,6 +221,7 @@ fn jobs_and_schedules_from_before_the_scorecard_keep_their_rows_through_the_rebu
 
 #[test]
 fn jobs_and_schedules_from_before_the_routes_collection_keep_their_rows_through_the_rebuild() {
+    crate::testing::install(&[], &[]);
     let root = private();
     // v0.0.12 names neither the routes job kind nor the routes collection.
     let jobs_schema = before_open_kinds(recorded(Kind::JOBS))
@@ -291,6 +294,7 @@ fn jobs_and_schedules_from_before_the_routes_collection_keep_their_rows_through_
 
 #[test]
 fn jobs_and_schedules_from_before_the_dvic_collection_keep_their_rows_through_the_rebuild() {
+    crate::testing::install(&[], &[]);
     let root = private();
     // The previous release names neither the DVIC job kind nor its schedule collection.
     let jobs_schema = before_open_kinds(recorded(Kind::JOBS)).replace(",'cortex.dvic.collect'", "");
@@ -371,6 +375,7 @@ fn jobs_and_schedules_from_before_the_dvic_collection_keep_their_rows_through_th
 
 #[test]
 fn jobs_from_before_kinds_were_open_keep_their_rows_through_the_rebuild() {
+    crate::testing::install(&[], &[]);
     let root = private();
     // The previous release lists every kind it queues.
     let jobs_schema = before_open_kinds(recorded(Kind::JOBS));
@@ -420,6 +425,7 @@ fn jobs_from_before_kinds_were_open_keep_their_rows_through_the_rebuild() {
 
 #[test]
 fn dsps_from_before_features_defaulted_off_keep_what_they_had() {
+    crate::testing::install(&[], &[]);
     let root = private();
     let file = root.path().join("platform.sqlite");
     older(
@@ -462,6 +468,7 @@ fn dsps_from_before_features_defaulted_off_keep_what_they_had() {
 
 #[test]
 fn the_scorecard_switch_starts_on_wherever_the_timecard_was() {
+    crate::testing::install(&[], &[]);
     let root = private();
     let file = root.path().join("platform.sqlite");
     let db = Db::create(&file, Kind::PLATFORM, "").unwrap();
@@ -499,6 +506,7 @@ fn the_scorecard_switch_starts_on_wherever_the_timecard_was() {
 
 #[test]
 fn migrations_a_newer_release_recorded_are_tolerated() {
+    crate::testing::install(&[], &[]);
     let root = private();
     let file = root.path().join("dsp.sqlite");
     let db = Db::create(&file, Kind::DSP, "").unwrap();
@@ -524,6 +532,7 @@ fn migrations_a_newer_release_recorded_are_tolerated() {
 
 #[test]
 fn a_failing_migration_changes_nothing() {
+    crate::testing::install(&[], &[]);
     let root = private();
     let file = root.path().join("dsp.sqlite");
     let db = Db::create(&file, Kind::DSP, "").unwrap();
@@ -553,6 +562,7 @@ fn a_failing_migration_changes_nothing() {
 
 #[test]
 fn connections_racing_to_open_first_apply_each_migration_once() {
+    crate::testing::install(&[], &[]);
     let root = private();
     // Neither statement can run twice.
     let next = Kind::DSP.migrations().last().unwrap().id + 1;

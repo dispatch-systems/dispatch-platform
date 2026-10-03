@@ -5,6 +5,16 @@ use std::os::unix::fs::PermissionsExt;
 
 #[test]
 fn a_scoped_publication_rejects_other_employees_periods_and_incomplete_captures() -> Result<()> {
+    crate::testing::install(
+        &[
+            &crate::collectors::paycom::COLLECTOR,
+            &crate::collectors::cortex::COLLECTOR,
+        ],
+        &[
+            &crate::feature_manifests::driver_match::FEATURE,
+            &crate::feature_manifests::timecard::FEATURE,
+        ],
+    );
     let root = tempfile::tempdir()?;
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700))?;
     let mut config = Config::load()?;
