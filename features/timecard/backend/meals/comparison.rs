@@ -2,7 +2,6 @@
 //! Driver Match; unique names join the drivers it has not reached yet.
 use crate::{
     contracts::{LateRule, MealComparison, MealSource},
-    driver_match::{self, DriverMatchStore},
     workforce::{self, TimecardStore},
 };
 use dispatch_core::{
@@ -11,6 +10,7 @@ use dispatch_core::{
     foundation::names::{self, Name, name_key},
 };
 use dispatch_cortex as cortex;
+use dispatch_driver_match::{self as driver_match, DriverMatchStore};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
 

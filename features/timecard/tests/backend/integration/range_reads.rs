@@ -11,7 +11,7 @@ fn install() {
     common::install(
         &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
         &[
-            &dispatch_backend::feature_manifests::driver_match::FEATURE,
+            &dispatch_driver_match::FEATURE,
             &dispatch_backend::feature_manifests::timecard::FEATURE,
         ],
     );

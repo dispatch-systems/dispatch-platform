@@ -1,6 +1,6 @@
 //! Driver Match: every person the DSP's collections know, and the decisions that join or
 //! part them. The tab lives in Settings; the feature switch and its one permission gate it.
-use crate::driver_match::DriverMatchStore;
+use crate::backend::DriverMatchStore;
 use dispatch_core::{
     Result,
     db::Store,

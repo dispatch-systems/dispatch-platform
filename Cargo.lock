@@ -603,6 +603,7 @@ dependencies = [
  "chrono-tz",
  "dispatch-core",
  "dispatch-cortex",
+ "dispatch-driver-match",
  "dispatch-home",
  "dispatch-host",
  "dispatch-paycom",
@@ -686,6 +687,19 @@ dependencies = [
  "tokio",
  "url",
  "zip",
+]
+
+[[package]]
+name = "dispatch-driver-match"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "dispatch-core",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "ts-rs",
 ]
 
 [[package]]

@@ -2,7 +2,6 @@
 //! on their own, and the rest wait for a decision that merges, splits or keeps apart.
 use dispatch_backend::{
     contracts::{DriverEventKind, DriverMatch, DriverStrength},
-    driver_match::{DriverMatchStore, valid_code},
     workforce::TimecardStore,
 };
 use dispatch_core::testing as common;
@@ -12,6 +11,7 @@ use dispatch_core::{
     mcp::api::types::{DriverSource, DriverStatus},
 };
 use dispatch_cortex::{discovery::Scope, meals};
+use dispatch_driver_match::{DriverMatchStore, valid_code};
 use dispatch_paycom::fixtures;
 use serde_json::{Value, json};
 

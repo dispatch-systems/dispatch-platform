@@ -1,7 +1,7 @@
 //! Who might be one person listed twice: someone only Paycom knows beside someone only
 //! Amazon knows, whose names come close without matching. A person decides; this only
 //! gathers the reasons.
-use crate::contracts::{DriverEvidence, DriverEvidenceKind, DriverStrength};
+use crate::api::types::{DriverEvidence, DriverEvidenceKind, DriverStrength};
 use dispatch_core::foundation::names::{Name, capitalized, short_form};
 use std::collections::BTreeSet;
 

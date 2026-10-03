@@ -2,16 +2,12 @@
 //! source calls them. Collected rows keep their sources' IDs; `person_ids` leads every ID
 //! to its person. New IDs get a person after every collection, joining someone only on a
 //! certain match; anything less waits for a decision in Settings.
-#[path = "maintenance.rs"]
-pub mod maintenance;
-#[path = "matching.rs"]
+pub(crate) mod maintenance;
 mod matching;
-#[path = "review.rs"]
 mod review;
-#[path = "sources.rs"]
 mod sources;
 
-use crate::contracts::{
+use crate::api::types::{
     Driver, DriverActivity, DriverCounts, DriverDay, DriverDetails, DriverEvent, DriverEventKind,
     DriverId, DriverLink, DriverMatch, DriverPair, DriverStrength,
 };
@@ -36,7 +32,7 @@ pub const DOMAIN: DataDomain = DataDomain::new("drivers");
 const CHECKED: &str = "driver_match.checked_at";
 /// Links saved on the meal-break page before Driver Match, which reads them as decisions and
 /// writes its own back for the previous release.
-pub(crate) const LINKS: &str = "employees.provider_links";
+pub const LINKS: &str = "employees.provider_links";
 /// Letters and digits that cannot be mistaken for one another, without U, so a code
 /// rarely spells a word.
 const ALPHABET: &[u8; 30] = b"23456789ABCDEFGHJKMNPQRSTVWXYZ";
@@ -777,7 +773,7 @@ fn overview(store: &Store, dsp: &str) -> Result<Overview> {
         usize,
         String,
         String,
-        Vec<crate::contracts::DriverEvidence>,
+        Vec<crate::api::types::DriverEvidence>,
     )> = vec![];
     for mut suggestion in suggestions {
         if let Some(days) = review::worked_days(

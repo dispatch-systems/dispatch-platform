@@ -10,7 +10,7 @@ fn a_scoped_publication_rejects_other_employees_periods_and_incomplete_captures(
     crate::testing::install(
         &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
         &[
-            &crate::feature_manifests::driver_match::FEATURE,
+            &dispatch_driver_match::FEATURE,
             &crate::feature_manifests::timecard::FEATURE,
         ],
     );

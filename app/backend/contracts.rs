@@ -4,8 +4,6 @@
 //! gathers them under one path.
 #[path = "../../features/timecard/api/assessment.rs"]
 mod assessment;
-#[path = "../../features/driver_match/api/types.rs"]
-mod driver_match;
 #[path = "../../features/dvic/api/types.rs"]
 mod dvic;
 #[cfg(test)]
@@ -31,12 +29,16 @@ pub use dispatch_core::mcp::api::types::*;
 pub use dispatch_core::platform_owner::api::types::*;
 pub use dispatch_core::server::api::types::*;
 pub use dispatch_core::tenancy::api::{audit::*, types::*};
+pub use dispatch_driver_match::{
+    Driver, DriverActivity, DriverCounts, DriverDay, DriverDetails, DriverEvent, DriverEventKind,
+    DriverEvidence, DriverEvidenceKind, DriverId, DriverLink, DriverMatch, DriverPair,
+    DriverStrength,
+};
 pub use dispatch_paycom::timecards::EmployeeTimecardPeriod;
 pub use dispatch_uniforms::{
     Uniform, UniformAdjustment, UniformEvent, UniformEventKind, UniformFit, UniformHistory,
     UniformInventory, UniformUpdates, UniformVariant,
 };
-pub use driver_match::*;
 pub use dvic::*;
 pub use meals::*;
 pub use routedata::*;

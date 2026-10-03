@@ -3,7 +3,7 @@
 mod catalog;
 mod synthetic;
 
-use crate::driver_match::DriverMatchStore;
+use crate::backend::DriverMatchStore;
 use dispatch_core::{
     Result,
     db::Store,

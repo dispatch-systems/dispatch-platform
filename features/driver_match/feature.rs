@@ -1,14 +1,22 @@
 //! Driver Match: one code per driver across Paycom and every Amazon source.
-use crate::driver_match;
+mod api;
+mod backend;
+mod mcp;
+
+/// What its API answers with, which the app writes to TypeScript.
+pub use api::types::{
+    Driver, DriverActivity, DriverCounts, DriverDay, DriverDetails, DriverEvent, DriverEventKind,
+    DriverEvidence, DriverEvidenceKind, DriverId, DriverLink, DriverMatch, DriverPair,
+    DriverStrength,
+};
+/// What Timecard, which depends on it, and the app use: its storage, the cache domain its
+/// decisions change, the links the meal-break page saved before it, and its codes' shape.
+pub use backend::{DOMAIN, DriverMatchStore, DriverSources, LINKS, valid_code};
+
 use dispatch_core::{
     db::{Kind, Migration, Migrations, migrations::Apply::Sql},
     manifest::{Audit, Feature, Switch, feature, perm},
 };
-
-#[path = "api/routes.rs"]
-mod api;
-#[path = "mcp/mod.rs"]
-pub mod mcp;
 
 pub const FEATURE: Feature = Feature {
     // A tab of Settings, not a page of its own: it matches Paycom's employees to the
@@ -19,7 +27,7 @@ pub const FEATURE: Feature = Feature {
         requires: &["timecards", "routes"],
     }),
     permissions: &[perm("driver_match.manage", "Manage Driver Match", 60)],
-    routes: api::routes,
+    routes: api::routes::routes,
     tables: &[
         ("platform", &["driver_codes"]),
         ("dsp", &["people", "person_ids", "people_apart"]),
@@ -42,13 +50,13 @@ pub const FEATURE: Feature = Feature {
             }],
         },
     ],
-    domains: &[driver_match::DOMAIN],
-    maintenance: &[driver_match::maintenance::MAINTENANCE],
-    after_collection: Some(driver_match::maintenance::after_collection),
+    domains: &[DOMAIN],
+    maintenance: &[backend::maintenance::MAINTENANCE],
+    after_collection: Some(backend::maintenance::after_collection),
     // Its events name drivers by their codes, and the log puts today's names to them.
     audit: Audit {
         subjects: &["driver"],
-        names: Some(driver_match::name_driver_events),
+        names: Some(backend::name_driver_events),
         ..Audit::NONE
     },
     mcp: mcp::MCP,

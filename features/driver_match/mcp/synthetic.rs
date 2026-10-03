@@ -1,6 +1,6 @@
 //! What Driver Match makes of the synthetic DSP, once every source holds its people: one
 //! code each.
-use crate::driver_match::DriverMatchStore;
+use crate::backend::DriverMatchStore;
 use dispatch_core::{
     Result,
     db::Store,

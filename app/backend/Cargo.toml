@@ -23,6 +23,7 @@ operator-probes = ["dispatch-cortex/operator-probes", "dispatch-paycom/operator-
 [dependencies]
 dispatch-core = { path = "../../core" }
 dispatch-cortex = { path = "../../collectors/cortex" }
+dispatch-driver-match = { path = "../../features/driver_match" }
 dispatch-home = { path = "../../features/home" }
 dispatch-host = { path = "../../ops/host-manager" }
 dispatch-paycom = { path = "../../collectors/paycom" }
@@ -44,6 +45,7 @@ reqwest = { workspace = true }
 [dev-dependencies]
 # Core's test support, and the TypeScript of every crate's API types for the export test.
 dispatch-core = { path = "../../core", features = ["testing", "ts"] }
+dispatch-driver-match = { path = "../../features/driver_match", features = ["ts"] }
 dispatch-paycom = { path = "../../collectors/paycom", features = ["ts"] }
 dispatch-uniforms = { path = "../../features/uniforms", features = ["ts"] }
 base64 = { workspace = true }

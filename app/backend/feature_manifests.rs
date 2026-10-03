@@ -1,7 +1,5 @@
 //! Each feature's manifest, its `feature.rs`: the root of its crate once features are
 //! crates of their own.
-#[path = "../../features/driver_match/feature.rs"]
-pub mod driver_match;
 #[path = "../../features/dvic/feature.rs"]
 pub mod dvic;
 #[path = "../../features/routes/feature.rs"]

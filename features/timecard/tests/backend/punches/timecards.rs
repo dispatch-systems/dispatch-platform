@@ -12,7 +12,7 @@ fn employee_history_uses_the_code_index() {
     crate::testing::install(
         &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
         &[
-            &crate::feature_manifests::driver_match::FEATURE,
+            &dispatch_driver_match::FEATURE,
             &crate::feature_manifests::timecard::FEATURE,
         ],
     );
