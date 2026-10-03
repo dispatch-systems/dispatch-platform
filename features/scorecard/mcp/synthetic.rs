@@ -177,8 +177,7 @@ fn scorecards(db: &Store, world: &mut World) -> Result<Made> {
             cortex::discovery::CollectionRequest::Scoped(scope) => scope,
         };
         db.publish_scorecard(id, &job, &capture, &scope)?;
-        db.jobs
-            .exec("UPDATE jobs SET status='succeeded' WHERE id=?", [&job])?;
+        world.collected(db, &job)?;
     }
     Ok(Some(("scorecard_weeks", json!(weeks.len()))))
 }

@@ -1069,18 +1069,7 @@ pub(crate) fn sweep_routes_step(
 ) -> Result<bool> {
     const BATCH: i64 = 2000;
     let db = store.routes_db(id)?;
-    let running: Vec<String> = store
-        .jobs
-        .query_as::<(String,)>(
-            concat!(
-                "SELECT id FROM jobs WHERE dsp_id=? AND kind=? AND status IN ",
-                crate::job_statuses!(active)
-            ),
-            params![id, JOB_KIND],
-        )?
-        .into_iter()
-        .map(|(job,)| job)
-        .collect();
+    let running = store.active_job_ids(id, JOB_KIND)?;
     let retained = match selected.as_deref() {
         Some(publication) => db
             .one_as::<(String, String)>(

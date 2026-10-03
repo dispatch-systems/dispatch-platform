@@ -185,6 +185,13 @@ impl World {
         )?;
         Ok(())
     }
+    /// Marks a job whose collection a step published itself as succeeded, as running it
+    /// would have left it.
+    pub fn collected(&self, db: &Store, job: &str) -> Result<()> {
+        db.jobs
+            .exec("UPDATE jobs SET status='succeeded' WHERE id=?", [job])?;
+        Ok(())
+    }
 }
 
 /// Fills Northline with two weeks of what every feature holds for its demo people, step

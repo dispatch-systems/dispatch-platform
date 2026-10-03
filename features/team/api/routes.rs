@@ -15,11 +15,6 @@ use std::sync::Arc;
 
 // Anyone who works with the team needs the member and role lists to do so.
 pub const TEAM: &str = "members.invite|members.manage|roles.manage";
-const INVITATIONS: &str = "SELECT i.email,COALESCE(r.name,i.role) role,i.expires_at expiresAt,\
-    i.used_at IS NOT NULL accepted FROM invitations i LEFT JOIN roles r ON r.id=i.role_id \
-    WHERE i.dsp_id=? ORDER BY i.expires_at DESC LIMIT 100";
-const REVOKE_INVITATION: &str =
-    "DELETE FROM invitations WHERE dsp_id=? AND email=? COLLATE NOCASE AND used_at IS NULL";
 
 pub fn routes() -> Vec<Route> {
     vec![
@@ -93,15 +88,13 @@ fn set_member_role(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 
 fn invitations(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    Ok(Reply::json(json!(
-        db.platform.all(INVITATIONS, [c.dsp_id()])?
-    )))
+    Ok(Reply::json(json!(db.dsp_invitations(c.dsp_id())?)))
 }
 
 fn revoke_invitation(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &["email"])?;
     let email = v::email(&input.body, "email")?;
-    db.platform.exec(REVOKE_INVITATION, [c.dsp_id(), &email])?;
+    db.revoke_invitation(c.dsp_id(), &email)?;
     db.audit(
         Some(c.actor()),
         Some(c.dsp_id()),

@@ -52,8 +52,7 @@ fn routes(db: &Store, world: &mut World) -> Result<Made> {
             .insert(day, serde_json::to_value(&capture.scope)?);
         let staged = db.stage_routes(&world.dsp, &job, capture)?;
         db.publish_routes(&world.dsp, &job, &staged)?;
-        db.jobs
-            .exec("UPDATE jobs SET status='succeeded' WHERE id=?", [&job])?;
+        world.collected(db, &job)?;
     }
     Ok(Some(("routes", json!(routes))))
 }

@@ -152,6 +152,25 @@ impl Context {
     }
 }
 impl Store {
+    /// Who did something, as a DSP sees them: a platform owner is always Platform support.
+    /// `None` once their account is gone.
+    pub fn actor_name(&self, user: &str) -> Result<Option<String>> {
+        Ok(self
+            .platform
+            .query_as::<(String, bool)>(
+                "SELECT first_name||' '||last_name,platform_owner FROM users WHERE id=?",
+                [user],
+            )?
+            .into_iter()
+            .next()
+            .map(|(name, owner)| {
+                if owner {
+                    "Platform support".to_owned()
+                } else {
+                    name
+                }
+            }))
+    }
     pub fn create_user(
         &self,
         email: &str,

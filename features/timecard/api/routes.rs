@@ -184,19 +184,7 @@ fn meal_comparison(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let date = v::text(&input.query, "date", 10, 10)?;
     // Live pages depend on current job leases, actor permissions and connection revision.
     // Check them afresh during collection rather than caching that moving visibility.
-    if db
-        .jobs
-        .one(
-            concat!(
-                "SELECT 1 FROM jobs WHERE dsp_id=? AND kind IN ",
-                "('paycom.collect','cortex.meal_breaks.collect') AND status IN ",
-                crate::job_statuses!(active),
-                " LIMIT 1"
-            ),
-            [c.dsp_id()],
-        )?
-        .is_some()
-    {
+    if db.any_active_job(c.dsp_id(), KINDS)? {
         return Reply::of(&db.meal_comparison(c.dsp_id(), date, c.dsp.timezone.as_str())?);
     }
     let comparison = c.state.read_cache.json(

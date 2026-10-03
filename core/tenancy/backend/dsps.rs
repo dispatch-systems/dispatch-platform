@@ -2,12 +2,13 @@ use super::collectors::Provider;
 use super::{
     Error, Result,
     accounts::{Auth, Context},
+    config::Config,
     contracts::{
         ConnectionStatus, Dsp, DspProfile, DspSetupRequest, DspStatus, DspSummary,
         DspSummaryLegacy, Member, OwnerStatus,
     },
     crypto,
-    db::{FromRow, Row, Store, iso, now},
+    db::{self, FromRow, Row, Store, iso, now},
     ensure,
     manifest::registry,
 };
@@ -111,6 +112,14 @@ impl Store {
     }
     pub fn serves(&self, dsp: &Dsp) -> bool {
         dsp.status == DspStatus::Active && dsp.environment == self.config.env()
+    }
+    /// The DSPs whose data is kept up: every active or suspended one.
+    pub fn kept_dsps(&self) -> Result<Vec<String>> {
+        let dsps: Vec<(String,)> = self.platform.query_as(
+            "SELECT id FROM dsps WHERE status IN ('active','suspended')",
+            [],
+        )?;
+        Ok(dsps.into_iter().map(|(id,)| id).collect())
     }
     /// `find_dsp` as JSON, for the integration tests written against it.
     pub fn get_dsp(&self, id: &str) -> Result<Value> {
@@ -463,4 +472,23 @@ impl Store {
 }
 pub fn profile_default() -> DspProfile {
     DspProfile::default()
+}
+
+/// Fails unless the platform lists the DSP, for an operator command run beside the
+/// server: it reads the platform's database read-only and changes nothing.
+pub fn ensure_listed(config: &Config, id: &str) -> Result<()> {
+    let path = config.platform().join("accounts.sqlite");
+    ensure(path.is_file(), "platform_not_initialized", 404)?;
+    db::private_file(&path, false)?;
+    let platform = db::Db(rusqlite::Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )?);
+    ensure(
+        platform
+            .one("SELECT id FROM dsps WHERE id=?", [id])?
+            .is_some(),
+        "dsp_not_found",
+        404,
+    )
 }

@@ -5,7 +5,7 @@ use crate::{
     collectors::{added_identity, cortex},
     config::Config,
     db::{self, iso},
-    ensure,
+    ensure, tenants,
 };
 use serde_json::Value;
 
@@ -24,20 +24,7 @@ pub fn run(config: &Config, args: &[String]) -> Result<Value> {
     ensure(usage, "usage_dvic_hidden_hide_unhide", 400)?;
     let dsp = args[1].as_str();
     ensure(db::identifier(dsp, "dsp_"), "invalid_dsp_id", 400)?;
-    let path = config.platform().join("accounts.sqlite");
-    ensure(path.is_file(), "platform_not_initialized", 404)?;
-    db::private_file(&path, false)?;
-    let platform = db::Db(rusqlite::Connection::open_with_flags(
-        path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )?);
-    ensure(
-        platform
-            .one("SELECT id FROM dsps WHERE id=?", [dsp])?
-            .is_some(),
-        "dsp_not_found",
-        404,
-    )?;
+    tenants::ensure_listed(config, dsp)?;
     let path = config
         .root
         .join("dsps")

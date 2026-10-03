@@ -9,25 +9,11 @@ use crate::{
         },
         paycom::{self, validation::collection_date},
     },
-    contracts::JobRow,
     db::{Store, s},
-    ensure, job_statuses,
+    ensure,
 };
-use rusqlite::params;
 use serde_json::{Value, json};
 
-const ACTIVE_OF_KIND: &str = concat!(
-    "SELECT * FROM jobs WHERE dsp_id=? AND kind=? AND status IN ",
-    job_statuses!(active),
-    " ORDER BY created_at DESC LIMIT 1"
-);
-const LATEST_FOR_DATE: &str = "SELECT * FROM jobs WHERE dsp_id=? AND kind=? \
-    AND (json_extract(request,'$.date')=? OR request='{}') ORDER BY created_at DESC LIMIT 1";
-const FAILED_STATION: &str = "SELECT * FROM jobs WHERE dsp_id=? AND kind=? \
-    AND substr(idempotency_key,1,?)=? AND status IN ('failed','cancelled') \
-    ORDER BY CASE status WHEN 'failed' THEN 0 ELSE 1 END,created_at DESC LIMIT 1";
-const BATCH: &str = "SELECT * FROM jobs WHERE dsp_id=? AND substr(idempotency_key,1,?)=? \
-    ORDER BY CASE kind WHEN 'paycom.collect' THEN 0 ELSE 1 END,idempotency_key";
 // Reuse the selected day's proven scopes. For an uncollected day, use the
 // most recently collected day's scopes, never another DSP or ALL_DSPS.
 const SCOPES: &str = "SELECT station,service_area_id,provider,timezone FROM meal_publications \
@@ -63,20 +49,15 @@ pub(crate) fn meal_sync_scopes(store: &Store, id: &str, date: &str) -> Result<Ve
 }
 fn sync_source(store: &Store, id: &str, date: &str, provider: Provider) -> Result<Value> {
     let kind = provider.job_kind();
-    let active: Option<JobRow> = store.jobs.one_as(ACTIVE_OF_KIND, params![id, kind])?;
-    let mut latest: Option<JobRow> = store
-        .jobs
-        .one_as(LATEST_FOR_DATE, params![id, kind, date])?;
+    let active = store.active_job_of(id, kind)?;
+    let mut latest = store.latest_job_for_date(id, kind, date)?;
     if let Some(row) = &latest
         && provider == cortex::PROVIDER
         && let Some((prefix, _)) = row.idempotency_key.rsplit_once(":flex:")
     {
         let prefix = format!("{prefix}:flex:");
         // A multi-station sync succeeds only when every station succeeds.
-        let failed: Option<JobRow> = store.jobs.one_as(
-            FAILED_STATION,
-            params![id, kind, prefix.chars().count() as i64, prefix],
-        )?;
+        let failed = store.stopped_job_keyed(id, kind, &prefix)?;
         if failed.is_some() {
             latest = failed;
         }
@@ -150,9 +131,8 @@ pub(crate) fn enqueue_meal_sync(
     // Replay the original batch even after discovery publishes its first
     // scope, or subsequent collections change the available stations.
     let prefix = format!("meal:{key}:");
-    let existing: Vec<JobRow> = store
-        .jobs
-        .query_as(BATCH, params![id, prefix.chars().count() as i64, prefix])?;
+    // Paycom's job first, then Cortex's stations in order.
+    let existing = store.jobs_keyed(id, &prefix, paycom::timecards::JOB_KIND)?;
     let existing: Vec<_> = existing
         .into_iter()
         .filter(|row| {

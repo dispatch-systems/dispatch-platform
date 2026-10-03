@@ -22,19 +22,12 @@ fn failed(event: &str, error: &Error) {
 
 fn clean(state: Arc<State>, expire: bool) -> Upkeep {
     Box::pin(async move {
-        let dsps = state
-            .read(|db| {
-                db.platform.query_as::<(String,)>(
-                    "SELECT id FROM dsps WHERE status IN ('active','suspended')",
-                    [],
-                )
-            })
-            .await;
+        let dsps = state.read(|db| db.kept_dsps()).await;
         let dsps = match dsps {
             Ok(dsps) => dsps,
             Err(error) => return failed("routes_cleanup_failed", &error),
         };
-        for (dsp,) in dsps {
+        for dsp in dsps {
             if expire {
                 let id = dsp.clone();
                 if let Err(error) = state

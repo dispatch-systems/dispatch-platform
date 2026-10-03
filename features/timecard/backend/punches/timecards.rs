@@ -2,7 +2,7 @@
 use crate::{
     Error, Result,
     collectors::paycom::{self, timecards::PERIOD_DAYS},
-    contracts::{EmployeeTimecardPeriod, EmployeeTimecardResponse, JobRow, Timecard},
+    contracts::{EmployeeTimecardPeriod, EmployeeTimecardResponse, Timecard},
     db::{Store, boolean, s},
     ensure,
     names::display_name,
@@ -95,11 +95,14 @@ pub(super) fn employee_timecard(
         s(&settings["values"], "name_order")
     ));
     let previous = period.shift(-1)?;
-    let job = store.jobs.one_as::<JobRow>(
-        "SELECT * FROM jobs WHERE dsp_id=? AND kind='paycom.collect' \
-         AND json_extract(request,'$.employeeCode')=? AND json_extract(request,'$.from')=? \
-         AND json_extract(request,'$.to')=? ORDER BY created_at DESC,rowid DESC LIMIT 1",
-        params![id, code, period.from, period.to],
+    let job = store.latest_job_requesting(
+        id,
+        paycom::timecards::JOB_KIND,
+        &[
+            ("employeeCode", code),
+            ("from", period.from.as_str()),
+            ("to", period.to.as_str()),
+        ],
     )?;
     Ok(EmployeeTimecardResponse {
         employee: serde_json::from_value(employee)?,

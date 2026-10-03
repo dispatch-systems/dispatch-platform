@@ -78,6 +78,23 @@ impl Store {
         )?;
         Ok(raw)
     }
+    /// A DSP's last hundred invitations, open or accepted, the latest to expire first.
+    pub fn dsp_invitations(&self, dsp: &str) -> Result<Vec<Value>> {
+        self.platform.all(
+            "SELECT i.email,COALESCE(r.name,i.role) role,i.expires_at expiresAt,\
+            i.used_at IS NOT NULL accepted FROM invitations i LEFT JOIN roles r ON r.id=i.role_id \
+            WHERE i.dsp_id=? ORDER BY i.expires_at DESC LIMIT 100",
+            [dsp],
+        )
+    }
+    /// Withdraws a DSP's open invitation to an address; an accepted one stays.
+    pub fn revoke_invitation(&self, dsp: &str, email: &str) -> Result<()> {
+        self.platform.exec(
+            "DELETE FROM invitations WHERE dsp_id=? AND email=? COLLATE NOCASE AND used_at IS NULL",
+            [dsp, email],
+        )?;
+        Ok(())
+    }
     pub fn invitation(&self, raw: &str) -> Result<Value> {
         ensure(raw.len() == 43, "invitation_expired", 404)?;
         let hash = crypto::sha(raw);

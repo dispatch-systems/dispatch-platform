@@ -928,24 +928,10 @@ pub(crate) fn name_driver_events(store: &Store, events: &mut [Value]) {
     }
 }
 
-/// Who did something, as the DSP sees them: a platform owner is always Platform support.
+/// Who did something, as the DSP sees them.
 fn actor_name(store: &Store, id: Option<&str>) -> Result<Option<String>> {
     let Some(id) = id else { return Ok(None) };
-    Ok(store
-        .platform
-        .query_as::<(String, bool)>(
-            "SELECT first_name||' '||last_name,platform_owner FROM users WHERE id=?",
-            [id],
-        )?
-        .into_iter()
-        .next()
-        .map(|(name, owner)| {
-            if owner {
-                "Platform support".to_owned()
-            } else {
-                name
-            }
-        }))
+    store.actor_name(id)
 }
 
 /// Writes the confirmed links back where the meal-break page kept them, so the previous

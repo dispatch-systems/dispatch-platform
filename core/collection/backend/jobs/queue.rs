@@ -22,6 +22,11 @@ const DSP_NAMES: &str = "SELECT id,name FROM dsps WHERE id IN (SELECT value FROM
 const METRICS: &str = "SELECT job_id,metrics FROM job_metrics \
     WHERE job_id IN (SELECT value FROM json_each(?)) ORDER BY attempt";
 const JOB: &str = "SELECT * FROM jobs WHERE id=? AND (? IS NULL OR dsp_id=?)";
+const ACTIVE_OF_KIND: &str = concat!(
+    "SELECT * FROM jobs WHERE dsp_id=? AND kind=? AND status IN ",
+    job_statuses!(active),
+    " ORDER BY created_at DESC LIMIT 1"
+);
 const ACTIVE_COUNT: &str = concat!(
     "SELECT count(*) FROM jobs WHERE dsp_id=? AND status IN ",
     job_statuses!(active)
@@ -172,6 +177,87 @@ impl Store {
     pub fn recent_jobs_in(&self, id: &str, kinds: &[&str]) -> Result<Vec<PublicJob>> {
         let kinds = serde_json::to_string(kinds)?;
         self.public_jobs(self.jobs.query_as(RECENT_IN, [id, kinds.as_str()])?)
+    }
+    /// A DSP's latest unfinished job of a kind.
+    pub fn active_job_of(&self, id: &str, kind: &str) -> Result<Option<JobRow>> {
+        self.jobs.one_as(ACTIVE_OF_KIND, params![id, kind])
+    }
+    /// The ids of a DSP's unfinished jobs of a kind.
+    pub fn active_job_ids(&self, id: &str, kind: &str) -> Result<Vec<String>> {
+        let jobs: Vec<(String,)> = self.jobs.query_as(
+            concat!(
+                "SELECT id FROM jobs WHERE dsp_id=? AND kind=? AND status IN ",
+                job_statuses!(active)
+            ),
+            params![id, kind],
+        )?;
+        Ok(jobs.into_iter().map(|(job,)| job).collect())
+    }
+    /// Whether a DSP has an unfinished job of any of these kinds.
+    pub fn any_active_job(&self, id: &str, kinds: &[&str]) -> Result<bool> {
+        let kinds = serde_json::to_string(kinds)?;
+        Ok(self
+            .jobs
+            .one(
+                concat!(
+                    "SELECT 1 FROM jobs WHERE dsp_id=? AND kind IN ",
+                    "(SELECT value FROM json_each(?)) AND status IN ",
+                    job_statuses!(active),
+                    " LIMIT 1"
+                ),
+                [id, kinds.as_str()],
+            )?
+            .is_some())
+    }
+    /// A DSP's latest job of a kind that collects `date`, or that names no date at all.
+    pub fn latest_job_for_date(&self, id: &str, kind: &str, date: &str) -> Result<Option<JobRow>> {
+        self.jobs.one_as(
+            "SELECT * FROM jobs WHERE dsp_id=? AND kind=? \
+            AND (json_extract(request,'$.date')=? OR request='{}') ORDER BY created_at DESC LIMIT 1",
+            params![id, kind, date],
+        )
+    }
+    /// A DSP's latest job of a kind whose request holds each of these fields' values.
+    pub fn latest_job_requesting(
+        &self,
+        id: &str,
+        kind: &str,
+        fields: &[(&'static str, &str)],
+    ) -> Result<Option<JobRow>> {
+        let mut sql = "SELECT * FROM jobs WHERE dsp_id=? AND kind=?".to_owned();
+        for (field, _) in fields {
+            // Field names are the code's own, never a caller's input.
+            debug_assert!(
+                field
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+            );
+            sql.push_str(&format!(" AND json_extract(request,'$.{field}')=?"));
+        }
+        sql.push_str(" ORDER BY created_at DESC,rowid DESC LIMIT 1");
+        let values = [id, kind]
+            .into_iter()
+            .chain(fields.iter().map(|(_, value)| *value));
+        self.jobs.one_as(&sql, rusqlite::params_from_iter(values))
+    }
+    /// The jobs a DSP queued under keys that begin with `prefix`, as one request queues a
+    /// batch: those of the `first` kind first, then by key.
+    pub fn jobs_keyed(&self, id: &str, prefix: &str, first: &str) -> Result<Vec<JobRow>> {
+        self.jobs.query_as(
+            "SELECT * FROM jobs WHERE dsp_id=? AND substr(idempotency_key,1,?)=? \
+            ORDER BY CASE kind WHEN ? THEN 0 ELSE 1 END,idempotency_key",
+            params![id, prefix.chars().count() as i64, prefix, first],
+        )
+    }
+    /// A DSP's latest job of a kind queued under a key that begins with `prefix` that
+    /// failed, or else was cancelled.
+    pub fn stopped_job_keyed(&self, id: &str, kind: &str, prefix: &str) -> Result<Option<JobRow>> {
+        self.jobs.one_as(
+            "SELECT * FROM jobs WHERE dsp_id=? AND kind=? \
+            AND substr(idempotency_key,1,?)=? AND status IN ('failed','cancelled') \
+            ORDER BY CASE status WHEN 'failed' THEN 0 ELSE 1 END,created_at DESC LIMIT 1",
+            params![id, kind, prefix.chars().count() as i64, prefix],
+        )
     }
     fn public_jobs(&self, rows: Vec<JobRow>) -> Result<Vec<PublicJob>> {
         if rows.is_empty() {

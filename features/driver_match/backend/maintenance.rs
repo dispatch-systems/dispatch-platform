@@ -40,19 +40,12 @@ fn catch_up(state: Arc<State>, due: bool) -> Upkeep {
         if !due {
             return;
         }
-        let dsps = state
-            .read(|db| {
-                db.platform.query_as::<(String,)>(
-                    "SELECT id FROM dsps WHERE status IN ('active','suspended')",
-                    [],
-                )
-            })
-            .await;
+        let dsps = state.read(|db| db.kept_dsps()).await;
         let dsps = match dsps {
             Ok(dsps) => dsps,
             Err(error) => return failed("driver_match_failed", &error),
         };
-        for (dsp,) in dsps {
+        for dsp in dsps {
             if let Err(error) = assign(&state, dsp).await {
                 failed("driver_match_failed", &error);
             }
