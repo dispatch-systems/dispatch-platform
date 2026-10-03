@@ -100,6 +100,23 @@ export type SettingsTab = {
   prefetch?: (tab: string, view: DspView) => string[];
 };
 
+/**
+ * A tab one feature adds to another's page. The page draws it among its own tabs, as Settings
+ * draws its settings tabs.
+ */
+export type PageTab = {
+  /** The page it is a tab of. */
+  page: DspRouteId;
+  /** The tab's address on the page, `?tab=<id>`. It never changes, so links to it keep working. */
+  id: string;
+  label: string;
+  /** Where the tab sits among the page's tabs, lowest first. */
+  order: number;
+  /** Loads the tab's code. */
+  load: () => Promise<unknown>;
+  render: (context: DspPageContext) => ReactNode;
+};
+
 /** A part of an audit log sentence: plain words, or words to stress. */
 export type AuditPart = string | { strong: string };
 /** What the audit log writes its sentences with. */
@@ -205,6 +222,8 @@ export type FrontendFeature = {
   routes?: readonly Route[];
   /** Its tabs on a DSP's Settings page. */
   settingsTabs?: readonly SettingsTab[];
+  /** Its tabs on another feature's page. */
+  pageTabs?: readonly PageTab[];
   /** Loads how its events read in the audit log. */
   auditWording?: () => Promise<AuditWording>;
   /** The kinds of its data agents may read. */
@@ -245,6 +264,13 @@ export function routeOf(scope: Route['scope'], page: string): Route | undefined 
 
 /** Every owner's tabs on a DSP's Settings page, in the order the owners are listed. */
 export const settingsTabs = () => installed.flatMap((feature) => feature.settingsTabs ?? []);
+
+/** The tabs other features add to `page`, in their order. */
+export const pageTabs = (page: string) =>
+  installed
+    .flatMap((feature) => feature.pageTabs ?? [])
+    .filter((tab) => tab.page === page)
+    .sort((a, b) => a.order - b.order);
 
 /** The icon of a page's switch. */
 export const switchIcon = (id: string) =>

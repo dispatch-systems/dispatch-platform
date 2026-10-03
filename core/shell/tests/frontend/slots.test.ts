@@ -16,12 +16,14 @@ import {
   errorLabelOf,
   installFeatures,
   isLongPoll,
+  pageTabs,
   readToggles,
   scheduleIssueOf,
   switchIcon,
   type CollectionLabels,
   type ConnectionCard,
   type DspRoute,
+  type PageTab,
   type ReadToggles,
 } from '../../frontend/runtime/slots.js';
 
@@ -188,4 +190,25 @@ test('opening a DSP again returns to the last page open, unless that page is not
   assert.equal(dspHash('dsp_fixture'), '#dsp/dsp_fixture/team');
   rememberDestination('dsp_fixture', 'settings');
   assert.equal(dspHash('dsp_fixture'), '#dsp/dsp_fixture/team');
+});
+
+test("a page's tabs from other features come in their order, ties in the order they are listed", () => {
+  const tab = (page: PageTab['page'], id: string, order: number): PageTab => ({
+    page,
+    id,
+    label: id,
+    order,
+    load: () => Promise.resolve(),
+    render: () => id,
+  });
+  installFeatures([
+    { name: 'alpha', pageTabs: [tab('team', 'alpha-late', 30), tab('settings', 'elsewhere', 1)] },
+    { name: 'beta', pageTabs: [tab('team', 'beta', 10)] },
+    { name: 'gamma', pageTabs: [tab('team', 'gamma', 30)] },
+  ]);
+  assert.deepEqual(
+    pageTabs('team').map((each) => each.id),
+    ['beta', 'alpha-late', 'gamma'],
+  );
+  assert.deepEqual(pageTabs('uniforms'), []);
 });

@@ -97,3 +97,12 @@ test("each error code is worded once, and core's own wording doesn't hide an own
   );
   for (const [code, label] of worded) assert.equal(errorLabel(code), label, code);
 });
+
+test("each page's tabs from other features have their own addresses on it", () => {
+  const tabs = features.flatMap((feature) => feature.pageTabs ?? []);
+  for (const page of new Set(tabs.map((tab) => tab.page)))
+    once(
+      tabs.filter((tab) => tab.page === page).map((tab) => tab.id),
+      `${page}'s tabs`,
+    );
+});
