@@ -1,33 +1,28 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { holds, pendingNames } from './support/pending.js';
-import { isTestFile, ownerOf, type Layer } from './support/repo.js';
+import { declared } from './support/manifests.js';
+import { isTestFile, ownerOf } from './support/repo.js';
 import { lexFile, rust } from './support/rust.js';
 import { imports, scriptFiles } from './support/typescript.js';
 
-// Each owner's TypeScript reaches only what its layer may: a feature itself, core, and the
-// features and collectors it declares (dependencies.test.ts holds which); a collector itself
-// and core; core only core. Only the app imports features and collectors to list them.
-// plans/restructure/enforcement.md, section 3; dashboard-structure.test.ts holds the front
-// doors between frontends.
-const reachable: Record<Exclude<Layer, 'app'>, Layer[]> = {
-  feature: ['core', 'collector', 'feature'],
-  collector: ['core'],
-  core: ['core'],
-};
+// Each owner's TypeScript reaches only itself, core, and for a feature the features and
+// collectors its manifest declares; core reaches only core. Only the app imports features
+// and collectors to list them. plans/restructure/enforcement.md, section 3. Front doors
+// between frontends are dashboard-structure.test.ts's.
 /** The owner, or the top two folders, a file belongs to. */
 const unitOf = (file: string) => ownerOf(file)?.dir ?? file.split('/').slice(0, 2).join('/');
 
-test("each owner's TypeScript imports only what its layer may", () => {
+test("each owner's TypeScript imports only itself, core and what it declares", () => {
   const reaches = new Set<string>();
   for (const file of scriptFiles()) {
     const owner = ownerOf(file);
     if (!owner || owner.layer === 'app') continue;
+    const may = declared(owner);
     const test = isTestFile(file);
     for (const { target } of imports(file)) {
       const to = ownerOf(target);
-      if (to?.dir === owner.dir) continue;
-      if (to && to.layer !== 'app' && reachable[owner.layer].includes(to.layer)) continue;
+      if (to?.dir === owner.dir || to?.layer === 'core' || (to && may.has(to.dir))) continue;
       // Tests may run on the tooling's harness and drive the services they exercise.
       if (test && /^(tooling|services)\//.test(target)) continue;
       reaches.add(`${owner.dir}${test ? "'s tests import" : ' imports'} ${unitOf(target)}`);

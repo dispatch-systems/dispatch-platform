@@ -28,7 +28,7 @@ const retired: { name: string; allowed: (at: string) => boolean }[] = [
   // Timecard's meal breaks, and the meal data a collector reads from its site.
   { name: 'meals', allowed: (at) => /^(features\/timecard|collectors)\//.test(at) },
   { name: 'drivers', allowed: () => false },
-  // Driver Match's directory is driver_match; its words may name its components.
+  // Driver Match's directory and modules are driver_match; its words may name components.
   { name: 'driver-match', allowed: () => false },
   // A collector's page script that signs in to its site.
   { name: 'auth', allowed: (at) => /^collectors\/[^/]+\/scripts\//.test(at) },
@@ -50,6 +50,14 @@ function retiredIn(name: string): string[] {
     );
 }
 const allowedAt = (old: string, at: string) => retired.find((r) => r.name === old)!.allowed(at);
+/**
+ * A current feature's or collector's name in kebab case, as TypeScript and CSS files spell
+ * names: `driver-match.spec.ts`. As a folder or module it stays retired.
+ */
+const kebab = new Set(
+  [...features(), ...collectors()].map(({ name }) => name.replaceAll('_', '-')),
+);
+const scriptOrStyle = (at: string) => /\.(tsx?|css)$/.test(at);
 
 // A database keeps its name on disk and in its migrations' folders, so it may be named so.
 const databaseName = (at: string) =>
@@ -60,7 +68,8 @@ test('a retired name comes back as no module, file or folder', () => {
   const check = (name: string, at: string, what: string) => {
     if (databaseName(at)) return;
     for (const old of retiredIn(name))
-      if (!allowedAt(old, at)) found.push(`${what} ${at} is named ${old}`);
+      if (!allowedAt(old, at) && !(what === 'file' && scriptOrStyle(at) && kebab.has(old)))
+        found.push(`${what} ${at} is named ${old}`);
   };
   const folders = new Set<string>();
   for (const file of files) {

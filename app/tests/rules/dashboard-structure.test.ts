@@ -152,7 +152,7 @@ const entries = [
   'core/accounts/frontend/settings/tabs.ts',
 ];
 
-test('an owner reaches another only through a front door or public entry, and a feature never another', () => {
+test('an owner reaches another only through a front door or public entry', () => {
   assert(
     modules.some(({ file }) => layer(file) === 'features'),
     'features must contain their screens',
@@ -164,21 +164,17 @@ test('an owner reaches another only through a front door or public entry, and a 
       doors(to).includes(target) || entries.includes(target),
       `${file} imports ${target}; use the owner's feature.ts, index.ts, api/client.ts or a declared public entry`,
     );
-    // Features meet only in the slots their hosts offer.
-    assert(
-      layer(file) !== 'features' || layer(target) !== 'features',
-      `${file} imports ${target}; move what they share to core, or fill a slot`,
-    );
   }
 });
 
 test("features and collectors build on core's ui, lib, runtime and public entries only", () => {
   for (const { file, target } of edges) {
     if (owner(target) === owner(file)) continue;
-    if (layer(file) === 'features')
+    // Which features a feature may import is what it declares: encapsulation.test.ts.
+    if (layer(file) === 'features' && layer(target) !== 'features')
       assert(
         layer(target) === 'core' && shellArea(target) !== 'shell',
-        `${file} imports ${target}; a feature may import core's ui, lib, runtime and public entries, and itself`,
+        `${file} imports ${target}; a feature may import core's ui, lib, runtime and public entries, itself and the features it declares`,
       );
     if (layer(file) === 'collectors')
       assert(

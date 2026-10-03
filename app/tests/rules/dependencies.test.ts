@@ -13,12 +13,11 @@ import {
   type Owner,
 } from './support/repo.js';
 import { lex, rust, useTree } from './support/rust.js';
-import { imports, scriptFiles } from './support/typescript.js';
 
 // Dependencies point one way, app → features → collectors → core, and are declared: a
 // feature's manifest names the features and collectors it uses, its Cargo.toml lists the
-// same, and its code reaches nothing else. plans/restructure/enforcement.md, sections 1 and 3.
-// Which kinds of owner a file may import at all is encapsulation.test.ts's rule.
+// same, and its Rust reaches nothing else. plans/restructure/enforcement.md, sections 1 and 3.
+// What a feature's TypeScript may import is encapsulation.test.ts's rule, from the same list.
 
 /** What an owner may use: core and itself always, and a feature what it declares. */
 function allowed(owner: Owner): Set<string> {
@@ -92,21 +91,6 @@ test("each owner's Rust names only core, itself and what it declares", () => {
   holds('dependencies', 'rust', reaches);
 });
 
-test("a feature's TypeScript imports only the features and collectors it declares", () => {
-  const reaches = new Set<string>();
-  for (const file of scriptFiles()) {
-    const owner = ownerOf(file);
-    if (!owner || owner.layer !== 'feature') continue;
-    const may = allowed(owner);
-    for (const { target } of imports(file)) {
-      const to = ownerOf(target);
-      if (to && ['feature', 'collector'].includes(to.layer) && !may.has(to.dir))
-        reaches.add(`${owner.dir} imports ${to.dir}`);
-    }
-  }
-  holds('dependencies', 'typescript', reaches);
-});
-
 test('the module tree follows use trees, re-exports, globs and #[path] mounts', () => {
   assert.deepEqual(useTree('crate::{a, b::{c as d, *}, e::self}'), [
     { segments: ['crate', 'a'], glob: false },
@@ -131,5 +115,5 @@ test('the module tree follows use trees, re-exports, globs and #[path] mounts', 
 });
 
 test('pending.json names only these checks', () => {
-  pendingNames('dependencies', ['cargo', 'rust', 'typescript']);
+  pendingNames('dependencies', ['cargo', 'rust']);
 });
