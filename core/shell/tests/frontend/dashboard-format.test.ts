@@ -5,7 +5,6 @@ import {
   countdown,
   duration,
   elapsed,
-  personName,
   time,
   timeOfDay,
   timeWithSeconds,
@@ -15,25 +14,6 @@ import {
 import { backoff } from '../../frontend/lib/backoff.js';
 import { messageOf } from '../../frontend/lib/errors.js';
 import { sourceLink } from '../../frontend/lib/source.js';
-import {
-  hoursAndMinutes,
-  punchTime,
-  timecardDate,
-  timecardPeriod,
-} from '../../../../features/timecard/frontend/timecard-format.js';
-
-test('employee timecards format local clocks and rounded minutes without timezone shifts', () => {
-  assert.equal(hoursAndMinutes(8.5), '8h 30m');
-  assert.equal(hoursAndMinutes(9.999), '10h 00m');
-  assert.equal(hoursAndMinutes(0), '0h 00m');
-  assert.equal(punchTime('00:05'), '12:05 AM');
-  assert.equal(punchTime('12:00'), '12:00 PM');
-  assert.equal(punchTime('17:30:00'), '5:30 PM');
-  assert.equal(punchTime(null), '—');
-  assert.equal(punchTime('Pending'), 'Pending');
-  assert.equal(timecardDate('2026-09-19'), 'Sat, Sep 19');
-  assert.match(timecardPeriod('2026-12-28', '2027-01-10'), /2026.*2027/);
-});
 
 test('timestamps read in the timezone they are given', () => {
   assert.equal(time('2026-09-18T15:03:25Z', 'America/Chicago'), 'Sep 18, 10:03 AM');
@@ -83,15 +63,6 @@ test('byte counts use binary units', () => {
   assert.equal(bytes(700.5 * 1024 ** 2, 'MiB'), '701 MiB');
   assert.equal(bytes(734_003_200, 'MiB', 1), '700.0 MiB');
   assert.equal(bytes(1.26 * 1024 ** 3, 'GiB', 1), '1.3 GiB');
-});
-
-test('names follow the chosen order and keep a provider’s own Last, First', () => {
-  assert.equal(personName('Morgan, Alex', 'first_last'), 'Alex Morgan');
-  assert.equal(personName('Morgan, Alex', 'last_first'), 'Morgan, Alex');
-  assert.equal(personName('Alex  J Morgan', 'last_first'), 'Morgan, Alex J');
-  assert.equal(personName('Alex  J Morgan', 'first_last'), 'Alex J Morgan');
-  assert.equal(personName('Cher', 'last_first'), 'Cher');
-  assert.equal(personName('Cher,', 'last_first'), 'Cher');
 });
 
 test('retries back off from one second to fifteen', () => {

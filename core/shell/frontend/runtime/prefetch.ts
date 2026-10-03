@@ -85,5 +85,8 @@ export function cancelPrefetches(owner?: string) {
   }
 }
 
-document.addEventListener('visibilitychange', schedule);
-window.addEventListener('online', schedule);
+// Outside a browser, where the route table's tests load the manifests, nothing is ever queued.
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', schedule);
+  window.addEventListener('online', schedule);
+}

@@ -12,7 +12,7 @@ import {
   uniformSizePresets,
   uniformCategoryPresets,
 } from '../../../shared/contracts/uniforms.js';
-import { saveUniform } from '../../../core/shell/frontend/runtime/endpoints.js';
+import { saveUniform } from '../api/client.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { ErrorBox, Modal } from '../../../core/shell/frontend/ui/index.js';
 

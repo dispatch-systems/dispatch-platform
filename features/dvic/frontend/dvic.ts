@@ -1,5 +1,5 @@
 import type { DvicInspection, DvicInspections } from '../../../shared/contracts/dvic.js';
-import { shiftDate } from '../../timecard/frontend/meal-breaks.js';
+import { shiftDate } from '../../../core/shell/frontend/lib/day.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 
 export const weekStart = (date: string) =>

@@ -1,10 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { MailMessage, PlatformHealth } from '../../../../shared/contracts/index.js';
-import {
-  discardMail,
-  retryMail,
-  usePlatformMail,
-} from '../../../shell/frontend/runtime/endpoints.js';
+import { discardMail, retryMail, usePlatformMail } from '../../api/client.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import {
   Badge,

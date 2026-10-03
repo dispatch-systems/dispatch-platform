@@ -4,7 +4,7 @@ import type { DspSummary } from '../../../../shared/contracts/index.js';
 import { useUpdateState } from '../../../shell/frontend/runtime/browser-update.js';
 import { api } from '../../../shell/frontend/runtime/api.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
-import { usePlatformDsps } from '../../../shell/frontend/runtime/endpoints.js';
+import { usePlatformDsps } from '../../api/client.js';
 import {
   hashQuery,
   navigate,

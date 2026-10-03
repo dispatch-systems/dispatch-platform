@@ -5,7 +5,7 @@ import { ErrorBox, Modal } from '../../../../core/shell/frontend/ui/index.js';
 import type { CollectionSchedule, ScheduleInput } from '../../../../shared/contracts/schedules.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { nextCollection } from './nextCollection.js';
-import { saveSchedule, removeSchedule } from '../../../../core/shell/frontend/runtime/endpoints.js';
+import { saveSchedule, removeSchedule } from '../../../../core/collection/api/client.js';
 
 const newSchedule = (): ScheduleInput => ({
   name: '',

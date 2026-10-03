@@ -1,5 +1,5 @@
 import type { DspSummary } from '../../../../shared/contracts/index.js';
-import { setDspFeature } from '../../../shell/frontend/runtime/endpoints.js';
+import { setDspFeature } from '../../api/client.js';
 import {
   capabilityLabel,
   featureCatalog,

@@ -2,10 +2,7 @@ import { useState } from 'react';
 import { History, Plus } from 'lucide-react';
 import type { DspView } from '../../../shared/contracts/index.js';
 import type { Uniform } from '../../../shared/contracts/uniforms.js';
-import {
-  archiveUniform,
-  initializeUniforms,
-} from '../../../core/shell/frontend/runtime/endpoints.js';
+import { archiveUniform, initializeUniforms } from '../api/client.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { ConfirmDialog, DataState, Empty, Header } from '../../../core/shell/frontend/ui/index.js';

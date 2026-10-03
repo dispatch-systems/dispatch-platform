@@ -1,6 +1,6 @@
 import { useDeferredValue, useMemo, useState } from 'react';
 import { useUpdateState } from '../../../../core/shell/frontend/runtime/browser-update.js';
-import { useDriverMatch } from '../../../../core/shell/frontend/runtime/endpoints.js';
+import { useDriverMatch } from '../../api/client.js';
 import { useTableState } from '../../../../core/shell/frontend/runtime/useTableState.js';
 import { dateFormatter } from '../../../../core/shell/frontend/lib/date-format.js';
 import { time } from '../../../../core/shell/frontend/lib/format.js';

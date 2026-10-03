@@ -4,6 +4,7 @@
     "core/shell/tests/frontend/calendar.test.ts",
     "core/platform_owner/tests/frontend/collection-history.test.ts",
     "core/shell/tests/frontend/csv.test.ts",
+    "features/timecard/tests/frontend/daily-sort.test.ts",
     "core/shell/tests/frontend/dashboard-format.test.ts",
     "app/tests/rules/dashboard-structure.test.ts",
     "core/shell/tests/frontend/data-policy.test.ts",
@@ -14,6 +15,7 @@
     "features/timecard/tests/frontend/meal-breaks.test.ts",
     "core/tenancy/tests/frontend/permissions.test.ts",
     "core/shell/tests/frontend/response-cache.test.ts",
+    "features/timecard/tests/frontend/timecard-format.test.ts",
     "features/uniforms/tests/frontend/uniforms.test.ts",
     "app/tests/rules/unused-css.test.ts"
   ],

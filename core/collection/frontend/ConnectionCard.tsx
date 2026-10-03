@@ -8,7 +8,7 @@ import { Badge, ConfirmDialog, DataState, ErrorBox, Modal } from '../../shell/fr
 import { time, title } from '../../shell/frontend/lib/format.js';
 import { messageOf } from '../../shell/frontend/lib/errors.js';
 import { useAction } from '../../shell/frontend/runtime/useAction.js';
-import { connectionUrl, useConnection } from '../../shell/frontend/runtime/endpoints.js';
+import { connectionUrl, useConnection } from '../api/client.js';
 
 export function ConnectionCard({
   development,

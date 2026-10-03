@@ -5,12 +5,12 @@ them to the screenshots bucket and print the PR's Screenshots section.
     npm run pr:screenshots -- capture <before|after> <screen>... [--dark]
     npm run pr:screenshots -- publish [--reviewed]
 
-Screens are page ids from `app/frontend/route-meta.ts`. Captures go to the worktree's
-scratch directory, `/tmp/dispatch-<worktree>/screenshots/<label>/`. Publishing audits them
-with the export privacy check first; the images it has not seen need a visual review, which
-`--reviewed` asserts, and are then recorded in the private review manifest. Each image then
-goes to R2 under its SHA-256, through the private upload settings, and the section links it
-through the screenshots Worker.
+Screens are page ids, as each owner's `frontend/feature.ts` declares them. Captures go to the
+worktree's scratch directory, `/tmp/dispatch-<worktree>/screenshots/<label>/`. Publishing
+audits them with the export privacy check first; the images it has not seen need a visual
+review, which `--reviewed` asserts, and are then recorded in the private review manifest. Each
+image then goes to R2 under its SHA-256, through the private upload settings, and the section
+links it through the screenshots Worker.
 """
 import argparse
 from datetime import datetime, timezone
@@ -256,7 +256,7 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     cap = commands.add_parser("capture", help="photograph screens into the scratch directory")
     cap.add_argument("label", choices=LABELS)
-    cap.add_argument("screens", nargs="+", help="page ids from app/route-meta.ts")
+    cap.add_argument("screens", nargs="+", help="page ids from the owners' frontend/feature.ts")
     cap.add_argument("--dark", action="store_true", help="capture the dark color scheme")
     pub = commands.add_parser("publish", help="audit, upload to the screenshots bucket, print the section")
     pub.add_argument("--reviewed", action="store_true",

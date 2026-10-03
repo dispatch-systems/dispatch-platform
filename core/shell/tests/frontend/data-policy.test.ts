@@ -5,8 +5,6 @@ import {
   mutationAffects,
   type CollectionChange,
 } from '../../frontend/lib/data-policy.js';
-import { sortDailyRows } from '../../../../features/timecard/frontend/daily-sort.js';
-import type { DailyTimecard } from '../../../../shared/contracts/index.js';
 
 test('a driver checkpoint touches its employee and days, not another driver, roster, or feature', () => {
   const changes: CollectionChange[] = [
@@ -62,30 +60,6 @@ test('writes invalidate their dependencies without flushing unrelated features',
   assert.equal(mutationAffects('/api/dsp/employees/A/sync', '/api/dsp/employees/A'), true);
   assert.equal(mutationAffects('/api/dsp/employees/A/sync', '/api/dsp/employees/B'), false);
   assert.equal(mutationAffects('/api/session/dsp', '/api/platform/dsps'), false);
-});
-
-test('daily sorting is numeric and keeps ascending codes for descending ties without mutating rows', () => {
-  const row = (employeeCode: string, hours: number): DailyTimecard => ({
-    employeeCode,
-    hours,
-    name: 'Same',
-    date: '2026-09-22',
-    status: 'Complete',
-    punches: [],
-  });
-  const rows = [row('B', 8), row('A', 8), row('C', 12)];
-  assert.deepEqual(
-    sortDailyRows(rows, 'totalHours', true).map((r) => r.employeeCode),
-    ['C', 'A', 'B'],
-  );
-  assert.deepEqual(
-    sortDailyRows(rows, 'name', true).map((r) => r.employeeCode),
-    ['A', 'B', 'C'],
-  );
-  assert.deepEqual(
-    rows.map((r) => r.employeeCode),
-    ['B', 'A', 'C'],
-  );
 });
 
 test('roster changes refresh department options without treating each driver as a settings change', () => {

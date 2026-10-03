@@ -4,7 +4,7 @@ import type { BrowserFrame, BrowserInput } from '../../../shared/contracts/brows
 import { api, ApiError } from '../../shell/frontend/runtime/api.js';
 import { ErrorBox, Loading, Modal } from '../../shell/frontend/ui/index.js';
 import { messageOf } from '../../shell/frontend/lib/errors.js';
-import { connectionUrl } from '../../shell/frontend/runtime/endpoints.js';
+import { connectionUrl } from '../api/client.js';
 
 export function BrowserVerification({
   sessionId,

@@ -26,13 +26,7 @@ import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { RoleSheet } from './RoleSheet.js';
 import { RolesTab } from './RolesTab.js';
 import { assignable } from './assignable.js';
-import {
-  useMembers,
-  inviteMember,
-  setMemberRole,
-  useRoles,
-  removeRole,
-} from '../../../core/shell/frontend/runtime/endpoints.js';
+import { useMembers, inviteMember, setMemberRole, useRoles, removeRole } from '../api/client.js';
 
 type Invitation = { email: string; role: string; expiresAt: number; accepted: boolean };
 const actions = <span className="sr-only">Actions</span>;

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Driver } from '../../../shared/contracts/index.js';
-import { mergeDrivers } from '../../../core/shell/frontend/runtime/endpoints.js';
+import { mergeDrivers } from '../api/client.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { driverMatches, statusLabels } from './driver-match.js';
 import { ErrorBox, Modal, SearchInput } from '../../../core/shell/frontend/ui/index.js';

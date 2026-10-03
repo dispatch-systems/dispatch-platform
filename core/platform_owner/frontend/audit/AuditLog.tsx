@@ -20,21 +20,21 @@ import {
 } from 'lucide-react';
 import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
 import type { AuditArea, AuditChange, AuditEvent } from '../../../../shared/contracts/index.js';
-import { useAuditPage, exportAudit } from '../../../shell/frontend/runtime/endpoints.js';
+import { useAuditPage, exportAudit } from '../../api/client.js';
 import { DataState, Empty, ErrorBox, SearchInput } from '../../../shell/frontend/ui/index.js';
 import { downloadCsv } from '../../../shell/frontend/lib/csv.js';
-import { deviceTimezone, timeOfDay, title } from '../../../shell/frontend/lib/format.js';
+import { deviceTimezone, timeOfDay } from '../../../shell/frontend/lib/format.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import {
   changeText,
   changeValue,
   facts,
   failure,
-  fields,
+  fieldLabel,
+  isSpoken,
   notes,
   plain,
   sentence,
-  spoken,
   quiet,
   support,
   views,
@@ -69,7 +69,7 @@ function Change({ change }: { change: AuditChange }) {
     );
   return (
     <span className="audit-change">
-      {change.field !== 'role' && <span>{fields[change.field] ?? title(change.field)}</span>}
+      {change.field !== 'role' && <span>{fieldLabel(change.field)}</span>}
       {change.from !== null && <span className="audit-pill old">{value(change.from)}</span>}
       {change.from !== null && change.to !== null && <ArrowRight size={12} aria-hidden />}
       {change.to !== null && <span className="audit-pill">{value(change.to)}</span>}
@@ -204,7 +204,7 @@ export function AuditLog() {
           ...notes(event, false),
           ...event.changes.filter((change) => !facts.has(change.field)).map(changeText),
           ...(event.changes.some((change) => !facts.has(change.field)) ||
-          spoken.has(event.action) ||
+          isSpoken(event.action) ||
           !event.detail
             ? []
             : [event.detail]),
@@ -348,7 +348,7 @@ export function AuditLog() {
                         : sentence(event);
                       const edits = event.changes.filter((change) => !facts.has(change.field));
                       const granted = edits.filter((change) => change.field === 'permission');
-                      const detail = !edits.length && !spoken.has(event.action) && event.detail;
+                      const detail = !edits.length && !isSpoken(event.action) && event.detail;
                       // The second line reads left to right, its parts set apart by dots.
                       const second: ReactNode[] = run
                         ? []

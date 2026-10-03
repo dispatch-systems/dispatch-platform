@@ -1,4 +1,5 @@
 import { title } from '../../core/shell/frontend/lib/format.js';
+import { features } from './features.js';
 
 export type RouteMeta = {
   id: string;
@@ -8,82 +9,11 @@ export type RouteMeta = {
   parent?: string;
 };
 
-// Every page's address and label, free of components so that any module may read them;
-// app/routes.tsx gives each one its navigation, access and component.
-export const routeMeta = [
-  {
-    id: 'overview',
-    scope: 'dsp',
-    label: 'Home Page',
-  },
-  {
-    id: 'paycom',
-    scope: 'dsp',
-    label: 'Timecard',
-  },
-  {
-    id: 'paycom-settings',
-    scope: 'dsp',
-    label: 'Timecard',
-    parent: 'paycom',
-  },
-  {
-    id: 'uniforms',
-    scope: 'dsp',
-    label: 'Uniform Inventory',
-  },
-  {
-    id: 'dvic',
-    scope: 'dsp',
-    label: 'DVIC',
-  },
-  {
-    id: 'team',
-    scope: 'dsp',
-    label: 'Team & Roles',
-  },
-  {
-    id: 'settings',
-    scope: 'dsp',
-    label: 'Settings',
-  },
-  {
-    id: 'dsps',
-    scope: 'platform',
-    label: 'DSPs',
-  },
-  {
-    id: 'jobs',
-    scope: 'platform',
-    label: 'Diagnostics',
-  },
-  {
-    id: 'agents',
-    scope: 'platform',
-    label: 'Agents',
-  },
-  {
-    id: 'authorize',
-    scope: 'platform',
-    label: 'Connect an app',
-    parent: 'agents',
-  },
-  {
-    id: 'audit',
-    scope: 'platform',
-    label: 'Audit log',
-  },
-  {
-    id: 'account',
-    scope: 'platform',
-    label: 'Settings',
-  },
-] as const satisfies readonly RouteMeta[];
+// Every page's address and label, as the owners' manifests declare them, without their
+// components.
+export const routeMeta: readonly RouteMeta[] = features.flatMap((feature) =>
+  (feature.routes ?? []).map(({ id, scope, label, parent }) => ({ id, scope, label, parent })),
+);
 
-type Declared = (typeof routeMeta)[number];
-export type DspRouteId = Extract<Declared, { scope: 'dsp' }>['id'];
-export type PlatformRouteId = Extract<Declared, { scope: 'platform' }>['id'];
-
-const table: readonly RouteMeta[] = routeMeta;
 export const routeLabel = (scope: RouteMeta['scope'], page: string) =>
-  table.find((route) => route.scope === scope && route.id === page)?.label ?? title(page);
+  routeMeta.find((route) => route.scope === scope && route.id === page)?.label ?? title(page);

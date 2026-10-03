@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { uniformFitLabels } from '../../../shared/contracts/uniforms.js';
-import { useUniformHistory } from '../../../core/shell/frontend/runtime/endpoints.js';
+import { useUniformHistory } from '../api/client.js';
 import { DataState, Empty, Modal } from '../../../core/shell/frontend/ui/index.js';
 import { time } from '../../../core/shell/frontend/lib/format.js';
 

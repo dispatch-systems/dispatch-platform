@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { KeyRound, ShieldCheck, Smartphone } from 'lucide-react';
 import type { AuthenticatorSetup } from '../../../../shared/contracts/index.js';
 import { api } from '../../../shell/frontend/runtime/api.js';
-import { usePasskeys, useSecurityStatus } from '../../../shell/frontend/runtime/endpoints.js';
+import { usePasskeys, useSecurityStatus } from '../../api/client.js';
 import { registerPasskey } from '../../../shell/frontend/runtime/passkeys.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import {

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { UniformAdjustment, UniformInventory } from '../../../shared/contracts/uniforms.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { ApiError } from '../../../core/shell/frontend/runtime/api.js';
-import { getUniformUpdates } from '../../../core/shell/frontend/runtime/endpoints.js';
+import { getUniformUpdates } from '../api/client.js';
 import { backoff } from '../../../core/shell/frontend/lib/backoff.js';
 import { messageOf } from '../../../core/shell/frontend/lib/errors.js';
 import { applyUniformAdjustments, applyUniformSnapshot, applyUniformUpdates } from './uniforms.js';

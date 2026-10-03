@@ -2,7 +2,7 @@ import { AlertTriangle } from 'lucide-react';
 import type { Job } from '../../../shared/contracts/index.js';
 import { Badge } from '../../../core/shell/frontend/ui/index.js';
 import { time, timeOfDay, title } from '../../../core/shell/frontend/lib/format.js';
-import { localDate } from './meal-breaks.js';
+import { localDate } from '../../../core/shell/frontend/lib/day.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 
 export type SyncSource = {

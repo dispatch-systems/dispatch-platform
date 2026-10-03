@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CircleCheck, Send } from 'lucide-react';
 import type { AgentWhoami } from '../../../../shared/contracts/index.js';
-import { agentWhoami } from '../../../shell/frontend/runtime/endpoints.js';
+import { agentWhoami } from '../../api/client.js';
 import { errorLabel } from '../../../shell/frontend/runtime/api.js';
 import { accessLabels } from './agents.js';
 import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';

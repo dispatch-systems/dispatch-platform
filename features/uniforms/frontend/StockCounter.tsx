@@ -3,7 +3,7 @@ import { Minus, Plus } from 'lucide-react';
 import type { UniformAdjustment, UniformVariant } from '../../../shared/contracts/uniforms.js';
 import { uniformFitLabels } from '../../../shared/contracts/uniforms.js';
 import { ApiError, view } from '../../../core/shell/frontend/runtime/api.js';
-import { adjustUniform } from '../../../core/shell/frontend/runtime/endpoints.js';
+import { adjustUniform } from '../api/client.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { randomId } from '../../../core/shell/frontend/lib/random-id.js';
 

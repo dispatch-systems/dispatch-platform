@@ -1,6 +1,6 @@
 import { Check, CircleAlert, CircleCheck, GitMerge, Link2 } from 'lucide-react';
 import type { DriverPair } from '../../../shared/contracts/index.js';
-import { keepDriversApart, mergeDrivers } from '../../../core/shell/frontend/runtime/endpoints.js';
+import { keepDriversApart, mergeDrivers } from '../api/client.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { dataLabels, evidenceSupports, evidenceText, firstId, shortId } from './driver-match.js';
 import { DriverButton } from './DriverButton.js';

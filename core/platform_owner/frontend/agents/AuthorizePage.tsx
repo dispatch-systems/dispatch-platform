@@ -13,7 +13,7 @@ import {
   readOAuthRequest,
   useAgentKeys,
   useOAuthRequest,
-} from '../../../shell/frontend/runtime/endpoints.js';
+} from '../../api/client.js';
 import { hashQuery, platformHash } from '../../../shell/frontend/runtime/navigation.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { appKindName, blankKey } from './agents.js';

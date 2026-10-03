@@ -23,7 +23,7 @@ import {
   useSchedules,
   getSchedules,
   setScheduleEnabled,
-} from '../../../../core/shell/frontend/runtime/endpoints.js';
+} from '../../../../core/collection/api/client.js';
 
 function clock(value: string) {
   const [hour, minute] = value.split(':').map(Number);

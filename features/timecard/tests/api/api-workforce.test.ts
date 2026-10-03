@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sortDailyRows } from '../../frontend/daily-sort.js';
 import { employeeName } from '../../frontend/paycom.js';
-import { localDate } from '../../frontend/meal-breaks.js';
+import { localDate } from '../../../../core/shell/frontend/lib/day.js';
 import { fixture, until } from '../../../../core/shell/tests/support/support.js';
 
 test('employee directory can load the full roster beyond the API page limit', async (t) => {
