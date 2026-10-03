@@ -288,6 +288,7 @@ fn access_catalog() -> String {
 }
 #[test]
 fn typescript_contracts_match_the_rust_types() {
+    crate::install();
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .find(|dir| dir.join("Cargo.lock").is_file())
@@ -314,6 +315,7 @@ fn typescript_contracts_match_the_rust_types() {
 }
 #[test]
 fn the_job_kinds_written_for_typescript_are_the_registered_ones() {
+    crate::install();
     let kinds: Vec<_> = Provider::all()
         .flat_map(|p| p.job_kinds())
         .map(|kind| format!("{kind:?}"))

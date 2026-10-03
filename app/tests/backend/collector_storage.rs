@@ -82,6 +82,7 @@ fn snapshot(db: &Db) -> Value {
 
 #[test]
 fn provider_records_stay_apart_from_core_settings_and_survive_reopening() {
+    crate::install();
     let (root, store, id) = provisioned();
     let before = snapshot(&store.collector(&id, paycom::PROVIDER).unwrap());
     assert_eq!(before["employees"].as_array().unwrap().len(), 12);
@@ -167,6 +168,7 @@ fn provider_records_stay_apart_from_core_settings_and_survive_reopening() {
 }
 #[test]
 fn startup_opens_suspended_dsps_from_a_restored_backup() {
+    crate::install();
     let (_root, store, id) = provisioned();
     store
         .platform
@@ -196,6 +198,7 @@ fn startup_opens_suspended_dsps_from_a_restored_backup() {
 }
 #[test]
 fn cortex_storage_opens_without_the_emptied_delivery_history_tables() {
+    crate::install();
     let (_root, store, id) = provisioned();
     let cortex = store.collector(&id, cortex::PROVIDER).unwrap();
     cortex

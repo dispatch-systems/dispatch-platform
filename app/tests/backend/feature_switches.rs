@@ -3,6 +3,7 @@ use dispatch_core::{db::Store, platform_owner::api::types::DspFeatures, tenancy:
 #[test]
 fn a_new_dsp_starts_with_no_features_and_a_demo_dsp_with_all() {
     use std::os::unix::fs::PermissionsExt;
+    crate::install();
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut config = dispatch_core::foundation::config::Config::load().unwrap();
@@ -26,6 +27,7 @@ fn a_new_dsp_starts_with_no_features_and_a_demo_dsp_with_all() {
 #[test]
 fn a_tab_follows_its_page_and_the_last_one_takes_the_page() {
     use std::os::unix::fs::PermissionsExt;
+    crate::install();
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut config = dispatch_core::foundation::config::Config::load().unwrap();
@@ -78,6 +80,7 @@ fn a_tab_follows_its_page_and_the_last_one_takes_the_page() {
 }
 #[test]
 fn the_catalog_is_consistent() {
+    crate::install();
     let all = catalog();
     let mut ids: Vec<_> = all.iter().map(|f| f.id).collect();
     ids.sort_unstable();
@@ -116,6 +119,7 @@ fn the_catalog_is_consistent() {
 }
 #[test]
 fn permissions_follow_their_feature() {
+    crate::install();
     let on = |ids: &[&str]| ids.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
     assert!(grants(&on(&["uniforms"]), "uniforms.view"));
     assert!(!grants(&on(&["timecard"]), "uniforms.view"));

@@ -5,6 +5,7 @@ use dispatch_core::{manifest::registry, server::http::needs_recent_verification,
 
 #[test]
 fn the_same_writes_ask_for_recent_verification() {
+    crate::install();
     let asking: Vec<_> = roles::PERMISSIONS
         .iter()
         .copied()
@@ -23,5 +24,6 @@ fn the_same_writes_ask_for_recent_verification() {
 
 #[test]
 fn inviting_takes_the_same_permission() {
+    crate::install();
     assert_eq!(registry().inviting(), "members.invite");
 }

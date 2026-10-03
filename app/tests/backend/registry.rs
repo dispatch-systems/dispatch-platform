@@ -30,6 +30,7 @@ fn a_feature_that_depends_on_one_not_registered_is_refused() {
         depends_on: &["elsewhere"],
         ..feature("lonely")
     };
+    crate::install();
     with(&LONELY).check();
 }
 
@@ -63,5 +64,6 @@ fn a_kind_of_data_that_names_people_twice_is_refused() {
         people: &[&Again],
         ..feature("twice")
     };
+    crate::install();
     with(&TWICE).check();
 }

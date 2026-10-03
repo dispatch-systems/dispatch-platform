@@ -67,6 +67,7 @@ fn due(db: &Store, id: &str, key: &str, deadline: &str) {
 }
 #[test]
 fn resuming_preview_preserves_the_saved_interval_anchor() {
+    crate::install();
     let (_root, db, id) = setup();
     let mut value = input("paycom");
     value["intervalMinutes"] = json!(300);
@@ -109,6 +110,7 @@ fn resuming_preview_preserves_the_saved_interval_anchor() {
 }
 #[test]
 fn each_collection_target_queues_the_correct_jobs_and_replay_is_idempotent() {
+    crate::install();
     for collection in ["paycom", "meal_break", "both"] {
         let (_root, db, id) = setup();
         meals(&db, &id);
@@ -151,6 +153,7 @@ fn each_collection_target_queues_the_correct_jobs_and_replay_is_idempotent() {
 }
 #[test]
 fn blocked_and_overlapping_schedules_never_start_half_a_batch() {
+    crate::install();
     let (_root, db, id) = setup();
     meals(&db, &id);
     let first = db.save_schedule(&id, None, &input("paycom")).unwrap().id;
@@ -183,6 +186,7 @@ fn blocked_and_overlapping_schedules_never_start_half_a_batch() {
 }
 #[test]
 fn timezone_changes_recompute_deadlines_and_stale_edits_are_rejected() {
+    crate::install();
     let (_root, db, id) = setup();
     let mut value = input("paycom");
     value["cadence"] = json!("daily");

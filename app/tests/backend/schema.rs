@@ -78,6 +78,7 @@ fn ids(db: &Db) -> Vec<i64> {
 /// `DISPATCH_UPDATE_SCHEMA=1 cargo test --locked -j 3 --lib schema::`.
 #[test]
 fn new_databases_match_the_recorded_schema() {
+    crate::install();
     let root = private();
     let mut config = Config::load().unwrap();
     config.root = root.path().into();
@@ -125,6 +126,7 @@ fn new_databases_match_the_recorded_schema() {
 
 #[test]
 fn lists_are_numbered_from_one_without_gaps_or_repeats() {
+    crate::install();
     for kind in registry().databases() {
         for (index, migration) in kind.migrations().iter().enumerate() {
             assert_eq!(migration.id as usize, index + 1, "{}", kind.name());
@@ -135,6 +137,7 @@ fn lists_are_numbered_from_one_without_gaps_or_repeats() {
 
 #[test]
 fn a_database_an_older_binary_made_ends_like_a_new_one() {
+    crate::install();
     let root = private();
     for kind in registry().databases() {
         let file = root.path().join(format!("{}.sqlite", kind.name()));
@@ -146,6 +149,7 @@ fn a_database_an_older_binary_made_ends_like_a_new_one() {
 
 #[test]
 fn platform_databases_from_before_each_added_column_gain_it() {
+    crate::install();
     let root = private();
     let columns = |db: &Db, table: &str| {
         db.all(
@@ -196,6 +200,7 @@ fn platform_databases_from_before_each_added_column_gain_it() {
 
 #[test]
 fn agent_keys_from_before_connected_apps_stay_keys() {
+    crate::install();
     let root = private();
     let new = Db::create(&root.path().join("new.sqlite"), Kind::PLATFORM, "").unwrap();
     // The release before Sign in with Dispatch: no OAuth tables, and keys of one kind
@@ -239,6 +244,7 @@ fn agent_keys_from_before_connected_apps_stay_keys() {
 
 #[test]
 fn agent_keys_from_before_reads_read_every_kind_with_their_addresses() {
+    crate::install();
     let root = private();
     let new = Db::create(&root.path().join("new.sqlite"), Kind::PLATFORM, "").unwrap();
     // The release before reads: tools and addresses on each key, no DSP's own settings,

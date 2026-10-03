@@ -5,6 +5,7 @@ use dispatch_core::manifest::registry;
 
 #[test]
 fn the_same_upkeep_runs_in_the_same_order_and_as_often() {
+    crate::install();
     let upkeep: Vec<_> = registry()
         .features
         .iter()
@@ -27,6 +28,7 @@ fn the_same_upkeep_runs_in_the_same_order_and_as_often() {
 
 #[test]
 fn the_same_features_seed_demo_data_and_answer_commands() {
+    crate::install();
     let features = || registry().features.iter();
     let demo: Vec<_> = features()
         .filter(|feature| feature.demo.is_some())

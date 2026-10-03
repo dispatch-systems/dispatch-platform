@@ -23,8 +23,8 @@ pub static REGISTRY: Registry = Registry {
     ],
 };
 /// Installs `REGISTRY`, and hands core what a DSP path no route matches asks for. Every
-/// entry point calls this before anything reads the registry; calling it again changes
-/// nothing.
+/// entry point, and every one of the app's tests, calls this before anything reads the
+/// registry; calling it again changes nothing.
 pub fn install() {
     manifest::install(&REGISTRY);
     http::unmatched_areas(routes::area_permission);
@@ -33,19 +33,6 @@ pub fn install() {
 /// Core's test support, for this crate's module tests.
 #[cfg(test)]
 use dispatch_core::testing;
-/// Every module test in this crate's test binary, the app's own and, until each feature is a
-/// crate of its own, theirs, runs under the app's registry, which holds every part a test
-/// names. It is installed before the first test starts, as the app installs it before it
-/// serves, so no test can install a smaller one first.
-#[cfg(test)]
-#[used]
-#[unsafe(link_section = ".init_array")]
-static INSTALL_BEFORE_TESTS: extern "C" fn() = {
-    extern "C" fn install_before_tests() {
-        install();
-    }
-    install_before_tests
-};
 
 #[cfg(test)]
 #[path = "../tests/backend/agent_calls.rs"]

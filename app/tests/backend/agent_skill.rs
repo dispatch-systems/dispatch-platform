@@ -5,6 +5,7 @@ use dispatch_core::mcp::{
 };
 #[test]
 fn the_skill_names_every_tool_and_metric() {
+    crate::install();
     let skill = skill("https://dispatch.example.com");
     assert!(skill.starts_with("---\nname: dispatch\ndescription: "));
     let description = skill.lines().nth(2).unwrap();

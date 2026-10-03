@@ -4,6 +4,7 @@ use serde_json::json;
 
 #[test]
 fn every_endpoint_and_metric_is_listed_once() {
+    crate::install();
     let mut ids: Vec<&str> = ENDPOINTS.iter().map(|e| e.id).collect();
     ids.sort_unstable();
     ids.dedup();
@@ -35,6 +36,7 @@ fn every_endpoint_and_metric_is_listed_once() {
 }
 #[test]
 fn requests_take_only_their_own_parameters() {
+    crate::install();
     assert!(
         check(
             "team",
@@ -67,6 +69,7 @@ fn requests_take_only_their_own_parameters() {
 }
 #[test]
 fn the_openapi_document_lists_every_endpoint() {
+    crate::install();
     let document = openapi("https://dispatch.example.com");
     assert_eq!(
         document["paths"].as_object().unwrap().len(),

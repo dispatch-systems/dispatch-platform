@@ -36,6 +36,7 @@ fn recorded() -> BTreeMap<String, BTreeSet<String>> {
 
 #[test]
 fn every_table_has_exactly_one_declared_owner() {
+    crate::install();
     let databases = recorded();
     let declared = REGISTRY.tables();
     let kinds: BTreeSet<String> = REGISTRY.databases().map(|k| k.name().into()).collect();
@@ -80,6 +81,7 @@ fn a_registry_where_two_owners_declare_one_table_is_refused() {
         tables: &[("dsp", &["people"])],
         ..feature("twice")
     };
+    crate::install();
     let features: Vec<&'static Feature> =
         REGISTRY.features.iter().copied().chain([&TWICE]).collect();
     Registry {

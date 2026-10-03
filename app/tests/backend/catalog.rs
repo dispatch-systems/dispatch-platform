@@ -173,6 +173,7 @@ const SCHEDULE_COLLECTIONS: &[&str] = &[
 
 #[test]
 fn the_permissions_keep_their_order_labels_implications_groups_and_defaults() {
+    crate::install();
     let ids: Vec<_> = PERMISSIONS.iter().map(|(id, _)| *id).collect();
     assert_eq!(roles::PERMISSIONS.to_vec(), ids);
     assert_eq!(roles::all(), ids);
@@ -192,6 +193,7 @@ fn the_permissions_keep_their_order_labels_implications_groups_and_defaults() {
 
 #[test]
 fn the_catalog_keeps_its_pages_tabs_and_order() {
+    crate::install();
     let pages: Vec<Page> = catalog::pages()
         .map(|page| {
             assert_eq!(page.kind, catalog::Kind::Page);
@@ -220,6 +222,7 @@ fn the_catalog_keeps_its_pages_tabs_and_order() {
 
 #[test]
 fn each_collection_is_run_by_the_page_that_keeps_it() {
+    crate::install();
     for (named, page) in AUTOMATION {
         assert_eq!(catalog::automation(named), *page, "{named}");
     }
@@ -235,6 +238,7 @@ fn each_collection_is_run_by_the_page_that_keeps_it() {
 
 #[test]
 fn schedules_collect_the_same_collections() {
+    crate::install();
     let all: Vec<_> = ScheduleCollection::all()
         .map(ScheduleCollection::as_str)
         .collect();

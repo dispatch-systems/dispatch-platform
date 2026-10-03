@@ -57,6 +57,7 @@ fn label(path: &str) -> &'static str {
 
 #[test]
 fn each_path_keeps_its_name_in_the_request_log() {
+    crate::install();
     let found: Vec<_> = LABELS
         .iter()
         .map(|(path, _)| (*path, label(path)))

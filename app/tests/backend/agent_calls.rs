@@ -4,6 +4,7 @@ use dispatch_core::mcp::api::types::AgentActivityKey;
 use dispatch_core::mcp::api::types::AgentKeyKind;
 #[test]
 fn what_a_request_noted_becomes_its_call() {
+    crate::install();
     let activity = Activity::default();
     let key = AgentActivityKey {
         id: "agentkey_a".into(),

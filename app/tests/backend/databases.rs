@@ -126,6 +126,7 @@ fn databases() -> Vec<Kind> {
 
 #[test]
 fn every_database_keeps_its_version_cache_and_migrations() {
+    crate::install();
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut found = vec![];
@@ -204,6 +205,7 @@ fn a_registry_whose_migrations_skip_an_id_is_refused() {
         }],
         ..feature("gap")
     };
+    crate::install();
     with(&GAP).check();
 }
 
@@ -221,5 +223,6 @@ fn a_registry_whose_migrations_repeat_an_id_is_refused() {
         }],
         ..feature("repeat")
     };
+    crate::install();
     with(&REPEAT).check();
 }

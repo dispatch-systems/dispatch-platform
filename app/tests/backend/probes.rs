@@ -6,6 +6,7 @@ use dispatch_core::Result;
 #[tokio::test]
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn measure_live_collection() -> Result<()> {
+    crate::install();
     dispatch_paycom::measure_live_collection().await
 }
 
@@ -13,5 +14,6 @@ async fn measure_live_collection() -> Result<()> {
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn measure_route_method() -> Result<()> {
     use dispatch_core::collection::browser::egress::counted::{RECEIVED, SENT};
+    crate::install();
     dispatch_cortex::measure_route_method(dispatch_routes::prepare, &SENT, &RECEIVED).await
 }

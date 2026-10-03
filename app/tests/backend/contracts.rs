@@ -2,6 +2,7 @@ use super::*;
 use serde_json::json;
 #[test]
 fn missing_or_mistyped_fields_do_not_become_empty_values() {
+    crate::install();
     for input in [
         json!({"email":"a@example.com"}),
         json!({"email":"a@example.com","password":123}),

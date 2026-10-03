@@ -50,6 +50,7 @@ const AREAS: &[(&str, &str, &str)] = &[
 
 #[test]
 fn each_action_keeps_its_area() {
+    crate::install();
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut config = Config::load().unwrap();

@@ -46,6 +46,7 @@ fn scope(read: &str, dsp: &str) -> Scope {
 
 #[test]
 fn a_write_evicts_the_cached_reads_it_did() {
+    crate::install();
     let reads = [
         ("listings", "a"),
         ("meals", "a"),
@@ -80,6 +81,7 @@ fn a_write_evicts_the_cached_reads_it_did() {
 
 #[test]
 fn each_collection_writes_the_domain_it_did() {
+    crate::install();
     let mut registered: Vec<_> = Provider::all().flat_map(|p| p.job_kinds()).collect();
     let mut listed: Vec<_> = COLLECTIONS.iter().map(|(kind, _)| *kind).collect();
     registered.sort();

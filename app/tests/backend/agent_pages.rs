@@ -4,6 +4,7 @@ use serde_json::json;
 
 #[test]
 fn a_page_stops_at_the_budget_and_names_the_next() {
+    crate::install();
     let mut table = Table::new(&["n", "text"]);
     for n in 0..2_000 {
         table.push(vec![json!(n), json!("x".repeat(40))]);
@@ -42,6 +43,7 @@ fn a_page_stops_at_the_budget_and_names_the_next() {
 }
 #[test]
 fn days_read_as_ranges() {
+    crate::install();
     let days: Vec<String> = ["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-05"]
         .iter()
         .map(|d| d.to_string())
@@ -54,6 +56,7 @@ fn days_read_as_ranges() {
 
 #[test]
 fn pagination_metadata_is_counted_even_when_rows_alone_fit() {
+    crate::install();
     let mut table = Table::new(&["text"]);
     table.push(vec![json!("x".repeat(23_956))]);
     let mut answer = json!({});
@@ -66,6 +69,7 @@ fn pagination_metadata_is_counted_even_when_rows_alone_fit() {
 
 #[test]
 fn multiple_tables_and_unpageable_summaries_share_one_budget() {
+    crate::install();
     let mut answer = json!({"summary":"x".repeat(BUDGET)});
     assert!(check_budget(&answer).is_err());
     assert!(page(&mut answer, "rows", Table::new(&["n"]), 0, 0, 10).is_err());

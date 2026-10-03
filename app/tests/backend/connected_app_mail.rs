@@ -27,6 +27,7 @@ fn kind(id: &str) -> AgentArea {
 }
 #[test]
 fn a_connected_app_is_described_plainly_and_escaped() {
+    crate::install();
     let some = reading(&[kind("routes"), kind("timecards")], false);
     let mail = app_connected(&connected(true, &[], &some));
     assert_eq!(mail.subject, "Claude Code connected to Dispatch");

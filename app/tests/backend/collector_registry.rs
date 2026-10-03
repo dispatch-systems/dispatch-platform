@@ -82,6 +82,7 @@ fn snapshot(db: &Db) -> Value {
 }
 #[test]
 fn the_registry_names_each_provider_job_kind_database_and_schedule_once() {
+    crate::install();
     let unique = |values: Vec<&str>| {
         values
             .iter()
@@ -127,6 +128,7 @@ fn the_registry_names_each_provider_job_kind_database_and_schedule_once() {
 }
 #[test]
 fn startup_refuses_a_dsp_whose_provider_storage_was_never_separated() {
+    crate::install();
     let (_root, store, id) = provisioned();
     let before = snapshot(&store.collector(&id, paycom::PROVIDER).unwrap());
     store
@@ -146,6 +148,7 @@ fn startup_refuses_a_dsp_whose_provider_storage_was_never_separated() {
 }
 #[test]
 fn storage_survives_backup_and_restore() {
+    crate::install();
     let (_root, store, id) = provisioned();
     let before = snapshot(&store.collector(&id, paycom::PROVIDER).unwrap());
     let pulse = db::private_dir(
@@ -187,6 +190,7 @@ fn storage_survives_backup_and_restore() {
 }
 #[test]
 fn cortex_storage_recovers_initialization_and_preserves_provider_identity() {
+    crate::install();
     let (_root, store, id) = provisioned();
     let before = snapshot(&store.collector(&id, paycom::PROVIDER).unwrap());
     store
@@ -222,6 +226,7 @@ fn cortex_storage_recovers_initialization_and_preserves_provider_identity() {
 }
 #[test]
 fn missing_initialized_cortex_database_is_not_recreated() {
+    crate::install();
     let (_root, store, id) = provisioned();
     let path = database_path(&store.config.root.join("dsps").join(&id), cortex::PROVIDER).unwrap();
     let config = store.config.clone();
@@ -232,6 +237,7 @@ fn missing_initialized_cortex_database_is_not_recreated() {
 }
 #[test]
 fn resetting_paycom_browser_state_preserves_other_collectors_and_business_data() {
+    crate::install();
     let (_root, store, id) = provisioned();
     let before = snapshot(&store.collector(&id, paycom::PROVIDER).unwrap());
     let browsers = store.area(&id, "state").unwrap().join("browsers");
@@ -260,6 +266,7 @@ fn resetting_paycom_browser_state_preserves_other_collectors_and_business_data()
 }
 #[test]
 fn refuses_missing_cross_tenant_and_unsafe_storage() {
+    crate::install();
     let (root, store) = platform();
     let id = pending(&store);
     let data = store.area(&id, "data").unwrap();
@@ -291,6 +298,7 @@ fn refuses_missing_cross_tenant_and_unsafe_storage() {
 }
 #[test]
 fn startup_rejects_provider_database_as_core_storage() {
+    crate::install();
     let (_root, db) = testing::seeded();
     let id = db
         .platform

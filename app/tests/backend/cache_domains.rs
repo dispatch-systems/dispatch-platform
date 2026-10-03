@@ -5,6 +5,7 @@ fn meals(dsp: &str) -> Scope {
 }
 #[test]
 fn dependencies_cover_every_source_without_evicting_other_tenants() {
+    crate::install();
     for (domain, expected) in [
         (DataDomain::new("paycom"), [false, false, false, true, true]),
         (DataDomain::new("meals"), [true, false, false, true, true]),
@@ -48,6 +49,7 @@ fn dependencies_cover_every_source_without_evicting_other_tenants() {
 async fn bookkeeping_preserves_cache_and_failed_scoped_or_unknown_writes_invalidate() {
     use std::os::unix::fs::PermissionsExt;
     use std::sync::atomic::Ordering;
+    crate::install();
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     dispatch_core::db::private_dir(root.path()).unwrap();

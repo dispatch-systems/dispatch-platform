@@ -9,6 +9,7 @@ use std::os::unix::fs::PermissionsExt;
 
 #[test]
 fn only_a_kind_a_registered_collector_collects_is_queued() {
+    crate::install();
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut config = Config::load().unwrap();
