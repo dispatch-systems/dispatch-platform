@@ -57,6 +57,48 @@
         "core/shell has no README.md": "A5",
         "core/tenancy has no README.md": "A5"
       }
+    },
+    "names": {
+      "retired names": {
+        "file core/accounts/api/routes/auth.rs is named auth": "Phase B",
+        "file core/accounts/frontend/AuthScreen.tsx is named auth": "A5",
+        "file core/accounts/tests/api/api-auth.test.ts is named auth": "A5",
+        "file core/accounts/tests/browser/auth.spec.ts is named auth": "A5",
+        "file core/mcp/api/routes/agents.rs is named agents": "Phase B",
+        "file core/mcp/tests/backend/integration/agents.rs is named agents": "Phase B",
+        "file core/mcp/tests/support/agents.ts is named agents": "Phase B",
+        "file features/driver_match/frontend/driver-match.css is named driver-match": "A5",
+        "file features/driver_match/frontend/driver-match.ts is named driver-match": "A5",
+        "file features/driver_match/tests/api/driver-match.test.ts is named driver-match": "A5",
+        "file features/driver_match/tests/browser/driver-match.spec.ts is named driver-match": "A5",
+        "file features/driver_match/tests/frontend/driver-match.test.ts is named driver-match": "A5",
+        "file features/driver_match/tests/support/driver-match.ts is named driver-match": "A5",
+        "file features/routes/frontend/settings/RouteDataSettings.tsx is named routedata": "A5",
+        "file features/routes/frontend/settings/route-data.css is named routedata": "A5",
+        "file features/routes/tests/browser/route-data.spec.ts is named routedata": "A5",
+        "file features/timecard/frontend/workforce.css is named workforce": "A5",
+        "file features/timecard/tests/api/api-workforce.test.ts is named workforce": "A5",
+        "file shared/contracts/agents.ts is named agents": "Phase B",
+        "file shared/contracts/drivers.ts is named drivers": "Phase B",
+        "file shared/contracts/meals.ts is named meals": "Phase B",
+        "file shared/contracts/runtime-workforce.ts is named workforce": "Phase B",
+        "file shared/contracts/workforce.ts is named workforce": "Phase B",
+        "folder tooling/agents is named agents": "Phase B",
+        "module agents in app/backend/contracts.rs is named agents": "Phase B",
+        "module agents in app/backend/lib.rs is named agents": "Phase B",
+        "module agents in app/backend/routes.rs is named agents": "Phase B",
+        "module auth in app/backend/routes.rs is named auth": "Phase B",
+        "module browsers in app/backend/lib.rs is named browsers": "Phase B",
+        "module collectors in app/backend/lib.rs is named collectors": "Phase B",
+        "module meals in app/backend/contracts.rs is named meals": "Phase B",
+        "module meals in app/backend/lib.rs is named meals": "Phase B",
+        "module routedata in app/backend/contracts.rs is named routedata": "Phase B",
+        "module routedata in app/backend/lib.rs is named routedata": "Phase B",
+        "module routedata in app/backend/routes.rs is named routedata": "Phase B",
+        "module routedata in collectors/cortex/connection/mod.rs is named routedata": "Phase B",
+        "module workforce in app/backend/contracts.rs is named workforce": "Phase B",
+        "module workforce in app/backend/lib.rs is named workforce": "Phase B"
+      }
     }
   }
 }

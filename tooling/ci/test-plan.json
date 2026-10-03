@@ -26,6 +26,7 @@
   "rules": [
     "app/tests/rules/anatomy.test.ts",
     "app/tests/rules/audit-actions.test.ts",
+    "app/tests/rules/names.test.ts",
     "tooling/tests/browser-shards.test.ts",
     "tooling/tests/mail-config.test.ts",
     "tooling/tests/screenshots-worker.test.ts",
