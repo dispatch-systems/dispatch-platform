@@ -181,3 +181,7 @@ impl UniformsStore for Store {
         stock::adjust_uniform(self, c, variant, delta, request_id)
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/storage.rs"]
+mod tests;

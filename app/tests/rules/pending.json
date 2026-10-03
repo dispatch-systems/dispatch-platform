@@ -35,8 +35,7 @@
         "features/scorecard has mcp/ and no tests/mcp/": "A5",
         "features/settings has api/ and no tests/api/": "A5",
         "features/settings has frontend/ and no tests/browser/": "A5",
-        "features/timecard has mcp/ and no tests/mcp/": "A5",
-        "features/uniforms has backend/ and no test in tests/backend/": "A5"
+        "features/timecard has mcp/ and no tests/mcp/": "A5"
       },
       "roots": {
         "collectors/cortex has no Cargo.toml": "Phase B",
