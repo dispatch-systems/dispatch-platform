@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react';
 import type { DspView } from '../../../shared/contracts/index.js';
 import { hashQuery, parseHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { admitted, warm } from '../../../core/shell/frontend/runtime/route-prefetch.js';
@@ -12,12 +13,23 @@ export const visibleTabs = (view?: DspView) =>
     .filter((tab) => !tab.visible || tab.visible(view))
     .sort((a, b) => a.order - b.order);
 
+const badges = new Map<string, ComponentType<{ active: boolean }>>();
+/** A tab's badge, once loaded. */
+export const loadedBadge = (id: string) => badges.get(id);
+
 /** The code of the tab the address names, so the page opens on it, and the tabs' badges. */
 export function preloadSettingsTab(view?: DspView) {
   const tabs = visibleTabs(view);
-  for (const tab of tabs) void tab.badge?.load().catch(() => undefined);
   const id = hashQuery().get('tab') || tabs[0]?.id;
-  return tabs.find((tab) => tab.id === id)?.load() ?? Promise.resolve();
+  return Promise.all([
+    ...tabs.map((tab) =>
+      tab.badge
+        ?.load()
+        .then((Label) => void badges.set(tab.id, Label))
+        .catch(() => undefined),
+    ),
+    tabs.find((tab) => tab.id === id)?.load(),
+  ]);
 }
 
 /** The reads a Settings tab opens on, warmed when the tab may open next. */

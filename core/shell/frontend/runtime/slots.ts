@@ -73,8 +73,11 @@ export type SettingsTab = {
   /** The tab's address, `?tab=<id>`. It never changes, so links to it keep working. */
   id: string;
   label: string;
-  /** Draws the label with more beside it, such as a count, once loaded; until then `label`. */
-  badge?: { load: () => Promise<unknown>; Label: ComponentType<{ active: boolean }> };
+  /**
+   * Draws the label with more beside it, such as a count. Settings loads it with the page, as
+   * part of the page's own code once was, so the tab never shows without it.
+   */
+  badge?: { load: () => Promise<ComponentType<{ active: boolean }>> };
   /** Where the tab sits among the page's tabs, lowest first. */
   order: number;
   /** Who sees the tab; omitted means everyone. */

@@ -7,9 +7,6 @@ const loadBadge = () => import('./badge.js');
 const DriverMatchSettings = lazy(() =>
   load().then((module) => ({ default: module.DriverMatchSettings })),
 );
-const DriverMatchTabLabel = lazy(() =>
-  loadBadge().then((module) => ({ default: module.DriverMatchTabLabel })),
-);
 
 export const feature: FrontendFeature = {
   name: 'driver_match',
@@ -17,7 +14,7 @@ export const feature: FrontendFeature = {
     {
       id: 'driver-match',
       label: 'Driver Match',
-      badge: { load: loadBadge, Label: DriverMatchTabLabel },
+      badge: { load: () => loadBadge().then((module) => module.DriverMatchTabLabel) },
       order: 40,
       visible: (view) => can(view, 'driver_match.manage'),
       load,
