@@ -25,11 +25,6 @@
       "retired names": {
         "file core/mcp/tests/support/agents.ts is named agents": "Phase B"
       }
-    },
-    "ownership": {
-      "tables": {
-        "app names tables of core": "Phase B"
-      }
     }
   }
 }

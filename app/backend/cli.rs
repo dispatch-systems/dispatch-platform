@@ -49,13 +49,7 @@ pub async fn run() -> Result<()> {
             state
                 .run(|db| {
                     ensure(
-                        db.platform
-                            .one(
-                                "SELECT id FROM users WHERE \
-                platform_owner=1 AND status='active' LIMIT 1",
-                                [],
-                            )?
-                            .is_some(),
+                        operations::has_active_owner(db)?,
                         "run_bootstrap_before_starting",
                         503,
                     )

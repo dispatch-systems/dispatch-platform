@@ -114,6 +114,17 @@ pub fn bootstrap(
     };
     Ok(json!({"owner":owner,"dsp":dsp}))
 }
+/// Whether the platform has an active owner, as bootstrapping makes one. The server starts
+/// only once it has.
+pub fn has_active_owner(db: &Store) -> Result<bool> {
+    Ok(db
+        .platform
+        .one(
+            "SELECT id FROM users WHERE platform_owner=1 AND status='active' LIMIT 1",
+            [],
+        )?
+        .is_some())
+}
 pub fn seed(db: &Store) -> Result<()> {
     ensure(
         db.config.development && db.config.fixture,
