@@ -10,7 +10,6 @@
     "anatomy": {
       "feature minimum": {
         "features/dvic has no Cargo.toml": "Phase B",
-        "features/routes has no Cargo.toml": "Phase B",
         "features/scorecard has no Cargo.toml": "Phase B",
         "features/timecard has no Cargo.toml": "Phase B"
       }
@@ -34,8 +33,6 @@
         "file core/mcp/tests/support/agents.ts is named agents": "Phase B",
         "module meals in app/backend/contracts.rs is named meals": "Phase B",
         "module meals in app/backend/lib.rs is named meals": "Phase B",
-        "module routedata in app/backend/contracts.rs is named routedata": "Phase B",
-        "module routedata in app/backend/lib.rs is named routedata": "Phase B",
         "module workforce in app/backend/contracts.rs is named workforce": "Phase B",
         "module workforce in app/backend/lib.rs is named workforce": "Phase B"
       }
@@ -51,7 +48,6 @@
       },
       "integration tests": {
         "features/dvic's integration tests are tests of app/backend/Cargo.toml": "Phase B",
-        "features/routes's integration tests are tests of app/backend/Cargo.toml": "Phase B",
         "features/scorecard's integration tests are tests of app/backend/Cargo.toml": "Phase B",
         "features/timecard's integration tests are tests of app/backend/Cargo.toml": "Phase B"
       }

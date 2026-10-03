@@ -1,6 +1,6 @@
 //! Daily routes: what is stored, collecting a day, and its jobs. The collection is `routes`
-//! here and in its paths; its module and database are `routedata`.
-use crate::routedata::{self, MAX_DAYS_PER_REQUEST, RoutesStore};
+//! here and in its paths; its database is `routedata`.
+use crate::backend::{self, MAX_DAYS_PER_REQUEST, RoutesStore};
 use dispatch_core::{
     Error, Result,
     collection::api::routes::{
@@ -107,8 +107,8 @@ fn set_retention(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         Some(_) => Some(v::integer(
             b,
             "days",
-            routedata::MIN_RETENTION_DAYS,
-            routedata::MAX_RETENTION_DAYS,
+            backend::MIN_RETENTION_DAYS,
+            backend::MAX_RETENTION_DAYS,
         )?),
         None => return Err(dispatch_core::Error::new("invalid_input", 400)),
     };
@@ -144,7 +144,7 @@ fn collect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         actor,
         Some(id),
         "routes.collection_requested",
-        date.unwrap_or(routedata::COLLECTION),
+        date.unwrap_or(backend::COLLECTION),
     )?;
     Ok(Reply::status(jobs, 202))
 }

@@ -2,7 +2,7 @@ use serde::Serialize;
 
 /// One day's routes as published: the active reading of that day at the station.
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RoutePublication {
     pub id: String,
@@ -17,7 +17,7 @@ pub struct RoutePublication {
     pub task_count: i64,
 }
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RouteDays {
     pub station: String,
@@ -28,7 +28,7 @@ pub struct RouteDays {
 /// One driver's day on the road, from the itinerary and its computed summary. Times are
 /// epoch milliseconds.
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RouteItinerary {
     pub itinerary_id: String,
@@ -51,7 +51,7 @@ pub struct RouteItinerary {
     pub overtime_secs: Option<i64>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RouteDayView {
     pub publication: RoutePublication,
@@ -59,7 +59,7 @@ pub struct RouteDayView {
 }
 /// A location a stop or task was at.
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RouteAddress {
     pub address_id: String,
@@ -72,7 +72,7 @@ pub struct RouteAddress {
 }
 /// One package action: a pickup at the station, a drop-off, or a return.
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RouteTask {
     pub task_id: String,
@@ -94,7 +94,7 @@ pub struct RouteTask {
     pub active: bool,
 }
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RouteStop {
     pub stop_id: String,
@@ -106,7 +106,7 @@ pub struct RouteStop {
     pub tasks: Vec<RouteTask>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RouteBreak {
     pub planned: bool,
@@ -119,7 +119,7 @@ pub struct RouteBreak {
     pub planned_end_at: Option<i64>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RouteUnknownStop {
     pub entered_at: Option<i64>,
@@ -132,7 +132,7 @@ pub struct RouteUnknownStop {
 /// One driver's itinerary in full: its stops with their tasks, its breaks, the places it
 /// dwelt that were not stops, and the tasks removed from it.
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RouteItineraryDetail {
     pub publication: RoutePublication,
@@ -144,7 +144,7 @@ pub struct RouteItineraryDetail {
 }
 /// One thing that happened to a package: on which day, by whom, where.
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RoutePackageEvent {
     pub day: String,
@@ -157,7 +157,7 @@ pub struct RoutePackageEvent {
 }
 /// A package's history across the days stored, newest first.
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RoutePackage {
     pub tracking_id: String,
@@ -165,20 +165,20 @@ pub struct RoutePackage {
 }
 /// How long a DSP keeps its route data, and what it holds now.
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RouteRetention {
     /// Days kept, counted back from today where the DSP is. `None` keeps every day.
-    #[cfg_attr(test, ts(type = "number | null"))]
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub days: Option<i64>,
     pub changed_at: Option<String>,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub stored_days: i64,
     pub oldest_day: Option<String>,
 }
 /// What a reprocess rebuilt: each publication with its counts as they now stand.
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RouteReprocess {
     pub publications: Vec<RoutePublication>,

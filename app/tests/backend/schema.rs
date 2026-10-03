@@ -1,11 +1,12 @@
 //! Every registered owner's databases, as new ones and as older binaries left them, against
 //! the recorded schema.
-use crate::{dvic::DvicStore, routedata::RoutesStore, scorecard::ScorecardStore};
+use crate::{dvic::DvicStore, scorecard::ScorecardStore};
 use dispatch_core::{
     db::{Db, Kind, Store, migrate},
     foundation::config::Config,
     manifest::registry,
 };
+use dispatch_routes::RoutesStore;
 use serde_json::json;
 use std::{
     os::unix::fs::PermissionsExt,
@@ -104,7 +105,7 @@ fn new_databases_match_the_recorded_schema() {
         (dispatch_paycom::DATABASE, &paycom),
         (dispatch_cortex::DATABASE, &cortex),
         (crate::scorecard::DATABASE, &scorecard),
-        (crate::routedata::DATABASE, &routedata),
+        (dispatch_routes::DATABASE, &routedata),
         (crate::dvic::DATABASE, &dvic),
     ];
     for (kind, db) in databases {

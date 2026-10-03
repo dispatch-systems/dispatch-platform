@@ -607,6 +607,7 @@ dependencies = [
  "dispatch-home",
  "dispatch-host",
  "dispatch-paycom",
+ "dispatch-routes",
  "dispatch-settings",
  "dispatch-team",
  "dispatch-uniforms",
@@ -745,6 +746,23 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
+ "tokio",
+ "ts-rs",
+]
+
+[[package]]
+name = "dispatch-routes"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "dispatch-core",
+ "dispatch-cortex",
+ "flate2",
+ "rusqlite",
+ "serde",
+ "serde_json",
  "tempfile",
  "tokio",
  "ts-rs",

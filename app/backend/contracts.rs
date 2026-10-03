@@ -11,8 +11,6 @@ mod dvic;
 mod generated;
 #[path = "../../features/timecard/api/meals.rs"]
 mod meals;
-#[path = "../../features/routes/api/types.rs"]
-mod routedata;
 #[path = "../../features/scorecard/api/types.rs"]
 mod scorecard;
 #[path = "../../features/timecard/api/settings.rs"]
@@ -35,13 +33,17 @@ pub use dispatch_driver_match::{
     DriverStrength,
 };
 pub use dispatch_paycom::timecards::EmployeeTimecardPeriod;
+pub use dispatch_routes::{
+    RouteAddress, RouteBreak, RouteDayView, RouteDays, RouteItinerary, RouteItineraryDetail,
+    RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteRetention, RouteStop,
+    RouteTask, RouteUnknownStop,
+};
 pub use dispatch_uniforms::{
     Uniform, UniformAdjustment, UniformEvent, UniformEventKind, UniformFit, UniformHistory,
     UniformInventory, UniformUpdates, UniformVariant,
 };
 pub use dvic::*;
 pub use meals::*;
-pub use routedata::*;
 pub use scorecard::*;
 pub use settings::*;
 pub use workforce::*;

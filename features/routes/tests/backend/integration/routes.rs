@@ -1,20 +1,17 @@
 //! Routes storage: publication, supersession, the days a schedule queues and what the
 //! views read.
-use dispatch_backend::routedata::{self, RoutesStore};
 use dispatch_core::db::{Store, s};
 use dispatch_core::testing as common;
 use dispatch_cortex::{
     self as cortex,
     routes::{self, Capture, Mode, Request},
 };
+use dispatch_routes::RoutesStore;
 use serde_json::{Value, json};
 
 /// Routes, and the Cortex collector whose routes it keeps.
 fn install() {
-    common::install(
-        &[&cortex::COLLECTOR],
-        &[&dispatch_backend::feature_manifests::routes::FEATURE],
-    );
+    common::install(&[&cortex::COLLECTOR], &[&dispatch_routes::FEATURE]);
 }
 
 fn request(day: &str, mode: Mode) -> Request {
@@ -169,7 +166,7 @@ fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
             |row| row.get(0),
         )
         .unwrap();
-    let inflated: Value = serde_json::from_slice(&routedata::gunzip(&body).unwrap()).unwrap();
+    let inflated: Value = serde_json::from_slice(&dispatch_routes::gunzip(&body).unwrap()).unwrap();
     assert_eq!(inflated, capture.summaries);
     // The views read the publication and its drivers.
     let days = db.route_days(&id).unwrap();
@@ -479,7 +476,7 @@ fn a_schedule_queues_recent_days_without_a_final_publication() {
     let day = |back: i64| (today - chrono::Duration::days(back)).to_string();
     let jobs = db.routes_jobs(&id).unwrap();
     // Yesterday first, then the days before, at most four per run.
-    assert_eq!(jobs.len(), routedata::MAX_JOBS_PER_RUN);
+    assert_eq!(jobs.len(), dispatch_routes::MAX_JOBS_PER_RUN);
     assert_eq!(jobs[0].0, format!("routes:{}", day(1)));
     assert_eq!(jobs[0].1["date"], day(1));
     assert_eq!(jobs[0].1["mode"], "final");
@@ -823,7 +820,7 @@ fn a_stored_day_goes_through_storage_at_full_size() {
             .collect()
     };
     for body in &bodies {
-        let value: Value = serde_json::from_slice(&routedata::gunzip(body).unwrap()).unwrap();
+        let value: Value = serde_json::from_slice(&dispatch_routes::gunzip(body).unwrap()).unwrap();
         let details = &value["itineraryDetails"];
         let mut ids = std::collections::HashSet::new();
         for stop in details["stops"].as_array().into_iter().flatten() {
@@ -899,7 +896,7 @@ fn a_stored_day_goes_through_storage_at_full_size() {
                 |r| r.get(0),
             )
             .unwrap();
-        String::from_utf8(routedata::gunzip(&body).unwrap()).unwrap()
+        String::from_utf8(dispatch_routes::gunzip(&body).unwrap()).unwrap()
     };
     capture.summaries = serde_json::from_str(&blob("summaries")).unwrap();
     capture.route_summaries = serde_json::from_str(&blob("route_summaries")).unwrap();
@@ -922,7 +919,7 @@ fn a_stored_day_goes_through_storage_at_full_size() {
     .unwrap()
     .unwrap();
     capture.validate(&request).unwrap();
-    let shaper = routedata::Shaper::new(&capture);
+    let shaper = dispatch_routes::Shaper::new(&capture);
     let itineraries = std::mem::take(&mut capture.itineraries);
     let started = std::time::Instant::now();
     let staged = db

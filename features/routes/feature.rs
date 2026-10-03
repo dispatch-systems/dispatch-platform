@@ -1,5 +1,27 @@
 //! Routes: each day's routes, itineraries and packages from Cortex.
-use crate::routedata;
+mod api;
+mod backend;
+mod mcp;
+
+/// What its API answers with, which the app writes to TypeScript.
+pub use api::types::{
+    RouteAddress, RouteBreak, RouteDayView, RouteDays, RouteItinerary, RouteItineraryDetail,
+    RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteRetention, RouteStop,
+    RouteTask, RouteUnknownStop,
+};
+/// What the app uses: its storage and its database, and how it shapes a day's capture, which
+/// the app's Cortex route probe measures.
+pub use backend::{DATABASE, RoutesStore, prepare};
+/// What its integration tests check beside the storage: the most jobs a scheduled run queues,
+/// how a capture is shaped and how kept responses are read back.
+pub use backend::{MAX_JOBS_PER_RUN, Shaper, gunzip};
+/// What agents can ask of it, which the app's tests ask directly.
+pub use mcp::views::{package, packages, route, routes};
+
+/// Core's test support, for this crate's module tests.
+#[cfg(test)]
+use dispatch_core::testing;
+
 use dispatch_core::{
     db::{
         Migration, Migrations,
@@ -7,11 +29,6 @@ use dispatch_core::{
     },
     manifest::{Feature, Switch, feature, perm},
 };
-
-#[path = "api/routes.rs"]
-mod api;
-#[path = "mcp/mod.rs"]
-pub mod mcp;
 
 pub const FEATURE: Feature = Feature {
     switch: Some(Switch {
@@ -24,8 +41,8 @@ pub const FEATURE: Feature = Feature {
         perm("routes.collect", "Collect Routes", 31).implies(&["routes.view"]),
         perm("routes.manage", "Manage Routes", 32).implies(&["routes.view"]),
     ],
-    routes: api::routes,
-    keeps: &[&crate::routedata::keeper::Routes],
+    routes: api::routes::routes,
+    keeps: &[&backend::keeper::Routes],
     tables: &[(
         "routedata",
         &[
@@ -45,7 +62,7 @@ pub const FEATURE: Feature = Feature {
         ],
     )],
     migrations: &[Migrations {
-        kind: routedata::DATABASE,
+        kind: DATABASE,
         list: &[
             Migration {
                 id: 1,
@@ -55,7 +72,7 @@ pub const FEATURE: Feature = Feature {
             Migration {
                 id: 2,
                 name: "details",
-                apply: Code(routedata::add_details),
+                apply: Code(backend::add_details),
             },
             Migration {
                 id: 3,
@@ -64,9 +81,9 @@ pub const FEATURE: Feature = Feature {
             },
         ],
     }],
-    domains: &[routedata::DOMAIN],
-    maintenance: &[routedata::maintenance::MAINTENANCE],
+    domains: &[backend::DOMAIN],
+    maintenance: &[backend::maintenance::MAINTENANCE],
     mcp: mcp::MCP,
-    people: &[&routedata::people::Drivers],
+    people: &[&backend::people::Drivers],
     ..feature("routes")
 };

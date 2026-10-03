@@ -6,10 +6,7 @@ use dispatch_cortex::{
 };
 #[test]
 fn retained_sweep_selection_rechecks_running_jobs_and_publication_activity() {
-    crate::testing::install(
-        &[&dispatch_cortex::COLLECTOR],
-        &[&crate::feature_manifests::routes::FEATURE],
-    );
+    crate::testing::install(&[&dispatch_cortex::COLLECTOR], &[&crate::FEATURE]);
     use std::os::unix::fs::PermissionsExt;
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();

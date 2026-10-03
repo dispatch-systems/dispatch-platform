@@ -1,9 +1,7 @@
 //! The agent API's answers over a DSP's real shapes of data: one driver joined across
 //! Paycom, routes, meal breaks and DVIC by Driver Match, everyone's numbers for a day,
 //! and refusals that say what to fix instead of guessing.
-use dispatch_backend::{
-    dvic::DvicStore, routedata::RoutesStore, scorecard::ScorecardStore, workforce::TimecardStore,
-};
+use dispatch_backend::{dvic::DvicStore, scorecard::ScorecardStore, workforce::TimecardStore};
 use dispatch_core::testing as common;
 use dispatch_core::{
     State,
@@ -22,6 +20,7 @@ use dispatch_cortex::{
 };
 use dispatch_driver_match::DriverMatchStore;
 use dispatch_paycom::{self as paycom, fixtures};
+use dispatch_routes::RoutesStore;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -29,11 +28,11 @@ use std::sync::Arc;
 mod data {
     pub use dispatch_backend::feature_manifests::{
         dvic::mcp::views::dvic,
-        routes::mcp::views::{package, packages, route, routes},
         scorecard::mcp::scorecard::{feedback, returns, safety, weekly},
         timecard::mcp::views::{meal_breaks, timecards},
     };
     pub use dispatch_core::mcp::data::*;
+    pub use dispatch_routes::{package, packages, route, routes};
 }
 
 const DAY: &str = "2026-09-12";

@@ -13,5 +13,5 @@ async fn measure_live_collection() -> Result<()> {
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn measure_route_method() -> Result<()> {
     use dispatch_core::collection::browser::egress::counted::{RECEIVED, SENT};
-    dispatch_cortex::measure_route_method(crate::routedata::prepare, &SENT, &RECEIVED).await
+    dispatch_cortex::measure_route_method(dispatch_routes::prepare, &SENT, &RECEIVED).await
 }

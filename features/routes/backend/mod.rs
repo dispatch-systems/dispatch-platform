@@ -2,16 +2,13 @@
 //! itinerary with its stops and packages, and the newer routes page's list, one day at a
 //! time, published into the DSP's route data database. Normalized rows hold what reads
 //! filter on; every response is kept whole, compressed, for reprocessing. Browser and
-//! HTTP data is untrusted input. The collection is `routes` to the platform; the module
-//! and its database are `routedata`, since `routes` names the HTTP routes here.
-#[path = "keeper.rs"]
-pub mod keeper;
-#[path = "maintenance.rs"]
-pub mod maintenance;
-#[path = "people.rs"]
-pub mod people;
+//! HTTP data is untrusted input. The collection is `routes` to the platform; its database is
+//! `routedata`.
+pub(crate) mod keeper;
+pub(crate) mod maintenance;
+pub(crate) mod people;
 
-use crate::contracts::{
+use crate::api::types::{
     RouteAddress, RouteBreak, RouteDayView, RouteDays, RouteItinerary, RouteItineraryDetail,
     RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteRetention, RouteStop,
     RouteTask, RouteUnknownStop,
