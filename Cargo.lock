@@ -609,6 +609,7 @@ dependencies = [
  "dispatch-host",
  "dispatch-paycom",
  "dispatch-routes",
+ "dispatch-scorecard",
  "dispatch-settings",
  "dispatch-team",
  "dispatch-uniforms",
@@ -781,6 +782,21 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "ts-rs",
+]
+
+[[package]]
+name = "dispatch-scorecard"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "dispatch-core",
+ "dispatch-cortex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
  "ts-rs",
 ]
 

@@ -1,6 +1,5 @@
 //! Scorecard storage: publication, supersession, weeks not posted, where the next
 //! job reads and what a schedule queues.
-use dispatch_backend::scorecard::ScorecardStore;
 use dispatch_core::db::{Store, s};
 use dispatch_core::testing as common;
 use dispatch_cortex::{
@@ -8,14 +7,12 @@ use dispatch_cortex::{
     discovery::{CollectionRequest, Scope},
     scorecard::{self, Capture, Request},
 };
+use dispatch_scorecard::ScorecardStore;
 use serde_json::json;
 
 /// Scorecard, and the Cortex collector whose scorecard it keeps.
 fn install() {
-    common::install(
-        &[&cortex::COLLECTOR],
-        &[&dispatch_backend::feature_manifests::scorecard::FEATURE],
-    );
+    common::install(&[&cortex::COLLECTOR], &[&dispatch_scorecard::FEATURE]);
 }
 
 fn request(week: &str) -> Request {

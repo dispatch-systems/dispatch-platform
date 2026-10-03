@@ -29,6 +29,7 @@ dispatch-home = { path = "../../features/home" }
 dispatch-host = { path = "../../ops/host-manager" }
 dispatch-paycom = { path = "../../collectors/paycom" }
 dispatch-routes = { path = "../../features/routes" }
+dispatch-scorecard = { path = "../../features/scorecard" }
 dispatch-settings = { path = "../../features/settings" }
 dispatch-team = { path = "../../features/team" }
 dispatch-uniforms = { path = "../../features/uniforms" }
@@ -51,6 +52,7 @@ dispatch-driver-match = { path = "../../features/driver_match", features = ["ts"
 dispatch-dvic = { path = "../../features/dvic", features = ["ts"] }
 dispatch-paycom = { path = "../../collectors/paycom", features = ["ts"] }
 dispatch-routes = { path = "../../features/routes", features = ["ts"] }
+dispatch-scorecard = { path = "../../features/scorecard", features = ["ts"] }
 dispatch-uniforms = { path = "../../features/uniforms", features = ["ts"] }
 base64 = { workspace = true }
 tempfile = { workspace = true }
@@ -133,10 +135,6 @@ path = "../../features/timecard/tests/backend/integration/punches.rs"
 [[test]]
 name = "range_reads"
 path = "../../features/timecard/tests/backend/integration/range_reads.rs"
-
-[[test]]
-name = "scorecard"
-path = "../../features/scorecard/tests/backend/integration/scorecard.rs"
 
 [[example]]
 name = "assessment-fixture"

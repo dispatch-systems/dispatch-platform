@@ -9,8 +9,6 @@ mod assessment;
 mod generated;
 #[path = "../../features/timecard/api/meals.rs"]
 mod meals;
-#[path = "../../features/scorecard/api/types.rs"]
-mod scorecard;
 #[path = "../../features/timecard/api/settings.rs"]
 mod settings;
 #[path = "../../features/timecard/api/types.rs"]
@@ -37,12 +35,14 @@ pub use dispatch_routes::{
     RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteRetention, RouteStop,
     RouteTask, RouteUnknownStop,
 };
+pub use dispatch_scorecard::{
+    ScorecardDatasetCount, ScorecardPublication, ScorecardWeek, ScorecardWeeks,
+};
 pub use dispatch_uniforms::{
     Uniform, UniformAdjustment, UniformEvent, UniformEventKind, UniformFit, UniformHistory,
     UniformInventory, UniformUpdates, UniformVariant,
 };
 pub use meals::*;
-pub use scorecard::*;
 pub use settings::*;
 pub use workforce::*;
 

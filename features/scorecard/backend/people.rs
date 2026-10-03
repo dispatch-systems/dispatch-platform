@@ -1,5 +1,5 @@
 //! The drivers the scorecard names, as Driver Match reads them: by the weeks it covers.
-use crate::scorecard::ScorecardStore;
+use crate::backend::ScorecardStore;
 use dispatch_core::{
     Result,
     db::{Store, n, s},

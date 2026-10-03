@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "collectors/*", "features/driver_match", "features/dvic", "features/home", "features/routes", "features/settings", "features/team", "features/uniforms", "app/backend", "ops/host-manager", "tooling/ci/dispatch-ci"]
+members = ["core", "collectors/*", "features/driver_match", "features/dvic", "features/home", "features/routes", "features/scorecard", "features/settings", "features/team", "features/uniforms", "app/backend", "ops/host-manager", "tooling/ci/dispatch-ci"]
 resolver = "3"
 
 # The platform version lives in package.json. Crate versions stay fixed so a release

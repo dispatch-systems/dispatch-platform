@@ -1,5 +1,5 @@
 //! Scorecard keeps the weeks Cortex's performance API answers with.
-use crate::scorecard::ScorecardStore;
+use crate::backend::ScorecardStore;
 use dispatch_core::{
     Error, Result,
     collection::{browser::Collected, registry::AddedStorage},

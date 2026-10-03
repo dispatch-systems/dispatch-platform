@@ -1,6 +1,5 @@
 //! Every registered owner's databases, as new ones and as older binaries left them, against
 //! the recorded schema.
-use crate::scorecard::ScorecardStore;
 use dispatch_core::{
     db::{Db, Kind, Store, migrate},
     foundation::config::Config,
@@ -8,6 +7,7 @@ use dispatch_core::{
 };
 use dispatch_dvic::DvicStore;
 use dispatch_routes::RoutesStore;
+use dispatch_scorecard::ScorecardStore;
 use serde_json::json;
 use std::{
     os::unix::fs::PermissionsExt,
@@ -105,7 +105,7 @@ fn new_databases_match_the_recorded_schema() {
         (Kind::DSP, &dsp),
         (dispatch_paycom::DATABASE, &paycom),
         (dispatch_cortex::DATABASE, &cortex),
-        (crate::scorecard::DATABASE, &scorecard),
+        (dispatch_scorecard::DATABASE, &scorecard),
         (dispatch_routes::DATABASE, &routedata),
         (dispatch_dvic::DATABASE, &dvic),
     ];

@@ -1,6 +1,6 @@
 //! Weekly scorecards: what is stored, collecting a week, and its jobs. The scorecard is a
 //! feature of its own; nothing here asks for another's permission.
-use crate::scorecard::ScorecardStore;
+use crate::backend::ScorecardStore;
 use dispatch_core::{
     Result,
     collection::api::routes::{

@@ -31,9 +31,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
             },
             Param {
                 name: "type",
-                kind: Kind::Choice(
-                    crate::feature_manifests::scorecard::mcp::scorecard::FEEDBACK_NAMES,
-                ),
+                kind: Kind::Choice(scorecard::FEEDBACK_NAMES),
                 description: "One kind of feedback, as wrong_address or never_received.",
             },
             Param {

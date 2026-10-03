@@ -4,8 +4,6 @@ pub mod feature_manifests;
 #[path = "../../features/timecard/backend/meals/mod.rs"]
 pub mod meals;
 pub mod routes;
-#[path = "../../features/scorecard/backend/mod.rs"]
-pub mod scorecard;
 #[path = "../../features/timecard/backend/punches/mod.rs"]
 pub mod workforce;
 
@@ -22,7 +20,7 @@ pub static REGISTRY: Registry = Registry {
         &dispatch_uniforms::FEATURE,
         &dispatch_routes::FEATURE,
         &dispatch_dvic::FEATURE,
-        &feature_manifests::scorecard::FEATURE,
+        &dispatch_scorecard::FEATURE,
         &dispatch_driver_match::FEATURE,
         &dispatch_team::FEATURE,
         &dispatch_settings::FEATURE,

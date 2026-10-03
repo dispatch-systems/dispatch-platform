@@ -9,7 +9,6 @@
   "pending": {
     "anatomy": {
       "feature minimum": {
-        "features/scorecard has no Cargo.toml": "Phase B",
         "features/timecard has no Cargo.toml": "Phase B"
       }
     },
@@ -46,7 +45,6 @@
         "app/backend/export.rs has a #[test]": "Phase B"
       },
       "integration tests": {
-        "features/scorecard's integration tests are tests of app/backend/Cargo.toml": "Phase B",
         "features/timecard's integration tests are tests of app/backend/Cargo.toml": "Phase B"
       }
     }

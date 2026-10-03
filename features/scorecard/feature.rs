@@ -1,5 +1,15 @@
 //! Scorecard: Amazon's weekly scorecard, collected from Cortex.
-use crate::scorecard;
+mod api;
+mod backend;
+mod mcp;
+
+/// What its API answers with, which the app writes to TypeScript.
+pub use api::types::{ScorecardDatasetCount, ScorecardPublication, ScorecardWeek, ScorecardWeeks};
+/// What the app uses: its storage and its database.
+pub use backend::{DATABASE, ScorecardStore};
+/// What agents can ask of it, which the app's tests ask directly.
+pub use mcp::scorecard::{feedback, returns, safety, weekly};
+
 use dispatch_core::{
     db::{
         Migration, Migrations,
@@ -7,11 +17,6 @@ use dispatch_core::{
     },
     manifest::{Feature, Switch, feature, perm},
 };
-
-#[path = "api/routes.rs"]
-mod api;
-#[path = "mcp/mod.rs"]
-pub mod mcp;
 
 pub const FEATURE: Feature = Feature {
     // No page of its own yet, but its collection, its schedules and its weeks, apart from
@@ -26,8 +31,8 @@ pub const FEATURE: Feature = Feature {
         perm("scorecard.collect", "Collect Scorecard", 51).implies(&["scorecard.view"]),
         perm("scorecard.manage", "Manage Scorecard", 52).implies(&["scorecard.view"]),
     ],
-    routes: api::routes,
-    keeps: &[&crate::scorecard::keeper::Scorecard],
+    routes: api::routes::routes,
+    keeps: &[&backend::keeper::Scorecard],
     tables: &[(
         "scorecard",
         &[
@@ -52,7 +57,7 @@ pub const FEATURE: Feature = Feature {
         ],
     )],
     migrations: &[Migrations {
-        kind: scorecard::DATABASE,
+        kind: DATABASE,
         list: &[
             Migration {
                 id: 1,
@@ -67,12 +72,12 @@ pub const FEATURE: Feature = Feature {
             Migration {
                 id: 3,
                 name: "verified_scope",
-                apply: Code(scorecard::add_verified_scope),
+                apply: Code(backend::add_verified_scope),
             },
         ],
     }],
-    domains: &[scorecard::DOMAIN],
+    domains: &[backend::DOMAIN],
     mcp: mcp::MCP,
-    people: &[&scorecard::people::Drivers],
+    people: &[&backend::people::Drivers],
     ..feature("scorecard")
 };

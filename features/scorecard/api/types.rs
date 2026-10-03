@@ -2,7 +2,7 @@ use serde::Serialize;
 
 /// How many rows one dataset of a publication holds.
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ScorecardDatasetCount {
     pub id: String,
@@ -11,7 +11,7 @@ pub struct ScorecardDatasetCount {
 }
 /// One collection of a week's scorecard.
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ScorecardPublication {
     pub id: String,
@@ -24,7 +24,7 @@ pub struct ScorecardPublication {
 }
 /// What the last collection of a week found, and the active publication if it was posted.
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ScorecardWeek {
     pub week: String,
@@ -33,7 +33,7 @@ pub struct ScorecardWeek {
     pub publication: Option<ScorecardPublication>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ScorecardWeeks {
     pub station: String,

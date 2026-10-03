@@ -2,7 +2,7 @@
 //! events, returns to station with their contact-compliance notes, and each driver's tiers.
 //! Each reads the week's active publication and answers a count or a short table, as the
 //! route questions do.
-use crate::scorecard::ScorecardStore;
+use crate::backend::ScorecardStore;
 use dispatch_core::{
     State,
     accounts::api::types::Dsp,

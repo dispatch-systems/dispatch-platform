@@ -1,6 +1,6 @@
 //! What Scorecard holds of the synthetic DSP: Amazon's weekly scorecards for the weeks the
 //! routes cover, through the collection's own publishing.
-use crate::scorecard::ScorecardStore;
+use crate::backend::ScorecardStore;
 use chrono::{Datelike, Duration};
 use dispatch_core::{
     Error, Result,
