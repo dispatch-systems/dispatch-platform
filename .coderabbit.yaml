@@ -33,7 +33,7 @@ reviews:
   path_filters:
     - '!package-lock.json'
     - '!Cargo.lock'
-    - '!shared/contracts/generated/**'
+    - '!**/generated/**'
   # The project's rules, which live outside the repository. Keep them in step with the docs
   # or skills they come from, named in each entry.
   path_instructions:
