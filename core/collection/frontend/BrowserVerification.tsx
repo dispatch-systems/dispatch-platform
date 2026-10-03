@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { Maximize2, Minimize2, RefreshCw } from 'lucide-react';
-import type {
-  BrowserFrame,
-  BrowserInput,
-  Connection,
-} from '../../../shared/contracts/collection.js';
+import type { BrowserFrame, BrowserInput, Connection } from '../api/index.js';
 import { api, ApiError } from '../../shell/frontend/runtime/api.js';
 import { featureLabel } from '../../shell/frontend/runtime/features.js';
 import { ErrorBox, Loading, Modal } from '../../shell/frontend/ui/index.js';

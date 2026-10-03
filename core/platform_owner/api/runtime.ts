@@ -1,6 +1,12 @@
 import { z } from 'zod';
-import type { AuditPage, PlatformHealth } from './platform-owner.js';
-import { count, environment, providerMode, text, type Replies } from './runtime.js';
+import type { AuditPage, PlatformHealth } from './index.js';
+import {
+  count,
+  environment,
+  providerMode,
+  text,
+  type Replies,
+} from '../../foundation/api/runtime.js';
 
 export const platformHealthSchema = z.object({
   environment,

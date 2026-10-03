@@ -10,7 +10,7 @@ Run commands from the repository root.
 | `backend/src/`                                | HTTP, accounts, workforce, meals, jobs, providers and storage                |
 | `dashboard/src/features/`                     | Product screens, their styles and artwork                                    |
 | `dashboard/src/app/`, `shell/`, `ui/`, `lib/` | App infrastructure, navigation frame, reusable controls and pure helpers     |
-| `shared/contracts/`                           | API types and runtime validation; `generated/` comes from Rust               |
+| `shared/contracts/generated/`                 | API types generated from Rust, which each owner's `api/` narrows and checks  |
 | `services/cloudflare-mail/`                   | Email Worker and its generated environment types                             |
 | `tests/`                                      | API, dashboard, provider, tooling and browser checks; fixtures in `support/` |
 | `tooling/`                                    | Build, CI, preview, test, benchmark and asset helpers                        |
@@ -19,7 +19,7 @@ Backend domain folders expose their entry points through `mod.rs`. Rust owns pun
 interpretation and meal assessment; the dashboard formats typed assessment results. Each owner's
 frontend declares its pages, Settings tabs and audit wording in `frontend/feature.ts`, which loads
 its `index.ts` lazily; only `app/frontend/features.ts` lists them. Styles live with their owner;
-`core/shell/frontend/styles.css` sets the global import order. Shared contracts and tooling never
+`core/shell/frontend/styles.css` sets the global import order. API types and tooling never
 import dashboard code.
 
 Use an isolated worktree branched from `origin/main`, then `npm ci` and `npm run dev`.

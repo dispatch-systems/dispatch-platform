@@ -1,10 +1,10 @@
 import { createElement, lazy } from 'react';
 import { CalendarDays } from 'lucide-react';
-import type { DspView } from '../../../shared/contracts/accounts.js';
+import type { DspView } from '../../../core/accounts/api/index.js';
 import { begins, collectionData, path } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { Access, FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
-import { replies } from '../../../shared/contracts/runtime-timecard.js';
+import { replies } from '../api/runtime.js';
 import { isTimecardDataReady, prefetchTimecard } from './prefetch.js';
 
 declare module '../../../core/shell/frontend/runtime/slots.js' {

@@ -4,8 +4,8 @@ import type {
   UniformAdjustment,
   UniformUpdates,
   UniformHistory,
-} from './uniforms.js';
-import { count, type Replies } from './runtime.js';
+} from './index.js';
+import { count, type Replies } from '../../../core/foundation/api/runtime.js';
 
 const fit = z.enum(['men', 'women', 'unisex']);
 const variant = z.object({

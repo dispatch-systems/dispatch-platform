@@ -38,25 +38,14 @@
       "typescript": {
         "core/accounts imports shared/contracts": "Phase B",
         "core/collection imports shared/contracts": "Phase B",
-        "core/collection's tests import shared/contracts": "Phase B",
-        "core/mcp's tests import shared/contracts": "Phase B",
         "core/platform_owner imports shared/contracts": "Phase B",
-        "core/platform_owner's tests import shared/contracts": "Phase B",
-        "core/server's tests import shared/contracts": "Phase B",
         "core/shell imports shared/contracts": "Phase B",
-        "core/shell's tests import shared/contracts": "Phase B",
-        "core/tenancy's tests import shared/contracts": "Phase B",
+        "core/tenancy imports shared/contracts": "Phase B",
         "features/driver_match imports shared/contracts": "Phase B",
-        "features/driver_match's tests import shared/contracts": "Phase B",
         "features/dvic imports shared/contracts": "Phase B",
-        "features/dvic's tests import shared/contracts": "Phase B",
         "features/routes imports shared/contracts": "Phase B",
-        "features/settings imports shared/contracts": "Phase B",
-        "features/team imports shared/contracts": "Phase B",
         "features/timecard imports shared/contracts": "Phase B",
-        "features/timecard's tests import shared/contracts": "Phase B",
-        "features/uniforms imports shared/contracts": "Phase B",
-        "features/uniforms's tests import shared/contracts": "Phase B"
+        "features/uniforms imports shared/contracts": "Phase B"
       },
       "lists": {
         "core/collection/backend/registry.rs lists collectors/cortex, collectors/paycom": "Phase B"

@@ -13,9 +13,9 @@ import {
   type ReactNode,
 } from 'react';
 import { ArrowRight, RefreshCw, Settings } from 'lucide-react';
-import type { Connection } from '../../../shared/contracts/collection.js';
-import type { DspView } from '../../../shared/contracts/accounts.js';
-import type { EmployeeTimecardResponse } from '../../../shared/contracts/timecard.js';
+import type { Connection } from '../../../core/collection/api/index.js';
+import type { DspView } from '../../../core/accounts/api/index.js';
+import type { EmployeeTimecardResponse } from '../api/index.js';
 import { paycomDefaults } from './paycom.js';
 import { api, useCachedData, useData } from '../../../core/shell/frontend/runtime/api.js';
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';

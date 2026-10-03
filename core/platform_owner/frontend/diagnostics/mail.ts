@@ -1,4 +1,4 @@
-import type { MailMessage } from '../../../../shared/contracts/platform-owner.js';
+import type { MailMessage } from '../../api/index.js';
 import { deviceTimezone, time } from '../../../shell/frontend/lib/format.js';
 
 export function mailFailure(code: string | null): string {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import { holds, pendingNames } from './support/pending.js';
-import { files, isDirectory, ownerOf, owners, templated } from './support/repo.js';
+import { files, isDirectory, isFile, ownerOf, owners, templated } from './support/repo.js';
 import { lexFile, rust, testAttributes } from './support/rust.js';
 
 // plans/restructure/structure.md, "Tests": the folder decides how a test runs.
@@ -110,9 +110,11 @@ test("each integration test is a test of its owner's crate", () => {
   holds('tests', 'integration tests', wrong);
 });
 
-test('an owner with an api/ has tests/api/', () => {
+// An api/ with no endpoints, such as core/foundation's TypeScript primitives, has none to test.
+test('an owner with endpoints has tests/api/', () => {
   const untested = owners()
-    .filter(({ dir }) => isDirectory(`${dir}/api`) && !isDirectory(`${dir}/tests/api`))
+    .filter(({ dir }) => isFile(`${dir}/api/routes.rs`) || isDirectory(`${dir}/api/routes`))
+    .filter(({ dir }) => !isDirectory(`${dir}/tests/api`))
     .map(({ dir }) => `${dir} has api/ and no tests/api/`);
   holds('tests', 'api tests', untested);
 });

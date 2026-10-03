@@ -1,17 +1,12 @@
 import { useId, useState } from 'react';
 import { X } from 'lucide-react';
-import type {
-  Uniform,
-  UniformFit,
-  UniformInput,
-  UniformInventory,
-} from '../../../shared/contracts/uniforms.js';
+import type { Uniform, UniformFit, UniformInput, UniformInventory } from '../api/index.js';
 import {
   uniformFits,
   uniformFitLabels,
   uniformSizePresets,
   uniformCategoryPresets,
-} from '../../../shared/contracts/uniforms.js';
+} from '../api/index.js';
 import { saveUniform } from '../api/client.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { ErrorBox, Modal } from '../../../core/shell/frontend/ui/index.js';

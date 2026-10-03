@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { DriverCounts } from './driver-match.js';
-import { count, type Replies } from './runtime.js';
+import type { DriverCounts } from './index.js';
+import { count, type Replies } from '../../../core/foundation/api/runtime.js';
 
 const driverCountsSchema = z.object({
   all: count,

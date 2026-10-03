@@ -1,4 +1,4 @@
-import type { DriverData } from '../../../shared/contracts/driver-match.js';
+import type { DriverData } from '../api/index.js';
 import { dataLabels, dataOrder } from './driver-match.js';
 import { dataIcons } from './dataIcons.js';
 

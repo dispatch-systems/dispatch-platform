@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { Timecard } from '../../../../../shared/contracts/timecard.js';
+import type { Timecard } from '../../../api/index.js';
 import { paycomColumns, type PaycomColumn } from '../../paycom.js';
 import { Badge, type TableColumn } from '../../../../../core/shell/frontend/ui/index.js';
 

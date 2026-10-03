@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sortDailyRows } from '../../frontend/daily-sort.js';
-import type { DailyTimecard } from '../../../../shared/contracts/timecard.js';
+import type { DailyTimecard } from '../../api/index.js';
 
 test('daily sorting is numeric and keeps ascending codes for descending ties without mutating rows', () => {
   const row = (employeeCode: string, hours: number): DailyTimecard => ({

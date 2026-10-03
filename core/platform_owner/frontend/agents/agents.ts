@@ -12,7 +12,7 @@ import type {
   AgentKeyRequest,
   AgentReads,
   AgentSource,
-} from '../../../../shared/contracts/platform-owner.js';
+} from '../../api/index.js';
 import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
 import { utcDay } from '../../../shell/frontend/lib/format.js';
 import { readToggles, type ReadToggle } from '../../../shell/frontend/runtime/slots.js';

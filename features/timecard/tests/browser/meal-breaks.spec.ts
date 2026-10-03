@@ -9,7 +9,7 @@ import {
   setDate,
   expectDate,
 } from '../../../../core/shell/tests/support/fixtures.js';
-import type { MealSource } from '../../../../shared/contracts/timecard.js';
+import type { MealSource } from '../../api/index.js';
 import { paycomDefaults } from '../../frontend/paycom.js';
 
 const date = '2026-09-15';

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Plug } from 'lucide-react';
-import type { DspSummary } from '../../../../shared/contracts/accounts.js';
-import type { PageFeature } from '../../../../shared/contracts/tenancy.js';
+import type { DspSummary } from '../../../accounts/api/index.js';
+import type { PageFeature } from '../../../tenancy/api/index.js';
 import { setDspFeature, useDspFeatures } from '../../api/client.js';
 import {
   featureCatalog,

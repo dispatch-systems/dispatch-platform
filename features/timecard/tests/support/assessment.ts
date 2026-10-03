@@ -6,7 +6,7 @@ import type {
   LateRule,
   EmployeeTimecard,
   Timecard,
-} from '../../../../shared/contracts/timecard.js';
+} from '../../api/index.js';
 
 export type MealComparisonSource = Omit<MealComparison, 'rows' | 'date'> & {
   date: string | null;

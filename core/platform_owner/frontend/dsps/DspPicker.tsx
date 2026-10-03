@@ -1,5 +1,5 @@
 import { Building2 } from 'lucide-react';
-import type { SessionView } from '../../../../shared/contracts/accounts.js';
+import type { SessionView } from '../../../accounts/api/index.js';
 import { Badge, Header } from '../../../shell/frontend/ui/index.js';
 import { open } from './open.js';
 

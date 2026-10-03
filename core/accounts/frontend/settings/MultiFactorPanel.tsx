@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { KeyRound, ShieldCheck, Smartphone } from 'lucide-react';
-import type { AuthenticatorSetup } from '../../../../shared/contracts/accounts.js';
+import type { AuthenticatorSetup } from '../../api/index.js';
 import { api } from '../../../shell/frontend/runtime/api.js';
 import { usePasskeys, useSecurityStatus } from '../../api/client.js';
 import { registerPasskey } from '../../../shell/frontend/runtime/passkeys.js';

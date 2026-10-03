@@ -2,7 +2,7 @@ import { PaycomDateControls } from '../../DateControls.js';
 import { localDate } from '../../../../../core/shell/frontend/lib/day.js';
 import { useMemo, useState } from 'react';
 import { Download, Globe, Info } from 'lucide-react';
-import type { DailyTimecard, PaycomPreferences } from '../../../../../shared/contracts/timecard.js';
+import type { DailyTimecard, PaycomPreferences } from '../../../api/index.js';
 import { dailyTimecardsUrl, useDailyTimecards } from '../../../api/client.js';
 import { useTableState } from '../../../../../core/shell/frontend/runtime/useTableState.js';
 import {

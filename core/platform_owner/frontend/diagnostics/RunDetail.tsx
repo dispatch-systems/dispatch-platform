@@ -1,6 +1,6 @@
 import { AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
-import type { Job, JobMetrics } from '../../../../shared/contracts/collection.js';
+import type { Job, JobMetrics } from '../../../collection/api/index.js';
 import { errorLabel } from '../../../shell/frontend/runtime/api.js';
 import { DetailList } from '../../../shell/frontend/ui/index.js';
 import { bytes, duration, title } from '../../../shell/frontend/lib/format.js';

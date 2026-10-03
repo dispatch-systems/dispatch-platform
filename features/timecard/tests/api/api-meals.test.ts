@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { MealEmployee } from '../../../../shared/contracts/timecard.js';
-import type { Driver, DriverMatch } from '../../../../shared/contracts/driver-match.js';
-import { checkReply } from '../../../../shared/contracts/runtime.js';
-import { replies as timecardReplies } from '../../../../shared/contracts/runtime-timecard.js';
+import type { MealEmployee } from '../../api/index.js';
+import type { Driver, DriverMatch } from '../../../driver_match/api/index.js';
+import { checkReply } from '../../../../core/foundation/api/runtime.js';
+import { replies as timecardReplies } from '../../api/runtime.js';
 import { fixture, until } from '../../../../core/shell/tests/support/support.js';
 
 test('meal API requires DSP context, exposes the punch union to members, and links only through Driver Match', async () => {

@@ -1,7 +1,7 @@
 import { AlertTriangle, ChevronRight, CircleX, Cpu, Globe, HardDrive, Mail } from 'lucide-react';
 import type { ReactNode } from 'react';
-import type { Job } from '../../../../shared/contracts/collection.js';
-import type { PlatformHealth } from '../../../../shared/contracts/platform-owner.js';
+import type { Job } from '../../../collection/api/index.js';
+import type { PlatformHealth } from '../../api/index.js';
 import {
   Badge,
   DataTable,

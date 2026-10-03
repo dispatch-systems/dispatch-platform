@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pencil, Plus, SlidersHorizontal } from 'lucide-react';
-import type { AgentKey } from '../../../../shared/contracts/platform-owner.js';
+import type { AgentKey } from '../../api/index.js';
 import { Badge, DataState, Empty } from '../../../shell/frontend/ui/index.js';
 import { useAgentKeys } from '../../api/client.js';
 import { accessText, expiryText, inUse, knownApp, lastUsedText, reachText } from './agents.js';

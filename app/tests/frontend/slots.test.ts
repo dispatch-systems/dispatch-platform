@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import '../support/manifests.js';
 import { featureCatalog } from '../../../core/shell/frontend/runtime/features.js';
 import { features } from '../../frontend/features.js';
-import { jobSchema } from '../../../shared/contracts/runtime-collection.js';
+import { jobSchema } from '../../../core/collection/api/runtime.js';
 import { errorLabel } from '../../../core/shell/frontend/runtime/api.js';
 import {
   cacheRules,

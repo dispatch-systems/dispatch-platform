@@ -8,7 +8,7 @@ import type {
   DeliveryGap as Gap,
   MealEmployee,
   MealStatus,
-} from '../../../shared/contracts/timecard.js';
+} from '../api/index.js';
 export interface ClockTime {
   minute: number;
   label: string;

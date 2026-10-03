@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Globe2 } from 'lucide-react';
 import { api, ApiError } from '../../../../core/shell/frontend/runtime/api.js';
 import { ErrorBox, Modal } from '../../../../core/shell/frontend/ui/index.js';
-import type { CollectionSchedule, ScheduleInput } from '../../../../shared/contracts/collection.js';
+import type { CollectionSchedule, ScheduleInput } from '../../../../core/collection/api/index.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { nextCollection } from './nextCollection.js';
 import { saveSchedule, removeSchedule } from '../../../../core/collection/api/client.js';

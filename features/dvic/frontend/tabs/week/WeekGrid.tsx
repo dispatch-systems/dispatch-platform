@@ -1,4 +1,4 @@
-import type { DvicInspection } from '../../../../../shared/contracts/dvic.js';
+import type { DvicInspection } from '../../../api/index.js';
 import { useEffect, useMemo } from 'react';
 import {
   bandLabel,

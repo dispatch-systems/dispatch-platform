@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
-import type { UniformAdjustment, UniformVariant } from '../../../shared/contracts/uniforms.js';
-import { uniformFitLabels } from '../../../shared/contracts/uniforms.js';
+import type { UniformAdjustment, UniformVariant } from '../api/index.js';
+import { uniformFitLabels } from '../api/index.js';
 import { ApiError, view } from '../../../core/shell/frontend/runtime/api.js';
 import { adjustUniform } from '../api/client.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';

@@ -10,8 +10,8 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { performance } from 'node:perf_hooks';
 import { createHash } from 'node:crypto';
-import { sessionSchema } from '../../shared/contracts/runtime-accounts.js';
-import { jobSchema } from '../../shared/contracts/runtime-collection.js';
+import { sessionSchema } from '../../core/accounts/api/runtime.js';
+import { jobSchema } from '../../core/collection/api/runtime.js';
 
 const { values } = parseArgs({
   options: {

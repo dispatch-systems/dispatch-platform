@@ -1,5 +1,5 @@
-import type { DspView } from '../../../shared/contracts/accounts.js';
-import type { EmployeesResponse } from '../../../shared/contracts/timecard.js';
+import type { DspView } from '../../../core/accounts/api/index.js';
+import type { EmployeesResponse } from '../api/index.js';
 import { readUpdateState } from '../../../core/shell/frontend/runtime/browser-update.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { dailyTimecardsUrl, employeeTimecardUrl, mealComparisonUrl } from '../api/client.js';

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture, until, seedQueuedJob } from '../../../shell/tests/support/support.js';
 import { parseApiResponse } from '../../../shell/frontend/runtime/replies.js';
-import type { Job } from '../../../../shared/contracts/collection.js';
+import type { Job } from '../../api/index.js';
 
 const credentials = {
   clientCode: 'metrics-client',

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { permissions } from '../../../../shared/contracts/accounts.js';
+import { permissions } from '../../../accounts/api/index.js';
 import {
   impliedPermissions,
   permissionGroups,

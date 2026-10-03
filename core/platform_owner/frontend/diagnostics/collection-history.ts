@@ -1,4 +1,4 @@
-import type { Job } from '../../../../shared/contracts/collection.js';
+import type { Job } from '../../../collection/api/index.js';
 import { featureLabel } from '../../../shell/frontend/runtime/features.js';
 import { collectionLabels } from '../../../shell/frontend/runtime/slots.js';
 

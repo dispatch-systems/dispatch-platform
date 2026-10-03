@@ -1,4 +1,4 @@
-import type { DriverStatus } from '../../../shared/contracts/driver-match.js';
+import type { DriverStatus } from '../api/index.js';
 import { statusLabels, statusTones } from './driver-match.js';
 
 export function DriverTag({ status }: { status: DriverStatus }) {

@@ -1,4 +1,4 @@
-import type { PaycomPreferences } from '../../../shared/contracts/timecard.js';
+import type { PaycomPreferences } from '../api/index.js';
 export const paycomColumns = [
   ['inDay', 'Clock in'],
   ['outLunch', 'Lunch out'],

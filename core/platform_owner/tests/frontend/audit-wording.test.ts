@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { AuditEvent } from '../../../../shared/contracts/platform-owner.js';
+import type { AuditEvent } from '../../api/index.js';
 import {
   changeValue,
   installWording,

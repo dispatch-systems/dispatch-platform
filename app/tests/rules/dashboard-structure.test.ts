@@ -130,17 +130,20 @@ test('ui components know nothing about the product', () => {
 });
 
 // The shell's lib/ is pure logic: no React product code, nothing from the runtime, shell or ui.
+// It may read core's API types, but calls no API client.
 test('lib depends on nothing else in the frontend', () => {
   const files = modules.filter(({ file }) => shellArea(file) === 'lib');
   assert(files.length > 0, 'lib must contain its shared logic');
+  const apiTypes = (target: string) => {
+    const file = path.relative(root, target);
+    return /^core\/[^/]+\/api\//.test(file.split(path.sep).join('/')) && !clients.includes(file);
+  };
   for (const { file, dependencies: references } of files)
     for (const { specifier, target } of references)
       if (target)
         assert(
-          [path.resolve(SHELL, 'lib'), path.resolve('shared/contracts')].some(
-            (directory) => target.startsWith(directory + path.sep) || target === directory,
-          ),
-          `${file} imports ${specifier}; lib may import packages, lib and shared contracts only`,
+          target.startsWith(path.resolve(SHELL, 'lib') + path.sep) || apiTypes(target),
+          `${file} imports ${specifier}; lib may import packages, lib and core's API types only`,
         );
 });
 
@@ -278,7 +281,7 @@ test('every route is declared once and every parent is a route', () => {
   }
 });
 
-// Shared wire types, Rust and non-browser programs cannot depend on screen implementations.
+// API types, Rust and non-browser programs cannot depend on screen implementations.
 // Tests may: they live in each owner's tests/ and exercise its frontend logic.
 test('contracts, tooling, services and backends are independent of the frontends', () => {
   const frontendRoots = frontends.map((directory) => path.resolve(directory) + path.sep);
@@ -313,7 +316,7 @@ test('contracts, tooling, services and backends are independent of the frontends
         assert(
           !frontendRoots.some((directory) => resolved.startsWith(directory)) &&
             !clientFiles.includes(resolved.replace(/\.js$/, '.ts')),
-          `${file} imports ${target}; move runtime-neutral types into shared/contracts`,
+          `${file} imports ${target}; move runtime-neutral types into the owner's api/`,
         );
         // The Rust build cache leaves TypeScript and CSS out of its fingerprint.
         if (file.endsWith('.rs'))

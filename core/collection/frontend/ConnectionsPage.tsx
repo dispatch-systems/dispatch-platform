@@ -1,6 +1,6 @@
 import { Fragment } from 'react';
 import { ShieldCheck } from 'lucide-react';
-import type { Connection } from '../../../shared/contracts/collection.js';
+import type { Connection } from '../api/index.js';
 import { connectionCard } from '../../shell/frontend/runtime/slots.js';
 
 export function ConnectionsPage({

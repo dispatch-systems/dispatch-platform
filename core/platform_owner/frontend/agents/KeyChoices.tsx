@@ -1,11 +1,6 @@
 import { useId } from 'react';
 import { TriangleAlert } from 'lucide-react';
-import type {
-  AgentArea,
-  AgentDsp,
-  AgentKeyRequest,
-  AgentSource,
-} from '../../../../shared/contracts/platform-owner.js';
+import type { AgentArea, AgentDsp, AgentKeyRequest, AgentSource } from '../../api/index.js';
 import { areaGroups, areaHints, areaLabels, areaSources, areaWith, withArea } from './agents.js';
 
 /** Where an app asking to connect reaches. */

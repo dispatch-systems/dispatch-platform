@@ -1,4 +1,4 @@
-import type { DspSummary } from '../../../../shared/contracts/accounts.js';
+import type { DspSummary } from '../../../accounts/api/index.js';
 import { setDspFeature } from '../../api/client.js';
 import {
   capabilityLabel,

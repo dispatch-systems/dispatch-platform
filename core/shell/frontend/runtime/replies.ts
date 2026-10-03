@@ -1,7 +1,7 @@
-import { checkReply, type Method } from '../../../../shared/contracts/runtime.js';
-import { replies as accounts } from '../../../../shared/contracts/runtime-accounts.js';
-import { replies as collection } from '../../../../shared/contracts/runtime-collection.js';
-import { replies as platformOwner } from '../../../../shared/contracts/runtime-platform-owner.js';
+import { checkReply, type Method } from '../../../foundation/api/runtime.js';
+import { replies as accounts } from '../../../accounts/api/runtime.js';
+import { replies as collection } from '../../../collection/api/runtime.js';
+import { replies as platformOwner } from '../../../platform_owner/api/runtime.js';
 import { replyChecks } from './slots.js';
 
 /**

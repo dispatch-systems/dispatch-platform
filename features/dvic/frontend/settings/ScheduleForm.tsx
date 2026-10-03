@@ -3,7 +3,7 @@ import type {
   CollectionSchedule,
   ScheduleInput,
   SchedulePreview,
-} from '../../../../shared/contracts/collection.js';
+} from '../../../../core/collection/api/index.js';
 import { api, ApiError } from '../../../../core/shell/frontend/runtime/api.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { time } from '../../../../core/shell/frontend/lib/format.js';

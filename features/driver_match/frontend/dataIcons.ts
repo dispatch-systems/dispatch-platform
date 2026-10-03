@@ -6,7 +6,7 @@ import {
   Utensils,
   type LucideIcon,
 } from 'lucide-react';
-import type { DriverData } from '../../../shared/contracts/driver-match.js';
+import type { DriverData } from '../api/index.js';
 
 export const dataIcons: Record<DriverData, LucideIcon> = {
   timecards: CalendarDays,

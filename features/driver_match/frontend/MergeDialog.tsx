@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Driver } from '../../../shared/contracts/driver-match.js';
+import type { Driver } from '../api/index.js';
 import { mergeDrivers } from '../api/client.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { driverMatches, statusLabels } from './driver-match.js';

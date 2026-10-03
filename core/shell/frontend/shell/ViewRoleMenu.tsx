@@ -1,5 +1,5 @@
 import { Check, ChevronDown } from 'lucide-react';
-import type { DspView } from '../../../../shared/contracts/accounts.js';
+import type { DspView } from '../../../accounts/api/index.js';
 import { Popover } from '../ui/Popover.js';
 
 // Lets a platform owner look through any role the DSP has, custom ones included.

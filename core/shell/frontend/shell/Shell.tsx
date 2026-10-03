@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Menu, X, ChevronDown, LogOut, Eye, ArrowUpRight, type LucideIcon } from 'lucide-react';
-import type { DspView, SessionView } from '../../../../shared/contracts/accounts.js';
+import type { DspView, SessionView } from '../../../accounts/api/index.js';
 import { Brand } from '../runtime/Brand.js';
 import { Popover } from '../ui/Popover.js';
 import { useFocusTrap } from '../ui/useFocusTrap.js';

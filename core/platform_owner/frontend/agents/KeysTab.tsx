@@ -1,10 +1,6 @@
 import { useState } from 'react';
 import { ChevronRight, Clock, Plus, Power, TriangleAlert } from 'lucide-react';
-import type {
-  AgentAccess,
-  AgentKey,
-  AgentKeyCreated,
-} from '../../../../shared/contracts/platform-owner.js';
+import type { AgentAccess, AgentKey, AgentKeyCreated } from '../../api/index.js';
 import { ConfirmDialog, DataState, Empty, SearchInput } from '../../../shell/frontend/ui/index.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { revokeAllAgentKeys, useAgentKeys } from '../../api/client.js';

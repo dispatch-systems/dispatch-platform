@@ -7,8 +7,8 @@ import type {
   Feature,
   PageFeature,
   TabFeature,
-} from '../../../../shared/contracts/tenancy.js';
-import type { DspView, Permission } from '../../../../shared/contracts/accounts.js';
+} from '../../../tenancy/api/index.js';
+import type { DspView, Permission } from '../../../accounts/api/index.js';
 import { capabilityLabelOf } from './slots.js';
 
 type Entry<Kind, Id> = {

@@ -4,7 +4,7 @@ import type {
   EmployeeTimecardResponse,
   Timecard,
   PunchEvent,
-} from '../../../../../shared/contracts/timecard.js';
+} from '../../../api/index.js';
 import { addDays } from '../../../../../core/shell/frontend/lib/calendar.js';
 import {
   DataState,

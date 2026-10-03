@@ -6,7 +6,7 @@ import {
 } from '../../../collectors/paycom/tests/support/browseros-paycom-fixture.js';
 import { until, seedQueuedJob } from '../../../core/shell/tests/support/support.js';
 import { processMemory } from '../../../core/shell/tests/support/process-memory.js';
-import type { Job } from '../../../shared/contracts/collection.js';
+import type { Job } from '../../../core/collection/api/index.js';
 
 test(
   'multiple DSPs share two browsers fairly while API reads stay responsive',

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
-import type { MealComparison } from '../../../shared/contracts/timecard.js';
-import type { Membership } from '../../../shared/contracts/accounts.js';
+import type { MealComparison } from '../../../features/timecard/api/index.js';
+import type { Membership } from '../../../core/accounts/api/index.js';
 import { test, expect, login, openDsp } from '../../../core/shell/tests/support/fixtures.js';
 
 test('large meal rosters keep bounded rows, search responsive, and export every employee @paint-budget', async ({

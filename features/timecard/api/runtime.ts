@@ -11,9 +11,9 @@ import type {
   MealAssessment,
   PaycomPreferences,
   PaycomSettings,
-} from './timecard.js';
-import { jobSchema, jobsSchema } from './runtime-collection.js';
-import { count, text, type Replies } from './runtime.js';
+} from './index.js';
+import { jobSchema, jobsSchema } from '../../../core/collection/api/runtime.js';
+import { count, text, type Replies } from '../../../core/foundation/api/runtime.js';
 
 const optionalText = text.nullable().optional();
 export const employeeSchema = z.object({

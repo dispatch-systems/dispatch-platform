@@ -1,9 +1,5 @@
 import { useData } from '../../shell/frontend/runtime/api.js';
-import type {
-  AccountSession,
-  PasskeySummary,
-  SecurityStatus,
-} from '../../../shared/contracts/accounts.js';
+import type { AccountSession, PasskeySummary, SecurityStatus } from './index.js';
 
 // The account's endpoints, as its Settings panels call them.
 

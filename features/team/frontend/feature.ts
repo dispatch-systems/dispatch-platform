@@ -1,6 +1,6 @@
 import { createElement, lazy } from 'react';
 import { Users } from 'lucide-react';
-import type { DspView } from '../../../shared/contracts/accounts.js';
+import type { DspView } from '../../../core/accounts/api/index.js';
 import { begins } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';

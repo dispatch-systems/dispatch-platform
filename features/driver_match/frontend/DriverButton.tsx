@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { Driver } from '../../../shared/contracts/driver-match.js';
+import type { Driver } from '../api/index.js';
 import { DriverAvatar } from './DriverAvatar.js';
 
 /** A person's avatar and name, opening their details. */

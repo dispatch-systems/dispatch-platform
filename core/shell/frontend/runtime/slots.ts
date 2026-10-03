@@ -1,18 +1,10 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import type {
-  AgentArea,
-  AgentSource,
-  AuditEvent,
-} from '../../../../shared/contracts/platform-owner.js';
-import type { CollectionChange, JobMetrics } from '../../../../shared/contracts/collection.js';
-import type {
-  ConnectionFeature,
-  Feature,
-  PageFeature,
-} from '../../../../shared/contracts/tenancy.js';
-import type { DspView, SessionView } from '../../../../shared/contracts/accounts.js';
-import type { Replies } from '../../../../shared/contracts/runtime.js';
+import type { AgentArea, AgentSource, AuditEvent } from '../../../platform_owner/api/index.js';
+import type { CollectionChange, JobMetrics } from '../../../collection/api/index.js';
+import type { ConnectionFeature, Feature, PageFeature } from '../../../tenancy/api/index.js';
+import type { DspView, SessionView } from '../../../accounts/api/index.js';
+import type { Replies } from '../../../foundation/api/runtime.js';
 
 // What an owner's `frontend/feature.ts` declares, and what the hosts read from it. Only
 // app/frontend lists the manifests; it installs them here before the first render, so no host

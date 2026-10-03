@@ -1,6 +1,12 @@
 import { z } from 'zod';
-import type { CollectionUpdates, Job, JobMetrics } from './collection.js';
-import { count, environment, milliseconds, text, type Replies } from './runtime.js';
+import type { CollectionUpdates, Job, JobMetrics } from './index.js';
+import {
+  count,
+  environment,
+  milliseconds,
+  text,
+  type Replies,
+} from '../../foundation/api/runtime.js';
 
 const pageRead = z.object({
   ordinal: count,

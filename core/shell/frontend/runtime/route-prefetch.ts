@@ -1,4 +1,4 @@
-import type { DspView, SessionView } from '../../../../shared/contracts/accounts.js';
+import type { DspView, SessionView } from '../../../accounts/api/index.js';
 import { api, view as admittedToken } from './api.js';
 import { dataCache } from './data-cache.js';
 import { canPrefetch, prefetchData } from './prefetch.js';

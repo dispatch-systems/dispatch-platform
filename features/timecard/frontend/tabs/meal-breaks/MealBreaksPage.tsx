@@ -16,7 +16,7 @@ import {
 } from '../../../../../core/shell/frontend/ui/index.js';
 import { time } from '../../../../../core/shell/frontend/lib/format.js';
 import { clockLabel, displayMeal, personName } from '../../meal-breaks.js';
-import type { MealEmployee, PaycomPreferences } from '../../../../../shared/contracts/timecard.js';
+import type { MealEmployee, PaycomPreferences } from '../../../api/index.js';
 import { PaycomDateControls } from '../../DateControls.js';
 import { MealDetail, mealColumns, mealLines, type MealLine } from './mealColumns.js';
 import { useAdjacentDays } from '../../useAdjacentDays.js';

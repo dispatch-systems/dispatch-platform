@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { fixture } from '../../../core/shell/tests/support/support.js';
 import '../support/manifests.js';
 import { parseApiResponse } from '../../../core/shell/frontend/runtime/replies.js';
-import type { AuditPage, PlatformHealth } from '../../../shared/contracts/platform-owner.js';
-import type { DspSummary } from '../../../shared/contracts/accounts.js';
-import type { PaycomSettings } from '../../../shared/contracts/timecard.js';
+import type { AuditPage, PlatformHealth } from '../../../core/platform_owner/api/index.js';
+import type { DspSummary } from '../../../core/accounts/api/index.js';
+import type { PaycomSettings } from '../../../features/timecard/api/index.js';
 
 test('recovery-code responses accept the active and previous rollout formats', () => {
   const route = '/api/auth/security/recovery-codes';

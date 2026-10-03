@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { Dsp } from './generated/Dsp';
-import { features } from './tenancy.js';
+import type { Dsp } from '../../../shared/contracts/generated/Dsp';
+import { features } from '../../tenancy/api/index.js';
 import {
   permissions,
   type DspView,
@@ -12,8 +12,15 @@ import {
   type AuthenticatorSetup,
   type PasskeySummary,
   type User,
-} from './accounts.js';
-import { count, environment, milliseconds, providerMode, text, type Replies } from './runtime.js';
+} from './index.js';
+import {
+  count,
+  environment,
+  milliseconds,
+  providerMode,
+  text,
+  type Replies,
+} from '../../foundation/api/runtime.js';
 
 const connectionStatus = z.enum([
   'not_connected',

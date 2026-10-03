@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { History, Plus } from 'lucide-react';
-import type { DspView } from '../../../shared/contracts/accounts.js';
-import type { Uniform } from '../../../shared/contracts/uniforms.js';
+import type { DspView } from '../../../core/accounts/api/index.js';
+import type { Uniform } from '../api/index.js';
 import { archiveUniform, initializeUniforms } from '../api/client.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';

@@ -11,8 +11,8 @@ import type {
   MealComparison,
   PaycomPreferences,
   PaycomSettings,
-} from '../../../shared/contracts/timecard.js';
-import type { Job } from '../../../shared/contracts/collection.js';
+} from './index.js';
+import type { Job } from '../../../core/collection/api/index.js';
 
 // Timecard's endpoints, as its pages call them.
 

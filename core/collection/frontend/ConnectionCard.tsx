@@ -2,7 +2,7 @@ import { BrowserVerification } from './BrowserVerification.js';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { performancePolicy } from '../../shell/frontend/lib/performance-policy.js';
 import { Plug, RefreshCw } from 'lucide-react';
-import type { Connection } from '../../../shared/contracts/collection.js';
+import type { Connection } from '../api/index.js';
 import { api } from '../../shell/frontend/runtime/api.js';
 import { featureLabel } from '../../shell/frontend/runtime/features.js';
 import { Badge, ConfirmDialog, DataState, ErrorBox, Modal } from '../../shell/frontend/ui/index.js';

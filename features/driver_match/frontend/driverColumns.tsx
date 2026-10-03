@@ -1,5 +1,5 @@
 import { ChevronRight } from 'lucide-react';
-import type { Driver, DriverSource } from '../../../shared/contracts/driver-match.js';
+import type { Driver, DriverSource } from '../api/index.js';
 import type { TableColumn } from '../../../core/shell/frontend/ui/index.js';
 import { dataLabels, dayLabel, firstId, shortId, statusLabels } from './driver-match.js';
 import { AppearsIn } from './AppearsIn.js';

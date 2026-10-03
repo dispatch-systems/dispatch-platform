@@ -1,6 +1,6 @@
 import { CircleCheck, CircleDashed, CircleX, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
-import type { MailMessage } from '../../../../shared/contracts/platform-owner.js';
+import type { MailMessage } from '../../api/index.js';
 import { at, mailFailure } from './mail.js';
 
 function Step({

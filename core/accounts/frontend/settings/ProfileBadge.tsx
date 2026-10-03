@@ -1,5 +1,5 @@
 import { useEffect, useRef, type PointerEvent, type RefObject } from 'react';
-import type { DspView, SessionView } from '../../../../shared/contracts/accounts.js';
+import type { DspView, SessionView } from '../../api/index.js';
 import { timezoneName } from '../../../shell/frontend/lib/format.js';
 import { Badge, DspAvatar, dspTone } from '../../../shell/frontend/ui/index.js';
 import './profile.css';

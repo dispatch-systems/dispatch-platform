@@ -1,9 +1,4 @@
-import type {
-  Uniform,
-  UniformAdjustment,
-  UniformInventory,
-  UniformUpdates,
-} from '../../../shared/contracts/uniforms.js';
+import type { Uniform, UniformAdjustment, UniformInventory, UniformUpdates } from '../api/index.js';
 
 export const uniformTotal = (uniform: Uniform) =>
   uniform.variants.reduce((sum, v) => sum + v.quantity, 0);

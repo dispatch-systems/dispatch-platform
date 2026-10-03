@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { Driver, DriverId } from '../../../../shared/contracts/driver-match.js';
+import type { Driver, DriverId } from '../../api/index.js';
 import {
   dataAmount,
   dayLabel,

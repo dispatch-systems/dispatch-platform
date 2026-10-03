@@ -1,4 +1,4 @@
-import type { DriverCounts, DriverMatch } from '../../../shared/contracts/driver-match.js';
+import type { DriverCounts, DriverMatch } from '../api/index.js';
 import { useCachedData } from '../../../core/shell/frontend/runtime/api.js';
 
 /** The tab's name, with how many pairs wait for a decision. */
