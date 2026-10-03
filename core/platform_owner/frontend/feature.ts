@@ -23,7 +23,9 @@ declare module '../../shell/frontend/runtime/slots.js' {
 const loadDsps = () =>
   Promise.all([import('./dsps/index.js'), loadPlatformSlots()]).then(([module]) => module);
 const loadPicker = () => import('./dsps/picker.js');
-const loadDiagnostics = () => import('./diagnostics/index.js');
+// Diagnostics names each collection as its collector does.
+const loadDiagnostics = () =>
+  Promise.all([import('./diagnostics/index.js'), loadPlatformSlots()]).then(([module]) => module);
 // The Agents page and the audit log read every owner's kinds of data for agents as their code
 // loads, so what owners put in the slots loads first. The log is handed every owner's wording.
 const loadAgents = () => loadPlatformSlots().then(() => import('./agents/index.js'));

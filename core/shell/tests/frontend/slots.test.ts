@@ -111,7 +111,7 @@ test('connection cards come in the order their collectors are listed', () => {
   assert.equal(connectionCard('other'), undefined);
 });
 
-test('collections come with the collector that runs them, in the order they are declared', () => {
+test('collections come with the collector that runs them, in the order they are declared', async () => {
   const collection = (kind: string): CollectionLabels => ({
     kind,
     schedule: { id: kind, label: kind },
@@ -119,10 +119,14 @@ test('collections come with the collector that runs them, in the order they are 
     count: (metrics) => metrics.rows,
   });
   installFeatures([
-    { name: 'beta', collections: [collection('beta.b'), collection('beta.a')] },
+    {
+      name: 'beta',
+      platformSlots: async () => ({ collections: [collection('beta.b'), collection('beta.a')] }),
+    },
     { name: 'gamma' },
-    { name: 'alpha', collections: [collection('alpha.a')] },
+    { name: 'alpha', platformSlots: async () => ({ collections: [collection('alpha.a')] }) },
   ]);
+  await loadPlatformSlots();
   assert.deepEqual(
     collectionLabels().map(({ provider, kind }) => [provider, kind]),
     [

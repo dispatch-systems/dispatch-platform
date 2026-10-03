@@ -25,12 +25,4 @@ export const feature: FrontendFeature = {
   scheduleIssues: {
     schedule_paycom_required: 'Connect Paycom before enabling this schedule.',
   },
-  collections: [
-    {
-      kind: 'paycom.collect',
-      schedule: { id: 'paycom', label: 'Paycom' },
-      unit: 'employee',
-      count: (metrics) => metrics.employees,
-    },
-  ],
 };

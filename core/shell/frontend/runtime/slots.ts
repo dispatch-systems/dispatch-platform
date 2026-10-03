@@ -225,6 +225,8 @@ export type PlatformSlots = {
   auditWording?: AuditWording;
   /** The kinds of its data agents may read. */
   readToggles?: ReadToggles;
+  /** The collections it runs. */
+  collections?: readonly CollectionLabels[];
 };
 
 /** An owner's frontend: what it puts in each slot. */
@@ -241,8 +243,6 @@ export type FrontendFeature = {
   platformSlots?: () => Promise<PlatformSlots>;
   /** Its connection's card. */
   connectionCard?: ConnectionCard;
-  /** The collections it runs. */
-  collections?: readonly CollectionLabels[];
   /** How a page that needs a capability its connection provides names it: "a … source". */
   capabilities?: Record<string, string>;
   /** How the response cache treats its reads. */
@@ -290,12 +290,6 @@ export const connectionCards = () =>
 export const connectionCard = (provider: string) =>
   connectionCards().find((card) => card.provider === provider);
 
-/** Every collection, with the collector that runs it. */
-export const collectionLabels = () =>
-  installed.flatMap((feature) =>
-    (feature.collections ?? []).map((collection) => ({ ...collection, provider: feature.name })),
-  );
-
 /** Every owner's cache rules, in the order the owners are listed. */
 export const cacheRules = () => installed.flatMap((feature) => feature.cache ?? []);
 
@@ -320,7 +314,7 @@ export const capabilityLabelOf = (capability: string) =>
 /** Why a schedule of an owner's collections waits. */
 export const scheduleIssueOf = (code: string) => first((feature) => feature.scheduleIssues?.[code]);
 
-let loadedSlots: readonly PlatformSlots[] = [];
+let loadedSlots: readonly (PlatformSlots & { owner: string })[] = [];
 let slotsLoad: Promise<void> | undefined;
 /**
  * Loads what every owner puts in the platform owner's slots, once; a failed load is tried again
@@ -328,7 +322,9 @@ let slotsLoad: Promise<void> | undefined;
  */
 export function loadPlatformSlots() {
   slotsLoad ??= Promise.all(
-    installed.flatMap((feature) => (feature.platformSlots ? [feature.platformSlots()] : [])),
+    installed.flatMap(({ name, platformSlots }) =>
+      platformSlots ? [platformSlots().then((slots) => ({ ...slots, owner: name }))] : [],
+    ),
   ).then(
     (slots) => void (loadedSlots = slots),
     (error: unknown) => {
@@ -351,3 +347,9 @@ export const readToggles = () =>
   loadedSlots
     .flatMap((slots) => (slots.readToggles ? [slots.readToggles] : []))
     .sort((a, b) => a.order - b.order);
+
+/** Every collection, with the collector that runs it. */
+export const collectionLabels = () =>
+  loadedSlots.flatMap((slots) =>
+    (slots.collections ?? []).map((collection) => ({ ...collection, provider: slots.owner })),
+  );
