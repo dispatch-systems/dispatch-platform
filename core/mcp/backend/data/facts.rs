@@ -78,20 +78,6 @@ impl Coverage {
     }
 }
 
-/// The latest scorecard week collected.
-pub fn fresh_scorecard(db: &Store, dsp: &Dsp, station: &str) -> Result<Option<Value>> {
-    let scorecard = db.scorecard(&dsp.id)?.one(
-        "SELECT max(week) week,max(collected_at) collected_at FROM scorecard_publications \
-         WHERE station=? AND active=1 AND scope_verified=1",
-        [station],
-    )?;
-    Ok(scorecard.filter(|r| !r["week"].is_null()).map(|r| {
-        serde_json::json!({
-            "latestWeek": r["week"], "collectedAt": r["collected_at"]
-        })
-    }))
-}
-
 /// Where packages were delivered, as the feature that holds the routes answers for it.
 pub struct Places {
     /// The kind of data addresses are read as.

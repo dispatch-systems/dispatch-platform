@@ -180,6 +180,20 @@ fn weeks(db: &Store, dsp: &Dsp, period: &Period) -> crate::Result<Value> {
     }
     Ok(json!({"weeks": out}))
 }
+/// The latest scorecard week collected.
+pub fn fresh(db: &Store, dsp: &Dsp, station: &str) -> crate::Result<Option<Value>> {
+    let scorecard = db.scorecard(&dsp.id)?.one(
+        "SELECT max(week) week,max(collected_at) collected_at FROM scorecard_publications \
+         WHERE station=? AND active=1 AND scope_verified=1",
+        [station],
+    )?;
+    Ok(scorecard.filter(|r| !r["week"].is_null()).map(|r| {
+        serde_json::json!({
+            "latestWeek": r["week"], "collectedAt": r["collected_at"]
+        })
+    }))
+}
+
 /// A period no collected week touches has nothing to count. It is refused rather than
 /// answered, so an agent cannot read the missing figures as zero and is sent where else the
 /// question may be answered.
