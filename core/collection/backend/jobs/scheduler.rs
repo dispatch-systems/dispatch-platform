@@ -7,6 +7,7 @@ use crate::{
     crypto,
     db::{FromRow, Row, now},
     job_statuses,
+    manifest::registry,
     read_cache::DataDomain,
 };
 use rusqlite::params;
@@ -53,11 +54,8 @@ struct Scheduler {
     refreshed: i64,
     // A year's retention does not need checking every minute.
     audit_pruned: i64,
-    // Nor does a DSP's route data retention.
-    routes_expired: i64,
-    // Collections give new drivers their codes as they finish; this catches up anything
-    // they missed, and every DSP's existing data on the first pass after startup.
-    drivers_matched: i64,
+    // When each feature's upkeep was last due, in the registry's order.
+    upkept: Vec<i64>,
     // When agents' calls were last written down for the Activity log.
     activity_written: i64,
 }
@@ -124,9 +122,7 @@ impl Scheduler {
         {
             failed("agent_activity_prune_failed", &error);
         }
-        // A4: Routes' and Driver Match's upkeep, until they register maintenance tasks.
-        self.clean_route_data().await;
-        self.match_drivers().await;
+        self.maintain().await;
     }
     /// Writes down agents' calls for the Activity log every five seconds, or sooner once a
     /// batch is waiting: one write for many calls, never one per call.
@@ -142,97 +138,15 @@ impl Scheduler {
             failed("agent_activity_failed", &error);
         }
     }
-    /// Gives every ID each DSP's collections hold a Driver Match code, hourly.
-    async fn match_drivers(&mut self) {
-        if now() - self.drivers_matched < 60 * 60 * 1000 {
-            return;
-        }
-        self.drivers_matched = now();
-        let dsps = self
-            .state
-            .read(|db| {
-                db.platform.query_as::<(String,)>(
-                    "SELECT id FROM dsps WHERE status IN ('active','suspended')",
-                    [],
-                )
-            })
-            .await;
-        let dsps = match dsps {
-            Ok(dsps) => dsps,
-            Err(error) => return failed("driver_match_failed", &error),
-        };
-        for (dsp,) in dsps {
-            // Reading every collection takes the shared lock; only the writes take the
-            // platform lock, briefly.
-            let reading = dsp.clone();
-            let matched = match self.state.read(move |db| db.driver_sources(&reading)).await {
-                Ok(found) => {
-                    self.state
-                        .run_scoped(dsp.clone(), crate::driver_match::DOMAIN, move |db| {
-                            db.assign_drivers(&dsp, found)
-                        })
-                        .await
-                }
-                Err(error) => Err(error),
-            };
-            if let Err(error) = matched {
-                failed("driver_match_failed", &error);
+    /// Each feature's upkeep, in the registry's order, told whether it is due.
+    async fn maintain(&mut self) {
+        let tasks = registry().features.iter().flat_map(|f| f.maintenance);
+        for (task, last) in tasks.zip(self.upkept.iter_mut()) {
+            let due = now() - *last >= task.every.as_millis() as i64;
+            if due {
+                *last = now();
             }
-        }
-    }
-    /// Retires route data past each DSP's retention window, hourly, and deletes what no
-    /// reader sees any more in small steps, so the platform lock is never held for long.
-    async fn clean_route_data(&mut self) {
-        let expire = now() - self.routes_expired >= 60 * 60 * 1000;
-        if expire {
-            self.routes_expired = now();
-        }
-        let dsps = self
-            .state
-            .read(|db| {
-                db.platform.query_as::<(String,)>(
-                    "SELECT id FROM dsps WHERE status IN ('active','suspended')",
-                    [],
-                )
-            })
-            .await;
-        let dsps = match dsps {
-            Ok(dsps) => dsps,
-            Err(error) => return failed("routes_cleanup_failed", &error),
-        };
-        for (dsp,) in dsps {
-            if expire {
-                let id = dsp.clone();
-                if let Err(error) = self
-                    .state
-                    .run_scoped(dsp.clone(), crate::routedata::DOMAIN, move |db| {
-                        db.expire_routes(&id)
-                    })
-                    .await
-                {
-                    failed("routes_expiry_failed", &error);
-                }
-            }
-            // A day of rows is a few dozen steps; the rest waits for the next minute.
-            let mut selected = None;
-            for _ in 0..200 {
-                let id = dsp.clone();
-                match self
-                    .state
-                    .run_bookkeeping(move |db| {
-                        let more = db.sweep_routes_step(&id, &mut selected)?;
-                        Ok((more, selected))
-                    })
-                    .await
-                {
-                    Ok((true, next)) => selected = next,
-                    Ok((false, _)) => break,
-                    Err(error) => {
-                        failed("routes_cleanup_failed", &error);
-                        break;
-                    }
-                }
-            }
+            (task.run)(self.state.clone(), due).await;
         }
     }
     async fn run_due_schedules(&mut self) {
@@ -360,8 +274,14 @@ pub async fn start(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<boo
         schedule_revision: u64::MAX,
         refreshed: 0,
         audit_pruned: 0,
-        routes_expired: 0,
-        drivers_matched: 0,
+        upkept: vec![
+            0;
+            registry()
+                .features
+                .iter()
+                .map(|f| f.maintenance.len())
+                .sum()
+        ],
         activity_written: 0,
     };
     let mut timer = tokio::time::interval(Duration::from_secs(1));

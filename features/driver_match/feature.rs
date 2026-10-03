@@ -1,6 +1,7 @@
 //! Driver Match: one code per driver across Paycom and every Amazon source.
 use crate::{
     db::{Kind, Migration, Migrations, migrations::Apply::Sql},
+    driver_match,
     manifest::{Feature, Switch, feature, perm},
 };
 
@@ -31,6 +32,8 @@ pub const FEATURE: Feature = Feature {
             }],
         },
     ],
-    domains: &[crate::driver_match::DOMAIN],
+    domains: &[driver_match::DOMAIN],
+    maintenance: &[driver_match::maintenance::MAINTENANCE],
+    after_collection: Some(driver_match::maintenance::after_collection),
     ..feature("driver_match")
 };

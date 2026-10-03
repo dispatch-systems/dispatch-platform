@@ -6,6 +6,8 @@
 //! and its database are `routedata`, since `routes` names the HTTP routes here.
 #[path = "keeper.rs"]
 pub mod keeper;
+#[path = "maintenance.rs"]
+pub mod maintenance;
 
 use crate::{
     Error, Result,

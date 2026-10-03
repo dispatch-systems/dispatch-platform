@@ -238,29 +238,13 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
             )
         })
         .await;
-    // A4: Driver Match's pass after a collection, until it registers the hook.
-    // Whoever the collection brought in gets a Driver Match code. A failure here leaves
-    // the collection as it is; the hourly pass catches the IDs up.
     if succeeded {
-        let (reading, tenant) = (changed_dsp.clone(), changed_dsp.clone());
-        let matched = match state.read(move |db| db.driver_sources(&reading)).await {
-            Ok(found) => {
-                state
-                    .run_scoped(
-                        changed_dsp.clone(),
-                        crate::driver_match::DOMAIN,
-                        move |db| db.assign_drivers(&tenant, found),
-                    )
-                    .await
-            }
-            Err(error) => Err(error),
-        };
-        if let Err(error) = matched {
-            crate::observability::event(
-                "error",
-                "driver_match.failed",
-                json!({"dspId":changed_dsp,"error":error.code}),
-            );
+        for after in registry()
+            .features
+            .iter()
+            .filter_map(|f| f.after_collection)
+        {
+            after(state.clone(), changed_dsp.clone()).await;
         }
     }
     state.updates.changed(&changed_dsp, change);

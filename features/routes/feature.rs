@@ -41,5 +41,6 @@ pub const FEATURE: Feature = Feature {
         ],
     }],
     domains: &[routedata::DOMAIN],
+    maintenance: &[routedata::maintenance::MAINTENANCE],
     ..feature("routes")
 };

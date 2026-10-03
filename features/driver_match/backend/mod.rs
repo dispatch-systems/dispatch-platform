@@ -2,6 +2,8 @@
 //! source calls them. Collected rows keep their sources' IDs; `person_ids` leads every ID
 //! to its person. New IDs get a person after every collection, joining someone only on a
 //! certain match; anything less waits for a decision in Settings.
+#[path = "maintenance.rs"]
+pub mod maintenance;
 #[path = "matching.rs"]
 mod matching;
 #[path = "review.rs"]

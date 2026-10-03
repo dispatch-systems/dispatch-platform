@@ -10,8 +10,11 @@ use crate::{
 };
 use serde_json::Value;
 use std::{
+    future::Future,
     path::Path,
+    pin::Pin,
     sync::{Arc, OnceLock},
+    time::Duration,
 };
 
 /// Everything this build is made of. The app builds one and installs it at startup.
@@ -226,6 +229,11 @@ pub struct Feature {
     pub domains: &'static [DataDomain],
     /// What evicts the reads it caches, and any other owner's read its data feeds.
     pub cached: &'static [Cached],
+    /// Upkeep it needs the scheduler to run.
+    pub maintenance: &'static [Maintenance],
+    /// Runs for the DSP after each of its collections succeeds, whichever it is, once its
+    /// outcome is recorded and before the dashboard hears of it.
+    pub after_collection: Option<fn(Arc<State>, String) -> Upkeep>,
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
@@ -241,7 +249,19 @@ pub const fn feature(name: &'static str) -> Feature {
         migrations: &[],
         domains: &[],
         cached: &[],
+        maintenance: &[],
+        after_collection: None,
     }
+}
+
+/// Work a feature runs for the platform, with nothing to answer: it logs its own failures.
+pub type Upkeep = Pin<Box<dyn Future<Output = ()> + Send>>;
+/// Upkeep the scheduler runs for a feature every minute, after the platform's own cleanup
+/// and in the registry's order. `run` hears whether `every` has passed since it was last
+/// due, for work it does less often than the rest.
+pub struct Maintenance {
+    pub every: Duration,
+    pub run: fn(Arc<State>, bool) -> Upkeep,
 }
 
 /// A feature's page on the DSPs page: off for every DSP until the platform owner switches
