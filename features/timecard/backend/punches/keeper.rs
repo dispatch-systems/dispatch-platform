@@ -39,6 +39,12 @@ impl Keeper for Timecards {
             [date, date],
         )
     }
+    fn last_collected(&self, store: &Store, dsp: &str) -> Result<Option<String>> {
+        let collected: Option<(String,)> = store
+            .collector(dsp, paycom::PROVIDER)?
+            .one_as("SELECT collected_at FROM publications WHERE active=1", [])?;
+        Ok(collected.map(|(at,)| at))
+    }
     fn scheduled(&self, _: &Store, _: &str) -> Result<Vec<(String, Value)>> {
         Ok(vec![("paycom".into(), json!({}))])
     }

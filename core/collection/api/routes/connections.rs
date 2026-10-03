@@ -54,11 +54,12 @@ pub fn summary(db: &Store, c: &Member, provider: Provider) -> Result<Connection>
     Ok(value)
 }
 
-// A4: the Paycom connection's own address, from before every provider had one.
+// The original provider's connection has an address of its own, from before every
+// provider had one.
 fn connection(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    let paycom = crate::collectors::paycom::PROVIDER;
-    ensure(c.has(paycom.id()), "not_found", 404)?;
-    Reply::of(&summary(db, c, paycom)?)
+    let original = Provider::original().ok_or_else(|| Error::new("not_found", 404))?;
+    ensure(c.has(original.id()), "not_found", 404)?;
+    Reply::of(&summary(db, c, original)?)
 }
 
 // Every flow starts the same way: who is asking, and about which provider. An

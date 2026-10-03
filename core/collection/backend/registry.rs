@@ -58,6 +58,11 @@ impl Provider {
             .find(|collector| collector.id() == self.0)
             .unwrap_or_else(|| panic!("the {} collector is not registered", self.0))
     }
+    /// The provider every DSP was created with: the one whose storage was never added
+    /// later. Addresses and fields from before there were others still name it.
+    pub fn original() -> Option<Self> {
+        Self::all().find(|provider| provider.marker().is_none())
+    }
     pub fn parse(value: &str) -> Result<Self> {
         Self::all()
             .find(|p| p.id() == value)

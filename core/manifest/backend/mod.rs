@@ -282,6 +282,10 @@ pub trait Collector: Sync {
     fn opened(&self, _: &Store, _dsp: &str) -> Result<()> {
         Ok(())
     }
+    /// Writes what a new DSP's storage holds beyond `seed`, once all of its storage exists.
+    fn provision(&self, _: &Store, _dsp: &str, _timezone: &str) -> Result<()> {
+        Ok(())
+    }
     /// What a credential change removes from `state/browsers`.
     fn browser_entries(&self) -> &'static [&'static str];
     /// The hosts its browser may reach, as its own `HostPolicy`.
@@ -377,6 +381,10 @@ pub trait Keeper: Sync {
     }
     /// When `date` was last collected, as a row with `collected_at`.
     fn collected_at(&self, _: &Store, _dsp: &str, _date: &str) -> Result<Option<Value>> {
+        Ok(None)
+    }
+    /// When what it holds for the DSP was last collected, for the DSP list.
+    fn last_collected(&self, _: &Store, _dsp: &str) -> Result<Option<String>> {
         Ok(None)
     }
     /// What else a schedule needs before it can run the collection.

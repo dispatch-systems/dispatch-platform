@@ -1,5 +1,4 @@
-// A4: provisioning and the DSP list name Paycom, until tenancy asks the registry.
-use super::collectors::{Provider, paycom};
+use super::collectors::Provider;
 use super::{
     Error, Result,
     accounts::{Auth, Context},
@@ -10,6 +9,7 @@ use super::{
     crypto,
     db::{FromRow, Row, Store, iso, now},
     ensure,
+    manifest::registry,
 };
 use rusqlite::params;
 use serde_json::{Value, json};
@@ -162,17 +162,9 @@ impl Store {
         let result = (|| {
             self.initialize_dsp(id)?;
             self.initialize_collectors(id)?;
-            let db = self.collector(id, paycom::PROVIDER)?;
-            db.exec(
-                "INSERT OR IGNORE INTO connections(provider,updated_at) VALUES ('paycom',?)",
-                [iso()],
-            )?;
-            // v0.0.9 reads this row on every Paycom status request. Drop it, and the
-            // table, once a release without that reader has shipped.
-            db.exec(
-                "INSERT OR IGNORE INTO schedules(provider,timezone) VALUES ('paycom',?)",
-                [&dsp.timezone],
-            )?;
+            for provider in Provider::all() {
+                provider.collector().provision(self, id, &dsp.timezone)?;
+            }
             self.initialize_schedules(id)?;
             self.platform
                 .exec("UPDATE dsps SET status='active' WHERE id=?", [id])?;
@@ -238,15 +230,20 @@ impl Store {
                         )?;
                     if let Some((status,)) = status {
                         summary.connections.insert(provider.id().to_owned(), status);
-                        if provider == paycom::PROVIDER {
-                            summary.paycom = status;
-                        }
                     }
                 }
-                let collected: Option<(String,)> = self
-                    .collector(id, paycom::PROVIDER)?
-                    .one_as("SELECT collected_at FROM publications WHERE active=1", [])?;
-                summary.last_collection = collected.map(|(at,)| at);
+                // `paycom` is the original provider's connection, as clients from before
+                // `connections` read it.
+                if let Some(status) =
+                    Provider::original().and_then(|original| summary.connections.get(original.id()))
+                {
+                    summary.paycom = *status;
+                }
+                // The latest collection any keeper knows of.
+                for keeper in registry().keepers() {
+                    let collected = keeper.last_collected(self, id)?;
+                    summary.last_collection = summary.last_collection.take().max(collected);
+                }
                 let next: Option<(Option<String>,)> = self.dsp(id)?.one_as(
                     "SELECT MIN(next_run) FROM collection_schedules WHERE enabled=1",
                     [],

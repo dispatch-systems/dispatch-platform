@@ -20,7 +20,7 @@ use crate::{
         http::RequestHosts,
         paycom,
     },
-    db::{Db, Kind, Store, s},
+    db::{Db, Kind, Store, iso, s},
     ensure,
     job_metrics::Counts,
     manifest::{Collection, Collector},
@@ -97,6 +97,20 @@ impl Collector for Paycom {
     }
     fn opened(&self, store: &Store, dsp: &str) -> Result<()> {
         store.prune_checkpoints(dsp)
+    }
+    fn provision(&self, store: &Store, dsp: &str, timezone: &str) -> Result<()> {
+        let db = store.collector(dsp, PROVIDER)?;
+        db.exec(
+            "INSERT OR IGNORE INTO connections(provider,updated_at) VALUES ('paycom',?)",
+            [iso()],
+        )?;
+        // v0.0.9 reads this row on every Paycom status request. Drop it, and the
+        // table, once a release without that reader has shipped.
+        db.exec(
+            "INSERT OR IGNORE INTO schedules(provider,timezone) VALUES ('paycom',?)",
+            [timezone],
+        )?;
+        Ok(())
     }
     fn browser_entries(&self) -> &'static [&'static str] {
         &[
