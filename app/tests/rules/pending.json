@@ -20,11 +20,6 @@
         "features/timecard imports shared/contracts": "Phase B",
         "features/uniforms imports shared/contracts": "Phase B"
       }
-    },
-    "names": {
-      "retired names": {
-        "file core/mcp/tests/support/agents.ts is named agents": "Phase B"
-      }
     }
   }
 }
