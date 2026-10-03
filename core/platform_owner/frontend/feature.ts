@@ -1,6 +1,10 @@
 import { createElement, lazy } from 'react';
 import { Bot, Building2, FlaskConical, ScrollText, Settings } from 'lucide-react';
-import type { Access, FrontendFeature } from '../../shell/frontend/runtime/slots.js';
+import {
+  loadAuditWording,
+  type Access,
+  type FrontendFeature,
+} from '../../shell/frontend/runtime/slots.js';
 import { preloadTab } from './settings/tabs.js';
 
 declare module '../../shell/frontend/runtime/slots.js' {
@@ -18,7 +22,12 @@ const loadDsps = () => import('./dsps/index.js');
 const loadPicker = () => import('./dsps/picker.js');
 const loadDiagnostics = () => import('./diagnostics/index.js');
 const loadAgents = () => import('./agents/index.js');
-const loadAudit = () => import('./audit/index.js');
+// The audit log opens once every owner's wording has loaded, and is handed it.
+const loadAudit = () =>
+  Promise.all([import('./audit/index.js'), loadAuditWording()]).then(([module, wording]) => {
+    module.installWording(wording);
+    return module;
+  });
 // The page and the tab it opens on load together, so the page opens whole.
 const loadSettings = () =>
   Promise.all([import('./settings/index.js'), preloadTab()]).then(([module]) => module);

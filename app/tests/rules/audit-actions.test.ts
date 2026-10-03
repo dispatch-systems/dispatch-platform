@@ -47,7 +47,17 @@ test('every audit action the backend records has wording in the audit log', () =
   const granted: readonly string[] = permissions;
   const actions = [...recorded].filter((action) => !granted.includes(action)).sort();
   assert(actions.length > 30, `found only ${actions.length} actions`);
-  const log = fs.readFileSync('core/platform_owner/frontend/audit/wording.ts', 'utf8');
+  // The log's own wording, and each owner's through its slot.
+  const wordings = [
+    'core/platform_owner/frontend/audit/wording.ts',
+    ...['core', 'features', 'collectors'].flatMap((top) =>
+      fs
+        .readdirSync(top)
+        .map((name) => path.join(top, name, 'frontend', 'audit-wording.ts'))
+        .filter((file) => fs.existsSync(file)),
+    ),
+  ];
+  const log = wordings.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
   const worded = new Set([...log.matchAll(/^ {2}'([a-z_.]+)':/gm)].map(([, action]) => action));
   assert.deepEqual(
     actions.filter((action) => !worded.has(action)),

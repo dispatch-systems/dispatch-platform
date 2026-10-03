@@ -16,9 +16,11 @@ Run commands from the repository root.
 | `tooling/`                                    | Build, CI, preview, test, benchmark and asset helpers                        |
 
 Backend domain folders expose their entry points through `mod.rs`. Rust owns punch
-interpretation and meal assessment; the dashboard formats typed assessment results. Dashboard features
-expose theirs through `index.ts`. Styles live with their owner; `core/shell/frontend/styles.css`
-sets the global import order. Shared contracts and tooling never import dashboard code.
+interpretation and meal assessment; the dashboard formats typed assessment results. Each owner's
+frontend declares its pages, Settings tabs and audit wording in `frontend/feature.ts`, which loads
+its `index.ts` lazily; only `app/frontend/features.ts` lists them. Styles live with their owner;
+`core/shell/frontend/styles.css` sets the global import order. Shared contracts and tooling never
+import dashboard code.
 
 Use an isolated worktree branched from `origin/main`, then `npm ci` and `npm run dev`.
 The preview prints a private fixture URL. `npm run check:ci` runs full validation;

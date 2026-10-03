@@ -1,6 +1,11 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import type { DspView, Feature, SessionView } from '../../../../shared/contracts/index.js';
+import type {
+  AuditEvent,
+  DspView,
+  Feature,
+  SessionView,
+} from '../../../../shared/contracts/index.js';
 
 // What an owner's `frontend/feature.ts` declares, and what the hosts read from it. Only
 // app/frontend lists the manifests; it installs them here before the first render, so no host
@@ -84,6 +89,29 @@ export type SettingsTab = {
   prefetch?: (tab: string, view: DspView) => string[];
 };
 
+/** A part of an audit log sentence: plain words, or words to stress. */
+export type AuditPart = string | { strong: string };
+/** What the audit log writes its sentences with. */
+export type AuditWords = {
+  strong: (value: string) => AuditPart;
+  /** A `YYYY-MM-DD` day as the log reads it: "Sep 3". */
+  day: (value: string) => string;
+  /** A `HH:MM` time of day as the log reads it: "10:01 AM". */
+  clock: (value: string) => string;
+};
+/** Each event's sentence after the actor's name, by action. */
+export type AuditPhrases = Record<string, (event: AuditEvent, words: AuditWords) => AuditPart[]>;
+/** How an owner's events read in the platform owner's audit log. */
+export type AuditWording = {
+  phrases?: AuditPhrases;
+  /** The actions whose sentence already says what the event's detail holds. */
+  spoken?: readonly string[];
+  /** The names of the fields its events change. */
+  fields?: Record<string, string>;
+  /** How a value of one of its fields reads; undefined leaves it to the log. */
+  value?: (field: string, value: string, words: AuditWords) => string | undefined;
+};
+
 /** An owner's frontend: what it puts in each slot. */
 export type FrontendFeature = {
   /** The owner's directory name. */
@@ -92,6 +120,8 @@ export type FrontendFeature = {
   routes?: readonly Route[];
   /** Its tabs on a DSP's Settings page. */
   settingsTabs?: readonly SettingsTab[];
+  /** Loads how its events read in the audit log. */
+  auditWording?: () => Promise<AuditWording>;
 };
 
 let installed: readonly FrontendFeature[] = [];
@@ -112,3 +142,15 @@ export function routeOf(scope: Route['scope'], page: string): Route | undefined 
 
 /** Every owner's tabs on a DSP's Settings page, in the order the owners are listed. */
 export const settingsTabs = () => installed.flatMap((feature) => feature.settingsTabs ?? []);
+
+let wordingLoad: Promise<readonly AuditWording[]> | undefined;
+/** Loads every owner's audit wording, once; a failed load is tried again next time. */
+export function loadAuditWording() {
+  wordingLoad ??= Promise.all(
+    installed.flatMap((feature) => (feature.auditWording ? [feature.auditWording()] : [])),
+  ).catch((error: unknown) => {
+    wordingLoad = undefined;
+    throw error;
+  });
+  return wordingLoad;
+}

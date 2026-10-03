@@ -93,17 +93,6 @@ const doors = (directory: string) => [
   path.join(directory, 'api', 'client.ts'),
 ];
 
-// Edges the conversion removes when it splits these files: core naming a feature.
-const pending = [
-  'core/platform_owner/frontend/audit/wording.ts -> features/timecard/frontend/paycom.ts',
-];
-const isPending = (file: string, target: string) => pending.includes(`${file} -> ${target}`);
-
-test('the pending edges are still there, so the list only shrinks', () => {
-  const found = new Set(edges.map(({ file, target }) => `${file} -> ${target}`));
-  for (const edge of pending) assert(found.has(edge), `${edge} is gone; remove it from pending`);
-});
-
 test('sign-in, DSP onboarding and member profiles own their screen dependencies', () => {
   const accounts = path.resolve('core/accounts/frontend');
   // The one module the screens share: where a signed-in user goes next.
@@ -145,8 +134,8 @@ test('lib depends on nothing else in the frontend', () => {
   const files = modules.filter(({ file }) => shellArea(file) === 'lib');
   assert(files.length > 0, 'lib must contain its shared logic');
   for (const { file, dependencies: references } of files)
-    for (const { specifier, target, resolved } of references)
-      if (target && !(resolved && isPending(file, path.relative(root, resolved))))
+    for (const { specifier, target } of references)
+      if (target)
         assert(
           [path.resolve(SHELL, 'lib'), path.resolve('shared/contracts')].some(
             (directory) => target.startsWith(directory + path.sep) || target === directory,
@@ -170,7 +159,7 @@ test('an owner reaches another only through a front door or public entry, and a 
   );
   for (const { file, target } of edges) {
     const to = unit(target);
-    if (!to || to === unit(file) || isPending(file, target)) continue;
+    if (!to || to === unit(file)) continue;
     assert(
       doors(to).includes(target) || entries.includes(target),
       `${file} imports ${target}; use the owner's feature.ts, index.ts, api/client.ts or a declared public entry`,
@@ -185,7 +174,7 @@ test('an owner reaches another only through a front door or public entry, and a 
 
 test("features and collectors build on core's ui, lib, runtime and public entries only", () => {
   for (const { file, target } of edges) {
-    if (isPending(file, target) || owner(target) === owner(file)) continue;
+    if (owner(target) === owner(file)) continue;
     if (layer(file) === 'features')
       assert(
         layer(target) === 'core' && shellArea(target) !== 'shell',
@@ -196,12 +185,18 @@ test("features and collectors build on core's ui, lib, runtime and public entrie
         layer(target) === 'core' && shellArea(target) !== 'shell',
         `${file} imports ${target}; a collector's frontend may import core and itself only`,
       );
+    // The platform owner's dashboard hosts slots that features and collectors fill from their
+    // manifests; neither reaches into it.
+    if (['features', 'collectors'].includes(layer(file)))
+      assert(
+        owner(target) !== path.join('core', 'platform_owner'),
+        `${file} imports ${target}; fill the platform owner's slots from the manifest instead`,
+      );
   }
 });
 
 test('only the app lists the features, and core knows only core', () => {
   for (const { file, target } of edges) {
-    if (isPending(file, target)) continue;
     if (['features', 'collectors'].includes(layer(target)) && layer(target) !== layer(file))
       assert(
         file === FEATURES,

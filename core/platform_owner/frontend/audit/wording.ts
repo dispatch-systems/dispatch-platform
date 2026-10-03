@@ -4,13 +4,25 @@ import { errorLabel } from '../../../shell/frontend/runtime/api.js';
 import { elapsed, timeOfDay, title } from '../../../shell/frontend/lib/format.js';
 import { permissionLabels } from '../../../shell/frontend/runtime/permissions.js';
 import { featureLabel } from '../../../shell/frontend/runtime/features.js';
-import { paycomColumns } from '../../../../features/timecard/frontend/paycom.js';
+import type {
+  AuditPart,
+  AuditPhrases,
+  AuditWording,
+  AuditWords,
+} from '../../../shell/frontend/runtime/slots.js';
 import { agentAreas, areaLabels } from '../agents/agents.js';
 
 export const views = new Set(['dsp.view_opened', 'dsp.owner_view_opened']);
 
+// Each owner words its own events through the audit wording slot; the log's loader hands
+// their wording over before the log opens. The wording here is the platform's own.
+let owners: readonly AuditWording[] = [];
+export function installWording(wording: readonly AuditWording[]) {
+  owners = wording;
+}
+
 // A sentence is built from parts so the feed and the export share one wording.
-type Part = string | { strong: string };
+type Part = AuditPart;
 const strong = (value: string): Part => ({ strong: value });
 const day = (value: string) =>
   /^\d{4}-\d{2}-\d{2}$/.test(value)
@@ -23,14 +35,13 @@ const named = (kind: string, name: string | null | undefined): Part[] =>
   name && !/^schedule_[0-9a-f]+$/.test(name) ? [`the ${kind} `, strong(name)] : [`a ${kind}`];
 const providers: Record<string, string> = { paycom: 'Paycom', cortex: 'Cortex' };
 
-const phrases: Record<string, (event: AuditEvent) => Part[]> = {
+const phrases: AuditPhrases = {
   'member.invited': (e) => ['invited ', strong(e.target ?? 'a new member')],
   'member.joined': () => ['joined the team'],
   'member.role_changed': (e) =>
     e.target ? ['changed ', strong(e.target), '’s role'] : ['changed a member’s role'],
   'member.removed': (e) =>
     e.target ? ['removed ', strong(e.target), ' from the team'] : ['removed a member'],
-  'invitation.revoked': (e) => ['revoked the invitation for ', strong(e.detail)],
   'role.created': (e) => ['created ', ...named('role', e.detail)],
   'role.updated': (e) => ['updated ', ...named('role', e.target ?? e.detail)],
   'role.deleted': (e) => ['deleted ', ...named('role', e.detail)],
@@ -40,27 +51,6 @@ const phrases: Record<string, (event: AuditEvent) => Part[]> = {
   ],
   'collection.cancelled': () => ['cancelled a collection'],
   'cortex.collection.requested': () => ['started a Cortex meal break collection'],
-  'scorecard.collection_requested': (e) => [
-    'started a scorecard collection',
-    ...(e.detail ? [' for week ', strong(e.detail)] : []),
-  ],
-  'dvic.collection_requested': (e) => [
-    'started a DVIC collection',
-    ...(e.detail && e.detail !== 'recent' ? [' through publication week ', strong(e.detail)] : []),
-  ],
-  'routes.collection_requested': (e) => [
-    'started a routes collection',
-    ...(e.detail && e.detail !== 'routes' ? [' for ', strong(day(e.detail))] : []),
-  ],
-  'routes.retention_changed': (e) =>
-    e.detail === 'forever'
-      ? ['set route data to be kept ', strong('indefinitely')]
-      : ['set route data to be kept for ', strong(`${e.detail} days`)],
-  'routes.data_expired': (e) => [
-    'deleted route data from before ',
-    strong(day(e.detail)),
-    ', as the retention setting asks',
-  ],
   'meal_breaks.sync_requested': (e) => [
     'started a meal break sync',
     ...(e.detail ? [' for ', strong(day(e.detail))] : []),
@@ -131,15 +121,7 @@ const phrases: Record<string, (event: AuditEvent) => Part[]> = {
   'dsp.restored': (e) => ['restored ', strong(e.dspName ?? 'a DSP')],
   'dsp.suspended': (e) => ['suspended ', strong(e.dspName ?? 'a DSP')],
   'dsp.resumed': (e) => ['resumed ', strong(e.dspName ?? 'a DSP')],
-  'paycom.settings_updated': () => ['updated Paycom settings'],
   'employees.links_updated': () => ['updated employee links'],
-  'driver_match.merged': (e) => ['confirmed ', strong(e.target ?? 'two drivers'), ' as one person'],
-  'driver_match.split': (e) => [
-    'split ',
-    strong(e.target ?? 'a driver'),
-    ' off as their own person',
-  ],
-  'driver_match.kept_apart': (e) => ['kept ', strong(e.target ?? 'two drivers'), ' apart'],
   'audit.exported': () => ['exported the audit log'],
   'account.signed_in': () => ['signed in'],
   'account.password_changed': () => ['changed their password'],
@@ -219,8 +201,7 @@ const failures: Record<string, (provider: string) => string> = {
   browser_command_timeout: () => 'The collection browser stopped responding',
 };
 // These sentences already say what `detail` holds.
-export const spoken = new Set([
-  'invitation.revoked',
+const spoken = new Set([
   'role.created',
   'role.updated',
   'role.deleted',
@@ -228,11 +209,6 @@ export const spoken = new Set([
   'collection.failed',
   'collection.retrying',
   'meal_breaks.sync_requested',
-  'scorecard.collection_requested',
-  'routes.collection_requested',
-  'routes.retention_changed',
-  'routes.data_expired',
-  'dvic.collection_requested',
   'schedule.created',
   'schedule.updated',
   'schedule.toggled',
@@ -246,8 +222,9 @@ export const spoken = new Set([
   'dsp.feature_enabled',
   'dsp.feature_disabled',
   'employees.links_updated',
-  'paycom.settings_updated',
 ]);
+export const isSpoken = (action: string) =>
+  spoken.has(action) || owners.some((owner) => owner.spoken?.includes(action));
 
 const system = (event: AuditEvent) => !event.actorId && event.actorName === 'System';
 // Inside a DSP the server names every platform owner this way.
@@ -256,15 +233,19 @@ export const support = (event: AuditEvent) =>
 // Whatever a platform owner did reads quietly, their visits included. A member's visit is theirs to see.
 export const quiet = (event: AuditEvent) =>
   support(event) || event.action === 'dsp.owner_view_opened';
+const clockTime = (value: string) => timeOfDay(`2000-01-01T${value}:00Z`, 'UTC');
+const words: AuditWords = { strong, day, clock: clockTime };
+const phraseOf = (action: string) =>
+  phrases[action] ?? owners.find((owner) => owner.phrases?.[action])?.phrases?.[action];
 export function sentence(event: AuditEvent): Part[] {
   if (outcomes[event.action]) return outcome(event);
-  const phrase = phrases[event.action]?.(event) ?? [title(event.action).toLowerCase()];
+  const phrase = phraseOf(event.action)?.(event, words) ?? [title(event.action).toLowerCase()];
   return [quiet(event) ? event.actorName : strong(event.actorName), ' ', ...phrase];
 }
 export const plain = (parts: Part[]) =>
   parts.map((part) => (typeof part === 'string' ? part : part.strong)).join('');
 
-export const fields: Record<string, string> = {
+const fields: Record<string, string> = {
   role: 'Role',
   name: 'Name',
   timezone: 'Timezone',
@@ -276,18 +257,6 @@ export const fields: Record<string, string> = {
   cause: 'With',
   abbreviation: 'Abbreviation',
   station: 'Station',
-  'paycom.automatic_sync': 'Automatic sync',
-  'paycom.sync_interval_seconds': 'Sync every',
-  'paycom.opening_page': 'Opening page',
-  'paycom.rows_per_page': 'Rows per page',
-  'paycom.name_order': 'Name order',
-  'paycom.default_sort': 'Default sort',
-  'paycom.department': 'Department',
-  'paycom.station': 'Station',
-  'paycom.columns': 'Columns',
-  'paycom.driver_departments': 'Driver departments',
-  'paycom.late_da_time': 'Late DA time',
-  'paycom.late_da_departments': 'Late DA departments',
   access: 'Access',
   dsps: 'DSPs',
   expires: 'Expires',
@@ -299,6 +268,8 @@ export const fields: Record<string, string> = {
   tools: 'Tools',
   locations: 'Addresses and GPS',
 };
+export const fieldLabel = (field: string) =>
+  fields[field] ?? owners.find((owner) => owner.fields?.[field])?.fields?.[field] ?? title(field);
 const agentValues: Record<string, string> = {
   read: 'Read only',
   operator: 'Operator',
@@ -309,19 +280,6 @@ const agentValues: Record<string, string> = {
   never: 'Never',
 };
 const agentFields = ['access', 'expires', 'bypass', 'tools', 'locations'];
-const clockTime = (value: string) => timeOfDay(`2000-01-01T${value}:00Z`, 'UTC');
-const paycomValues: Record<string, string> = {
-  true: 'On',
-  false: 'Off',
-  timecards: 'Timecards',
-  'meal-breaks': 'Meal Breaks',
-  employees: 'Employees',
-  first_last: 'First Last',
-  last_first: 'Last, First',
-  employeeName: 'Name',
-  condition: 'Punch status',
-  inDay: 'Clock in',
-};
 const collections: Record<string, string> = {
   paycom: 'Paycom',
   meal_break: 'Meal breaks',
@@ -336,15 +294,10 @@ export function changeValue(field: string, value: string) {
   if (field === 'collection') return collections[value] ?? title(value);
   if (field === 'cadence') return title(value);
   if (field === 'interval') return `${value} min`;
-  if (field === 'paycom.sync_interval_seconds' && Number(value))
-    return `${Math.round(Number(value) / 60)} min`;
-  if (field === 'paycom.late_da_time' && /^\d{2}:\d{2}$/.test(value)) return clockTime(value);
-  if (field === 'paycom.columns')
-    return value
-      .split(', ')
-      .map((column) => paycomColumns.find(([key]) => key === column)?.[1] ?? column)
-      .join(', ');
-  if (field.startsWith('paycom.')) return paycomValues[value] ?? value;
+  for (const owner of owners) {
+    const read = owner.value?.(field, value, words);
+    if (read !== undefined) return read;
+  }
   if (field === 'time' && /^\d{2}:\d{2}$/.test(value)) return clockTime(value);
   if (field === 'expires' && value !== 'never')
     return dateFormatter('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(
@@ -357,7 +310,7 @@ export function changeText(change: AuditChange) {
   const value = (side: string | null) => (side === null ? '' : changeValue(change.field, side));
   if (change.field === 'permission')
     return change.to === null ? `− ${value(change.from)}` : `+ ${value(change.to)}`;
-  const label = fields[change.field] ?? title(change.field);
+  const label = fieldLabel(change.field);
   if (change.from === null) return `${label} ${value(change.to)}`;
   if (change.to === null) return `${label} ${value(change.from)} removed`;
   return `${label} ${value(change.from)} → ${value(change.to)}`;

@@ -7,6 +7,7 @@ import { feature as team } from '../../features/team/frontend/feature.js';
 import { feature as settings } from '../../features/settings/frontend/feature.js';
 import { feature as driverMatch } from '../../features/driver_match/frontend/feature.js';
 import { feature as routes } from '../../features/routes/frontend/feature.js';
+import { feature as scorecard } from '../../features/scorecard/frontend/feature.js';
 import { feature as accounts } from '../../core/accounts/frontend/feature.js';
 import { feature as collection } from '../../core/collection/frontend/feature.js';
 import { feature as platformOwner } from '../../core/platform_owner/frontend/feature.js';
@@ -22,6 +23,7 @@ export const features: readonly FrontendFeature[] = [
   settings,
   driverMatch,
   routes,
+  scorecard,
   accounts,
   collection,
   platformOwner,

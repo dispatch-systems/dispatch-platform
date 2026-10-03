@@ -32,4 +32,5 @@ export const feature: FrontendFeature = {
       },
     },
   ],
+  auditWording: () => import('./audit-wording.js').then((module) => module.wording),
 };

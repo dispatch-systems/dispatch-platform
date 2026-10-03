@@ -22,4 +22,5 @@ export const feature: FrontendFeature = {
         tab === 'data' && can(view, 'routes.manage') ? ['/api/dsp/routes/retention'] : [],
     },
   ],
+  auditWording: () => import('./audit-wording.js').then((module) => module.wording),
 };
