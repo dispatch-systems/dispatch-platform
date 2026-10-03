@@ -238,6 +238,13 @@ const DSP: &[Migration] = &[
             "../../collection/migrations/dsp/0006_dvic_collection.sql"
         )),
     },
+    Migration {
+        id: 8,
+        name: "open_collections",
+        apply: Sql(include_str!(
+            "../../collection/migrations/dsp/0008_open_collections.sql"
+        )),
+    },
 ];
 fn role_columns(db: &Db) -> Result<()> {
     add_column(db, "memberships", "role_id", "TEXT REFERENCES roles(id)")?;

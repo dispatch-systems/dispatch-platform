@@ -42,3 +42,18 @@ fn intervals_keep_their_anchor_after_delays_and_restarts() {
         "2026-01-10T08:00:00.000Z"
     );
 }
+#[test]
+fn a_collection_no_collector_schedules_is_refused() {
+    crate::testing::install(&[], &[]);
+    let (_root, db, id) = crate::testing::bootstrapped();
+    for collection in ["next", "", "paycom.collect"] {
+        let value = json!({"name":"Collection","collection":collection,"cadence":"interval",
+            "intervalMinutes":120,"localTime":"00:00","enabled":false});
+        let refused = db.save_schedule(&id, None, &value).unwrap_err();
+        assert_eq!(
+            (refused.code.as_str(), refused.status),
+            ("invalid_input", 400)
+        );
+    }
+    assert!(db.collection_schedules(&id).unwrap().schedules.is_empty());
+}

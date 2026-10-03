@@ -66,6 +66,7 @@ const DATABASES: &[Database] = &[
             (5, "storage_identity", "1389abbd3214cd37"),
             (6, "dvic_collection", "8bb4e0b288be4890"),
             (7, "driver_match", "dd7cd53bbdbd5805"),
+            (8, "open_collections", "a28a44cb4df03634"),
         ],
     ),
     (
@@ -190,13 +191,13 @@ fn with(extra: &'static Feature) -> Registry {
 }
 
 #[test]
-#[should_panic(expected = "dsp migration 8 is missing")]
+#[should_panic(expected = "dsp migration 9 is missing")]
 fn a_registry_whose_migrations_skip_an_id_is_refused() {
     static GAP: Feature = Feature {
         migrations: &[Migrations {
             kind: Kind::DSP,
             list: &[Migration {
-                id: 9,
+                id: 10,
                 name: "after_a_gap",
                 apply: Apply::Sql(""),
             }],

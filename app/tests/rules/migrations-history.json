@@ -172,6 +172,11 @@
       "id": 7,
       "name": "driver_match",
       "sha256": "dd7cd53bbdbd5805b7dfe5d6b02c9b5233a353ac8b8a622b9bd8a8da8c11a5b9"
+    },
+    {
+      "id": 8,
+      "name": "open_collections",
+      "sha256": "a28a44cb4df03634daf12cbac784975ce7f2d6b13e6120dd52f9361b5468d098"
     }
   ],
   "dvic": [

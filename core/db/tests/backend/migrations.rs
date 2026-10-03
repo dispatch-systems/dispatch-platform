@@ -64,6 +64,15 @@ fn before_open_kinds(schema: String) -> String {
          'cortex.scorecard.collect','cortex.routes.collect','cortex.dvic.collect')), status",
     )
 }
+// The schedules table as 0006 left it, listing every collection, before 0008 opened it.
+fn before_open_collections(schema: String) -> String {
+    assert!(!schema.contains("CHECK(collection IN"));
+    schema.replace(
+        "collection TEXT NOT NULL, cadence",
+        "collection TEXT NOT NULL CHECK(collection IN ('paycom','meal_break','both','scorecard',\
+         'routes','dvic')), cadence",
+    )
+}
 fn ids(db: &Db) -> Vec<i64> {
     db.all("SELECT id FROM schema_migrations ORDER BY id", [])
         .unwrap()
@@ -143,7 +152,7 @@ fn concurrent_legacy_dsp_adoption_accepts_the_identity_committed_while_waiting()
     });
 
     verify_dsp_identity(&first, &id).unwrap();
-    assert_eq!(ids(&first), vec![1, 2, 3, 4, 5, 6, 7]);
+    assert_eq!(ids(&first), vec![1, 2, 3, 4, 5, 6, 7, 8]);
 }
 
 #[test]
@@ -193,7 +202,7 @@ fn jobs_and_schedules_from_before_the_scorecard_keep_their_rows_through_the_rebu
             .is_empty()
     );
 
-    let dsp_schema = legacy(Kind::DSP).replace(",'scorecard'", "");
+    let dsp_schema = before_open_collections(legacy(Kind::DSP)).replace(",'scorecard'", "");
     assert!(!dsp_schema.contains("scorecard"));
     let file = root.path().join("dsp.sqlite");
     older(&file, Kind::DSP, &dsp_schema);
@@ -266,7 +275,7 @@ fn jobs_and_schedules_from_before_the_routes_collection_keep_their_rows_through_
             .is_empty()
     );
 
-    let dsp_schema = legacy(Kind::DSP).replace(",'routes'", "");
+    let dsp_schema = before_open_collections(legacy(Kind::DSP)).replace(",'routes'", "");
     assert!(!dsp_schema.contains("routes"));
     let file = root.path().join("dsp.sqlite");
     older(&file, Kind::DSP, &dsp_schema);
@@ -340,7 +349,7 @@ fn jobs_and_schedules_from_before_the_dvic_collection_keep_their_rows_through_th
 
     // A DSP database already bound by migration 5 migrates through the startup path,
     // which verifies its identity before and after the rebuild.
-    let dsp_schema = recorded(Kind::DSP).replace(",'dvic'", "");
+    let dsp_schema = before_open_collections(recorded(Kind::DSP)).replace(",'dvic'", "");
     assert!(!dsp_schema.contains("dvic"));
     let file = root.path().join("dsp.sqlite");
     let id = format!("dsp_{}", "2".repeat(32));
@@ -358,7 +367,7 @@ fn jobs_and_schedules_from_before_the_dvic_collection_keep_their_rows_through_th
     let db = Db::open(&file, Kind::DSP).unwrap();
     migrate_dsp(&db, &id).unwrap();
     verify_dsp_identity(&db, &id).unwrap();
-    assert_eq!(ids(&db), vec![1, 2, 3, 4, 5, 6, 7]);
+    assert_eq!(ids(&db), vec![1, 2, 3, 4, 5, 6, 7, 8]);
     assert_eq!(dump(&db), recorded(Kind::DSP));
     assert_eq!(
         db.all("SELECT id,collection,enabled FROM collection_schedules", [])
@@ -421,6 +430,46 @@ fn jobs_from_before_kinds_were_open_keep_their_rows_through_the_rebuild() {
             .unwrap()
             .is_empty()
     );
+}
+
+#[test]
+fn schedules_from_before_collections_were_open_keep_their_rows_through_the_rebuild() {
+    crate::testing::install(&[], &[]);
+    let root = private();
+    // The previous release lists every collection it schedules.
+    let dsp_schema = before_open_collections(recorded(Kind::DSP));
+    let file = root.path().join("dsp.sqlite");
+    let id = format!("dsp_{}", "3".repeat(32));
+    older(&file, Kind::DSP, &dsp_schema);
+    rusqlite::Connection::open(&file)
+        .unwrap()
+        .execute_batch(&format!(
+            "INSERT INTO schema_migrations VALUES (1,'baseline',0),(2,'uniform_inventory',0),\
+             (3,'scorecard_collection',0),(4,'routes_collection',0),(5,'storage_identity',0),\
+             (6,'dvic_collection',0),(7,'driver_match',0); \
+             INSERT INTO storage_identity(dsp_id,provider,source) VALUES ('{id}','dispatch','dispatch-v1'); \
+             INSERT INTO collection_schedules(id,name,collection,cadence,local_time,anchor,\
+             enabled,created_at) VALUES ('s1','DVIC','dvic','daily','05:00',0,1,'2026-01-01')"
+        ))
+        .unwrap();
+    let db = Db::open(&file, Kind::DSP).unwrap();
+    migrate_dsp(&db, &id).unwrap();
+    verify_dsp_identity(&db, &id).unwrap();
+    assert_eq!(ids(&db), vec![1, 2, 3, 4, 5, 6, 7, 8]);
+    assert_eq!(dump(&db), recorded(Kind::DSP));
+    assert_eq!(
+        db.all("SELECT id,collection,enabled FROM collection_schedules", [])
+            .unwrap(),
+        vec![json!({"id":"s1","collection":"dvic","enabled":1})]
+    );
+    // The table takes a collection no release lists: saving a schedule refuses the ones no
+    // collector schedules instead.
+    db.exec(
+        "INSERT INTO collection_schedules(id,name,collection,cadence,local_time,anchor,\
+         enabled,created_at) VALUES ('s2','Next','next','daily','06:00',0,1,'2026-01-02')",
+        [],
+    )
+    .unwrap();
 }
 
 #[test]
