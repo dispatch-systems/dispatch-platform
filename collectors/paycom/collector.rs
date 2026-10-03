@@ -1,8 +1,6 @@
 //! Paycom: employees and timecards. Every DSP was created with this storage.
 #[path = "collections/timecards/checkpoint.rs"]
 pub mod checkpoint;
-#[path = "codes.rs"]
-pub mod codes;
 #[path = "fixtures/timecards.rs"]
 pub mod fixtures;
 #[path = "collections/timecards/types.rs"]
@@ -234,4 +232,15 @@ impl Collector for Paycom {
         )?;
         Ok(())
     }
+}
+
+/// The error codes Paycom's collection raises and branches on. Their text is the wire format.
+pub mod codes {
+    use crate::Code;
+
+    pub const TIMECARD_EXTRACTION_FAILED: Code = Code::new("timecard_extraction_failed");
+    pub const INVALID_TIMECARD_HOURS: Code = Code::new("invalid_timecard_hours");
+
+    /// Every code above.
+    pub const ALL: &[Code] = &[TIMECARD_EXTRACTION_FAILED, INVALID_TIMECARD_HOURS];
 }

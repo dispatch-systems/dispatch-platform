@@ -42,10 +42,8 @@
       "roots": {
         "collectors/cortex has no Cargo.toml": "Phase B",
         "collectors/cortex has no README.md": "A5",
-        "collectors/cortex/codes.rs is no piece of a collector": "A5",
         "collectors/paycom has no Cargo.toml": "Phase B",
-        "collectors/paycom has no README.md": "A5",
-        "collectors/paycom/codes.rs is no piece of a collector": "A5"
+        "collectors/paycom has no README.md": "A5"
       },
       "core parts": {
         "core/accounts has no README.md": "A5",
