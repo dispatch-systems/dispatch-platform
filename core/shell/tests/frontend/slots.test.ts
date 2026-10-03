@@ -38,13 +38,14 @@ const group = (label: string, order: number): ReadToggles => ({
   toggles: [],
 });
 
-test('read toggles come group by group in their order, ties in the order the owners are listed', () => {
+test('read toggles come group by group in their order, ties in the order the owners are listed', async () => {
   installFeatures([
-    { name: 'alpha', readToggles: group('Alpha', 20) },
+    { name: 'alpha', platformSlots: async () => ({ readToggles: group('Alpha', 20) }) },
     { name: 'beta' },
-    { name: 'gamma', readToggles: group('Gamma', 10) },
-    { name: 'delta', readToggles: group('Delta', 20) },
+    { name: 'gamma', platformSlots: async () => ({ readToggles: group('Gamma', 10) }) },
+    { name: 'delta', platformSlots: async () => ({ readToggles: group('Delta', 20) }) },
   ]);
+  await loadPlatformSlots();
   assert.deepEqual(
     readToggles().map((each) => each.label),
     ['Gamma', 'Alpha', 'Delta'],

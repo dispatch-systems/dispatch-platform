@@ -25,22 +25,4 @@ export const feature: FrontendFeature = {
     routes_day_outside_retention:
       'That day is older than your route data retention window. Lengthen the window first.',
   },
-  readToggles: {
-    label: 'Routes',
-    missing: 'route data',
-    order: 10,
-    sources: { routes: 'Routes' },
-    toggles: [
-      { id: 'routes', label: 'Routes & packages', missing: 'routes', source: 'routes' },
-      {
-        id: 'locations',
-        label: 'Delivery addresses & GPS',
-        hint: 'Stop addresses and GPS points',
-        missing: 'delivery addresses',
-        source: 'routes',
-        with: 'routes',
-        optIn: true,
-      },
-    ],
-  },
 };

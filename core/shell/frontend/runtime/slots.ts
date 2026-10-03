@@ -223,6 +223,8 @@ export type PlatformSlots = {
   switch?: { id: PageFeature; icon: LucideIcon };
   /** How its events read in the audit log. */
   auditWording?: AuditWording;
+  /** The kinds of its data agents may read. */
+  readToggles?: ReadToggles;
 };
 
 /** An owner's frontend: what it puts in each slot. */
@@ -237,8 +239,6 @@ export type FrontendFeature = {
   pageTabs?: readonly PageTab[];
   /** Loads what it puts in the platform owner's slots. */
   platformSlots?: () => Promise<PlatformSlots>;
-  /** The kinds of its data agents may read. */
-  readToggles?: ReadToggles;
   /** Its connection's card. */
   connectionCard?: ConnectionCard;
   /** The collections it runs. */
@@ -320,12 +320,6 @@ export const capabilityLabelOf = (capability: string) =>
 /** Why a schedule of an owner's collections waits. */
 export const scheduleIssueOf = (code: string) => first((feature) => feature.scheduleIssues?.[code]);
 
-/** Every owner's kinds of data agents may read, group by group in their order. */
-export const readToggles = () =>
-  installed
-    .flatMap((feature) => (feature.readToggles ? [feature.readToggles] : []))
-    .sort((a, b) => a.order - b.order);
-
 let loadedSlots: readonly PlatformSlots[] = [];
 let slotsLoad: Promise<void> | undefined;
 /**
@@ -351,3 +345,9 @@ export const switchIcon = (id: string) =>
 
 /** Every owner's audit wording, in the order the owners are listed. */
 export const auditWording = () => loadedSlots.flatMap((slots) => slots.auditWording ?? []);
+
+/** Every owner's kinds of data agents may read, group by group in their order. */
+export const readToggles = () =>
+  loadedSlots
+    .flatMap((slots) => (slots.readToggles ? [slots.readToggles] : []))
+    .sort((a, b) => a.order - b.order);

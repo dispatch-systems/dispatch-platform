@@ -24,13 +24,16 @@ const loadDsps = () =>
   Promise.all([import('./dsps/index.js'), loadPlatformSlots()]).then(([module]) => module);
 const loadPicker = () => import('./dsps/picker.js');
 const loadDiagnostics = () => import('./diagnostics/index.js');
-const loadAgents = () => import('./agents/index.js');
-// The audit log opens once every owner's wording has loaded, and is handed it.
+// The Agents page and the audit log read every owner's kinds of data for agents as their code
+// loads, so what owners put in the slots loads first. The log is handed every owner's wording.
+const loadAgents = () => loadPlatformSlots().then(() => import('./agents/index.js'));
 const loadAudit = () =>
-  Promise.all([import('./audit/index.js'), loadPlatformSlots()]).then(([module]) => {
-    module.installWording(auditWording());
-    return module;
-  });
+  loadPlatformSlots()
+    .then(() => import('./audit/index.js'))
+    .then((module) => {
+      module.installWording(auditWording());
+      return module;
+    });
 // The page and the tab it opens on load together, so the page opens whole.
 const loadSettings = () =>
   Promise.all([import('./settings/index.js'), preloadTab()]).then(([module]) => module);

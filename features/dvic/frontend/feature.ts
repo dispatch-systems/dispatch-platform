@@ -49,13 +49,4 @@ export const feature: FrontendFeature = {
     write: (write, url) =>
       write.startsWith('/api/dsp/dvic/') ? begins(url, '/api/dsp/dvic/') : undefined,
   },
-  readToggles: {
-    label: 'DVIC',
-    missing: 'DVIC inspections',
-    order: 40,
-    sources: { dvic: 'DVIC' },
-    toggles: [
-      { id: 'dvic', label: 'DVIC inspections', missing: 'DVIC inspections', source: 'dvic' },
-    ],
-  },
 };

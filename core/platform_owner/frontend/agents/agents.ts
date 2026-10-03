@@ -23,8 +23,8 @@ export const accessLabels: Record<AgentAccess, string> = {
 };
 
 // Each feature declares the kinds of its data agents may read, grouped under its name. They are
-// read when the Agents page or the audit log first loads, after the app has installed every
-// owner's manifest.
+// read when the Agents page or the audit log first loads, which their loaders hold back until
+// what every owner puts in the platform owner's slots has loaded.
 const groups = readToggles();
 const toggles = groups.flatMap((group) => group.toggles);
 const byArea = <T>(read: (toggle: ReadToggle) => T) =>
