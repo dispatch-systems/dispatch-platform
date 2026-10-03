@@ -1,5 +1,18 @@
 //! DVIC: vehicle inspections, from the weekly reports Cortex publishes.
-use crate::dvic;
+mod api;
+mod backend;
+mod mcp;
+
+/// What its API answers with, which the app writes to TypeScript.
+pub use api::types::{DvicInspection, DvicInspections, DvicReport, DvicStatus, DvicWeek};
+/// What the app uses: its storage and its database.
+pub use backend::{DATABASE, DvicStore};
+/// What its integration tests check beside the storage: the operator's commands, the drivers
+/// they hide, and the weeks a request names.
+pub use backend::{cli, hidden, weeks_ending};
+/// What agents can ask of it, which the app's tests ask directly.
+pub use mcp::views::dvic;
+
 use dispatch_core::{
     db::{
         Migration, Migrations,
@@ -8,11 +21,6 @@ use dispatch_core::{
     manifest::{Audit, Commands, Feature, Switch, feature, perm, tab},
     tenancy::api::audit::AuditArea::Collections,
 };
-
-#[path = "api/routes.rs"]
-mod api;
-#[path = "mcp/mod.rs"]
-pub mod mcp;
 
 pub const FEATURE: Feature = Feature {
     switch: Some(Switch {
@@ -26,8 +34,8 @@ pub const FEATURE: Feature = Feature {
         perm("dvic.collect", "Collect DVIC", 41).implies(&["dvic.view"]),
         perm("dvic.manage", "Manage DVIC", 42).implies(&["dvic.view"]),
     ],
-    routes: api::routes,
-    keeps: &[&crate::dvic::keeper::Dvic],
+    routes: api::routes::routes,
+    keeps: &[&backend::keeper::Dvic],
     tables: &[(
         "dvic",
         &[
@@ -40,7 +48,7 @@ pub const FEATURE: Feature = Feature {
         ],
     )],
     migrations: &[Migrations {
-        kind: dvic::DATABASE,
+        kind: DATABASE,
         list: &[
             Migration {
                 id: 1,
@@ -55,20 +63,20 @@ pub const FEATURE: Feature = Feature {
             Migration {
                 id: 3,
                 name: "verified_scope",
-                apply: Code(dvic::add_verified_scope),
+                apply: Code(backend::add_verified_scope),
             },
         ],
     }],
-    domains: &[dvic::DOMAIN],
+    domains: &[backend::DOMAIN],
     audit: Audit {
         areas: &[("dvic.", Collections)],
         ..Audit::NONE
     },
     commands: Some(Commands {
         prefix: "dvic-",
-        run: dvic::cli::run,
+        run: cli::run,
     }),
     mcp: mcp::MCP,
-    people: &[&dvic::people::Drivers],
+    people: &[&backend::people::Drivers],
     ..feature("dvic")
 };

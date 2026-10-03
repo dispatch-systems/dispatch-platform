@@ -1,7 +1,5 @@
 pub mod cli;
 pub mod contracts;
-#[path = "../../features/dvic/backend/mod.rs"]
-pub mod dvic;
 pub mod feature_manifests;
 #[path = "../../features/timecard/backend/meals/mod.rs"]
 pub mod meals;
@@ -23,7 +21,7 @@ pub static REGISTRY: Registry = Registry {
         &feature_manifests::timecard::FEATURE,
         &dispatch_uniforms::FEATURE,
         &dispatch_routes::FEATURE,
-        &feature_manifests::dvic::FEATURE,
+        &dispatch_dvic::FEATURE,
         &feature_manifests::scorecard::FEATURE,
         &dispatch_driver_match::FEATURE,
         &dispatch_team::FEATURE,

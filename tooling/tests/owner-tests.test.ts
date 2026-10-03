@@ -53,8 +53,8 @@ const shards = JSON.parse(fs.readFileSync('tooling/ci/test-plan.json', 'utf8')).
 test("a feature's list names its Rust, API, frontend and browser tests, each where CI runs it", () => {
   const { status, commands } = list('feature', 'dvic');
   assert.equal(status, 0);
-  const dvic = targets('features/dvic');
-  assert(dvic.includes('dvic'));
+  // Its crate runs its module tests and its integration tests, dvic among them.
+  assert(targets('features/dvic', 'features/dvic/Cargo.toml').includes('dvic'));
   const node = [
     ...owned('features/dvic/tests/api', /\.test\.ts$/),
     ...owned('features/dvic/tests/frontend', /\.test\.ts$/),
@@ -63,7 +63,7 @@ test("a feature's list names its Rust, API, frontend and browser tests, each whe
   const browser = owned('features/dvic/tests/browser', /\.spec\.ts$/);
   assert(browser.includes('features/dvic/tests/browser/dvic.spec.ts'));
   assert.deepEqual(commands, [
-    `cargo test --locked -p dispatch-backend ${dvic.map((name) => `--test ${name}`).join(' ')}`,
+    'cargo test --locked -p dispatch-dvic',
     'python3 tooling/build/cargo-build.py',
     `node node_modules/tsx/dist/cli.mjs --test ${node.join(' ')}`,
     'npm run build',

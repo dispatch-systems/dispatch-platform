@@ -4,8 +4,6 @@
 //! gathers them under one path.
 #[path = "../../features/timecard/api/assessment.rs"]
 mod assessment;
-#[path = "../../features/dvic/api/types.rs"]
-mod dvic;
 #[cfg(test)]
 #[path = "export.rs"]
 mod generated;
@@ -32,6 +30,7 @@ pub use dispatch_driver_match::{
     DriverEvidence, DriverEvidenceKind, DriverId, DriverLink, DriverMatch, DriverPair,
     DriverStrength,
 };
+pub use dispatch_dvic::{DvicInspection, DvicInspections, DvicReport, DvicStatus, DvicWeek};
 pub use dispatch_paycom::timecards::EmployeeTimecardPeriod;
 pub use dispatch_routes::{
     RouteAddress, RouteBreak, RouteDayView, RouteDays, RouteItinerary, RouteItineraryDetail,
@@ -42,7 +41,6 @@ pub use dispatch_uniforms::{
     Uniform, UniformAdjustment, UniformEvent, UniformEventKind, UniformFit, UniformHistory,
     UniformInventory, UniformUpdates, UniformVariant,
 };
-pub use dvic::*;
 pub use meals::*;
 pub use scorecard::*;
 pub use settings::*;

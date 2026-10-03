@@ -1,5 +1,5 @@
 //! The drivers DVIC's inspections name, as Driver Match reads them.
-use crate::dvic::DvicStore;
+use crate::backend::DvicStore;
 use dispatch_core::{
     Result,
     db::{Store, n, s},

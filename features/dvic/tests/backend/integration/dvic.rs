@@ -1,4 +1,3 @@
-use dispatch_backend::dvic::{DvicStore, hidden, weeks_ending};
 use dispatch_core::db::{Store, s};
 use dispatch_core::testing as common;
 use dispatch_cortex::{
@@ -6,14 +5,12 @@ use dispatch_cortex::{
     discovery::{CollectionRequest, Scope},
     dvic::{self, Capture, Request},
 };
+use dispatch_dvic::{DvicStore, hidden, weeks_ending};
 use serde_json::json;
 
 /// DVIC, and the Cortex collector whose inspections it keeps.
 fn install() {
-    common::install(
-        &[&cortex::COLLECTOR],
-        &[&dispatch_backend::feature_manifests::dvic::FEATURE],
-    );
+    common::install(&[&cortex::COLLECTOR], &[&dispatch_dvic::FEATURE]);
 }
 
 fn request(weeks: &[&str]) -> Request {
@@ -468,7 +465,7 @@ fn the_operator_commands_hide_list_and_unhide_without_stopping_the_server() {
     let (_root, db, id) = ready();
     let run = |args: &[&str]| {
         let args: Vec<String> = args.iter().map(|a| (*a).to_owned()).collect();
-        dispatch_backend::dvic::cli::run(&db.config, &args)
+        dispatch_dvic::cli::run(&db.config, &args)
     };
     // The server's own connection stays open throughout, as it would on a live host.
     let server = db.dvic_db(&id).unwrap();

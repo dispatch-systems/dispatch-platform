@@ -1,14 +1,9 @@
 //! Short pre-trip inspections from Cortex's rolling supplementary workbooks.
 //! Publication weeks are ISO Monday–Sunday; inspection dates come from the rows.
-#[path = "cli.rs"]
 pub mod cli;
-#[path = "hidden.rs"]
 pub mod hidden;
-#[path = "keeper.rs"]
-pub mod keeper;
-#[path = "people.rs"]
-pub mod people;
-#[path = "storage.rs"]
+pub(crate) mod keeper;
+pub(crate) mod people;
 mod storage;
 
 pub use storage::DvicStore;

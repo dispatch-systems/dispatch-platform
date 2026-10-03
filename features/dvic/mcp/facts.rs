@@ -1,7 +1,7 @@
 //! DVIC's facts for agents: each driver's inspections in a period, the days its reports
 //! cover, and how they join a driver's days and the team's table.
 use super::DVIC;
-use crate::dvic::DvicStore;
+use crate::backend::DvicStore;
 use dispatch_core::{
     Result,
     accounts::api::types::Dsp,

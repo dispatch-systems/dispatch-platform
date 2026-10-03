@@ -1,5 +1,5 @@
 //! DVIC collection controls and read APIs; no dashboard is required.
-use crate::dvic::DvicStore;
+use crate::backend::DvicStore;
 use dispatch_core::{
     Result,
     collection::api::routes::{jobs::job_cancel, schedules::schedule_routes},

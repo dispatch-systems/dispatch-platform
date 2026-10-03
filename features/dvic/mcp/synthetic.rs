@@ -1,6 +1,6 @@
 //! What DVIC holds of the synthetic DSP: one pre-trip inspection each route day; under 90
 //! seconds is short.
-use crate::dvic::DvicStore;
+use crate::backend::DvicStore;
 use dispatch_core::{
     Result,
     db::Store,

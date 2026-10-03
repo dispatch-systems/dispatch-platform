@@ -1,5 +1,5 @@
 use super::*;
-use crate::contracts::{DvicInspection, DvicInspections, DvicStatus};
+use crate::api::types::{DvicInspection, DvicInspections, DvicStatus};
 use dispatch_core::{
     db::{DspLease, Store, at, now, s},
     manifest::Keeper,

@@ -2,7 +2,7 @@ use dispatch_core::collection::api::jobs::PublicJob;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DvicReport {
     pub name: String,
@@ -15,7 +15,7 @@ pub struct DvicReport {
     pub checked_at: String,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DvicWeek {
     pub week: String,
@@ -23,7 +23,7 @@ pub struct DvicWeek {
     pub report_count: usize,
 }
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DvicStatus {
     pub station: String,
@@ -34,7 +34,7 @@ pub struct DvicStatus {
     pub jobs: Vec<PublicJob>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DvicInspection {
     pub id: String,
@@ -54,7 +54,7 @@ pub struct DvicInspection {
     pub source_report_date: String,
 }
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DvicInspections {
     pub inspections: Vec<DvicInspection>,

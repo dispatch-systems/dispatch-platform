@@ -604,6 +604,7 @@ dependencies = [
  "dispatch-core",
  "dispatch-cortex",
  "dispatch-driver-match",
+ "dispatch-dvic",
  "dispatch-home",
  "dispatch-host",
  "dispatch-paycom",
@@ -700,6 +701,21 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "ts-rs",
+]
+
+[[package]]
+name = "dispatch-dvic"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "dispatch-core",
+ "dispatch-cortex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
  "ts-rs",
 ]
 
