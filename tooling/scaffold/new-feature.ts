@@ -16,6 +16,7 @@ import {
   features,
   finish,
   format,
+  formatRust,
   frontendList,
   holding,
   keeperOf,
@@ -320,13 +321,14 @@ export async function planFeature(root: string, argv: string[]) {
     const file = `${dir}/${target}`;
     const toRoot = '../'.repeat(path.posix.dirname(file).split('/').length);
     const content = template(`feature/${source}`, { ...values, toRoot });
-    plan.files.set(file, await format(file, content, plan.notes));
+    plan.files.set(file, await format(file, content));
   }
+  formatRust(plan);
 
   // List it in app/: the workspace, the app's dependencies, the registry, the route table and
   // its inventory, and the frontend's list.
   const change = async (file: string, edit: (text: string) => string) =>
-    plan.changes.set(file, await format(file, edit(current(plan, root, file)), plan.notes));
+    plan.changes.set(file, await format(file, edit(current(plan, root, file))));
   await change('Cargo.toml', (text) => addWorkspaceMember(text, dir));
   await change('app/backend/Cargo.toml', (text) =>
     addDependency(text, crate, `../../${dir}`, 'app/backend/Cargo.toml'),

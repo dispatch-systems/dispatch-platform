@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as prettier from 'prettier';
@@ -141,26 +142,44 @@ export function template(name: string, values: Values) {
 
 // ---- Formatting
 
-/** The repository's own formatting: prettier's for TypeScript, Markdown, JSON and YAML, rustfmt's for Rust. */
-export async function format(file: string, content: string, notes: string[]) {
-  if (/\.([jt]sx?|md|json|ya?ml|css)$/.test(file)) {
-    const options = (await prettier.resolveConfig(path.join(repositoryRoot, file))) ?? {};
-    return prettier.format(content, { ...options, filepath: file });
+/** Prettier's formatting, as the repository configures it, for what prettier formats. */
+export async function format(file: string, content: string) {
+  if (!/\.([jt]sx?|md|json|ya?ml|css)$/.test(file)) return content;
+  const options = (await prettier.resolveConfig(path.join(repositoryRoot, file))) ?? {};
+  return prettier.format(content, { ...options, filepath: file });
+}
+/**
+ * Formats the plan's new Rust files with one rustfmt run, under the repository's toolchain. The
+ * app's files it changes keep their own layout: an added line follows the lines around it.
+ */
+export function formatRust(plan: Plan) {
+  const rust = [...plan.files.keys()].filter((file) => file.endsWith('.rs'));
+  if (!rust.length) return;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-scaffold-rustfmt-'));
+  try {
+    for (const file of rust) {
+      fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+      fs.writeFileSync(path.join(dir, file), plan.files.get(file)!);
+    }
+    const result = spawnSync(
+      'rustfmt',
+      ['--edition', '2024', ...rust.map((file) => path.join(dir, file))],
+      {
+        cwd: repositoryRoot,
+        encoding: 'utf8',
+      },
+    );
+    if (result.error) {
+      plan.notes.push('rustfmt was not found: run `cargo fmt` once the files are written.');
+      return;
+    }
+    // A template that is not valid Rust fails here, before anything is written.
+    if (result.status !== 0)
+      throw new Error(`The Rust it would write does not parse:\n${result.stderr}`);
+    for (const file of rust) plan.files.set(file, fs.readFileSync(path.join(dir, file), 'utf8'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
-  if (!file.endsWith('.rs')) return content;
-  const result = spawnSync('rustfmt', ['--edition', '2024'], {
-    cwd: repositoryRoot,
-    input: content,
-    encoding: 'utf8',
-  });
-  if (result.error) {
-    const note = 'rustfmt was not found: run `cargo fmt` once the files are written.';
-    if (!notes.includes(note)) notes.push(note);
-    return content;
-  }
-  // A template that is not valid Rust fails here, before anything is written.
-  if (result.status !== 0) throw new Error(`${file} is not valid Rust:\n${result.stderr}`);
-  return result.stdout;
 }
 
 // ---- What the repository holds

@@ -14,6 +14,7 @@ import {
   features,
   finish,
   format,
+  formatRust,
   frontendList,
   holding,
   names as namesOf,
@@ -117,11 +118,12 @@ export async function planCollector(root: string, argv: string[]) {
     const file = `${dir}/${target}`;
     const toRoot = '../'.repeat(path.posix.dirname(file).split('/').length);
     const content = template(`collector/${source}`, { ...values, toRoot });
-    plan.files.set(file, await format(file, content, plan.notes));
+    plan.files.set(file, await format(file, content));
   }
+  formatRust(plan);
 
   const change = async (file: string, edit: (text: string) => string) =>
-    plan.changes.set(file, await format(file, edit(current(plan, root, file)), plan.notes));
+    plan.changes.set(file, await format(file, edit(current(plan, root, file))));
   await change('Cargo.toml', (text) => addWorkspaceMember(text, dir));
   await change('app/backend/Cargo.toml', (text) =>
     addDependency(text, crate, `../../${dir}`, 'app/backend/Cargo.toml'),
