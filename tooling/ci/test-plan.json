@@ -31,6 +31,7 @@
     "app/tests/rules/encapsulation.test.ts",
     "app/tests/rules/migrations.test.ts",
     "app/tests/rules/names.test.ts",
+    "app/tests/rules/ownership.test.ts",
     "app/tests/rules/slots.test.ts",
     "app/tests/rules/tests.test.ts",
     "tooling/tests/browser-shards.test.ts",
