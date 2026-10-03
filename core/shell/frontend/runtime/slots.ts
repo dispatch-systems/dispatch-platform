@@ -1,9 +1,15 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import type {
+  AgentArea,
+  AgentSource,
   AuditEvent,
+  CollectionChange,
+  ConnectionFeature,
   DspView,
   Feature,
+  JobMetrics,
+  PageFeature,
   SessionView,
 } from '../../../../shared/contracts/index.js';
 
@@ -55,6 +61,8 @@ export type DspRoute = Page<DspPageContext> & {
   scope: 'dsp';
   /** A page rendered before, whose admitted data is cached, may commit before the next paint. */
   ready?: (view: DspView) => boolean;
+  /** Whether opening the DSP again returns here, as to the last page open; omitted, it does. */
+  remembered?: boolean;
   /** Called only for the admitted view. */
   prefetch?: (prefetch: RoutePrefetch & { view: DspView }) => void;
 };
@@ -92,6 +100,23 @@ export type SettingsTab = {
   prefetch?: (tab: string, view: DspView) => string[];
 };
 
+/**
+ * A tab one feature adds to another's page. The page draws it among its own tabs, as Settings
+ * draws its settings tabs.
+ */
+export type PageTab = {
+  /** The page it is a tab of. */
+  page: DspRouteId;
+  /** The tab's address on the page, `?tab=<id>`. It never changes, so links to it keep working. */
+  id: string;
+  label: string;
+  /** Where the tab sits among the page's tabs, lowest first. */
+  order: number;
+  /** Loads the tab's code. */
+  load: () => Promise<unknown>;
+  render: (context: DspPageContext) => ReactNode;
+};
+
 /** A part of an audit log sentence: plain words, or words to stress. */
 export type AuditPart = string | { strong: string };
 /** What the audit log writes its sentences with. */
@@ -113,6 +138,80 @@ export type AuditWording = {
   fields?: Record<string, string>;
   /** How a value of one of its fields reads; undefined leaves it to the log. */
   value?: (field: string, value: string, words: AuditWords) => string | undefined;
+  /** What its events add to their second line, after the log's own notes. */
+  notes?: (event: AuditEvent) => string[];
+  /** How a collection's outcome names it, as "<name> collection", by the connection that ran it. */
+  collected?: Record<string, string>;
+};
+
+/** A kind of data agents may read, as the Agents page shows its switch. */
+export type ReadToggle = {
+  /** Permanent: keys, apps and the audit log store it. */
+  id: AgentArea;
+  label: string;
+  /** What it holds, where its label alone doesn't say. */
+  hint?: string;
+  /** How a key's row names it when the key doesn't read it. */
+  missing: string;
+  /** The switch it is read from, which a DSP may have switched off. */
+  source: AgentSource;
+  /** The kind it comes with and only matters beside: it is allowed only with that one. */
+  with?: AgentArea;
+  /** A new key or app leaves it off. */
+  optIn?: boolean;
+};
+/** An owner's kinds of data agents may read, under its name on the Agents page. */
+export type ReadToggles = {
+  label: string;
+  /** How a key's row names the whole group when the key reads none of it. */
+  missing: string;
+  /** Where the group sits among the others, lowest first. */
+  order: number;
+  /** Each of its switches' names, said alone when only that one is off. */
+  sources: Partial<Record<AgentSource, string>>;
+  toggles: readonly ReadToggle[];
+};
+
+/** What a connection's card is drawn with on a DSP's Connections page. */
+export type ConnectionCardContext = { development: boolean; timezone: string };
+/** A collector's card on a DSP's Connections page. */
+export type ConnectionCard = {
+  /** The connection's catalog id. */
+  provider: ConnectionFeature;
+  /** The read the card shows, warmed while the Connections tab is about to open. */
+  read: string;
+  /** Loads the card's code. */
+  load: () => Promise<unknown>;
+  render: (context: ConnectionCardContext) => ReactNode;
+};
+
+/** A collection a collector runs, as Diagnostics and the audit log name it. */
+export type CollectionLabels = {
+  /** Its job kind. */
+  kind: string;
+  /** Its schedules' collection, and how the audit log names it. */
+  schedule: { id: string; label: string };
+  /** One item of its workload, for the per-item comparison. */
+  unit: string;
+  /** How many items a run's measurements counted. */
+  count: (metrics: JobMetrics) => number | null;
+};
+
+/** How the response cache keeps an owner's reads current, each read named by its path prefix. */
+export type CacheRules = {
+  /** Its reads that hold collected data. */
+  collected?: readonly string[];
+  /** Whether a finished collection's changes reach one of its `collected` reads; omitted, any do. */
+  collection?: (url: string, changes: readonly CollectionChange[]) => boolean;
+  /** Its reads that change as a job starts, runs or ends. */
+  jobs?: readonly string[];
+  /** Its reads that change with the DSP's connections. */
+  connections?: readonly string[];
+  /**
+   * Whether a write changes a read, for the writes it knows; undefined for the others. A read
+   * changes when any owner says so, and a write an owner knows changes nothing else.
+   */
+  write?: (write: string, url: string) => boolean | undefined;
 };
 
 /** An owner's frontend: what it puts in each slot. */
@@ -123,8 +222,28 @@ export type FrontendFeature = {
   routes?: readonly Route[];
   /** Its tabs on a DSP's Settings page. */
   settingsTabs?: readonly SettingsTab[];
+  /** Its tabs on another feature's page. */
+  pageTabs?: readonly PageTab[];
   /** Loads how its events read in the audit log. */
   auditWording?: () => Promise<AuditWording>;
+  /** The kinds of its data agents may read. */
+  readToggles?: ReadToggles;
+  /** Its page's switch, as the platform owner's DSPs page lists it. */
+  switch?: { id: PageFeature; icon: LucideIcon };
+  /** Its connection's card. */
+  connectionCard?: ConnectionCard;
+  /** The collections it runs. */
+  collections?: readonly CollectionLabels[];
+  /** How a page that needs a capability its connection provides names it: "a … source". */
+  capabilities?: Record<string, string>;
+  /** How the response cache treats its reads. */
+  cache?: CacheRules;
+  /** Its reads that wait for a change before they answer, by path prefix. */
+  longPolls?: readonly string[];
+  /** What its error codes say. */
+  errors?: Record<string, string>;
+  /** Why a schedule of its collections waits, by the code it last stopped on; its error too. */
+  scheduleIssues?: Record<string, string>;
 };
 
 let installed: readonly FrontendFeature[] = [];
@@ -145,6 +264,60 @@ export function routeOf(scope: Route['scope'], page: string): Route | undefined 
 
 /** Every owner's tabs on a DSP's Settings page, in the order the owners are listed. */
 export const settingsTabs = () => installed.flatMap((feature) => feature.settingsTabs ?? []);
+
+/** The tabs other features add to `page`, in their order. */
+export const pageTabs = (page: string) =>
+  installed
+    .flatMap((feature) => feature.pageTabs ?? [])
+    .filter((tab) => tab.page === page)
+    .sort((a, b) => a.order - b.order);
+
+/** The icon of a page's switch. */
+export const switchIcon = (id: string) =>
+  installed.find((feature) => feature.switch?.id === id)?.switch?.icon;
+
+/** Every collector's connection card, in the order the collectors are listed. */
+export const connectionCards = () =>
+  installed.flatMap((feature) => (feature.connectionCard ? [feature.connectionCard] : []));
+/** The card of a connection. */
+export const connectionCard = (provider: string) =>
+  connectionCards().find((card) => card.provider === provider);
+
+/** Every collection, with the collector that runs it. */
+export const collectionLabels = () =>
+  installed.flatMap((feature) =>
+    (feature.collections ?? []).map((collection) => ({ ...collection, provider: feature.name })),
+  );
+
+/** Every owner's cache rules, in the order the owners are listed. */
+export const cacheRules = () => installed.flatMap((feature) => feature.cache ?? []);
+
+/** Whether a read waits for a change before it answers. */
+export const isLongPoll = (url: string) =>
+  installed.some((feature) => feature.longPolls?.some((prefix) => url.startsWith(prefix)));
+
+/** The first answer an owner gives, in the order the owners are listed. */
+function first(read: (feature: FrontendFeature) => string | undefined) {
+  for (const feature of installed) {
+    const answer = read(feature);
+    if (answer !== undefined) return answer;
+  }
+  return undefined;
+}
+/** What an owner's error code says. */
+export const errorLabelOf = (code: string) =>
+  first((feature) => feature.errors?.[code] ?? feature.scheduleIssues?.[code]);
+/** How a page that needs a capability names it. */
+export const capabilityLabelOf = (capability: string) =>
+  first((feature) => feature.capabilities?.[capability]);
+/** Why a schedule of an owner's collections waits. */
+export const scheduleIssueOf = (code: string) => first((feature) => feature.scheduleIssues?.[code]);
+
+/** Every owner's kinds of data agents may read, group by group in their order. */
+export const readToggles = () =>
+  installed
+    .flatMap((feature) => (feature.readToggles ? [feature.readToggles] : []))
+    .sort((a, b) => a.order - b.order);
 
 let wordingLoad: Promise<readonly AuditWording[]> | undefined;
 /** Loads every owner's audit wording, once; a failed load is tried again next time. */

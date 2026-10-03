@@ -1,2 +1,2 @@
-import '../workforce.css';
+import '../timecard.css';
 export { PaycomSettingsPage } from './PaycomSettingsPage.js';

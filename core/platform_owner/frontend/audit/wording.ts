@@ -3,12 +3,13 @@ import type { AuditChange, AuditEvent, Permission } from '../../../../shared/con
 import { errorLabel } from '../../../shell/frontend/runtime/api.js';
 import { elapsed, timeOfDay, title } from '../../../shell/frontend/lib/format.js';
 import { permissionLabels } from '../../../shell/frontend/runtime/permissions.js';
-import { featureLabel } from '../../../shell/frontend/runtime/features.js';
-import type {
-  AuditPart,
-  AuditPhrases,
-  AuditWording,
-  AuditWords,
+import { featureCatalog, featureLabel } from '../../../shell/frontend/runtime/features.js';
+import {
+  collectionLabels,
+  type AuditPart,
+  type AuditPhrases,
+  type AuditWording,
+  type AuditWords,
 } from '../../../shell/frontend/runtime/slots.js';
 import { agentAreas, areaLabels } from '../agents/agents.js';
 
@@ -33,7 +34,9 @@ const day = (value: string) =>
 // Earlier schedule events stored the schedule's id where its name belongs.
 const named = (kind: string, name: string | null | undefined): Part[] =>
   name && !/^schedule_[0-9a-f]+$/.test(name) ? [`the ${kind} `, strong(name)] : [`a ${kind}`];
-const providers: Record<string, string> = { paycom: 'Paycom', cortex: 'Cortex' };
+/** A connection by its catalog name. */
+const connectionName = (id: string) =>
+  featureCatalog.find((entry) => entry.kind === 'connection' && entry.id === id)?.label;
 
 const phrases: AuditPhrases = {
   'member.invited': (e) => ['invited ', strong(e.target ?? 'a new member')],
@@ -45,16 +48,7 @@ const phrases: AuditPhrases = {
   'role.created': (e) => ['created ', ...named('role', e.detail)],
   'role.updated': (e) => ['updated ', ...named('role', e.target ?? e.detail)],
   'role.deleted': (e) => ['deleted ', ...named('role', e.detail)],
-  'collection.requested': (e) => [
-    'started a Paycom collection',
-    ...(e.detail ? [' for ', strong(day(e.detail))] : []),
-  ],
   'collection.cancelled': () => ['cancelled a collection'],
-  'cortex.collection.requested': () => ['started a Cortex meal break collection'],
-  'meal_breaks.sync_requested': (e) => [
-    'started a meal break sync',
-    ...(e.detail ? [' for ', strong(day(e.detail))] : []),
-  ],
   'schedule.created': (e) => ['created ', ...named('schedule', e.detail)],
   'schedule.updated': (e) => ['updated ', ...named('schedule', e.target ?? e.detail)],
   'schedule.toggled': (e) => {
@@ -66,16 +60,16 @@ const phrases: AuditPhrases = {
   'schedule.deleted': (e) => ['deleted ', ...named('schedule', e.detail)],
   'connection.credentials_saved': (e) => [
     'saved ',
-    strong(providers[e.detail] ?? title(e.detail || 'connection')),
+    strong(connectionName(e.detail) ?? title(e.detail || 'connection')),
     ' credentials',
   ],
   'connection.disabled': (e) => [
     'disconnected ',
-    strong(providers[e.detail] ?? title(e.detail || 'a connection')),
+    strong(connectionName(e.detail) ?? title(e.detail || 'a connection')),
   ],
   'connection.verification_submitted': (e) => [
     'submitted verification for ',
-    strong(providers[e.detail] ?? title(e.detail || 'a connection')),
+    strong(connectionName(e.detail) ?? title(e.detail || 'a connection')),
   ],
   'dsp.view_opened': () => ['opened this DSP'],
   'dsp.owner_view_opened': (e) => [
@@ -121,7 +115,6 @@ const phrases: AuditPhrases = {
   'dsp.restored': (e) => ['restored ', strong(e.dspName ?? 'a DSP')],
   'dsp.suspended': (e) => ['suspended ', strong(e.dspName ?? 'a DSP')],
   'dsp.resumed': (e) => ['resumed ', strong(e.dspName ?? 'a DSP')],
-  'employees.links_updated': () => ['updated employee links'],
   'audit.exported': () => ['exported the audit log'],
   'account.signed_in': () => ['signed in'],
   'account.password_changed': () => ['changed their password'],
@@ -164,7 +157,8 @@ export const facts = new Set([
 ]);
 const fact = (event: AuditEvent, field: string) =>
   event.changes.find((change) => change.field === field)?.to ?? '';
-const collected: Record<string, string> = { paycom: 'Paycom', cortex: 'Meal break' };
+const collected = (provider: string) =>
+  owners.find((owner) => owner.collected?.[provider])?.collected?.[provider];
 // Why Dispatch itself ended a connected app.
 const appEndings: Record<string, string> = {
   replaced: 'Replaced by a new connection',
@@ -179,7 +173,7 @@ function outcome(event: AuditEvent): Part[] {
     ? ` attempt ${attempt} ${outcomes[event.action]}`
     : ` ${outcomes[event.action]}`;
   if (event.target) return ['Scheduled collection ', strong(event.target), result];
-  const provider = collected[fact(event, 'provider')];
+  const provider = collected(fact(event, 'provider'));
   const date = fact(event, 'date');
   return [
     provider ? `${provider} collection` : 'Collection',
@@ -205,10 +199,8 @@ const spoken = new Set([
   'role.created',
   'role.updated',
   'role.deleted',
-  'collection.requested',
   'collection.failed',
   'collection.retrying',
-  'meal_breaks.sync_requested',
   'schedule.created',
   'schedule.updated',
   'schedule.toggled',
@@ -221,7 +213,6 @@ const spoken = new Set([
   'dsp.support_visibility_changed',
   'dsp.feature_enabled',
   'dsp.feature_disabled',
-  'employees.links_updated',
 ]);
 export const isSpoken = (action: string) =>
   spoken.has(action) || owners.some((owner) => owner.spoken?.includes(action));
@@ -280,24 +271,25 @@ const agentValues: Record<string, string> = {
   never: 'Never',
 };
 const agentFields = ['access', 'expires', 'bypass', 'tools', 'locations'];
-const collections: Record<string, string> = {
-  paycom: 'Paycom',
-  meal_break: 'Meal breaks',
-  both: 'Paycom and meal breaks',
-  scorecard: 'Scorecard',
-  routes: 'Routes',
-  dvic: 'DVIC',
-};
-export function changeValue(field: string, value: string) {
-  if (field === 'permission') return permissionLabels[value as Permission] ?? title(value);
-  if (field === 'enabled') return value === 'true' ? 'On' : 'Off';
-  if (field === 'collection') return collections[value] ?? title(value);
-  if (field === 'cadence') return title(value);
-  if (field === 'interval') return `${value} min`;
+// A schedule's collection as its collector names it.
+const scheduleLabel = (value: string) =>
+  collectionLabels().find((collection) => collection.schedule.id === value)?.schedule.label;
+function ownerValue(field: string, value: string) {
   for (const owner of owners) {
     const read = owner.value?.(field, value, words);
     if (read !== undefined) return read;
   }
+  return undefined;
+}
+export function changeValue(field: string, value: string) {
+  if (field === 'permission') return permissionLabels[value as Permission] ?? title(value);
+  if (field === 'enabled') return value === 'true' ? 'On' : 'Off';
+  if (field === 'collection')
+    return scheduleLabel(value) ?? ownerValue(field, value) ?? title(value);
+  if (field === 'cadence') return title(value);
+  if (field === 'interval') return `${value} min`;
+  const read = ownerValue(field, value);
+  if (read !== undefined) return read;
   if (field === 'time' && /^\d{2}:\d{2}$/.test(value)) return clockTime(value);
   if (field === 'expires' && value !== 'never')
     return dateFormatter('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(
@@ -317,7 +309,7 @@ export function changeText(change: AuditChange) {
 }
 export const failure = (event: AuditEvent) =>
   event.action.endsWith('.failed') || event.action === 'collection.retrying'
-    ? (failures[event.detail]?.(providers[fact(event, 'provider')] ?? 'The provider') ??
+    ? (failures[event.detail]?.(connectionName(fact(event, 'provider')) ?? 'The provider') ??
       errorLabel(event.detail) ??
       (event.detail ? title(event.detail) : ''))
     : '';
@@ -344,19 +336,6 @@ export function notes(event: AuditEvent, platform: boolean): string[] {
     ...(event.action === 'agent.app_revoked' && fact(event, 'reason')
       ? [appEndings[fact(event, 'reason')] ?? title(fact(event, 'reason'))]
       : []),
-    ...(event.action === 'employees.links_updated' ? linked(event) : []),
+    ...owners.flatMap((owner) => owner.notes?.(event) ?? []),
   ];
-}
-
-// Link saves say how many drivers were linked, kept apart or handed back to
-// automatic matching. Earlier ones kept only "Revision 3; 2 changes".
-function linked(event: AuditEvent) {
-  const parts = [
-    [fact(event, 'linked'), 'linked'],
-    [fact(event, 'separated'), 'kept separate'],
-    [fact(event, 'automatic'), 'set to automatic'],
-  ].flatMap(([count, label]) => (count ? [`${count} ${label}`] : []));
-  if (parts.length) return parts;
-  const count = Number(/(\d+) changes?$/.exec(event.detail)?.[1]);
-  return count ? [`${count} ${count === 1 ? 'link' : 'links'} changed`] : [];
 }

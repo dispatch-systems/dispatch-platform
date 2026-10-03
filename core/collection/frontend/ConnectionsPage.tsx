@@ -1,6 +1,7 @@
+import { Fragment } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import type { Connection } from '../../../shared/contracts/index.js';
-import { ConnectionCard } from './ConnectionCard.js';
+import { connectionCard } from '../../shell/frontend/runtime/slots.js';
 
 export function ConnectionsPage({
   development,
@@ -19,12 +20,9 @@ export function ConnectionsPage({
       </div>
       <div className="connection-cards">
         {providers.map((provider) => (
-          <ConnectionCard
-            key={provider}
-            provider={provider}
-            development={development}
-            timezone={timezone}
-          />
+          <Fragment key={provider}>
+            {connectionCard(provider)?.render({ development, timezone })}
+          </Fragment>
         ))}
       </div>
       <p className="connection-permissions muted">

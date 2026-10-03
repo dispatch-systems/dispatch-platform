@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { AgentKey } from '../../../../shared/contracts/index.js';
+import '../support/manifests.js';
+import type { AgentKey } from '../../../shared/contracts/index.js';
 import {
   accessText,
   activityNote,
@@ -30,8 +31,8 @@ import {
   surfaceOf,
   switchedOffText,
   withArea,
-} from '../../frontend/agents/agents.js';
-import { changeText } from '../../frontend/audit/wording.js';
+} from '../../../core/platform_owner/frontend/agents/agents.js';
+import { changeText } from '../../../core/platform_owner/frontend/audit/wording.js';
 
 const now = Date.parse('2026-10-01T15:00:00');
 const DAY = 86_400_000;

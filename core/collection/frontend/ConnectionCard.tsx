@@ -1,28 +1,52 @@
 import { BrowserVerification } from './BrowserVerification.js';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { performancePolicy } from '../../shell/frontend/lib/performance-policy.js';
 import { Plug, RefreshCw } from 'lucide-react';
 import type { Connection } from '../../../shared/contracts/index.js';
 import { api } from '../../shell/frontend/runtime/api.js';
+import { featureLabel } from '../../shell/frontend/runtime/features.js';
 import { Badge, ConfirmDialog, DataState, ErrorBox, Modal } from '../../shell/frontend/ui/index.js';
 import { time, title } from '../../shell/frontend/lib/format.js';
 import { messageOf } from '../../shell/frontend/lib/errors.js';
 import { useAction } from '../../shell/frontend/runtime/useAction.js';
 import { connectionUrl, useConnection } from '../api/client.js';
 
+/** What a connection's account signs in with besides its username and password. */
+export type Credentials = {
+  /** What the account's username is called, and the input it takes. */
+  username: { label: string; type: 'text' | 'email' };
+  /** Fields before the username, given the saved connection. */
+  before?: (connection: Connection | undefined) => ReactNode;
+  /** Fields and notes after the password. */
+  after?: ReactNode;
+  /** Why the form can't be saved as it is filled in, if it can't. */
+  check?: (form: FormData) => string | undefined;
+  /** What the form sends before the username and password. */
+  values?: (form: FormData) => Record<string, unknown>;
+};
+
+/** A connection's card: its state, a test, its credentials, and the verification it waits for. */
 export function ConnectionCard({
   development,
   provider,
+  read,
   timezone,
+  verification,
+  credentials,
 }: {
   development: boolean;
   provider: Connection['provider'];
+  /** The address of the connection's state. */
+  read: string;
   timezone: string;
+  /** The heading over a sign-in that waits for the member's verification. */
+  verification: string;
+  credentials: Credentials;
 }) {
-  const name = provider === 'paycom' ? 'Paycom' : 'Cortex';
+  const name = featureLabel(provider);
   const endpoint = connectionUrl(provider);
   const [poll, setPoll] = useState(performancePolicy.recoveryPollMs);
-  const { data, error, refresh } = useConnection(provider, poll);
+  const { data, error, refresh } = useConnection(read, poll);
   useEffect(() => {
     const active = data && ['signing_in', 'needs_verification'].includes(data.status);
     setPoll(active ? 4000 : performancePolicy.recoveryPollMs);
@@ -72,9 +96,9 @@ export function ConnectionCard({
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const securityAnswers = [1, 2, 3, 4, 5].map((number) => String(form.get(`pin${number}`) ?? ''));
-    if (provider === 'paycom' && new Set(securityAnswers).size !== 5) {
-      setCredentialError('Enter five distinct security PINs in their original Paycom numbering.');
+    const refused = credentials.check?.(form);
+    if (refused) {
+      setCredentialError(refused);
       return;
     }
     setCredentialError('');
@@ -83,7 +107,7 @@ export function ConnectionCard({
     setEditing(false);
     setClosedVerification(data?.verificationSessionId);
     await connect.run({
-      ...(provider === 'paycom' ? { clientCode: form.get('clientCode'), securityAnswers } : {}),
+      ...credentials.values?.(form),
       username: form.get('username'),
       password: form.get('password'),
     });
@@ -115,11 +139,7 @@ export function ConnectionCard({
               {!saving && <ErrorBox message={saveError || (data.error ? title(data.error) : '')} />}
               {!saving && data.status === 'needs_verification' && (
                 <div className="verification">
-                  <h3>
-                    {provider === 'cortex'
-                      ? 'Finish signing in to Cortex'
-                      : 'Paycom needs your verification'}
-                  </h3>
+                  <h3>{verification}</h3>
                   <p>
                     {data.verificationSessionId
                       ? 'Complete the verification in the browser window, then press Submit to continue.'
@@ -223,23 +243,12 @@ export function ConnectionCard({
             </div>
           )}
           <form onSubmit={(event) => void save(event)} onInput={() => setCredentialError('')}>
-            {provider === 'paycom' && (
-              <label>
-                Client code
-                <input
-                  name="clientCode"
-                  required
-                  maxLength={80}
-                  autoComplete="off"
-                  defaultValue={data?.accountLabel ?? ''}
-                />
-              </label>
-            )}
+            {credentials.before?.(data)}
             <label>
-              {provider === 'cortex' ? 'Email address' : 'Username'}
+              {credentials.username.label}
               <input
                 name="username"
-                type={provider === 'cortex' ? 'email' : 'text'}
+                type={credentials.username.type}
                 required
                 maxLength={200}
                 autoComplete="off"
@@ -255,25 +264,7 @@ export function ConnectionCard({
                 autoComplete="new-password"
               />
             </label>
-            {provider === 'paycom' &&
-              [1, 2, 3, 4, 5].map((number) => (
-                <label key={number}>
-                  PIN {number}
-                  <input
-                    name={`pin${number}`}
-                    type="password"
-                    required
-                    maxLength={64}
-                    autoComplete="off"
-                  />
-                </label>
-              ))}
-            {provider === 'paycom' && (
-              <p className="muted">
-                Enter all five distinct security answers in the order configured for your Paycom
-                account.
-              </p>
-            )}
+            {credentials.after}
             <ErrorBox message={credentialError} />
             <div className="form-actions">
               <button type="button" onClick={() => setEditing(false)}>

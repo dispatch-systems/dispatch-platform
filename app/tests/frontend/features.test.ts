@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { features, permissions } from '../../../../shared/contracts/index.js';
+import '../support/manifests.js';
+import { features, permissions } from '../../../shared/contracts/index.js';
 import {
   capabilityLabel,
   featureCatalog,
@@ -9,7 +10,7 @@ import {
   previewSwitch,
   schedulesFeature,
   sideEffects,
-} from '../../../shell/frontend/runtime/features.js';
+} from '../../../core/shell/frontend/runtime/features.js';
 
 test('the generated feature catalog covers every feature and its dependencies', () => {
   assert.deepEqual(

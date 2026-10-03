@@ -2,6 +2,28 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Job, JobMetrics } from '../../../../shared/contracts/index.js';
 import { collectionHistory, runHistory } from '../../frontend/diagnostics/collection-history.js';
+import { installFeatures } from '../../../shell/frontend/runtime/slots.js';
+
+// A stand-in collector: Diagnostics measures each collection by the items its collector counts.
+installFeatures([
+  {
+    name: 'fixture',
+    collections: [
+      {
+        kind: 'paycom.collect',
+        schedule: { id: 'fixture', label: 'Fixture' },
+        unit: 'employee',
+        count: (metrics) => metrics.employees,
+      },
+      {
+        kind: 'cortex.meal_breaks.collect',
+        schedule: { id: 'fixture_meals', label: 'Fixture meals' },
+        unit: 'itinerary',
+        count: (metrics) => metrics.itineraries,
+      },
+    ],
+  },
+]);
 
 function job(
   index: number,

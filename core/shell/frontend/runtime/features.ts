@@ -10,6 +10,7 @@ import type {
   Permission,
   TabFeature,
 } from '../../../../shared/contracts/index.js';
+import { capabilityLabelOf } from './slots.js';
 
 type Entry<Kind, Id> = {
   id: Id;
@@ -32,15 +33,11 @@ export type FeatureEntry = PageEntry | TabEntry | ConnectionEntry;
 export const featureCatalog: readonly FeatureEntry[] = generatedFeatureCatalog;
 /** The page whose schedules, collections and jobs run. */
 export const schedulesFeature: PageFeature = generatedSchedulesFeature;
-/** Every capability a page requires has a label; the catalog test checks. */
-const capabilities: Record<string, string> = {
-  timecards: 'a timecard source',
-  meal_breaks: 'a meal-break source',
-  routes: 'a route source',
-  dvic: 'a DVIC source',
-  scorecard: 'a scorecard source',
-};
-export const capabilityLabel = (capability: string) => capabilities[capability] ?? capability;
+/**
+ * A capability as a page that needs it names it, from the connections that provide it. Every
+ * capability a page requires has a label; the catalog test checks.
+ */
+export const capabilityLabel = (capability: string) => capabilityLabelOf(capability) ?? capability;
 /** The tabs of `page`, in catalog order. */
 export const tabsOf = (page: string) =>
   featureCatalog.filter((f): f is TabEntry => f.kind === 'tab' && f.page === page);

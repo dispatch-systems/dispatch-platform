@@ -1,6 +1,7 @@
 import { createElement, lazy } from 'react';
 import { Users } from 'lucide-react';
 import type { DspView } from '../../../shared/contracts/index.js';
+import { begins } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
 
@@ -33,4 +34,10 @@ export const feature: FrontendFeature = {
     },
   ],
   auditWording: () => import('./audit-wording.js').then((module) => module.wording),
+  cache: {
+    write: (write, url) => {
+      const team = ['/api/dsp/members', '/api/dsp/roles', '/api/dsp/invitations'];
+      return begins(write, ...team) ? begins(url, ...team) : undefined;
+    },
+  },
 };

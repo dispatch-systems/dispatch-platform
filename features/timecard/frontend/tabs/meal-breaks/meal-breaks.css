@@ -351,7 +351,7 @@
 .meal-detail-grid li > span:first-child {
   min-width: 100px;
 }
-.meal-pagination {
+.pagination-pages {
   padding: 12px 18px;
   border-top: 1px solid var(--border);
   flex-wrap: wrap;

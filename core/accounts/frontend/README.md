@@ -5,7 +5,7 @@
   pages for an expired or already-accepted invitation link.
 - `sign-in/` owns sign-in, password recovery and its van artwork.
 
-`AuthScreen` and `InvitationScreen` choose the screen. Screen directories never import
+`SignedOutScreen` and `InvitationScreen` choose the screen. Screen directories never import
 each other; `app/tests/rules/dashboard-structure.test.ts` enforces that boundary. Shared app and
 UI primitives are allowed. Similar artwork is maintained separately by each screen.
 

@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import '../support/manifests.js';
 import {
   collectionAffects,
   mutationAffects,
   type CollectionChange,
-} from '../../frontend/lib/data-policy.js';
+} from '../../../core/shell/frontend/runtime/data-policy.js';
 
 test('a driver checkpoint touches its employee and days, not another driver, roster, or feature', () => {
   const changes: CollectionChange[] = [

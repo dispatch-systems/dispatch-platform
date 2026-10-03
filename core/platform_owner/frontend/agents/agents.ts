@@ -15,100 +15,66 @@ import type {
 } from '../../../../shared/contracts/index.js';
 import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
 import { utcDay } from '../../../shell/frontend/lib/format.js';
+import { readToggles, type ReadToggle } from '../../../shell/frontend/runtime/slots.js';
 
 export const accessLabels: Record<AgentAccess, string> = {
   read: 'Read only',
   operator: 'Operator',
 };
 
+// Each feature declares the kinds of its data agents may read, grouped under its name. They are
+// read when the Agents page or the audit log first loads, after the app has installed every
+// owner's manifest.
+const groups = readToggles();
+const toggles = groups.flatMap((group) => group.toggles);
+const byArea = <T>(read: (toggle: ReadToggle) => T) =>
+  Object.fromEntries(toggles.map((toggle) => [toggle.id, read(toggle)])) as Record<AgentArea, T>;
+
 /** The kinds of data a key or app may read, in the order every list shows them. */
-export const agentAreas: readonly AgentArea[] = [
-  'routes',
-  'locations',
-  'timecards',
-  'meal_breaks',
-  'dvic',
-  'feedback',
-  'safety',
-  'returns',
-  'scorecard',
-];
-export const areaLabels: Record<AgentArea, string> = {
-  routes: 'Routes & packages',
-  locations: 'Delivery addresses & GPS',
-  timecards: 'Timecards',
-  meal_breaks: 'Meal breaks',
-  dvic: 'DVIC inspections',
-  feedback: 'Customer feedback',
-  safety: 'Safety events',
-  returns: 'Returns & contact compliance',
-  scorecard: 'Weekly scorecard',
-};
+export const agentAreas: readonly AgentArea[] = toggles.map((toggle) => toggle.id);
+export const areaLabels = byArea((toggle) => toggle.label);
 /** What a kind of data holds, where its label alone doesn't say. */
-export const areaHints: Partial<Record<AgentArea, string>> = {
-  locations: 'Stop addresses and GPS points',
-};
+export const areaHints: Partial<Record<AgentArea, string>> = Object.fromEntries(
+  toggles.flatMap((toggle) => (toggle.hint ? [[toggle.id, toggle.hint]] : [])),
+);
 /** The feature each kind of data comes from, which a DSP may have switched off. */
-export const areaSources: Record<AgentArea, AgentSource> = {
-  routes: 'routes',
-  locations: 'routes',
-  timecards: 'timecards',
-  meal_breaks: 'meal_breaks',
-  dvic: 'dvic',
-  feedback: 'scorecard',
-  safety: 'scorecard',
-  returns: 'scorecard',
-  scorecard: 'scorecard',
-};
-export const sourceLabels: Record<AgentSource, string> = {
-  routes: 'Routes',
-  timecards: 'Timecard',
-  meal_breaks: 'Meal Breaks',
-  dvic: 'DVIC',
-  scorecard: 'Scorecard',
-};
+export const areaSources = byArea((toggle) => toggle.source);
+/** The kind each comes with, for those allowed only beside another. */
+export const areaWith: Partial<Record<AgentArea, AgentArea>> = Object.fromEntries(
+  toggles.flatMap((toggle) => (toggle.with ? [[toggle.id, toggle.with]] : [])),
+);
+export const sourceLabels = Object.assign({}, ...groups.map((group) => group.sources)) as Record<
+  AgentSource,
+  string
+>;
 /** The kinds of data under the page that collects them, as the switches are grouped. `missing`
  * names a whole group a key doesn't read. */
 export const areaGroups: readonly {
   label: string;
   missing: string;
   areas: readonly AgentArea[];
-}[] = [
-  { label: 'Routes', missing: 'route data', areas: ['routes', 'locations'] },
-  { label: 'Timecard', missing: 'timecard data', areas: ['timecards', 'meal_breaks'] },
-  { label: 'DVIC', missing: 'DVIC inspections', areas: ['dvic'] },
-  {
-    label: 'Scorecard',
-    missing: 'scorecard data',
-    areas: ['feedback', 'safety', 'returns', 'scorecard'],
-  },
-];
+}[] = groups.map(({ label, missing, toggles }) => ({
+  label,
+  missing,
+  areas: toggles.map((toggle) => toggle.id),
+}));
 /** A kind of data a key doesn't read, as its table row names it. */
-const missingLabels: Record<AgentArea, string> = {
-  routes: 'routes',
-  locations: 'delivery addresses',
-  timecards: 'timecards',
-  meal_breaks: 'meal breaks',
-  dvic: 'DVIC inspections',
-  feedback: 'customer feedback',
-  safety: 'safety events',
-  returns: 'returns',
-  scorecard: 'weekly scorecard',
-};
+const missingLabels = byArea((toggle) => toggle.missing);
 
-/** What a new key or app reads: everything but delivery addresses and GPS, and only where
- * the DSP has the feature on. */
+/** What a new key or app reads: every kind but those it must opt in to, and only where the
+ * DSP has the feature on. */
 export const defaultReads = (): AgentReads => ({
-  areas: agentAreas.filter((area) => area !== 'locations'),
+  areas: toggles.filter((toggle) => !toggle.optIn).map((toggle) => toggle.id),
   bypass: false,
 });
-/** Kinds of data once each, in order. Addresses and GPS come only with routes. */
+/** Kinds of data once each, in order. A kind that comes with another comes only with it. */
 export function canonicalAreas(areas: readonly AgentArea[]) {
   const set = new Set(areas);
-  if (!set.has('routes')) set.delete('locations');
+  for (const toggle of toggles) if (toggle.with && !set.has(toggle.with)) set.delete(toggle.id);
   return agentAreas.filter((area) => set.has(area));
 }
-/** `areas` with one switched on or off; switching routes off switches addresses off too. */
+/** `areas` with one switched on or off; switching a kind off switches off those that come
+ * with it. */
 export const withArea = (areas: readonly AgentArea[], area: AgentArea, on: boolean) =>
   canonicalAreas(on ? [...areas, area] : areas.filter((each) => each !== area));
 
