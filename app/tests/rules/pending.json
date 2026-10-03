@@ -1,0 +1,62 @@
+{
+  "comment": [
+    "TEMPORARY. The rule tests' violations that the restructure's remaining steps remove, by",
+    "rule and check, each with the step that removes it (A4c, A5, A6 or Phase B). A rule test",
+    "fails on a violation not listed here, and on a listed one that no longer occurs, so this",
+    "list only shrinks. It is empty before the restructure merges: enforcement.md allows no",
+    "tolerated violations. Never add an entry to make a new violation pass."
+  ],
+  "pending": {
+    "anatomy": {
+      "feature minimum": {
+        "features/driver_match has no Cargo.toml": "Phase B",
+        "features/driver_match has no README.md": "A5",
+        "features/dvic has no Cargo.toml": "Phase B",
+        "features/home has no Cargo.toml": "Phase B",
+        "features/home has no README.md": "A5",
+        "features/routes has no Cargo.toml": "Phase B",
+        "features/routes has no README.md": "A5",
+        "features/scorecard has no Cargo.toml": "Phase B",
+        "features/scorecard has no README.md": "A5",
+        "features/settings has no Cargo.toml": "Phase B",
+        "features/settings has no README.md": "A5",
+        "features/team has no Cargo.toml": "Phase B",
+        "features/team has no README.md": "A5",
+        "features/timecard has no Cargo.toml": "Phase B",
+        "features/timecard has no README.md": "A5",
+        "features/uniforms has no Cargo.toml": "Phase B",
+        "features/uniforms has no README.md": "A5"
+      },
+      "companions": {
+        "features/home has backend/ and no test in tests/backend/": "A5",
+        "features/home has frontend/ and no tests/browser/": "A5",
+        "features/scorecard has frontend/ and no tests/browser/": "A5",
+        "features/scorecard has mcp/ and no read toggle": "A4c",
+        "features/scorecard has mcp/ and no tests/mcp/": "A4c",
+        "features/settings has api/ and no tests/api/": "A5",
+        "features/settings has frontend/ and no tests/browser/": "A5",
+        "features/uniforms has backend/ and no test in tests/backend/": "A5"
+      },
+      "roots": {
+        "collectors/cortex has no Cargo.toml": "Phase B",
+        "collectors/cortex has no README.md": "A5",
+        "collectors/cortex/codes.rs is no piece of a collector": "A5",
+        "collectors/paycom has no Cargo.toml": "Phase B",
+        "collectors/paycom has no README.md": "A5",
+        "collectors/paycom/codes.rs is no piece of a collector": "A5"
+      },
+      "core parts": {
+        "core/accounts has no README.md": "A5",
+        "core/collection has no README.md": "A5",
+        "core/db has no README.md": "A5",
+        "core/foundation has no README.md": "A5",
+        "core/manifest has no README.md": "A5",
+        "core/mcp has no README.md": "A5",
+        "core/platform_owner has no README.md": "A5",
+        "core/server has no README.md": "A5",
+        "core/shell has no README.md": "A5",
+        "core/tenancy has no README.md": "A5"
+      }
+    }
+  }
+}

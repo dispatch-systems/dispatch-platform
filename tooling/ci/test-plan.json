@@ -24,6 +24,7 @@
     "ops/tests/production_launcher_integration_test.py"
   ],
   "rules": [
+    "app/tests/rules/anatomy.test.ts",
     "app/tests/rules/audit-actions.test.ts",
     "tooling/tests/browser-shards.test.ts",
     "tooling/tests/mail-config.test.ts",
