@@ -101,6 +101,7 @@ fn create_dsp(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     Ok(Reply::status(out, 201))
 }
 
+// A4: Routes' reprocessing, until its route moves to the routes feature.
 /// Rebuilds a DSP's route rows from the responses it stored, for every day or one,
 /// after a release that reads fields the earlier one did not.
 fn reprocess_routes(db: &Store, _: &User, input: &Input) -> Result<Reply> {

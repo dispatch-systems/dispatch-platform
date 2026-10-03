@@ -124,6 +124,7 @@ impl Scheduler {
         {
             failed("agent_activity_prune_failed", &error);
         }
+        // A4: Routes' and Driver Match's upkeep, until they register maintenance tasks.
         self.clean_route_data().await;
         self.match_drivers().await;
     }

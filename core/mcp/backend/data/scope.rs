@@ -332,6 +332,7 @@ impl People {
             crate::read_cache::Scope::People(dsp.into()),
             format!("agent-people:{dsp}"),
             revision,
+            // A4: Driver Match's codes, until it fills the identity slot.
             || db.driver_match(dsp),
         )?;
         let mut list = vec![];

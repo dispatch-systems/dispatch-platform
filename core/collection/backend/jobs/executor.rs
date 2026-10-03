@@ -238,6 +238,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
             )
         })
         .await;
+    // A4: Driver Match's pass after a collection, until it registers the hook.
     // Whoever the collection brought in gets a Driver Match code. A failure here leaves
     // the collection as it is; the hourly pass catches the IDs up.
     if succeeded {
