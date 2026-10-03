@@ -1,5 +1,5 @@
 /** Cache dependencies, independent of React and transport: core's own, and each owner's rules. */
-import type { CollectionChange } from '../../../../shared/contracts/index.js';
+import type { CollectionChange } from '../../../../shared/contracts/collection.js';
 import { cacheRules } from './slots.js';
 export type { CollectionChange };
 export const path = (url: string) => url.split('?')[0]!;

@@ -1,5 +1,5 @@
 import { api, useCachedData } from '../../../core/shell/frontend/runtime/api.js';
-import type { Membership, Permission, Role } from '../../../shared/contracts/index.js';
+import type { Membership, Permission, Role } from '../../../shared/contracts/accounts.js';
 
 // Team & Roles' endpoints, as its page calls them.
 

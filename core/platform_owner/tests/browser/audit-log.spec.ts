@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import type { Page } from '@playwright/test';
 import { test, expect, login, openDsp } from '../../../shell/tests/support/fixtures.js';
 import { dspHash, platformHash } from '../../../shell/frontend/runtime/navigation.js';
-import type { AuditEvent, AuditPage } from '../../../../shared/contracts/index.js';
+import type { AuditEvent, AuditPage } from '../../../../shared/contracts/platform-owner.js';
 
 let next = 100;
 const event = (at: string, action: string, area: AuditEvent['area'], rest: Partial<AuditEvent>) =>

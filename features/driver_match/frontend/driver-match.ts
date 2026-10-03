@@ -6,7 +6,7 @@ import type {
   DriverEvent,
   DriverId,
   DriverStatus,
-} from '../../../shared/contracts/index.js';
+} from '../../../shared/contracts/driver-match.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 
 export type DriverFilter = 'all' | 'matched' | 'review' | 'paycom' | 'amazon' | 'office' | 'former';

@@ -1,7 +1,7 @@
 import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 import { useDeferredValue, useMemo, useState } from 'react';
 import { RefreshCw, Plus, Ellipsis } from 'lucide-react';
-import type { DspView, Membership, Role } from '../../../shared/contracts/index.js';
+import type { DspView, Membership, Role } from '../../../shared/contracts/accounts.js';
 import { useUpdateState } from '../../../core/shell/frontend/runtime/browser-update.js';
 import { api, useCachedData } from '../../../core/shell/frontend/runtime/api.js';
 import {

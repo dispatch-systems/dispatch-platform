@@ -1,5 +1,9 @@
 import { api, useCachedData } from '../../../core/shell/frontend/runtime/api.js';
-import type { DriverDetails, DriverMatch, DriverSource } from '../../../shared/contracts/index.js';
+import type {
+  DriverDetails,
+  DriverMatch,
+  DriverSource,
+} from '../../../shared/contracts/driver-match.js';
 
 // Driver Match's endpoints, as its pages call them.
 

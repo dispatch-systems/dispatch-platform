@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { SecurityStatus } from '../../../shared/contracts/index.js';
+import type { SecurityStatus } from '../../../shared/contracts/accounts.js';
 import { api, ApiError } from '../../shell/frontend/runtime/api.js';
 import { verifyPasskey } from '../../shell/frontend/runtime/passkeys.js';
 import { useAction } from '../../shell/frontend/runtime/useAction.js';

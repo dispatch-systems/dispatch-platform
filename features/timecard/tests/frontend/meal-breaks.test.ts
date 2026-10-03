@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { clockLabel, cortexClock, gapLabel, displayMeal } from '../../frontend/meal-breaks.js';
-import type { MealEmployee } from '../../../../shared/contracts/meals.js';
+import type { MealEmployee } from '../../../../shared/contracts/timecard.js';
 
 test('meal clocks preserve local labels and distinguish repeated DST instants in details', () => {
   assert.equal(clockLabel('10:01'), '10:01 AM');

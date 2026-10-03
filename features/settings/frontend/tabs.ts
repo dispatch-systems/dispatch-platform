@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import type { DspView } from '../../../shared/contracts/index.js';
+import type { DspView } from '../../../shared/contracts/accounts.js';
 import { hashQuery, parseHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { admitted, warm } from '../../../core/shell/frontend/runtime/route-prefetch.js';
 import { settingsTabs, type SettingsTab } from '../../../core/shell/frontend/runtime/slots.js';

@@ -15,7 +15,7 @@ import type {
   OAuthPairingOpened,
   OAuthRedirect,
   OAuthRequest,
-} from '../../../../shared/contracts/index.js';
+} from '../../../../shared/contracts/platform-owner.js';
 
 // Sign in with Dispatch, driven over HTTP the way an MCP client drives it: a 401 that says
 // where to sign in, the discovery documents, the browser's trip through /oauth/authorize, the

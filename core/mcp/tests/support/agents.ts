@@ -1,4 +1,4 @@
-import type { AgentArea, AgentKeyRequest } from '../../../../shared/contracts/index.js';
+import type { AgentArea, AgentKeyRequest } from '../../../../shared/contracts/platform-owner.js';
 import type { fixture } from '../../../shell/tests/support/support.js';
 
 type App = Awaited<ReturnType<typeof fixture>>;

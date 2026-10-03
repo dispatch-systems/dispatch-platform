@@ -1,6 +1,6 @@
 import { GitMerge, Split } from 'lucide-react';
 import { useState } from 'react';
-import type { Driver, DriverId } from '../../../shared/contracts/index.js';
+import type { Driver, DriverId } from '../../../shared/contracts/driver-match.js';
 import { splitDriver, useDriverDetails } from '../api/client.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import {

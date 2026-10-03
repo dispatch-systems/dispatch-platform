@@ -4,7 +4,7 @@ import {
   type DspView,
   type Permission,
   type Role,
-} from '../../../shared/contracts/index.js';
+} from '../../../shared/contracts/accounts.js';
 import { Modal } from '../../../core/shell/frontend/ui/index.js';
 import {
   can,

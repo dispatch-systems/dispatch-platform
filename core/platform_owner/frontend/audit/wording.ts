@@ -1,5 +1,6 @@
 import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
-import type { AuditChange, AuditEvent, Permission } from '../../../../shared/contracts/index.js';
+import type { AuditChange, AuditEvent } from '../../../../shared/contracts/platform-owner.js';
+import type { Permission } from '../../../../shared/contracts/accounts.js';
 import { errorLabel } from '../../../shell/frontend/runtime/api.js';
 import { elapsed, timeOfDay, title } from '../../../shell/frontend/lib/format.js';
 import { permissionLabels } from '../../../shell/frontend/runtime/permissions.js';

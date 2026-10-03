@@ -1,4 +1,4 @@
-import type { Employee, EmployeeTimecardPeriod } from '../../../../../shared/contracts/index.js';
+import type { Employee, EmployeeTimecardPeriod } from '../../../../../shared/contracts/timecard.js';
 import type { useEmployeeTimecard } from '../../../api/client.js';
 import { Badge } from '../../../../../core/shell/frontend/ui/index.js';
 import { EmployeeAvatar } from './EmployeeAvatar.js';

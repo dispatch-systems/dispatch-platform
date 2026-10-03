@@ -5,7 +5,7 @@ import type {
   AgentActivityPage,
   AgentKeyCreated,
   AgentKeys,
-} from '../../../../shared/contracts/index.js';
+} from '../../../../shared/contracts/platform-owner.js';
 
 test('the Activity log lists what a key called over REST and MCP, written down in batches', async (t) => {
   const f = await fixture();

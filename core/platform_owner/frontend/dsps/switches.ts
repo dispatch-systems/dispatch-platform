@@ -1,4 +1,4 @@
-import type { Feature } from '../../../../shared/contracts/index.js';
+import type { Feature } from '../../../../shared/contracts/tenancy.js';
 import {
   featureCatalog,
   tabsOf,

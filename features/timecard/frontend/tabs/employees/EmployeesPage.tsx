@@ -4,7 +4,7 @@ import { ArrowDownAZ, ArrowUpAZ, ChevronRight } from 'lucide-react';
 import type {
   EmployeeTimecardPeriod,
   EmployeeTimecardResponse,
-} from '../../../../../shared/contracts/index.js';
+} from '../../../../../shared/contracts/timecard.js';
 import { useUpdateState } from '../../../../../core/shell/frontend/runtime/browser-update.js';
 import { employeeTimecardUrl, useEmployeeTimecard, useEmployees } from '../../../api/client.js';
 import {

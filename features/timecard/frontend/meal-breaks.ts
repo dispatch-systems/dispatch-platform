@@ -1,13 +1,14 @@
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 import { localDate } from '../../../core/shell/frontend/lib/day.js';
 import { employeeName } from './paycom.js';
-import type { PaycomPreferences } from '../../../shared/contracts/paycom.js';
-import type { AssessedClock, PaycomDay } from '../../../shared/contracts/workforce.js';
 import type {
+  PaycomPreferences,
+  AssessedClock,
+  PaycomDay,
   DeliveryGap as Gap,
   MealEmployee,
   MealStatus,
-} from '../../../shared/contracts/meals.js';
+} from '../../../shared/contracts/timecard.js';
 export interface ClockTime {
   minute: number;
   label: string;

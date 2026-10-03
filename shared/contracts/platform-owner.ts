@@ -1,3 +1,14 @@
+// The platform owner's API: health, mail, feature switches, the audit log and the Agents page.
+export type { PlatformHealth } from './generated/PlatformHealth';
+export type { MailMessage } from './generated/MailMessage';
+export type { DspFeatures } from './generated/DspFeatures';
+export type { FeatureChange } from './generated/FeatureChange';
+export type { FeatureState } from './generated/FeatureState';
+export type { DspFeatureReport } from './generated/DspFeatureReport';
+export type { AuditEvent } from './generated/AuditEvent';
+export type { AuditArea } from './generated/AuditArea';
+export type { AuditChange } from './generated/AuditChange';
+export type { AuditPage } from './generated/AuditPage';
 export type { AgentAccess } from './generated/AgentAccess.js';
 export type { AgentActivity } from './generated/AgentActivity.js';
 export type { AgentActivityKey } from './generated/AgentActivityKey.js';

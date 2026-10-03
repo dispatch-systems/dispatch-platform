@@ -6,7 +6,7 @@ import type {
   AgentKeyRequest,
   AgentKeys,
   AgentWhoami,
-} from '../../../../shared/contracts/index.js';
+} from '../../../../shared/contracts/platform-owner.js';
 
 const body = (dsps: string[]): AgentKeyRequest => ({
   name: 'Laptop – Claude Code',

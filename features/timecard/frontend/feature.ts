@@ -1,6 +1,6 @@
 import { createElement, lazy } from 'react';
 import { CalendarDays } from 'lucide-react';
-import type { DspView } from '../../../shared/contracts/index.js';
+import type { DspView } from '../../../shared/contracts/accounts.js';
 import { begins, collectionData, path } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { Access, FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';

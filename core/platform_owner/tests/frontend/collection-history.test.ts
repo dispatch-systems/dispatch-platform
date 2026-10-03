@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { Job, JobMetrics } from '../../../../shared/contracts/index.js';
+import type { Job, JobMetrics } from '../../../../shared/contracts/collection.js';
 import { collectionHistory, runHistory } from '../../frontend/diagnostics/collection-history.js';
 import { installFeatures, loadPlatformSlots } from '../../../shell/frontend/runtime/slots.js';
 

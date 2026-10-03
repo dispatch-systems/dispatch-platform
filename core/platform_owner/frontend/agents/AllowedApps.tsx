@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import type { OAuthAllowedApp, OAuthAppId } from '../../../../shared/contracts/index.js';
+import type { OAuthAllowedApp, OAuthAppId } from '../../../../shared/contracts/platform-owner.js';
 import { allowOAuthApp, useOAuthApps } from '../../api/client.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { DataState, Modal } from '../../../shell/frontend/ui/index.js';

@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture } from '../../../shell/tests/support/support.js';
-import type { AgentArea, AgentKeyCreated, AgentKeys } from '../../../../shared/contracts/index.js';
+import type {
+  AgentArea,
+  AgentKeyCreated,
+  AgentKeys,
+} from '../../../../shared/contracts/platform-owner.js';
 
 type Rpc = { status: number; headers: Headers; body: any };
 

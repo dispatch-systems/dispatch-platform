@@ -3,7 +3,7 @@ import type {
   AccountSession,
   PasskeySummary,
   SecurityStatus,
-} from '../../../shared/contracts/index.js';
+} from '../../../shared/contracts/accounts.js';
 
 // The account's endpoints, as its Settings panels call them.
 

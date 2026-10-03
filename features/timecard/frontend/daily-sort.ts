@@ -1,4 +1,4 @@
-import type { DailyTimecard } from '../../../shared/contracts/index.js';
+import type { DailyTimecard } from '../../../shared/contracts/timecard.js';
 const collator = new Intl.Collator('en');
 function value(row: DailyTimecard, key: string): string | number {
   switch (key) {

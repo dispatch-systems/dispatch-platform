@@ -1,4 +1,4 @@
-import type { DspSummary } from '../../../../shared/contracts/index.js';
+import type { DspSummary } from '../../../../shared/contracts/accounts.js';
 
 /** A DSP as the platform's page lists it: reachable, waiting for its owner, or stopped. */
 export type DspState = 'online' | 'invited' | 'disabled';

@@ -4,12 +4,11 @@ import {
 } from '../../../../shared/contracts/generated/access-catalog.js';
 import type {
   ConnectionFeature,
-  DspView,
   Feature,
   PageFeature,
-  Permission,
   TabFeature,
-} from '../../../../shared/contracts/index.js';
+} from '../../../../shared/contracts/tenancy.js';
+import type { DspView, Permission } from '../../../../shared/contracts/accounts.js';
 import { capabilityLabelOf } from './slots.js';
 
 type Entry<Kind, Id> = {

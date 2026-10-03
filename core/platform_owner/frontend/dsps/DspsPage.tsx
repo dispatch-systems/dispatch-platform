@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
-import type { DspSummary } from '../../../../shared/contracts/index.js';
+import type { DspSummary } from '../../../../shared/contracts/accounts.js';
 import { useUpdateState } from '../../../shell/frontend/runtime/browser-update.js';
 import { api } from '../../../shell/frontend/runtime/api.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';

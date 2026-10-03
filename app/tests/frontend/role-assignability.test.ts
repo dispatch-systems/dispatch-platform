@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { permissions } from '../../../shared/contracts/accounts.js';
 import { assignable } from '../../../features/team/frontend/assignable.js';
-import type { DspView, Permission, Role } from '../../../shared/contracts/index.js';
+import type { DspView, Permission, Role } from '../../../shared/contracts/accounts.js';
 
 const role = (id: string, rolePermissions: Permission[], owner = false): Role => ({
   id,

@@ -1,6 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import type { DailyTimecards } from '../../../../shared/contracts/index.js';
-import type { MealComparison } from '../../../../shared/contracts/meals.js';
+import type { DailyTimecards, MealComparison } from '../../../../shared/contracts/timecard.js';
 import { demo, expect, login, openDsp, test } from '../support/fixtures.js';
 
 async function longTables(page: Page) {

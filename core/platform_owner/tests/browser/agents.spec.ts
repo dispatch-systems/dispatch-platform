@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import type { Page } from '@playwright/test';
-import type { AgentKeys } from '../../../../shared/contracts/index.js';
+import type { AgentKeys } from '../../../../shared/contracts/platform-owner.js';
 import { platformHash } from '../../../shell/frontend/runtime/navigation.js';
 import { signIns } from '../../frontend/agents/agents.js';
 import { utcDay } from '../../../shell/frontend/lib/format.js';

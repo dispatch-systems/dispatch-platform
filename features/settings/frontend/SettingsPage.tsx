@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useState, useTransition } from 'react';
-import type { DspView, SessionView } from '../../../shared/contracts/index.js';
+import type { DspView, SessionView } from '../../../shared/contracts/accounts.js';
 import { Header, Loading, Tabs } from '../../../core/shell/frontend/ui/index.js';
 import { hashQuery, replaceHashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
 import type { SettingsTab } from '../../../core/shell/frontend/runtime/slots.js';

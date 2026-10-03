@@ -8,10 +8,11 @@ import type {
   EmployeeTimecardPeriod,
   EmployeeTimecardResponse,
   EmployeesResponse,
-  Job,
-} from '../../../shared/contracts/index.js';
-import type { MealComparison } from '../../../shared/contracts/meals.js';
-import type { PaycomPreferences, PaycomSettings } from '../../../shared/contracts/paycom.js';
+  MealComparison,
+  PaycomPreferences,
+  PaycomSettings,
+} from '../../../shared/contracts/timecard.js';
+import type { Job } from '../../../shared/contracts/collection.js';
 
 // Timecard's endpoints, as its pages call them.
 

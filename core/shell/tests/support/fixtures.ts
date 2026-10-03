@@ -1,6 +1,6 @@
 import { test as base, expect, type Locator, type Page } from '@playwright/test';
 import { built, demo, fixture, type FixtureOptions } from './support.js';
-import type { SessionView } from '../../../../shared/contracts/index.js';
+import type { SessionView } from '../../../../shared/contracts/accounts.js';
 import { dspHash } from '../../frontend/runtime/navigation.js';
 
 type Dispatch = Awaited<ReturnType<typeof fixture>>;

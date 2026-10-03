@@ -9,10 +9,7 @@ import {
   type TableColumn,
 } from '../../../../core/shell/frontend/ui/index.js';
 import { scheduleIssue } from '../../../../core/shell/frontend/runtime/schedule-issues.js';
-import {
-  type CollectionSchedule,
-  type ScheduleInput,
-} from '../../../../shared/contracts/schedules.js';
+import type { CollectionSchedule, ScheduleInput } from '../../../../shared/contracts/collection.js';
 import { dspHash } from '../../../../core/shell/frontend/runtime/navigation.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { LateDas } from './LateDas.js';

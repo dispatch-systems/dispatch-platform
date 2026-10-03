@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import '../support/manifests.js';
-import type { AgentKey } from '../../../shared/contracts/index.js';
+import type { AgentKey } from '../../../shared/contracts/platform-owner.js';
 
 // The Agents page's code reads every owner's kinds of data as it loads, so it loads after them.
 const {

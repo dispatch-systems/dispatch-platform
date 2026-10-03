@@ -5,7 +5,7 @@ import type {
   AgentKeyCreated,
   AgentKeyDsp,
   AgentKeyRequest,
-} from '../../../../shared/contracts/index.js';
+} from '../../../../shared/contracts/platform-owner.js';
 import { Badge, Modal } from '../../../shell/frontend/ui/index.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { createAgentKey, updateAgentKey } from '../../api/client.js';

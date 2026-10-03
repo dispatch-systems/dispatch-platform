@@ -1,5 +1,5 @@
 import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
-import type { Punch } from '../../../../shared/contracts/index.js';
+import type { Punch } from '../../../../shared/contracts/timecard.js';
 
 test('employee workspace navigates real period history, resets selection, filters and fits every theme', async ({
   page,

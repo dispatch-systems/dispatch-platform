@@ -1,4 +1,4 @@
-import type { AgentKey } from '../../../../shared/contracts/index.js';
+import type { AgentKey } from '../../../../shared/contracts/platform-owner.js';
 import { ConfirmDialog } from '../../../shell/frontend/ui/index.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { revokeAgentKey } from '../../api/client.js';

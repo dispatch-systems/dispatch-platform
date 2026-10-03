@@ -4,14 +4,14 @@ import type {
   AgentArea,
   AgentSource,
   AuditEvent,
-  CollectionChange,
+} from '../../../../shared/contracts/platform-owner.js';
+import type { CollectionChange, JobMetrics } from '../../../../shared/contracts/collection.js';
+import type {
   ConnectionFeature,
-  DspView,
   Feature,
-  JobMetrics,
   PageFeature,
-  SessionView,
-} from '../../../../shared/contracts/index.js';
+} from '../../../../shared/contracts/tenancy.js';
+import type { DspView, SessionView } from '../../../../shared/contracts/accounts.js';
 
 // What an owner's `frontend/feature.ts` declares, and what the hosts read from it. Only
 // app/frontend lists the manifests; it installs them here before the first render, so no host

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import '../support/manifests.js';
-import { features, permissions } from '../../../shared/contracts/index.js';
+import { features } from '../../../shared/contracts/tenancy.js';
+import { permissions } from '../../../shared/contracts/accounts.js';
 import {
   capabilityLabel,
   featureCatalog,

@@ -5,7 +5,7 @@ import type {
   AgentDsp,
   AgentKeyRequest,
   AgentSource,
-} from '../../../../shared/contracts/index.js';
+} from '../../../../shared/contracts/platform-owner.js';
 import { areaGroups, areaHints, areaLabels, areaSources, areaWith, withArea } from './agents.js';
 
 /** Where an app asking to connect reaches. */

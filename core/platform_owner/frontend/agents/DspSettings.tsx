@@ -4,7 +4,7 @@ import type {
   AgentKeyDsp,
   AgentKeyRequest,
   AgentReads,
-} from '../../../../shared/contracts/index.js';
+} from '../../../../shared/contracts/platform-owner.js';
 import { bypassHere, switchedOffText } from './agents.js';
 import { ReadChoices, SwitchBox } from './KeyChoices.js';
 

@@ -1,4 +1,4 @@
-import type { DspView, SessionView } from '../../../shared/contracts/index.js';
+import type { DspView, SessionView } from '../../../shared/contracts/accounts.js';
 import { connectionFeatures } from '../../shell/frontend/runtime/features.js';
 import { ConnectionsPage } from './ConnectionsPage.js';
 

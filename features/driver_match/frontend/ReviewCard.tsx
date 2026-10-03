@@ -1,5 +1,5 @@
 import { CircleAlert } from 'lucide-react';
-import type { DriverPair } from '../../../shared/contracts/index.js';
+import type { DriverPair } from '../../../shared/contracts/driver-match.js';
 import { ReviewPair } from './ReviewPair.js';
 
 /** The pairs waiting for a decision, above everyone else. */

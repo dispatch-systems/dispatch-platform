@@ -1,5 +1,5 @@
 import type { Narrow } from './narrow.js';
-import type { Feature } from './features.js';
+import type { Feature } from './tenancy.js';
 import type { Role as GeneratedRole } from './generated/Role';
 import type { DspView as GeneratedDspView } from './generated/DspView';
 export type { PublicUser as User } from './generated/PublicUser';

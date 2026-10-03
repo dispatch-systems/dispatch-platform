@@ -79,7 +79,7 @@
         "core/shell/frontend/runtime/features.ts",
         "core/shell/frontend/runtime/permissions.ts",
         "shared/contracts/accounts.ts",
-        "shared/contracts/features.ts",
+        "shared/contracts/tenancy.ts",
         "app/backend/export.rs",
         "shared/contracts/generated/access-catalog.ts"
       ],

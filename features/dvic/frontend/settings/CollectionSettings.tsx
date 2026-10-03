@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react';
 import type {
   CollectionSchedule,
   CollectionSchedules,
-} from '../../../../shared/contracts/schedules.js';
+} from '../../../../shared/contracts/collection.js';
 import { api, useData } from '../../../../core/shell/frontend/runtime/api.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';

@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import type { DspView } from '../../shared/contracts/index.js';
+import type { DspView } from '../../shared/contracts/accounts.js';
 import { ErrorBox } from '../../core/shell/frontend/ui/ErrorBox.js';
 import { Loading } from '../../core/shell/frontend/ui/Loading.js';
 import { PageBoundary } from '../../core/shell/frontend/ui/PageBoundary.js';

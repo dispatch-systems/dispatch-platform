@@ -10,9 +10,6 @@ import type {
   AuditPage,
   DspFeatureReport,
   DspFeatures,
-  DspSummary,
-  Feature,
-  Job,
   MailMessage,
   OAuthAllowedApps,
   OAuthAppChoice,
@@ -22,7 +19,10 @@ import type {
   OAuthRedirect,
   OAuthRequest,
   PlatformHealth,
-} from '../../../shared/contracts/index.js';
+} from '../../../shared/contracts/platform-owner.js';
+import type { DspSummary } from '../../../shared/contracts/accounts.js';
+import type { Feature } from '../../../shared/contracts/tenancy.js';
+import type { Job } from '../../../shared/contracts/collection.js';
 
 // The platform owner's endpoints, as its dashboard calls them: DSPs, Diagnostics, the audit
 // log and the Agents page.

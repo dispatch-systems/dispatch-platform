@@ -1,4 +1,4 @@
-import type { DriverDay } from '../../../shared/contracts/index.js';
+import type { DriverDay } from '../../../shared/contracts/driver-match.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 
 const weekday = (date: string) =>

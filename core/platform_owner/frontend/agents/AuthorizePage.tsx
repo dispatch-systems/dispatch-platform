@@ -5,7 +5,7 @@ import type {
   OAuthApproval,
   OAuthReplaced,
   OAuthRequest,
-} from '../../../../shared/contracts/index.js';
+} from '../../../../shared/contracts/platform-owner.js';
 import { ApiError } from '../../../shell/frontend/runtime/api.js';
 import {
   approveOAuthRequest,

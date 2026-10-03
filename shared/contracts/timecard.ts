@@ -11,3 +11,16 @@ export type { EmployeeTimecardResponse } from './generated/EmployeeTimecardRespo
 export type { AssessedClock } from './generated/AssessedClock.js';
 export type { PunchEvent } from './generated/PunchEvent.js';
 export type { PaycomDay } from './generated/PaycomDay.js';
+export type { CortexMeal } from './generated/CortexMeal.js';
+export type { MealPaycom } from './generated/MealPaycom.js';
+export type { MealSource } from './generated/MealSource.js';
+export type { MealEmployee } from './generated/MealEmployee.js';
+export type { MealDriver } from './generated/MealDriver.js';
+export type { CortexPublication } from './generated/CortexPublication.js';
+export type { MealComparison } from './generated/MealComparison.js';
+export type { DeliveryGap } from './generated/DeliveryGap.js';
+export type { MealAssessment } from './generated/MealAssessment.js';
+export type { MealStatus } from './generated/MealStatus.js';
+export type { LateRule } from './generated/LateRule.js';
+export type { PaycomPreferences } from './generated/PaycomPreferences';
+export type { PaycomSettings } from './generated/PaycomSettings';

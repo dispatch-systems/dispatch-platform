@@ -1,5 +1,5 @@
 import { Ellipsis, Lock } from 'lucide-react';
-import type { DspView, Role } from '../../../shared/contracts/index.js';
+import type { DspView, Role } from '../../../shared/contracts/accounts.js';
 import {
   DataState,
   DataTable,
