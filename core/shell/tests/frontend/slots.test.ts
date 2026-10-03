@@ -19,15 +19,20 @@ import {
   pageTabs,
   readToggles,
   scheduleIssueOf,
+  auditWording,
+  loadPlatformSlots,
   switchIcon,
   type CollectionLabels,
   type ConnectionCard,
   type DspRoute,
   type PageTab,
+  type PlatformSlots,
   type ReadToggles,
 } from '../../frontend/runtime/slots.js';
 
-// Synthetic owners, installed as the app installs its manifests.
+// Synthetic owners, installed as the app installs its manifests. A platform-slots module's
+// loader resolves to the module.
+const loads = (slots: PlatformSlots) => async () => ({ slots });
 const group = (label: string, order: number): ReadToggles => ({
   label,
   missing: `${label.toLowerCase()} data`,
@@ -36,28 +41,57 @@ const group = (label: string, order: number): ReadToggles => ({
   toggles: [],
 });
 
-test('read toggles come group by group in their order, ties in the order the owners are listed', () => {
+test('read toggles come group by group in their order, ties in the order the owners are listed', async () => {
   installFeatures([
-    { name: 'alpha', readToggles: group('Alpha', 20) },
+    { name: 'alpha', platformSlots: loads({ readToggles: group('Alpha', 20) }) },
     { name: 'beta' },
-    { name: 'gamma', readToggles: group('Gamma', 10) },
-    { name: 'delta', readToggles: group('Delta', 20) },
+    { name: 'gamma', platformSlots: loads({ readToggles: group('Gamma', 10) }) },
+    { name: 'delta', platformSlots: loads({ readToggles: group('Delta', 20) }) },
   ]);
+  await loadPlatformSlots();
   assert.deepEqual(
     readToggles().map((each) => each.label),
     ['Gamma', 'Alpha', 'Delta'],
   );
 });
 
-test("a page's switch shows the icon its feature declares", () => {
+test("a page's switch shows the icon its feature declares, once loaded", async () => {
   installFeatures([
-    { name: 'alpha', switch: { id: 'uniforms', icon: Shirt } },
+    { name: 'alpha', platformSlots: loads({ switch: { id: 'uniforms', icon: Shirt } }) },
     { name: 'beta' },
-    { name: 'gamma', switch: { id: 'scorecard', icon: Award } },
+    { name: 'gamma', platformSlots: loads({ switch: { id: 'scorecard', icon: Award } }) },
   ]);
+  assert.equal(switchIcon('uniforms'), undefined);
+  await loadPlatformSlots();
   assert.equal(switchIcon('uniforms'), Shirt);
   assert.equal(switchIcon('scorecard'), Award);
   assert.equal(switchIcon('timecard'), undefined);
+});
+
+test("the platform owner's slots load once, in the order the owners are listed, and again after a failure", async () => {
+  let attempts = 0;
+  let fail = true;
+  installFeatures([
+    { name: 'alpha', platformSlots: loads({ auditWording: { spoken: ['alpha'] } }) },
+    {
+      name: 'beta',
+      platformSlots: async () => {
+        attempts++;
+        if (fail) throw new Error('offline');
+        return { slots: { auditWording: { spoken: ['beta'] } } };
+      },
+    },
+  ]);
+  await assert.rejects(loadPlatformSlots(), /offline/);
+  assert.deepEqual(auditWording(), []);
+  fail = false;
+  await loadPlatformSlots();
+  await loadPlatformSlots();
+  assert.equal(attempts, 2);
+  assert.deepEqual(
+    auditWording().map((wording) => wording.spoken),
+    [['alpha'], ['beta']],
+  );
 });
 
 test('connection cards come in the order their collectors are listed', () => {
@@ -80,7 +114,7 @@ test('connection cards come in the order their collectors are listed', () => {
   assert.equal(connectionCard('other'), undefined);
 });
 
-test('collections come with the collector that runs them, in the order they are declared', () => {
+test('collections come with the collector that runs them, in the order they are declared', async () => {
   const collection = (kind: string): CollectionLabels => ({
     kind,
     schedule: { id: kind, label: kind },
@@ -88,10 +122,14 @@ test('collections come with the collector that runs them, in the order they are 
     count: (metrics) => metrics.rows,
   });
   installFeatures([
-    { name: 'beta', collections: [collection('beta.b'), collection('beta.a')] },
+    {
+      name: 'beta',
+      platformSlots: loads({ collections: [collection('beta.b'), collection('beta.a')] }),
+    },
     { name: 'gamma' },
-    { name: 'alpha', collections: [collection('alpha.a')] },
+    { name: 'alpha', platformSlots: loads({ collections: [collection('alpha.a')] }) },
   ]);
+  await loadPlatformSlots();
   assert.deepEqual(
     collectionLabels().map(({ provider, kind }) => [provider, kind]),
     [
@@ -164,11 +202,17 @@ test('an owner says what its error codes, schedule issues and long reads are', (
   assert.equal(isLongPoll('/api/dsp/gamma'), false);
 });
 
-test('a capability is named by the first connection listed that provides it', () => {
+test('a capability is named by the first connection listed that provides it', async () => {
   installFeatures([
-    { name: 'alpha', capabilities: { photos: 'a photo source' } },
-    { name: 'beta', capabilities: { photos: 'another photo source', notes: 'a notes source' } },
+    { name: 'alpha', platformSlots: loads({ capabilities: { photos: 'a photo source' } }) },
+    {
+      name: 'beta',
+      platformSlots: loads({
+        capabilities: { photos: 'another photo source', notes: 'a notes source' },
+      }),
+    },
   ]);
+  await loadPlatformSlots();
   assert.equal(capabilityLabelOf('photos'), 'a photo source');
   assert.equal(capabilityLabelOf('notes'), 'a notes source');
   assert.equal(capabilityLabelOf('maps'), undefined);

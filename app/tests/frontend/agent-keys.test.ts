@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import '../support/manifests.js';
 import type { AgentKey } from '../../../shared/contracts/index.js';
-import {
+
+// The Agents page's code reads every owner's kinds of data as it loads, so it loads after them.
+const {
   accessText,
   activityNote,
   agentAreas,
@@ -31,8 +33,8 @@ import {
   surfaceOf,
   switchedOffText,
   withArea,
-} from '../../../core/platform_owner/frontend/agents/agents.js';
-import { changeText } from '../../../core/platform_owner/frontend/audit/wording.js';
+} = await import('../../../core/platform_owner/frontend/agents/agents.js');
+const { changeText } = await import('../../../core/platform_owner/frontend/audit/wording.js');
 
 const now = Date.parse('2026-10-01T15:00:00');
 const DAY = 86_400_000;

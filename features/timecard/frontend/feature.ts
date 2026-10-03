@@ -59,8 +59,7 @@ export const feature: FrontendFeature = {
       },
     },
   ],
-  auditWording: () => import('./audit-wording.js').then((module) => module.wording),
-  switch: { id: 'timecard', icon: CalendarDays },
+  platformSlots: () => import('./platform-slots.js'),
   errors: {
     meal_sync_paycom_required: 'Connect Paycom before syncing meal breaks.',
     meal_sync_flex_required: 'Connect Cortex in Settings → Connections before syncing Flex.',
@@ -109,15 +108,5 @@ export const feature: FrontendFeature = {
         return begins(url, '/api/dsp/paycom/meal-breaks');
       return undefined;
     },
-  },
-  readToggles: {
-    label: 'Timecard',
-    missing: 'timecard data',
-    order: 20,
-    sources: { timecards: 'Timecard', meal_breaks: 'Meal Breaks' },
-    toggles: [
-      { id: 'timecards', label: 'Timecards', missing: 'timecards', source: 'timecards' },
-      { id: 'meal_breaks', label: 'Meal breaks', missing: 'meal breaks', source: 'meal_breaks' },
-    ],
   },
 };

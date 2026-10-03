@@ -33,7 +33,7 @@ export const feature: FrontendFeature = {
       },
     },
   ],
-  auditWording: () => import('./audit-wording.js').then((module) => module.wording),
+  platformSlots: () => import('./platform-slots.js'),
   cache: {
     write: (write, url) => {
       const team = ['/api/dsp/members', '/api/dsp/roles', '/api/dsp/invitations'];

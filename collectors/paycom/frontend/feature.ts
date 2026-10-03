@@ -14,8 +14,7 @@ export const feature: FrontendFeature = {
     load,
     render: (context) => createElement(PaycomCard, { ...context, read }),
   },
-  auditWording: () => import('./audit-wording.js').then((module) => module.wording),
-  capabilities: { timecards: 'a timecard source' },
+  platformSlots: () => import('./platform-slots.js'),
   // Core's codes, as they read since Paycom was the only connection.
   errors: {
     connection_required: 'Connect Paycom before starting a collection.',
@@ -25,12 +24,4 @@ export const feature: FrontendFeature = {
   scheduleIssues: {
     schedule_paycom_required: 'Connect Paycom before enabling this schedule.',
   },
-  collections: [
-    {
-      kind: 'paycom.collect',
-      schedule: { id: 'paycom', label: 'Paycom' },
-      unit: 'employee',
-      count: (metrics) => metrics.employees,
-    },
-  ],
 };

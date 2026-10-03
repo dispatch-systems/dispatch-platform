@@ -30,7 +30,7 @@ export const feature: FrontendFeature = {
       render: ({ view }) => createElement(UniformInventoryPage, { key: view.token, view }),
     },
   ],
-  switch: { id: 'uniforms', icon: Shirt },
+  platformSlots: () => import('./platform-slots.js'),
   longPolls: ['/api/dsp/uniforms/updates'],
   errors: {
     uniform_changed:

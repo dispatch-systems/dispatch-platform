@@ -214,6 +214,23 @@ export type CacheRules = {
   write?: (write: string, url: string) => boolean | undefined;
 };
 
+/**
+ * What an owner puts in the platform owner's slots. Only the platform owner's pages read them,
+ * so those pages load every owner's with them and no other page carries them.
+ */
+export type PlatformSlots = {
+  /** Its page's switch, as the DSPs page lists it. */
+  switch?: { id: PageFeature; icon: LucideIcon };
+  /** How its events read in the audit log. */
+  auditWording?: AuditWording;
+  /** The kinds of its data agents may read. */
+  readToggles?: ReadToggles;
+  /** The collections it runs. */
+  collections?: readonly CollectionLabels[];
+  /** How a page that needs a capability its connection provides names it: "a … source". */
+  capabilities?: Record<string, string>;
+};
+
 /** An owner's frontend: what it puts in each slot. */
 export type FrontendFeature = {
   /** The owner's directory name. */
@@ -224,18 +241,10 @@ export type FrontendFeature = {
   settingsTabs?: readonly SettingsTab[];
   /** Its tabs on another feature's page. */
   pageTabs?: readonly PageTab[];
-  /** Loads how its events read in the audit log. */
-  auditWording?: () => Promise<AuditWording>;
-  /** The kinds of its data agents may read. */
-  readToggles?: ReadToggles;
-  /** Its page's switch, as the platform owner's DSPs page lists it. */
-  switch?: { id: PageFeature; icon: LucideIcon };
+  /** Loads its module that exports what it puts in the platform owner's slots, as `slots`. */
+  platformSlots?: () => Promise<{ slots: PlatformSlots }>;
   /** Its connection's card. */
   connectionCard?: ConnectionCard;
-  /** The collections it runs. */
-  collections?: readonly CollectionLabels[];
-  /** How a page that needs a capability its connection provides names it: "a … source". */
-  capabilities?: Record<string, string>;
   /** How the response cache treats its reads. */
   cache?: CacheRules;
   /** Its reads that wait for a change before they answer, by path prefix. */
@@ -250,6 +259,8 @@ let installed: readonly FrontendFeature[] = [];
 /** Called once by the app, before the first render, with every owner's manifest. */
 export function installFeatures(features: readonly FrontendFeature[]) {
   installed = features;
+  loadedSlots = [];
+  slotsLoad = undefined;
 }
 
 /** The installed page at an address. */
@@ -272,22 +283,12 @@ export const pageTabs = (page: string) =>
     .filter((tab) => tab.page === page)
     .sort((a, b) => a.order - b.order);
 
-/** The icon of a page's switch. */
-export const switchIcon = (id: string) =>
-  installed.find((feature) => feature.switch?.id === id)?.switch?.icon;
-
 /** Every collector's connection card, in the order the collectors are listed. */
 export const connectionCards = () =>
   installed.flatMap((feature) => (feature.connectionCard ? [feature.connectionCard] : []));
 /** The card of a connection. */
 export const connectionCard = (provider: string) =>
   connectionCards().find((card) => card.provider === provider);
-
-/** Every collection, with the collector that runs it. */
-export const collectionLabels = () =>
-  installed.flatMap((feature) =>
-    (feature.collections ?? []).map((collection) => ({ ...collection, provider: feature.name })),
-  );
 
 /** Every owner's cache rules, in the order the owners are listed. */
 export const cacheRules = () => installed.flatMap((feature) => feature.cache ?? []);
@@ -307,26 +308,49 @@ function first(read: (feature: FrontendFeature) => string | undefined) {
 /** What an owner's error code says. */
 export const errorLabelOf = (code: string) =>
   first((feature) => feature.errors?.[code] ?? feature.scheduleIssues?.[code]);
-/** How a page that needs a capability names it. */
-export const capabilityLabelOf = (capability: string) =>
-  first((feature) => feature.capabilities?.[capability]);
 /** Why a schedule of an owner's collections waits. */
 export const scheduleIssueOf = (code: string) => first((feature) => feature.scheduleIssues?.[code]);
 
+let loadedSlots: readonly (PlatformSlots & { owner: string })[] = [];
+let slotsLoad: Promise<void> | undefined;
+/**
+ * Loads what every owner puts in the platform owner's slots, once; a failed load is tried again
+ * next time. The readers below find nothing until it has loaded.
+ */
+export function loadPlatformSlots() {
+  slotsLoad ??= Promise.all(
+    installed.flatMap(({ name, platformSlots }) =>
+      platformSlots ? [platformSlots().then(({ slots }) => ({ ...slots, owner: name }))] : [],
+    ),
+  ).then(
+    (slots) => void (loadedSlots = slots),
+    (error: unknown) => {
+      slotsLoad = undefined;
+      throw error;
+    },
+  );
+  return slotsLoad;
+}
+
+/** The icon of a page's switch. */
+export const switchIcon = (id: string) =>
+  loadedSlots.find((slots) => slots.switch?.id === id)?.switch?.icon;
+
+/** Every owner's audit wording, in the order the owners are listed. */
+export const auditWording = () => loadedSlots.flatMap((slots) => slots.auditWording ?? []);
+
 /** Every owner's kinds of data agents may read, group by group in their order. */
 export const readToggles = () =>
-  installed
-    .flatMap((feature) => (feature.readToggles ? [feature.readToggles] : []))
+  loadedSlots
+    .flatMap((slots) => (slots.readToggles ? [slots.readToggles] : []))
     .sort((a, b) => a.order - b.order);
 
-let wordingLoad: Promise<readonly AuditWording[]> | undefined;
-/** Loads every owner's audit wording, once; a failed load is tried again next time. */
-export function loadAuditWording() {
-  wordingLoad ??= Promise.all(
-    installed.flatMap((feature) => (feature.auditWording ? [feature.auditWording()] : [])),
-  ).catch((error: unknown) => {
-    wordingLoad = undefined;
-    throw error;
-  });
-  return wordingLoad;
-}
+/** Every collection, with the collector that runs it. */
+export const collectionLabels = () =>
+  loadedSlots.flatMap((slots) =>
+    (slots.collections ?? []).map((collection) => ({ ...collection, provider: slots.owner })),
+  );
+
+/** How a page that needs a capability names it, as the first connection listed names it. */
+export const capabilityLabelOf = (capability: string) =>
+  loadedSlots.find((slots) => slots.capabilities?.[capability])?.capabilities?.[capability];

@@ -1,5 +1,4 @@
 import { createElement, lazy } from 'react';
-import { Route } from 'lucide-react';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
 
@@ -20,29 +19,10 @@ export const feature: FrontendFeature = {
         tab === 'data' && can(view, 'routes.manage') ? ['/api/dsp/routes/retention'] : [],
     },
   ],
-  auditWording: () => import('./audit-wording.js').then((module) => module.wording),
-  switch: { id: 'routes', icon: Route },
+  platformSlots: () => import('./platform-slots.js'),
   errors: {
     invalid_retention: 'Choose a retention window from 30 to 3,650 days.',
     routes_day_outside_retention:
       'That day is older than your route data retention window. Lengthen the window first.',
-  },
-  readToggles: {
-    label: 'Routes',
-    missing: 'route data',
-    order: 10,
-    sources: { routes: 'Routes' },
-    toggles: [
-      { id: 'routes', label: 'Routes & packages', missing: 'routes', source: 'routes' },
-      {
-        id: 'locations',
-        label: 'Delivery addresses & GPS',
-        hint: 'Stop addresses and GPS points',
-        missing: 'delivery addresses',
-        source: 'routes',
-        with: 'routes',
-        optIn: true,
-      },
-    ],
   },
 };
