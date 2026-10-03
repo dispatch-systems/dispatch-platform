@@ -9,8 +9,8 @@ fn workbook(headers: &[&str], rows: &[Inspection], dimension: &str) -> Vec<u8> {
     let mut xml = format!(
         "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><dimension ref=\"{dimension}\"/><sheetData>"
     );
-    let data = std::iter::once(headers.iter().map(|h| (*h).to_owned()).collect::<Vec<_>>())
-        .chain(rows.iter().map(|r| {
+    let data = std::iter::once(headers.iter().map(|h| (*h).to_owned()).collect::<Vec<_>>()).chain(
+        rows.iter().map(|r| {
             let v = serde_json::to_value(r).unwrap();
             headers
                 .iter()
@@ -21,7 +21,8 @@ fn workbook(headers: &[&str], rows: &[Inspection], dimension: &str) -> Vec<u8> {
                         .unwrap_or_else(|| v[*h].to_string())
                 })
                 .collect()
-        }));
+        }),
+    );
     for (index, row) in data.enumerate() {
         xml.push_str(&format!("<row r=\"{}\">", index + 1));
         for (col, value) in row.iter().enumerate() {

@@ -5,7 +5,8 @@ use serde_json::json;
 // sealed credentials and signed values must keep working across library updates.
 const PASSWORD: &str = "$argon2id$v=19$m=19456,t=2,p=1$C6TJINtK+QXKynKYz7+0yw$\
     yaNW7UfSOeGStcAIvDqRZmRukfwf9cJZmg80zWOqwMs";
-const SEALED: &str = "-jO4ORfuqy5LGd8k.Cwg6GUBJeaWuE_rJf8QCFxRxd6FMav27VPtiLKJ4xAte6VN8vzVoHrSI1QGVyrnGsixXMpgjZA";
+const SEALED: &str =
+    "-jO4ORfuqy5LGd8k.Cwg6GUBJeaWuE_rJf8QCFxRxd6FMav27VPtiLKJ4xAte6VN8vzVoHrSI1QGVyrnGsixXMpgjZA";
 
 #[test]
 fn values_written_by_earlier_libraries_still_verify() {

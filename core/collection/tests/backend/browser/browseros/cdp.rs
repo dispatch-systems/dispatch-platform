@@ -1,15 +1,19 @@
 use super::*;
 #[tokio::test]
-async fn navigation_poll_is_fragment_safe_and_keeps_tabs_and_roster_events_separate()
--> Result<()> {
+async fn navigation_poll_is_fragment_safe_and_keeps_tabs_and_roster_events_separate() -> Result<()>
+{
     let (client, server) = UnixStream::pair()?;
     server.set_nonblocking(true)?;
     let mut server = tokio::net::UnixStream::from_std(server)?;
     let mut cdp = Cdp::new(client)?;
-    server.write_all(b"{\"method\":\"Fetch.requestPaused\",\"sessionId\":\"one\",\
+    server
+        .write_all(
+            b"{\"method\":\"Fetch.requestPaused\",\"sessionId\":\"one\",\
             \"params\":{\"requestId\":\"roster\"}}\0{\"method\":\"Page.frameNavigated\",\
             \"sessionId\":\"two\",\
-            \"params\":{\"frame\":{\"loaderId\":\"other\"}}}\0{\"method\":\"Page.frameNavigated\",").await?;
+            \"params\":{\"frame\":{\"loaderId\":\"other\"}}}\0{\"method\":\"Page.frameNavigated\",",
+        )
+        .await?;
     assert!(cdp.navigation("one", "old").await?.is_null());
     server.write_all(
         b"\"sessionId\":\"one\",\"params\":{\"frame\":{\"loaderId\":\"new\",\"url\":\"https://fixture.invalid/card\"}}}\0").await?;

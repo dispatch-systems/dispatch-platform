@@ -14,8 +14,7 @@ async fn encoded_replies_preserve_json_status_and_cookies() {
 }
 #[test]
 fn redirects_name_where_to_go_and_carry_nothing_else() {
-    let reply =
-        Reply::redirect("https://d.example/#authorize?request=r".into()).into_response();
+    let reply = Reply::redirect("https://d.example/#authorize?request=r".into()).into_response();
     assert_eq!(reply.status(), 302);
     assert_eq!(
         reply.headers()["location"],

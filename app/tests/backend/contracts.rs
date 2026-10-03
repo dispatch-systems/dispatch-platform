@@ -12,8 +12,7 @@ fn missing_or_mistyped_fields_do_not_become_empty_values() {
     assert!(CollectionRequest::parse(&json!({"requestId":"test","date":null}), false).is_err());
     assert!(CollectionRequest::parse(&json!({"requestId":"test"}), true).is_err());
     assert!(
-        CollectionRequest::parse(&json!({"requestId":"test","date":"2026-02-30"}), false)
-            .is_err()
+        CollectionRequest::parse(&json!({"requestId":"test","date":"2026-02-30"}), false).is_err()
     );
     assert!(JobStatus::parse("finished").is_none());
     let list = |statuses: &[JobStatus]| {

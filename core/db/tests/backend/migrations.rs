@@ -1,7 +1,6 @@
 use super::*;
 use crate::{
-    config::Config, db::Store, dvic::DvicStore, routedata::RoutesStore,
-    scorecard::ScorecardStore,
+    config::Config, db::Store, dvic::DvicStore, routedata::RoutesStore, scorecard::ScorecardStore,
 };
 use std::{
     os::unix::fs::PermissionsExt,
@@ -423,8 +422,7 @@ fn jobs_and_schedules_from_before_the_routes_collection_keep_their_rows_through_
 fn jobs_and_schedules_from_before_the_dvic_collection_keep_their_rows_through_the_rebuild() {
     let root = private();
     // The previous release names neither the DVIC job kind nor its schedule collection.
-    let jobs_schema =
-        before_open_kinds(recorded(Kind::JOBS)).replace(",'cortex.dvic.collect'", "");
+    let jobs_schema = before_open_kinds(recorded(Kind::JOBS)).replace(",'cortex.dvic.collect'", "");
     assert!(!jobs_schema.contains("dvic"));
     let file = root.path().join("jobs.sqlite");
     older(&file, Kind::JOBS, &jobs_schema);

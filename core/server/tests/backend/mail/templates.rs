@@ -22,9 +22,7 @@ fn avatar_matches_dashboard_initials_and_tone() {
 fn invitation_names_the_inviter_and_escapes_the_dsp() {
     let mail = sample(false, "Alex Morgan");
     assert_eq!(mail.subject, "Join North <Line> Logistics on Dispatch");
-    assert!(
-        mail.html.contains("North &lt;Line&gt; Logistics") && !mail.html.contains("<Line>")
-    );
+    assert!(mail.html.contains("North &lt;Line&gt; Logistics") && !mail.html.contains("<Line>"));
     assert!(mail.html.contains(">Accept invitation</a>"));
     assert!(mail.text.ends_with(NO_REPLY) && mail.html.contains(NO_REPLY));
     assert!(mail.text.contains("Alex Morgan invited you to join"));
@@ -39,9 +37,7 @@ fn invitation_names_the_inviter_and_escapes_the_dsp() {
 fn onboarding_hides_the_placeholder_dsp_name() {
     let mail = sample(true, "Alex Morgan");
     assert_eq!(mail.subject, "Set up your DSP on Dispatch");
-    assert!(
-        mail.html.contains(">Start DSP onboarding</a>") && !mail.html.contains("Logistics")
-    );
+    assert!(mail.html.contains(">Start DSP onboarding</a>") && !mail.html.contains("Logistics"));
 }
 
 fn connected<'a>(known: bool, dsps: &'a [String], reads: &'a AgentReads) -> ConnectedApp<'a> {

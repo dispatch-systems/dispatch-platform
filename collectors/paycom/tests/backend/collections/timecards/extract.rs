@@ -21,8 +21,7 @@ const COLUMNS: &[&str] = &[
 fn period() -> Value {
     let dates = (0..14)
         .map(|i| {
-            (NaiveDate::from_ymd_opt(2026, 9, 13).unwrap() + chrono::Duration::days(i))
-                .to_string()
+            (NaiveDate::from_ymd_opt(2026, 9, 13).unwrap() + chrono::Duration::days(i)).to_string()
         })
         .collect::<Vec<_>>();
     json!({"start":"2026-09-13","end":"2026-09-26","key":"2026-09-13_2026-09-26","dates":dates})
@@ -56,8 +55,7 @@ fn punch(time: &str) -> String {
 fn page(code: &str, doctype: &str, sunday: Option<String>) -> String {
     let mut rows = String::new();
     for index in 0..14 {
-        let date =
-            NaiveDate::from_ymd_opt(2026, 9, 13).unwrap() + chrono::Duration::days(index);
+        let date = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap() + chrono::Duration::days(index);
         let heading = format!("{} ({})", LABELS[index as usize % 7], date.format("%m/%d"));
         match (&sunday, index) {
             (Some(custom), 0) => rows.push_str(&custom.replace("HEADING", &heading)),

@@ -1,13 +1,10 @@
 use super::*;
-use crate::{
-    collectors::paycom::fixtures, config::Config, operations, workforce::TimecardStore,
-};
+use crate::{collectors::paycom::fixtures, config::Config, operations, workforce::TimecardStore};
 use serde_json::json;
 use std::os::unix::fs::PermissionsExt;
 
 #[test]
-fn a_scoped_publication_rejects_other_employees_periods_and_incomplete_captures() -> Result<()>
-{
+fn a_scoped_publication_rejects_other_employees_periods_and_incomplete_captures() -> Result<()> {
     let root = tempfile::tempdir()?;
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700))?;
     let mut config = Config::load()?;

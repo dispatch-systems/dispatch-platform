@@ -13,8 +13,8 @@ use serde_json::json;
 use std::os::unix::fs::PermissionsExt;
 
 #[tokio::test]
-async fn driver_results_overlay_both_views_without_publishing_and_revert_on_failure()
--> Result<()> {
+async fn driver_results_overlay_both_views_without_publishing_and_revert_on_failure() -> Result<()>
+{
     let root = tempfile::tempdir()?;
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700))?;
     let mut config = Config::load()?;

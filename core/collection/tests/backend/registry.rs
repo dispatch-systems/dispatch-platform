@@ -216,8 +216,7 @@ fn cortex_storage_recovers_initialization_and_preserves_provider_identity() {
 #[test]
 fn missing_initialized_cortex_database_is_not_recreated() {
     let (_root, store, id) = provisioned();
-    let path =
-        database_path(&store.config.root.join("dsps").join(&id), cortex::PROVIDER).unwrap();
+    let path = database_path(&store.config.root.join("dsps").join(&id), cortex::PROVIDER).unwrap();
     let config = store.config.clone();
     drop(store);
     std::fs::remove_file(&path).unwrap();

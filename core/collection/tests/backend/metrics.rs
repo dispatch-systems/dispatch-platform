@@ -26,9 +26,8 @@ fn page_history_is_bounded_and_interruption_freezes_active_reads() {
 }
 #[test]
 fn failure_detail_keeps_only_fixed_labels_and_clears_on_success() {
-    let detail = |recorder: &Recorder| {
-        serde_json::to_value(recorder.snapshot()).unwrap()["detail"].clone()
-    };
+    let detail =
+        |recorder: &Recorder| serde_json::to_value(recorder.snapshot()).unwrap()["detail"].clone();
     let recorder = Recorder::new(&json!({"attempt":1}));
     recorder.detail("summaries_loading");
     assert_eq!(detail(&recorder), "summaries_loading");

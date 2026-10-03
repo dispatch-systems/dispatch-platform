@@ -20,9 +20,11 @@ fn requests_are_recognized_by_their_collection() {
         "2026-09-13"
     );
     assert!(
-        Request::parse(&json!({"collection":"scorecard","week":"2026-W38","station":"tst1",
-            "timezone":"America/Los_Angeles","dspName":"Fixture Delivery","dspAbbreviation":"FXTR"}))
-            .is_err()
+        Request::parse(
+            &json!({"collection":"scorecard","week":"2026-W38","station":"tst1",
+            "timezone":"America/Los_Angeles","dspName":"Fixture Delivery","dspAbbreviation":"FXTR"})
+        )
+        .is_err()
     );
     assert!(
         Request::parse(

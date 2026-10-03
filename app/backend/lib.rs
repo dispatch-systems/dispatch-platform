@@ -134,8 +134,8 @@ mod request_log;
 #[path = "../tests/backend/tables.rs"]
 mod tables;
 #[cfg(test)]
-#[path = "../tests/backend/verification.rs"]
-mod verification;
-#[cfg(test)]
 #[path = "../tests/backend/lib.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "../tests/backend/verification.rs"]
+mod verification;

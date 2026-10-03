@@ -121,8 +121,7 @@ async fn report_downloads_use_validators_bound_bodies_and_never_follow_redirects
     assert!(!cortex::HOSTS.allows(&s3));
     assert!(!(cortex::REPORT_HOSTS.cookies)("amazon.com"));
     assert!(
-        !cortex::REPORT_HOSTS
-            .allows(&Url::parse("https://logistics.amazon.com/report").unwrap())
+        !cortex::REPORT_HOSTS.allows(&Url::parse("https://logistics.amazon.com/report").unwrap())
     );
     server.abort();
 }

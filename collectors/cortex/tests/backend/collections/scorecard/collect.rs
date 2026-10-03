@@ -56,8 +56,7 @@ fn addresses_follow_the_pages_parameter_order() {
         company_id: "company".into(),
     };
     let dataset =
-        crate::collectors::cortex::scorecard::dataset("da_dsp_station_weekly_performance")
-            .unwrap();
+        crate::collectors::cortex::scorecard::dataset("da_dsp_station_weekly_performance").unwrap();
     assert_eq!(
         api.address(dataset, "TST1", "2026-W38", "2026-W38"),
         concat!(
