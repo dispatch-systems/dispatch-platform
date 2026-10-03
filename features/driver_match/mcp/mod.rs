@@ -1,6 +1,7 @@
 //! What agents can know of Driver Match: who the people every source names are, by its
 //! codes, and what a code is.
 mod catalog;
+mod synthetic;
 
 use crate::{
     Result,
@@ -14,6 +15,7 @@ use crate::{
 pub const MCP: Mcp = Mcp {
     terms: catalog::TERMS,
     identity: Some(identities),
+    synthetic: synthetic::SYNTHETIC,
     ..Mcp::NONE
 };
 

@@ -2,6 +2,7 @@
 //! addresses with them.
 mod catalog;
 mod facts;
+mod synthetic;
 pub mod views;
 
 use crate::{
@@ -46,5 +47,6 @@ pub const MCP: Mcp = Mcp {
         area: LOCATIONS,
         of: facts::places,
     }),
+    synthetic: synthetic::SYNTHETIC,
     ..Mcp::NONE
 };

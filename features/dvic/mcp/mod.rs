@@ -1,6 +1,7 @@
 //! What agents can ask of DVIC: each driver's vehicle inspections.
 mod catalog;
 mod facts;
+mod synthetic;
 pub mod views;
 
 use crate::{
@@ -32,5 +33,6 @@ pub const MCP: Mcp = Mcp {
     metrics: catalog::METRICS,
     terms: catalog::TERMS,
     daily: &[&facts::InspectionDays],
+    synthetic: synthetic::SYNTHETIC,
     ..Mcp::NONE
 };

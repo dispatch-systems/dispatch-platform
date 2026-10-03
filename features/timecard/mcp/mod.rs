@@ -2,6 +2,7 @@
 //! reports beside Paycom's lunch punches.
 mod catalog;
 mod facts;
+mod synthetic;
 pub mod views;
 
 use crate::{
@@ -52,5 +53,6 @@ pub const MCP: Mcp = Mcp {
     metrics: catalog::METRICS,
     terms: catalog::TERMS,
     daily: &[&facts::TimecardDays, &facts::MealDays],
+    synthetic: synthetic::SYNTHETIC,
     ..Mcp::NONE
 };

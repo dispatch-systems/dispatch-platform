@@ -1,10 +1,13 @@
 //! What a feature lets agents ask of it, declared in its manifest's `mcp`. The agent API,
 //! the MCP server, the OpenAPI document, the Agent Skill and the Agents page are built from
 //! every feature's, so each is listed once.
-use super::data::{
-    catalog::{self, Endpoint, Metric, Term},
-    facts::{Daily, Places},
-    scope::Identify,
+use super::{
+    data::{
+        catalog::{self, Endpoint, Metric, Term},
+        facts::{Daily, Places},
+        scope::Identify,
+    },
+    synthetic::{Step, Synthetic},
 };
 use crate::{
     contracts::{AgentArea, AgentSource},
@@ -30,6 +33,8 @@ pub struct Mcp {
     /// Who the people its sources name are, for every answer that names a driver: the one
     /// feature that tells people apart fills it.
     pub identity: Option<Identify>,
+    /// What it holds of the synthetic DSP agents are tried against.
+    pub synthetic: Synthetic,
 }
 impl Mcp {
     pub const NONE: Self = Self {
@@ -41,6 +46,7 @@ impl Mcp {
         daily: &[],
         places: None,
         identity: None,
+        synthetic: Synthetic::NONE,
     };
 }
 
@@ -48,7 +54,8 @@ impl Mcp {
 /// kind is read from a declared source, with a declared kind if any; and unless every
 /// endpoint and term has a place of its own, every endpoint and metric reads a declared
 /// kind, each kind has facts by driver and day once at most, and one feature at most says
-/// where packages were delivered, and one who people are.
+/// where packages were delivered, one who people are, and one names the synthetic DSP's
+/// people, whose steps each have a place of their own.
 pub fn check(features: &[&Feature]) {
     let areas: Vec<AgentArea> = features
         .iter()
@@ -117,6 +124,18 @@ pub fn check(features: &[&Feature]) {
         mcp().filter(|mcp| mcp.identity.is_some()).count() <= 1,
         "more than one feature says who people are"
     );
+    assert!(
+        mcp().filter(|mcp| mcp.synthetic.people.is_some()).count() <= 1,
+        "more than one feature names the synthetic DSP's people"
+    );
+    let steps: Vec<&Step> = mcp().flat_map(|mcp| mcp.synthetic.steps).collect();
+    for (index, step) in steps.iter().enumerate() {
+        assert!(
+            steps[..index].iter().all(|other| other.order != step.order),
+            "two steps of the synthetic DSP share the place {}",
+            step.order
+        );
+    }
     let daily: Vec<AgentArea> = mcp().flat_map(|mcp| mcp.daily).map(|d| d.area()).collect();
     for (index, area) in daily.iter().enumerate() {
         assert!(

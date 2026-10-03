@@ -2,6 +2,7 @@
 //! Netradyne safety events and returns to station.
 mod catalog;
 pub mod scorecard;
+mod synthetic;
 
 use crate::{
     agents::Mcp,
@@ -53,5 +54,6 @@ pub const MCP: Mcp = Mcp {
     reads: &[FEEDBACK, SAFETY, RETURNS, SCORECARD],
     sources: &[SOURCE],
     endpoints: catalog::ENDPOINTS,
+    synthetic: synthetic::SYNTHETIC,
     ..Mcp::NONE
 };
