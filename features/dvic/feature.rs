@@ -1,11 +1,12 @@
 //! DVIC: vehicle inspections, from the weekly reports Cortex publishes.
 use crate::{
+    contracts::AuditArea::Collections,
     db::{
         Migration, Migrations,
         migrations::Apply::{Code, Sql},
     },
     dvic,
-    manifest::{Feature, Switch, feature, perm, tab},
+    manifest::{Audit, Feature, Switch, feature, perm, tab},
 };
 
 pub const FEATURE: Feature = Feature {
@@ -42,5 +43,9 @@ pub const FEATURE: Feature = Feature {
         ],
     }],
     domains: &[dvic::DOMAIN],
+    audit: Audit {
+        areas: &[("dvic.", Collections)],
+        ..Audit::NONE
+    },
     ..feature("dvic")
 };

@@ -2,8 +2,10 @@ use crate::{
     Result,
     contracts::AuditPage,
     db::{Store, at, iso, n, now, s},
+    manifest::registry,
 };
 use serde_json::{Value, json};
+use std::sync::LazyLock;
 const EXPORT_LIMIT: i64 = 50_000;
 const VISIT_WINDOW: i64 = 30 * 60 * 1000;
 // Activity older than a year is removed by the collector's periodic cleanup.
@@ -139,15 +141,7 @@ impl Store {
             "CASE WHEN {SUPPORT} THEN 'support' ELSE COALESCE(a.actor_id,CASE WHEN \
                 a.actor_name IS NULL THEN 'system' ELSE 'name:'||a.actor_name END) END"
         );
-        const AREA: &str = "CASE WHEN a.action LIKE 'member.%' OR a.action LIKE \
-            'invitation.%' THEN 'team' WHEN a.action LIKE 'role.%' THEN 'roles' WHEN \
-            a.action LIKE 'collection.%' OR a.action LIKE 'cortex.collection.%' OR a.action \
-            LIKE 'meal_breaks.%' OR a.action LIKE 'dvic.%' THEN 'collections' WHEN a.action LIKE 'schedule.%' THEN \
-            'schedules' WHEN a.action LIKE 'connection.%' THEN 'connections' WHEN a.action \
-            IN ('dsp.view_opened','dsp.owner_view_opened') THEN CASE WHEN ?1 IS NULL THEN \
-            'access' ELSE 'team' END WHEN a.action LIKE 'account.%' OR a.action LIKE 'agent.%' THEN 'access' WHEN \
-            a.action IN ('dsp.created','dsp.removed','dsp.restored','dsp.suspended','dsp.resumed',\
-            'dsp.feature_enabled','dsp.feature_disabled') THEN 'dsps' ELSE 'settings' END";
+        let areas = areas();
         const FAILED: &str = "a.action LIKE '%.failed'";
         let filters = format!(
             "{FROM} AND (?2='' OR a.at>=?2) AND (?3='' OR {actor}=?3) AND (?4='' OR a.action \
@@ -157,7 +151,7 @@ impl Store {
                 (?6<>'' AND json_extract(a.data,'$.ref.kind')||':'||json_extract(a.data,'$.ref.id')=?6) OR \
                 (?7<>'' AND json_extract(a.data,'$.target')=?7))"
         );
-        let area = format!("(?8='' OR (?8='failures' AND {FAILED}) OR {AREA}=?8)");
+        let area = format!("(?8='' OR (?8='failures' AND {FAILED}) OR {areas}=?8)");
         let search = if query.q.is_empty() {
             String::new()
         } else {
@@ -174,7 +168,7 @@ impl Store {
             &format!(
                 "SELECT a.id,a.at,CASE WHEN {SUPPORT} \
             THEN NULL ELSE a.actor_id END actorId,{name} actorName,a.dsp_id dspId,d.name \
-            dspName,a.action,a.detail,a.data,{AREA} area {filters} AND {area} AND (?9=0 OR \
+            dspName,a.action,a.detail,a.data,{areas} area {filters} AND {area} AND (?9=0 OR \
             a.id<?9) ORDER BY a.id DESC LIMIT \
             ?10"
             ),
@@ -205,8 +199,9 @@ impl Store {
             };
             event.as_object_mut().unwrap().remove("data");
         }
-        // A4: Driver Match names its drivers' events, until features declare audit wording.
-        self.name_driver_events(&mut events);
+        for names in registry().features.iter().filter_map(|f| f.audit.names) {
+            names(self, &mut events);
+        }
         let total = self.platform.count(
             &format!("SELECT count(*) {filters} AND {area}"),
             rusqlite::params![
@@ -224,7 +219,7 @@ impl Store {
         let mut failures = 0;
         for row in self.platform.all(
             &format!(
-                "SELECT {AREA} area,count(*) count,sum({FAILED}) failures {filters} GROUP BY 1"
+                "SELECT {areas} area,count(*) count,sum({FAILED}) failures {filters} GROUP BY 1"
             ),
             rusqlite::params![
                 query.dsp,
@@ -254,6 +249,54 @@ impl Store {
             json!({"events":events,"total":total,"counts":counts,"actors":actors,"dsps":dsps}),
         )?)
     }
+}
+/// Core's areas, each with the SQL condition on `a.action` its own actions meet and what
+/// it answers, in the order the log checks them. `?1` is the DSP whose log it is.
+const AREAS: &[(&str, &str)] = &[
+    (
+        "a.action LIKE 'member.%' OR a.action LIKE 'invitation.%'",
+        "'team'",
+    ),
+    ("a.action LIKE 'role.%'", "'roles'"),
+    ("a.action LIKE 'collection.%'", "'collections'"),
+    ("a.action LIKE 'schedule.%'", "'schedules'"),
+    ("a.action LIKE 'connection.%'", "'connections'"),
+    (
+        "a.action IN ('dsp.view_opened','dsp.owner_view_opened')",
+        "CASE WHEN ?1 IS NULL THEN 'access' ELSE 'team' END",
+    ),
+    (
+        "a.action LIKE 'account.%' OR a.action LIKE 'agent.%'",
+        "'access'",
+    ),
+    (
+        "a.action IN ('dsp.created','dsp.removed','dsp.restored','dsp.suspended','dsp.resumed',\
+         'dsp.feature_enabled','dsp.feature_disabled')",
+        "'dsps'",
+    ),
+];
+/// The area of the log an event is listed and counted under, as SQL: core's areas, each
+/// joined by the prefixes the features declare for it, and settings for everything else.
+fn areas() -> &'static str {
+    static AREA: LazyLock<String> = LazyLock::new(|| {
+        let declared: Vec<_> = registry()
+            .features
+            .iter()
+            .flat_map(|f| f.audit.areas)
+            .collect();
+        let mut sql = "CASE".to_owned();
+        for (condition, then) in AREAS {
+            sql.push_str(&format!(" WHEN {condition}"));
+            for (prefix, area) in &declared {
+                if *then == format!("'{}'", area.as_str()) {
+                    sql.push_str(&format!(" OR a.action LIKE '{prefix}%'"));
+                }
+            }
+            sql.push_str(&format!(" THEN {then}"));
+        }
+        sql + " ELSE 'settings' END"
+    });
+    &AREA
 }
 // A changed field with its previous and new value; either side may be absent.
 pub type AuditChange = (&'static str, Option<String>, Option<String>);

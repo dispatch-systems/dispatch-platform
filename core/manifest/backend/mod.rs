@@ -4,6 +4,7 @@ use crate::{
     Code, Error, Result, State,
     browsers::{Collected, Driver, Pending, browseros},
     collectors::AddedStorage,
+    contracts::AuditArea,
     db::{self, Db, Kind, Migration, Migrations, Store},
     job_metrics::Counts,
     read_cache::{self, Cached, DataDomain},
@@ -113,7 +114,8 @@ impl Registry {
     /// registered collection, one page runs the schedules, only a page has tabs, every
     /// permission has an id and an order of its own and implies only permissions that
     /// exist, every database is declared once, with migrations numbered from 1 without a
-    /// gap or a repeat, and every domain is declared once and before it is named.
+    /// gap or a repeat, every domain is declared once and before it is named, and every
+    /// audit prefix is a dotted name listed under an area other than settings.
     pub fn check(&self) {
         let kinds: Vec<&str> = self
             .collectors
@@ -202,6 +204,17 @@ impl Registry {
                 domain.id()
             );
         }
+        // Prefixes are written into the log's SQL.
+        for (prefix, area) in self.features.iter().flat_map(|f| f.audit.areas) {
+            let plain = prefix.ends_with('.')
+                && prefix
+                    .split('.')
+                    .all(|part| part.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'));
+            assert!(
+                plain && *area != AuditArea::Settings,
+                "{prefix} is no audit prefix of an area"
+            );
+        }
     }
 }
 
@@ -234,6 +247,8 @@ pub struct Feature {
     /// Runs for the DSP after each of its collections succeeds, whichever it is, once its
     /// outcome is recorded and before the dashboard hears of it.
     pub after_collection: Option<fn(Arc<State>, String) -> Upkeep>,
+    /// How its actions read in the activity log.
+    pub audit: Audit,
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
@@ -251,7 +266,26 @@ pub const fn feature(name: &'static str) -> Feature {
         cached: &[],
         maintenance: &[],
         after_collection: None,
+        audit: Audit::NONE,
     }
+}
+
+/// How a feature's actions read in the activity log.
+pub struct Audit {
+    /// What its actions begin with, each with the area of the log they are listed and
+    /// counted under. The log lists the rest under settings.
+    pub areas: &'static [(&'static str, AuditArea)],
+    /// The kinds of record its events' references name, beside core's.
+    pub subjects: &'static [&'static str],
+    /// Puts names to what the events the log lists name, as they are today.
+    pub names: Option<fn(&Store, &mut [Value])>,
+}
+impl Audit {
+    pub const NONE: Self = Self {
+        areas: &[],
+        subjects: &[],
+        names: None,
+    };
 }
 
 /// Work a feature runs for the platform, with nothing to answer: it logs its own failures.

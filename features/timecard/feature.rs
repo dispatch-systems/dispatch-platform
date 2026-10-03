@@ -1,9 +1,11 @@
 //! Timecard: Paycom's punches and timecards, and the meal breaks Cortex reports.
 use crate::{
     collectors::{cortex, paycom},
+    contracts::AuditArea::Collections,
     db::{Migration, Migrations, migrations::Apply::Sql},
     driver_match,
     manifest::{
+        Audit,
         DefaultRole::{Manager, Member},
         Feature, Switch, feature, perm, tab,
     },
@@ -80,5 +82,13 @@ pub const FEATURE: Feature = Feature {
             ]),
         },
     ],
+    // Asking Cortex for meal breaks, and syncing them, read as collections.
+    audit: Audit {
+        areas: &[
+            ("cortex.collection.", Collections),
+            ("meal_breaks.", Collections),
+        ],
+        ..Audit::NONE
+    },
     ..feature("timecard")
 };
