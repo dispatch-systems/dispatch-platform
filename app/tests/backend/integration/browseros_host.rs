@@ -68,7 +68,7 @@ impl Fixture {
 }
 fn runtime(root: &Path, executable: &Path) -> Result<Runtime> {
     let release: Value = serde_json::from_str(include_str!(
-        "../../../../../ops/launchers/browseros-release.json"
+        "../../../../ops/launchers/browseros-release.json"
     ))?;
     let browser = PathBuf::from(format!(
         "/opt/dispatch-browseros/{}/browseros",

@@ -89,11 +89,11 @@ path = "../../core/server/tests/backend/integration/browser_update.rs"
 
 [[test]]
 name = "browseros_host"
-path = "../../core/collection/tests/backend/integration/browseros_host.rs"
+path = "../../app/tests/backend/integration/browseros_host.rs"
 
 [[test]]
 name = "browseros_worker"
-path = "../../core/collection/tests/backend/integration/browseros_worker.rs"
+path = "../../app/tests/backend/integration/browseros_worker.rs"
 
 [[test]]
 name = "collection_jobs"
