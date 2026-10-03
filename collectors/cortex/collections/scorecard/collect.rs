@@ -10,12 +10,13 @@ use crate::{
         self, codes,
         discovery::Scope,
         scorecard::{
-            Capture, Collection, DATASETS, Dataset, DatasetCapture, MAX_ROWS, POSTED_SIGNAL,
-            Request,
+            Capture, Collection, DATASETS, Dataset, DatasetCapture, JOB_KIND, MAX_ROWS,
+            POSTED_SIGNAL, Request,
         },
     },
     db::now,
     job_metrics::Recorder,
+    manifest::registry,
     validate::token,
 };
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -258,9 +259,11 @@ impl Driver {
             .state
             .read(move |db| {
                 let dsp = db.job_row(&job, None)?.dsp_id;
-                db.scorecard_address(&dsp, &at)
+                let question = json!({"station":at});
+                registry().keeper(JOB_KIND).kept(db, &dsp, &question)
             })
             .await?;
+        let saved: Option<(String, String)> = serde_json::from_value(saved)?;
         Ok(saved.and_then(|(url, company_id)| {
             let (base, dsp, named) = data_request(&url, &self.origin).ok()?;
             (named == scope.station

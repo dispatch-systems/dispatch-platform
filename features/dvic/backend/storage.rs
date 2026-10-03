@@ -8,13 +8,6 @@ use crate::{
 use rusqlite::params;
 use std::collections::HashMap;
 
-#[derive(Clone)]
-pub struct KnownReport {
-    pub etag: Option<String>,
-    pub sha256: String,
-    pub modified_at: i64,
-}
-
 impl Store {
     pub fn dvic(&self, id: &str) -> Result<DspLease<'_>> {
         self.added_storage(id, cortex::PROVIDER, &STORAGE)

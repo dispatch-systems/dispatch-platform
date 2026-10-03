@@ -1,6 +1,10 @@
 //! Scorecard keeps the weeks Cortex's performance API answers with.
 use crate::{
-    Error, Result, browsers::Collected, collectors::cortex::scorecard::JOB_KIND, db::Store, ensure,
+    Error, Result,
+    browsers::Collected,
+    collectors::cortex::scorecard::JOB_KIND,
+    db::{Store, s},
+    ensure,
     manifest::Keeper,
 };
 use serde_json::Value;
@@ -20,6 +24,11 @@ impl Keeper for Scorecard {
         let bound = store.bind_scorecard_request(dsp, week)?;
         ensure(bound["station"] == station, "scorecard_scope_mismatch", 409)?;
         Ok(bound)
+    }
+    /// Where the last publication of `station` read the API, with the company it named.
+    fn kept(&self, store: &Store, dsp: &str, question: &Value) -> Result<Value> {
+        let address = store.scorecard_address(dsp, s(question, "station"))?;
+        Ok(serde_json::to_value(address)?)
     }
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
         let Collected { data, scope } = collected;

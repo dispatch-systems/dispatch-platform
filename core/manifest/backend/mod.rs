@@ -217,6 +217,12 @@ pub trait Keeper: Sync {
     }
     /// Stores a finished collection. Runs while the job is still this worker's.
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()>;
+    /// Answers a running collection that asks what is already kept for the DSP, so that
+    /// it reads from the site only what it lacks. The question and the answer are the
+    /// collection's own JSON.
+    fn kept(&self, _: &Store, _dsp: &str, _question: &Value) -> Result<Value> {
+        Ok(Value::Null)
+    }
     /// When `date` was last collected, as a row with `collected_at`.
     fn collected_at(&self, _: &Store, _dsp: &str, _date: &str) -> Result<Option<Value>> {
         Ok(None)

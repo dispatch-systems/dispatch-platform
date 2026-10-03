@@ -1,6 +1,10 @@
 //! DVIC keeps the inspections of the weekly reports Cortex publishes.
 use crate::{
-    Error, Result, browsers::Collected, collectors::cortex::dvic::JOB_KIND, db::Store, ensure,
+    Error, Result,
+    browsers::Collected,
+    collectors::cortex::dvic::JOB_KIND,
+    db::{Store, s},
+    ensure,
     manifest::Keeper,
 };
 use serde_json::Value;
@@ -19,6 +23,11 @@ impl Keeper for Dvic {
         let bound = store.bind_dvic_request(dsp, weeks)?;
         ensure(bound["station"] == station, "dvic_scope_mismatch", 409)?;
         Ok(bound)
+    }
+    /// The reports already held for `station` and `company`, by their source.
+    fn kept(&self, store: &Store, dsp: &str, question: &Value) -> Result<Value> {
+        let known = store.dvic_known(dsp, s(question, "station"), s(question, "company"))?;
+        Ok(serde_json::to_value(known)?)
     }
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
         let Collected { data, scope } = collected;

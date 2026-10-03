@@ -6,7 +6,7 @@ use crate::{
         self,
         timecards::{EmployeeSync, JOB_KIND},
     },
-    db::Store,
+    db::{Store, s},
     manifest::Keeper,
 };
 use serde_json::{Value, json};
@@ -15,6 +15,10 @@ pub struct Timecards;
 impl Keeper for Timecards {
     fn keeps(&self) -> &'static str {
         JOB_KIND
+    }
+    /// The employee a single-employee sync reads, as the latest publication holds them.
+    fn kept(&self, store: &Store, dsp: &str, question: &Value) -> Result<Value> {
+        store.paycom_employee(dsp, s(question, "employeeCode"))
     }
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
         let request: Value = serde_json::from_str(&store.job_row(job, Some(dsp))?.request)?;

@@ -11,7 +11,9 @@ use crate::{
     Error, Result,
     collectors::{
         AddedStorage,
-        cortex::dvic::{Capture, Collection, JOB_KIND, MAX_WEEKS, Request, hash, report_week},
+        cortex::dvic::{
+            Capture, Collection, JOB_KIND, KnownReport, MAX_WEEKS, Request, hash, report_week,
+        },
     },
     db::{Db, Kind},
     ensure, validate, weeks,

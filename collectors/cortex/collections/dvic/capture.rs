@@ -19,6 +19,14 @@ pub const MAX_CAPTURE_ROWS: usize = 100_000;
 pub const MAX_FILE_BYTES: usize = 8 * 1024 * 1024;
 pub const DATASET: &str = "dsp_station_weekly_supp_reports";
 
+/// A report DVIC already holds, which a collection downloads again only when it changed.
+#[derive(Clone, Deserialize, Serialize)]
+pub struct KnownReport {
+    pub etag: Option<String>,
+    pub sha256: String,
+    pub modified_at: i64,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub enum Collection {
     #[serde(rename = "dvic")]

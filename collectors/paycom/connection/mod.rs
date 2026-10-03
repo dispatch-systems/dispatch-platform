@@ -401,11 +401,15 @@ impl Drives for Driver {
                 let code = scope.employee_code.clone();
                 let job = run.job.to_owned();
                 let owner = run.owner.to_owned();
+                // Timecard keeps the employee the sync reads.
                 let employee = run
                     .state
                     .read(move |store| {
                         let dsp = store.guard(&job, &owner)?;
-                        store.paycom_employee(&dsp.id, &code)
+                        let question = json!({"employeeCode":code});
+                        crate::manifest::registry()
+                            .keeper(crate::collectors::paycom::timecards::JOB_KIND)
+                            .kept(store, &dsp.id, &question)
                     })
                     .await?;
                 let data = self

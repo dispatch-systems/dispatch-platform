@@ -4,12 +4,13 @@ use crate::{
     collectors::cortex::{
         self,
         discovery::Scope,
-        dvic::{self, Capture, Collection, Report, Request},
+        dvic::{self, Capture, Collection, KnownReport, Report, Request},
     },
     db::now,
+    manifest::registry,
 };
 use chrono::NaiveDate;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 pub const REPORT_HOST: &str = "flex-peer-performance-reports-prod-usamazon.s3.amazonaws.com";
 
@@ -165,13 +166,18 @@ impl Driver {
         let job = run.job.to_owned();
         let station = request.station.clone();
         let company = api.company_id.clone();
+        // DVIC keeps the reports; only those it lacks or that changed are downloaded.
         let known = run
             .state
             .read(move |store| {
                 let dsp = store.job_row(&job, None)?.dsp_id;
-                store.dvic_known(&dsp, &station, &company)
+                let question = json!({"station":station,"company":company});
+                registry()
+                    .keeper(dvic::JOB_KIND)
+                    .kept(store, &dsp, &question)
             })
             .await?;
+        let known: HashMap<String, KnownReport> = serde_json::from_value(known)?;
         let mut listed = Vec::new();
         for week in &request.weeks {
             run.progress(10, format!("Checking DVIC reports for {week}"))
