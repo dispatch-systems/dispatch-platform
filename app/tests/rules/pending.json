@@ -97,12 +97,7 @@
     },
     "ownership": {
       "tables": {
-        "app names tables of core": "Phase B",
-        "collectors/paycom's tests name tables of core": "A6",
-        "features/dvic's tests name tables of core": "A6",
-        "features/routes's tests name tables of core": "A6",
-        "features/scorecard's tests name tables of core": "A6",
-        "features/timecard's tests name tables of core": "A6"
+        "app names tables of core": "Phase B"
       }
     },
     "tests": {

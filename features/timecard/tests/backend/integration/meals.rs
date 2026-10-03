@@ -286,10 +286,7 @@ fn invalid_or_shrinking_refresh_preserves_publication_and_retention_is_bounded()
 fn provider_jobs_bind_request_identity_and_connection_revision() {
     let (_root, db, id) = common::bootstrapped();
     let scope = scope();
-    db.collector(&id, cortex::PROVIDER)
-        .unwrap()
-        .exec("UPDATE connections SET enabled=1", [])
-        .unwrap();
+    common::enable_connection(&db, &id, cortex::PROVIDER).unwrap();
     let job = db.enqueue_meals(&id, None, "request", &scope).unwrap();
     assert_eq!(job["kind"], "cortex.meal_breaks.collect");
     assert_eq!(
@@ -306,10 +303,7 @@ fn provider_jobs_bind_request_identity_and_connection_revision() {
     );
     db.claim_job("worker", |_, _| true).unwrap().unwrap();
     db.guard(s(&job, "id"), "worker").unwrap();
-    db.collector(&id, cortex::PROVIDER)
-        .unwrap()
-        .exec("UPDATE connections SET revision=revision+1", [])
-        .unwrap();
+    common::change_connection(&db, &id, cortex::PROVIDER).unwrap();
     assert_eq!(
         db.guard(s(&job, "id"), "worker").unwrap_err().code,
         "connection_changed"

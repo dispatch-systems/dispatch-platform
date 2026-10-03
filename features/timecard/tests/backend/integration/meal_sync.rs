@@ -14,21 +14,11 @@ use serde_json::{Value, json};
 
 fn fixture() -> (tempfile::TempDir, Store, String, String) {
     let (root, db, id) = common::bootstrapped();
-    let actor = s(
-        &db.platform
-            .one("SELECT id FROM users LIMIT 1", [])
-            .unwrap()
-            .unwrap(),
-        "id",
-    )
-    .to_owned();
+    let actor = common::a_user(&db);
     (root, db, id, actor)
 }
 fn enable(db: &Store, id: &str, provider: Provider) {
-    db.collector(id, provider)
-        .unwrap()
-        .exec("UPDATE connections SET enabled=1,status='ready'", [])
-        .unwrap();
+    common::ready_connection(db, id, provider).unwrap();
 }
 fn seed(db: &Store, id: &str, date: &str, index: usize) {
     let scope = Scope {
@@ -135,18 +125,8 @@ fn combined_sync_reuses_tenant_scope_records_date_and_is_idempotent() {
     assert_eq!(status["flex"]["active"], true);
     assert_eq!(status["flex"]["collectedAt"], Value::Null);
     db.cancel_dsp(&id).unwrap();
-    db.jobs
-        .exec(
-            "UPDATE jobs SET status='failed' WHERE kind='cortex.meal_breaks.collect'",
-            [],
-        )
-        .unwrap();
-    db.jobs
-        .exec(
-            "UPDATE jobs SET status='succeeded' WHERE kind='paycom.collect'",
-            [],
-        )
-        .unwrap();
+    common::set_status_of_kind(&db, "cortex.meal_breaks.collect", "failed").unwrap();
+    common::set_status_of_kind(&db, "paycom.collect", "succeeded").unwrap();
     let status = db.meal_sync_status(&id, "2026-01-11").unwrap();
     assert_eq!(status["flex"]["job"]["status"], "failed");
     assert_eq!(status["paycom"]["job"]["status"], "succeeded");
@@ -212,15 +192,10 @@ fn successful_station_does_not_hide_a_failed_station_in_the_same_sync() {
     let result = db
         .enqueue_meal_sync(&id, &actor, "stations", "2026-01-11")
         .unwrap();
-    db.jobs
-        .exec("UPDATE jobs SET status='succeeded'", [])
-        .unwrap();
-    db.jobs
-        .exec(
-            "UPDATE jobs SET status='failed',created_at='2026-01-01' WHERE id=?",
-            [s(&result["jobs"][1], "id")],
-        )
-        .unwrap();
+    common::set_every_status(&db, "succeeded").unwrap();
+    let flex = s(&result["jobs"][1], "id");
+    common::set_job_status(&db, flex, "failed").unwrap();
+    common::set_job_created(&db, flex, "2026-01-01").unwrap();
     let status = db.meal_sync_status(&id, "2026-01-11").unwrap();
     assert_eq!(status["flex"]["job"]["status"], "failed");
     assert_eq!(status["flex"]["active"], false);
@@ -258,9 +233,7 @@ fn manual_sync_lock_and_original_date_follow_the_entire_batch() {
         .unwrap();
     let paycom = s(&original["jobs"][0], "id");
     let flex = s(&original["jobs"][1], "id");
-    db.jobs
-        .exec("UPDATE jobs SET status='succeeded' WHERE id=?", [paycom])
-        .unwrap();
+    common::set_job_status(&db, paycom, "succeeded").unwrap();
     let scope = Scope {
         date: "2026-01-12".into(),
         station: "DEM1".into(),
@@ -269,9 +242,7 @@ fn manual_sync_lock_and_original_date_follow_the_entire_batch() {
         timezone: "America/Los_Angeles".into(),
     };
     for status in ["queued", "running", "waiting_verification"] {
-        db.jobs
-            .exec("UPDATE jobs SET status=? WHERE id=?", [status, flex])
-            .unwrap();
+        common::set_job_status(&db, flex, status).unwrap();
         let viewed = db.meal_sync_status(&id, "2026-01-12").unwrap();
         assert_eq!(viewed["date"], "2026-01-12");
         assert_eq!(viewed["flex"]["jobDate"], "2026-01-11");
@@ -295,9 +266,7 @@ fn manual_sync_lock_and_original_date_follow_the_entire_batch() {
         assert_eq!(jobs(&db, &id).len(), 2);
     }
     for status in ["succeeded", "failed", "cancelled"] {
-        db.jobs
-            .exec("UPDATE jobs SET status=? WHERE id=?", [status, flex])
-            .unwrap();
+        common::set_job_status(&db, flex, status).unwrap();
         assert_eq!(
             db.meal_sync_status(&id, "2026-01-12").unwrap()["flex"]["active"],
             false

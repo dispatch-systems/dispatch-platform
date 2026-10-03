@@ -3,6 +3,7 @@ use crate::collectors::cortex::{
     discovery::CollectionRequest,
     routes::{MAX_ITINERARIES, fixture},
 };
+use crate::testing;
 #[test]
 fn retained_sweep_selection_rechecks_running_jobs_and_publication_activity() {
     use std::os::unix::fs::PermissionsExt;
@@ -29,10 +30,7 @@ fn retained_sweep_selection_rechecks_running_jobs_and_publication_activity() {
         json!({"stationCode":"TST1","abbreviation":"NLOG","setupRequired":false}),
     )
     .unwrap();
-    db.collector(dsp, crate::collectors::cortex::PROVIDER)
-        .unwrap()
-        .exec("UPDATE connections SET enabled=1,status='ready'", [])
-        .unwrap();
+    testing::ready_connection(&db, dsp, crate::collectors::cortex::PROVIDER).unwrap();
     let queued = db
         .enqueue_routes(
             dsp,
@@ -47,9 +45,7 @@ fn retained_sweep_selection_rechecks_running_jobs_and_publication_activity() {
     let staged = db
         .stage_routes(dsp, job, fixture(&request(Mode::Final)).unwrap())
         .unwrap();
-    db.jobs
-        .exec("UPDATE jobs SET status='failed' WHERE id=?", [job])
-        .unwrap();
+    testing::set_job_status(&db, job, "failed").unwrap();
     let mut selected = None;
     assert!(sweep_routes_step(&db, dsp, &mut selected).unwrap());
     assert_eq!(selected.as_deref(), Some(staged.publication.as_str()));
@@ -62,15 +58,11 @@ fn retained_sweep_selection_rechecks_running_jobs_and_publication_activity() {
     let stops = remaining();
     assert!(stops > 0);
     // An intervening job transition must protect even the retained candidate.
-    db.jobs
-        .exec("UPDATE jobs SET status='queued' WHERE id=?", [job])
-        .unwrap();
+    testing::set_job_status(&db, job, "queued").unwrap();
     assert!(!sweep_routes_step(&db, dsp, &mut selected).unwrap());
     assert_eq!(remaining(), stops);
     assert!(selected.is_none());
-    db.jobs
-        .exec("UPDATE jobs SET status='failed' WHERE id=?", [job])
-        .unwrap();
+    testing::set_job_status(&db, job, "failed").unwrap();
     selected = Some(staged.publication.clone());
     db.routes_db(dsp)
         .unwrap()

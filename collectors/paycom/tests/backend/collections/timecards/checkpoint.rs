@@ -1,5 +1,5 @@
 use super::*;
-use crate::{config::Config, operations};
+use crate::{config::Config, operations, testing};
 use std::os::unix::fs::PermissionsExt;
 
 #[tokio::test]
@@ -22,8 +22,8 @@ async fn resume_is_bound_to_job_roster_period_revision_and_fixed_expiry() -> Res
                 "checkpoint-password",
             )?;
             let dsp = s(&bootstrap["dsp"], "id").to_owned();
-            db.collector(&dsp, paycom::PROVIDER)?
-                .exec("UPDATE connections SET enabled=1,revision=1", [])?;
+            testing::enable_connection(db, &dsp, paycom::PROVIDER)?;
+            testing::set_connection_revision(db, &dsp, paycom::PROVIDER, 1)?;
             let job =
                 db.enqueue_for(&dsp, None, "checkpoint-test", paycom::PROVIDER, &json!({}))?;
             db.claim_job("owner", |_, _| true)?;
@@ -124,10 +124,8 @@ async fn resume_is_bound_to_job_roster_period_revision_and_fixed_expiry() -> Res
     let id = job.clone();
     state
         .run(move |db| {
-            let storage = db.collector(&tenant, paycom::PROVIDER)?;
-            storage.exec("UPDATE connections SET revision=2", [])?;
-            db.jobs
-                .exec("UPDATE jobs SET connection_revision=2 WHERE id=?", [id])?;
+            testing::set_connection_revision(db, &tenant, paycom::PROVIDER, 2)?;
+            testing::set_job_connection_revision(db, &id, 2)?;
             Ok(())
         })
         .await?;

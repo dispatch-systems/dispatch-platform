@@ -29,10 +29,7 @@ fn ready() -> (tempfile::TempDir, Store, String) {
         json!({"stationCode":"TST1","abbreviation":"NLOG","setupRequired":false}),
     )
     .unwrap();
-    db.collector(&id, cortex::PROVIDER)
-        .unwrap()
-        .exec("UPDATE connections SET enabled=1,status='ready'", [])
-        .unwrap();
+    common::ready_connection(&db, &id, cortex::PROVIDER).unwrap();
     (root, db, id)
 }
 /// Queues `day`, stages `capture` for that job and publishes it, as the executor does.
@@ -44,9 +41,7 @@ fn publish(db: &Store, id: &str, key: &str, day: &str, capture: &Capture) -> Str
     let staged = db.stage_routes(id, &job, capture.clone()).unwrap();
     db.publish_routes(id, &job, &staged).unwrap();
     // The executor publishes in the same transaction that finishes the job.
-    db.jobs
-        .exec("UPDATE jobs SET status='succeeded' WHERE id=?", [&job])
-        .unwrap();
+    common::set_job_status(db, &job, "succeeded").unwrap();
     job
 }
 /// Runs the sweep until nothing is left for it.
@@ -502,10 +497,7 @@ fn a_schedule_queues_recent_days_without_a_final_publication() {
 #[test]
 fn collection_requests_need_a_station_and_an_allowed_day() {
     let (_root, db, id) = common::bootstrapped();
-    db.collector(&id, cortex::PROVIDER)
-        .unwrap()
-        .exec("UPDATE connections SET enabled=1,status='ready'", [])
-        .unwrap();
+    common::ready_connection(&db, &id, cortex::PROVIDER).unwrap();
     let refused = db.enqueue_routes(&id, None, "k", None, Mode::Final, 1);
     assert_eq!(refused.unwrap_err().code, "routes_station_required");
     assert_eq!(
@@ -577,9 +569,7 @@ fn the_sweep_keeps_a_running_jobs_day_and_deletes_what_no_reader_sees() {
         vec![json!({"job_id": job})]
     );
     // Once the job has ended without publishing, the sweep removes every row of it.
-    db.jobs
-        .exec("UPDATE jobs SET status='failed' WHERE id=?", [&job])
-        .unwrap();
+    common::set_job_status(&db, &job, "failed").unwrap();
     assert!(sweep(&db, &id) > 1);
     for table in [
         "route_publications",
@@ -603,12 +593,7 @@ fn the_sweep_keeps_a_running_jobs_day_and_deletes_what_no_reader_sees() {
 #[test]
 fn a_retention_window_retires_older_days_only_while_routes_are_on() {
     let (_root, db, id) = ready();
-    let actor = db
-        .platform
-        .one("SELECT id FROM users LIMIT 1", [])
-        .unwrap()
-        .unwrap();
-    let actor = s(&actor, "id").to_owned();
+    let actor = common::a_user(&db);
     db.set_feature(&id, "routes", true, &actor).unwrap();
     // Nothing is deleted by default.
     let retention = db.route_retention(&id).unwrap();
@@ -667,16 +652,7 @@ fn a_retention_window_retires_older_days_only_while_routes_are_on() {
     );
     // Shared rows seen since stay; the recent day still shows them.
     assert_eq!(count(&db, &id, "SELECT count(*) FROM addresses"), 2);
-    let actions: Vec<String> = db
-        .platform
-        .all(
-            "SELECT action FROM audit WHERE dsp_id=? AND action LIKE 'routes.%' ORDER BY id",
-            [&id],
-        )
-        .unwrap()
-        .iter()
-        .map(|r| s(r, "action").to_owned())
-        .collect();
+    let actions: Vec<String> = common::audit_actions(&db, &id, "routes.");
     assert!(actions.contains(&"routes.retention_changed".to_owned()));
     assert!(actions.contains(&"routes.data_expired".to_owned()));
     // Keeping every day again deletes nothing more.
@@ -953,9 +929,7 @@ fn a_stored_day_goes_through_storage_at_full_size() {
     let started = std::time::Instant::now();
     db.publish_routes(&id, &job, &staged).unwrap();
     let publish_ms = started.elapsed().as_millis();
-    db.jobs
-        .exec("UPDATE jobs SET status='succeeded' WHERE id=?", [&job])
-        .unwrap();
+    common::set_job_status(&db, &job, "succeeded").unwrap();
     let mut sweeps = Vec::new();
     loop {
         let started = std::time::Instant::now();

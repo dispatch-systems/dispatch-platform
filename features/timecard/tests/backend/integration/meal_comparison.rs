@@ -16,14 +16,7 @@ use serde_json::{Value, json};
 /// A day in the demo period of Sep 6 to 19, 2026, within a week of its start.
 const DEMO_DAY: chrono::NaiveDate = chrono::NaiveDate::from_ymd_opt(2026, 9, 12).unwrap();
 fn actor(db: &Store) -> String {
-    s(
-        &db.platform
-            .one("SELECT id FROM users LIMIT 1", [])
-            .unwrap()
-            .unwrap(),
-        "id",
-    )
-    .to_owned()
+    common::a_user(db)
 }
 fn seed(db: &Store, id: &str) -> (String, String) {
     // A fixed day inside the demo period, so the period's first day has timecards whatever

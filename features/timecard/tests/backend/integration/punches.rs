@@ -327,16 +327,12 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
 fn settings_reject_unknown_fields_and_preserve_empty_driver_selection() {
     let (_root, db, id) = common::bootstrapped();
     let id = id.as_str();
-    let actor = db
-        .platform
-        .one("SELECT id FROM users WHERE platform_owner=1", [])
-        .unwrap()
-        .unwrap();
+    let actor = common::platform_owner(&db);
     db.publish_timecards(id, &fixtures::fixture("UTC").unwrap())
         .unwrap();
     let mut values = db.timecard_preferences(id).unwrap()["values"].clone();
     values["driver_departments"] = json!([]);
-    db.save_timecard_preferences(id, s(&actor, "id"), 0, &values)
+    db.save_timecard_preferences(id, &actor, 0, &values)
         .unwrap();
     let day = fixtures::fixture("UTC").unwrap()["timecards"][0]["date"]
         .as_str()
@@ -356,7 +352,7 @@ fn settings_reject_unknown_fields_and_preserve_empty_driver_selection() {
     );
     values["unknown"] = json!(true);
     assert!(
-        db.save_timecard_preferences(id, s(&actor, "id"), 1, &values)
+        db.save_timecard_preferences(id, &actor, 1, &values)
             .is_err()
     );
 }
@@ -365,11 +361,7 @@ fn settings_reject_unknown_fields_and_preserve_empty_driver_selection() {
 fn retired_sync_preferences_are_not_returned_and_open_dashboards_may_still_send_them() {
     let (_root, db, id) = common::bootstrapped();
     let id = id.as_str();
-    let actor = db
-        .platform
-        .one("SELECT id FROM users WHERE platform_owner=1", [])
-        .unwrap()
-        .unwrap();
+    let actor = common::platform_owner(&db);
     // Preferences as v0.0.9 stored them.
     let mut older = workforce::defaults();
     older["automatic_sync"] = json!(true);
@@ -383,9 +375,7 @@ fn retired_sync_preferences_are_not_returned_and_open_dashboards_may_still_send_
         .unwrap();
     let values = db.timecard_preferences(id).unwrap()["values"].clone();
     assert_eq!(values, workforce::defaults());
-    let saved = db
-        .save_timecard_preferences(id, s(&actor, "id"), 4, &older)
-        .unwrap();
+    let saved = db.save_timecard_preferences(id, &actor, 4, &older).unwrap();
     assert_eq!(saved["revision"], 5);
     assert_eq!(saved["values"], workforce::defaults());
     let stored = db
@@ -400,11 +390,7 @@ fn retired_sync_preferences_are_not_returned_and_open_dashboards_may_still_send_
 fn late_da_settings_default_for_older_preferences_and_validate() {
     let (_root, db, id) = common::bootstrapped();
     let id = id.as_str();
-    let actor = db
-        .platform
-        .one("SELECT id FROM users WHERE platform_owner=1", [])
-        .unwrap()
-        .unwrap();
+    let actor = common::platform_owner(&db);
     // Preferences stored before the Late DA keys existed.
     let mut older = workforce::defaults();
     for key in ["late_da_time", "late_da_departments"] {
@@ -423,7 +409,7 @@ fn late_da_settings_default_for_older_preferences_and_validate() {
     for time in ["24:00", "10:60", "9:30", "10-01", "ab:cd", "10:011"] {
         values["late_da_time"] = json!(time);
         assert!(
-            db.save_timecard_preferences(id, s(&actor, "id"), 0, &values)
+            db.save_timecard_preferences(id, &actor, 0, &values)
                 .is_err(),
             "{time}"
         );
@@ -431,12 +417,12 @@ fn late_da_settings_default_for_older_preferences_and_validate() {
     values["late_da_time"] = json!("09:45");
     values["late_da_departments"] = Value::Null;
     assert!(
-        db.save_timecard_preferences(id, s(&actor, "id"), 0, &values)
+        db.save_timecard_preferences(id, &actor, 0, &values)
             .is_err()
     );
     values["late_da_departments"] = json!(["Delivery"]);
     let saved = db
-        .save_timecard_preferences(id, s(&actor, "id"), 0, &values)
+        .save_timecard_preferences(id, &actor, 0, &values)
         .unwrap();
     assert_eq!(saved["values"]["late_da_time"], "09:45");
     assert_eq!(saved["values"]["late_da_departments"], json!(["Delivery"]));

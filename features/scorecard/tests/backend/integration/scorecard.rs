@@ -33,21 +33,13 @@ fn scope(request: &Request) -> Scope {
 /// A DSP with a station and an enabled Cortex connection.
 fn ready() -> (tempfile::TempDir, Store, String) {
     let (root, db, id) = common::bootstrapped();
-    db.platform
-        .exec(
-            "UPDATE dsps SET name='Fixture Delivery',timezone='America/Los_Angeles' WHERE id=?",
-            [&id],
-        )
-        .unwrap();
+    common::set_dsp(&db, &id, "Fixture Delivery", "America/Los_Angeles").unwrap();
     db.set_profile(
         &id,
         json!({"stationCode":"TST1","abbreviation":"FXTR","setupRequired":false}),
     )
     .unwrap();
-    db.collector(&id, cortex::PROVIDER)
-        .unwrap()
-        .exec("UPDATE connections SET enabled=1,status='ready'", [])
-        .unwrap();
+    common::ready_connection(&db, &id, cortex::PROVIDER).unwrap();
     (root, db, id)
 }
 /// Queues `week` and publishes `capture` as that job's outcome.

@@ -49,21 +49,13 @@ fn publish_capture(
 }
 fn ready() -> (tempfile::TempDir, Store, String) {
     let (root, db, id) = common::bootstrapped();
-    db.platform
-        .exec(
-            "UPDATE dsps SET name='Fixture Delivery',timezone='America/Los_Angeles' WHERE id=?",
-            [&id],
-        )
-        .unwrap();
+    common::set_dsp(&db, &id, "Fixture Delivery", "America/Los_Angeles").unwrap();
     db.set_profile(
         &id,
         json!({"stationCode":"TST1","abbreviation":"FXTR","setupRequired":false}),
     )
     .unwrap();
-    db.collector(&id, cortex::PROVIDER)
-        .unwrap()
-        .exec("UPDATE connections SET enabled=1,status='ready'", [])
-        .unwrap();
+    common::ready_connection(&db, &id, cortex::PROVIDER).unwrap();
     (root, db, id)
 }
 fn publish(db: &Store, id: &str, key: &str, capture: &Capture) -> String {
@@ -73,9 +65,7 @@ fn publish(db: &Store, id: &str, key: &str, capture: &Capture) -> String {
     let job = s(&job, "id").to_owned();
     publish_capture(db, id, &job, capture).unwrap();
     // The worker normally transitions the job after publication.
-    db.jobs
-        .exec("UPDATE jobs SET status='succeeded' WHERE id=?", [&job])
-        .unwrap();
+    common::set_job_status(db, &job, "succeeded").unwrap();
     job
 }
 fn count(db: &Store, id: &str, table: &str) -> i64 {
@@ -343,12 +333,10 @@ fn the_status_keeps_its_jobs_however_many_of_other_kinds_came_since() {
     let job = db.enqueue_dvic(&id, None, "busy", None, 2).unwrap();
     let job = s(&job, "id").to_owned();
     // A busy DSP: more newer jobs of another kind than the latest 200 hold.
-    let transaction = db.jobs.0.unchecked_transaction().unwrap();
-    for index in 0..201 {
-        let other = format!("paycom-{index}");
-        db.jobs.exec("INSERT INTO jobs(id,dsp_id,environment,kind,status,available_at,created_at,release,connection_revision,idempotency_key) VALUES (?,?,'preview','paycom.collect','succeeded',0,?,'test',1,?)",rusqlite::params![other,id,db::at(db::now()+1000+index),other]).unwrap();
-    }
-    transaction.commit().unwrap();
+    let others: Vec<_> = (0..201)
+        .map(|index| (format!("paycom-{index}"), db::at(db::now() + 1000 + index)))
+        .collect();
+    common::finished_jobs(&db, &id, "paycom.collect", &others).unwrap();
     let listed = |jobs: Vec<dispatch_backend::contracts::PublicJob>| {
         jobs.into_iter().map(|j| j.id).collect::<Vec<_>>()
     };
@@ -356,12 +344,10 @@ fn the_status_keeps_its_jobs_however_many_of_other_kinds_came_since() {
     assert_eq!(listed(db.dvic_status(&id).unwrap().jobs), [job]);
     // The other way round: the Timecard's list keeps its own jobs however many DVIC jobs
     // came since.
-    let transaction = db.jobs.0.unchecked_transaction().unwrap();
-    for index in 0..201 {
-        let other = format!("dvic-{index}");
-        db.jobs.exec("INSERT INTO jobs(id,dsp_id,environment,kind,status,available_at,created_at,release,connection_revision,idempotency_key) VALUES (?,?,'preview','cortex.dvic.collect','succeeded',0,?,'test',1,?)",rusqlite::params![other,id,db::at(db::now()+5000+index),other]).unwrap();
-    }
-    transaction.commit().unwrap();
+    let others: Vec<_> = (0..201)
+        .map(|index| (format!("dvic-{index}"), db::at(db::now() + 5000 + index)))
+        .collect();
+    common::finished_jobs(&db, &id, "cortex.dvic.collect", &others).unwrap();
     let others = listed(db.recent_jobs_in(&id, &["paycom.collect"]).unwrap());
     assert_eq!(others.len(), 200);
     assert!(others.iter().all(|j| j.starts_with("paycom-")));
