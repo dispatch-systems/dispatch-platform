@@ -140,7 +140,7 @@ export type AuditWording = {
   value?: (field: string, value: string, words: AuditWords) => string | undefined;
   /** What its events add to their second line, after the log's own notes. */
   notes?: (event: AuditEvent) => string[];
-  /** How a collection's outcome names it, by the connection that ran it: "Paycom" collection. */
+  /** How a collection's outcome names it, as "<name> collection", by the connection that ran it. */
   collected?: Record<string, string>;
 };
 
@@ -191,7 +191,7 @@ export type CollectionLabels = {
   kind: string;
   /** Its schedules' collection, and how the audit log names it. */
   schedule: { id: string; label: string };
-  /** One item of its workload, for the per-item comparison: "employee". */
+  /** One item of its workload, for the per-item comparison. */
   unit: string;
   /** How many items a run's measurements counted. */
   count: (metrics: JobMetrics) => number | null;
@@ -234,7 +234,7 @@ export type FrontendFeature = {
   connectionCard?: ConnectionCard;
   /** The collections it runs. */
   collections?: readonly CollectionLabels[];
-  /** How a page that needs a capability its connection provides names it: "a route source". */
+  /** How a page that needs a capability its connection provides names it: "a … source". */
   capabilities?: Record<string, string>;
   /** How the response cache treats its reads. */
   cache?: CacheRules;
