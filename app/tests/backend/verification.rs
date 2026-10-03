@@ -1,6 +1,7 @@
-//! The permissions whose writes ask a member to have verified who they are recently, as
-//! they stood before each permission's owner declared it.
-use crate::{http::needs_recent_verification, roles};
+//! The permissions whose writes ask a member to have verified who they are recently, and
+//! the one that lets a member invite, as they stood before each permission's owner
+//! declared them.
+use crate::{http::needs_recent_verification, manifest::registry, roles};
 
 #[test]
 fn the_same_writes_ask_for_recent_verification() {
@@ -18,4 +19,9 @@ fn the_same_writes_ask_for_recent_verification() {
         "members.invite|members.manage|roles.manage"
     ));
     assert!(!needs_recent_verification("members.invite|members.manage"));
+}
+
+#[test]
+fn inviting_takes_the_same_permission() {
+    assert_eq!(registry().inviting(), "members.invite");
 }

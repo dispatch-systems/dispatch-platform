@@ -1,7 +1,8 @@
 use super::*;
+use crate::manifest::registry;
 impl Store {
     pub fn invite(&self, a: &Auth, dsp: &str, email: &str, role: &str) -> Result<String> {
-        let c = self.context(a, dsp, "members.invite")?;
+        let c = self.context(a, dsp, registry().inviting())?;
         let role = self.role(dsp, role)?;
         self.ensure_assignable(&c, &role)?;
         ensure(self.config.mail_available(), "email_unavailable", 503)?;
@@ -135,7 +136,7 @@ impl Store {
         };
         Ok(grant.owner
             || (!role.system
-                && grant.permissions.iter().any(|p| p == "members.invite")
+                && grant.permissions.iter().any(|p| p == registry().inviting())
                 && role
                     .permissions
                     .iter()

@@ -111,10 +111,17 @@ impl Registry {
         let features = self.features.iter().flat_map(|feature| feature.permissions);
         CORE_PERMISSIONS.iter().copied().chain(features)
     }
+    /// The permission that lets a member invite others.
+    pub fn inviting(&self) -> &'static str {
+        self.permissions()
+            .find(|permission| permission.invites)
+            .expect("a permission lets members invite")
+            .id
+    }
     /// Panics unless every collection has exactly one keeper, every keeper keeps a
     /// registered collection, one page runs the schedules, only a page has tabs, every
     /// permission has an id and an order of its own and implies only permissions that
-    /// exist, every database is declared once, with migrations numbered from 1 without a
+    /// exist, one lets members invite, every database is declared once, with migrations numbered from 1 without a
     /// gap or a repeat, every domain is declared once and before it is named, and every
     /// audit prefix is a dotted name listed under an area other than settings.
     pub fn check(&self) {
@@ -148,6 +155,11 @@ impl Registry {
             );
         }
         let permissions: Vec<_> = self.permissions().collect();
+        let inviting = permissions.iter().filter(|p| p.invites).count();
+        assert!(
+            inviting == 1,
+            "{inviting} permissions let members invite, not one"
+        );
         for (index, permission) in permissions.iter().enumerate() {
             assert!(
                 permissions[..index]
@@ -356,6 +368,11 @@ pub struct Permission {
     /// The role sheet's section for a permission no page owns, such as `Team`. A page's own
     /// permissions are listed under the page.
     pub group: Option<&'static str>,
+    /// Whether a write it allows asks its holder to have verified who they are recently.
+    pub recently_verified: bool,
+    /// Whether it lets its holder invite members. One permission does, and a member's
+    /// invitations are good only while they hold it.
+    pub invites: bool,
 }
 /// A permission in its own place in the order, implying nothing, in no default role and
 /// owned by its feature's page: `perm("dvic.collect", "Collect DVIC", 41).implies(…)`.
@@ -367,6 +384,8 @@ pub const fn perm(id: &'static str, label: &'static str, order: u16) -> Permissi
         implies: &[],
         defaults: &[],
         group: None,
+        recently_verified: false,
+        invites: false,
     }
 }
 impl Permission {
@@ -379,6 +398,18 @@ impl Permission {
     pub const fn group(self, group: &'static str) -> Self {
         Self {
             group: Some(group),
+            ..self
+        }
+    }
+    pub const fn recently_verified(self) -> Self {
+        Self {
+            recently_verified: true,
+            ..self
+        }
+    }
+    pub const fn invites(self) -> Self {
+        Self {
+            invites: true,
             ..self
         }
     }

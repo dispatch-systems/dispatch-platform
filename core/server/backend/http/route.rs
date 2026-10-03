@@ -13,6 +13,7 @@ use crate::{
     crypto,
     db::Store,
     ensure,
+    manifest::registry,
     observability::RequestTrace,
 };
 use axum::{
@@ -141,9 +142,11 @@ impl Grant for PlatformRoutine {
     }
 }
 /// Whether a member's write under `permission` asks them to have verified who they are
-/// recently. Editing a role is routine and reversible, so it asks for no fresh verification.
+/// recently, as the permission's owner declares. A route open to several asks for none.
 pub fn needs_recent_verification(permission: &str) -> bool {
-    ["connections.manage", "members.manage", "members.invite"].contains(&permission)
+    registry()
+        .permissions()
+        .any(|declared| declared.id == permission && declared.recently_verified)
 }
 impl Grant for Dsp {
     type Who = Context;
