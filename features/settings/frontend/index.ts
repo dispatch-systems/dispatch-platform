@@ -1,3 +1,3 @@
 import './settings.css';
-import './profile.css';
+import '../../../core/accounts/frontend/settings/profile.css';
 export { SettingsPage, preloadSettingsPage } from './SettingsPage.js';

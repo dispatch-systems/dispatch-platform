@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
-import { test, expect, demo, login, signIn } from './fixtures.js';
-import { capturedMail } from '../support/mail-support.js';
+import { test, expect, demo, login, signIn } from '../../../shell/tests/support/fixtures.js';
+import { capturedMail } from '../../../shell/tests/support/mail-support.js';
 
 test.use({ launchOptions: { args: ['--enable-unsafe-swiftshader'] } });
 

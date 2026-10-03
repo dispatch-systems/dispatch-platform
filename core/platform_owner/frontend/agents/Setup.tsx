@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Tabs } from '../../ui/index.js';
-import { setups } from '../../lib/agents.js';
+import { Tabs } from '../../../shell/frontend/ui/index.js';
+import { setups } from './agents.js';
 import { CopyButton } from './CopyButton.js';
 
 /** How each kind of agent connects with `token`, a tab for each. */

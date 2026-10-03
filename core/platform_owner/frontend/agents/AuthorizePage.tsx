@@ -6,19 +6,25 @@ import type {
   OAuthReplaced,
   OAuthRequest,
 } from '../../../../shared/contracts/index.js';
-import { ApiError } from '../../app/api.js';
+import { ApiError } from '../../../shell/frontend/runtime/api.js';
 import {
   approveOAuthRequest,
   denyOAuthRequest,
   readOAuthRequest,
   useAgentKeys,
   useOAuthRequest,
-} from '../../app/endpoints.js';
-import { hashQuery, platformHash } from '../../app/navigation.js';
-import { useAction } from '../../app/useAction.js';
-import { appKindName, blankKey } from '../../lib/agents.js';
-import { calendarDay } from '../../lib/format.js';
-import { Badge, DataState, DetailList, ErrorBox, Header } from '../../ui/index.js';
+} from '../../../shell/frontend/runtime/endpoints.js';
+import { hashQuery, platformHash } from '../../../shell/frontend/runtime/navigation.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
+import { appKindName, blankKey } from './agents.js';
+import { calendarDay } from '../../../shell/frontend/lib/format.js';
+import {
+  Badge,
+  DataState,
+  DetailList,
+  ErrorBox,
+  Header,
+} from '../../../shell/frontend/ui/index.js';
 import { bypassHint, DspReach, ReadChoices, SwitchBox } from './KeyChoices.js';
 
 const again = 'Start the connection again from your app.';

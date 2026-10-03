@@ -1,4 +1,4 @@
-import { initials, toneOf } from '../../lib/driver-match.js';
+import { initials, toneOf } from './driver-match.js';
 
 export function DriverAvatar({
   name,

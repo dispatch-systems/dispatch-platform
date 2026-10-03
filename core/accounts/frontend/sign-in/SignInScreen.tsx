@@ -2,11 +2,16 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { SignInLayout } from './SignInLayout.js';
 import { SignInPasswordField } from './SignInPasswordField.js';
-import { api } from '../../../app/api.js';
-import { ErrorBox } from '../../../ui/index.js';
-import { messageOf } from '../../../lib/errors.js';
-import { consumeHashToken, navigate, platformHash, signInHash } from '../../../app/navigation.js';
-import { clearSignInHandoff, getSignInHandoff } from '../../../app/sign-in-handoff.js';
+import { api } from '../../../shell/frontend/runtime/api.js';
+import { ErrorBox } from '../../../shell/frontend/ui/index.js';
+import { messageOf } from '../../../shell/frontend/lib/errors.js';
+import {
+  consumeHashToken,
+  navigate,
+  platformHash,
+  signInHash,
+} from '../../../shell/frontend/runtime/navigation.js';
+import { clearSignInHandoff, getSignInHandoff } from '../sign-in-handoff.js';
 export function SignInScreen({ onLogin }: { onLogin: () => Promise<void> }) {
   const [handoff] = useState(getSignInHandoff);
   useEffect(clearSignInHandoff, []);

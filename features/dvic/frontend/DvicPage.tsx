@@ -1,14 +1,22 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, RefreshCw, Settings2 } from 'lucide-react';
-import type { DspView, Job } from '../../../../shared/contracts/index.js';
-import type { DvicStatus } from '../../../../shared/contracts/dvic.js';
-import { api, ApiError, useCachedData, view as admittedToken } from '../../app/api.js';
-import { readUpdateState, useUpdateState } from '../../app/browser-update.js';
-import { dataCache } from '../../app/data-cache.js';
-import { hasFeature } from '../../app/features.js';
-import { can } from '../../app/permissions.js';
-import { dspHash } from '../../app/navigation.js';
-import { useAction } from '../../app/useAction.js';
+import type { DspView, Job } from '../../../shared/contracts/index.js';
+import type { DvicStatus } from '../../../shared/contracts/dvic.js';
+import {
+  api,
+  ApiError,
+  useCachedData,
+  view as admittedToken,
+} from '../../../core/shell/frontend/runtime/api.js';
+import {
+  readUpdateState,
+  useUpdateState,
+} from '../../../core/shell/frontend/runtime/browser-update.js';
+import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
+import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
+import { can } from '../../../core/shell/frontend/runtime/permissions.js';
+import { dspHash } from '../../../core/shell/frontend/runtime/navigation.js';
+import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import {
   filterInspections,
   inspectionDate,
@@ -16,16 +24,22 @@ import {
   weekDays,
   weekStart,
   type VehicleClass,
-} from '../../lib/dvic.js';
-import { localDate, shiftDate } from '../../lib/meal-breaks.js';
-import { performancePolicy } from '../../lib/performance-policy.js';
-import { randomId } from '../../lib/random-id.js';
-import { time } from '../../lib/format.js';
-import { ErrorBox, Header, Loading, SearchInput, Tabs } from '../../ui/index.js';
-import { CollectionSettings } from './CollectionSettings.js';
-import { DayDigest } from './DayDigest.js';
+} from './dvic.js';
+import { localDate, shiftDate } from '../../timecard/frontend/meal-breaks.js';
+import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
+import { randomId } from '../../../core/shell/frontend/lib/random-id.js';
+import { time } from '../../../core/shell/frontend/lib/format.js';
+import {
+  ErrorBox,
+  Header,
+  Loading,
+  SearchInput,
+  Tabs,
+} from '../../../core/shell/frontend/ui/index.js';
+import { CollectionSettings } from './settings/CollectionSettings.js';
+import { DayDigest } from './tabs/day/DayDigest.js';
 import { InspectionDetail } from './InspectionDetail.js';
-import { WeekGrid } from './WeekGrid.js';
+import { WeekGrid } from './tabs/week/WeekGrid.js';
 import { inspectionWeekCacheKey, useInspections } from './useInspections.js';
 
 const activeJob = (job: Job) => ['queued', 'running', 'waiting_verification'].includes(job.status);

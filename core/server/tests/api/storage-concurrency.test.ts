@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fixture } from '../support/support.js';
+import { fixture } from '../../../shell/tests/support/support.js';
 
 test('concurrent session reads tolerate SQLite sidecar creation and cleanup', async (t) => {
   const f = await fixture();

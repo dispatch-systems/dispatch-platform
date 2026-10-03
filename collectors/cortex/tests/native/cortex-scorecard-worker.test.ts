@@ -4,8 +4,8 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
-import { fixture, until } from '../support/support.js';
-import { fileContainsAny } from '../support/files.js';
+import { fixture, until } from '../../../../core/shell/tests/support/support.js';
+import { fileContainsAny } from '../../../../core/shell/tests/support/files.js';
 
 // What only the collected rows carry, so any copy of them outside the databases shows.
 const MARKERS = ['TBA-SCORECARD-MARKER-1', 'Scorecard Marker Driver', 'QUALITY-MARKER-NOTE'];

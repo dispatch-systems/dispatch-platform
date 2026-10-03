@@ -1,11 +1,5 @@
-import { test, expect, openAuthenticatedDsp, expectDate, setDate } from './fixtures.js';
-import {
-  addDays,
-  dayLabel,
-  monthLabel,
-  monthOf,
-  parseDay,
-} from '../../dashboard/src/lib/calendar.js';
+import { test, expect, openAuthenticatedDsp, expectDate, setDate } from '../support/fixtures.js';
+import { addDays, dayLabel, monthLabel, monthOf, parseDay } from '../../frontend/lib/calendar.js';
 
 test('the date opens a calendar that picks past days and refuses future ones', async ({
   page,

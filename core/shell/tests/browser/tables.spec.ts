@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { test, expect, openAuthenticatedDsp } from './fixtures.js';
+import { test, expect, openAuthenticatedDsp } from '../support/fixtures.js';
 
 test('timecards export every column and row in the order shown', async ({ page, dispatch }) => {
   await openAuthenticatedDsp(page, dispatch, 'Northline Logistics');

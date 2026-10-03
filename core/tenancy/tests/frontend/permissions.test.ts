@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { permissions } from '../../shared/contracts/accounts.js';
+import { permissions } from '../../../../shared/contracts/accounts.js';
 import {
   impliedPermissions,
   permissionGroups,
   permissionLabels,
-} from '../../dashboard/src/app/permissions.js';
-import { assignable } from '../../dashboard/src/features/team/assignable.js';
-import type { DspView, Permission, Role } from '../../shared/contracts/index.js';
+} from '../../../shell/frontend/runtime/permissions.js';
+import { assignable } from '../../../../features/team/frontend/assignable.js';
+import type { DspView, Permission, Role } from '../../../../shared/contracts/index.js';
 
 const role = (id: string, rolePermissions: Permission[], owner = false): Role => ({
   id,

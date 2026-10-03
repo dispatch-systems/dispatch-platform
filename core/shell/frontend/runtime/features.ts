@@ -1,7 +1,7 @@
 import {
   featureCatalog as generatedFeatureCatalog,
   schedulesFeature as generatedSchedulesFeature,
-} from '../../../shared/contracts/generated/access-catalog.js';
+} from '../../../../shared/contracts/generated/access-catalog.js';
 import type {
   ConnectionFeature,
   DspView,
@@ -9,7 +9,7 @@ import type {
   PageFeature,
   Permission,
   TabFeature,
-} from '../../../shared/contracts/index.js';
+} from '../../../../shared/contracts/index.js';
 
 type Entry<Kind, Id> = {
   id: Id;

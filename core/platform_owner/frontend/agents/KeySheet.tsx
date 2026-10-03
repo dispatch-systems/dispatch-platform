@@ -6,9 +6,9 @@ import type {
   AgentKeyDsp,
   AgentKeyRequest,
 } from '../../../../shared/contracts/index.js';
-import { Badge, Modal } from '../../ui/index.js';
-import { useAction } from '../../app/useAction.js';
-import { createAgentKey, updateAgentKey } from '../../app/endpoints.js';
+import { Badge, Modal } from '../../../shell/frontend/ui/index.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
+import { createAgentKey, updateAgentKey } from '../../../shell/frontend/runtime/endpoints.js';
 import {
   blankKey,
   expiryChoices,
@@ -19,8 +19,8 @@ import {
   requestOf,
   sameRequest,
   type ExpiryChoice,
-} from '../../lib/agents.js';
-import { dateFormatter } from '../../lib/date-format.js';
+} from './agents.js';
+import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
 import { AppIcon } from './AppIcon.js';
 import { DspList, DspView } from './DspSettings.js';
 import { bypassHint, ReadChoices, SwitchBox } from './KeyChoices.js';

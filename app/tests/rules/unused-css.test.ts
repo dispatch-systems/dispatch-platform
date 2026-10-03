@@ -33,20 +33,29 @@ function classes(css: string): Set<string> {
   return names;
 }
 
+// Every owner's frontend/: the app's entry, core's parts, the features and the collectors.
+const frontends = [
+  'app/frontend',
+  ...['core', 'features', 'collectors'].flatMap((top) =>
+    fs
+      .readdirSync(top)
+      .map((name) => path.join(top, name, 'frontend'))
+      .filter((directory) => fs.existsSync(directory)),
+  ),
+];
+
 const dynamicClasses = new Set([
-  // ui/DspAvatar.tsx: tone-${tone}, where tone is a hash modulo five.
+  // core/shell/frontend/ui/DspAvatar.tsx: tone-${tone}, where tone is a hash modulo five.
   'tone-1',
   'tone-2',
   'tone-3',
   'tone-4',
-  // features/settings/ThemeSection.tsx: theme-preview-${value}.
+  // core/accounts/frontend/settings/ThemeSection.tsx: theme-preview-${value}.
   'theme-preview-system',
 ]);
 
 test('every dashboard CSS class occurs as a source token or is explicitly dynamic', () => {
-  const sourceFiles = ['dashboard/src', 'shared'].flatMap((directory) =>
-    files(directory, /\.tsx?$/),
-  );
+  const sourceFiles = [...frontends, 'shared'].flatMap((directory) => files(directory, /\.tsx?$/));
   sourceFiles.push('core/server/backend/mail/templates.rs');
   const tokens = new Set(
     sourceFiles.flatMap((file) => fs.readFileSync(file, 'utf8').match(/[A-Za-z0-9_-]+/g) ?? []),
@@ -55,7 +64,7 @@ test('every dashboard CSS class occurs as a source token or is explicitly dynami
   // as tokens in these sources; only constructed names absent from them go above.
   const missing: string[] = [];
   const defined = new Set<string>();
-  for (const file of files('dashboard/src', /\.css$/)) {
+  for (const file of frontends.flatMap((directory) => files(directory, /\.css$/))) {
     for (const name of classes(fs.readFileSync(file, 'utf8'))) {
       defined.add(name);
       if (!tokens.has(name) && !dynamicClasses.has(name)) missing.push(`${file}: .${name}`);

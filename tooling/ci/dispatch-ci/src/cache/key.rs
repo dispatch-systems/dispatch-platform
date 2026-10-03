@@ -29,12 +29,26 @@ pub const SOURCE_ROOTS: &[&str] = &[
     "ops/host-manager",
     "tooling/ci/dispatch-ci",
 ];
+/// Frontend code shares the owners' directories with Rust but never compiles into it: a
+/// `frontend/` folder, or a TypeScript or CSS file. The structure rules forbid Rust from
+/// embedding either, so neither belongs in a Rust input.
+pub fn frontend(path: &Path) -> bool {
+    path.components()
+        .any(|part| ["frontend", "node_modules"].contains(&part.as_os_str().to_str().unwrap_or("")))
+        || path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| ["ts", "tsx", "mts", "cts", "css"].contains(&extension))
+}
 fn walk(root: &Path, files: &mut BTreeSet<PathBuf>) -> Result<()> {
     if !root.is_dir() {
         return Ok(());
     }
     for entry in fs::read_dir(root)? {
         let path = entry?.path();
+        if frontend(&path) && !path.is_symlink() {
+            continue;
+        }
         if path.is_symlink() || !path.is_dir() {
             files.insert(path);
         } else {

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
-import type { DvicInspection } from '../../../../shared/contracts/dvic.js';
+import type { DvicInspection } from '../../../../../shared/contracts/dvic.js';
 import {
   bandLabel,
   groupByVehicleClass,
@@ -10,9 +10,9 @@ import {
   inspectionInitials,
   inspectionShortfall,
   repeatDrivers,
-} from '../../lib/dvic.js';
-import { Empty } from '../../ui/index.js';
-import { DurationBar } from './InspectionDetail.js';
+} from '../../dvic.js';
+import { Empty } from '../../../../../core/shell/frontend/ui/index.js';
+import { DurationBar } from '../../InspectionDetail.js';
 
 function VehicleGroup({
   vehicles,

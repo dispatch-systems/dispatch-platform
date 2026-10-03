@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { fixture, until } from './support.js';
+import { fixture, until } from '../../../../core/shell/tests/support/support.js';
 
 /** Synthetic inspections in the real DVIC store, for the daily log's browser checks. */
 export async function seedDvic(app: Awaited<ReturnType<typeof fixture>>, count = 19) {

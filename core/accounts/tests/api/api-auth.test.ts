@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { demo, fixture, until } from '../support/support.js';
+import { demo, fixture, until } from '../../../shell/tests/support/support.js';
 const { password } = demo;
 
 test('Rust API enforces login, origin, host, CSRF, tenant views and membership permissions', async (t) => {

@@ -1,6 +1,6 @@
 import { AlertTriangle, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import { useMemo } from 'react';
-import { errorLabel } from '../../../app/api.js';
+import { errorLabel } from '../../../shell/frontend/runtime/api.js';
 import {
   Badge,
   DataTable,
@@ -10,8 +10,8 @@ import {
   TablePagination,
   useDataTable,
   type TableColumn,
-} from '../../../ui/index.js';
-import { deviceTimezone, duration, time, title } from '../../../lib/format.js';
+} from '../../../shell/frontend/ui/index.js';
+import { deviceTimezone, duration, time, title } from '../../../shell/frontend/lib/format.js';
 import {
   isUnderway,
   providerName,

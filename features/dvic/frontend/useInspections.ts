@@ -1,9 +1,9 @@
 import { useCallback, useEffect } from 'react';
-import type { DvicInspections } from '../../../../shared/contracts/dvic.js';
-import { api, useCachedData } from '../../app/api.js';
-import { dataCache } from '../../app/data-cache.js';
-import { readInspectionWeek } from '../../lib/dvic.js';
-import { performancePolicy } from '../../lib/performance-policy.js';
+import type { DvicInspections } from '../../../shared/contracts/dvic.js';
+import { api, useCachedData } from '../../../core/shell/frontend/runtime/api.js';
+import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
+import { readInspectionWeek } from './dvic.js';
+import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 
 function inspectionWeekUrl(from: string, to: string) {
   return '/api/dsp/dvic/inspections?' + new URLSearchParams({ from, to, limit: '500' });

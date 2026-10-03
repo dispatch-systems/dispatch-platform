@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ResponseCache } from '../../dashboard/src/lib/response-cache.js';
+import { ResponseCache } from '../../frontend/lib/response-cache.js';
 
 const limits = { entries: 3, bytes: 1024, freshMs: 30_000 };
 const deferred = <T>() => {

@@ -1,4 +1,4 @@
-import type { DvicInspection } from '../../../../shared/contracts/dvic.js';
+import type { DvicInspection } from '../../../../../shared/contracts/dvic.js';
 import { useEffect, useMemo } from 'react';
 import {
   bandLabel,
@@ -9,8 +9,8 @@ import {
   inspectionWeekday,
   shortestByDay,
   type Band,
-} from '../../lib/dvic.js';
-import { Empty, Pagination } from '../../ui/index.js';
+} from '../../dvic.js';
+import { Empty, Pagination } from '../../../../../core/shell/frontend/ui/index.js';
 
 const pageSize = 25;
 

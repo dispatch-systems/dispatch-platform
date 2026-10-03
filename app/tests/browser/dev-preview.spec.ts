@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { startPreview } from '../../tooling/dev/dev-server.js';
-import { built, demo } from '../support/support.js';
+import { startPreview } from '../../../tooling/dev/dev-server.js';
+import { built, demo } from '../../../core/shell/tests/support/support.js';
 
 test('a demo preview link opens the requested page in fresh browsers without signing in', async ({
   browser,

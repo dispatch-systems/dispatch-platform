@@ -1,4 +1,7 @@
-import { useBrowserUpdate, clearNavigationState } from './app/browser-update.js';
+import {
+  useBrowserUpdate,
+  clearNavigationState,
+} from '../../core/shell/frontend/runtime/browser-update.js';
 import {
   lazy,
   Suspense,
@@ -18,8 +21,12 @@ import {
   ApiError,
   csrf as activeCsrf,
   view as admittedToken,
-} from './app/api.js';
-import { FeedbackMessages, FeedbackProvider, useFeedback } from './app/feedback.js';
+} from '../../core/shell/frontend/runtime/api.js';
+import {
+  FeedbackMessages,
+  FeedbackProvider,
+  useFeedback,
+} from '../../core/shell/frontend/runtime/feedback.js';
 import {
   dspHash,
   forgetDestination,
@@ -27,30 +34,30 @@ import {
   parseHash,
   platformHash,
   rememberDestination,
-} from './app/navigation.js';
-import { Page, canNavigateImmediately, findRoute, navigation, prepareRoute } from './app/routes.js';
-import type { DspRouteId } from './app/route-meta.js';
-import { routeLabel } from './app/route-meta.js';
-const loadAuth = () => import('./features/auth/index.js');
+} from '../../core/shell/frontend/runtime/navigation.js';
+import { Page, canNavigateImmediately, findRoute, navigation, prepareRoute } from './routes.js';
+import type { DspRouteId } from './route-meta.js';
+import { routeLabel } from './route-meta.js';
+const loadAuth = () => import('../../core/accounts/frontend/index.js');
 const AuthScreen = lazy(() => loadAuth().then((module) => ({ default: module.AuthScreen })));
 const DspOnboarding = lazy(() => loadAuth().then((module) => ({ default: module.DspOnboarding })));
 const SecurityPrompt = lazy(() =>
   loadAuth().then((module) => ({ default: module.SecurityPrompt })),
 );
-import { messageOf } from './lib/errors.js';
-import { Loading } from './ui/Loading.js';
-import { Modal } from './ui/Modal.js';
-import { PageBoundary } from './ui/PageBoundary.js';
-import { can } from './app/permissions.js';
-import { hasFeature } from './app/features.js';
-import './styles.css';
-import { Shell } from './shell/Shell.js';
+import { messageOf } from '../../core/shell/frontend/lib/errors.js';
+import { Loading } from '../../core/shell/frontend/ui/Loading.js';
+import { Modal } from '../../core/shell/frontend/ui/Modal.js';
+import { PageBoundary } from '../../core/shell/frontend/ui/PageBoundary.js';
+import { can } from '../../core/shell/frontend/runtime/permissions.js';
+import { hasFeature } from '../../core/shell/frontend/runtime/features.js';
+import '../../core/shell/frontend/styles.css';
+import { Shell } from '../../core/shell/frontend/shell/Shell.js';
 type Session = SessionView;
-import { restoreAppearance } from './app/appearance.js';
-import { leavePresence, usePresence } from './app/presence.js';
-import { openView, saveRole } from './app/session.js';
-import { getSession } from './app/endpoints.js';
-import { cancelPrefetches } from './app/prefetch.js';
+import { restoreAppearance } from '../../core/shell/frontend/runtime/appearance.js';
+import { leavePresence, usePresence } from '../../core/shell/frontend/runtime/presence.js';
+import { openView, saveRole } from '../../core/shell/frontend/runtime/session.js';
+import { getSession } from '../../core/shell/frontend/runtime/endpoints.js';
+import { cancelPrefetches } from '../../core/shell/frontend/runtime/prefetch.js';
 function App() {
   const [pending, startTransition] = useTransition();
   const admission = useRef(0);

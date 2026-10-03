@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { test, expect, login, openDsp } from './fixtures.js';
+import { test, expect, login, openDsp } from '../../../core/shell/tests/support/fixtures.js';
 
 const gate = () => {
   let release!: () => void;
@@ -24,7 +24,7 @@ test('sign-in code starts while the initial session request is still pending', a
     await page.goto('/');
     await expect.poll(() => requests.includes('/api/session')).toBe(true);
     await expect
-      .poll(() => requests.includes('/' + routeAsset('src/features/auth/index.ts')))
+      .poll(() => requests.includes('/' + routeAsset('../../core/accounts/frontend/index.ts')))
       .toBe(true);
     hold.release();
     await expect(page.getByLabel('Email address')).toBeVisible();
@@ -44,10 +44,13 @@ test('cold navigation starts Timecard data alongside code and keeps the current 
   const hold = gate();
   const requests: string[] = [];
   page.on('request', (request) => requests.push(new URL(request.url()).pathname));
-  await page.route('**/' + routeAsset('src/features/timecard/index.ts'), async (route) => {
-    await hold.promise;
-    await route.continue();
-  });
+  await page.route(
+    '**/' + routeAsset('../../features/timecard/frontend/index.ts'),
+    async (route) => {
+      await hold.promise;
+      await route.continue();
+    },
+  );
   try {
     // Avoid relying on pointer hover: keyboard/programmatic navigation has the same fast path.
     await page
@@ -75,10 +78,13 @@ test('leaving a DSP discards its retained page and cancels a pending same-DSP na
   const home = page.getByRole('heading', { name: 'Currently under development', exact: true });
   await expect(home).toBeVisible();
   const hold = gate();
-  await page.route('**/' + routeAsset('src/features/timecard/index.ts'), async (route) => {
-    await hold.promise;
-    await route.continue();
-  });
+  await page.route(
+    '**/' + routeAsset('../../features/timecard/frontend/index.ts'),
+    async (route) => {
+      await hold.promise;
+      await route.continue();
+    },
+  );
   try {
     await page
       .getByRole('link', { name: 'Timecard', exact: true })

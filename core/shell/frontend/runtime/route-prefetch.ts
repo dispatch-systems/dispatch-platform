@@ -1,4 +1,8 @@
-import type { DspView, EmployeesResponse, SessionView } from '../../../shared/contracts/index.js';
+import type {
+  DspView,
+  EmployeesResponse,
+  SessionView,
+} from '../../../../shared/contracts/index.js';
 import { api, view as admittedToken } from './api.js';
 import { readUpdateState } from './browser-update.js';
 import { dataCache } from './data-cache.js';
@@ -7,7 +11,7 @@ import { hasFeature } from './features.js';
 import { dspHash, hashQuery, parseHash } from './navigation.js';
 import { can } from './permissions.js';
 import { canPrefetch, prefetchData } from './prefetch.js';
-import { selectedPaycomDate } from '../lib/paycom-date.js';
+import { selectedPaycomDate } from '../../../../features/timecard/frontend/paycom-date.js';
 import { performancePolicy } from '../lib/performance-policy.js';
 
 function warm(urls: string[], owner: string, immediate: boolean) {

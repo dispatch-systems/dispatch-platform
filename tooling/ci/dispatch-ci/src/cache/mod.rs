@@ -4,7 +4,7 @@ mod store;
 #[cfg(test)]
 mod tests;
 use crate::{Result, Runner, require};
-pub use key::{Environment, eligible, fingerprint, key};
+pub use key::{Environment, eligible, fingerprint, frontend, key};
 use std::{fs, path::Path};
 
 pub fn ci_enabled(root: &Path, env: &Environment) -> bool {

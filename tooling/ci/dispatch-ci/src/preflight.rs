@@ -1,4 +1,4 @@
-use crate::{REPOSITORY, Result, Runner};
+use crate::{REPOSITORY, Result, Runner, cache::frontend};
 use serde_json::Value;
 use std::{collections::BTreeSet, path::Path};
 /// Problems that stop a push. With a merge queue on `main`, the queue validates the actual
@@ -47,7 +47,8 @@ pub fn affected(changed: &[String], plan: &Value) -> Vec<String> {
     let mut tests: BTreeSet<String> = changed
         .iter()
         .filter(|file| {
-            file.starts_with("tests/") && (file.ends_with(".test.ts") || file.ends_with(".spec.ts"))
+            (file.starts_with("tests/") || file.contains("/tests/"))
+                && (file.ends_with(".test.ts") || file.ends_with(".spec.ts"))
         })
         .cloned()
         .collect();
@@ -68,6 +69,7 @@ pub fn affected(changed: &[String], plan: &Value) -> Vec<String> {
         } else if ["app/", "core/", "collectors/", "features/"]
             .iter()
             .any(|root| file.starts_with(root))
+            && !frontend(Path::new(file))
         {
             crates.insert("dispatch-backend");
         } else if matches!(
@@ -95,8 +97,8 @@ pub fn affected(changed: &[String], plan: &Value) -> Vec<String> {
     };
     let (mut node, mut shards, mut specs) = (vec![], BTreeSet::new(), vec![]);
     for test in tests.iter().filter(|test| !rules.contains(test)) {
-        if let Some(spec) = test.strip_prefix("tests/browser/") {
-            specs.push(spec);
+        if test.contains("tests/browser/") {
+            specs.push(test.as_str());
         } else if let Some(shard) = shard(test) {
             shards.insert(shard);
         } else {
@@ -249,12 +251,13 @@ mod tests {
     #[test]
     fn affected_names_the_changed_crates_and_the_tests_the_diff_changes_or_watches() {
         let plan = json!({
-            "dashboard": ["tests/dashboard/features.test.ts"],
+            "dashboard": ["core/tenancy/tests/frontend/features.test.ts"],
             "rules": ["tests/tooling/test-plan.test.ts"],
-            "native": {"cortex": ["tests/providers/cortex-worker.test.ts"]},
+            "native": {"cortex": ["collectors/cortex/tests/native/cortex-worker.test.ts"]},
             "watch": [{"sources": ["core/tenancy/backend/roles.rs"], "tests": [
-                "tests/api/roles.test.ts", "tests/browser/dsp-features.spec.ts",
-                "tests/dashboard/features.test.ts"]}]
+                "core/tenancy/tests/api/roles.test.ts",
+                "core/platform_owner/tests/browser/dsp-features.spec.ts",
+                "core/tenancy/tests/frontend/features.test.ts"]}]
         });
         let changed = |files: &[&str]| -> Vec<String> {
             let files: Vec<String> = files.iter().map(|file| (*file).to_owned()).collect();
@@ -263,14 +266,14 @@ mod tests {
         assert_eq!(
             changed(&[
                 "core/tenancy/backend/roles.rs",
-                "tests/providers/cortex-worker.test.ts"
+                "collectors/cortex/tests/native/cortex-worker.test.ts"
             ]),
             [
                 "cargo clippy --locked --all-targets -- -D warnings",
                 "cargo test --locked -p dispatch-backend",
-                "python3 tooling/cargo-build.py && npx tsx --test tests/api/roles.test.ts",
+                "python3 tooling/cargo-build.py && npx tsx --test core/tenancy/tests/api/roles.test.ts",
                 "npm run test:browseros -- --shard cortex",
-                "npm run build && npm run test:ui -- dsp-features.spec.ts",
+                "npm run build && npm run test:ui -- core/platform_owner/tests/browser/dsp-features.spec.ts",
             ]
         );
         // A workspace input touches every crate; rule tests are check:rules' own.
@@ -284,16 +287,27 @@ mod tests {
         assert_eq!(
             changed(&[
                 "ops/host-manager/src/updater.rs",
-                "tests/browser/roles.spec.ts"
+                "features/team/tests/browser/roles.spec.ts"
             ])[1],
             "cargo test --locked -p dispatch-host"
         );
         assert!(changed(&["docs/readme.md", "dashboard/src/app/App.tsx"]).is_empty());
+        // Frontend code in an owner's directory never asks for the Rust checks.
+        assert!(
+            changed(&[
+                "features/dvic/frontend/DvicPage.tsx",
+                "core/shell/frontend/ui/Modal.tsx",
+                "features/dvic/frontend/dvic.css"
+            ])
+            .is_empty()
+        );
         // Without a plan, the changed tests themselves are still named.
-        let files = vec!["tests/api/roles.test.ts".to_owned()];
+        let files = vec!["core/tenancy/tests/api/roles.test.ts".to_owned()];
         assert_eq!(
             affected(&files, &Value::Null),
-            ["python3 tooling/cargo-build.py && npx tsx --test tests/api/roles.test.ts"]
+            [
+                "python3 tooling/cargo-build.py && npx tsx --test core/tenancy/tests/api/roles.test.ts"
+            ]
         );
     }
     #[test]

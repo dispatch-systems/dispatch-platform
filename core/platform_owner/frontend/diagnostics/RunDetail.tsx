@@ -1,9 +1,9 @@
 import { AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
-import type { Job, JobMetrics } from '../../../../../shared/contracts/index.js';
-import { errorLabel } from '../../../app/api.js';
-import { DetailList } from '../../../ui/index.js';
-import { bytes, duration, title } from '../../../lib/format.js';
+import type { Job, JobMetrics } from '../../../../shared/contracts/index.js';
+import { errorLabel } from '../../../shell/frontend/runtime/api.js';
+import { DetailList } from '../../../shell/frontend/ui/index.js';
+import { bytes, duration, title } from '../../../shell/frontend/lib/format.js';
 
 export const memory = (value: number | null) =>
   value === null ? 'Not sampled' : bytes(value, 'MiB', 1);

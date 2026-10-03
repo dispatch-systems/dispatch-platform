@@ -16,9 +16,9 @@ import {
   shortestByDay,
   weekDays,
   weekStart,
-} from '../../dashboard/src/lib/dvic.js';
-import type { DvicInspection } from '../../shared/contracts/dvic.js';
-import { mutationAffects } from '../../dashboard/src/lib/data-policy.js';
+} from '../../frontend/dvic.js';
+import type { DvicInspection } from '../../../../shared/contracts/dvic.js';
+import { mutationAffects } from '../../../../core/shell/frontend/lib/data-policy.js';
 
 const row = (id: string, fleetType = 'CV'): DvicInspection => ({
   id,

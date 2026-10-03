@@ -1,4 +1,4 @@
-import { dateFormatter } from './date-format.js';
+import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 import type { AssessedClock, PaycomDay } from '../../../shared/contracts/workforce.js';
 import type {
   DeliveryGap as Gap,

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
-import type { MealComparison } from '../../shared/contracts/meals.js';
-import type { Membership } from '../../shared/contracts/index.js';
-import { test, expect, login, openDsp } from './fixtures.js';
+import type { MealComparison } from '../../../shared/contracts/meals.js';
+import type { Membership } from '../../../shared/contracts/index.js';
+import { test, expect, login, openDsp } from '../../../core/shell/tests/support/fixtures.js';
 
 test('large meal rosters keep bounded rows, search responsive, and export every employee @paint-budget', async ({
   page,

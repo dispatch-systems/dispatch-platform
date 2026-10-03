@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fixture, until } from '../support/support.js';
+import { fixture, until } from '../../../../core/shell/tests/support/support.js';
 
 const cortex = { username: 'fixture@example.test', password: 'fixture-password' };
 

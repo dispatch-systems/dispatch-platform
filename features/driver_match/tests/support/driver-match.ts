@@ -1,4 +1,4 @@
-import { fixture, until } from './support.js';
+import { fixture, until } from '../../../../core/shell/tests/support/support.js';
 
 type App = Awaited<ReturnType<typeof fixture>>;
 

@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { paycomFixture, credentials } from '../support/browseros-paycom-fixture.js';
-import { until, seedQueuedJob } from '../support/support.js';
-import { processMemory } from '../support/process-memory.js';
-import type { Job } from '../../shared/contracts/index.js';
+import {
+  paycomFixture,
+  credentials,
+} from '../../../../collectors/paycom/tests/support/browseros-paycom-fixture.js';
+import { until, seedQueuedJob } from '../../../shell/tests/support/support.js';
+import { processMemory } from '../../../shell/tests/support/process-memory.js';
+import type { Job } from '../../../../shared/contracts/index.js';
 
 test(
   'multiple DSPs share two browsers fairly while API reads stay responsive',

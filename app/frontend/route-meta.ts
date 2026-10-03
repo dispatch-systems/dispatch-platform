@@ -1,4 +1,4 @@
-import { title } from '../lib/format.js';
+import { title } from '../../core/shell/frontend/lib/format.js';
 
 export type RouteMeta = {
   id: string;

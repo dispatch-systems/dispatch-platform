@@ -1,9 +1,9 @@
 import { ChevronLeft, Ellipsis, Eye } from 'lucide-react';
 import type { DspSummary } from '../../../../shared/contracts/index.js';
-import { useUpdateState } from '../../app/browser-update.js';
-import { connectionFeatures } from '../../app/features.js';
-import { Badge, DspAvatar, Popover, Tabs } from '../../ui/index.js';
-import { deviceTimezone, time } from '../../lib/format.js';
+import { useUpdateState } from '../../../shell/frontend/runtime/browser-update.js';
+import { connectionFeatures } from '../../../shell/frontend/runtime/features.js';
+import { Badge, DspAvatar, Popover, Tabs } from '../../../shell/frontend/ui/index.js';
+import { deviceTimezone, time } from '../../../shell/frontend/lib/format.js';
 import { DspFeaturesTab } from './DspFeaturesTab.js';
 import { dspState, stateLabels } from './status.js';
 

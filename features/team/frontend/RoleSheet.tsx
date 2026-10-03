@@ -4,17 +4,17 @@ import {
   type DspView,
   type Permission,
   type Role,
-} from '../../../../shared/contracts/index.js';
-import { Modal } from '../../ui/index.js';
+} from '../../../shared/contracts/index.js';
+import { Modal } from '../../../core/shell/frontend/ui/index.js';
 import {
   can,
   impliedPermissions as implied,
   permissionLabels,
   visiblePermissionGroups,
   visiblePermissions,
-} from '../../app/permissions.js';
-import { useAction } from '../../app/useAction.js';
-import { saveTeamRole } from '../../app/endpoints.js';
+} from '../../../core/shell/frontend/runtime/permissions.js';
+import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
+import { saveTeamRole } from '../../../core/shell/frontend/runtime/endpoints.js';
 
 export function RoleSheet({
   view,

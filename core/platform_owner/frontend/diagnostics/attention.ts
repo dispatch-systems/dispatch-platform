@@ -1,5 +1,5 @@
-import type { PlatformHealth } from '../../../../../shared/contracts/index.js';
-import { bytes } from '../../../lib/format.js';
+import type { PlatformHealth } from '../../../../shared/contracts/index.js';
+import { bytes } from '../../../shell/frontend/lib/format.js';
 import type { CollectionSource } from './collection-history.js';
 import type { Diagnostics } from './types.js';
 

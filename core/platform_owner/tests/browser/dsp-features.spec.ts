@@ -1,4 +1,4 @@
-import { test, expect, login } from './fixtures.js';
+import { test, expect, login } from '../../../shell/tests/support/fixtures.js';
 
 test('the platform switches a DSP’s pages, tabs and connections, and the team’s pages follow', async ({
   page,

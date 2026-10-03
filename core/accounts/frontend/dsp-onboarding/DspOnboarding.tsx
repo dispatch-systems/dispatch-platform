@@ -1,5 +1,5 @@
-import { api } from '../../../app/api.js';
-import { useAction } from '../../../app/useAction.js';
+import { api } from '../../../shell/frontend/runtime/api.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { DspSetupForm, type DspSetup } from './DspSetupForm.js';
 import { OnboardingLayout } from './OnboardingLayout.js';
 

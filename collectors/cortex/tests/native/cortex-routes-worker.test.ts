@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { fixture, until } from '../support/support.js';
+import { fixture, until } from '../../../../core/shell/tests/support/support.js';
 
 // The real Rust driver against a staged execution site: discovery finds the service
 // area and provider, the itinerary list, the newer routes page and each itinerary are

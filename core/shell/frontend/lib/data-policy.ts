@@ -1,5 +1,5 @@
 /** Cache dependencies, independent of React and transport. */
-import type { CollectionChange } from '../../../shared/contracts/index.js';
+import type { CollectionChange } from '../../../../shared/contracts/index.js';
 export type { CollectionChange };
 const path = (url: string) => url.split('?')[0]!;
 const begins = (url: string, ...prefixes: string[]) =>

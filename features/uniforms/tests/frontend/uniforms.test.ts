@@ -4,8 +4,8 @@ import {
   applyUniformAdjustments,
   applyUniformSnapshot,
   applyUniformUpdates,
-} from '../../dashboard/src/lib/uniforms.js';
-import type { UniformInventory } from '../../shared/contracts/uniforms.js';
+} from '../../frontend/uniforms.js';
+import type { UniformInventory } from '../../../../shared/contracts/uniforms.js';
 
 const inventory = (): UniformInventory => ({
   revision: 1,

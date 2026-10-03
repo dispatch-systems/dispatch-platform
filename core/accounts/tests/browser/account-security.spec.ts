@@ -1,7 +1,14 @@
 import { createHmac } from 'node:crypto';
 import fs from 'node:fs';
 import type { Page } from '@playwright/test';
-import { test, expect, login, openDsp, demo, signIn } from './fixtures.js';
+import {
+  test,
+  expect,
+  login,
+  openDsp,
+  demo,
+  signIn,
+} from '../../../shell/tests/support/fixtures.js';
 
 test('password, optional MFA, and sessions lay out safely on desktop and mobile', async ({
   page,

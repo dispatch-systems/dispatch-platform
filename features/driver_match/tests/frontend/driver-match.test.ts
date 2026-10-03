@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { Driver, DriverId } from '../../shared/contracts/index.js';
+import type { Driver, DriverId } from '../../../../shared/contracts/index.js';
 import {
   dataAmount,
   dayLabel,
@@ -12,7 +12,7 @@ import {
   initials,
   seenRange,
   shortId,
-} from '../../dashboard/src/lib/driver-match.js';
+} from '../../frontend/driver-match.js';
 
 const id = (source: DriverId['source'], value: string, name: string): DriverId => ({
   source,

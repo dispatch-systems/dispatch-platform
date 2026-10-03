@@ -5,10 +5,10 @@ import {
   useAgentActivity,
   useAgentKeys,
   type AgentActivityFilter,
-} from '../../app/endpoints.js';
-import { useAction } from '../../app/useAction.js';
-import { activityNote, surfaceOf } from '../../lib/agents.js';
-import { deviceTimezone, duration, timeWithSeconds } from '../../lib/format.js';
+} from '../../../shell/frontend/runtime/endpoints.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
+import { activityNote, surfaceOf } from './agents.js';
+import { deviceTimezone, duration, timeWithSeconds } from '../../../shell/frontend/lib/format.js';
 import {
   Badge,
   DataState,
@@ -17,7 +17,7 @@ import {
   ErrorBox,
   useDataTable,
   type TableColumn,
-} from '../../ui/index.js';
+} from '../../../shell/frontend/ui/index.js';
 
 const columns = (timeZone: string): TableColumn<AgentActivity>[] => [
   {

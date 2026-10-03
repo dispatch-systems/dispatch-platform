@@ -1,7 +1,7 @@
 import { assessTimecards } from '../support/assessment.js';
 import type { Locator, Page } from '@playwright/test';
-import { test, expect, login, openDsp } from './fixtures.js';
-import { addDays, parseDay } from '../../dashboard/src/lib/calendar.js';
+import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
+import { addDays, parseDay } from '../../../../core/shell/frontend/lib/calendar.js';
 
 const gate = () => {
   let release!: () => void;

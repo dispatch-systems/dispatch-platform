@@ -1,10 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
-import { api } from '../../../app/api.js';
-import { navigate, signInHash } from '../../../app/navigation.js';
-import { signInAfterProfile } from '../../../app/sign-in-handoff.js';
-import { useAction } from '../../../app/useAction.js';
-import { ErrorBox } from '../../../ui/index.js';
+import { api } from '../../../shell/frontend/runtime/api.js';
+import { navigate, signInHash } from '../../../shell/frontend/runtime/navigation.js';
+import { signInAfterProfile } from '../sign-in-handoff.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
+import { ErrorBox } from '../../../shell/frontend/ui/index.js';
 import { MemberProfileLayout } from './MemberProfileLayout.js';
 import { MemberProfilePasswordField } from './MemberProfilePasswordField.js';
 import { useMemberCompletion } from './useMemberCompletion.js';

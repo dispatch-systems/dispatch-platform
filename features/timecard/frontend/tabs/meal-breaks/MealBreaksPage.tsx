@@ -1,9 +1,12 @@
-import { useUpdateState } from '../../../app/browser-update.js';
+import { useUpdateState } from '../../../../../core/shell/frontend/runtime/browser-update.js';
 import { useDeferredValue, useMemo } from 'react';
 import { AlertTriangle, ArrowRight, Download, Globe, Info, RefreshCw } from 'lucide-react';
-import { mealComparisonUrl, useMealComparison } from '../../../app/endpoints.js';
-import { dspHash, navigate } from '../../../app/navigation.js';
-import { useTableState } from '../../../app/useTableState.js';
+import {
+  mealComparisonUrl,
+  useMealComparison,
+} from '../../../../../core/shell/frontend/runtime/endpoints.js';
+import { dspHash, navigate } from '../../../../../core/shell/frontend/runtime/navigation.js';
+import { useTableState } from '../../../../../core/shell/frontend/runtime/useTableState.js';
 import {
   DataState,
   DataTable,
@@ -13,14 +16,14 @@ import {
   SearchInput,
   TablePagination,
   useDataTable,
-} from '../../../ui/index.js';
-import { personName, time } from '../../../lib/format.js';
-import { clockLabel, displayMeal } from '../../../lib/meal-breaks.js';
+} from '../../../../../core/shell/frontend/ui/index.js';
+import { personName, time } from '../../../../../core/shell/frontend/lib/format.js';
+import { clockLabel, displayMeal } from '../../meal-breaks.js';
 import { type MealEmployee } from '../../../../../shared/contracts/meals.js';
 import type { PaycomPreferences } from '../../../../../shared/contracts/paycom.js';
-import { PaycomDateControls } from '../DateControls.js';
+import { PaycomDateControls } from '../../DateControls.js';
 import { MealDetail, mealColumns, mealLines, type MealLine } from './mealColumns.js';
-import { useAdjacentDays } from '../useAdjacentDays.js';
+import { useAdjacentDays } from '../../useAdjacentDays.js';
 import './meal-breaks.css';
 
 const rowClassName = (_: MealLine, { depth }: { depth: number }) =>

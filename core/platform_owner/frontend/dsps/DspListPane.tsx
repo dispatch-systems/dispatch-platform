@@ -1,6 +1,6 @@
 import { RefreshCw } from 'lucide-react';
 import type { DspSummary } from '../../../../shared/contracts/index.js';
-import { DspAvatar, Empty, SearchInput } from '../../ui/index.js';
+import { DspAvatar, Empty, SearchInput } from '../../../shell/frontend/ui/index.js';
 import { dspState, dspStates, stateLabels } from './status.js';
 
 // Every DSP, grouped by state, with the one open in the pane marked.

@@ -1,4 +1,11 @@
-import { test, expect, demo, login, setDate, expectDate } from './fixtures.js';
+import {
+  test,
+  expect,
+  demo,
+  login,
+  setDate,
+  expectDate,
+} from '../../../shell/tests/support/fixtures.js';
 import type { Locator, Page } from '@playwright/test';
 
 async function clockVisible(page: Page, locator: Locator) {

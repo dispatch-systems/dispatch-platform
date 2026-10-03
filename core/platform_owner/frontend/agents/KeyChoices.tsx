@@ -6,7 +6,7 @@ import type {
   AgentKeyRequest,
   AgentSource,
 } from '../../../../shared/contracts/index.js';
-import { areaGroups, areaHints, areaLabels, areaSources, withArea } from '../../lib/agents.js';
+import { areaGroups, areaHints, areaLabels, areaSources, withArea } from './agents.js';
 
 /** Where an app asking to connect reaches. */
 type Scope = Pick<AgentKeyRequest, 'allDsps' | 'dsps'>;

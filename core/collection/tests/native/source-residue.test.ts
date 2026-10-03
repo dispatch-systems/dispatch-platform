@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileContainsAny } from '../support/files.js';
+import { fileContainsAny } from '../../../shell/tests/support/files.js';
 
 test('provider residue scanning finds UTF-8 and UTF-16 markers across chunk boundaries', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-residue-'));

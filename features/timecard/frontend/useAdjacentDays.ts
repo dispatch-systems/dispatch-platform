@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
-import { cancelPrefetches, prefetchData } from '../../app/prefetch.js';
-import { addDays } from '../../lib/calendar.js';
+import { cancelPrefetches, prefetchData } from '../../../core/shell/frontend/runtime/prefetch.js';
+import { addDays } from '../../../core/shell/frontend/lib/calendar.js';
 
 /** Warm only the previous and next day, using the current filters and sort. */
 export function useAdjacentDays(url: string, date: string, today: string, loaded?: object) {

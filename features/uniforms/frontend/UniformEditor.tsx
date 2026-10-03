@@ -5,16 +5,16 @@ import type {
   UniformFit,
   UniformInput,
   UniformInventory,
-} from '../../../../shared/contracts/uniforms.js';
+} from '../../../shared/contracts/uniforms.js';
 import {
   uniformFits,
   uniformFitLabels,
   uniformSizePresets,
   uniformCategoryPresets,
-} from '../../../../shared/contracts/uniforms.js';
-import { saveUniform } from '../../app/endpoints.js';
-import { useAction } from '../../app/useAction.js';
-import { ErrorBox, Modal } from '../../ui/index.js';
+} from '../../../shared/contracts/uniforms.js';
+import { saveUniform } from '../../../core/shell/frontend/runtime/endpoints.js';
+import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
+import { ErrorBox, Modal } from '../../../core/shell/frontend/ui/index.js';
 
 type Size = UniformInput['variants'][number];
 const splitSizes = (value: string) =>

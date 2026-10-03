@@ -1,4 +1,4 @@
-import type { DvicInspection } from '../../../../shared/contracts/dvic.js';
+import type { DvicInspection } from '../../../shared/contracts/dvic.js';
 import {
   bandLabel,
   fleetLabel,
@@ -8,8 +8,8 @@ import {
   inspectionDuration as duration,
   inspectionShare,
   inspectionShortfall,
-} from '../../lib/dvic.js';
-import { Modal } from '../../ui/index.js';
+} from './dvic.js';
+import { Modal } from '../../../core/shell/frontend/ui/index.js';
 
 export function DurationBar({ row }: { row: DvicInspection }) {
   return (

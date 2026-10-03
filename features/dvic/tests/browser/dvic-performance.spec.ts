@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
-import type { DvicStatus } from '../../shared/contracts/dvic.js';
-import { test, expect, login, openDsp } from './fixtures.js';
+import type { DvicStatus } from '../../../../shared/contracts/dvic.js';
+import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
 import { seedDvic } from '../support/dvic.js';
 
 const gate = () => {

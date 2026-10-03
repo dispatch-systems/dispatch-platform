@@ -1,5 +1,5 @@
-import { test, expect, demo, login } from './fixtures.js';
-import { capturedMail } from '../support/mail-support.js';
+import { test, expect, demo, login } from '../../../shell/tests/support/fixtures.js';
+import { capturedMail } from '../../../shell/tests/support/mail-support.js';
 import { createHash } from 'node:crypto';
 
 // This flow performs additional sign-ins; like every browser test it owns its server,

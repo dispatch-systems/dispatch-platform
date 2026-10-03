@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { paycomFixture, credentials } from '../support/browseros-paycom-fixture.js';
-import { until } from '../support/support.js';
+import { until } from '../../../../core/shell/tests/support/support.js';
 
 test(
   'Rust BrowserOS collects complete Paycom records, keeps DSPs isolated and preserves publication on source failure',

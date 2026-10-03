@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { capturedMail } from '../support/mail-support.js';
-import { demo, fixture } from '../support/support.js';
+import { capturedMail } from '../../../../core/shell/tests/support/mail-support.js';
+import { demo, fixture } from '../../../../core/shell/tests/support/support.js';
 const { password } = demo;
 
 test('Rust provisioning, invitation acceptance, profile setup, removal and restoration preserve boundaries', async (t) => {

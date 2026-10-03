@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Menu, X, ChevronDown, LogOut, Eye, ArrowUpRight, type LucideIcon } from 'lucide-react';
-import type { DspView, SessionView } from '../../../shared/contracts/index.js';
-import { Brand } from '../app/Brand.js';
+import type { DspView, SessionView } from '../../../../shared/contracts/index.js';
+import { Brand } from '../runtime/Brand.js';
 import { Popover } from '../ui/Popover.js';
 import { useFocusTrap } from '../ui/useFocusTrap.js';
-import { dspHash, platformHash } from '../app/navigation.js';
+import { dspHash, platformHash } from '../runtime/navigation.js';
 import { sourceLink } from '../lib/source.js';
-import type { DspRouteId, PlatformRouteId } from '../app/route-meta.js';
+import type { DspRouteId, PlatformRouteId } from '../../../../app/frontend/route-meta.js';
 import { ViewRoleMenu } from './ViewRoleMenu.js';
 
 export function Shell({

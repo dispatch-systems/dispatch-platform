@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import type { Uniform, UniformInventory } from '../../shared/contracts/uniforms.js';
-import { fixture, demo } from '../support/support.js';
+import type { Uniform, UniformInventory } from '../../../../shared/contracts/uniforms.js';
+import { fixture, demo } from '../../../../core/shell/tests/support/support.js';
 
 const route = '/api/dsp/uniforms';
 const input = {

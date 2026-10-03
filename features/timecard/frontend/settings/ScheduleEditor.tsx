@@ -1,14 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Globe2 } from 'lucide-react';
-import { api, ApiError } from '../../../app/api.js';
-import { ErrorBox, Modal } from '../../../ui/index.js';
-import type {
-  CollectionSchedule,
-  ScheduleInput,
-} from '../../../../../shared/contracts/schedules.js';
-import { messageOf } from '../../../lib/errors.js';
+import { api, ApiError } from '../../../../core/shell/frontend/runtime/api.js';
+import { ErrorBox, Modal } from '../../../../core/shell/frontend/ui/index.js';
+import type { CollectionSchedule, ScheduleInput } from '../../../../shared/contracts/schedules.js';
+import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { nextCollection } from './nextCollection.js';
-import { saveSchedule, removeSchedule } from '../../../app/endpoints.js';
+import { saveSchedule, removeSchedule } from '../../../../core/shell/frontend/runtime/endpoints.js';
 
 const newSchedule = (): ScheduleInput => ({
   name: '',

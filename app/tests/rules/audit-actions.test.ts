@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { permissions } from '../../shared/contracts/index.js';
-import { rustSourceRoots } from '../../tooling/ci/source-lines.js';
+import { permissions } from '../../../shared/contracts/index.js';
+import { rustSourceRoots } from '../../../tooling/ci/source-lines.js';
 
 // Read the complete argument list, regardless of formatting, without including the next statement.
 function auditCalls(source: string): string[] {
@@ -47,7 +47,7 @@ test('every audit action the backend records has wording in the audit log', () =
   const granted: readonly string[] = permissions;
   const actions = [...recorded].filter((action) => !granted.includes(action)).sort();
   assert(actions.length > 30, `found only ${actions.length} actions`);
-  const log = fs.readFileSync('dashboard/src/features/audit/wording.ts', 'utf8');
+  const log = fs.readFileSync('core/platform_owner/frontend/audit/wording.ts', 'utf8');
   const worded = new Set([...log.matchAll(/^ {2}'([a-z_.]+)':/gm)].map(([, action]) => action));
   assert.deepEqual(
     actions.filter((action) => !worded.has(action)),

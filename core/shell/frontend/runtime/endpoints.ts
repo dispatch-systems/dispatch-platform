@@ -5,10 +5,10 @@ import type {
   UniformInput,
   UniformAdjustment,
   UniformHistory,
-} from '../../../shared/contracts/uniforms.js';
-import type { PaycomPreferences, PaycomSettings } from '../../../shared/contracts/paycom.js';
-import type { MealComparison } from '../../../shared/contracts/meals.js';
-import type { RouteRetention } from '../../../shared/contracts/routes.js';
+} from '../../../../shared/contracts/uniforms.js';
+import type { PaycomPreferences, PaycomSettings } from '../../../../shared/contracts/paycom.js';
+import type { MealComparison } from '../../../../shared/contracts/meals.js';
+import type { RouteRetention } from '../../../../shared/contracts/routes.js';
 // The endpoints whose responses are generated from the backend's Rust types: each address
 // is written once, next to the type it answers with. Other endpoints still call `api` and
 // `useData` directly; move one here when its response gains a generated type.
@@ -58,8 +58,8 @@ import type {
   DriverDetails,
   DriverMatch,
   DriverSource,
-} from '../../../shared/contracts/index.js';
-import type { ScheduleInput } from '../../../shared/contracts/schedules.js';
+} from '../../../../shared/contracts/index.js';
+import type { ScheduleInput } from '../../../../shared/contracts/schedules.js';
 
 /** Whose calls the Activity tab lists, and whether only those Dispatch refused. */
 export type AgentActivityFilter = { key: string; outcome: '' | 'refused' };

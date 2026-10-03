@@ -1,6 +1,6 @@
 import { ArrowRight, CircleCheck } from 'lucide-react';
-import { signInAfterProfile } from '../../../app/sign-in-handoff.js';
-import { DspAvatar } from '../../../ui/index.js';
+import { signInAfterProfile } from '../sign-in-handoff.js';
+import { DspAvatar } from '../../../shell/frontend/ui/index.js';
 import { MemberProfileLayout } from './MemberProfileLayout.js';
 
 /** A used invitation link: its account already exists, so Sign In is the way on. */

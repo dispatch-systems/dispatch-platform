@@ -2,8 +2,11 @@ import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { fixture, until } from '../support/support.js';
-import { paycomFixture, credentials } from '../support/browseros-paycom-fixture.js';
+import { fixture, until } from '../../../../core/shell/tests/support/support.js';
+import {
+  paycomFixture,
+  credentials,
+} from '../../../paycom/tests/support/browseros-paycom-fixture.js';
 import { executionPage, itineraryApi, type Quirks } from '../support/cortex-execution.js';
 
 const native = process.env.DISPATCH_TEST_NATIVE !== '1';

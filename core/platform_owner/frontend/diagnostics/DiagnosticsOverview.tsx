@@ -1,8 +1,14 @@
 import { AlertTriangle, ChevronRight, CircleX, Cpu, Globe, HardDrive, Mail } from 'lucide-react';
 import type { ReactNode } from 'react';
-import type { Job, PlatformHealth } from '../../../../../shared/contracts/index.js';
-import { Badge, DataTable, Empty, useDataTable, type TableColumn } from '../../../ui/index.js';
-import { bytes, deviceTimezone, duration, time } from '../../../lib/format.js';
+import type { Job, PlatformHealth } from '../../../../shared/contracts/index.js';
+import {
+  Badge,
+  DataTable,
+  Empty,
+  useDataTable,
+  type TableColumn,
+} from '../../../shell/frontend/ui/index.js';
+import { bytes, deviceTimezone, duration, time } from '../../../shell/frontend/lib/format.js';
 import { issues } from './attention.js';
 import { isUnderway, providerName, type CollectionSource as Source } from './collection-history.js';
 import type { Diagnostics } from './types.js';

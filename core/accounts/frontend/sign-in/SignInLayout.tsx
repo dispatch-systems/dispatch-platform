@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Brand } from '../../../app/Brand.js';
+import { Brand } from '../../../shell/frontend/runtime/Brand.js';
 import { LoginArtwork } from './LoginArtwork.js';
 import './sign-in.css';
 

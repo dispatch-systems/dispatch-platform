@@ -51,15 +51,15 @@ class PipelineTests(unittest.TestCase):
         files = [file for shard in collectors.SHARDS.values() for file in shard]
         self.assertEqual(len(files), len(set(files)))
         self.assertEqual(set(files), {
-            "tests/providers/paycom-worker.test.ts", "tests/providers/native-browser.test.ts",
-            "tests/providers/native-browser-recovery.test.ts",
-            "tests/providers/cortex-worker.test.ts", "tests/providers/cortex-meals-worker.test.ts",
-            "tests/providers/cortex-scorecard-worker.test.ts",
-            "tests/providers/cortex-routes-worker.test.ts",
-            "tests/providers/multi-dsp-browser.test.ts", "tests/providers/collection-throughput.test.ts",
+            "collectors/paycom/tests/native/paycom-worker.test.ts", "collectors/paycom/tests/native/native-browser.test.ts",
+            "collectors/paycom/tests/native/native-browser-recovery.test.ts",
+            "collectors/cortex/tests/native/cortex-worker.test.ts", "collectors/cortex/tests/native/cortex-meals-worker.test.ts",
+            "collectors/cortex/tests/native/cortex-scorecard-worker.test.ts",
+            "collectors/cortex/tests/native/cortex-routes-worker.test.ts",
+            "core/collection/tests/native/multi-dsp-browser.test.ts", "core/collection/tests/native/collection-throughput.test.ts",
         })
         self.assertEqual(set(collectors.SHARDS["capacity"]), {
-            "tests/providers/multi-dsp-browser.test.ts", "tests/providers/collection-throughput.test.ts",
+            "core/collection/tests/native/multi-dsp-browser.test.ts", "core/collection/tests/native/collection-throughput.test.ts",
         })
         title = collectors.REAL_TIMEOUT["title"]
         passed = f'<testsuites><testcase name="{title}" /></testsuites>'

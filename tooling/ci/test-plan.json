@@ -1,28 +1,28 @@
 {
   "dashboard": [
-    "tests/dashboard/agents.test.ts",
-    "tests/dashboard/calendar.test.ts",
-    "tests/dashboard/collection-history.test.ts",
-    "tests/dashboard/csv.test.ts",
-    "tests/dashboard/dashboard-format.test.ts",
-    "tests/dashboard/dashboard-structure.test.ts",
-    "tests/dashboard/data-policy.test.ts",
-    "tests/dashboard/diagnostics.test.ts",
-    "tests/dashboard/driver-match.test.ts",
-    "tests/dashboard/dvic.test.ts",
-    "tests/dashboard/features.test.ts",
-    "tests/dashboard/meal-breaks.test.ts",
-    "tests/dashboard/permissions.test.ts",
-    "tests/dashboard/response-cache.test.ts",
-    "tests/dashboard/uniforms.test.ts",
-    "tests/dashboard/unused-css.test.ts"
+    "core/platform_owner/tests/frontend/agents.test.ts",
+    "core/shell/tests/frontend/calendar.test.ts",
+    "core/platform_owner/tests/frontend/collection-history.test.ts",
+    "core/shell/tests/frontend/csv.test.ts",
+    "core/shell/tests/frontend/dashboard-format.test.ts",
+    "app/tests/rules/dashboard-structure.test.ts",
+    "core/shell/tests/frontend/data-policy.test.ts",
+    "core/platform_owner/tests/frontend/diagnostics.test.ts",
+    "features/driver_match/tests/frontend/driver-match.test.ts",
+    "features/dvic/tests/frontend/dvic.test.ts",
+    "core/tenancy/tests/frontend/features.test.ts",
+    "features/timecard/tests/frontend/meal-breaks.test.ts",
+    "core/tenancy/tests/frontend/permissions.test.ts",
+    "core/shell/tests/frontend/response-cache.test.ts",
+    "features/uniforms/tests/frontend/uniforms.test.ts",
+    "app/tests/rules/unused-css.test.ts"
   ],
   "pythonIntegration": [
     "tests/tooling/compiler_paths_integration_test.py",
     "tests/tooling/production_launcher_integration_test.py"
   ],
   "rules": [
-    "tests/api/audit-actions.test.ts",
+    "app/tests/rules/audit-actions.test.ts",
     "tests/tooling/browser-shards.test.ts",
     "tests/tooling/mail-config.test.ts",
     "tests/tooling/screenshots-worker.test.ts",
@@ -30,23 +30,26 @@
     "tests/tooling/test-plan.test.ts"
   ],
   "native": {
-    "paycom": ["tests/providers/paycom-worker.test.ts", "tests/providers/native-browser.test.ts"],
-    "paycom-recovery": ["tests/providers/native-browser-recovery.test.ts"],
+    "paycom": [
+      "collectors/paycom/tests/native/paycom-worker.test.ts",
+      "collectors/paycom/tests/native/native-browser.test.ts"
+    ],
+    "paycom-recovery": ["collectors/paycom/tests/native/native-browser-recovery.test.ts"],
     "cortex": [
-      "tests/providers/cortex-worker.test.ts",
-      "tests/providers/cortex-scorecard-worker.test.ts"
+      "collectors/cortex/tests/native/cortex-worker.test.ts",
+      "collectors/cortex/tests/native/cortex-scorecard-worker.test.ts"
     ],
     "cortex-meals": [
-      "tests/providers/cortex-meals-worker.test.ts",
-      "tests/providers/cortex-routes-worker.test.ts"
+      "collectors/cortex/tests/native/cortex-meals-worker.test.ts",
+      "collectors/cortex/tests/native/cortex-routes-worker.test.ts"
     ],
     "capacity": [
-      "tests/providers/multi-dsp-browser.test.ts",
-      "tests/providers/collection-throughput.test.ts"
+      "core/collection/tests/native/multi-dsp-browser.test.ts",
+      "core/collection/tests/native/collection-throughput.test.ts"
     ]
   },
   "nativeRealTimeout": {
-    "file": "tests/providers/native-browser-recovery.test.ts",
+    "file": "collectors/paycom/tests/native/native-browser-recovery.test.ts",
     "title": "a stalled navigation is diagnosed and retried without discarding its completed sibling"
   },
   "watch": [
@@ -54,19 +57,19 @@
       "sources": [
         "core/tenancy/backend/catalog.rs",
         "core/tenancy/backend/roles.rs",
-        "dashboard/src/app/features.ts",
-        "dashboard/src/app/permissions.ts",
+        "core/shell/frontend/runtime/features.ts",
+        "core/shell/frontend/runtime/permissions.ts",
         "shared/contracts/accounts.ts",
         "shared/contracts/features.ts",
         "app/backend/export.rs",
         "shared/contracts/generated/access-catalog.ts"
       ],
       "tests": [
-        "tests/api/features.test.ts",
-        "tests/api/roles.test.ts",
-        "tests/browser/dsp-features.spec.ts",
-        "tests/dashboard/features.test.ts",
-        "tests/dashboard/permissions.test.ts"
+        "core/platform_owner/tests/api/features.test.ts",
+        "core/tenancy/tests/api/roles.test.ts",
+        "core/platform_owner/tests/browser/dsp-features.spec.ts",
+        "core/tenancy/tests/frontend/features.test.ts",
+        "core/tenancy/tests/frontend/permissions.test.ts"
       ]
     }
   ],

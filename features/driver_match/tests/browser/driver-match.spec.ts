@@ -1,4 +1,4 @@
-import { test, expect, login, openDsp } from './fixtures.js';
+import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
 import { seedDriverMatch } from '../support/driver-match.js';
 
 test('Driver Match shows who might be listed twice and makes them one person', async ({

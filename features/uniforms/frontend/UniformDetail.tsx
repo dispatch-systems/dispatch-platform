@@ -1,8 +1,8 @@
 import { Ellipsis, Pencil, Plus, Shirt } from 'lucide-react';
-import type { Uniform, UniformAdjustment } from '../../../../shared/contracts/uniforms.js';
-import { uniformFits, uniformFitLabels } from '../../../../shared/contracts/uniforms.js';
-import { Empty, Popover } from '../../ui/index.js';
-import { uniformTotal } from '../../lib/uniforms.js';
+import type { Uniform, UniformAdjustment } from '../../../shared/contracts/uniforms.js';
+import { uniformFits, uniformFitLabels } from '../../../shared/contracts/uniforms.js';
+import { Empty, Popover } from '../../../core/shell/frontend/ui/index.js';
+import { uniformTotal } from './uniforms.js';
 import { StockCounter } from './StockCounter.js';
 
 export function UniformDetail({

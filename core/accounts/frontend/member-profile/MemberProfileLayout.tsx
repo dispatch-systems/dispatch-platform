@@ -1,6 +1,6 @@
 import type { ReactNode, Ref } from 'react';
-import { Brand } from '../../../app/Brand.js';
-import { useViewportFit } from '../../../ui/useViewportFit.js';
+import { Brand } from '../../../shell/frontend/runtime/Brand.js';
+import { useViewportFit } from '../../../shell/frontend/ui/useViewportFit.js';
 import { MemberProfileMap, type MemberProfileRoute } from './MemberProfileMap.js';
 import { useMemberProfileMap } from './member-profile-map-asset.js';
 import './member-profile.css';

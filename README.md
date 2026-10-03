@@ -17,7 +17,7 @@ Run commands from the repository root.
 
 Backend domain folders expose their entry points through `mod.rs`. Rust owns punch
 interpretation and meal assessment; the dashboard formats typed assessment results. Dashboard features
-expose theirs through `index.ts`. Styles live with their owner; `dashboard/src/styles.css`
+expose theirs through `index.ts`. Styles live with their owner; `core/shell/frontend/styles.css`
 sets the global import order. Shared contracts and tooling never import dashboard code.
 
 Use an isolated worktree branched from `origin/main`, then `npm ci` and `npm run dev`.

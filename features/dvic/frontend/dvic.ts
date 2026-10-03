@@ -1,6 +1,6 @@
 import type { DvicInspection, DvicInspections } from '../../../shared/contracts/dvic.js';
-import { shiftDate } from './meal-breaks.js';
-import { dateFormatter } from './date-format.js';
+import { shiftDate } from '../../timecard/frontend/meal-breaks.js';
+import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 
 export const weekStart = (date: string) =>
   shiftDate(date, -new Date(date + 'T12:00:00Z').getUTCDay());

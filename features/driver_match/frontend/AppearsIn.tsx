@@ -1,5 +1,5 @@
-import type { DriverData } from '../../../../shared/contracts/index.js';
-import { dataLabels, dataOrder } from '../../lib/driver-match.js';
+import type { DriverData } from '../../../shared/contracts/index.js';
+import { dataLabels, dataOrder } from './driver-match.js';
 import { dataIcons } from './dataIcons.js';
 
 /** The five kinds of collected data, lit where the person appears. */

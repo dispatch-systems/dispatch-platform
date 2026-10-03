@@ -1,5 +1,5 @@
 import { AuditLog } from './AuditLog.js';
-import { Header } from '../../ui/index.js';
+import { Header } from '../../../shell/frontend/ui/index.js';
 
 export function AuditPage() {
   return (

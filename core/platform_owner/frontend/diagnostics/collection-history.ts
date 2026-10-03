@@ -1,4 +1,4 @@
-import type { Job } from '../../../../../shared/contracts/index.js';
+import type { Job } from '../../../../shared/contracts/index.js';
 
 const finished = ['succeeded', 'failed', 'cancelled'];
 /** Queued, running or waiting for verification. */

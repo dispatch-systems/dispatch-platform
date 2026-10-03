@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { consumeHashToken } from '../../app/navigation.js';
+import { consumeHashToken } from '../../shell/frontend/runtime/navigation.js';
 import { InvitationScreen } from './InvitationScreen.js';
 import { SignInScreen } from './sign-in/SignInScreen.js';
 

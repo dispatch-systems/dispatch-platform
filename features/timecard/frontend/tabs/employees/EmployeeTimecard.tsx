@@ -3,16 +3,17 @@ import type {
   EmployeeTimecardPeriod,
   EmployeeTimecardResponse,
   Timecard,
-} from '../../../../shared/contracts/index.js';
-import type { PunchEvent } from '../../../../shared/contracts/workforce.js';
-import { addDays } from '../../lib/calendar.js';
-import { DataState, DataTable, Empty, useDataTable, type TableColumn } from '../../ui/index.js';
+} from '../../../../../shared/contracts/index.js';
+import type { PunchEvent } from '../../../../../shared/contracts/workforce.js';
+import { addDays } from '../../../../../core/shell/frontend/lib/calendar.js';
 import {
-  hoursAndMinutes,
-  timecardDate,
-  timecardPeriod,
-  punchTime,
-} from '../../lib/timecard-format.js';
+  DataState,
+  DataTable,
+  Empty,
+  useDataTable,
+  type TableColumn,
+} from '../../../../../core/shell/frontend/ui/index.js';
+import { hoursAndMinutes, timecardDate, timecardPeriod, punchTime } from '../../timecard-format.js';
 
 type EmployeeDay = Timecard & { events: PunchEvent[] };
 function periodDays(data: EmployeeTimecardResponse | undefined): EmployeeDay[] {

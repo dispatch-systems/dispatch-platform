@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, createHmac } from 'node:crypto';
-import { demo, fixture } from '../support/support.js';
-import { capturedMail } from '../support/mail-support.js';
+import { demo, fixture } from '../../../shell/tests/support/support.js';
+import { capturedMail } from '../../../shell/tests/support/mail-support.js';
 
 test('removal revokes legacy inbound and authored invitations without transferring attribution', async (t) => {
   const f = await fixture();

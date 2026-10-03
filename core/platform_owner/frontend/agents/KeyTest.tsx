@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { CircleCheck, Send } from 'lucide-react';
 import type { AgentWhoami } from '../../../../shared/contracts/index.js';
-import { agentWhoami } from '../../app/endpoints.js';
-import { errorLabel } from '../../app/api.js';
-import { accessLabels } from '../../lib/agents.js';
-import { dateFormatter } from '../../lib/date-format.js';
+import { agentWhoami } from '../../../shell/frontend/runtime/endpoints.js';
+import { errorLabel } from '../../../shell/frontend/runtime/api.js';
+import { accessLabels } from './agents.js';
+import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
 
 const failures: Record<string, string> = {
   agent_key_required: 'Paste a key to test.',

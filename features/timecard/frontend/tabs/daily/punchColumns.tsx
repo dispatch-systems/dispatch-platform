@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import type { Timecard } from '../../../../shared/contracts/index.js';
-import { paycomColumns, type PaycomColumn } from '../../lib/paycom.js';
-import { Badge, type TableColumn } from '../../ui/index.js';
+import type { Timecard } from '../../../../../shared/contracts/index.js';
+import { paycomColumns, type PaycomColumn } from '../../paycom.js';
+import { Badge, type TableColumn } from '../../../../../core/shell/frontend/ui/index.js';
 
 const punches = (card: Timecard, values: (string | null)[]) =>
   card.punches.length > 1 ? values.map((value) => value ?? '—') : ['—'];

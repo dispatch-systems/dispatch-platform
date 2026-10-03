@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { test, expect, login } from './fixtures.js';
+import { test, expect, login } from '../../../shell/tests/support/fixtures.js';
 
 test('Diagnostics scopes read errors and retries to the active tab', async ({ page }) => {
   await page.route('**/api/platform/jobs', (route) => route.fulfill({ json: [] }));
@@ -41,7 +41,7 @@ test('retained Diagnostics keeps its tab while a different platform page loads',
     release = resolve;
   });
   const asset = JSON.parse(fs.readFileSync('.build/tooling/build-info.json', 'utf8'))
-    .dashboardAssets['src/features/audit/index.ts'].file as string;
+    .dashboardAssets['../../core/platform_owner/frontend/audit/index.ts'].file as string;
   await page.route('**/' + asset, async (route) => {
     await hold;
     await route.continue();

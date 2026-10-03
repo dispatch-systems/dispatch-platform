@@ -1,4 +1,4 @@
-import type { RuntimeSource } from '../../../shared/contracts/index.js';
+import type { RuntimeSource } from '../../../../shared/contracts/index.js';
 
 const repository = 'https://github.com/dispatch-systems/dispatch-platform';
 

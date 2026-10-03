@@ -196,9 +196,20 @@ fn every_rust_and_embedded_launcher_input_is_fingerprinted_but_dashboard_is_not(
     };
     assert_eq!(key(&f), key(&g));
     let original = key(&f);
-    fs::create_dir(f.root.join("dashboard")).unwrap();
-    fs::write(f.root.join("dashboard/app.tsx"), "ui").unwrap();
-    assert_eq!(original, key(&f));
+    for name in [
+        "dashboard/app.tsx",
+        "features/one/frontend/Page.tsx",
+        "features/one/frontend/assets/logo.png",
+        "core/shell/frontend/runtime/api.ts",
+        "features/one/tests/browser/page.spec.ts",
+        "features/one/tests/support/fixture.ts",
+        "features/one/frontend/page.css",
+    ] {
+        let path = f.root.join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "ui").unwrap();
+        assert_eq!(original, key(&f), "{name}");
+    }
     for name in [
         "Cargo.lock",
         "rust-toolchain.toml",

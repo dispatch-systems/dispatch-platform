@@ -1,5 +1,5 @@
 import { ArrowRight, ClockAlert } from 'lucide-react';
-import { navigate, signInHash } from '../../../app/navigation.js';
+import { navigate, signInHash } from '../../../shell/frontend/runtime/navigation.js';
 import { MemberProfileLayout } from './MemberProfileLayout.js';
 
 /** An invitation link that can no longer be used: expired, revoked or never issued. */

@@ -1,5 +1,5 @@
 import { AlertTriangle, ArrowUpRight } from 'lucide-react';
-import type { ClockTime, DeliveryGap } from '../../../lib/meal-breaks.js';
+import type { ClockTime, DeliveryGap } from '../../meal-breaks.js';
 
 /** The provider page a time was read from: a Paycom timecard, or a Cortex route or stop. */
 export interface SourceLink {

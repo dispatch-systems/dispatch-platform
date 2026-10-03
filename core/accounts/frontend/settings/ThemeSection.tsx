@@ -1,5 +1,9 @@
 import { useState } from 'react';
-import { readAppearance, saveAppearance, type Appearance as Theme } from '../../app/appearance.js';
+import {
+  readAppearance,
+  saveAppearance,
+  type Appearance as Theme,
+} from '../../../shell/frontend/runtime/appearance.js';
 import './theme.css';
 
 const choices: { value: Theme; label: string; description: string }[] = [

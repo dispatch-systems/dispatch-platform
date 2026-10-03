@@ -1,4 +1,4 @@
-import { test, expect, login, openDsp } from './fixtures.js';
+import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
 
 test('owner creates a role and the member’s interface follows its permissions', async ({
   page,

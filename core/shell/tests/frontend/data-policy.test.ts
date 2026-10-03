@@ -4,9 +4,9 @@ import {
   collectionAffects,
   mutationAffects,
   type CollectionChange,
-} from '../../dashboard/src/lib/data-policy.js';
-import { sortDailyRows } from '../../dashboard/src/lib/daily-sort.js';
-import type { DailyTimecard } from '../../shared/contracts/index.js';
+} from '../../frontend/lib/data-policy.js';
+import { sortDailyRows } from '../../../../features/timecard/frontend/daily-sort.js';
+import type { DailyTimecard } from '../../../../shared/contracts/index.js';
 
 test('a driver checkpoint touches its employee and days, not another driver, roster, or feature', () => {
   const changes: CollectionChange[] = [

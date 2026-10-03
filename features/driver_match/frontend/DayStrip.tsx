@@ -1,5 +1,5 @@
-import type { DriverDay } from '../../../../shared/contracts/index.js';
-import { dateFormatter } from '../../lib/date-format.js';
+import type { DriverDay } from '../../../shared/contracts/index.js';
+import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 
 const weekday = (date: string) =>
   dateFormatter('en-US', { weekday: 'narrow', timeZone: 'UTC' }).format(

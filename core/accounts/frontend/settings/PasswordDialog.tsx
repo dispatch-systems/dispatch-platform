@@ -1,7 +1,7 @@
-import { api } from '../../app/api.js';
-import { useAction } from '../../app/useAction.js';
-import { navigate, signInHash } from '../../app/navigation.js';
-import { ErrorBox, Modal } from '../../ui/index.js';
+import { api } from '../../../shell/frontend/runtime/api.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
+import { navigate, signInHash } from '../../../shell/frontend/runtime/navigation.js';
+import { ErrorBox, Modal } from '../../../shell/frontend/ui/index.js';
 
 export function PasswordDialog({ close }: { close: () => void }) {
   const action = useAction(

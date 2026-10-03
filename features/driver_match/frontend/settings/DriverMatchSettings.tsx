@@ -1,9 +1,9 @@
 import { useDeferredValue, useMemo, useState } from 'react';
-import { useUpdateState } from '../../app/browser-update.js';
-import { useDriverMatch } from '../../app/endpoints.js';
-import { useTableState } from '../../app/useTableState.js';
-import { dateFormatter } from '../../lib/date-format.js';
-import { time } from '../../lib/format.js';
+import { useUpdateState } from '../../../../core/shell/frontend/runtime/browser-update.js';
+import { useDriverMatch } from '../../../../core/shell/frontend/runtime/endpoints.js';
+import { useTableState } from '../../../../core/shell/frontend/runtime/useTableState.js';
+import { dateFormatter } from '../../../../core/shell/frontend/lib/date-format.js';
+import { time } from '../../../../core/shell/frontend/lib/format.js';
 import {
   dataLabels,
   dataOrder,
@@ -11,7 +11,7 @@ import {
   driverFilter,
   driverSearchTerms,
   type DriverFilter,
-} from '../../lib/driver-match.js';
+} from '../driver-match.js';
 import {
   DataState,
   DataTable,
@@ -19,12 +19,12 @@ import {
   SearchInput,
   TablePagination,
   useDataTable,
-} from '../../ui/index.js';
-import { dataIcons } from './dataIcons.js';
-import { driverColumns } from './driverColumns.js';
-import { DriverSheet } from './DriverSheet.js';
-import { DriverSummary } from './DriverSummary.js';
-import { ReviewCard } from './ReviewCard.js';
+} from '../../../../core/shell/frontend/ui/index.js';
+import { dataIcons } from '../dataIcons.js';
+import { driverColumns } from '../driverColumns.js';
+import { DriverSheet } from '../DriverSheet.js';
+import { DriverSummary } from '../DriverSummary.js';
+import { ReviewCard } from '../ReviewCard.js';
 
 /** Settings → Driver Match: who might be listed twice, then everyone with a code. */
 export function DriverMatchSettings({ timezone }: { timezone: string }) {

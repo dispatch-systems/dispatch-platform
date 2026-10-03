@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { fixture } from '../support/support.js';
+import { fixture } from '../../core/shell/tests/support/support.js';
 import { verifyArtifact, writeManifest } from '../../tooling/build/artifact.js';
 import {
   dashboardGraphSizes,
@@ -79,25 +79,28 @@ test(
       { name: 'initial', entries: [], raw: 400_000, transferred: 115_000 },
       {
         name: 'DSP picker',
-        entries: ['src/features/platform/picker.ts'],
+        entries: ['../../core/platform_owner/frontend/dsps/picker.ts'],
         raw: 410_000,
         transferred: 120_000,
       },
       {
         name: 'Settings profile',
-        entries: ['src/features/settings/index.ts'],
+        entries: ['../../features/settings/frontend/index.ts'],
         raw: 440_000,
         transferred: 130_000,
       },
       {
         name: 'daily Timecard',
-        entries: ['src/features/timecard/index.ts', 'src/features/timecard/TimecardsPage.tsx'],
+        entries: [
+          '../../features/timecard/frontend/index.ts',
+          '../../features/timecard/frontend/tabs/daily/TimecardsPage.tsx',
+        ],
         raw: 500_000,
         transferred: 150_000,
       },
       {
         name: 'Timecard settings',
-        entries: ['src/features/timecard/settings/index.ts'],
+        entries: ['../../features/timecard/frontend/settings/index.ts'],
         raw: 490_000,
         transferred: 145_000,
       },

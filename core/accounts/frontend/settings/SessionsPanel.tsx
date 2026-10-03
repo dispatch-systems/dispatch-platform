@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Clock3 } from 'lucide-react';
-import type { useAccountSessions } from '../../app/endpoints.js';
-import { api } from '../../app/api.js';
-import { useAction } from '../../app/useAction.js';
-import { time, deviceTimezone } from '../../lib/format.js';
-import { ConfirmDialog, DataState, ErrorBox } from '../../ui/index.js';
+import type { useAccountSessions } from '../../../shell/frontend/runtime/endpoints.js';
+import { api } from '../../../shell/frontend/runtime/api.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
+import { time, deviceTimezone } from '../../../shell/frontend/lib/format.js';
+import { ConfirmDialog, DataState, ErrorBox } from '../../../shell/frontend/ui/index.js';
 
 export function SessionsPanel({ sessions }: { sessions: ReturnType<typeof useAccountSessions> }) {
   const [signOutAll, setSignOutAll] = useState(false);

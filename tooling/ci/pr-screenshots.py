@@ -5,7 +5,7 @@ them to the screenshots bucket and print the PR's Screenshots section.
     npm run pr:screenshots -- capture <before|after> <screen>... [--dark]
     npm run pr:screenshots -- publish [--reviewed]
 
-Screens are page ids from `dashboard/src/app/route-meta.ts`. Captures go to the worktree's
+Screens are page ids from `app/frontend/route-meta.ts`. Captures go to the worktree's
 scratch directory, `/tmp/dispatch-<worktree>/screenshots/<label>/`. Publishing audits them
 with the export privacy check first; the images it has not seen need a visual review, which
 `--reviewed` asserts, and are then recorded in the private review manifest. Each image then
@@ -67,7 +67,7 @@ def capture(tree, label, screens, dark):
            "DISPATCH_SCREENSHOT_SCHEME": "dark" if dark else "light", "TMPDIR": str(tree.scratch),
            "DISPATCH_TEST_OUTPUT": str(tree.scratch / "test-results")}
     tree.scratch.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(["npm", "run", "test:ui", "--", "tests/browser/screenshots.spec.ts"],
+    result = subprocess.run(["npm", "run", "test:ui", "--", "app/tests/browser/screenshots.spec.ts"],
                             cwd=tree.root, env=env)
     if result.returncode:
         raise SystemExit("The capture failed; its output is above.")

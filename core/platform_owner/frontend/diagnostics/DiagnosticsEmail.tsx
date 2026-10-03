@@ -1,7 +1,11 @@
 import { useMemo, useState } from 'react';
-import type { MailMessage, PlatformHealth } from '../../../../../shared/contracts/index.js';
-import { discardMail, retryMail, usePlatformMail } from '../../../app/endpoints.js';
-import { useAction } from '../../../app/useAction.js';
+import type { MailMessage, PlatformHealth } from '../../../../shared/contracts/index.js';
+import {
+  discardMail,
+  retryMail,
+  usePlatformMail,
+} from '../../../shell/frontend/runtime/endpoints.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import {
   Badge,
   ConfirmDialog,
@@ -12,7 +16,7 @@ import {
   TablePagination,
   useDataTable,
   type TableColumn,
-} from '../../../ui/index.js';
+} from '../../../shell/frontend/ui/index.js';
 import { at, kindLabel, mailFailure, stage } from './mail.js';
 import { MailProgress } from './MailProgress.js';
 

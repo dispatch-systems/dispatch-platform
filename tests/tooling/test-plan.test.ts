@@ -6,6 +6,7 @@ import path from 'node:path';
 import playwrightConfig from '../../playwright.config.js';
 import {
   allTests,
+  testRoots,
   allPythonTests,
   coreTests,
   dashboardTests,
@@ -27,6 +28,13 @@ const names = (directory: string, pattern: RegExp) =>
     .filter((name) => pattern.test(name))
     .map((name) => `${directory}/${name}`)
     .sort();
+// Test files in every owner's tests/ folder and in tests/tooling.
+const owned = (pattern: RegExp) =>
+  testRoots
+    .flatMap((root) => names(root, pattern))
+    .filter((file) => /(^|\/)tests\//.test(file))
+    .sort();
+const browserSpec = /(^|\/)tests\/browser\//;
 
 // Run the entry points, stopping before execution: these are their actual child commands.
 const listed = new Map<string, Command[]>();
@@ -50,7 +58,7 @@ test('every test file is run by exactly one check of full validation and none is
   const npmPlan = listing('tooling/testing/test.ts');
   const apiPlan = listing('tooling/ci/checks.ts', ['api']);
   const dashboardPlan = listing('tooling/ci/checks.ts', ['checks']);
-  const files = names('tests', /\.test\.ts$/).filter((file) => !file.startsWith('tests/browser/'));
+  const files = owned(/\.test\.ts$/).filter((file) => !browserSpec.test(file));
   assert(files.length > 0);
   const native = Object.values(nativeShards).flat();
   const scheduled = [...testsIn(apiPlan), ...testsIn(dashboardPlan), ...native];
@@ -58,13 +66,25 @@ test('every test file is run by exactly one check of full validation and none is
   assert.equal(new Set(scheduled).size, files.length);
   assert.deepEqual(testsIn(apiPlan), coreTests());
   assert.deepEqual(testsIn(dashboardPlan), dashboardTests);
-  assert.deepEqual([...dashboardTests].sort(), names('tests/dashboard', /\.test\.ts$/));
+  assert.deepEqual(
+    [...dashboardTests].sort(),
+    files.filter(
+      (file) =>
+        /\/tests\/frontend\//.test(file) ||
+        /^app\/tests\/rules\/(dashboard-structure|unused-css)\.test\.ts$/.test(file),
+    ),
+  );
   for (const file of dashboardTests) assert(fs.existsSync(file), `${file} does not exist`);
   // npm test and CI share recursive discovery; support files are never executable tests.
   assert.deepEqual(allTests(), files);
   assert.deepEqual(testsIn(npmPlan), files);
   assert.deepEqual(
-    files.filter((file) => !/^tests\/(api|dashboard|providers|tooling)\//.test(file)),
+    files.filter(
+      (file) =>
+        !/^((app|(core|collectors|features)\/[a-z_]+)\/tests\/(api|frontend|native|rules)|tests\/tooling)\//.test(
+          file,
+        ),
+    ),
     [],
   );
   const scripts = JSON.parse(fs.readFileSync('package.json', 'utf8')).scripts;
@@ -93,15 +113,19 @@ test('every test file is run by exactly one check of full validation and none is
   assert.match(timeoutSteps, /run:\s*npm run test:browseros\s+--\s+--real-timeouts\s*$/m);
 
   // Read Playwright's real config, not its quote or formatting choices.
-  assert.equal(path.resolve(playwrightConfig.testDir!), path.resolve('tests/browser'));
-  assert.equal(playwrightConfig.testMatch, undefined);
+  assert.equal(path.resolve(playwrightConfig.testDir!), path.resolve('.'));
+  assert.equal(playwrightConfig.testMatch, '**/tests/browser/**/*.spec.ts');
   assert.equal(playwrightConfig.testIgnore, undefined);
+  assert.equal(playwrightConfig.respectGitIgnore, true);
   assert.deepEqual(
-    names('tests', /\.spec\.ts$/).filter((file) => !file.startsWith('tests/browser/')),
+    owned(/\.spec\.ts$/).filter((file) => !browserSpec.test(file)),
     [],
   );
-  assert(names('tests/browser', /\.spec\.ts$/).length > 0);
-  assert.deepEqual(names('tests/browser', /\.test\.ts$/), []);
+  assert(owned(/\.spec\.ts$/).length > 0);
+  assert.deepEqual(
+    owned(/\.test\.ts$/).filter((file) => browserSpec.test(file)),
+    [],
+  );
 
   // Python source checks and real compiler/host checks cover every module once in CI.
   const python = names('tests', /\.py$/);
@@ -141,8 +165,15 @@ test('every test file is run by exactly one check of full validation and none is
     '--features',
     'operator-probes',
   ]);
-  for (const directory of ['tooling', 'dashboard/src', 'shared', 'services'])
+  for (const directory of ['tooling', 'shared', 'services'])
     assert.deepEqual(names(directory, /\.(test|spec)\.tsx?$|_test\.py$/), []);
+  // Owners keep tests only in their tests/ folder, never beside the code.
+  assert.deepEqual(
+    testRoots
+      .flatMap((root) => names(root, /\.(test|spec)\.tsx?$|_test\.py$/))
+      .filter((file) => !/(^|\/)tests\//.test(file)),
+    [],
+  );
 });
 
 test('check:rules retains dashboard and source-rule tests, and source lints run locally and in CI', () => {
@@ -192,7 +223,7 @@ test('pr:prepare watches only sources and tests that exist', () => {
     for (const file of sources) assert(fs.existsSync(file), `${file} does not exist`);
     for (const file of tests) {
       assert(fs.existsSync(file), `${file} does not exist`);
-      assert.match(file, /^tests\/.+\.(test|spec)\.ts$/);
+      assert.match(file, /(^|\/)tests\/.+\.(test|spec)\.ts$/);
     }
   }
 });

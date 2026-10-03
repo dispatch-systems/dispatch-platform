@@ -1,12 +1,8 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { localDate, shiftDate } from '../../lib/meal-breaks.js';
-import {
-  paycomDateKey,
-  selectedPaycomDate,
-  validPaycomDate as validDay,
-} from '../../lib/paycom-date.js';
-import { DateField } from '../../ui/index.js';
+import { localDate, shiftDate } from './meal-breaks.js';
+import { paycomDateKey, selectedPaycomDate, validPaycomDate as validDay } from './paycom-date.js';
+import { DateField } from '../../../core/shell/frontend/ui/index.js';
 
 // Collection accepts dates up to the DSP's business date, so a viewer in another
 // timezone must see and select the DSP's day rather than their own.

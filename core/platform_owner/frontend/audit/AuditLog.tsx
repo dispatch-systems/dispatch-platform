@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useUpdateState } from '../../app/browser-update.js';
+import { useUpdateState } from '../../../shell/frontend/runtime/browser-update.js';
 import {
   ArrowRight,
   Building2,
@@ -18,13 +18,13 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { dateFormatter } from '../../lib/date-format.js';
+import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
 import type { AuditArea, AuditChange, AuditEvent } from '../../../../shared/contracts/index.js';
-import { useAuditPage, exportAudit } from '../../app/endpoints.js';
-import { DataState, Empty, ErrorBox, SearchInput } from '../../ui/index.js';
-import { downloadCsv } from '../../lib/csv.js';
-import { deviceTimezone, timeOfDay, title } from '../../lib/format.js';
-import { useAction } from '../../app/useAction.js';
+import { useAuditPage, exportAudit } from '../../../shell/frontend/runtime/endpoints.js';
+import { DataState, Empty, ErrorBox, SearchInput } from '../../../shell/frontend/ui/index.js';
+import { downloadCsv } from '../../../shell/frontend/lib/csv.js';
+import { deviceTimezone, timeOfDay, title } from '../../../shell/frontend/lib/format.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import {
   changeText,
   changeValue,

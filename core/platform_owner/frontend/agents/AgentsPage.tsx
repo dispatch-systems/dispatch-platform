@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { hashQuery, replaceHashQuery } from '../../app/navigation.js';
-import { Header, Tabs } from '../../ui/index.js';
+import { hashQuery, replaceHashQuery } from '../../../shell/frontend/runtime/navigation.js';
+import { Header, Tabs } from '../../../shell/frontend/ui/index.js';
 import { ActivityTab } from './ActivityTab.js';
 import { AppsTab } from './AppsTab.js';
 import { KeysTab } from './KeysTab.js';

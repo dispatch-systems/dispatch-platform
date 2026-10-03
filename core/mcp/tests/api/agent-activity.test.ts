@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fixture, until } from '../support/support.js';
+import { fixture, until } from '../../../shell/tests/support/support.js';
 import type {
   AgentActivityPage,
   AgentKeyCreated,
   AgentKeys,
-} from '../../shared/contracts/index.js';
+} from '../../../../shared/contracts/index.js';
 
 test('the Activity log lists what a key called over REST and MCP, written down in batches', async (t) => {
   const f = await fixture();

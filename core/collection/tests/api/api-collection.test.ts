@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fixture, until, seedQueuedJob } from '../support/support.js';
+import { fixture, until, seedQueuedJob } from '../../../shell/tests/support/support.js';
 const credentials = {
   clientCode: 'TEST',
   username: 'private-user',

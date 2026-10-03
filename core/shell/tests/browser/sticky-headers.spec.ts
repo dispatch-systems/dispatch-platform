@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
-import type { DailyTimecards } from '../../shared/contracts/index.js';
-import type { MealComparison } from '../../shared/contracts/meals.js';
-import { demo, expect, login, openDsp, test } from './fixtures.js';
+import type { DailyTimecards } from '../../../../shared/contracts/index.js';
+import type { MealComparison } from '../../../../shared/contracts/meals.js';
+import { demo, expect, login, openDsp, test } from '../support/fixtures.js';
 
 async function longTables(page: Page) {
   await page.route('**/api/dsp/timecards?*', async (route) => {

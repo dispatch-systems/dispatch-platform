@@ -1,9 +1,13 @@
 import { useEffect } from 'react';
-import { ApiError, view } from './api.js';
-import { backoff } from '../lib/backoff.js';
-import { dataCache } from './data-cache.js';
-import { collectionAffects, collectionData, type CollectionChange } from '../lib/data-policy.js';
-import { getCollectionUpdates } from './endpoints.js';
+import { ApiError, view } from '../../../core/shell/frontend/runtime/api.js';
+import { backoff } from '../../../core/shell/frontend/lib/backoff.js';
+import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
+import {
+  collectionAffects,
+  collectionData,
+  type CollectionChange,
+} from '../../../core/shell/frontend/lib/data-policy.js';
+import { getCollectionUpdates } from '../../../core/shell/frontend/runtime/endpoints.js';
 
 /** One sleeping request for the Timecard page, shared across days and tabs. */
 export function useCollectionUpdates() {

@@ -121,7 +121,7 @@ export async function startPreview({
     });
     ui = await createServer({
       configFile: path.join(cwd, 'vite.config.ts'),
-      root: path.join(cwd, 'dashboard'),
+      root: path.join(cwd, 'app/frontend'),
       clearScreen: false,
       server: {
         host,

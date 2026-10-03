@@ -11,16 +11,16 @@ import {
   timeWithSeconds,
   title,
   utcDay,
-} from '../../dashboard/src/lib/format.js';
-import { backoff } from '../../dashboard/src/lib/backoff.js';
-import { messageOf } from '../../dashboard/src/lib/errors.js';
-import { sourceLink } from '../../dashboard/src/lib/source.js';
+} from '../../frontend/lib/format.js';
+import { backoff } from '../../frontend/lib/backoff.js';
+import { messageOf } from '../../frontend/lib/errors.js';
+import { sourceLink } from '../../frontend/lib/source.js';
 import {
   hoursAndMinutes,
   punchTime,
   timecardDate,
   timecardPeriod,
-} from '../../dashboard/src/lib/timecard-format.js';
+} from '../../../../features/timecard/frontend/timecard-format.js';
 
 test('employee timecards format local clocks and rounded minutes without timezone shifts', () => {
   assert.equal(hoursAndMinutes(8.5), '8h 30m');

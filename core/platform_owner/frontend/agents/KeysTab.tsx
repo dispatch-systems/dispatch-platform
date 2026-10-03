@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { ChevronRight, Clock, Plus, Power, TriangleAlert } from 'lucide-react';
 import type { AgentAccess, AgentKey, AgentKeyCreated } from '../../../../shared/contracts/index.js';
-import { ConfirmDialog, DataState, Empty, SearchInput } from '../../ui/index.js';
-import { useAction } from '../../app/useAction.js';
-import { revokeAllAgentKeys, useAgentKeys } from '../../app/endpoints.js';
+import { ConfirmDialog, DataState, Empty, SearchInput } from '../../../shell/frontend/ui/index.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
+import { revokeAllAgentKeys, useAgentKeys } from '../../../shell/frontend/runtime/endpoints.js';
 import {
   accessLabels,
   accessText,
@@ -13,7 +13,7 @@ import {
   keyState,
   lastUsedText,
   reachText,
-} from '../../lib/agents.js';
+} from './agents.js';
 import { KeyReady } from './KeyReady.js';
 import { KeySheet } from './KeySheet.js';
 import { UsingKeys } from './UsingKeys.js';

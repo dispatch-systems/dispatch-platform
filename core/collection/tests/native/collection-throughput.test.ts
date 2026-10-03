@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { paycomFixture, credentials } from '../support/browseros-paycom-fixture.js';
-import { until } from '../support/support.js';
+import {
+  paycomFixture,
+  credentials,
+} from '../../../../collectors/paycom/tests/support/browseros-paycom-fixture.js';
+import { until } from '../../../shell/tests/support/support.js';
 
 const native = { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 120000 };
 test(

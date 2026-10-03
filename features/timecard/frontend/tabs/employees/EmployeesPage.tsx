@@ -1,14 +1,26 @@
-import { performancePolicy } from '../../lib/performance-policy.js';
+import { performancePolicy } from '../../../../../core/shell/frontend/lib/performance-policy.js';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowDownAZ, ArrowUpAZ, ChevronRight } from 'lucide-react';
 import type {
   EmployeeTimecardPeriod,
   EmployeeTimecardResponse,
-} from '../../../../shared/contracts/index.js';
-import { useUpdateState } from '../../app/browser-update.js';
-import { employeeTimecardUrl, useEmployeeTimecard, useEmployees } from '../../app/endpoints.js';
-import { cancelPrefetches, prefetchData } from '../../app/prefetch.js';
-import { DataState, Empty, Pagination, SearchInput } from '../../ui/index.js';
+} from '../../../../../shared/contracts/index.js';
+import { useUpdateState } from '../../../../../core/shell/frontend/runtime/browser-update.js';
+import {
+  employeeTimecardUrl,
+  useEmployeeTimecard,
+  useEmployees,
+} from '../../../../../core/shell/frontend/runtime/endpoints.js';
+import {
+  cancelPrefetches,
+  prefetchData,
+} from '../../../../../core/shell/frontend/runtime/prefetch.js';
+import {
+  DataState,
+  Empty,
+  Pagination,
+  SearchInput,
+} from '../../../../../core/shell/frontend/ui/index.js';
 import { EmployeeAvatar } from './EmployeeAvatar.js';
 import { EmployeeDetail } from './EmployeeDetail.js';
 import './employees.css';

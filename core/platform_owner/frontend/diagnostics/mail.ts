@@ -1,5 +1,5 @@
-import type { MailMessage } from '../../../../../shared/contracts/index.js';
-import { deviceTimezone, time } from '../../../lib/format.js';
+import type { MailMessage } from '../../../../shared/contracts/index.js';
+import { deviceTimezone, time } from '../../../shell/frontend/lib/format.js';
 
 export function mailFailure(code: string | null): string {
   if (!code) return '';

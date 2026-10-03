@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react';
 import { KeyRound, ShieldCheck, Smartphone } from 'lucide-react';
 import type { AuthenticatorSetup } from '../../../../shared/contracts/index.js';
-import { api } from '../../app/api.js';
-import { usePasskeys, useSecurityStatus } from '../../app/endpoints.js';
-import { registerPasskey } from '../../app/passkeys.js';
-import { useAction } from '../../app/useAction.js';
-import { ConfirmDialog, DataState, ErrorBox, Modal, RecoveryCodes } from '../../ui/index.js';
+import { api } from '../../../shell/frontend/runtime/api.js';
+import { usePasskeys, useSecurityStatus } from '../../../shell/frontend/runtime/endpoints.js';
+import { registerPasskey } from '../../../shell/frontend/runtime/passkeys.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
+import {
+  ConfirmDialog,
+  DataState,
+  ErrorBox,
+  Modal,
+  RecoveryCodes,
+} from '../../../shell/frontend/ui/index.js';
 
 type Removing =
   { kind: 'passkey'; id: string; last: boolean } | { kind: 'authenticator'; last: boolean };

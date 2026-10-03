@@ -1,14 +1,14 @@
 import { BrowserVerification } from './BrowserVerification.js';
 import { useEffect, useState, type FormEvent } from 'react';
-import { performancePolicy } from '../../lib/performance-policy.js';
+import { performancePolicy } from '../../shell/frontend/lib/performance-policy.js';
 import { Plug, RefreshCw } from 'lucide-react';
-import type { Connection } from '../../../../shared/contracts/index.js';
-import { api } from '../../app/api.js';
-import { Badge, ConfirmDialog, DataState, ErrorBox, Modal } from '../../ui/index.js';
-import { time, title } from '../../lib/format.js';
-import { messageOf } from '../../lib/errors.js';
-import { useAction } from '../../app/useAction.js';
-import { connectionUrl, useConnection } from '../../app/endpoints.js';
+import type { Connection } from '../../../shared/contracts/index.js';
+import { api } from '../../shell/frontend/runtime/api.js';
+import { Badge, ConfirmDialog, DataState, ErrorBox, Modal } from '../../shell/frontend/ui/index.js';
+import { time, title } from '../../shell/frontend/lib/format.js';
+import { messageOf } from '../../shell/frontend/lib/errors.js';
+import { useAction } from '../../shell/frontend/runtime/useAction.js';
+import { connectionUrl, useConnection } from '../../shell/frontend/runtime/endpoints.js';
 
 export function ConnectionCard({
   development,

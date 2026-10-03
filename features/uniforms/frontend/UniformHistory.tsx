@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { uniformFitLabels } from '../../../../shared/contracts/uniforms.js';
-import { useUniformHistory } from '../../app/endpoints.js';
-import { DataState, Empty, Modal } from '../../ui/index.js';
-import { time } from '../../lib/format.js';
+import { uniformFitLabels } from '../../../shared/contracts/uniforms.js';
+import { useUniformHistory } from '../../../core/shell/frontend/runtime/endpoints.js';
+import { DataState, Empty, Modal } from '../../../core/shell/frontend/ui/index.js';
+import { time } from '../../../core/shell/frontend/lib/format.js';
 
 export function UniformHistory({
   revision,

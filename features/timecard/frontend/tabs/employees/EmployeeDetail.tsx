@@ -1,6 +1,6 @@
-import type { Employee, EmployeeTimecardPeriod } from '../../../../shared/contracts/index.js';
-import type { useEmployeeTimecard } from '../../app/endpoints.js';
-import { Badge } from '../../ui/index.js';
+import type { Employee, EmployeeTimecardPeriod } from '../../../../../shared/contracts/index.js';
+import type { useEmployeeTimecard } from '../../../../../core/shell/frontend/runtime/endpoints.js';
+import { Badge } from '../../../../../core/shell/frontend/ui/index.js';
 import { EmployeeAvatar } from './EmployeeAvatar.js';
 import { EmployeeTimecard } from './EmployeeTimecard.js';
 

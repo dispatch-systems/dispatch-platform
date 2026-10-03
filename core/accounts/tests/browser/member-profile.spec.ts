@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
-import { test, expect, demo, login, openDsp } from './fixtures.js';
-import { capturedMail } from '../support/mail-support.js';
-import type { fixture } from '../support/support.js';
+import { test, expect, demo, login, openDsp } from '../../../shell/tests/support/fixtures.js';
+import { capturedMail } from '../../../shell/tests/support/mail-support.js';
+import type { fixture } from '../../../shell/tests/support/support.js';
 
 async function inviteMember(page: Page, root: string) {
   await login(page);

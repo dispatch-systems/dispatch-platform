@@ -1,18 +1,18 @@
 import { lazy, Suspense, useState, useTransition, type ReactNode } from 'react';
-import type { DspView, SessionView } from '../../../../shared/contracts/index.js';
-import { Header, Loading, Tabs } from '../../ui/index.js';
-import { can } from '../../app/permissions.js';
-import { connectionFeatures } from '../../app/features.js';
-import { DriverMatchTabLabel } from '../driver-match/badge.js';
-import { hashQuery, replaceHashQuery } from '../../app/navigation.js';
-import { ProfileBadge } from './ProfileBadge.js';
-import { prefetchSettingsTab } from '../../app/route-prefetch.js';
+import type { DspView, SessionView } from '../../../shared/contracts/index.js';
+import { Header, Loading, Tabs } from '../../../core/shell/frontend/ui/index.js';
+import { can } from '../../../core/shell/frontend/runtime/permissions.js';
+import { connectionFeatures } from '../../../core/shell/frontend/runtime/features.js';
+import { DriverMatchTabLabel } from '../../driver_match/frontend/badge.js';
+import { hashQuery, replaceHashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
+import { ProfileBadge } from '../../../core/accounts/frontend/settings/ProfileBadge.js';
+import { prefetchSettingsTab } from '../../../core/shell/frontend/runtime/route-prefetch.js';
 
-const loadConnections = () => import('../connections/index.js');
-const loadDriverMatch = () => import('../driver-match/index.js');
-const loadSecurity = () => import('./SecuritySettings.js');
-const loadRouteData = () => import('./RouteDataSettings.js');
-const loadTheme = () => import('./ThemeSection.js');
+const loadConnections = () => import('../../../core/collection/frontend/index.js');
+const loadDriverMatch = () => import('../../driver_match/frontend/index.js');
+const loadSecurity = () => import('../../../core/accounts/frontend/settings/SecuritySettings.js');
+const loadRouteData = () => import('../../routes/frontend/settings/RouteDataSettings.js');
+const loadTheme = () => import('../../../core/accounts/frontend/settings/ThemeSection.js');
 const ConnectionsPage = lazy(() => loadConnections().then((m) => ({ default: m.ConnectionsPage })));
 const DriverMatchSettings = lazy(() =>
   loadDriverMatch().then((m) => ({ default: m.DriverMatchSettings })),

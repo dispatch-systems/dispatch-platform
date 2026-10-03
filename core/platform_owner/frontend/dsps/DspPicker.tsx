@@ -1,6 +1,6 @@
 import { Building2 } from 'lucide-react';
 import type { SessionView } from '../../../../shared/contracts/index.js';
-import { Badge, Header } from '../../ui/index.js';
+import { Badge, Header } from '../../../shell/frontend/ui/index.js';
 import { open } from './open.js';
 
 // A member's platform page: the DSPs they belong to.

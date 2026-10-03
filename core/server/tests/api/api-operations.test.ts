@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { demo, fixture } from '../support/support.js';
+import { demo, fixture } from '../../../shell/tests/support/support.js';
 const { password } = demo;
 
 test('Rust bootstrap creates only the initial owner and empty Dev DSP; locks exclude another core and backup', async (t) => {

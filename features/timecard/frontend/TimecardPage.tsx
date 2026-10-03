@@ -1,5 +1,8 @@
-import { performancePolicy } from '../../lib/performance-policy.js';
-import { readUpdateState, useUpdateState } from '../../app/browser-update.js';
+import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
+import {
+  readUpdateState,
+  useUpdateState,
+} from '../../../core/shell/frontend/runtime/browser-update.js';
 import {
   lazy,
   Suspense,
@@ -14,27 +17,33 @@ import type {
   Connection,
   DspView,
   EmployeeTimecardResponse,
-} from '../../../../shared/contracts/index.js';
-import { paycomDefaults } from '../../lib/paycom.js';
-import { api, useCachedData, useData } from '../../app/api.js';
-import { hasFeature } from '../../app/features.js';
-import { syncEmployeeTimecard, usePaycomSettings } from '../../app/endpoints.js';
-import { dataCache } from '../../app/data-cache.js';
-import { collectionData } from '../../lib/data-policy.js';
-import { useCollectionUpdates } from '../../app/live-collection.js';
-import { ErrorBox, Header, Loading, Tabs } from '../../ui/index.js';
-import { can } from '../../app/permissions.js';
-import { randomId } from '../../lib/random-id.js';
-import { timecardPeriod } from '../../lib/timecard-format.js';
-import { prefetchRouteData, prefetchTimecardTab } from '../../app/route-prefetch.js';
+} from '../../../shared/contracts/index.js';
+import { paycomDefaults } from './paycom.js';
+import { api, useCachedData, useData } from '../../../core/shell/frontend/runtime/api.js';
+import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
+import {
+  syncEmployeeTimecard,
+  usePaycomSettings,
+} from '../../../core/shell/frontend/runtime/endpoints.js';
+import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
+import { collectionData } from '../../../core/shell/frontend/lib/data-policy.js';
+import { useCollectionUpdates } from './live-collection.js';
+import { ErrorBox, Header, Loading, Tabs } from '../../../core/shell/frontend/ui/index.js';
+import { can } from '../../../core/shell/frontend/runtime/permissions.js';
+import { randomId } from '../../../core/shell/frontend/lib/random-id.js';
+import { timecardPeriod } from './timecard-format.js';
+import {
+  prefetchRouteData,
+  prefetchTimecardTab,
+} from '../../../core/shell/frontend/runtime/route-prefetch.js';
 import { usePaycomDate } from './DateControls.js';
-import { useAction } from '../../app/useAction.js';
-import { dspHash, navigate } from '../../app/navigation.js';
+import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
+import { dspHash, navigate } from '../../../core/shell/frontend/runtime/navigation.js';
 import { SourceSyncStatus, type SyncSource } from './SourceSyncStatus.js';
 
-const loadEmployees = () => import('./EmployeesPage.js');
-const loadTimecards = () => import('./TimecardsPage.js');
-const loadMeals = () => import('./meal-breaks/MealBreaksPage.js');
+const loadEmployees = () => import('./tabs/employees/EmployeesPage.js');
+const loadTimecards = () => import('./tabs/daily/TimecardsPage.js');
+const loadMeals = () => import('./tabs/meal-breaks/MealBreaksPage.js');
 const loadSettings = () => import('./settings/index.js');
 const EmployeesPage = lazy(() => loadEmployees().then((m) => ({ default: m.EmployeesPage })));
 const TimecardsPage = lazy(() => loadTimecards().then((m) => ({ default: m.TimecardsPage })));

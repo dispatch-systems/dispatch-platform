@@ -1,7 +1,7 @@
 import { Plus } from 'lucide-react';
-import type { Uniform } from '../../../../shared/contracts/uniforms.js';
-import { SearchInput } from '../../ui/index.js';
-import { uniformTotal, groupUniforms } from '../../lib/uniforms.js';
+import type { Uniform } from '../../../shared/contracts/uniforms.js';
+import { SearchInput } from '../../../core/shell/frontend/ui/index.js';
+import { uniformTotal, groupUniforms } from './uniforms.js';
 
 export function UniformList({
   uniforms,

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react';
-import { timezoneName } from '../../../lib/format.js';
-import { DspAvatar, dspTone } from '../../../ui/DspAvatar.js';
-import { useViewportFit } from '../../../ui/useViewportFit.js';
+import { timezoneName } from '../../../shell/frontend/lib/format.js';
+import { DspAvatar, dspTone } from '../../../shell/frontend/ui/DspAvatar.js';
+import { useViewportFit } from '../../../shell/frontend/ui/useViewportFit.js';
 import { MemberLanyardClip, MemberLanyardStraps } from './MemberProfileLanyard.js';
 import {
   MEMBER_COMPLETION_MEDIA,

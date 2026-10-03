@@ -4,10 +4,10 @@ import type {
   ScheduleInput,
   SchedulePreview,
 } from '../../../../shared/contracts/schedules.js';
-import { api, ApiError } from '../../app/api.js';
-import { messageOf } from '../../lib/errors.js';
-import { time } from '../../lib/format.js';
-import { ErrorBox, Modal } from '../../ui/index.js';
+import { api, ApiError } from '../../../../core/shell/frontend/runtime/api.js';
+import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
+import { time } from '../../../../core/shell/frontend/lib/format.js';
+import { ErrorBox, Modal } from '../../../../core/shell/frontend/ui/index.js';
 
 /** Runs `then` at once, or after the member chooses Save or Discard for unsaved edits. */
 export type Leave = (then: () => void) => void;

@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { History, Plus } from 'lucide-react';
-import type { DspView } from '../../../../shared/contracts/index.js';
-import type { Uniform } from '../../../../shared/contracts/uniforms.js';
-import { archiveUniform, initializeUniforms } from '../../app/endpoints.js';
-import { can } from '../../app/permissions.js';
-import { useAction } from '../../app/useAction.js';
-import { ConfirmDialog, DataState, Empty, Header } from '../../ui/index.js';
+import type { DspView } from '../../../shared/contracts/index.js';
+import type { Uniform } from '../../../shared/contracts/uniforms.js';
+import {
+  archiveUniform,
+  initializeUniforms,
+} from '../../../core/shell/frontend/runtime/endpoints.js';
+import { can } from '../../../core/shell/frontend/runtime/permissions.js';
+import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
+import { ConfirmDialog, DataState, Empty, Header } from '../../../core/shell/frontend/ui/index.js';
 import { useUniformInventory, type InventoryStatus } from './useUniformInventory.js';
 import { UniformList } from './UniformList.js';
 import { UniformDetail } from './UniformDetail.js';

@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { hashQuery, parseHash, replaceHashQuery } from '../../../app/navigation.js';
-import { useData } from '../../../app/api.js';
-import { usePlatformJobs, usePlatformHealth } from '../../../app/endpoints.js';
-import { DataState, ErrorBox, Header, Tabs } from '../../../ui/index.js';
+import {
+  hashQuery,
+  parseHash,
+  replaceHashQuery,
+} from '../../../shell/frontend/runtime/navigation.js';
+import { useData } from '../../../shell/frontend/runtime/api.js';
+import { usePlatformJobs, usePlatformHealth } from '../../../shell/frontend/runtime/endpoints.js';
+import { DataState, ErrorBox, Header, Tabs } from '../../../shell/frontend/ui/index.js';
 import { collectionHistory } from './collection-history.js';
 import type { Diagnostics } from './types.js';
 import { DiagnosticsCollections } from './DiagnosticsCollections.js';

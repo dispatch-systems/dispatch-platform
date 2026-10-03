@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { ArrowRight, Check, ChevronRight, Clock, LoaderCircle } from 'lucide-react';
 import type { AgentDsp, AgentKey } from '../../../../shared/contracts/index.js';
-import { useAgentKeys } from '../../app/endpoints.js';
-import { platformHash } from '../../app/navigation.js';
+import { useAgentKeys } from '../../../shell/frontend/runtime/endpoints.js';
+import { platformHash } from '../../../shell/frontend/runtime/navigation.js';
 import {
   accessText,
   connectApps,
@@ -11,9 +11,9 @@ import {
   reachText,
   signIns,
   type ConnectApp,
-} from '../../lib/agents.js';
-import { countdown } from '../../lib/format.js';
-import { DetailList, Modal } from '../../ui/index.js';
+} from './agents.js';
+import { countdown } from '../../../shell/frontend/lib/format.js';
+import { DetailList, Modal } from '../../../shell/frontend/ui/index.js';
 import { AppIcon } from './AppIcon.js';
 import { CopyButton } from './CopyButton.js';
 import { usePairing } from './Pairing.js';

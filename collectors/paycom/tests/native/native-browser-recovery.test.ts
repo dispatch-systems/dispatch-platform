@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { paycomFixture, credentials } from '../support/browseros-paycom-fixture.js';
-import { until } from '../support/support.js';
+import { until } from '../../../../core/shell/tests/support/support.js';
 
 test(
   'a missing timecard retries only that employee while the other lane continues',

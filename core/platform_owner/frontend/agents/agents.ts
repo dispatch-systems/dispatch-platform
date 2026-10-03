@@ -12,9 +12,9 @@ import type {
   AgentKeyRequest,
   AgentReads,
   AgentSource,
-} from '../../../shared/contracts/index.js';
-import { dateFormatter } from './date-format.js';
-import { utcDay } from './format.js';
+} from '../../../../shared/contracts/index.js';
+import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
+import { utcDay } from '../../../shell/frontend/lib/format.js';
 
 export const accessLabels: Record<AgentAccess, string> = {
   read: 'Read only',

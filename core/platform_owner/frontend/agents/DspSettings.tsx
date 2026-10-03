@@ -5,7 +5,7 @@ import type {
   AgentKeyRequest,
   AgentReads,
 } from '../../../../shared/contracts/index.js';
-import { bypassHere, switchedOffText } from '../../lib/agents.js';
+import { bypassHere, switchedOffText } from './agents.js';
 import { ReadChoices, SwitchBox } from './KeyChoices.js';
 
 type Props = {

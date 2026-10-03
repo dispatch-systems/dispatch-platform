@@ -1,7 +1,7 @@
 // Test files import the shared server fixture from here; tooling imports the same module directly.
-export * from '../../tooling/testing/fixture-server.js';
+export * from '../../../../tooling/testing/fixture-server.js';
 import assert from 'node:assert/strict';
-import type { fixture } from '../../tooling/testing/fixture-server.js';
+import type { fixture } from '../../../../tooling/testing/fixture-server.js';
 
 /** Seed an older release's queued job to check cancellation, metrics and fairness. */
 export function seedQueuedJob(

@@ -1,5 +1,5 @@
-import type { DriverCounts, DriverMatch } from '../../../../shared/contracts/index.js';
-import { useCachedData } from '../../app/api.js';
+import type { DriverCounts, DriverMatch } from '../../../shared/contracts/index.js';
+import { useCachedData } from '../../../core/shell/frontend/runtime/api.js';
 
 /** The tab's name, with how many pairs wait for a decision. */
 export function DriverMatchTabLabel({ active }: { active: boolean }) {

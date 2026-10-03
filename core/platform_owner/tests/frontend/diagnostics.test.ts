@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { MailMessage, PlatformHealth } from '../../shared/contracts/index.js';
-import { issues } from '../../dashboard/src/features/platform/diagnostics/attention.js';
-import { stage } from '../../dashboard/src/features/platform/diagnostics/mail.js';
+import type { MailMessage, PlatformHealth } from '../../../../shared/contracts/index.js';
+import { issues } from '../../frontend/diagnostics/attention.js';
+import { stage } from '../../frontend/diagnostics/mail.js';
 
 const health = (canStart: boolean, failed: number) =>
   ({

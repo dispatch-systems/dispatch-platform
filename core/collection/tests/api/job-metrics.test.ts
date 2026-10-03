@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fixture, until, seedQueuedJob } from '../support/support.js';
-import { parseApiResponse } from '../../shared/contracts/runtime.js';
-import type { Job } from '../../shared/contracts/index.js';
+import { fixture, until, seedQueuedJob } from '../../../shell/tests/support/support.js';
+import { parseApiResponse } from '../../../../shared/contracts/runtime.js';
+import type { Job } from '../../../../shared/contracts/index.js';
 
 const credentials = {
   clientCode: 'metrics-client',

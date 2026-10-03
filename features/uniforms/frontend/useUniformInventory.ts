@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { UniformAdjustment, UniformInventory } from '../../../../shared/contracts/uniforms.js';
-import { dataCache } from '../../app/data-cache.js';
-import { ApiError } from '../../app/api.js';
-import { getUniformUpdates } from '../../app/endpoints.js';
-import { backoff } from '../../lib/backoff.js';
-import { messageOf } from '../../lib/errors.js';
-import {
-  applyUniformAdjustments,
-  applyUniformSnapshot,
-  applyUniformUpdates,
-} from '../../lib/uniforms.js';
+import type { UniformAdjustment, UniformInventory } from '../../../shared/contracts/uniforms.js';
+import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
+import { ApiError } from '../../../core/shell/frontend/runtime/api.js';
+import { getUniformUpdates } from '../../../core/shell/frontend/runtime/endpoints.js';
+import { backoff } from '../../../core/shell/frontend/lib/backoff.js';
+import { messageOf } from '../../../core/shell/frontend/lib/errors.js';
+import { applyUniformAdjustments, applyUniformSnapshot, applyUniformUpdates } from './uniforms.js';
 
 export type InventoryStatus = 'connecting' | 'live' | 'reconnecting' | 'paused' | 'unavailable';
 

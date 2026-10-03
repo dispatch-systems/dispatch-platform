@@ -4,11 +4,11 @@ import type {
   CollectionSchedule,
   CollectionSchedules,
 } from '../../../../shared/contracts/schedules.js';
-import { api, useData } from '../../app/api.js';
-import { useAction } from '../../app/useAction.js';
-import { useFeedback } from '../../app/feedback.js';
-import { time } from '../../lib/format.js';
-import { DataState, Empty, ErrorBox, Modal } from '../../ui/index.js';
+import { api, useData } from '../../../../core/shell/frontend/runtime/api.js';
+import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
+import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
+import { time } from '../../../../core/shell/frontend/lib/format.js';
+import { DataState, Empty, ErrorBox, Modal } from '../../../../core/shell/frontend/ui/index.js';
 import { ScheduleForm, type Leave } from './ScheduleForm.js';
 
 const endpoint = '/api/dsp/dvic/schedules';

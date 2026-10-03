@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fixture } from '../support/support.js';
+import { fixture } from '../../../shell/tests/support/support.js';
 
 type Role = { id: string; name: string; permissions: string[] };
 const tabs = [

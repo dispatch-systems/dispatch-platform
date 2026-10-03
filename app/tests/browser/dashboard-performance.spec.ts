@@ -1,4 +1,4 @@
-import { test, expect, login, openDsp } from './fixtures.js';
+import { test, expect, login, openDsp } from '../../../core/shell/tests/support/fixtures.js';
 import type { Request } from '@playwright/test';
 
 const enter = async (page: Parameters<typeof login>[0]) => {

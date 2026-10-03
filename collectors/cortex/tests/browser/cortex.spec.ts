@@ -1,4 +1,4 @@
-import { test, expect, login, openDsp } from './fixtures.js';
+import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
 
 test('Cortex credentials, verification, retest and disconnect stay scoped to its card', async ({
   page,

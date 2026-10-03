@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fixture } from '../support/support.js';
+import { fixture } from '../../../../core/shell/tests/support/support.js';
 
 const credentials = { username: 'private-cortex-user', password: 'require-verification' };
 test('Cortex owns its database, secrets and verification independently of Paycom and other DSPs', async (t) => {

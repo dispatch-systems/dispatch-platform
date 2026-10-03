@@ -4,10 +4,10 @@ import http from 'node:http';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fixture, prepare, until } from '../support/support.js';
-import { capturedMail } from '../support/mail-support.js';
-import worker from '../../services/cloudflare-mail/worker.js';
-import type { Env } from '../../services/cloudflare-mail/worker-configuration.js';
+import { fixture, prepare, until } from '../../../shell/tests/support/support.js';
+import { capturedMail } from '../../../shell/tests/support/mail-support.js';
+import worker from '../../../../services/cloudflare-mail/worker.js';
+import type { Env } from '../../../../services/cloudflare-mail/worker-configuration.js';
 
 const token = 'synthetic-worker-secret-for-invite-tests';
 

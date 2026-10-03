@@ -1,9 +1,14 @@
 import { FlaskConical } from 'lucide-react';
-import { api } from '../../../app/api.js';
-import { platformHash } from '../../../app/navigation.js';
-import { useAction } from '../../../app/useAction.js';
-import { Badge, DataTable, useDataTable, type TableColumn } from '../../../ui/index.js';
-import { title } from '../../../lib/format.js';
+import { api } from '../../../shell/frontend/runtime/api.js';
+import { platformHash } from '../../../shell/frontend/runtime/navigation.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
+import {
+  Badge,
+  DataTable,
+  useDataTable,
+  type TableColumn,
+} from '../../../shell/frontend/ui/index.js';
+import { title } from '../../../shell/frontend/lib/format.js';
 import type { Diagnostics } from './types.js';
 
 type TestDsp = Diagnostics['dsps'][number];

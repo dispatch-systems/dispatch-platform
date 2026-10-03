@@ -1,8 +1,8 @@
 import { GitMerge, Split } from 'lucide-react';
 import { useState } from 'react';
-import type { Driver, DriverId } from '../../../../shared/contracts/index.js';
-import { splitDriver, useDriverDetails } from '../../app/endpoints.js';
-import { useAction } from '../../app/useAction.js';
+import type { Driver, DriverId } from '../../../shared/contracts/index.js';
+import { splitDriver, useDriverDetails } from '../../../core/shell/frontend/runtime/endpoints.js';
+import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import {
   dataAmount,
   dataLabels,
@@ -11,9 +11,9 @@ import {
   goesBy,
   seenRange,
   shortId,
-} from '../../lib/driver-match.js';
-import { time } from '../../lib/format.js';
-import { ConfirmDialog, DataState, Modal } from '../../ui/index.js';
+} from './driver-match.js';
+import { time } from '../../../core/shell/frontend/lib/format.js';
+import { ConfirmDialog, DataState, Modal } from '../../../core/shell/frontend/ui/index.js';
 import { dataIcons } from './dataIcons.js';
 import { DayStrip } from './DayStrip.js';
 import { DriverAvatar } from './DriverAvatar.js';

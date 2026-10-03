@@ -1,8 +1,16 @@
 import { assessMealResponse, type MealComparisonSource } from '../support/assessment.js';
 import type { Page } from '@playwright/test';
-import { test, expect, demo, login, openDsp, setDate, expectDate } from './fixtures.js';
-import type { MealSource } from '../../shared/contracts/meals.js';
-import { paycomDefaults } from '../../dashboard/src/lib/paycom.js';
+import {
+  test,
+  expect,
+  demo,
+  login,
+  openDsp,
+  setDate,
+  expectDate,
+} from '../../../../core/shell/tests/support/fixtures.js';
+import type { MealSource } from '../../../../shared/contracts/meals.js';
+import { paycomDefaults } from '../../frontend/paycom.js';
 
 const date = '2026-09-15';
 const paycomUrl = (code: string) =>

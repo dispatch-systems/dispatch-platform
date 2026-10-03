@@ -1,4 +1,4 @@
-import { navigate, signInHash } from './navigation.js';
+import { navigate, signInHash } from '../../shell/frontend/runtime/navigation.js';
 
 type SignInHandoff = { email: string; animate: boolean };
 let pending: SignInHandoff | undefined;

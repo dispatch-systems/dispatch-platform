@@ -1,11 +1,11 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import type { Page } from '@playwright/test';
-import type { AgentKeys } from '../../shared/contracts/index.js';
-import { platformHash } from '../../dashboard/src/app/navigation.js';
-import { signIns } from '../../dashboard/src/lib/agents.js';
-import { utcDay } from '../../dashboard/src/lib/format.js';
-import { test, expect, login } from './fixtures.js';
+import type { AgentKeys } from '../../../../shared/contracts/index.js';
+import { platformHash } from '../../../shell/frontend/runtime/navigation.js';
+import { signIns } from '../../frontend/agents/agents.js';
+import { utcDay } from '../../../shell/frontend/lib/format.js';
+import { test, expect, login } from '../../../shell/tests/support/fixtures.js';
 
 /** Connects Claude Code as `name` while apps may connect: it asks from this browser, the owner
  * signed in on `page` approves what a new app reads, and the app redeems its code. Its listener

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fixture, prepare } from '../support/support.js';
+import { fixture, prepare } from '../../../shell/tests/support/support.js';
 
 test('failed fixture preparation, spawn and startup remove their private state', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-fixture-lifecycle-'));

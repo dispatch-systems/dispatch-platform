@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { MealEmployee } from '../../shared/contracts/meals.js';
-import type { Driver, DriverMatch } from '../../shared/contracts/index.js';
-import { fixture, until } from '../support/support.js';
+import type { MealEmployee } from '../../../../shared/contracts/meals.js';
+import type { Driver, DriverMatch } from '../../../../shared/contracts/index.js';
+import { fixture, until } from '../../../../core/shell/tests/support/support.js';
 
 test('meal API requires DSP context, exposes the punch union to members, and links only through Driver Match', async () => {
   const f = await fixture();
@@ -127,7 +127,7 @@ test('name variants combine existing source records without recollection or losi
 });
 
 test('typed workforce responses carry Rust assessments and reject malformed nested records', async (t) => {
-  const { parseApiResponse } = await import('../../shared/contracts/runtime.js');
+  const { parseApiResponse } = await import('../../../../shared/contracts/runtime.js');
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();

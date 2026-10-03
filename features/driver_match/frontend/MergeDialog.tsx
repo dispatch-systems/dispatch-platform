@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import type { Driver } from '../../../../shared/contracts/index.js';
-import { mergeDrivers } from '../../app/endpoints.js';
-import { useAction } from '../../app/useAction.js';
-import { driverMatches, statusLabels } from '../../lib/driver-match.js';
-import { ErrorBox, Modal, SearchInput } from '../../ui/index.js';
+import type { Driver } from '../../../shared/contracts/index.js';
+import { mergeDrivers } from '../../../core/shell/frontend/runtime/endpoints.js';
+import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
+import { driverMatches, statusLabels } from './driver-match.js';
+import { ErrorBox, Modal, SearchInput } from '../../../core/shell/frontend/ui/index.js';
 import { DriverAvatar } from './DriverAvatar.js';
 
 /** Chooses who else is this person: their IDs move here, and their code leads here. */

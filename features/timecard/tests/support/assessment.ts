@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import type { MealComparison, MealSource, LateRule } from '../../shared/contracts/meals.js';
-import type { EmployeeTimecard, Timecard } from '../../shared/contracts/workforce.js';
+import type { MealComparison, MealSource, LateRule } from '../../../../shared/contracts/meals.js';
+import type { EmployeeTimecard, Timecard } from '../../../../shared/contracts/workforce.js';
 
 export type MealComparisonSource = Omit<MealComparison, 'rows' | 'date'> & {
   date: string | null;

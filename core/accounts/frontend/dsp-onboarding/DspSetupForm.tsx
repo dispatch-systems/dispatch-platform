@@ -1,5 +1,5 @@
 import { ArrowRight, ChevronDown } from 'lucide-react';
-import { ErrorBox } from '../../../ui/index.js';
+import { ErrorBox } from '../../../shell/frontend/ui/index.js';
 
 export type DspSetup = {
   name: string;

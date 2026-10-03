@@ -10,7 +10,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { DspSummary, PageFeature } from '../../../../shared/contracts/index.js';
-import { setDspFeature, useDspFeatures } from '../../app/endpoints.js';
+import { setDspFeature, useDspFeatures } from '../../../shell/frontend/runtime/endpoints.js';
 import {
   featureCatalog,
   previewSwitch,
@@ -20,9 +20,9 @@ import {
   type ConnectionEntry,
   type FeatureEntry,
   type PageEntry,
-} from '../../app/features.js';
-import { useAction } from '../../app/useAction.js';
-import { Badge, ErrorBox } from '../../ui/index.js';
+} from '../../../shell/frontend/runtime/features.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
+import { Badge, ErrorBox } from '../../../shell/frontend/ui/index.js';
 import { FeatureSwitchDialog } from './FeatureSwitchDialog.js';
 
 const icons: Record<PageFeature, LucideIcon> = {

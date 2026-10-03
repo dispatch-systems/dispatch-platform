@@ -1,9 +1,9 @@
-import { performancePolicy } from '../../lib/performance-policy.js';
+import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 import { useDeferredValue, useMemo, useState } from 'react';
 import { RefreshCw, Plus, Ellipsis } from 'lucide-react';
-import type { DspView, Membership, Role } from '../../../../shared/contracts/index.js';
-import { useUpdateState } from '../../app/browser-update.js';
-import { api, useCachedData } from '../../app/api.js';
+import type { DspView, Membership, Role } from '../../../shared/contracts/index.js';
+import { useUpdateState } from '../../../core/shell/frontend/runtime/browser-update.js';
+import { api, useCachedData } from '../../../core/shell/frontend/runtime/api.js';
 import {
   Badge,
   ConfirmDialog,
@@ -19,10 +19,10 @@ import {
   TablePagination,
   useDataTable,
   type TableColumn,
-} from '../../ui/index.js';
-import { time } from '../../lib/format.js';
-import { can } from '../../app/permissions.js';
-import { useAction } from '../../app/useAction.js';
+} from '../../../core/shell/frontend/ui/index.js';
+import { time } from '../../../core/shell/frontend/lib/format.js';
+import { can } from '../../../core/shell/frontend/runtime/permissions.js';
+import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { RoleSheet } from './RoleSheet.js';
 import { RolesTab } from './RolesTab.js';
 import { assignable } from './assignable.js';
@@ -32,7 +32,7 @@ import {
   setMemberRole,
   useRoles,
   removeRole,
-} from '../../app/endpoints.js';
+} from '../../../core/shell/frontend/runtime/endpoints.js';
 
 type Invitation = { email: string; role: string; expiresAt: number; accepted: boolean };
 const actions = <span className="sr-only">Actions</span>;

@@ -10,7 +10,7 @@ import {
   monthWeeks,
   parseDay,
   sameDayOf,
-} from '../../dashboard/src/lib/calendar.js';
+} from '../../frontend/lib/calendar.js';
 
 test('days and months roll over years, leap days and daylight saving', () => {
   assert.equal(addDays('2026-12-31', 1), '2027-01-01');

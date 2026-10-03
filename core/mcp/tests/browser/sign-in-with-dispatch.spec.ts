@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
-import { platformHash } from '../../dashboard/src/app/navigation.js';
-import { test, expect, demo, login, signIn } from './fixtures.js';
+import { platformHash } from '../../../shell/frontend/runtime/navigation.js';
+import { test, expect, demo, login, signIn } from '../../../shell/tests/support/fixtures.js';
 
 const claudeCode = 'https://claude.ai/oauth/claude-code-client-metadata';
 // Claude Code's own listener on this computer; the test answers for it.

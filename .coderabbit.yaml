@@ -91,10 +91,10 @@ reviews:
         enrollment, factor removal, recovery-code replacement and session revocation must
         enforce their own recent-authentication requirement.
         (codebase.md, security.md)
-    - path: '{core/tenancy/backend/roles.rs,shared/contracts/accounts.ts,dashboard/src/app/permissions.ts}'
+    - path: '{core/tenancy/backend/roles.rs,shared/contracts/accounts.ts,core/shell/frontend/runtime/permissions.ts}'
       instructions: |
         A permission lives in all three of `core/tenancy/backend/roles.rs`, `shared/contracts/accounts.ts`
-        and `dashboard/src/app/permissions.ts`, with a label. A feature's permissions take their
+        and `core/shell/frontend/runtime/permissions.ts`, with a label. A feature's permissions take their
         role-sheet section from the feature catalog; only a permission of no feature is listed in
         `permissionGroups` directly. Flag a change that updates one file without the others.
         (dispatch-features skill)
@@ -102,20 +102,21 @@ reviews:
       instructions: |
         `extract.rs` ports `timecard.js`'s detached reading. A change to one must be matched in
         the other and proved with `http_extraction_parity`. (dispatch-collectors skill)
-    - path: 'dashboard/src/**'
+    - path: '{app,core,features,collectors}/**/frontend/**'
       instructions: |
         (ui.md, codebase.md)
         - No Tailwind, shadcn, Motion or TanStack Virtual. TanStack Table is used only through
-          `ui/useDataTable.ts`. Styles use the tokens in `styles/tokens.css` and live with the
+          `core/shell/frontend/ui/useDataTable.ts`. Styles use the tokens in
+          `core/shell/frontend/styles/tokens.css` and live with the
           component that owns them. Animation is hand-written CSS or a small rAF loop, and is
           off under `prefers-reduced-motion`.
         - Use the existing primitives before new markup: `Header`, `Tabs`, `Modal`,
           `ConfirmDialog`, `Popover`, `DataState` (for loading and errors), `SearchInput`,
           `Pagination`, `SortHeader`, `DetailList`, `Badge`, `DspAvatar`, `Empty`, `ErrorBox`,
           `Loading`, `useDataTable`, `useFocusTrap`. Mutations use `useAction`; formatting
-          comes from `lib/format.ts`.
+          comes from `core/shell/frontend/lib/format.ts`.
         - An editor with unsaved changes never just closes: Escape, the backdrop and the close
-          button ask "Save changes?" with only Save and Discard, as `features/team/RoleSheet.tsx`
+          button ask "Save changes?" with only Save and Discard, as `features/team/frontend/RoleSheet.tsx`
           does. Closing or refreshing the browser tab discards silently, with no
           `beforeunload` prompt.
         - No subtitles, taglines or descriptive text beneath page titles, section headings or

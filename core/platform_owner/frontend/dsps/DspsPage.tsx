@@ -1,12 +1,24 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import type { DspSummary } from '../../../../shared/contracts/index.js';
-import { useUpdateState } from '../../app/browser-update.js';
-import { api } from '../../app/api.js';
-import { useAction } from '../../app/useAction.js';
-import { usePlatformDsps } from '../../app/endpoints.js';
-import { hashQuery, navigate, platformHash, replaceHashQuery } from '../../app/navigation.js';
-import { ConfirmDialog, DataState, Empty, ErrorBox, Header, Modal } from '../../ui/index.js';
+import { useUpdateState } from '../../../shell/frontend/runtime/browser-update.js';
+import { api } from '../../../shell/frontend/runtime/api.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
+import { usePlatformDsps } from '../../../shell/frontend/runtime/endpoints.js';
+import {
+  hashQuery,
+  navigate,
+  platformHash,
+  replaceHashQuery,
+} from '../../../shell/frontend/runtime/navigation.js';
+import {
+  ConfirmDialog,
+  DataState,
+  Empty,
+  ErrorBox,
+  Header,
+  Modal,
+} from '../../../shell/frontend/ui/index.js';
 import { DspDetail, type DspAction } from './DspDetail.js';
 import { DspListPane } from './DspListPane.js';
 import { open } from './open.js';

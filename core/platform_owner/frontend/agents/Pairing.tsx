@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { openOAuthPairing, useOAuthPairing } from '../../app/endpoints.js';
-import { useAction } from '../../app/useAction.js';
+import { openOAuthPairing, useOAuthPairing } from '../../../shell/frontend/runtime/endpoints.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 
 const later = (a: string | null, b: string | null) =>
   a && b ? (Date.parse(a) >= Date.parse(b) ? a : b) : (a ?? b);

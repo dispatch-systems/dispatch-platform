@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { routeMeta } from '../../dashboard/src/app/route-meta.js';
-import { test, expect, login, openDsp } from './fixtures.js';
-import { seedDvic } from '../support/dvic.js';
-import { seedDriverMatch } from '../support/driver-match.js';
-import { seedAgentKeys } from '../support/agents.js';
+import { routeMeta } from '../../frontend/route-meta.js';
+import { test, expect, login, openDsp } from '../../../core/shell/tests/support/fixtures.js';
+import { seedDvic } from '../../../features/dvic/tests/support/dvic.js';
+import { seedDriverMatch } from '../../../features/driver_match/tests/support/driver-match.js';
+import { seedAgentKeys } from '../../../core/mcp/tests/support/agents.js';
 
 // Not a test: `npm run pr:screenshots -- capture` runs it to photograph the named screens of
 // the built dashboard, from the fixture server, for a PR's Screenshots section. A screen may

@@ -4,17 +4,17 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { startPreview } from '../../tooling/dev/dev-server.js';
-import { demo, until } from '../support/support.js';
+import { demo, until } from '../../core/shell/tests/support/support.js';
 
 test('parallel worktree previews isolate ports, files, fixtures and browser sessions', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-preview-test-'));
   const worktrees = ['first', 'second'].map((name) => {
     const cwd = path.join(root, name);
-    fs.mkdirSync(path.join(cwd, 'dashboard'), { recursive: true });
+    fs.mkdirSync(path.join(cwd, 'app/frontend'), { recursive: true });
     fs.writeFileSync(path.join(cwd, 'vite.config.ts'), 'export default {};');
-    fs.writeFileSync(path.join(cwd, 'dashboard/index.html'), `<h1>${name} worktree</h1>`);
+    fs.writeFileSync(path.join(cwd, 'app/frontend/index.html'), `<h1>${name} worktree</h1>`);
     fs.writeFileSync(
-      path.join(cwd, 'dashboard/entry.js'),
+      path.join(cwd, 'app/frontend/entry.js'),
       'export const value = 1; if (import.meta.hot) import.meta.hot.accept();',
     );
     return cwd;
@@ -56,7 +56,7 @@ test('parallel worktree previews isolate ports, files, fixtures and browser sess
     }),
   );
   fs.writeFileSync(
-    path.join(worktrees[0]!, 'dashboard/entry.js'),
+    path.join(worktrees[0]!, 'app/frontend/entry.js'),
     'export const value = 2; if (import.meta.hot) import.meta.hot.accept();',
   );
   await until(async () =>

@@ -1,5 +1,5 @@
 import { Ellipsis, Lock } from 'lucide-react';
-import type { DspView, Role } from '../../../../shared/contracts/index.js';
+import type { DspView, Role } from '../../../shared/contracts/index.js';
 import {
   DataState,
   DataTable,
@@ -7,8 +7,12 @@ import {
   Popover,
   useDataTable,
   type TableColumn,
-} from '../../ui/index.js';
-import { can, permissionLabels, visiblePermissions } from '../../app/permissions.js';
+} from '../../../core/shell/frontend/ui/index.js';
+import {
+  can,
+  permissionLabels,
+  visiblePermissions,
+} from '../../../core/shell/frontend/runtime/permissions.js';
 import { assignable } from './assignable.js';
 
 const visible = 2;

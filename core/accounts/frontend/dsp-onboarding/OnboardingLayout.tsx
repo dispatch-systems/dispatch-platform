@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { useViewportFit } from '../../../ui/useViewportFit.js';
-import { Brand } from '../../../app/Brand.js';
+import { useViewportFit } from '../../../shell/frontend/ui/useViewportFit.js';
+import { Brand } from '../../../shell/frontend/runtime/Brand.js';
 import { useOnboardingMap } from './map-asset.js';
 import { OnboardingMap } from './OnboardingMap.js';
 import './onboarding.css';

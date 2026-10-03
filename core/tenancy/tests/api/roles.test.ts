@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { demo, fixture } from '../support/support.js';
+import { demo, fixture } from '../../../shell/tests/support/support.js';
 
 type Role = { id: string; name: string; owner: boolean; permissions: string[]; members: number };
 

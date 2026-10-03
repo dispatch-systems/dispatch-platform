@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fixture, until } from '../support/support.js';
+import { fixture, until } from '../../../shell/tests/support/support.js';
 const input = {
   name: 'Paycom refresh',
   collection: 'paycom',

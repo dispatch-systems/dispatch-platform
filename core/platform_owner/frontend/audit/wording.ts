@@ -1,11 +1,11 @@
-import { dateFormatter } from '../../lib/date-format.js';
+import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
 import type { AuditChange, AuditEvent, Permission } from '../../../../shared/contracts/index.js';
-import { errorLabel } from '../../app/api.js';
-import { elapsed, timeOfDay, title } from '../../lib/format.js';
-import { permissionLabels } from '../../app/permissions.js';
-import { featureLabel } from '../../app/features.js';
-import { paycomColumns } from '../../lib/paycom.js';
-import { agentAreas, areaLabels } from '../../lib/agents.js';
+import { errorLabel } from '../../../shell/frontend/runtime/api.js';
+import { elapsed, timeOfDay, title } from '../../../shell/frontend/lib/format.js';
+import { permissionLabels } from '../../../shell/frontend/runtime/permissions.js';
+import { featureLabel } from '../../../shell/frontend/runtime/features.js';
+import { paycomColumns } from '../../../../features/timecard/frontend/paycom.js';
+import { agentAreas, areaLabels } from '../agents/agents.js';
 
 export const views = new Set(['dsp.view_opened', 'dsp.owner_view_opened']);
 

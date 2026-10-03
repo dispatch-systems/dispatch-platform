@@ -1,5 +1,5 @@
 import { ShieldCheck } from 'lucide-react';
-import type { Connection } from '../../../../shared/contracts/index.js';
+import type { Connection } from '../../../shared/contracts/index.js';
 import { ConnectionCard } from './ConnectionCard.js';
 
 export function ConnectionsPage({

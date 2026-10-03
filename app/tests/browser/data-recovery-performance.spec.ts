@@ -1,4 +1,4 @@
-import { test, expect, login, openDsp } from './fixtures.js';
+import { test, expect, login, openDsp } from '../../../core/shell/tests/support/fixtures.js';
 
 const enter = async (page: Parameters<typeof login>[0]) => {
   await login(page);

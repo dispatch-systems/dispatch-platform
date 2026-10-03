@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import type { SecurityStatus } from '../../../../shared/contracts/index.js';
-import { api, ApiError } from '../../app/api.js';
-import { verifyPasskey } from '../../app/passkeys.js';
-import { useAction } from '../../app/useAction.js';
-import { ErrorBox } from '../../ui/index.js';
-import '../settings/security.css';
+import type { SecurityStatus } from '../../../shared/contracts/index.js';
+import { api, ApiError } from '../../shell/frontend/runtime/api.js';
+import { verifyPasskey } from '../../shell/frontend/runtime/passkeys.js';
+import { useAction } from '../../shell/frontend/runtime/useAction.js';
+import { ErrorBox } from '../../shell/frontend/ui/index.js';
+import './settings/security.css';
 
 type Method = 'passkey' | 'authenticator' | 'recovery' | 'password';
 

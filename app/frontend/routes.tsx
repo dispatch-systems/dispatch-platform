@@ -12,58 +12,61 @@ import {
   Users,
   type LucideIcon,
 } from 'lucide-react';
-import type { DspView, Feature, SessionView } from '../../../shared/contracts/index.js';
-import { ErrorBox } from '../ui/ErrorBox.js';
-import { Loading } from '../ui/Loading.js';
-import { PageBoundary } from '../ui/PageBoundary.js';
-import { hasFeature } from './features.js';
-import { can } from './permissions.js';
+import type { DspView, Feature, SessionView } from '../../shared/contracts/index.js';
+import { ErrorBox } from '../../core/shell/frontend/ui/ErrorBox.js';
+import { Loading } from '../../core/shell/frontend/ui/Loading.js';
+import { PageBoundary } from '../../core/shell/frontend/ui/PageBoundary.js';
+import { hasFeature } from '../../core/shell/frontend/runtime/features.js';
+import { can } from '../../core/shell/frontend/runtime/permissions.js';
 import { routeMeta, type DspRouteId, type PlatformRouteId, type RouteMeta } from './route-meta.js';
-import { NavigationStateContext } from './browser-update.js';
-import { isTimecardDataReady, prefetchRouteData } from './route-prefetch.js';
+import { NavigationStateContext } from '../../core/shell/frontend/runtime/browser-update.js';
+import {
+  isTimecardDataReady,
+  prefetchRouteData,
+} from '../../core/shell/frontend/runtime/route-prefetch.js';
 
-const loadAgents = () => import('../features/agents/index.js');
+const loadAgents = () => import('../../core/platform_owner/frontend/agents/index.js');
 const AgentsPage = lazy(() => loadAgents().then((module) => ({ default: module.AgentsPage })));
 const AuthorizePage = lazy(() =>
   loadAgents().then((module) => ({ default: module.AuthorizePage })),
 );
-const loadAudit = () => import('../features/audit/index.js');
+const loadAudit = () => import('../../core/platform_owner/frontend/audit/index.js');
 const AuditPage = lazy(() => loadAudit().then((module) => ({ default: module.AuditPage })));
-const loadHome = () => import('../features/home/index.js');
+const loadHome = () => import('../../features/home/frontend/index.js');
 const HomePage = lazy(() => loadHome().then((module) => ({ default: module.HomePage })));
-const loadPlatform = () => import('../features/platform/index.js');
-const loadDiagnostics = () => import('../features/platform/diagnostics/index.js');
-const loadPicker = () => import('../features/platform/picker.js');
+const loadPlatform = () => import('../../core/platform_owner/frontend/dsps/index.js');
+const loadDiagnostics = () => import('../../core/platform_owner/frontend/diagnostics/index.js');
+const loadPicker = () => import('../../core/platform_owner/frontend/dsps/picker.js');
 const DiagnosticsPage = lazy(() =>
   loadDiagnostics().then((module) => ({ default: module.DiagnosticsPage })),
 );
 const DspsPage = lazy(() => loadPlatform().then((module) => ({ default: module.DspsPage })));
 const DspPicker = lazy(() => loadPicker().then((module) => ({ default: module.DspPicker })));
 const loadSettings = (access?: Access) =>
-  import('../features/settings/index.js').then(async (module) => {
+  import('../../features/settings/frontend/index.js').then(async (module) => {
     await module.preloadSettingsPage(access?.view);
     return module;
   });
 const SettingsPage = lazy(() =>
   loadSettings().then((module) => ({ default: module.SettingsPage })),
 );
-const loadTeam = () => import('../features/team/index.js');
+const loadTeam = () => import('../../features/team/frontend/index.js');
 const TeamPage = lazy(() => loadTeam().then((module) => ({ default: module.TeamPage })));
-const loadUniforms = () => import('../features/uniforms/index.js');
+const loadUniforms = () => import('../../features/uniforms/frontend/index.js');
 const UniformInventoryPage = lazy(() =>
   loadUniforms().then((module) => ({ default: module.UniformInventoryPage })),
 );
 let timecardReady: ((view: DspView) => boolean) | undefined;
 const loadTimecard = (access?: Access) =>
-  import('../features/timecard/index.js').then(async (module) => {
+  import('../../features/timecard/frontend/index.js').then(async (module) => {
     timecardReady = module.isTimecardPageReady;
     if (access?.view) await module.preloadTimecardPage(access.view);
     return module;
   });
-const loadTimecardSettings = () => import('../features/timecard/settings/index.js');
+const loadTimecardSettings = () => import('../../features/timecard/frontend/settings/index.js');
 let dvicReady: ((view: DspView) => boolean) | undefined;
 const loadDvic = () =>
-  import('../features/dvic/index.js').then((module) => {
+  import('../../features/dvic/frontend/index.js').then((module) => {
     dvicReady = module.isDvicPageReady;
     return module;
   });

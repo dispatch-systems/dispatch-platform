@@ -1,4 +1,4 @@
-import { test, expect, login, openDsp } from './fixtures.js';
+import { test, expect, login, openDsp } from '../../../shell/tests/support/fixtures.js';
 
 test('credentials close before login finishes, errors stay on the card, and CAPTCHA opens after retry', async ({
   page,

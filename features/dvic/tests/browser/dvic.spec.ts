@@ -1,4 +1,10 @@
-import { test, expect, login, openDsp, demo } from './fixtures.js';
+import {
+  test,
+  expect,
+  login,
+  openDsp,
+  demo,
+} from '../../../../core/shell/tests/support/fixtures.js';
 import { seedDvic } from '../support/dvic.js';
 
 test('unconfigured collection explains the missing station and Cortex connection', async ({

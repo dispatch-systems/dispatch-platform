@@ -1,6 +1,6 @@
-import { Brand } from '../../app/Brand.js';
-import { useData } from '../../app/api.js';
-import { Loading } from '../../ui/index.js';
+import { Brand } from '../../shell/frontend/runtime/Brand.js';
+import { useData } from '../../shell/frontend/runtime/api.js';
+import { Loading } from '../../shell/frontend/ui/index.js';
 import { InvitationAccepted } from './member-profile/InvitationAccepted.js';
 import { InvitationExpired } from './member-profile/InvitationExpired.js';
 import { MemberProfileCreation } from './member-profile/MemberProfileCreation.js';

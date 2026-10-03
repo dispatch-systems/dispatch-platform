@@ -1,11 +1,14 @@
-import { PaycomDateControls } from './DateControls.js';
-import { localDate } from '../../lib/meal-breaks.js';
+import { PaycomDateControls } from '../../DateControls.js';
+import { localDate } from '../../meal-breaks.js';
 import { useMemo, useState } from 'react';
 import { Download, Globe, Info } from 'lucide-react';
-import type { DailyTimecard } from '../../../../shared/contracts/index.js';
-import type { PaycomPreferences } from '../../../../shared/contracts/paycom.js';
-import { dailyTimecardsUrl, useDailyTimecards } from '../../app/endpoints.js';
-import { useTableState } from '../../app/useTableState.js';
+import type { DailyTimecard } from '../../../../../shared/contracts/index.js';
+import type { PaycomPreferences } from '../../../../../shared/contracts/paycom.js';
+import {
+  dailyTimecardsUrl,
+  useDailyTimecards,
+} from '../../../../../core/shell/frontend/runtime/endpoints.js';
+import { useTableState } from '../../../../../core/shell/frontend/runtime/useTableState.js';
 import {
   DataState,
   DataTable,
@@ -15,12 +18,12 @@ import {
   TablePagination,
   useDataTable,
   type TableColumn,
-} from '../../ui/index.js';
-import { time } from '../../lib/format.js';
+} from '../../../../../core/shell/frontend/ui/index.js';
+import { time } from '../../../../../core/shell/frontend/lib/format.js';
 import { punchColumns } from './punchColumns.js';
-import { sortDailyRows } from '../../lib/daily-sort.js';
+import { sortDailyRows } from '../../daily-sort.js';
 import { pageSize } from './pageSize.js';
-import { useAdjacentDays } from './useAdjacentDays.js';
+import { useAdjacentDays } from '../../useAdjacentDays.js';
 
 type Card = DailyTimecard;
 type Punch = Card['punches'][number];

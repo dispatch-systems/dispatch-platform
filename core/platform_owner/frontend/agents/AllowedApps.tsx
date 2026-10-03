@@ -1,8 +1,8 @@
 import { useId, useState } from 'react';
 import type { OAuthAllowedApp, OAuthAppId } from '../../../../shared/contracts/index.js';
-import { allowOAuthApp, useOAuthApps } from '../../app/endpoints.js';
-import { useAction } from '../../app/useAction.js';
-import { DataState, Modal } from '../../ui/index.js';
+import { allowOAuthApp, useOAuthApps } from '../../../shell/frontend/runtime/endpoints.js';
+import { useAction } from '../../../shell/frontend/runtime/useAction.js';
+import { DataState, Modal } from '../../../shell/frontend/ui/index.js';
 import { AppIcon } from './AppIcon.js';
 
 /** What the kinds of app that aren't one app are. */

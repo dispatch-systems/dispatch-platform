@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { csvCell, csvText } from '../../dashboard/src/lib/csv.js';
+import { csvCell, csvText } from '../../frontend/lib/csv.js';
 
 test('CSV cells cannot become spreadsheet formulas', () => {
   for (const value of [

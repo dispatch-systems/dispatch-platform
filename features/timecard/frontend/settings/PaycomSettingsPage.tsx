@@ -7,19 +7,23 @@ import {
   Header,
   useDataTable,
   type TableColumn,
-} from '../../../ui/index.js';
-import { scheduleIssues } from '../../../app/schedule-issues.js';
+} from '../../../../core/shell/frontend/ui/index.js';
+import { scheduleIssues } from '../../../../core/shell/frontend/runtime/schedule-issues.js';
 import {
   type CollectionSchedule,
   type ScheduleInput,
-} from '../../../../../shared/contracts/schedules.js';
-import { dspHash } from '../../../app/navigation.js';
-import { messageOf } from '../../../lib/errors.js';
+} from '../../../../shared/contracts/schedules.js';
+import { dspHash } from '../../../../core/shell/frontend/runtime/navigation.js';
+import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { LateDas } from './LateDas.js';
 import { nextCollection } from './nextCollection.js';
 import { ScheduleEditor } from './ScheduleEditor.js';
 import './timecard-schedules.css';
-import { useSchedules, getSchedules, setScheduleEnabled } from '../../../app/endpoints.js';
+import {
+  useSchedules,
+  getSchedules,
+  setScheduleEnabled,
+} from '../../../../core/shell/frontend/runtime/endpoints.js';
 
 function clock(value: string) {
   const [hour, minute] = value.split(':').map(Number);
