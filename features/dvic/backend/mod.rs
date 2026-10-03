@@ -2,6 +2,8 @@
 //! Publication weeks are ISO Monday–Sunday; inspection dates come from the rows.
 #[path = "hidden.rs"]
 pub mod hidden;
+#[path = "keeper.rs"]
+pub mod keeper;
 #[path = "storage.rs"]
 mod storage;
 

@@ -355,9 +355,9 @@ fn scorecards(
             db.enqueue_scorecard(id, None, &format!("synthetic-scorecard:{week}"), Some(week))?;
         let job = s(&jobs, "id").to_owned();
         let request: Value = serde_json::from_str(&db.job_row(&job, Some(id))?.request)?;
-        let request = cortex::PROVIDER
-            .collector()
-            .bind_request(db, id, &request)?;
+        let request = crate::manifest::registry()
+            .keeper(cortex::scorecard::JOB_KIND)
+            .bind(db, id, &request)?;
         let request = cortex::scorecard::Request::parse(&request)?
             .ok_or_else(|| Error::new("invalid_input", 400))?;
         let mut capture = cortex::scorecard::fixture(&request)?;

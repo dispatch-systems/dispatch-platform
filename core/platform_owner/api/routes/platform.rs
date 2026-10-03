@@ -203,9 +203,7 @@ async fn set_feature(state: Arc<State>, input: Input, access: PlatformRoutine) -
             // Each collection's owning feature stops only its own jobs.
             for provider in Provider::all() {
                 let collector = provider.collector();
-                for kind in std::iter::once(collector.job_kind())
-                    .chain(collector.other_job_kinds().iter().copied())
-                {
+                for kind in provider.job_kinds() {
                     if switched(&result, features::automation(kind), false) {
                         let jobs = db.jobs.query_as::<crate::contracts::JobRow>(
                             concat!(

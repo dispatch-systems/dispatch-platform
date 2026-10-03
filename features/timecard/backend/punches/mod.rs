@@ -5,6 +5,8 @@ pub mod assessment;
 mod daily;
 #[path = "employees.rs"]
 mod employees;
+#[path = "keeper.rs"]
+pub mod keeper;
 #[path = "preferences.rs"]
 mod preferences;
 #[path = "publication.rs"]

@@ -21,9 +21,10 @@ pub struct Registry {
 
 static INSTALLED: OnceLock<&'static Registry> = OnceLock::new();
 
-/// Makes `registry` the one `registry()` answers. Installing it again changes nothing;
-/// installing a different one panics.
+/// Makes `registry` the one `registry()` answers, once it has checked it. Installing it
+/// again changes nothing; installing a different one panics.
 pub fn install(registry: &'static Registry) {
+    registry.check();
     let installed = *INSTALLED.get_or_init(|| registry);
     assert!(
         std::ptr::eq(installed, registry),
@@ -42,19 +43,68 @@ pub fn registry() -> &'static Registry {
         .expect("no registry is installed: the app installs one before anything reads it")
 }
 
+impl Registry {
+    /// Every feature's keepers, in the registry's order.
+    pub fn keepers(&self) -> impl Iterator<Item = &'static dyn Keeper> {
+        self.features
+            .iter()
+            .flat_map(|feature| feature.keeps.iter().copied())
+    }
+    /// The keeper of the collection a job of `kind` collects.
+    pub fn keeper(&self, kind: &str) -> &'static dyn Keeper {
+        self.keepers()
+            .find(|keeper| keeper.keeps() == kind)
+            .unwrap_or_else(|| panic!("no feature keeps {kind}"))
+    }
+    /// Panics unless every collection has exactly one keeper, and every keeper keeps a
+    /// registered collection.
+    pub fn check(&self) {
+        let kinds: Vec<&str> = self
+            .collectors
+            .iter()
+            .flat_map(|collector| collector.collections())
+            .map(|collection| collection.job_kind)
+            .collect();
+        for kind in &kinds {
+            let keepers = self.keepers().filter(|k| k.keeps() == *kind).count();
+            assert!(keepers == 1, "{kind} has {keepers} keepers, not one");
+        }
+        for keeper in self.keepers() {
+            assert!(
+                kinds.contains(&keeper.keeps()),
+                "{} is kept, but no collector collects it",
+                keeper.keeps()
+            );
+        }
+    }
+}
+
 /// What a feature declares in its `feature.rs`. Fields join as the slots that read them land.
 pub struct Feature {
     /// Its directory's name.
     pub name: &'static str,
+    /// The collections it keeps.
+    pub keeps: &'static [&'static dyn Keeper],
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
 pub const fn feature(name: &'static str) -> Feature {
-    Feature { name }
+    Feature { name, keeps: &[] }
 }
 
-/// Everything the platform needs to know about one provider. Storage, credentials,
-/// the browser and the job queue ask here instead of matching on the provider.
+/// One kind of data a collector reads. A job of `job_kind` collects it for one DSP, and
+/// the one feature that keeps it stores what the job brings.
+pub struct Collection {
+    pub job_kind: &'static str,
+    /// The schedule `collection` that runs it.
+    pub schedule: &'static str,
+    /// The error a schedule answers while its collector is not connected.
+    pub unconnected: &'static str,
+}
+
+/// Everything the platform needs to know about one provider: how to reach it and read
+/// what it offers. Storage, credentials, the browser and the job queue ask here instead
+/// of matching on the provider; what a collection brings is a feature's `Keeper`'s.
 pub trait Collector: Sync {
     /// Names its connection row, its files, its secrets and its API path.
     fn id(&self) -> &'static str;
@@ -62,20 +112,12 @@ pub trait Collector: Sync {
     fn label(&self) -> &'static str;
     /// What its connection supplies to the pages that require it (`features`).
     fn capabilities(&self) -> &'static [&'static str];
-    /// The kind of job that runs its main collection.
-    fn job_kind(&self) -> &'static str;
-    /// The kinds of its other collections, each chosen by `job_kind_for`.
-    fn other_job_kinds(&self) -> &'static [&'static str] {
-        &[]
-    }
+    /// What it reads, its main collection first; each is chosen by `job_kind_for`. `both`
+    /// schedules run the first of every collector's.
+    fn collections(&self) -> &'static [Collection];
     /// The kind of job a request queues.
     fn job_kind_for(&self, _request: &Value) -> &'static str {
-        self.job_kind()
-    }
-    /// Adds current tenant context needed only while a queued request executes. The
-    /// persisted request stays compatible with the previous binary for rollback.
-    fn bind_request(&self, _: &Store, _: &str, request: &Value) -> Result<Value> {
-        Ok(request.clone())
+        self.collections()[0].job_kind
     }
     /// Databases beside its own, one per added collection.
     fn added_storages(&self) -> &'static [&'static AddedStorage] {
@@ -139,6 +181,27 @@ pub trait Collector: Sync {
     fn prepare(&self, collected: Collected) -> Result<Collected> {
         Ok(collected)
     }
+    /// Drops what an unfinished job kept to resume from. `None` means every job.
+    fn discard(&self, _: &Store, _dsp: &str, _job: Option<&str>) -> Result<()> {
+        Ok(())
+    }
+    /// Runs with the connection's own disable, in its transaction.
+    fn disabled(&self, _: &Db) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// How a feature keeps one collection: what a queued request needs from the DSP before
+/// it runs, how what it brings is stored, and what a schedule of it queues. The engine
+/// finds it by the collection's job kind.
+pub trait Keeper: Sync {
+    /// The job kind of the collection it keeps.
+    fn keeps(&self) -> &'static str;
+    /// Adds current tenant context needed only while a queued request executes. The
+    /// persisted request stays compatible with the previous binary for rollback.
+    fn bind(&self, _: &Store, _dsp: &str, request: &Value) -> Result<Value> {
+        Ok(request.clone())
+    }
     /// Stores what it can of a finished collection before the job publishes it, in
     /// steps short enough that the platform lock is never held for long; `publish` then
     /// only makes it current. Each step checks the job is still this worker's.
@@ -154,30 +217,17 @@ pub trait Collector: Sync {
     }
     /// Stores a finished collection. Runs while the job is still this worker's.
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()>;
-    /// Drops what an unfinished job kept to resume from. `None` means every job.
-    fn discard(&self, _: &Store, _dsp: &str, _job: Option<&str>) -> Result<()> {
-        Ok(())
-    }
     /// When `date` was last collected, as a row with `collected_at`.
-    fn collected_at(&self, db: &Db, date: &str) -> Result<Option<Value>>;
-    /// The schedule `collection`s that run this collector, each with the error a
-    /// schedule answers while it is not connected. `both` runs the first of every
-    /// collector's.
-    fn schedules(&self) -> &'static [(&'static str, &'static str)] {
-        &[]
+    fn collected_at(&self, _: &Store, _dsp: &str, _date: &str) -> Result<Option<Value>> {
+        Ok(None)
     }
-    /// What else a schedule needs before it can run `collection`.
-    fn schedule_ready(&self, _: &Store, _dsp: &str, _collection: &str) -> Result<()> {
+    /// What else a schedule needs before it can run the collection.
+    fn schedule_ready(&self, _: &Store, _dsp: &str) -> Result<()> {
         Ok(())
     }
-    /// The jobs one scheduled run of `collection` queues: an idempotency key suffix
-    /// and a request each.
-    fn scheduled(&self, _: &Store, _dsp: &str, _collection: &str) -> Result<Vec<(String, Value)>> {
+    /// The jobs one scheduled run queues: an idempotency key suffix and a request each.
+    fn scheduled(&self, _: &Store, _dsp: &str) -> Result<Vec<(String, Value)>> {
         Ok(vec![])
-    }
-    /// Runs with the connection's own disable, in its transaction.
-    fn disabled(&self, _: &Db) -> Result<()> {
-        Ok(())
     }
 }
 

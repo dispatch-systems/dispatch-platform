@@ -81,9 +81,9 @@ impl Store {
                 latest = failed;
             }
         }
-        let collected = provider
-            .collector()
-            .collected_at(&*self.collector(id, provider)?, date)?;
+        let collected = crate::manifest::registry()
+            .keeper(kind)
+            .collected_at(self, id, date)?;
         let job = active.or(latest);
         let request = job
             .as_ref()

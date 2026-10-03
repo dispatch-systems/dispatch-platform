@@ -2,6 +2,9 @@
 //! page, one week at a time, published into the DSP's scorecard database. Every row
 //! Amazon sends is kept as JSON beside the keys reads filter on. Browser and HTTP
 //! data is untrusted input.
+#[path = "keeper.rs"]
+pub mod keeper;
+
 use crate::{
     Error, Result,
     collectors::{
@@ -15,6 +18,7 @@ use crate::{
     contracts::{ScorecardDatasetCount, ScorecardPublication, ScorecardWeek, ScorecardWeeks},
     db::{Db, DspLease, Kind, Store, at, now, s},
     ensure,
+    manifest::Keeper,
     weeks::{last_completed_week, week_or_latest},
 };
 use chrono::NaiveDate;
@@ -201,9 +205,7 @@ impl Store {
         scope: &Scope,
     ) -> Result<()> {
         let request: Value = serde_json::from_str(&self.job_row(job, Some(id))?.request)?;
-        let request = cortex::PROVIDER
-            .collector()
-            .bind_request(self, id, &request)?;
+        let request = keeper::Scorecard.bind(self, id, &request)?;
         let request = Request::parse(&request)?.ok_or_else(|| Error::new("invalid_input", 400))?;
         capture.validate_scope(&request, scope)?;
         let db = self.scorecard(id)?;

@@ -1,0 +1,38 @@
+//! Timecard keeps Paycom's timecards: a pay period's, or one employee's.
+use crate::{
+    Result,
+    browsers::Collected,
+    collectors::paycom::{
+        self,
+        timecards::{EmployeeSync, JOB_KIND},
+    },
+    db::Store,
+    manifest::Keeper,
+};
+use serde_json::{Value, json};
+
+pub struct Timecards;
+impl Keeper for Timecards {
+    fn keeps(&self) -> &'static str {
+        JOB_KIND
+    }
+    fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
+        let request: Value = serde_json::from_str(&store.job_row(job, Some(dsp))?.request)?;
+        if let Some(scope) = EmployeeSync::parse(&request)? {
+            store.publish_employee_timecard(dsp, &scope, &collected.data)?;
+        } else {
+            store.publish(dsp, &collected.data)?;
+        }
+        Ok(())
+    }
+    fn collected_at(&self, store: &Store, dsp: &str, date: &str) -> Result<Option<Value>> {
+        store.collector(dsp, paycom::PROVIDER)?.one(
+            "SELECT collected_at FROM publications WHERE period_from<=? AND period_to>=? \
+            ORDER BY collected_at DESC,id DESC LIMIT 1",
+            [date, date],
+        )
+    }
+    fn scheduled(&self, _: &Store, _: &str) -> Result<Vec<(String, Value)>> {
+        Ok(vec![("paycom".into(), json!({}))])
+    }
+}

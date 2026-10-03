@@ -49,12 +49,7 @@ fn timecards(kind: &str) -> bool {
 fn jobs(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
     let mut kinds = vec![];
     for provider in crate::collectors::Provider::all() {
-        let collector = provider.collector();
-        kinds.extend(
-            std::iter::once(collector.job_kind())
-                .chain(collector.other_job_kinds().iter().copied())
-                .filter(|kind| timecards(kind)),
-        );
+        kinds.extend(provider.job_kinds().filter(|kind| timecards(kind)));
     }
     Reply::of(&db.recent_jobs_in(c.dsp_id(), &kinds)?)
 }

@@ -7,7 +7,9 @@ use super::{
     },
     crypto,
     db::{FromRow, Row, Store, at, iso, now},
-    ensure, job_statuses, validate as v,
+    ensure, job_statuses,
+    manifest::{Collection, registry},
+    validate as v,
 };
 use chrono::{NaiveTime, TimeZone};
 use rusqlite::params;
@@ -215,26 +217,25 @@ impl Store {
             .one_as("SELECT * FROM collection_schedules WHERE id=?", [schedule])?
             .ok_or_else(|| Error::new("schedule_not_found", 404))
     }
-    // `both` selects every collector's first collection; any other value selects one
-    // collector's named collection. Each comes with the error a schedule answers
-    // while its provider is not connected.
+    // `both` selects every collector's first collection; any other value selects the
+    // collection it names. Each comes with its provider.
     fn scheduled_collections(
         collection: ScheduleCollection,
-    ) -> impl Iterator<Item = (Provider, &'static str, &'static str)> {
+    ) -> impl Iterator<Item = (Provider, &'static Collection)> {
         Provider::all().flat_map(move |provider| {
             provider
                 .collector()
-                .schedules()
+                .collections()
                 .iter()
                 .enumerate()
-                .filter(move |(index, (name, _))| {
+                .filter(move |(index, scheduled)| {
                     if collection == ScheduleCollection::Both {
                         *index == 0
                     } else {
-                        collection.as_str() == *name
+                        collection.as_str() == scheduled.schedule
                     }
                 })
-                .map(move |(_, (name, required))| (provider, *name, *required))
+                .map(move |(_, scheduled)| (provider, scheduled))
         })
     }
     /// Today, where the DSP is.
@@ -246,9 +247,15 @@ impl Store {
             .to_string())
     }
     fn check_schedule_sources(&self, id: &str, collection: ScheduleCollection) -> Result<()> {
-        for (provider, name, required) in Self::scheduled_collections(collection) {
-            ensure(self.connection_for(id, provider)?.enabled, required, 409)?;
-            provider.collector().schedule_ready(self, id, name)?;
+        for (provider, scheduled) in Self::scheduled_collections(collection) {
+            ensure(
+                self.connection_for(id, provider)?.enabled,
+                scheduled.unconnected,
+                409,
+            )?;
+            registry()
+                .keeper(scheduled.job_kind)
+                .schedule_ready(self, id)?;
         }
         Ok(())
     }
@@ -436,8 +443,8 @@ impl Store {
         Ok(())
     }
     pub(crate) fn pause_provider_schedules(&self, id: &str, provider: Provider) -> Result<()> {
-        for (target, _) in provider.collector().schedules() {
-            self.dsp(id)?.exec(PAUSE, [target])?;
+        for collection in provider.collector().collections() {
+            self.dsp(id)?.exec(PAUSE, [collection.schedule])?;
         }
         Ok(())
     }
@@ -513,8 +520,8 @@ impl Store {
         }
         self.check_schedule_sources(id, row.collection)?;
         let mut requests = Vec::new();
-        for (provider, name, _) in Self::scheduled_collections(row.collection) {
-            for (suffix, request) in provider.collector().scheduled(self, id, name)? {
+        for (provider, scheduled) in Self::scheduled_collections(row.collection) {
+            for (suffix, request) in registry().keeper(scheduled.job_kind).scheduled(self, id)? {
                 requests.push((format!("{key}{suffix}"), provider, request));
             }
         }

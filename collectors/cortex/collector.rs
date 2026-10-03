@@ -16,7 +16,7 @@ pub mod scorecard;
 
 use super::{AddedStorage, Provider};
 use crate::{
-    Code, Error, Result,
+    Code, Result,
     browsers::{
         Collected, Driver, Pending,
         browseros::{self, NetworkPolicy},
@@ -24,10 +24,10 @@ use crate::{
         egress::HostPolicy,
         http::RequestHosts,
     },
-    db::{self, Db, Kind, Store},
+    db::{self, Db, Kind},
     ensure,
     job_metrics::Counts,
-    manifest::Collector,
+    manifest::{Collection, Collector},
     validate as v,
 };
 use discovery::CollectionRequest;
@@ -85,6 +85,30 @@ pub static REPORT_HOSTS: RequestHosts = RequestHosts {
     http2: false,
 };
 
+/// What it reads, meal breaks first.
+static COLLECTIONS: [Collection; 4] = [
+    Collection {
+        job_kind: meals::JOB_KIND,
+        schedule: "meal_break",
+        unconnected: "schedule_meals_required",
+    },
+    Collection {
+        job_kind: scorecard::JOB_KIND,
+        schedule: "scorecard",
+        unconnected: "schedule_scorecard_required",
+    },
+    Collection {
+        job_kind: routes::JOB_KIND,
+        schedule: "routes",
+        unconnected: "schedule_routes_required",
+    },
+    Collection {
+        job_kind: dvic::JOB_KIND,
+        schedule: "dvic",
+        unconnected: "schedule_dvic_required",
+    },
+];
+
 pub struct Cortex;
 impl Collector for Cortex {
     fn id(&self) -> &'static str {
@@ -96,11 +120,8 @@ impl Collector for Cortex {
     fn capabilities(&self) -> &'static [&'static str] {
         &["meal_breaks", "routes", "dvic", "scorecard"]
     }
-    fn job_kind(&self) -> &'static str {
-        "cortex.meal_breaks.collect"
-    }
-    fn other_job_kinds(&self) -> &'static [&'static str] {
-        &[scorecard::JOB_KIND, routes::JOB_KIND, dvic::JOB_KIND]
+    fn collections(&self) -> &'static [Collection] {
+        &COLLECTIONS
     }
     fn job_kind_for(&self, request: &Value) -> &'static str {
         if dvic::Request::is(request) {
@@ -110,32 +131,8 @@ impl Collector for Cortex {
         } else if routes::Request::is(request) {
             routes::JOB_KIND
         } else {
-            self.job_kind()
+            meals::JOB_KIND
         }
-    }
-    fn bind_request(&self, store: &Store, dsp: &str, request: &Value) -> Result<Value> {
-        if dvic::Request::is(request) {
-            let station = request["station"]
-                .as_str()
-                .ok_or_else(|| Error::new("invalid_dvic_request", 400))?;
-            let weeks: Vec<String> = serde_json::from_value(request["weeks"].clone())
-                .map_err(|_| Error::new("invalid_dvic_request", 400))?;
-            let bound = store.bind_dvic_request(dsp, weeks)?;
-            ensure(bound["station"] == station, "dvic_scope_mismatch", 409)?;
-            return Ok(bound);
-        }
-        if scorecard::Request::is(request) {
-            let week = request["week"]
-                .as_str()
-                .ok_or_else(|| Error::new("invalid_input", 400))?;
-            let station = request["station"]
-                .as_str()
-                .ok_or_else(|| Error::new("invalid_input", 400))?;
-            let bound = store.bind_scorecard_request(dsp, week)?;
-            ensure(bound["station"] == station, "scorecard_scope_mismatch", 409)?;
-            return Ok(bound);
-        }
-        Ok(request.clone())
     }
     fn added_storages(&self) -> &'static [&'static AddedStorage] {
         static ADDED: [&AddedStorage; 3] = [
@@ -285,108 +282,5 @@ impl Collector for Cortex {
     }
     fn retryable(&self) -> &'static [Code] {
         codes::RETRYABLE
-    }
-    fn stage<'a>(
-        &'a self,
-        state: &'a std::sync::Arc<crate::State>,
-        dsp: &'a str,
-        job: &'a str,
-        owner: &'a str,
-        collected: Collected,
-    ) -> Pending<'a, Collected> {
-        Box::pin(async move {
-            if !routes::Request::is(&collected.data) {
-                return Ok(collected);
-            }
-            let capture: routes::Capture = serde_json::from_value(collected.data)?;
-            let staged = crate::routedata::stage(state, dsp, job, owner, capture).await?;
-            Ok(Collected {
-                data: serde_json::to_value(staged)?,
-                scope: collected.scope,
-            })
-        })
-    }
-    fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
-        let Collected { data, scope } = collected;
-        if dvic::Request::is(&data) {
-            return store.publish_dvic(
-                dsp,
-                job,
-                &serde_json::from_value(data)?,
-                &scope.ok_or_else(|| Error::new("invalid_cortex_scope", 502))?,
-            );
-        }
-        if scorecard::Request::is(&data) {
-            return store.publish_scorecard(
-                dsp,
-                job,
-                &serde_json::from_value(data)?,
-                &scope.ok_or_else(|| Error::new("invalid_cortex_scope", 502))?,
-            );
-        }
-        if routes::Request::is(&data) {
-            return store.publish_routes(dsp, job, &serde_json::from_value(data)?);
-        }
-        store.publish_meals(
-            dsp,
-            job,
-            &serde_json::from_value(data)?,
-            &scope.ok_or_else(|| Error::new("invalid_cortex_scope", 502))?,
-        )?;
-        Ok(())
-    }
-    fn collected_at(&self, db: &Db, date: &str) -> Result<Option<Value>> {
-        db.one("SELECT MAX(collected_at) collected_at FROM meal_publications WHERE report_date=? AND active=1",[date])
-    }
-    fn schedules(&self) -> &'static [(&'static str, &'static str)] {
-        &[
-            ("meal_break", "schedule_meals_required"),
-            ("scorecard", "schedule_scorecard_required"),
-            ("routes", "schedule_routes_required"),
-            ("dvic", "schedule_dvic_required"),
-        ]
-    }
-    fn schedule_ready(&self, store: &Store, dsp: &str, collection: &str) -> Result<()> {
-        if collection == "dvic" {
-            return store.dvic_schedule_ready(dsp);
-        }
-        if collection == "scorecard" {
-            return store.scorecard_schedule_ready(dsp);
-        }
-        if collection == "routes" {
-            return store.routes_schedule_ready(dsp);
-        }
-        ensure(
-            !store
-                .meal_sync_scopes(dsp, &store.local_date(dsp)?)?
-                .is_empty(),
-            "schedule_scope_required",
-            409,
-        )
-    }
-    fn scheduled(
-        &self,
-        store: &Store,
-        dsp: &str,
-        collection: &str,
-    ) -> Result<Vec<(String, Value)>> {
-        if collection == "dvic" {
-            return store.dvic_jobs(dsp);
-        }
-        if collection == "scorecard" {
-            return store.scorecard_jobs(dsp);
-        }
-        if collection == "routes" {
-            return store.routes_jobs(dsp);
-        }
-        store
-            .meal_sync_scopes(dsp, &store.local_date(dsp)?)?
-            .iter()
-            .enumerate()
-            .map(|(index, scope)| {
-                scope.validate()?;
-                Ok((format!("flex:{index}"), serde_json::to_value(scope)?))
-            })
-            .collect()
     }
 }

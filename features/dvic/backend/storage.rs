@@ -3,6 +3,7 @@ use crate::{
     collectors::cortex,
     contracts::{DvicInspection, DvicInspections, DvicStatus},
     db::{DspLease, Store, at, now, s},
+    manifest::Keeper,
 };
 use rusqlite::params;
 use std::collections::HashMap;
@@ -139,9 +140,7 @@ impl Store {
             502,
         )?;
         let request: Value = serde_json::from_str(&job_row.request)?;
-        let request = cortex::PROVIDER
-            .collector()
-            .bind_request(self, id, &request)?;
+        let request = super::keeper::Dvic.bind(self, id, &request)?;
         let request =
             Request::parse(&request)?.ok_or_else(|| Error::new("invalid_dvic_request", 400))?;
         capture.validate_scope(&request, scope)?;

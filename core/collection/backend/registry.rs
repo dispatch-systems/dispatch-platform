@@ -63,13 +63,16 @@ impl Provider {
     pub fn id(self) -> &'static str {
         self.0
     }
+    /// The kind of job that runs its main collection.
     pub fn job_kind(self) -> &'static str {
-        self.collector().job_kind()
+        self.collector().collections()[0].job_kind
     }
     /// Every kind of job this provider runs.
     pub fn job_kinds(self) -> impl Iterator<Item = &'static str> {
-        std::iter::once(self.collector().job_kind())
-            .chain(self.collector().other_job_kinds().iter().copied())
+        self.collector()
+            .collections()
+            .iter()
+            .map(|collection| collection.job_kind)
     }
     /// The provider of a job kind, and the kind as it is spelled in the registry.
     pub fn from_job_kind(kind: &str) -> Result<(Self, &'static str)> {
@@ -376,7 +379,7 @@ mod tests {
         assert!(unique(all().filter_map(|c| c.marker()).collect()));
         assert!(unique(
             all()
-                .flat_map(|c| c.schedules().iter().map(|s| s.0))
+                .flat_map(|c| c.collections().iter().map(|s| s.schedule))
                 .collect()
         ));
         assert!(unique(

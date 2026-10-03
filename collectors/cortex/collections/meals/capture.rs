@@ -5,6 +5,8 @@ use chrono::{NaiveDate, TimeZone};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
+pub const JOB_KIND: &str = "cortex.meal_breaks.collect";
+
 fn token(v: &str) -> bool {
     !v.is_empty()
         && v.len() <= 256

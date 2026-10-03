@@ -4,6 +4,9 @@
 //! filter on; every response is kept whole, compressed, for reprocessing. Browser and
 //! HTTP data is untrusted input. The collection is `routes` to the platform; the module
 //! and its database are `routedata`, since `routes` names the HTTP routes here.
+#[path = "keeper.rs"]
+pub mod keeper;
+
 use crate::{
     Error, Result,
     collectors::{

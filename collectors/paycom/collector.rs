@@ -21,10 +21,10 @@ use crate::{
     db::{Db, Kind, Store, s},
     ensure,
     job_metrics::Counts,
-    manifest::Collector,
+    manifest::{Collection, Collector},
     validate as v,
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::{collections::HashSet, path::Path};
 use timecards::EmployeeSync;
 
@@ -63,6 +63,13 @@ pub static HOSTS: RequestHosts = RequestHosts {
     http2: false,
 };
 
+/// What it reads: the timecards of a pay period, or of one employee's.
+static COLLECTIONS: [Collection; 1] = [Collection {
+    job_kind: timecards::JOB_KIND,
+    schedule: "paycom",
+    unconnected: "schedule_paycom_required",
+}];
+
 pub struct Paycom;
 impl Collector for Paycom {
     fn id(&self) -> &'static str {
@@ -74,8 +81,8 @@ impl Collector for Paycom {
     fn capabilities(&self) -> &'static [&'static str] {
         &["timecards"]
     }
-    fn job_kind(&self) -> &'static str {
-        "paycom.collect"
+    fn collections(&self) -> &'static [Collection] {
+        &COLLECTIONS
     }
     fn database(&self) -> Kind {
         Kind::Paycom
@@ -166,30 +173,8 @@ impl Collector for Paycom {
     fn codes(&self) -> &'static [Code] {
         codes::ALL
     }
-    fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
-        let request: Value = serde_json::from_str(&store.job_row(job, Some(dsp))?.request)?;
-        if let Some(scope) = EmployeeSync::parse(&request)? {
-            store.publish_employee_timecard(dsp, &scope, &collected.data)?;
-        } else {
-            store.publish(dsp, &collected.data)?;
-        }
-        Ok(())
-    }
     fn discard(&self, store: &Store, dsp: &str, job: Option<&str>) -> Result<()> {
         store.clear_checkpoint(dsp, job)
-    }
-    fn collected_at(&self, db: &Db, date: &str) -> Result<Option<Value>> {
-        db.one(
-            "SELECT collected_at FROM publications WHERE period_from<=? AND period_to>=? \
-            ORDER BY collected_at DESC,id DESC LIMIT 1",
-            [date, date],
-        )
-    }
-    fn schedules(&self) -> &'static [(&'static str, &'static str)] {
-        &[("paycom", "schedule_paycom_required")]
-    }
-    fn scheduled(&self, _: &Store, _: &str, _: &str) -> Result<Vec<(String, Value)>> {
-        Ok(vec![("paycom".into(), json!({}))])
     }
     // v0.0.9 refuses Paycom settings saves while its old schedule row is on
     // and Paycom is disconnected. Drop this with the table.

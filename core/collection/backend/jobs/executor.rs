@@ -6,6 +6,7 @@ use crate::{
     db::now,
     ensure,
     job_metrics::{self, Phase, Recorder},
+    manifest::registry,
     read_cache::DataDomain,
 };
 use rusqlite::params;
@@ -16,6 +17,9 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
     let dsp = job.dsp_id.clone();
     let metrics = Recorder::start(&job);
     let provider: Provider = job.provider();
+    // The collector collects; the feature that keeps the collection binds, stages and
+    // publishes it.
+    let keeper = registry().keeper(job.kind.as_str());
     let domain = DataDomain::collection(job.kind);
     let task = async {
         let jid = id.clone();
@@ -60,7 +64,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
         let request: Value = serde_json::from_str(&job.request)?;
         let tenant = dsp.clone();
         let request = state
-            .read(move |db| provider.collector().bind_request(db, &tenant, &request))
+            .read(move |db| keeper.bind(db, &tenant, &request))
             .await?;
         let message = provider.collector().progress(&request);
         state
@@ -78,10 +82,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
         // steps, so the platform lock is only ever taken for moments.
         let collected = provider.collector().prepare(collected)?;
         metrics.phase(Phase::Publication);
-        let collected = provider
-            .collector()
-            .stage(&state, &dsp, &id, &owner, collected)
-            .await?;
+        let collected = keeper.stage(&state, &dsp, &id, &owner, collected).await?;
         let jid = id.clone();
         let worker = owner.clone();
         let tenant = dsp.clone();
@@ -89,7 +90,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
         state
             .run_scoped(dsp.clone(), domain, move |db| {
                 db.guard(&jid, &worker)?;
-                provider.collector().publish(db, &tenant, &jid, collected)?;
+                keeper.publish(db, &tenant, &jid, collected)?;
                 completed_metrics.finish("succeeded", None);
                 db.jobs.transaction(|| {
                     db.save_metrics(&jid, &worker, &completed_metrics.snapshot())?;

@@ -9,6 +9,7 @@ use chrono::{Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+pub const JOB_KIND: &str = "paycom.collect";
 pub(crate) const PERIOD_DAYS: i64 = 14;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

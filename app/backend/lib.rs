@@ -109,3 +109,11 @@ pub static REGISTRY: manifest::Registry = manifest::Registry {
 pub fn install() {
     manifest::install(&REGISTRY);
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn every_collection_has_exactly_one_keeper() {
+        super::REGISTRY.check();
+    }
+}
