@@ -46,13 +46,15 @@ pub fn install(registry: &'static Registry) {
 
 /// The installed registry.
 pub fn registry() -> &'static Registry {
+    installed().expect("no registry is installed: the app installs one before anything reads it")
+}
+
+/// The installed registry, if there is one yet.
+pub fn installed() -> Option<&'static Registry> {
     // A module's own tests run without the app's startup, so they find the app's registry.
     #[cfg(test)]
     INSTALLED.get_or_init(|| &crate::REGISTRY);
-    INSTALLED
-        .get()
-        .copied()
-        .expect("no registry is installed: the app installs one before anything reads it")
+    INSTALLED.get().copied()
 }
 
 impl Registry {

@@ -1,3 +1,8 @@
+// Core's test support names this crate as its integration tests do, so that its module
+// tests mount the same file.
+#[cfg(test)]
+extern crate self as dispatch_backend;
+
 #[path = "../../core/accounts/backend/mod.rs"]
 pub mod accounts;
 #[path = "../../core/mcp/backend/mod.rs"]
@@ -133,6 +138,9 @@ mod request_log;
 #[cfg(test)]
 #[path = "../tests/backend/tables.rs"]
 mod tables;
+#[cfg(test)]
+#[path = "../../core/db/tests/support/common.rs"]
+pub mod testing;
 #[cfg(test)]
 #[path = "../tests/backend/lib.rs"]
 mod tests;
