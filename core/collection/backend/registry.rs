@@ -20,8 +20,9 @@ const LAYOUT: &str = "storage.collectors";
 /// (`PROVIDER`); what a provider is lives in its `Collector`, found in the registry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Provider(&'static str);
-/// A database a provider added beside its own, for one collection: its files are
-/// named after `id`, and `marker` records that a DSP gained it.
+/// A database the keeper of one of a provider's collections added beside the
+/// provider's own: its files are named after `id`, and `marker` records that a DSP
+/// gained it.
 pub struct AddedStorage {
     pub id: &'static str,
     pub kind: Kind,
@@ -73,6 +74,12 @@ impl Provider {
             .collections()
             .iter()
             .map(|collection| collection.job_kind)
+    }
+    /// The databases its collections' keepers added beside its own, in the order of
+    /// its collections.
+    pub fn added_storages(self) -> impl Iterator<Item = &'static AddedStorage> {
+        self.job_kinds()
+            .flat_map(|kind| registry().keeper(kind).storages().iter().copied())
     }
     /// The provider of a job kind, and the kind as it is spelled in the registry.
     pub fn from_job_kind(kind: &str) -> Result<(Self, &'static str)> {
@@ -189,7 +196,7 @@ impl Store {
     // that lacks the marker, migrated and verified for one that has it.
     fn initialize_added_storages(&self, id: &str) -> Result<()> {
         for provider in Provider::all() {
-            for storage in provider.collector().added_storages() {
+            for storage in provider.added_storages() {
                 let core = self.dsp(id)?;
                 let marker = core.setting(storage.marker, Value::Null)?;
                 if marker == json!(1) {
@@ -383,8 +390,8 @@ mod tests {
                 .collect()
         ));
         assert!(unique(
-            all()
-                .flat_map(|c| c.added_storages().iter().map(|s| s.marker))
+            Provider::all()
+                .flat_map(|p| p.added_storages().map(|s| s.marker))
                 .collect()
         ));
         for provider in Provider::all() {
@@ -393,7 +400,7 @@ mod tests {
             for kind in provider.job_kinds() {
                 assert_eq!(Provider::from_job_kind(kind).unwrap(), (provider, kind));
             }
-            for storage in collector.added_storages() {
+            for storage in provider.added_storages() {
                 assert_eq!(storage.kind.name(), storage.id);
                 assert!(storage.marker.starts_with("storage."));
             }

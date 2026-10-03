@@ -16,7 +16,7 @@ pub mod routes;
 #[path = "collections/scorecard/capture.rs"]
 pub mod scorecard;
 
-use super::{AddedStorage, Provider};
+use super::Provider;
 use crate::{
     Code, Result,
     browsers::{
@@ -135,14 +135,6 @@ impl Collector for Cortex {
         } else {
             meals::JOB_KIND
         }
-    }
-    fn added_storages(&self) -> &'static [&'static AddedStorage] {
-        static ADDED: [&AddedStorage; 3] = [
-            &crate::scorecard::STORAGE,
-            &crate::routedata::STORAGE,
-            &crate::dvic::STORAGE,
-        ];
-        &ADDED
     }
     fn database(&self) -> Kind {
         Kind::Cortex

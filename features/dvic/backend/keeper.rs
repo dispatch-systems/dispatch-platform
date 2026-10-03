@@ -2,7 +2,10 @@
 use crate::{
     Error, Result,
     browsers::Collected,
-    collectors::cortex::{discovery::Scope, dvic::JOB_KIND},
+    collectors::{
+        AddedStorage,
+        cortex::{discovery::Scope, dvic::JOB_KIND},
+    },
     db::{Store, s},
     ensure,
     manifest::Keeper,
@@ -43,5 +46,9 @@ impl Keeper for Dvic {
     }
     fn scheduled(&self, store: &Store, dsp: &str) -> Result<Vec<(String, Value)>> {
         store.dvic_jobs(dsp)
+    }
+    fn storages(&self) -> &'static [&'static AddedStorage] {
+        static STORAGES: [&AddedStorage; 1] = [&super::STORAGE];
+        &STORAGES
     }
 }

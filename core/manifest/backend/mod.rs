@@ -119,10 +119,6 @@ pub trait Collector: Sync {
     fn job_kind_for(&self, _request: &Value) -> &'static str {
         self.collections()[0].job_kind
     }
-    /// Databases beside its own, one per added collection.
-    fn added_storages(&self) -> &'static [&'static AddedStorage] {
-        &[]
-    }
     /// Its database, and with it the migration list in `db::schema`.
     fn database(&self) -> Kind;
     /// Written into a new database with its schema. Must identify the storage.
@@ -239,6 +235,10 @@ pub trait Keeper: Sync {
     /// The jobs one scheduled run queues: an idempotency key suffix and a request each.
     fn scheduled(&self, _: &Store, _dsp: &str) -> Result<Vec<(String, Value)>> {
         Ok(vec![])
+    }
+    /// The databases it keeps the collection in, beside its collector's own.
+    fn storages(&self) -> &'static [&'static AddedStorage] {
+        &[]
     }
 }
 

@@ -3,7 +3,10 @@ use super::stage;
 use crate::{
     Result, State,
     browsers::{Collected, Pending},
-    collectors::cortex::routes::{Capture, JOB_KIND},
+    collectors::{
+        AddedStorage,
+        cortex::routes::{Capture, JOB_KIND},
+    },
     db::Store,
     manifest::Keeper,
 };
@@ -40,5 +43,9 @@ impl Keeper for Routes {
     }
     fn scheduled(&self, store: &Store, dsp: &str) -> Result<Vec<(String, Value)>> {
         store.routes_jobs(dsp)
+    }
+    fn storages(&self) -> &'static [&'static AddedStorage] {
+        static STORAGES: [&AddedStorage; 1] = [&super::STORAGE];
+        &STORAGES
     }
 }
