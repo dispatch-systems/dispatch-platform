@@ -691,8 +691,10 @@ pub struct AgentActivityPage {
     pub rows: Vec<AgentActivity>,
     pub next: Option<String>,
 }
-// The identity slot's words: the sources whose IDs name drivers, and where a person stands
-// among them. Core reads every answer's people by them; Driver Match fills the slot.
+// The identity and people slots' words: the sources whose IDs name drivers, the data that
+// names them, and where a person stands among them. Core reads every answer's people by
+// them and Driver Match fills the identity slot; the features that name people fill
+// Driver Match's people slot.
 text_enum! {
     #[cfg_attr(test, derive(ts_rs::TS))]
     #[derive(PartialOrd, Ord)]
@@ -701,6 +703,18 @@ text_enum! {
     pub enum DriverSource {
         Paycom => "paycom",
         Amazon => "amazon",
+    }
+}
+text_enum! {
+    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[derive(PartialOrd, Ord)]
+    /// The collected data a person can appear in.
+    pub enum DriverData {
+        Timecards => "timecards",
+        Routes => "routes",
+        MealBreaks => "meal_breaks",
+        Dvic => "dvic",
+        Scorecard => "scorecard",
     }
 }
 text_enum! {

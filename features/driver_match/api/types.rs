@@ -1,5 +1,5 @@
 use crate::{
-    contracts::{DriverSource, DriverStatus},
+    contracts::{DriverData, DriverSource, DriverStatus},
     text_enum,
 };
 use serde::Serialize;
@@ -13,18 +13,6 @@ text_enum! {
         Variant => "variant",
         Saved => "saved",
         Person => "person",
-    }
-}
-text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
-    #[derive(PartialOrd, Ord)]
-    /// The collected data a person can appear in.
-    pub enum DriverData {
-        Timecards => "timecards",
-        Routes => "routes",
-        MealBreaks => "meal_breaks",
-        Dvic => "dvic",
-        Scorecard => "scorecard",
     }
 }
 text_enum! {
