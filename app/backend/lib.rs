@@ -28,8 +28,6 @@ pub mod error;
 pub mod feature_manifests;
 #[path = "../../core/tenancy/backend/catalog.rs"]
 pub mod features;
-#[path = "../../features/home/backend/mod.rs"]
-pub mod home;
 #[path = "../../core/server/backend/http/mod.rs"]
 pub mod http;
 #[path = "../../core/collection/backend/metrics.rs"]

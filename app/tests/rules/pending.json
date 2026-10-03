@@ -29,7 +29,6 @@
       },
       "companions": {
         "features/dvic has mcp/ and no tests/mcp/": "A5",
-        "features/home has backend/ and no test in tests/backend/": "A5",
         "features/home has frontend/ and no tests/browser/": "A5",
         "features/routes has mcp/ and no tests/mcp/": "A5",
         "features/scorecard has frontend/ and no tests/browser/": "A5",
