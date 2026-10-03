@@ -11,6 +11,7 @@ import {
   current,
   emptyPlan,
   exists,
+  forwardFeature,
   features,
   finish,
   format,
@@ -126,7 +127,12 @@ export async function planCollector(root: string, argv: string[]) {
     plan.changes.set(file, await format(file, edit(current(plan, root, file))));
   await change('Cargo.toml', (text) => addWorkspaceMember(text, dir));
   await change('app/backend/Cargo.toml', (text) =>
-    addDependency(text, crate, `../../${dir}`, 'app/backend/Cargo.toml'),
+    forwardFeature(
+      addDependency(text, crate, `../../${dir}`, 'app/backend/Cargo.toml'),
+      'operator-probes',
+      crate,
+      'app/backend/Cargo.toml',
+    ),
   );
   const registry = holding(root, appBackend, /pub static REGISTRY\b/);
   await change(registry, (text) =>

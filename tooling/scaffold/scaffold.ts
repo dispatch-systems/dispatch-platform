@@ -358,6 +358,16 @@ export function addDependency(text: string, crate: string, location: string, fil
   lines.splice(header + 1 + last + 1, 0, `${crate} = { path = "${location}" }`);
   return lines.join('\n');
 }
+/** Has the app's `feature` enable the one of that name on `crate` as well. */
+export function forwardFeature(text: string, feature: string, crate: string, file: string) {
+  const line = new RegExp(`^${feature} = \\[([^\\]]*)\\]$`, 'm').exec(text);
+  if (!line) throw new Error(`${file} has no ${feature} feature; add ${crate}/${feature} by hand`);
+  const enabled = [...line[1]!.matchAll(/"([^"]+)"/g)].map((match) => match[1]!);
+  if (enabled.includes(`${crate}/${feature}`))
+    throw new Error(`${file} already enables ${crate}/${feature}`);
+  const list = [...enabled, `${crate}/${feature}`].sort().map((item) => `"${item}"`);
+  return text.replace(line[0], `${feature} = [${list.join(', ')}]`);
+}
 /** Adds `dir` to the workspace's members unless one of them, or a glob, covers it. */
 export function addWorkspaceMember(text: string, dir: string) {
   const list = /members\s*=\s*\[([^\]]*)\]/.exec(text);

@@ -8,7 +8,7 @@ use super::storage::STORAGE;
 use dispatch_core::collection::registry::AddedStorage;
 {{/ownDatabase}}
 use dispatch_core::{Result, collection::browser::Collected, db::Store, manifest::Keeper};
-use {{siteIdent}}::collections::{{collection}}::JOB_KIND;
+use {{siteIdent}}::{{collection}}::JOB_KIND;
 
 pub(crate) struct {{pascal}}Keeper;
 impl Keeper for {{pascal}}Keeper {

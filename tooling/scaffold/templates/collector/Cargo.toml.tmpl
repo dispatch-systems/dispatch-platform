@@ -1,20 +1,24 @@
-# The platform version lives in package.json. Crate versions stay fixed.
 [package]
 name = "{{crate}}"
-version = "0.0.0"
-edition = "2024"
-rust-version = "1.94"
-publish = false
-license = "FSL-1.1-ALv2"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
 autotests = false
 
 [lib]
 path = "collector.rs"
 doctest = false
 
+[features]
+# Its live probes, for an operator who asks for them; never in a build that ships.
+operator-probes = []
+
 # Core's parts only: a collector names no feature.
 [dependencies]
 dispatch-core = { path = "../../core" }
 serde = { workspace = true }
-serde_json = { workspace = true }
+# What it collects keeps the order its fields are written in.
+serde_json = { workspace = true, features = ["preserve_order"] }
 tokio = { workspace = true }

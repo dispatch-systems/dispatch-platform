@@ -1,7 +1,9 @@
 //! {{label}}: what Dispatch reads from {{host}} for a DSP. Its README says how.
-pub mod collections;
+mod collections;
 mod connection;
 mod fixtures;
+
+pub use collections::{{collection}};
 
 use dispatch_core::{
     Result,

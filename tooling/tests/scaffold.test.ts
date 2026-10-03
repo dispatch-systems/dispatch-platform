@@ -280,7 +280,7 @@ test("--keeps writes the keeper of a collector's collection, tested with its fix
     /kind: backend::storage::DATABASE,\s*list: &\[Migration \{\s*id: 1,\s*name: "baseline",/,
   );
   const keeper = file(plan, 'features/fleet_log/backend/keeper.rs');
-  assert.match(keeper, /use dispatch_fleet::collections::shifts::JOB_KIND;/);
+  assert.match(keeper, /use dispatch_fleet::shifts::JOB_KIND;/);
   assert.match(keeper, /"fleet_log.collect"/);
   assert.match(keeper, /fn storages\(&self\)/);
   assert.match(
@@ -498,7 +498,11 @@ test('new:collector writes its connection, one collection with a fixture, a card
   const cargo = file(plan, 'collectors/fleet/Cargo.toml');
   assert.match(cargo, /^name = "dispatch-fleet"$/m);
   assert.match(cargo, /^path = "collector.rs"\ndoctest = false$/m);
+  assert.match(cargo, /^version\.workspace = true$/m);
+  assert.match(cargo, /^operator-probes = \[\]$/m);
   const manifest = file(plan, 'collectors/fleet/collector.rs');
+  assert.match(manifest, /^mod collections;$/m);
+  assert.match(manifest, /^pub use collections::records;$/m);
   assert.match(manifest, /pub const PROVIDER: Provider = Provider::new\("fleet"\);/);
   assert.match(manifest, /pub const HOST: &str = "portal.fleet.test";/);
   assert.match(manifest, /job_kind: collections::records::JOB_KIND,/);
@@ -532,6 +536,10 @@ test('new:collector writes its connection, one collection with a fixture, a card
   assert.match(
     file(plan, 'app/backend/Cargo.toml'),
     /^dispatch-fleet = \{ path = "..\/..\/collectors\/fleet" \}$/m,
+  );
+  assert.match(
+    file(plan, 'app/backend/Cargo.toml'),
+    /^operator-probes = \[[^\]]*"dispatch-fleet\/operator-probes"[^\]]*\]$/m,
   );
 
   const named = await collector('fleet', '--collection', 'shifts');
