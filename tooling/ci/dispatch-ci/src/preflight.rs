@@ -66,7 +66,10 @@ pub fn affected(changed: &[String], plan: &Value) -> Vec<String> {
             crates.insert("dispatch-host");
         } else if file.starts_with("tooling/ci/dispatch-ci/") {
             crates.insert("dispatch-ci");
-        } else if ["app/", "core/", "collectors/", "features/"]
+        } else if file.starts_with("core/") && !frontend(Path::new(file)) {
+            // Core's crate, and the app's, which builds on it.
+            crates.extend(["dispatch-core", "dispatch-backend"]);
+        } else if ["app/", "collectors/", "features/"]
             .iter()
             .any(|root| file.starts_with(root))
             && !frontend(Path::new(file))
@@ -77,7 +80,12 @@ pub fn affected(changed: &[String], plan: &Value) -> Vec<String> {
             "Cargo.toml" | "Cargo.lock" | "rust-toolchain.toml"
         ) || file.starts_with(".cargo/")
         {
-            crates.extend(["dispatch-backend", "dispatch-ci", "dispatch-host"]);
+            crates.extend([
+                "dispatch-backend",
+                "dispatch-ci",
+                "dispatch-core",
+                "dispatch-host",
+            ]);
         }
     }
     let mut commands = vec![];
@@ -270,7 +278,7 @@ mod tests {
             ]),
             [
                 "cargo clippy --locked --all-targets -- -D warnings",
-                "cargo test --locked -p dispatch-backend",
+                "cargo test --locked -p dispatch-backend -p dispatch-core",
                 "python3 tooling/build/cargo-build.py && npx tsx --test core/tenancy/tests/api/roles.test.ts",
                 "npm run test:browseros -- --shard cortex",
                 "npm run build && npm run test:ui -- core/platform_owner/tests/browser/dsp-features.spec.ts",
@@ -281,7 +289,7 @@ mod tests {
             changed(&["Cargo.lock", "tooling/tests/test-plan.test.ts"]),
             [
                 "cargo clippy --locked --all-targets -- -D warnings",
-                "cargo test --locked -p dispatch-backend -p dispatch-ci -p dispatch-host",
+                "cargo test --locked -p dispatch-backend -p dispatch-ci -p dispatch-core -p dispatch-host",
             ]
         );
         assert_eq!(
