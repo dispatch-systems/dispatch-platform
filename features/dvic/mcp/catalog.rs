@@ -1,12 +1,8 @@
 //! DVIC's part of the agent catalog: its endpoint, its metrics for team_table and the
 //! words its answers use.
-use super::DVIC;
-use crate::agents::data::{
-    self,
-    catalog::{
-        CURSOR, DATE, DETAIL, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param, TO,
-        Term,
-    },
+use super::{DVIC, views};
+use crate::agents::data::catalog::{
+    CURSOR, DATE, DETAIL, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param, TO, Term,
 };
 
 pub const ENDPOINTS: &[Endpoint] = &[Endpoint {
@@ -36,7 +32,7 @@ pub const ENDPOINTS: &[Endpoint] = &[Endpoint {
         CURSOR,
     ],
     order: 130,
-    answer: |db, state, caller, _, query| data::dvic(db, state, caller, query),
+    answer: |db, state, caller, _, query| views::dvic(db, state, caller, query),
 }];
 
 pub const METRICS: &[Metric] = &[

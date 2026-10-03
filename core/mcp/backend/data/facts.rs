@@ -679,63 +679,6 @@ pub fn route_coverage(db: &Store, dsp: &Dsp, period: &Period) -> Result<Coverage
     Ok(coverage)
 }
 
-/// One vehicle inspection.
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Inspection {
-    pub date: String,
-    pub transporter_id: String,
-    pub driver_name: String,
-    pub vehicle_type: String,
-    pub inspection_type: String,
-    pub started: String,
-    pub seconds: i64,
-    pub minimum_seconds: i64,
-    pub short: bool,
-}
-/// Inspections in a period, every driver's or only `drivers`' transporter IDs.
-pub fn inspections(
-    db: &Store,
-    dsp: &Dsp,
-    period: &Period,
-    drivers: Option<&[String]>,
-) -> Result<(Vec<Inspection>, Coverage)> {
-    let station = db.profile(&dsp.id)?.station_code;
-    let data = db.dvic(&dsp.id)?;
-    // A report covers every day from its first to its last row.
-    let mut held = BTreeSet::new();
-    for report in data.all(
-        "SELECT min_date,max_date FROM dvic_reports WHERE station=? AND scope_verified=1 AND min_date IS NOT NULL",
-        [&station],
-    )? {
-        held.extend(period.days().into_iter().filter(|day| {
-            day.as_str() >= s(&report, "min_date") && day.as_str() <= s(&report, "max_date")
-        }));
-    }
-    let rows = data.all(
-        "SELECT start_date,transporter_id,transporter_name,fleet_type,inspection_type,start_time,\
-         duration_seconds,minimum_seconds,short FROM dvic_inspections \
-         WHERE station=? AND scope_verified=1 AND start_date BETWEEN ? AND ? ORDER BY start_date,start_time",
-        [&station, &period.first(), &period.last()],
-    )?;
-    let found = rows
-        .iter()
-        .filter(|r| drivers.is_none_or(|ids| ids.iter().any(|id| id == s(r, "transporter_id"))))
-        .map(|r| Inspection {
-            date: s(r, "start_date").into(),
-            transporter_id: s(r, "transporter_id").into(),
-            driver_name: s(r, "transporter_name").into(),
-            vehicle_type: s(r, "fleet_type").into(),
-            inspection_type: s(r, "inspection_type").into(),
-            started: s(r, "start_time").into(),
-            seconds: r["duration_seconds"].as_f64().unwrap_or(0.0).round() as i64,
-            minimum_seconds: n(r, "minimum_seconds"),
-            short: n(r, "short") == 1,
-        })
-        .collect();
-    Ok((found, Coverage::of(true, held, period)))
-}
-
 /// When Paycom last brought timecards in, for the status answer.
 pub fn fresh_timecards(db: &Store, dsp: &Dsp, _station: &str) -> Result<Option<Value>> {
     let paycom = db.collector(&dsp.id, paycom::PROVIDER)?.one(
@@ -770,18 +713,6 @@ pub fn fresh_routes(db: &Store, dsp: &Dsp, station: &str) -> Result<Option<Value
     Ok(routes.map(|r| {
         serde_json::json!({
             "latestDay": r["day"], "final": r["mode"] == "final", "collectedAt": r["collected_at"]
-        })
-    }))
-}
-/// The latest day DVIC's reports cover.
-pub fn fresh_dvic(db: &Store, dsp: &Dsp, station: &str) -> Result<Option<Value>> {
-    let dvic = db.dvic(&dsp.id)?.one(
-        "SELECT max(max_date) day,max(checked_at) checked_at FROM dvic_reports WHERE station=? AND scope_verified=1",
-        [station],
-    )?;
-    Ok(dvic.filter(|r| !r["day"].is_null()).map(|r| {
-        serde_json::json!({
-            "latestDay": r["day"], "checkedAt": r["checked_at"]
         })
     }))
 }

@@ -1,8 +1,10 @@
 //! What agents can ask of DVIC: each driver's vehicle inspections.
 mod catalog;
+mod facts;
+pub mod views;
 
 use crate::{
-    agents::{Mcp, data},
+    agents::Mcp,
     contracts::{AgentArea, AgentSource, DriverSource, ReadSource, ReadToggle},
 };
 
@@ -12,7 +14,7 @@ pub const SOURCE: AgentSource = AgentSource::new(&ReadSource {
     order: 40,
     features: &["dvic"],
     key: "dvic",
-    fresh: data::facts::fresh_dvic,
+    fresh: facts::fresh,
 });
 pub const DVIC: AgentArea = AgentArea::new(&ReadToggle {
     id: "dvic",
@@ -29,5 +31,5 @@ pub const MCP: Mcp = Mcp {
     endpoints: catalog::ENDPOINTS,
     metrics: catalog::METRICS,
     terms: catalog::TERMS,
-    daily: &[&data::InspectionDays],
+    daily: &[&facts::InspectionDays],
 };

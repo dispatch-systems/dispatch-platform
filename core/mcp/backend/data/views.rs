@@ -7,10 +7,13 @@ use super::{
     access::{self, Access, Read},
     catalog::{self, METRICS, Metric, flag},
     facts::{
-        self, Coverage, Daily, Facts, Inspection, MealDay, Packages, RouteDay, TimecardDay, clock,
-        outcome_of, reason_of,
+        self, Coverage, Daily, Facts, MealDay, Packages, RouteDay, TimecardDay, clock, outcome_of,
+        reason_of,
     },
-    scope::{DEFAULT_PERIOD, People, Period, Person, daily_limit, param, period, today},
+    scope::{
+        DEFAULT_PERIOD, DriverGroup, People, Period, Person, daily_limit, driver_group, label,
+        one_day, param, period, today, who,
+    },
     shape::{BUDGET, Table, hours, offset_named, page, page_named, paged, understood},
 };
 use crate::{
@@ -22,7 +25,6 @@ use crate::{
 };
 // A4: the features' views and their sources' names, until each feature answers for its own.
 use crate::feature_manifests::{
-    dvic::mcp::DVIC,
     routes::mcp::{LOCATIONS, ROUTES},
     timecard::mcp::{MEAL_BREAKS, TIMECARDS},
 };
@@ -32,54 +34,8 @@ use std::{
     sync::LazyLock,
 };
 
-/// A person as answers name them: their name, with their code when another has it too.
-fn label(people: &People, person: &Person) -> String {
-    if people.list.iter().filter(|p| p.name == person.name).count() > 1 {
-        format!("{} ({})", person.name, person.code)
-    } else {
-        person.name.clone()
-    }
-}
-/// The private identity and public label of a source row. Team aggregation must keep distinct
-/// unmatched provider identities separate without returning those identifiers to the caller.
-struct DriverGroup {
-    key: String,
-    label: String,
-}
-fn driver_group(people: &People, source: DriverSource, id: &str, name: &str) -> DriverGroup {
-    match people.holder(source, id) {
-        Some(person) => DriverGroup {
-            key: format!("person:{}", person.code),
-            label: label(people, person),
-        },
-        None => DriverGroup {
-            key: format!("source:{}:{id}", source.as_str()),
-            label: if name.trim().is_empty() {
-                "Unknown driver".into()
-            } else {
-                format!("{} (unmatched)", name.trim())
-            },
-        },
-    }
-}
-/// Who a source's row belongs to in ordinary answers. Provider IDs leave Dispatch only on an
-/// explicit ID request.
-fn who(people: &People, source: DriverSource, id: &str, name: &str) -> String {
-    driver_group(people, source, id, name).label
-}
 fn driver_json(person: &Person) -> Value {
     json!({"code": person.code, "name": person.name})
-}
-fn one_day(period: &Period) -> Result<(), Refusal> {
-    if period.from == period.to {
-        Ok(())
-    } else {
-        Err(Refusal::new(
-            400,
-            "one_day_only",
-            "This answers one day at a time; give `date`.",
-        ))
-    }
 }
 fn address_line(address: &RouteAddress) -> String {
     [
@@ -545,81 +501,6 @@ impl Facts for Compared {
         match name {
             "meal_issues" => Some(json!(meals().filter(|m| meal_issue(m)).count())),
             "meal_status" => meals().next().map(|m| json!(m.status)),
-            _ => None,
-        }
-    }
-}
-
-/// Vehicle inspections, for a driver's days and the team's table.
-pub struct InspectionDays;
-struct Inspected(Vec<Inspection>, Coverage);
-impl Daily for InspectionDays {
-    fn area(&self) -> AgentArea {
-        DVIC
-    }
-    fn coverage(&self) -> &'static str {
-        "dvic"
-    }
-    fn records(&self) -> &'static str {
-        "inspections"
-    }
-    fn columns(&self) -> &'static [&'static str] {
-        &["inspections", "short"]
-    }
-    fn gather(
-        &self,
-        db: &Store,
-        dsp: &Dsp,
-        period: &Period,
-        _: &People,
-        person: Option<&Person>,
-    ) -> crate::Result<Box<dyn Facts>> {
-        let (rows, coverage) =
-            facts::inspections(db, dsp, period, person.map(|p| p.amazon.as_slice()))?;
-        Ok(Box::new(Inspected(rows, coverage)))
-    }
-    fn none(&self) -> Box<dyn Facts> {
-        Box::new(Inspected(vec![], Coverage::default()))
-    }
-}
-impl Facts for Inspected {
-    fn coverage(&self) -> &Coverage {
-        &self.1
-    }
-    fn count(&self) -> usize {
-        self.0.len()
-    }
-    fn whose(&self, record: usize) -> (&str, DriverSource, &str, &str) {
-        let inspection = &self.0[record];
-        (
-            &inspection.date,
-            DriverSource::Amazon,
-            &inspection.transporter_id,
-            &inspection.driver_name,
-        )
-    }
-    fn record(&self, record: usize) -> Value {
-        json!(self.0[record])
-    }
-    fn line(&self, records: &[usize]) -> Vec<Value> {
-        let short = records.iter().filter(|&&r| self.0[r].short).count();
-        vec![json!(records.len()), json!(short)]
-    }
-    fn totals(&self) -> Vec<(&'static str, Value)> {
-        vec![
-            ("inspections", json!(self.0.len())),
-            (
-                "short_inspections",
-                json!(self.0.iter().filter(|i| i.short).count()),
-            ),
-        ]
-    }
-    fn metric(&self, name: &str, records: &[usize]) -> Option<Value> {
-        match name {
-            "inspections" => Some(json!(records.len())),
-            "short_inspections" => {
-                Some(json!(records.iter().filter(|&&r| self.0[r].short).count()))
-            }
             _ => None,
         }
     }
@@ -1545,83 +1426,6 @@ pub fn meal_breaks(db: &Store, state: &State, caller: &Caller, query: &Value) ->
         "collected": !coverage.days.is_empty(),
     });
     people.mark(&mut answer);
-    paged(&mut answer, "drivers", table, query, 100)?;
-    Ok(answer)
-}
-
-/// `GET /api/v1/dvic`: inspections in a period, per driver, the short ones counted.
-pub fn dvic(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
-    catalog::check("dvic", query)?;
-    let access = Access::of(db, caller, query)?;
-    let dsp = access.dsp;
-    let people = People::load(db, state, &access)?;
-    let named = param(query, "driver");
-    let person = if named.is_empty() {
-        None
-    } else {
-        Some(people.find(named)?)
-    };
-    let period = period(query, today(dsp), DEFAULT_PERIOD)?;
-    let (found, coverage) =
-        facts::inspections(db, dsp, &period, person.map(|p| p.amazon.as_slice()))?;
-    let short = flag(query, "short");
-    let mut head = understood(dsp, Some(&period));
-    if let Some(person) = person {
-        head.insert("driver".into(), json!(label(&people, person)));
-    }
-    let mut answer = json!({
-        "understood": head,
-        "inspections": found.len(),
-        "short": found.iter().filter(|i| i.short).count(),
-        "coverage": coverage,
-    });
-    people.mark(&mut answer);
-    let whom = |i: &Inspection| {
-        who(
-            &people,
-            DriverSource::Amazon,
-            &i.transporter_id,
-            &i.driver_name,
-        )
-    };
-    if param(query, "detail") == "full" {
-        let mut table = Table::new(&[
-            "date", "driver", "type", "started", "seconds", "minimum", "short",
-        ]);
-        for i in found.iter().filter(|i| !short || i.short) {
-            table.push(vec![
-                json!(i.date),
-                json!(whom(i)),
-                json!(i.inspection_type),
-                json!(i.started),
-                json!(i.seconds),
-                json!(i.minimum_seconds),
-                json!(i.short),
-            ]);
-        }
-        paged(&mut answer, "list", table, query, 200)?;
-        return Ok(answer);
-    }
-    // driver → (inspections, short, shortest seconds)
-    let mut per: BTreeMap<String, (i64, i64, i64)> = BTreeMap::new();
-    for i in &found {
-        let entry = per.entry(whom(i)).or_insert((0, 0, i64::MAX));
-        entry.0 += 1;
-        entry.1 += i64::from(i.short);
-        entry.2 = entry.2.min(i.seconds);
-    }
-    let mut rows: Vec<(String, (i64, i64, i64))> =
-        per.into_iter().filter(|(_, t)| !short || t.1 > 0).collect();
-    rows.sort_by(|a, b| b.1.1.cmp(&a.1.1).then_with(|| a.0.cmp(&b.0)));
-    let mut table = Table::new(&["driver", "inspections", "short", "shortest_seconds"]);
-    for (driver, (count, shorts, shortest)) in rows {
-        table.push(vec![
-            json!(driver),
-            json!(count),
-            json!(shorts),
-            json!(shortest),
-        ]);
-    }
     paged(&mut answer, "drivers", table, query, 100)?;
     Ok(answer)
 }

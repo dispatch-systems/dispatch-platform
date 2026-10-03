@@ -214,6 +214,19 @@ pub fn daily_limit(period: &Period) -> std::result::Result<(), Refusal> {
     Ok(())
 }
 
+/// Refuses a period of more than one day, for an answer about one.
+pub fn one_day(period: &Period) -> std::result::Result<(), Refusal> {
+    if period.from == period.to {
+        Ok(())
+    } else {
+        Err(Refusal::new(
+            400,
+            "one_day_only",
+            "This answers one day at a time; give `date`.",
+        ))
+    }
+}
+
 /// The period a request asks about: `period`, `date`, or `from` with `to`; `default` when
 /// it names none.
 pub fn period(
@@ -469,6 +482,42 @@ impl People {
             .choices(many.iter().take(20).map(named).collect())),
         }
     }
+}
+
+/// A person as answers name them: their name, with their code when another has it too.
+pub fn label(people: &People, person: &Person) -> String {
+    if people.list.iter().filter(|p| p.name == person.name).count() > 1 {
+        format!("{} ({})", person.name, person.code)
+    } else {
+        person.name.clone()
+    }
+}
+/// The private identity and public label of a source row. Team aggregation must keep distinct
+/// unmatched provider identities separate without returning those identifiers to the caller.
+pub struct DriverGroup {
+    pub key: String,
+    pub label: String,
+}
+pub fn driver_group(people: &People, source: DriverSource, id: &str, name: &str) -> DriverGroup {
+    match people.holder(source, id) {
+        Some(person) => DriverGroup {
+            key: format!("person:{}", person.code),
+            label: label(people, person),
+        },
+        None => DriverGroup {
+            key: format!("source:{}:{id}", source.as_str()),
+            label: if name.trim().is_empty() {
+                "Unknown driver".into()
+            } else {
+                format!("{} (unmatched)", name.trim())
+            },
+        },
+    }
+}
+/// Who a source's row belongs to in ordinary answers. Provider IDs leave Dispatch only on an
+/// explicit ID request.
+pub fn who(people: &People, source: DriverSource, id: &str, name: &str) -> String {
+    driver_group(people, source, id, name).label
 }
 
 #[cfg(test)]
