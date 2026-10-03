@@ -1,6 +1,6 @@
-use dispatch_backend::{
-    browsers::{browseros::NetworkPolicy, egress::Egress},
-    collectors::paycom,
+use dispatch_backend::browsers::{
+    browseros::NetworkPolicy,
+    egress::{Egress, HostPolicy},
 };
 use std::{
     os::{fd::AsRawFd, unix::fs::PermissionsExt},
@@ -57,13 +57,17 @@ async fn long_socket_paths_proxy_concurrent_fixture_requests_and_close_cleanly()
     tokio::task::yield_now().await;
     assert!(!directory.join("egress.sock").exists());
 }
+/// One site's hosts, as a collector declares its own.
+fn site_host(host: &str) -> bool {
+    host == "site.example" || host.ends_with(".site.example")
+}
+static SITE_HOSTS: HostPolicy = HostPolicy { allowed: site_host };
+
 #[tokio::test]
 async fn denied_connections_and_failed_start_never_replace_existing_files() {
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
-    let proxy =
-        Egress::start_with_policy(root.path(), NetworkPolicy::Hosts(&paycom::BROWSER_HOSTS))
-            .unwrap();
+    let proxy = Egress::start_with_policy(root.path(), NetworkPolicy::Hosts(&SITE_HOSTS)).unwrap();
     let mut socket = UnixStream::connect(root.path().join("egress.sock"))
         .await
         .unwrap();
@@ -76,10 +80,7 @@ async fn denied_connections_and_failed_start_never_replace_existing_files() {
     assert!(bytes.is_empty());
     drop(proxy);
     std::fs::write(root.path().join("egress.sock"), "preserve").unwrap();
-    assert!(
-        Egress::start_with_policy(root.path(), NetworkPolicy::Hosts(&paycom::BROWSER_HOSTS))
-            .is_err()
-    );
+    assert!(Egress::start_with_policy(root.path(), NetworkPolicy::Hosts(&SITE_HOSTS)).is_err());
     assert_eq!(
         std::fs::read_to_string(root.path().join("egress.sock")).unwrap(),
         "preserve"

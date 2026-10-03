@@ -29,7 +29,6 @@
         "collectors/cortex names features/routes": "Phase B",
         "core/collection names collectors/cortex": "Phase B",
         "core/collection names collectors/paycom": "Phase B",
-        "core/collection's tests name collectors/paycom": "A6",
         "core/manifest names app": "Phase B",
         "core/mcp names app": "Phase B",
         "core/server names app": "Phase B"
