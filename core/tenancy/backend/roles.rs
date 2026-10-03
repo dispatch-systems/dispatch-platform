@@ -73,7 +73,7 @@ pub(crate) const GROUPS: &[(&str, &[&str])] = &[
     ),
     ("DSP", &["settings.manage"]),
 ];
-const DEFAULTS: &[(&str, &str, &[&str])] = &[
+pub(crate) const DEFAULTS: &[(&str, &str, &[&str])] = &[
     (
         "manager",
         "Manager",

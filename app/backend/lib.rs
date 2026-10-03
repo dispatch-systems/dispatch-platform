@@ -109,6 +109,9 @@ pub fn install() {
 }
 
 #[cfg(test)]
+#[path = "../tests/backend/catalog.rs"]
+mod catalog;
+#[cfg(test)]
 mod tests {
     #[test]
     fn every_collection_has_exactly_one_keeper() {
