@@ -113,6 +113,22 @@ impl Store {
             "flex":self.sync_source(id,date,cortex::PROVIDER)?}),
         )
     }
+    pub fn enqueue_meals(
+        &self,
+        id: &str,
+        actor: Option<&str>,
+        key: &str,
+        scope: &Scope,
+    ) -> Result<Value> {
+        scope.validate()?;
+        self.enqueue_for(
+            id,
+            actor,
+            key,
+            cortex::PROVIDER,
+            &serde_json::to_value(scope)?,
+        )
+    }
     pub fn enqueue_meal_sync(&self, id: &str, actor: &str, key: &str, date: &str) -> Result<Value> {
         collection_date(&json!({"date":date}), &self.find_dsp(id)?.timezone)?;
         ensure(

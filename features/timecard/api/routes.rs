@@ -1,9 +1,17 @@
-//! What Paycom and Cortex collected: employees, timecards, meal breaks and the Paycom preferences.
-use super::connections;
+//! What Paycom and Cortex collected: employees, timecards, meal breaks and the Paycom
+//! preferences, and the jobs and schedules that collect them.
+use super::{
+    connections,
+    jobs::{job_cancel, job_list},
+    schedules::schedule_routes,
+};
 use crate::{
-    Result,
-    collectors::paycom,
-    contracts::{EmployeeTimecardPeriod, PaycomSettings},
+    Error, Result,
+    collectors::{
+        cortex::{self, discovery::Scope},
+        paycom,
+    },
+    contracts::{CollectionRequest, EmployeeTimecardPeriod, PaycomSettings},
     db::Store,
     http::{
         input::{Input, Reply, descending, optional, optional_text, query_number},
@@ -15,6 +23,10 @@ use serde_json::json;
 
 const VIEW: Dsp = Dsp("timecard.view");
 const MANAGE: Dsp = Dsp("timecard.manage");
+const RUN: Dsp = Dsp("collections.run");
+/// What the page keeps: the only jobs its job routes list or cancel. Every other feature's
+/// jobs have routes of its own.
+const KINDS: &[&str] = &[paycom::timecards::JOB_KIND, cortex::meals::JOB_KIND];
 // The page's tabs. Each owns no permission, so its routes ask for the tab itself.
 const DAILY: &str = "timecard.daily";
 const MEAL_BREAKS: &str = "timecard.meal_breaks";
@@ -31,7 +43,7 @@ const SORTS: &[&str] = &[
 ];
 
 pub fn routes() -> Vec<Route> {
-    vec![
+    let mut routes = vec![
         read("/api/dsp/employees", VIEW, employees),
         read("/api/dsp/employees/{code}", VIEW, employee),
         write(
@@ -45,7 +57,19 @@ pub fn routes() -> Vec<Route> {
         write("/api/dsp/paycom/settings", MANAGE, save_paycom_settings),
         read("/api/dsp/paycom/meal-breaks", VIEW, meal_comparison),
         read("/api/dsp/cortex/meal-breaks", VIEW, cortex_meal_breaks),
-    ]
+        job_list("/api/dsp/jobs", RUN, KINDS),
+        write("/api/dsp/jobs", RUN, collect),
+        job_cancel("/api/dsp/jobs/{id}/cancel", RUN, KINDS),
+        read("/api/dsp/jobs/meal-breaks", VIEW, meal_sync_status),
+        write("/api/dsp/jobs/meal-breaks", RUN, sync_meal_breaks),
+        write(
+            "/api/dsp/cortex/meal-breaks/collect",
+            RUN,
+            collect_cortex_meal_breaks,
+        ),
+    ];
+    routes.extend(schedule_routes("/api/dsp/schedules", MANAGE, "timecard"));
+    routes
 }
 
 fn employees(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -191,6 +215,46 @@ fn cortex_meal_breaks(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let date = v::text(&input.query, "date", 10, 10)?;
     Ok(Reply::json(db.meal_publications(c.dsp_id(), date)?))
 }
+fn collect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    let request = CollectionRequest::parse(&input.body, false)?;
+    let (id, actor) = (c.dsp_id(), Some(c.actor()));
+    let job = if let Some(date) = &request.date {
+        db.enqueue_paycom_date(id, actor, &request.request_id, date)?
+    } else {
+        db.enqueue(id, actor, &request.request_id)?
+    };
+    let date = request.date.as_deref().unwrap_or("");
+    db.audit(actor, Some(id), "collection.requested", date)?;
+    Ok(Reply::status(job, 202))
+}
+
+fn meal_sync_status(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.query, &["date"])?;
+    let date = v::text(&input.query, "date", 10, 10)?;
+    Ok(Reply::json(db.meal_sync_status(c.dsp_id(), date)?))
+}
+
+fn sync_meal_breaks(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    let request = CollectionRequest::parse(&input.body, true)?;
+    let date = request
+        .date
+        .as_deref()
+        .ok_or_else(|| Error::new("invalid_input", 400))?;
+    let (id, actor) = (c.dsp_id(), c.actor());
+    let result = db.enqueue_meal_sync(id, actor, &request.request_id, date)?;
+    db.audit(Some(actor), Some(id), "meal_breaks.sync_requested", date)?;
+    Ok(Reply::status(result, 202))
+}
+
+fn collect_cortex_meal_breaks(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    let b = &input.body;
+    let scope = Scope::request(b, c.dsp.timezone.as_str())?;
+    let (id, actor) = (c.dsp_id(), Some(c.actor()));
+    let job = db.enqueue_meals(id, actor, v::text(b, "requestId", 1, 128)?, &scope)?;
+    db.audit(actor, Some(id), "cortex.collection.requested", "")?;
+    Ok(Reply::status(job, 202))
+}
+
 /// A tab switched off answers as a route that never existed.
 fn tab(c: &Member, id: &str) -> Result<()> {
     crate::ensure(c.has(id), "not_found", 404)

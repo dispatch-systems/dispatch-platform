@@ -1,4 +1,4 @@
-use crate::collectors::{Provider, cortex, paycom};
+use crate::collectors::Provider;
 use crate::{
     Code, Error, Result,
     contracts::{ActiveJobStatus, Dsp, JobRow, JobStatus, PublicJob, UserStatus},
@@ -9,7 +9,7 @@ use crate::{
     job_statuses,
 };
 use rusqlite::params;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::collections::HashMap;
 
 const RECENT: &str = "SELECT * FROM jobs ORDER BY created_at DESC LIMIT 200";
@@ -206,68 +206,8 @@ impl Store {
             .one_as(JOB, params![id, dsp, dsp])?
             .ok_or_else(|| Error::new("job_not_found", 404))
     }
-    // A4: the timecard page's and Cortex's own requests, until their routes queue them.
-    /// Queue helpers return the public JSON response used by collection requests.
-    pub fn enqueue(&self, id: &str, actor: Option<&str>, key: &str) -> Result<Value> {
-        self.enqueue_for(id, actor, key, paycom::PROVIDER, &json!({}))
-    }
-    pub fn enqueue_paycom_date(
-        &self,
-        id: &str,
-        actor: Option<&str>,
-        key: &str,
-        date: &str,
-    ) -> Result<Value> {
-        let request = json!({"date":date});
-        crate::collectors::paycom::validation::collection_date(
-            &request,
-            &self.find_dsp(id)?.timezone,
-        )?;
-        self.enqueue_for(id, actor, key, paycom::PROVIDER, &request)
-    }
-    pub fn enqueue_employee_timecard(
-        &self,
-        id: &str,
-        actor: Option<&str>,
-        key: &str,
-        code: &str,
-        period: &crate::contracts::EmployeeTimecardPeriod,
-    ) -> Result<Value> {
-        self.employee_timecard(id, code, Some(period))?;
-        crate::collectors::paycom::validation::collection_date(
-            &json!({"date":period.from}),
-            &self.find_dsp(id)?.timezone,
-        )?;
-        let scope = crate::collectors::paycom::timecards::EmployeeSync {
-            employee_code: code.into(),
-            from: period.from.clone(),
-            to: period.to.clone(),
-        };
-        self.enqueue_for(
-            id,
-            actor,
-            key,
-            paycom::PROVIDER,
-            &serde_json::to_value(scope)?,
-        )
-    }
-    pub fn enqueue_meals(
-        &self,
-        id: &str,
-        actor: Option<&str>,
-        key: &str,
-        scope: &crate::collectors::cortex::discovery::Scope,
-    ) -> Result<Value> {
-        scope.validate()?;
-        self.enqueue_for(
-            id,
-            actor,
-            key,
-            cortex::PROVIDER,
-            &serde_json::to_value(scope)?,
-        )
-    }
-    fn enqueue_for(
+    /// Queues one request, answering with the job's public JSON, as collection requests do.
+    pub(crate) fn enqueue_for(
         &self,
         id: &str,
         actor: Option<&str>,

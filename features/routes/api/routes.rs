@@ -1,25 +1,28 @@
 //! Daily routes: what is stored, collecting a day, and its jobs. The collection is `routes`
 //! here and in its paths; its module and database are `routedata`.
+use super::{
+    jobs::{job_cancel, job_list},
+    schedules::schedule_routes,
+};
 use crate::{
-    Error, Result, State,
+    Error, Result,
     collectors::cortex::routes::{JOB_KIND, Mode, token},
     db::Store,
     ensure,
     http::{
         input::{Input, Reply},
-        route::{Dsp, Member, Route, async_post, read, write},
+        route::{Dsp, Member, Route, read, write},
     },
     routedata::{self, MAX_DAYS_PER_REQUEST},
     validate as v,
 };
-use std::sync::Arc;
 
 const VIEW: Dsp = Dsp("routes.view");
 const COLLECT: Dsp = Dsp("routes.collect");
 const MANAGE: Dsp = Dsp("routes.manage");
 
 pub fn routes() -> Vec<Route> {
-    vec![
+    let mut routes = vec![
         read("/api/dsp/routes/days", VIEW, days),
         read("/api/dsp/routes/days/{day}", VIEW, day),
         read(
@@ -29,11 +32,17 @@ pub fn routes() -> Vec<Route> {
         ),
         read("/api/dsp/routes/packages/{tracking}", VIEW, package),
         write("/api/dsp/routes/collect", COLLECT, collect),
-        read("/api/dsp/routes/jobs", VIEW, jobs),
-        async_post("/api/dsp/routes/jobs/{id}/cancel", COLLECT, cancel),
+        job_list("/api/dsp/routes/jobs", VIEW, &[JOB_KIND]),
+        job_cancel("/api/dsp/routes/jobs/{id}/cancel", COLLECT, &[JOB_KIND]),
         read("/api/dsp/routes/retention", MANAGE, retention),
         write("/api/dsp/routes/retention", MANAGE, set_retention),
-    ]
+    ];
+    routes.extend(schedule_routes(
+        "/api/dsp/routes/schedules",
+        MANAGE,
+        "routes",
+    ));
+    routes
 }
 
 fn itinerary(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -64,13 +73,6 @@ fn day(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         .route_day(c.dsp_id(), day)?
         .ok_or_else(|| Error::new("not_found", 404))?;
     Reply::of(&view)
-}
-
-fn jobs(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    Reply::of(&db.recent_jobs_of(c.dsp_id(), JOB_KIND)?)
-}
-async fn cancel(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
-    super::jobs::cancel_kind(state, input, access, Some(JOB_KIND)).await
 }
 
 fn retention(db: &Store, c: &Member, _: &Input) -> Result<Reply> {

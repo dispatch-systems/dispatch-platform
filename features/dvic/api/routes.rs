@@ -1,27 +1,33 @@
 //! DVIC collection controls and read APIs; no dashboard is required.
+use super::{jobs::job_cancel, schedules::schedule_routes};
 use crate::{
-    Result, State,
+    Result,
     collectors::cortex::dvic,
     db::Store,
     http::{
         input::{Input, Reply},
-        route::{Dsp, Member, Route, async_post, read, write},
+        route::{Dsp, Member, Route, read, write},
     },
     validate as v,
 };
-use std::sync::Arc;
 
 pub fn routes() -> Vec<Route> {
-    vec![
+    let mut routes = vec![
         read("/api/dsp/dvic/status", Dsp("dvic.view"), status),
         read("/api/dsp/dvic/inspections", Dsp("dvic.view"), inspections),
         write("/api/dsp/dvic/collect", Dsp("dvic.collect"), collect),
-        async_post(
+        job_cancel(
             "/api/dsp/dvic/jobs/{id}/cancel",
             Dsp("dvic.collect"),
-            cancel,
+            &[dvic::JOB_KIND],
         ),
-    ]
+    ];
+    routes.extend(schedule_routes(
+        "/api/dsp/dvic/schedules",
+        Dsp("dvic.manage"),
+        "dvic",
+    ));
+    routes
 }
 fn status(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
     Reply::of(&db.dvic_status(c.dsp_id())?)
@@ -74,7 +80,4 @@ fn inspections(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         100
     };
     Reply::of(&db.dvic_inspections(c.dsp_id(), from, to, driver, after, limit)?)
-}
-async fn cancel(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
-    super::jobs::cancel_kind(state, input, access, Some(dvic::JOB_KIND)).await
 }

@@ -1,37 +1,45 @@
 //! Weekly scorecards: what is stored, collecting a week, and its jobs. The scorecard is a
 //! feature of its own; nothing here asks for another's permission.
+use super::{
+    jobs::{job_cancel, job_list},
+    schedules::schedule_routes,
+};
 use crate::{
-    Result, State,
+    Result,
     collectors::cortex::scorecard,
     db::Store,
     http::{
         input::{Input, Reply},
-        route::{Dsp, Member, Route, async_post, read, write},
+        route::{Dsp, Member, Route, read, write},
     },
     validate as v, weeks,
 };
-use std::sync::Arc;
 
 const VIEW: Dsp = Dsp("scorecard.view");
 const COLLECT: Dsp = Dsp("scorecard.collect");
+const MANAGE: Dsp = Dsp("scorecard.manage");
 
 pub fn routes() -> Vec<Route> {
-    vec![
+    let mut routes = vec![
         read("/api/dsp/scorecard/weeks", VIEW, weeks),
-        read("/api/dsp/scorecard/jobs", VIEW, jobs),
+        job_list("/api/dsp/scorecard/jobs", VIEW, &[scorecard::JOB_KIND]),
         write("/api/dsp/scorecard/collect", COLLECT, collect),
-        async_post("/api/dsp/scorecard/jobs/{id}/cancel", COLLECT, cancel),
-    ]
+        job_cancel(
+            "/api/dsp/scorecard/jobs/{id}/cancel",
+            COLLECT,
+            &[scorecard::JOB_KIND],
+        ),
+    ];
+    routes.extend(schedule_routes(
+        "/api/dsp/scorecard/schedules",
+        MANAGE,
+        "scorecard",
+    ));
+    routes
 }
 
 fn weeks(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
     Reply::of(&db.scorecard_weeks(c.dsp_id())?)
-}
-fn jobs(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    Reply::of(&db.recent_jobs_of(c.dsp_id(), scorecard::JOB_KIND)?)
-}
-async fn cancel(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
-    super::jobs::cancel_kind(state, input, access, Some(scorecard::JOB_KIND)).await
 }
 
 /// Queues one week, the most recent completed one unless `week` names another.

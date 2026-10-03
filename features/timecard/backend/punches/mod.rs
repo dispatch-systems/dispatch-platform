@@ -11,6 +11,8 @@ pub mod keeper;
 mod preferences;
 #[path = "publication.rs"]
 mod publication;
+#[path = "queue.rs"]
+mod queue;
 #[path = "range.rs"]
 mod range;
 #[path = "sync.rs"]

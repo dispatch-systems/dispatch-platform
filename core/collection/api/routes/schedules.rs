@@ -1,7 +1,7 @@
-//! Collection schedules. Every change here wakes the scheduler; a preview changes nothing.
-//! The generic routes are the timecard page's alone. Routes, DVIC and the scorecard have
-//! routes of their own, behind their own permissions, and the generic routes never touch
-//! their schedules.
+//! Collection schedules. Each feature offers the schedules of the collections it keeps
+//! under routes of its own, behind its own permission, built here; the timecard page's are
+//! the generic ones, and never touch another feature's schedules. Every change here wakes
+//! the scheduler; a preview changes nothing.
 use crate::{
     Result,
     db::Store,
@@ -12,104 +12,105 @@ use crate::{
     schedules::schedule_changes,
     validate as v,
 };
+use std::{
+    collections::BTreeSet,
+    sync::{Mutex, PoisonError},
+};
 
-const MANAGE: Dsp = Dsp("timecard.manage");
-const ROUTES: Dsp = Dsp("routes.manage");
-const SCORECARD: Dsp = Dsp("scorecard.manage");
-
-/// The permission a schedule of `collection` needs, checked against the member's role
-/// once more, as their features stand.
-fn permitted(db: &Store, c: &Member, collection: &str) -> Result<()> {
-    let permission = format!("{}.manage", crate::features::automation(collection));
-    db.revalidate(c, &permission).map(|_| ())
+/// Whose schedules a set of routes changes: the page that runs their collections, and
+/// the permission that manages them.
+#[derive(Clone, Copy)]
+struct Owner {
+    page: &'static str,
+    access: Dsp,
 }
 
-pub fn routes() -> Vec<Route> {
+/// The six routes of the schedules of `page`'s collections, under `prefix`, for a member
+/// with `access`: list, create, preview, update, switch on or off, and remove.
+pub fn schedule_routes(prefix: &'static str, access: Dsp, page: &'static str) -> Vec<Route> {
+    let owner = Owner { page, access };
     vec![
-        read("/api/dsp/dvic/schedules", Dsp("dvic.manage"), schedules),
-        write("/api/dsp/dvic/schedules", Dsp("dvic.manage"), create).invalidates_schedules(),
+        read(prefix, access, move |db: &Store, c: &Member, _: &Input| {
+            schedules(db, c, owner)
+        }),
         write(
-            "/api/dsp/dvic/schedules/preview",
-            Dsp("dvic.manage"),
-            preview,
+            prefix,
+            access,
+            move |db: &Store, c: &Member, input: &Input| create(db, c, input, owner),
+        )
+        .invalidates_schedules(),
+        write(
+            path(prefix, "/preview"),
+            access,
+            move |db: &Store, c: &Member, input: &Input| preview(db, c, input, owner),
         ),
-        write("/api/dsp/dvic/schedules/{key}", Dsp("dvic.manage"), update).invalidates_schedules(),
         write(
-            "/api/dsp/dvic/schedules/{key}/enabled",
-            Dsp("dvic.manage"),
-            toggle,
+            path(prefix, "/{key}"),
+            access,
+            move |db: &Store, c: &Member, input: &Input| update(db, c, input, owner),
         )
         .invalidates_schedules(),
         write(
-            "/api/dsp/dvic/schedules/{key}/remove",
-            Dsp("dvic.manage"),
-            remove,
-        )
-        .invalidates_schedules(),
-        read("/api/dsp/scorecard/schedules", SCORECARD, schedules),
-        write("/api/dsp/scorecard/schedules", SCORECARD, create).invalidates_schedules(),
-        write("/api/dsp/scorecard/schedules/preview", SCORECARD, preview),
-        write("/api/dsp/scorecard/schedules/{key}", SCORECARD, update).invalidates_schedules(),
-        write(
-            "/api/dsp/scorecard/schedules/{key}/enabled",
-            SCORECARD,
-            toggle,
+            path(prefix, "/{key}/enabled"),
+            access,
+            move |db: &Store, c: &Member, input: &Input| toggle(db, c, input, owner),
         )
         .invalidates_schedules(),
         write(
-            "/api/dsp/scorecard/schedules/{key}/remove",
-            SCORECARD,
-            remove,
+            path(prefix, "/{key}/remove"),
+            access,
+            move |db: &Store, c: &Member, input: &Input| remove(db, c, input, owner),
         )
         .invalidates_schedules(),
-        read("/api/dsp/routes/schedules", ROUTES, schedules),
-        write("/api/dsp/routes/schedules", ROUTES, create).invalidates_schedules(),
-        write("/api/dsp/routes/schedules/preview", ROUTES, preview),
-        write("/api/dsp/routes/schedules/{key}", ROUTES, update).invalidates_schedules(),
-        write("/api/dsp/routes/schedules/{key}/enabled", ROUTES, toggle).invalidates_schedules(),
-        write("/api/dsp/routes/schedules/{key}/remove", ROUTES, remove).invalidates_schedules(),
-        read("/api/dsp/schedules", MANAGE, schedules),
-        write("/api/dsp/schedules", MANAGE, create).invalidates_schedules(),
-        write("/api/dsp/schedules/preview", MANAGE, preview),
-        write("/api/dsp/schedules/{key}", MANAGE, update).invalidates_schedules(),
-        write("/api/dsp/schedules/{key}/enabled", MANAGE, toggle).invalidates_schedules(),
-        write("/api/dsp/schedules/{key}/remove", MANAGE, remove).invalidates_schedules(),
     ]
 }
+/// `prefix` and `suffix` joined, as the `'static` path a route is registered under: made
+/// once each, however often the route table is built.
+fn path(prefix: &'static str, suffix: &str) -> &'static str {
+    static PATHS: Mutex<BTreeSet<&'static str>> = Mutex::new(BTreeSet::new());
+    let path = format!("{prefix}{suffix}");
+    let mut paths = PATHS.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some(made) = paths.get(path.as_str()) {
+        return made;
+    }
+    let made: &'static str = Box::leak(path.into_boxed_str());
+    paths.insert(made);
+    made
+}
 
-fn schedules(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+/// The member may still manage the owner's schedules, as their role and features stand.
+fn permitted(db: &Store, c: &Member, owner: Owner) -> Result<()> {
+    db.revalidate(c, owner.access.0).map(|_| ())
+}
+
+fn schedules(db: &Store, c: &Member, owner: Owner) -> Result<Reply> {
     let mut result = db.collection_schedules(c.dsp_id())?;
-    let home = home(input);
     result.schedules.retain(|s| {
         let page = crate::features::automation(s.collection.as_str());
-        page == home && c.can(&format!("{page}.manage"))
+        page == owner.page && c.can(owner.access.0)
     });
     Reply::of(&result)
 }
 
-fn preview(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+fn preview(db: &Store, c: &Member, input: &Input, owner: Owner) -> Result<Reply> {
     // A schedule named for its timing is read only through its own feature's routes.
     if input.body.get("scheduleId").is_some() {
         let key = v::text(&input.body, "scheduleId", 1, 128)?;
         scope(
-            input,
+            owner,
             db.collection_schedule(c.dsp_id(), key)?.collection.as_str(),
         )?;
     }
     Reply::of(&db.preview_schedule(c.dsp_id(), &input.body)?)
 }
 
-fn create(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+fn create(db: &Store, c: &Member, input: &Input, owner: Owner) -> Result<Reply> {
     let id = c.dsp_id();
     scope(
-        input,
+        owner,
         v::text(&input.body, "collection", 1, 32).unwrap_or(""),
     )?;
-    permitted(
-        db,
-        c,
-        v::text(&input.body, "collection", 1, 32).unwrap_or(""),
-    )?;
+    permitted(db, c, owner)?;
     let result = db.save_schedule(id, None, &input.body)?;
     let name = result.name.as_str();
     let subject = Some(("schedule", result.id.as_str()));
@@ -126,14 +127,14 @@ fn create(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     Reply::of_status(&result, 201)
 }
 
-fn update(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+fn update(db: &Store, c: &Member, input: &Input, owner: Owner) -> Result<Reply> {
     let (id, key) = (c.dsp_id(), input.param("key"));
     let before = db.collection_schedule(id, key)?;
-    scope(input, before.collection.as_str())?;
-    permitted(db, c, before.collection.as_str())?;
+    scope(owner, before.collection.as_str())?;
+    permitted(db, c, owner)?;
     let target = v::text(&input.body, "collection", 1, 32)?;
-    scope(input, target)?;
-    permitted(db, c, target)?;
+    scope(owner, target)?;
+    permitted(db, c, owner)?;
     let result = db.save_schedule(id, Some(key), &input.body)?;
     db.audit_ref(
         Some(c.actor()),
@@ -147,11 +148,11 @@ fn update(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     Reply::of(&result)
 }
 
-fn toggle(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+fn toggle(db: &Store, c: &Member, input: &Input, owner: Owner) -> Result<Reply> {
     let (id, key) = (c.dsp_id(), input.param("key"));
     let before = db.collection_schedule(id, key)?;
-    scope(input, before.collection.as_str())?;
-    permitted(db, c, before.collection.as_str())?;
+    scope(owner, before.collection.as_str())?;
+    permitted(db, c, owner)?;
     let result = db.enable_schedule(id, key, &input.body)?;
     db.audit_ref(
         Some(c.actor()),
@@ -165,11 +166,11 @@ fn toggle(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     Reply::of(&result)
 }
 
-fn remove(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+fn remove(db: &Store, c: &Member, input: &Input, owner: Owner) -> Result<Reply> {
     let (id, key) = (c.dsp_id(), input.param("key"));
     let before = db.collection_schedule(id, key)?;
-    scope(input, before.collection.as_str())?;
-    permitted(db, c, before.collection.as_str())?;
+    scope(owner, before.collection.as_str())?;
+    permitted(db, c, owner)?;
     db.delete_collection_schedule(id, key, &input.body)?;
     let name = before.name.as_str();
     let subject = Some(("schedule", key));
@@ -186,22 +187,12 @@ fn remove(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     Ok(Reply::ok())
 }
 
-/// The feature whose schedule routes a request came to: one with a collection of its own,
-/// under `/api/dsp/<feature>/schedules`, or the timecard page's generic ones.
-fn home(input: &Input) -> &'static str {
-    let segment = input
-        .path
-        .strip_prefix("/api/dsp/")
-        .and_then(|rest| rest.split('/').next())
-        .unwrap_or("");
-    crate::features::automation(segment)
-}
-/// Each feature's routes change only the schedules of the collections it owns, as the
-/// catalog says, so a feature added later is apart from the generic routes without a list
-/// to keep.
-fn scope(input: &Input, collection: &str) -> Result<()> {
+/// Each feature's routes change only the schedules of the collections it keeps, as the
+/// catalog says, so a feature added later is apart from the others' without a list to
+/// keep.
+fn scope(owner: Owner, collection: &str) -> Result<()> {
     crate::ensure(
-        crate::features::automation(collection) == home(input),
+        crate::features::automation(collection) == owner.page,
         "permission_denied",
         403,
     )

@@ -51,7 +51,6 @@ pub fn all() -> Vec<Route> {
         oauth::routes(),
         team::routes(),
         timecard::routes(),
-        schedules::routes(),
         scorecard::routes(),
         routedata::routes(),
         dvic::routes(),
