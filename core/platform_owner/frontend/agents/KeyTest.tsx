@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CircleCheck, Send } from 'lucide-react';
-import type { AgentWhoami } from '../../../../shared/contracts/index.js';
+import type { AgentWhoami } from '../../api/index.js';
 import { agentWhoami } from '../../api/client.js';
 import { errorLabel } from '../../../shell/frontend/runtime/api.js';
 import { accessLabels } from './agents.js';

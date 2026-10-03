@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { UniformAdjustment, UniformInventory } from '../../../shared/contracts/uniforms.js';
+import type { UniformAdjustment, UniformInventory } from '../api/index.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { ApiError } from '../../../core/shell/frontend/runtime/api.js';
 import { getUniformUpdates } from '../api/client.js';

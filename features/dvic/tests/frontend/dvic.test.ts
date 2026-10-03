@@ -17,7 +17,7 @@ import {
   weekDays,
   weekStart,
 } from '../../frontend/dvic.js';
-import type { DvicInspection } from '../../../../shared/contracts/dvic.js';
+import type { DvicInspection } from '../../api/index.js';
 import { mutationAffects } from '../../../../core/shell/frontend/runtime/data-policy.js';
 import { installFeatures } from '../../../../core/shell/frontend/runtime/slots.js';
 import { feature } from '../../frontend/feature.js';

@@ -3,8 +3,8 @@ import type {
   EmployeeTimecardPeriod,
   EmployeeTimecardResponse,
   Timecard,
-} from '../../../../../shared/contracts/index.js';
-import type { PunchEvent } from '../../../../../shared/contracts/workforce.js';
+  PunchEvent,
+} from '../../../api/index.js';
 import { addDays } from '../../../../../core/shell/frontend/lib/calendar.js';
 import {
   DataState,

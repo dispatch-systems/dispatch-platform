@@ -1,7 +1,7 @@
 import { performancePolicy } from '../lib/performance-policy.js';
 import { beginBrowserWrite, clearNavigationState } from './browser-update.js';
 import { useEffect, useState, useCallback, useRef, useSyncExternalStore } from 'react';
-import { parseApiResponse } from '../../../../shared/contracts/runtime.js';
+import { parseApiResponse } from './replies.js';
 import { backoff } from '../lib/backoff.js';
 import { dataCache } from './data-cache.js';
 import { clearDestinations } from './navigation.js';

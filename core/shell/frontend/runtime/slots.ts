@@ -1,17 +1,10 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import type {
-  AgentArea,
-  AgentSource,
-  AuditEvent,
-  CollectionChange,
-  ConnectionFeature,
-  DspView,
-  Feature,
-  JobMetrics,
-  PageFeature,
-  SessionView,
-} from '../../../../shared/contracts/index.js';
+import type { AgentArea, AgentSource, AuditEvent } from '../../../platform_owner/api/index.js';
+import type { CollectionChange, JobMetrics } from '../../../collection/api/index.js';
+import type { ConnectionFeature, Feature, PageFeature } from '../../../tenancy/api/index.js';
+import type { DspView, SessionView } from '../../../accounts/api/index.js';
+import type { Replies } from '../../../foundation/api/runtime.js';
 
 // What an owner's `frontend/feature.ts` declares, and what the hosts read from it. Only
 // app/frontend lists the manifests; it installs them here before the first render, so no host
@@ -249,6 +242,8 @@ export type FrontendFeature = {
   cache?: CacheRules;
   /** Its reads that wait for a change before they answer, by path prefix. */
   longPolls?: readonly string[];
+  /** How the API client checks the replies of its routes, as core checks its own. */
+  replies?: Replies;
   /** What its error codes say. */
   errors?: Record<string, string>;
   /** Why a schedule of its collections waits, by the code it last stopped on; its error too. */
@@ -292,6 +287,9 @@ export const connectionCard = (provider: string) =>
 
 /** Every owner's cache rules, in the order the owners are listed. */
 export const cacheRules = () => installed.flatMap((feature) => feature.cache ?? []);
+
+/** Every owner's reply validators, in the order the owners are listed. */
+export const replyChecks = () => installed.flatMap((feature) => feature.replies ?? []);
 
 /** Whether a read waits for a change before it answers. */
 export const isLongPoll = (url: string) =>

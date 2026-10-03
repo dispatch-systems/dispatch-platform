@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { permissions } from '../../../shared/contracts/index.js';
+import { permissions } from '../../../core/accounts/api/index.js';
 import { rustSourceRoots } from '../../../tooling/ci/source-lines.js';
 
 // Read the complete argument list, regardless of formatting, without including the next statement.

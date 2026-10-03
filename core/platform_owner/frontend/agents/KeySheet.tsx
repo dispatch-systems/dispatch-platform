@@ -1,11 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Ban } from 'lucide-react';
-import type {
-  AgentKey,
-  AgentKeyCreated,
-  AgentKeyDsp,
-  AgentKeyRequest,
-} from '../../../../shared/contracts/index.js';
+import type { AgentKey, AgentKeyCreated, AgentKeyDsp, AgentKeyRequest } from '../../api/index.js';
 import { Badge, Modal } from '../../../shell/frontend/ui/index.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { createAgentKey, updateAgentKey } from '../../api/client.js';

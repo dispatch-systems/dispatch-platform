@@ -1,5 +1,5 @@
 import { performancePolicy } from '../lib/performance-policy.js';
-import type { DspView, SessionView } from '../../../../shared/contracts/index.js';
+import type { DspView, SessionView } from '../../../accounts/api/index.js';
 import { api } from './api.js';
 
 // The session's and the DSP view's endpoints. Every owner's own are in its api/client.ts, each

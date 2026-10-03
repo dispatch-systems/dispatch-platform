@@ -14,7 +14,7 @@ import {
 } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import type { DspView, SessionView } from '../../shared/contracts/index.js';
+import type { DspView, SessionView } from '../../core/accounts/api/index.js';
 import {
   api,
   credentials,

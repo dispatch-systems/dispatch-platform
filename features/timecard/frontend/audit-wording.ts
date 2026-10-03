@@ -1,4 +1,4 @@
-import type { AuditEvent } from '../../../shared/contracts/index.js';
+import type { AuditEvent } from '../../../core/platform_owner/api/index.js';
 import type {
   AuditPhrases,
   AuditWording,

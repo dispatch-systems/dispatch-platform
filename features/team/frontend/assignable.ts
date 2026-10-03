@@ -1,4 +1,4 @@
-import type { DspView, Role } from '../../../shared/contracts/index.js';
+import type { DspView, Role } from '../../../core/accounts/api/index.js';
 
 // Nobody hands out access they do not hold; the server enforces the same rule,
 // including stored grants whose features are currently switched off.

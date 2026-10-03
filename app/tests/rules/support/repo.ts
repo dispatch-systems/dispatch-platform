@@ -56,7 +56,7 @@ export function templated(file: string): string {
 export type Layer = 'app' | 'core' | 'collector' | 'feature';
 /**
  * What owns a file: the app, a core part, a collector or a feature. Tooling, ops, services
- * and the shared contracts own nothing.
+ * and the generated API types still in shared/ own nothing.
  */
 export type Owner = { dir: string; layer: Layer; name: string };
 const layers: Record<string, Layer> = {

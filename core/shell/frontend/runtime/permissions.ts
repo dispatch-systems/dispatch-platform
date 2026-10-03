@@ -3,7 +3,7 @@ import {
   permissionGroups as generatedPermissionGroups,
   impliedPermissions as generatedImpliedPermissions,
 } from '../../../../shared/contracts/generated/access-catalog.js';
-import type { DspView, Permission } from '../../../../shared/contracts/index.js';
+import type { DspView, Permission } from '../../../accounts/api/index.js';
 import { grants } from './features.js';
 
 // A permission of a feature the DSP lacks is held by nobody, owners included.

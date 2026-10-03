@@ -5,7 +5,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 {{/tables}}
-import type { Question } from '{{toRoot}}tooling/agents/questions.js';
+import type { Question } from '{{toRoot}}tooling/agent-evals/questions.js';
 
 /** The synthetic DSP the eval asks about. */
 export type World = { root: string; dsp: string };

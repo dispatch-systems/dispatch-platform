@@ -1,5 +1,5 @@
 import { RefreshCw } from 'lucide-react';
-import type { DspSummary } from '../../../../shared/contracts/index.js';
+import type { DspSummary } from '../../../accounts/api/index.js';
 import { DspAvatar, Empty, SearchInput } from '../../../shell/frontend/ui/index.js';
 import { dspState, dspStates, stateLabels } from './status.js';
 

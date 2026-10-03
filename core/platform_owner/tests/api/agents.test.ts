@@ -1,12 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture } from '../../../shell/tests/support/support.js';
-import type {
-  AgentKeyCreated,
-  AgentKeyRequest,
-  AgentKeys,
-  AgentWhoami,
-} from '../../../../shared/contracts/index.js';
+import type { AgentKeyCreated, AgentKeyRequest, AgentKeys, AgentWhoami } from '../../api/index.js';
 
 const body = (dsps: string[]): AgentKeyRequest => ({
   name: 'Laptop – Claude Code',

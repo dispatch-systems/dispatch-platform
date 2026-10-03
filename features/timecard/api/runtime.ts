@@ -6,11 +6,15 @@ import type {
   DailyTimecards,
   Punch,
   PaycomDay,
-} from './workforce.js';
-import type { MealComparison, MealEmployee, MealAssessment } from './meals.js';
+  MealComparison,
+  MealEmployee,
+  MealAssessment,
+  PaycomPreferences,
+  PaycomSettings,
+} from './index.js';
+import { jobSchema, jobsSchema } from '../../../core/collection/api/runtime.js';
+import { count, text, type Replies } from '../../../core/foundation/api/runtime.js';
 
-const text = z.string();
-const count = z.number().int().nonnegative();
 const optionalText = text.nullable().optional();
 export const employeeSchema = z.object({
   code: text,
@@ -169,3 +173,41 @@ export const mealComparisonSchema = z.object({
     }),
   ),
 }) satisfies z.ZodType<MealComparison>;
+const preferences = z.object({
+  opening_page: z.enum(['timecards', 'meal-breaks', 'employees']),
+  rows_per_page: z.union([z.literal(25), z.literal(50), z.literal(100)]),
+  name_order: z.enum(['first_last', 'last_first']),
+  default_sort: z.enum(['employeeName', 'condition', 'inDay']),
+  department: text.nullable(),
+  station: text.nullable(),
+  columns: z.array(z.enum(['inDay', 'outLunch', 'inLunch', 'outDay', 'totalHours', 'condition'])),
+  driver_departments: z.array(text).nullable(),
+  late_da_time: text.regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/),
+  late_da_departments: z.array(text),
+}) satisfies z.ZodType<PaycomPreferences>;
+
+export const paycomSettingsSchema = z.object({
+  revision: count,
+  values: preferences,
+  history: z.array(z.object({ revision: count, at: text, values: preferences })),
+  options: z.object({
+    departments: z.array(z.object({ value: text, count })),
+    stations: z.array(text),
+  }),
+}) satisfies z.ZodType<PaycomSettings>;
+
+/** The replies of Timecard's reads, its Paycom settings and its meal break collections. */
+export const replies: Replies = (route, method) => {
+  if (method === 'GET') {
+    if (route === '/api/dsp/paycom/settings') return paycomSettingsSchema;
+    if (route === '/api/dsp/employees') return employeesSchema;
+    if (/^\/api\/dsp\/employees\/[^/]+$/.test(route)) return employeeTimecardSchema;
+    if (route === '/api/dsp/timecards') return dailyTimecardsSchema;
+    if (route === '/api/dsp/paycom/meal-breaks') return mealComparisonSchema;
+    return undefined;
+  }
+  if (route === '/api/dsp/paycom/settings') return paycomSettingsSchema;
+  if (route === '/api/dsp/cortex/meal-breaks/collect') return jobSchema;
+  if (route === '/api/dsp/jobs/meal-breaks') return z.object({ date: text, jobs: jobsSchema });
+  return undefined;
+};

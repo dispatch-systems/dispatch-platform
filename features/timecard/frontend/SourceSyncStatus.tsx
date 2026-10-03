@@ -1,5 +1,5 @@
 import { AlertTriangle } from 'lucide-react';
-import type { Job } from '../../../shared/contracts/index.js';
+import type { Job } from '../../../core/collection/api/index.js';
 import { Badge } from '../../../core/shell/frontend/ui/index.js';
 import { time, timeOfDay, title } from '../../../core/shell/frontend/lib/format.js';
 import { localDate } from '../../../core/shell/frontend/lib/day.js';

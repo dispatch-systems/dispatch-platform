@@ -1,5 +1,5 @@
 import { Fingerprint } from 'lucide-react';
-import type { DriverMatch } from '../../../shared/contracts/index.js';
+import type { DriverMatch } from '../api/index.js';
 
 /** What Driver Match does, and how the DSP's people stand. */
 export function DriverSummary({ data }: { data: DriverMatch }) {

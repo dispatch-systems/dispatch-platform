@@ -78,8 +78,8 @@
         "core/tenancy/backend/roles.rs",
         "core/shell/frontend/runtime/features.ts",
         "core/shell/frontend/runtime/permissions.ts",
-        "shared/contracts/accounts.ts",
-        "shared/contracts/features.ts",
+        "core/accounts/api/index.ts",
+        "core/tenancy/api/index.ts",
         "app/backend/export.rs",
         "shared/contracts/generated/access-catalog.ts"
       ],

@@ -1,5 +1,5 @@
 import { KeyRound, LockKeyhole } from 'lucide-react';
-import type { AgentKeyCreated } from '../../../../shared/contracts/index.js';
+import type { AgentKeyCreated } from '../../api/index.js';
 import { Modal } from '../../../shell/frontend/ui/index.js';
 import { CopyButton } from './CopyButton.js';
 import { KeyTest } from './KeyTest.js';

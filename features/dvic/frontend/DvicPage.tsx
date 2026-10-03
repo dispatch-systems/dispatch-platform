@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, RefreshCw, Settings2 } from 'lucide-react';
-import type { DspView, Job } from '../../../shared/contracts/index.js';
-import type { DvicStatus } from '../../../shared/contracts/dvic.js';
+import type { DspView } from '../../../core/accounts/api/index.js';
+import type { Job } from '../../../core/collection/api/index.js';
+import type { DvicStatus } from '../api/index.js';
 import {
   api,
   ApiError,

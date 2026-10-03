@@ -1,5 +1,5 @@
 import { assessMealResponse } from '../support/assessment.js';
-import type { CortexMeal } from '../../../../shared/contracts/meals.js';
+import type { CortexMeal } from '../../api/index.js';
 import type { Route } from '@playwright/test';
 import {
   test,

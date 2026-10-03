@@ -4,11 +4,9 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { demo, fixture, prepare, until } from '../../../shell/tests/support/support.js';
-import {
-  jobSchema,
-  parseApiResponse,
-  sessionSchema,
-} from '../../../../shared/contracts/runtime.js';
+import { parseApiResponse } from '../../../shell/frontend/runtime/replies.js';
+import { sessionSchema } from '../../../accounts/api/runtime.js';
+import { jobSchema } from '../../../collection/api/runtime.js';
 
 test('trusted tunnel clients have separate IP allowances and retain account throttling', async (t) => {
   const f = await fixture({ env: { DISPATCH_TRUSTED_PROXY: 'cloudflare' } });

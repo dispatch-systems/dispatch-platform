@@ -1,5 +1,5 @@
 import { Plus } from 'lucide-react';
-import type { Uniform } from '../../../shared/contracts/uniforms.js';
+import type { Uniform } from '../api/index.js';
 import { SearchInput } from '../../../core/shell/frontend/ui/index.js';
 import { uniformTotal, groupUniforms } from './uniforms.js';
 

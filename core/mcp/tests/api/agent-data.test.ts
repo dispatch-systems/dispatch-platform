@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture } from '../../../shell/tests/support/support.js';
-import type { AgentKeyCreated, AgentKeys } from '../../../../shared/contracts/index.js';
+import type { AgentKeyCreated, AgentKeys } from '../../../platform_owner/api/index.js';
 
 test('an agent reads a DSP by asking in its own words, and is told what to fix', async (t) => {
   const f = await fixture();

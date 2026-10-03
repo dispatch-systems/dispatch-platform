@@ -1,5 +1,5 @@
 import { api, useCachedData } from '../../../core/shell/frontend/runtime/api.js';
-import type { RouteRetention } from '../../../shared/contracts/routes.js';
+import type { RouteRetention } from './index.js';
 
 // Routes' endpoints, as its settings panel calls them.
 

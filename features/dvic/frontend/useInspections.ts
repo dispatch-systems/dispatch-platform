@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from 'react';
-import type { DvicInspections } from '../../../shared/contracts/dvic.js';
+import type { DvicInspections } from '../api/index.js';
 import { api, useCachedData } from '../../../core/shell/frontend/runtime/api.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { readInspectionWeek } from './dvic.js';

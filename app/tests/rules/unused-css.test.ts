@@ -44,6 +44,13 @@ const frontends = [
   ),
 ];
 
+// Every owner's API types and validators: the files of its api/ besides its client.
+const apiTypes = ['core', 'features', 'collectors']
+  .flatMap((top) => fs.readdirSync(top).map((name) => path.join(top, name, 'api')))
+  .filter((directory) => fs.existsSync(directory))
+  .flatMap((directory) => files(directory, /\.tsx?$/))
+  .filter((file) => path.basename(file) !== 'client.ts');
+
 const dynamicClasses = new Set([
   // core/shell/frontend/ui/DspAvatar.tsx: tone-${tone}, where tone is a hash modulo five.
   'tone-1',
@@ -56,6 +63,7 @@ const dynamicClasses = new Set([
 
 test('every dashboard CSS class occurs as a source token or is explicitly dynamic', () => {
   const sourceFiles = [...frontends, 'shared'].flatMap((directory) => files(directory, /\.tsx?$/));
+  sourceFiles.push(...apiTypes);
   sourceFiles.push('core/server/backend/mail/templates.rs');
   const tokens = new Set(
     sourceFiles.flatMap((file) => fs.readFileSync(file, 'utf8').match(/[A-Za-z0-9_-]+/g) ?? []),

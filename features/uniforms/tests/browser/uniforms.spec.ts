@@ -5,7 +5,7 @@ import {
   login,
   openDsp,
 } from '../../../../core/shell/tests/support/fixtures.js';
-import type { UniformInventory } from '../../../../shared/contracts/uniforms.js';
+import type { UniformInventory } from '../../api/index.js';
 
 test('two users see rapid stock changes live, retries count once, and reopening keeps saved quantities', async ({
   page,

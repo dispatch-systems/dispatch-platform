@@ -1,4 +1,4 @@
-import type { SessionView } from '../../../../shared/contracts/index.js';
+import type { SessionView } from '../../../accounts/api/index.js';
 import { ApiError } from './api.js';
 import { openDsp } from './endpoints.js';
 

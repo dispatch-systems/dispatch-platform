@@ -1,11 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Globe, Info, TriangleAlert } from 'lucide-react';
-import type {
-  AgentDsp,
-  OAuthApproval,
-  OAuthReplaced,
-  OAuthRequest,
-} from '../../../../shared/contracts/index.js';
+import type { AgentDsp, OAuthApproval, OAuthReplaced, OAuthRequest } from '../../api/index.js';
 import { ApiError } from '../../../shell/frontend/runtime/api.js';
 import {
   approveOAuthRequest,

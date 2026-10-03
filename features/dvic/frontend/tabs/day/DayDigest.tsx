@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
-import type { DvicInspection } from '../../../../../shared/contracts/dvic.js';
+import type { DvicInspection } from '../../../api/index.js';
 import {
   bandLabel,
   groupByVehicleClass,

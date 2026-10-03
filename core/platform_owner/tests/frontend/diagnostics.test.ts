@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { MailMessage, PlatformHealth } from '../../../../shared/contracts/index.js';
+import type { MailMessage, PlatformHealth } from '../../api/index.js';
 import { issues } from '../../frontend/diagnostics/attention.js';
 import { stage } from '../../frontend/diagnostics/mail.js';
 

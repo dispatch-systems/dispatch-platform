@@ -5,8 +5,8 @@ import type {
   CollectionSchedules,
   CollectionUpdates,
   Connection,
-} from '../../../shared/contracts/index.js';
-import type { ScheduleInput } from '../../../shared/contracts/schedules.js';
+  ScheduleInput,
+} from './index.js';
 
 // Collection's endpoints, as the frontend calls them: live updates, schedules and connections.
 

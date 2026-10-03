@@ -1,10 +1,6 @@
 import type { Ref } from 'react';
 import { ChevronRight } from 'lucide-react';
-import type {
-  AgentKeyDsp,
-  AgentKeyRequest,
-  AgentReads,
-} from '../../../../shared/contracts/index.js';
+import type { AgentKeyDsp, AgentKeyRequest, AgentReads } from '../../api/index.js';
 import { bypassHere, switchedOffText } from './agents.js';
 import { ReadChoices, SwitchBox } from './KeyChoices.js';
 

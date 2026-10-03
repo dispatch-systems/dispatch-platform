@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { AgentActivity } from '../../../../shared/contracts/index.js';
+import type { AgentActivity } from '../../api/index.js';
 import {
   readAgentActivity,
   useAgentActivity,

@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture } from '../../../core/shell/tests/support/support.js';
-import { parseApiResponse } from '../../../shared/contracts/runtime.js';
-import type { AuditPage, DspSummary, PlatformHealth } from '../../../shared/contracts/index.js';
-import type { PaycomSettings } from '../../../shared/contracts/paycom.js';
+import '../support/manifests.js';
+import { parseApiResponse } from '../../../core/shell/frontend/runtime/replies.js';
+import type { AuditPage, PlatformHealth } from '../../../core/platform_owner/api/index.js';
+import type { DspSummary } from '../../../core/accounts/api/index.js';
+import type { PaycomSettings } from '../../../features/timecard/api/index.js';
 
 test('recovery-code responses accept the active and previous rollout formats', () => {
   const route = '/api/auth/security/recovery-codes';

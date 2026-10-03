@@ -5,7 +5,7 @@ import {
   applyUniformSnapshot,
   applyUniformUpdates,
 } from '../../frontend/uniforms.js';
-import type { UniformInventory } from '../../../../shared/contracts/uniforms.js';
+import type { UniformInventory } from '../../api/index.js';
 
 const inventory = (): UniformInventory => ({
   revision: 1,

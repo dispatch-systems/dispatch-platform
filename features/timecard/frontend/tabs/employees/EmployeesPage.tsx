@@ -1,10 +1,7 @@
 import { performancePolicy } from '../../../../../core/shell/frontend/lib/performance-policy.js';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowDownAZ, ArrowUpAZ, ChevronRight } from 'lucide-react';
-import type {
-  EmployeeTimecardPeriod,
-  EmployeeTimecardResponse,
-} from '../../../../../shared/contracts/index.js';
+import type { EmployeeTimecardPeriod, EmployeeTimecardResponse } from '../../../api/index.js';
 import { useUpdateState } from '../../../../../core/shell/frontend/runtime/browser-update.js';
 import { employeeTimecardUrl, useEmployeeTimecard, useEmployees } from '../../../api/client.js';
 import {

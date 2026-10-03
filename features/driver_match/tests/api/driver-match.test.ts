@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture, until } from '../../../../core/shell/tests/support/support.js';
-import type { AuditEvent, DriverDetails, DriverMatch } from '../../../../shared/contracts/index.js';
+import type { AuditEvent } from '../../../../core/platform_owner/api/index.js';
+import type { DriverDetails, DriverMatch } from '../../api/index.js';
 
 const code = /^[2-9A-HJKMNP-TV-Z]{6}$/;
 

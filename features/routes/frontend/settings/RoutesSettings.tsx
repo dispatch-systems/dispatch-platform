@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Route } from 'lucide-react';
-import type { RouteRetention } from '../../../../shared/contracts/routes.js';
+import type { RouteRetention } from '../../api/index.js';
 import { setRouteRetention, useRouteRetention } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { dateFormatter } from '../../../../core/shell/frontend/lib/date-format.js';

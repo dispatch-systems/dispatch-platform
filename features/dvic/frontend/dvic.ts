@@ -1,4 +1,4 @@
-import type { DvicInspection, DvicInspections } from '../../../shared/contracts/dvic.js';
+import type { DvicInspection, DvicInspections } from '../api/index.js';
 import { shiftDate } from '../../../core/shell/frontend/lib/day.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 

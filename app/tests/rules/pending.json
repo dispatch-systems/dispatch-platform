@@ -33,36 +33,19 @@
       "typescript": {
         "core/accounts imports shared/contracts": "Phase B",
         "core/collection imports shared/contracts": "Phase B",
-        "core/collection's tests import shared/contracts": "Phase B",
-        "core/mcp's tests import shared/contracts": "Phase B",
         "core/platform_owner imports shared/contracts": "Phase B",
-        "core/platform_owner's tests import shared/contracts": "Phase B",
-        "core/server's tests import shared/contracts": "Phase B",
         "core/shell imports shared/contracts": "Phase B",
-        "core/shell's tests import shared/contracts": "Phase B",
-        "core/tenancy's tests import shared/contracts": "Phase B",
+        "core/tenancy imports shared/contracts": "Phase B",
         "features/driver_match imports shared/contracts": "Phase B",
-        "features/driver_match's tests import shared/contracts": "Phase B",
         "features/dvic imports shared/contracts": "Phase B",
-        "features/dvic's tests import shared/contracts": "Phase B",
         "features/routes imports shared/contracts": "Phase B",
-        "features/settings imports shared/contracts": "Phase B",
-        "features/team imports shared/contracts": "Phase B",
         "features/timecard imports shared/contracts": "Phase B",
-        "features/timecard's tests import shared/contracts": "Phase B",
-        "features/uniforms imports shared/contracts": "Phase B",
-        "features/uniforms's tests import shared/contracts": "Phase B"
+        "features/uniforms imports shared/contracts": "Phase B"
       }
     },
     "names": {
       "retired names": {
         "file core/mcp/tests/support/agents.ts is named agents": "Phase B",
-        "file shared/contracts/agents.ts is named agents": "Phase B",
-        "file shared/contracts/drivers.ts is named drivers": "Phase B",
-        "file shared/contracts/meals.ts is named meals": "Phase B",
-        "file shared/contracts/runtime-workforce.ts is named workforce": "Phase B",
-        "file shared/contracts/workforce.ts is named workforce": "Phase B",
-        "folder tooling/agents is named agents": "Phase B",
         "module browsers in app/backend/lib.rs is named browsers": "Phase B",
         "module collectors in app/backend/lib.rs is named collectors": "Phase B",
         "module meals in app/backend/contracts.rs is named meals": "Phase B",

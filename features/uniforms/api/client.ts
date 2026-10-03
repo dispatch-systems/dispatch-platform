@@ -5,7 +5,7 @@ import type {
   UniformInput,
   UniformInventory,
   UniformUpdates,
-} from '../../../shared/contracts/uniforms.js';
+} from './index.js';
 
 // Uniform Inventory's endpoints, as its page calls them.
 
