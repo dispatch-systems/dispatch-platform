@@ -167,5 +167,5 @@ fn decoded(segment: &str) -> String {
 }
 
 #[cfg(test)]
-#[path = "../../tests/backend/api/routes/agents.rs"]
+#[path = "../../tests/backend/api/routes/agent_api.rs"]
 mod tests;

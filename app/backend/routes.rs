@@ -3,12 +3,10 @@
 use super::route::Route;
 use crate::{feature_manifests::team::api::TEAM, manifest::registry};
 
-#[path = "../../core/mcp/api/routes/agents.rs"]
-pub mod agents;
+#[path = "../../core/mcp/api/routes/agent_api.rs"]
+pub mod agent_api;
 #[path = "../../core/platform_owner/api/routes/audit.rs"]
 pub mod audit;
-#[path = "../../core/accounts/api/routes/auth.rs"]
-pub mod auth;
 #[path = "../../core/collection/api/routes/connections.rs"]
 pub mod connections;
 #[path = "../../core/collection/api/routes/jobs.rs"]
@@ -25,16 +23,18 @@ pub mod schedules;
 pub mod security;
 #[path = "../../core/tenancy/api/routes.rs"]
 pub mod session;
+#[path = "../../core/accounts/api/routes/sign_in.rs"]
+pub mod sign_in;
 
 /// Core's routes, then every registered feature's, in the registry's order.
 pub fn all() -> Vec<Route> {
     let core = [
         live::routes(),
-        auth::routes(),
+        sign_in::routes(),
         security::routes(),
         session::routes(),
         platform::routes(),
-        agents::routes(),
+        agent_api::routes(),
         oauth::routes(),
         jobs::routes(),
         connections::routes(),
