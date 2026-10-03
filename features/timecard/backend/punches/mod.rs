@@ -7,6 +7,8 @@ mod daily;
 mod employees;
 #[path = "keeper.rs"]
 pub mod keeper;
+#[path = "people.rs"]
+pub mod people;
 #[path = "preferences.rs"]
 mod preferences;
 #[path = "publication.rs"]

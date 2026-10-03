@@ -55,5 +55,6 @@ pub const FEATURE: Feature = Feature {
         run: dvic::cli::run,
     }),
     mcp: mcp::MCP,
+    people: &[&dvic::people::Drivers],
     ..feature("dvic")
 };

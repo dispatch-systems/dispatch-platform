@@ -1,5 +1,8 @@
 //! What collectors and features declare, and the one registry the app builds from them.
 //! Core reaches collectors and features through `registry()`, never by name.
+#[path = "people.rs"]
+pub mod people;
+
 use crate::{
     Code, Error, Result, State,
     agents::{self, Mcp},
@@ -11,6 +14,7 @@ use crate::{
     job_metrics::Counts,
     read_cache::{self, Cached, DataDomain},
 };
+use people::People;
 use serde_json::Value;
 use std::{
     future::Future,
@@ -112,6 +116,16 @@ impl Registry {
         let features = self.features.iter().flat_map(|feature| feature.permissions);
         CORE_PERMISSIONS.iter().copied().chain(features)
     }
+    /// Every kind of data that names people, in the order their spellings are read.
+    pub fn people(&self) -> Vec<&'static dyn People> {
+        let mut people: Vec<&'static dyn People> = self
+            .features
+            .iter()
+            .flat_map(|feature| feature.people.iter().copied())
+            .collect();
+        people.sort_by_key(|people| people.order());
+        people
+    }
     /// The permission that lets a member invite others.
     pub fn inviting(&self) -> &'static str {
         self.permissions()
@@ -125,8 +139,9 @@ impl Registry {
     /// id and an order of its own and implies only permissions that exist, one lets
     /// members invite, every database is declared once, with migrations numbered from 1
     /// without a gap or a repeat, every domain is declared once and before it is named,
-    /// every audit prefix is a dotted name listed under an area other than settings, and
-    /// what agents may read is declared as `agents::pieces::check` asks.
+    /// every audit prefix is a dotted name listed under an area other than settings, each
+    /// kind of data that names people has a place of its own, and what agents may read is
+    /// declared as `agents::pieces::check` asks.
     pub fn check(&self) {
         let kinds: Vec<&str> = self
             .collectors
@@ -239,6 +254,16 @@ impl Registry {
                 "{prefix} is no audit prefix of an area"
             );
         }
+        let people = self.people();
+        for (index, kind) in people.iter().enumerate() {
+            assert!(
+                people[..index]
+                    .iter()
+                    .all(|other| other.data() != kind.data() && other.order() != kind.order()),
+                "{} names people twice, or in another's place",
+                kind.data().as_str()
+            );
+        }
         agents::pieces::check(self.features);
     }
 }
@@ -284,6 +309,8 @@ pub struct Feature {
     pub commands: Option<Commands>,
     /// What agents can ask of it.
     pub mcp: Mcp,
+    /// Who its data names, for Driver Match to tell apart.
+    pub people: &'static [&'static dyn People],
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
@@ -306,6 +333,7 @@ pub const fn feature(name: &'static str) -> Feature {
         demo: None,
         commands: None,
         mcp: Mcp::NONE,
+        people: &[],
     }
 }
 

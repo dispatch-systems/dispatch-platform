@@ -4,6 +4,8 @@
 //! data is untrusted input.
 #[path = "keeper.rs"]
 pub mod keeper;
+#[path = "people.rs"]
+pub mod people;
 
 use crate::{
     Error, Result,

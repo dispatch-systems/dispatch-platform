@@ -97,5 +97,6 @@ pub const FEATURE: Feature = Feature {
     },
     demo: Some(workforce::demo),
     mcp: mcp::MCP,
+    people: &[&workforce::people::Employees, &meals::people::MealDrivers],
     ..feature("timecard")
 };

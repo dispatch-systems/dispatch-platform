@@ -8,6 +8,8 @@
 pub mod keeper;
 #[path = "maintenance.rs"]
 pub mod maintenance;
+#[path = "people.rs"]
+pub mod people;
 
 use crate::{
     Error, Result,

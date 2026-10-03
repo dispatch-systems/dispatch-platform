@@ -46,5 +46,6 @@ pub const FEATURE: Feature = Feature {
     domains: &[routedata::DOMAIN],
     maintenance: &[routedata::maintenance::MAINTENANCE],
     mcp: mcp::MCP,
+    people: &[&routedata::people::Drivers],
     ..feature("routes")
 };

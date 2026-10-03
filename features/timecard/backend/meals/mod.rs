@@ -4,6 +4,8 @@ pub mod assessment;
 mod comparison;
 #[path = "keeper.rs"]
 pub mod keeper;
+#[path = "people.rs"]
+pub mod people;
 #[path = "sync.rs"]
 mod sync;
 // Cortex meal evidence and atomic publication. Browser data is untrusted input.

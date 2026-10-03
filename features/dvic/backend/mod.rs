@@ -6,6 +6,8 @@ pub mod cli;
 pub mod hidden;
 #[path = "keeper.rs"]
 pub mod keeper;
+#[path = "people.rs"]
+pub mod people;
 #[path = "storage.rs"]
 mod storage;
 

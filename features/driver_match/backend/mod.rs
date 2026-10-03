@@ -27,7 +27,7 @@ use crate::{
 use matching::{Member, Saved};
 use rusqlite::params;
 use serde_json::{Value, json};
-use sources::{Days, Identity, Key, Seen};
+use sources::{Days, DriverDepartments, Identity, Key, Seen};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Driver codes, the decisions about them and the IDs they lead to.
@@ -57,13 +57,12 @@ pub fn valid_code(code: &str) -> bool {
     code.len() == CODE_LENGTH && code.bytes().all(|b| ALPHABET.contains(&b))
 }
 
-/// The Paycom departments a DSP counts as drivers, from its Timecard settings. Everyone
-/// only Paycom knows outside them is office staff; without the setting, nobody is.
-type DriverDepartments = Option<BTreeSet<String>>;
-fn office(department: Option<&str>, drivers: &DriverDepartments) -> bool {
+/// Whether someone works in the office: outside the departments their source's settings
+/// count as drivers.
+fn office(x: &Identity, drivers: &DriverDepartments) -> bool {
     drivers
-        .as_ref()
-        .is_some_and(|list| !list.contains(department.unwrap_or("")))
+        .get(&x.source)
+        .is_some_and(|list| !list.contains(x.department.as_deref().unwrap_or("")))
 }
 
 /// What one pass reads: every ID the collections hold and the links saved on the meal-break
@@ -173,11 +172,10 @@ fn driver(
         DriverStatus::Former
     } else if amazon {
         DriverStatus::AmazonOnly
-    } else if paycom.iter().all(|i| {
-        found
-            .get(&i.key())
-            .is_some_and(|x| office(x.department.as_deref(), departments))
-    }) {
+    } else if paycom
+        .iter()
+        .all(|i| found.get(&i.key()).is_some_and(|x| office(x, departments)))
+    {
         DriverStatus::Office
     } else {
         DriverStatus::PaycomOnly
@@ -336,14 +334,7 @@ impl Store {
         let activity = sources::activity(self, dsp)?;
         let days = sources::days(self, dsp)?;
         let saved = self.saved_links(dsp)?;
-        let departments: DriverDepartments =
-            self.preference_values(dsp)?["values"]["driver_departments"]
-                .as_array()
-                .map(|list| {
-                    list.iter()
-                        .filter_map(|d| d.as_str().map(str::to_owned))
-                        .collect()
-                });
+        let departments = sources::driver_departments(self, dsp)?;
         // Counted from what was collected, not from today, so a DSP whose collections
         // pause does not see everyone leave.
         let recent = found

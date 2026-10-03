@@ -47,5 +47,6 @@ pub const FEATURE: Feature = Feature {
     }],
     domains: &[scorecard::DOMAIN],
     mcp: mcp::MCP,
+    people: &[&scorecard::people::Drivers],
     ..feature("scorecard")
 };
