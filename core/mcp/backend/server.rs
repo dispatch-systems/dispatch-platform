@@ -127,7 +127,7 @@ fn structured(context: &RequestContext<RoleServer>) -> bool {
 /// kind at least one DSP it reaches lets it read. Any other is refused when called, as at a
 /// DSP that doesn't.
 fn offered(caller: &Caller) -> impl Iterator<Item = &'static catalog::Endpoint> + '_ {
-    catalog::ENDPOINTS.iter().filter(|e| {
+    catalog::ENDPOINTS.iter().copied().filter(|e| {
         e.area.is_none_or(|area| {
             caller
                 .dsps

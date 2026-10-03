@@ -18,8 +18,6 @@ mod views;
 pub use access::switched_on;
 pub use shape::BUDGET;
 pub use views::*;
-// A4: Scorecard's answers, until it answers for its own endpoints.
-use crate::feature_manifests::scorecard::mcp::scorecard;
 
 use crate::{Error, State, agents::Caller, contracts::AgentDsp, db::Store};
 use access::{Access, Read};
@@ -120,30 +118,7 @@ pub fn ask(
         Some(area) => Access::of(db, caller, query)?.check(area)?,
         None => Read::On,
     };
-    let answer: Answer = match endpoint.id {
-        "whoami" => {
-            catalog::check("whoami", query)?;
-            Ok(json!(db.agent_whoami(caller)?))
-        }
-        "status" => status(db, caller, query),
-        "metrics" => metrics(query),
-        "drivers" => drivers(db, state, caller, query),
-        "driver" => driver(db, state, caller, named, query),
-        "team" => team(db, state, caller, query),
-        "routes" => routes(db, state, caller, query),
-        "route" => route(db, state, caller, named, query),
-        "package" => package(db, state, caller, named, query),
-        "packages" => packages(db, state, caller, query),
-        "feedback" => scorecard::feedback(db, state, caller, query),
-        "safety" => scorecard::safety(db, state, caller, query),
-        "returns" => scorecard::returns(db, state, caller, query),
-        "scorecard" => scorecard::weekly(db, state, caller, query),
-        "timecards" => timecards(db, state, caller, query),
-        "meal_breaks" => meal_breaks(db, state, caller, query),
-        "dvic" => dvic(db, state, caller, query),
-        other => Err(Error::new(format!("unanswered_endpoint_{other}"), 500).into()),
-    };
-    let mut answer = answer?;
+    let mut answer = (endpoint.answer)(db, state, caller, named, query)?;
     if let (Some(area), Read::Bypassed) = (endpoint.area, read) {
         access::bypassed(&mut answer, area.source());
     }

@@ -1,16 +1,12 @@
 //! Everything an agent can ask, written once: each endpoint with its parameters, and each
 //! metric with what it means. Requests are checked against it, the OpenAPI document is
-//! built from it, and later the MCP tools are too, so none of them can drift apart.
-use super::Refusal;
-use crate::contracts::AgentArea;
-// A4: the features' endpoints and metrics, until each feature declares its own.
-use crate::feature_manifests::{
-    dvic::mcp::DVIC,
-    routes::mcp::ROUTES,
-    scorecard::mcp::{FEEDBACK, RETURNS, SAFETY, SCORECARD},
-    timecard::mcp::{MEAL_BREAKS, TIMECARDS},
-};
+//! built from it, and later the MCP tools are too, so none of them can drift apart. Core
+//! declares the endpoints that join every feature's facts; each feature declares its own
+//! endpoints, metrics and terms in its manifest's `mcp`.
+use super::{Answer, Refusal};
+use crate::{State, agents::Caller, contracts::AgentArea, db::Store, manifest::registry};
 use serde_json::{Map, Value, json};
+use std::sync::LazyLock;
 
 /// What a parameter holds.
 #[derive(Clone, Copy, Debug)]
@@ -41,79 +37,78 @@ pub struct Endpoint {
     /// The parts of the path an agent fills in, such as `{driver}`.
     pub path_params: &'static [Param],
     pub params: &'static [Param],
+    /// Its place in the one order the catalog lists endpoints in, and so the OpenAPI
+    /// document, the MCP tools and the skill.
+    pub order: u16,
+    pub answer: Answerer,
 }
+/// Answers one endpoint, given what fills its path parameter (empty when it has none) and
+/// its query, once the key or app is known to read what it reads.
+pub type Answerer = fn(&Store, &State, &Caller, &str, &Value) -> Answer;
 
-const DSP: Param = Param {
+pub const DSP: Param = Param {
     name: "dsp",
     kind: Kind::Text,
     description: "The DSP, by name. Leave it out when the key reaches one DSP.",
 };
-const PERIOD: Param = Param {
+pub const PERIOD: Param = Param {
     name: "period",
     kind: Kind::Text,
     description: "The days as the user said them, read in the DSP's own time: yesterday, \
         last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 \
         or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.",
 };
-const DATE: Param = Param {
+pub const DATE: Param = Param {
     name: "date",
     kind: Kind::Text,
     description: "One day: today, yesterday, last night or 2026-09-28.",
 };
-const DAY: Param = Param {
+pub const DAY: Param = Param {
     name: "date",
     kind: Kind::Text,
     description: "The day: yesterday, last night, today or 2026-09-28. Leave out for yesterday.",
 };
-const FROM: Param = Param {
+pub const FROM: Param = Param {
     name: "from",
     kind: Kind::Text,
     description: "The first day, as 2026-09-01, with `to`; instead of `period`.",
 };
-const TO: Param = Param {
+pub const TO: Param = Param {
     name: "to",
     kind: Kind::Text,
     description: "The last day, as 2026-09-30, with `from`.",
 };
-const DRIVER: Param = Param {
+pub const DRIVER: Param = Param {
     name: "driver",
     kind: Kind::Text,
     description: "A driver as the user named them: a name or part of one, a Driver Match \
         code, a Paycom employee code or an Amazon transporter ID.",
 };
-const LIMIT: Param = Param {
+pub const LIMIT: Param = Param {
     name: "limit",
     kind: Kind::Integer(1, 500),
     description: "The most rows to return, 1 to 500.",
 };
-const CURSOR: Param = Param {
+pub const CURSOR: Param = Param {
     name: "cursor",
     kind: Kind::Text,
     description: "The next_cursor an earlier answer gave, for its next page.",
 };
-const GROUPS_CURSOR: Param = Param {
-    name: "groups_cursor",
-    kind: Kind::Text,
-    description: "The groups table's next_cursor; cursor separately pages the package list.",
-};
-const DETAIL: Param = Param {
+pub const DETAIL: Param = Param {
     name: "detail",
     kind: Kind::Choice(&["summary", "full"]),
     description: "summary (the default) or full, only when the user wants every row.",
 };
 
-const DRIVER_PATH: Param = Param {
+pub const DRIVER_PATH: Param = Param {
     name: "driver",
     kind: Kind::Text,
     description: DRIVER.description,
 };
-const ROUTE_PATH: Param = Param {
-    name: "route",
-    kind: Kind::Text,
-    description: "The route code, as CX101, or the itinerary ID route_day gives.",
-};
 
-pub const ENDPOINTS: &[Endpoint] = &[
+/// The endpoints core answers: who is asking, how fresh each source is, what the metrics
+/// mean, and the questions every feature's facts are joined for.
+pub(crate) const CORE: &[Endpoint] = &[
     Endpoint {
         id: "whoami",
         tool: "whoami",
@@ -125,6 +120,11 @@ pub const ENDPOINTS: &[Endpoint] = &[
             first: every answer says which days it read.",
         path_params: &[],
         params: &[],
+        order: 10,
+        answer: |db, _, caller, _, query| {
+            check("whoami", query)?;
+            Ok(json!(db.agent_whoami(caller)?))
+        },
     },
     Endpoint {
         id: "status",
@@ -137,6 +137,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
             reads there, and when each last collected.",
         path_params: &[],
         params: &[DSP],
+        order: 20,
+        answer: |db, _, caller, _, query| super::status(db, caller, query),
     },
     Endpoint {
         id: "metrics",
@@ -148,6 +150,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
             metric's source, unit and meaning, and a glossary.",
         path_params: &[],
         params: &[],
+        order: 30,
+        answer: |_, _, _, _, query| super::metrics(query),
     },
     Endpoint {
         id: "drivers",
@@ -175,59 +179,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
             LIMIT,
             CURSOR,
         ],
-    },
-    Endpoint {
-        id: "packages",
-        tool: "packages",
-        area: Some(ROUTES),
-        path: "/api/v1/packages",
-        summary: "Count packages by what happened",
-        description: "Use for questions about packages: how many a driver delivered, who \
-            returned packages and why, how many were business closed. Answers a count, \
-            optionally grouped, from Amazon's record of every drop-off. Add list only when \
-            the user wants the packages themselves.",
-        path_params: &[],
-        params: &[
-            DSP,
-            PERIOD,
-            DATE,
-            FROM,
-            TO,
-            DRIVER,
-            Param {
-                name: "outcome",
-                kind: Kind::Choice(super::facts::OUTCOMES),
-                description: "delivered, returned (brought back to the station), attempted, \
-                    not_picked_up (missing at the station), cancelled or open (still out \
-                    when collected).",
-            },
-            Param {
-                name: "reason",
-                kind: Kind::Text,
-                description: "Amazon's reason, as business_closed, object_missing, damaged, \
-                    inaccessible_delivery_location, address_not_found or locker_issue; for \
-                    delivered packages, where they were left, as doorstep.",
-            },
-            Param {
-                name: "route",
-                kind: Kind::Text,
-                description: "A route code, as CX101.",
-            },
-            Param {
-                name: "group_by",
-                kind: Kind::Text,
-                description: "Count per driver, day, outcome, reason, route or address; two \
-                    may be joined, as driver,reason.",
-            },
-            Param {
-                name: "list",
-                kind: Kind::Boolean,
-                description: "Also list the packages, a page at a time.",
-            },
-            LIMIT,
-            CURSOR,
-            GROUPS_CURSOR,
-        ],
+        order: 40,
+        answer: |db, state, caller, _, query| super::drivers(db, state, caller, query),
     },
     Endpoint {
         id: "driver",
@@ -240,6 +193,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
             clock in and out, meal break and inspections, plus totals.",
         path_params: &[DRIVER_PATH],
         params: &[DSP, PERIOD, DATE, FROM, TO, DETAIL, LIMIT, CURSOR],
+        order: 60,
+        answer: |db, state, caller, named, query| super::driver(db, state, caller, named, query),
     },
     Endpoint {
         id: "team",
@@ -281,278 +236,23 @@ pub const ENDPOINTS: &[Endpoint] = &[
             LIMIT,
             CURSOR,
         ],
-    },
-    Endpoint {
-        id: "routes",
-        tool: "route_day",
-        area: Some(ROUTES),
-        path: "/api/v1/routes",
-        summary: "A day's routes",
-        description: "Use for one day's routes: each route's driver, packages delivered and \
-            undeliverable, stops, departure and end, and whether the day is final.",
-        path_params: &[],
-        params: &[DSP, DAY, LIMIT, CURSOR],
-    },
-    Endpoint {
-        id: "route",
-        tool: "route_stops",
-        area: Some(ROUTES),
-        path: "/api/v1/routes/{route}",
-        summary: "One route's packages",
-        description: "Use for what happened on one route: outcomes, reasons and the packages \
-            that were not delivered. detail full lists every package, only when the user \
-            asks for all of them. Addresses appear only for keys allowed them.",
-        path_params: &[ROUTE_PATH],
-        params: &[DSP, DAY, DETAIL, LIMIT, CURSOR],
-    },
-    Endpoint {
-        id: "package",
-        tool: "find_package",
-        area: Some(ROUTES),
-        path: "/api/v1/packages/{tracking}",
-        summary: "Find a package",
-        description: "Use for one tracking ID: who carried it, on which route and day, and \
-            what happened to it.",
-        path_params: &[Param {
-            name: "tracking",
-            kind: Kind::Text,
-            description: "The tracking ID, as TBA123456789000.",
-        }],
-        params: &[DSP],
-    },
-    Endpoint {
-        id: "timecards",
-        tool: "timecards",
-        area: Some(TIMECARDS),
-        path: "/api/v1/timecards",
-        summary: "Timecards",
-        description: "Use for Paycom hours and punches: everyone's for one day, or one \
-            driver's over a period with driver. Hours, clock in and out, lunch minutes.",
-        path_params: &[],
-        params: &[DSP, DATE, DRIVER, PERIOD, FROM, TO, LIMIT, CURSOR],
-    },
-    Endpoint {
-        id: "meal_breaks",
-        tool: "meal_breaks",
-        area: Some(MEAL_BREAKS),
-        path: "/api/v1/meal-breaks",
-        summary: "Meal breaks",
-        description: "Use for one day's meal breaks: Cortex's meal break beside Paycom's \
-            lunch punches and the comparison's verdict, for each driver Cortex had a route \
-            for.",
-        path_params: &[],
-        params: &[
-            DSP,
-            DAY,
-            Param {
-                name: "issues",
-                kind: Kind::Boolean,
-                description: "Only drivers whose meal break needs a look.",
-            },
-            LIMIT,
-            CURSOR,
-        ],
-    },
-    Endpoint {
-        id: "dvic",
-        tool: "dvic_inspections",
-        area: Some(DVIC),
-        path: "/api/v1/dvic",
-        summary: "Vehicle inspections",
-        description: "Use for DVIC questions, as which drivers were short: each driver's \
-            inspections, how many were shorter than the minimum, and the shortest. detail \
-            full lists the inspections.",
-        path_params: &[],
-        params: &[
-            DSP,
-            PERIOD,
-            DATE,
-            FROM,
-            TO,
-            DRIVER,
-            Param {
-                name: "short",
-                kind: Kind::Boolean,
-                description: "Only drivers, or inspections, short of the minimum.",
-            },
-            DETAIL,
-            LIMIT,
-            CURSOR,
-        ],
-    },
-    Endpoint {
-        id: "feedback",
-        tool: "customer_feedback",
-        area: Some(FEEDBACK),
-        path: "/api/v1/feedback",
-        summary: "Customer feedback (CDF)",
-        description: "Use for customer delivery feedback (CDF) from Amazon's weekly scorecard: \
-            how much negative feedback, of which kinds, for which drivers, and repeated \
-            feedback at the same address (group_by address, min_count 2; needs a key allowed \
-            addresses). CDF means negative feedback; ask for positive only when the user asks \
-            for praise.",
-        path_params: &[],
-        params: &[
-            DSP,
-            PERIOD,
-            DATE,
-            FROM,
-            TO,
-            DRIVER,
-            Param {
-                name: "feedback",
-                kind: Kind::Choice(&["negative", "positive", "all"]),
-                description: "negative (the default), positive or all.",
-            },
-            Param {
-                name: "type",
-                kind: Kind::Choice(
-                    crate::feature_manifests::scorecard::mcp::scorecard::FEEDBACK_NAMES,
-                ),
-                description: "One kind of feedback, as wrong_address or never_received.",
-            },
-            Param {
-                name: "impacting",
-                kind: Kind::Boolean,
-                description: "Only feedback that counts against the scorecard.",
-            },
-            Param {
-                name: "group_by",
-                kind: Kind::Text,
-                description: "Count per driver, address, type, week or day; two may be joined.",
-            },
-            Param {
-                name: "min_count",
-                kind: Kind::Integer(1, 100),
-                description: "Only groups with at least this many, as 2 for repeated feedback.",
-            },
-            Param {
-                name: "list",
-                kind: Kind::Boolean,
-                description: "Also list the feedback, a page at a time.",
-            },
-            LIMIT,
-            CURSOR,
-        ],
-    },
-    Endpoint {
-        id: "safety",
-        tool: "safety_events",
-        area: Some(SAFETY),
-        path: "/api/v1/safety",
-        summary: "Netradyne safety events",
-        description: "Use for Netradyne safety infractions from Amazon's scorecard: speeding, \
-            distraction, sign violations, following distance, seatbelt. Gives counts by type; \
-            for one driver also each event with its severity and dispute outcome.",
-        path_params: &[],
-        params: &[
-            DSP,
-            PERIOD,
-            DATE,
-            FROM,
-            TO,
-            DRIVER,
-            Param {
-                name: "type",
-                kind: Kind::Text,
-                description: "One kind, as speeding, distraction or seatbelt.",
-            },
-            Param {
-                name: "group_by",
-                kind: Kind::Text,
-                description: "Count per driver, type, day or week; two may be joined.",
-            },
-            Param {
-                name: "list",
-                kind: Kind::Boolean,
-                description: "List the events, a page at a time.",
-            },
-            LIMIT,
-            CURSOR,
-        ],
-    },
-    Endpoint {
-        id: "returns",
-        tool: "returns",
-        area: Some(RETURNS),
-        path: "/api/v1/returns",
-        summary: "Contact compliance and returns to station (RTS)",
-        description: "Use for contact compliance: which drivers didn't do it, that is returned \
-            packages without the required call or text (contact missed, group_by driver). \
-            Also Amazon's returns to station from the weekly scorecard, their reasons, and \
-            which returns hurt the completion rate (DCR). Amazon posts a week's scorecard after \
-            it ends: for packages returned last night or this week, use packages.",
-        path_params: &[],
-        params: &[
-            DSP,
-            PERIOD,
-            DATE,
-            FROM,
-            TO,
-            DRIVER,
-            Param {
-                name: "contact",
-                kind: Kind::Choice(&["missed", "compliant"]),
-                description: "missed: the driver did not call or text as required; compliant: \
-                    the return was excused because they did.",
-            },
-            Param {
-                name: "reason",
-                kind: Kind::Text,
-                description: "Amazon's RTS reason, as business_closed or object_missing.",
-            },
-            Param {
-                name: "impacting",
-                kind: Kind::Boolean,
-                description: "Only returns that hurt the completion rate (DCR).",
-            },
-            Param {
-                name: "group_by",
-                kind: Kind::Text,
-                description: "Count per driver, reason, coaching, week or day; two may be joined.",
-            },
-            Param {
-                name: "list",
-                kind: Kind::Boolean,
-                description: "Also list the returns, a page at a time.",
-            },
-            LIMIT,
-            CURSOR,
-        ],
-    },
-    Endpoint {
-        id: "scorecard",
-        tool: "scorecard",
-        area: Some(SCORECARD),
-        path: "/api/v1/scorecard",
-        summary: "A week's scorecard",
-        description: "Use for Amazon's weekly scorecard: the DSP's tier and focus areas, and each \
-            driver's overall tier, score and tiers for CDF, DSB, POD, RTS and safety, lowest \
-            scores first. Which drivers missed contact compliance is in returns; feedback, \
-            safety events and returns themselves have their own tools.",
-        path_params: &[],
-        params: &[
-            DSP,
-            Param {
-                name: "week",
-                kind: Kind::Text,
-                description: "An Amazon week as 2026-W39, last week, or latest (the default).",
-            },
-            DRIVER,
-            Param {
-                name: "below",
-                kind: Kind::Choice(&["platinum", "gold", "silver", "bronze"]),
-                description: "Only drivers whose overall tier is below this one.",
-            },
-            LIMIT,
-            CURSOR,
-        ],
+        order: 70,
+        answer: |db, state, caller, _, query| super::team(db, state, caller, query),
     },
 ];
+
+/// Every endpoint, core's and each feature's, in their order.
+pub static ENDPOINTS: LazyLock<Vec<&'static Endpoint>> = LazyLock::new(|| {
+    let features = registry().features.iter().flat_map(|f| f.mcp.endpoints);
+    let mut all: Vec<&'static Endpoint> = CORE.iter().chain(features).collect();
+    all.sort_by_key(|endpoint| endpoint.order);
+    all
+});
 
 pub fn endpoint(id: &str) -> &'static Endpoint {
     ENDPOINTS
         .iter()
+        .copied()
         .find(|e| e.id == id)
         .expect("a listed endpoint")
 }
@@ -610,204 +310,56 @@ pub struct Metric {
     pub total: &'static str,
     pub description: &'static str,
 }
-pub const METRICS: &[Metric] = &[
-    Metric {
-        name: "routes",
-        area: ROUTES,
-        unit: "itineraries",
-        total: "count",
-        description: "Itineraries the driver was assigned.",
-    },
-    Metric {
-        name: "stops_completed",
-        area: ROUTES,
-        unit: "stops",
-        total: "sum",
-        description: "Delivery stops completed, as Amazon's itinerary summary counts them; the station pickup is not a stop.",
-    },
-    Metric {
-        name: "stops_total",
-        area: ROUTES,
-        unit: "stops",
-        total: "sum",
-        description: "Delivery stops on the itinerary.",
-    },
-    Metric {
-        name: "packages_delivered",
-        area: ROUTES,
-        unit: "packages",
-        total: "sum",
-        description: "Packages delivered, as Amazon's itinerary summary counts them.",
-    },
-    Metric {
-        name: "packages_total",
-        area: ROUTES,
-        unit: "packages",
-        total: "sum",
-        description: "Packages on the itinerary.",
-    },
-    Metric {
-        name: "packages_remaining",
-        area: ROUTES,
-        unit: "packages",
-        total: "sum",
-        description: "Packages not yet delivered or returned when the day was collected.",
-    },
-    Metric {
-        name: "packages_undeliverable",
-        area: ROUTES,
-        unit: "packages",
-        total: "sum",
-        description: "Packages Amazon marked undeliverable.",
-    },
-    Metric {
-        name: "break_minutes",
-        area: ROUTES,
-        unit: "minutes",
-        total: "sum",
-        description: "Break time Amazon recorded on the itinerary.",
-    },
-    Metric {
-        name: "overtime_minutes",
-        area: ROUTES,
-        unit: "minutes",
-        total: "sum",
-        description: "Overtime Amazon recorded on the itinerary.",
-    },
-    Metric {
-        name: "hours_worked",
-        area: TIMECARDS,
-        unit: "hours",
-        total: "sum",
-        description: "Hours on the Paycom timecard.",
-    },
-    Metric {
-        name: "days_worked",
-        area: TIMECARDS,
-        unit: "days",
-        total: "count",
-        description: "Days with hours on the Paycom timecard.",
-    },
-    Metric {
-        name: "lunch_minutes",
-        area: TIMECARDS,
-        unit: "minutes",
-        total: "sum",
-        description: "Minutes between Paycom's lunch out and lunch in punches.",
-    },
-    Metric {
-        name: "clock_in",
-        area: TIMECARDS,
-        unit: "time",
-        total: "day",
-        description: "First clock in, in the DSP's time.",
-    },
-    Metric {
-        name: "clock_out",
-        area: TIMECARDS,
-        unit: "time",
-        total: "day",
-        description: "Last clock out, in the DSP's time.",
-    },
-    Metric {
-        name: "meal_issues",
-        area: MEAL_BREAKS,
-        unit: "days",
-        total: "count",
-        description: "Days the meal-break comparison found something to look at, among the \
-            days the driver had a Cortex route.",
-    },
-    Metric {
-        name: "meal_status",
-        area: MEAL_BREAKS,
-        unit: "verdict",
-        total: "day",
-        description: "The meal-break comparison's verdict; see the glossary.",
-    },
-    Metric {
-        name: "inspections",
-        area: DVIC,
-        unit: "inspections",
-        total: "sum",
-        description: "DVIC inspections done.",
-    },
-    Metric {
-        name: "short_inspections",
-        area: DVIC,
-        unit: "inspections",
-        total: "sum",
-        description: "DVIC inspections shorter than their minimum.",
-    },
-];
+/// Every metric the features declare: those of each kind of data in the kinds' order, and
+/// each feature's as it lists them.
+pub static METRICS: LazyLock<Vec<&'static Metric>> = LazyLock::new(|| {
+    let mut all: Vec<&'static Metric> = registry()
+        .features
+        .iter()
+        .flat_map(|f| f.mcp.metrics)
+        .collect();
+    all.sort_by_key(|metric| metric.area.order());
+    all
+});
 pub fn metric(name: &str) -> Option<&'static Metric> {
-    METRICS.iter().find(|m| m.name == name)
+    METRICS.iter().copied().find(|m| m.name == name)
 }
 
-pub const GLOSSARY: &[(&str, &str)] = &[
-    (
-        "Driver Match code",
-        "A six-character code for one person, the same across every source. Use it to name a driver exactly.",
-    ),
-    (
-        "transporter ID",
-        "Amazon's ID for a driver, in routes, meal breaks, DVIC and the scorecard.",
-    ),
-    ("employee code", "Paycom's ID for an employee."),
-    (
-        "Amazon week",
-        "Sunday to Saturday, named by the ISO week of its Saturday, as 2026-W39.",
-    ),
-    (
-        "departed",
-        "When the driver left the station to start the route, in the DSP's time.",
-    ),
-    (
-        "ended",
-        "When the route's session ended, after the last stop.",
-    ),
-    (
-        "snapshot",
-        "A route day collected while it was still in progress; numbers can still change.",
-    ),
-    (
-        "DVIC",
-        "Daily Vehicle Inspection Checklist, done before driving. Inspections under their \
-         minimum (90 or 300 seconds by vehicle) count as short.",
-    ),
-    (
-        "meal status: same",
-        "Cortex's meal break and Paycom's lunch punches agree.",
-    ),
-    (
-        "meal status: different",
-        "They disagree by more than the allowed difference.",
-    ),
-    (
-        "meal status: missing_lunch",
-        "Cortex has a meal break; Paycom has no lunch punches.",
-    ),
-    (
-        "meal status: no_flex_meal",
-        "Paycom has lunch punches; Cortex has no meal break. With cortexRoute false, Cortex \
-         had no route for the person, so no meal break was expected there.",
-    ),
-    (
-        "meal status: flex_only",
-        "Only Cortex has the driver that day.",
-    ),
-    (
-        "meal status: review_punches",
-        "Paycom's punches don't read as a whole day.",
-    ),
-    (
-        "meal status: review_pairing",
-        "Meal breaks and lunches don't pair up one to one.",
-    ),
-    (
-        "meal status: missing_data",
-        "A source has nothing for the driver yet.",
-    ),
+/// A word an answer uses, and what it means.
+pub struct Term {
+    pub term: &'static str,
+    pub meaning: &'static str,
+    /// Its place in the glossary.
+    pub order: u16,
+}
+
+/// What core's answers say that an agent may not know: how sources know drivers, and
+/// how periods are named.
+pub(crate) const CORE_TERMS: &[Term] = &[
+    Term {
+        term: "transporter ID",
+        meaning: "Amazon's ID for a driver, in routes, meal breaks, DVIC and the scorecard.",
+        order: 20,
+    },
+    Term {
+        term: "employee code",
+        meaning: "Paycom's ID for an employee.",
+        order: 30,
+    },
+    Term {
+        term: "Amazon week",
+        meaning: "Sunday to Saturday, named by the ISO week of its Saturday, as 2026-W39.",
+        order: 40,
+    },
 ];
+
+/// The glossary: core's terms and each feature's, in their order.
+pub static GLOSSARY: LazyLock<Vec<&'static Term>> = LazyLock::new(|| {
+    let features = registry().features.iter().flat_map(|f| f.mcp.terms);
+    let mut all: Vec<&'static Term> = CORE_TERMS.iter().chain(features).collect();
+    all.sort_by_key(|term| term.order);
+    all
+});
 
 /// The metrics and glossary, as `/api/v1/metrics` answers.
 pub fn metrics() -> Value {
@@ -816,7 +368,7 @@ pub fn metrics() -> Value {
             "name": m.name, "source": m.area.as_str(), "unit": m.unit,
             "total": m.total, "description": m.description
         })).collect::<Vec<_>>(),
-        "glossary": GLOSSARY.iter().map(|(term, meaning)| json!({"term": term, "meaning": meaning})).collect::<Vec<_>>(),
+        "glossary": GLOSSARY.iter().map(|t| json!({"term": t.term, "meaning": t.meaning})).collect::<Vec<_>>(),
     })
 }
 
@@ -831,7 +383,7 @@ fn schema(kind: Kind) -> Value {
 
 /// The endpoint an MCP tool asks.
 pub fn tool(name: &str) -> Option<&'static Endpoint> {
-    ENDPOINTS.iter().find(|e| e.tool == name)
+    ENDPOINTS.iter().copied().find(|e| e.tool == name)
 }
 
 /// An MCP tool's input: one flat object of strings, numbers, yes-or-no and fixed choices,
@@ -867,7 +419,7 @@ pub fn input_schema(endpoint: &Endpoint) -> Map<String, Value> {
 /// The OpenAPI 3.1 document for the agent API, for tools that read one.
 pub fn openapi(origin: &str) -> Value {
     let mut paths = Map::new();
-    for endpoint in ENDPOINTS {
+    for endpoint in ENDPOINTS.iter() {
         let parameters: Vec<Value> = endpoint
             .path_params
             .iter()
@@ -935,7 +487,7 @@ mod tests {
         tools.sort_unstable();
         tools.dedup();
         assert_eq!(tools.len(), ENDPOINTS.len());
-        for endpoint in ENDPOINTS {
+        for endpoint in ENDPOINTS.iter() {
             assert!(endpoint.path.starts_with("/api/v1/"), "{}", endpoint.path);
             // Names every model accepts: lower snake_case, well under 64 characters.
             assert!(

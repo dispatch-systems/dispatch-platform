@@ -1767,7 +1767,7 @@ async fn every_tool_says_when_its_feature_is_switched_off() {
         db.set_feature(&dsp, feature, false, &actor).unwrap();
     }
     drop(db);
-    for endpoint in data::catalog::ENDPOINTS {
+    for endpoint in data::catalog::ENDPOINTS.iter() {
         let who = me.clone();
         let named = match endpoint.id {
             "driver" => "Fixture Driver",

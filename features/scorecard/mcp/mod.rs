@@ -1,5 +1,6 @@
 //! What agents can ask of Scorecard: Amazon's weekly scorecard, its customer feedback,
 //! Netradyne safety events and returns to station.
+mod catalog;
 pub mod scorecard;
 
 use crate::{
@@ -49,4 +50,6 @@ pub const SCORECARD: AgentArea = AgentArea::new(&ReadToggle {
 pub const MCP: Mcp = Mcp {
     reads: &[FEEDBACK, SAFETY, RETURNS, SCORECARD],
     sources: &[SOURCE],
+    endpoints: catalog::ENDPOINTS,
+    ..Mcp::NONE
 };

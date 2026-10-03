@@ -1,5 +1,7 @@
 //! What agents can ask of Timecard: Paycom's timecards, and the meal breaks Cortex
 //! reports beside Paycom's lunch punches.
+mod catalog;
+
 use crate::{
     agents::Mcp,
     contracts::{AgentArea, AgentSource, DriverSource, ReadSource, ReadToggle},
@@ -40,4 +42,7 @@ pub const MEAL_BREAKS: AgentArea = AgentArea::new(&ReadToggle {
 pub const MCP: Mcp = Mcp {
     reads: &[TIMECARDS, MEAL_BREAKS],
     sources: &[TIMECARDS_SOURCE, MEAL_BREAKS_SOURCE],
+    endpoints: catalog::ENDPOINTS,
+    metrics: catalog::METRICS,
+    terms: catalog::TERMS,
 };
