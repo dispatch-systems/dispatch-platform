@@ -6,7 +6,7 @@ use crate::{
         self,
         timecards::{EmployeeSync, JOB_KIND},
     },
-    db::{Store, s},
+    db::{Db, Store, s},
     manifest::Keeper,
     read_cache::DataDomain,
     workforce::TimecardStore,
@@ -49,6 +49,27 @@ impl Keeper for Timecards {
             .collector(dsp, paycom::PROVIDER)?
             .one_as("SELECT collected_at FROM publications WHERE active=1", [])?;
         Ok(collected.map(|(at,)| at))
+    }
+    fn published(&self, db: &Db) -> Result<Vec<Value>> {
+        let mut statement = db.0.prepare(
+            "SELECT employee_code,date,hours,status,punches \
+            FROM timecards WHERE publication_id=(SELECT id FROM publications WHERE active=1)",
+        )?;
+        let mut cards = vec![];
+        for value in statement.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, f64>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
+            ))
+        })? {
+            let (code, date, hours, status, punches) = value?;
+            cards.push(json!({"employeeCode":code,"date":date,"hours":hours,
+                "status":status,"punches":serde_json::from_str::<Value>(&punches)?}));
+        }
+        Ok(cards)
     }
     fn scheduled(&self, _: &Store, _: &str) -> Result<Vec<(String, Value)>> {
         Ok(vec![("paycom".into(), json!({}))])

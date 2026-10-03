@@ -156,16 +156,13 @@ async fn measure_live_collection() -> Result<()> {
         eprintln!("BENCH {}",json!({"completedReads":reads["completed"],"directReads":reads["direct"],
             "spotChecked":reads["spotChecked"],"pageRetries":reads["retries"],"failedReads":reads["failures"].as_array().map(Vec::len)}));
         let collection_peak=peak.each_ref().map(|value| value.load(Ordering::Relaxed));
-        let database=rusqlite::Connection::open_with_flags(crate::collectors::database_path(&dsp,
-            crate::collectors::paycom::PROVIDER)?,rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        let database=db::Db(rusqlite::Connection::open_with_flags(crate::collectors::database_path(&dsp,
+            crate::collectors::paycom::PROVIDER)?,rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?);
         let mut expected=std::collections::BTreeMap::new();
-        let mut statement=database.prepare("SELECT employee_code,date,hours,status,punches \
-            FROM timecards WHERE publication_id=(SELECT id FROM publications WHERE active=1)")?;
-        for value in statement.query_map([],|r| Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,
-            f64>(2)?,r.get::<_,String>(3)?,r.get::<_,String>(4)?)))? {
-            let (code,date,hours,status,punches)=value?;
-            expected.insert((code.clone(),date.clone()),json!({"employeeCode":code,"date":date,"hours":hours,
-                "status":status,"punches":serde_json::from_str::<Value>(&punches)?}));
+        // Timecard keeps what the last collection published.
+        for card in crate::manifest::registry().keeper(crate::collectors::paycom::timecards::JOB_KIND)
+            .published(&database)? {
+            expected.insert((s(&card,"employeeCode").to_owned(),s(&card,"date").to_owned()),card);
         }
         let records=data["timecards"].as_array().unwrap();
         let mut equal=0; let mut changed=0; let mut added=0;

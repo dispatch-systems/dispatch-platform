@@ -25,14 +25,13 @@ use crate::{
         http::RequestHosts,
     },
     collectors,
-    db::{Db, Kind, Migration, Migrations, migrations::Apply::Sql},
-    ensure,
+    db::{Kind, Migration, Migrations, migrations::Apply::Sql},
     job_metrics::Counts,
     manifest::{Collection, Collector},
     validate as v,
 };
 use discovery::CollectionRequest;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::path::Path;
 
 pub const PROVIDER: Provider = Provider::new("cortex");
@@ -163,27 +162,6 @@ impl Collector for Cortex {
     }
     fn marker(&self) -> Option<&'static str> {
         Some("storage.cortex")
-    }
-    fn verify(&self, db: &Db) -> Result<()> {
-        ensure(
-            db.all("SELECT version FROM meal_schema", [])? == vec![json!({"version":1})],
-            "unsupported_cortex_schema",
-            503,
-        )?;
-        // Missing initialized feature tables fail closed, rather than recreating lost data.
-        // meal_delivery_events, meal_breaks and their trigger hold nothing and are not
-        // required here. The baseline still creates them because v0.0.9 refuses to start
-        // without them.
-        for table in ["meal_publications", "meal_itineraries"] {
-            db.one(&format!("SELECT count(*) FROM {table} WHERE 0"), [])?;
-        }
-        ensure(
-            db.all("SELECT version FROM meal_record_schema", [])? == vec![json!({"version":1})],
-            "unsupported_cortex_schema",
-            503,
-        )?;
-        db.one("SELECT count(*) FROM meal_records WHERE 0", [])?;
-        Ok(())
     }
     fn browser_entries(&self) -> &'static [&'static str] {
         &[

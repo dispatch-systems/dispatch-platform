@@ -309,7 +309,7 @@ impl Store {
         let marker = core.setting(key, Value::Null)?;
         if marker == json!(1) {
             db::migrate(&*self.collector(id, provider)?, provider.database())?;
-            return collector.verify(&*self.collector(id, provider)?);
+            return self.verify_collector(id, provider);
         }
         ensure(marker.is_null(), "unsupported_storage_layout", 503)?;
         let target = self.create_collector(id, provider)?;
@@ -324,7 +324,19 @@ impl Store {
             503,
         )?;
         core.set(key, &json!(1))?;
-        collector.verify(&*self.collector(id, provider)?)
+        self.verify_collector(id, provider)
+    }
+    // The collector's own checks, then what each of its collections' keepers holds there.
+    fn verify_collector(&self, id: &str, provider: Provider) -> Result<()> {
+        provider
+            .collector()
+            .verify(&*self.collector(id, provider)?)?;
+        for kind in provider.job_kinds() {
+            registry()
+                .keeper(kind)
+                .verify(&*self.collector(id, provider)?)?;
+        }
+        Ok(())
     }
 }
 

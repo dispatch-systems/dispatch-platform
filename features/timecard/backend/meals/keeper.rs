@@ -3,13 +3,13 @@ use crate::{
     Result,
     browsers::Collected,
     collectors::cortex::{self, discovery::Scope, meals::JOB_KIND},
-    db::Store,
+    db::{Db, Store},
     ensure,
     manifest::Keeper,
     read_cache::DataDomain,
     workforce::TimecardStore,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 
 pub struct MealBreaks;
 impl Keeper for MealBreaks {
@@ -30,6 +30,27 @@ impl Keeper for MealBreaks {
             &serde_json::from_value(data)?,
             &Scope::collected(scope)?,
         )?;
+        Ok(())
+    }
+    fn verify(&self, db: &Db) -> Result<()> {
+        ensure(
+            db.all("SELECT version FROM meal_schema", [])? == vec![json!({"version":1})],
+            "unsupported_cortex_schema",
+            503,
+        )?;
+        // Missing initialized feature tables fail closed, rather than recreating lost data.
+        // meal_delivery_events, meal_breaks and their trigger hold nothing and are not
+        // required here. Cortex's baseline still creates them because v0.0.9 refuses to
+        // start without them.
+        for table in ["meal_publications", "meal_itineraries"] {
+            db.one(&format!("SELECT count(*) FROM {table} WHERE 0"), [])?;
+        }
+        ensure(
+            db.all("SELECT version FROM meal_record_schema", [])? == vec![json!({"version":1})],
+            "unsupported_cortex_schema",
+            503,
+        )?;
+        db.one("SELECT count(*) FROM meal_records WHERE 0", [])?;
         Ok(())
     }
     fn collected_at(&self, store: &Store, dsp: &str, date: &str) -> Result<Option<Value>> {

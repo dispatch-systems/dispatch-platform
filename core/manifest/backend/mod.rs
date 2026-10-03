@@ -658,6 +658,16 @@ pub trait Keeper: Sync {
     fn storages(&self) -> &'static [&'static AddedStorage] {
         &[]
     }
+    /// Fails closed when what it keeps in its collector's database was lost, wherever that
+    /// database is verified.
+    fn verify(&self, _: &Db) -> Result<()> {
+        Ok(())
+    }
+    /// What its last publication holds, read from its collector's database alone, as the
+    /// collection brings it: what an operator's probe measures a new collection against.
+    fn published(&self, _: &Db) -> Result<Vec<Value>> {
+        Ok(vec![])
+    }
 }
 
 /// Core's error codes, joined by the ones each registered collector declares.
