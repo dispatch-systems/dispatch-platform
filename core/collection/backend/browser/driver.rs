@@ -1,11 +1,7 @@
 //! What a session asks of a provider's browser. `paycom`, `cortex` and `fixture`
 //! implement it; nothing outside this directory knows which one it is driving.
 use super::browseros;
-// A3: `Collected.scope` is Cortex's, until the keeper split makes it opaque.
-use crate::{
-    Result, State, collectors::cortex::discovery::Scope, contracts::ActiveJobStatus,
-    job_metrics::Recorder,
-};
+use crate::{Result, State, contracts::ActiveJobStatus, job_metrics::Recorder};
 use serde_json::Value;
 use std::{future::Future, pin::Pin, sync::Arc};
 
@@ -36,11 +32,12 @@ impl Run<'_> {
     }
 }
 
-/// A finished, unpublished collection, handed to its collector's `publish`.
+/// A finished, unpublished collection, handed to its keeper's `publish`.
 pub struct Collected {
     pub data: Value,
-    /// Set by a collector that resolves what it collected while collecting.
-    pub scope: Option<Scope>,
+    /// Set by a collector that resolves what it collected while collecting, in a form
+    /// only it and the collection's keeper read.
+    pub scope: Option<Value>,
 }
 
 pub trait Driver: Send {

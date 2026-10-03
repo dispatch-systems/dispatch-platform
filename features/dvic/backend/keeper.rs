@@ -2,7 +2,7 @@
 use crate::{
     Error, Result,
     browsers::Collected,
-    collectors::cortex::dvic::JOB_KIND,
+    collectors::cortex::{discovery::Scope, dvic::JOB_KIND},
     db::{Store, s},
     ensure,
     manifest::Keeper,
@@ -35,7 +35,7 @@ impl Keeper for Dvic {
             dsp,
             job,
             &serde_json::from_value(data)?,
-            &scope.ok_or_else(|| Error::new("invalid_cortex_scope", 502))?,
+            &Scope::collected(scope)?,
         )
     }
     fn schedule_ready(&self, store: &Store, dsp: &str) -> Result<()> {

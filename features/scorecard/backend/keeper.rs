@@ -2,7 +2,7 @@
 use crate::{
     Error, Result,
     browsers::Collected,
-    collectors::cortex::scorecard::JOB_KIND,
+    collectors::cortex::{discovery::Scope, scorecard::JOB_KIND},
     db::{Store, s},
     ensure,
     manifest::Keeper,
@@ -36,7 +36,7 @@ impl Keeper for Scorecard {
             dsp,
             job,
             &serde_json::from_value(data)?,
-            &scope.ok_or_else(|| Error::new("invalid_cortex_scope", 502))?,
+            &Scope::collected(scope)?,
         )
     }
     fn schedule_ready(&self, store: &Store, dsp: &str) -> Result<()> {

@@ -204,7 +204,7 @@ impl Drives for Driver {
                 let (capture, scope) = self.collect_dvic(&request, run).await?;
                 return Ok(Collected {
                     data: serde_json::to_value(capture)?,
-                    scope: Some(scope),
+                    scope: Some(serde_json::to_value(scope)?),
                 });
             }
             if let Some(request) =
@@ -213,12 +213,12 @@ impl Drives for Driver {
                 let (capture, scope) = self.collect_scorecard(&request, run).await?;
                 return Ok(Collected {
                     data: serde_json::to_value(capture)?,
-                    scope: Some(scope),
+                    scope: Some(serde_json::to_value(scope)?),
                 });
             }
             if let Some(request) = crate::collectors::cortex::routes::Request::parse(run.request)? {
                 let capture = self.collect_routes(&request, run).await?;
-                let scope = capture.scope.clone();
+                let scope = serde_json::to_value(&capture.scope)?;
                 return Ok(Collected {
                     data: serde_json::to_value(capture)?,
                     scope: Some(scope),
@@ -242,7 +242,7 @@ impl Drives for Driver {
             .await?;
             Ok(Collected {
                 data,
-                scope: Some(scope),
+                scope: Some(serde_json::to_value(scope)?),
             })
         })
     }

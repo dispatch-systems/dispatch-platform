@@ -1,8 +1,8 @@
 //! Timecard keeps the meal breaks Cortex reports.
 use crate::{
-    Error, Result,
+    Result,
     browsers::Collected,
-    collectors::cortex::{self, meals::JOB_KIND},
+    collectors::cortex::{self, discovery::Scope, meals::JOB_KIND},
     db::Store,
     ensure,
     manifest::Keeper,
@@ -20,7 +20,7 @@ impl Keeper for MealBreaks {
             dsp,
             job,
             &serde_json::from_value(data)?,
-            &scope.ok_or_else(|| Error::new("invalid_cortex_scope", 502))?,
+            &Scope::collected(scope)?,
         )?;
         Ok(())
     }

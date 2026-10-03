@@ -89,6 +89,11 @@ impl Scope {
             400,
         )
     }
+    /// The scope a collection resolved, read back from what it collected.
+    pub fn collected(scope: Option<Value>) -> Result<Self> {
+        let scope = scope.ok_or_else(|| Error::new("invalid_cortex_scope", 502))?;
+        serde_json::from_value(scope).map_err(|_| Error::new("invalid_cortex_scope", 502))
+    }
     pub fn request(value: &Value, timezone: &str) -> Result<Self> {
         crate::validate::fields(
             value,

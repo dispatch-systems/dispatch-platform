@@ -214,7 +214,7 @@ impl Collector for Cortex {
             };
             return Ok(Collected {
                 data: serde_json::to_value(dvic::fixture(&request)?)?,
-                scope: Some(scope),
+                scope: Some(serde_json::to_value(scope)?),
             });
         }
         if let Some(request) = scorecard::Request::parse(request)? {
@@ -226,12 +226,12 @@ impl Collector for Cortex {
             };
             return Ok(Collected {
                 data: serde_json::to_value(scorecard::fixture(&request)?)?,
-                scope: Some(scope),
+                scope: Some(serde_json::to_value(scope)?),
             });
         }
         if let Some(request) = routes::Request::parse(request)? {
             let capture = routes::fixture(&request)?;
-            let scope = capture.scope.clone();
+            let scope = serde_json::to_value(&capture.scope)?;
             return Ok(Collected {
                 data: serde_json::to_value(capture)?,
                 scope: Some(scope),
@@ -245,7 +245,7 @@ impl Collector for Cortex {
         };
         Ok(Collected {
             data: serde_json::to_value(meals::fixture(&scope))?,
-            scope: Some(scope),
+            scope: Some(serde_json::to_value(scope)?),
         })
     }
     fn progress(&self, request: &Value) -> &'static str {
