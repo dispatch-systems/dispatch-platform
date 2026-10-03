@@ -1,7 +1,7 @@
 //! The agent API's answers over a DSP's real shapes of data: one driver joined across
 //! Paycom, routes, meal breaks and DVIC by Driver Match, everyone's numbers for a day,
 //! and refusals that say what to fix instead of guessing.
-#[path = "../../../../db/tests/support/common.rs"]
+#[path = "../../../../core/db/tests/support/common.rs"]
 mod common;
 use dispatch_backend::{
     State,

@@ -75,7 +75,7 @@ path = "../../app/tests/backend/integration/agent_api.rs"
 
 [[test]]
 name = "agent_data"
-path = "../../core/mcp/tests/backend/integration/agent_data.rs"
+path = "../../app/tests/backend/integration/agent_data.rs"
 
 [[test]]
 name = "agents"
