@@ -19,7 +19,8 @@ import {
   pageTabs,
   readToggles,
   scheduleIssueOf,
-  loadSwitchIcons,
+  auditWording,
+  loadPlatformSlots,
   switchIcon,
   type CollectionLabels,
   type ConnectionCard,
@@ -52,15 +53,41 @@ test('read toggles come group by group in their order, ties in the order the own
 
 test("a page's switch shows the icon its feature declares, once loaded", async () => {
   installFeatures([
-    { name: 'alpha', switch: { id: 'uniforms', icon: async () => Shirt } },
+    { name: 'alpha', platformSlots: async () => ({ switch: { id: 'uniforms', icon: Shirt } }) },
     { name: 'beta' },
-    { name: 'gamma', switch: { id: 'scorecard', icon: async () => Award } },
+    { name: 'gamma', platformSlots: async () => ({ switch: { id: 'scorecard', icon: Award } }) },
   ]);
   assert.equal(switchIcon('uniforms'), undefined);
-  await loadSwitchIcons();
+  await loadPlatformSlots();
   assert.equal(switchIcon('uniforms'), Shirt);
   assert.equal(switchIcon('scorecard'), Award);
   assert.equal(switchIcon('timecard'), undefined);
+});
+
+test("the platform owner's slots load once, in the order the owners are listed, and again after a failure", async () => {
+  let loads = 0;
+  let fail = true;
+  installFeatures([
+    { name: 'alpha', platformSlots: async () => ({ auditWording: { spoken: ['alpha'] } }) },
+    {
+      name: 'beta',
+      platformSlots: async () => {
+        loads++;
+        if (fail) throw new Error('offline');
+        return { auditWording: { spoken: ['beta'] } };
+      },
+    },
+  ]);
+  await assert.rejects(loadPlatformSlots(), /offline/);
+  assert.deepEqual(auditWording(), []);
+  fail = false;
+  await loadPlatformSlots();
+  await loadPlatformSlots();
+  assert.equal(loads, 2);
+  assert.deepEqual(
+    auditWording().map((wording) => wording.spoken),
+    [['alpha'], ['beta']],
+  );
 });
 
 test('connection cards come in the order their collectors are listed', () => {

@@ -30,8 +30,7 @@ export const feature: FrontendFeature = {
       render: ({ view }) => createElement(UniformInventoryPage, { key: view.token, view }),
     },
   ],
-  // Its sidebar entry already loads the icon.
-  switch: { id: 'uniforms', icon: async () => Shirt },
+  platformSlots: () => import('./platform-slots.js').then((module) => module.slots),
   longPolls: ['/api/dsp/uniforms/updates'],
   errors: {
     uniform_changed:

@@ -38,9 +38,7 @@ export const feature: FrontendFeature = {
       },
     },
   ],
-  auditWording: () => import('./audit-wording.js').then((module) => module.wording),
-  // Its sidebar entry already loads the icon.
-  switch: { id: 'dvic', icon: async () => ClipboardCheck },
+  platformSlots: () => import('./platform-slots.js').then((module) => module.slots),
   errors: {
     dvic_station_required:
       'Set your station code in the DSP profile before collecting DVIC reports.',

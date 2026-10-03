@@ -28,11 +28,7 @@ export const feature: FrontendFeature = {
           : [],
     },
   ],
-  auditWording: () => import('./audit-wording.js').then((module) => module.wording),
-  switch: {
-    id: 'driver_match',
-    icon: () => import('./switch-icon.js').then((module) => module.icon),
-  },
+  platformSlots: () => import('./platform-slots.js').then((module) => module.slots),
   // A finished collection can bring new drivers to match.
   cache: {
     collected: ['/api/dsp/driver-match'],

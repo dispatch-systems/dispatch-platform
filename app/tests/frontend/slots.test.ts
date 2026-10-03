@@ -11,7 +11,7 @@ import {
   connectionCard,
   connectionCards,
   readToggles,
-  loadSwitchIcons,
+  loadPlatformSlots,
   switchIcon,
 } from '../../../core/shell/frontend/runtime/slots.js';
 
@@ -34,11 +34,12 @@ test('each kind of data agents may read is declared once, and each group has its
 });
 
 test("each page's switch has its icon, declared once", async () => {
+  const slots = await Promise.all(features.map((feature) => feature.platformSlots?.()));
   once(
-    features.flatMap((feature) => (feature.switch ? [feature.switch.id] : [])),
+    slots.flatMap((each) => (each?.switch ? [each.switch.id] : [])),
     'switches',
   );
-  await loadSwitchIcons();
+  await loadPlatformSlots();
   for (const page of featureCatalog.filter((entry) => entry.kind === 'page'))
     assert(switchIcon(page.id), `${page.id} has no icon`);
 });

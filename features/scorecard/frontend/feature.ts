@@ -4,8 +4,7 @@ import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots
 // its switch's icon, how its events read in the audit log and its kinds of data for agents.
 export const feature: FrontendFeature = {
   name: 'scorecard',
-  auditWording: () => import('./audit-wording.js').then((module) => module.wording),
-  switch: { id: 'scorecard', icon: () => import('./switch-icon.js').then((module) => module.icon) },
+  platformSlots: () => import('./platform-slots.js').then((module) => module.slots),
   readToggles: {
     label: 'Scorecard',
     missing: 'scorecard data',

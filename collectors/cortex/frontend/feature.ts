@@ -13,7 +13,7 @@ export const feature: FrontendFeature = {
     load,
     render: (context) => createElement(CortexCard, { ...context, read }),
   },
-  auditWording: () => import('./audit-wording.js').then((module) => module.wording),
+  platformSlots: () => import('./platform-slots.js').then((module) => module.slots),
   capabilities: {
     meal_breaks: 'a meal-break source',
     routes: 'a route source',

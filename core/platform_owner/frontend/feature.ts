@@ -1,8 +1,8 @@
 import { createElement, lazy } from 'react';
 import { Bot, Building2, FlaskConical, ScrollText, Settings } from 'lucide-react';
 import {
-  loadAuditWording,
-  loadSwitchIcons,
+  auditWording,
+  loadPlatformSlots,
   type Access,
   type FrontendFeature,
 } from '../../shell/frontend/runtime/slots.js';
@@ -19,16 +19,16 @@ declare module '../../shell/frontend/runtime/slots.js' {
   }
 }
 
-// The DSPs page opens with every page switch's icon loaded.
+// The DSPs page opens with what every owner puts in its slots, such as each switch's icon.
 const loadDsps = () =>
-  Promise.all([import('./dsps/index.js'), loadSwitchIcons()]).then(([module]) => module);
+  Promise.all([import('./dsps/index.js'), loadPlatformSlots()]).then(([module]) => module);
 const loadPicker = () => import('./dsps/picker.js');
 const loadDiagnostics = () => import('./diagnostics/index.js');
 const loadAgents = () => import('./agents/index.js');
 // The audit log opens once every owner's wording has loaded, and is handed it.
 const loadAudit = () =>
-  Promise.all([import('./audit/index.js'), loadAuditWording()]).then(([module, wording]) => {
-    module.installWording(wording);
+  Promise.all([import('./audit/index.js'), loadPlatformSlots()]).then(([module]) => {
+    module.installWording(auditWording());
     return module;
   });
 // The page and the tab it opens on load together, so the page opens whole.

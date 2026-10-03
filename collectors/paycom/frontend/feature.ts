@@ -14,7 +14,7 @@ export const feature: FrontendFeature = {
     load,
     render: (context) => createElement(PaycomCard, { ...context, read }),
   },
-  auditWording: () => import('./audit-wording.js').then((module) => module.wording),
+  platformSlots: () => import('./platform-slots.js').then((module) => module.slots),
   capabilities: { timecards: 'a timecard source' },
   // Core's codes, as they read since Paycom was the only connection.
   errors: {
