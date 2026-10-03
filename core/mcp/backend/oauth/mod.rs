@@ -23,7 +23,7 @@ use crate::{
     config::Config,
     contracts::{
         AgentAccess, AgentArea, AgentKeyRequest, AgentReads, OAuthApp, OAuthApproval,
-        OAuthRedirect, OAuthReplaced, OAuthRequest,
+        OAuthRedirect, OAuthReplaced, OAuthRequest, OLDER_LOCATIONS,
     },
     crypto,
     db::{Store, at, iso, now, s},
@@ -468,7 +468,7 @@ impl Store {
             "dsps": approval.dsps,
             "reads": approval.reads,
             "tools": "full",
-            "locations": approval.reads.has(AgentArea::Locations),
+            "locations": approval.reads.locations(),
         });
         self.platform.transaction(|| {
             self.answer_request(id)?;
@@ -593,9 +593,8 @@ impl Store {
             // Approved before reads were chosen, with tools and addresses: every kind of data,
             // the addresses as chosen, and no bypassing.
             None => AgentReads {
-                areas: AgentArea::ALL
-                    .into_iter()
-                    .filter(|area| *area != AgentArea::Locations || choices["locations"] == true)
+                areas: AgentArea::all()
+                    .filter(|area| area.as_str() != OLDER_LOCATIONS || choices["locations"] == true)
                     .collect(),
                 bypass: false,
             },
@@ -658,7 +657,7 @@ impl Store {
                     owner,
                     i64::from(key.all_dsps),
                     key.access,
-                    i64::from(key.reads.has(AgentArea::Locations)),
+                    i64::from(key.reads.locations()),
                     key.reads.areas_text(),
                     i64::from(key.reads.bypass),
                     iso(),

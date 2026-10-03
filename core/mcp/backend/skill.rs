@@ -104,11 +104,11 @@ pub fn skill(origin: &str) -> String {
         out.push_str(&format!("| {question} | `{tool}` | `GET {path}` |\n"));
     }
     out.push_str("\n## Tools\n\n");
-    for each in ENDPOINTS {
+    for each in ENDPOINTS.iter() {
         endpoint(&mut out, each);
     }
     out.push_str("## Metrics for `team_table`\n\n");
-    for metric in METRICS {
+    for metric in METRICS.iter() {
         let per = if metric.total == "day" {
             ", per day only"
         } else {
@@ -123,8 +123,8 @@ pub fn skill(origin: &str) -> String {
         ));
     }
     out.push_str("\n## Terms\n\n");
-    for (term, meaning) in GLOSSARY {
-        out.push_str(&format!("- **{term}**: {meaning}\n"));
+    for term in GLOSSARY.iter() {
+        out.push_str(&format!("- **{}**: {}\n", term.term, term.meaning));
     }
     out
 }
@@ -137,14 +137,14 @@ mod tests {
         assert!(skill.starts_with("---\nname: dispatch\ndescription: "));
         let description = skill.lines().nth(2).unwrap();
         assert!(description.len() <= 1024 + "description: ".len());
-        for endpoint in super::ENDPOINTS {
+        for endpoint in super::ENDPOINTS.iter() {
             assert!(
                 skill.contains(&format!("`{}`", endpoint.tool)),
                 "{}",
                 endpoint.tool
             );
         }
-        for metric in super::METRICS {
+        for metric in super::METRICS.iter() {
             assert!(
                 skill.contains(&format!("`{}`", metric.name)),
                 "{}",

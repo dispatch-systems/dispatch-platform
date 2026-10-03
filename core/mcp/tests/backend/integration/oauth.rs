@@ -15,6 +15,11 @@ use dispatch_backend::{
 use serde_json::{Value, json};
 use std::{os::unix::fs::PermissionsExt, sync::Arc};
 
+/// A kind of data a key may read, by its id.
+fn kind(id: &str) -> AgentArea {
+    AgentArea::parse(id).unwrap()
+}
+
 const CLAUDE_CODE: &str = "https://claude.ai/oauth/claude-code-client-metadata";
 const CHATGPT: &str = "https://chatgpt.com/oauth/client.json";
 const CHATGPT_REDIRECT: &str = "https://chatgpt.com/connector_platform_oauth_redirect";
@@ -1566,7 +1571,7 @@ async fn a_connected_app_reaches_only_what_the_owner_chose() {
         .filter(|endpoint| {
             endpoint
                 .area
-                .is_none_or(|area| [AgentArea::Routes, AgentArea::Dvic].contains(&area))
+                .is_none_or(|area| [kind("routes"), kind("dvic")].contains(&area))
         })
         .map(|endpoint| endpoint.tool)
         .collect();

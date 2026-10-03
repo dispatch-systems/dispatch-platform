@@ -70,6 +70,10 @@ name = "agent_activity"
 path = "../../core/mcp/tests/backend/integration/agent_activity.rs"
 
 [[test]]
+name = "agent_api"
+path = "../../app/tests/backend/integration/agent_api.rs"
+
+[[test]]
 name = "agent_data"
 path = "../../core/mcp/tests/backend/integration/agent_data.rs"
 

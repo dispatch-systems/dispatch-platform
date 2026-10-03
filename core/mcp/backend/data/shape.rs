@@ -238,8 +238,7 @@ mod tests {
         let shown = answer["rows"]["rows"].as_array().unwrap().len();
         assert!(shown > 300 && shown < 500, "{shown}");
         // With room left for every feature a gate may name as bypassed.
-        let switches: Vec<&str> = crate::contracts::AgentSource::ALL
-            .into_iter()
+        let switches: Vec<&str> = crate::contracts::AgentSource::all()
             .map(|source| source.switch())
             .collect();
         answer["bypassed"] = json!(switches);

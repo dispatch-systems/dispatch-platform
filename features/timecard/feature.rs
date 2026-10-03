@@ -14,6 +14,9 @@ use crate::{
     workforce,
 };
 
+#[path = "mcp/mod.rs"]
+pub mod mcp;
+
 pub const FEATURE: Feature = Feature {
     switch: Some(Switch {
         id: "timecard",
@@ -91,5 +94,6 @@ pub const FEATURE: Feature = Feature {
         ..Audit::NONE
     },
     demo: Some(workforce::demo),
+    mcp: mcp::MCP,
     ..feature("timecard")
 };

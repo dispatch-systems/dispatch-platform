@@ -12,8 +12,13 @@ use dispatch_backend::{
 use serde_json::json;
 
 fn request(weeks: &[&str]) -> Request {
+    // Publication binds the DSP's current local date, so the expected scope must too.
+    let date = chrono::Utc::now()
+        .with_timezone(&chrono_tz::America::Los_Angeles)
+        .date_naive()
+        .to_string();
     Request::parse(&json!({"collection":"dvic","station":"TST1","weeks":weeks,
-        "date":"2026-10-02","timezone":"America/Los_Angeles",
+        "date":date,"timezone":"America/Los_Angeles",
         "dspName":"Fixture Delivery","dspAbbreviation":"FXTR"}))
     .unwrap()
     .unwrap()

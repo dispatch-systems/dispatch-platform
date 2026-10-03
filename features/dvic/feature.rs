@@ -9,6 +9,9 @@ use crate::{
     manifest::{Audit, Commands, Feature, Switch, feature, perm, tab},
 };
 
+#[path = "mcp/mod.rs"]
+pub mod mcp;
+
 pub const FEATURE: Feature = Feature {
     switch: Some(Switch {
         id: "dvic",
@@ -51,5 +54,6 @@ pub const FEATURE: Feature = Feature {
         prefix: "dvic-",
         run: dvic::cli::run,
     }),
+    mcp: mcp::MCP,
     ..feature("dvic")
 };

@@ -15,6 +15,11 @@ use std::collections::HashMap;
 fn request(value: Value) -> AgentKeyRequest {
     AgentKeyRequest::parse(&value).unwrap()
 }
+
+/// A kind of data a key may read, by its id.
+fn kind(id: &str) -> AgentArea {
+    AgentArea::parse(id).unwrap()
+}
 /// Every kind of data but delivery addresses, as a new key starts.
 const READS: &[&str] = &[
     "routes",
@@ -901,8 +906,8 @@ async fn a_dsps_own_settings_are_read_there_in_place_of_the_keys_own() {
     body["dspReads"] = json!([{"dsp":second,"areas":["timecards"],"bypass":false}]);
     let made = db.create_agent_key(&user, &request(body)).unwrap();
     let caller = db.authenticate_agent(&made.token, "test").unwrap();
-    assert!(!caller.reads_at(&first).has(AgentArea::Timecards));
-    assert!(caller.reads_at(&second).has(AgentArea::Timecards));
+    assert!(!caller.reads_at(&first).has(kind("timecards")));
+    assert!(caller.reads_at(&second).has(kind("timecards")));
     let whoami = serde_json::to_value(db.agent_whoami(&caller).unwrap()).unwrap();
     let reads: Vec<(&str, usize)> = whoami["dsps"]
         .as_array()
@@ -1159,7 +1164,7 @@ fn addresses_an_older_release_stopped_in_a_rollback_stay_stopped() {
     let mut body = reach(&[&dsp]);
     body["reads"]["areas"] = json!(["routes", "locations", "dvic"]);
     let made = db.create_agent_key(&user, &request(body.clone())).unwrap();
-    assert!(made.key.reads.has(AgentArea::Locations));
+    assert!(made.key.reads.has(kind("locations")));
     // An older release, run again, stops the addresses in the only column it knows.
     db.platform
         .exec(
@@ -1193,7 +1198,7 @@ fn addresses_an_older_release_stopped_in_a_rollback_stay_stopped() {
         .unwrap();
     assert_eq!(row, json!({"locations":1,"areas":"routes,locations,dvic"}));
     let caller = db.authenticate_agent(&made.token, "test").unwrap();
-    assert!(caller.reads.has(AgentArea::Locations));
+    assert!(caller.reads.has(kind("locations")));
 }
 
 #[test]
@@ -1224,7 +1229,7 @@ fn delivery_addresses_are_never_claimed_without_the_routes() {
     assert_eq!(row, json!({"locations":0,"areas":"dvic"}));
     assert_eq!(
         AgentReads::stored("locations,dvic", 0).areas,
-        [AgentArea::Dvic]
+        [kind("dvic")]
     );
     // Routes taken away take the addresses with them, as whoami and the audit log say.
     let mut body = reach(&[&dsp]);

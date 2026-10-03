@@ -5,7 +5,7 @@
 mod common;
 use dispatch_backend::{
     State,
-    agents::{Caller, data, synthetic},
+    agents::{Caller, synthetic},
     collectors::{
         cortex::{
             self,
@@ -21,10 +21,26 @@ use dispatch_backend::{
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+/// The agent API's answers: core's, and those of each feature that answers for its own.
+mod data {
+    pub use dispatch_backend::agents::data::*;
+    pub use dispatch_backend::feature_manifests::{
+        dvic::mcp::views::dvic,
+        routes::mcp::views::{package, packages, route, routes},
+        scorecard::mcp::scorecard::{feedback, returns, safety, weekly},
+        timecard::mcp::views::{meal_breaks, timecards},
+    };
+}
+
 const DAY: &str = "2026-09-12";
 
 fn day() -> chrono::NaiveDate {
     chrono::NaiveDate::parse_from_str(DAY, "%Y-%m-%d").unwrap()
+}
+
+/// A kind of data a key may read, by its id.
+fn kind(id: &str) -> AgentArea {
+    AgentArea::parse(id).unwrap()
 }
 
 /// A DSP whose sources all name one driver: Paycom's E002, Amazon's driver-1.
@@ -120,9 +136,8 @@ fn owner(db: &Store) -> String {
 /// A key's caller reading every kind of data, delivery addresses only with `locations`, as
 /// the access check would sign it in.
 fn caller(db: &Store, dsps: &[&str], locations: bool) -> Caller {
-    let areas: Vec<&str> = AgentArea::ALL
-        .iter()
-        .filter(|area| locations || **area != AgentArea::Locations)
+    let areas: Vec<&str> = AgentArea::all()
+        .filter(|area| locations || *area != kind("locations"))
         .map(|area| area.as_str())
         .collect();
     reading(
@@ -1755,7 +1770,7 @@ async fn every_tool_says_when_its_feature_is_switched_off() {
         db.set_feature(&dsp, feature, false, &actor).unwrap();
     }
     drop(db);
-    for endpoint in data::catalog::ENDPOINTS {
+    for endpoint in data::catalog::ENDPOINTS.iter() {
         let who = me.clone();
         let named = match endpoint.id {
             "driver" => "Fixture Driver",
@@ -1825,10 +1840,9 @@ async fn a_kind_of_data_reads_as_allowed_switched_on_or_bypassed() {
     let (_root, db, id) = ready();
     let mut keys = vec![];
     for (allowed, bypass) in [(true, false), (true, true), (false, false), (false, true)] {
-        let areas: Vec<&str> = AgentArea::ALL
-            .iter()
-            .filter(|area| **area != AgentArea::Locations)
-            .filter(|area| allowed || **area != AgentArea::Dvic)
+        let areas: Vec<&str> = AgentArea::all()
+            .filter(|area| *area != kind("locations"))
+            .filter(|area| allowed || *area != kind("dvic"))
             .map(|area| area.as_str())
             .collect();
         let name = format!("gate {allowed} {bypass}");
@@ -1956,9 +1970,8 @@ async fn a_kind_of_data_reads_as_allowed_switched_on_or_bypassed() {
 #[tokio::test]
 async fn drivers_known_only_by_bypassing_a_feature_say_so() {
     let (_root, db, id) = ready();
-    let areas: Vec<&str> = AgentArea::ALL
-        .iter()
-        .filter(|area| **area != AgentArea::Locations)
+    let areas: Vec<&str> = AgentArea::all()
+        .filter(|area| *area != kind("locations"))
         .map(|area| area.as_str())
         .collect();
     let me = reading(

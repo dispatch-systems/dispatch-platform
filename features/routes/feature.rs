@@ -8,6 +8,9 @@ use crate::{
     routedata,
 };
 
+#[path = "mcp/mod.rs"]
+pub mod mcp;
+
 pub const FEATURE: Feature = Feature {
     switch: Some(Switch {
         id: "routes",
@@ -42,5 +45,6 @@ pub const FEATURE: Feature = Feature {
     }],
     domains: &[routedata::DOMAIN],
     maintenance: &[routedata::maintenance::MAINTENANCE],
+    mcp: mcp::MCP,
     ..feature("routes")
 };

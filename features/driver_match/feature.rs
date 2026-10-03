@@ -6,6 +6,9 @@ use crate::{
     manifest::{Audit, Feature, Switch, feature, perm},
 };
 
+#[path = "mcp/mod.rs"]
+pub mod mcp;
+
 pub const FEATURE: Feature = Feature {
     // A tab of Settings, not a page of its own: it matches Paycom's employees to the
     // drivers Amazon's routes and other collections name.
@@ -42,5 +45,6 @@ pub const FEATURE: Feature = Feature {
         names: Some(Store::name_driver_events),
         ..Audit::NONE
     },
+    mcp: mcp::MCP,
     ..feature("driver_match")
 };

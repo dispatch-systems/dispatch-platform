@@ -16,17 +16,7 @@ use serde_json::{Value, json};
 /// The features a DSP has switched on that agents read from.
 pub fn switched_on(db: &Store, dsp: &str) -> Result<Vec<AgentSource>> {
     let on = db.features(dsp)?;
-    let has = |id: &str| on.iter().any(|f| f == id);
-    Ok(AgentSource::ALL
-        .into_iter()
-        .filter(|source| match source {
-            AgentSource::Routes => has("routes"),
-            AgentSource::Timecards => has("timecard.daily") || has("timecard.employees"),
-            AgentSource::MealBreaks => has("timecard.meal_breaks"),
-            AgentSource::Dvic => has("dvic"),
-            AgentSource::Scorecard => has("scorecard"),
-        })
-        .collect())
+    Ok(AgentSource::all().filter(|source| source.on(&on)).collect())
 }
 
 /// How a kind of data reads at a DSP: from a feature it has on; by bypassing one it has
@@ -60,11 +50,10 @@ impl<'a> Access<'a> {
     pub fn on(&self, source: AgentSource) -> bool {
         self.on.contains(&source)
     }
-    /// How a kind of data reads here. Delivery addresses come with the routes, so they are
-    /// allowed only with them.
+    /// How a kind of data reads here. One that comes with another, as delivery addresses
+    /// come with the routes, is allowed only with it.
     pub fn read(&self, area: AgentArea) -> Read {
-        let allowed = self.reads.has(area)
-            && (area != AgentArea::Locations || self.reads.has(AgentArea::Routes));
+        let allowed = self.reads.has(area) && area.with().is_none_or(|with| self.reads.has(with));
         if !allowed {
             Read::NotAllowed
         } else if self.on(area.source()) {
@@ -81,15 +70,14 @@ impl<'a> Access<'a> {
     }
     /// Whether it reads anything a feature holds here.
     pub fn reads_from(&self, source: AgentSource) -> bool {
-        AgentArea::ALL
-            .into_iter()
-            .any(|area| area.source() == source && self.reads(area))
+        AgentArea::all().any(|area| area.source() == source && self.reads(area))
     }
     /// How a kind of data reads here, or the refusal that tells the agent why it doesn't:
-    /// not allowed, or switched off. Addresses are refused as the routes are, when those are.
+    /// not allowed, or switched off. One that comes with another, as addresses come with the
+    /// routes, is refused as that one is, when it is.
     pub fn check(&self, area: AgentArea) -> std::result::Result<Read, Refusal> {
-        if area == AgentArea::Locations {
-            self.check(AgentArea::Routes)?;
+        if let Some(with) = area.with() {
+            self.check(with)?;
         }
         match self.read(area) {
             Read::NotAllowed => Err(Refusal::new(

@@ -7,3 +7,6 @@ Cargo.lock
 
 .build-staging-*/
 shared/contracts/generated/
+
+# Byte-for-byte what the agent API answered, compared by a test.
+app/tests/backend/agent_api/

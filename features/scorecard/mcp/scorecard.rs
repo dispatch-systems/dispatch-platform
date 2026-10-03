@@ -2,18 +2,20 @@
 //! events, returns to station with their contact-compliance notes, and each driver's tiers.
 //! Each reads the week's active publication and answers a count or a short table, as the
 //! route questions do.
-use super::{
-    Answer, Refusal,
-    access::{self, Access, Read},
-    catalog::{self, flag},
-    facts,
-    scope::{DEFAULT_PERIOD, People, Period, param, period, today},
-    shape::{Table, limit, page, paged, understood},
-};
 use crate::{
     State,
-    agents::Caller,
-    contracts::{AgentArea, AgentSource, DriverSource, Dsp},
+    agents::{
+        Caller,
+        data::{
+            Answer, Refusal,
+            access::{self, Access, Read},
+            catalog::{self, flag},
+            facts,
+            scope::{DEFAULT_PERIOD, People, Period, Person, param, period, today},
+            shape::{Table, limit, page, paged, understood},
+        },
+    },
+    contracts::{DriverSource, Dsp},
     db::{Store, s},
     weeks,
 };
@@ -178,6 +180,20 @@ fn weeks(db: &Store, dsp: &Dsp, period: &Period) -> crate::Result<Value> {
     }
     Ok(json!({"weeks": out}))
 }
+/// The latest scorecard week collected.
+pub fn fresh(db: &Store, dsp: &Dsp, station: &str) -> crate::Result<Option<Value>> {
+    let scorecard = db.scorecard(&dsp.id)?.one(
+        "SELECT max(week) week,max(collected_at) collected_at FROM scorecard_publications \
+         WHERE station=? AND active=1 AND scope_verified=1",
+        [station],
+    )?;
+    Ok(scorecard.filter(|r| !r["week"].is_null()).map(|r| {
+        serde_json::json!({
+            "latestWeek": r["week"], "collectedAt": r["collected_at"]
+        })
+    }))
+}
+
 /// A period no collected week touches has nothing to count. It is refused rather than
 /// answered, so an agent cannot read the missing figures as zero and is sent where else the
 /// question may be answered.
@@ -217,10 +233,7 @@ fn yes(row: &Value, field: &str) -> bool {
     )
 }
 /// The driver a question names, as the Amazon IDs they hold.
-fn person_ids<'a>(
-    people: &'a People,
-    query: &Value,
-) -> Result<Option<&'a super::scope::Person>, Refusal> {
+fn person_ids<'a>(people: &'a People, query: &Value) -> Result<Option<&'a Person>, Refusal> {
     let named = param(query, "driver");
     if named.is_empty() {
         Ok(None)
@@ -319,36 +332,6 @@ fn count_table(groups: &[&'static str], counted: HashMap<Vec<String>, i64>, extr
     table
 }
 
-/// Each delivered package's address, by tracking ID, from the routes that carried it.
-fn places(db: &Store, dsp: &Dsp, tracking: &[String]) -> crate::Result<HashMap<String, String>> {
-    let data = db.routedata(&dsp.id)?;
-    let mut ids: HashMap<String, String> = HashMap::new();
-    for chunk in tracking.chunks(400) {
-        let rows = data.all(
-            &format!(
-                "SELECT t.tracking_id,t.address_id FROM tasks t \
-                 JOIN route_publications p ON p.id=t.publication_id AND p.active=1 \
-                 WHERE t.task_type='DROP_OFF' AND t.active=1 AND t.address_id IS NOT NULL \
-                 AND t.tracking_id IN ({}) ORDER BY t.task_state='DELIVERED'",
-                vec!["?"; chunk.len()].join(",")
-            ),
-            rusqlite::params_from_iter(chunk),
-        )?;
-        // The delivered drop-off last, so it is the one kept.
-        for r in rows {
-            ids.insert(
-                s(&r, "tracking_id").to_owned(),
-                s(&r, "address_id").to_owned(),
-            );
-        }
-    }
-    let lines = facts::addresses(db, dsp, &ids.values().cloned().collect::<Vec<_>>())?;
-    Ok(ids
-        .into_iter()
-        .filter_map(|(tracking, id)| lines.get(&id).map(|line| (tracking, line.clone())))
-        .collect())
-}
-
 /// `GET /api/v1/feedback`: customer delivery feedback (CDF), counted and grouped.
 pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
     catalog::check("feedback", query)?;
@@ -369,10 +352,11 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
     };
     let groups = groups_of(query, &["driver", "address", "type", "week", "day"])?;
     // Addresses come from the stored routes, so only as the key or app reads those.
+    let places = facts::places();
     if groups.contains(&"address") {
-        access.check(AgentArea::Locations)?;
+        access.check(places.area)?;
     }
-    let placed = access.reads(AgentArea::Locations);
+    let placed = access.reads(places.area);
     let min = param(query, "min_count").parse::<i64>().unwrap_or(1);
     let impacting = flag(query, "impacting");
     let coverage = weeks(db, dsp, &period)?;
@@ -412,7 +396,7 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
     let tracking: Vec<String> = kept.iter().map(|(r, _)| r.tracking_id.clone()).collect();
     let looked_up = placed && (groups.contains(&"address") || flag(query, "list"));
     let addresses = if looked_up {
-        places(db, dsp, &tracking)?
+        (places.of)(db, dsp, &tracking)?
     } else {
         HashMap::new()
     };
@@ -430,8 +414,8 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         "coverage": coverage,
     });
     people.mark(&mut answer);
-    if looked_up && access.read(AgentArea::Locations) == Read::Bypassed {
-        access::bypassed(&mut answer, AgentSource::Routes);
+    if looked_up && access.read(places.area) == Read::Bypassed {
+        access::bypassed(&mut answer, places.area.source());
     }
     if !groups.is_empty() {
         let mut counted: HashMap<Vec<String>, i64> = HashMap::new();

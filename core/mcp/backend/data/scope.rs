@@ -7,12 +7,14 @@ use super::{
 use crate::{
     Result, State,
     agents::Caller,
-    contracts::{AgentArea, AgentSource, DriverMatch, DriverSource, DriverStatus, Dsp},
+    contracts::{AgentArea, AgentSource, DriverSource, DriverStatus, Dsp},
     db::Store,
+    manifest::registry,
     names::name_key,
     weeks,
 };
 use chrono::{Datelike, Duration, NaiveDate};
+use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -214,6 +216,19 @@ pub fn daily_limit(period: &Period) -> std::result::Result<(), Refusal> {
     Ok(())
 }
 
+/// Refuses a period of more than one day, for an answer about one.
+pub fn one_day(period: &Period) -> std::result::Result<(), Refusal> {
+    if period.from == period.to {
+        Ok(())
+    } else {
+        Err(Refusal::new(
+            400,
+            "one_day_only",
+            "This answers one day at a time; give `date`.",
+        ))
+    }
+}
+
 /// The period a request asks about: `period`, `date`, or `from` with `to`; `default` when
 /// it names none.
 pub fn period(
@@ -272,6 +287,32 @@ pub fn period(
     Ok(read)
 }
 
+/// Someone a DSP's sources name, as the feature that tells people apart knows them: their
+/// code, name and standing, and every ID a source knows them by.
+#[derive(Clone, Serialize)]
+pub struct Identity {
+    pub code: String,
+    pub name: String,
+    pub status: DriverStatus,
+    pub ids: Vec<Known>,
+}
+/// An ID a source knows a person by, and the name it gives them.
+#[derive(Clone, Serialize)]
+pub struct Known {
+    pub source: DriverSource,
+    pub id: String,
+    pub name: String,
+}
+/// Who everyone a DSP's sources name is, given the DSP: Driver Match fills it with its codes.
+pub type Identify = fn(&Store, &str) -> Result<Vec<Identity>>;
+/// Everyone a DSP's sources name, as the registered identity knows them; no one without one.
+fn identities(db: &Store, dsp: &str) -> Result<Vec<Identity>> {
+    match registry().features.iter().find_map(|f| f.mcp.identity) {
+        Some(identify) => identify(db, dsp),
+        None => Ok(vec![]),
+    }
+}
+
 /// A driver as an agent names them: their Driver Match code and the IDs each source knows
 /// them by.
 #[derive(Clone, Debug)]
@@ -289,21 +330,11 @@ pub struct People {
     /// The features whose IDs it holds only by bypassing them, as the DSP has them off.
     bypassed: Vec<AgentSource>,
 }
-/// The kinds of data whose drivers Paycom's IDs name, and those Amazon's name.
-const PAYCOM: &[AgentArea] = &[AgentArea::Timecards, AgentArea::MealBreaks];
-const AMAZON: &[AgentArea] = &[
-    AgentArea::MealBreaks,
-    AgentArea::Routes,
-    AgentArea::Dvic,
-    AgentArea::Feedback,
-    AgentArea::Safety,
-    AgentArea::Returns,
-    AgentArea::Scorecard,
-];
 /// Whether the key or app reads a source's IDs at the DSP, with any kind of data they name
 /// drivers in, and the features it reads them from only by bypassing them: none when it reads
 /// any of them from a feature switched on.
-fn read_ids(access: &Access, areas: &[AgentArea]) -> (bool, Vec<AgentSource>) {
+fn read_ids(access: &Access, source: DriverSource) -> (bool, Vec<AgentSource>) {
+    let areas: Vec<AgentArea> = AgentArea::all().filter(|area| area.names(source)).collect();
     if areas.iter().any(|area| access.read(*area) == Read::On) {
         return (true, vec![]);
     }
@@ -315,30 +346,29 @@ fn read_ids(access: &Access, areas: &[AgentArea]) -> (bool, Vec<AgentSource>) {
     (!bypassed.is_empty(), bypassed)
 }
 impl People {
-    /// The DSP's people, from Driver Match, kept until a source or driver decision changes,
-    /// with the IDs of the sources the key or app reads there.
+    /// The DSP's people, from the identity Driver Match fills, kept until a source or driver
+    /// decision changes, with the IDs of the sources the key or app reads there.
     pub fn load(db: &Store, state: &State, access: &Access) -> Result<Self> {
         // Driver Match deliberately keeps every collected identity while a source is off.
         // Project that durable cache through what the key or app reads at the DSP on every
         // read, so a switch or an allowance changed takes effect at once without invalidating
         // or rebuilding it.
         let dsp = access.dsp.id.as_str();
-        let (paycom_on, paycom_bypassed) = read_ids(access, PAYCOM);
-        let (amazon_on, amazon_bypassed) = read_ids(access, AMAZON);
+        let (paycom_on, paycom_bypassed) = read_ids(access, DriverSource::Paycom);
+        let (amazon_on, amazon_bypassed) = read_ids(access, DriverSource::Amazon);
         let revision = state
             .data_revision
             .load(std::sync::atomic::Ordering::Relaxed);
-        let matched: DriverMatch = state.read_cache.read(
+        let matched: Vec<Identity> = state.read_cache.read(
             crate::read_cache::Scope::tenant(crate::read_cache::PEOPLE, dsp),
             format!("agent-people:{dsp}"),
             revision,
-            // A4: Driver Match's codes, until it fills the identity slot.
-            || db.driver_match(dsp),
+            || identities(db, dsp),
         )?;
         let mut list = vec![];
         let mut holders = HashMap::new();
         let (mut paycom_held, mut amazon_held) = (false, false);
-        for driver in matched.drivers {
+        for driver in matched {
             let visible =
                 |source: DriverSource| driver.ids.iter().filter(move |id| id.source == source);
             let paycom = if paycom_on {
@@ -403,8 +433,7 @@ impl People {
                 bypassed.extend(sources);
             }
         }
-        let bypassed = AgentSource::ALL
-            .into_iter()
+        let bypassed = AgentSource::all()
             .filter(|source| bypassed.contains(source))
             .collect();
         Ok(Self {
@@ -480,6 +509,42 @@ impl People {
             .choices(many.iter().take(20).map(named).collect())),
         }
     }
+}
+
+/// A person as answers name them: their name, with their code when another has it too.
+pub fn label(people: &People, person: &Person) -> String {
+    if people.list.iter().filter(|p| p.name == person.name).count() > 1 {
+        format!("{} ({})", person.name, person.code)
+    } else {
+        person.name.clone()
+    }
+}
+/// The private identity and public label of a source row. Team aggregation must keep distinct
+/// unmatched provider identities separate without returning those identifiers to the caller.
+pub struct DriverGroup {
+    pub key: String,
+    pub label: String,
+}
+pub fn driver_group(people: &People, source: DriverSource, id: &str, name: &str) -> DriverGroup {
+    match people.holder(source, id) {
+        Some(person) => DriverGroup {
+            key: format!("person:{}", person.code),
+            label: label(people, person),
+        },
+        None => DriverGroup {
+            key: format!("source:{}:{id}", source.as_str()),
+            label: if name.trim().is_empty() {
+                "Unknown driver".into()
+            } else {
+                format!("{} (unmatched)", name.trim())
+            },
+        },
+    }
+}
+/// Who a source's row belongs to in ordinary answers. Provider IDs leave Dispatch only on an
+/// explicit ID request.
+pub fn who(people: &People, source: DriverSource, id: &str, name: &str) -> String {
+    driver_group(people, source, id, name).label
 }
 
 #[cfg(test)]
