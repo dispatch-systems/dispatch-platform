@@ -39,7 +39,7 @@ pub const PROVIDER: Provider = Provider::new("cortex");
 pub static COLLECTOR: Cortex = Cortex;
 
 /// The application's own host.
-pub const HOST: &str = "logistics.amazon.com";
+pub(crate) const HOST: &str = "logistics.amazon.com";
 /// What its browser may open: Amazon's sign-in and the application, the report host its
 /// downloads come from, and the media hosts its pages load.
 pub fn allowed_host(host: &str) -> bool {
@@ -69,18 +69,18 @@ fn report_host(host: &str) -> bool {
 fn no_cookie(_: &str) -> bool {
     false
 }
-pub static BROWSER_HOSTS: HostPolicy = HostPolicy {
+pub(crate) static BROWSER_HOSTS: HostPolicy = HostPolicy {
     allowed: allowed_host,
 };
 /// Its reads over plain HTTP, with Amazon's cookies. It answers over HTTP/2 and
 /// compresses its JSON to a twelfth: every read of a job shares one connection.
-pub static HOSTS: RequestHosts = RequestHosts {
+pub(crate) static HOSTS: RequestHosts = RequestHosts {
     allowed: own_host,
     cookies: amazon_cookie,
     http2: true,
 };
 /// S3 pre-signed report downloads: the observed report host only, with no Amazon cookies.
-pub static REPORT_HOSTS: RequestHosts = RequestHosts {
+pub(crate) static REPORT_HOSTS: RequestHosts = RequestHosts {
     allowed: report_host,
     cookies: no_cookie,
     http2: false,
@@ -277,7 +277,7 @@ impl Collector for Cortex {
 }
 
 /// The error codes Cortex's collections raise and branch on. Their text is the wire format.
-pub mod codes {
+pub(crate) mod codes {
     use dispatch_core::Code;
 
     pub const CORTEX_SOURCE_CHANGED: Code = Code::new("cortex_source_changed");

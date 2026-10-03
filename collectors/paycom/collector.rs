@@ -61,12 +61,12 @@ pub fn allowed_host(host: &str) -> bool {
 fn own_host(host: &str) -> bool {
     allowed_host(host) && (host == "paycomonline.net" || host.ends_with(".paycomonline.net"))
 }
-pub static BROWSER_HOSTS: HostPolicy = HostPolicy {
+pub(crate) static BROWSER_HOSTS: HostPolicy = HostPolicy {
     allowed: allowed_host,
 };
 /// Its reads over plain HTTP: its own hosts, with the browser's cookies for them, over
 /// uncompressed HTTP/1.1 as measured.
-pub static HOSTS: RequestHosts = RequestHosts {
+pub(crate) static HOSTS: RequestHosts = RequestHosts {
     allowed: own_host,
     cookies: own_host,
     http2: false,
@@ -253,7 +253,7 @@ impl Collector for Paycom {
 }
 
 /// The error codes Paycom's collection raises and branches on. Their text is the wire format.
-pub mod codes {
+pub(crate) mod codes {
     use dispatch_core::Code;
 
     pub const TIMECARD_EXTRACTION_FAILED: Code = Code::new("timecard_extraction_failed");
