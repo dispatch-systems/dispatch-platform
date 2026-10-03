@@ -36,11 +36,13 @@ pub fn blockers(
     problems
 }
 /// The workspace's crates: each member's directory and the package name its `Cargo.toml`
-/// gives, as the root `Cargo.toml` lists the members. A member such as `features/*` is every
-/// directory under it with a `Cargo.toml`.
+/// gives, as the root `Cargo.toml` lists the members, and which of them depend on which. A
+/// member such as `features/*` is every directory under it with a `Cargo.toml`.
 #[derive(Debug, Default)]
 pub struct Workspace {
     crates: BTreeMap<String, String>,
+    /// Each crate's name, with the names of the crates that name it as a dependency.
+    dependents: BTreeMap<String, BTreeSet<String>>,
 }
 impl Workspace {
     pub fn read(root: &Path) -> Result<Self> {
@@ -58,6 +60,7 @@ impl Workspace {
             .flatten()
             .filter_map(toml::Value::as_str);
         let mut crates = BTreeMap::new();
+        let mut manifests = BTreeMap::new();
         for member in members {
             let dirs = match member.strip_suffix("/*") {
                 Some(parent) => fs::read_dir(root.join(parent))?
@@ -69,16 +72,64 @@ impl Workspace {
                 if !root.join(&dir).join("Cargo.toml").is_file() {
                     continue;
                 }
-                let name = manifest(&root.join(&dir))?
+                let read = manifest(&root.join(&dir))?;
+                let name = read
                     .get("package")
                     .and_then(|v| v.get("name"))
                     .and_then(toml::Value::as_str)
                     .ok_or_else(|| format!("{dir}/Cargo.toml names no package"))?
                     .to_owned();
-                crates.insert(dir, name);
+                crates.insert(dir.clone(), name);
+                manifests.insert(dir, read);
             }
         }
-        Ok(Self { crates })
+        // A dependency on another member names its directory, as a path from the member's own
+        // or, inherited with `workspace = true`, from the root's.
+        let shared = workspace
+            .get("workspace")
+            .and_then(|v| v.get("dependencies"))
+            .and_then(toml::Value::as_table);
+        let mut dependents: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for (dir, read) in &manifests {
+            for (key, spec) in dependencies(read) {
+                let inherited = spec.get("workspace").and_then(toml::Value::as_bool) == Some(true);
+                let path = match spec.get("path").and_then(toml::Value::as_str) {
+                    Some(path) => joined(dir, path),
+                    None if inherited => match shared
+                        .and_then(|shared| shared.get(key))
+                        .and_then(|v| v.get("path"))
+                        .and_then(toml::Value::as_str)
+                    {
+                        Some(path) => joined("", path),
+                        None => continue,
+                    },
+                    None => continue,
+                };
+                if let Some(dependency) = crates.get(&path)
+                    && *dependency != crates[dir]
+                {
+                    dependents
+                        .entry(dependency.clone())
+                        .or_default()
+                        .insert(crates[dir].clone());
+                }
+            }
+        }
+        Ok(Self { crates, dependents })
+    }
+    /// The crates that depend on `name`, directly or through others: those whose code or
+    /// tests a change in it can break.
+    fn dependents(&self, name: &str) -> BTreeSet<&String> {
+        let mut found = BTreeSet::new();
+        let mut next = vec![name];
+        while let Some(name) = next.pop() {
+            for dependent in self.dependents.get(name).into_iter().flatten() {
+                if found.insert(dependent) {
+                    next.push(dependent);
+                }
+            }
+        }
+        found
     }
     /// The crate in an owner's directory: core's, a collector's, a feature's or the app's.
     fn owned(&self, owner: &str) -> Option<&String> {
@@ -94,6 +145,36 @@ impl Workspace {
             .find(|(dir, _)| file.starts_with(&format!("{dir}/")))
             .map(|(_, name)| name)
     }
+}
+/// Every dependency a manifest names, normal, dev and build, for any target, with its spec.
+fn dependencies(manifest: &toml::Value) -> Vec<(&String, &toml::Value)> {
+    const KINDS: [&str; 3] = ["dependencies", "dev-dependencies", "build-dependencies"];
+    let targets = manifest
+        .get("target")
+        .and_then(toml::Value::as_table)
+        .into_iter()
+        .flat_map(|targets| targets.values());
+    [manifest]
+        .into_iter()
+        .chain(targets)
+        .flat_map(|table| KINDS.iter().filter_map(|kind| table.get(kind)))
+        .filter_map(toml::Value::as_table)
+        .flatten()
+        .collect()
+}
+/// `relative`, a path from the workspace directory `dir`, as a path from the root.
+fn joined(dir: &str, relative: &str) -> String {
+    let mut parts: Vec<&str> = dir.split('/').filter(|part| !part.is_empty()).collect();
+    for part in relative.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            part => parts.push(part),
+        }
+    }
+    parts.join("/")
 }
 /// The owner a file belongs to, by its directory: core, a collector, a feature or the app.
 fn owner(file: &str) -> Option<String> {
@@ -146,14 +227,19 @@ pub fn affected(changed: &[String], plan: &Value, workspace: &Workspace) -> Vec<
             crates.extend(workspace.crates.values());
         } else if let Some(owner) = owner(file) {
             if !frontend(Path::new(file)) {
-                // The owner's crate, or the app's for one not yet a crate of its own, which the
-                // app mounts; and the app's, which builds on every owner.
-                crates.extend(workspace.owned(&owner).or(app));
+                // The owner's crate, or the app's for an owner with none of its own yet; every
+                // crate that depends on it, as one crate did before the owners were cut out of
+                // it; and the app's, which builds on every owner.
+                if let Some(name) = workspace.owned(&owner).or(app) {
+                    crates.insert(name);
+                    crates.extend(workspace.dependents(name));
+                }
                 crates.extend(app);
             }
         } else if let Some(name) = workspace.holding(file) {
-            // A crate of the tooling's or the hosts'.
+            // A crate of the tooling's or the hosts', and every crate that depends on it.
             crates.insert(name);
+            crates.extend(workspace.dependents(name));
         }
     }
     let mut commands = vec![];
@@ -326,22 +412,35 @@ mod tests {
         assert!(!blockers("feature", true, true, &[], true, true).is_empty());
         assert!(!blockers("main", false, true, &[], true, true).is_empty());
     }
-    /// A workspace on disk of `members`, each crate a directory and its package's name.
-    fn workspace(members: &str, crates: &[(&str, &str)]) -> (tempfile::TempDir, Workspace) {
+    /// A file of `text` in the directory `root`, with the directories it needs.
+    fn write(root: &Path, file: &str, text: &str) {
+        let path = root.join(file);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    }
+    /// A workspace on disk of `members`, each crate a directory with its package's name and
+    /// the directories of the crates it depends on, as paths from its own.
+    fn workspace(
+        members: &str,
+        crates: &[(&str, &str, &[&str])],
+    ) -> (tempfile::TempDir, Workspace) {
         let root = tempfile::tempdir().unwrap();
-        let write = |file: &str, text: String| {
-            let path = root.path().join(file);
-            fs::create_dir_all(path.parent().unwrap()).unwrap();
-            fs::write(path, text).unwrap();
-        };
         write(
+            root.path(),
             "Cargo.toml",
-            format!("[workspace]\nmembers = [{members}]\n"),
+            &format!("[workspace]\nmembers = [{members}]\n"),
         );
-        for (dir, name) in crates {
+        let name = |dir: &str| crates.iter().find(|(d, ..)| *d == dir).unwrap().1;
+        for (dir, package, depends) in crates {
+            let up = "../".repeat(dir.split('/').count());
+            let dependencies: String = depends
+                .iter()
+                .map(|on| format!("{} = {{ path = \"{up}{on}\" }}\n", name(on)))
+                .collect();
             write(
+                root.path(),
                 &format!("{dir}/Cargo.toml"),
-                format!("[package]\nname = \"{name}\"\n"),
+                &format!("[package]\nname = \"{package}\"\n\n[dependencies]\n{dependencies}"),
             );
         }
         let workspace = Workspace::read(root.path()).unwrap();
@@ -352,12 +451,25 @@ mod tests {
         let (_root, workspace) = workspace(
             r#""core", "collectors/*", "app/backend", "ops/host-manager", "tooling/ci/dispatch-ci""#,
             &[
-                ("core", "dispatch-core"),
-                ("collectors/cortex", "dispatch-cortex"),
-                ("collectors/paycom", "dispatch-paycom"),
-                ("app/backend", "dispatch-backend"),
-                ("ops/host-manager", "dispatch-host"),
-                ("tooling/ci/dispatch-ci", "dispatch-ci"),
+                ("core", "dispatch-core", &[]),
+                ("collectors/cortex", "dispatch-cortex", &["core"]),
+                ("collectors/paycom", "dispatch-paycom", &["core"]),
+                (
+                    "app/backend",
+                    "dispatch-backend",
+                    &[
+                        "core",
+                        "collectors/cortex",
+                        "collectors/paycom",
+                        "ops/host-manager",
+                    ],
+                ),
+                (
+                    "ops/host-manager",
+                    "dispatch-host",
+                    &["tooling/ci/dispatch-ci"],
+                ),
+                ("tooling/ci/dispatch-ci", "dispatch-ci", &[]),
             ],
         );
         let plan = json!({
@@ -373,6 +485,7 @@ mod tests {
             let files: Vec<String> = files.iter().map(|file| (*file).to_owned()).collect();
             affected(&files, &plan, &workspace)
         };
+        // Core's change runs every crate that depends on it.
         assert_eq!(
             changed(&[
                 "core/tenancy/backend/roles.rs",
@@ -380,7 +493,7 @@ mod tests {
             ]),
             [
                 "cargo clippy --locked --all-targets -- -D warnings",
-                "cargo test --locked -p dispatch-backend -p dispatch-core",
+                "cargo test --locked -p dispatch-backend -p dispatch-core -p dispatch-cortex -p dispatch-paycom",
                 "python3 tooling/build/cargo-build.py && npx tsx --test core/tenancy/tests/api/roles.test.ts",
                 "npm run test:browseros -- --shard cortex",
                 "npm run build && npm run test:ui -- core/platform_owner/tests/browser/dsp-features.spec.ts",
@@ -394,12 +507,13 @@ mod tests {
                 "cargo test --locked -p dispatch-backend -p dispatch-ci -p dispatch-core -p dispatch-cortex -p dispatch-host -p dispatch-paycom",
             ]
         );
+        // The hosts' crate runs its own tests, and the app's, which builds on it.
         assert_eq!(
             changed(&[
                 "ops/host-manager/src/updater.rs",
                 "features/team/tests/browser/roles.spec.ts"
             ])[1],
-            "cargo test --locked -p dispatch-host"
+            "cargo test --locked -p dispatch-backend -p dispatch-host"
         );
         // A collector's change runs its crate's tests, and the app's.
         assert_eq!(
@@ -431,12 +545,12 @@ mod tests {
         let (root, _) = workspace(
             r#""core", "features/*", "app/backend""#,
             &[
-                ("core", "dispatch-core"),
-                ("features/driver_match", "dispatch-driver-match"),
-                ("app/backend", "dispatch-backend"),
+                ("core", "dispatch-core", &[]),
+                ("features/driver_match", "dispatch-driver-match", &[]),
+                ("app/backend", "dispatch-backend", &[]),
             ],
         );
-        // A feature the app still mounts has a directory and no Cargo.toml.
+        // A feature with a directory and no Cargo.toml yet.
         fs::create_dir_all(root.path().join("features/timecard/backend")).unwrap();
         let before = Workspace::read(root.path()).unwrap();
         let changed = |workspace: &Workspace, file: &str| {
@@ -476,6 +590,136 @@ mod tests {
                 "-p dispatch-backend -p dispatch-core -p dispatch-driver-match -p dispatch-parking"
             )
         );
+    }
+    #[test]
+    fn a_change_runs_every_crate_that_depends_on_it() {
+        // The workspace's crates as they are: each feature on core and on the collectors
+        // whose collections it keeps, Timecard on Driver Match too, and the app on every
+        // owner and on the hosts' crate, which uses the tooling's.
+        let (_root, workspace) = workspace(
+            r#""core", "collectors/*", "features/*", "app/backend", "ops/host-manager", "tooling/ci/dispatch-ci""#,
+            &[
+                ("core", "dispatch-core", &[]),
+                ("collectors/cortex", "dispatch-cortex", &["core"]),
+                ("collectors/paycom", "dispatch-paycom", &["core"]),
+                ("features/driver_match", "dispatch-driver-match", &["core"]),
+                (
+                    "features/dvic",
+                    "dispatch-dvic",
+                    &["core", "collectors/cortex"],
+                ),
+                (
+                    "features/routes",
+                    "dispatch-routes",
+                    &["core", "collectors/cortex"],
+                ),
+                (
+                    "features/scorecard",
+                    "dispatch-scorecard",
+                    &["core", "collectors/cortex"],
+                ),
+                (
+                    "features/timecard",
+                    "dispatch-timecard",
+                    &[
+                        "core",
+                        "collectors/cortex",
+                        "collectors/paycom",
+                        "features/driver_match",
+                    ],
+                ),
+                ("features/uniforms", "dispatch-uniforms", &["core"]),
+                (
+                    "app/backend",
+                    "dispatch-backend",
+                    &[
+                        "core",
+                        "collectors/cortex",
+                        "collectors/paycom",
+                        "features/driver_match",
+                        "features/dvic",
+                        "features/routes",
+                        "features/scorecard",
+                        "features/timecard",
+                        "features/uniforms",
+                        "ops/host-manager",
+                    ],
+                ),
+                (
+                    "ops/host-manager",
+                    "dispatch-host",
+                    &["tooling/ci/dispatch-ci"],
+                ),
+                ("tooling/ci/dispatch-ci", "dispatch-ci", &[]),
+            ],
+        );
+        let tested = |file: &str| affected(&[file.to_owned()], &Value::Null, &workspace)[1].clone();
+        assert_eq!(
+            tested("collectors/cortex/collections/routes/mod.rs"),
+            "cargo test --locked -p dispatch-backend -p dispatch-cortex -p dispatch-dvic -p dispatch-routes -p dispatch-scorecard -p dispatch-timecard"
+        );
+        assert_eq!(
+            tested("features/driver_match/backend/matching.rs"),
+            "cargo test --locked -p dispatch-backend -p dispatch-driver-match -p dispatch-timecard"
+        );
+        // Every owner's crate depends on core.
+        assert_eq!(
+            tested("core/db/backend/mod.rs"),
+            "cargo test --locked -p dispatch-backend -p dispatch-core -p dispatch-cortex -p dispatch-driver-match -p dispatch-dvic -p dispatch-paycom -p dispatch-routes -p dispatch-scorecard -p dispatch-timecard -p dispatch-uniforms"
+        );
+        // A crate nothing else depends on runs its own tests, and the app's.
+        assert_eq!(
+            tested("features/uniforms/backend/stock.rs"),
+            "cargo test --locked -p dispatch-backend -p dispatch-uniforms"
+        );
+        // Through the hosts' crate, the tooling's reaches the app.
+        assert_eq!(
+            tested("tooling/ci/dispatch-ci/src/preflight.rs"),
+            "cargo test --locked -p dispatch-backend -p dispatch-ci -p dispatch-host"
+        );
+    }
+    #[test]
+    fn a_crate_depends_on_another_however_its_manifest_names_it() {
+        let root = tempfile::tempdir().unwrap();
+        let write = |file: &str, text: &str| write(root.path(), file, text);
+        write(
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"core\", \"features/*\", \"app/backend\"]\n\n\
+             [workspace.dependencies]\ndispatch-core = { path = \"core\" }\nserde = \"1\"\n",
+        );
+        // Its own tests' dependency on itself makes it no dependent of its own.
+        write(
+            "core/Cargo.toml",
+            "[package]\nname = \"dispatch-core\"\n\n[dependencies]\nserde = { workspace = true }\n\n\
+             [dev-dependencies]\ndispatch-core = { path = \".\", features = [\"testing\"] }\n",
+        );
+        // Through the workspace's list.
+        write(
+            "features/fuel/Cargo.toml",
+            "[package]\nname = \"dispatch-fuel\"\n\n[dependencies]\ndispatch-core = { workspace = true }\n",
+        );
+        // For its tests alone.
+        write(
+            "features/parking/Cargo.toml",
+            "[package]\nname = \"dispatch-parking\"\n\n\
+             [dev-dependencies]\ndispatch-fuel = { path = \"../fuel\", features = [\"ts\"] }\n",
+        );
+        // On one platform.
+        write(
+            "app/backend/Cargo.toml",
+            "[package]\nname = \"dispatch-backend\"\n\n\
+             [target.'cfg(unix)'.dependencies]\ndispatch-parking = { path = \"../../features/parking\" }\n",
+        );
+        let workspace = Workspace::read(root.path()).unwrap();
+        let dependents = |name: &str| -> Vec<String> {
+            workspace.dependents(name).into_iter().cloned().collect()
+        };
+        assert_eq!(
+            dependents("dispatch-core"),
+            ["dispatch-backend", "dispatch-fuel", "dispatch-parking"]
+        );
+        assert_eq!(dependents("dispatch-parking"), ["dispatch-backend"]);
+        assert!(dependents("dispatch-backend").is_empty());
     }
     #[test]
     fn merge_queue_is_detected_only_from_a_well_formed_answer() {
