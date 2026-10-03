@@ -9,8 +9,8 @@ use dispatch_core::collection::browser::{
     page::{Page, call},
 };
 #[cfg(all(test, feature = "operator-probes"))]
-#[path = "../probes/benchmark.rs"]
-mod benchmark;
+#[path = "../probes/mod.rs"]
+pub(crate) mod probes;
 use dispatch_core::collection::browser::browseros;
 use dispatch_core::{
     Error, Result,

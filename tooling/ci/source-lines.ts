@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 /** Existing raw markup/provider scripts: wrapping one must lower its budget. */
 export const lineExceptions: ReadonlyMap<string, number> = new Map([
   ['core/server/backend/mail/templates.rs', 4],
-  ['collectors/paycom/probes/benchmark.rs', 2],
+  ['collectors/paycom/probes/mod.rs', 2],
   ['collectors/paycom/collections/timecards/collect.rs', 3],
 ]);
 /** Where the product's Rust lives, relative to the repository root. */

@@ -1,13 +1,13 @@
 //! Cortex authentication, meal evidence, the scorecard and daily routes from Amazon Logistics.
-#[cfg(all(test, feature = "operator-probes"))]
-#[path = "../probes/benchmark.rs"]
-mod benchmark;
 #[path = "../collections/meals/collect.rs"]
 mod collection;
 #[path = "../discovery/mod.rs"]
 mod discovery;
 #[path = "../collections/dvic/collect.rs"]
 pub(crate) mod dvic;
+#[cfg(all(test, feature = "operator-probes"))]
+#[path = "../probes/mod.rs"]
+pub(crate) mod probes;
 #[path = "../collections/routes/collect.rs"]
 pub(crate) mod routedata;
 #[path = "../collections/scorecard/collect.rs"]

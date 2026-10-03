@@ -131,6 +131,10 @@ mod job_queue;
 #[path = "../tests/backend/live_results.rs"]
 mod live_results;
 #[cfg(test)]
+#[cfg(feature = "operator-probes")]
+#[path = "../tests/backend/probes.rs"]
+mod probes;
+#[cfg(test)]
 #[path = "../tests/backend/registry.rs"]
 mod registry_checks;
 #[cfg(test)]

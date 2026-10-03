@@ -24,11 +24,6 @@
         "collectors/paycom has no Cargo.toml": "Phase B"
       }
     },
-    "dependencies": {
-      "rust": {
-        "collectors/cortex names features/routes": "Phase B"
-      }
-    },
     "encapsulation": {
       "typescript": {
         "core/accounts imports shared/contracts": "Phase B",
@@ -64,9 +59,7 @@
     },
     "tests": {
       "inline tests": {
-        "app/backend/export.rs has a #[test]": "Phase B",
-        "collectors/cortex/probes/benchmark.rs has a #[test]": "Phase B",
-        "collectors/paycom/probes/benchmark.rs has a #[test]": "Phase B"
+        "app/backend/export.rs has a #[test]": "Phase B"
       },
       "integration tests": {
         "features/dvic's integration tests are tests of app/backend/Cargo.toml": "Phase B",
