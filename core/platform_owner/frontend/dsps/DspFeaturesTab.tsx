@@ -4,9 +4,6 @@ import type { DspSummary, PageFeature } from '../../../../shared/contracts/index
 import { setDspFeature, useDspFeatures } from '../../api/client.js';
 import {
   featureCatalog,
-  previewSwitch,
-  sideEffects,
-  switchLabel,
   tabsOf,
   type ConnectionEntry,
   type FeatureEntry,
@@ -16,6 +13,7 @@ import { switchIcon } from '../../../shell/frontend/runtime/slots.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { Badge, ErrorBox } from '../../../shell/frontend/ui/index.js';
 import { FeatureSwitchDialog } from './FeatureSwitchDialog.js';
+import { previewSwitch, sideEffects, switchLabel } from './switches.js';
 
 const pages = featureCatalog.filter((f): f is PageEntry => f.kind === 'page');
 const connections = featureCatalog.filter((f): f is ConnectionEntry => f.kind === 'connection');

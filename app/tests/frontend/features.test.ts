@@ -7,10 +7,9 @@ import {
   featureCatalog,
   featureLabel,
   grants,
-  previewSwitch,
   schedulesFeature,
-  sideEffects,
 } from '../../../core/shell/frontend/runtime/features.js';
+import { previewSwitch, sideEffects } from '../../../core/platform_owner/frontend/dsps/switches.js';
 
 test('the generated feature catalog covers every feature and its dependencies', () => {
   assert.deepEqual(
