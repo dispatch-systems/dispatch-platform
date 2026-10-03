@@ -2,9 +2,9 @@
 //! pinned version, its connections' page cache, and the migrations `schema_migrations`
 //! records, in order. A SQL migration's text is held by its hash, since a shipped
 //! migration never changes, wherever it is declared.
-use crate::{
-    crypto,
+use dispatch_core::{
     db::{Db, Kind, Migration, Migrations, migrations::Apply},
+    foundation::crypto,
     manifest::{Feature, Registry, feature},
 };
 use std::os::unix::fs::PermissionsExt;
@@ -121,7 +121,7 @@ const DATABASES: &[Database] = &[
 ];
 
 fn databases() -> Vec<Kind> {
-    crate::manifest::registry().databases().collect()
+    dispatch_core::manifest::registry().databases().collect()
 }
 
 #[test]

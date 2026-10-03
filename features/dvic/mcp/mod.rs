@@ -4,9 +4,9 @@ mod facts;
 mod synthetic;
 pub mod views;
 
-use crate::{
-    agents::Mcp,
-    contracts::{AgentArea, AgentSource, DriverSource, ReadSource, ReadToggle},
+use dispatch_core::mcp::{
+    Mcp,
+    api::types::{AgentArea, AgentSource, DriverSource, ReadSource, ReadToggle},
 };
 
 pub const SOURCE: AgentSource = AgentSource::new(&ReadSource {

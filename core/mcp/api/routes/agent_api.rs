@@ -4,21 +4,20 @@
 //! when revoked.
 use crate::{
     Result,
-    agents::{
-        activity::{self, ActivityQuery, Outcomes},
-        data, mcp, skill,
-    },
-    contracts::{AgentDsp, AgentKeyRequest, AgentKeysRevoked},
     db::Store,
     ensure,
-    http::{
+    foundation::{observability::RequestTrace, validate as v},
+    mcp::{
+        activity::{self, ActivityQuery, Outcomes},
+        api::types::{AgentDsp, AgentKeyRequest, AgentKeysRevoked},
+        data, server, skill,
+    },
+    server::http::{
         input::{Input, Reply, optional_text, query_number},
         route::{
             Agent, PlatformOwner, PlatformRoutine, Route, Served, User, agent_protocol, read, write,
         },
     },
-    observability::RequestTrace,
-    validate as v,
 };
 use axum::{extract::Request, http::Method};
 
@@ -142,7 +141,7 @@ fn skill_file(db: &Store) -> Reply {
     )
 }
 fn mcp(request: Request) -> Served {
-    Box::pin(mcp::serve(request))
+    Box::pin(server::serve(request))
 }
 /// A path segment as the agent meant it: percent-escapes decoded, as a name with a space
 /// arrives as `Daniel%20Ortiz`.

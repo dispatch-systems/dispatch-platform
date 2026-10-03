@@ -12,21 +12,21 @@ pub(crate) mod dvic;
 pub(crate) mod routedata;
 #[path = "../collections/scorecard/collect.rs"]
 mod scorecard;
-use super::{
+use dispatch_core::collection::browser::{
+    Collected, Driver as Drives, Pending, Run,
     attempt::Attempts,
     browseros,
-    driver::{Collected, Driver as Drives, Pending, Run},
     page::{Page, call},
 };
-use crate::{Error, Result, db::s, ensure};
+use dispatch_core::{Error, Result, db::s, ensure};
 use serde_json::{Value, json};
 use std::{path::Path, time::Duration};
 use tokio::time::{Instant, sleep};
 // The page is between documents or still loading its scripts; ask it again.
-const PAGE_NOT_READY: &[crate::Code] = &[
-    crate::Code::BrowserNavigationPending,
-    crate::Code::BrowserScriptFailed,
-    crate::Code::ManualVerificationRequired,
+const PAGE_NOT_READY: &[dispatch_core::Code] = &[
+    dispatch_core::Code::BrowserNavigationPending,
+    dispatch_core::Code::BrowserScriptFailed,
+    dispatch_core::Code::ManualVerificationRequired,
 ];
 const ORIGIN: &str = "https://logistics.amazon.com";
 const ORIGINS: &[&str] = &[ORIGIN, "https://www.amazon.com", "https://amazon.com"];
@@ -186,7 +186,7 @@ impl Driver {
         .await;
         if let Err(error) = &result {
             self.attempts.failed(&error.code)?;
-            if !error.is(crate::Code::InvalidVerificationCode) {
+            if !error.is(dispatch_core::Code::InvalidVerificationCode) {
                 self.credentials = Value::Null;
             }
         }

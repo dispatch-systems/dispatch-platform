@@ -5,7 +5,7 @@
 //! resolving the host again, over HTTPS, without following a redirect, within 5 seconds and
 //! 64 KiB. Tests and fixture mode put another [`Network`] in place of the internet, so they
 //! never touch it.
-use crate::{Error, Result, browsers::egress, ensure, observability};
+use crate::{Error, Result, collection::browser::egress, ensure, foundation::observability};
 use serde_json::json;
 use std::{
     future::Future,

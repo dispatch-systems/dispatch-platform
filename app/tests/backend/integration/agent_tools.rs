@@ -1,13 +1,12 @@
 //! Agent keys: a key is shown once and kept as a hash, reaches only what it was given, and
 //! stops the moment it is revoked, expires, or its maker stops being an active platform
 //! owner. Nothing about keys appears in a DSP's activity log.
-#[path = "../../../../core/db/tests/support/common.rs"]
-mod common;
 use common::{audits, bootstrapped};
-use dispatch_backend::{
-    contracts::{AgentAccess, AgentArea, AgentKeyRequest, AgentReads},
-    crypto,
+use dispatch_core::testing as common;
+use dispatch_core::{
     db::{self, Store, s},
+    foundation::crypto,
+    mcp::api::types::{AgentAccess, AgentArea, AgentKeyRequest, AgentReads},
 };
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -59,8 +58,8 @@ fn refused(db: &Store, token: &str) -> String {
 
 /// Replay the policy snapshot left by admission, after a committed policy change.
 async fn admitted_mcp(
-    state: &std::sync::Arc<dispatch_backend::State>,
-    caller: &dispatch_backend::agents::Caller,
+    state: &std::sync::Arc<dispatch_core::State>,
+    caller: &dispatch_core::mcp::Caller,
     method: &str,
     params: Value,
 ) -> Value {
@@ -68,8 +67,8 @@ async fn admitted_mcp(
 }
 
 async fn admitted_mcp_version(
-    state: &std::sync::Arc<dispatch_backend::State>,
-    caller: &dispatch_backend::agents::Caller,
+    state: &std::sync::Arc<dispatch_core::State>,
+    caller: &dispatch_core::mcp::Caller,
     method: &str,
     params: Value,
     protocol: &str,
@@ -91,7 +90,7 @@ async fn admitted_mcp_version(
         .unwrap();
     request.extensions_mut().insert(state.clone());
     request.extensions_mut().insert(caller.clone());
-    let response = dispatch_backend::agents::mcp::serve(request).await;
+    let response = dispatch_core::mcp::server::serve(request).await;
     let status = response.status();
     let body = to_bytes(response.into_body(), 100_000).await.unwrap();
     assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
@@ -101,7 +100,7 @@ async fn admitted_mcp_version(
 #[tokio::test]
 async fn modern_mcp_exposes_a_stable_strict_profile_and_structured_results() {
     dispatch_backend::install();
-    use dispatch_backend::State;
+    use dispatch_core::State;
     let (_root, db, dsp) = bootstrapped();
     let user = owner(&db);
     let made = db
@@ -203,7 +202,7 @@ async fn modern_mcp_exposes_a_stable_strict_profile_and_structured_results() {
 #[tokio::test]
 async fn mcp_revalidates_admitted_keys_before_protected_reads_and_discovery() {
     dispatch_backend::install();
-    use dispatch_backend::State;
+    use dispatch_core::State;
     for change in ["revoked", "expired", "inactive_owner", "demoted_owner"] {
         let (_root, db, dsp) = bootstrapped();
         let user = owner(&db);
@@ -280,7 +279,7 @@ fn tool_names(listed: &Value) -> Vec<String> {
 #[tokio::test]
 async fn mcp_uses_current_reads_and_dsp_reach_for_an_admitted_caller() {
     dispatch_backend::install();
-    use dispatch_backend::State;
+    use dispatch_core::State;
     let (_root, db, dsp) = bootstrapped();
     db.enable_all_features(&dsp).unwrap();
     let user = owner(&db);
@@ -333,7 +332,7 @@ async fn mcp_uses_current_reads_and_dsp_reach_for_an_admitted_caller() {
 #[tokio::test]
 async fn mcp_rechecks_location_policy_and_changed_dsp_grants() {
     dispatch_backend::install();
-    use dispatch_backend::State;
+    use dispatch_core::State;
     let (_root, db, dsp) = bootstrapped();
     db.enable_all_features(&dsp).unwrap();
     let user = owner(&db);
@@ -771,7 +770,7 @@ fn last_use_is_written_down_and_never_goes_back() {
 #[tokio::test]
 async fn a_password_reset_ends_its_owners_keys() {
     dispatch_backend::install();
-    use dispatch_backend::State;
+    use dispatch_core::State;
     let (_root, db, dsp) = bootstrapped();
     let user = owner(&db);
     let made = db
@@ -903,7 +902,7 @@ fn reads_are_kept_in_order_and_dsps_own_settings_only_where_the_key_reaches() {
 #[tokio::test]
 async fn a_dsps_own_settings_are_read_there_in_place_of_the_keys_own() {
     dispatch_backend::install();
-    use dispatch_backend::{State, agents::data};
+    use dispatch_core::{State, mcp::data};
     let (_root, db, first) = bootstrapped();
     let user = owner(&db);
     let second = db
@@ -976,7 +975,7 @@ async fn a_dsps_own_settings_are_read_there_in_place_of_the_keys_own() {
 #[tokio::test]
 async fn tools_are_listed_where_any_dsp_the_key_reaches_lets_it_read_them() {
     dispatch_backend::install();
-    use dispatch_backend::State;
+    use dispatch_core::State;
     let (_root, db, first) = bootstrapped();
     let user = owner(&db);
     let second = db

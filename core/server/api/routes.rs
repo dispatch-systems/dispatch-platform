@@ -1,13 +1,14 @@
 //! What the dashboard polls: readiness, its own updates, collection progress and presence.
 use crate::{
-    Error, Result, State, crypto,
-    http::{
-        assets::browser_update_ready,
+    Error, Result, State,
+    foundation::{crypto, validate as v},
+    manifest::registry,
+    server::http::{
+        browser_update_ready,
         input::{Input, Reply},
         route::{Dsp, Grant, Route, async_get, async_post, probe},
     },
-    manifest::registry,
-    roles, validate as v,
+    tenancy::roles,
 };
 use serde_json::json;
 use std::{
@@ -74,7 +75,7 @@ async fn collection_updates(state: Arc<State>, input: Input, access: Dsp) -> Res
     state
         .read(move |db| access.authorize(db, &input).map(|_| ()))
         .await?;
-    Reply::of(&crate::contracts::CollectionUpdates { revision, changes })
+    Reply::of(&crate::collection::api::types::CollectionUpdates { revision, changes })
 }
 
 // Heartbeats only touch memory, so they stay off the platform write lock.

@@ -8,13 +8,14 @@ use super::{
 use crate::{
     Result, State,
     accounts::{Auth, Context},
-    agents::{self, Caller, activity},
-    contracts::{AgentAccess, AgentActivityKey, AgentKeyKind},
-    crypto,
     db::Store,
     ensure,
+    foundation::{crypto, observability::RequestTrace},
     manifest::registry,
-    observability::RequestTrace,
+    mcp::{
+        self, Caller, activity,
+        api::types::{AgentAccess, AgentActivityKey, AgentKeyKind},
+    },
 };
 use axum::{
     body::{Body, HttpBody},
@@ -187,7 +188,7 @@ impl Grant for Agent {
             "session_and_key",
             400,
         )?;
-        let client = agents::client_label(input.header("user-agent"));
+        let client = mcp::client_label(input.header("user-agent"));
         // A connected app signs in with its OAuth access token, and only ever as a bearer.
         let app = bearer && token.starts_with("dsa_");
         let caller = if app {

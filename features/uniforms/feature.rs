@@ -1,5 +1,5 @@
 //! Uniform Inventory: a DSP's uniform catalog and its stock counts.
-use crate::{
+use dispatch_core::{
     db::{Kind, Migration, Migrations, migrations::Apply::Sql},
     manifest::{
         DefaultRole::{Manager, Member},

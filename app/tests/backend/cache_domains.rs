@@ -1,5 +1,5 @@
 //! What the read cache evicts for every registered feature's writes.
-use crate::{Result, read_cache::*};
+use dispatch_core::{Result, server::cache::*};
 fn meals(dsp: &str) -> Scope {
     Scope::tenant("meals", dsp)
 }
@@ -50,20 +50,20 @@ async fn bookkeeping_preserves_cache_and_failed_scoped_or_unknown_writes_invalid
     use std::sync::atomic::Ordering;
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
-    crate::db::private_dir(root.path()).unwrap();
-    let mut config = crate::config::Config::load().unwrap();
+    dispatch_core::db::private_dir(root.path()).unwrap();
+    let mut config = dispatch_core::foundation::config::Config::load().unwrap();
     config.root = root.path().into();
     config.fixture = true;
     config.development = true;
     config.environment = "preview".into();
-    let state = crate::State::new(config).unwrap();
+    let state = dispatch_core::State::new(config).unwrap();
     state
         .run(|db| {
             for dsp in ["a", "b"] {
                 db.platform.exec(
                     "INSERT INTO dsps(id,name,environment,status,timezone,created_at) \
                 VALUES (?,'Cache test','preview','provisioning','UTC',?)",
-                    [dsp, &crate::db::iso()],
+                    [dsp, &dispatch_core::db::iso()],
                 )?;
             }
             Ok(())
@@ -105,7 +105,7 @@ async fn bookkeeping_preserves_cache_and_failed_scoped_or_unknown_writes_invalid
                 "UPDATE dsps SET timezone='America/New_York' WHERE id='a'",
                 [],
             )?;
-            Err(crate::Error::new("after_write", 500))
+            Err(dispatch_core::Error::new("after_write", 500))
         })
         .await;
     assert!(failed.is_err());
@@ -116,7 +116,7 @@ async fn bookkeeping_preserves_cache_and_failed_scoped_or_unknown_writes_invalid
         .run(|db| {
             db.platform
                 .exec("UPDATE dsps SET timezone='America/Los_Angeles'", [])?;
-            Err(crate::Error::new("after_write", 500))
+            Err(dispatch_core::Error::new("after_write", 500))
         })
         .await;
     assert!(failed.is_err());

@@ -5,23 +5,16 @@
 //! expires or is revoked. Nothing an agent does appears in a DSP's activity log.
 //! An app the owner connects with Sign in with Dispatch (`oauth`) is a key of kind `app`.
 //! What keys and apps call is kept for the Agents page's Activity log (`activity`).
-#[path = "activity.rs"]
 pub mod activity;
-#[path = "data/mod.rs"]
+#[path = "../api/mod.rs"]
+pub mod api;
 pub mod data;
-#[path = "server.rs"]
-pub mod mcp;
-#[path = "oauth/mod.rs"]
 pub mod oauth;
-#[path = "pieces.rs"]
 pub mod pieces;
-#[path = "skill.rs"]
+pub mod server;
 pub mod skill;
-#[path = "synthetic.rs"]
 pub mod synthetic;
-#[path = "token.rs"]
 mod token;
-#[path = "usage.rs"]
 mod usage;
 
 pub use activity::Activity;
@@ -30,15 +23,16 @@ pub use usage::{LastUse, PER_MINUTE, Usage};
 
 use crate::{
     Error, Result,
-    audit::AuditChange,
-    contracts::{
-        AgentAccess, AgentArea, AgentDsp, AgentDspReads, AgentKey, AgentKeyCreated, AgentKeyDsp,
-        AgentKeyKind, AgentKeyRequest, AgentKeys, AgentReads, AgentSource, AgentWhoami,
-        AgentWhoamiDsp, AgentWhoamiKey, Dsp,
-    },
-    crypto,
+    accounts::api::types::Dsp,
     db::{Store, at, iso, now, s},
     ensure,
+    foundation::crypto,
+    mcp::api::types::{
+        AgentAccess, AgentArea, AgentDsp, AgentDspReads, AgentKey, AgentKeyCreated, AgentKeyDsp,
+        AgentKeyKind, AgentKeyRequest, AgentKeys, AgentReads, AgentSource, AgentWhoami,
+        AgentWhoamiDsp, AgentWhoamiKey,
+    },
+    tenancy::audit::AuditChange,
 };
 use rusqlite::params;
 use serde_json::{Value, json};

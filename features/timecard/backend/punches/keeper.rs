@@ -1,15 +1,17 @@
 //! Timecard keeps Paycom's timecards: a pay period's, or one employee's.
 use crate::{
-    Result,
-    browsers::Collected,
     collectors::paycom::{
         self,
         timecards::{EmployeeSync, JOB_KIND},
     },
+    workforce::TimecardStore,
+};
+use dispatch_core::{
+    Result,
+    collection::browser::Collected,
     db::{Db, Store, s},
     manifest::Keeper,
-    read_cache::DataDomain,
-    workforce::TimecardStore,
+    server::cache::DataDomain,
 };
 use serde_json::{Value, json};
 

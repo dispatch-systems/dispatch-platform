@@ -1,12 +1,6 @@
 use super::{UniformsStore, advance, catalog_event, revision, templates, uniform};
-use crate::{
-    Result,
-    accounts::Context,
-    contracts::{UniformInput, UniformInventory},
-    crypto,
-    db::Store,
-    ensure,
-};
+use crate::contracts::{UniformInput, UniformInventory};
+use dispatch_core::{Result, accounts::Context, db::Store, ensure, foundation::crypto};
 use rusqlite::params;
 use std::collections::HashSet;
 

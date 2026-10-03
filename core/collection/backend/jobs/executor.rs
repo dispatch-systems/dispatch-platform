@@ -1,13 +1,15 @@
-use crate::collectors::Provider;
+use crate::collection::registry::Provider;
 use crate::{
     State,
-    browsers::ProviderAuthority,
-    contracts::{ActiveJobStatus, JobRow, JobStatus},
+    collection::{
+        api::jobs::{ActiveJobStatus, JobRow, JobStatus},
+        browser::ProviderAuthority,
+        metrics::{self as job_metrics, Phase, Recorder},
+    },
     db::now,
     ensure,
-    job_metrics::{self, Phase, Recorder},
     manifest::registry,
-    read_cache::DataDomain,
+    server::cache::DataDomain,
 };
 use rusqlite::params;
 use serde_json::{Value, json};
@@ -182,7 +184,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
     let actor = job.actor_id.clone();
     let snapshot = metrics.snapshot();
     // Request logs cannot explain a failed sync; record each attempt's outcome.
-    crate::observability::event(
+    crate::foundation::observability::event(
         if error.is_some() { "warn" } else { "info" },
         "job.finished",
         json!({"jobId":id,"dspId":dsp,"kind":job.kind.as_str(),"attempt":job.attempt,"error":error,
@@ -190,7 +192,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
     );
     let changed_dsp = dsp.clone();
     let request: Value = serde_json::from_str(&job.request).unwrap_or_default();
-    let change = crate::contracts::CollectionChange {
+    let change = crate::collection::api::types::CollectionChange {
         provider: provider.id().to_owned(),
         dates: request
             .get("date")

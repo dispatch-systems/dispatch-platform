@@ -1,7 +1,10 @@
 //! What a session asks of a provider's browser. `paycom`, `cortex` and `fixture`
 //! implement it; nothing outside this directory knows which one it is driving.
 use super::browseros;
-use crate::{Result, State, contracts::ActiveJobStatus, job_metrics::Recorder};
+use crate::{
+    Result, State,
+    collection::{api::jobs::ActiveJobStatus, metrics::Recorder},
+};
 use serde_json::Value;
 use std::{future::Future, pin::Pin, sync::Arc};
 

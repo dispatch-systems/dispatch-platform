@@ -22,7 +22,13 @@ fn missing_or_mistyped_fields_do_not_become_empty_values() {
             .collect();
         format!("({})", quoted.join(","))
     };
-    assert_eq!(crate::job_statuses!(active), list(JobStatus::ACTIVE));
-    assert_eq!(crate::job_statuses!(leased), list(JobStatus::LEASED));
+    assert_eq!(
+        dispatch_core::job_statuses!(active),
+        list(JobStatus::ACTIVE)
+    );
+    assert_eq!(
+        dispatch_core::job_statuses!(leased),
+        list(JobStatus::LEASED)
+    );
     assert!(serde_json::from_value::<JobStatus>(json!("finished")).is_err());
 }

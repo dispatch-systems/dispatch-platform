@@ -9,11 +9,10 @@ use super::{
 };
 use crate::{
     Error, Result,
-    config::Config,
-    contracts::OAuthAppId,
-    crypto,
     db::{Store, at, iso, now},
-    ensure, observability,
+    ensure,
+    foundation::{config::Config, crypto, observability},
+    mcp::api::types::OAuthAppId,
 };
 use serde_json::{Value, json};
 use std::{

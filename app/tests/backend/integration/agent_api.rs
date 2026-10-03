@@ -3,13 +3,15 @@
 //! Skill, the metrics and the kinds of data a key may read with the switches each follows.
 //! Each is compared with its file in `app/tests/backend/agent_api/`;
 //! `DISPATCH_UPDATE_AGENT_API=1` writes them anew.
-#[path = "../../../../core/db/tests/support/common.rs"]
-mod common;
-use dispatch_backend::{
+use dispatch_core::testing as common;
+use dispatch_core::{
     State,
-    agents::{Caller, data, skill},
-    contracts::{AgentArea, AgentKeyRequest, AgentSource},
     db::{Store, s},
+    mcp::{
+        Caller,
+        api::types::{AgentArea, AgentKeyRequest, AgentSource},
+        data, skill,
+    },
 };
 use serde_json::{Value, json};
 use std::{path::PathBuf, sync::Arc};
@@ -156,7 +158,7 @@ async fn mcp(
         .unwrap();
     request.extensions_mut().insert(state.clone());
     request.extensions_mut().insert(caller.clone());
-    let response = dispatch_backend::agents::mcp::serve(request).await;
+    let response = dispatch_core::mcp::server::serve(request).await;
     let status = response.status();
     let body = to_bytes(response.into_body(), 1_000_000).await.unwrap();
     assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));

@@ -2,8 +2,9 @@
 //! writes the decisions. Only certain answers link an ID to someone; anything less gives
 //! the ID a person of its own, for a person to review.
 use super::sources::{Identity, Key};
-use crate::contracts::{DriverLink, DriverSource};
-use crate::names::{Name, name_key};
+use crate::contracts::DriverLink;
+use dispatch_core::foundation::names::{Name, name_key};
+use dispatch_core::mcp::api::types::DriverSource;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// An ID someone already holds, with the names its sources write today.

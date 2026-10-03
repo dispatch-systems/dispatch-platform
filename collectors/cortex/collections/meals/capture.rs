@@ -1,7 +1,7 @@
 //! Cortex meal evidence as collected. Browser data is untrusted input.
 use super::discovery::Scope;
-use crate::{Error, Result, db::now, ensure};
 use chrono::{NaiveDate, TimeZone};
+use dispatch_core::{Error, Result, db::now, ensure};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -108,7 +108,7 @@ impl Capture {
             )?;
             if let Some(url) = &route.source_url {
                 ensure(
-                    crate::validate::source_url(url).is_ok()
+                    dispatch_core::foundation::validate::source_url(url).is_ok()
                         && url.ends_with(&expected.detail_path(&route.id)),
                     "invalid_cortex_capture",
                     502,

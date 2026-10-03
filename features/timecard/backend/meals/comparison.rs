@@ -1,15 +1,15 @@
 //! Read-only comparison across provider snapshots. Drivers join employees through
 //! Driver Match; unique names join the drivers it has not reached yet.
 use crate::{
-    Result,
     collectors::cortex,
     contracts::{LateRule, MealComparison, MealSource},
+    driver_match::{self, DriverMatchStore},
+    workforce::{self, TimecardStore},
+};
+use dispatch_core::{
+    Result,
     db::{Store, s},
-    driver_match,
-    driver_match::DriverMatchStore,
-    names::{self, Name, name_key},
-    workforce,
-    workforce::TimecardStore,
+    foundation::names::{self, Name, name_key},
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -210,7 +210,7 @@ impl ComparisonContext<'_> {
         date: &str,
         source: workforce::DailySource,
         publications: &[Value],
-        live: &crate::live_collection::LiveResults,
+        live: &dispatch_core::collection::live::LiveResults,
     ) -> Result<MealComparison> {
         let publication = source.publication;
         let roster: Vec<Value> = source.roster.values().cloned().collect();
@@ -242,7 +242,7 @@ impl ComparisonContext<'_> {
                 let capture: crate::collectors::cortex::meals::Capture =
                     serde_json::from_value(capture.clone())?;
                 let p = json!({"station":capture.scope.station,"serviceAreaId":capture.scope.service_area_id,
-                    "timezone":capture.scope.timezone,"collectedAt":crate::db::at(capture.finished_at)});
+                    "timezone":capture.scope.timezone,"collectedAt":dispatch_core::db::at(capture.finished_at)});
                 for route in capture.itineraries {
                     if !itineraries.insert((s(&p, "serviceAreaId").to_owned(), route.id.clone())) {
                         continue;

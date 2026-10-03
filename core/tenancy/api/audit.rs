@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     pub enum AuditArea {
         Team => "team", Roles => "roles", Collections => "collections", Schedules => "schedules",
         Connections => "connections", Access => "access", Dsps => "dsps", Settings => "settings",
@@ -44,7 +44,7 @@ impl<'de> Deserialize<'de> for AuditSubject {
     }
 }
 // Its TypeScript is the union of the registry's kinds, in their order.
-#[cfg(test)]
+#[cfg(feature = "ts")]
 impl ts_rs::TS for AuditSubject {
     type WithoutGenerics = Self;
     type OptionInnerType = Self;
@@ -67,23 +67,23 @@ impl ts_rs::TS for AuditSubject {
     }
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AuditReference {
     pub kind: AuditSubject,
     pub id: String,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AuditChange {
     pub field: String,
     pub from: Option<String>,
     pub to: Option<String>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AuditEvent {
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub id: i64,
     pub at: String,
     pub actor_id: Option<String>,
@@ -99,16 +99,16 @@ pub struct AuditEvent {
     pub changes: Vec<AuditChange>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AuditName {
     pub id: String,
     pub name: String,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AuditPage {
     pub events: Vec<AuditEvent>,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub total: i64,
     pub counts: BTreeMap<AuditCount, usize>,
     pub actors: Vec<AuditName>,
@@ -116,7 +116,7 @@ pub struct AuditPage {
 }
 
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[derive(PartialOrd, Ord)]
     pub enum AuditCount {
         Team => "team", Roles => "roles", Collections => "collections", Schedules => "schedules",

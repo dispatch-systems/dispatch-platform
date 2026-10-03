@@ -1,16 +1,18 @@
 //! What Timecard holds of the synthetic DSP: Paycom's roster and timecards, and the meal
 //! breaks Cortex records beside the routes.
 use crate::{
-    Error, Result,
-    agents::synthetic::{Made, Step, Synthetic, World, hhmm, plan},
     collectors::{
         cortex::{discovery::Scope, meals},
         paycom,
     },
-    db::{Store, s},
     workforce::TimecardStore,
 };
 use chrono::Datelike;
+use dispatch_core::{
+    Error, Result,
+    db::{Store, s},
+    mcp::synthetic::{Made, Step, Synthetic, World, hhmm, plan},
+};
 use serde_json::{Value, json};
 
 pub const SYNTHETIC: Synthetic = Synthetic {
@@ -77,7 +79,7 @@ fn timecards(db: &Store, world: &mut World) -> Result<Made> {
     let dates = &world.dates;
     db.publish_timecards(
         &world.dsp,
-        &json!({"employees": world.employees, "timecards": timecards, "collectedAt": crate::db::iso(),
+        &json!({"employees": world.employees, "timecards": timecards, "collectedAt": dispatch_core::db::iso(),
             "from": dates[0].to_string(), "to": dates[dates.len() - 1].to_string()}),
     )?;
     Ok(Some(("timecards", json!(timecards.len()))))
@@ -95,7 +97,7 @@ fn meal_breaks(db: &Store, world: &mut World) -> Result<Made> {
                 .cloned()
                 .ok_or_else(|| Error::new("synthetic_routes_required", 500))?,
         )?;
-        let observed = crate::db::now();
+        let observed = dispatch_core::db::now();
         let mut found = vec![];
         for (i, _, name) in &world.drivers {
             let Some(plan) = plan(*i, d as i64) else {

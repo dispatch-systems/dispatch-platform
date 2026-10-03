@@ -4,15 +4,17 @@
 use crate::{
     Error, Result, State,
     accounts::Context,
-    browsers::{Provider, ProviderAuthority},
-    contracts::Connection,
+    collection::{
+        api::types::Connection,
+        browser::{Provider, ProviderAuthority},
+    },
     db::Store,
     ensure,
-    http::{
+    foundation::validate as v,
+    server::http::{
         input::{Input, Reply, optional},
         route::{Dsp, Grant, Member, Route, async_get, async_post, read},
     },
-    validate as v,
 };
 use serde_json::{Value, json};
 use std::sync::Arc;

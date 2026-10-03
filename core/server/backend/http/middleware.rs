@@ -2,7 +2,11 @@
 //! log, the security headers, the Host and Origin checks, and the parsing of a
 //! request into an [`Input`].
 use super::input::Input;
-use crate::{Error, Result, State, agents::oauth, crypto, ensure, observability};
+use crate::{
+    Error, Result, State, ensure,
+    foundation::{crypto, observability},
+    mcp::oauth,
+};
 use axum::{
     body::{Body, Bytes, to_bytes},
     extract::{ConnectInfo, Request, State as AxumState},

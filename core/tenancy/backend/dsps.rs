@@ -1,16 +1,19 @@
-use super::collectors::Provider;
-use super::{
+use crate::collection::registry::Provider;
+use crate::{
     Error, Result,
-    accounts::{Auth, Context},
-    config::Config,
-    contracts::{
-        ConnectionStatus, Dsp, DspProfile, DspSetupRequest, DspStatus, DspSummary,
-        DspSummaryLegacy, Member, OwnerStatus,
+    accounts::{
+        Auth, Context,
+        api::{
+            requests::DspSetupRequest,
+            types::{Dsp, DspProfile, DspSummary, DspSummaryLegacy, Member},
+        },
     },
-    crypto,
+    collection::api::types::ConnectionStatus,
     db::{self, FromRow, Row, Store, iso, now},
     ensure,
+    foundation::{config::Config, crypto},
     manifest::registry,
+    tenancy::api::types::{DspStatus, OwnerStatus},
 };
 use rusqlite::params;
 use serde_json::{Value, json};
@@ -84,7 +87,7 @@ impl FromRow for MemberRow {
     }
 }
 impl MemberRow {
-    pub fn public(self, status: super::contracts::Presence) -> Member {
+    pub fn public(self, status: crate::server::api::types::Presence) -> Member {
         Member {
             id: self.id,
             user_id: self.user_id,

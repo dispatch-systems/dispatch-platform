@@ -19,7 +19,7 @@
 //! `PRAGMA user_version` stays pinned per kind for the same reason: older
 //! binaries refuse any other value.
 use super::{Db, now};
-use crate::{Error, Result, manifest::registry, observability};
+use crate::{Error, Result, foundation::observability, manifest::registry};
 use rusqlite::{Transaction, TransactionBehavior};
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -75,7 +75,7 @@ impl Kind {
         self.name
     }
     /// Pinned. Released binaries refuse to open a database with any other value.
-    pub(crate) fn version(self) -> i64 {
+    pub fn version(self) -> i64 {
         self.version
     }
     /// What each connection caches of its pages, in kibibytes.

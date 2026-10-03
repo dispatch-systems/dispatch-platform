@@ -1,15 +1,14 @@
 use crate::{
     Result,
-    collectors::Provider,
-    config::Environment,
-    contracts::JobMetrics,
+    collection::{api::metrics::JobMetrics, registry::Provider},
     db::{self, FromRow, Row},
-    ensure, text_enum,
-    wire::invalid_record,
+    ensure,
+    foundation::{config::Environment, wire::invalid_record},
+    text_enum,
 };
 use serde::{Deserialize, Serialize};
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
         #[derive(PartialOrd, Ord)]
         pub enum JobStatus {
         Queued => "queued",
@@ -156,7 +155,7 @@ impl JobRow {
     }
 }
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PublicJob {
     pub id: String,
@@ -164,7 +163,7 @@ pub struct PublicJob {
     pub dsp_name: String,
     pub environment: Environment,
     #[cfg_attr(
-        test,
+        feature = "ts",
         ts(
             type = "\"paycom.collect\" | \"cortex.meal_breaks.collect\" | \"cortex.scorecard.collect\" | \"cortex.routes.collect\" | \
                     \"cortex.dvic.collect\""

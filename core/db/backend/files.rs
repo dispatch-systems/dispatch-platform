@@ -1,4 +1,4 @@
-use crate::{Result, crypto, ensure};
+use crate::{Result, ensure, foundation::crypto};
 use serde_json::json;
 use std::{
     fs::{self, OpenOptions},
@@ -66,7 +66,7 @@ fn check_metadata(path: &Path, metadata: std::io::Result<fs::Metadata>) -> Resul
                 && s.uid() == unsafe { libc::geteuid() }
                 && s.mode() & 0o077 == 0;
             if !safe {
-                crate::observability::event(
+                crate::foundation::observability::event(
                     "error",
                     "storage.file_rejected",
                     json!({

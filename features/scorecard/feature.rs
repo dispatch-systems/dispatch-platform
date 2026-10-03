@@ -1,11 +1,11 @@
 //! Scorecard: Amazon's weekly scorecard, collected from Cortex.
-use crate::{
+use crate::scorecard;
+use dispatch_core::{
     db::{
         Migration, Migrations,
         migrations::Apply::{Code, Sql},
     },
     manifest::{Feature, Switch, feature, perm},
-    scorecard,
 };
 
 #[path = "api/routes.rs"]

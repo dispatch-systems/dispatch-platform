@@ -1,8 +1,8 @@
 //! What a routes collection reads from Cortex: a day's route list, the newer routes
 //! page's list and every itinerary, each kept as Amazon sent it.
 use super::discovery::{CollectionRequest, Discovery, Scope};
-use crate::{Error, Result, db::now, ensure};
 use chrono::NaiveDate;
+use dispatch_core::{Error, Result, db::now, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 

@@ -1,11 +1,7 @@
 //! Data providers. Each is described once, by a `Collector` in its own module, and
 //! reached through `Provider`. Provider identities and paths are compiled code,
 //! never user-controlled paths.
-#[path = "../../../collectors/cortex/collector.rs"]
-pub mod cortex;
-#[path = "../../../collectors/paycom/collector.rs"]
-pub mod paycom;
-use super::{
+use crate::{
     Result,
     db::{self, Db, DspLease, Kind, Store, s},
     ensure,
@@ -15,7 +11,7 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
 /// The DSP setting recording that its collectors' storage is kept apart.
-pub(crate) const LAYOUT: &str = "storage.collectors";
+pub const LAYOUT: &str = "storage.collectors";
 
 /// What a member needs to manage the DSP's connections. It exists while any connection
 /// does, and the role sheet lists it under Connections.
@@ -52,7 +48,7 @@ impl Provider {
             .map(|collector| Self(collector.id()))
     }
     /// The registry: the one place that finds what a provider is.
-    pub(crate) fn collector(self) -> &'static dyn Collector {
+    pub fn collector(self) -> &'static dyn Collector {
         registry()
             .collectors
             .iter()
@@ -68,7 +64,7 @@ impl Provider {
     pub fn parse(value: &str) -> Result<Self> {
         Self::all()
             .find(|p| p.id() == value)
-            .ok_or_else(|| super::Error::new("not_found", 404))
+            .ok_or_else(|| crate::Error::new("not_found", 404))
     }
     pub fn key(self, dsp: &str) -> String {
         format!("{dsp}:{}", self.id())
@@ -97,7 +93,7 @@ impl Provider {
     pub fn from_job_kind(kind: &str) -> Result<(Self, &'static str)> {
         Self::all()
             .find_map(|p| p.job_kinds().find(|k| *k == kind).map(|k| (p, k)))
-            .ok_or_else(|| super::Error::new("unsupported_collector", 409))
+            .ok_or_else(|| crate::Error::new("unsupported_collector", 409))
     }
     pub fn validate_credentials(self, value: &Value) -> Result<()> {
         self.collector().validate_credentials(value)
@@ -121,12 +117,7 @@ fn identity(db: &Db, id: &str, provider: Provider) -> Result<()> {
         503,
     )
 }
-pub(crate) fn added_identity(
-    db: &Db,
-    id: &str,
-    provider: Provider,
-    storage: &AddedStorage,
-) -> Result<()> {
+pub fn added_identity(db: &Db, id: &str, provider: Provider, storage: &AddedStorage) -> Result<()> {
     identity(db, id, provider)?;
     let rows = db.all("SELECT source FROM storage_identity", [])?;
     ensure(
@@ -174,7 +165,7 @@ pub fn database_path(dsp_root: &Path, provider: Provider) -> Result<PathBuf> {
 impl Store {
     /// Credential changes reset only this collector's sessions. Call after its
     /// browser worker closes; other collectors' profiles must survive unchanged.
-    pub(crate) fn clear_collector_browser_state(&self, id: &str, provider: Provider) -> Result<()> {
+    pub fn clear_collector_browser_state(&self, id: &str, provider: Provider) -> Result<()> {
         let browsers = self.area(id, "state")?.join("browsers");
         if !browsers.try_exists()? {
             return Ok(());
@@ -216,7 +207,7 @@ impl Store {
         self.reset_live(id)
     }
     /// A provider's added database, verified as that DSP's.
-    pub(crate) fn added_storage(
+    pub fn added_storage(
         &self,
         id: &str,
         provider: Provider,
@@ -260,7 +251,7 @@ impl Store {
     }
     // Called during startup under the platform lock, before serving requests.
     // Provider databases are verified, and gain the migrations they lack.
-    pub(crate) fn open_collectors(&self, id: &str) -> Result<()> {
+    pub fn open_collectors(&self, id: &str) -> Result<()> {
         ensure(
             self.dsp(id)?.setting(LAYOUT, Value::Null)? == json!(1),
             "unsupported_storage_layout",
@@ -283,7 +274,7 @@ impl Store {
 
     fn reset_live(&self, id: &str) -> Result<()> {
         for provider in Provider::all() {
-            super::live_collection::reset(&*self.collector(id, provider)?)?;
+            crate::collection::live::reset(&*self.collector(id, provider)?)?;
         }
         Ok(())
     }

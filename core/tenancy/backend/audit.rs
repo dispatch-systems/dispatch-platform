@@ -1,8 +1,8 @@
 use crate::{
     Result,
-    contracts::AuditPage,
     db::{Store, at, iso, n, now, s},
     manifest::registry,
+    tenancy::api::audit::AuditPage,
 };
 use serde_json::{Value, json};
 use std::sync::LazyLock;

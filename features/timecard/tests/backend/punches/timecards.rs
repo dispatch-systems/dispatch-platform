@@ -1,4 +1,4 @@
-use crate::db::Db;
+use dispatch_core::db::Db;
 use std::os::unix::fs::PermissionsExt;
 
 fn private() -> tempfile::TempDir {

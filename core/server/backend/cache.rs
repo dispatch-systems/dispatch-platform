@@ -67,7 +67,7 @@ impl DataDomain {
     }
     /// What a finished collection of `kind` writes, as its keeper declares. A keeper that
     /// declares none keeps the conservative tenant-wide dependency set.
-    pub fn collection(kind: crate::contracts::JobKind) -> Self {
+    pub fn collection(kind: crate::collection::api::jobs::JobKind) -> Self {
         registry().keeper(kind.as_str()).domain()
     }
 }

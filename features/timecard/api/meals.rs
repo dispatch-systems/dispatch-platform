@@ -1,7 +1,5 @@
-use crate::{
-    contracts::{MealAssessment, Punch},
-    text_enum,
-};
+use crate::contracts::{MealAssessment, Punch};
+use dispatch_core::text_enum;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

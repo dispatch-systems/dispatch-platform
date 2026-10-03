@@ -14,23 +14,25 @@ pub mod routes;
 #[path = "collections/scorecard/capture.rs"]
 pub mod scorecard;
 
-use super::Provider;
-use crate::{
-    Code, Result,
-    browsers::{
-        Collected, Driver, Pending,
-        browseros::{self, NetworkPolicy},
-        cortex::{self, dvic::REPORT_HOST},
-        egress::HostPolicy,
-        http::RequestHosts,
-    },
-    collectors,
-    db::{Kind, Migration, Migrations, migrations::Apply::Sql},
-    job_metrics::Counts,
-    manifest::{Collection, Collector},
-    validate as v,
-};
+use crate::browsers::cortex::{self, dvic::REPORT_HOST};
 use discovery::CollectionRequest;
+use dispatch_core::collection::registry::Provider;
+use dispatch_core::{
+    Code, Result,
+    collection::{
+        browser::{
+            Collected, Driver, Pending,
+            browseros::{self, NetworkPolicy},
+            egress::HostPolicy,
+            http::RequestHosts,
+        },
+        metrics::Counts,
+        registry,
+    },
+    db::{Kind, Migration, Migrations, migrations::Apply::Sql},
+    foundation::validate as v,
+    manifest::{Collection, Collector},
+};
 use serde_json::Value;
 use std::path::Path;
 
@@ -156,8 +158,8 @@ impl Collector for Cortex {
     fn seed(&self, dsp: &str) -> String {
         format!(
             "{}\n{}",
-            collectors::identity_seed(dsp, PROVIDER, "cortex-v1"),
-            collectors::connection_seed(PROVIDER)
+            registry::identity_seed(dsp, PROVIDER, "cortex-v1"),
+            registry::connection_seed(PROVIDER)
         )
     }
     fn marker(&self) -> Option<&'static str> {
@@ -274,7 +276,7 @@ impl Collector for Cortex {
 
 /// The error codes Cortex's collections raise and branch on. Their text is the wire format.
 pub mod codes {
-    use crate::Code;
+    use dispatch_core::Code;
 
     pub const CORTEX_SOURCE_CHANGED: Code = Code::new("cortex_source_changed");
     pub const ROUTES_MOVE_UNANSWERED: Code = Code::new("routes_move_unanswered");

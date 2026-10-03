@@ -1,12 +1,10 @@
 //! Every registered owner's databases, as new ones and as older binaries left them, against
 //! the recorded schema.
-use crate::{
-    config::Config,
+use crate::{dvic::DvicStore, routedata::RoutesStore, scorecard::ScorecardStore};
+use dispatch_core::{
     db::{Db, Kind, Store, migrate},
-    dvic::DvicStore,
+    foundation::config::Config,
     manifest::registry,
-    routedata::RoutesStore,
-    scorecard::ScorecardStore,
 };
 use serde_json::json;
 use std::{
@@ -82,14 +80,14 @@ fn new_databases_match_the_recorded_schema() {
     let mut config = Config::load().unwrap();
     config.root = root.path().into();
     let store = Store::initialize(config).unwrap();
-    let id = crate::crypto::id("dsp").unwrap();
+    let id = dispatch_core::foundation::crypto::id("dsp").unwrap();
     store
         .platform
         .exec(
             "INSERT INTO \
         dsps(id,name,environment,status,timezone,created_at) VALUES \
         (?,'Schema','preview','provisioning','UTC',?)",
-            [&id, &crate::db::iso()],
+            [&id, &dispatch_core::db::iso()],
         )
         .unwrap();
     store.provision(&id).unwrap();

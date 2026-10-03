@@ -1,14 +1,13 @@
 use super::executor::execute;
 use crate::{
     Error, Result, State,
-    agents::activity,
-    collectors::Provider,
-    contracts::JobRow,
-    crypto,
+    collection::{api::jobs::JobRow, registry::Provider},
     db::{FromRow, Row, now},
+    foundation::crypto,
     job_statuses,
     manifest::registry,
-    read_cache::DataDomain,
+    mcp::activity,
+    server::cache::DataDomain,
 };
 use rusqlite::params;
 use serde_json::json;
@@ -41,7 +40,7 @@ impl FromRow for Ready {
     }
 }
 fn failed(event: &str, error: &Error) {
-    crate::observability::event("error", event, json!({"error":error.code}));
+    crate::foundation::observability::event("error", event, json!({"error":error.code}));
 }
 
 struct Scheduler {

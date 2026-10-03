@@ -1,13 +1,8 @@
 //! Uniform Inventory's storage, against a real store in a temporary directory: the catalog,
 //! the stock counts and the journal both write to.
 use super::*;
-use crate::{
-    accounts::Auth,
-    config::Config,
-    contracts::{UniformEventKind, UniformFit, UniformVariantInput},
-    db::s,
-    operations,
-};
+use crate::contracts::{UniformEventKind, UniformFit, UniformVariantInput};
+use dispatch_core::{accounts::Auth, db::s, foundation::config::Config, server::operations};
 use std::os::unix::fs::PermissionsExt;
 
 /// A preview platform's first DSP, every feature on, and its owner managing its uniforms.

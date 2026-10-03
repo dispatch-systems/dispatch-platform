@@ -193,10 +193,10 @@ impl crate::State {
     pub async fn accept_invitation(
         self: &std::sync::Arc<Self>,
         raw: String,
-        request: crate::contracts::InvitationRequest,
+        request: crate::accounts::api::requests::InvitationRequest,
         ip: String,
     ) -> Result<Value> {
-        let crate::contracts::InvitationRequest {
+        let crate::accounts::api::requests::InvitationRequest {
             first_name: first,
             last_name: last,
             password,

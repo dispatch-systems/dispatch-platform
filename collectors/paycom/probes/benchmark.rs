@@ -137,14 +137,14 @@ async fn measure_live_collection() -> Result<()> {
     });
     let result = async {
         let secrets = dsp.join("secrets");
-        let credentials = crate::crypto::decrypt(&db::key_file(&secrets.join("vault.key"))?,
+        let credentials = dispatch_core::foundation::crypto::decrypt(&db::key_file(&secrets.join("vault.key"))?,
             &format!("{}:paycom:2",dsp.file_name().unwrap().to_str().unwrap()), &std::fs::read_to_string(secrets.join("paycom.enc"))?)?;
         let auth=driver.authenticate(credentials,false).await?;
         ensure(auth["type"]=="ready","benchmark_verification_required",409)?;
         driver.credentials=Value::Null;
         let timezone=std::env::var("DISPATCH_BENCHMARK_TIMEZONE").map_err(|_|Error::new("benchmark_configuration_required",400))?;
         let started=Instant::now();
-        let recorder=crate::job_metrics::Recorder::new(&json!({}));
+        let recorder=dispatch_core::collection::metrics::Recorder::new(&json!({}));
         let data=driver.collect(&timezone, None, &recorder, None, |progress,_| async move {
             if progress % 10 == 0 { eprintln!("BENCH {}",json!({"progress":progress})); }
             Ok(())
@@ -156,11 +156,11 @@ async fn measure_live_collection() -> Result<()> {
         eprintln!("BENCH {}",json!({"completedReads":reads["completed"],"directReads":reads["direct"],
             "spotChecked":reads["spotChecked"],"pageRetries":reads["retries"],"failedReads":reads["failures"].as_array().map(Vec::len)}));
         let collection_peak=peak.each_ref().map(|value| value.load(Ordering::Relaxed));
-        let database=db::Db(rusqlite::Connection::open_with_flags(crate::collectors::database_path(&dsp,
+        let database=db::Db(rusqlite::Connection::open_with_flags(dispatch_core::collection::registry::database_path(&dsp,
             crate::collectors::paycom::PROVIDER)?,rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?);
         let mut expected=std::collections::BTreeMap::new();
         // Timecard keeps what the last collection published.
-        for card in crate::manifest::registry().keeper(crate::collectors::paycom::timecards::JOB_KIND)
+        for card in dispatch_core::manifest::registry().keeper(crate::collectors::paycom::timecards::JOB_KIND)
             .published(&database)? {
             expected.insert((s(&card,"employeeCode").to_owned(),s(&card,"date").to_owned()),card);
         }
@@ -505,7 +505,7 @@ async fn read_in_tab(
 }
 /// The same response over HTTP, read here: its record or why not, and parse time.
 async fn read_here(
-    http: &super::super::http::Http,
+    http: &dispatch_core::collection::browser::http::Http,
     source: &str,
     code: &str,
     period: &Value,
@@ -513,8 +513,12 @@ async fn read_here(
 ) -> (std::result::Result<Value, String>, u128) {
     let html = match http.page(source, referer).await {
         Ok(html) => html,
-        Err(super::super::http::Refusal::Unavailable) => return (Err("unavailable".into()), 0),
-        Err(super::super::http::Refusal::Unreadable(label)) => return (Err(label.into()), 0),
+        Err(dispatch_core::collection::browser::http::Refusal::Unavailable) => {
+            return (Err("unavailable".into()), 0);
+        }
+        Err(dispatch_core::collection::browser::http::Refusal::Unreadable(label)) => {
+            return (Err(label.into()), 0);
+        }
     };
     let started = Instant::now();
     let read = extract::timecard(
@@ -560,7 +564,7 @@ async fn http_extraction_parity() -> Result<()> {
     let mut driver = Driver::new(browser, &profile, None).await?;
     let result = async {
         let secrets = dsp.join("secrets");
-        let credentials = crate::crypto::decrypt(
+        let credentials = dispatch_core::foundation::crypto::decrypt(
             &db::key_file(&secrets.join("vault.key"))?,
             &format!("{}:paycom:2", dsp.file_name().unwrap().to_str().unwrap()),
             &std::fs::read_to_string(secrets.join("paycom.enc"))?,
@@ -673,7 +677,7 @@ async fn http_concurrency() -> Result<()> {
     let mut driver = Driver::new(browser, &profile, None).await?;
     let roster = async {
         let secrets = dsp.join("secrets");
-        let credentials = crate::crypto::decrypt(
+        let credentials = dispatch_core::foundation::crypto::decrypt(
             &db::key_file(&secrets.join("vault.key"))?,
             &format!("{}:paycom:2", dsp.file_name().unwrap().to_str().unwrap()),
             &std::fs::read_to_string(secrets.join("paycom.enc"))?,
@@ -732,12 +736,12 @@ async fn http_concurrency() -> Result<()> {
                     let page = http.page(&source, &format!("{origin}{SEARCH}")).await;
                     let ms = fetched.elapsed().as_millis();
                     let outcome = match page {
-                        Err(super::super::http::Refusal::Unavailable) => {
+                        Err(dispatch_core::collection::browser::http::Refusal::Unavailable) => {
                             Err("unavailable".to_owned())
                         }
-                        Err(super::super::http::Refusal::Unreadable(label)) => {
-                            Err(label.to_owned())
-                        }
+                        Err(dispatch_core::collection::browser::http::Refusal::Unreadable(
+                            label,
+                        )) => Err(label.to_owned()),
                         Ok(html) => {
                             let (code, period) = (s(employee, "code").to_owned(), period.clone());
                             tokio::task::spawn_blocking(move || {

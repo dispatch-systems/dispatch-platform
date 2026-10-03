@@ -1,14 +1,16 @@
 use crate::{
     Result,
-    config::{Environment, ProviderMode},
-    contracts::{ConnectionStatus, DspStatus, OwnerStatus, Presence},
+    collection::api::types::ConnectionStatus,
     db::{FromRow, Row},
+    foundation::config::{Environment, ProviderMode},
+    server::api::types::Presence,
+    tenancy::api::types::{DspStatus, OwnerStatus},
     text_enum,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PublicUser {
     pub id: String,
@@ -35,7 +37,7 @@ impl FromRow for PublicUser {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Dsp {
     pub id: String,
@@ -44,7 +46,7 @@ pub struct Dsp {
     pub status: DspStatus,
     pub timezone: String,
     pub permanent: bool,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub revision: i64,
     pub created_at: String,
 }
@@ -64,7 +66,7 @@ impl FromRow for Dsp {
 }
 /// A DSP as the session lists it: who owns it, the caller's role, and its collection state.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DspSummary {
     #[serde(flatten)]
@@ -81,12 +83,12 @@ pub struct DspSummary {
     pub role: Option<String>,
     /// The features the DSP has (`features`).
     pub features: Vec<String>,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub members: i64,
     /// The query's own columns, which earlier releases sent along. No dashboard reads
     /// them; they stay until a release has shipped without a reader that could.
     #[serde(flatten)]
-    #[cfg_attr(test, ts(skip))]
+    #[cfg_attr(feature = "ts", ts(skip))]
     pub legacy: DspSummaryLegacy,
 }
 #[derive(Clone, Debug, Serialize)]
@@ -100,7 +102,7 @@ pub struct DspSummaryLegacy {
 /// mail queued since the outbox recorded it; an invitation's row lasts as long as the
 /// invitation does.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MailMessage {
     pub id: String,
@@ -108,7 +110,7 @@ pub struct MailMessage {
     pub kind: Option<String>,
     /// `pending`, `sent` or `failed`.
     pub status: String,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub attempts: i64,
     pub queued_at: Option<String>,
     pub sent_at: Option<String>,
@@ -128,7 +130,7 @@ pub struct MailMessage {
     pub setup_complete: Option<bool>,
 }
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Member {
     pub id: String,
@@ -143,20 +145,20 @@ pub struct Member {
 }
 /// A role as the team pages list it. The counts are only known to the list.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Role {
     pub id: String,
     pub name: String,
     pub owner: bool,
     pub permissions: Vec<String>,
-    #[cfg_attr(test, ts(type = "number | null"))]
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub members: Option<i64>,
-    #[cfg_attr(test, ts(type = "number | null"))]
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub invitations: Option<i64>,
 }
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RoleSummary {
     pub id: String,
     pub name: String,
@@ -164,7 +166,7 @@ pub struct RoleSummary {
 }
 /// What opening a DSP answers with: the signed view token and what the role may do.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct DspView {
     pub dsp: Dsp,
     pub role: RoleSummary,
@@ -176,11 +178,11 @@ pub struct DspView {
     pub profile: DspProfile,
     /// Every role of the DSP, sent only to a platform owner so they can look through one.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub roles: Option<Vec<RoleSummary>>,
 }
 #[derive(Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionResponse {
     pub user: PublicUser,
@@ -195,25 +197,25 @@ pub struct SessionResponse {
 }
 
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SecurityStatus {
     pub enrolled: bool,
     pub required: bool,
     pub verified: bool,
     pub recent: bool,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub passkey_count: i64,
     pub authenticator: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PasskeySummary {
     pub id: String,
     pub name: String,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub created_at: i64,
 }
 impl FromRow for PasskeySummary {
@@ -227,7 +229,7 @@ impl FromRow for PasskeySummary {
 }
 
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticatorSetup {
     pub secret: String,
@@ -236,7 +238,7 @@ pub struct AuthenticatorSetup {
 
 /// What the running build was made from, so the dashboard can link its source.
 #[derive(Clone, Default, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeSource {
     /// Set only on Production, which runs published releases.
@@ -245,20 +247,20 @@ pub struct RuntimeSource {
 }
 
 #[derive(Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AccountSession {
     pub id: String,
     pub current: bool,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub created_at: i64,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub expires_at: i64,
     pub device: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(default, rename_all = "camelCase")]
 pub struct DspProfile {
     pub abbreviation: String,

@@ -1,16 +1,15 @@
-#[path = "../../../../db/tests/support/common.rs"]
-mod common;
 use common::{audits, bootstrapped, seeded};
-use dispatch_backend::{
-    crypto,
+use dispatch_core::testing as common;
+use dispatch_core::{
     db::{self, s},
+    foundation::crypto,
 };
 use serde_json::json;
 
 #[tokio::test]
 async fn concurrent_password_resets_cannot_reuse_a_consumed_token() {
     common::install(&[], &[]);
-    use dispatch_backend::State;
+    use dispatch_core::State;
     let (_root, db, _) = bootstrapped();
     let user = db
         .platform
@@ -51,7 +50,7 @@ async fn concurrent_password_resets_cannot_reuse_a_consumed_token() {
 #[tokio::test]
 async fn removing_a_member_deletes_their_account_and_keeps_their_name_in_the_log() {
     common::install(&[], &[]);
-    use dispatch_backend::{State, accounts::Auth};
+    use dispatch_core::{State, accounts::Auth};
     let (_root, db) = seeded();
     let one = |sql: &str| db.platform.one(sql, []).unwrap();
     let tenant = one("SELECT id FROM dsps WHERE name='Northline Logistics'").unwrap();
@@ -127,7 +126,7 @@ async fn removing_a_member_deletes_their_account_and_keeps_their_name_in_the_log
     state
         .accept_invitation(
             raw,
-            dispatch_backend::contracts::InvitationRequest {
+            dispatch_core::accounts::api::requests::InvitationRequest {
                 first_name: "Riley".into(),
                 last_name: "Shaw".into(),
                 password: "a-brand-new-password".into(),

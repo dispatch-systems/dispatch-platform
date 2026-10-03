@@ -1,18 +1,19 @@
 //! Driver Match: every ID the collections hold gets one person's code, certain names join
 //! on their own, and the rest wait for a decision that merges, splits or keeps apart.
-#[path = "../../../../core/db/tests/support/common.rs"]
-mod common;
 use dispatch_backend::{
-    accounts::{Auth, Context},
     collectors::{
         cortex::{discovery::Scope, meals},
         paycom::fixtures,
     },
-    contracts::{DriverEventKind, DriverMatch, DriverSource, DriverStatus, DriverStrength},
-    db::{Store, s},
-    driver_match::DriverMatchStore,
-    driver_match::valid_code,
+    contracts::{DriverEventKind, DriverMatch, DriverStrength},
+    driver_match::{DriverMatchStore, valid_code},
     workforce::TimecardStore,
+};
+use dispatch_core::testing as common;
+use dispatch_core::{
+    accounts::{Auth, Context},
+    db::{Store, s},
+    mcp::api::types::{DriverSource, DriverStatus},
 };
 use serde_json::{Value, json};
 
@@ -112,7 +113,7 @@ fn status(result: &DriverMatch, code: &str) -> DriverStatus {
 }
 /// The subject the platform's activity log shows for the newest event of `action`.
 fn shown(db: &Store, action: &str) -> String {
-    db.audit_page(&dispatch_backend::db::AuditQuery::default())
+    db.audit_page(&dispatch_core::db::AuditQuery::default())
         .unwrap()
         .events
         .into_iter()

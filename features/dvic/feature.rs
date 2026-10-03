@@ -1,12 +1,12 @@
 //! DVIC: vehicle inspections, from the weekly reports Cortex publishes.
-use crate::{
-    contracts::AuditArea::Collections,
+use crate::dvic;
+use dispatch_core::{
     db::{
         Migration, Migrations,
         migrations::Apply::{Code, Sql},
     },
-    dvic,
     manifest::{Audit, Commands, Feature, Switch, feature, perm, tab},
+    tenancy::api::audit::AuditArea::Collections,
 };
 
 #[path = "api/routes.rs"]

@@ -2,16 +2,16 @@
 //! a key or connected app makes is held in memory and written down in batches, never one by
 //! one; refusals keep their code; the log pages newest first, narrows to one key or to what
 //! was refused, and forgets calls past 90 days.
-#[path = "../../../../core/db/tests/support/common.rs"]
-mod common;
-use dispatch_backend::{
+use dispatch_core::{
     State,
-    agents::{activity, oauth},
-    config::Config,
-    contracts::{AgentActivityKey, AgentKeyKind, AgentKeyRequest},
-    crypto,
     db::{self, Store, s},
-    operations,
+    foundation::{config::Config, crypto},
+    mcp::{
+        activity,
+        api::types::{AgentActivityKey, AgentKeyKind, AgentKeyRequest},
+        oauth,
+    },
+    server::operations,
 };
 use serde_json::{Value, json};
 use std::{os::unix::fs::PermissionsExt, sync::Arc};
@@ -51,7 +51,7 @@ impl Server {
         config.origin = format!("http://127.0.0.1:{port}");
         operations::seed(&Store::initialize(config.clone()).unwrap()).unwrap();
         let state = State::new(config).unwrap();
-        let app = dispatch_backend::http::router(state.clone())
+        let app = dispatch_core::server::http::router(state.clone())
             .into_make_service_with_connect_info::<std::net::SocketAddr>();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Self {

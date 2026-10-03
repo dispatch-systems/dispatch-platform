@@ -6,11 +6,11 @@
 use super::{clients, issuer, network};
 use crate::{
     Result,
-    contracts::{
+    db::{Store, at, iso, now},
+    mcp::api::types::{
         OAuthAllowedApp, OAuthAllowedApps, OAuthAppChoice, OAuthAppId, OAuthPairing,
         OAuthPairingOpened,
     },
-    db::{Store, at, iso, now},
 };
 use std::collections::HashMap;
 

@@ -1,8 +1,7 @@
 //! The platform's mail log: what an email was for, and what became of its invitation.
-#[path = "../../../../db/tests/support/common.rs"]
-mod common;
 use common::{audits, seeded};
-use dispatch_backend::{db::now, mail};
+use dispatch_core::testing as common;
+use dispatch_core::{db::now, server::mail};
 use rusqlite::params;
 
 #[test]

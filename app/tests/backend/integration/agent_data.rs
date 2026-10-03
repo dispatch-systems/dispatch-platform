@@ -1,11 +1,7 @@
 //! The agent API's answers over a DSP's real shapes of data: one driver joined across
 //! Paycom, routes, meal breaks and DVIC by Driver Match, everyone's numbers for a day,
 //! and refusals that say what to fix instead of guessing.
-#[path = "../../../../core/db/tests/support/common.rs"]
-mod common;
 use dispatch_backend::{
-    State,
-    agents::{Caller, synthetic},
     collectors::{
         cortex::{
             self,
@@ -15,26 +11,34 @@ use dispatch_backend::{
         },
         paycom::{self, fixtures},
     },
-    contracts::{AgentArea, AgentKeyRequest},
-    db::{Store, s},
     driver_match::DriverMatchStore,
     dvic::DvicStore,
     routedata::RoutesStore,
     scorecard::ScorecardStore,
     workforce::TimecardStore,
 };
+use dispatch_core::testing as common;
+use dispatch_core::{
+    State,
+    db::{Store, s},
+    mcp::{
+        Caller,
+        api::types::{AgentArea, AgentKeyRequest},
+        synthetic,
+    },
+};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
 /// The agent API's answers: core's, and those of each feature that answers for its own.
 mod data {
-    pub use dispatch_backend::agents::data::*;
     pub use dispatch_backend::feature_manifests::{
         dvic::mcp::views::dvic,
         routes::mcp::views::{package, packages, route, routes},
         scorecard::mcp::scorecard::{feedback, returns, safety, weekly},
         timecard::mcp::views::{meal_breaks, timecards},
     };
+    pub use dispatch_core::mcp::data::*;
 }
 
 const DAY: &str = "2026-09-12";

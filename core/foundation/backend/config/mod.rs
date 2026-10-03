@@ -1,6 +1,5 @@
-use super::{Result, ensure, text_enum};
+use crate::{Result, ensure, text_enum};
 use std::{env, path::PathBuf};
-#[path = "security.rs"]
 mod security;
 pub use security::SecurityPolicy;
 #[derive(Clone)]
@@ -9,14 +8,14 @@ pub struct Config {
     pub root: PathBuf,
     pub environment: String,
     pub development: bool,
-    pub trusted_proxy: super::proxy::TrustedProxy,
+    pub trusted_proxy: crate::server::http::proxy::TrustedProxy,
     pub standalone: bool,
     pub origin: String,
     pub port: u16,
     pub release: String,
     /// The source this runtime was built from: its commit, and its version when it is a published
     /// release. A server running from a checkout rather than a build knows neither.
-    pub source: crate::contracts::RuntimeSource,
+    pub source: crate::accounts::api::types::RuntimeSource,
     pub fixture: bool,
     pub fixture_url: Option<String>,
     pub browser_capacity: usize,
@@ -91,7 +90,7 @@ impl Config {
             )),
             environment,
             development,
-            trusted_proxy: super::proxy::TrustedProxy::parse(&variable(
+            trusted_proxy: crate::server::http::proxy::TrustedProxy::parse(&variable(
                 "DISPATCH_TRUSTED_PROXY",
                 "none",
             ))?,
@@ -99,7 +98,7 @@ impl Config {
             origin: variable("DISPATCH_ORIGIN", "http://127.0.0.1:5173"),
             port: variable("PORT", "5180")
                 .parse()
-                .map_err(|_| super::Error::new("invalid_port", 400))?,
+                .map_err(|_| crate::Error::new("invalid_port", 400))?,
             release: variable("DISPATCH_RELEASE", "development"),
             source,
             fixture: provider == "fixture",
@@ -134,7 +133,7 @@ impl Config {
             400,
         )?;
         let origin = url::Url::parse(&c.origin)
-            .map_err(|_| super::Error::new("canonical_origin_required", 400))?;
+            .map_err(|_| crate::Error::new("canonical_origin_required", 400))?;
         ensure(
             origin.origin().ascii_serialization() == c.origin
                 && origin.username().is_empty()
@@ -151,7 +150,7 @@ impl Config {
         )?;
         if let Some(url) = &c.fixture_url {
             let url =
-                url::Url::parse(url).map_err(|_| super::Error::new("fixture_forbidden", 403))?;
+                url::Url::parse(url).map_err(|_| crate::Error::new("fixture_forbidden", 403))?;
             ensure(
                 c.development
                     && c.fixture
@@ -182,7 +181,7 @@ impl Config {
                 .mail_worker_url
                 .as_deref()
                 .and_then(|u| url::Url::parse(u).ok())
-                .ok_or_else(|| super::Error::new("mail_configuration_required", 400))?;
+                .ok_or_else(|| crate::Error::new("mail_configuration_required", 400))?;
             ensure(
                 (endpoint.scheme() == "https"
                     || (development
@@ -229,7 +228,7 @@ impl Config {
 }
 
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
         pub enum Environment {
         Preview => "preview",
         Production => "production",
@@ -244,7 +243,7 @@ impl Environment {
     }
 }
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
         pub enum ProviderMode {
         Fixture => "fixture",
         Native => "native",
@@ -267,13 +266,16 @@ fn secure_smtp_url(endpoint: &url::Url, development: bool) -> bool {
 /// The commit a build was made from, and on Production its version: Production installs only
 /// published releases, whose manifest names it. Any other build still carries package.json's
 /// version, which no release has used.
-fn source(bundle: &std::path::Path, production: bool) -> crate::contracts::RuntimeSource {
+fn source(
+    bundle: &std::path::Path,
+    production: bool,
+) -> crate::accounts::api::types::RuntimeSource {
     let field = |file: &str, key: &str| {
         let value: serde_json::Value =
             serde_json::from_slice(&std::fs::read(bundle.join(file)).ok()?).ok()?;
         value[key].as_str().map(String::from)
     };
-    crate::contracts::RuntimeSource {
+    crate::accounts::api::types::RuntimeSource {
         version: production
             .then(|| field("release.json", "version"))
             .flatten(),

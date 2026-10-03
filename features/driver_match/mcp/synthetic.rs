@@ -1,10 +1,10 @@
 //! What Driver Match makes of the synthetic DSP, once every source holds its people: one
 //! code each.
-use crate::{
+use crate::driver_match::DriverMatchStore;
+use dispatch_core::{
     Result,
-    agents::synthetic::{Made, Step, Synthetic, World},
     db::Store,
-    driver_match::DriverMatchStore,
+    mcp::synthetic::{Made, Step, Synthetic, World},
 };
 use serde_json::json;
 

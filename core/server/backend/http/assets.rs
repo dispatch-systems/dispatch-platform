@@ -1,5 +1,5 @@
 //! The built dashboard, loaded once and served from memory.
-use crate::{Error, Result, State, crypto, ensure};
+use crate::{Error, Result, State, ensure, foundation::crypto};
 use axum::{
     body::Body,
     http::{HeaderMap, Method, StatusCode},
@@ -8,7 +8,7 @@ use axum::{
 use serde_json::Value;
 use std::collections::HashMap;
 
-pub fn browser_update_ready(config: &crate::config::Config) -> bool {
+pub fn browser_update_ready(config: &crate::foundation::config::Config) -> bool {
     let channel = if config.env().is_production() {
         "production"
     } else {

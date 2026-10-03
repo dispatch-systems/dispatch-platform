@@ -1,11 +1,14 @@
-use crate::collectors::Provider;
+use crate::collection::registry::Provider;
 use crate::{
     Code, Error, Result,
-    contracts::{ActiveJobStatus, Dsp, JobRow, JobStatus, PublicJob, UserStatus},
-    crypto,
+    accounts::api::types::{Dsp, UserStatus},
+    collection::{
+        api::jobs::{ActiveJobStatus, JobRow, JobStatus, PublicJob},
+        metrics::Metrics,
+    },
     db::{AuditChange, FromRow, Row, Store, iso, now},
     ensure,
-    job_metrics::Metrics,
+    foundation::crypto,
     job_statuses,
 };
 use rusqlite::params;
@@ -270,7 +273,8 @@ impl Store {
             .query_as::<(String, String)>(DSP_NAMES, [dsps])?
             .into_iter()
             .collect();
-        let mut metrics: HashMap<String, Vec<crate::contracts::JobMetrics>> = HashMap::new();
+        let mut metrics: HashMap<String, Vec<crate::collection::api::metrics::JobMetrics>> =
+            HashMap::new();
         for (job, stored) in self.jobs.query_as::<(String, String)>(METRICS, [ids])? {
             metrics
                 .entry(job)
@@ -293,7 +297,7 @@ impl Store {
             .ok_or_else(|| Error::new("job_not_found", 404))
     }
     /// Queues one request, answering with the job's public JSON, as collection requests do.
-    pub(crate) fn enqueue_for(
+    pub fn enqueue_for(
         &self,
         id: &str,
         actor: Option<&str>,
@@ -306,7 +310,7 @@ impl Store {
             .remove(0);
         Ok(serde_json::to_value(job)?)
     }
-    pub(crate) fn enqueue_batch(
+    pub fn enqueue_batch(
         &self,
         id: &str,
         actor: Option<&str>,
@@ -375,7 +379,7 @@ impl Store {
     /// Writes one queued job, answering with its id. Every job is queued here. The table
     /// takes any kind, so a kind no registered collector collects is refused here instead,
     /// with the error the table's list of kinds refused it with.
-    pub(crate) fn insert_job(
+    pub fn insert_job(
         &self,
         id: &str,
         actor: Option<&str>,
@@ -462,7 +466,10 @@ impl Store {
         )?;
         let dsp = self.ensure_dsp_active(&row.dsp_id)?;
         ensure(
-            self.feature_enabled(&row.dsp_id, crate::features::automation(row.kind.as_str()))?,
+            self.feature_enabled(
+                &row.dsp_id,
+                crate::tenancy::catalog::automation(row.kind.as_str()),
+            )?,
             "feature_disabled",
             409,
         )?;
@@ -481,7 +488,9 @@ impl Store {
                         || self.grant(actor, &row.dsp_id)?.is_some_and(|grant| {
                             grant.owner
                                 || grant.permissions.iter().any(|p| {
-                                    p == &crate::features::collection_permission(row.kind.as_str())
+                                    p == &crate::tenancy::catalog::collection_permission(
+                                        row.kind.as_str(),
+                                    )
                                 })
                         })),
                 "permission_denied",

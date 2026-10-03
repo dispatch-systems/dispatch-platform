@@ -1,7 +1,10 @@
 //! The activity log's areas as they stood before features declared the prefixes of their
 //! actions: the area each action is listed and counted under, in the platform's log and
 //! in a DSP's.
-use crate::{config::Config, db::AuditQuery, db::Store};
+use dispatch_core::{
+    db::{AuditQuery, Store},
+    foundation::config::Config,
+};
 use std::{collections::BTreeMap, os::unix::fs::PermissionsExt};
 
 /// An action, then its area in the platform's log and in its DSP's.

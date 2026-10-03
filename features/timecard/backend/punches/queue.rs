@@ -1,12 +1,11 @@
 //! The Paycom collections the Timecard page queues: the roster, one day of it, or one
 //! employee's period.
 use crate::{
-    Result,
     collectors::paycom::{self, timecards::EmployeeSync, validation::collection_date},
     contracts::EmployeeTimecardPeriod,
-    db::Store,
     workforce::TimecardStore,
 };
+use dispatch_core::{Result, db::Store};
 use serde_json::{Value, json};
 
 /// Queue helpers return the public JSON response used by collection requests.

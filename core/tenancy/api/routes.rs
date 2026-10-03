@@ -1,14 +1,15 @@
 //! Who is signed in, and which DSP they are looking at.
 use crate::{
     Result,
-    contracts::{DspView, ProviderMode, RoleSummary, SessionResponse},
+    accounts::api::types::{DspView, RoleSummary, SessionResponse},
     db::Store,
     ensure,
-    http::{
+    foundation::{config::ProviderMode, validate as v},
+    server::http::{
         input::{Input, Reply},
         route::{Route, Session, User, read, write},
     },
-    roles, validate as v,
+    tenancy::roles,
 };
 
 pub fn routes() -> Vec<Route> {
@@ -64,7 +65,7 @@ fn open_dsp(db: &Store, user: &User, input: &Input) -> Result<Reply> {
         ""
     };
     db.audit_visit(a.user.id.as_str(), c.dsp.id.as_str(), action, previewed)?;
-    let summary = |role: crate::contracts::Role| RoleSummary {
+    let summary = |role: crate::accounts::api::types::Role| RoleSummary {
         id: role.id,
         name: role.name,
         owner: role.owner,
@@ -95,9 +96,12 @@ fn open_dsp(db: &Store, user: &User, input: &Input) -> Result<Reply> {
 }
 
 // Authorization still runs on every request; keys cannot share membership-specific listings.
-pub(super) fn summaries(db: &Store, user: &User) -> Result<Vec<crate::contracts::DspSummary>> {
+pub(crate) fn summaries(
+    db: &Store,
+    user: &User,
+) -> Result<Vec<crate::accounts::api::types::DspSummary>> {
     user.state.read_cache.read(
-        crate::read_cache::Scope::listings(),
+        crate::server::cache::Scope::listings(),
         format!("dsps:{}:{}", user.actor(), user.user.platform_owner),
         user.state
             .data_revision

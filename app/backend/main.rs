@@ -17,7 +17,7 @@ fn main() {
         .build()
         .expect("application runtime");
     if let Err(error) = runtime.block_on(dispatch_backend::cli::run()) {
-        dispatch_backend::observability::event(
+        dispatch_core::foundation::observability::event(
             "error",
             "core.failed",
             serde_json::json!({"error":error.code}),

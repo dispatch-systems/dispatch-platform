@@ -13,14 +13,14 @@ fn retained_sweep_selection_rechecks_running_jobs_and_publication_activity() {
     use std::os::unix::fs::PermissionsExt;
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
-    crate::db::private_dir(root.path()).unwrap();
-    let mut config = crate::config::Config::load().unwrap();
+    dispatch_core::db::private_dir(root.path()).unwrap();
+    let mut config = dispatch_core::foundation::config::Config::load().unwrap();
     config.root = root.path().into();
     config.fixture = true;
     config.development = true;
     config.environment = "preview".into();
     let db = Store::initialize(config).unwrap();
-    let bootstrap = crate::operations::bootstrap(
+    let bootstrap = dispatch_core::server::operations::bootstrap(
         &db,
         "sweep@example.test",
         "Sweep",

@@ -4,16 +4,15 @@
 mod collection;
 #[path = "../collections/timecards/extract.rs"]
 mod extract;
-use super::{
-    attempt,
-    driver::{Collected, Driver as Drives, Pending, Run},
+use dispatch_core::collection::browser::{
+    Collected, Driver as Drives, Pending, Run, attempt,
     page::{Page, call},
 };
 #[cfg(all(test, feature = "operator-probes"))]
 #[path = "../probes/benchmark.rs"]
 mod benchmark;
-use super::browseros;
-use crate::{
+use dispatch_core::collection::browser::browseros;
+use dispatch_core::{
     Error, Result,
     db::{self, s},
     ensure,
@@ -23,10 +22,10 @@ use sha2::{Digest, Sha256};
 use std::{path::Path, time::Duration};
 use tokio::time::{Instant, sleep};
 // The page is between documents or still loading its scripts; ask it again.
-const PAGE_NOT_READY: &[crate::Code] = &[
-    crate::Code::BrowserNavigationPending,
-    crate::Code::BrowserScriptFailed,
-    crate::Code::ManualVerificationRequired,
+const PAGE_NOT_READY: &[dispatch_core::Code] = &[
+    dispatch_core::Code::BrowserNavigationPending,
+    dispatch_core::Code::BrowserScriptFailed,
+    dispatch_core::Code::ManualVerificationRequired,
 ];
 
 const LANDING: &str = "/v4/cl/web.php/client-landing/arc";
@@ -407,7 +406,7 @@ impl Drives for Driver {
                     .read(move |store| {
                         let dsp = store.guard(&job, &owner)?;
                         let question = json!({"employeeCode":code});
-                        crate::manifest::registry()
+                        dispatch_core::manifest::registry()
                             .keeper(crate::collectors::paycom::timecards::JOB_KIND)
                             .kept(store, &dsp.id, &question)
                     })

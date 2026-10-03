@@ -1,9 +1,8 @@
-use super::{
+use crate::{
     Error, Result,
-    config::Config,
-    crypto,
     db::{self, Store, iso, n, s},
     ensure,
+    foundation::{config::Config, crypto},
     manifest::registry,
 };
 use fs2::FileExt;
@@ -157,7 +156,7 @@ pub fn seed(db: &Store) -> Result<()> {
             crypto::id("mem")?,
             member.id,
             north.id,
-            super::roles::default_role(&db.platform, &north.id, "member")?
+            crate::tenancy::roles::default_role(&db.platform, &north.id, "member")?
         ],
     )?;
     for dsp in [&dev, &north] {

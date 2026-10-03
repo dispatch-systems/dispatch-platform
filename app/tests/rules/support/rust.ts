@@ -358,12 +358,15 @@ export class Rust {
       const at = [...module.path, declaration.name];
       const folder = module.relative ? `${module.directory}/${module.relative}` : module.directory;
       if (declaration.inline) {
+        // An inline module's `#[path]` names the folder its children sit in, as rustc reads it.
         const child = this.module(
           module.crate,
           at,
           module.file,
           test,
-          `${folder}/${declaration.name}`,
+          declaration.path
+            ? path.posix.normalize(`${folder}/${declaration.path}`)
+            : `${folder}/${declaration.name}`,
           {
             parent: module,
             span: declaration.inline,

@@ -1,10 +1,10 @@
 //! What DVIC holds of the synthetic DSP: one pre-trip inspection each route day; under 90
 //! seconds is short.
-use crate::{
+use crate::dvic::DvicStore;
+use dispatch_core::{
     Result,
-    agents::synthetic::{Made, STATION, Step, Synthetic, World, hhmm, plan},
     db::Store,
-    dvic::DvicStore,
+    mcp::synthetic::{Made, STATION, Step, Synthetic, World, hhmm, plan},
 };
 use serde_json::json;
 

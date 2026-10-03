@@ -1,5 +1,5 @@
 //! In-memory wakeups and bounded invalidation hints; reads always recheck authority.
-use crate::{Result, contracts::CollectionChange};
+use crate::{Result, collection::api::types::CollectionChange};
 use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
@@ -18,7 +18,7 @@ pub struct Updates {
 impl Updates {
     pub fn new() -> Result<Self> {
         Ok(Self {
-            epoch: super::crypto::id("live")?,
+            epoch: crate::foundation::crypto::id("live")?,
             tenants: Mutex::new(HashMap::new()),
             slots: Arc::new(Semaphore::new(128)),
         })

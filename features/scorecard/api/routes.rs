@@ -1,19 +1,18 @@
 //! Weekly scorecards: what is stored, collecting a week, and its jobs. The scorecard is a
 //! feature of its own; nothing here asks for another's permission.
-use crate::{
+use crate::{collectors::cortex::scorecard, scorecard::ScorecardStore};
+use dispatch_core::{
     Result,
-    collectors::cortex::scorecard,
+    collection::api::routes::{
+        jobs::{job_cancel, job_list},
+        schedules::schedule_routes,
+    },
     db::Store,
-    http::{
+    foundation::{validate as v, weeks},
+    server::http::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, read, write},
-        routes::{
-            jobs::{job_cancel, job_list},
-            schedules::schedule_routes,
-        },
     },
-    scorecard::ScorecardStore,
-    validate as v, weeks,
 };
 
 const VIEW: Dsp = Dsp("scorecard.view");

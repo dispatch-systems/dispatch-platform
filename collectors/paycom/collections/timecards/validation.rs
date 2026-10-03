@@ -1,4 +1,4 @@
-use crate::{Error, Result, db::s, ensure, validate as v};
+use dispatch_core::{Error, Result, db::s, ensure, foundation::validate as v};
 use serde_json::Value;
 use std::collections::HashSet;
 pub fn validate_workforce(value: &Value) -> Result<()> {

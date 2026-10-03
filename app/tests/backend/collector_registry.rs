@@ -1,11 +1,15 @@
 //! The collector registry and the storage it opens for each collector, with Paycom and
 //! Cortex registered and Timecard's data in their databases.
 use crate::{
-    collectors::{LAYOUT, Provider, cortex, database_path, paycom},
-    config::Config,
-    db::{self, Db, Store},
-    operations, testing,
+    collectors::{cortex, paycom},
+    testing,
     workforce::{self, TimecardStore},
+};
+use dispatch_core::{
+    collection::registry::{LAYOUT, Provider, database_path},
+    db::{self, Db, Store},
+    foundation::config::Config,
+    server::operations,
 };
 use paycom::fixtures;
 use serde_json::{Value, json};
@@ -20,7 +24,7 @@ fn platform() -> (tempfile::TempDir, Store) {
     (root, store)
 }
 fn pending(store: &Store) -> String {
-    let id = crate::crypto::id("dsp").unwrap();
+    let id = dispatch_core::foundation::crypto::id("dsp").unwrap();
     store
         .platform
         .exec(
@@ -203,7 +207,7 @@ fn cortex_storage_recovers_initialization_and_preserves_provider_identity() {
     store.open_collectors(&id).unwrap();
     assert_eq!(
         store.connection_for(&id, cortex::PROVIDER).unwrap().status,
-        crate::contracts::ConnectionStatus::Ready
+        dispatch_core::collection::api::types::ConnectionStatus::Ready
     );
     assert_eq!(
         snapshot(&store.collector(&id, paycom::PROVIDER).unwrap()),

@@ -10,6 +10,7 @@ autoexamples = false
 
 [lib]
 path = "lib.rs"
+doctest = false
 
 [[bin]]
 name = "dispatch-backend"
@@ -20,48 +21,36 @@ path = "main.rs"
 operator-probes = []
 
 [dependencies]
+dispatch-core = { path = "../../core" }
 dispatch-host = { path = "../../ops/host-manager" }
 axum = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
-aes-gcm = { workspace = true }
-argon2 = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
 flate2 = { workspace = true }
-fs2 = { workspace = true }
 getrandom = { workspace = true }
-hmac = { workspace = true }
 libc = { workspace = true }
-icu_collator = { workspace = true }
 sha2 = { workspace = true }
-subtle = { workspace = true }
 url = { workspace = true }
 reqwest = { workspace = true }
 scraper = { workspace = true }
 ego-tree = { workspace = true }
 html5ever = { workspace = true }
 futures-util = { workspace = true }
-lettre = { workspace = true }
-qrcode = { workspace = true }
-sha1 = { workspace = true }
-webauthn-rs = { workspace = true }
 calamine = { workspace = true }
 zip = { workspace = true }
-rmcp = { workspace = true }
 
 [dev-dependencies]
+# Core's test support, and its API types' TypeScript for the export test.
+dispatch-core = { path = "../../core", features = ["testing", "ts"] }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 # Writes shared/contracts/generated from the response types; never part of the binary.
 ts-rs = { workspace = true }
-
-[[test]]
-name = "accounts"
-path = "../../core/accounts/tests/backend/integration/accounts.rs"
 
 [[test]]
 name = "agent_activity"
@@ -78,14 +67,6 @@ path = "../../app/tests/backend/integration/agent_data.rs"
 [[test]]
 name = "agent_tools"
 path = "../../app/tests/backend/integration/agent_tools.rs"
-
-[[test]]
-name = "audit"
-path = "../../core/platform_owner/tests/backend/integration/audit.rs"
-
-[[test]]
-name = "browser_update"
-path = "../../core/server/tests/backend/integration/browser_update.rs"
 
 [[test]]
 name = "browseros_host"
@@ -112,24 +93,12 @@ name = "dvic"
 path = "../../features/dvic/tests/backend/integration/dvic.rs"
 
 [[test]]
-name = "egress"
-path = "../../core/collection/tests/backend/integration/egress.rs"
-
-[[test]]
 name = "http_requests"
 path = "../../app/tests/backend/integration/http_requests.rs"
 
 [[test]]
 name = "http_routes"
 path = "../../app/tests/backend/integration/http_routes.rs"
-
-[[test]]
-name = "jobs"
-path = "../../core/collection/tests/backend/integration/jobs.rs"
-
-[[test]]
-name = "mail"
-path = "../../core/server/tests/backend/integration/mail.rs"
 
 [[test]]
 name = "meal_cache"
@@ -170,10 +139,6 @@ path = "../../features/routes/tests/backend/integration/routes.rs"
 [[test]]
 name = "scorecard"
 path = "../../features/scorecard/tests/backend/integration/scorecard.rs"
-
-[[test]]
-name = "storage"
-path = "../../core/db/tests/backend/integration/storage.rs"
 
 [[example]]
 name = "assessment-fixture"

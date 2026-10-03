@@ -1,18 +1,18 @@
 //! Guardrails for the route table every owner's `api/routes` registers into.
-use dispatch_backend::{
-    http::{
+use dispatch_core::{
+    server::http::{
         Access::{self, Agent, Dsp, PlatformOwner, Public, Session},
         Route,
         Work::{self, Async, Memory, Read, Write},
     },
-    roles,
+    tenancy::roles,
 };
 use std::collections::BTreeSet;
 
 /// The route table, with the registry the permissions and routes are read from.
 fn table() -> Vec<Route> {
     dispatch_backend::install();
-    dispatch_backend::http::table()
+    dispatch_core::server::http::table()
 }
 
 const TEAM: &str = "members.invite|members.manage|roles.manage";

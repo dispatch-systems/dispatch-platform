@@ -1,16 +1,15 @@
 //! Scorecard storage: publication, supersession, weeks not posted, where the next
 //! job reads and what a schedule queues.
-#[path = "../../../../../core/db/tests/support/common.rs"]
-mod common;
 use dispatch_backend::{
     collectors::cortex::{
         self,
         discovery::{CollectionRequest, Scope},
         scorecard::{self, Capture, Request},
     },
-    db::{Store, s},
     scorecard::ScorecardStore,
 };
+use dispatch_core::db::{Store, s};
+use dispatch_core::testing as common;
 use serde_json::json;
 
 /// Scorecard, and the Cortex collector whose scorecard it keeps.

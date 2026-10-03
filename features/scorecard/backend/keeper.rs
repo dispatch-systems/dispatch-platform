@@ -1,16 +1,15 @@
 //! Scorecard keeps the weeks Cortex's performance API answers with.
 use crate::{
+    collectors::cortex::{discovery::Scope, scorecard::JOB_KIND},
+    scorecard::ScorecardStore,
+};
+use dispatch_core::{
     Error, Result,
-    browsers::Collected,
-    collectors::{
-        AddedStorage,
-        cortex::{discovery::Scope, scorecard::JOB_KIND},
-    },
+    collection::{browser::Collected, registry::AddedStorage},
     db::{Store, s},
     ensure,
     manifest::Keeper,
-    read_cache::DataDomain,
-    scorecard::ScorecardStore,
+    server::cache::DataDomain,
 };
 use serde_json::Value;
 

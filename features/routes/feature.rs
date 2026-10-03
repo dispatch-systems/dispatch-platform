@@ -1,11 +1,11 @@
 //! Routes: each day's routes, itineraries and packages from Cortex.
-use crate::{
+use crate::routedata;
+use dispatch_core::{
     db::{
         Migration, Migrations,
         migrations::Apply::{Code, Sql},
     },
     manifest::{Feature, Switch, feature, perm},
-    routedata,
 };
 
 #[path = "api/routes.rs"]

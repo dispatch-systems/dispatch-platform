@@ -1,9 +1,11 @@
 //! DVIC's answer to agents: each driver's inspections in a period, the short ones counted.
 use super::facts::{Inspection, inspections};
-use crate::{
+use dispatch_core::{
     State,
-    agents::{
+    db::Store,
+    mcp::{
         Caller,
+        api::types::DriverSource,
         data::{
             Answer,
             access::Access,
@@ -12,8 +14,6 @@ use crate::{
             shape::{Table, paged, understood},
         },
     },
-    contracts::DriverSource,
-    db::Store,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;

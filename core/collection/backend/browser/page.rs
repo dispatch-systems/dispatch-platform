@@ -3,10 +3,10 @@ use super::browseros;
 use crate::{Error, Result, db::s, ensure};
 use serde_json::{Value, json};
 /// A provider page script applied to its input, as one expression to evaluate.
-pub(super) fn call(script: &str, input: &Value) -> String {
+pub fn call(script: &str, input: &Value) -> String {
     format!("({})({input})", script.trim().trim_end_matches(';'))
 }
-pub(super) struct Page {
+pub struct Page {
     pub id: String,
     pub target: String,
     browser: browseros::Session,
@@ -108,14 +108,14 @@ impl Page {
         }
         Ok(())
     }
-    pub(super) async fn command(&self, method: &str, params: Value) -> Result<Value> {
+    pub async fn command(&self, method: &str, params: Value) -> Result<Value> {
         let result = self.browser.command(method, params, Some(&self.id)).await;
         if result
             .as_ref()
             .err()
             .is_some_and(|error| error.is(crate::Code::BrowserCommandTimeout))
         {
-            super::super::observability::event(
+            crate::foundation::observability::event(
                 "warn",
                 "browser.command_timeout",
                 serde_json::json!({"method":method}),
@@ -123,10 +123,10 @@ impl Page {
         }
         result
     }
-    pub(super) async fn frame(&self) -> Result<Value> {
+    pub async fn frame(&self) -> Result<Value> {
         Ok(self.command("Page.getFrameTree", json!({})).await?["frameTree"]["frame"].clone())
     }
-    pub(super) fn trusted(&self, value: &str) -> bool {
+    pub fn trusted(&self, value: &str) -> bool {
         url::Url::parse(value).is_ok_and(|url| {
             self.trusted_origins
                 .contains(&url.origin().ascii_serialization())
@@ -135,7 +135,7 @@ impl Page {
                 && url.fragment().is_none()
         })
     }
-    pub(super) async fn evaluate(&self, expression: &str) -> Result<Value> {
+    pub async fn evaluate(&self, expression: &str) -> Result<Value> {
         let frame = self.frame().await?;
         ensure(
             self.trusted(s(&frame, "url")),

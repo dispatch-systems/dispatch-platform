@@ -1,7 +1,7 @@
 //! Timecard's part of the agent catalog: its endpoints, its metrics for team_table and
 //! the words its answers use.
 use super::{MEAL_BREAKS, TIMECARDS, views};
-use crate::agents::data::catalog::{
+use dispatch_core::mcp::data::catalog::{
     CURSOR, DATE, DAY, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param, TO, Term,
 };
 

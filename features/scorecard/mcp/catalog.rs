@@ -1,6 +1,6 @@
 //! Scorecard's part of the agent catalog: its endpoints.
 use super::{FEEDBACK, RETURNS, SAFETY, SCORECARD, scorecard};
-use crate::agents::data::catalog::{
+use dispatch_core::mcp::data::catalog::{
     CURSOR, DATE, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, PERIOD, Param, TO,
 };
 

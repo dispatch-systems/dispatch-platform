@@ -1,10 +1,9 @@
-#[path = "../../support/common.rs"]
-mod common;
 use common::{bootstrapped, seeded, store};
-use dispatch_backend::{
-    crypto,
+use dispatch_core::testing as common;
+use dispatch_core::{
     db::{self, Store},
-    operations,
+    foundation::crypto,
+    server::operations,
 };
 use serde_json::json;
 use std::os::unix::fs::{PermissionsExt, symlink};
@@ -170,7 +169,7 @@ fn legacy_account_database_is_rejected_without_changing_its_schema() {
 
 #[tokio::test]
 async fn essential_background_failure_stops_readiness_and_normal_shutdown_is_clean() {
-    use dispatch_backend::{Error, supervise};
+    use dispatch_core::{Error, supervise};
     let (stop, receiver) = tokio::sync::watch::channel(false);
     assert!(
         supervise(async { Err(Error::new("scheduler_failed", 500)) }, stop)

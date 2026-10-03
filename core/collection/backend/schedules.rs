@@ -1,15 +1,17 @@
 //! DSP-owned recurring collections.
-use super::{
+use crate::{
     Error, Result,
-    collectors::Provider,
-    contracts::{
-        Cadence, CollectionSchedule, CollectionSchedules, ScheduleCollection, SchedulePreview,
+    collection::{
+        api::types::{
+            Cadence, CollectionSchedule, CollectionSchedules, ScheduleCollection, SchedulePreview,
+        },
+        registry::Provider,
     },
-    crypto,
     db::{FromRow, Row, Store, at, iso, now},
-    ensure, job_statuses,
+    ensure,
+    foundation::{crypto, validate as v},
+    job_statuses,
     manifest::{Collection, registry},
-    validate as v,
 };
 use chrono::{NaiveTime, TimeZone};
 use rusqlite::params;
@@ -114,7 +116,7 @@ pub fn next_daily(time: &str, tz: &str, after: i64) -> Result<String> {
     }
     Err(Error::new("schedule_unresolvable", 400))
 }
-pub(crate) fn anchor(time: &str, tz: &str, after: i64) -> Result<i64> {
+pub fn anchor(time: &str, tz: &str, after: i64) -> Result<i64> {
     let tz = timezone(tz)?;
     let date = chrono::DateTime::from_timestamp_millis(after)
         .ok_or_else(|| Error::new("invalid_schedule", 400))?
@@ -166,7 +168,7 @@ fn same_timing(row: &ScheduleRow, (cadence, minutes, time): (Cadence, Option<i64
 pub fn schedule_changes(
     before: &CollectionSchedule,
     after: &CollectionSchedule,
-) -> Vec<super::db::AuditChange> {
+) -> Vec<crate::db::AuditChange> {
     let fields = |s: &CollectionSchedule| {
         [
             ("name", Some(s.name.clone())),
@@ -239,7 +241,7 @@ impl Store {
         })
     }
     /// Today, where the DSP is.
-    pub(crate) fn local_date(&self, id: &str) -> Result<String> {
+    pub fn local_date(&self, id: &str) -> Result<String> {
         let tz = timezone(&self.find_dsp(id)?.timezone)?;
         Ok(chrono::Utc::now()
             .with_timezone(&tz)
@@ -433,13 +435,13 @@ impl Store {
             .exec("DELETE FROM collection_schedules WHERE id=?", [schedule])?;
         Ok(())
     }
-    pub(crate) fn pause_provider_schedules(&self, id: &str, provider: Provider) -> Result<()> {
+    pub fn pause_provider_schedules(&self, id: &str, provider: Provider) -> Result<()> {
         for collection in provider.collector().collections() {
             self.dsp(id)?.exec(PAUSE, [collection.schedule])?;
         }
         Ok(())
     }
-    pub(crate) fn retime_schedules(&self, id: &str, tz: &str) -> Result<()> {
+    pub fn retime_schedules(&self, id: &str, tz: &str) -> Result<()> {
         self.retime_schedules_for(id, tz, None)
     }
     pub(crate) fn retime_feature_schedules(&self, id: &str, tz: &str, feature: &str) -> Result<()> {
@@ -450,7 +452,7 @@ impl Store {
         db.transaction(|| {
             for mut row in db.query_as::<ScheduleRow>("SELECT * FROM collection_schedules", [])? {
                 if feature.is_some_and(|f| {
-                    crate::features::automation(row.schedule.collection.as_str()) != f
+                    crate::tenancy::catalog::automation(row.schedule.collection.as_str()) != f
                 }) {
                     continue;
                 }
@@ -473,7 +475,7 @@ impl Store {
         )?;
         for (id,) in dsps {
             let enabled = self.features(&id)?;
-            if !crate::features::automates(&enabled) {
+            if !crate::tenancy::catalog::automates(&enabled) {
                 continue;
             }
             // The soonest schedule whose page is on; the others wait for their page.
@@ -481,7 +483,7 @@ impl Store {
             let next = rows
                 .into_iter()
                 .find(|(collection, _)| {
-                    let page = crate::features::automation(collection);
+                    let page = crate::tenancy::catalog::automation(collection);
                     enabled.iter().any(|f| f == page)
                 })
                 .map(|(_, next_run)| next_run);
@@ -528,7 +530,7 @@ impl Store {
     pub fn schedule_due(&self, id: &str) -> Result<Option<i64>> {
         let dsp = self.find_dsp(id)?;
         let enabled = self.features(id)?;
-        if !self.serves(&dsp) || !crate::features::automates(&enabled) {
+        if !self.serves(&dsp) || !crate::tenancy::catalog::automates(&enabled) {
             return Ok(None);
         }
         let db = self.dsp(id)?;
@@ -539,7 +541,7 @@ impl Store {
         )?;
         for mut row in rows {
             // A schedule whose page is off waits, as every schedule does without the page.
-            let page = crate::features::automation(row.schedule.collection.as_str());
+            let page = crate::tenancy::catalog::automation(row.schedule.collection.as_str());
             if !enabled.iter().any(|f| f == page) {
                 continue;
             }

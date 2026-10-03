@@ -1,4 +1,7 @@
-use crate::{Result, ensure, validate as v, wire::request};
+use crate::{
+    Result, ensure,
+    foundation::{validate as v, wire::request},
+};
 use serde::Deserialize;
 use serde_json::Value;
 #[derive(Deserialize)]

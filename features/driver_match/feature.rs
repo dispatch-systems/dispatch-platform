@@ -1,7 +1,7 @@
 //! Driver Match: one code per driver across Paycom and every Amazon source.
-use crate::{
+use crate::driver_match;
+use dispatch_core::{
     db::{Kind, Migration, Migrations, migrations::Apply::Sql},
-    driver_match,
     manifest::{Audit, Feature, Switch, feature, perm},
 };
 

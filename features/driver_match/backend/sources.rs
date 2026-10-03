@@ -1,11 +1,11 @@
 //! What each source knows about the people in it: the IDs, the names it writes and the
 //! days it saw them, as each feature whose data names people says through the people slot.
 //! Read afresh each time; Driver Match stores only what was decided.
-use crate::{
+use dispatch_core::{
     Result,
-    contracts::{DriverData, DriverSource},
     db::Store,
     manifest::{people::Workdays, registry},
+    mcp::api::types::{DriverData, DriverSource},
 };
 use std::collections::{BTreeMap, BTreeSet};
 

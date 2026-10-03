@@ -1,7 +1,5 @@
-use crate::{
-    contracts::{EmployeeTimecardPeriod, JobStatus, PaycomDay},
-    text_enum,
-};
+use crate::contracts::{EmployeeTimecardPeriod, PaycomDay};
+use dispatch_core::{collection::api::jobs::JobStatus, text_enum};
 use serde::{Deserialize, Serialize};
 #[derive(Debug, PartialEq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]

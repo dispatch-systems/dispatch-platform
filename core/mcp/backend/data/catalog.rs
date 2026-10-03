@@ -4,7 +4,12 @@
 //! declares the endpoints that join every feature's facts; each feature declares its own
 //! endpoints, metrics and terms in its manifest's `mcp`.
 use super::{Answer, Refusal};
-use crate::{State, agents::Caller, contracts::AgentArea, db::Store, manifest::registry};
+use crate::{
+    State,
+    db::Store,
+    manifest::registry,
+    mcp::{Caller, api::types::AgentArea},
+};
 use serde_json::{Map, Value, json};
 use std::sync::LazyLock;
 

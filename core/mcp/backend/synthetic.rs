@@ -5,7 +5,7 @@
 //! does. Only a development server with fixture providers, seeded first, can make it.
 use crate::{
     Error, Result,
-    collectors::Provider,
+    collection::registry::Provider,
     db::{Store, s},
     ensure,
     manifest::registry,

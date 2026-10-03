@@ -5,14 +5,15 @@
 //! back on restores everything. Pages and their tabs come from the features'
 //! manifests, and connections from the collector registry, each providing a
 //! capability; a page requires capabilities, never a provider by name.
-use super::{
+use super::audit::AuditChange;
+use crate::{
     Result,
-    audit::AuditChange,
-    collectors::{self, Provider},
-    contracts::{DspFeatureReport, DspFeatures, DspStatus, FeatureChange, FeatureState},
+    collection::registry::Provider,
     db::{FromRow, Row, Store, iso},
     ensure, job_statuses,
     manifest::{self, registry},
+    platform_owner::api::types::{DspFeatureReport, DspFeatures, FeatureChange, FeatureState},
+    tenancy::api::types::DspStatus,
 };
 use rusqlite::params;
 use std::{collections::BTreeMap, sync::LazyLock};
@@ -137,7 +138,7 @@ pub fn collection_permission(kind: &str) -> String {
     registry().keeper(kind).permission().to_owned()
 }
 /// The permission every connection shares; it exists while any connection does.
-pub(crate) const CONNECTIONS: &str = collectors::CONNECTIONS.id;
+pub const CONNECTIONS: &str = crate::collection::registry::CONNECTIONS.id;
 
 fn connection(provider: Provider) -> Feature {
     let collector = provider.collector();
@@ -327,7 +328,7 @@ impl Store {
         actor: &str,
     ) -> Result<DspFeatures> {
         let all = catalog();
-        let feature = find(id).ok_or_else(|| super::Error::new("feature_not_found", 404))?;
+        let feature = find(id).ok_or_else(|| crate::Error::new("feature_not_found", 404))?;
         self.platform.transaction(|| {
             self.find_dsp(dsp)?;
             let mut current = self.switches(dsp)?;

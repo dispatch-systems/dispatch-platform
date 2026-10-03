@@ -1,4 +1,4 @@
-use crate::{Result, crypto, db::Db};
+use dispatch_core::{Result, db::Db, foundation::crypto};
 use rusqlite::params;
 
 pub(super) fn insert(db: &Db, revision: i64) -> Result<()> {

@@ -1,6 +1,7 @@
 //! Operator-only observations of Cortex. Never run by CI or print provider records.
 use super::*;
-use crate::{collectors::cortex::discovery::Scope, db, job_metrics::Recorder};
+use crate::collectors::cortex::discovery::Scope;
+use dispatch_core::{collection::metrics::Recorder, db};
 use std::path::PathBuf;
 
 fn env_path(name: &str) -> Result<PathBuf> {
@@ -42,7 +43,7 @@ fn tab_pair(value: &str) -> Result<Vec<usize>> {
     Ok(tabs)
 }
 fn adjacent_week(week: &str, delta: i64) -> Result<String> {
-    let (year, number) = crate::weeks::parse_week(week)?;
+    let (year, number) = dispatch_core::foundation::weeks::parse_week(week)?;
     let day = chrono::NaiveDate::from_isoywd_opt(year, number, chrono::Weekday::Mon)
         .ok_or_else(|| Error::new("invalid_week", 400))?;
     let shifted = day
@@ -112,7 +113,7 @@ async fn record_data_requests() -> Result<()> {
     let mut driver = Driver::new(browser, &profile, None).await?;
     let result = async {
         let secrets = dsp.join("secrets");
-        let credentials = crate::crypto::decrypt(
+        let credentials = dispatch_core::foundation::crypto::decrypt(
             &db::key_file(&secrets.join("vault.key"))?,
             &format!("{}:cortex:2", dsp.file_name().unwrap().to_str().unwrap()),
             &std::fs::read_to_string(secrets.join("cortex.enc"))?,
@@ -302,7 +303,7 @@ async fn compare_tabs() -> Result<()> {
     let mut driver = Driver::new(browser, &profile, None).await?;
     let result = async {
         let secrets = dsp.join("secrets");
-        let credentials = crate::crypto::decrypt(
+        let credentials = dispatch_core::foundation::crypto::decrypt(
             &db::key_file(&secrets.join("vault.key"))?,
             &format!("{}:cortex:2", dsp.file_name().unwrap().to_str().unwrap()),
             &std::fs::read_to_string(secrets.join("cortex.enc"))?,
@@ -445,7 +446,7 @@ async fn diagnose_tabs() -> Result<()> {
     let mut driver = Driver::new(browser.clone(), &profile, None).await?;
     let result = async {
         let secrets = dsp.join("secrets");
-        let credentials = crate::crypto::decrypt(
+        let credentials = dispatch_core::foundation::crypto::decrypt(
             &db::key_file(&secrets.join("vault.key"))?,
             &format!("{}:cortex:2", dsp.file_name().unwrap().to_str().unwrap()),
             &std::fs::read_to_string(secrets.join("cortex.enc"))?,
@@ -671,7 +672,7 @@ async fn probe_scorecard_api() -> Result<()> {
     let mut driver = Driver::new(browser, &profile, None).await?;
     let result = async {
         let secrets = dsp.join("secrets");
-        let credentials = crate::crypto::decrypt(
+        let credentials = dispatch_core::foundation::crypto::decrypt(
             &db::key_file(&secrets.join("vault.key"))?,
             &format!("{}:cortex:2", dsp.file_name().unwrap().to_str().unwrap()),
             &std::fs::read_to_string(secrets.join("cortex.enc"))?,
@@ -1174,7 +1175,7 @@ async fn probe_routes_api() -> Result<()> {
     let mut driver = Driver::new(browser, &profile, None).await?;
     let result = async {
         let secrets = dsp.join("secrets");
-        let credentials = crate::crypto::decrypt(
+        let credentials = dispatch_core::foundation::crypto::decrypt(
             &db::key_file(&secrets.join("vault.key"))?,
             &format!("{}:cortex:2", dsp.file_name().unwrap().to_str().unwrap()),
             &std::fs::read_to_string(secrets.join("cortex.enc"))?,
@@ -1388,7 +1389,7 @@ fn own_rss() -> u64 {
 #[tokio::test]
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn measure_route_method() -> Result<()> {
-    use crate::browsers::egress::counted::{RECEIVED, SENT};
+    use dispatch_core::collection::browser::egress::counted::{RECEIVED, SENT};
     use routedata::Method;
     let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
     let method: Method = match std::env::var("DISPATCH_BENCHMARK_METHOD").as_deref() {
@@ -1425,7 +1426,7 @@ async fn measure_route_method() -> Result<()> {
     let mut driver = Driver::new(browser, &profile, None).await?;
     let result = async {
         let secrets = dsp.join("secrets");
-        let credentials = crate::crypto::decrypt(
+        let credentials = dispatch_core::foundation::crypto::decrypt(
             &db::key_file(&secrets.join("vault.key"))?,
             &format!("{}:cortex:2", dsp.file_name().unwrap().to_str().unwrap()),
             &std::fs::read_to_string(secrets.join("cortex.enc"))?,
@@ -1461,7 +1462,7 @@ async fn measure_route_method() -> Result<()> {
             tokio::task::spawn_blocking(move || {
                 let (mut max_pss, mut sum_pss, mut samples, mut max_own) = (0u64, 0u64, 0u64, 0u64);
                 while sampling.load(std::sync::atomic::Ordering::Relaxed) {
-                    if let Some(memory) = crate::job_metrics::memory(pid) {
+                    if let Some(memory) = dispatch_core::collection::metrics::memory(pid) {
                         max_pss = max_pss.max(memory.pss);
                         sum_pss += memory.pss;
                         samples += 1;
@@ -1601,8 +1602,8 @@ async fn measure_route_method() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn measure_meal_method() -> Result<()> {
-    use crate::browsers::egress::counted::{RECEIVED, SENT};
     use collection::MealMethod;
+    use dispatch_core::collection::browser::egress::counted::{RECEIVED, SENT};
     let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
     let method: MealMethod = match std::env::var("DISPATCH_BENCHMARK_METHOD").as_deref() {
         Ok(text) if !text.is_empty() => serde_json::from_str(text)?,
@@ -1636,7 +1637,7 @@ async fn measure_meal_method() -> Result<()> {
     let mut driver = Driver::new(browser, &profile, None).await?;
     let result = async {
         let secrets = dsp.join("secrets");
-        let credentials = crate::crypto::decrypt(
+        let credentials = dispatch_core::foundation::crypto::decrypt(
             &db::key_file(&secrets.join("vault.key"))?,
             &format!("{}:cortex:2", dsp.file_name().unwrap().to_str().unwrap()),
             &std::fs::read_to_string(secrets.join("cortex.enc"))?,
@@ -1670,7 +1671,7 @@ async fn measure_meal_method() -> Result<()> {
             tokio::task::spawn_blocking(move || {
                 let (mut max_pss, mut sum_pss, mut samples) = (0u64, 0u64, 0u64);
                 while sampling.load(std::sync::atomic::Ordering::Relaxed) {
-                    if let Some(memory) = crate::job_metrics::memory(pid) {
+                    if let Some(memory) = dispatch_core::collection::metrics::memory(pid) {
                         max_pss = max_pss.max(memory.pss);
                         sum_pss += memory.pss;
                         samples += 1;

@@ -1,9 +1,9 @@
 //! A DSP's own profile.
-use crate::{
+use dispatch_core::{
     Result,
-    contracts::DspSetupRequest,
+    accounts::api::requests::DspSetupRequest,
     db::Store,
-    http::{
+    server::http::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, write},
     },

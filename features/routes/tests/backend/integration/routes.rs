@@ -1,16 +1,14 @@
 //! Routes storage: publication, supersession, the days a schedule queues and what the
 //! views read.
-#[path = "../../../../../core/db/tests/support/common.rs"]
-mod common;
 use dispatch_backend::{
     collectors::cortex::{
         self,
         routes::{self, Capture, Mode, Request},
     },
-    db::{Store, s},
-    routedata,
-    routedata::RoutesStore,
+    routedata::{self, RoutesStore},
 };
+use dispatch_core::db::{Store, s};
+use dispatch_core::testing as common;
 use serde_json::{Value, json};
 
 /// Routes, and the Cortex collector whose routes it keeps.
@@ -790,7 +788,7 @@ fn a_stored_day_goes_through_storage_at_full_size() {
     let id = std::env::var("DISPATCH_BENCHMARK_DSP_ID").expect("DISPATCH_BENCHMARK_DSP_ID");
     let day = std::env::var("DISPATCH_BENCHMARK_DAY").expect("DISPATCH_BENCHMARK_DAY");
     install();
-    let mut config = dispatch_backend::config::Config::load().unwrap();
+    let mut config = dispatch_core::foundation::config::Config::load().unwrap();
     config.root = root.into();
     config.environment = "preview".into();
     let started = std::time::Instant::now();

@@ -1,11 +1,9 @@
 use super::preferences::preferences;
-use crate::{
+use crate::{collectors::paycom, contracts::DailyTimecards, workforce::TimecardStore};
+use dispatch_core::{
     Result,
-    collectors::paycom,
-    contracts::DailyTimecards,
     db::{Db, Store, s},
-    names::{compare, display_name},
-    workforce::TimecardStore,
+    foundation::names::{compare, display_name},
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;

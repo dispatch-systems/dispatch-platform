@@ -2,24 +2,22 @@
 //! and named the way a person asks for them. Each answer says what it understood (the DSP,
 //! the days, the driver) and which days each source has, so missing data never reads as
 //! zero. Requests that leave something unclear are refused with the choices, never guessed.
-#[path = "access.rs"]
 pub mod access;
-#[path = "catalog.rs"]
 pub mod catalog;
-#[path = "facts.rs"]
 pub mod facts;
-#[path = "scope.rs"]
 pub mod scope;
-#[path = "shape.rs"]
 pub mod shape;
-#[path = "views.rs"]
 mod views;
 
 pub use access::switched_on;
 pub use shape::BUDGET;
 pub use views::*;
 
-use crate::{Error, State, agents::Caller, contracts::AgentDsp, db::Store};
+use crate::{
+    Error, State,
+    db::Store,
+    mcp::{Caller, api::types::AgentDsp},
+};
 use access::{Access, Read};
 use serde_json::{Value, json};
 
@@ -28,9 +26,9 @@ use serde_json::{Value, json};
 #[derive(Debug)]
 pub struct Refusal {
     status: u16,
-    pub(crate) code: &'static str,
+    pub code: &'static str,
     message: String,
-    pub(crate) choices: Vec<String>,
+    pub choices: Vec<String>,
 }
 impl Refusal {
     pub fn new(status: u16, code: &'static str, message: impl Into<String>) -> Self {

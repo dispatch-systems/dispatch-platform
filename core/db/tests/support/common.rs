@@ -1,24 +1,22 @@
 //! Core's test support: the registry a test installs, the store it starts from, and what a
-//! test may change or read in core's tables, which only core's code runs SQL on. Each
-//! integration test is its own crate and uses a different part of this module; module
-//! tests reach it as `crate::testing`.
-#![allow(dead_code)]
-use dispatch_backend::{
+//! test may change or read in core's tables, which only core's code runs SQL on. Core's tests
+//! reach it as `crate::testing`; every other crate's tests as `dispatch_core::testing`, through
+//! the `testing` feature.
+use crate::{
     Error, Result,
-    browsers::Collected,
-    collectors::Provider,
-    config::Config,
+    collection::{browser::Collected, registry::Provider},
     db::{self, Migration, Migrations, Store, migrations::Apply, s},
+    foundation::config::Config,
     manifest::{self, Collector, Feature, Keeper, Permission, Registry, Switch, feature, perm},
-    operations,
+    server::operations,
 };
 use serde_json::Value;
 use std::{collections::BTreeSet, os::unix::fs::PermissionsExt, sync::Mutex};
 
 /// Installs a registry of `collectors` and `features`, what a test needs beside core,
-/// unless one holding them is installed already. Until each owner is a crate of its own,
-/// every module test runs in the app's test binary, with the app's registry, which holds
-/// them all; each integration test is a binary of its own and gets just what it names.
+/// unless one holding them is installed already. A test binary holds one registry: core's
+/// own tests get core alone, each integration test just what it names, and the app's module
+/// tests the app's whole registry, which holds every part they name.
 pub fn install(collectors: &[&'static dyn Collector], features: &[&'static Feature]) {
     static INSTALLING: Mutex<()> = Mutex::new(());
     let _one = INSTALLING

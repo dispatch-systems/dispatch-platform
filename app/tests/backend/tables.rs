@@ -1,9 +1,7 @@
 //! Every table of every database has one owner, which declares it: core, a collector or a
 //! feature. Only that owner's code runs SQL on it.
-use crate::{
-    REGISTRY,
-    manifest::{Feature, Registry, feature},
-};
+use crate::REGISTRY;
+use dispatch_core::manifest::{Feature, Registry, feature};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::Path,

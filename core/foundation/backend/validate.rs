@@ -1,4 +1,4 @@
-use super::{Result, ensure};
+use crate::{Result, ensure};
 use serde_json::Value;
 pub fn fields(v: &Value, allowed: &[&str]) -> Result<()> {
     ensure(
@@ -11,7 +11,7 @@ pub fn fields(v: &Value, allowed: &[&str]) -> Result<()> {
 pub fn text<'a>(v: &'a Value, key: &str, min: usize, max: usize) -> Result<&'a str> {
     let s = v[key]
         .as_str()
-        .ok_or_else(|| super::Error::new("invalid_input", 400))?;
+        .ok_or_else(|| crate::Error::new("invalid_input", 400))?;
     ensure(
         (min..=max).contains(&s.chars().count()),
         "invalid_input",
@@ -37,12 +37,12 @@ pub fn choice<'a>(v: &'a Value, key: &str, choices: &[&str]) -> Result<&'a str> 
 pub fn boolean(v: &Value, key: &str) -> Result<bool> {
     v[key]
         .as_bool()
-        .ok_or_else(|| super::Error::new("invalid_input", 400))
+        .ok_or_else(|| crate::Error::new("invalid_input", 400))
 }
 pub fn integer(v: &Value, key: &str, min: i64, max: i64) -> Result<i64> {
     let n = v[key]
         .as_i64()
-        .ok_or_else(|| super::Error::new("invalid_input", 400))?;
+        .ok_or_else(|| crate::Error::new("invalid_input", 400))?;
     ensure((min..=max).contains(&n), "invalid_input", 400)?;
     Ok(n)
 }

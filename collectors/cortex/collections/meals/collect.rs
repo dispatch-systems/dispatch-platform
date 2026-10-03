@@ -1,14 +1,11 @@
 use super::*;
-use crate::{
-    collectors::cortex::{
-        codes,
-        discovery::Scope,
-        live::Writer,
-        meals::{Capture, Itinerary},
-    },
-    db::now,
-    job_metrics::Recorder,
+use crate::collectors::cortex::{
+    codes,
+    discovery::Scope,
+    live::Writer,
+    meals::{Capture, Itinerary},
 };
+use dispatch_core::{collection::metrics::Recorder, db::now};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
@@ -19,12 +16,12 @@ use std::{
     },
 };
 // The route's content has not settled yet; read it again.
-pub(super) const CONTENT_NOT_READY: &[crate::Code] = &[
+pub(super) const CONTENT_NOT_READY: &[dispatch_core::Code] = &[
     codes::CORTEX_CONTENT_INCOMPLETE,
-    crate::Code::BrowserNavigationPending,
-    crate::Code::BrowserScriptFailed,
+    dispatch_core::Code::BrowserNavigationPending,
+    dispatch_core::Code::BrowserScriptFailed,
     codes::CORTEX_SCOPE_MISMATCH,
-    crate::Code::VerificationRequired,
+    dispatch_core::Code::VerificationRequired,
 ];
 /// A page script without the trailing `;` its formatter adds, so it can be called.
 fn script(source: &str) -> &str {
@@ -502,7 +499,7 @@ fn evidence(result: Value, metrics: &Recorder) -> Result<Value> {
             codes::INVALID_CORTEX_SCOPE,
         ];
         return Err(Error::new(
-            if crate::Code::text_is_any(error, &allowed) {
+            if dispatch_core::Code::text_is_any(error, &allowed) {
                 error
             } else {
                 "cortex_content_incomplete"

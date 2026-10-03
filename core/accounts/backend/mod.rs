@@ -1,21 +1,19 @@
 //! Accounts, authenticated contexts, sessions and invitations.
-#[path = "invitations.rs"]
+#[path = "../api/mod.rs"]
+pub mod api;
 mod invitations;
-#[path = "passwords.rs"]
 mod passwords;
-#[path = "security.rs"]
 mod security;
-#[path = "sessions.rs"]
 mod sessions;
 
 use crate::{
     Error, Result,
-    contracts::{Dsp, DspStatus, PublicUser, UserStatus},
-    crypto,
+    accounts::api::types::{Dsp, PublicUser, UserStatus},
     db::{Db, FromRow, Row, Store, flag, iso, now, s},
     ensure,
-    mail::templates as email,
-    validate as v,
+    foundation::{crypto, validate as v},
+    server::mail::templates as email,
+    tenancy::api::types::DspStatus,
 };
 use passwords::same_password_user;
 use rusqlite::params;
@@ -122,12 +120,12 @@ pub struct Context {
 impl Context {
     // A permission of a feature the DSP lacks is held by nobody, owners included.
     pub fn can(&self, permission: &str) -> bool {
-        crate::features::grants(&self.features, permission)
+        crate::tenancy::catalog::grants(&self.features, permission)
             && (self.owner || self.permissions.iter().any(|p| p == permission))
     }
     /// The permissions of `stored` that exist in this DSP.
     pub fn visible<'a>(&'a self, stored: &'a [String]) -> impl Iterator<Item = &'a String> {
-        crate::features::visible(&self.features, stored)
+        crate::tenancy::catalog::visible(&self.features, stored)
     }
     /// Whether the DSP has `feature`. A page gates on its permissions instead; this is for
     /// a connection or a tab, which own none.
@@ -138,7 +136,7 @@ impl Context {
     pub fn allows(&self, permission: &str) -> bool {
         permission
             .split('|')
-            .any(|wanted| wanted == super::roles::ACCESS || self.can(wanted))
+            .any(|wanted| wanted == crate::tenancy::roles::ACCESS || self.can(wanted))
     }
 }
 impl Context {
@@ -250,7 +248,7 @@ impl Store {
             return;
         }
         let skipped = |error: Error| {
-            crate::observability::event(
+            crate::foundation::observability::event(
                 "warn",
                 "mail.notice_skipped",
                 json!({"kind":"connected_app","error":error.code}),

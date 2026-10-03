@@ -1,4 +1,4 @@
-use crate::contracts::PublicJob;
+use dispatch_core::collection::api::jobs::PublicJob;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

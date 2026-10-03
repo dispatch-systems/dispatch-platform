@@ -1,5 +1,5 @@
 //! The codes a job retries: core's and every registered collector's.
-use crate::error::{Code, Error};
+use dispatch_core::foundation::error::{Code, Error};
 #[test]
 fn the_retryable_codes_are_exactly_the_ones_jobs_always_retried() {
     let retryable: Vec<_> = Code::retryable().map(|code| code.as_str()).collect();

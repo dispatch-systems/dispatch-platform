@@ -1,5 +1,5 @@
 //! Team & Roles: a DSP's members and the roles that grant their permissions.
-use crate::manifest::{Feature, feature, perm};
+use dispatch_core::manifest::{Feature, feature, perm};
 
 #[path = "api/routes.rs"]
 pub mod api;

@@ -104,12 +104,13 @@ test('the module tree follows use trees, re-exports, globs and #[path] mounts', 
     source.literals.map(({ value }) => value),
     ['crate::x'],
   );
-  // The real tree: re-exports at the crate root lead to the module that defines the item.
+  // The real tree: a crate the app depends on, and re-exports at its root, lead to the
+  // module that defines the item.
   const lib = rust().roots.find(
     (root) => root.kind === 'lib' && files.includes(root.file) && root.file.startsWith('app/'),
   );
   if (lib) {
-    const state = rust().resolve(lib.module, ['crate', 'State']);
+    const state = rust().resolve(lib.module, ['dispatch_core', 'State']);
     assert(state && ownerOf(state.file)?.layer === 'core', 'State is core');
   }
 });

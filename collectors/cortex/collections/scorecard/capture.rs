@@ -1,12 +1,14 @@
 //! What a scorecard collection reads from Cortex's performance API: the datasets behind
 //! each scorecard page, one week at a time, every row as Amazon sent it.
 use super::discovery::{CollectionRequest as ScopeRequest, Discovery, Scope};
-use crate::{
+use dispatch_core::{
     Error, Result,
     db::now,
     ensure,
-    validate::token,
-    weeks::{parse_week, week_days},
+    foundation::{
+        validate::token,
+        weeks::{parse_week, week_days},
+    },
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

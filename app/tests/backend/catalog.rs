@@ -2,7 +2,10 @@
 //! collections each page runs, schedule collections, and the role sheet's permissions with
 //! their labels, implications, groups and defaults. Their order reaches the generated
 //! TypeScript, API answers and audit entries, so it is held here too.
-use crate::{contracts::ScheduleCollection, features, roles};
+use dispatch_core::{
+    collection::api::types::ScheduleCollection,
+    tenancy::{catalog, roles},
+};
 
 const PERMISSIONS: &[(&str, &str)] = &[
     ("uniforms.view", "View Uniform Inventory"),
@@ -189,45 +192,45 @@ fn the_permissions_keep_their_order_labels_implications_groups_and_defaults() {
 
 #[test]
 fn the_catalog_keeps_its_pages_tabs_and_order() {
-    let pages: Vec<Page> = features::pages()
+    let pages: Vec<Page> = catalog::pages()
         .map(|page| {
-            assert_eq!(page.kind, features::Kind::Page);
+            assert_eq!(page.kind, catalog::Kind::Page);
             assert!(page.provides.is_empty());
             let (permissions, requires) = (page.permissions.to_vec(), page.requires.to_vec());
             (page.id, page.label, permissions, requires, page.default)
         })
         .collect();
     assert_eq!(pages, self::pages());
-    let tabs: Vec<_> = features::catalog()
+    let tabs: Vec<_> = catalog::catalog()
         .iter()
-        .filter(|feature| matches!(feature.kind, features::Kind::Tab(_)))
+        .filter(|feature| matches!(feature.kind, catalog::Kind::Tab(_)))
         .map(|tab| {
             assert!(tab.default && tab.permissions.is_empty() && tab.requires.is_empty());
             match tab.kind {
-                features::Kind::Tab(page) => (tab.id, tab.label, page),
+                catalog::Kind::Tab(page) => (tab.id, tab.label, page),
                 kind => panic!("{} is a {kind:?}", tab.id),
             }
         })
         .collect();
     assert_eq!(tabs, TABS);
-    let catalog: Vec<_> = features::catalog().iter().map(|f| f.id).collect();
+    let catalog: Vec<_> = catalog::catalog().iter().map(|f| f.id).collect();
     assert_eq!(catalog, CATALOG);
-    assert_eq!(features::schedules(), "timecard");
+    assert_eq!(catalog::schedules(), "timecard");
 }
 
 #[test]
 fn each_collection_is_run_by_the_page_that_keeps_it() {
     for (named, page) in AUTOMATION {
-        assert_eq!(features::automation(named), *page, "{named}");
+        assert_eq!(catalog::automation(named), *page, "{named}");
     }
     for (kind, permission) in COLLECTION_PERMISSIONS {
-        assert_eq!(features::collection_permission(kind), *permission, "{kind}");
+        assert_eq!(catalog::collection_permission(kind), *permission, "{kind}");
     }
     for id in CATALOG {
         let automates = ["timecard", "routes", "dvic", "scorecard"].contains(id);
-        assert_eq!(features::automates(&[(*id).to_owned()]), automates, "{id}");
+        assert_eq!(catalog::automates(&[(*id).to_owned()]), automates, "{id}");
     }
-    assert!(!features::automates(&[]));
+    assert!(!catalog::automates(&[]));
 }
 
 #[test]

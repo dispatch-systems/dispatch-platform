@@ -1,5 +1,5 @@
 use super::*;
-use crate::collectors::Provider;
+use dispatch_core::collection::registry::Provider;
 use std::{collections::BTreeMap, path::PathBuf};
 use ts_rs::TS;
 
@@ -197,14 +197,14 @@ fn bindings() -> BTreeMap<PathBuf, String> {
 
 /// Runtime catalogs, exported from their actual values rather than Rust source formatting.
 fn access_catalog() -> String {
-    use crate::{features, roles};
+    use dispatch_core::tenancy::{catalog, roles};
     use serde_json::json;
-    let catalog = features::catalog();
+    let catalog = catalog::catalog();
     let ids = |kind| {
         catalog
             .iter()
             .filter(|feature| match (feature.kind, kind) {
-                (features::Kind::Tab(_), features::Kind::Tab(_)) => true,
+                (catalog::Kind::Tab(_), catalog::Kind::Tab(_)) => true,
                 (actual, expected) => actual == expected,
             })
             .map(|feature| feature.id)
@@ -220,12 +220,12 @@ fn access_catalog() -> String {
                 "requires": feature.requires,
             });
             match feature.kind {
-                features::Kind::Page => entry["kind"] = json!("page"),
-                features::Kind::Tab(page) => {
+                catalog::Kind::Page => entry["kind"] = json!("page"),
+                catalog::Kind::Tab(page) => {
                     entry["kind"] = json!("tab");
                     entry["page"] = json!(page);
                 }
-                features::Kind::Connection => {
+                catalog::Kind::Connection => {
                     entry["kind"] = json!("connection");
                     entry["provides"] = json!(feature.provides);
                 }
@@ -235,7 +235,7 @@ fn access_catalog() -> String {
         .collect();
     let labels: BTreeMap<_, _> = roles::LABELS.iter().copied().collect();
     let implied: BTreeMap<_, _> = roles::IMPLIED.iter().copied().collect();
-    let groups: Vec<_> = features::pages()
+    let groups: Vec<_> = catalog::pages()
         .map(|feature| (feature.label, feature.permissions))
         .chain(
             roles::GROUPS
@@ -261,15 +261,15 @@ fn access_catalog() -> String {
             .all(|(from, to)| labels.contains_key(from) && labels.contains_key(to))
     );
     let constants = [
-        ("pages", json!(ids(features::Kind::Page))),
-        ("pageTabs", json!(ids(features::Kind::Tab("")))),
-        ("connections", json!(ids(features::Kind::Connection))),
+        ("pages", json!(ids(catalog::Kind::Page))),
+        ("pageTabs", json!(ids(catalog::Kind::Tab("")))),
+        ("connections", json!(ids(catalog::Kind::Connection))),
         (
             "features",
             json!(catalog.iter().map(|feature| feature.id).collect::<Vec<_>>()),
         ),
         ("featureCatalog", json!(entries)),
-        ("schedulesFeature", json!(features::schedules())),
+        ("schedulesFeature", json!(catalog::schedules())),
         ("permissions", json!(*roles::PERMISSIONS)),
         ("permissionLabels", json!(labels)),
         ("permissionGroups", json!(groups)),

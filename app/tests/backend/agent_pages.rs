@@ -1,5 +1,5 @@
 //! A page of an agent's answer, with room for every feature a gate may name as bypassed.
-use crate::agents::data::shape::*;
+use dispatch_core::mcp::data::shape::*;
 use serde_json::json;
 
 #[test]
@@ -14,7 +14,7 @@ fn a_page_stops_at_the_budget_and_names_the_next() {
     let shown = answer["rows"]["rows"].as_array().unwrap().len();
     assert!(shown > 300 && shown < 500, "{shown}");
     // With room left for every feature a gate may name as bypassed.
-    let switches: Vec<&str> = crate::contracts::AgentSource::all()
+    let switches: Vec<&str> = dispatch_core::mcp::api::types::AgentSource::all()
         .map(|source| source.switch())
         .collect();
     answer["bypassed"] = json!(switches);

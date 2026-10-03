@@ -1,15 +1,14 @@
 //! What Scorecard holds of the synthetic DSP: Amazon's weekly scorecards for the weeks the
 //! routes cover, through the collection's own publishing.
-use crate::{
+use crate::{collectors::cortex, scorecard::ScorecardStore};
+use chrono::{Datelike, Duration};
+use dispatch_core::{
     Error, Result,
-    agents::synthetic::{
+    db::{Store, s},
+    mcp::synthetic::{
         Made, STATION, Step, Synthetic, World, context_at, hhmm, packages_at, plan, roll, tracking,
     },
-    collectors::cortex,
-    db::{Store, s},
-    scorecard::ScorecardStore,
 };
-use chrono::{Datelike, Duration};
 use serde_json::{Value, json};
 
 pub const SYNTHETIC: Synthetic = Synthetic {
@@ -33,7 +32,7 @@ fn scorecards(db: &Store, world: &mut World) -> Result<Made> {
     world.connect(db, cortex::PROVIDER)?;
     let (id, dates, drivers) = (world.dsp.as_str(), &world.dates, &world.drivers);
     let transporter = |i: u64| world.transporter(i);
-    let completed = crate::weeks::last_completed_week(world.today);
+    let completed = dispatch_core::foundation::weeks::last_completed_week(world.today);
     let mut weeks: Vec<String> = dates
         .iter()
         .map(|date| {
@@ -47,12 +46,12 @@ fn scorecards(db: &Store, world: &mut World) -> Result<Made> {
     weeks.dedup();
     let tiers = ["Platinum", "Platinum", "Platinum", "Gold", "Silver"];
     for week in &weeks {
-        let (sunday, saturday) = crate::weeks::week_days(week)?;
+        let (sunday, saturday) = dispatch_core::foundation::weeks::week_days(week)?;
         let jobs =
             db.enqueue_scorecard(id, None, &format!("synthetic-scorecard:{week}"), Some(week))?;
         let job = s(&jobs, "id").to_owned();
         let request: Value = serde_json::from_str(&db.job_row(&job, Some(id))?.request)?;
-        let request = crate::manifest::registry()
+        let request = dispatch_core::manifest::registry()
             .keeper(cortex::scorecard::JOB_KIND)
             .bind(db, id, &request)?;
         let request = cortex::scorecard::Request::parse(&request)?

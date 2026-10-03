@@ -1,5 +1,6 @@
 use super::*;
-use crate::{collectors::paycom::fixtures, config::Config, operations, workforce::TimecardStore};
+use crate::{collectors::paycom::fixtures, workforce::TimecardStore};
+use dispatch_core::{foundation::config::Config, server::operations};
 use serde_json::json;
 use std::os::unix::fs::PermissionsExt;
 

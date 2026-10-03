@@ -1,10 +1,10 @@
 //! Driver Match's upkeep: giving every ID the DSP's collections hold a code, after each
 //! collection and hourly.
-use crate::{
+use crate::driver_match::DriverMatchStore;
+use dispatch_core::{
     Error, Result, State,
-    driver_match::DriverMatchStore,
+    foundation::observability,
     manifest::{Maintenance, Upkeep},
-    observability,
 };
 use serde_json::json;
 use std::{sync::Arc, time::Duration};

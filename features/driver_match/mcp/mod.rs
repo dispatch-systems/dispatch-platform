@@ -3,14 +3,14 @@
 mod catalog;
 mod synthetic;
 
-use crate::{
+use crate::driver_match::DriverMatchStore;
+use dispatch_core::{
     Result,
-    agents::{
+    db::Store,
+    mcp::{
         Mcp,
         data::scope::{Identity, Known},
     },
-    db::Store,
-    driver_match::DriverMatchStore,
 };
 
 pub const MCP: Mcp = Mcp {

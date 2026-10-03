@@ -1,11 +1,11 @@
 //! The drivers the scorecard names, as Driver Match reads them: by the weeks it covers.
-use crate::{
+use crate::scorecard::ScorecardStore;
+use dispatch_core::{
     Result,
-    contracts::{DriverData, DriverSource},
     db::{Store, n, s},
+    foundation::weeks,
     manifest::people::{self, Appearances, Named, People},
-    scorecard::ScorecardStore,
-    weeks,
+    mcp::api::types::{DriverData, DriverSource},
 };
 
 /// The Saturday a scorecard week ends, or the week as written when it does not parse.

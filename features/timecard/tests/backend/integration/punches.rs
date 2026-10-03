@@ -1,12 +1,10 @@
-#[path = "../../../../../core/db/tests/support/common.rs"]
-mod common;
 use common::bootstrapped;
 use dispatch_backend::{
     collectors::paycom::{self, fixtures},
-    db::s,
-    workforce,
-    workforce::TimecardStore,
+    workforce::{self, TimecardStore},
 };
+use dispatch_core::db::s;
+use dispatch_core::testing as common;
 use serde_json::{Value, json};
 
 /// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.

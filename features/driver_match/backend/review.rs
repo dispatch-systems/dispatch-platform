@@ -2,7 +2,7 @@
 //! Amazon knows, whose names come close without matching. A person decides; this only
 //! gathers the reasons.
 use crate::contracts::{DriverEvidence, DriverEvidenceKind, DriverStrength};
-use crate::names::{Name, capitalized, short_form};
+use dispatch_core::foundation::names::{Name, capitalized, short_form};
 use std::collections::BTreeSet;
 
 /// One side of a possible pair: a person's code and every name its IDs carry.

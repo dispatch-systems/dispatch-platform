@@ -1,14 +1,13 @@
 //! Range reads keep historical selection, overlays and complete identity context.
-#[path = "../../../../../core/db/tests/support/common.rs"]
-mod common;
 use dispatch_backend::{
     collectors::{
         cortex::{discovery::Scope, meals},
         paycom::{self, fixtures},
     },
-    db::s,
     workforce::TimecardStore,
 };
+use dispatch_core::db::s;
+use dispatch_core::testing as common;
 use serde_json::json;
 
 /// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.

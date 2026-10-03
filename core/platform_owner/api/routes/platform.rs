@@ -1,15 +1,19 @@
 //! What only a platform owner sees: every DSP, the platform's health and diagnostics.
 use crate::{
     Error, Result, State,
-    collectors::Provider,
-    contracts::{BrowserHealth, DspFeatures, DspStatus, JobStatus, PlatformHealth, ProviderMode},
+    collection::{api::jobs::JobStatus, registry::Provider},
     db::{Store, iso},
-    ensure, features,
-    http::{
-        input::{Input, Reply, optional},
-        route::{Grant, PlatformOwner, PlatformRoutine, Route, User, async_post, read, write},
+    ensure,
+    foundation::{config::ProviderMode, validate as v},
+    platform_owner::api::types::{BrowserHealth, DspFeatures, PlatformHealth},
+    server::{
+        http::{
+            input::{Input, Reply, optional},
+            route::{Grant, PlatformOwner, PlatformRoutine, Route, User, async_post, read, write},
+        },
+        mail, operations,
     },
-    mail, operations, validate as v,
+    tenancy::{api::types::DspStatus, catalog},
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -59,7 +63,7 @@ pub fn routes() -> Vec<Route> {
 }
 
 fn dsps(db: &Store, owner: &User, _: &Input) -> Result<Reply> {
-    Reply::of(&super::session::summaries(db, owner)?)
+    Reply::of(&crate::tenancy::api::routes::summaries(db, owner)?)
 }
 
 // A DSP is created either by name, or for an invited owner who then names it.
@@ -184,8 +188,8 @@ async fn set_feature(state: Arc<State>, input: Input, access: PlatformRoutine) -
             for provider in Provider::all() {
                 let collector = provider.collector();
                 for kind in provider.job_kinds() {
-                    if switched(&result, features::automation(kind), false) {
-                        let jobs = db.jobs.query_as::<crate::contracts::JobRow>(
+                    if switched(&result, catalog::automation(kind), false) {
+                        let jobs = db.jobs.query_as::<crate::collection::api::jobs::JobRow>(
                             concat!(
                                 "SELECT * FROM jobs WHERE dsp_id=? AND kind=? AND status IN ",
                                 crate::job_statuses!(active)
@@ -197,7 +201,10 @@ async fn set_feature(state: Arc<State>, input: Input, access: PlatformRoutine) -
                                 cancelled.push((provider, job.connection_revision));
                             }
                         }
-                        db.cancel_jobs(crate::jobs::CancelJobs::Kind { dsp: &dsp, kind })?;
+                        db.cancel_jobs(crate::collection::jobs::CancelJobs::Kind {
+                            dsp: &dsp,
+                            kind,
+                        })?;
                         // Cancelling clears the lease, so a worker's finish no longer owns
                         // the job and skips this; drop what each job kept, as `cancel` does.
                         for job in &jobs {
@@ -211,7 +218,7 @@ async fn set_feature(state: Arc<State>, input: Input, access: PlatformRoutine) -
                 db.cancel_provider(&dsp, provider)?;
             }
             for change in &result.changed {
-                if change.enabled && features::automates(std::slice::from_ref(&change.feature)) {
+                if change.enabled && catalog::automates(std::slice::from_ref(&change.feature)) {
                     let row = db.find_dsp(&dsp)?;
                     db.retime_feature_schedules(&dsp, &row.timezone, &change.feature)?;
                 }
@@ -276,16 +283,16 @@ async fn restore_dsp(state: Arc<State>, input: Input, access: PlatformOwner) -> 
 }
 
 fn mail_log(db: &Store, _: &User, _: &Input) -> Result<Reply> {
-    Reply::of(&crate::mail::log(db)?)
+    Reply::of(&crate::server::mail::log(db)?)
 }
 fn retry_mail(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
-    crate::mail::retry(db, &owner.user.id, input.param("id"))?;
+    crate::server::mail::retry(db, &owner.user.id, input.param("id"))?;
     Reply::of(&json!({ "ok": true }))
 }
 fn discard_mail(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
-    crate::mail::discard(db, &owner.user.id, input.param("id"))?;
+    crate::server::mail::discard(db, &owner.user.id, input.param("id"))?;
     Reply::of(&json!({ "ok": true }))
 }
 fn health(db: &Store, owner: &User, _: &Input) -> Result<Reply> {

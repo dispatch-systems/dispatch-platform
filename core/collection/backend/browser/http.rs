@@ -100,19 +100,19 @@ impl Resolve for Resolver {
 }
 
 /// Why a response was not used.
-pub(super) enum Refusal {
+pub enum Refusal {
     /// Throttled, failing or unreachable: the same as a tab that could not load it.
     Unavailable,
     /// Anything else, named by a fixed label.
     Unreadable(&'static str),
 }
 
-pub(super) struct Http {
+pub struct Http {
     client: Client,
     hosts: Hosts,
     origin: String,
 }
-pub(super) struct Download {
+pub struct Download {
     pub body: Option<Vec<u8>>,
     pub etag: Option<String>,
     pub modified_at: Option<i64>,

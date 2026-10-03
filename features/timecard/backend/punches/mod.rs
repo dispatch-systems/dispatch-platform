@@ -25,7 +25,11 @@ pub(crate) mod sync;
 pub(crate) mod timecards;
 
 /// A new DSP's demo timecards: Paycom's fixture, published as a collection would be.
-pub fn demo(store: &crate::db::Store, dsp: &str, timezone: &str) -> crate::Result<()> {
+pub fn demo(
+    store: &dispatch_core::db::Store,
+    dsp: &str,
+    timezone: &str,
+) -> dispatch_core::Result<()> {
     store.publish_timecards(
         dsp,
         &crate::collectors::paycom::fixtures::fixture(timezone)?,
@@ -33,7 +37,8 @@ pub fn demo(store: &crate::db::Store, dsp: &str, timezone: &str) -> crate::Resul
     Ok(())
 }
 /// Paycom's employees, timecards and preferences, as Timecard keeps them.
-pub const DOMAIN: crate::read_cache::DataDomain = crate::read_cache::DataDomain::new("paycom");
+pub const DOMAIN: dispatch_core::server::cache::DataDomain =
+    dispatch_core::server::cache::DataDomain::new("paycom");
 
 pub(crate) use daily::cards;
 pub use preferences::defaults;

@@ -1,11 +1,13 @@
 //! DVIC's operator commands.
 use super::hidden;
-use crate::{
+use crate::collectors::cortex;
+use dispatch_core::{
     Result,
-    collectors::{added_identity, cortex},
-    config::Config,
+    collection::registry::added_identity,
     db::{self, iso},
-    ensure, tenants,
+    ensure,
+    foundation::config::Config,
+    tenancy::dsps,
 };
 use serde_json::Value;
 
@@ -24,7 +26,7 @@ pub fn run(config: &Config, args: &[String]) -> Result<Value> {
     ensure(usage, "usage_dvic_hidden_hide_unhide", 400)?;
     let dsp = args[1].as_str();
     ensure(db::identifier(dsp, "dsp_"), "invalid_dsp_id", 400)?;
-    tenants::ensure_listed(config, dsp)?;
+    dsps::ensure_listed(config, dsp)?;
     let path = config
         .root
         .join("dsps")

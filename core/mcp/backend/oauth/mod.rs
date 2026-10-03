@@ -4,15 +4,10 @@
 //! 30 days, each renewal bringing a new one. It reaches what the owner chose, like a key, and
 //! stops when revoked like one. Only the platform owner approves, on the dashboard, and
 //! only while they have the pairing window open, for the kinds of app they let connect.
-#[path = "clients.rs"]
 pub mod clients;
-#[path = "guard.rs"]
 pub mod guard;
-#[path = "limits.rs"]
 pub mod limits;
-#[path = "network.rs"]
 pub mod network;
-#[path = "notices.rs"]
 mod notices;
 
 pub use clients::Documents;
@@ -20,14 +15,13 @@ pub use clients::Documents;
 use super::{Caller, token, token::Kind};
 use crate::{
     Error, Result,
-    config::Config,
-    contracts::{
+    db::{Store, at, iso, now, s},
+    ensure,
+    foundation::{config::Config, crypto},
+    mcp::api::types::{
         AgentAccess, AgentArea, AgentKeyRequest, AgentReads, OAuthApp, OAuthApproval,
         OAuthRedirect, OAuthReplaced, OAuthRequest, OLDER_LOCATIONS,
     },
-    crypto,
-    db::{Store, at, iso, now, s},
-    ensure,
 };
 use clients::Client;
 use notices::Told;

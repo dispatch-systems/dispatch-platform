@@ -1,15 +1,14 @@
 //! Live results from both collectors, overlaid on Timecard's views before they publish.
 use crate::{
-    Result, State,
     collectors::{
-        Provider,
         cortex::{self, discovery::Scope, live::Writer},
         paycom::{self, checkpoint::Checkpoint, fixtures},
     },
-    config::Config,
-    db::s,
-    operations,
     workforce::TimecardStore,
+};
+use dispatch_core::{
+    Result, State, collection::registry::Provider, db::s, foundation::config::Config,
+    server::operations,
 };
 use serde_json::json;
 use std::os::unix::fs::PermissionsExt;

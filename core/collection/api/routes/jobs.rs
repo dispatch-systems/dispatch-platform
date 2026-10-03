@@ -3,11 +3,11 @@
 use crate::{
     Result, State,
     db::Store,
-    http::{
+    foundation::validate as v,
+    server::http::{
         input::{Input, Reply},
         route::{Dsp, Grant, Member, PlatformOwner, Route, User, async_post, read},
     },
-    validate as v,
 };
 use std::sync::Arc;
 
@@ -56,7 +56,7 @@ async fn cancel(
             let row = db.job_row(&job, Some(&c.dsp.id))?;
             // A feature's route cancels only the jobs of what it keeps, and only for a
             // member who holds the permission they run under.
-            let required = crate::features::collection_permission(row.kind.as_str());
+            let required = crate::tenancy::catalog::collection_permission(row.kind.as_str());
             crate::ensure(
                 kinds.contains(&row.kind.as_str()) && c.allows(&required),
                 "permission_denied",

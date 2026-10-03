@@ -1,12 +1,12 @@
 //! Paycom's employees, as Driver Match reads them: each as the newest roster lists them,
 //! seen on the days they worked.
 use super::preferences::preferences;
-use crate::{
+use crate::collectors::paycom;
+use dispatch_core::{
     Result,
-    collectors::paycom,
-    contracts::{DriverData, DriverSource},
     db::{Store, n, s},
     manifest::people::{self, Appearances, Named, People, Workdays},
+    mcp::api::types::{DriverData, DriverSource},
 };
 use std::collections::{BTreeMap, BTreeSet};
 

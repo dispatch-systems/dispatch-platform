@@ -1,18 +1,13 @@
 //! Internal Rust browser runtime. Provider adapters own these handles; no raw CDP
 //! endpoint, client-supplied path, or script is exposed through the platform API.
-#[path = "cdp.rs"]
 mod cdp;
-#[path = "loading.rs"]
 mod loading;
-#[path = "native.rs"]
 mod native;
-#[path = "sandbox.rs"]
 mod sandbox;
-#[path = "worker.rs"]
 mod worker;
 
 use super::egress::Egress;
-use crate::{Error, Result, crypto, db, ensure};
+use crate::{Error, Result, db, ensure, foundation::crypto};
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -339,7 +334,7 @@ fn remove_trace(profile: &Path, entry: &Path) -> std::io::Result<()> {
 /// the next start or exit tries again.
 fn scrub_reported(profile: &Path) {
     if let Err(error) = scrub(profile) {
-        crate::observability::event(
+        crate::foundation::observability::event(
             "error",
             "browser.scrub_failed",
             serde_json::json!({"error":error.code}),
@@ -603,7 +598,11 @@ fn start_failure(frame: Option<&Value>, sandbox: &str) -> String {
     }
 }
 fn start_failed(reason: String) -> Error {
-    crate::observability::event("error", "browser.start_failed", json!({"reason":reason}));
+    crate::foundation::observability::event(
+        "error",
+        "browser.start_failed",
+        json!({"reason":reason}),
+    );
     Error::caused("browser_start_failed", 503, reason)
 }
 async fn serve_child(

@@ -184,15 +184,15 @@ async fn proxy(client: UnixStream, policy: NetworkPolicy) -> Result<()> {
         out.push_str("Connection: close\r\n\r\n");
         upstream.write_all(out.as_bytes()).await?;
     }
-    // Benchmarks count the bytes a collection moved.
-    #[cfg(test)]
+    // Benchmarks count the bytes a collection moved: a test build does, whichever crate's.
+    #[cfg(any(test, feature = "testing"))]
     let mut upstream = counted::Counted(upstream);
     tokio::io::copy_bidirectional(&mut client, &mut upstream).await?;
     Ok(())
 }
 /// Bytes sent and received through every tunnel this process ran, counted as they flow,
-/// for benchmarks that compare how collections read a provider.
-#[cfg(test)]
+/// for benchmarks that compare how collections read a provider. Only test builds count.
+#[cfg(any(test, feature = "testing"))]
 pub mod counted {
     use std::{
         pin::Pin,

@@ -5,9 +5,9 @@ mod facts;
 mod synthetic;
 pub mod views;
 
-use crate::{
-    agents::Mcp,
-    contracts::{AgentArea, AgentSource, DriverSource, ReadSource, ReadToggle},
+use dispatch_core::mcp::{
+    Mcp,
+    api::types::{AgentArea, AgentSource, DriverSource, ReadSource, ReadToggle},
 };
 
 /// Timecard's page, read through its daily timecards or its employee search.

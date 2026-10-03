@@ -1,16 +1,18 @@
 //! Routes keeps the days Cortex's execution pages bring.
 use super::stage;
 use crate::{
+    collectors::cortex::routes::{Capture, JOB_KIND},
+    routedata::RoutesStore,
+};
+use dispatch_core::{
     Result, State,
-    browsers::{Collected, Pending},
-    collectors::{
-        AddedStorage,
-        cortex::routes::{Capture, JOB_KIND},
+    collection::{
+        browser::{Collected, Pending},
+        registry::AddedStorage,
     },
     db::Store,
     manifest::Keeper,
-    read_cache::DataDomain,
-    routedata::RoutesStore,
+    server::cache::DataDomain,
 };
 use serde_json::Value;
 use std::sync::Arc;

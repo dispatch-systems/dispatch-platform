@@ -1,15 +1,18 @@
 //! DVIC's facts for agents: each driver's inspections in a period, the days its reports
 //! cover, and how they join a driver's days and the team's table.
 use super::DVIC;
-use crate::{
+use crate::dvic::DvicStore;
+use dispatch_core::{
     Result,
-    agents::data::{
-        facts::{Coverage, Daily, Facts},
-        scope::{People, Period, Person},
-    },
-    contracts::{AgentArea, DriverSource, Dsp},
+    accounts::api::types::Dsp,
     db::{Store, n, s},
-    dvic::DvicStore,
+    mcp::{
+        api::types::{AgentArea, DriverSource},
+        data::{
+            facts::{Coverage, Daily, Facts},
+            scope::{People, Period, Person},
+        },
+    },
 };
 use serde::Serialize;
 use serde_json::{Value, json};

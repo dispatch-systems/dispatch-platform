@@ -16,10 +16,10 @@ use super::{
 };
 use crate::{
     State,
-    agents::Caller,
-    contracts::{AgentArea, Dsp},
+    accounts::api::types::Dsp,
     db::Store,
     manifest::registry,
+    mcp::{Caller, api::types::AgentArea},
 };
 use serde_json::{Map, Value, json};
 use std::{

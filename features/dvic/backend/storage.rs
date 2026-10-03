@@ -2,6 +2,8 @@ use super::*;
 use crate::{
     collectors::cortex,
     contracts::{DvicInspection, DvicInspections, DvicStatus},
+};
+use dispatch_core::{
     db::{DspLease, Store, at, now, s},
     manifest::Keeper,
 };

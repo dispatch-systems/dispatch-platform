@@ -4,13 +4,13 @@
 //! the scheduler; a preview changes nothing.
 use crate::{
     Result,
+    collection::schedules::schedule_changes,
     db::Store,
-    http::{
+    foundation::validate as v,
+    server::http::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, read, write},
     },
-    schedules::schedule_changes,
-    validate as v,
 };
 use std::{
     collections::BTreeSet,
@@ -86,7 +86,7 @@ fn permitted(db: &Store, c: &Member, owner: Owner) -> Result<()> {
 fn schedules(db: &Store, c: &Member, owner: Owner) -> Result<Reply> {
     let mut result = db.collection_schedules(c.dsp_id())?;
     result.schedules.retain(|s| {
-        let page = crate::features::automation(s.collection.as_str());
+        let page = crate::tenancy::catalog::automation(s.collection.as_str());
         page == owner.page && c.can(owner.access.0)
     });
     Reply::of(&result)
@@ -192,7 +192,7 @@ fn remove(db: &Store, c: &Member, input: &Input, owner: Owner) -> Result<Reply> 
 /// keep.
 fn scope(owner: Owner, collection: &str) -> Result<()> {
     crate::ensure(
-        crate::features::automation(collection) == owner.page,
+        crate::tenancy::catalog::automation(collection) == owner.page,
         "permission_denied",
         403,
     )

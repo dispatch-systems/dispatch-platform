@@ -1,16 +1,10 @@
-#[path = "connection.rs"]
 mod connection;
-#[path = "files.rs"]
 mod files;
-#[path = "migrations.rs"]
 pub mod migrations;
-#[path = "row.rs"]
 mod row;
-#[path = "schema.rs"]
 mod schema;
-#[path = "store.rs"]
 mod store;
-pub use crate::audit::{AuditChange, AuditQuery};
+pub use crate::tenancy::audit::{AuditChange, AuditQuery};
 pub use connection::{Db, boolean, flag, n, s};
 pub use files::{key_file, private_dir, private_file, write_private};
 pub use migrations::{Kind, Migration, Migrations, migrate};

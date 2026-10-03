@@ -1,19 +1,18 @@
 use crate::{
     Result,
-    config::Environment,
-    contracts::Dsp,
+    accounts::api::types::Dsp,
     db::{FromRow, Row, Store},
     ensure,
+    foundation::{config::Environment, validate as v, wire::request},
     manifest::registry,
-    text_enum, validate as v,
-    wire::request,
+    text_enum,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::LazyLock;
 
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     /// What an agent key may do: look things up, or also run collections and test
     /// connections.
     pub enum AgentAccess {
@@ -66,7 +65,7 @@ pub struct AgentSource(&'static ReadSource);
 /// What a key or app may read: the kinds of data, and whether it bypasses features, reading
 /// them even where a DSP has the feature switched off. Bypassing only ever reads.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AgentReads {
     pub areas: Vec<AgentArea>,
@@ -74,7 +73,7 @@ pub struct AgentReads {
 }
 /// A DSP's own settings, read in place of the key's or app's own.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AgentDspReads {
     pub dsp: String,
@@ -209,7 +208,7 @@ macro_rules! declared {
                     .ok_or_else(|| serde::de::Error::custom(concat!("unknown ", $what)))
             }
         }
-        #[cfg(test)]
+        #[cfg(feature = "ts")]
         impl ts_rs::TS for $name {
             type WithoutGenerics = Self;
             type OptionInnerType = Self;
@@ -313,7 +312,7 @@ impl AgentDspReads {
 }
 
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     /// A key made on the Agents page, or an app the owner connected with Sign in with Dispatch.
     pub enum AgentKeyKind {
         Key => "key",
@@ -321,7 +320,7 @@ text_enum! {
     }
 }
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     /// Whether a connected app can still renew its access. Signed out, it holds no refresh
     /// token left to use, as after 30 days unused, and connects again from the app.
     pub enum AgentAppStatus {
@@ -333,7 +332,7 @@ text_enum! {
 /// published metadata or only has its word (an app that registered itself), and whether
 /// it is still signed in.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AgentClient {
     pub name: String,
@@ -344,7 +343,7 @@ pub struct AgentClient {
 /// A key as the Agents page lists it. The key itself is shown once, when it is made. A
 /// connected app is listed the same way; it has no key, so its hint is empty.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AgentKey {
     pub id: String,
@@ -410,7 +409,7 @@ impl FromRow for AgentKey {
 }
 /// A DSP as the Activity log names it.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AgentDsp {
     pub id: String,
@@ -418,7 +417,7 @@ pub struct AgentDsp {
 }
 /// A DSP a key can be given, with the features it has switched off that agents read from.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AgentKeyDsp {
     pub id: String,
@@ -427,7 +426,7 @@ pub struct AgentKeyDsp {
 }
 /// The Agents page: every key, newest first, and the DSPs a key can be given.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AgentKeys {
     pub keys: Vec<AgentKey>,
@@ -435,7 +434,7 @@ pub struct AgentKeys {
 }
 /// A new key: the key itself, shown this once, and the key as the page lists it.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AgentKeyCreated {
     pub key: AgentKey,
@@ -443,7 +442,7 @@ pub struct AgentKeyCreated {
 }
 /// What a new or changed key may do. `expiresAt` is an RFC 3339 time, or null for never.
 #[derive(Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AgentKeyRequest {
     pub name: String,
@@ -488,7 +487,7 @@ impl AgentKeyRequest {
 /// always read-only and never expiring. A DSP is given settings of its own afterwards, by
 /// editing the app.
 #[derive(Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OAuthApproval {
     pub name: String,
@@ -523,7 +522,7 @@ impl OAuthApproval {
 }
 /// An app asking the platform owner to connect, as the approval page shows it.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct OAuthRequest {
     pub id: String,
@@ -534,14 +533,14 @@ pub struct OAuthRequest {
     pub replaces: Option<OAuthReplaced>,
 }
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct OAuthReplaced {
     pub name: String,
     pub connected_at: String,
 }
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct OAuthApp {
     pub name: String,
@@ -557,7 +556,7 @@ pub struct OAuthApp {
 }
 /// Where the browser goes next: back to the app, with its code or the owner's refusal.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct OAuthRedirect {
     pub redirect: String,
@@ -565,20 +564,20 @@ pub struct OAuthRedirect {
 
 /// The window in which apps may ask to connect: open until this time, or closed (null).
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct OAuthPairing {
     pub open_until: Option<String>,
 }
 /// The window just opened or extended, and when it now closes.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct OAuthPairingOpened {
     pub open_until: String,
 }
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     /// A kind of app the platform owner lets connect: one of the four known apps, apps on the
     /// owner's own computer that register themselves, or websites and other apps.
     pub enum OAuthAppId {
@@ -592,7 +591,7 @@ text_enum! {
 }
 /// A kind of app as the Connect tab lists it, and whether it may connect.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct OAuthAllowedApp {
     pub id: OAuthAppId,
@@ -600,14 +599,14 @@ pub struct OAuthAllowedApp {
     pub allowed: bool,
 }
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct OAuthAllowedApps {
     pub apps: Vec<OAuthAllowedApp>,
 }
 /// The platform owner lets a kind of app connect, or stops it.
 #[derive(Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OAuthAppChoice {
     pub id: OAuthAppId,
@@ -616,7 +615,7 @@ pub struct OAuthAppChoice {
 
 /// How many keys were revoked.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AgentKeysRevoked {
     pub revoked: usize,
@@ -624,7 +623,7 @@ pub struct AgentKeysRevoked {
 
 /// What `GET /api/v1/whoami` tells an agent: its key, the time, and the DSPs it reaches.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AgentWhoami {
     pub key: AgentWhoamiKey,
@@ -633,7 +632,7 @@ pub struct AgentWhoami {
     pub dsps: Vec<AgentWhoamiDsp>,
 }
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AgentWhoamiKey {
     pub name: String,
@@ -643,7 +642,7 @@ pub struct AgentWhoamiKey {
 /// A DSP as an agent sees it: its local date, so "today" and "yesterday" mean the DSP's,
 /// the features it has switched on, and what this key or app reads there.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AgentWhoamiDsp {
     pub id: String,
@@ -656,7 +655,7 @@ pub struct AgentWhoamiDsp {
 
 /// A key or connected app as the Activity log names it.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AgentActivityKey {
     pub id: String,
@@ -670,7 +669,7 @@ pub struct AgentActivityKey {
 /// `activity:capped` and outcome `capped`, at the first of them, marks the day capped.
 /// `bypassed` is whether it read a feature the DSP has switched off, by bypassing features.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AgentActivity {
     pub at: String,
@@ -685,7 +684,7 @@ pub struct AgentActivity {
 /// A page of the Activity log, newest first. `next` is the `before` that reads the page
 /// after it; null on the last.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AgentActivityPage {
     pub rows: Vec<AgentActivity>,
@@ -696,7 +695,7 @@ pub struct AgentActivityPage {
 // them and Driver Match fills the identity slot; the features that name people fill
 // Driver Match's people slot.
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[derive(PartialOrd, Ord)]
     /// Where an ID comes from. Every Amazon source (routes, meal breaks, DVIC, the
     /// scorecard) knows a driver by the same transporter ID.
@@ -706,7 +705,7 @@ text_enum! {
     }
 }
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[derive(PartialOrd, Ord)]
     /// The collected data a person can appear in.
     pub enum DriverData {
@@ -718,7 +717,7 @@ text_enum! {
     }
 }
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     /// Where a person stands. `review` is a person who might be someone else listed twice;
     /// `former` someone only one source knows who has left.
     pub enum DriverStatus {

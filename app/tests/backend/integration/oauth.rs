@@ -1,16 +1,16 @@
 //! Sign in with Dispatch, over HTTP against the real router: discovery, the authorization
 //! request and its refusals, the owner's approval, the token endpoint, revocation, and the
 //! connected app signing in to the agent API and MCP like a key.
-#[path = "../../../../core/db/tests/support/common.rs"]
-mod common;
-use dispatch_backend::{
+use dispatch_core::testing as common;
+use dispatch_core::{
     State,
-    agents::oauth::network::{Network, Pending},
-    config::Config,
-    contracts::AgentArea,
-    crypto,
     db::{self, Store, s},
-    operations,
+    foundation::{config::Config, crypto},
+    mcp::{
+        api::types::AgentArea,
+        oauth::network::{Network, Pending},
+    },
+    server::operations,
 };
 use serde_json::{Value, json};
 use std::{os::unix::fs::PermissionsExt, sync::Arc};
@@ -92,7 +92,7 @@ impl Server {
         config.origin = format!("http://127.0.0.1:{port}");
         operations::seed(&Store::initialize(config.clone()).unwrap()).unwrap();
         let state = State::new(config).unwrap();
-        let app = dispatch_backend::http::router(state.clone())
+        let app = dispatch_core::server::http::router(state.clone())
             .into_make_service_with_connect_info::<std::net::SocketAddr>();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Self {
@@ -1566,7 +1566,7 @@ async fn a_connected_app_reaches_only_what_the_owner_chose() {
         .iter()
         .map(|tool| s(tool, "name"))
         .collect();
-    let read: Vec<&str> = dispatch_backend::agents::data::catalog::ENDPOINTS
+    let read: Vec<&str> = dispatch_core::mcp::data::catalog::ENDPOINTS
         .iter()
         .filter(|endpoint| {
             endpoint
@@ -2254,13 +2254,13 @@ impl Network for Internet {
     fn resolve<'a>(
         &'a self,
         host: &'a str,
-    ) -> Pending<'a, dispatch_backend::Result<Vec<std::net::IpAddr>>> {
+    ) -> Pending<'a, dispatch_core::Result<Vec<std::net::IpAddr>>> {
         Box::pin(async move {
             self.resolved.lock().unwrap().push(host.to_owned());
             self.hosts
                 .get(host)
                 .cloned()
-                .ok_or_else(|| dispatch_backend::Error::new("app_unavailable", 502))
+                .ok_or_else(|| dispatch_core::Error::new("app_unavailable", 502))
         })
     }
     fn get<'a>(
@@ -2268,7 +2268,7 @@ impl Network for Internet {
         url: &'a url::Url,
         address: std::net::SocketAddr,
         limit: usize,
-    ) -> Pending<'a, dispatch_backend::Result<(u16, Vec<u8>)>> {
+    ) -> Pending<'a, dispatch_core::Result<(u16, Vec<u8>)>> {
         Box::pin(async move {
             self.connected
                 .lock()
@@ -2516,7 +2516,7 @@ async fn in_fixture_mode_the_sample_website_connects_without_the_network() {
             json!({"id":"web","allowed":true}),
         )
         .await;
-    let site = dispatch_backend::agents::oauth::network::FIXTURE_APP;
+    let site = dispatch_core::mcp::oauth::network::FIXTURE_APP;
     let callback = "https://app.dispatch.test/oauth/callback";
     let tokens = server
         .connect(&owner, site, callback, everything("Example web app"))
@@ -2737,7 +2737,7 @@ fn a_notice_waiting_to_be_sent_goes_only_to_a_platform_owner_still_active() {
             )
             .unwrap();
     }
-    dispatch_backend::mail::discard_stale(&db).unwrap();
+    dispatch_core::server::mail::discard_stale(&db).unwrap();
     let (left,): (String,) = db
         .platform
         .one_as("SELECT group_concat(id) FROM outbox", [])

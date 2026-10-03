@@ -1,30 +1,26 @@
-use super::{
-    super::http::{Http, Refusal},
-    *,
-};
-use crate::{
-    collectors::paycom::{self, checkpoint::Checkpoint, codes},
-    job_metrics::Recorder,
-};
+use super::*;
+use crate::collectors::paycom::{self, checkpoint::Checkpoint, codes};
 use chrono::{Datelike, NaiveDate};
+use dispatch_core::collection::browser::http::{Http, Refusal};
+use dispatch_core::collection::metrics::Recorder;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     future::Future,
     sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
 };
 // A timecard page that is still rendering reads as one of these; wait for it to settle.
-const UNSETTLED_PAGE: &[crate::Code] = &[
+const UNSETTLED_PAGE: &[dispatch_core::Code] = &[
     codes::TIMECARD_EXTRACTION_FAILED,
     codes::INVALID_TIMECARD_HOURS,
-    crate::Code::ProviderHoursMismatch,
-    crate::Code::BrowserNavigationPending,
+    dispatch_core::Code::ProviderHoursMismatch,
+    dispatch_core::Code::BrowserNavigationPending,
 ];
 // A page read that failed with one of these is read once more.
-const PAGE_RETRY: &[crate::Code] = &[
-    crate::Code::ProviderNavigationTimeout,
-    crate::Code::ProviderContentTimeout,
-    crate::Code::ProviderContentMissing,
-    crate::Code::BrowserNavigationPending,
+const PAGE_RETRY: &[dispatch_core::Code] = &[
+    dispatch_core::Code::ProviderNavigationTimeout,
+    dispatch_core::Code::ProviderContentTimeout,
+    dispatch_core::Code::ProviderContentMissing,
+    dispatch_core::Code::BrowserNavigationPending,
 ];
 const NAVIGATION_TIMEOUT: Duration = Duration::from_secs(45);
 const CONTENT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -711,7 +707,7 @@ async fn read_roster(
 
 /// Why a job reads through the browser after all. Fixed labels only.
 fn fallback(stage: &str, code: &str) {
-    crate::observability::event(
+    dispatch_core::foundation::observability::event(
         "warn",
         "paycom.http_fallback",
         json!({"stage":stage,"error":code}),
@@ -1209,7 +1205,7 @@ async fn read_once(
                         ensure(missing.elapsed() < Duration::from_secs(3), "provider_content_missing", 502)?;
                     } else { missing_since = None; }
                 }
-                Err(error) if error.is(crate::Code::BrowserNavigationPending) => (),
+                Err(error) if error.is(dispatch_core::Code::BrowserNavigationPending) => (),
                 Err(error) => return Err(error),
             }
         }
@@ -1229,7 +1225,7 @@ async fn extract(
         .evaluate(&call(include_str!("../../scripts/timecard.js"), &config))
         .await
         .map_err(|error| {
-            if error.is(crate::Code::BrowserScriptFailed) {
+            if error.is(dispatch_core::Code::BrowserScriptFailed) {
                 Error::new("timecard_extraction_failed", 502)
             } else {
                 error

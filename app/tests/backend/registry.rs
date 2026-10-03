@@ -1,12 +1,12 @@
 //! What the registry refuses of what features declare about one another.
-use crate::{
+use dispatch_core::{
     Result,
-    contracts::{DriverData, DriverSource},
     db::Store,
     manifest::{
         Feature, Registry, feature,
         people::{Appearances, Named, People},
     },
+    mcp::api::types::{DriverData, DriverSource},
 };
 
 /// The app's registry with one more feature, as `install` would check it.

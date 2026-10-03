@@ -597,39 +597,29 @@ dependencies = [
 name = "dispatch-backend"
 version = "0.0.0"
 dependencies = [
- "aes-gcm",
- "argon2",
  "axum",
  "base64 0.23.1",
  "calamine",
  "chrono",
  "chrono-tz",
+ "dispatch-core",
  "dispatch-host",
  "ego-tree",
  "flate2",
- "fs2",
  "futures-util",
  "getrandom 0.4.3",
- "hmac",
  "html5ever",
- "icu_collator",
- "lettre",
  "libc",
- "qrcode",
  "reqwest",
- "rmcp",
  "rusqlite",
  "scraper",
  "serde",
  "serde_json",
- "sha1",
  "sha2",
- "subtle",
  "tempfile",
  "tokio",
  "ts-rs",
  "url",
- "webauthn-rs",
  "zip",
 ]
 
@@ -644,6 +634,40 @@ dependencies = [
  "sha2",
  "tempfile",
  "toml",
+]
+
+[[package]]
+name = "dispatch-core"
+version = "0.0.0"
+dependencies = [
+ "aes-gcm",
+ "argon2",
+ "axum",
+ "base64 0.23.1",
+ "chrono",
+ "chrono-tz",
+ "dispatch-core",
+ "fs2",
+ "futures-util",
+ "getrandom 0.4.3",
+ "hmac",
+ "icu_collator",
+ "lettre",
+ "libc",
+ "qrcode",
+ "reqwest",
+ "rmcp",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "subtle",
+ "tempfile",
+ "tokio",
+ "ts-rs",
+ "url",
+ "webauthn-rs",
 ]
 
 [[package]]

@@ -7,13 +7,13 @@ mod stock;
 #[path = "templates.rs"]
 mod templates;
 
-use crate::{
+use crate::contracts::{
+    Uniform, UniformAdjustment, UniformHistory, UniformInput, UniformInventory, UniformUpdates,
+    UniformVariant,
+};
+use dispatch_core::{
     Error, Result,
     accounts::Context,
-    contracts::{
-        Uniform, UniformAdjustment, UniformHistory, UniformInput, UniformInventory, UniformUpdates,
-        UniformVariant,
-    },
     db::{Db, FromRow, Row, Store, iso},
 };
 use rusqlite::params;

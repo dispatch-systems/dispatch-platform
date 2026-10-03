@@ -1,10 +1,10 @@
-use crate::{
+use dispatch_core::{
     Error, Result,
-    config::Config,
     db::Store,
     ensure,
+    foundation::config::Config,
     manifest::registry,
-    operations::{self, Lock},
+    server::operations::{self, Lock},
 };
 use std::{io::Read, path::Path};
 pub async fn run() -> Result<()> {
@@ -13,7 +13,7 @@ pub async fn run() -> Result<()> {
     let command = args.first().map(String::as_str).unwrap_or("serve");
     if command == "browseros-worker" {
         ensure(args.len() == 2, "invalid_browser_worker_arguments", 400)?;
-        return crate::browsers::browseros::worker_main(&args[1]).await;
+        return dispatch_core::collection::browser::browseros::worker_main(&args[1]).await;
     }
     if command == "restore" {
         ensure(args.len() == 3, "usage_restore_backup_empty_target", 400)?;
@@ -45,7 +45,7 @@ pub async fn run() -> Result<()> {
                 "run_bootstrap_before_starting",
                 503,
             )?;
-            let state = crate::State::new(config.clone())?;
+            let state = dispatch_core::State::new(config.clone())?;
             state
                 .run(|db| {
                     ensure(
@@ -70,19 +70,19 @@ pub async fn run() -> Result<()> {
             let listener =
                 tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, config.port)).await?;
             let (stop, receiver) = tokio::sync::watch::channel(false);
-            let jobs = tokio::spawn(crate::supervise(
-                crate::jobs::start(state.clone(), receiver.clone()),
+            let jobs = tokio::spawn(dispatch_core::supervise(
+                dispatch_core::collection::jobs::start(state.clone(), receiver.clone()),
                 stop.clone(),
             ));
             let mail_state = state.clone();
-            let mail = tokio::spawn(crate::supervise(
+            let mail = tokio::spawn(dispatch_core::supervise(
                 async move {
-                    crate::mail::mailer(mail_state, receiver).await;
+                    dispatch_core::server::mail::mailer(mail_state, receiver).await;
                     Ok(())
                 },
                 stop.clone(),
             ));
-            crate::observability::event(
+            dispatch_core::foundation::observability::event(
                 "info",
                 "core.started",
                 serde_json::json!({"environment":config.environment,"port":config.port,"release":config.release}),
@@ -93,12 +93,12 @@ pub async fn run() -> Result<()> {
                 let mut term =
                     tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
                         .expect("SIGTERM handler");
-                tokio::select! {_=tokio::signal::ctrl_c()=>{},_=term.recv()=>{},_=crate::cancelled(&mut shutdown_receiver)=>{}};
+                tokio::select! {_=tokio::signal::ctrl_c()=>{},_=term.recv()=>{},_=dispatch_core::cancelled(&mut shutdown_receiver)=>{}};
                 sender.send_replace(true);
             };
             let server = axum::serve(
                 listener,
-                crate::http::router(state.clone())
+                dispatch_core::server::http::router(state.clone())
                     .into_make_service_with_connect_info::<std::net::SocketAddr>(),
             )
             .with_graceful_shutdown(shutdown);
@@ -135,7 +135,7 @@ pub async fn run() -> Result<()> {
         "seed" => operations::seed(&Store::initialize(config)?)?,
         "seed-agents" => println!(
             "{}",
-            crate::agents::synthetic::seed(&Store::initialize(config)?)?
+            dispatch_core::mcp::synthetic::seed(&Store::initialize(config)?)?
         ),
         "backup" => {
             ensure(args.len() == 2, "usage_backup_destination", 400)?;

@@ -1,14 +1,13 @@
-#[path = "../../../../../core/db/tests/support/common.rs"]
-mod common;
 use dispatch_backend::{
     collectors::cortex::{
         self,
         discovery::{CollectionRequest, Scope},
         dvic::{self, Capture, Request},
     },
-    db::{Store, s},
     dvic::{DvicStore, hidden, weeks_ending},
 };
+use dispatch_core::db::{Store, s};
+use dispatch_core::testing as common;
 use serde_json::json;
 
 /// DVIC, and the Cortex collector whose inspections it keeps.
@@ -52,7 +51,7 @@ fn publish_capture(
     id: &str,
     job: &str,
     capture: &Capture,
-) -> dispatch_backend::Result<()> {
+) -> dispatch_core::Result<()> {
     db.publish_dvic(id, job, capture, &job_scope(db, id, job))
 }
 fn ready() -> (tempfile::TempDir, Store, String) {
@@ -450,7 +449,7 @@ fn a_hidden_driver_is_never_stored_and_hiding_removes_what_was() {
     assert_eq!(stored(theirs), 1);
 
     let dvic = db.dvic_db(&id).unwrap();
-    let code = |result: dispatch_backend::Result<serde_json::Value>| result.unwrap_err().code;
+    let code = |result: dispatch_core::Result<serde_json::Value>| result.unwrap_err().code;
     assert_eq!(
         code(hidden::unhide(&dvic, "A2HIDDEN00001")),
         "driver_not_hidden"

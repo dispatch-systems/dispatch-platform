@@ -1,4 +1,5 @@
-use dispatch_backend::{browsers::egress, collectors::paycom};
+use dispatch_backend::collectors::paycom;
+use dispatch_core::collection::browser::egress;
 
 #[test]
 fn egress_rejects_private_and_lookalike_destinations() {

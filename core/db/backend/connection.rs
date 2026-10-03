@@ -26,13 +26,13 @@ fn row_json(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
 pub struct Db(pub Connection);
 impl Db {
     /// Opens an existing database. Its schema is left alone: requests take this path.
-    pub(crate) fn open(file: &Path, kind: Kind) -> Result<Self> {
+    pub fn open(file: &Path, kind: Kind) -> Result<Self> {
         Self::connect(file, kind, false)
     }
     /// Startup and provisioning: creates the database when it is missing, then
     /// applies the migrations it lacks. `seed` holds the rows a new database needs
     /// and commits together with its schema, so no reader sees one without them.
-    pub(crate) fn create(file: &Path, kind: Kind, seed: &str) -> Result<Self> {
+    pub fn create(file: &Path, kind: Kind, seed: &str) -> Result<Self> {
         let db = Self::connect(file, kind, true)?;
         if db.version()? == 0 {
             let tx = migrations::immediate(&db)?;
@@ -80,11 +80,11 @@ impl Db {
             file,
             rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )?;
-        db.create_collation("dispatch_unicode", crate::names::compare)?;
+        db.create_collation("dispatch_unicode", crate::foundation::names::compare)?;
         let flags = rusqlite::functions::FunctionFlags::SQLITE_UTF8
             | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC;
         db.create_scalar_function("dispatch_name", 2, flags, |ctx| {
-            Ok(crate::names::display_name(
+            Ok(crate::foundation::names::display_name(
                 &ctx.get::<String>(0)?,
                 &ctx.get::<String>(1)?,
             ))

@@ -1,7 +1,7 @@
 //! The station and day a Cortex collection covers: resolved, or what discovery needs
 //! to resolve it.
-use crate::{Error, Result, db::s, ensure};
 use chrono::{NaiveDate, Utc};
+use dispatch_core::{Error, Result, db::s, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -95,7 +95,7 @@ impl Scope {
         serde_json::from_value(scope).map_err(|_| Error::new("invalid_cortex_scope", 502))
     }
     pub fn request(value: &Value, timezone: &str) -> Result<Self> {
-        crate::validate::fields(
+        dispatch_core::foundation::validate::fields(
             value,
             &[
                 "requestId",
@@ -112,7 +112,7 @@ impl Scope {
             service_area_id: s(value, "serviceAreaId").into(),
             provider: s(value, "provider").into(),
             timezone: if value.get("timezone").is_some() {
-                crate::validate::timezone(value, "timezone")?
+                dispatch_core::foundation::validate::timezone(value, "timezone")?
             } else {
                 timezone.into()
             },

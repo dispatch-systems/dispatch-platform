@@ -1,5 +1,9 @@
 //! The job queue takes every kind a registered collector collects, and only those.
-use crate::{collectors::Provider, config::Config, crypto, db::Store};
+use dispatch_core::{
+    collection::registry::Provider,
+    db::Store,
+    foundation::{config::Config, crypto},
+};
 use serde_json::json;
 use std::os::unix::fs::PermissionsExt;
 

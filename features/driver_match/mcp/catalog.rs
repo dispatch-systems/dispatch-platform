@@ -1,5 +1,5 @@
 //! Driver Match's part of the agent catalog: what its codes are.
-use crate::agents::data::catalog::Term;
+use dispatch_core::mcp::data::catalog::Term;
 
 pub const TERMS: &[Term] = &[Term {
     term: "Driver Match code",

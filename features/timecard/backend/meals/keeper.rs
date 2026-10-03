@@ -1,13 +1,15 @@
 //! Timecard keeps the meal breaks Cortex reports.
 use crate::{
-    Result,
-    browsers::Collected,
     collectors::cortex::{self, discovery::Scope, meals::JOB_KIND},
+    workforce::TimecardStore,
+};
+use dispatch_core::{
+    Result,
+    collection::browser::Collected,
     db::{Db, Store},
     ensure,
     manifest::Keeper,
-    read_cache::DataDomain,
-    workforce::TimecardStore,
+    server::cache::DataDomain,
 };
 use serde_json::{Value, json};
 

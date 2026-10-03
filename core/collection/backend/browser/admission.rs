@@ -1,7 +1,7 @@
 //! Admission is conservative: reserve 1 GiB per browser plus 512 MiB for the
 //! platform/host. MemAvailable already includes resident browser pages, so only
 //! their remaining growth allowance is reserved again. Never kill active work.
-pub use crate::contracts::BrowserAdmission as Admission;
+pub use crate::platform_owner::api::types::BrowserAdmission as Admission;
 use std::{
     fs,
     path::{Component, Path},

@@ -1,15 +1,16 @@
-#[path = "../../../../../core/db/tests/support/common.rs"]
-mod common;
 use dispatch_backend::{
-    accounts::{Auth, Context},
     collectors::{
         cortex::{self, discovery::Scope, meals},
         paycom::{self, fixtures},
     },
-    contracts::DriverSource,
-    db::{Store, s},
     driver_match::DriverMatchStore,
     workforce::TimecardStore,
+};
+use dispatch_core::testing as common;
+use dispatch_core::{
+    accounts::{Auth, Context},
+    db::{Store, s},
+    mcp::api::types::DriverSource,
 };
 use serde_json::{Value, json};
 

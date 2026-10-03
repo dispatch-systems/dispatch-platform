@@ -1,5 +1,5 @@
 //! The agents' catalog of every registered feature's endpoints and metrics.
-use crate::agents::data::catalog::*;
+use dispatch_core::mcp::data::catalog::*;
 use serde_json::json;
 
 #[test]

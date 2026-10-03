@@ -1,11 +1,12 @@
 //! What a Paycom timecard collection is asked for: a pay period, or one employee's.
 use super::fixtures;
-use crate::{
+use chrono::{Duration, NaiveDate};
+use dispatch_core::{
     Error, Result,
     db::{FromRow, Row},
-    ensure, validate as v,
+    ensure,
+    foundation::validate as v,
 };
-use chrono::{Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -71,7 +72,7 @@ impl EmployeeSync {
         if request.get("employeeCode").is_none() {
             return Ok(None);
         }
-        let scope: Self = crate::wire::request(request)?;
+        let scope: Self = dispatch_core::foundation::wire::request(request)?;
         v::code(&scope.employee_code)?;
         scope.period().start()?;
         Ok(Some(scope))

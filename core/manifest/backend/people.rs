@@ -2,8 +2,8 @@
 //! A feature reads only its own storage; Driver Match joins what every feature names by ID.
 use crate::{
     Result,
-    contracts::{DriverData, DriverSource},
     db::{Db, Store},
+    mcp::api::types::{DriverData, DriverSource},
 };
 use std::collections::BTreeSet;
 

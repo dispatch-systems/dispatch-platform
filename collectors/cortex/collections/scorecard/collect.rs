@@ -4,20 +4,22 @@
 //! overview page's own first data request names them. Every dataset is read at once,
 //! and the browser closes as soon as the API has answered one.
 use super::*;
-use crate::{
-    browsers::http::{Http, Refusal},
-    collectors::cortex::{
-        self, codes,
-        discovery::Scope,
-        scorecard::{
-            Capture, Collection, DATASETS, Dataset, DatasetCapture, JOB_KIND, MAX_ROWS,
-            POSTED_SIGNAL, Request,
-        },
+use crate::collectors::cortex::{
+    self, codes,
+    discovery::Scope,
+    scorecard::{
+        Capture, Collection, DATASETS, Dataset, DatasetCapture, JOB_KIND, MAX_ROWS, POSTED_SIGNAL,
+        Request,
+    },
+};
+use dispatch_core::{
+    collection::{
+        browser::http::{Http, Refusal},
+        metrics::Recorder,
     },
     db::now,
-    job_metrics::Recorder,
+    foundation::validate::token,
     manifest::registry,
-    validate::token,
 };
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 

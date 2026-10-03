@@ -9,14 +9,14 @@ pub struct RequestContext {
     pub route: Option<&'static str>,
     pub bulk: bool,
     /// An agent's call, as the request notes it for the Agents page's Activity log.
-    pub agent: crate::agents::activity::Noted,
+    pub agent: crate::mcp::activity::Noted,
 }
 pub type RequestTrace = std::sync::Arc<std::sync::Mutex<RequestContext>>;
 
 pub fn event(level: &str, event: &str, fields: Value) {
     eprintln!(
         "{}",
-        json!({"at":super::db::iso(),"level":level,"event":event,"fields":fields})
+        json!({"at":crate::db::iso(),"level":level,"event":event,"fields":fields})
     );
 }
 

@@ -1,15 +1,15 @@
 //! Single-employee Paycom requests and captures, separate from full roster snapshots.
-use crate::{
+use crate::collectors::paycom::{
+    self,
+    timecards::{EmployeeSync, PERIOD_DAYS},
+    validation::validate_workforce,
+};
+use chrono::Duration;
+use dispatch_core::{
     Result,
-    collectors::paycom::{
-        self,
-        timecards::{EmployeeSync, PERIOD_DAYS},
-        validation::validate_workforce,
-    },
     db::{Store, s},
     ensure,
 };
-use chrono::Duration;
 use rusqlite::params;
 use serde_json::Value;
 

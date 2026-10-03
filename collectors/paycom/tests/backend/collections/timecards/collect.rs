@@ -1,7 +1,7 @@
 use super::*;
 #[tokio::test(start_paused = true)]
 async fn page_deadlines_keep_navigation_and_content_failure_diagnostics() -> Result<()> {
-    use crate::contracts::PageStage;
+    use dispatch_core::collection::api::metrics::PageStage;
     assert_eq!(NAVIGATION_TIMEOUT, Duration::from_secs(45));
     assert_eq!(CONTENT_TIMEOUT, Duration::from_secs(30));
     let metrics = Recorder::new(&json!({"attempt":1}));
@@ -11,7 +11,7 @@ async fn page_deadlines_keep_navigation_and_content_failure_diagnostics() -> Res
     page_deadline(started, None, Instant::now())?;
     tokio::time::advance(Duration::from_millis(1)).await;
     let navigation = page_deadline(started, None, Instant::now()).unwrap_err();
-    assert!(navigation.is(crate::Code::ProviderNavigationTimeout));
+    assert!(navigation.is(dispatch_core::Code::ProviderNavigationTimeout));
     assert_eq!(navigation.status, 504);
     assert!(navigation.is_any(PAGE_RETRY));
     metrics.page_finish(1, Some(&navigation.code));
@@ -27,7 +27,7 @@ async fn page_deadlines_keep_navigation_and_content_failure_diagnostics() -> Res
     page_deadline(started, Some(content), Instant::now())?;
     tokio::time::advance(Duration::from_millis(1)).await;
     let content = page_deadline(started, Some(content), Instant::now()).unwrap_err();
-    assert!(content.is(crate::Code::ProviderContentTimeout));
+    assert!(content.is(dispatch_core::Code::ProviderContentTimeout));
     assert_eq!(content.status, 504);
     assert!(content.is_any(PAGE_RETRY));
     metrics.page_finish(2, Some(&content.code));

@@ -1,7 +1,7 @@
 //! The permissions whose writes ask a member to have verified who they are recently, and
 //! the one that lets a member invite, as they stood before each permission's owner
 //! declared them.
-use crate::{http::needs_recent_verification, manifest::registry, roles};
+use dispatch_core::{manifest::registry, server::http::needs_recent_verification, tenancy::roles};
 
 #[test]
 fn the_same_writes_ask_for_recent_verification() {

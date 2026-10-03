@@ -1,5 +1,5 @@
 use super::*;
-use crate::contracts::AgentKeyKind;
+use crate::mcp::api::types::AgentKeyKind;
 
 fn call(at: i64, key: &str, outcome: &str) -> Call {
     Call {

@@ -1,13 +1,12 @@
 //! Requests against the real router, served in-process over a loopback socket.
 //! The expectations were recorded before the route table existed, so they pin
 //! how the HTTP layer answers rather than how it is built.
-use dispatch_backend::{
+use dispatch_backend::collectors::paycom;
+use dispatch_core::{
     State,
-    collectors::paycom,
-    config::Config,
-    crypto,
     db::{self, Store, s},
-    operations,
+    foundation::{config::Config, crypto},
+    server::operations,
 };
 use serde_json::{Value, json};
 use std::{
@@ -115,7 +114,7 @@ impl Server {
         config.origin = format!("http://127.0.0.1:{port}");
         operations::seed(&Store::initialize(config.clone()).unwrap()).unwrap();
         let state = State::new(config).unwrap();
-        let app = dispatch_backend::http::router(state.clone())
+        let app = dispatch_core::server::http::router(state.clone())
             .into_make_service_with_connect_info::<std::net::SocketAddr>();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Self {

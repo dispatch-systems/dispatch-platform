@@ -1,14 +1,14 @@
-#[path = "../../../../../core/db/tests/support/common.rs"]
-mod common;
 use dispatch_backend::{
     collectors::{
-        Provider,
         cortex::{self, discovery::Scope, meals},
         paycom,
     },
-    contracts::PublicJob,
-    db::{Store, s},
     workforce::TimecardStore,
+};
+use dispatch_core::testing as common;
+use dispatch_core::{
+    collection::{api::jobs::PublicJob, registry::Provider},
+    db::{Store, s},
 };
 use serde_json::{Value, json};
 

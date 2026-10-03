@@ -1,9 +1,9 @@
 //! Validated, temporary driver results. Complete publications remain authoritative
 //! for history; failed/cancelled/replaced attempts never overwrite them. Each collector
 //! stages its own items; this is the store they are staged in and read from.
-use super::{
+use crate::{
     Error, Result,
-    collectors::Provider,
+    collection::registry::Provider,
     db::{self, Db, Store, s},
 };
 use rusqlite::params;

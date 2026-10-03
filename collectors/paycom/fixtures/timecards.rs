@@ -1,4 +1,4 @@
-use crate::{Error, Result, db::iso};
+use dispatch_core::{Error, Result, db::iso};
 use serde_json::{Value, json};
 pub fn fixture(timezone: &str) -> Result<Value> {
     fixture_date(timezone, None)

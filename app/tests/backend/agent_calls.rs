@@ -1,7 +1,7 @@
 //! What an agent's call records, through a registered feature's endpoint too.
-use crate::agents::activity::*;
-use crate::contracts::AgentActivityKey;
-use crate::contracts::AgentKeyKind;
+use dispatch_core::mcp::activity::*;
+use dispatch_core::mcp::api::types::AgentActivityKey;
+use dispatch_core::mcp::api::types::AgentKeyKind;
 #[test]
 fn what_a_request_noted_becomes_its_call() {
     let activity = Activity::default();

@@ -10,9 +10,9 @@ use super::{
 };
 use crate::{
     State,
-    contracts::AgentDsp,
     db::Store,
-    observability::{self, RequestTrace},
+    foundation::observability::{self, RequestTrace},
+    mcp::api::types::AgentDsp,
 };
 use axum::{body::Body, extract::Request, http::request::Parts, response::Response};
 use rmcp::{

@@ -13,18 +13,16 @@ mod storage;
 
 pub use storage::DvicStore;
 
-use crate::{
+use crate::collectors::cortex::dvic::{
+    Capture, Collection, JOB_KIND, KnownReport, MAX_WEEKS, Request, hash, report_week,
+};
+use dispatch_core::{
     Error, Result,
-    collectors::{
-        AddedStorage,
-        cortex::dvic::{
-            Capture, Collection, JOB_KIND, KnownReport, MAX_WEEKS, Request, hash, report_week,
-        },
-    },
+    collection::registry::AddedStorage,
     db::{Db, Kind, migrations::add_column},
     ensure,
-    read_cache::DataDomain,
-    validate, weeks,
+    foundation::{validate, weeks},
+    server::cache::DataDomain,
 };
 use serde_json::{Value, json};
 

@@ -1,13 +1,11 @@
 //! The Dispatch Agent Skill: one `SKILL.md`, in the open Agent Skills format that Claude
 //! Code, Codex, Hermes and others load. It is written from the catalog, as the tools and the
 //! OpenAPI document are, so it always describes the API this server answers.
-use super::{
-    data::catalog::{ENDPOINTS, Endpoint, GLOSSARY, METRICS},
-    mcp::INSTRUCTIONS,
-};
+use super::data::catalog::{ENDPOINTS, Endpoint, GLOSSARY, METRICS};
+use crate::mcp::server::INSTRUCTIONS;
 
 /// Questions people ask, with the tool and arguments that answer them.
-pub(crate) const EXAMPLES: &[(&str, &str, &str)] = &[
+pub const EXAMPLES: &[(&str, &str, &str)] = &[
     (
         "How many packages did Daniel deliver last week?",
         r#"packages(driver: "Daniel", period: "last week", outcome: "delivered")"#,

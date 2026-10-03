@@ -52,7 +52,7 @@ const LABELS: &[(&str, &str)] = &[
 ];
 
 fn label(path: &str) -> &'static str {
-    crate::http::request_label(path)
+    dispatch_core::server::http::request_label(path)
 }
 
 #[test]

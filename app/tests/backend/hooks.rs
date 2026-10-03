@@ -1,7 +1,7 @@
 //! What features hook into, as it ran before they registered it: the scheduler's upkeep
 //! (Routes' retention, then Driver Match's hourly codes), Driver Match after every
 //! successful collection, Timecard's demo data and DVIC's operator commands.
-use crate::manifest::registry;
+use dispatch_core::manifest::registry;
 
 #[test]
 fn the_same_upkeep_runs_in_the_same_order_and_as_often() {

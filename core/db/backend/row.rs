@@ -8,7 +8,7 @@ pub struct Row<'a>(pub(super) &'a rusqlite::Row<'a>);
 impl Row<'_> {
     pub fn get<T: FromSql>(&self, column: &str) -> Result<T> {
         self.0.get(column).map_err(|cause| {
-            crate::observability::event(
+            crate::foundation::observability::event(
                 "error",
                 "database.row_invalid",
                 json!({"column":column,"cause":cause.to_string()}),

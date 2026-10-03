@@ -3,17 +3,22 @@
 //! team's table.
 use super::{MEAL_BREAKS, TIMECARDS};
 use crate::{
-    Result,
-    agents::data::{
-        facts::{Coverage, Daily, Facts, total_minutes, zone},
-        scope::{People, Period, Person},
-        shape::hours,
-    },
     collectors::{cortex, paycom},
-    contracts::{AgentArea, DailyTimecard, DriverSource, Dsp, MealStatus},
+    contracts::{DailyTimecard, MealStatus},
+    workforce::{TimecardStore, assessment::paycom_day},
+};
+use dispatch_core::{
+    Result,
+    accounts::api::types::Dsp,
     db::{Store, s},
-    workforce::TimecardStore,
-    workforce::assessment::paycom_day,
+    mcp::{
+        api::types::{AgentArea, DriverSource},
+        data::{
+            facts::{Coverage, Daily, Facts, total_minutes, zone},
+            scope::{People, Period, Person},
+            shape::hours,
+        },
+    },
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -224,7 +229,7 @@ pub(super) fn mark_routes(
     period: &Period,
     people: &People,
     meals: &mut [MealDay],
-) -> crate::Result<()> {
+) -> dispatch_core::Result<()> {
     let routes = meal_routes(db, dsp, period)?;
     for meal in meals {
         let (kind, id) = meal.source.split_once(':').unwrap_or(("", ""));
@@ -298,7 +303,7 @@ impl Daily for TimecardDays {
         period: &Period,
         _: &People,
         person: Option<&Person>,
-    ) -> crate::Result<Box<dyn Facts>> {
+    ) -> dispatch_core::Result<Box<dyn Facts>> {
         let (rows, coverage) = timecards(db, dsp, period, person.map(|p| p.paycom.as_slice()))?;
         Ok(Box::new(Carded(rows, coverage)))
     }
@@ -388,7 +393,7 @@ impl Daily for MealDays {
         period: &Period,
         people: &People,
         person: Option<&Person>,
-    ) -> crate::Result<Box<dyn Facts>> {
+    ) -> dispatch_core::Result<Box<dyn Facts>> {
         let sources = person.map(|p| {
             p.paycom
                 .iter()

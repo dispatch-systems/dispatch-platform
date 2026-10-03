@@ -6,9 +6,10 @@
 use super::scope::{People, Period, Person};
 use crate::{
     Result,
-    contracts::{AgentArea, DriverSource, Dsp},
+    accounts::api::types::Dsp,
     db::Store,
     manifest::registry,
+    mcp::api::types::{AgentArea, DriverSource},
 };
 use serde::Serialize;
 use serde_json::Value;

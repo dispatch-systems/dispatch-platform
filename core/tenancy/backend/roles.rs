@@ -1,10 +1,9 @@
-use super::{
+use crate::{
     Error, Result,
-    accounts::Context,
-    contracts::Role,
-    crypto,
+    accounts::{Context, api::types::Role},
     db::{Db, FromRow, Row, Store, iso, now, s},
     ensure,
+    foundation::crypto,
     manifest::{DefaultRole, Permission, registry},
 };
 use rusqlite::params;
@@ -28,8 +27,8 @@ static DECLARED: LazyLock<Vec<&'static Permission>> = LazyLock::new(|| {
 pub static PERMISSIONS: LazyLock<Vec<&'static str>> =
     LazyLock::new(|| DECLARED.iter().map(|permission| permission.id).collect());
 // Build-time metadata for the generated dashboard catalog; not shipped at runtime.
-#[cfg(test)]
-pub(crate) static LABELS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
+#[cfg(feature = "ts")]
+pub static LABELS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
     DECLARED
         .iter()
         .map(|permission| (permission.id, permission.label))
@@ -38,7 +37,7 @@ pub(crate) static LABELS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock
 // Any membership satisfies this; it guards pages every member may open.
 pub const ACCESS: &str = "access";
 // What each permission grants as well, in the order the registry declares them.
-pub(crate) static IMPLIED: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
+pub static IMPLIED: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
     registry()
         .permissions()
         .flat_map(|permission| {
@@ -50,9 +49,9 @@ pub(crate) static IMPLIED: LazyLock<Vec<(&'static str, &'static str)>> = LazyLoc
         .collect()
 });
 // Permissions outside a feature-owned page have these role-sheet sections, each where its
-// first permission falls in the order.
-#[cfg(test)]
-pub(crate) static GROUPS: LazyLock<Vec<(&'static str, Vec<&'static str>)>> = LazyLock::new(|| {
+// first permission falls in the order. Build-time metadata, as `LABELS` is.
+#[cfg(feature = "ts")]
+pub static GROUPS: LazyLock<Vec<(&'static str, Vec<&'static str>)>> = LazyLock::new(|| {
     let mut groups: Vec<(&str, Vec<&str>)> = Vec::new();
     for permission in DECLARED.iter() {
         let Some(group) = permission.group else {
@@ -66,7 +65,7 @@ pub(crate) static GROUPS: LazyLock<Vec<(&'static str, Vec<&'static str>)>> = Laz
     groups
 });
 // Each default role's key, name and permissions, in their order.
-pub(crate) static DEFAULTS: LazyLock<Vec<(&'static str, &'static str, Vec<&'static str>)>> =
+pub static DEFAULTS: LazyLock<Vec<(&'static str, &'static str, Vec<&'static str>)>> =
     LazyLock::new(|| {
         DefaultRole::ALL
             .iter()
@@ -85,7 +84,7 @@ pub fn all() -> Vec<String> {
     PERMISSIONS.iter().map(|p| (*p).to_owned()).collect()
 }
 // Granted permissions have no previous value; revoked ones have no new value.
-fn permission_changes(before: &[String], after: &[String]) -> Vec<super::db::AuditChange> {
+fn permission_changes(before: &[String], after: &[String]) -> Vec<crate::db::AuditChange> {
     let missing = |from: &[String], p: &String| !from.contains(p);
     let added = after.iter().filter(|p| missing(before, p));
     let removed = before.iter().filter(|p| missing(after, p));
@@ -384,7 +383,7 @@ impl Store {
             let hidden: Vec<&String> = role
                 .permissions
                 .iter()
-                .filter(|p| !super::features::grants(&c.features, p))
+                .filter(|p| !crate::tenancy::catalog::grants(&c.features, p))
                 .collect();
             let permissions: Vec<String> = PERMISSIONS
                 .iter()

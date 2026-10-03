@@ -1,5 +1,5 @@
-use crate::{
-    contracts::{DriverData, DriverSource, DriverStatus},
+use dispatch_core::{
+    mcp::api::types::{DriverData, DriverSource, DriverStatus},
     text_enum,
 };
 use serde::Serialize;

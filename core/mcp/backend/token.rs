@@ -2,7 +2,10 @@
 //! 32 random letters and digits and a 6-character checksum. The prefix says what it is
 //! and where it works; the checksum turns away a mistyped or made-up key before any lookup.
 //! A connected app's access and refresh tokens are made the same way, as `dsa_` and `dsr_`.
-use crate::{Result, contracts::Environment, crypto};
+use crate::{
+    Result,
+    foundation::{config::Environment, crypto},
+};
 
 const ALPHABET: &[u8; 62] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const RANDOM: usize = 32;

@@ -112,11 +112,11 @@ impl Store {
                     .ok_or_else(|| Error::new("dsp_view_expired", 409))?
                     .into()
             } else {
-                crate::roles::Grant {
+                crate::tenancy::roles::Grant {
                     id: "platform_owner".to_owned(),
                     name: "Platform owner".to_owned(),
                     owner: true,
-                    permissions: crate::roles::all(),
+                    permissions: crate::tenancy::roles::all(),
                 }
             };
             (dsp, grant)
@@ -172,7 +172,7 @@ impl Store {
             preview: (parts.len() == 3).then(|| parts[1].to_owned()),
             ..a.clone()
         };
-        let c = self.context(&a, parts[0], crate::roles::ACCESS)?;
+        let c = self.context(&a, parts[0], crate::tenancy::roles::ACCESS)?;
         ensure(
             crypto::equal(&self.view_token(&c), token),
             "dsp_view_expired",

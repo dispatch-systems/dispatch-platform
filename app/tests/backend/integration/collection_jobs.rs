@@ -1,15 +1,16 @@
 //! Jobs and schedules running the features' collections from Paycom and Cortex: the queue's
 //! limits, the lists each page reads, the facts an outcome records, and what the Timecard's
 //! switch stops.
-#[path = "../../../../core/db/tests/support/common.rs"]
-mod common;
 use common::{seeded, store};
 use dispatch_backend::{
     collectors::{cortex, paycom},
-    db::{self, Store, s},
     dvic::DvicStore,
-    jobs::JobFacts,
     workforce::TimecardStore,
+};
+use dispatch_core::testing as common;
+use dispatch_core::{
+    collection::jobs::JobFacts,
+    db::{self, Store, s},
 };
 use serde_json::json;
 
@@ -210,7 +211,12 @@ fn nothing_collects_for_a_dsp_without_the_timecard() {
     );
 
     let result = db
-        .set_feature(id, dispatch_backend::features::schedules(), false, actor)
+        .set_feature(
+            id,
+            dispatch_core::tenancy::catalog::schedules(),
+            false,
+            actor,
+        )
         .unwrap();
     assert_eq!(
         result
@@ -240,8 +246,13 @@ fn nothing_collects_for_a_dsp_without_the_timecard() {
             [],
         )
         .unwrap();
-    db.set_feature(id, dispatch_backend::features::schedules(), true, actor)
-        .unwrap();
+    db.set_feature(
+        id,
+        dispatch_core::tenancy::catalog::schedules(),
+        true,
+        actor,
+    )
+    .unwrap();
     assert_eq!(
         db.dsp(id)
             .unwrap()
@@ -281,7 +292,7 @@ fn listed_jobs_respect_the_cap_scope_names_and_attempt_order() {
                     rusqlite::params![
                         job,
                         attempt,
-                        serde_json::to_string(&dispatch_backend::job_metrics::Metrics::new(
+                        serde_json::to_string(&dispatch_core::collection::metrics::Metrics::new(
                             &json!({"attempt":attempt})
                         ))
                         .unwrap()
@@ -322,7 +333,7 @@ fn the_status_keeps_its_jobs_however_many_of_other_kinds_came_since() {
         .map(|index| (format!("paycom-{index}"), db::at(db::now() + 1000 + index)))
         .collect();
     common::finished_jobs(&db, &id, "paycom.collect", &others).unwrap();
-    let listed = |jobs: Vec<dispatch_backend::contracts::PublicJob>| {
+    let listed = |jobs: Vec<dispatch_core::collection::api::jobs::PublicJob>| {
         jobs.into_iter().map(|j| j.id).collect::<Vec<_>>()
     };
     assert!(!listed(db.recent_jobs(Some(&id)).unwrap()).contains(&job));

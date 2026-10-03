@@ -1,6 +1,6 @@
 // Transactional email bodies. Mail clients ignore stylesheets and SVG, so the
 // layout is nested tables with inline styles and the mark is a hosted PNG.
-use crate::contracts::{AgentArea, AgentReads};
+use crate::mcp::api::types::{AgentArea, AgentReads};
 
 const FONT: &str =
     "Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
@@ -11,7 +11,7 @@ const PRIMARY: &str = "#2055ed";
 const PAGE: &str = "#f4f6fa";
 // Every email comes from a no-reply address; each one says so where a reader looks first
 // when they want to answer.
-pub(crate) const NO_REPLY: &str = "This is an automated email. Replies to it are not read.";
+pub const NO_REPLY: &str = "This is an automated email. Replies to it are not read.";
 // Matches the dashboard DspAvatar tones as (ink, surface).
 const TONES: [(&str, &str); 5] = [
     ("#51647d", "#eaf0f7"),

@@ -1,10 +1,12 @@
 //! Timecard's answers to agents: a day's timecards or one driver's, and a day's meal
 //! breaks beside Paycom's lunches.
 use super::facts::{self, MealDay, mark_routes, meal_issue, meal_span};
-use crate::{
+use dispatch_core::{
     State,
-    agents::{
+    db::Store,
+    mcp::{
         Caller,
+        api::types::DriverSource,
         data::{
             Answer,
             access::Access,
@@ -15,8 +17,6 @@ use crate::{
             shape::{Table, hours, paged, understood},
         },
     },
-    contracts::DriverSource,
-    db::Store,
 };
 use serde_json::{Value, json};
 

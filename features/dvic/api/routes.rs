@@ -1,15 +1,14 @@
 //! DVIC collection controls and read APIs; no dashboard is required.
-use crate::{
+use crate::{collectors::cortex::dvic, dvic::DvicStore};
+use dispatch_core::{
     Result,
-    collectors::cortex::dvic,
+    collection::api::routes::{jobs::job_cancel, schedules::schedule_routes},
     db::Store,
-    dvic::DvicStore,
-    http::{
+    foundation::validate as v,
+    server::http::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, read, write},
-        routes::{jobs::job_cancel, schedules::schedule_routes},
     },
-    validate as v,
 };
 
 pub fn routes() -> Vec<Route> {
@@ -76,7 +75,7 @@ fn inspections(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let limit = if q.get("limit").is_some() {
         v::text(q, "limit", 1, 3)?
             .parse()
-            .map_err(|_| crate::Error::new("invalid_input", 400))?
+            .map_err(|_| dispatch_core::Error::new("invalid_input", 400))?
     } else {
         100
     };

@@ -1,11 +1,10 @@
 //! The read cache as it stood before its owners declared their domains and what each
 //! cached read depends on: which cached reads a write to each domain evicts, and the
 //! domain each collection writes.
-use crate::{
-    collectors::Provider,
-    contracts::JobKind,
+use dispatch_core::{
+    collection::{api::jobs::JobKind, registry::Provider},
     manifest::registry,
-    read_cache::{self, DataDomain, ReadCache, Scope},
+    server::cache::{self, DataDomain, ReadCache, Scope},
 };
 
 /// For a write to each domain for DSP `a`: whether it evicts the DSP listings, `a`'s
@@ -40,7 +39,7 @@ fn scope(read: &str, dsp: &str) -> Scope {
     match read {
         "listings" => Scope::listings(),
         "meals" => Scope::tenant(crate::meals::CACHED, dsp),
-        "people" => Scope::tenant(read_cache::PEOPLE, dsp),
+        "people" => Scope::tenant(cache::PEOPLE, dsp),
         _ => panic!("no cached read {read}"),
     }
 }

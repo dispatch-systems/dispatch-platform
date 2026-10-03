@@ -1,7 +1,6 @@
-#[path = "../../../../db/tests/support/common.rs"]
-mod common;
 use common::{audits, seeded};
-use dispatch_backend::db::{self, s};
+use dispatch_core::db::{self, s};
+use dispatch_core::testing as common;
 use serde_json::json;
 
 #[test]
@@ -69,7 +68,7 @@ fn dsp_audit_log_hides_platform_owner_actions() {
     assert!(log[0]["actorId"].is_null());
     assert!(!log.to_string().contains(owner_id));
     let page = db
-        .audit_page(&dispatch_backend::db::AuditQuery {
+        .audit_page(&dispatch_core::db::AuditQuery {
             dsp: Some(id),
             actor: "support",
             ..Default::default()
@@ -95,7 +94,7 @@ fn dsp_audit_log_hides_platform_owner_actions() {
 #[test]
 fn audit_log_filters_pages_and_counts_by_area() {
     common::install(&[], &[]);
-    use dispatch_backend::db::AuditQuery;
+    use dispatch_core::db::AuditQuery;
     let (_root, db) = seeded();
     let one = |sql: &str| db.platform.one(sql, []).unwrap().unwrap();
     let tenant = one("SELECT id FROM dsps WHERE name='Northline Logistics'");

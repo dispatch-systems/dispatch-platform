@@ -10,8 +10,8 @@ use super::{
     synthetic::{Step, Synthetic},
 };
 use crate::{
-    contracts::{AgentArea, AgentSource},
     manifest::Feature,
+    mcp::api::types::{AgentArea, AgentSource},
 };
 
 pub struct Mcp {

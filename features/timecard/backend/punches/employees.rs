@@ -1,8 +1,7 @@
 use super::preferences::preferences;
-use crate::{
+use crate::{collectors::paycom, contracts::EmployeesResponse};
+use dispatch_core::{
     Result,
-    collectors::paycom,
-    contracts::EmployeesResponse,
     db::{Store, boolean, s},
 };
 use rusqlite::params;

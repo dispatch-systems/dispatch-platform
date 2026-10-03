@@ -1,17 +1,14 @@
 use super::*;
-use crate::{
-    Code,
-    collectors::cortex::{
-        codes,
-        discovery::{CollectionRequest, Scope},
-    },
-    job_metrics::Recorder,
+use crate::collectors::cortex::{
+    codes,
+    discovery::{CollectionRequest, Scope},
 };
+use dispatch_core::{Code, collection::metrics::Recorder};
 // The page is between documents or signing in again; ask it again.
-const PAGE_NOT_READY: &[crate::Code] = &[
-    crate::Code::BrowserNavigationPending,
-    crate::Code::BrowserScriptFailed,
-    crate::Code::VerificationRequired,
+const PAGE_NOT_READY: &[dispatch_core::Code] = &[
+    dispatch_core::Code::BrowserNavigationPending,
+    dispatch_core::Code::BrowserScriptFailed,
+    dispatch_core::Code::VerificationRequired,
 ];
 
 const DISCOVER: &str = include_str!("../scripts/discovery.js");

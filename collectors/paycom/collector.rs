@@ -8,22 +8,24 @@ pub mod timecards;
 #[path = "collections/timecards/validation.rs"]
 pub mod validation;
 
-use super::Provider;
-use crate::{
+use crate::browsers::paycom;
+use dispatch_core::collection::registry::Provider;
+use dispatch_core::{
     Code, Error, Result,
-    browsers::{
-        Collected, Driver, Pending,
-        browseros::{self, NetworkPolicy},
-        egress::HostPolicy,
-        http::RequestHosts,
-        paycom,
+    collection::{
+        browser::{
+            Collected, Driver, Pending,
+            browseros::{self, NetworkPolicy},
+            egress::HostPolicy,
+            http::RequestHosts,
+        },
+        metrics::Counts,
+        registry,
     },
-    collectors, crypto,
     db::{self, Db, Kind, Migration, Migrations, Store, migrations::Apply::Sql, s},
     ensure,
-    job_metrics::Counts,
+    foundation::{crypto, validate as v},
     manifest::{Collection, Collector, Tables},
-    validate as v,
 };
 use serde_json::{Value, json};
 use std::{collections::HashSet, path::Path};
@@ -119,7 +121,7 @@ impl Collector for Paycom {
         TABLES
     }
     fn seed(&self, dsp: &str) -> String {
-        collectors::identity_seed(dsp, PROVIDER, "paycom-v1")
+        registry::identity_seed(dsp, PROVIDER, "paycom-v1")
     }
     fn marker(&self) -> Option<&'static str> {
         None
@@ -129,7 +131,7 @@ impl Collector for Paycom {
     }
     fn provision(&self, store: &Store, dsp: &str, timezone: &str) -> Result<()> {
         let db = store.collector(dsp, PROVIDER)?;
-        collectors::add_connection(&db, PROVIDER)?;
+        registry::add_connection(&db, PROVIDER)?;
         // v0.0.9 reads this row on every Paycom status request. Drop it, and the
         // table, once a release without that reader has shipped.
         db.exec(
@@ -245,7 +247,7 @@ impl Collector for Paycom {
 
 /// The error codes Paycom's collection raises and branches on. Their text is the wire format.
 pub mod codes {
-    use crate::Code;
+    use dispatch_core::Code;
 
     pub const TIMECARD_EXTRACTION_FAILED: Code = Code::new("timecard_extraction_failed");
     pub const INVALID_TIMECARD_HOURS: Code = Code::new("invalid_timecard_hours");

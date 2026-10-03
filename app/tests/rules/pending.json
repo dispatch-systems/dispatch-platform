@@ -26,12 +26,7 @@
     },
     "dependencies": {
       "rust": {
-        "collectors/cortex names features/routes": "Phase B",
-        "core/collection names collectors/cortex": "Phase B",
-        "core/collection names collectors/paycom": "Phase B",
-        "core/manifest names app": "Phase B",
-        "core/mcp names app": "Phase B",
-        "core/server names app": "Phase B"
+        "collectors/cortex names features/routes": "Phase B"
       }
     },
     "encapsulation": {
@@ -57,9 +52,6 @@
         "features/timecard's tests import shared/contracts": "Phase B",
         "features/uniforms imports shared/contracts": "Phase B",
         "features/uniforms's tests import shared/contracts": "Phase B"
-      },
-      "lists": {
-        "core/collection/backend/registry.rs lists collectors/cortex, collectors/paycom": "Phase B"
       }
     },
     "names": {
@@ -71,8 +63,6 @@
         "file shared/contracts/runtime-workforce.ts is named workforce": "Phase B",
         "file shared/contracts/workforce.ts is named workforce": "Phase B",
         "folder tooling/agents is named agents": "Phase B",
-        "module agents in app/backend/contracts.rs is named agents": "Phase B",
-        "module agents in app/backend/lib.rs is named agents": "Phase B",
         "module browsers in app/backend/lib.rs is named browsers": "Phase B",
         "module collectors in app/backend/lib.rs is named collectors": "Phase B",
         "module meals in app/backend/contracts.rs is named meals": "Phase B",
@@ -96,11 +86,6 @@
         "collectors/paycom/probes/benchmark.rs has a #[test]": "Phase B"
       },
       "integration tests": {
-        "core/accounts's integration tests are tests of app/backend/Cargo.toml": "Phase B",
-        "core/collection's integration tests are tests of app/backend/Cargo.toml": "Phase B",
-        "core/db's integration tests are tests of app/backend/Cargo.toml": "Phase B",
-        "core/platform_owner's integration tests are tests of app/backend/Cargo.toml": "Phase B",
-        "core/server's integration tests are tests of app/backend/Cargo.toml": "Phase B",
         "features/dvic's integration tests are tests of app/backend/Cargo.toml": "Phase B",
         "features/routes's integration tests are tests of app/backend/Cargo.toml": "Phase B",
         "features/scorecard's integration tests are tests of app/backend/Cargo.toml": "Phase B",

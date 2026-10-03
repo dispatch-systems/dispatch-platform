@@ -1,11 +1,11 @@
 //! Per-attempt diagnostics. Only timings, counts, memory totals and fixed failure
 //! labels are persisted.
-use super::{
+use crate::collection::api::metrics::{DocumentState, JobOutcome, PageRead, PageReads, PageStage};
+pub use crate::collection::api::metrics::{JobMetrics as Metrics, JobPhase as Phase};
+use crate::{
     Result,
     db::{self, Store, n, s},
 };
-use crate::contracts::{DocumentState, JobOutcome, PageRead, PageReads, PageStage};
-pub use crate::contracts::{JobMetrics as Metrics, JobPhase as Phase};
 use serde_json::Value;
 use std::{
     collections::HashSet,
@@ -38,7 +38,7 @@ impl Metrics {
             n(job, "available_at"),
         )
     }
-    pub fn start(job: &crate::contracts::JobRow) -> Self {
+    pub fn start(job: &crate::collection::api::jobs::JobRow) -> Self {
         Self::begin(
             job.attempt,
             job.started_at.as_deref().unwrap_or(""),
@@ -108,7 +108,7 @@ impl Recorder {
     pub fn new(job: &Value) -> Self {
         Self::of(Metrics::new(job))
     }
-    pub fn start(job: &crate::contracts::JobRow) -> Self {
+    pub fn start(job: &crate::collection::api::jobs::JobRow) -> Self {
         Self::of(Metrics::start(job))
     }
     fn of(value: Metrics) -> Self {

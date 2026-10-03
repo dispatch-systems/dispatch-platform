@@ -1,4 +1,4 @@
-use crate::text_enum;
+use dispatch_core::text_enum;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

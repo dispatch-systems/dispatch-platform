@@ -1,10 +1,10 @@
 //! The drivers DVIC's inspections name, as Driver Match reads them.
-use crate::{
+use crate::dvic::DvicStore;
+use dispatch_core::{
     Result,
-    contracts::{DriverData, DriverSource},
     db::{Store, n, s},
-    dvic::DvicStore,
     manifest::people::{self, Appearances, Named, People, Workdays},
+    mcp::api::types::{DriverData, DriverSource},
 };
 
 pub struct Drivers;

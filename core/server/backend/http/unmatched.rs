@@ -2,7 +2,6 @@
 use super::{
     middleware,
     route::{Agent, Dsp, Grant, PlatformOwner},
-    routes,
 };
 use crate::{Error, Result, State, db::Store};
 use axum::{
@@ -10,7 +9,17 @@ use axum::{
     http::Method,
     response::Response,
 };
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+
+/// What each part of the DSP area asks of a path no route matches, by its path and whether
+/// it is a POST. The app keeps it, and hands it over at startup.
+static AREAS: OnceLock<fn(&str, bool) -> &'static str> = OnceLock::new();
+
+/// Hands core what each part of the DSP area asks of a path no route matches. The first
+/// call sets it; calling it again changes nothing.
+pub fn unmatched_areas(areas: fn(&str, bool) -> &'static str) {
+    AREAS.get_or_init(|| areas);
+}
 
 /// Always `not_found`, but the platform and DSP areas first ask for what their
 /// routes ask for, so probing them tells a caller nothing they may not know. The app
@@ -29,7 +38,10 @@ async fn refuse(state: Arc<State>, request: Request) -> Result<std::convert::Inf
             PlatformOwner.authorize(db, &input)?;
         } else if input.path.starts_with("/api/dsp/") {
             let post = input.method == Method::POST;
-            Dsp(routes::area_permission(&input.path, post)).authorize(db, &input)?;
+            let areas = AREAS
+                .get()
+                .expect("the app hands over the DSP area's permissions at startup");
+            Dsp(areas(&input.path, post)).authorize(db, &input)?;
         } else if input.path.starts_with("/api/v1/") {
             Agent::READ.authorize(db, &input)?;
         }

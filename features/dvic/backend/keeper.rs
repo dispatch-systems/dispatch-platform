@@ -1,15 +1,12 @@
 //! DVIC keeps the inspections of the weekly reports Cortex publishes.
-use crate::{
+use crate::collectors::cortex::{discovery::Scope, dvic::JOB_KIND};
+use dispatch_core::{
     Error, Result,
-    browsers::Collected,
-    collectors::{
-        AddedStorage,
-        cortex::{discovery::Scope, dvic::JOB_KIND},
-    },
+    collection::{browser::Collected, registry::AddedStorage},
     db::{Store, s},
     ensure,
     manifest::Keeper,
-    read_cache::DataDomain,
+    server::cache::DataDomain,
 };
 use serde_json::Value;
 

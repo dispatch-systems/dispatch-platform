@@ -2,10 +2,15 @@
 //! events, returns to station with their contact-compliance notes, and each driver's tiers.
 //! Each reads the week's active publication and answers a count or a short table, as the
 //! route questions do.
-use crate::{
+use crate::scorecard::ScorecardStore;
+use dispatch_core::{
     State,
-    agents::{
+    accounts::api::types::Dsp,
+    db::{Store, s},
+    foundation::weeks,
+    mcp::{
         Caller,
+        api::types::DriverSource,
         data::{
             Answer, Refusal,
             access::{self, Access, Read},
@@ -15,10 +20,6 @@ use crate::{
             shape::{Table, limit, page, paged, understood},
         },
     },
-    contracts::{DriverSource, Dsp},
-    db::{Store, s},
-    scorecard::ScorecardStore,
-    weeks,
 };
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -108,7 +109,7 @@ fn rows(
     date: &str,
     period: &Period,
     drivers: Option<&[String]>,
-) -> crate::Result<Vec<Row>> {
+) -> dispatch_core::Result<Vec<Row>> {
     let station = db.profile(&dsp.id)?.station_code;
     let data = db.scorecard_db(&dsp.id)?;
     let mut sql = format!(
@@ -142,7 +143,7 @@ fn rows(
         .collect())
 }
 /// The Amazon weeks a period touches, and which of them have been posted.
-fn weeks(db: &Store, dsp: &Dsp, period: &Period) -> crate::Result<Value> {
+fn weeks(db: &Store, dsp: &Dsp, period: &Period) -> dispatch_core::Result<Value> {
     let station = db.profile(&dsp.id)?.station_code;
     let mut wanted: BTreeSet<String> = BTreeSet::new();
     let mut day = period.from;
@@ -182,7 +183,7 @@ fn weeks(db: &Store, dsp: &Dsp, period: &Period) -> crate::Result<Value> {
     Ok(json!({"weeks": out}))
 }
 /// The latest scorecard week collected.
-pub fn fresh(db: &Store, dsp: &Dsp, station: &str) -> crate::Result<Option<Value>> {
+pub fn fresh(db: &Store, dsp: &Dsp, station: &str) -> dispatch_core::Result<Option<Value>> {
     let scorecard = db.scorecard_db(&dsp.id)?.one(
         "SELECT max(week) week,max(collected_at) collected_at FROM scorecard_publications \
          WHERE station=? AND active=1 AND scope_verified=1",
@@ -280,7 +281,12 @@ fn first_page(answer: &mut Value, table: Table, query: &Value) -> Result<(), Ref
     Ok(())
 }
 /// Every value a field takes in a dataset's collected weeks, as answers name it.
-fn ever(db: &Store, dsp: &Dsp, table: &str, field: &str) -> crate::Result<BTreeSet<String>> {
+fn ever(
+    db: &Store,
+    dsp: &Dsp,
+    table: &str,
+    field: &str,
+) -> dispatch_core::Result<BTreeSet<String>> {
     let station = db.profile(&dsp.id)?.station_code;
     Ok(db
         .scorecard_db(&dsp.id)?

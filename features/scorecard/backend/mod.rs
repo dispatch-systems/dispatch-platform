@@ -8,23 +8,23 @@ pub mod keeper;
 pub mod people;
 
 use crate::{
-    Error, Result,
-    collectors::{
-        AddedStorage,
-        cortex::{
-            self,
-            discovery::Scope,
-            scorecard::{Capture, Collection, DATASETS, Dataset, Request},
-        },
+    collectors::cortex::{
+        self,
+        discovery::Scope,
+        scorecard::{Capture, Collection, DATASETS, Dataset, Request},
     },
     contracts::{ScorecardDatasetCount, ScorecardPublication, ScorecardWeek, ScorecardWeeks},
-    db::{Db, DspLease, Kind, Store, at, migrations::add_column, now, s},
-    ensure,
-    manifest::Keeper,
-    read_cache::DataDomain,
-    weeks::{last_completed_week, week_or_latest},
 };
 use chrono::NaiveDate;
+use dispatch_core::{
+    Error, Result,
+    collection::registry::AddedStorage,
+    db::{Db, DspLease, Kind, Store, at, migrations::add_column, now, s},
+    ensure,
+    foundation::weeks::{last_completed_week, week_or_latest},
+    manifest::Keeper,
+    server::cache::DataDomain,
+};
 use rusqlite::params;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -223,7 +223,7 @@ impl ScorecardStore for Store {
                 )?;
                 return Ok(());
             }
-            let publication = crate::crypto::id("scorecard")?;
+            let publication = dispatch_core::foundation::crypto::id("scorecard")?;
             db.exec(
                 "INSERT INTO scorecard_publications(id,job_id,week,station,company_id,dsp_code,started_at,\
                  collected_at,active,row_count,adapter_version,scope_verified) VALUES (?,?,?,?,?,?,?,?,0,?,?,1)",

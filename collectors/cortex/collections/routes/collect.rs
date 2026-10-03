@@ -7,19 +7,16 @@
 //! application fetches just that itinerary. An itinerary the application does not
 //! answer for is read by loading its own page instead.
 use super::*;
-use crate::{
-    collectors::cortex::{
-        codes,
-        discovery::Scope,
-        routes::{
-            Capture, Collection, ItineraryCapture, MAX_BODY, MAX_ITINERARIES, Request,
-            add_capture_bytes, listed,
-        },
+use crate::collectors::cortex::{
+    codes,
+    discovery::Scope,
+    routes::{
+        Capture, Collection, ItineraryCapture, MAX_BODY, MAX_ITINERARIES, Request,
+        add_capture_bytes, listed,
     },
-    db::now,
-    job_metrics::Recorder,
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
+use dispatch_core::{collection::metrics::Recorder, db::now};
 use serde::{Deserialize, Serialize};
 use std::{
     future::Future,
@@ -33,10 +30,10 @@ const ITINERARY: &str = "/operations/execution/api/itineraries/";
 const PAGE_DEADLINE: Duration = Duration::from_secs(45);
 /// A move that failed for one of these is read by loading the itinerary's page instead:
 /// the application did not answer, or was between documents.
-const MOVE_FAILED: &[crate::Code] = &[
+const MOVE_FAILED: &[dispatch_core::Code] = &[
     codes::ROUTES_MOVE_UNANSWERED,
-    crate::Code::BrowserNavigationPending,
-    crate::Code::BrowserScriptFailed,
+    dispatch_core::Code::BrowserNavigationPending,
+    dispatch_core::Code::BrowserScriptFailed,
 ];
 /// How long the application may take to answer a move before the page is loaded instead.
 const MOVE_DEADLINE: Duration = Duration::from_secs(20);

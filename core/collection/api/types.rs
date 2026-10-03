@@ -6,7 +6,7 @@ use crate::{
 };
 use serde::Serialize;
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Connection {
     pub provider: String,
@@ -18,7 +18,7 @@ pub struct Connection {
     pub account_label: Option<String>,
     /// The browser session a member can take over, while one waits for them.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub verification_session_id: Option<String>,
 }
 impl FromRow for Connection {
@@ -36,24 +36,24 @@ impl FromRow for Connection {
     }
 }
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CollectionSchedule {
     pub id: String,
     pub name: String,
     pub collection: ScheduleCollection,
     pub cadence: Cadence,
-    #[cfg_attr(test, ts(type = "number | null"))]
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub interval_minutes: Option<i64>,
     pub local_time: String,
     pub enabled: bool,
     pub next_run: Option<String>,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub revision: i64,
     pub last_error: Option<String>,
 }
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CollectionSchedules {
     pub timezone: String,
@@ -61,7 +61,7 @@ pub struct CollectionSchedules {
     pub schedules: Vec<CollectionSchedule>,
 }
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SchedulePreview {
     pub next_run: String,
@@ -69,7 +69,7 @@ pub struct SchedulePreview {
 
 /// A bounded collection change hint. Missing history falls back to `all`.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CollectionChange {
     pub provider: String,
@@ -94,13 +94,13 @@ impl CollectionChange {
     }
 }
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CollectionUpdates {
     pub revision: String,
     pub changes: Vec<CollectionChange>,
 }
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
         pub enum ConnectionStatus {
         NotConnected => "not_connected",
         Ready => "ready",
@@ -159,7 +159,7 @@ impl rusqlite::types::ToSql for ScheduleCollection {
     }
 }
 // Its TypeScript is the union of the registry's collections, in their order.
-#[cfg(test)]
+#[cfg(feature = "ts")]
 impl ts_rs::TS for ScheduleCollection {
     type WithoutGenerics = Self;
     type OptionInnerType = Self;
@@ -189,7 +189,7 @@ impl ts_rs::TS for ScheduleCollection {
     }
 }
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
         pub enum Cadence {
         Interval => "interval",
         Daily => "daily",

@@ -7,9 +7,12 @@ use super::{
 };
 use crate::{
     Result,
-    agents::Caller,
-    contracts::{AgentArea, AgentReads, AgentSource, Dsp},
+    accounts::api::types::Dsp,
     db::Store,
+    mcp::{
+        Caller,
+        api::types::{AgentArea, AgentReads, AgentSource},
+    },
 };
 use serde_json::{Value, json};
 

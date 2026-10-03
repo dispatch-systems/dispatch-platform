@@ -1,24 +1,27 @@
 //! What Paycom and Cortex collected: employees, timecards, meal breaks and the Paycom
 //! preferences, and the jobs and schedules that collect them.
 use crate::{
-    Error, Result,
     collectors::{
         cortex::{self, discovery::Scope},
         paycom,
     },
-    contracts::{CollectionRequest, EmployeeTimecardPeriod, PaycomSettings},
+    contracts::{EmployeeTimecardPeriod, PaycomSettings},
+    workforce::TimecardStore,
+};
+use dispatch_core::{
+    Error, Result,
+    accounts::api::requests::CollectionRequest,
+    collection::api::routes::{
+        connections,
+        jobs::{job_cancel, job_list},
+        schedules::schedule_routes,
+    },
     db::Store,
-    http::{
+    foundation::validate as v,
+    server::http::{
         input::{Input, Reply, descending, optional, optional_text, query_number},
         route::{Dsp, Member, Route, read, write},
-        routes::{
-            connections,
-            jobs::{job_cancel, job_list},
-            schedules::schedule_routes,
-        },
     },
-    validate as v,
-    workforce::TimecardStore,
 };
 use serde_json::json;
 
@@ -107,7 +110,7 @@ fn employee(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         let to = v::text(q, "to", 10, 10)?;
         v::date(from)?;
         v::date(to)?;
-        crate::ensure(from <= to, "invalid_period", 400)?;
+        dispatch_core::ensure(from <= to, "invalid_period", 400)?;
         Some(EmployeeTimecardPeriod {
             from: from.into(),
             to: to.into(),
@@ -188,7 +191,7 @@ fn meal_comparison(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         return Reply::of(&db.meal_comparison(c.dsp_id(), date, c.dsp.timezone.as_str())?);
     }
     let comparison = c.state.read_cache.json(
-        crate::read_cache::Scope::tenant(crate::meals::CACHED, c.dsp_id()),
+        dispatch_core::server::cache::Scope::tenant(crate::meals::CACHED, c.dsp_id()),
         format!("meals:{}:{}:{}", c.dsp_id(), date, c.dsp.timezone),
         c.state
             .data_revision
@@ -246,5 +249,5 @@ fn collect_cortex_meal_breaks(db: &Store, c: &Member, input: &Input) -> Result<R
 
 /// A tab switched off answers as a route that never existed.
 fn tab(c: &Member, id: &str) -> Result<()> {
-    crate::ensure(c.has(id), "not_found", 404)
+    dispatch_core::ensure(c.has(id), "not_found", 404)
 }

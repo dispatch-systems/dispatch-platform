@@ -5,7 +5,7 @@ async fn password_work_is_bounded_without_holding_database_slots() {
     let root = tempfile::tempdir().unwrap();
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
-    let mut config = crate::config::Config::load().unwrap();
+    let mut config = crate::foundation::config::Config::load().unwrap();
     config.root = root.path().into();
     let state = crate::State::new(config).unwrap();
     let mut workers = Vec::new();

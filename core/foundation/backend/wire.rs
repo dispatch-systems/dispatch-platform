@@ -23,7 +23,7 @@ macro_rules! text_enum {
     ($(#[$meta:meta])* $vis:vis enum $name:ident { $($variant:ident => $text:literal,)* }) => {
         #[derive(
             Clone, Copy, Debug, PartialEq, Eq, Hash,
-            $crate::wire::serde::Serialize, $crate::wire::serde::Deserialize,
+            $crate::foundation::wire::serde::Serialize, $crate::foundation::wire::serde::Deserialize,
         )]
         $(#[$meta])*
         $vis enum $name { $(#[serde(rename = $text)] $variant,)* }
@@ -35,19 +35,19 @@ macro_rules! text_enum {
                 match text { $($text => Some(Self::$variant),)* _ => None }
             }
         }
-        impl $crate::wire::rusqlite::types::FromSql for $name {
+        impl $crate::foundation::wire::rusqlite::types::FromSql for $name {
             fn column_result(
-                value: $crate::wire::rusqlite::types::ValueRef<'_>,
-            ) -> $crate::wire::rusqlite::types::FromSqlResult<Self> {
+                value: $crate::foundation::wire::rusqlite::types::ValueRef<'_>,
+            ) -> $crate::foundation::wire::rusqlite::types::FromSqlResult<Self> {
                 value.as_str().and_then(|text| {
-                    Self::parse(text).ok_or($crate::wire::rusqlite::types::FromSqlError::InvalidType)
+                    Self::parse(text).ok_or($crate::foundation::wire::rusqlite::types::FromSqlError::InvalidType)
                 })
             }
         }
-        impl $crate::wire::rusqlite::types::ToSql for $name {
+        impl $crate::foundation::wire::rusqlite::types::ToSql for $name {
             fn to_sql(
                 &self,
-            ) -> $crate::wire::rusqlite::Result<$crate::wire::rusqlite::types::ToSqlOutput<'_>> {
+            ) -> $crate::foundation::wire::rusqlite::Result<$crate::foundation::wire::rusqlite::types::ToSqlOutput<'_>> {
                 Ok(self.as_str().into())
             }
         }

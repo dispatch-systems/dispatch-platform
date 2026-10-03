@@ -1,5 +1,5 @@
 //! Only the explicitly configured, local Cloudflare Tunnel may supply client IPs.
-use super::{Error, Result};
+use crate::{Error, Result};
 use axum::http::HeaderMap;
 use std::net::IpAddr;
 

@@ -4,10 +4,10 @@
 use super::clients;
 use crate::{
     Result,
-    contracts::AgentReads,
     db::{Store, now, s},
-    mail::templates::{self as email, ConnectedApp},
-    observability,
+    foundation::observability,
+    mcp::api::types::AgentReads,
+    server::mail::templates::{self as email, ConnectedApp},
 };
 use serde_json::json;
 

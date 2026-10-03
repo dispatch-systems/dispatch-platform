@@ -11,7 +11,7 @@ struct Record {
     manual: bool,
     recover: bool,
 }
-pub(super) struct Attempts {
+pub struct Attempts {
     path: PathBuf,
     record: Record,
 }

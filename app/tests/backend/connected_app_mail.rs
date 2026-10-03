@@ -1,6 +1,6 @@
 //! The mail that describes a connected app, which reads every registered feature's areas.
-use crate::contracts::{AgentArea, AgentReads};
-use crate::mail::templates::*;
+use dispatch_core::mcp::api::types::{AgentArea, AgentReads};
+use dispatch_core::server::mail::templates::*;
 fn connected<'a>(known: bool, dsps: &'a [String], reads: &'a AgentReads) -> ConnectedApp<'a> {
     ConnectedApp {
         origin: "https://dispatch.test",

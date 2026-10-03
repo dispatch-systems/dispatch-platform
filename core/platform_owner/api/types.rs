@@ -1,44 +1,44 @@
 use crate::{
-    config::{Environment, ProviderMode},
-    contracts::JobStatus,
+    collection::api::jobs::JobStatus,
+    foundation::config::{Environment, ProviderMode},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserAdmission {
-    #[cfg_attr(test, ts(type = "number | null"))]
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub available_bytes: Option<u64>,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub required_bytes: u64,
     pub can_start: bool,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct BrowserHealth {
     pub active: usize,
     pub capacity: usize,
     pub memory: BrowserAdmission,
 }
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct TransportHealth {
     pub error: Option<String>,
     pub checked_at: Option<String>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MailHealth {
     pub enabled: bool,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub pending: i64,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub failed: i64,
-    #[cfg_attr(test, ts(type = "number | null"))]
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub oldest_pending_age_ms: Option<i64>,
     pub last_success_at: Option<String>,
     pub last_attempt_at: Option<String>,
@@ -47,14 +47,14 @@ pub struct MailHealth {
 }
 /// One feature switched for a DSP, by the platform owner or by a dependency.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct FeatureChange {
     pub feature: String,
     pub enabled: bool,
 }
 /// One feature of a DSP: whether it has it, and who last switched it and when.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct FeatureState {
     pub feature: String,
@@ -64,31 +64,31 @@ pub struct FeatureState {
 }
 /// A DSP's features, with what switching its schedules' page off would stop.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DspFeatureReport {
     pub features: Vec<FeatureState>,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub schedules: i64,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub active_jobs: i64,
 }
 /// A DSP's features after a switch: what it has now, and what the switch changed.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct DspFeatures {
     pub features: Vec<String>,
     pub changed: Vec<FeatureChange>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PlatformHealth {
     pub environment: Environment,
     pub release: String,
     pub jobs: BTreeMap<JobStatus, u32>,
     pub browsers: BrowserHealth,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub dsps: i64,
     pub email: bool,
     pub mail: MailHealth,

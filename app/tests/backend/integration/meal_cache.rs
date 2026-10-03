@@ -1,14 +1,12 @@
 //! The meal-break page's cache and live results over HTTP, against the real router served
 //! in-process over a loopback socket: Timecard's page, Paycom's live collection and core's
 //! cache and leases together.
-use dispatch_backend::{
+use dispatch_backend::{collectors::paycom, workforce::TimecardStore};
+use dispatch_core::{
     State,
-    collectors::paycom,
-    config::Config,
-    crypto,
     db::{self, Store, s},
-    operations,
-    workforce::TimecardStore,
+    foundation::{config::Config, crypto},
+    server::operations,
 };
 use serde_json::{Value, json};
 use std::{os::unix::fs::PermissionsExt, sync::Arc};
@@ -94,7 +92,7 @@ impl Server {
         config.origin = format!("http://127.0.0.1:{port}");
         operations::seed(&Store::initialize(config.clone()).unwrap()).unwrap();
         let state = State::new(config).unwrap();
-        let app = dispatch_backend::http::router(state.clone())
+        let app = dispatch_core::server::http::router(state.clone())
             .into_make_service_with_connect_info::<std::net::SocketAddr>();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Self {

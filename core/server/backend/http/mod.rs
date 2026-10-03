@@ -1,23 +1,19 @@
-//! The HTTP layer. `routes` lists core's endpoints next to their handlers and every
-//! feature's from its manifest, `route` is how they are registered, `middleware` is what
-//! every request passes through, and whatever matches no route is an asset or `unmatched`.
-#[path = "assets.rs"]
+//! The HTTP layer. `table` lists core's endpoints, each part's next to its handlers in its
+//! `api/`, then every feature's from its manifest; `route` is how they are registered,
+//! `middleware` is what every request passes through, and whatever matches no route is an
+//! asset or `unmatched`.
 mod assets;
-#[path = "input.rs"]
 pub mod input;
-#[path = "middleware.rs"]
-mod middleware;
-#[path = "route.rs"]
+pub(crate) mod middleware;
+pub mod proxy;
 pub mod route;
-#[path = "../../../../app/backend/routes.rs"]
-pub(crate) mod routes;
-#[path = "unmatched.rs"]
 mod unmatched;
 
 pub use assets::{Asset, assets, browser_update_ready};
 pub use route::{Access, Route, Work, needs_recent_verification};
+pub use unmatched::unmatched_areas;
 
-use crate::{State, observability};
+use crate::{State, foundation::observability, manifest::registry};
 use axum::{
     Router,
     extract::{Request, State as AxumState},
@@ -30,9 +26,24 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-/// Every registered route. `app/tests/backend/integration/http_routes.rs` holds the expected list.
+/// Every registered route: core's, then every registered feature's, in the registry's order.
+/// `app/tests/backend/integration/http_routes.rs` holds the expected list.
 pub fn table() -> Vec<Route> {
-    routes::all()
+    use crate::{accounts, collection, mcp, platform_owner, server, tenancy};
+    let core = [
+        server::api::routes::routes(),
+        accounts::api::routes::sign_in::routes(),
+        accounts::api::routes::security::routes(),
+        tenancy::api::routes::routes(),
+        platform_owner::api::routes::platform::routes(),
+        mcp::api::routes::agent_api::routes(),
+        mcp::api::routes::oauth::routes(),
+        collection::api::routes::jobs::routes(),
+        collection::api::routes::connections::routes(),
+        platform_owner::api::routes::audit::routes(),
+    ];
+    let features = registry().features.iter().map(|feature| (feature.routes)());
+    core.into_iter().chain(features).flatten().collect()
 }
 
 /// The route the request log names a request by until its route reads it: a logged route's

@@ -1,8 +1,8 @@
 use super::{actor_name, advance};
-use crate::{
+use crate::contracts::UniformAdjustment;
+use dispatch_core::{
     Error, Result,
     accounts::Context,
-    contracts::UniformAdjustment,
     db::{Store, iso},
     ensure,
 };

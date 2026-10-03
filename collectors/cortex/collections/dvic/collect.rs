@@ -1,15 +1,15 @@
 use super::*;
-use crate::{
-    browsers::http::{FIXTURE, Http, Refusal},
-    collectors::cortex::{
-        self,
-        discovery::Scope,
-        dvic::{self, Capture, Collection, KnownReport, Report, Request},
-    },
+use crate::collectors::cortex::{
+    self,
+    discovery::Scope,
+    dvic::{self, Capture, Collection, KnownReport, Report, Request},
+};
+use chrono::NaiveDate;
+use dispatch_core::{
+    collection::browser::http::{FIXTURE, Http, Refusal},
     db::now,
     manifest::registry,
 };
-use chrono::NaiveDate;
 use std::collections::{HashMap, HashSet};
 
 pub const REPORT_HOST: &str = "flex-peer-performance-reports-prod-usamazon.s3.amazonaws.com";

@@ -1,7 +1,7 @@
 //! DVIC's part of the agent catalog: its endpoint, its metrics for team_table and the
 //! words its answers use.
 use super::{DVIC, views};
-use crate::agents::data::catalog::{
+use dispatch_core::mcp::data::catalog::{
     CURSOR, DATE, DETAIL, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param, TO, Term,
 };
 

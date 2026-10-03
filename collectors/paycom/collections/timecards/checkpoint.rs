@@ -1,10 +1,11 @@
 //! Host-owned, unpublished Paycom progress. Workers never receive storage paths.
-use crate::{
+use crate::collectors::paycom::{self, validation::validate_workforce};
+use dispatch_core::{
     Result, State,
-    collectors::paycom::{self, validation::validate_workforce},
-    crypto,
+    collection::live,
     db::{self, Db, Store, n, s},
-    ensure, live_collection,
+    ensure,
+    foundation::crypto,
 };
 use rusqlite::params;
 use serde_json::{Value, json};
@@ -81,7 +82,7 @@ pub fn stage_paycom_page(
         for key in ["name", "department", "station"] {
             data[key] = employee[key].clone();
         }
-        live_collection::stage_item(
+        live::stage_item(
             db,
             job,
             owner,
@@ -129,7 +130,7 @@ impl Checkpoint {
         let state = self.state.clone();
         let (dsp, resume) = self.state.run_bookkeeping(move |db| {
             let dsp=db.guard(&job,&owner)?;
-            state.read_cache.invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::LIVE);
+            state.read_cache.invalidate_tenant(&dsp.id, dispatch_core::server::cache::DataDomain::LIVE);
             let row=db.job_row(&job,None)?;
             ensure(row.kind.as_str()==paycom::PROVIDER.job_kind(),"unsupported_collector",409)?;
             let tenant=dsp.id.as_str();
@@ -172,7 +173,9 @@ impl Checkpoint {
         }).await?;
         self.state.updates.changed(
             &dsp,
-            crate::contracts::CollectionChange::provider(paycom::PROVIDER.id()),
+            dispatch_core::collection::api::types::CollectionChange::provider(
+                paycom::PROVIDER.id(),
+            ),
         );
         Ok(resume)
     }
@@ -184,7 +187,7 @@ impl Checkpoint {
         records: &[Value],
     ) -> Result<()> {
         validate_page(employee, period, records)?;
-        let change = crate::contracts::CollectionChange {
+        let change = dispatch_core::collection::api::types::CollectionChange {
             provider: paycom::PROVIDER.id().into(),
             dates: records.iter().map(|r| s(r, "date").to_owned()).collect(),
             employee_code: Some(s(employee, "code").to_owned()),
@@ -205,7 +208,7 @@ impl Checkpoint {
                 let dsp = db.guard(&job, &owner)?;
                 state
                     .read_cache
-                    .invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::LIVE);
+                    .invalidate_tenant(&dsp.id, dispatch_core::server::cache::DataDomain::LIVE);
                 let row = db.job_row(&job, None)?;
                 let storage = db.collector(&dsp.id, paycom::PROVIDER)?;
                 // Save resume data and visible results with one transaction per driver.
@@ -230,7 +233,7 @@ impl Checkpoint {
                     )?;
                     // Expiry limits resume reuse, not validated live visibility. An old
                     // checkpoint token must never write into a replacement run.
-                    if live_collection::run_marked(&storage, &job, "checkpointToken", &token)? {
+                    if live::run_marked(&storage, &job, "checkpointToken", &token)? {
                         stage_paycom_page(&storage, &job, &owner, &employee, &records)?;
                     }
                     Ok(())
@@ -245,14 +248,14 @@ impl Checkpoint {
 fn validate_page(employee: &Value, period: &Value, records: &[Value]) -> Result<()> {
     ensure(records.len() == 14, "invalid_checkpoint", 502)?;
     let start = chrono::NaiveDate::parse_from_str(s(period, "start"), "%Y-%m-%d")
-        .map_err(|_| crate::Error::new("invalid_checkpoint", 502))?;
+        .map_err(|_| dispatch_core::Error::new("invalid_checkpoint", 502))?;
     for (index, record) in records.iter().enumerate() {
         ensure(
             record["employeeCode"] == employee["code"]
                 && s(record, "date")
                     == start
                         .checked_add_signed(chrono::Duration::days(index as i64))
-                        .ok_or_else(|| crate::Error::new("invalid_checkpoint", 502))?
+                        .ok_or_else(|| dispatch_core::Error::new("invalid_checkpoint", 502))?
                         .format("%Y-%m-%d")
                         .to_string(),
             "invalid_checkpoint",

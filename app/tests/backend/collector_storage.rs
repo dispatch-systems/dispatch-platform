@@ -1,11 +1,14 @@
 //! Collector storage that holds Timecard's tables: what startup does with a DSP's Paycom
 //! and Cortex databases, read through the tables Timecard keeps in them.
 use crate::{
-    collectors::{cortex, database_path, paycom},
-    config::Config,
-    db::{self, Db, Store},
-    operations,
+    collectors::{cortex, paycom},
     workforce::{self, TimecardStore},
+};
+use dispatch_core::{
+    collection::registry::database_path,
+    db::{self, Db, Store},
+    foundation::config::Config,
+    server::operations,
 };
 use paycom::fixtures;
 use serde_json::{Value, json};
@@ -20,7 +23,7 @@ fn platform() -> (tempfile::TempDir, Store) {
     (root, store)
 }
 fn pending(store: &Store) -> String {
-    let id = crate::crypto::id("dsp").unwrap();
+    let id = dispatch_core::foundation::crypto::id("dsp").unwrap();
     store
         .platform
         .exec(

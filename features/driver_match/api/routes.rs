@@ -1,15 +1,15 @@
 //! Driver Match: every person the DSP's collections know, and the decisions that join or
 //! part them. The tab lives in Settings; the feature switch and its one permission gate it.
-use crate::{
+use crate::driver_match::DriverMatchStore;
+use dispatch_core::{
     Result,
-    contracts::DriverSource,
     db::Store,
-    driver_match::DriverMatchStore,
-    http::{
+    foundation::validate as v,
+    mcp::api::types::DriverSource,
+    server::http::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, read, write},
     },
-    validate as v,
 };
 
 const MANAGE: Dsp = Dsp("driver_match.manage");

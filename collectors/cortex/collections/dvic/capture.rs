@@ -4,8 +4,11 @@
 pub mod xlsx;
 
 use super::discovery::{CollectionRequest as ScopeRequest, Discovery, Scope};
-use crate::{Error, Result, ensure, validate, weeks};
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime};
+use dispatch_core::{
+    Error, Result, ensure,
+    foundation::{validate, weeks},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -191,7 +194,7 @@ fn timestamp(value: &str) -> Result<NaiveDateTime> {
         .map_err(|_| Error::new("dvic_row_invalid", 502))
 }
 pub fn hash(bytes: &[u8]) -> String {
-    crate::crypto::hex(&Sha256::digest(bytes))
+    dispatch_core::foundation::crypto::hex(&Sha256::digest(bytes))
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -390,7 +393,7 @@ pub fn fixture(request: &Request) -> Result<Capture> {
             rows: Some(rows),
         });
     }
-    let now = crate::db::now();
+    let now = dispatch_core::db::now();
     let capture = Capture {
         version: 1,
         collection: Collection::Dvic,

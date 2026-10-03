@@ -1,15 +1,14 @@
 //! Employee timecards: calendar navigation and explicitly scoped collections.
 use crate::{
-    Error, Result,
     collectors::paycom::{self, timecards::PERIOD_DAYS},
     contracts::{EmployeeTimecardPeriod, EmployeeTimecardResponse, Timecard},
+    workforce::{TimecardStore, cards, sync::synced_cards},
+};
+use dispatch_core::{
+    Error, Result,
     db::{Store, boolean, s},
     ensure,
-    names::display_name,
-    validate as v,
-    workforce::TimecardStore,
-    workforce::cards,
-    workforce::sync::synced_cards,
+    foundation::{names::display_name, validate as v},
 };
 use rusqlite::params;
 use serde_json::{Value, json};

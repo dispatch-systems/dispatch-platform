@@ -1,14 +1,16 @@
 //! Signing in and out, and changing or recovering a password.
 use crate::{
     Result, State,
-    accounts::SessionLifetime,
-    contracts::{LoginRequest, PasswordRequest, ResetRequest},
+    accounts::{
+        SessionLifetime,
+        api::requests::{LoginRequest, PasswordRequest, ResetRequest},
+    },
     db::Store,
-    http::{
+    foundation::validate as v,
+    server::http::{
         input::{Input, Reply},
         route::{Grant, Public, Route, Session, User, async_post, write},
     },
-    validate as v,
 };
 use std::sync::Arc;
 
@@ -55,7 +57,7 @@ async fn change_password(state: Arc<State>, input: Input, access: Session) -> Re
 
 async fn forgot_password(state: Arc<State>, input: Input, _: Public) -> Result<Reply> {
     let started = std::time::Instant::now();
-    let jitter = u16::from_le_bytes(crate::crypto::random::<2>()?) % 50;
+    let jitter = u16::from_le_bytes(crate::foundation::crypto::random::<2>()?) % 50;
     let result = async {
         let b = &input.body;
         v::fields(b, &["email"])?;
@@ -68,7 +70,7 @@ async fn forgot_password(state: Arc<State>, input: Input, _: Public) -> Result<R
                 if let Err(error) = db.recovery(&email) {
                     // Account-specific queue state must not change the public response. Operators
                     // still receive the sanitized failure through the structured event stream.
-                    crate::observability::event(
+                    crate::foundation::observability::event(
                         "error",
                         "account.recovery_failed",
                         serde_json::json!({"error":error.code}),

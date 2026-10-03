@@ -1,4 +1,4 @@
-use dispatch_backend::schedules;
+use dispatch_core::collection::schedules;
 
 #[test]
 fn schedule_handles_dst_gaps_and_repeated_minutes() {

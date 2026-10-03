@@ -1,9 +1,8 @@
 use crate::{
     Error, Result, State,
-    config::Config,
-    crypto,
     db::{self, n, s},
     ensure,
+    foundation::{config::Config, crypto},
 };
 use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
@@ -34,7 +33,7 @@ pub async fn mailer(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<bo
                 }
                 Err(error) => {
                     super::transport_status(&state, Some(&error.code));
-                    crate::observability::event(
+                    crate::foundation::observability::event(
                         "error",
                         "mail.transport_failed",
                         json!({"error":error.code,"mode":state.config.mail_mode}),
@@ -57,7 +56,7 @@ pub async fn mailer(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<bo
         let rows = match pending {
             Ok(rows) => rows,
             Err(error) => {
-                crate::observability::event(
+                crate::foundation::observability::event(
                     "error",
                     "mail.queue_failed",
                     json!({"error":error.code}),
@@ -86,7 +85,7 @@ pub async fn mailer(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<bo
             let error = result.err().map(|e| e.code);
             let id = s(&row, "id").to_owned();
             let attempts = n(&row, "attempts");
-            crate::observability::event(
+            crate::foundation::observability::event(
                 if error.is_some() { "warn" } else { "info" },
                 "mail.delivery",
                 json!({"mailId":id,"attempt":attempts+1,"error":error}),
@@ -98,7 +97,7 @@ pub async fn mailer(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<bo
                 .await
             {
                 again = false;
-                crate::observability::event(
+                crate::foundation::observability::event(
                     "error",
                     "mail.record_failed",
                     json!({"error":error.code}),

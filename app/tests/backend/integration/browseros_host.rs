@@ -1,6 +1,6 @@
 //! Synthetic acceptance checks against the same worker binary shipped in artifacts.
 use base64::{Engine, engine::general_purpose::STANDARD};
-use dispatch_backend::browsers::browseros::{Mode, NetworkPolicy, Runtime, Session};
+use dispatch_core::collection::browser::browseros::{Mode, NetworkPolicy, Runtime, Session};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -90,7 +90,7 @@ async fn wait(session: &Session, page: &str, expression: &str) -> Result<Value> 
         loop {
             let value = session.evaluate(page, expression).await?;
             if value != false && !value.is_null() {
-                return Ok::<_, dispatch_backend::Error>(value);
+                return Ok::<_, dispatch_core::Error>(value);
             }
             tokio::time::sleep(Duration::from_millis(25)).await;
         }

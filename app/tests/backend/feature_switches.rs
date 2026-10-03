@@ -1,11 +1,11 @@
 //! Feature switches over the catalog of every registered feature's pages and tabs.
-use crate::{contracts::DspFeatures, db::Store, features::*};
+use dispatch_core::{db::Store, platform_owner::api::types::DspFeatures, tenancy::catalog::*};
 #[test]
 fn a_new_dsp_starts_with_no_features_and_a_demo_dsp_with_all() {
     use std::os::unix::fs::PermissionsExt;
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
-    let mut config = crate::config::Config::load().unwrap();
+    let mut config = dispatch_core::foundation::config::Config::load().unwrap();
     config.root = root.path().into();
     let db = Store::initialize(config).unwrap();
     let owner = db
@@ -28,7 +28,7 @@ fn a_tab_follows_its_page_and_the_last_one_takes_the_page() {
     use std::os::unix::fs::PermissionsExt;
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
-    let mut config = crate::config::Config::load().unwrap();
+    let mut config = dispatch_core::foundation::config::Config::load().unwrap();
     config.root = root.path().into();
     let db = Store::initialize(config).unwrap();
     let owner = db
@@ -87,7 +87,7 @@ fn the_catalog_is_consistent() {
     for feature in all {
         for permission in feature.permissions {
             assert!(
-                crate::roles::PERMISSIONS.contains(permission),
+                dispatch_core::tenancy::roles::PERMISSIONS.contains(permission),
                 "{permission} is not a permission"
             );
             assert!(!owned.contains(permission), "{permission} has two features");

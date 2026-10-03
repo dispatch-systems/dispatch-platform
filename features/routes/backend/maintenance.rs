@@ -1,10 +1,10 @@
 //! Routes' upkeep: retiring route data past each DSP's retention window, and deleting what
 //! no reader sees any more.
-use crate::{
+use crate::routedata::RoutesStore;
+use dispatch_core::{
     Error, State,
+    foundation::observability,
     manifest::{Maintenance, Upkeep},
-    observability,
-    routedata::RoutesStore,
 };
 use serde_json::json;
 use std::{sync::Arc, time::Duration};

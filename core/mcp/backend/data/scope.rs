@@ -6,12 +6,14 @@ use super::{
 };
 use crate::{
     Result, State,
-    agents::Caller,
-    contracts::{AgentArea, AgentSource, DriverSource, DriverStatus, Dsp},
+    accounts::api::types::Dsp,
     db::Store,
+    foundation::{names::name_key, weeks},
     manifest::registry,
-    names::name_key,
-    weeks,
+    mcp::{
+        Caller,
+        api::types::{AgentArea, AgentSource, DriverSource, DriverStatus},
+    },
 };
 use chrono::{Datelike, Duration, NaiveDate};
 use serde::Serialize;
@@ -360,7 +362,7 @@ impl People {
             .data_revision
             .load(std::sync::atomic::Ordering::Relaxed);
         let matched: Vec<Identity> = state.read_cache.read(
-            crate::read_cache::Scope::tenant(crate::read_cache::PEOPLE, dsp),
+            crate::server::cache::Scope::tenant(crate::server::cache::PEOPLE, dsp),
             format!("agent-people:{dsp}"),
             revision,
             || identities(db, dsp),

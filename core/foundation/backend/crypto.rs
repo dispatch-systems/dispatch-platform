@@ -1,4 +1,4 @@
-use super::{Error, Result, ensure};
+use crate::{Error, Result, ensure};
 use aes_gcm::{
     Aes256Gcm, KeyInit, Nonce,
     aead::{Aead, Payload},

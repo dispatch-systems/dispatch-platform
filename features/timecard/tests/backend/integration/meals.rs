@@ -1,15 +1,14 @@
-#[path = "../../../../../core/db/tests/support/common.rs"]
-mod common;
 use dispatch_backend::{
     collectors::cortex::{
         self,
         discovery::Scope,
         meals::{self, Coverage, Meal},
     },
-    db::{now, s},
     meals::comparison_meal,
     workforce::TimecardStore,
 };
+use dispatch_core::db::{now, s};
+use dispatch_core::testing as common;
 use serde_json::json;
 
 /// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
@@ -117,7 +116,7 @@ fn itinerary_page_links_are_stored_returned_and_bound_to_the_route() {
     let scope = scope();
     let mut c = meals::fixture(&scope);
     db.publish_meals(&id, "job-unlinked", &c, &scope).unwrap();
-    let meal = |db: &dispatch_backend::db::Store| {
+    let meal = |db: &dispatch_core::db::Store| {
         db.meal_comparison(&id, &scope.date, &scope.timezone)
             .map(|value| serde_json::to_value(value).unwrap())
             .unwrap()["rows"][0]["cortex"][0]
@@ -166,7 +165,7 @@ fn deliveries_open_the_route_at_the_stop_that_held_them() {
         scope.detail_path("fixture-itinerary")
     );
     c.itineraries[0].source_url = Some(url.clone());
-    let meal = |db: &dispatch_backend::db::Store| {
+    let meal = |db: &dispatch_core::db::Store| {
         db.meal_comparison(&id, &scope.date, &scope.timezone)
             .map(|value| serde_json::to_value(value).unwrap())
             .unwrap()["rows"][0]["cortex"][0]

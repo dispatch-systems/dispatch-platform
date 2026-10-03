@@ -1,16 +1,15 @@
-pub use crate::contracts::TransportHealth;
+pub use crate::platform_owner::api::types::TransportHealth;
 use crate::{
     Result, State,
-    contracts::{MailHealth, MailMessage},
+    accounts::api::types::MailMessage,
     db::{self, Store, n},
     ensure,
+    platform_owner::api::types::MailHealth,
 };
 use rusqlite::params;
 use std::collections::HashMap;
 
-#[path = "delivery.rs"]
 mod delivery;
-#[path = "templates.rs"]
 pub mod templates;
 pub use delivery::mailer;
 

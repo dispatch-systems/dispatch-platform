@@ -31,15 +31,17 @@ const owned = (dir: string, pattern: RegExp) =>
     .map((name) => `${dir}/${name}`)
     .filter((file) => pattern.test(file))
     .sort();
-/** The app crate's integration targets whose file sits under `dir`. */
-const targets = (dir: string) =>
+/** A crate's integration targets whose file sits under `dir`: the app crate's by default. */
+const targets = (dir: string, manifest = 'app/backend/Cargo.toml') =>
   fs
-    .readFileSync('app/backend/Cargo.toml', 'utf8')
+    .readFileSync(manifest, 'utf8')
     .split('[[test]]')
     .slice(1)
     .map((block) => ({
       name: /name = "([^"]+)"/.exec(block)![1]!,
-      file: path.posix.normalize(`app/backend/${/path = "([^"]+)"/.exec(block)![1]}`),
+      file: path.posix.normalize(
+        `${path.posix.dirname(manifest)}/${/path = "([^"]+)"/.exec(block)![1]}`,
+      ),
     }))
     .filter(({ file }) => file.startsWith(`${dir}/`))
     .map(({ name }) => name);
@@ -95,8 +97,11 @@ test("a collector's list runs its sharded native suites through their shards and
 test("a core part's list names its integration tests, API tests and browser specs", () => {
   const { status, commands } = list('core', 'accounts');
   assert.equal(status, 0);
-  assert.deepEqual(targets('core/accounts'), ['accounts']);
-  assert.equal(commands[0], 'cargo test --locked -p dispatch-backend --test accounts');
+  assert.deepEqual(targets('core/accounts', 'core/Cargo.toml'), ['accounts']);
+  assert.deepEqual(commands.slice(0, 2), [
+    'cargo test --locked -p dispatch-core --lib -- accounts::',
+    'cargo test --locked -p dispatch-core --test accounts',
+  ]);
   const api = owned('core/accounts/tests/api', /\.test\.ts$/);
   assert(api.includes('core/accounts/tests/api/api-sign-in.test.ts'));
   assert(commands.includes(`node node_modules/tsx/dist/cli.mjs --test ${api.join(' ')}`));

@@ -5,7 +5,7 @@ use super::{
     Refusal,
     scope::{Period, param, today},
 };
-use crate::contracts::Dsp;
+use crate::accounts::api::types::Dsp;
 use serde_json::{Map, Value, json};
 
 /// The most an answer may weigh, in bytes of JSON: about 8,000 tokens, under every agent's
@@ -37,7 +37,7 @@ impl Table {
     pub fn push(&mut self, row: Vec<Value>) {
         self.rows.push(row);
     }
-    pub(crate) fn value(&self, rows: &[Vec<Value>]) -> Value {
+    pub fn value(&self, rows: &[Vec<Value>]) -> Value {
         json!({"columns": self.columns, "rows": rows})
     }
 }

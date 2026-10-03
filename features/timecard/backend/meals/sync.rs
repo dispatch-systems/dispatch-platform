@@ -1,14 +1,14 @@
 //! Queue both sources together; a missing connection/scope cannot start half a sync.
-use crate::{
-    Result,
-    collectors::{
-        Provider,
-        cortex::{
-            self,
-            discovery::{Discovery, Scope},
-        },
-        paycom::{self, validation::collection_date},
+use crate::collectors::{
+    cortex::{
+        self,
+        discovery::{Discovery, Scope},
     },
+    paycom::{self, validation::collection_date},
+};
+use dispatch_core::{
+    Result,
+    collection::registry::Provider,
     db::{Store, s},
     ensure,
 };
@@ -62,7 +62,7 @@ fn sync_source(store: &Store, id: &str, date: &str, provider: Provider) -> Resul
             latest = failed;
         }
     }
-    let collected = crate::manifest::registry()
+    let collected = dispatch_core::manifest::registry()
         .keeper(kind)
         .collected_at(store, id, date)?;
     let job = active.or(latest);
@@ -81,7 +81,7 @@ fn sync_source(store: &Store, id: &str, date: &str, provider: Provider) -> Resul
 pub(crate) fn meal_sync_status(store: &Store, id: &str, date: &str) -> Result<Value> {
     // Reading a calendar date is valid even when the viewer is a day ahead
     // of the DSP. Collection still validates each provider's business date.
-    crate::validate::date(date)?;
+    dispatch_core::foundation::validate::date(date)?;
     let discovery = meal_sync_discovery(store, id, date)?;
     let station_available = (3..=8).contains(&discovery.station.len())
         && discovery

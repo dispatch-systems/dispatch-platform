@@ -1,5 +1,5 @@
 //! What a handler receives and what it answers with.
-use crate::{Error, Result, accounts::SessionLifetime, ensure, validate as v};
+use crate::{Error, Result, accounts::SessionLifetime, ensure, foundation::validate as v};
 use axum::{
     Json,
     body::Bytes,
@@ -16,7 +16,7 @@ pub struct Input {
     pub body: Value,
     pub query: Value,
     pub ip: String,
-    pub trace: crate::observability::RequestTrace,
+    pub trace: crate::foundation::observability::RequestTrace,
     // The registered pattern, whose `{name}` segments name the path parameters.
     pub(super) pattern: &'static str,
 }
@@ -100,7 +100,7 @@ impl Reply {
         }
     }
     /// JSON already serialized by a trusted response producer, never raw request input.
-    pub(crate) fn encoded(value: Bytes) -> Self {
+    pub fn encoded(value: Bytes) -> Self {
         Self {
             value: Payload::Encoded(value),
             status: 200,
@@ -147,7 +147,7 @@ impl Reply {
             "{name}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0{secure}"
         ))
     }
-    pub(super) fn cookie(mut self, cookie: String) -> Self {
+    pub(crate) fn cookie(mut self, cookie: String) -> Self {
         self.cookie = Some(cookie);
         self
     }

@@ -9,9 +9,9 @@
 use super::data::catalog;
 use crate::{
     Result, State,
-    contracts::{AgentActivity, AgentActivityKey, AgentActivityPage, AgentDsp},
     db::{FromRow, Row, Store, now},
-    observability::{self, RequestTrace},
+    foundation::observability::{self, RequestTrace},
+    mcp::api::types::{AgentActivity, AgentActivityKey, AgentActivityPage, AgentDsp},
 };
 use rusqlite::params;
 use serde_json::json;

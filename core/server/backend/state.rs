@@ -1,7 +1,11 @@
 //! What the server shares across requests and background tasks.
 use crate::{
-    Error, Result, agents, browsers, collectors, config, db, http, live_updates, mail,
-    observability, presence, read_cache,
+    Error, Result,
+    collection::{browser, registry},
+    db,
+    foundation::{config, observability},
+    mcp,
+    server::{cache, http, live, mail, presence},
 };
 use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::Semaphore;
@@ -9,7 +13,7 @@ use tokio::sync::Semaphore;
 enum CacheChange {
     All,
     Bookkeeping,
-    Tenant(String, read_cache::DataDomain),
+    Tenant(String, cache::DataDomain),
 }
 
 pub struct State {
@@ -21,25 +25,25 @@ pub struct State {
     // Serializes short state transitions across the platform, jobs and tenant databases.
     pub transition: RwLock<()>,
     pub pool: Mutex<Vec<db::Store>>,
-    pub read_cache: read_cache::ReadCache,
+    pub read_cache: cache::ReadCache,
     pub data_revision: std::sync::atomic::AtomicU64,
     pub schedule_revision: std::sync::atomic::AtomicU64,
     pub password_slots: Arc<Semaphore>,
     pub mail_transport: Mutex<mail::TransportHealth>,
     // Wakes the mailer when a request queues mail, instead of it waiting for its next tick.
     pub mail_wake: tokio::sync::Notify,
-    pub browsers: browsers::Manager,
-    pub updates: live_updates::Updates,
-    pub uniform_updates: live_updates::Updates,
+    pub browsers: browser::Manager,
+    pub updates: live::Updates,
+    pub uniform_updates: live::Updates,
     pub presence: presence::Presence,
     // How much each agent key is used, until the scheduler writes it down.
-    pub agents: agents::Usage,
+    pub agents: mcp::Usage,
     // The calls agents made, until the scheduler writes them down.
-    pub activity: agents::Activity,
+    pub activity: mcp::Activity,
     // The known apps' client documents, as last fetched.
-    pub oauth: agents::oauth::Documents,
+    pub oauth: mcp::oauth::Documents,
     // Public OAuth requests admitted before they can consume database capacity.
-    pub oauth_limits: agents::oauth::limits::Limits,
+    pub oauth_limits: mcp::oauth::limits::Limits,
 }
 impl State {
     /// Reads the registry, which the app installs before it builds one.
@@ -49,13 +53,13 @@ impl State {
             "SELECT id FROM dsps WHERE status IN ('active','suspended')",
             [],
         )? {
-            for provider in collectors::Provider::all() {
+            for provider in registry::Provider::all() {
                 store.collector(db::s(&dsp, "id"), provider)?.exec("UPDATE connections SET \
                     status='error',error='verification_expired' WHERE status IN ('signing_in','needs_verification')",[])?;
             }
         }
         // Each key's calls recorded today, so a restart keeps its daily cap.
-        let activity = agents::Activity::seeded(&store)?;
+        let activity = mcp::Activity::seeded(&store)?;
         Ok(Arc::new(Self {
             key: store.key.clone(),
             assets: http::assets(&config.dashboard, &config.release)?,
@@ -64,20 +68,20 @@ impl State {
             db_queue: Arc::new(Semaphore::new(64)),
             transition: RwLock::new(()),
             pool: Mutex::new(vec![store]),
-            read_cache: read_cache::ReadCache::default(),
+            read_cache: cache::ReadCache::default(),
             data_revision: std::sync::atomic::AtomicU64::new(0),
             schedule_revision: std::sync::atomic::AtomicU64::new(0),
             password_slots: Arc::new(Semaphore::new(2)),
             mail_transport: Mutex::new(mail::TransportHealth::default()),
             mail_wake: tokio::sync::Notify::new(),
-            browsers: browsers::Manager::default(),
-            updates: live_updates::Updates::new()?,
-            uniform_updates: live_updates::Updates::new()?,
+            browsers: browser::Manager::default(),
+            updates: live::Updates::new()?,
+            uniform_updates: live::Updates::new()?,
             presence: presence::Presence::default(),
-            agents: agents::Usage::default(),
+            agents: mcp::Usage::default(),
             activity,
-            oauth: agents::oauth::Documents::default(),
-            oauth_limits: agents::oauth::limits::Limits::default(),
+            oauth: mcp::oauth::Documents::default(),
+            oauth_limits: mcp::oauth::limits::Limits::default(),
         }))
     }
     pub async fn run<T: Send + 'static>(
@@ -99,7 +103,7 @@ impl State {
     pub async fn run_scoped<T: Send + 'static>(
         self: &Arc<Self>,
         dsp: impl Into<String>,
-        domain: read_cache::DataDomain,
+        domain: cache::DataDomain,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
     ) -> Result<T> {
         self.database(true, CacheChange::Tenant(dsp.into(), domain), f)

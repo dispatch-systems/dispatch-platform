@@ -1,31 +1,20 @@
-#[path = "admission.rs"]
 mod admission;
-#[path = "attempt.rs"]
-mod attempt;
-#[path = "browseros/mod.rs"]
+pub mod attempt;
 pub mod browseros;
-#[path = "../../../../collectors/cortex/connection/mod.rs"]
-pub(crate) mod cortex;
-#[path = "driver.rs"]
 mod driver;
-#[path = "egress.rs"]
 pub mod egress;
-#[path = "fixture.rs"]
 mod fixture;
-#[path = "http.rs"]
-pub(crate) mod http;
-#[path = "page.rs"]
-mod page;
-#[path = "../../../../collectors/paycom/connection/mod.rs"]
-pub(crate) mod paycom;
-pub use super::collectors::Provider;
-use super::{
+pub mod http;
+pub mod page;
+pub use crate::collection::registry::Provider;
+use crate::{
     Error, Result, State,
     accounts::Context,
-    contracts::{Connection, DspStatus},
-    crypto,
+    collection::api::types::Connection,
     db::{self, Store, iso, s},
     ensure,
+    foundation::crypto,
+    tenancy::api::types::DspStatus,
 };
 pub use driver::{Collected, Driver, Pending, Run};
 use rusqlite::params;
@@ -106,7 +95,10 @@ impl ProviderAuthority {
     }
 }
 impl Manager {
-    fn runtime(&self, config: &super::config::Config) -> Result<Arc<browseros::Runtime>> {
+    fn runtime(
+        &self,
+        config: &crate::foundation::config::Config,
+    ) -> Result<Arc<browseros::Runtime>> {
         let mut current = self
             .runtime
             .lock()
@@ -206,7 +198,7 @@ impl Manager {
     }
 }
 impl Session {
-    pub fn observe_memory(&self, memory: &super::job_metrics::Memory) {
+    pub fn observe_memory(&self, memory: &crate::collection::metrics::Memory) {
         if memory.complete {
             self.observed_pss.store(memory.pss, Ordering::Release);
         }
@@ -268,7 +260,7 @@ impl Session {
             .map_err(|_| Error::new("connection_busy", 409))?;
         let mut cancellation = self.cancel.subscribe();
         let mut worker = tokio::select! {
-            _=super::cancelled(&mut cancellation)=>return Err(Error::new("verification_expired",409)),
+            _=crate::cancelled(&mut cancellation)=>return Err(Error::new("verification_expired",409)),
             lock=tokio::time::timeout(Duration::from_secs(seconds),
                 self.worker.lock())=>lock.map_err(|_|Error::new("provider_timeout",504))?,
         };
@@ -313,7 +305,7 @@ impl Session {
         state: &Arc<State>,
         job: &str,
         owner: &str,
-        metrics: &super::job_metrics::Recorder,
+        metrics: &crate::collection::metrics::Recorder,
         request: &Value,
         attempt: i64,
     ) -> Result<Collected> {
@@ -471,7 +463,7 @@ impl State {
                 let _ = self
                     .run_scoped(
                         session.dsp.clone(),
-                        crate::read_cache::DataDomain::TENANT,
+                        crate::server::cache::DataDomain::TENANT,
                         move |db| {
                             db.connection_state(
                                 &id,
@@ -616,7 +608,7 @@ impl State {
             ensure(!session.closed(), "verification_expired", 409)?;
             let dsp = id.to_owned();
             let launch_authority = authority.clone();
-            self.run_scoped(id, crate::read_cache::DataDomain::TENANT, move |db| {
+            self.run_scoped(id, crate::server::cache::DataDomain::TENANT, move |db| {
                 launch_authority.check(db, &dsp, provider)?;
                 let tenant = db.find_dsp(&dsp)?;
                 ensure(tenant.status == DspStatus::Active, "dsp_unavailable", 409)?;
@@ -721,7 +713,7 @@ impl State {
         let authority = authority.clone();
         self.run_scoped(
             dsp.clone(),
-            crate::read_cache::DataDomain::TENANT,
+            crate::server::cache::DataDomain::TENANT,
             move |db| {
                 authority.check(db, &dsp, provider)?;
                 db.connection_state(&dsp, provider, revision, status, error.as_deref())

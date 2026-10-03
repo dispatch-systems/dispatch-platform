@@ -6,20 +6,22 @@
 //! the kinds of app that may connect.
 use crate::{
     Result, State,
-    agents::oauth::{
-        self, Answer, Query, Refusal,
-        limits::{Endpoint as Limited, Limits},
-    },
-    contracts::{self, OAuthAppChoice, OAuthAppId, OAuthApproval},
     db::Store,
-    http::{
+    foundation::{observability, validate as v},
+    mcp::{
+        api::types::{OAuthAppChoice, OAuthAppId, OAuthApproval},
+        oauth::{
+            self, Answer, Query, Refusal,
+            limits::{Endpoint as Limited, Limits},
+        },
+    },
+    server::http::{
         input::{Input, Reply, optional_text},
         middleware,
         route::{
             PlatformOwner, PlatformRoutine, Route, Served, User, probe, protocol, read, write,
         },
     },
-    observability, validate as v,
 };
 use axum::{
     Json,
@@ -381,7 +383,7 @@ fn apps(db: &Store, _: &User, _: &Input) -> Result<Reply> {
     Reply::of(&db.oauth_apps()?)
 }
 fn allow_app(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
-    let choice: OAuthAppChoice = contracts::request(&input.body)?;
+    let choice: OAuthAppChoice = crate::foundation::wire::request(&input.body)?;
     Reply::of(&db.allow_oauth_app(owner.actor(), &choice)?)
 }
 

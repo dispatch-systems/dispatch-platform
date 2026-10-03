@@ -1,19 +1,22 @@
 //! What collectors and features declare, and the one registry the app builds from them.
 //! Core reaches collectors and features through `registry()`, never by name.
-#[path = "people.rs"]
 pub mod people;
 
 use crate::{
     Code, Error, Result, State,
-    agents::{self, Mcp},
-    browsers::{Collected, Driver, Pending, browseros},
-    collectors::AddedStorage,
-    config::Config,
-    contracts::AuditArea,
+    collection::{
+        browser::{Collected, Driver, Pending, browseros},
+        metrics::Counts,
+        registry::AddedStorage,
+    },
     db::{self, Db, Kind, Migration, Migrations, Store},
-    http::Route,
-    job_metrics::Counts,
-    read_cache::{self, Cached, DataDomain},
+    foundation::config::Config,
+    mcp::{self, Mcp},
+    server::{
+        cache::{self, Cached, DataDomain},
+        http::Route,
+    },
+    tenancy::api::audit::AuditArea,
 };
 use people::People;
 use serde_json::Value;
@@ -51,9 +54,6 @@ pub fn registry() -> &'static Registry {
 
 /// The installed registry, if there is one yet.
 pub fn installed() -> Option<&'static Registry> {
-    // A module's own tests run without the app's startup, so they find the app's registry.
-    #[cfg(test)]
-    INSTALLED.get_or_init(|| &crate::REGISTRY);
     INSTALLED.get().copied()
 }
 
@@ -125,12 +125,12 @@ impl Registry {
     /// Every domain a reviewed write may name: core's, then each feature's.
     pub fn domains(&self) -> impl Iterator<Item = DataDomain> {
         let features = self.features.iter().flat_map(|feature| feature.domains);
-        read_cache::DOMAINS.iter().chain(features).copied()
+        cache::DOMAINS.iter().chain(features).copied()
     }
     /// What evicts each cached read: core's declarations, then each feature's.
     pub fn cached(&self) -> impl Iterator<Item = &'static Cached> {
         let features = self.features.iter().flat_map(|feature| feature.cached);
-        read_cache::CACHED.iter().chain(features)
+        cache::CACHED.iter().chain(features)
     }
     /// Every permission as declared: core's own, then each feature's, in the registry's
     /// order. Lists of permissions follow their `order` instead.
@@ -163,7 +163,7 @@ impl Registry {
     /// without a gap or a repeat, every table is declared once, every domain is declared
     /// once and before it is named, every audit prefix is a dotted name listed under an
     /// area other than settings, each kind of data that names people has a place of its
-    /// own, and what agents may read is declared as `agents::pieces::check` asks.
+    /// own, and what agents may read is declared as `mcp::pieces::check` asks.
     pub fn check(&self) {
         let kinds: Vec<&str> = self
             .collectors
@@ -267,7 +267,7 @@ impl Registry {
             .keepers()
             .map(|keeper| keeper.domain())
             .chain(self.cached().flat_map(|cached| match cached.evicted {
-                read_cache::Evicted::By(named) | read_cache::Evicted::ByAllBut(named) => {
+                cache::Evicted::By(named) | cache::Evicted::ByAllBut(named) => {
                     named.iter().copied()
                 }
             }));
@@ -299,7 +299,7 @@ impl Registry {
                 kind.data().as_str()
             );
         }
-        agents::pieces::check(self.features);
+        mcp::pieces::check(self.features);
     }
 }
 
@@ -444,7 +444,7 @@ pub const fn tab(id: &'static str, label: &'static str) -> Tab {
 }
 
 /// Core's own permissions, each declared by the core part that checks it.
-const CORE_PERMISSIONS: &[&Permission] = &[&crate::collectors::CONNECTIONS];
+const CORE_PERMISSIONS: &[&Permission] = &[&crate::collection::registry::CONNECTIONS];
 
 /// A permission a DSP's roles grant, as the role sheet offers it.
 pub struct Permission {

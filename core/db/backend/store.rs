@@ -1,5 +1,5 @@
 use super::{Db, Kind, identifier, key_file, migrations, private_dir, private_file, s};
-use crate::{Result, config::Config, ensure};
+use crate::{Result, ensure, foundation::config::Config};
 use std::path::{Path, PathBuf};
 pub struct DspLease<'a> {
     id: String,
@@ -58,7 +58,7 @@ impl Store {
             dsp_cache: std::cell::RefCell::new(Vec::new()),
             mail_queued: std::cell::Cell::new(false),
         };
-        crate::roles::backfill(&store.platform)?;
+        crate::tenancy::roles::backfill(&store.platform)?;
         for row in store.platform.all(
             "SELECT id FROM dsps WHERE status IN ('active','suspended')",
             [],

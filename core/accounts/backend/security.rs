@@ -1,5 +1,7 @@
 use super::*;
-use crate::contracts::{AccountSession, AuthenticatorSetup, PasskeySummary, SecurityStatus};
+use crate::accounts::api::types::{
+    AccountSession, AuthenticatorSetup, PasskeySummary, SecurityStatus,
+};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use hmac::{Hmac, Mac, digest::KeyInit};
 use qrcode::{QrCode, render::svg};

@@ -9,18 +9,18 @@ pub mod people;
 #[path = "sync.rs"]
 pub(crate) mod sync;
 // Cortex meal evidence and atomic publication. Browser data is untrusted input.
-use crate::{
-    Result,
-    collectors::cortex::{
-        self,
-        discovery::Scope,
-        meals::{Capture, Coverage, Itinerary, Meal},
-    },
-    db::{Store, at, s},
-    ensure,
-    read_cache::DataDomain,
+use crate::collectors::cortex::{
+    self,
+    discovery::Scope,
+    meals::{Capture, Coverage, Itinerary, Meal},
 };
 use chrono::NaiveDate;
+use dispatch_core::{
+    Result,
+    db::{Store, at, s},
+    ensure,
+    server::cache::DataDomain,
+};
 use rusqlite::params;
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -113,7 +113,7 @@ pub(crate) fn publish_meals(
                 ensure(ids.contains(s(&route,"itinerary_id")),"cortex_membership_regressed",409)?;
             }
         }
-        let id=super::crypto::id("pub")?;
+        let id=dispatch_core::foundation::crypto::id("pub")?;
         let meals=capture.itineraries.iter().map(|r|r.meals.len()).sum::<usize>();
         let gaps=capture.itineraries.iter().flat_map(|r|r.meals.iter().map(move|m|boundaries(r,
             m))).filter(|b|b.prior.is_some()&&b.next.is_some()).count();
