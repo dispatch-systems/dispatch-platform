@@ -117,3 +117,7 @@ pub(super) fn employee_timecard(
         sync_status: job.map(|job| job.status),
     })
 }
+
+#[cfg(test)]
+#[path = "../../tests/backend/punches/timecards.rs"]
+mod tests;

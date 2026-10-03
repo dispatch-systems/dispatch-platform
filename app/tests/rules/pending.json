@@ -44,7 +44,6 @@
         "core/server names app": "Phase B",
         "core/server's tests name app": "A6",
         "core/server's tests name collectors/paycom": "A6",
-        "core/server's tests name features/timecard": "A6",
         "features/routes's tests name app": "A6"
       }
     },
@@ -111,14 +110,10 @@
         "app names tables of core": "Phase B",
         "collectors/paycom's tests name tables of core": "A6",
         "core/collection names tables of collectors/cortex or collectors/paycom": "Phase B",
-        "core/collection's tests name tables of collectors/cortex": "A6",
         "core/collection's tests name tables of collectors/cortex or collectors/paycom": "A6",
-        "core/collection's tests name tables of collectors/paycom": "A6",
-        "core/db's tests name tables of collectors/paycom": "A6",
         "core/mcp names tables of collectors/cortex or collectors/paycom": "Phase B",
         "core/server names tables of collectors/cortex or collectors/paycom": "Phase B",
         "core/server's tests name tables of collectors/cortex or collectors/paycom": "A6",
-        "core/server's tests name tables of collectors/paycom": "A6",
         "core/tenancy names tables of collectors/cortex or collectors/paycom": "Phase B",
         "features/dvic's tests name tables of collectors/cortex or collectors/paycom": "A6",
         "features/dvic's tests name tables of core": "A6",

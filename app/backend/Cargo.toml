@@ -130,6 +130,9 @@ name = "mail"
 path = "../../core/server/tests/backend/integration/mail.rs"
 
 [[test]]
+name = "meal_cache"
+path = "../../app/tests/backend/integration/meal_cache.rs"
+[[test]]
 name = "meal_comparison"
 path = "../../features/timecard/tests/backend/integration/meal_comparison.rs"
 

@@ -116,6 +116,9 @@ mod cache;
 #[path = "../tests/backend/catalog.rs"]
 mod catalog;
 #[cfg(test)]
+#[path = "../tests/backend/collector_storage.rs"]
+mod collector_storage;
+#[cfg(test)]
 #[path = "../tests/backend/databases.rs"]
 mod databases;
 #[cfg(test)]
