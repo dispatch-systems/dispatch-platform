@@ -349,6 +349,15 @@ mod tests {
             schema
         }
     }
+    // The jobs table as 0004 left it, listing every kind, before 0005 opened it.
+    fn before_open_kinds(schema: String) -> String {
+        assert!(!schema.contains("CHECK(kind IN"));
+        schema.replace(
+            "kind TEXT NOT NULL, status",
+            "kind TEXT NOT NULL CHECK(kind IN ('paycom.collect','cortex.meal_breaks.collect',\
+             'cortex.scorecard.collect','cortex.routes.collect','cortex.dvic.collect')), status",
+        )
+    }
     fn ids(db: &Db) -> Vec<i64> {
         db.all("SELECT id FROM schema_migrations ORDER BY id", [])
             .unwrap()
@@ -560,7 +569,7 @@ mod tests {
     fn jobs_and_schedules_from_before_the_scorecard_keep_their_rows_through_the_rebuild() {
         let root = private();
         // v0.0.9 names neither the scorecard job kind nor the scorecard collection.
-        let jobs_schema = recorded(Kind::JOBS)
+        let jobs_schema = before_open_kinds(recorded(Kind::JOBS))
             .replace(RECORD, "")
             .replace(",'cortex.scorecard.collect'", "");
         assert!(!jobs_schema.contains("scorecard"));
@@ -632,7 +641,7 @@ mod tests {
     fn jobs_and_schedules_from_before_the_routes_collection_keep_their_rows_through_the_rebuild() {
         let root = private();
         // v0.0.12 names neither the routes job kind nor the routes collection.
-        let jobs_schema = recorded(Kind::JOBS)
+        let jobs_schema = before_open_kinds(recorded(Kind::JOBS))
             .replace(RECORD, "")
             .replace(",'cortex.routes.collect'", "");
         assert!(!jobs_schema.contains("routes"));
@@ -704,7 +713,8 @@ mod tests {
     fn jobs_and_schedules_from_before_the_dvic_collection_keep_their_rows_through_the_rebuild() {
         let root = private();
         // The previous release names neither the DVIC job kind nor its schedule collection.
-        let jobs_schema = recorded(Kind::JOBS).replace(",'cortex.dvic.collect'", "");
+        let jobs_schema =
+            before_open_kinds(recorded(Kind::JOBS)).replace(",'cortex.dvic.collect'", "");
         assert!(!jobs_schema.contains("dvic"));
         let file = root.path().join("jobs.sqlite");
         older(&file, Kind::JOBS, &jobs_schema);
@@ -778,6 +788,55 @@ mod tests {
             [],
         )
         .unwrap();
+    }
+
+    #[test]
+    fn jobs_from_before_kinds_were_open_keep_their_rows_through_the_rebuild() {
+        let root = private();
+        // The previous release lists every kind it queues.
+        let jobs_schema = before_open_kinds(recorded(Kind::JOBS));
+        let file = root.path().join("jobs.sqlite");
+        older(&file, Kind::JOBS, &jobs_schema);
+        rusqlite::Connection::open(&file)
+            .unwrap()
+            .execute_batch(
+                "INSERT INTO schema_migrations VALUES (1,'baseline',0),(2,'scorecard_kind',0),\
+                 (3,'routes_kind',0),(4,'dvic_kind',0); \
+                 INSERT INTO jobs(id,dsp_id,environment,kind,status,available_at,created_at,\
+                 release,connection_revision,idempotency_key) VALUES ('job_1','dsp_1','preview',\
+                 'cortex.dvic.collect','succeeded',0,'2026-01-01T00:00:00Z','0.0.13',1,'k1'); \
+                 INSERT INTO job_metrics VALUES ('job_1',1,'worker','{}');",
+            )
+            .unwrap();
+        let db = Db::create(&file, Kind::JOBS, "").unwrap();
+        assert_eq!(dump(&db), recorded(Kind::JOBS));
+        assert_eq!(ids(&db), vec![1, 2, 3, 4, 5]);
+        assert_eq!(
+            db.all("SELECT id,kind FROM jobs", []).unwrap(),
+            vec![json!({"id":"job_1","kind":"cortex.dvic.collect"})]
+        );
+        assert_eq!(
+            db.all("SELECT job_id,attempt,owner FROM job_metrics", [])
+                .unwrap(),
+            vec![json!({"job_id":"job_1","attempt":1,"owner":"worker"})]
+        );
+        assert!(db.all("PRAGMA foreign_key_check", []).unwrap().is_empty());
+        // The table takes a kind no release lists: queueing refuses the ones no collector
+        // collects instead.
+        db.exec(
+            "INSERT INTO jobs(id,dsp_id,environment,kind,status,available_at,created_at,\
+             release,connection_revision,idempotency_key) VALUES ('job_2','dsp_1','preview',\
+             'next.collect','queued',0,'2026-01-02T00:00:00Z','0.0.14',1,'k2')",
+            [],
+        )
+        .unwrap();
+        // Metrics still follow their job.
+        db.exec("DELETE FROM jobs WHERE id='job_1'", []).unwrap();
+        assert!(
+            db.all("SELECT job_id FROM job_metrics", [])
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

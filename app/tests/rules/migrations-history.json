@@ -130,6 +130,11 @@
       "id": 4,
       "name": "dvic_kind",
       "sha256": "311993998eedd13c17eeee36c3e2138cc6fc9d39433f2972d73d091997cb4892"
+    },
+    {
+      "id": 5,
+      "name": "open_kinds",
+      "sha256": "13830dde50ae82439a0ab17ebcbfa2fb2a113945d2543437186acaa04950e05c"
     }
   ],
   "dsp": [

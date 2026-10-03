@@ -51,6 +51,7 @@ const DATABASES: &[Database] = &[
             (2, "scorecard_kind", "ebd9416e6f0716d4"),
             (3, "routes_kind", "de8b5fe1fb72270b"),
             (4, "dvic_kind", "311993998eedd13c"),
+            (5, "open_kinds", "13830dde50ae8243"),
         ],
     ),
     (

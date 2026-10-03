@@ -196,6 +196,13 @@ const JOBS: &[Migration] = &[
             "../../collection/migrations/jobs/0004_dvic_kind.sql"
         )),
     },
+    Migration {
+        id: 5,
+        name: "open_kinds",
+        apply: Sql(include_str!(
+            "../../collection/migrations/jobs/0005_open_kinds.sql"
+        )),
+    },
 ];
 const DSP: &[Migration] = &[
     Migration {

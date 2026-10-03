@@ -359,27 +359,54 @@ impl Store {
                         return self.public_job(row);
                     }
                     ensure(self.jobs.count(ACTIVE_COUNT, [id])? < 5, "queue_full", 429)?;
-                    let job = crypto::id("job")?;
-                    self.jobs.exec(
-                        INSERT,
-                        params![
-                            job,
-                            id,
-                            self.config.environment,
-                            provider.collector().job_kind_for(request),
-                            now(),
-                            iso(),
-                            self.config.release,
-                            actor,
-                            connection.revision,
-                            key,
-                            serde_json::to_string(request)?
-                        ],
+                    let job = self.insert_job(
+                        id,
+                        actor,
+                        key,
+                        provider.collector().job_kind_for(request),
+                        connection.revision,
+                        request,
                     )?;
                     self.public_job(self.job_row(&job, None)?)
                 })
                 .collect()
         })
+    }
+    /// Writes one queued job, answering with its id. Every job is queued here. The table
+    /// takes any kind, so a kind no registered collector collects is refused here instead,
+    /// with the error the table's list of kinds refused it with.
+    fn insert_job(
+        &self,
+        id: &str,
+        actor: Option<&str>,
+        key: &str,
+        kind: &str,
+        revision: i64,
+        request: &Value,
+    ) -> Result<String> {
+        ensure(
+            Provider::from_job_kind(kind).is_ok(),
+            "operation_failed",
+            500,
+        )?;
+        let job = crypto::id("job")?;
+        self.jobs.exec(
+            INSERT,
+            params![
+                job,
+                id,
+                self.config.environment,
+                kind,
+                now(),
+                iso(),
+                self.config.release,
+                actor,
+                revision,
+                key,
+                serde_json::to_string(request)?
+            ],
+        )?;
+        Ok(job)
     }
     /// Cancels the unfinished jobs the filter names; a finished job is left as it ended.
     pub fn cancel_jobs(&self, filter: CancelJobs<'_>) -> Result<usize> {
@@ -618,3 +645,7 @@ mod retry_tests {
         assert_eq!(delay, retry_delay("job-test", 2));
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/backend/jobs/queue.rs"]
+mod tests;
