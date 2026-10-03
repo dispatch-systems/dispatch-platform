@@ -23,7 +23,7 @@ import { api, useCachedData, useData } from '../../../core/shell/frontend/runtim
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
 import { syncEmployeeTimecard, usePaycomSettings } from '../api/client.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
-import { collectionData } from '../../../core/shell/frontend/lib/data-policy.js';
+import { collectionData } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { useCollectionUpdates } from './live-collection.js';
 import { ErrorBox, Header, Loading, Tabs } from '../../../core/shell/frontend/ui/index.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';

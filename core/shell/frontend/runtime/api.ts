@@ -6,7 +6,7 @@ import { parseApiResponse } from '../../../../shared/contracts/runtime.js';
 import { backoff } from '../lib/backoff.js';
 import { dataCache } from './data-cache.js';
 import { clearDestinations } from './navigation.js';
-import { mutationAffects } from '../lib/data-policy.js';
+import { mutationAffects } from './data-policy.js';
 import { useReadAvailability } from '../lib/read-availability.js';
 export let csrf = '',
   view = '';

@@ -18,7 +18,7 @@ import {
   weekStart,
 } from '../../frontend/dvic.js';
 import type { DvicInspection } from '../../../../shared/contracts/dvic.js';
-import { mutationAffects } from '../../../../core/shell/frontend/lib/data-policy.js';
+import { mutationAffects } from '../../../../core/shell/frontend/runtime/data-policy.js';
 
 const row = (id: string, fleetType = 'CV'): DvicInspection => ({
   id,

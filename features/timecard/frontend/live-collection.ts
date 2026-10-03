@@ -6,7 +6,7 @@ import {
   collectionAffects,
   collectionData,
   type CollectionChange,
-} from '../../../core/shell/frontend/lib/data-policy.js';
+} from '../../../core/shell/frontend/runtime/data-policy.js';
 import { getCollectionUpdates } from '../../../core/collection/api/client.js';
 
 /** One sleeping request for the Timecard page, shared across days and tabs. */

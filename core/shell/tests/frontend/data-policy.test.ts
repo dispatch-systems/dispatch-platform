@@ -4,7 +4,7 @@ import {
   collectionAffects,
   mutationAffects,
   type CollectionChange,
-} from '../../frontend/lib/data-policy.js';
+} from '../../frontend/runtime/data-policy.js';
 
 test('a driver checkpoint touches its employee and days, not another driver, roster, or feature', () => {
   const changes: CollectionChange[] = [
