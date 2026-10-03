@@ -344,18 +344,30 @@ export function appendToList(text: string, opener: RegExp, entry: string, file: 
     throw new Error(`${file} already lists ${entry.trim()}`);
   return `${text.slice(0, lineStart)}${indent}${entry}\n${text.slice(lineStart)}`;
 }
-/** Adds a path dependency to a crate's `[dependencies]`, after its other `dispatch-` ones. */
-export function addDependency(text: string, crate: string, location: string, file: string) {
+/**
+ * Adds a path dependency to a crate's `[dependencies]`, or the `section` named, after its other
+ * `dispatch-` ones, with the `features` named enabled.
+ */
+export function addDependency(
+  text: string,
+  crate: string,
+  location: string,
+  file: string,
+  { section = 'dependencies', features = [] as string[] } = {},
+) {
   const lines = text.split('\n');
-  const header = lines.findIndex((line) => line.trim() === '[dependencies]');
-  if (header < 0) throw new Error(`${file} has no [dependencies]`);
+  const header = lines.findIndex((line) => line.trim() === `[${section}]`);
+  if (header < 0) throw new Error(`${file} has no [${section}]`);
   let end = lines.findIndex((line, index) => index > header && line.startsWith('['));
   if (end < 0) end = lines.length;
-  const section = lines.slice(header + 1, end);
-  if (section.some((line) => line.startsWith(`${crate} `)))
-    throw new Error(`${file} already depends on ${crate}`);
-  const last = section.findLastIndex((line) => line.startsWith('dispatch-'));
-  lines.splice(header + 1 + last + 1, 0, `${crate} = { path = "${location}" }`);
+  const listed = lines.slice(header + 1, end);
+  if (listed.some((line) => line.startsWith(`${crate} `)))
+    throw new Error(`${file} already lists ${crate} in [${section}]`);
+  const last = listed.findLastIndex((line) => line.startsWith('dispatch-'));
+  const enabled = features.length
+    ? `, features = [${features.map((feature) => `"${feature}"`).join(', ')}]`
+    : '';
+  lines.splice(header + 1 + last + 1, 0, `${crate} = { path = "${location}"${enabled} }`);
   return lines.join('\n');
 }
 /** Has the app's `feature` enable the one of that name on `crate` as well. */

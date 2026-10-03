@@ -167,18 +167,13 @@ export function featureValues(root: string, argv: string[]) {
     ...(database ? ['rusqlite = { workspace = true }'] : []),
     ...(api || database ? ['serde = { workspace = true }'] : []),
     ...(mcp ? ['serde_json = { workspace = true }'] : []),
+    ...(api ? ['ts-rs = { workspace = true, optional = true }'] : []),
   ];
   const devDependencies = [
     ...(database || keeps
       ? ['dispatch-core = { path = "../../core", features = ["testing"] }']
       : []),
     ...(keeps && !mcp ? ['serde_json = { workspace = true }'] : []),
-    ...(api
-      ? [
-          '# Writes api/generated/ from the reply types; never part of the binary.',
-          'ts-rs = { workspace = true }',
-        ]
-      : []),
   ];
   const databaseFile = !database
     ? ''
@@ -329,9 +324,16 @@ export async function planFeature(root: string, argv: string[]) {
   const change = async (file: string, edit: (text: string) => string) =>
     plan.changes.set(file, await format(file, edit(current(plan, root, file))));
   await change('Cargo.toml', (text) => addWorkspaceMember(text, dir));
-  await change('app/backend/Cargo.toml', (text) =>
-    addDependency(text, crate, `../../${dir}`, 'app/backend/Cargo.toml'),
-  );
+  await change('app/backend/Cargo.toml', (text) => {
+    const listed = addDependency(text, crate, `../../${dir}`, 'app/backend/Cargo.toml');
+    // The app's export test writes its API types' TypeScript, as it does every feature's.
+    return values.api
+      ? addDependency(listed, crate, `../../${dir}`, 'app/backend/Cargo.toml', {
+          section: 'dev-dependencies',
+          features: ['ts'],
+        })
+      : listed;
+  });
   const registry = holding(root, appBackend, /pub static REGISTRY\b/);
   await change(registry, (text) =>
     appendToList(

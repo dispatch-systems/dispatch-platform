@@ -78,9 +78,13 @@ test('with no flags, a feature is a backend crate with a switch, a view permissi
   ]);
   const cargo = file(plan, 'features/parking/Cargo.toml');
   assert.match(cargo, /^name = "dispatch-parking"$/m);
+  // Its package fields are the workspace's, as every crate's are.
+  for (const field of ['version', 'edition', 'rust-version', 'publish', 'license'])
+    assert.match(cargo, new RegExp(`^${field}\\.workspace = true$`, 'm'));
+  assert.match(cargo, /^autotests = false$/m);
   assert.match(cargo, /^\[lib\]\npath = "feature.rs"\ndoctest = false$/m);
   assert.match(cargo, /^\[dependencies\]\ndispatch-core = \{ path = "..\/..\/core" \}\n$/m);
-  assert.doesNotMatch(cargo, /dev-dependencies/);
+  assert.doesNotMatch(cargo, /dev-dependencies|\[features\]/);
 
   const manifest = file(plan, 'features/parking/feature.rs');
   assert.match(manifest, /^mod backend;$/m);
@@ -155,9 +159,19 @@ test('--api writes one endpoint behind the view permission, its client function 
   const manifest = file(plan, 'features/parking/feature.rs');
   assert.match(manifest, /^mod api;$/m);
   assert.match(manifest, /^    routes: api::routes::routes,$/m);
+  // Its API types' TypeScript comes behind its ts feature, which the app's tests enable.
+  const cargo = file(plan, 'features/parking/Cargo.toml');
+  assert.match(cargo, /^\[features\]\n#[^\n]*\nts = \["dep:ts-rs"\]$/m);
+  assert.match(cargo, /^ts-rs = \{ workspace = true, optional = true \}$/m);
+  assert.doesNotMatch(cargo, /dev-dependencies/);
   assert.match(
-    file(plan, 'features/parking/Cargo.toml'),
-    /\[dev-dependencies\][^[]*ts-rs = \{ workspace = true \}/,
+    file(plan, 'features/parking/api/types.rs'),
+    /^#\[cfg_attr\(feature = "ts", derive\(ts_rs::TS\)\)\]$/m,
+  );
+  const app = file(plan, 'app/backend/Cargo.toml');
+  assert.match(
+    app.slice(app.indexOf('\n[dev-dependencies]\n')).split(/\n\[/)[1]!,
+    /^dispatch-parking = \{ path = "..\/..\/features\/parking", features = \["ts"\] \}$/m,
   );
   // Its manifest brings its routes: in app/, only its listing and the inventory change.
   assert.deepEqual(
