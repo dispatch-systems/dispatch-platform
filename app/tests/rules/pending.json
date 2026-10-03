@@ -30,11 +30,6 @@
       "tables": {
         "app names tables of core": "Phase B"
       }
-    },
-    "tests": {
-      "inline tests": {
-        "app/backend/export.rs has a #[test]": "Phase B"
-      }
     }
   }
 }

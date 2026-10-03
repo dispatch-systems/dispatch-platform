@@ -1,5 +1,40 @@
-use super::*;
+//! The TypeScript the owners' API types are written to, and the access catalog's, checked
+//! against the files committed in shared/contracts/generated.
+use dispatch_core::accounts::api::types::*;
+use dispatch_core::collection::api::{jobs::*, metrics::*, types::*};
 use dispatch_core::collection::registry::Provider;
+use dispatch_core::foundation::config::{Environment, ProviderMode};
+use dispatch_core::mcp::api::types::*;
+use dispatch_core::platform_owner::api::types::*;
+use dispatch_core::server::api::types::*;
+use dispatch_core::tenancy::api::{audit::*, types::*};
+use dispatch_driver_match::{
+    Driver, DriverActivity, DriverCounts, DriverDay, DriverDetails, DriverEvent, DriverEventKind,
+    DriverEvidence, DriverEvidenceKind, DriverId, DriverLink, DriverMatch, DriverPair,
+    DriverStrength,
+};
+use dispatch_dvic::{DvicInspection, DvicInspections, DvicReport, DvicStatus, DvicWeek};
+use dispatch_paycom::timecards::EmployeeTimecardPeriod;
+use dispatch_routes::{
+    RouteAddress, RouteBreak, RouteDayView, RouteDays, RouteItinerary, RouteItineraryDetail,
+    RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteRetention, RouteStop,
+    RouteTask, RouteUnknownStop,
+};
+use dispatch_scorecard::{
+    ScorecardDatasetCount, ScorecardPublication, ScorecardWeek, ScorecardWeeks,
+};
+use dispatch_timecard::{
+    AssessedClock, CortexMeal, CortexPublication, DailyTimecard, DailyTimecards, DeliveryGap,
+    DeliveryGaps, DepartmentOption, Employee, EmployeeTimecard, EmployeeTimecardResponse,
+    EmployeesResponse, InPunchKind, LateRule, Lunch, MatchType, MealAssessment, MealComparison,
+    MealDriver, MealEmployee, MealPair, MealPaycom, MealSource, MealStatus, NameOrder,
+    OutPunchKind, PaycomColumn, PaycomDay, PaycomOptions, PaycomPage, PaycomPreferences,
+    PaycomSettings, PaycomSort, PreferenceRevision, Punch, PunchEvent, Timecard,
+};
+use dispatch_uniforms::{
+    Uniform, UniformAdjustment, UniformEvent, UniformEventKind, UniformFit, UniformHistory,
+    UniformInventory, UniformUpdates, UniformVariant,
+};
 use std::{collections::BTreeMap, path::PathBuf};
 use ts_rs::TS;
 

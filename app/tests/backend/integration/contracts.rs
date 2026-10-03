@@ -1,8 +1,8 @@
-use dispatch_backend::contracts::{NameOrder, PaycomPreferences, PaycomSettings};
 use dispatch_core::{
     accounts::api::types::DspProfile,
     collection::{api::metrics::JobMetrics, metrics::Recorder},
 };
+use dispatch_timecard::{NameOrder, PaycomPreferences, PaycomSettings};
 use serde_json::{Value, json};
 
 #[test]

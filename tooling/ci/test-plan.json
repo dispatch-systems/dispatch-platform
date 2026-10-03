@@ -80,7 +80,7 @@
         "core/shell/frontend/runtime/permissions.ts",
         "core/accounts/api/index.ts",
         "core/tenancy/api/index.ts",
-        "app/backend/export.rs",
+        "app/tests/backend/export.rs",
         "shared/contracts/generated/access-catalog.ts"
       ],
       "tests": [

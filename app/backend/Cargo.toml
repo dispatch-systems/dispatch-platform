@@ -35,16 +35,9 @@ dispatch-team = { path = "../../features/team" }
 dispatch-timecard = { path = "../../features/timecard" }
 dispatch-uniforms = { path = "../../features/uniforms" }
 axum = { workspace = true }
-rusqlite = { workspace = true }
-serde = { workspace = true }
+libc = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
-chrono = { workspace = true }
-chrono-tz = { workspace = true }
-flate2 = { workspace = true }
-libc = { workspace = true }
-url = { workspace = true }
-reqwest = { workspace = true }
 
 [dev-dependencies]
 # Core's test support, and the TypeScript of every crate's API types for the export test.
@@ -57,8 +50,13 @@ dispatch-scorecard = { path = "../../features/scorecard", features = ["ts"] }
 dispatch-timecard = { path = "../../features/timecard", features = ["ts"] }
 dispatch-uniforms = { path = "../../features/uniforms", features = ["ts"] }
 base64 = { workspace = true }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+reqwest = { workspace = true }
+rusqlite = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
+url = { workspace = true }
 # Writes shared/contracts/generated from the response types; never part of the binary.
 ts-rs = { workspace = true }
 

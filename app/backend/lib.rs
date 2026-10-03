@@ -1,5 +1,4 @@
 pub mod cli;
-pub mod contracts;
 pub mod routes;
 
 use dispatch_core::{
@@ -68,8 +67,14 @@ mod collector_storage;
 #[path = "../tests/backend/connected_app_mail.rs"]
 mod connected_app_mail;
 #[cfg(test)]
+#[path = "../tests/backend/contracts.rs"]
+mod contracts;
+#[cfg(test)]
 #[path = "../tests/backend/databases.rs"]
 mod databases;
+#[cfg(test)]
+#[path = "../tests/backend/export.rs"]
+mod export;
 #[cfg(test)]
 #[path = "../tests/backend/feature_switches.rs"]
 mod feature_switches;
