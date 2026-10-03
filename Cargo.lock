@@ -603,6 +603,7 @@ dependencies = [
  "chrono-tz",
  "dispatch-core",
  "dispatch-cortex",
+ "dispatch-home",
  "dispatch-host",
  "dispatch-paycom",
  "flate2",
@@ -682,6 +683,13 @@ dependencies = [
  "tokio",
  "url",
  "zip",
+]
+
+[[package]]
+name = "dispatch-home"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
 ]
 
 [[package]]

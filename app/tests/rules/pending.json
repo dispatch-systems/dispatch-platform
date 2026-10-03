@@ -11,7 +11,6 @@
       "feature minimum": {
         "features/driver_match has no Cargo.toml": "Phase B",
         "features/dvic has no Cargo.toml": "Phase B",
-        "features/home has no Cargo.toml": "Phase B",
         "features/routes has no Cargo.toml": "Phase B",
         "features/scorecard has no Cargo.toml": "Phase B",
         "features/settings has no Cargo.toml": "Phase B",

@@ -4,8 +4,6 @@
 pub mod driver_match;
 #[path = "../../features/dvic/feature.rs"]
 pub mod dvic;
-#[path = "../../features/home/feature.rs"]
-pub mod home;
 #[path = "../../features/routes/feature.rs"]
 pub mod routes;
 #[path = "../../features/scorecard/feature.rs"]

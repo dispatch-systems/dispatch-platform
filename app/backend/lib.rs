@@ -34,7 +34,7 @@ pub static REGISTRY: Registry = Registry {
         &feature_manifests::driver_match::FEATURE,
         &feature_manifests::team::FEATURE,
         &feature_manifests::settings::FEATURE,
-        &feature_manifests::home::FEATURE,
+        &dispatch_home::FEATURE,
     ],
 };
 /// Installs `REGISTRY`, and hands core what a DSP path no route matches asks for. Every

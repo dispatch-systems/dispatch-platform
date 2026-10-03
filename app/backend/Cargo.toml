@@ -23,6 +23,7 @@ operator-probes = ["dispatch-cortex/operator-probes", "dispatch-paycom/operator-
 [dependencies]
 dispatch-core = { path = "../../core" }
 dispatch-cortex = { path = "../../collectors/cortex" }
+dispatch-home = { path = "../../features/home" }
 dispatch-host = { path = "../../ops/host-manager" }
 dispatch-paycom = { path = "../../collectors/paycom" }
 axum = { workspace = true }
