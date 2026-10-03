@@ -1,4 +1,3 @@
-import { Award } from 'lucide-react';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
 
 // Scorecard has no screens; agents read its data. It still fills the platform owner's slots:
@@ -6,7 +5,7 @@ import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots
 export const feature: FrontendFeature = {
   name: 'scorecard',
   auditWording: () => import('./audit-wording.js').then((module) => module.wording),
-  switch: { id: 'scorecard', icon: Award },
+  switch: { id: 'scorecard', icon: () => import('./switch-icon.js').then((module) => module.icon) },
   readToggles: {
     label: 'Scorecard',
     missing: 'scorecard data',

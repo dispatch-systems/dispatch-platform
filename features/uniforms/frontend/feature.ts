@@ -30,7 +30,8 @@ export const feature: FrontendFeature = {
       render: ({ view }) => createElement(UniformInventoryPage, { key: view.token, view }),
     },
   ],
-  switch: { id: 'uniforms', icon: Shirt },
+  // Its sidebar entry already loads the icon.
+  switch: { id: 'uniforms', icon: async () => Shirt },
   longPolls: ['/api/dsp/uniforms/updates'],
   errors: {
     uniform_changed:

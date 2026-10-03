@@ -228,8 +228,8 @@ export type FrontendFeature = {
   auditWording?: () => Promise<AuditWording>;
   /** The kinds of its data agents may read. */
   readToggles?: ReadToggles;
-  /** Its page's switch, as the platform owner's DSPs page lists it. */
-  switch?: { id: PageFeature; icon: LucideIcon };
+  /** Its page's switch, as the platform owner's DSPs page lists it, and its icon's loader. */
+  switch?: { id: PageFeature; icon: () => Promise<LucideIcon> };
   /** Its connection's card. */
   connectionCard?: ConnectionCard;
   /** The collections it runs. */
@@ -250,6 +250,8 @@ let installed: readonly FrontendFeature[] = [];
 /** Called once by the app, before the first render, with every owner's manifest. */
 export function installFeatures(features: readonly FrontendFeature[]) {
   installed = features;
+  switchIcons.clear();
+  iconsLoad = undefined;
 }
 
 /** The installed page at an address. */
@@ -272,9 +274,28 @@ export const pageTabs = (page: string) =>
     .filter((tab) => tab.page === page)
     .sort((a, b) => a.order - b.order);
 
-/** The icon of a page's switch. */
-export const switchIcon = (id: string) =>
-  installed.find((feature) => feature.switch?.id === id)?.switch?.icon;
+const switchIcons = new Map<string, LucideIcon>();
+let iconsLoad: Promise<void> | undefined;
+/**
+ * Loads every page switch's icon, once, so only the DSPs page carries them; a failed load is
+ * tried again next time.
+ */
+export function loadSwitchIcons() {
+  iconsLoad ??= Promise.all(
+    installed.flatMap(({ switch: page }) =>
+      page ? [page.icon().then((icon) => void switchIcons.set(page.id, icon))] : [],
+    ),
+  ).then(
+    () => undefined,
+    (error: unknown) => {
+      iconsLoad = undefined;
+      throw error;
+    },
+  );
+  return iconsLoad;
+}
+/** The icon of a page's switch, once `loadSwitchIcons` has loaded it. */
+export const switchIcon = (id: string) => switchIcons.get(id);
 
 /** Every collector's connection card, in the order the collectors are listed. */
 export const connectionCards = () =>

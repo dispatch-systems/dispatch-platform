@@ -2,6 +2,7 @@ import { createElement, lazy } from 'react';
 import { Bot, Building2, FlaskConical, ScrollText, Settings } from 'lucide-react';
 import {
   loadAuditWording,
+  loadSwitchIcons,
   type Access,
   type FrontendFeature,
 } from '../../shell/frontend/runtime/slots.js';
@@ -18,7 +19,9 @@ declare module '../../shell/frontend/runtime/slots.js' {
   }
 }
 
-const loadDsps = () => import('./dsps/index.js');
+// The DSPs page opens with every page switch's icon loaded.
+const loadDsps = () =>
+  Promise.all([import('./dsps/index.js'), loadSwitchIcons()]).then(([module]) => module);
 const loadPicker = () => import('./dsps/picker.js');
 const loadDiagnostics = () => import('./diagnostics/index.js');
 const loadAgents = () => import('./agents/index.js');

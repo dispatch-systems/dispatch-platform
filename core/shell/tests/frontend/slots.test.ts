@@ -19,6 +19,7 @@ import {
   pageTabs,
   readToggles,
   scheduleIssueOf,
+  loadSwitchIcons,
   switchIcon,
   type CollectionLabels,
   type ConnectionCard,
@@ -49,12 +50,14 @@ test('read toggles come group by group in their order, ties in the order the own
   );
 });
 
-test("a page's switch shows the icon its feature declares", () => {
+test("a page's switch shows the icon its feature declares, once loaded", async () => {
   installFeatures([
-    { name: 'alpha', switch: { id: 'uniforms', icon: Shirt } },
+    { name: 'alpha', switch: { id: 'uniforms', icon: async () => Shirt } },
     { name: 'beta' },
-    { name: 'gamma', switch: { id: 'scorecard', icon: Award } },
+    { name: 'gamma', switch: { id: 'scorecard', icon: async () => Award } },
   ]);
+  assert.equal(switchIcon('uniforms'), undefined);
+  await loadSwitchIcons();
   assert.equal(switchIcon('uniforms'), Shirt);
   assert.equal(switchIcon('scorecard'), Award);
   assert.equal(switchIcon('timecard'), undefined);

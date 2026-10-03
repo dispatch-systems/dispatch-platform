@@ -60,7 +60,8 @@ export const feature: FrontendFeature = {
     },
   ],
   auditWording: () => import('./audit-wording.js').then((module) => module.wording),
-  switch: { id: 'timecard', icon: CalendarDays },
+  // Its sidebar entry already loads the icon.
+  switch: { id: 'timecard', icon: async () => CalendarDays },
   errors: {
     meal_sync_paycom_required: 'Connect Paycom before syncing meal breaks.',
     meal_sync_flex_required: 'Connect Cortex in Settings → Connections before syncing Flex.',
