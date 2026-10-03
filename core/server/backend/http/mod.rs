@@ -15,7 +15,7 @@ mod routes;
 mod unmatched;
 
 pub use assets::{Asset, assets, browser_update_ready};
-pub use route::{Access, Route, Work};
+pub use route::{Access, Route, Work, needs_recent_verification};
 
 use crate::State;
 use axum::{

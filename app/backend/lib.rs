@@ -109,8 +109,23 @@ pub fn install() {
 }
 
 #[cfg(test)]
+#[path = "../tests/backend/audit.rs"]
+mod audit_areas;
+#[cfg(test)]
+#[path = "../tests/backend/cache.rs"]
+mod cache;
+#[cfg(test)]
 #[path = "../tests/backend/catalog.rs"]
 mod catalog;
+#[cfg(test)]
+#[path = "../tests/backend/databases.rs"]
+mod databases;
+#[cfg(test)]
+#[path = "../tests/backend/request_log.rs"]
+mod request_log;
+#[cfg(test)]
+#[path = "../tests/backend/verification.rs"]
+mod verification;
 #[cfg(test)]
 mod tests {
     #[test]

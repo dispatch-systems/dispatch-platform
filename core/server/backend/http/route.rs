@@ -140,6 +140,11 @@ impl Grant for PlatformRoutine {
         Ok(auth)
     }
 }
+/// Whether a member's write under `permission` asks them to have verified who they are
+/// recently. Editing a role is routine and reversible, so it asks for no fresh verification.
+pub fn needs_recent_verification(permission: &str) -> bool {
+    ["connections.manage", "members.manage", "members.invite"].contains(&permission)
+}
 impl Grant for Dsp {
     type Who = Context;
     fn access(self) -> Access {
@@ -147,10 +152,7 @@ impl Grant for Dsp {
     }
     fn authorize(self, db: &Store, input: &Input) -> Result<Context> {
         let auth = Session.authorize(db, input)?;
-        // Editing a role is routine and reversible, so it asks for no fresh verification.
-        if input.method == Method::POST
-            && ["connections.manage", "members.manage", "members.invite"].contains(&self.0)
-        {
+        if input.method == Method::POST && needs_recent_verification(self.0) {
             db.ensure_recent(&auth)?;
         }
         let context = db.from_view(&auth, input.header("x-dispatch-view"), self.0)?;
