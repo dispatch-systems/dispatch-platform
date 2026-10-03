@@ -1,4 +1,5 @@
 use super::*;
+use crate::collectors::Provider;
 use std::{collections::BTreeMap, path::PathBuf};
 use ts_rs::TS;
 

@@ -50,6 +50,8 @@ permissions! {
 }
 // Any membership satisfies this; it guards pages every member may open.
 pub const ACCESS: &str = "access";
+// Anyone who works with the team needs the member and role lists to do so.
+pub const TEAM: &str = "members.invite|members.manage|roles.manage";
 pub(crate) const IMPLIED: &[(&str, &str)] = &[
     ("timecard.manage", "timecard.view"),
     ("uniforms.adjust", "uniforms.view"),

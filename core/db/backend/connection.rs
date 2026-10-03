@@ -80,11 +80,11 @@ impl Db {
             file,
             rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )?;
-        db.create_collation("dispatch_unicode", crate::workforce::compare)?;
+        db.create_collation("dispatch_unicode", crate::names::compare)?;
         let flags = rusqlite::functions::FunctionFlags::SQLITE_UTF8
             | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC;
         db.create_scalar_function("dispatch_name", 2, flags, |ctx| {
-            Ok(crate::workforce::display_name(
+            Ok(crate::names::display_name(
                 &ctx.get::<String>(0)?,
                 &ctx.get::<String>(1)?,
             ))

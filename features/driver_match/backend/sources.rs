@@ -5,7 +5,7 @@ use crate::{
     collectors::Provider,
     contracts::{DriverData, DriverSource},
     db::{Db, Store, n, s},
-    scorecard,
+    weeks,
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -62,10 +62,10 @@ impl Identity {
 
 /// The Saturday a scorecard week ends, or the week as written when it does not parse.
 fn week_end(week: &str) -> String {
-    scorecard::week_days(week).map_or_else(|_| week.to_owned(), |(_, end)| end.to_string())
+    weeks::week_days(week).map_or_else(|_| week.to_owned(), |(_, end)| end.to_string())
 }
 fn week_start(week: &str) -> String {
-    scorecard::week_days(week).map_or_else(|_| week.to_owned(), |(start, _)| start.to_string())
+    weeks::week_days(week).map_or_else(|_| week.to_owned(), |(start, _)| start.to_string())
 }
 
 /// Every ID the DSP's collections hold: Paycom's employees, then every driver Amazon's

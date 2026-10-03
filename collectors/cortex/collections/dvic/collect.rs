@@ -7,6 +7,8 @@ use crate::{
 use chrono::NaiveDate;
 use std::collections::HashSet;
 
+pub const REPORT_HOST: &str = "flex-peer-performance-reports-prod-usamazon.s3.amazonaws.com";
+
 struct Listed {
     name: String,
     path: String,
@@ -75,7 +77,7 @@ fn listing(
         ensure(
             fixture
                 || (url.scheme() == "https"
-                    && url.host_str() == Some(dvic::REPORT_HOST)
+                    && url.host_str() == Some(REPORT_HOST)
                     && url.port_or_known_default() == Some(443)),
             "dvic_scope_mismatch",
             502,
@@ -295,7 +297,7 @@ mod tests {
         .unwrap();
         let report = &capture.reports[0];
         let row = json!({"name":report.name,"type":"xlsx","date":"2026-W39",
-            "downloadUrl":format!("https://{}{}?temporary=signature",dvic::REPORT_HOST,report.source_key),
+            "downloadUrl":format!("https://{}{}?temporary=signature",REPORT_HOST,report.source_key),
             "creationDate":[2026,9,27,14,4,0]});
         let wrap = |rows: Value| json!({"tableData":{dvic::DATASET:{"rows":rows}}});
         let read = |value| {
@@ -316,10 +318,10 @@ mod tests {
             format!("https://evil.example{}", report.source_key),
             format!(
                 "https://{}{}",
-                dvic::REPORT_HOST,
+                REPORT_HOST,
                 report.source_key.replace("/fxtr/", "/other/")
             ),
-            format!("https://{}:8443{}", dvic::REPORT_HOST, report.source_key),
+            format!("https://{}:8443{}", REPORT_HOST, report.source_key),
         ] {
             let mut wrong = row.clone();
             wrong["downloadUrl"] = json!(target);

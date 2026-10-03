@@ -1,9 +1,9 @@
 //! Who a new ID belongs to. Pure: it reads what is known and decides, and the store
 //! writes the decisions. Only certain answers link an ID to someone; anything less gives
 //! the ID a person of its own, for a person to review.
-use super::names::{Name, name_key};
 use super::sources::{Identity, Key};
 use crate::contracts::{DriverLink, DriverSource};
+use crate::names::{Name, name_key};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// An ID someone already holds, with the names its sources write today.

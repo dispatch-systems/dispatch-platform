@@ -9,8 +9,8 @@ use crate::{
     agents::Caller,
     contracts::{AgentArea, AgentSource, DriverMatch, DriverSource, DriverStatus, Dsp},
     db::Store,
-    driver_match::names::name_key,
-    scorecard,
+    names::name_key,
+    weeks,
 };
 use chrono::{Datelike, Duration, NaiveDate};
 use serde_json::Value;
@@ -189,7 +189,7 @@ pub fn read_period(text: &str, today: NaiveDate) -> Option<Period> {
                 });
             }
             let week = lower.to_uppercase();
-            let (from, to) = scorecard::week_days(&week).ok()?;
+            let (from, to) = weeks::week_days(&week).ok()?;
             return Some(Period {
                 from,
                 to,

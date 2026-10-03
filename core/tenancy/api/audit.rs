@@ -1,4 +1,5 @@
-use super::*;
+use crate::text_enum;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 text_enum! {

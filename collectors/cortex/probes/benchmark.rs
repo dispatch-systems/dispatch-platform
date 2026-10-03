@@ -42,7 +42,7 @@ fn tab_pair(value: &str) -> Result<Vec<usize>> {
     Ok(tabs)
 }
 fn adjacent_week(week: &str, delta: i64) -> Result<String> {
-    let (year, number) = crate::scorecard::parse_week(week)?;
+    let (year, number) = crate::weeks::parse_week(week)?;
     let day = chrono::NaiveDate::from_isoywd_opt(year, number, chrono::Weekday::Mon)
         .ok_or_else(|| Error::new("invalid_week", 400))?;
     let shifted = day

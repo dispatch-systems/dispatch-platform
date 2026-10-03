@@ -1,4 +1,5 @@
-use super::*;
+use crate::text_enum;
+use serde::{Deserialize, Serialize};
 
 text_enum! {
     #[cfg_attr(test, derive(ts_rs::TS))]

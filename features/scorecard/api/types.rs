@@ -1,4 +1,4 @@
-use super::*;
+use serde::Serialize;
 
 /// How many rows one dataset of a publication holds.
 #[derive(Clone, Debug, PartialEq, Serialize)]

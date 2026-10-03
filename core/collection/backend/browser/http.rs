@@ -3,7 +3,7 @@
 //! Requests keep to the browser's egress rules: the provider's own HTTPS hosts on
 //! public IPv4 addresses, no redirects and no proxies, bounded in size and time. The
 //! session's cookies stay in memory for the job and are never written or logged.
-use super::{browseros, egress};
+use super::{browseros, cortex::dvic::REPORT_HOST, egress};
 use crate::{Error, Result, db::s, ensure};
 use reqwest::{
     Client, Response, StatusCode,
@@ -50,7 +50,7 @@ impl Hosts {
                 Self::CortexReports => {
                     url.scheme() == "https"
                         && url.port_or_known_default() == Some(443)
-                        && host == crate::dvic::REPORT_HOST
+                        && host == REPORT_HOST
                         && egress::allowed_cortex_host(host)
                 }
                 Self::Fixture(port) => {
@@ -63,9 +63,7 @@ impl Hosts {
         match self {
             Self::Paycom => Self::paycom(host),
             Self::Cortex => Self::cortex(host),
-            Self::CortexReports => {
-                host == crate::dvic::REPORT_HOST && egress::allowed_cortex_host(host)
-            }
+            Self::CortexReports => host == REPORT_HOST && egress::allowed_cortex_host(host),
             Self::Fixture(_) => host == FIXTURE,
         }
     }
@@ -487,7 +485,7 @@ mod dvic_tests {
                 .await,
             Err(Refusal::Unavailable)
         ));
-        let s3 = Url::parse(&format!("https://{}/report", crate::dvic::REPORT_HOST)).unwrap();
+        let s3 = Url::parse(&format!("https://{}/report", REPORT_HOST)).unwrap();
         assert!(Hosts::CortexReports.allows(&s3));
         assert!(!Hosts::Cortex.allows(&s3));
         assert!(!Hosts::CortexReports.cookie("amazon.com"));

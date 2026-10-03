@@ -7,7 +7,7 @@ use crate::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, async_post, read, write},
     },
-    scorecard, validate as v,
+    scorecard, validate as v, weeks,
 };
 use std::sync::Arc;
 
@@ -40,7 +40,7 @@ fn collect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let key = v::text(b, "requestId", 1, 128)?;
     let week = if b.get("week").is_some() {
         let week = v::text(b, "week", 8, 8)?;
-        scorecard::parse_week(week)?;
+        weeks::parse_week(week)?;
         Some(week)
     } else {
         None

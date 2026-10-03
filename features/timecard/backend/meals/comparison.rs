@@ -1,19 +1,16 @@
 //! Read-only comparison across provider snapshots. Drivers join employees through
 //! Driver Match; unique names join the drivers it has not reached yet.
-use crate::driver_match::names::{Name, name_key};
 use crate::{
     Result,
     collectors::Provider,
     contracts::{LateRule, MealComparison, MealSource},
     db::{Store, s},
+    driver_match,
+    names::{self, Name, name_key},
     workforce,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
-
-/// Links saved on the meal-break page before Driver Match, which reads them as decisions and
-/// writes its own back for the previous release.
-pub(crate) const LINKS: &str = "employees.provider_links";
 
 // Exact matches take priority over the more conservative name-variant pass.
 fn match_drivers(drivers: &mut BTreeMap<String, Value>, roster: &[Value], settings: &Value) {
@@ -177,7 +174,7 @@ impl Store {
         };
         let mut context = ComparisonContext {
             timezone, selected, meals, itineraries, late,
-            links: self.dsp(id)?.setting(LINKS, json!({"revision":0,"links":[]}))?,
+            links: self.dsp(id)?.setting(driver_match::LINKS, json!({"revision":0,"links":[]}))?,
             known: self.driver_links(id)?,
             latest_zone: cortex.one(
                 "SELECT timezone FROM meal_publications WHERE active=1                  ORDER BY collected_at DESC,id DESC LIMIT 1", [],
@@ -381,7 +378,7 @@ impl ComparisonContext<'_> {
             });
         }
         rows.sort_by(|a, b| {
-            workforce::compare(s(a, "name"), s(b, "name")).then_with(|| s(a, "id").cmp(s(b, "id")))
+            names::compare(s(a, "name"), s(b, "name")).then_with(|| s(a, "id").cmp(s(b, "id")))
         });
         let live_zone = live.first().map(|(meta, _)| &meta["scope"]);
         let zone = live_zone

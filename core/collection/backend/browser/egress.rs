@@ -1,4 +1,4 @@
-use super::browseros::NetworkPolicy;
+use super::{browseros::NetworkPolicy, cortex::dvic::REPORT_HOST};
 use crate::{Error, Result, ensure};
 use std::{net::IpAddr, os::fd::AsRawFd, os::unix::fs::PermissionsExt, path::Path, sync::Arc};
 use tokio::{
@@ -25,7 +25,7 @@ pub fn allowed_host(host: &str) -> bool {
 pub fn allowed_cortex_host(host: &str) -> bool {
     [
         "logistics.amazon.com",
-        crate::dvic::REPORT_HOST,
+        REPORT_HOST,
         "amazon.com",
         "www.amazon.com",
         "unagi.amazon.com",

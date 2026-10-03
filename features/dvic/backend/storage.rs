@@ -62,7 +62,7 @@ impl Store {
     ) -> Result<Value> {
         let latest = report_week(chrono::Utc::now().date_naive());
         let week = week.unwrap_or(&latest);
-        scorecard::parse_week(week)?;
+        weeks::parse_week(week)?;
         ensure(week <= latest.as_str(), "dvic_week_not_available", 400)?;
         let request = self.dvic_request(id, weeks_ending(week, weeks)?)?;
         let job = self
@@ -286,7 +286,7 @@ impl Store {
             400,
         )?;
         if let Some(driver) = driver {
-            ensure(scorecard::token(driver, 128), "invalid_input", 400)?;
+            ensure(validate::token(driver, 128), "invalid_input", 400)?;
         }
         let station = self.profile(id)?.station_code;
         let mut rows: Vec<DvicInspection>=self.dvic(id)?.all(

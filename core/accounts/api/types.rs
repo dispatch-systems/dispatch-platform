@@ -1,4 +1,11 @@
-use super::*;
+use crate::{
+    Result,
+    config::{Environment, ProviderMode},
+    contracts::{ConnectionStatus, DspStatus, OwnerStatus, Presence},
+    db::{FromRow, Row},
+    text_enum,
+};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -259,4 +266,10 @@ pub struct DspProfile {
     pub setup_required: bool,
     pub removed: bool,
     pub support_visible: bool,
+}
+text_enum! {
+    pub enum UserStatus {
+        Active => "active",
+        Disabled => "disabled",
+    }
 }

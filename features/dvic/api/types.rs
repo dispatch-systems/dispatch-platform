@@ -1,4 +1,5 @@
-use super::*;
+use crate::contracts::PublicJob;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]

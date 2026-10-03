@@ -15,7 +15,7 @@ use crate::{
     agents::Caller,
     contracts::{AgentArea, AgentSource, DriverSource, Dsp},
     db::{Store, s},
-    scorecard,
+    weeks,
 };
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -163,7 +163,7 @@ fn weeks(db: &Store, dsp: &Dsp, period: &Period) -> crate::Result<Value> {
         .collect();
     // A week still running, or the one just ended, may have no scorecard yet: it is pending,
     // not missing.
-    let completed = scorecard::last_completed_week(today(dsp));
+    let completed = weeks::last_completed_week(today(dsp));
     let (pending, missing): (Vec<&String>, Vec<&String>) = wanted
         .iter()
         .filter(|w| !posted.contains(*w))
@@ -821,10 +821,10 @@ pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
                 }));
             }
         },
-        "last week" => scorecard::last_completed_week(today(dsp)),
+        "last week" => weeks::last_completed_week(today(dsp)),
         other => {
             let week = other.to_uppercase();
-            scorecard::parse_week(&week).map_err(|_| {
+            weeks::parse_week(&week).map_err(|_| {
                 Refusal::new(
                     400,
                     "invalid_week",
@@ -836,7 +836,7 @@ pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
     };
     let mut head = understood(dsp, None);
     head.insert("week".into(), json!(week));
-    if let Ok((first, last)) = scorecard::week_days(&week) {
+    if let Ok((first, last)) = weeks::week_days(&week) {
         head.insert("days".into(), json!(format!("{first}..{last}")));
     }
     if !posted.contains(&week) {

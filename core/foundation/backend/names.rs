@@ -1,6 +1,7 @@
 //! How names are compared. Sources format one name differently: "REYES, ANTONIO" in
 //! Paycom, "Antonio Reyes" in Amazon's routes, sometimes with a middle name, a suffix or
 //! without accents. Comparisons ignore case, accents, punctuation and order, never spelling.
+use std::cmp::Ordering;
 
 /// A letter without its accent, for the Latin letters names use.
 fn plain(c: char) -> char {
@@ -26,7 +27,7 @@ fn plain(c: char) -> char {
 
 /// A name with its formatting removed: "Last, First" put in order, then only its letters
 /// and digits, lowercased and without accents. Names with one key are one name.
-pub(crate) fn name_key(name: &str) -> String {
+pub fn name_key(name: &str) -> String {
     let ordered = name
         .split_once(',')
         .map(|(last, first)| format!("{first} {last}"));
@@ -41,7 +42,7 @@ pub(crate) fn name_key(name: &str) -> String {
 }
 
 /// A name in parts: the first name, the rest of the words, and a suffix.
-pub(crate) struct Name {
+pub struct Name {
     pub given: String,
     pub surnames: Vec<String>,
     pub suffix: Option<String>,
@@ -239,7 +240,7 @@ const SHORT_FORMS: &[(&str, &[&str])] = &[
 ];
 
 /// When one first name is a short form of the other, the two as (short, long).
-pub(crate) fn short_form<'a>(a: &'a str, b: &'a str) -> Option<(&'a str, &'a str)> {
+pub fn short_form<'a>(a: &'a str, b: &'a str) -> Option<(&'a str, &'a str)> {
     if a.is_empty() || b.is_empty() || a == b {
         return None;
     }
@@ -254,7 +255,7 @@ pub(crate) fn short_form<'a>(a: &'a str, b: &'a str) -> Option<(&'a str, &'a str
 
 /// A name as people read it: "First Last". A source that writes only capitals, as Paycom
 /// does, is put in ordinary case; any other spelling is kept as written.
-pub(crate) fn display(name: &str) -> String {
+pub fn display(name: &str) -> String {
     let ordered = name
         .split_once(',')
         .map(|(last, first)| format!("{} {}", first.trim(), last.trim()))
@@ -283,12 +284,38 @@ pub(crate) fn display(name: &str) -> String {
 }
 /// A first name with its first letter in capitals, for evidence such as "Tony is short
 /// for Antonio".
-pub(crate) fn capitalized(word: &str) -> String {
+pub fn capitalized(word: &str) -> String {
     let mut chars = word.chars();
     chars
         .next()
         .map(|first| first.to_uppercase().chain(chars).collect())
         .unwrap_or_default()
+}
+
+pub fn display_name(name: &str, order: &str) -> String {
+    let parts: Vec<_> = name
+        .split(|c: char| c.is_whitespace() && c != '\u{0085}' || c == '\u{feff}')
+        .filter(|s| !s.is_empty())
+        .collect();
+    if order == "last_first" && parts.len() > 1 {
+        format!(
+            "{}, {}",
+            parts.last().unwrap(),
+            parts[..parts.len() - 1].join(" ")
+        )
+    } else {
+        name.into()
+    }
+}
+pub fn compare(a: &str, b: &str) -> Ordering {
+    static COLLATOR: std::sync::OnceLock<icu_collator::CollatorBorrowed<'static>> =
+        std::sync::OnceLock::new();
+    COLLATOR
+        .get_or_init(|| {
+            icu_collator::Collator::try_new(Default::default(), Default::default())
+                .expect("compiled Unicode collation data")
+        })
+        .compare(a, b)
 }
 
 #[cfg(test)]

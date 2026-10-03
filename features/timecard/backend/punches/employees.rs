@@ -7,33 +7,6 @@ use crate::{
 };
 use rusqlite::params;
 use serde_json::json;
-use std::cmp::Ordering;
-pub(crate) fn display_name(name: &str, order: &str) -> String {
-    let parts: Vec<_> = name
-        .split(|c: char| c.is_whitespace() && c != '\u{0085}' || c == '\u{feff}')
-        .filter(|s| !s.is_empty())
-        .collect();
-    if order == "last_first" && parts.len() > 1 {
-        format!(
-            "{}, {}",
-            parts.last().unwrap(),
-            parts[..parts.len() - 1].join(" ")
-        )
-    } else {
-        name.into()
-    }
-}
-pub(crate) fn compare(a: &str, b: &str) -> Ordering {
-    static COLLATOR: std::sync::OnceLock<icu_collator::CollatorBorrowed<'static>> =
-        std::sync::OnceLock::new();
-    COLLATOR
-        .get_or_init(|| {
-            icu_collator::Collator::try_new(Default::default(), Default::default())
-                .expect("compiled Unicode collation data")
-        })
-        .compare(a, b)
-}
-
 impl Store {
     pub fn employees(
         &self,

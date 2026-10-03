@@ -1,4 +1,10 @@
-use super::*;
+use crate::{
+    Result,
+    contracts::{JobStatus, PaycomDay},
+    db::{FromRow, Row},
+    text_enum,
+};
+use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct EmployeeTimecardPeriod {

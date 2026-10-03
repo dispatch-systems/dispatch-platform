@@ -1,4 +1,8 @@
-use super::*;
+use crate::{
+    contracts::{MealAssessment, Punch},
+    text_enum,
+};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]

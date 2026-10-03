@@ -1,4 +1,9 @@
-use super::*;
+use crate::{
+    Result,
+    db::{FromRow, Row},
+    text_enum,
+};
+use serde::Serialize;
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
@@ -92,4 +97,33 @@ impl CollectionChange {
 pub struct CollectionUpdates {
     pub revision: String,
     pub changes: Vec<CollectionChange>,
+}
+text_enum! {
+    #[cfg_attr(test, derive(ts_rs::TS))]
+        pub enum ConnectionStatus {
+        NotConnected => "not_connected",
+        Ready => "ready",
+        SigningIn => "signing_in",
+        NeedsVerification => "needs_verification",
+        Error => "error",
+    }
+}
+text_enum! {
+    /// What a schedule collects: one provider's data, or every scheduled provider's.
+    #[cfg_attr(test, derive(ts_rs::TS))]
+        pub enum ScheduleCollection {
+        Paycom => "paycom",
+        MealBreak => "meal_break",
+        Both => "both",
+        Scorecard => "scorecard",
+        Routes => "routes",
+        Dvic => "dvic",
+    }
+}
+text_enum! {
+    #[cfg_attr(test, derive(ts_rs::TS))]
+        pub enum Cadence {
+        Interval => "interval",
+        Daily => "daily",
+    }
 }

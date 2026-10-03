@@ -1,9 +1,10 @@
-use super::{compare, display_name, preferences::preferences};
+use super::preferences::preferences;
 use crate::{
     Result,
     collectors::Provider,
     contracts::DailyTimecards,
     db::{Db, Store, s},
+    names::{compare, display_name},
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;

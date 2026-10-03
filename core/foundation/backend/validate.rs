@@ -86,3 +86,11 @@ pub fn source_url(value: &str) -> Result<()> {
         400,
     )
 }
+/// An identifier as the API and the page spell them.
+pub fn token(value: &str, max: usize) -> bool {
+    !value.is_empty()
+        && value.len() <= max
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_-.".contains(&b))
+}

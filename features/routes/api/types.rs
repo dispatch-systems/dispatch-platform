@@ -1,4 +1,4 @@
-use super::*;
+use serde::Serialize;
 
 /// One day's routes as published: the active reading of that day at the station.
 #[derive(Clone, Debug, PartialEq, Serialize)]

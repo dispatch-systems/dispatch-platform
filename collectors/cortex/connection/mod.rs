@@ -7,7 +7,7 @@ mod collection;
 #[path = "../discovery/mod.rs"]
 mod discovery;
 #[path = "../collections/dvic/collect.rs"]
-mod dvic;
+pub(crate) mod dvic;
 #[path = "../collections/routes/collect.rs"]
 pub(crate) mod routedata;
 #[path = "../collections/scorecard/collect.rs"]

@@ -1,15 +1,9 @@
-use super::*;
+use crate::{
+    contracts::{DriverSource, DriverStatus},
+    text_enum,
+};
+use serde::Serialize;
 
-text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
-    #[derive(PartialOrd, Ord)]
-    /// Where an ID comes from. Every Amazon source (routes, meal breaks, DVIC, the
-    /// scorecard) knows a driver by the same transporter ID.
-    pub enum DriverSource {
-        Paycom => "paycom",
-        Amazon => "amazon",
-    }
-}
 text_enum! {
     #[cfg_attr(test, derive(ts_rs::TS))]
     /// How an ID came to its person.
@@ -19,21 +13,6 @@ text_enum! {
         Variant => "variant",
         Saved => "saved",
         Person => "person",
-    }
-}
-text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
-    /// Where a person stands. `review` is a person who might be someone else listed twice;
-    /// `former` someone only one source knows who has left.
-    pub enum DriverStatus {
-        Matched => "matched",
-        Variant => "variant",
-        Confirmed => "confirmed",
-        Review => "review",
-        PaycomOnly => "paycom_only",
-        AmazonOnly => "amazon_only",
-        Office => "office",
-        Former => "former",
     }
 }
 text_enum! {

@@ -13,7 +13,7 @@ use crate::{
     db::{Db, Kind},
     ensure,
     meals::{CollectionRequest as ScopeRequest, Discovery, Scope},
-    scorecard, validate,
+    validate, weeks,
 };
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
@@ -27,7 +27,6 @@ pub const MAX_REPORTS: usize = MAX_WEEKS * 14;
 pub const MAX_ROWS: usize = 10_000;
 pub const MAX_CAPTURE_ROWS: usize = 100_000;
 pub const MAX_FILE_BYTES: usize = 8 * 1024 * 1024;
-pub const REPORT_HOST: &str = "flex-peer-performance-reports-prod-usamazon.s3.amazonaws.com";
 pub const DATASET: &str = "dsp_station_weekly_supp_reports";
 pub static STORAGE: AddedStorage = AddedStorage {
     id: "dvic",
@@ -83,7 +82,7 @@ impl Request {
     pub fn validate(&self) -> Result<()> {
         ensure(
             station_code(&self.station)
-                && scorecard::token(&self.dsp_abbreviation, 32)
+                && validate::token(&self.dsp_abbreviation, 32)
                 && !self.dsp_name.trim().is_empty()
                 && self.dsp_name.len() <= 256
                 && !self.dsp_name.chars().any(char::is_control),
@@ -97,7 +96,7 @@ impl Request {
         )?;
         let mut seen = HashSet::new();
         for week in &self.weeks {
-            scorecard::parse_week(week)?;
+            weeks::parse_week(week)?;
             ensure(seen.insert(week), "invalid_dvic_request", 400)?;
         }
         self.scope_request()
@@ -132,7 +131,7 @@ pub fn weeks_ending(week: &str, count: usize) -> Result<Vec<String>> {
         "invalid_dvic_request",
         400,
     )?;
-    scorecard::weeks_before(week, count - 1)
+    weeks::weeks_before(week, count - 1)
 }
 
 /// No timezone is invented for the provider's offset-free timestamps.
@@ -187,7 +186,7 @@ impl Inspection {
             502,
         )?;
         for value in [&self.transporter_id, &self.vin, &self.inspection_status] {
-            ensure(scorecard::token(value, 128), "dvic_row_invalid", 502)?;
+            ensure(validate::token(value, 128), "dvic_row_invalid", 502)?;
         }
         ensure(
             !self.transporter_name.is_empty()
@@ -278,9 +277,9 @@ pub fn report_identity(
     dsp: &str,
     station: &str,
 ) -> Result<NaiveDate> {
-    let (year, number) = scorecard::parse_week(week)?;
+    let (year, number) = weeks::parse_week(week)?;
     ensure(
-        scorecard::token(dsp, 32) && station_code(station),
+        validate::token(dsp, 32) && station_code(station),
         "dvic_scope_mismatch",
         502,
     )?;
@@ -329,8 +328,8 @@ impl Capture {
             self.version == 1
                 && self.station == request.station
                 && self.weeks == request.weeks
-                && scorecard::token(&self.company_id, 128)
-                && scorecard::token(&self.dsp_code, 32)
+                && validate::token(&self.company_id, 128)
+                && validate::token(&self.dsp_code, 32)
                 && self
                     .dsp_code
                     .eq_ignore_ascii_case(&request.dsp_abbreviation)
@@ -377,9 +376,9 @@ pub fn fixture(request: &Request) -> Result<Capture> {
     request.validate()?;
     let mut reports = Vec::new();
     for week in &request.weeks {
-        let (_, saturday) = scorecard::week_days(week)?;
+        let (_, saturday) = weeks::week_days(week)?;
         let date = saturday + Duration::days(1);
-        let (year, number) = scorecard::parse_week(week)?;
+        let (year, number) = weeks::parse_week(week)?;
         let name = format!(
             "US_{}_{}_{year}_week-{number}_{}_DVIC_PreTrip_u90s-NonDOT_u300s-DOT_last7days.xlsx",
             request.dsp_abbreviation,

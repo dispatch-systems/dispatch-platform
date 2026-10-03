@@ -11,8 +11,8 @@ use crate::{
     meals::Scope,
     scorecard::{
         Capture, Collection, DATASETS, Dataset, DatasetCapture, MAX_ROWS, POSTED_SIGNAL, Request,
-        token,
     },
+    validate::token,
 };
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 

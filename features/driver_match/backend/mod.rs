@@ -4,8 +4,6 @@
 //! certain match; anything less waits for a decision in Settings.
 #[path = "matching.rs"]
 mod matching;
-#[path = "../../../core/foundation/backend/names.rs"]
-pub(crate) mod names;
 #[path = "review.rs"]
 mod review;
 #[path = "sources.rs"]
@@ -21,7 +19,7 @@ use crate::{
     },
     crypto,
     db::{Db, FromRow, Row, Store, iso},
-    ensure, workforce,
+    ensure, names,
 };
 use matching::{Member, Saved};
 use rusqlite::params;
@@ -31,6 +29,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// When collected data was last checked for new IDs.
 const CHECKED: &str = "driver_match.checked_at";
+/// Links saved on the meal-break page before Driver Match, which reads them as decisions and
+/// writes its own back for the previous release.
+pub(crate) const LINKS: &str = "employees.provider_links";
 /// Letters and digits that cannot be mistaken for one another, without U, so a code
 /// rarely spells a word.
 const ALPHABET: &[u8; 30] = b"23456789ABCDEFGHJKMNPQRSTVWXYZ";
@@ -269,7 +270,7 @@ impl Store {
 
     /// The links saved on the meal-break page before Driver Match, read as decisions.
     fn saved_links(&self, dsp: &str) -> Result<Saved> {
-        let value = self.dsp(dsp)?.setting(crate::meals::LINKS, Value::Null)?;
+        let value = self.dsp(dsp)?.setting(LINKS, Value::Null)?;
         let text = |v: &Value| v.as_str().map(str::to_owned);
         Ok(Saved {
             links: value["links"]
@@ -459,7 +460,7 @@ impl Store {
             (a.0 != DriverStrength::Strong)
                 .cmp(&(b.0 != DriverStrength::Strong))
                 .then(b.1.cmp(&a.1))
-                .then_with(|| workforce::compare(&drivers[&a.3].name, &drivers[&b.3].name))
+                .then_with(|| names::compare(&drivers[&a.3].name, &drivers[&b.3].name))
         });
         let mut shown: BTreeMap<String, usize> = BTreeMap::new();
         pairs.retain(|pair| {
@@ -482,7 +483,7 @@ impl Store {
             })
             .collect();
         let mut list: Vec<Driver> = drivers.into_values().collect();
-        list.sort_by(|a, b| workforce::compare(&a.name, &b.name).then_with(|| a.code.cmp(&b.code)));
+        list.sort_by(|a, b| names::compare(&a.name, &b.name).then_with(|| a.code.cmp(&b.code)));
         let count = |statuses: &[DriverStatus]| {
             list.iter().filter(|d| statuses.contains(&d.status)).count()
         };
@@ -792,7 +793,7 @@ impl Store {
     /// release still sees them after a rollback. Remove once that release can no longer be
     /// rolled back to.
     fn mirror_links(db: &Db) -> Result<()> {
-        let before = db.setting(crate::meals::LINKS, json!({"revision":0,"links":[]}))?;
+        let before = db.setting(LINKS, json!({"revision":0,"links":[]}))?;
         let mut taken = BTreeSet::new();
         let mut links = vec![];
         for (amazon, paycom) in db.query_as::<(String, String)>(
@@ -827,7 +828,7 @@ impl Store {
             }
         }
         db.set(
-            crate::meals::LINKS,
+            LINKS,
             &json!({
                 "revision": before["revision"].as_i64().unwrap_or(0) + 1,
                 "links": links,

@@ -42,32 +42,3 @@ impl<A: FromSql, B: FromSql, C: FromSql, D: FromSql> FromRow for (A, B, C, D) {
         Ok((row.0.get(0)?, row.0.get(1)?, row.0.get(2)?, row.0.get(3)?))
     }
 }
-
-/// A closed set of strings stored in a column and sent as JSON: one enum with its SQL
-/// text, `FromSql`/`ToSql`, and serde, so no caller compares the text.
-#[macro_export]
-macro_rules! text_enum {
-    ($(#[$meta:meta])* $vis:vis enum $name:ident { $($variant:ident => $text:literal,)* }) => {
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-        $(#[$meta])*
-        $vis enum $name { $(#[serde(rename = $text)] $variant,)* }
-        impl $name {
-            pub const fn as_str(self) -> &'static str {
-                match self { $(Self::$variant => $text,)* }
-            }
-            pub fn parse(text: &str) -> Option<Self> {
-                match text { $($text => Some(Self::$variant),)* _ => None }
-            }
-        }
-        impl rusqlite::types::FromSql for $name {
-            fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
-                value.as_str().and_then(|text| Self::parse(text).ok_or(rusqlite::types::FromSqlError::InvalidType))
-            }
-        }
-        impl rusqlite::types::ToSql for $name {
-            fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
-                Ok(self.as_str().into())
-            }
-        }
-    };
-}

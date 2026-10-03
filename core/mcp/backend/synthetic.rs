@@ -333,7 +333,7 @@ fn scorecards(
     transporter: &dyn Fn(u64) -> String,
     today: NaiveDate,
 ) -> Result<usize> {
-    let completed = crate::scorecard::last_completed_week(today);
+    let completed = crate::weeks::last_completed_week(today);
     let mut weeks: Vec<String> = dates
         .iter()
         .map(|date| {
@@ -347,7 +347,7 @@ fn scorecards(
     weeks.dedup();
     let tiers = ["Platinum", "Platinum", "Platinum", "Gold", "Silver"];
     for week in &weeks {
-        let (sunday, saturday) = crate::scorecard::week_days(week)?;
+        let (sunday, saturday) = crate::weeks::week_days(week)?;
         let jobs =
             db.enqueue_scorecard(id, None, &format!("synthetic-scorecard:{week}"), Some(week))?;
         let job = s(&jobs, "id").to_owned();

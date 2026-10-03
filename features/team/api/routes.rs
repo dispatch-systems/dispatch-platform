@@ -8,13 +8,11 @@ use crate::{
         input::{Input, Reply},
         route::{Anyone, Dsp, Member, Public, Route, async_post, read, write},
     },
-    roles, validate as v,
+    roles::{self, TEAM},
+    validate as v,
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
-
-// Anyone who works with the team needs the member and role lists to do so.
-pub const TEAM: &str = "members.invite|members.manage|roles.manage";
 
 const INVITATIONS: &str = "SELECT i.email,COALESCE(r.name,i.role) role,i.expires_at expiresAt,\
     i.used_at IS NOT NULL accepted FROM invitations i LEFT JOIN roles r ON r.id=i.role_id \

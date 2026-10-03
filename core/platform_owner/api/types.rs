@@ -1,4 +1,8 @@
-use super::*;
+use crate::{
+    config::{Environment, ProviderMode},
+    contracts::JobStatus,
+};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

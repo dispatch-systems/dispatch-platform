@@ -1,4 +1,4 @@
-use super::{Result, ensure};
+use super::{Result, ensure, text_enum};
 use std::{env, path::PathBuf};
 #[path = "security.rs"]
 mod security;
@@ -220,12 +220,34 @@ impl Config {
         self.root.join("data").join(&self.environment)
     }
     /// The validated environment. The field stays text because it also names a directory.
-    pub fn env(&self) -> crate::contracts::Environment {
-        use crate::contracts::Environment;
+    pub fn env(&self) -> Environment {
         Environment::parse(&self.environment).unwrap_or(Environment::Preview)
     }
     pub fn mail_available(&self) -> bool {
         self.mail_mode != "disabled"
+    }
+}
+
+text_enum! {
+    #[cfg_attr(test, derive(ts_rs::TS))]
+        pub enum Environment {
+        Preview => "preview",
+        Production => "production",
+    }
+}
+impl Environment {
+    pub fn is_preview(self) -> bool {
+        self == Self::Preview
+    }
+    pub fn is_production(self) -> bool {
+        self == Self::Production
+    }
+}
+text_enum! {
+    #[cfg_attr(test, derive(ts_rs::TS))]
+        pub enum ProviderMode {
+        Fixture => "fixture",
+        Native => "native",
     }
 }
 
