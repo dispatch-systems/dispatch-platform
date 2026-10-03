@@ -2,16 +2,17 @@
 //! inside a page, or a connection to a provider. The platform owner switches
 //! features per DSP: a switched-off feature's pages, permissions and automation
 //! do not exist for that DSP, and nothing it stored is touched, so switching it
-//! back on restores everything. Connections come from the collector registry,
-//! each providing a capability; a page requires capabilities, never a provider
-//! by name.
+//! back on restores everything. Pages and their tabs come from the features'
+//! manifests, and connections from the collector registry, each providing a
+//! capability; a page requires capabilities, never a provider by name.
 use super::{
     Result,
     audit::AuditChange,
-    collectors::Provider,
+    collectors::{self, Provider},
     contracts::{DspFeatureReport, DspFeatures, DspStatus, FeatureChange, FeatureState},
     db::{FromRow, Row, Store, iso},
     ensure, job_statuses,
+    manifest::{self, registry},
 };
 use rusqlite::params;
 use std::{collections::BTreeMap, sync::LazyLock};
@@ -37,67 +38,6 @@ pub struct Feature {
     /// Whether a DSP gets it when created, or while it has no row of its own.
     pub default: bool,
 }
-// Every page. Connections are listed by the collector registry below.
-pub const PAGES: &[Feature] = &[
-    Feature {
-        id: "timecard",
-        label: "Timecard",
-        kind: Kind::Page,
-        permissions: &["timecard.view", "timecard.manage", "collections.run"],
-        provides: &[],
-        requires: &["timecards", "meal_breaks"],
-        default: false,
-    },
-    Feature {
-        id: "uniforms",
-        label: "Uniform Inventory",
-        kind: Kind::Page,
-        permissions: &["uniforms.view", "uniforms.adjust", "uniforms.manage"],
-        provides: &[],
-        requires: &[],
-        default: false,
-    },
-    Feature {
-        id: "routes",
-        label: "Routes",
-        kind: Kind::Page,
-        permissions: &["routes.view", "routes.collect", "routes.manage"],
-        provides: &[],
-        requires: &["routes"],
-        default: false,
-    },
-    Feature {
-        id: "dvic",
-        label: "DVIC",
-        kind: Kind::Page,
-        permissions: &["dvic.view", "dvic.collect", "dvic.manage"],
-        provides: &[],
-        requires: &["dvic"],
-        default: false,
-    },
-    // Amazon's weekly scorecard: no page of its own yet, but its collection, its schedules
-    // and its weeks, apart from the Timecard page.
-    Feature {
-        id: "scorecard",
-        label: "Scorecard",
-        kind: Kind::Page,
-        permissions: &["scorecard.view", "scorecard.collect", "scorecard.manage"],
-        provides: &[],
-        requires: &["scorecard"],
-        default: false,
-    },
-    // A tab of Settings, not a page of its own: it matches Paycom's employees to the
-    // drivers Amazon's routes and other collections name.
-    Feature {
-        id: "driver_match",
-        label: "Driver Match",
-        kind: Kind::Page,
-        permissions: &["driver_match.manage"],
-        provides: &[],
-        requires: &["timecards", "routes"],
-        default: false,
-    },
-];
 impl Feature {
     /// How the audit log names it: a tab with its page, as "Timecard · Meal Breaks".
     fn name(&self) -> String {
@@ -107,67 +47,97 @@ impl Feature {
         }
     }
 }
+/// A feature's page, as its switch declares it, with the permissions the role sheet lists
+/// under it.
+fn page(feature: &manifest::Feature) -> Option<Feature> {
+    let switch = feature.switch?;
+    let permissions: Vec<_> = feature
+        .permissions
+        .iter()
+        .filter(|permission| permission.group.is_none())
+        .map(|permission| permission.id)
+        .collect();
+    Some(Feature {
+        id: switch.id,
+        label: switch.label,
+        kind: Kind::Page,
+        // Made once, with the catalog, which lasts as long as the process.
+        permissions: Box::leak(permissions.into_boxed_slice()),
+        provides: &[],
+        requires: switch.requires,
+        default: false,
+    })
+}
 /// Tabs switched on their own, each inside its page. A tab owns no permissions and
 /// requires nothing: it exists while its page and its own switch are on, so the page's
 /// permissions gate it and its routes ask `Context::has`. Switching one never touches
 /// automation, which follows the page. It defaults on, so a page switched on shows every
 /// tab until one is switched off; a DSP still starts with none, as its pages are off.
-pub const TABS: &[Feature] = &[
-    tab("timecard.daily", "Timecard", "timecard"),
-    tab("timecard.meal_breaks", "Meal Breaks", "timecard"),
-    tab("timecard.employees", "Employee Search", "timecard"),
-    tab("dvic.day", "Day", "dvic"),
-    tab("dvic.week", "Week", "dvic"),
-];
-const fn tab(id: &'static str, label: &'static str, page: &'static str) -> Feature {
-    Feature {
-        id,
-        label,
-        kind: Kind::Tab(page),
-        permissions: &[],
-        provides: &[],
-        requires: &[],
-        default: true,
-    }
+fn page_tabs(feature: &manifest::Feature) -> impl Iterator<Item = Feature> {
+    feature.switch.into_iter().flat_map(|switch| {
+        feature.tabs.iter().map(move |tab| Feature {
+            id: tab.id,
+            label: tab.label,
+            kind: Kind::Tab(switch.id),
+            permissions: &[],
+            provides: &[],
+            requires: &[],
+            default: true,
+        })
+    })
+}
+/// Every page, in catalog order.
+pub fn pages() -> impl Iterator<Item = &'static Feature> {
+    catalog().iter().filter(|f| f.kind == Kind::Page)
 }
 /// The tabs of `page`, in catalog order.
 fn tabs(page: &str) -> impl Iterator<Item = &'static Feature> {
-    TABS.iter()
+    catalog()
+        .iter()
         .filter(move |t| matches!(t.kind, Kind::Tab(p) if p == page))
 }
-/// The page whose schedules, collections and jobs run. Nothing collects without it,
-/// except the collections another feature owns (`automation`).
-pub const SCHEDULES: &str = "timecard";
-/// The routes, DVIC and scorecard collections, each owned by its own feature rather than the
-/// timecard page. Their schedules and jobs have routes of their own.
-const COLLECTION_PAGES: &[(&str, &str, &str)] = &[
-    ("routes", "cortex.routes.collect", "routes"),
-    ("dvic", "cortex.dvic.collect", "dvic"),
-    ("scorecard", "cortex.scorecard.collect", "scorecard"),
-];
+/// The page whose schedules, collections and jobs run, as its feature's manifest says.
+/// Nothing collects without it, except the collections another feature keeps
+/// (`automation`).
+pub fn schedules() -> &'static str {
+    registry()
+        .features
+        .iter()
+        .find(|feature| feature.schedules)
+        .and_then(|feature| feature.switch)
+        .map(|switch| switch.id)
+        .expect("a page runs the schedules")
+}
+/// The page that runs a job kind or a schedule collection: the page of the feature that
+/// keeps the collection. `both`, and anything else, is the schedules' page's.
 pub fn automation(kind_or_collection: &str) -> &'static str {
-    COLLECTION_PAGES
+    let registry = registry();
+    registry
+        .collectors
         .iter()
-        .find(|(collection, kind, _)| {
-            *collection == kind_or_collection || *kind == kind_or_collection
-        })
-        .map_or(SCHEDULES, |(_, _, page)| *page)
+        .flat_map(|collector| collector.collections())
+        .find(|c| c.job_kind == kind_or_collection || c.schedule == kind_or_collection)
+        .and_then(|collection| registry.keeping(collection.job_kind))
+        .and_then(|feature| feature.switch)
+        .map_or_else(schedules, |switch| switch.id)
 }
+/// Whether a page that runs collections is on: the schedules' page, or one whose
+/// feature keeps a collection.
 pub fn automates(enabled: &[String]) -> bool {
-    enabled
-        .iter()
-        .any(|f| f == SCHEDULES || COLLECTION_PAGES.iter().any(|(_, _, page)| f == page))
+    let runs = |id: &str| {
+        id == schedules()
+            || registry().features.iter().any(|feature| {
+                !feature.keeps.is_empty() && feature.switch.is_some_and(|switch| switch.id == id)
+            })
+    };
+    enabled.iter().any(|f| runs(f))
 }
+/// The permission a job of `kind` runs under, as its collection's keeper declares it.
 pub fn collection_permission(kind: &str) -> String {
-    let page = automation(kind);
-    if page == SCHEDULES {
-        "collections.run".into()
-    } else {
-        format!("{page}.collect")
-    }
+    registry().keeper(kind).permission().to_owned()
 }
 /// The permission every connection shares; it exists while any connection does.
-const CONNECTIONS: &str = "connections.manage";
+const CONNECTIONS: &str = collectors::CONNECTIONS.id;
 
 fn connection(provider: Provider) -> Feature {
     let collector = provider.collector();
@@ -181,12 +151,13 @@ fn connection(provider: Provider) -> Feature {
         default: false,
     }
 }
-/// The catalog: pages, their tabs, then every registered connection.
+/// The catalog: every feature's page, their tabs, then every registered connection.
 static CATALOG: LazyLock<Vec<Feature>> = LazyLock::new(|| {
-    PAGES
-        .iter()
-        .chain(TABS)
-        .copied()
+    let features = registry().features;
+    let pages = features.iter().filter_map(|feature| page(feature));
+    let tabs = features.iter().flat_map(|feature| page_tabs(feature));
+    pages
+        .chain(tabs)
         .chain(Provider::all().map(connection))
         .collect()
 });
@@ -206,8 +177,7 @@ pub fn grants(enabled: &[String], permission: &str) -> bool {
             .iter()
             .any(|f| f.kind == Kind::Connection && on(f));
     }
-    PAGES
-        .iter()
+    pages()
         .find(|f| f.permissions.contains(&permission))
         .is_none_or(on)
 }
@@ -574,7 +544,7 @@ mod tests {
             }
         }
         assert!(!owned.contains(&CONNECTIONS));
-        assert!(find(SCHEDULES).is_some_and(|f| f.kind == Kind::Page));
+        assert!(find(schedules()).is_some_and(|f| f.kind == Kind::Page));
     }
     #[test]
     fn permissions_follow_their_feature() {

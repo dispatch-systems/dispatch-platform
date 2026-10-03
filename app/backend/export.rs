@@ -235,8 +235,7 @@ fn access_catalog() -> String {
         .collect();
     let labels: BTreeMap<_, _> = roles::LABELS.iter().copied().collect();
     let implied: BTreeMap<_, _> = roles::IMPLIED.iter().copied().collect();
-    let groups: Vec<_> = features::PAGES
-        .iter()
+    let groups: Vec<_> = features::pages()
         .map(|feature| (feature.label, feature.permissions))
         .chain(
             roles::GROUPS
@@ -270,7 +269,7 @@ fn access_catalog() -> String {
             json!(catalog.iter().map(|feature| feature.id).collect::<Vec<_>>()),
         ),
         ("featureCatalog", json!(entries)),
-        ("schedulesFeature", json!(features::SCHEDULES)),
+        ("schedulesFeature", json!(features::schedules())),
         ("permissions", json!(*roles::PERMISSIONS)),
         ("permissionLabels", json!(labels)),
         ("permissionGroups", json!(groups)),

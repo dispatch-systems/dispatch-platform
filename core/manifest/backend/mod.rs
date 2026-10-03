@@ -50,6 +50,13 @@ impl Registry {
             .iter()
             .flat_map(|feature| feature.keeps.iter().copied())
     }
+    /// The feature that keeps the collection a job of `kind` collects.
+    pub fn keeping(&self, kind: &str) -> Option<&'static Feature> {
+        self.features
+            .iter()
+            .copied()
+            .find(|feature| feature.keeps.iter().any(|keeper| keeper.keeps() == kind))
+    }
     /// The keeper of the collection a job of `kind` collects.
     pub fn keeper(&self, kind: &str) -> &'static dyn Keeper {
         self.keepers()
@@ -63,8 +70,9 @@ impl Registry {
         CORE_PERMISSIONS.iter().copied().chain(features)
     }
     /// Panics unless every collection has exactly one keeper, every keeper keeps a
-    /// registered collection, and every permission has an id and an order of its own and
-    /// implies only permissions that exist.
+    /// registered collection, one page runs the schedules, only a page has tabs, and
+    /// every permission has an id and an order of its own and implies only permissions
+    /// that exist.
     pub fn check(&self) {
         let kinds: Vec<&str> = self
             .collectors
@@ -81,6 +89,18 @@ impl Registry {
                 kinds.contains(&keeper.keeps()),
                 "{} is kept, but no collector collects it",
                 keeper.keeps()
+            );
+        }
+        let schedules: Vec<_> = self.features.iter().filter(|f| f.schedules).collect();
+        assert!(
+            schedules.len() == 1 && schedules[0].switch.is_some(),
+            "exactly one page runs the schedules"
+        );
+        for feature in self.features {
+            assert!(
+                feature.switch.is_some() || feature.tabs.is_empty(),
+                "{} has tabs but no page",
+                feature.name
             );
         }
         let permissions: Vec<_> = self.permissions().collect();
@@ -107,6 +127,13 @@ impl Registry {
 pub struct Feature {
     /// Its directory's name.
     pub name: &'static str,
+    /// Its page's switch on the DSPs page. `None` for a feature that is always on.
+    pub switch: Option<Switch>,
+    /// Its page's tabs, each switched on its own, in the order the page shows them.
+    pub tabs: &'static [Tab],
+    /// Whether its page is the one whose schedules, collections and jobs run: the
+    /// generic schedule and job routes', and a `both` schedule's. One feature's is.
+    pub schedules: bool,
     /// The permissions it owns, for the role sheet.
     pub permissions: &'static [Permission],
     /// The collections it keeps.
@@ -117,9 +144,32 @@ pub struct Feature {
 pub const fn feature(name: &'static str) -> Feature {
     Feature {
         name,
+        switch: None,
+        tabs: &[],
+        schedules: false,
         permissions: &[],
         keeps: &[],
     }
+}
+
+/// A feature's page on the DSPs page: off for every DSP until the platform owner switches
+/// it on.
+#[derive(Clone, Copy)]
+pub struct Switch {
+    /// Its catalog id. Permanent: each DSP's switch is stored under it.
+    pub id: &'static str,
+    pub label: &'static str,
+    /// The capabilities an enabled connection must provide while the page is on.
+    pub requires: &'static [&'static str],
+}
+/// A tab of a feature's page, switched on its own inside the page.
+pub struct Tab {
+    /// Its catalog id. Permanent.
+    pub id: &'static str,
+    pub label: &'static str,
+}
+pub const fn tab(id: &'static str, label: &'static str) -> Tab {
+    Tab { id, label }
 }
 
 /// Core's own permissions, each declared by the core part that checks it.
@@ -296,6 +346,9 @@ pub trait Collector: Sync {
 pub trait Keeper: Sync {
     /// The job kind of the collection it keeps.
     fn keeps(&self) -> &'static str;
+    /// The permission its collection runs under: what a member needs to queue or cancel
+    /// it, and what a job a member queued still needs when it runs.
+    fn permission(&self) -> &'static str;
     /// Adds current tenant context needed only while a queued request executes. The
     /// persisted request stays compatible with the previous binary for rollback.
     fn bind(&self, _: &Store, _dsp: &str, request: &Value) -> Result<Value> {

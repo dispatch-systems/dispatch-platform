@@ -189,8 +189,7 @@ fn the_permissions_keep_their_order_labels_implications_groups_and_defaults() {
 
 #[test]
 fn the_catalog_keeps_its_pages_tabs_and_order() {
-    let pages: Vec<Page> = features::PAGES
-        .iter()
+    let pages: Vec<Page> = features::pages()
         .map(|page| {
             assert_eq!(page.kind, features::Kind::Page);
             assert!(page.provides.is_empty());
@@ -199,8 +198,9 @@ fn the_catalog_keeps_its_pages_tabs_and_order() {
         })
         .collect();
     assert_eq!(pages, self::pages());
-    let tabs: Vec<_> = features::TABS
+    let tabs: Vec<_> = features::catalog()
         .iter()
+        .filter(|feature| matches!(feature.kind, features::Kind::Tab(_)))
         .map(|tab| {
             assert!(tab.default && tab.permissions.is_empty() && tab.requires.is_empty());
             match tab.kind {
@@ -212,7 +212,7 @@ fn the_catalog_keeps_its_pages_tabs_and_order() {
     assert_eq!(tabs, TABS);
     let catalog: Vec<_> = features::catalog().iter().map(|f| f.id).collect();
     assert_eq!(catalog, CATALOG);
-    assert_eq!(features::SCHEDULES, "timecard");
+    assert_eq!(features::schedules(), "timecard");
 }
 
 #[test]

@@ -14,6 +14,9 @@ impl Keeper for MealBreaks {
     fn keeps(&self) -> &'static str {
         JOB_KIND
     }
+    fn permission(&self) -> &'static str {
+        "collections.run"
+    }
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
         let Collected { data, scope } = collected;
         store.publish_meals(

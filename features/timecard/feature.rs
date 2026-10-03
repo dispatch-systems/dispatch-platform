@@ -1,10 +1,21 @@
 //! Timecard: Paycom's punches and timecards, and the meal breaks Cortex reports.
 use crate::manifest::{
     DefaultRole::{Manager, Member},
-    Feature, feature, perm,
+    Feature, Switch, feature, perm, tab,
 };
 
 pub const FEATURE: Feature = Feature {
+    switch: Some(Switch {
+        id: "timecard",
+        label: "Timecard",
+        requires: &["timecards", "meal_breaks"],
+    }),
+    tabs: &[
+        tab("timecard.daily", "Timecard"),
+        tab("timecard.meal_breaks", "Meal Breaks"),
+        tab("timecard.employees", "Employee Search"),
+    ],
+    schedules: true,
     permissions: &[
         perm("timecard.view", "View Timecard", 20).defaults(&[Manager, Member]),
         perm("timecard.manage", "Manage Timecard", 21).implies(&["timecard.view"]),

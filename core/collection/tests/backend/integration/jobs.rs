@@ -250,7 +250,7 @@ fn nothing_collects_for_a_dsp_without_the_timecard() {
     );
 
     let result = db
-        .set_feature(id, dispatch_backend::features::SCHEDULES, false, actor)
+        .set_feature(id, dispatch_backend::features::schedules(), false, actor)
         .unwrap();
     assert_eq!(
         result
@@ -280,7 +280,7 @@ fn nothing_collects_for_a_dsp_without_the_timecard() {
             [],
         )
         .unwrap();
-    db.set_feature(id, dispatch_backend::features::SCHEDULES, true, actor)
+    db.set_feature(id, dispatch_backend::features::schedules(), true, actor)
         .unwrap();
     assert_eq!(
         db.dsp(id)

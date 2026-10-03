@@ -17,6 +17,9 @@ impl Keeper for Scorecard {
     fn keeps(&self) -> &'static str {
         JOB_KIND
     }
+    fn permission(&self) -> &'static str {
+        "scorecard.collect"
+    }
     fn bind(&self, store: &Store, dsp: &str, request: &Value) -> Result<Value> {
         let week = request["week"]
             .as_str()

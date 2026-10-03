@@ -43,7 +43,7 @@ fn all_jobs(db: &Store, _: &User, _: &Input) -> Result<Reply> {
 /// or cancel. Every other feature's jobs have routes of its own, so a feature added later is
 /// apart from these without a list to keep.
 fn timecards(kind: &str) -> bool {
-    crate::features::automation(kind) == crate::features::SCHEDULES
+    crate::features::automation(kind) == crate::features::schedules()
 }
 
 fn jobs(db: &Store, c: &Member, _: &Input) -> Result<Reply> {

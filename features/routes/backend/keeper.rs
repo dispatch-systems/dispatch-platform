@@ -18,6 +18,9 @@ impl Keeper for Routes {
     fn keeps(&self) -> &'static str {
         JOB_KIND
     }
+    fn permission(&self) -> &'static str {
+        "routes.collect"
+    }
     fn stage<'a>(
         &'a self,
         state: &'a Arc<State>,

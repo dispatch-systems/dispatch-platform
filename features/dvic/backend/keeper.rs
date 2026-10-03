@@ -17,6 +17,9 @@ impl Keeper for Dvic {
     fn keeps(&self) -> &'static str {
         JOB_KIND
     }
+    fn permission(&self) -> &'static str {
+        "dvic.collect"
+    }
     fn bind(&self, store: &Store, dsp: &str, request: &Value) -> Result<Value> {
         let station = request["station"]
             .as_str()

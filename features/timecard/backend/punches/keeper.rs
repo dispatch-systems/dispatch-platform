@@ -16,6 +16,9 @@ impl Keeper for Timecards {
     fn keeps(&self) -> &'static str {
         JOB_KIND
     }
+    fn permission(&self) -> &'static str {
+        "collections.run"
+    }
     /// The employee a single-employee sync reads, as the latest publication holds them.
     fn kept(&self, store: &Store, dsp: &str, question: &Value) -> Result<Value> {
         store.paycom_employee(dsp, s(question, "employeeCode"))
