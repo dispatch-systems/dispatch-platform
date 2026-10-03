@@ -2,11 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Award, Shirt } from 'lucide-react';
 import {
+  collectionLabels,
   connectionCard,
   connectionCards,
   installFeatures,
   readToggles,
   switchIcon,
+  type CollectionLabels,
   type ConnectionCard,
   type ReadToggles,
 } from '../../frontend/runtime/slots.js';
@@ -62,4 +64,26 @@ test('connection cards come in the order their collectors are listed', () => {
   );
   assert.equal(connectionCard('paycom')?.read, '/api/dsp/connections/paycom');
   assert.equal(connectionCard('other'), undefined);
+});
+
+test('collections come with the collector that runs them, in the order they are declared', () => {
+  const collection = (kind: string): CollectionLabels => ({
+    kind,
+    schedule: { id: kind, label: kind },
+    unit: 'item',
+    count: (metrics) => metrics.rows,
+  });
+  installFeatures([
+    { name: 'beta', collections: [collection('beta.b'), collection('beta.a')] },
+    { name: 'gamma' },
+    { name: 'alpha', collections: [collection('alpha.a')] },
+  ]);
+  assert.deepEqual(
+    collectionLabels().map(({ provider, kind }) => [provider, kind]),
+    [
+      ['beta', 'beta.b'],
+      ['beta', 'beta.a'],
+      ['alpha', 'alpha.a'],
+    ],
+  );
 });

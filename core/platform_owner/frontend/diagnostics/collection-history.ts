@@ -1,17 +1,20 @@
 import type { Job } from '../../../../shared/contracts/index.js';
+import { featureLabel } from '../../../shell/frontend/runtime/features.js';
+import { collectionLabels } from '../../../shell/frontend/runtime/slots.js';
 
 const finished = ['succeeded', 'failed', 'cancelled'];
 /** Queued, running or waiting for verification. */
 export const isUnderway = (status: Job['status']) => !finished.includes(status);
-export const providerName = (kind: Job['kind']) =>
-  kind === 'paycom.collect' ? 'Paycom' : 'Cortex';
+// Each collector names its collections.
+const collectionOf = (kind: Job['kind']) =>
+  collectionLabels().find((collection) => collection.kind === kind);
+/** The connection a job of `kind` collects through. */
+export const providerName = (kind: Job['kind']) => {
+  const collection = collectionOf(kind);
+  return collection ? featureLabel(collection.provider) : kind;
+};
 /** What one unit of a run's workload is, for the per-item comparison. */
-export const unit = (kind: Job['kind']) =>
-  kind === 'paycom.collect'
-    ? 'employee'
-    : kind === 'cortex.scorecard.collect' || kind === 'cortex.dvic.collect'
-      ? 'row'
-      : 'itinerary';
+export const unit = (kind: Job['kind']) => collectionOf(kind)?.unit ?? 'item';
 function median(values: number[]) {
   if (!values.length) return null;
   const sorted = values.toSorted((a, b) => a - b),
@@ -24,12 +27,7 @@ export function runHistory(job: Job) {
   const collections = metrics.flatMap((m) => (m.collectionMs === null ? [] : [m.collectionMs]));
   const peaks = metrics.flatMap((m) => (m.peakPssBytes === null ? [] : [m.peakPssBytes]));
   const resumed = metrics.reduce((n, m) => n + (m.pageReads?.resumed ?? 0), 0);
-  const count =
-    job.kind === 'paycom.collect'
-      ? latest?.employees
-      : job.kind === 'cortex.scorecard.collect' || job.kind === 'cortex.dvic.collect'
-        ? latest?.rows
-        : latest?.itineraries;
+  const count = latest && collectionOf(job.kind)?.count(latest);
   const collectionMs = collections.length ? collections.reduce((a, b) => a + b, 0) : null;
   // Interrupted measurements end at the last saved sample. Compare only complete
   // first attempts with a known workload, and normalize collection time by count.

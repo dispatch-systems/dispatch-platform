@@ -14,4 +14,12 @@ export const feature: FrontendFeature = {
     load,
     render: (context) => createElement(PaycomCard, { ...context, read }),
   },
+  collections: [
+    {
+      kind: 'paycom.collect',
+      schedule: { id: 'paycom', label: 'Paycom' },
+      unit: 'employee',
+      count: (metrics) => metrics.employees,
+    },
+  ],
 };

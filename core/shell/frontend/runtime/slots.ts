@@ -7,6 +7,7 @@ import type {
   ConnectionFeature,
   DspView,
   Feature,
+  JobMetrics,
   PageFeature,
   SessionView,
 } from '../../../../shared/contracts/index.js';
@@ -160,6 +161,18 @@ export type ConnectionCard = {
   render: (context: ConnectionCardContext) => ReactNode;
 };
 
+/** A collection a collector runs, as Diagnostics and the audit log name it. */
+export type CollectionLabels = {
+  /** Its job kind. */
+  kind: string;
+  /** Its schedules' collection, and how the audit log names it. */
+  schedule: { id: string; label: string };
+  /** One item of its workload, for the per-item comparison: "employee". */
+  unit: string;
+  /** How many items a run's measurements counted. */
+  count: (metrics: JobMetrics) => number | null;
+};
+
 /** An owner's frontend: what it puts in each slot. */
 export type FrontendFeature = {
   /** The owner's directory name. */
@@ -176,6 +189,8 @@ export type FrontendFeature = {
   switch?: { id: PageFeature; icon: LucideIcon };
   /** Its connection's card. */
   connectionCard?: ConnectionCard;
+  /** The collections it runs. */
+  collections?: readonly CollectionLabels[];
 };
 
 let installed: readonly FrontendFeature[] = [];
@@ -207,6 +222,12 @@ export const connectionCards = () =>
 /** The card of a connection. */
 export const connectionCard = (provider: string) =>
   connectionCards().find((card) => card.provider === provider);
+
+/** Every collection, with the collector that runs it. */
+export const collectionLabels = () =>
+  installed.flatMap((feature) =>
+    (feature.collections ?? []).map((collection) => ({ ...collection, provider: feature.name })),
+  );
 
 /** Every owner's kinds of data agents may read, group by group in their order. */
 export const readToggles = () =>
