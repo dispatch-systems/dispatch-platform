@@ -6,6 +6,7 @@ use serde_json::json;
 
 #[test]
 fn dsp_audit_log_hides_platform_owner_actions() {
+    common::install(&[], &[]);
     let (_root, db) = seeded();
     let tenant = db
         .platform
@@ -93,6 +94,7 @@ fn dsp_audit_log_hides_platform_owner_actions() {
 
 #[test]
 fn audit_log_filters_pages_and_counts_by_area() {
+    common::install(&[], &[]);
     use dispatch_backend::db::AuditQuery;
     let (_root, db) = seeded();
     let one = |sql: &str| db.platform.one(sql, []).unwrap().unwrap();

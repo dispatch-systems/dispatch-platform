@@ -1,18 +1,34 @@
-//! Jobs and schedules running Timecard's collections from Paycom and Cortex: the queue's
-//! limits, the facts an outcome records, and what the Timecard's switch stops.
+//! Jobs and schedules running the features' collections from Paycom and Cortex: the queue's
+//! limits, the lists each page reads, the facts an outcome records, and what the Timecard's
+//! switch stops.
 #[path = "../../../../core/db/tests/support/common.rs"]
 mod common;
 use common::{seeded, store};
 use dispatch_backend::{
     collectors::{cortex, paycom},
-    db::{self, s},
+    db::{self, Store, s},
+    dvic::DvicStore,
     jobs::JobFacts,
     workforce::TimecardStore,
 };
 use serde_json::json;
 
+/// A DSP with a DVIC station and an enabled Cortex connection.
+fn dvic_ready() -> (tempfile::TempDir, Store, String) {
+    let (root, db, id) = common::bootstrapped();
+    common::set_dsp(&db, &id, "Fixture Delivery", "America/Los_Angeles").unwrap();
+    db.set_profile(
+        &id,
+        json!({"stationCode":"TST1","abbreviation":"FXTR","setupRequired":false}),
+    )
+    .unwrap();
+    common::ready_connection(&db, &id, cortex::PROVIDER).unwrap();
+    (root, db, id)
+}
+
 #[test]
 fn queue_limits_and_authority_are_checked_again_before_publication() {
+    dispatch_backend::install();
     let (_root, db) = seeded();
     let tenant = db
         .platform
@@ -72,6 +88,7 @@ fn queue_limits_and_authority_are_checked_again_before_publication() {
 
 #[test]
 fn collection_outcomes_record_their_schedule_provider_date_and_duration() {
+    dispatch_backend::install();
     let (_root, db) = store();
     let started = db::at(db::now() - 108_000);
     let job = JobFacts {
@@ -106,6 +123,7 @@ fn collection_outcomes_record_their_schedule_provider_date_and_duration() {
 
 #[test]
 fn schedule_deadlines_track_changes_and_due_ticks_are_idempotent() {
+    dispatch_backend::install();
     let (_root, db) = seeded();
     let dsp = db
         .platform
@@ -160,6 +178,7 @@ fn schedule_deadlines_track_changes_and_due_ticks_are_idempotent() {
 
 #[test]
 fn nothing_collects_for_a_dsp_without_the_timecard() {
+    dispatch_backend::install();
     let (_root, db) = seeded();
     let tenant = db
         .platform
@@ -240,4 +259,81 @@ fn nothing_collects_for_a_dsp_without_the_timecard() {
             .any(|(dsp, _)| dsp == id)
     );
     db.guard(jid, "worker").unwrap();
+}
+
+#[test]
+fn listed_jobs_respect_the_cap_scope_names_and_attempt_order() {
+    dispatch_backend::install();
+    let (_root, db) = seeded();
+    let dsps = db
+        .platform
+        .all("SELECT id,name FROM dsps ORDER BY id", [])
+        .unwrap();
+    let transaction = db.jobs.0.unchecked_transaction().unwrap();
+    for index in 0..204 {
+        let dsp = &dsps[index % dsps.len()];
+        let job = format!("job-{index}");
+        db.jobs.exec("INSERT INTO jobs(id,dsp_id,environment,kind,status,available_at,created_at,release,connection_revision,idempotency_key) VALUES (?,?,'preview','paycom.collect','succeeded',0,?,'test',1,?)",rusqlite::params![job,s(dsp,"id"),format!("2026-09-01T{index:04}"),job]).unwrap();
+        for attempt in [2, 1] {
+            db.jobs
+                .exec(
+                    "INSERT INTO job_metrics(job_id,attempt,owner,metrics) VALUES (?,?,'test',?)",
+                    rusqlite::params![
+                        job,
+                        attempt,
+                        serde_json::to_string(&dispatch_backend::job_metrics::Metrics::new(
+                            &json!({"attempt":attempt})
+                        ))
+                        .unwrap()
+                    ],
+                )
+                .unwrap();
+        }
+    }
+    transaction.commit().unwrap();
+    let recent = db.recent_jobs(None).unwrap();
+    assert_eq!(recent.len(), 200);
+    assert_eq!(recent[0].id, "job-203");
+    assert_eq!(
+        recent[0]
+            .metrics
+            .iter()
+            .map(|m| m.attempt)
+            .collect::<Vec<_>>(),
+        vec![1, 2]
+    );
+    let dsp = &dsps[0];
+    let scoped = db.recent_jobs(Some(s(dsp, "id"))).unwrap();
+    assert_eq!(scoped.len(), 68);
+    for row in scoped {
+        assert_eq!(row.dsp_id, s(dsp, "id"));
+        assert_eq!(row.dsp_name, s(dsp, "name"));
+    }
+}
+
+#[test]
+fn the_status_keeps_its_jobs_however_many_of_other_kinds_came_since() {
+    dispatch_backend::install();
+    let (_root, db, id) = dvic_ready();
+    let job = db.enqueue_dvic(&id, None, "busy", None, 2).unwrap();
+    let job = s(&job, "id").to_owned();
+    // A busy DSP: more newer jobs of another kind than the latest 200 hold.
+    let others: Vec<_> = (0..201)
+        .map(|index| (format!("paycom-{index}"), db::at(db::now() + 1000 + index)))
+        .collect();
+    common::finished_jobs(&db, &id, "paycom.collect", &others).unwrap();
+    let listed = |jobs: Vec<dispatch_backend::contracts::PublicJob>| {
+        jobs.into_iter().map(|j| j.id).collect::<Vec<_>>()
+    };
+    assert!(!listed(db.recent_jobs(Some(&id)).unwrap()).contains(&job));
+    assert_eq!(listed(db.dvic_status(&id).unwrap().jobs), [job]);
+    // The other way round: the Timecard's list keeps its own jobs however many DVIC jobs
+    // came since.
+    let others: Vec<_> = (0..201)
+        .map(|index| (format!("dvic-{index}"), db::at(db::now() + 5000 + index)))
+        .collect();
+    common::finished_jobs(&db, &id, "cortex.dvic.collect", &others).unwrap();
+    let others = listed(db.recent_jobs_in(&id, &["paycom.collect"]).unwrap());
+    assert_eq!(others.len(), 200);
+    assert!(others.iter().all(|j| j.starts_with("paycom-")));
 }

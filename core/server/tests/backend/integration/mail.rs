@@ -7,6 +7,7 @@ use rusqlite::params;
 
 #[test]
 fn the_log_follows_an_invitation_and_failed_mail_can_be_retried_or_discarded() {
+    common::install(&[], &[]);
     let (_root, db) = seeded();
     let row = |sql: &str| db.platform.one(sql, []).unwrap().unwrap();
     let dsp = row("SELECT id FROM dsps WHERE name='Northline Logistics'");

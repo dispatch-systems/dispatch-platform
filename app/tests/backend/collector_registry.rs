@@ -4,7 +4,7 @@ use crate::{
     collectors::{LAYOUT, Provider, cortex, database_path, paycom},
     config::Config,
     db::{self, Db, Store},
-    operations,
+    operations, testing,
     workforce::{self, TimecardStore},
 };
 use paycom::fixtures;
@@ -285,4 +285,25 @@ fn refuses_missing_cross_tenant_and_unsafe_storage() {
     assert!(!data.join("paycom/paycom.sqlite").exists());
     assert!(Provider::from_job_kind("../../unknown.collect").is_err());
     assert!(store.collector("../../escape", paycom::PROVIDER).is_err());
+}
+#[test]
+fn startup_rejects_provider_database_as_core_storage() {
+    let (_root, db) = testing::seeded();
+    let id = db
+        .platform
+        .one("SELECT id FROM dsps WHERE name='Northline Logistics'", [])
+        .unwrap()
+        .map(|row| db::s(&row, "id").to_owned())
+        .unwrap();
+    let data = db.area(&id, "data").unwrap();
+    let core = data.join("dispatch.sqlite");
+    let provider = data.join("paycom/paycom.sqlite");
+    let config = db.config.clone();
+    drop(db);
+    std::fs::copy(provider, core).unwrap();
+
+    assert_eq!(
+        Store::initialize(config).err().unwrap().code,
+        "dsp_storage_identity_mismatch"
+    );
 }

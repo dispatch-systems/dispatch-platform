@@ -9,6 +9,20 @@ use dispatch_backend::{
 };
 use serde_json::{Value, json};
 
+/// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
+fn install() {
+    common::install(
+        &[
+            &dispatch_backend::collectors::paycom::COLLECTOR,
+            &dispatch_backend::collectors::cortex::COLLECTOR,
+        ],
+        &[
+            &dispatch_backend::feature_manifests::driver_match::FEATURE,
+            &dispatch_backend::feature_manifests::timecard::FEATURE,
+        ],
+    );
+}
+
 #[test]
 fn demo_periods_follow_the_paycom_cycle_and_never_record_future_punches() {
     for (day, from, to) in [
@@ -31,6 +45,7 @@ fn demo_periods_follow_the_paycom_cycle_and_never_record_future_punches() {
 
 #[test]
 fn employee_timecards_use_period_order_and_the_latest_revision_within_each_period() {
+    install();
     use dispatch_backend::contracts::EmployeeTimecardPeriod;
     let (_root, db, id) = bootstrapped();
     let period_data = |date: &str, collected: &str, hours: f64| {
@@ -112,6 +127,7 @@ fn employee_timecards_use_period_order_and_the_latest_revision_within_each_perio
 
 #[test]
 fn employee_status_filter_applies_before_counting_and_pagination() {
+    install();
     let (_root, db, id) = bootstrapped();
     let mut data = fixtures::fixture("UTC").unwrap();
     data["employees"][1]["active"] = json!(false);
@@ -154,6 +170,7 @@ fn employee_status_filter_applies_before_counting_and_pagination() {
 
 #[test]
 fn publication_is_atomic_and_keeps_the_last_successful_dataset() {
+    install();
     let (_root, db, id) = bootstrapped();
     let id = id.as_str();
     let data = fixtures::fixture("UTC").unwrap();
@@ -197,6 +214,7 @@ fn publication_is_atomic_and_keeps_the_last_successful_dataset() {
 
 #[test]
 fn timecard_links_publish_with_unchanged_hours_and_are_returned() {
+    install();
     let (_root, db, id) = bootstrapped();
     let id = id.as_str();
     let data = fixtures::fixture("UTC").unwrap();
@@ -266,6 +284,7 @@ fn timecard_links_publish_with_unchanged_hours_and_are_returned() {
 
 #[test]
 fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
+    install();
     let (_root, db, id) = bootstrapped();
     let id = id.as_str();
     let mut data = fixtures::fixture("UTC").unwrap();
@@ -325,6 +344,7 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
 
 #[test]
 fn settings_reject_unknown_fields_and_preserve_empty_driver_selection() {
+    install();
     let (_root, db, id) = common::bootstrapped();
     let id = id.as_str();
     let actor = common::platform_owner(&db);
@@ -359,6 +379,7 @@ fn settings_reject_unknown_fields_and_preserve_empty_driver_selection() {
 
 #[test]
 fn retired_sync_preferences_are_not_returned_and_open_dashboards_may_still_send_them() {
+    install();
     let (_root, db, id) = common::bootstrapped();
     let id = id.as_str();
     let actor = common::platform_owner(&db);
@@ -388,6 +409,7 @@ fn retired_sync_preferences_are_not_returned_and_open_dashboards_may_still_send_
 
 #[test]
 fn late_da_settings_default_for_older_preferences_and_validate() {
+    install();
     let (_root, db, id) = common::bootstrapped();
     let id = id.as_str();
     let actor = common::platform_owner(&db);

@@ -125,6 +125,7 @@ const AMAZON: DriverSource = DriverSource::Amazon;
 
 #[test]
 fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
+    dispatch_backend::install();
     let (_root, db, id, context) = ready(None);
     // Twelve employees and five drivers.
     assert_eq!(db.match_drivers(&id).unwrap(), 17);
@@ -190,6 +191,7 @@ fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
 
 #[test]
 fn a_merge_makes_one_person_and_the_old_code_still_finds_them() {
+    dispatch_backend::install();
     let (_root, db, id, context) = ready(None);
     db.match_drivers(&id).unwrap();
     let before = db.driver_match(&id).unwrap();
@@ -232,6 +234,7 @@ fn a_merge_makes_one_person_and_the_old_code_still_finds_them() {
 
 #[test]
 fn people_split_or_kept_apart_are_not_suggested_again() {
+    dispatch_backend::install();
     let (_root, db, id, context) = ready(None);
     db.match_drivers(&id).unwrap();
     let before = db.driver_match(&id).unwrap();
@@ -269,6 +272,7 @@ fn people_split_or_kept_apart_are_not_suggested_again() {
 
 #[test]
 fn someone_only_amazon_saw_long_ago_has_left() {
+    dispatch_backend::install();
     let (_root, db, id, _) = ready(None);
     let old = Scope {
         date: (DAY - chrono::Duration::days(40)).to_string(),
@@ -306,6 +310,7 @@ fn someone_only_amazon_saw_long_ago_has_left() {
 
 #[test]
 fn links_saved_on_the_meal_break_page_are_kept() {
+    dispatch_backend::install();
     let (_root, db, id, _) = ready(Some(json!({
         "revision": 2,
         "links": [{"id":"employee_1","cortexId":"TREYES","paycomCode":"E002"}],
@@ -324,6 +329,7 @@ fn links_saved_on_the_meal_break_page_are_kept() {
 
 #[test]
 fn the_permission_exists_only_while_the_feature_is_on() {
+    dispatch_backend::install();
     let (_root, db, id) = common::bootstrapped();
     db.enable_all_features(&id).unwrap();
     let context = context(&db, &id);
@@ -338,6 +344,7 @@ fn the_permission_exists_only_while_the_feature_is_on() {
 
 #[test]
 fn the_previous_release_keeps_every_link_after_a_decision() {
+    dispatch_backend::install();
     // A link saved for a driver whose data has since gone, beside one Driver Match knows.
     let (_root, db, id, context) = ready(Some(json!({
         "revision": 4,

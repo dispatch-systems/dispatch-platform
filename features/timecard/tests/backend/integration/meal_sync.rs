@@ -12,6 +12,20 @@ use dispatch_backend::{
 };
 use serde_json::{Value, json};
 
+/// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
+fn install() {
+    common::install(
+        &[
+            &dispatch_backend::collectors::paycom::COLLECTOR,
+            &dispatch_backend::collectors::cortex::COLLECTOR,
+        ],
+        &[
+            &dispatch_backend::feature_manifests::driver_match::FEATURE,
+            &dispatch_backend::feature_manifests::timecard::FEATURE,
+        ],
+    );
+}
+
 fn fixture() -> (tempfile::TempDir, Store, String, String) {
     let (root, db, id) = common::bootstrapped();
     let actor = common::a_user(&db);
@@ -41,6 +55,7 @@ fn jobs(db: &Store, id: &str) -> Vec<PublicJob> {
 }
 #[test]
 fn first_sync_discovers_from_tenant_profile_and_replays_after_publication() {
+    install();
     let (_root, db, id, actor) = fixture();
     enable(&db, &id, paycom::PROVIDER);
     enable(&db, &id, cortex::PROVIDER);
@@ -79,6 +94,7 @@ fn first_sync_discovers_from_tenant_profile_and_replays_after_publication() {
 }
 #[test]
 fn combined_sync_reuses_tenant_scope_records_date_and_is_idempotent() {
+    install();
     let (_root, db, id, actor) = fixture();
     enable(&db, &id, paycom::PROVIDER);
     enable(&db, &id, cortex::PROVIDER);
@@ -137,6 +153,7 @@ fn combined_sync_reuses_tenant_scope_records_date_and_is_idempotent() {
 }
 #[test]
 fn invalid_dates_missing_connections_and_capacity_never_queue_half_a_sync() {
+    install();
     let (_root, db, id, actor) = fixture();
     seed(&db, &id, "2026-01-10", 1);
     enable(&db, &id, paycom::PROVIDER);
@@ -184,6 +201,7 @@ fn invalid_dates_missing_connections_and_capacity_never_queue_half_a_sync() {
 
 #[test]
 fn successful_station_does_not_hide_a_failed_station_in_the_same_sync() {
+    install();
     let (_root, db, id, actor) = fixture();
     enable(&db, &id, paycom::PROVIDER);
     enable(&db, &id, cortex::PROVIDER);
@@ -204,6 +222,7 @@ fn successful_station_does_not_hide_a_failed_station_in_the_same_sync() {
 
 #[test]
 fn status_reads_allow_a_viewer_date_ahead_of_the_dsp_but_collection_does_not() {
+    install();
     let (_root, db, id, actor) = fixture();
     let tomorrow = (chrono::Utc::now().date_naive() + chrono::Duration::days(1)).to_string();
     assert_eq!(
@@ -224,6 +243,7 @@ fn status_reads_allow_a_viewer_date_ahead_of_the_dsp_but_collection_does_not() {
 
 #[test]
 fn manual_sync_lock_and_original_date_follow_the_entire_batch() {
+    install();
     let (_root, db, id, actor) = fixture();
     enable(&db, &id, paycom::PROVIDER);
     enable(&db, &id, cortex::PROVIDER);

@@ -9,6 +9,7 @@ use serde_json::json;
 
 #[tokio::test]
 async fn concurrent_password_resets_cannot_reuse_a_consumed_token() {
+    common::install(&[], &[]);
     use dispatch_backend::State;
     let (_root, db, _) = bootstrapped();
     let user = db
@@ -49,6 +50,7 @@ async fn concurrent_password_resets_cannot_reuse_a_consumed_token() {
 
 #[tokio::test]
 async fn removing_a_member_deletes_their_account_and_keeps_their_name_in_the_log() {
+    common::install(&[], &[]);
     use dispatch_backend::{State, accounts::Auth};
     let (_root, db) = seeded();
     let one = |sql: &str| db.platform.one(sql, []).unwrap();

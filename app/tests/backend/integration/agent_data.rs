@@ -198,6 +198,7 @@ fn row<'a>(table: &'a Value, column: &str, value: &str) -> &'a Value {
 
 #[tokio::test]
 async fn one_driver_is_one_person_across_every_source() {
+    dispatch_backend::install();
     let (_root, db, id) = ready();
     let me = caller(&db, &[&id], false);
     let config = db.config.clone();
@@ -414,6 +415,7 @@ async fn one_driver_is_one_person_across_every_source() {
 
 #[tokio::test]
 async fn default_answers_never_expose_unmatched_provider_ids() {
+    dispatch_backend::install();
     let (_root, db, id) = ready();
     let me = caller(&db, &[&id], false);
     db.dsp(&id)
@@ -483,6 +485,7 @@ async fn default_answers_never_expose_unmatched_provider_ids() {
 
 #[tokio::test]
 async fn agents_never_see_legacy_unverified_provider_rows() {
+    dispatch_backend::install();
     let (_root, db, id) = ready();
     let dvic = db.dvic_db(&id).unwrap();
     dvic.exec(
@@ -566,6 +569,7 @@ async fn agents_never_see_legacy_unverified_provider_rows() {
 
 #[tokio::test]
 async fn driver_identities_follow_live_sources_even_with_a_warm_cache() {
+    dispatch_backend::install();
     let (_root, db, id) = ready();
     let me = caller(&db, &[&id], false);
     let actor = owner(&db);
@@ -711,6 +715,7 @@ async fn driver_identities_follow_live_sources_even_with_a_warm_cache() {
 
 #[tokio::test]
 async fn unclear_requests_are_refused_with_what_to_fix() {
+    dispatch_backend::install();
     let (_root, db, id) = ready();
     db.new_dsp("Cedar Ridge Delivery", "UTC", &owner(&db), false)
         .unwrap();
@@ -850,6 +855,7 @@ type Question = Box<dyn FnOnce(&Store, &State, &Caller) -> data::Answer + Send>;
 
 #[tokio::test]
 async fn package_group_and_list_cursors_advance_independently_within_the_final_budget() {
+    dispatch_backend::install();
     let (_root, db, id) = ready();
     // Group pages hold 100 rows. Just cross that boundary while exercising the
     // real capture/stage/publication path, rather than seeding a month's workload.
@@ -956,6 +962,7 @@ async fn package_group_and_list_cursors_advance_independently_within_the_final_b
 
 #[tokio::test]
 async fn package_grouping_bounds_scan_work_and_raw_cardinality() {
+    dispatch_backend::install();
     let (_root, db, id) = ready();
     let me = caller(&db, &[&id], true);
     let route = db.routes_db(&id).unwrap();
@@ -1131,6 +1138,7 @@ async fn package_grouping_bounds_scan_work_and_raw_cardinality() {
 /// a dozen drivers' routes, timecards, meal breaks and inspections.
 #[tokio::test]
 async fn answers_stay_within_their_budgets() {
+    dispatch_backend::install();
     let (_root, db) = common::seeded();
     let world = synthetic::seed(&db).unwrap();
     let dsp = s(&world, "dsp").to_owned();
@@ -1260,6 +1268,7 @@ async fn answers_stay_within_their_budgets() {
 
 #[tokio::test]
 async fn meal_duration_answers_preserve_unknown_totals_and_overnight_clocks() {
+    dispatch_backend::install();
     let (_root, db, id) = ready();
     let me = caller(&db, &[&id], false);
     let config = db.config.clone();
@@ -1386,6 +1395,7 @@ async fn meal_duration_answers_preserve_unknown_totals_and_overnight_clocks() {
 
 #[tokio::test]
 async fn driver_periods_keep_historical_sync_and_meal_context_across_batches() {
+    dispatch_backend::install();
     let (_root, db, id) = ready();
     let mut history = fixtures::fixture_date("UTC", Some("2026-09-05".parse().unwrap())).unwrap();
     history["employees"][1]["name"] = json!("DRIVER, FIXTURE");
@@ -1467,6 +1477,7 @@ async fn driver_periods_keep_historical_sync_and_meal_context_across_batches() {
 /// feedback at an address, contact compliance, Netradyne events and the week's tiers.
 #[tokio::test]
 async fn scorecard_questions_come_back_small() {
+    dispatch_backend::install();
     let (_root, db) = common::seeded();
     let world = synthetic::seed(&db).unwrap();
     assert!(world["scorecard_weeks"].as_u64().unwrap() >= 1, "{world}");
@@ -1754,6 +1765,7 @@ async fn scorecard_questions_come_back_small() {
 /// decide which, or this fails.
 #[tokio::test]
 async fn every_tool_says_when_its_feature_is_switched_off() {
+    dispatch_backend::install();
     let (_root, db, dsp) = ready();
     db.platform
         .exec(
@@ -1842,6 +1854,7 @@ async fn every_tool_says_when_its_feature_is_switched_off() {
 /// bypasses, and then it is read and named as bypassed.
 #[tokio::test]
 async fn a_kind_of_data_reads_as_allowed_switched_on_or_bypassed() {
+    dispatch_backend::install();
     let (_root, db, id) = ready();
     let mut keys = vec![];
     for (allowed, bypass) in [(true, false), (true, true), (false, false), (false, true)] {
@@ -1974,6 +1987,7 @@ async fn a_kind_of_data_reads_as_allowed_switched_on_or_bypassed() {
 /// marked; data_status's dates of what it reads are no data, and aren't.
 #[tokio::test]
 async fn drivers_known_only_by_bypassing_a_feature_say_so() {
+    dispatch_backend::install();
     let (_root, db, id) = ready();
     let areas: Vec<&str> = AgentArea::all()
         .filter(|area| *area != kind("locations"))

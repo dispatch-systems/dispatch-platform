@@ -13,6 +13,20 @@ use dispatch_backend::{
 };
 use serde_json::{Value, json};
 
+/// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
+fn install() {
+    common::install(
+        &[
+            &dispatch_backend::collectors::paycom::COLLECTOR,
+            &dispatch_backend::collectors::cortex::COLLECTOR,
+        ],
+        &[
+            &dispatch_backend::feature_manifests::driver_match::FEATURE,
+            &dispatch_backend::feature_manifests::timecard::FEATURE,
+        ],
+    );
+}
+
 /// A day in the demo period of Sep 6 to 19, 2026, within a week of its start.
 const DEMO_DAY: chrono::NaiveDate = chrono::NaiveDate::from_ymd_opt(2026, 9, 12).unwrap();
 fn actor(db: &Store) -> String {
@@ -80,6 +94,7 @@ fn rows(data: &Value) -> &Vec<Value> {
 }
 #[test]
 fn drivers_join_employees_through_driver_match_and_names_cover_the_rest() {
+    install();
     let (_root, db, id) = common::bootstrapped();
     let (date, transporter) = seed(&db, &id);
     let compare = |db: &Store| {
@@ -176,6 +191,7 @@ fn add_driver(db: &Store, id: &str, transporter: &str, name: &str) {
 }
 #[test]
 fn a_driver_driver_match_has_not_reached_never_takes_an_employee_it_gave_someone() {
+    install();
     let (_root, db, id) = common::bootstrapped();
     let (date, _) = seed(&db, &id);
     // Driver Match joins "Luis Hernandez" to the employee by a name variant.
@@ -211,6 +227,7 @@ fn a_driver_driver_match_has_not_reached_never_takes_an_employee_it_gave_someone
 }
 #[test]
 fn newer_empty_scope_suppresses_stale_meals_and_latest_paycom_period_wins() {
+    install();
     let (_root, db, id) = common::bootstrapped();
     let (date, _) = seed(&db, &id);
     let scope = Scope {
@@ -251,6 +268,7 @@ fn newer_empty_scope_suppresses_stale_meals_and_latest_paycom_period_wins() {
 
 #[test]
 fn ambiguity_includes_employees_without_punches_and_drivers_without_meals() {
+    install();
     let (_root, db, id) = common::bootstrapped();
     let (date, _) = seed(&db, &id);
     let paycom = db.collector(&id, paycom::PROVIDER).unwrap();

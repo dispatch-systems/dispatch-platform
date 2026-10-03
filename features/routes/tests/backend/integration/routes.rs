@@ -13,6 +13,14 @@ use dispatch_backend::{
 };
 use serde_json::{Value, json};
 
+/// Routes, and the Cortex collector whose routes it keeps.
+fn install() {
+    common::install(
+        &[&cortex::COLLECTOR],
+        &[&dispatch_backend::feature_manifests::routes::FEATURE],
+    );
+}
+
 fn request(day: &str, mode: Mode) -> Request {
     Request::parse(
         &json!({"collection":"routes","mode":mode.as_str(),"date":day,"station":"TST1",
@@ -58,6 +66,7 @@ fn count(db: &Store, id: &str, sql: &str) -> i64 {
 
 #[test]
 fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
+    install();
     let (_root, db, id) = ready();
     let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     let job = publish(&db, &id, "first", "2026-09-25", &capture);
@@ -243,6 +252,7 @@ fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
 
 #[test]
 fn a_reprocess_rebuilds_every_row_from_the_stored_responses() {
+    install();
     let (_root, db, id) = ready();
     let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     publish(&db, &id, "first", "2026-09-25", &capture);
@@ -287,6 +297,7 @@ fn a_reprocess_rebuilds_every_row_from_the_stored_responses() {
 
 #[test]
 fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publications() {
+    install();
     let (_root, db, id) = ready();
     let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     // An itinerary that is not the one listed is refused before anything is stored.
@@ -344,6 +355,7 @@ fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publication
 
 #[test]
 fn a_package_moved_between_drivers_keeps_a_row_under_each() {
+    install();
     let (_root, db, id) = ready();
     let mut capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     // The second driver delivered task-13; the first driver's itinerary lists it as
@@ -396,6 +408,7 @@ fn a_package_moved_between_drivers_keeps_a_row_under_each() {
 
 #[test]
 fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
+    install();
     let (_root, db, id) = ready();
     let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     let first = publish(&db, &id, "first", "2026-09-25", &capture);
@@ -463,6 +476,7 @@ fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
 
 #[test]
 fn a_schedule_queues_recent_days_without_a_final_publication() {
+    install();
     let (_root, db, id) = ready();
     // The bootstrapped DSP keeps UTC, so its days are UTC days.
     let today = chrono::Utc::now().date_naive();
@@ -496,6 +510,7 @@ fn a_schedule_queues_recent_days_without_a_final_publication() {
 
 #[test]
 fn collection_requests_need_a_station_and_an_allowed_day() {
+    install();
     let (_root, db, id) = common::bootstrapped();
     common::ready_connection(&db, &id, cortex::PROVIDER).unwrap();
     let refused = db.enqueue_routes(&id, None, "k", None, Mode::Final, 1);
@@ -539,6 +554,7 @@ fn collection_requests_need_a_station_and_an_allowed_day() {
 
 #[test]
 fn the_sweep_keeps_a_running_jobs_day_and_deletes_what_no_reader_sees() {
+    install();
     let (_root, db, id) = ready();
     let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     let jobs = db
@@ -592,6 +608,7 @@ fn the_sweep_keeps_a_running_jobs_day_and_deletes_what_no_reader_sees() {
 
 #[test]
 fn a_retention_window_retires_older_days_only_while_routes_are_on() {
+    install();
     let (_root, db, id) = ready();
     let actor = common::a_user(&db);
     db.set_feature(&id, "routes", true, &actor).unwrap();
@@ -772,7 +789,7 @@ fn a_stored_day_goes_through_storage_at_full_size() {
     let root = std::env::var("DISPATCH_BENCHMARK_STATE").expect("DISPATCH_BENCHMARK_STATE");
     let id = std::env::var("DISPATCH_BENCHMARK_DSP_ID").expect("DISPATCH_BENCHMARK_DSP_ID");
     let day = std::env::var("DISPATCH_BENCHMARK_DAY").expect("DISPATCH_BENCHMARK_DAY");
-    dispatch_backend::install();
+    install();
     let mut config = dispatch_backend::config::Config::load().unwrap();
     config.root = root.into();
     config.environment = "preview".into();

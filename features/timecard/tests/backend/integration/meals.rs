@@ -12,6 +12,20 @@ use dispatch_backend::{
 };
 use serde_json::json;
 
+/// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
+fn install() {
+    common::install(
+        &[
+            &dispatch_backend::collectors::paycom::COLLECTOR,
+            &dispatch_backend::collectors::cortex::COLLECTOR,
+        ],
+        &[
+            &dispatch_backend::feature_manifests::driver_match::FEATURE,
+            &dispatch_backend::feature_manifests::timecard::FEATURE,
+        ],
+    );
+}
+
 fn scope() -> Scope {
     Scope {
         date: "2026-01-10".into(),
@@ -23,6 +37,7 @@ fn scope() -> Scope {
 }
 #[test]
 fn four_timestamps_multiple_meals_midnight_and_unknown_boundaries_survive_round_trip() {
+    install();
     let (_root, db, id) = common::bootstrapped();
     let scope = scope();
     let mut c = meals::fixture(&scope);
@@ -97,6 +112,7 @@ fn four_timestamps_multiple_meals_midnight_and_unknown_boundaries_survive_round_
 }
 #[test]
 fn itinerary_page_links_are_stored_returned_and_bound_to_the_route() {
+    install();
     let (_root, db, id) = common::bootstrapped();
     let scope = scope();
     let mut c = meals::fixture(&scope);
@@ -141,6 +157,7 @@ fn itinerary_page_links_are_stored_returned_and_bound_to_the_route() {
 }
 #[test]
 fn deliveries_open_the_route_at_the_stop_that_held_them() {
+    install();
     let (_root, db, id) = common::bootstrapped();
     let scope = scope();
     let mut c = meals::fixture(&scope);
@@ -237,6 +254,7 @@ fn deliveries_open_the_route_at_the_stop_that_held_them() {
 }
 #[test]
 fn invalid_or_shrinking_refresh_preserves_publication_and_retention_is_bounded() {
+    install();
     let (_root, db, id) = common::bootstrapped();
     let scope = scope();
     let c = meals::fixture(&scope);
@@ -284,6 +302,7 @@ fn invalid_or_shrinking_refresh_preserves_publication_and_retention_is_bounded()
 }
 #[test]
 fn provider_jobs_bind_request_identity_and_connection_revision() {
+    install();
     let (_root, db, id) = common::bootstrapped();
     let scope = scope();
     common::enable_connection(&db, &id, cortex::PROVIDER).unwrap();

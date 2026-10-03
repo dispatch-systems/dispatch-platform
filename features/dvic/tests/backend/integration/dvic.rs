@@ -6,10 +6,18 @@ use dispatch_backend::{
         discovery::{CollectionRequest, Scope},
         dvic::{self, Capture, Request},
     },
-    db::{self, Store, s},
+    db::{Store, s},
     dvic::{DvicStore, hidden, weeks_ending},
 };
 use serde_json::json;
+
+/// DVIC, and the Cortex collector whose inspections it keeps.
+fn install() {
+    common::install(
+        &[&cortex::COLLECTOR],
+        &[&dispatch_backend::feature_manifests::dvic::FEATURE],
+    );
+}
 
 fn request(weeks: &[&str]) -> Request {
     // Publication binds the DSP's current local date, so the expected scope must too.
@@ -77,6 +85,7 @@ fn count(db: &Store, id: &str, table: &str) -> i64 {
 
 #[test]
 fn rolling_overlap_updates_names_once_and_older_backfills_cannot_replace_corrections() {
+    install();
     let (_root, db, id) = ready();
     let mut newer = dvic::fixture(&request(&["2026-W39"])).unwrap();
     newer.reports[0].rows.as_mut().unwrap()[0].start_date = "2026-09-19".into();
@@ -111,6 +120,7 @@ fn rolling_overlap_updates_names_once_and_older_backfills_cannot_replace_correct
 
 #[test]
 fn unchanged_reports_require_a_matching_committed_revision_and_batches_are_atomic() {
+    install();
     let (_root, db, id) = ready();
     let mut capture = dvic::fixture(&request(&["2026-W39", "2026-W38"])).unwrap();
     let job = publish(&db, &id, "initial", &capture);
@@ -143,6 +153,7 @@ fn unchanged_reports_require_a_matching_committed_revision_and_batches_are_atomi
 
 #[test]
 fn empty_reports_keep_history_and_missing_weeks_are_rechecked_without_inventing_coverage() {
+    install();
     let (_root, db, id) = ready();
     let mut capture = dvic::fixture(&request(&["2026-W39"])).unwrap();
     publish(&db, &id, "initial", &capture);
@@ -166,6 +177,7 @@ fn empty_reports_keep_history_and_missing_weeks_are_rechecked_without_inventing_
 
 #[test]
 fn publication_rejects_wrong_scope_and_reads_are_paginated_and_isolated() {
+    install();
     let (_root, db, id) = ready();
     let mut capture = dvic::fixture(&request(&["2026-W39", "2026-W38"])).unwrap();
     let job = db
@@ -218,6 +230,7 @@ fn publication_rejects_wrong_scope_and_reads_are_paginated_and_isolated() {
 
 #[test]
 fn legacy_unverified_reports_and_inspections_stay_quarantined() {
+    install();
     let (_root, db, id) = ready();
     let storage = db.dvic_db(&id).unwrap();
     storage.exec(
@@ -328,32 +341,6 @@ fn legacy_unverified_reports_and_inspections_stay_quarantined() {
 }
 
 #[test]
-fn the_status_keeps_its_jobs_however_many_of_other_kinds_came_since() {
-    let (_root, db, id) = ready();
-    let job = db.enqueue_dvic(&id, None, "busy", None, 2).unwrap();
-    let job = s(&job, "id").to_owned();
-    // A busy DSP: more newer jobs of another kind than the latest 200 hold.
-    let others: Vec<_> = (0..201)
-        .map(|index| (format!("paycom-{index}"), db::at(db::now() + 1000 + index)))
-        .collect();
-    common::finished_jobs(&db, &id, "paycom.collect", &others).unwrap();
-    let listed = |jobs: Vec<dispatch_backend::contracts::PublicJob>| {
-        jobs.into_iter().map(|j| j.id).collect::<Vec<_>>()
-    };
-    assert!(!listed(db.recent_jobs(Some(&id)).unwrap()).contains(&job));
-    assert_eq!(listed(db.dvic_status(&id).unwrap().jobs), [job]);
-    // The other way round: the Timecard's list keeps its own jobs however many DVIC jobs
-    // came since.
-    let others: Vec<_> = (0..201)
-        .map(|index| (format!("dvic-{index}"), db::at(db::now() + 5000 + index)))
-        .collect();
-    common::finished_jobs(&db, &id, "cortex.dvic.collect", &others).unwrap();
-    let others = listed(db.recent_jobs_in(&id, &["paycom.collect"]).unwrap());
-    assert_eq!(others.len(), 200);
-    assert!(others.iter().all(|j| j.starts_with("paycom-")));
-}
-
-#[test]
 fn thresholds_are_strict_and_publication_weeks_follow_iso_including_year_rollover() {
     let capture = dvic::fixture(&request(&["2026-W39"])).unwrap();
     let mut row = capture.reports[0].rows.as_ref().unwrap()[0].clone();
@@ -384,6 +371,7 @@ fn thresholds_are_strict_and_publication_weeks_follow_iso_including_year_rollove
 
 #[test]
 fn catch_up_prioritizes_unseen_weeks_before_refreshing_older_observations() {
+    install();
     let (_root, db, id) = ready();
     let latest = dvic::report_week(chrono::Utc::now().date_naive());
     let weeks = weeks_ending(&latest, dvic::MAX_WEEKS).unwrap();
@@ -403,6 +391,7 @@ fn catch_up_prioritizes_unseen_weeks_before_refreshing_older_observations() {
 
 #[test]
 fn a_hidden_driver_is_never_stored_and_hiding_removes_what_was() {
+    install();
     let (_root, db, id) = ready();
     let mut capture = dvic::fixture(&request(&["2026-W39"])).unwrap();
     let rows = capture.reports[0].rows.as_mut().unwrap();
@@ -478,6 +467,7 @@ fn a_hidden_driver_is_never_stored_and_hiding_removes_what_was() {
 
 #[test]
 fn the_operator_commands_hide_list_and_unhide_without_stopping_the_server() {
+    install();
     let (_root, db, id) = ready();
     let run = |args: &[&str]| {
         let args: Vec<String> = args.iter().map(|a| (*a).to_owned()).collect();

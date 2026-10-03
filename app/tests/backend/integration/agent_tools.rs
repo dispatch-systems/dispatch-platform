@@ -100,6 +100,7 @@ async fn admitted_mcp_version(
 
 #[tokio::test]
 async fn modern_mcp_exposes_a_stable_strict_profile_and_structured_results() {
+    dispatch_backend::install();
     use dispatch_backend::State;
     let (_root, db, dsp) = bootstrapped();
     let user = owner(&db);
@@ -201,6 +202,7 @@ async fn modern_mcp_exposes_a_stable_strict_profile_and_structured_results() {
 
 #[tokio::test]
 async fn mcp_revalidates_admitted_keys_before_protected_reads_and_discovery() {
+    dispatch_backend::install();
     use dispatch_backend::State;
     for change in ["revoked", "expired", "inactive_owner", "demoted_owner"] {
         let (_root, db, dsp) = bootstrapped();
@@ -277,6 +279,7 @@ fn tool_names(listed: &Value) -> Vec<String> {
 
 #[tokio::test]
 async fn mcp_uses_current_reads_and_dsp_reach_for_an_admitted_caller() {
+    dispatch_backend::install();
     use dispatch_backend::State;
     let (_root, db, dsp) = bootstrapped();
     db.enable_all_features(&dsp).unwrap();
@@ -329,6 +332,7 @@ async fn mcp_uses_current_reads_and_dsp_reach_for_an_admitted_caller() {
 
 #[tokio::test]
 async fn mcp_rechecks_location_policy_and_changed_dsp_grants() {
+    dispatch_backend::install();
     use dispatch_backend::State;
     let (_root, db, dsp) = bootstrapped();
     db.enable_all_features(&dsp).unwrap();
@@ -430,6 +434,7 @@ async fn mcp_rechecks_location_policy_and_changed_dsp_grants() {
 
 #[test]
 fn a_key_is_shown_once_kept_as_a_hash_and_reaches_only_its_dsps() {
+    dispatch_backend::install();
     let (_root, db, first) = bootstrapped();
     let user = owner(&db);
     let second = db
@@ -481,6 +486,7 @@ fn a_key_is_shown_once_kept_as_a_hash_and_reaches_only_its_dsps() {
 
 #[test]
 fn revoked_expired_or_orphaned_keys_stop_at_once() {
+    dispatch_backend::install();
     let (_root, db, dsp) = bootstrapped();
     let user = owner(&db);
     let key = |name: &str| {
@@ -531,6 +537,7 @@ fn revoked_expired_or_orphaned_keys_stop_at_once() {
 
 #[test]
 fn names_dsps_and_expiries_are_checked() {
+    dispatch_backend::install();
     let (_root, db, dsp) = bootstrapped();
     let user = owner(&db);
     let made = db
@@ -598,6 +605,7 @@ fn names_dsps_and_expiries_are_checked() {
 
 #[test]
 fn keys_are_recorded_on_the_platform_and_never_in_a_dsp() {
+    dispatch_backend::install();
     let (_root, db, dsp) = bootstrapped();
     let user = owner(&db);
     let made = db
@@ -644,6 +652,7 @@ fn keys_are_recorded_on_the_platform_and_never_in_a_dsp() {
 
 #[test]
 fn key_scope_audits_compare_exact_canonical_dsp_sets() {
+    dispatch_backend::install();
     let (_root, db, first) = bootstrapped();
     let user = owner(&db);
     let second = db
@@ -734,6 +743,7 @@ fn key_scope_audits_compare_exact_canonical_dsp_sets() {
 
 #[test]
 fn last_use_is_written_down_and_never_goes_back() {
+    dispatch_backend::install();
     let (_root, db, dsp) = bootstrapped();
     let user = owner(&db);
     let made = db
@@ -760,6 +770,7 @@ fn last_use_is_written_down_and_never_goes_back() {
 
 #[tokio::test]
 async fn a_password_reset_ends_its_owners_keys() {
+    dispatch_backend::install();
     use dispatch_backend::State;
     let (_root, db, dsp) = bootstrapped();
     let user = owner(&db);
@@ -801,6 +812,7 @@ async fn a_password_reset_ends_its_owners_keys() {
 
 #[test]
 fn reads_are_kept_in_order_and_dsps_own_settings_only_where_the_key_reaches() {
+    dispatch_backend::install();
     let (_root, db, first) = bootstrapped();
     let user = owner(&db);
     let second = db
@@ -890,6 +902,7 @@ fn reads_are_kept_in_order_and_dsps_own_settings_only_where_the_key_reaches() {
 
 #[tokio::test]
 async fn a_dsps_own_settings_are_read_there_in_place_of_the_keys_own() {
+    dispatch_backend::install();
     use dispatch_backend::{State, agents::data};
     let (_root, db, first) = bootstrapped();
     let user = owner(&db);
@@ -962,6 +975,7 @@ async fn a_dsps_own_settings_are_read_there_in_place_of_the_keys_own() {
 
 #[tokio::test]
 async fn tools_are_listed_where_any_dsp_the_key_reaches_lets_it_read_them() {
+    dispatch_backend::install();
     use dispatch_backend::State;
     let (_root, db, first) = bootstrapped();
     let user = owner(&db);
@@ -1014,6 +1028,7 @@ async fn tools_are_listed_where_any_dsp_the_key_reaches_lets_it_read_them() {
 
 #[test]
 fn edits_are_audited_kind_by_kind_with_each_dsps_own_settings_in_a_line() {
+    dispatch_backend::install();
     let (_root, db, first) = bootstrapped();
     let user = owner(&db);
     let second = db
@@ -1076,6 +1091,7 @@ fn edits_are_audited_kind_by_kind_with_each_dsps_own_settings_in_a_line() {
 
 #[test]
 fn a_suspended_dsp_keeps_its_reach_and_own_settings_through_an_edit() {
+    dispatch_backend::install();
     let (_root, db, first) = bootstrapped();
     let user = owner(&db);
     let second = db
@@ -1159,6 +1175,7 @@ fn a_suspended_dsp_keeps_its_reach_and_own_settings_through_an_edit() {
 
 #[test]
 fn addresses_an_older_release_stopped_in_a_rollback_stay_stopped() {
+    dispatch_backend::install();
     let (_root, db, dsp) = bootstrapped();
     let user = owner(&db);
     let mut body = reach(&[&dsp]);
@@ -1203,6 +1220,7 @@ fn addresses_an_older_release_stopped_in_a_rollback_stay_stopped() {
 
 #[test]
 fn delivery_addresses_are_never_claimed_without_the_routes() {
+    dispatch_backend::install();
     let (_root, db, dsp) = bootstrapped();
     let user = owner(&db);
     // Asked for without routes, at every DSP or at one, the addresses aren't kept.

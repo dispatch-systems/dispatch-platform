@@ -11,6 +11,7 @@ use std::os::unix::fs::{PermissionsExt, symlink};
 
 #[test]
 fn core_storage_is_bound_to_its_dsp_on_every_open() {
+    common::install(&[], &[]);
     let (_root, db, id) = bootstrapped();
     let core = db.dsp(&id).unwrap();
     let identity = core
@@ -34,6 +35,7 @@ fn core_storage_is_bound_to_its_dsp_on_every_open() {
 
 #[test]
 fn recorded_core_identity_is_not_recreated_when_missing() {
+    common::install(&[], &[]);
     let (_root, db, id) = bootstrapped();
     let core = db.dsp(&id).unwrap();
     core.exec("DELETE FROM storage_identity", []).unwrap();
@@ -48,6 +50,7 @@ fn recorded_core_identity_is_not_recreated_when_missing() {
 
 #[test]
 fn legacy_core_storage_is_adopted_once_without_losing_data() {
+    common::install(&[], &[]);
     let (_root, db, id) = bootstrapped();
     let core = db.dsp(&id).unwrap();
     core.set("legacy.witness", &json!({"kept":true})).unwrap();
@@ -80,6 +83,7 @@ fn legacy_core_storage_is_adopted_once_without_losing_data() {
 
 #[test]
 fn startup_rejects_cross_dsp_core_database_substitution() {
+    common::install(&[], &[]);
     let (_root, db) = seeded();
     let ids: Vec<String> = db
         .platform
@@ -108,29 +112,8 @@ fn startup_rejects_cross_dsp_core_database_substitution() {
 }
 
 #[test]
-fn startup_rejects_provider_database_as_core_storage() {
-    let (_root, db) = seeded();
-    let id = db
-        .platform
-        .one("SELECT id FROM dsps WHERE name='Northline Logistics'", [])
-        .unwrap()
-        .map(|row| db::s(&row, "id").to_owned())
-        .unwrap();
-    let data = db.area(&id, "data").unwrap();
-    let core = data.join("dispatch.sqlite");
-    let provider = data.join("paycom/paycom.sqlite");
-    let config = db.config.clone();
-    drop(db);
-    std::fs::copy(provider, core).unwrap();
-
-    assert_eq!(
-        Store::initialize(config).err().unwrap().code,
-        "dsp_storage_identity_mismatch"
-    );
-}
-
-#[test]
 fn startup_removes_owned_browseros_runs_and_rejects_unknown_entries() {
+    common::install(&[], &[]);
     let (_root, db) = store();
     let runs = db::private_dir(&db.config.environment_root().join("browser-runs")).unwrap();
     for prefix in ["run", "browseros"] {
@@ -149,6 +132,7 @@ fn startup_removes_owned_browseros_runs_and_rejects_unknown_entries() {
 
 #[test]
 fn private_storage_rejects_links_and_world_readable_files() {
+    common::install(&[], &[]);
     let (root, db) = store();
     let first = root.path().join("private");
     db::write_private(&first, b"private").unwrap();
@@ -166,6 +150,7 @@ fn private_storage_rejects_links_and_world_readable_files() {
 
 #[test]
 fn legacy_account_database_is_rejected_without_changing_its_schema() {
+    common::install(&[], &[]);
     let (_root, db) = store();
     let config = db.config.clone();
     db.platform

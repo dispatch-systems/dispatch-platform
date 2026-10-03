@@ -11,8 +11,23 @@ use dispatch_backend::{
 };
 use serde_json::json;
 
+/// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
+fn install() {
+    common::install(
+        &[
+            &dispatch_backend::collectors::paycom::COLLECTOR,
+            &dispatch_backend::collectors::cortex::COLLECTOR,
+        ],
+        &[
+            &dispatch_backend::feature_manifests::driver_match::FEATURE,
+            &dispatch_backend::feature_manifests::timecard::FEATURE,
+        ],
+    );
+}
+
 #[test]
 fn daily_ranges_select_each_days_latest_publication_and_employee_overlay() {
+    install();
     let (_root, db, id) = common::bootstrapped();
     let fixture = |day: &str, collected: &str| {
         let mut data = fixtures::fixture_date("UTC", Some(day.parse().unwrap())).unwrap();
@@ -125,6 +140,7 @@ fn daily_ranges_select_each_days_latest_publication_and_employee_overlay() {
 
 #[test]
 fn meal_ranges_keep_full_name_context_and_newest_observation_per_day() {
+    install();
     let (_root, db, id) = common::bootstrapped();
     let mut roster = fixtures::fixture_date("UTC", Some("2026-09-05".parse().unwrap())).unwrap();
     roster["employees"][1]["name"] = json!("DOE, ALEX");

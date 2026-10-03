@@ -13,6 +13,14 @@ use dispatch_backend::{
 };
 use serde_json::json;
 
+/// Scorecard, and the Cortex collector whose scorecard it keeps.
+fn install() {
+    common::install(
+        &[&cortex::COLLECTOR],
+        &[&dispatch_backend::feature_manifests::scorecard::FEATURE],
+    );
+}
+
 fn request(week: &str) -> Request {
     Request::parse(
         &json!({"collection":"scorecard","week":week,"station":"TST1",
@@ -54,6 +62,7 @@ fn publish(db: &Store, id: &str, key: &str, week: &str, capture: &Capture) -> St
 
 #[test]
 fn a_posted_week_is_published_into_one_table_per_dataset_with_its_keys() {
+    install();
     let (_root, db, id) = ready();
     let capture = scorecard::fixture(&request("2026-W38")).unwrap();
     let job = publish(&db, &id, "first", "2026-W38", &capture);
@@ -148,6 +157,7 @@ fn a_posted_week_is_published_into_one_table_per_dataset_with_its_keys() {
 
 #[test]
 fn the_next_job_reads_at_the_address_the_last_publication_read() {
+    install();
     let (_root, db, id) = ready();
     assert_eq!(db.scorecard_address(&id, "TST1").unwrap(), None);
     let mut older = scorecard::fixture(&request("2026-W30")).unwrap();
@@ -168,6 +178,7 @@ fn the_next_job_reads_at_the_address_the_last_publication_read() {
 
 #[test]
 fn collecting_a_week_again_supersedes_its_publication_and_keeps_the_history() {
+    install();
     let (_root, db, id) = ready();
     let capture = scorecard::fixture(&request("2026-W37")).unwrap();
     let first = publish(&db, &id, "one", "2026-W37", &capture);
@@ -214,6 +225,7 @@ fn collecting_a_week_again_supersedes_its_publication_and_keeps_the_history() {
 
 #[test]
 fn week_counts_use_capture_metadata_and_recover_missing_legacy_dataset_counts() {
+    install();
     let (_root, db, id) = ready();
     let legacy = scorecard::fixture(&request("2026-W36")).unwrap();
     let legacy_job = publish(&db, &id, "legacy", "2026-W36", &legacy);
@@ -272,6 +284,7 @@ fn week_counts_use_capture_metadata_and_recover_missing_legacy_dataset_counts() 
 
 #[test]
 fn a_week_not_posted_yet_is_noted_without_a_publication() {
+    install();
     let (_root, db, id) = ready();
     let mut capture = scorecard::fixture(&request("2026-W36")).unwrap();
     for dataset in &mut capture.datasets {
@@ -301,6 +314,7 @@ fn a_week_not_posted_yet_is_noted_without_a_publication() {
 
 #[test]
 fn publication_rechecks_the_discovered_company_and_pinned_dsp_code() {
+    install();
     let (_root, db, id) = ready();
     let week = "2026-W38";
     let job = db
@@ -335,6 +349,7 @@ fn publication_rechecks_the_discovered_company_and_pinned_dsp_code() {
 
 #[test]
 fn legacy_unverified_publications_are_quarantined_until_a_bound_recollection() {
+    install();
     let (_root, db, id) = ready();
     let week = db.scorecard_weeks(&id).unwrap().latest_week;
     let storage = db.scorecard_db(&id).unwrap();
@@ -409,6 +424,7 @@ fn legacy_unverified_publications_are_quarantined_until_a_bound_recollection() {
 
 #[test]
 fn a_schedule_queues_the_latest_week_until_it_is_published() {
+    install();
     let (_root, db, id) = ready();
     let latest = db.scorecard_weeks(&id).unwrap().latest_week;
     let jobs = db.scorecard_jobs(&id).unwrap();

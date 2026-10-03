@@ -1925,6 +1925,7 @@ async fn registration_rejects_cross_site_browsers_before_spending_its_budget() {
 
 #[test]
 fn what_can_no_longer_be_used_is_pruned() {
+    dispatch_backend::install();
     let (_root, db, _) = common::bootstrapped();
     let old = db::at(db::now() - 2 * 24 * 60 * 60 * 1000);
     let soon = db::at(db::now() + 60_000);
@@ -2704,6 +2705,7 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
 
 #[test]
 fn a_notice_waiting_to_be_sent_goes_only_to_a_platform_owner_still_active() {
+    dispatch_backend::install();
     let (_root, db) = common::seeded();
     let user = |email: &str| {
         let (id,): (String,) = db

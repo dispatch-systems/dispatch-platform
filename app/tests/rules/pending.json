@@ -30,11 +30,9 @@
         "core/collection names collectors/cortex": "Phase B",
         "core/collection names collectors/paycom": "Phase B",
         "core/collection's tests name collectors/paycom": "A6",
-        "core/db's tests name app": "A6",
         "core/manifest names app": "Phase B",
         "core/mcp names app": "Phase B",
-        "core/server names app": "Phase B",
-        "features/routes's tests name app": "A6"
+        "core/server names app": "Phase B"
       }
     },
     "encapsulation": {

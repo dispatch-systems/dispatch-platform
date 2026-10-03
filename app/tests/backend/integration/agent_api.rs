@@ -72,6 +72,7 @@ fn the_openapi_document_skill_and_metrics_are_as_they_were() {
 
 #[test]
 fn the_kinds_of_data_and_their_switches_are_as_they_were() {
+    dispatch_backend::install();
     let (_root, db, dsp) = common::bootstrapped();
     db.enable_all_features(&dsp).unwrap();
     let mut switches = vec![json!({"off": [], "on": switched_on(&db, &dsp)})];
@@ -164,6 +165,7 @@ async fn mcp(
 
 #[tokio::test]
 async fn the_mcp_server_offers_the_same_tools_and_prompts() {
+    dispatch_backend::install();
     let (_root, db, dsp) = common::bootstrapped();
     let every = [
         "routes",
