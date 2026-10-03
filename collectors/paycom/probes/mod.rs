@@ -2,14 +2,23 @@
 //! A probe that compares a collection with what the feature keeping it published needs
 //! the app's registry, so the app's tests run it. The probes that need Paycom alone are
 //! its ignored tests.
-use super::*;
+use crate::{collections::timecards::collect as collection, connection::Driver};
+use dispatch_core::{
+    Error, Result,
+    collection::browser::{browseros, page::call},
+    db::{self, s},
+    ensure,
+};
+use serde_json::{Value, json};
 use std::{
     path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
+    time::Duration,
 };
+use tokio::time::{Instant, sleep};
 
 fn env_path(name: &str) -> Result<PathBuf> {
     std::env::var_os(name)
@@ -78,7 +87,7 @@ fn memory_tree(root: u32) -> [u64; 4] {
 }
 /// A live collection of the whole roster, timed and sampled for memory, compared card by
 /// card with what the feature keeping timecards last published.
-pub(crate) async fn measure_live_collection() -> Result<()> {
+pub async fn measure_live_collection() -> Result<()> {
     let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
     let profile = dsp.join("state/browsers/paycom-browseros");
     let runtime = browseros::Runtime::new(
@@ -92,7 +101,7 @@ pub(crate) async fn measure_live_collection() -> Result<()> {
         .start(
             &profile,
             browseros::Mode::Windowed,
-            browseros::NetworkPolicy::Hosts(&crate::collectors::paycom::BROWSER_HOSTS),
+            browseros::NetworkPolicy::Hosts(&crate::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;
@@ -137,10 +146,10 @@ pub(crate) async fn measure_live_collection() -> Result<()> {
             "spotChecked":reads["spotChecked"],"pageRetries":reads["retries"],"failedReads":reads["failures"].as_array().map(Vec::len)}));
         let collection_peak=peak.each_ref().map(|value| value.load(Ordering::Relaxed));
         let database=db::Db(rusqlite::Connection::open_with_flags(dispatch_core::collection::registry::database_path(&dsp,
-            crate::collectors::paycom::PROVIDER)?,rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?);
+            crate::PROVIDER)?,rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?);
         let mut expected=std::collections::BTreeMap::new();
         // Timecard keeps what the last collection published.
-        for card in dispatch_core::manifest::registry().keeper(crate::collectors::paycom::timecards::JOB_KIND)
+        for card in dispatch_core::manifest::registry().keeper(crate::timecards::JOB_KIND)
             .published(&database)? {
             expected.insert((s(&card,"employeeCode").to_owned(),s(&card,"date").to_owned()),card);
         }

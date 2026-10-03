@@ -1,10 +1,11 @@
 use super::preferences::preferences;
-use crate::{collectors::paycom, contracts::DailyTimecards, workforce::TimecardStore};
+use crate::{contracts::DailyTimecards, workforce::TimecardStore};
 use dispatch_core::{
     Result,
     db::{Db, Store, s},
     foundation::names::{compare, display_name},
 };
+use dispatch_paycom as paycom;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 fn visible(row: &Value, p: &Value, drivers: bool) -> bool {

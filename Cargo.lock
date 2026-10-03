@@ -604,15 +604,12 @@ dependencies = [
  "chrono-tz",
  "dispatch-core",
  "dispatch-host",
- "ego-tree",
+ "dispatch-paycom",
  "flate2",
  "futures-util",
- "getrandom 0.4.3",
- "html5ever",
  "libc",
  "reqwest",
  "rusqlite",
- "scraper",
  "serde",
  "serde_json",
  "sha2",
@@ -687,6 +684,28 @@ dependencies = [
  "tar",
  "tempfile",
  "zip",
+]
+
+[[package]]
+name = "dispatch-paycom"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "dispatch-core",
+ "ego-tree",
+ "futures-util",
+ "getrandom 0.4.3",
+ "html5ever",
+ "libc",
+ "rusqlite",
+ "scraper",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "ts-rs",
 ]
 
 [[package]]

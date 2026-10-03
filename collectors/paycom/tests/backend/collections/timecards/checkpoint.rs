@@ -1,11 +1,12 @@
 use super::*;
+use crate as paycom;
 use crate::testing;
 use dispatch_core::{foundation::config::Config, server::operations};
 use std::os::unix::fs::PermissionsExt;
 
 #[tokio::test]
 async fn resume_is_bound_to_job_roster_period_revision_and_fixed_expiry() -> Result<()> {
-    crate::testing::install(&[&crate::collectors::paycom::COLLECTOR], &[]);
+    crate::testing::install(&[&crate::COLLECTOR], &[]);
     let root = tempfile::tempdir()?;
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700))?;
     let mut config = Config::load()?;

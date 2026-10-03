@@ -1,13 +1,13 @@
 //! Requests against the real router, served in-process over a loopback socket.
 //! The expectations were recorded before the route table existed, so they pin
 //! how the HTTP layer answers rather than how it is built.
-use dispatch_backend::collectors::paycom;
 use dispatch_core::{
     State,
     db::{self, Store, s},
     foundation::{config::Config, crypto},
     server::operations,
 };
+use dispatch_paycom as paycom;
 use serde_json::{Value, json};
 use std::{
     os::unix::fs::PermissionsExt,

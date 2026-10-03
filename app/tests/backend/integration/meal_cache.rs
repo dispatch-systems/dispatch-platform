@@ -1,13 +1,14 @@
 //! The meal-break page's cache and live results over HTTP, against the real router served
 //! in-process over a loopback socket: Timecard's page, Paycom's live collection and core's
 //! cache and leases together.
-use dispatch_backend::{collectors::paycom, workforce::TimecardStore};
+use dispatch_backend::workforce::TimecardStore;
 use dispatch_core::{
     State,
     db::{self, Store, s},
     foundation::{config::Config, crypto},
     server::operations,
 };
+use dispatch_paycom as paycom;
 use serde_json::{Value, json};
 use std::{os::unix::fs::PermissionsExt, sync::Arc};
 
@@ -218,7 +219,8 @@ impl Server {
 
 #[tokio::test]
 async fn meal_cache_rechecks_live_visibility_after_lease_bookkeeping_and_authorizes_hits() {
-    use dispatch_backend::{collectors::paycom::PaycomStore, workforce};
+    use dispatch_backend::workforce;
+    use dispatch_paycom::PaycomStore;
     let server = Server::start().await;
     let member = server.member("member@dispatch.test").await;
     let dsp = server.dsp("Northline Logistics").await;

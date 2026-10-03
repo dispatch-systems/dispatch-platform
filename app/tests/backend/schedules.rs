@@ -1,14 +1,12 @@
 //! Schedules of the collections Timecard keeps from Paycom and Cortex: what they queue,
 //! when, and what stops them.
-use crate::{
-    collectors::{cortex, paycom},
-    workforce::TimecardStore,
-};
+use crate::{collectors::cortex, workforce::TimecardStore};
 use dispatch_core::{
     collection::schedules::{anchor, next_daily},
     db::{Store, iso, now, s},
     foundation::{config::Config, crypto},
 };
+use dispatch_paycom as paycom;
 use rusqlite::params;
 use serde_json::{Value, json};
 use std::os::unix::fs::PermissionsExt;

@@ -1,6 +1,7 @@
 use super::*;
-use crate::{collectors::paycom::fixtures, workforce::TimecardStore};
+use crate::workforce::TimecardStore;
 use dispatch_core::{foundation::config::Config, server::operations};
+use dispatch_paycom::fixtures;
 use serde_json::json;
 use std::os::unix::fs::PermissionsExt;
 
@@ -8,7 +9,7 @@ use std::os::unix::fs::PermissionsExt;
 fn a_scoped_publication_rejects_other_employees_periods_and_incomplete_captures() -> Result<()> {
     crate::testing::install(
         &[
-            &crate::collectors::paycom::COLLECTOR,
+            &dispatch_paycom::COLLECTOR,
             &crate::collectors::cortex::COLLECTOR,
         ],
         &[

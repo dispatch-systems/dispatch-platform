@@ -2,16 +2,13 @@
 //! limits, the lists each page reads, the facts an outcome records, and what the Timecard's
 //! switch stops.
 use common::{seeded, store};
-use dispatch_backend::{
-    collectors::{cortex, paycom},
-    dvic::DvicStore,
-    workforce::TimecardStore,
-};
+use dispatch_backend::{collectors::cortex, dvic::DvicStore, workforce::TimecardStore};
 use dispatch_core::testing as common;
 use dispatch_core::{
     collection::jobs::JobFacts,
     db::{self, Store, s},
 };
+use dispatch_paycom as paycom;
 use serde_json::json;
 
 /// A DSP with a DVIC station and an enabled Cortex connection.
@@ -75,7 +72,7 @@ fn queue_limits_and_authority_are_checked_again_before_publication() {
     db.platform
         .exec("UPDATE users SET status='active' WHERE id=?", [actor])
         .unwrap();
-    db.collector(id, dispatch_backend::collectors::paycom::PROVIDER)
+    db.collector(id, dispatch_paycom::PROVIDER)
         .unwrap()
         .exec("UPDATE connections SET revision=revision+1", [])
         .unwrap();

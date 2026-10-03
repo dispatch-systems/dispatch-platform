@@ -1,7 +1,7 @@
 //! The collector registry and the storage it opens for each collector, with Paycom and
 //! Cortex registered and Timecard's data in their databases.
 use crate::{
-    collectors::{cortex, paycom},
+    collectors::cortex,
     testing,
     workforce::{self, TimecardStore},
 };
@@ -11,6 +11,7 @@ use dispatch_core::{
     foundation::config::Config,
     server::operations,
 };
+use dispatch_paycom as paycom;
 use paycom::fixtures;
 use serde_json::{Value, json};
 use std::os::unix::fs::{PermissionsExt, symlink};

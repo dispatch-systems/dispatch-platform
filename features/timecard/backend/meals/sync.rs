@@ -1,10 +1,7 @@
 //! Queue both sources together; a missing connection/scope cannot start half a sync.
-use crate::collectors::{
-    cortex::{
-        self,
-        discovery::{Discovery, Scope},
-    },
-    paycom::{self, validation::collection_date},
+use crate::collectors::cortex::{
+    self,
+    discovery::{Discovery, Scope},
 };
 use dispatch_core::{
     Result,
@@ -12,6 +9,7 @@ use dispatch_core::{
     db::{Store, s},
     ensure,
 };
+use dispatch_paycom::{self as paycom, timecards::collection_date};
 use serde_json::{Value, json};
 
 // Reuse the selected day's proven scopes. For an uncollected day, use the

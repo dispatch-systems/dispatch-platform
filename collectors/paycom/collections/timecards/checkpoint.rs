@@ -1,5 +1,5 @@
 //! Host-owned, unpublished Paycom progress. Workers never receive storage paths.
-use crate::collectors::paycom::{self, validation::validate_workforce};
+use crate::{PROVIDER, timecards::validate_workforce};
 use dispatch_core::{
     Result, State,
     collection::live,
@@ -27,7 +27,7 @@ pub trait PaycomStore {
 }
 impl PaycomStore for Store {
     fn clear_paycom_checkpoints(&self, dsp: &str, job: Option<&str>) -> Result<()> {
-        let db = self.collector(dsp, paycom::PROVIDER)?;
+        let db = self.collector(dsp, PROVIDER)?;
         db.exec(
             "DELETE FROM collection_checkpoints WHERE (?1 IS NULL OR job_id=?1)",
             [job],
@@ -35,16 +35,14 @@ impl PaycomStore for Store {
         Ok(())
     }
     fn prune_paycom_checkpoints(&self, dsp: &str) -> Result<()> {
-        let db = self.collector(dsp, paycom::PROVIDER)?;
+        let db = self.collector(dsp, PROVIDER)?;
         db.transaction(|| {
             for row in db.all("SELECT job_id,created_at FROM collection_checkpoints", [])? {
                 let live = self.job_row(s(&row, "job_id"), None).ok();
                 let keep = n(&row, "created_at") <= db::now()
                     && n(&row, "created_at") >= db::now() - TTL_MS
                     && live.is_some_and(|job| {
-                        job.dsp_id == dsp
-                            && job.provider() == paycom::PROVIDER
-                            && job.status.is_active()
+                        job.dsp_id == dsp && job.provider() == PROVIDER && job.status.is_active()
                     });
                 if !keep {
                     db.exec(
@@ -64,7 +62,7 @@ impl PaycomStore for Store {
         records: &[Value],
     ) -> Result<()> {
         let dsp = self.guard(job, owner)?;
-        let db = self.collector(&dsp.id, paycom::PROVIDER)?;
+        let db = self.collector(&dsp.id, PROVIDER)?;
         db.transaction(|| stage_paycom_page(&db, job, owner, employee, records))
     }
 }
@@ -132,10 +130,10 @@ impl Checkpoint {
             let dsp=db.guard(&job,&owner)?;
             state.read_cache.invalidate_tenant(&dsp.id, dispatch_core::server::cache::DataDomain::LIVE);
             let row=db.job_row(&job,None)?;
-            ensure(row.kind.as_str()==paycom::PROVIDER.job_kind(),"unsupported_collector",409)?;
+            ensure(row.kind.as_str()==PROVIDER.job_kind(),"unsupported_collector",409)?;
             let tenant=dsp.id.as_str();
             db.prune_paycom_checkpoints(tenant)?;
-            let storage=db.collector(tenant,paycom::PROVIDER)?;
+            let storage=db.collector(tenant,PROVIDER)?;
             let resume = storage.transaction(|| {
                 let existing=storage.one("SELECT * FROM collection_checkpoints WHERE job_id=?",[&job])?;
                 if let Some(existing)=existing.filter(|r| s(r,
@@ -173,9 +171,7 @@ impl Checkpoint {
         }).await?;
         self.state.updates.changed(
             &dsp,
-            dispatch_core::collection::api::types::CollectionChange::provider(
-                paycom::PROVIDER.id(),
-            ),
+            dispatch_core::collection::api::types::CollectionChange::provider(PROVIDER.id()),
         );
         Ok(resume)
     }
@@ -188,7 +184,7 @@ impl Checkpoint {
     ) -> Result<()> {
         validate_page(employee, period, records)?;
         let change = dispatch_core::collection::api::types::CollectionChange {
-            provider: paycom::PROVIDER.id().into(),
+            provider: PROVIDER.id().into(),
             dates: records.iter().map(|r| s(r, "date").to_owned()).collect(),
             employee_code: Some(s(employee, "code").to_owned()),
             roster: false,
@@ -210,7 +206,7 @@ impl Checkpoint {
                     .read_cache
                     .invalidate_tenant(&dsp.id, dispatch_core::server::cache::DataDomain::LIVE);
                 let row = db.job_row(&job, None)?;
-                let storage = db.collector(&dsp.id, paycom::PROVIDER)?;
+                let storage = db.collector(&dsp.id, PROVIDER)?;
                 // Save resume data and visible results with one transaction per driver.
                 storage.transaction(|| {
                     // An expired checkpoint simply stops accepting new progress. The

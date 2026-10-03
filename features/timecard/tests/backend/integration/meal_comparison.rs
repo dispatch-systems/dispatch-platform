@@ -1,8 +1,5 @@
 use dispatch_backend::{
-    collectors::{
-        cortex::{self, discovery::Scope, meals},
-        paycom::{self, fixtures},
-    },
+    collectors::cortex::{self, discovery::Scope, meals},
     driver_match::DriverMatchStore,
     workforce::TimecardStore,
 };
@@ -12,13 +9,14 @@ use dispatch_core::{
     db::{Store, s},
     mcp::api::types::DriverSource,
 };
+use dispatch_paycom::{self as paycom, fixtures};
 use serde_json::{Value, json};
 
 /// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
 fn install() {
     common::install(
         &[
-            &dispatch_backend::collectors::paycom::COLLECTOR,
+            &dispatch_paycom::COLLECTOR,
             &dispatch_backend::collectors::cortex::COLLECTOR,
         ],
         &[

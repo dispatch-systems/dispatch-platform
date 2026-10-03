@@ -1,10 +1,11 @@
-use crate::{collectors::paycom, workforce::TimecardStore};
+use crate::workforce::TimecardStore;
 use dispatch_core::{
     Error, Result,
     db::{AuditChange, Db, Store, iso, n},
     ensure,
     foundation::validate as v,
 };
+use dispatch_paycom as paycom;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 const COLUMNS: [&str; 6] = [

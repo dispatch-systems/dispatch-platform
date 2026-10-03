@@ -1,6 +1,5 @@
 //! Employee timecards: calendar navigation and explicitly scoped collections.
 use crate::{
-    collectors::paycom::{self, timecards::PERIOD_DAYS},
     contracts::{EmployeeTimecardPeriod, EmployeeTimecardResponse, Timecard},
     workforce::{TimecardStore, cards, sync::synced_cards},
 };
@@ -10,6 +9,7 @@ use dispatch_core::{
     ensure,
     foundation::{names::display_name, validate as v},
 };
+use dispatch_paycom::{self as paycom, timecards::PERIOD_DAYS};
 use rusqlite::params;
 use serde_json::{Value, json};
 

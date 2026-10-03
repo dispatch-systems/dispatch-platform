@@ -22,16 +22,12 @@ pub mod workforce;
 pub mod collectors {
     #[path = "cortex/collector.rs"]
     pub mod cortex;
-    #[path = "paycom/collector.rs"]
-    pub mod paycom;
 }
 /// What reads each collector's site, until each collector is a crate of its own.
 #[path = "../../collectors"]
 pub mod browsers {
     #[path = "cortex/connection/mod.rs"]
     pub(crate) mod cortex;
-    #[path = "paycom/connection/mod.rs"]
-    pub(crate) mod paycom;
 }
 
 use dispatch_core::{
@@ -41,10 +37,7 @@ use dispatch_core::{
 
 /// Everything this build of Dispatch is made of: its collectors and its features.
 pub static REGISTRY: Registry = Registry {
-    collectors: &[
-        &collectors::paycom::COLLECTOR,
-        &collectors::cortex::COLLECTOR,
-    ],
+    collectors: &[&dispatch_paycom::COLLECTOR, &collectors::cortex::COLLECTOR],
     features: &[
         &feature_manifests::timecard::FEATURE,
         &feature_manifests::uniforms::FEATURE,

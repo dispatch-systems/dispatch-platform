@@ -92,9 +92,7 @@ fn new_databases_match_the_recorded_schema() {
         .unwrap();
     store.provision(&id).unwrap();
     let dsp = store.dsp(&id).unwrap();
-    let paycom = store
-        .collector(&id, crate::collectors::paycom::PROVIDER)
-        .unwrap();
+    let paycom = store.collector(&id, dispatch_paycom::PROVIDER).unwrap();
     let cortex = store
         .collector(&id, crate::collectors::cortex::PROVIDER)
         .unwrap();
@@ -105,7 +103,7 @@ fn new_databases_match_the_recorded_schema() {
         (Kind::PLATFORM, &store.platform),
         (Kind::JOBS, &store.jobs),
         (Kind::DSP, &dsp),
-        (crate::collectors::paycom::DATABASE, &paycom),
+        (dispatch_paycom::DATABASE, &paycom),
         (crate::collectors::cortex::DATABASE, &cortex),
         (crate::scorecard::DATABASE, &scorecard),
         (crate::routedata::DATABASE, &routedata),

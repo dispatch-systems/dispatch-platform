@@ -2,6 +2,7 @@
 //! against a copy of a DSP, with the `operator-probes` feature. Never run by CI or print
 //! provider records.
 use super::*;
+use crate::{collections::timecards::extract, connection::SEARCH};
 
 fn concurrency_levels(value: &str) -> Result<Vec<usize>> {
     let levels: Vec<usize> = value
@@ -159,7 +160,7 @@ async fn http_extraction_parity() -> Result<()> {
         .start(
             &profile,
             browseros::Mode::Windowed,
-            browseros::NetworkPolicy::Hosts(&crate::collectors::paycom::BROWSER_HOSTS),
+            browseros::NetworkPolicy::Hosts(&crate::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;
@@ -272,7 +273,7 @@ async fn http_concurrency() -> Result<()> {
         .start(
             &profile,
             browseros::Mode::Windowed,
-            browseros::NetworkPolicy::Hosts(&crate::collectors::paycom::BROWSER_HOSTS),
+            browseros::NetworkPolicy::Hosts(&crate::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;

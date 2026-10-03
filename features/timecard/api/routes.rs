@@ -1,10 +1,7 @@
 //! What Paycom and Cortex collected: employees, timecards, meal breaks and the Paycom
 //! preferences, and the jobs and schedules that collect them.
 use crate::{
-    collectors::{
-        cortex::{self, discovery::Scope},
-        paycom,
-    },
+    collectors::cortex::{self, discovery::Scope},
     contracts::{EmployeeTimecardPeriod, PaycomSettings},
     workforce::TimecardStore,
 };
@@ -23,6 +20,7 @@ use dispatch_core::{
         route::{Dsp, Member, Route, read, write},
     },
 };
+use dispatch_paycom as paycom;
 use serde_json::json;
 
 const VIEW: Dsp = Dsp("timecard.view");

@@ -1,11 +1,11 @@
-use crate::collectors::paycom::{
-    self,
-    validation::{sources, validate_workforce},
-};
 use dispatch_core::{
     Result,
     db::{Store, flag, s},
     foundation::crypto,
+};
+use dispatch_paycom::{
+    self as paycom,
+    timecards::{sources, validate_workforce},
 };
 use rusqlite::params;
 use serde_json::{Value, json};

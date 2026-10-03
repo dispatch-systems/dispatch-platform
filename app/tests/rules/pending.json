@@ -20,8 +20,7 @@
         "features/uniforms has no Cargo.toml": "Phase B"
       },
       "roots": {
-        "collectors/cortex has no Cargo.toml": "Phase B",
-        "collectors/paycom has no Cargo.toml": "Phase B"
+        "collectors/cortex has no Cargo.toml": "Phase B"
       }
     },
     "encapsulation": {

@@ -1,11 +1,11 @@
 //! Historical daily sources loaded once for a range, including guarded employee overlays.
-use crate::collectors::paycom;
 use dispatch_core::{
     Result,
     db::{Store, s},
     ensure,
     foundation::validate,
 };
+use dispatch_paycom as paycom;
 use rusqlite::params;
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, sync::Arc};

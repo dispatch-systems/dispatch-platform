@@ -1,17 +1,10 @@
 //! Deterministic Paycom driver. Credentials, attempt limits and orchestration
 //! belong to Rust; JavaScript is restricted to provider page operations.
-#[path = "../collections/timecards/collect.rs"]
-mod collection;
-#[path = "../collections/timecards/extract.rs"]
-mod extract;
+use dispatch_core::collection::browser::browseros;
 use dispatch_core::collection::browser::{
     Collected, Driver as Drives, Pending, Run, attempt,
     page::{Page, call},
 };
-#[cfg(all(test, feature = "operator-probes"))]
-#[path = "../probes/mod.rs"]
-pub(crate) mod probes;
-use dispatch_core::collection::browser::browseros;
 use dispatch_core::{
     Error, Result,
     db::{self, s},
@@ -29,9 +22,9 @@ const PAGE_NOT_READY: &[dispatch_core::Code] = &[
 ];
 
 const LANDING: &str = "/v4/cl/web.php/client-landing/arc";
-const SEARCH: &str = "/v4/cl/web.php/timecardsearch/index?from=main_menu";
+pub(crate) const SEARCH: &str = "/v4/cl/web.php/timecardsearch/index?from=main_menu";
 const AUTH: &str = include_str!("../scripts/auth.js");
-struct Assistance {
+pub(crate) struct Assistance {
     loader: String,
     challenge: Value,
     fingerprint: Option<Vec<u8>>,
@@ -39,13 +32,13 @@ struct Assistance {
 }
 pub struct Driver {
     pub browser: browseros::Session,
-    origin: String,
-    fixture: bool,
-    page: Page,
+    pub(crate) origin: String,
+    pub(crate) fixture: bool,
+    pub(crate) page: Page,
     attempts: attempt::Attempts,
     diagnostics: std::path::PathBuf,
-    credentials: Value,
-    assistance: Option<Assistance>,
+    pub(crate) credentials: Value,
+    pub(crate) assistance: Option<Assistance>,
 }
 impl Driver {
     pub async fn new(
@@ -75,13 +68,13 @@ impl Driver {
         input["origin"] = json!(self.origin);
         self.page.evaluate(&call(AUTH, &input)).await
     }
-    async fn new_page(&mut self) -> Result<()> {
+    pub(crate) async fn new_page(&mut self) -> Result<()> {
         let page = Page::open(self.browser.clone(), self.origin.clone()).await?;
         page.size_window().await?;
         self.page = page;
         self.page.front_alone().await
     }
-    async fn navigate(&self, path: &str) -> Result<()> {
+    pub(crate) async fn navigate(&self, path: &str) -> Result<()> {
         self.page.navigate(path).await?;
         sleep(Duration::from_millis(150)).await;
         Ok(())
@@ -297,7 +290,7 @@ impl Driver {
         }
         self.challenge(&current).await
     }
-    async fn authenticate(&mut self, credentials: Value, retry: bool) -> Result<Value> {
+    pub(crate) async fn authenticate(&mut self, credentials: Value, retry: bool) -> Result<Value> {
         let observe_only = self.attempts.check(retry)?;
         self.credentials = if observe_only {
             Value::Null
@@ -394,9 +387,7 @@ impl Drives for Driver {
     }
     fn collect<'a>(&'a mut self, run: &'a Run<'a>) -> Pending<'a, Collected> {
         Box::pin(async move {
-            if let Some(scope) =
-                crate::collectors::paycom::timecards::EmployeeSync::parse(run.request)?
-            {
+            if let Some(scope) = crate::timecards::EmployeeSync::parse(run.request)? {
                 let code = scope.employee_code.clone();
                 let job = run.job.to_owned();
                 let owner = run.owner.to_owned();
@@ -407,7 +398,7 @@ impl Drives for Driver {
                         let dsp = store.guard(&job, &owner)?;
                         let question = json!({"employeeCode":code});
                         dispatch_core::manifest::registry()
-                            .keeper(crate::collectors::paycom::timecards::JOB_KIND)
+                            .keeper(crate::timecards::JOB_KIND)
                             .kept(store, &dsp.id, &question)
                     })
                     .await?;
@@ -419,9 +410,9 @@ impl Drives for Driver {
             let data = Driver::collect(
                 self,
                 run.timezone,
-                crate::collectors::paycom::validation::collection_date(run.request, run.timezone)?,
+                crate::timecards::collection_date(run.request, run.timezone)?,
                 run.metrics,
-                Some(&crate::collectors::paycom::checkpoint::Checkpoint::new(
+                Some(&crate::timecards::Checkpoint::new(
                     run.state.clone(),
                     run.job,
                     run.owner,

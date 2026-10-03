@@ -24,7 +24,6 @@ mod uniforms;
 #[path = "../../features/timecard/api/types.rs"]
 mod workforce;
 
-pub use crate::collectors::paycom::timecards::EmployeeTimecardPeriod;
 pub use assessment::*;
 pub use dispatch_core::accounts::api::{requests::*, types::*};
 pub use dispatch_core::collection::api::{jobs::*, metrics::*, types::*};
@@ -34,6 +33,7 @@ pub use dispatch_core::mcp::api::types::*;
 pub use dispatch_core::platform_owner::api::types::*;
 pub use dispatch_core::server::api::types::*;
 pub use dispatch_core::tenancy::api::{audit::*, types::*};
+pub use dispatch_paycom::timecards::EmployeeTimecardPeriod;
 pub use driver_match::*;
 pub use dvic::*;
 pub use meals::*;

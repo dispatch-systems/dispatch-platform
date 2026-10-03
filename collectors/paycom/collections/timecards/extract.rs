@@ -17,7 +17,7 @@ use std::collections::HashSet;
 
 /// Why a response was not read.
 #[derive(Debug, PartialEq)]
-pub(super) enum Unreadable {
+pub(crate) enum Unreadable {
     /// The page names another employee: a rendered read would refuse it too.
     WrongEmployee,
     /// One of `timecard.js`'s validation codes, or a form this reader does not know.
@@ -29,7 +29,7 @@ fn invalid<T>(code: &'static str) -> Read<T> {
 }
 
 /// The timecard a response should hold.
-pub(super) struct Source<'a> {
+pub(crate) struct Source<'a> {
     pub employee: &'a str,
     pub period: &'a Value,
     pub url: &'a str,
@@ -172,7 +172,7 @@ struct Record {
 }
 
 /// The record `timecard.js` returns for this response, validated the same way.
-pub(super) fn timecard(html: &str, source: &Source) -> Read<Value> {
+pub(crate) fn timecard(html: &str, source: &Source) -> Read<Value> {
     let options = ParseOpts {
         tree_builder: TreeBuilderOpts {
             scripting_enabled: false,

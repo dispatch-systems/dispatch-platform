@@ -1,8 +1,5 @@
 use dispatch_backend::{
-    collectors::{
-        cortex::{self, discovery::Scope, meals},
-        paycom,
-    },
+    collectors::cortex::{self, discovery::Scope, meals},
     workforce::TimecardStore,
 };
 use dispatch_core::testing as common;
@@ -10,13 +7,14 @@ use dispatch_core::{
     collection::{api::jobs::PublicJob, registry::Provider},
     db::{Store, s},
 };
+use dispatch_paycom as paycom;
 use serde_json::{Value, json};
 
 /// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
 fn install() {
     common::install(
         &[
-            &dispatch_backend::collectors::paycom::COLLECTOR,
+            &dispatch_paycom::COLLECTOR,
             &dispatch_backend::collectors::cortex::COLLECTOR,
         ],
         &[

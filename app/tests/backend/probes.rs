@@ -6,7 +6,7 @@ use dispatch_core::Result;
 #[tokio::test]
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn measure_live_collection() -> Result<()> {
-    crate::browsers::paycom::probes::measure_live_collection().await
+    dispatch_paycom::measure_live_collection().await
 }
 
 #[tokio::test]

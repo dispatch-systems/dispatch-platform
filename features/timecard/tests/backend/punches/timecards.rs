@@ -11,7 +11,7 @@ fn private() -> tempfile::TempDir {
 fn employee_history_uses_the_code_index() {
     crate::testing::install(
         &[
-            &crate::collectors::paycom::COLLECTOR,
+            &dispatch_paycom::COLLECTOR,
             &crate::collectors::cortex::COLLECTOR,
         ],
         &[
@@ -21,7 +21,7 @@ fn employee_history_uses_the_code_index() {
     );
     let root = private();
     let file = root.path().join("paycom.sqlite");
-    let db = Db::create(&file, crate::collectors::paycom::DATABASE, "").unwrap();
+    let db = Db::create(&file, dispatch_paycom::DATABASE, "").unwrap();
     let plan = db
         .all(
             "EXPLAIN QUERY PLAN SELECT p.id FROM publications p \

@@ -1,13 +1,28 @@
 use super::*;
-use crate::collectors::paycom::{self, checkpoint::Checkpoint, codes};
+use crate::{
+    codes,
+    connection::{Driver, SEARCH},
+};
 use chrono::{Datelike, NaiveDate};
 use dispatch_core::collection::browser::http::{Http, Refusal};
 use dispatch_core::collection::metrics::Recorder;
+use dispatch_core::{
+    Error, Result,
+    collection::browser::{
+        Run,
+        page::{Page, call},
+    },
+    db::{self, s},
+    ensure,
+};
+use serde_json::{Value, json};
+use std::time::Duration;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     future::Future,
     sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
 };
+use tokio::time::{Instant, sleep};
 // A timecard page that is still rendering reads as one of these; wait for it to settle.
 const UNSETTLED_PAGE: &[dispatch_core::Code] = &[
     codes::TIMECARD_EXTRACTION_FAILED,
@@ -192,7 +207,7 @@ fn hours(value: &Value) -> Option<f64> {
         .as_f64()
         .or_else(|| value["hours"].as_f64())
 }
-pub(super) fn project(record: &Value, employee: &str) -> Result<Vec<Value>> {
+pub(crate) fn project(record: &Value, employee: &str) -> Result<Vec<Value>> {
     let error = || Error::new("invalid_timecard_hours", 409);
     let days = record["days"].as_array().ok_or_else(error)?;
     let additional = record["additionalRows"].as_array().ok_or_else(error)?;
@@ -300,11 +315,11 @@ pub(super) fn project(record: &Value, employee: &str) -> Result<Vec<Value>> {
     }).collect()
 }
 impl Driver {
-    pub(super) async fn collect_employee(
+    pub(crate) async fn collect_employee(
         &mut self,
         run: &Run<'_>,
         employee: &Value,
-        requested: &crate::collectors::paycom::timecards::EmployeeTimecardPeriod,
+        requested: &crate::timecards::EmployeeTimecardPeriod,
     ) -> Result<Value> {
         self.credentials = Value::Null;
         self.assistance = None;
@@ -355,7 +370,7 @@ impl Driver {
     }
     /// The roster for the selected period, read the way the search page reads it,
     /// with a session for plain HTTP when `http` allows one and it works.
-    pub(super) async fn roster(
+    pub(crate) async fn roster(
         &mut self,
         timezone: &str,
         selected_date: Option<NaiveDate>,
@@ -423,7 +438,7 @@ impl Driver {
         let mut reader = None;
         let mut raw = None;
         if http {
-            match Http::signed_in(&self.browser, &self.origin, &paycom::HOSTS).await {
+            match Http::signed_in(&self.browser, &self.origin, &crate::HOSTS).await {
                 Ok(client) => match read_roster(&client, &api, &headers, body.to_string()).await {
                     Ok(value) => {
                         raw = Some(value);
@@ -587,7 +602,7 @@ impl Driver {
 }
 
 /// A job's roster: the provider's response, its period and its validated employees.
-pub(super) struct Roster {
+pub(crate) struct Roster {
     pub raw: Value,
     pub period: Value,
     pub employees: Vec<Value>,
@@ -1054,14 +1069,14 @@ async fn read_rendered(
 /// that only checks another read of the same employee and publishes nothing new.
 /// The provider's own timecard page for one employee and pay period. This is the
 /// link retained with a publication; it carries identifiers only, never a session.
-pub(super) fn source_url(origin: &str, employee: &Value, period: &Value) -> String {
+pub(crate) fn source_url(origin: &str, employee: &Value, period: &Value) -> String {
     format!(
         "{origin}/v4/cl/web.php/timecard/index?firstrefno={}&perioddates={}&formtype=SUMMARY",
         s(employee, "code"),
         s(period, "key")
     )
 }
-pub(super) fn timecard_url(
+pub(crate) fn timecard_url(
     origin: &str,
     employee: &Value,
     period: &Value,

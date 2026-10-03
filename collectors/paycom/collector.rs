@@ -1,14 +1,16 @@
 //! Paycom: employees and timecards. Every DSP was created with this storage.
-#[path = "collections/timecards/checkpoint.rs"]
-pub mod checkpoint;
-#[path = "fixtures/timecards.rs"]
+mod collections;
+mod connection;
 pub mod fixtures;
-#[path = "collections/timecards/types.rs"]
-pub mod timecards;
-#[path = "collections/timecards/validation.rs"]
-pub mod validation;
+#[cfg(feature = "operator-probes")]
+mod probes;
 
-use crate::browsers::paycom;
+pub use collections::timecards::{self, PaycomStore};
+/// Measures a live collection against what the feature keeping timecards last published,
+/// which only the app's registry holds: the app's tests run it.
+#[cfg(feature = "operator-probes")]
+pub use probes::measure_live_collection;
+
 use dispatch_core::collection::registry::Provider;
 use dispatch_core::{
     Code, Error, Result,
@@ -31,7 +33,9 @@ use serde_json::{Value, json};
 use std::{collections::HashSet, path::Path};
 use timecards::EmployeeSync;
 
-pub use checkpoint::PaycomStore;
+/// Core's test support, for this crate's module tests.
+#[cfg(test)]
+use dispatch_core::testing;
 
 pub const PROVIDER: Provider = Provider::new("paycom");
 pub static COLLECTOR: Paycom = Paycom;
@@ -201,14 +205,17 @@ impl Collector for Paycom {
         fixture: Option<&'a str>,
     ) -> Pending<'a, Box<dyn Driver>> {
         Box::pin(async move {
-            Ok(Box::new(paycom::Driver::new(browser, profile, fixture).await?) as Box<dyn Driver>)
+            Ok(
+                Box::new(connection::Driver::new(browser, profile, fixture).await?)
+                    as Box<dyn Driver>,
+            )
         })
     }
     fn fixture(&self, timezone: &str, request: &Value) -> Result<Collected> {
         let data = if let Some(scope) = EmployeeSync::parse(request)? {
             scope.fixture(timezone)?
         } else {
-            fixtures::fixture_date(timezone, validation::collection_date(request, timezone)?)?
+            fixtures::fixture_date(timezone, timecards::collection_date(request, timezone)?)?
         };
         Ok(Collected { data, scope: None })
     }

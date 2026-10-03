@@ -1,5 +1,5 @@
 //! What a Paycom timecard collection is asked for: a pay period, or one employee's.
-use super::fixtures;
+use crate::fixtures;
 use chrono::{Duration, NaiveDate};
 use dispatch_core::{
     Error, Result,
@@ -11,10 +11,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 pub const JOB_KIND: &str = "paycom.collect";
-pub(crate) const PERIOD_DAYS: i64 = 14;
+pub const PERIOD_DAYS: i64 = 14;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct EmployeeTimecardPeriod {
     pub from: String,
     pub to: String,
@@ -29,7 +29,7 @@ impl FromRow for EmployeeTimecardPeriod {
 }
 
 impl EmployeeTimecardPeriod {
-    pub(crate) fn start(&self) -> Result<NaiveDate> {
+    pub fn start(&self) -> Result<NaiveDate> {
         v::date(&self.from)?;
         v::date(&self.to)?;
         let start: NaiveDate = self
@@ -43,7 +43,7 @@ impl EmployeeTimecardPeriod {
         )?;
         Ok(start)
     }
-    pub(crate) fn shift(&self, periods: i64) -> Result<Self> {
+    pub fn shift(&self, periods: i64) -> Result<Self> {
         let start = self.start()? + Duration::days(periods * PERIOD_DAYS);
         Ok(Self {
             from: start.to_string(),
@@ -62,7 +62,7 @@ impl EmployeeTimecardPeriod {
 /// A job with this scope can only read and publish this employee's period.
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct EmployeeSync {
+pub struct EmployeeSync {
     pub employee_code: String,
     pub from: String,
     pub to: String,

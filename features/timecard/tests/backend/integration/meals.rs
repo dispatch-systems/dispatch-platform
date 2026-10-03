@@ -15,7 +15,7 @@ use serde_json::json;
 fn install() {
     common::install(
         &[
-            &dispatch_backend::collectors::paycom::COLLECTOR,
+            &dispatch_paycom::COLLECTOR,
             &dispatch_backend::collectors::cortex::COLLECTOR,
         ],
         &[

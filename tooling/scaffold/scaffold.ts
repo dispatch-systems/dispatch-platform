@@ -294,9 +294,23 @@ function closing(text: string, start: number) {
   }
   throw new Error('unbalanced brackets');
 }
+/** The items of a one-line list's insides, split at its top-level commas. */
+function listItems(inside: string) {
+  const out: string[] = [];
+  let depth = 0;
+  let item = '';
+  for (const char of inside) {
+    if ('[{('.includes(char)) depth++;
+    if (']})'.includes(char)) depth--;
+    if (char === ',' && depth === 0) (out.push(item.trim()), (item = ''));
+    else item += char;
+  }
+  return [...out, item.trim()].filter(Boolean);
+}
 /**
  * Adds `entry` as the last item of the list that `opener` opens, indented as the items before
- * it are. `opener` must end at the list's opening bracket.
+ * it are. `opener` must end at the list's opening bracket. A list rustfmt keeps on one line,
+ * being short, is written out one item a line, as rustfmt writes it once it is longer.
  */
 export function appendToList(text: string, opener: RegExp, entry: string, file: string) {
   const found = opener.exec(text);
@@ -304,6 +318,17 @@ export function appendToList(text: string, opener: RegExp, entry: string, file: 
   const start = found.index + found[0].length - 1;
   const end = closing(text, start);
   const lineStart = text.lastIndexOf('\n', end - 1) + 1;
+  const inside = text.slice(start + 1, end);
+  if (lineStart <= start && !/["/]/.test(inside)) {
+    const indent = text.slice(text.lastIndexOf('\n', start) + 1).match(/^\s*/)![0];
+    const listed = listItems(inside);
+    if (listed.includes(entry.trim().replace(/,$/, '')))
+      throw new Error(`${file} already lists ${entry.trim()}`);
+    const lines = [...listed.map((item) => `${item},`), entry].map(
+      (line) => `${indent}    ${line}\n`,
+    );
+    return `${text.slice(0, start + 1)}\n${lines.join('')}${indent}${text.slice(end)}`;
+  }
   if (lineStart <= start || text.slice(lineStart, end).trim())
     throw new Error(
       `${file}: the list ${opener} opens is not one item a line; add ${entry} by hand`,

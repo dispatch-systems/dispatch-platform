@@ -30,10 +30,7 @@ pub fn demo(
     dsp: &str,
     timezone: &str,
 ) -> dispatch_core::Result<()> {
-    store.publish_timecards(
-        dsp,
-        &crate::collectors::paycom::fixtures::fixture(timezone)?,
-    )?;
+    store.publish_timecards(dsp, &dispatch_paycom::fixtures::fixture(timezone)?)?;
     Ok(())
 }
 /// Paycom's employees, timecards and preferences, as Timecard keeps them.
