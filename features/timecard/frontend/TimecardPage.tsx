@@ -21,10 +21,7 @@ import type {
 import { paycomDefaults } from './paycom.js';
 import { api, useCachedData, useData } from '../../../core/shell/frontend/runtime/api.js';
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
-import {
-  syncEmployeeTimecard,
-  usePaycomSettings,
-} from '../../../core/shell/frontend/runtime/endpoints.js';
+import { syncEmployeeTimecard, usePaycomSettings } from '../api/client.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { collectionData } from '../../../core/shell/frontend/lib/data-policy.js';
 import { useCollectionUpdates } from './live-collection.js';

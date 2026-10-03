@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { openOAuthPairing, useOAuthPairing } from '../../../shell/frontend/runtime/endpoints.js';
+import { openOAuthPairing, useOAuthPairing } from '../../api/client.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 
 const later = (a: string | null, b: string | null) =>

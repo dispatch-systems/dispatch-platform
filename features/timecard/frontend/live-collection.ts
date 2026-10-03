@@ -7,7 +7,7 @@ import {
   collectionData,
   type CollectionChange,
 } from '../../../core/shell/frontend/lib/data-policy.js';
-import { getCollectionUpdates } from '../../../core/shell/frontend/runtime/endpoints.js';
+import { getCollectionUpdates } from '../../../core/collection/api/client.js';
 
 /** One sleeping request for the Timecard page, shared across days and tabs. */
 export function useCollectionUpdates() {

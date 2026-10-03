@@ -8,7 +8,7 @@ import type {
 } from '../../../../shared/contracts/index.js';
 import { Badge, Modal } from '../../../shell/frontend/ui/index.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
-import { createAgentKey, updateAgentKey } from '../../../shell/frontend/runtime/endpoints.js';
+import { createAgentKey, updateAgentKey } from '../../api/client.js';
 import {
   blankKey,
   expiryChoices,

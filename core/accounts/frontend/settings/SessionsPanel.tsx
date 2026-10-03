@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Clock3 } from 'lucide-react';
-import type { useAccountSessions } from '../../../shell/frontend/runtime/endpoints.js';
+import type { useAccountSessions } from '../../api/client.js';
 import { api } from '../../../shell/frontend/runtime/api.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { time, deviceTimezone } from '../../../shell/frontend/lib/format.js';

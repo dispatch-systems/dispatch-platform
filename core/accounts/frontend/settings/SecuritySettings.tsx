@@ -1,6 +1,6 @@
 import { PasswordPanel } from './PasswordPanel.js';
 import { SessionsPanel } from './SessionsPanel.js';
-import { useAccountSessions } from '../../../shell/frontend/runtime/endpoints.js';
+import { useAccountSessions } from '../../api/client.js';
 import { MultiFactorPanel } from './MultiFactorPanel.js';
 import './security.css';
 

@@ -5,7 +5,7 @@ import {
   useAgentActivity,
   useAgentKeys,
   type AgentActivityFilter,
-} from '../../../shell/frontend/runtime/endpoints.js';
+} from '../../api/client.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { activityNote, surfaceOf } from './agents.js';
 import { deviceTimezone, duration, timeWithSeconds } from '../../../shell/frontend/lib/format.js';

@@ -5,7 +5,7 @@ import {
   replaceHashQuery,
 } from '../../../shell/frontend/runtime/navigation.js';
 import { useData } from '../../../shell/frontend/runtime/api.js';
-import { usePlatformJobs, usePlatformHealth } from '../../../shell/frontend/runtime/endpoints.js';
+import { usePlatformJobs, usePlatformHealth } from '../../api/client.js';
 import { DataState, ErrorBox, Header, Tabs } from '../../../shell/frontend/ui/index.js';
 import { collectionHistory } from './collection-history.js';
 import type { Diagnostics } from './types.js';

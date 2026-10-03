@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { ArrowRight, Check, ChevronRight, Clock, LoaderCircle } from 'lucide-react';
 import type { AgentDsp, AgentKey } from '../../../../shared/contracts/index.js';
-import { useAgentKeys } from '../../../shell/frontend/runtime/endpoints.js';
+import { useAgentKeys } from '../../api/client.js';
 import { platformHash } from '../../../shell/frontend/runtime/navigation.js';
 import {
   accessText,

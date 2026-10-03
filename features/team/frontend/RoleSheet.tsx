@@ -14,7 +14,7 @@ import {
   visiblePermissions,
 } from '../../../core/shell/frontend/runtime/permissions.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
-import { saveTeamRole } from '../../../core/shell/frontend/runtime/endpoints.js';
+import { saveTeamRole } from '../api/client.js';
 
 export function RoleSheet({
   view,

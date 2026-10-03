@@ -1,8 +1,5 @@
 import { useState } from 'react';
-import {
-  usePaycomSettings,
-  savePaycomSettings,
-} from '../../../../core/shell/frontend/runtime/endpoints.js';
+import { usePaycomSettings, savePaycomSettings } from '../../api/client.js';
 import type { PaycomSettings } from '../../../../shared/contracts/paycom.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 

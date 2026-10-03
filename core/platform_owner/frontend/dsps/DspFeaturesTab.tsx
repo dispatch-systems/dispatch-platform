@@ -10,7 +10,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { DspSummary, PageFeature } from '../../../../shared/contracts/index.js';
-import { setDspFeature, useDspFeatures } from '../../../shell/frontend/runtime/endpoints.js';
+import { setDspFeature, useDspFeatures } from '../../api/client.js';
 import {
   featureCatalog,
   previewSwitch,

@@ -1,7 +1,7 @@
 import type { AgentKey } from '../../../../shared/contracts/index.js';
 import { ConfirmDialog } from '../../../shell/frontend/ui/index.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
-import { revokeAgentKey } from '../../../shell/frontend/runtime/endpoints.js';
+import { revokeAgentKey } from '../../api/client.js';
 
 /** Asks before revoking a key or a connected app, then revokes it. */
 export function RevokeDialog({

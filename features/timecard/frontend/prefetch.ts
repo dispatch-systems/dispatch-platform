@@ -1,11 +1,7 @@
 import type { DspView, EmployeesResponse } from '../../../shared/contracts/index.js';
 import { readUpdateState } from '../../../core/shell/frontend/runtime/browser-update.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
-import {
-  dailyTimecardsUrl,
-  employeeTimecardUrl,
-  mealComparisonUrl,
-} from '../../../core/shell/frontend/runtime/endpoints.js';
+import { dailyTimecardsUrl, employeeTimecardUrl, mealComparisonUrl } from '../api/client.js';
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
 import { dspHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';

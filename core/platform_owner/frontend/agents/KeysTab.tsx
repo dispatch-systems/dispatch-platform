@@ -3,7 +3,7 @@ import { ChevronRight, Clock, Plus, Power, TriangleAlert } from 'lucide-react';
 import type { AgentAccess, AgentKey, AgentKeyCreated } from '../../../../shared/contracts/index.js';
 import { ConfirmDialog, DataState, Empty, SearchInput } from '../../../shell/frontend/ui/index.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
-import { revokeAllAgentKeys, useAgentKeys } from '../../../shell/frontend/runtime/endpoints.js';
+import { revokeAllAgentKeys, useAgentKeys } from '../../api/client.js';
 import {
   accessLabels,
   accessText,

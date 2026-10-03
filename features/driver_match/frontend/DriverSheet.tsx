@@ -1,7 +1,7 @@
 import { GitMerge, Split } from 'lucide-react';
 import { useState } from 'react';
 import type { Driver, DriverId } from '../../../shared/contracts/index.js';
-import { splitDriver, useDriverDetails } from '../../../core/shell/frontend/runtime/endpoints.js';
+import { splitDriver, useDriverDetails } from '../api/client.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import {
   dataAmount,

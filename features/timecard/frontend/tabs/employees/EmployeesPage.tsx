@@ -6,11 +6,7 @@ import type {
   EmployeeTimecardResponse,
 } from '../../../../../shared/contracts/index.js';
 import { useUpdateState } from '../../../../../core/shell/frontend/runtime/browser-update.js';
-import {
-  employeeTimecardUrl,
-  useEmployeeTimecard,
-  useEmployees,
-} from '../../../../../core/shell/frontend/runtime/endpoints.js';
+import { employeeTimecardUrl, useEmployeeTimecard, useEmployees } from '../../../api/client.js';
 import {
   cancelPrefetches,
   prefetchData,

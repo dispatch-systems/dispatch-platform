@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 import type { OAuthAllowedApp, OAuthAppId } from '../../../../shared/contracts/index.js';
-import { allowOAuthApp, useOAuthApps } from '../../../shell/frontend/runtime/endpoints.js';
+import { allowOAuthApp, useOAuthApps } from '../../api/client.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { DataState, Modal } from '../../../shell/frontend/ui/index.js';
 import { AppIcon } from './AppIcon.js';

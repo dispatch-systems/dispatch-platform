@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
 import type { AuditArea, AuditChange, AuditEvent } from '../../../../shared/contracts/index.js';
-import { useAuditPage, exportAudit } from '../../../shell/frontend/runtime/endpoints.js';
+import { useAuditPage, exportAudit } from '../../api/client.js';
 import { DataState, Empty, ErrorBox, SearchInput } from '../../../shell/frontend/ui/index.js';
 import { downloadCsv } from '../../../shell/frontend/lib/csv.js';
 import { deviceTimezone, timeOfDay, title } from '../../../shell/frontend/lib/format.js';

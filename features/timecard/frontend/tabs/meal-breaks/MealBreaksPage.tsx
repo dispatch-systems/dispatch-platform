@@ -1,10 +1,7 @@
 import { useUpdateState } from '../../../../../core/shell/frontend/runtime/browser-update.js';
 import { useDeferredValue, useMemo } from 'react';
 import { AlertTriangle, ArrowRight, Download, Globe, Info, RefreshCw } from 'lucide-react';
-import {
-  mealComparisonUrl,
-  useMealComparison,
-} from '../../../../../core/shell/frontend/runtime/endpoints.js';
+import { mealComparisonUrl, useMealComparison } from '../../../api/client.js';
 import { dspHash, navigate } from '../../../../../core/shell/frontend/runtime/navigation.js';
 import { useTableState } from '../../../../../core/shell/frontend/runtime/useTableState.js';
 import {
