@@ -28,6 +28,7 @@ dispatch-host = { path = "../../ops/host-manager" }
 dispatch-paycom = { path = "../../collectors/paycom" }
 dispatch-settings = { path = "../../features/settings" }
 dispatch-team = { path = "../../features/team" }
+dispatch-uniforms = { path = "../../features/uniforms" }
 axum = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
@@ -41,9 +42,10 @@ url = { workspace = true }
 reqwest = { workspace = true }
 
 [dev-dependencies]
-# Core's test support, and its and the collectors' API types' TypeScript for the export test.
+# Core's test support, and the TypeScript of every crate's API types for the export test.
 dispatch-core = { path = "../../core", features = ["testing", "ts"] }
 dispatch-paycom = { path = "../../collectors/paycom", features = ["ts"] }
+dispatch-uniforms = { path = "../../features/uniforms", features = ["ts"] }
 base64 = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }

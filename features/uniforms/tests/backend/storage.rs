@@ -1,7 +1,7 @@
 //! Uniform Inventory's storage, against a real store in a temporary directory: the catalog,
 //! the stock counts and the journal both write to.
 use super::*;
-use crate::contracts::{UniformEventKind, UniformFit, UniformVariantInput};
+use crate::api::types::{UniformEventKind, UniformFit, UniformVariantInput};
 use dispatch_core::{accounts::Auth, db::s, foundation::config::Config, server::operations};
 use std::os::unix::fs::PermissionsExt;
 
@@ -59,7 +59,7 @@ fn request(n: u32) -> String {
 
 #[test]
 fn an_inventory_starts_empty_and_is_initialized_once() {
-    crate::testing::install(&[], &[&crate::feature_manifests::uniforms::FEATURE]);
+    crate::testing::install(&[], &[&crate::FEATURE]);
     let (_root, store, c) = ready();
     let dsp = c.dsp.id.clone();
     let empty = store.uniform_inventory(&dsp).unwrap();
@@ -85,7 +85,7 @@ fn an_inventory_starts_empty_and_is_initialized_once() {
 
 #[test]
 fn stock_moves_one_at_a_time_never_below_zero_and_a_stocked_uniform_stays() {
-    crate::testing::install(&[], &[&crate::feature_manifests::uniforms::FEATURE]);
+    crate::testing::install(&[], &[&crate::FEATURE]);
     let (_root, store, c) = ready();
     let dsp = c.dsp.id.clone();
     store.initialize_uniforms(&c, false).unwrap();
@@ -154,7 +154,7 @@ fn stock_moves_one_at_a_time_never_below_zero_and_a_stocked_uniform_stays() {
 
 #[test]
 fn updates_bring_adjustments_until_the_catalog_changes() {
-    crate::testing::install(&[], &[&crate::feature_manifests::uniforms::FEATURE]);
+    crate::testing::install(&[], &[&crate::FEATURE]);
     let (_root, store, c) = ready();
     let dsp = c.dsp.id.clone();
     store.initialize_uniforms(&c, false).unwrap();

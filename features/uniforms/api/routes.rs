@@ -1,4 +1,4 @@
-use crate::{contracts::UniformInput, uniforms::UniformsStore};
+use crate::{api::types::UniformInput, backend::UniformsStore};
 use dispatch_core::{
     Error, Result, State,
     db::Store,

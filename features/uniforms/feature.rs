@@ -1,4 +1,13 @@
 //! Uniform Inventory: a DSP's uniform catalog and its stock counts.
+mod api;
+mod backend;
+
+/// What its API answers with, which the app writes to TypeScript.
+pub use api::types::{
+    Uniform, UniformAdjustment, UniformEvent, UniformEventKind, UniformFit, UniformHistory,
+    UniformInventory, UniformUpdates, UniformVariant,
+};
+
 use dispatch_core::{
     db::{Kind, Migration, Migrations, migrations::Apply::Sql},
     manifest::{
@@ -7,8 +16,9 @@ use dispatch_core::{
     },
 };
 
-#[path = "api/routes.rs"]
-mod api;
+/// Core's test support, for this crate's module tests.
+#[cfg(test)]
+use dispatch_core::testing;
 
 pub const FEATURE: Feature = Feature {
     switch: Some(Switch {
@@ -23,7 +33,7 @@ pub const FEATURE: Feature = Feature {
             .defaults(&[Manager]),
         perm("uniforms.manage", "Manage Uniform Inventory", 12).implies(&["uniforms.view"]),
     ],
-    routes: api::routes,
+    routes: api::routes::routes,
     tables: &[(
         "dsp",
         &[

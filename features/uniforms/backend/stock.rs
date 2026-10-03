@@ -1,5 +1,5 @@
 use super::{actor_name, advance};
-use crate::contracts::UniformAdjustment;
+use crate::api::types::UniformAdjustment;
 use dispatch_core::{
     Error, Result,
     accounts::Context,

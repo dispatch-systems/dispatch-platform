@@ -12,8 +12,6 @@ pub mod routedata;
 pub mod routes;
 #[path = "../../features/scorecard/backend/mod.rs"]
 pub mod scorecard;
-#[path = "../../features/uniforms/backend/mod.rs"]
-pub mod uniforms;
 #[path = "../../features/timecard/backend/punches/mod.rs"]
 pub mod workforce;
 
@@ -27,7 +25,7 @@ pub static REGISTRY: Registry = Registry {
     collectors: &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
     features: &[
         &feature_manifests::timecard::FEATURE,
-        &feature_manifests::uniforms::FEATURE,
+        &dispatch_uniforms::FEATURE,
         &feature_manifests::routes::FEATURE,
         &feature_manifests::dvic::FEATURE,
         &feature_manifests::scorecard::FEATURE,

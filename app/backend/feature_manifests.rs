@@ -10,5 +10,3 @@ pub mod routes;
 pub mod scorecard;
 #[path = "../../features/timecard/feature.rs"]
 pub mod timecard;
-#[path = "../../features/uniforms/feature.rs"]
-pub mod uniforms;

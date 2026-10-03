@@ -608,6 +608,7 @@ dependencies = [
  "dispatch-paycom",
  "dispatch-settings",
  "dispatch-team",
+ "dispatch-uniforms",
  "flate2",
  "libc",
  "reqwest",
@@ -748,6 +749,19 @@ version = "0.0.0"
 dependencies = [
  "dispatch-core",
  "serde_json",
+]
+
+[[package]]
+name = "dispatch-uniforms"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "ts-rs",
 ]
 
 [[package]]

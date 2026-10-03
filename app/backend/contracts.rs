@@ -19,8 +19,6 @@ mod routedata;
 mod scorecard;
 #[path = "../../features/timecard/api/settings.rs"]
 mod settings;
-#[path = "../../features/uniforms/api/types.rs"]
-mod uniforms;
 #[path = "../../features/timecard/api/types.rs"]
 mod workforce;
 
@@ -34,13 +32,16 @@ pub use dispatch_core::platform_owner::api::types::*;
 pub use dispatch_core::server::api::types::*;
 pub use dispatch_core::tenancy::api::{audit::*, types::*};
 pub use dispatch_paycom::timecards::EmployeeTimecardPeriod;
+pub use dispatch_uniforms::{
+    Uniform, UniformAdjustment, UniformEvent, UniformEventKind, UniformFit, UniformHistory,
+    UniformInventory, UniformUpdates, UniformVariant,
+};
 pub use driver_match::*;
 pub use dvic::*;
 pub use meals::*;
 pub use routedata::*;
 pub use scorecard::*;
 pub use settings::*;
-pub use uniforms::*;
 pub use workforce::*;
 
 #[cfg(test)]

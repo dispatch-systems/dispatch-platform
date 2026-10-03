@@ -1,13 +1,10 @@
 //! A DSP owns its catalog, quantities and durable change journal in one database.
 //! Quantity writes are deltas; catalog edits never accept or replace stock counts.
-#[path = "catalog.rs"]
 mod catalog;
-#[path = "stock.rs"]
 mod stock;
-#[path = "templates.rs"]
 mod templates;
 
-use crate::contracts::{
+use crate::api::types::{
     Uniform, UniformAdjustment, UniformHistory, UniformInput, UniformInventory, UniformUpdates,
     UniformVariant,
 };
@@ -142,7 +139,7 @@ impl UniformsStore for Store {
     }
     fn uniform_history(&self, dsp: &str, before: i64) -> Result<UniformHistory> {
         let db = self.dsp(dsp)?;
-        let mut events = db.query_as::<crate::contracts::UniformEvent>(
+        let mut events = db.query_as::<crate::api::types::UniformEvent>(
             "SELECT * FROM uniform_events WHERE revision<? ORDER BY revision DESC LIMIT 51",
             [before],
         )?;
