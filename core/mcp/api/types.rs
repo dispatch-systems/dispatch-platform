@@ -691,7 +691,8 @@ pub struct AgentActivityPage {
     pub rows: Vec<AgentActivity>,
     pub next: Option<String>,
 }
-// A4: the identity sources, until the features that hold them declare them.
+// The identity slot's words: the sources whose IDs name drivers, and where a person stands
+// among them. Core reads every answer's people by them; Driver Match fills the slot.
 text_enum! {
     #[cfg_attr(test, derive(ts_rs::TS))]
     #[derive(PartialOrd, Ord)]

@@ -7,12 +7,14 @@ use super::{
 use crate::{
     Result, State,
     agents::Caller,
-    contracts::{AgentArea, AgentSource, DriverMatch, DriverSource, DriverStatus, Dsp},
+    contracts::{AgentArea, AgentSource, DriverSource, DriverStatus, Dsp},
     db::Store,
+    manifest::registry,
     names::name_key,
     weeks,
 };
 use chrono::{Datelike, Duration, NaiveDate};
+use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -285,6 +287,32 @@ pub fn period(
     Ok(read)
 }
 
+/// Someone a DSP's sources name, as the feature that tells people apart knows them: their
+/// code, name and standing, and every ID a source knows them by.
+#[derive(Clone, Serialize)]
+pub struct Identity {
+    pub code: String,
+    pub name: String,
+    pub status: DriverStatus,
+    pub ids: Vec<Known>,
+}
+/// An ID a source knows a person by, and the name it gives them.
+#[derive(Clone, Serialize)]
+pub struct Known {
+    pub source: DriverSource,
+    pub id: String,
+    pub name: String,
+}
+/// Who everyone a DSP's sources name is, given the DSP: Driver Match fills it with its codes.
+pub type Identify = fn(&Store, &str) -> Result<Vec<Identity>>;
+/// Everyone a DSP's sources name, as the registered identity knows them; no one without one.
+fn identities(db: &Store, dsp: &str) -> Result<Vec<Identity>> {
+    match registry().features.iter().find_map(|f| f.mcp.identity) {
+        Some(identify) => identify(db, dsp),
+        None => Ok(vec![]),
+    }
+}
+
 /// A driver as an agent names them: their Driver Match code and the IDs each source knows
 /// them by.
 #[derive(Clone, Debug)]
@@ -318,8 +346,8 @@ fn read_ids(access: &Access, source: DriverSource) -> (bool, Vec<AgentSource>) {
     (!bypassed.is_empty(), bypassed)
 }
 impl People {
-    /// The DSP's people, from Driver Match, kept until a source or driver decision changes,
-    /// with the IDs of the sources the key or app reads there.
+    /// The DSP's people, from the identity Driver Match fills, kept until a source or driver
+    /// decision changes, with the IDs of the sources the key or app reads there.
     pub fn load(db: &Store, state: &State, access: &Access) -> Result<Self> {
         // Driver Match deliberately keeps every collected identity while a source is off.
         // Project that durable cache through what the key or app reads at the DSP on every
@@ -331,17 +359,16 @@ impl People {
         let revision = state
             .data_revision
             .load(std::sync::atomic::Ordering::Relaxed);
-        let matched: DriverMatch = state.read_cache.read(
+        let matched: Vec<Identity> = state.read_cache.read(
             crate::read_cache::Scope::tenant(crate::read_cache::PEOPLE, dsp),
             format!("agent-people:{dsp}"),
             revision,
-            // A4: Driver Match's codes, until it fills the identity slot.
-            || db.driver_match(dsp),
+            || identities(db, dsp),
         )?;
         let mut list = vec![];
         let mut holders = HashMap::new();
         let (mut paycom_held, mut amazon_held) = (false, false);
-        for driver in matched.drivers {
+        for driver in matched {
             let visible =
                 |source: DriverSource| driver.ids.iter().filter(move |id| id.source == source);
             let paycom = if paycom_on {

@@ -4,6 +4,7 @@
 use super::data::{
     catalog::{self, Endpoint, Metric, Term},
     facts::{Daily, Places},
+    scope::Identify,
 };
 use crate::{
     contracts::{AgentArea, AgentSource},
@@ -26,6 +27,9 @@ pub struct Mcp {
     /// Where packages were delivered, for the answers of other features that place what
     /// they count.
     pub places: Option<Places>,
+    /// Who the people its sources name are, for every answer that names a driver: the one
+    /// feature that tells people apart fills it.
+    pub identity: Option<Identify>,
 }
 impl Mcp {
     pub const NONE: Self = Self {
@@ -36,6 +40,7 @@ impl Mcp {
         terms: &[],
         daily: &[],
         places: None,
+        identity: None,
     };
 }
 
@@ -43,7 +48,7 @@ impl Mcp {
 /// kind is read from a declared source, with a declared kind if any; and unless every
 /// endpoint and term has a place of its own, every endpoint and metric reads a declared
 /// kind, each kind has facts by driver and day once at most, and one feature at most says
-/// where packages were delivered.
+/// where packages were delivered, and one who people are.
 pub fn check(features: &[&Feature]) {
     let areas: Vec<AgentArea> = features
         .iter()
@@ -107,6 +112,10 @@ pub fn check(features: &[&Feature]) {
     assert!(
         mcp().filter(|mcp| mcp.places.is_some()).count() <= 1,
         "more than one feature answers where packages were delivered"
+    );
+    assert!(
+        mcp().filter(|mcp| mcp.identity.is_some()).count() <= 1,
+        "more than one feature says who people are"
     );
     let daily: Vec<AgentArea> = mcp().flat_map(|mcp| mcp.daily).map(|d| d.area()).collect();
     for (index, area) in daily.iter().enumerate() {

@@ -46,4 +46,5 @@ pub const MCP: Mcp = Mcp {
         area: LOCATIONS,
         of: facts::places,
     }),
+    ..Mcp::NONE
 };
