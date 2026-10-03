@@ -1,4 +1,5 @@
 import { createElement, lazy } from 'react';
+import { Fingerprint } from 'lucide-react';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
 
@@ -28,4 +29,5 @@ export const feature: FrontendFeature = {
     },
   ],
   auditWording: () => import('./audit-wording.js').then((module) => module.wording),
+  switch: { id: 'driver_match', icon: Fingerprint },
 };

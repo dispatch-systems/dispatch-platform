@@ -6,6 +6,7 @@ import type {
   AuditEvent,
   DspView,
   Feature,
+  PageFeature,
   SessionView,
 } from '../../../../shared/contracts/index.js';
 
@@ -157,6 +158,8 @@ export type FrontendFeature = {
   auditWording?: () => Promise<AuditWording>;
   /** The kinds of its data agents may read. */
   readToggles?: ReadToggles;
+  /** Its page's switch, as the platform owner's DSPs page lists it. */
+  switch?: { id: PageFeature; icon: LucideIcon };
 };
 
 let installed: readonly FrontendFeature[] = [];
@@ -177,6 +180,10 @@ export function routeOf(scope: Route['scope'], page: string): Route | undefined 
 
 /** Every owner's tabs on a DSP's Settings page, in the order the owners are listed. */
 export const settingsTabs = () => installed.flatMap((feature) => feature.settingsTabs ?? []);
+
+/** The icon of a page's switch. */
+export const switchIcon = (id: string) =>
+  installed.find((feature) => feature.switch?.id === id)?.switch?.icon;
 
 /** Every owner's kinds of data agents may read, group by group in their order. */
 export const readToggles = () =>

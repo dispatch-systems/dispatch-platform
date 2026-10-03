@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { installFeatures, readToggles, type ReadToggles } from '../../frontend/runtime/slots.js';
+import { Award, Shirt } from 'lucide-react';
+import {
+  installFeatures,
+  readToggles,
+  switchIcon,
+  type ReadToggles,
+} from '../../frontend/runtime/slots.js';
 
 // Synthetic owners, installed as the app installs its manifests.
 const group = (label: string, order: number): ReadToggles => ({
@@ -22,4 +28,15 @@ test('read toggles come group by group in their order, ties in the order the own
     readToggles().map((each) => each.label),
     ['Gamma', 'Alpha', 'Delta'],
   );
+});
+
+test("a page's switch shows the icon its feature declares", () => {
+  installFeatures([
+    { name: 'alpha', switch: { id: 'uniforms', icon: Shirt } },
+    { name: 'beta' },
+    { name: 'gamma', switch: { id: 'scorecard', icon: Award } },
+  ]);
+  assert.equal(switchIcon('uniforms'), Shirt);
+  assert.equal(switchIcon('scorecard'), Award);
+  assert.equal(switchIcon('timecard'), undefined);
 });

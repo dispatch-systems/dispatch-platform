@@ -58,6 +58,7 @@ export const feature: FrontendFeature = {
     },
   ],
   auditWording: () => import('./audit-wording.js').then((module) => module.wording),
+  switch: { id: 'timecard', icon: CalendarDays },
   readToggles: {
     label: 'Timecard',
     missing: 'timecard data',

@@ -29,4 +29,5 @@ export const feature: FrontendFeature = {
       render: ({ view }) => createElement(UniformInventoryPage, { key: view.token, view }),
     },
   ],
+  switch: { id: 'uniforms', icon: Shirt },
 };

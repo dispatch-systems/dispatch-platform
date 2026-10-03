@@ -1,14 +1,5 @@
 import { useState } from 'react';
-import {
-  Award,
-  CalendarDays,
-  ClipboardCheck,
-  Fingerprint,
-  Plug,
-  Route,
-  Shirt,
-  type LucideIcon,
-} from 'lucide-react';
+import { Plug } from 'lucide-react';
 import type { DspSummary, PageFeature } from '../../../../shared/contracts/index.js';
 import { setDspFeature, useDspFeatures } from '../../api/client.js';
 import {
@@ -21,18 +12,11 @@ import {
   type FeatureEntry,
   type PageEntry,
 } from '../../../shell/frontend/runtime/features.js';
+import { switchIcon } from '../../../shell/frontend/runtime/slots.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { Badge, ErrorBox } from '../../../shell/frontend/ui/index.js';
 import { FeatureSwitchDialog } from './FeatureSwitchDialog.js';
 
-const icons: Record<PageFeature, LucideIcon> = {
-  timecard: CalendarDays,
-  uniforms: Shirt,
-  routes: Route,
-  dvic: ClipboardCheck,
-  scorecard: Award,
-  driver_match: Fingerprint,
-};
 const pages = featureCatalog.filter((f): f is PageEntry => f.kind === 'page');
 const connections = featureCatalog.filter((f): f is ConnectionEntry => f.kind === 'connection');
 
@@ -94,7 +78,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
       <nav className="dsp-areas" aria-label="Feature areas">
         <h3 className="dsp-group">Pages</h3>
         {pages.map((candidate) => {
-          const Icon = icons[candidate.id];
+          const Icon = switchIcon(candidate.id);
           const own = tabsOf(candidate.id);
           return (
             <button
@@ -103,7 +87,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
               aria-current={candidate.id === area ? 'true' : undefined}
               onClick={() => setArea(candidate.id)}
             >
-              <Icon size={16} aria-hidden="true" />
+              {Icon && <Icon size={16} aria-hidden="true" />}
               <span>{candidate.label}</span>
               <small>
                 {!has(candidate) ? 'Off' : own.length ? `${count(own)}/${own.length}` : 'On'}

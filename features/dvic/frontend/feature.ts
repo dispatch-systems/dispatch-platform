@@ -38,6 +38,7 @@ export const feature: FrontendFeature = {
     },
   ],
   auditWording: () => import('./audit-wording.js').then((module) => module.wording),
+  switch: { id: 'dvic', icon: ClipboardCheck },
   readToggles: {
     label: 'DVIC',
     missing: 'DVIC inspections',
