@@ -137,9 +137,5 @@ mod tables;
 #[path = "../tests/backend/verification.rs"]
 mod verification;
 #[cfg(test)]
-mod tests {
-    #[test]
-    fn every_collection_has_exactly_one_keeper() {
-        super::REGISTRY.check();
-    }
-}
+#[path = "../tests/backend/lib.rs"]
+mod tests;
