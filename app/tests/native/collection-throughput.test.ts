@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {
   paycomFixture,
   credentials,
-} from '../../../../collectors/paycom/tests/support/browseros-paycom-fixture.js';
-import { until } from '../../../shell/tests/support/support.js';
+} from '../../../collectors/paycom/tests/support/browseros-paycom-fixture.js';
+import { until } from '../../../core/shell/tests/support/support.js';
 
 const native = { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 120000 };
 test(

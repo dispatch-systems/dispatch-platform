@@ -36,10 +36,8 @@
     },
     "encapsulation": {
       "typescript": {
-        "collectors/cortex's tests import collectors/paycom": "A6",
         "core/accounts imports shared/contracts": "Phase B",
         "core/collection imports shared/contracts": "Phase B",
-        "core/collection's tests import collectors/paycom": "A6",
         "core/collection's tests import shared/contracts": "Phase B",
         "core/mcp's tests import shared/contracts": "Phase B",
         "core/platform_owner imports shared/contracts": "Phase B",
@@ -47,7 +45,6 @@
         "core/server's tests import shared/contracts": "Phase B",
         "core/shell imports shared/contracts": "Phase B",
         "core/shell's tests import shared/contracts": "Phase B",
-        "core/tenancy's tests import features/team": "A6",
         "core/tenancy's tests import shared/contracts": "Phase B",
         "features/driver_match imports shared/contracts": "Phase B",
         "features/driver_match's tests import shared/contracts": "Phase B",

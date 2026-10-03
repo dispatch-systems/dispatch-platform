@@ -16,6 +16,7 @@
     "features/timecard/tests/frontend/meal-breaks.test.ts",
     "core/tenancy/tests/frontend/permissions.test.ts",
     "core/shell/tests/frontend/response-cache.test.ts",
+    "app/tests/frontend/role-assignability.test.ts",
     "app/tests/frontend/slots.test.ts",
     "core/shell/tests/frontend/slots.test.ts",
     "features/timecard/tests/frontend/timecard-format.test.ts",
@@ -58,11 +59,12 @@
     ],
     "cortex-meals": [
       "collectors/cortex/tests/native/cortex-meals-worker.test.ts",
-      "collectors/cortex/tests/native/cortex-routes-worker.test.ts"
+      "collectors/cortex/tests/native/cortex-routes-worker.test.ts",
+      "features/timecard/tests/native/meal-sync-worker.test.ts"
     ],
     "capacity": [
-      "core/collection/tests/native/multi-dsp-browser.test.ts",
-      "core/collection/tests/native/collection-throughput.test.ts"
+      "app/tests/native/multi-dsp-browser.test.ts",
+      "app/tests/native/collection-throughput.test.ts"
     ]
   },
   "nativeRealTimeout": {

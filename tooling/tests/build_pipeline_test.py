@@ -57,10 +57,11 @@ class PipelineTests(unittest.TestCase):
             "collectors/cortex/tests/native/cortex-worker.test.ts", "collectors/cortex/tests/native/cortex-meals-worker.test.ts",
             "collectors/cortex/tests/native/cortex-scorecard-worker.test.ts",
             "collectors/cortex/tests/native/cortex-routes-worker.test.ts",
-            "core/collection/tests/native/multi-dsp-browser.test.ts", "core/collection/tests/native/collection-throughput.test.ts",
+            "features/timecard/tests/native/meal-sync-worker.test.ts",
+            "app/tests/native/multi-dsp-browser.test.ts", "app/tests/native/collection-throughput.test.ts",
         })
         self.assertEqual(set(collectors.SHARDS["capacity"]), {
-            "core/collection/tests/native/multi-dsp-browser.test.ts", "core/collection/tests/native/collection-throughput.test.ts",
+            "app/tests/native/multi-dsp-browser.test.ts", "app/tests/native/collection-throughput.test.ts",
         })
         title = collectors.REAL_TIMEOUT["title"]
         passed = f'<testsuites><testcase name="{title}" /></testsuites>'
