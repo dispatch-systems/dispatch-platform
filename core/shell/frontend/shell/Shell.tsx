@@ -6,7 +6,7 @@ import { Popover } from '../ui/Popover.js';
 import { useFocusTrap } from '../ui/useFocusTrap.js';
 import { dspHash, platformHash } from '../runtime/navigation.js';
 import { sourceLink } from '../lib/source.js';
-import type { DspRouteId, PlatformRouteId } from '../../../../app/frontend/route-meta.js';
+import type { DspRouteId, PlatformRouteId } from '../runtime/slots.js';
 import { ViewRoleMenu } from './ViewRoleMenu.js';
 
 export function Shell({

@@ -2,6 +2,7 @@ import { useEffect, useRef, type PointerEvent, type RefObject } from 'react';
 import type { DspView, SessionView } from '../../../../shared/contracts/index.js';
 import { timezoneName } from '../../../shell/frontend/lib/format.js';
 import { Badge, DspAvatar, dspTone } from '../../../shell/frontend/ui/index.js';
+import './profile.css';
 
 // Nothing moves on a phone or for anyone who asks for less motion: see the same query in the CSS.
 const STILL = '(max-width: 700px), (prefers-reduced-motion: reduce)';

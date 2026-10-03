@@ -30,6 +30,37 @@ export function moduleSpecifiers(text: string, file: string): string[] {
   return [...references];
 }
 
+/** The modules a file loads with it: value imports and re-exports, not lazy or type-only ones. */
+export function eagerSpecifiers(text: string, file: string): string[] {
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  return source.statements.flatMap((statement) =>
+    (ts.isImportDeclaration(statement) && !statement.importClause?.isTypeOnly) ||
+    (ts.isExportDeclaration(statement) && !statement.isTypeOnly)
+      ? [statement.moduleSpecifier]
+          .filter((node) => node && ts.isStringLiteralLike(node))
+          .map((node) => (node as ts.StringLiteralLike).text)
+      : [],
+  );
+}
+
+/** The modules a file loads lazily, with `import()`. */
+export function lazySpecifiers(text: string, file: string): string[] {
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  const references: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments[0] &&
+      ts.isStringLiteralLike(node.arguments[0])
+    )
+      references.push(node.arguments[0].text);
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return references;
+}
+
 /** Use the compiler's extension substitution and directory-index resolution. */
 export function resolveModule(file: string, specifier: string): string | undefined {
   const resolved = ts.resolveModuleName(

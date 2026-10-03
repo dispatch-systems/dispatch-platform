@@ -5,23 +5,36 @@ import test from 'node:test';
 import { routeMeta, type RouteMeta } from '../../frontend/route-meta.js';
 import {
   dependencies,
+  eagerSpecifiers,
+  lazySpecifiers,
   moduleSpecifiers,
   resolveModule,
 } from '../../../tooling/testing/source-analysis.js';
 
-// Every owner's frontend/: the app's entry, core's parts, the features and the collectors.
-const frontends = [
-  'app/frontend',
+// Every owner: the app, core's parts, the features and the collectors. An owner's frontend is
+// its frontend/ and its api/client.ts, the frontend's end of its API.
+const owners = [
+  'app',
   ...['core', 'features', 'collectors'].flatMap((top) =>
-    fs
-      .readdirSync(top)
-      .map((name) => path.join(top, name, 'frontend'))
-      .filter((directory) => fs.existsSync(directory)),
+    fs.readdirSync(top).map((name) => path.join(top, name)),
   ),
 ];
+const frontends = owners
+  .map((directory) => path.join(directory, 'frontend'))
+  .filter((directory) => fs.existsSync(directory));
+const clients = owners
+  .map((directory) => path.join(directory, 'api', 'client.ts'))
+  .filter((file) => fs.existsSync(file));
 const SHELL = path.join('core', 'shell', 'frontend');
+const FEATURES = path.join('app', 'frontend', 'features.ts');
 
-type Module = { file: string; dependencies: ReturnType<typeof dependencies>; imports: string[] };
+type Module = {
+  file: string;
+  dependencies: ReturnType<typeof dependencies>;
+  imports: string[];
+  eager: string[];
+  lazy: string[];
+};
 
 function walk(directory: string): string[] {
   return fs
@@ -36,19 +49,29 @@ function walk(directory: string): string[] {
 }
 
 const root = path.resolve('.');
-const owner = (file: string) =>
-  frontends.find((directory) => file.startsWith(directory + path.sep));
-// Every frontend module with the frontend modules it imports, type-only imports included,
-// as paths relative to the repository.
-const modules: Module[] = frontends.flatMap(walk).map((file) => {
-  const references = dependencies(file);
+/** The owner whose frontend a file belongs to, as its directory. */
+function owner(file: string) {
+  if (clients.includes(file)) return path.dirname(path.dirname(file));
+  const frontend = frontends.find((directory) => file.startsWith(directory + path.sep));
+  return frontend && path.dirname(frontend);
+}
+/** The frontend modules among `specifiers`, as paths relative to the repository. */
+const frontendModules = (file: string, specifiers: string[]) =>
+  specifiers.flatMap((specifier) => {
+    const resolved = resolveModule(file, specifier);
+    const target = resolved && path.relative(root, resolved);
+    return target && owner(target) ? [target] : [];
+  });
+// Every frontend module with the frontend modules it imports (type-only and lazy imports
+// included), those it loads with it, and those it loads lazily.
+const modules: Module[] = [...frontends.flatMap(walk), ...clients].map((file) => {
+  const text = fs.readFileSync(file, 'utf8');
   return {
     file,
-    dependencies: references,
-    imports: references.flatMap(({ resolved }) => {
-      const target = resolved && path.relative(root, resolved);
-      return target && owner(target) ? [target] : [];
-    }),
+    dependencies: dependencies(file),
+    imports: frontendModules(file, moduleSpecifiers(text, file)),
+    eager: frontendModules(file, eagerSpecifiers(text, file)),
+    lazy: frontendModules(file, lazySpecifiers(text, file)),
   };
 });
 /** app, core, features or collectors. */
@@ -56,22 +79,25 @@ const layer = (file: string) => owner(file)!.split(path.sep)[0]!;
 /** The shell's own areas: shell, ui, lib, runtime, styles. */
 const shellArea = (file: string) =>
   file.startsWith(SHELL + path.sep) ? file.slice(SHELL.length + 1).split(path.sep)[0] : undefined;
-/** A screen owner: a feature's, a collector's or a core part's frontend, but not the shell's. */
+/** A screen owner: a feature, a collector or a core part, but not the shell or the app. */
 const unit = (file: string) => {
   const directory = owner(file);
-  return directory === SHELL || directory === 'app/frontend' ? undefined : directory;
+  return directory === path.dirname(SHELL) || directory === 'app' ? undefined : directory;
 };
 const edges = modules.flatMap(({ file, imports }) => imports.map((target) => ({ file, target })));
+/** An owner's front doors: its manifest, its lazily loaded page and its API client. */
+const doors = (directory: string) => [
+  path.join(directory, 'frontend', 'feature.ts'),
+  path.join(directory, 'frontend', 'index.ts'),
+  path.join(directory, 'api', 'client.ts'),
+];
 
-// Edges the conversion removes when it splits these files: core naming a feature or the app,
-// and DVIC borrowing Timecard's date helpers (localDate and shiftDate go to core).
+// Edges the conversion removes when it splits these files: core naming a feature, and DVIC
+// borrowing Timecard's date helpers (localDate and shiftDate go to core).
 const pending = [
   'core/platform_owner/frontend/audit/wording.ts -> features/timecard/frontend/paycom.ts',
   'core/shell/frontend/lib/format.ts -> features/timecard/frontend/meal-breaks.ts',
   'core/shell/frontend/lib/format.ts -> features/timecard/frontend/paycom.ts',
-  'core/shell/frontend/runtime/navigation.ts -> app/frontend/route-meta.ts',
-  'core/shell/frontend/runtime/route-prefetch.ts -> features/timecard/frontend/paycom-date.ts',
-  'core/shell/frontend/shell/Shell.tsx -> app/frontend/route-meta.ts',
   'features/dvic/frontend/DvicPage.tsx -> features/timecard/frontend/meal-breaks.ts',
   'features/dvic/frontend/dvic.ts -> features/timecard/frontend/meal-breaks.ts',
 ];
@@ -138,23 +164,19 @@ const embeds = [
   'features/settings -> features/driver_match',
   'features/settings -> features/routes',
 ];
-// Named public entries keep unrelated pages out of each other's lazy chunks. This remains an
-// explicit boundary: callers cannot reach arbitrary internals of another owner.
+// Besides each owner's front doors, named public entries keep unrelated pages out of each
+// other's lazy chunks. This remains an explicit boundary: callers cannot reach arbitrary
+// internals of another owner.
 const entries = [
   'core/accounts/frontend/settings/ProfileBadge.tsx',
   'core/accounts/frontend/settings/SecuritySettings.tsx',
   'core/accounts/frontend/settings/ThemeSection.tsx',
-  'core/platform_owner/frontend/agents/index.ts',
-  'core/platform_owner/frontend/audit/index.ts',
-  'core/platform_owner/frontend/diagnostics/index.ts',
-  'core/platform_owner/frontend/dsps/index.ts',
-  'core/platform_owner/frontend/dsps/picker.ts',
+  'core/accounts/frontend/settings/tabs.ts',
   'features/driver_match/frontend/badge.ts',
   'features/routes/frontend/settings/RouteDataSettings.tsx',
-  'features/timecard/frontend/settings/index.ts',
 ];
 
-test('an owner reaches another only through a public entry, and a feature another only where allowed', () => {
+test('an owner reaches another only through a front door or public entry, and a feature another only where allowed', () => {
   assert(
     modules.some(({ file }) => layer(file) === 'features'),
     'features must contain their screens',
@@ -164,11 +186,11 @@ test('an owner reaches another only through a public entry, and a feature anothe
     const to = unit(target);
     if (!to || to === unit(file) || isPending(file, target)) continue;
     assert(
-      target === path.join(to, 'index.ts') || entries.includes(target),
-      `${file} imports ${target}; use the owner's index or a declared public entry`,
+      doors(to).includes(target) || entries.includes(target),
+      `${file} imports ${target}; use the owner's feature.ts, index.ts, api/client.ts or a declared public entry`,
     );
     if (layer(file) !== 'features' || layer(target) !== 'features') continue;
-    const edge = `${path.dirname(unit(file)!)} -> ${path.dirname(to)}`;
+    const edge = `${unit(file)} -> ${to}`;
     assert(
       embeds.includes(edge),
       `${file} imports ${target}; move what they share to core, or allow the edge`,
@@ -194,21 +216,52 @@ test("features and collectors build on core's ui, lib, runtime and public entrie
   }
 });
 
-test('only the route table and the entry point know the features, and core knows only core', () => {
+test('only the app lists the features, and core knows only core', () => {
   for (const { file, target } of edges) {
     if (isPending(file, target)) continue;
     if (['features', 'collectors'].includes(layer(target)) && layer(target) !== layer(file))
       assert(
-        file === path.join('app', 'frontend', 'routes.tsx') ||
-          file === path.join('app', 'frontend', 'main.tsx'),
-        `${file} imports ${target}; outside features only app/frontend/routes.tsx and main.tsx may`,
+        file === FEATURES,
+        `${file} imports ${target}; outside features only ${FEATURES} may, through their manifests`,
       );
     if (layer(file) === 'core')
       assert(layer(target) === 'core', `${file} imports ${target}; core may import core only`);
     if (shellArea(file) === 'shell')
       assert(
-        owner(target) === SHELL,
+        shellArea(target),
         `${file} imports ${target}; the shell may import the shell's ui, lib and runtime only`,
+      );
+  }
+});
+
+// A manifest is loaded up front, so it stays small: the pages it names load when opened.
+test('the app lists every manifest, and a manifest loads its pages lazily', () => {
+  const manifests = modules.filter(({ file }) => path.basename(file) === 'feature.ts');
+  assert(manifests.length > 0, 'owners must declare their screens in frontend/feature.ts');
+  for (const { file } of manifests)
+    assert.equal(file, path.join(owner(file)!, 'frontend', 'feature.ts'));
+  const listed = modules.find(({ file }) => file === FEATURES)!.eager;
+  assert.deepEqual(
+    [...listed].sort(),
+    manifests.map(({ file }) => file).sort(),
+    `${FEATURES} lists exactly every owner's frontend/feature.ts`,
+  );
+  const graph = new Map(modules.map(({ file, eager }) => [file, eager]));
+  for (const { file, eager, lazy } of manifests) {
+    const loaded = new Set<string>();
+    const load = (module: string) => {
+      if (loaded.has(module)) return;
+      loaded.add(module);
+      for (const next of graph.get(module) ?? []) load(next);
+    };
+    for (const module of eager) load(module);
+    const index = path.join(owner(file)!, 'frontend', 'index.ts');
+    for (const page of [index, ...lazy])
+      assert(!loaded.has(page), `${file} loads ${page} with it; import the page lazily`);
+    for (const module of loaded)
+      assert(
+        !(module.endsWith('.tsx') && owner(module) === owner(file)),
+        `${file} loads the component ${module} with it; import it lazily`,
       );
   }
 });
@@ -251,6 +304,7 @@ test('every route is declared once and every parent is a route', () => {
 // Tests may: they live in each owner's tests/ and exercise its frontend logic.
 test('contracts, tooling, services and backends are independent of the frontends', () => {
   const frontendRoots = frontends.map((directory) => path.resolve(directory) + path.sep);
+  const clientFiles = clients.map((file) => path.resolve(file));
   for (const directory of [
     'shared',
     'tooling',
@@ -279,7 +333,8 @@ test('contracts, tooling, services and backends are independent of the frontends
       for (const target of targets) {
         const resolved = path.resolve(path.dirname(file), target!);
         assert(
-          !frontendRoots.some((directory) => resolved.startsWith(directory)),
+          !frontendRoots.some((directory) => resolved.startsWith(directory)) &&
+            !clientFiles.includes(resolved.replace(/\.js$/, '.ts')),
           `${file} imports ${target}; move runtime-neutral types into shared/contracts`,
         );
         // The Rust build cache leaves TypeScript and CSS out of its fingerprint.
@@ -295,9 +350,7 @@ test('contracts, tooling, services and backends are independent of the frontends
 
 // These syntaxes used to escape the regex graph; comments are not dependencies.
 test('the architecture graph finds imports, exports, lazy imports and directory indexes', () => {
-  assert.deepEqual(
-    moduleSpecifiers(
-      `
+  const text = `
     import type { A } from "./types.js";
     import './style.css';
     export { B } from './reexport.js';
@@ -305,21 +358,30 @@ test('the architecture graph finds imports, exports, lazy imports and directory 
     const lazy = () => import("./lazy.js");
     type T = import('./type-only.js').T;
     import legacy = require('./legacy.js');
+    import { type C, D } from './mixed.js';
+    export type { E } from './type-export.js';
     // import ignored from './comment.js';
     const unrelated = "from './text.js'";
-  `,
-      'fixture.ts',
-    ),
-    [
-      './types.js',
-      './style.css',
-      './reexport.js',
-      './all.js',
-      './lazy.js',
-      './type-only.js',
-      './legacy.js',
-    ],
-  );
+  `;
+  assert.deepEqual(moduleSpecifiers(text, 'fixture.ts'), [
+    './types.js',
+    './style.css',
+    './reexport.js',
+    './all.js',
+    './lazy.js',
+    './type-only.js',
+    './legacy.js',
+    './mixed.js',
+    './type-export.js',
+  ]);
+  // What a module loads with it: neither its lazy imports nor its type-only ones.
+  assert.deepEqual(eagerSpecifiers(text, 'fixture.ts'), [
+    './style.css',
+    './reexport.js',
+    './all.js',
+    './mixed.js',
+  ]);
+  assert.deepEqual(lazySpecifiers(text, 'fixture.ts'), ['./lazy.js']);
   const file = path.join(SHELL, 'index.ts');
   assert.equal(resolveModule(file, './ui'), path.resolve(SHELL, 'ui/index.ts'));
   assert.equal(resolveModule(file, './shell/Shell.js'), path.resolve(SHELL, 'shell/Shell.tsx'));

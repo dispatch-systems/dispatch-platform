@@ -1,4 +1,4 @@
-import type { DspRouteId, PlatformRouteId } from '../../../../app/frontend/route-meta.js';
+import type { DspRouteId, PlatformRouteId } from './slots.js';
 
 const destinations = new Map<string, DspRouteId>();
 export function rememberDestination(dspId: string, page: DspRouteId) {

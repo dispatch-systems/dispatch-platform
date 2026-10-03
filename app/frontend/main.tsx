@@ -36,8 +36,9 @@ import {
   rememberDestination,
 } from '../../core/shell/frontend/runtime/navigation.js';
 import { Page, canNavigateImmediately, findRoute, navigation, prepareRoute } from './routes.js';
-import type { DspRouteId } from './route-meta.js';
+import { features } from './features.js';
 import { routeLabel } from './route-meta.js';
+import { installFeatures, type DspRouteId } from '../../core/shell/frontend/runtime/slots.js';
 const loadAuth = () => import('../../core/accounts/frontend/index.js');
 const AuthScreen = lazy(() => loadAuth().then((module) => ({ default: module.AuthScreen })));
 const DspOnboarding = lazy(() => loadAuth().then((module) => ({ default: module.DspOnboarding })));
@@ -398,6 +399,7 @@ function App() {
     </Shell>
   );
 }
+installFeatures(features);
 createRoot(document.getElementById('root')!).render(
   <FeedbackProvider>
     <PageBoundary>

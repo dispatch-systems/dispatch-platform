@@ -1,0 +1,109 @@
+import { createElement, lazy } from 'react';
+import { Bot, Building2, FlaskConical, ScrollText, Settings } from 'lucide-react';
+import type { Access, FrontendFeature } from '../../shell/frontend/runtime/slots.js';
+import { preloadTab } from './settings/tabs.js';
+
+declare module '../../shell/frontend/runtime/slots.js' {
+  interface PlatformPages {
+    dsps: true;
+    jobs: true;
+    agents: true;
+    authorize: true;
+    audit: true;
+    account: true;
+  }
+}
+
+const loadDsps = () => import('./dsps/index.js');
+const loadPicker = () => import('./dsps/picker.js');
+const loadDiagnostics = () => import('./diagnostics/index.js');
+const loadAgents = () => import('./agents/index.js');
+const loadAudit = () => import('./audit/index.js');
+const loadSettings = () => import('./settings/index.js');
+const DspsPage = lazy(() => loadDsps().then((module) => ({ default: module.DspsPage })));
+const DspPicker = lazy(() => loadPicker().then((module) => ({ default: module.DspPicker })));
+const DiagnosticsPage = lazy(() =>
+  loadDiagnostics().then((module) => ({ default: module.DiagnosticsPage })),
+);
+const AgentsPage = lazy(() => loadAgents().then((module) => ({ default: module.AgentsPage })));
+const AuthorizePage = lazy(() =>
+  loadAgents().then((module) => ({ default: module.AuthorizePage })),
+);
+const AuditPage = lazy(() => loadAudit().then((module) => ({ default: module.AuditPage })));
+const SettingsPage = lazy(() =>
+  loadSettings().then((module) => ({ default: module.SettingsPage })),
+);
+
+const platformOwner = ({ session }: Access) => session.user.platformOwner;
+
+export const feature: FrontendFeature = {
+  name: 'platform_owner',
+  routes: [
+    {
+      // A member's one platform page: the DSPs they belong to.
+      id: 'dsps',
+      scope: 'platform',
+      label: 'DSPs',
+      icon: Building2,
+      nav: true,
+      preload: (access) => (access?.session.user.platformOwner ? loadDsps() : loadPicker()),
+      render: ({ session }) =>
+        session.user.platformOwner
+          ? createElement(DspsPage)
+          : createElement(DspPicker, { session }),
+      prefetch: ({ session, warm }) => {
+        if (session?.user.platformOwner) warm(['/api/platform/dsps']);
+      },
+    },
+    {
+      id: 'jobs',
+      scope: 'platform',
+      label: 'Diagnostics',
+      icon: FlaskConical,
+      nav: true,
+      permission: platformOwner,
+      preload: loadDiagnostics,
+      render: () => createElement(DiagnosticsPage),
+    },
+    {
+      id: 'agents',
+      scope: 'platform',
+      label: 'Agents',
+      icon: Bot,
+      nav: true,
+      permission: platformOwner,
+      preload: loadAgents,
+      render: () => createElement(AgentsPage),
+    },
+    {
+      id: 'authorize',
+      scope: 'platform',
+      label: 'Connect an app',
+      parent: 'agents',
+      nav: false,
+      permission: platformOwner,
+      preload: loadAgents,
+      render: () => createElement(AuthorizePage),
+    },
+    {
+      id: 'audit',
+      scope: 'platform',
+      label: 'Audit log',
+      icon: ScrollText,
+      nav: true,
+      permission: platformOwner,
+      preload: loadAudit,
+      render: () => createElement(AuditPage),
+    },
+    {
+      id: 'account',
+      scope: 'platform',
+      label: 'Settings',
+      icon: Settings,
+      nav: platformOwner,
+      // The page and the tab it opens on load together.
+      preload: () => Promise.all([loadSettings(), preloadTab()]),
+      render: ({ session }) => createElement(SettingsPage, { session }),
+    },
+  ],
+};

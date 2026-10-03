@@ -32,10 +32,8 @@ import { ErrorBox, Header, Loading, Tabs } from '../../../core/shell/frontend/ui
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { randomId } from '../../../core/shell/frontend/lib/random-id.js';
 import { timecardPeriod } from './timecard-format.js';
-import {
-  prefetchRouteData,
-  prefetchTimecardTab,
-} from '../../../core/shell/frontend/runtime/route-prefetch.js';
+import { prefetchRouteData } from '../../../core/shell/frontend/runtime/route-prefetch.js';
+import { prefetchTimecardTab } from './prefetch.js';
 import { usePaycomDate } from './DateControls.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { dspHash, navigate } from '../../../core/shell/frontend/runtime/navigation.js';

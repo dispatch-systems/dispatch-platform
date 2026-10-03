@@ -1,214 +1,24 @@
-import { lazy, Suspense, type ReactNode } from 'react';
-import {
-  Bot,
-  Building2,
-  CalendarDays,
-  FlaskConical,
-  House,
-  ScrollText,
-  Settings,
-  Shirt,
-  ClipboardCheck,
-  Users,
-  type LucideIcon,
-} from 'lucide-react';
-import type { DspView, Feature, SessionView } from '../../shared/contracts/index.js';
+import { Suspense } from 'react';
+import type { DspView } from '../../shared/contracts/index.js';
 import { ErrorBox } from '../../core/shell/frontend/ui/ErrorBox.js';
 import { Loading } from '../../core/shell/frontend/ui/Loading.js';
 import { PageBoundary } from '../../core/shell/frontend/ui/PageBoundary.js';
 import { hasFeature } from '../../core/shell/frontend/runtime/features.js';
-import { can } from '../../core/shell/frontend/runtime/permissions.js';
-import { routeMeta, type DspRouteId, type PlatformRouteId, type RouteMeta } from './route-meta.js';
 import { NavigationStateContext } from '../../core/shell/frontend/runtime/browser-update.js';
-import {
-  isTimecardDataReady,
-  prefetchRouteData,
-} from '../../core/shell/frontend/runtime/route-prefetch.js';
+import { prefetchRouteData } from '../../core/shell/frontend/runtime/route-prefetch.js';
+import type { Access, PageContext, Route } from '../../core/shell/frontend/runtime/slots.js';
+import { features } from './features.js';
 
-const loadAgents = () => import('../../core/platform_owner/frontend/agents/index.js');
-const AgentsPage = lazy(() => loadAgents().then((module) => ({ default: module.AgentsPage })));
-const AuthorizePage = lazy(() =>
-  loadAgents().then((module) => ({ default: module.AuthorizePage })),
-);
-const loadAudit = () => import('../../core/platform_owner/frontend/audit/index.js');
-const AuditPage = lazy(() => loadAudit().then((module) => ({ default: module.AuditPage })));
-const loadHome = () => import('../../features/home/frontend/index.js');
-const HomePage = lazy(() => loadHome().then((module) => ({ default: module.HomePage })));
-const loadPlatform = () => import('../../core/platform_owner/frontend/dsps/index.js');
-const loadDiagnostics = () => import('../../core/platform_owner/frontend/diagnostics/index.js');
-const loadPicker = () => import('../../core/platform_owner/frontend/dsps/picker.js');
-const DiagnosticsPage = lazy(() =>
-  loadDiagnostics().then((module) => ({ default: module.DiagnosticsPage })),
-);
-const DspsPage = lazy(() => loadPlatform().then((module) => ({ default: module.DspsPage })));
-const DspPicker = lazy(() => loadPicker().then((module) => ({ default: module.DspPicker })));
-const loadSettings = (access?: Access) =>
-  import('../../features/settings/frontend/index.js').then(async (module) => {
-    await module.preloadSettingsPage(access?.view);
-    return module;
-  });
-const SettingsPage = lazy(() =>
-  loadSettings().then((module) => ({ default: module.SettingsPage })),
-);
-const loadTeam = () => import('../../features/team/frontend/index.js');
-const TeamPage = lazy(() => loadTeam().then((module) => ({ default: module.TeamPage })));
-const loadUniforms = () => import('../../features/uniforms/frontend/index.js');
-const UniformInventoryPage = lazy(() =>
-  loadUniforms().then((module) => ({ default: module.UniformInventoryPage })),
-);
-let timecardReady: ((view: DspView) => boolean) | undefined;
-const loadTimecard = (access?: Access) =>
-  import('../../features/timecard/frontend/index.js').then(async (module) => {
-    timecardReady = module.isTimecardPageReady;
-    if (access?.view) await module.preloadTimecardPage(access.view);
-    return module;
-  });
-const loadTimecardSettings = () => import('../../features/timecard/frontend/settings/index.js');
-let dvicReady: ((view: DspView) => boolean) | undefined;
-const loadDvic = () =>
-  import('../../features/dvic/frontend/index.js').then((module) => {
-    dvicReady = module.isDvicPageReady;
-    return module;
-  });
-const DvicPage = lazy(() => loadDvic().then((module) => ({ default: module.DvicPage })));
-const PaycomPage = lazy(() => loadTimecard().then((module) => ({ default: module.PaycomPage })));
-const PaycomSettingsPage = lazy(() =>
-  loadTimecardSettings().then((module) => ({ default: module.PaycomSettingsPage })),
-);
-
-type Access = { session: SessionView; view?: DspView };
-type PageContext = { session: SessionView };
-type DspPageContext = PageContext & { view: DspView; reopen: () => Promise<void> };
-type Entry<Context> = {
-  icon?: LucideIcon;
-  preload: (access?: Access) => Promise<unknown>;
-  /** Whether the sidebar lists the page. */
-  nav: boolean | ((access: Access) => boolean);
-  /** Who may open the page; omitted means everyone in the scope. */
-  permission?: (access: Access) => boolean;
-  /** The feature the page belongs to; a DSP without it has no such page. */
-  feature?: Feature;
-  render: (context: Context) => ReactNode;
-};
-type Route =
-  | (RouteMeta & { scope: 'dsp' } & Entry<DspPageContext>)
-  | (RouteMeta & { scope: 'platform' } & Entry<PageContext>);
-
-const platformOwner = ({ session }: Access) => session.user.platformOwner;
-
-// Every page declared in route-meta.ts gets its navigation, access and component here.
-const dspPages: Record<DspRouteId, Entry<DspPageContext>> = {
-  dvic: {
-    preload: loadDvic,
-    icon: ClipboardCheck,
-    nav: true,
-    feature: 'dvic',
-    permission: ({ view }) => can(view, 'dvic.view'),
-    render: ({ view }) => <DvicPage key={view.token} view={view} />,
-  },
-  uniforms: {
-    preload: loadUniforms,
-    icon: Shirt,
-    nav: true,
-    feature: 'uniforms',
-    permission: ({ view }) => can(view, 'uniforms.view'),
-    render: ({ view }) => <UniformInventoryPage key={view.token} view={view} />,
-  },
-  overview: {
-    preload: loadHome,
-    icon: House,
-    nav: true,
-    render: () => <HomePage />,
-  },
-  paycom: {
-    preload: loadTimecard,
-    icon: CalendarDays,
-    nav: true,
-    feature: 'timecard',
-    // The link stays put while a view loads; the page itself waits for the view.
-    permission: ({ view }) => !view || can(view, 'timecard.view'),
-    render: ({ view }) => <PaycomPage view={view} />,
-  },
-  'paycom-settings': {
-    preload: loadTimecardSettings,
-    nav: false,
-    feature: 'timecard',
-    permission: ({ view }) => can(view, 'timecard.manage'),
-    render: ({ view }) => <PaycomSettingsPage dspId={view.dsp.id} />,
-  },
-  team: {
-    preload: loadTeam,
-    icon: Users,
-    nav: true,
-    permission: ({ view }) =>
-      can(view, 'members.invite') || can(view, 'members.manage') || can(view, 'roles.manage'),
-    render: ({ view, reopen }) => <TeamPage view={view} reopen={reopen} />,
-  },
-  settings: {
-    preload: loadSettings,
-    icon: Settings,
-    nav: true,
-    render: ({ session, view }) => <SettingsPage session={session} view={view} />,
-  },
-};
-const platformPages: Record<PlatformRouteId, Entry<PageContext>> = {
-  dsps: {
-    preload: (access) => (access?.session.user.platformOwner ? loadPlatform() : loadPicker()),
-    icon: Building2,
-    nav: true,
-    render: ({ session }) =>
-      session.user.platformOwner ? <DspsPage /> : <DspPicker session={session} />,
-  },
-  jobs: {
-    preload: loadDiagnostics,
-    icon: FlaskConical,
-    nav: true,
-    permission: platformOwner,
-    render: () => <DiagnosticsPage />,
-  },
-  agents: {
-    preload: loadAgents,
-    icon: Bot,
-    nav: true,
-    permission: platformOwner,
-    render: () => <AgentsPage />,
-  },
-  authorize: {
-    preload: loadAgents,
-    nav: false,
-    permission: platformOwner,
-    render: () => <AuthorizePage />,
-  },
-  audit: {
-    preload: loadAudit,
-    icon: ScrollText,
-    nav: true,
-    permission: platformOwner,
-    render: () => <AuditPage />,
-  },
-  account: {
-    preload: loadSettings,
-    icon: Settings,
-    nav: platformOwner,
-    render: ({ session }) => <SettingsPage session={session} />,
-  },
-};
-
-const table: readonly Route[] = routeMeta.map((meta) =>
-  meta.scope === 'dsp' ? { ...meta, ...dspPages[meta.id] } : { ...meta, ...platformPages[meta.id] },
-);
+// Every owner's pages, each with its navigation, access and component, in sidebar order.
+const table: readonly Route[] = features.flatMap((feature) => feature.routes ?? []);
 const allowed = (route: Route, access: Access) => !route.permission || route.permission(access);
 
 export const findRoute = (scope: Route['scope'], page: string) =>
   table.find((route) => route.scope === scope && route.id === page);
 /** A previously rendered tab with admitted cached data can commit before the next paint. */
 export function canNavigateImmediately(scope: Route['scope'], page: string, access: Access) {
-  return Boolean(
-    scope === 'dsp' &&
-    access.view &&
-    ((page === 'paycom' && timecardReady?.(access.view) && isTimecardDataReady(access.view)) ||
-      (page === 'dvic' && dvicReady?.(access.view))),
-  );
+  const route = findRoute(scope, page);
+  return Boolean(route?.scope === 'dsp' && access.view && route.ready?.(access.view));
 }
 /** Code and authorized primary data start together, before the destination mounts. */
 export function prepareRoute(
@@ -253,11 +63,9 @@ function PageContent({
   }
   if (open?.scope === 'platform') return open.render(context);
   // Members have one platform page: the DSPs they belong to.
-  return session.user.platformOwner ? (
-    <ErrorBox message="Page not found." />
-  ) : (
-    <DspPicker session={session} />
-  );
+  const dsps = findRoute('platform', 'dsps');
+  if (!session.user.platformOwner && dsps?.scope === 'platform') return dsps.render(context);
+  return <ErrorBox message="Page not found." />;
 }
 
 export function Page(props: Parameters<typeof PageContent>[0]) {

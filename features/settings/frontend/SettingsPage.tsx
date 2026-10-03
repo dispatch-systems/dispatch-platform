@@ -6,7 +6,7 @@ import { connectionFeatures } from '../../../core/shell/frontend/runtime/feature
 import { DriverMatchTabLabel } from '../../driver_match/frontend/badge.js';
 import { hashQuery, replaceHashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
 import { ProfileBadge } from '../../../core/accounts/frontend/settings/ProfileBadge.js';
-import { prefetchSettingsTab } from '../../../core/shell/frontend/runtime/route-prefetch.js';
+import { prefetchSettingsTab } from './prefetch.js';
 
 const loadConnections = () => import('../../../core/collection/frontend/index.js');
 const loadDriverMatch = () => import('../../driver_match/frontend/index.js');
@@ -73,11 +73,11 @@ export function SettingsPage({ session, view }: { session: SessionView; view?: D
         value={tab}
         onIntent={(value) => {
           void loadTab(value).catch(() => undefined);
-          prefetchSettingsTab(value, view, session);
+          prefetchSettingsTab(value, view);
         }}
         onChange={(value) => {
           void loadTab(value).catch(() => undefined);
-          prefetchSettingsTab(value, view, session, true);
+          prefetchSettingsTab(value, view, true);
           replaceHashQuery({ tab: value });
           startTransition(() => setTab(value));
         }}
