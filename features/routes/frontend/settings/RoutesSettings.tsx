@@ -5,7 +5,7 @@ import { setRouteRetention, useRouteRetention } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { dateFormatter } from '../../../../core/shell/frontend/lib/date-format.js';
 import { ConfirmDialog, DataState, ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
-import './route-data.css';
+import './routes-settings.css';
 
 // Shortest and longest windows the backend accepts, in days.
 const MIN = 30;
@@ -37,7 +37,7 @@ function firstKept(days: number, timeZone: string) {
   return start.toISOString().slice(0, 10);
 }
 
-export function RouteDataSettings({ timeZone }: { timeZone: string }) {
+export function RoutesSettings({ timeZone }: { timeZone: string }) {
   const retention = useRouteRetention();
   return (
     <div className="route-data-settings">

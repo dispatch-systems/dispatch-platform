@@ -40,7 +40,9 @@ import { features } from './features.js';
 import { routeLabel } from './route-meta.js';
 import { installFeatures, type DspRouteId } from '../../core/shell/frontend/runtime/slots.js';
 const loadAuth = () => import('../../core/accounts/frontend/index.js');
-const AuthScreen = lazy(() => loadAuth().then((module) => ({ default: module.AuthScreen })));
+const SignedOutScreen = lazy(() =>
+  loadAuth().then((module) => ({ default: module.SignedOutScreen })),
+);
 const DspOnboarding = lazy(() => loadAuth().then((module) => ({ default: module.DspOnboarding })));
 const SecurityPrompt = lazy(() =>
   loadAuth().then((module) => ({ default: module.SecurityPrompt })),
@@ -326,7 +328,7 @@ function App() {
         <FeedbackMessages />
       </>
     );
-  if (showAuth) return <AuthScreen key={route} onLogin={() => load(true)} />;
+  if (showAuth) return <SignedOutScreen key={route} onLogin={() => load(true)} />;
   if (securityRequired && session)
     return (
       <SecurityPrompt security={session.security} complete={() => load(true)} signOut={logout} />
