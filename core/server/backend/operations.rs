@@ -400,7 +400,7 @@ pub fn dvic_drivers(config: &Config, args: &[String]) -> Result<Value> {
         .join("data/dvic/dvic.sqlite");
     ensure(path.is_file(), "dvic_storage_missing", 404)?;
     db::private_file(&path, false)?;
-    let dvic = db::Db::open(&path, db::Kind::Dvic)?;
+    let dvic = db::Db::open(&path, crate::dvic::DATABASE)?;
     crate::collectors::added_identity(&dvic, dsp, cortex::PROVIDER, &crate::dvic::STORAGE)?;
     // The server adds the table when it starts the release that has it.
     ensure(

@@ -321,7 +321,8 @@ fn migration_minimizes_all_history_and_legacy_runtime_publications() {
     db.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
     // The baseline is what adopts a database from before meal_records existed. Without
     // the trigger, the rows below stay where that older runtime left them.
-    let baseline = include_str!("../../../../../core/db/migrations/cortex/0001_baseline.sql");
+    let baseline =
+        include_str!("../../../../../collectors/cortex/migrations/cortex/0001_baseline.sql");
     db.execute_batch(baseline).unwrap();
     db.execute_batch("DROP TRIGGER minimize_legacy_meal_publication")
         .unwrap();

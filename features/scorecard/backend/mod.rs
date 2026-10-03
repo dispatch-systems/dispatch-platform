@@ -16,7 +16,7 @@ use crate::{
         },
     },
     contracts::{ScorecardDatasetCount, ScorecardPublication, ScorecardWeek, ScorecardWeeks},
-    db::{Db, DspLease, Kind, Store, at, now, s},
+    db::{Db, DspLease, Kind, Store, at, migrations::add_column, now, s},
     ensure,
     manifest::Keeper,
     weeks::{last_completed_week, week_or_latest},
@@ -28,9 +28,10 @@ use std::collections::HashMap;
 
 pub const ADAPTER_VERSION: i64 = 1;
 /// The scorecard database beside `cortex.sqlite`.
+pub const DATABASE: Kind = Kind::new("scorecard", 1);
 pub static STORAGE: AddedStorage = AddedStorage {
     id: "scorecard",
-    kind: Kind::Scorecard,
+    kind: DATABASE,
     marker: "storage.scorecard",
     source: "scorecard-v1",
     verify,
@@ -53,6 +54,19 @@ fn verify(db: &Db) -> Result<()> {
     .chain(DATASETS.iter().map(|d| d.table))
     {
         db.one(&format!("SELECT count(*) FROM {table} WHERE 0"), [])?;
+    }
+    Ok(())
+}
+
+/// Migration 3: whether a publication's and a week's station scope was verified.
+pub(crate) fn add_verified_scope(db: &Db) -> Result<()> {
+    for table in ["scorecard_publications", "scorecard_weeks"] {
+        add_column(
+            db,
+            table,
+            "scope_verified",
+            "INTEGER NOT NULL DEFAULT 0 CHECK(scope_verified IN (0,1))",
+        )?;
     }
     Ok(())
 }

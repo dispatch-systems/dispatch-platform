@@ -1,7 +1,10 @@
 //! Uniform Inventory: a DSP's uniform catalog and its stock counts.
-use crate::manifest::{
-    DefaultRole::{Manager, Member},
-    Feature, Switch, feature, perm,
+use crate::{
+    db::{Kind, Migration, Migrations, migrations::Apply::Sql},
+    manifest::{
+        DefaultRole::{Manager, Member},
+        Feature, Switch, feature, perm,
+    },
 };
 
 pub const FEATURE: Feature = Feature {
@@ -17,5 +20,13 @@ pub const FEATURE: Feature = Feature {
             .defaults(&[Manager]),
         perm("uniforms.manage", "Manage Uniform Inventory", 12).implies(&["uniforms.view"]),
     ],
+    migrations: &[Migrations {
+        kind: Kind::DSP,
+        list: &[Migration {
+            id: 2,
+            name: "uniform_inventory",
+            apply: Sql(include_str!("migrations/dsp/0002_uniform_inventory.sql")),
+        }],
+    }],
     ..feature("uniforms")
 };

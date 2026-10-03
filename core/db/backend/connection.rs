@@ -38,7 +38,7 @@ impl Db {
             let tx = migrations::immediate(&db)?;
             // Another connection may have created it while this one waited.
             if db.version()? == 0 {
-                migrations::apply(&db, kind.name(), kind.migrations())?;
+                migrations::apply(&db, kind.name(), &kind.migrations())?;
                 tx.execute_batch(seed)?;
                 tx.pragma_update(None, "user_version", kind.version())?;
             }
@@ -51,17 +51,17 @@ impl Db {
     /// or adopts a legacy database only while its identity migration is first applied.
     pub(crate) fn create_dsp(file: &Path, id: &str) -> Result<Self> {
         ensure(super::identifier(id, "dsp_"), "invalid_dsp_id", 400)?;
-        let db = Self::connect(file, Kind::Dsp, true)?;
+        let db = Self::connect(file, Kind::DSP, true)?;
         if db.version()? == 0 {
             let tx = migrations::immediate(&db)?;
             if db.version()? == 0 {
-                migrations::apply(&db, Kind::Dsp.name(), Kind::Dsp.migrations())?;
+                migrations::apply(&db, Kind::DSP.name(), &Kind::DSP.migrations())?;
                 db.0.execute(
                     "INSERT INTO storage_identity(dsp_id,provider,source) \
                      VALUES (?,'dispatch','dispatch-v1')",
                     [id],
                 )?;
-                tx.pragma_update(None, "user_version", Kind::Dsp.version())?;
+                tx.pragma_update(None, "user_version", Kind::DSP.version())?;
             }
             tx.commit()?;
         }
@@ -94,17 +94,8 @@ impl Db {
         })?;
         db.busy_timeout(Duration::from_secs(5))?;
         db.set_prepared_statement_cache_capacity(32);
-        // Kibibytes. The route data database holds a day of tasks per publication and
-        // answers day-range reads, so its indexes stay in memory.
-        db.pragma_update(
-            None,
-            "cache_size",
-            if kind == Kind::RouteData {
-                -32768
-            } else {
-                -512
-            },
-        )?;
+        // Negative: kibibytes, as its kind declares.
+        db.pragma_update(None, "cache_size", -kind.cache_kib())?;
         let db = Self(db);
         let current = db.version()?;
         ensure(

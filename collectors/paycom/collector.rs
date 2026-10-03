@@ -20,7 +20,7 @@ use crate::{
         http::RequestHosts,
         paycom,
     },
-    db::{Db, Kind, Store, iso, s},
+    db::{Db, Kind, Migration, Migrations, Store, iso, migrations::Apply::Sql, s},
     ensure,
     job_metrics::Counts,
     manifest::{Collection, Collector},
@@ -65,6 +65,17 @@ pub static HOSTS: RequestHosts = RequestHosts {
     http2: false,
 };
 
+/// Its database, `paycom/paycom.sqlite` in each DSP's data.
+pub const DATABASE: Kind = Kind::new("paycom", 1);
+const MIGRATIONS: &[Migrations] = &[Migrations {
+    kind: DATABASE,
+    list: &[Migration {
+        id: 1,
+        name: "baseline",
+        apply: Sql(include_str!("migrations/paycom/0001_baseline.sql")),
+    }],
+}];
+
 /// What it reads: the timecards of a pay period, or of one employee's.
 static COLLECTIONS: [Collection; 1] = [Collection {
     job_kind: timecards::JOB_KIND,
@@ -87,7 +98,10 @@ impl Collector for Paycom {
         &COLLECTIONS
     }
     fn database(&self) -> Kind {
-        Kind::Paycom
+        DATABASE
+    }
+    fn migrations(&self) -> &'static [Migrations] {
+        MIGRATIONS
     }
     fn seed(&self, dsp: &str) -> String {
         format!("INSERT INTO storage_identity VALUES ('{dsp}','paycom','paycom-v1');")

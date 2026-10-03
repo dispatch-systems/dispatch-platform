@@ -525,7 +525,7 @@ mod tests {
             "unsupported_storage_layout"
         );
         let path = database_path(&config.root.join("dsps").join(&id), paycom::PROVIDER).unwrap();
-        let provider = Db::open(&path, Kind::Paycom).unwrap();
+        let provider = Db::open(&path, paycom::DATABASE).unwrap();
         assert_eq!(snapshot(&provider), before);
     }
     #[test]

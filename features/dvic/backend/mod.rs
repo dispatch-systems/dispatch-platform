@@ -15,14 +15,16 @@ use crate::{
             Capture, Collection, JOB_KIND, KnownReport, MAX_WEEKS, Request, hash, report_week,
         },
     },
-    db::{Db, Kind},
+    db::{Db, Kind, migrations::add_column},
     ensure, validate, weeks,
 };
 use serde_json::{Value, json};
 
+/// The DVIC database beside `cortex.sqlite`.
+pub const DATABASE: Kind = Kind::new("dvic", 1);
 pub static STORAGE: AddedStorage = AddedStorage {
     id: "dvic",
-    kind: Kind::Dvic,
+    kind: DATABASE,
     marker: "storage.dvic",
     source: "dvic-v1",
     verify,
@@ -37,6 +39,25 @@ fn verify(db: &Db) -> Result<()> {
         "dvic_hidden_drivers",
     ] {
         db.one(&format!("SELECT count(*) FROM {table} WHERE 0"), [])?;
+    }
+    Ok(())
+}
+
+/// Migration 3: whether what each report, inspection, week and run holds had its station
+/// scope verified.
+pub(crate) fn add_verified_scope(db: &Db) -> Result<()> {
+    for table in [
+        "dvic_reports",
+        "dvic_inspections",
+        "dvic_weeks",
+        "dvic_runs",
+    ] {
+        add_column(
+            db,
+            table,
+            "scope_verified",
+            "INTEGER NOT NULL DEFAULT 0 CHECK(scope_verified IN (0,1))",
+        )?;
     }
     Ok(())
 }

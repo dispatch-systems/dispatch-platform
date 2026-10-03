@@ -1,5 +1,6 @@
-//! Every database kind has one ordered list of numbered migrations in `schema`.
-//! Adding a table or a column is one new entry at the end of a list.
+//! Every database kind has one ordered list of numbered migrations, gathered from the
+//! owners that declare them: core's in `schema`, each collector's and feature's in its
+//! manifest. Adding a table or a column is one new migration after the last.
 //!
 //! Contract for migration authors: additive only. New tables, new nullable or
 //! defaulted columns, and new indexes. The previous release must keep working on
@@ -17,12 +18,13 @@
 //! never refused. They are safe to ignore because migrations are additive.
 //! `PRAGMA user_version` stays pinned per kind for the same reason: older
 //! binaries refuse any other value.
-use super::{Db, now, schema};
-use crate::{Error, Result, observability};
+use super::{Db, now};
+use crate::{Error, Result, manifest::registry, observability};
 use rusqlite::{Transaction, TransactionBehavior};
 use serde_json::json;
 use std::collections::BTreeSet;
 
+#[derive(Clone, Copy)]
 pub enum Apply {
     Sql(&'static str),
     /// For steps that must look before they change anything, such as a column an
@@ -30,70 +32,87 @@ pub enum Apply {
     /// so it must not begin one of its own.
     Code(fn(&Db) -> Result<()>),
 }
+#[derive(Clone, Copy)]
 pub struct Migration {
     pub id: u32,
     pub name: &'static str,
     pub apply: Apply,
 }
+/// What one owner adds to one kind of database. A kind's migrations may come from
+/// several owners; their ids together run from 1 without a gap.
+pub struct Migrations {
+    pub kind: Kind,
+    pub list: &'static [Migration],
+}
+
+/// A kind of database, declared by the owner that creates its files: core the platform's,
+/// the environment's jobs and each DSP's own; a collector its provider's; a feature one it
+/// keeps whole.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Kind {
-    Platform,
-    Jobs,
-    Dsp,
-    Paycom,
-    Cortex,
-    Scorecard,
-    RouteData,
-    Dvic,
+pub struct Kind {
+    name: &'static str,
+    version: i64,
+    cache_kib: i64,
 }
 impl Kind {
-    pub const ALL: &[Self] = &[
-        Self::Platform,
-        Self::Jobs,
-        Self::Dsp,
-        Self::Paycom,
-        Self::Cortex,
-        Self::Scorecard,
-        Self::RouteData,
-        Self::Dvic,
-    ];
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Platform => "platform",
-            Self::Jobs => "jobs",
-            Self::Dsp => "dsp",
-            Self::Paycom => "paycom",
-            Self::Cortex => "cortex",
-            Self::Scorecard => "scorecard",
-            Self::RouteData => "routedata",
-            Self::Dvic => "dvic",
+    pub const PLATFORM: Self = Self::new("platform", 3);
+    pub const JOBS: Self = Self::new("jobs", 1);
+    pub const DSP: Self = Self::new("dsp", 1);
+    /// `name` names it in the migration log and its schema snapshot; `version` is its
+    /// pinned `user_version`. Each connection caches 512 KiB of its pages.
+    pub const fn new(name: &'static str, version: i64) -> Self {
+        Self {
+            name,
+            version,
+            cache_kib: 512,
         }
+    }
+    /// For a database whose reads need more of its pages in memory.
+    pub const fn cache(self, cache_kib: i64) -> Self {
+        Self { cache_kib, ..self }
+    }
+    pub fn name(self) -> &'static str {
+        self.name
     }
     /// Pinned. Released binaries refuse to open a database with any other value.
     pub(crate) fn version(self) -> i64 {
-        match self {
-            Self::Platform => 3,
-            Self::Jobs
-            | Self::Dsp
-            | Self::Paycom
-            | Self::Cortex
-            | Self::Scorecard
-            | Self::RouteData
-            | Self::Dvic => 1,
-        }
+        self.version
     }
-    pub fn migrations(self) -> &'static [Migration] {
-        match self {
-            Self::Platform => schema::PLATFORM,
-            Self::Jobs => schema::JOBS,
-            Self::Dsp => schema::DSP,
-            Self::Paycom => schema::PAYCOM,
-            Self::Cortex => schema::CORTEX,
-            Self::Scorecard => schema::SCORECARD,
-            Self::RouteData => schema::ROUTEDATA,
-            Self::Dvic => schema::DVIC,
-        }
+    /// What each connection caches of its pages, in kibibytes.
+    pub(crate) fn cache_kib(self) -> i64 {
+        self.cache_kib
     }
+    /// Its migrations, from every owner that declares some, in order.
+    pub fn migrations(self) -> Vec<Migration> {
+        registry().migrations(self)
+    }
+}
+
+/// `kind`'s migrations, gathered from every owner's `Migrations` and ordered by id. Their
+/// ids must run from 1 without a gap or a repeat, or this panics: an id is a migration's
+/// place in every database's record for good, whoever declares it.
+pub fn ledger<'a>(kind: Kind, owners: impl IntoIterator<Item = &'a Migrations>) -> Vec<Migration> {
+    let mut list: Vec<Migration> = owners
+        .into_iter()
+        .filter(|owned| owned.kind.name == kind.name)
+        .flat_map(|owned| owned.list.iter().copied())
+        .collect();
+    list.sort_by_key(|migration| migration.id);
+    for (index, migration) in list.iter().enumerate() {
+        let expected = index as u32 + 1;
+        assert!(
+            migration.id >= expected,
+            "{} migration {} is declared twice",
+            kind.name,
+            migration.id
+        );
+        assert!(
+            migration.id == expected,
+            "{} migration {expected} is missing",
+            kind.name
+        );
+    }
+    list
 }
 
 /// Adds a column unless an older binary's startup already did.
@@ -201,7 +220,7 @@ pub(super) fn run(db: &Db, kind: &str, list: &[Migration]) -> Result<()> {
 /// initialization always has: startup, the operator commands and provisioning.
 /// Requests open databases without it.
 pub fn migrate(db: &Db, kind: Kind) -> Result<()> {
-    run(db, kind.name(), kind.migrations())
+    run(db, kind.name(), &kind.migrations())
 }
 
 /// Verifies that core DSP storage belongs to the tenant whose path selected it.
@@ -235,11 +254,11 @@ pub(crate) fn migrate_dsp(db: &Db, id: &str) -> Result<()> {
 }
 
 fn migrate_dsp_after_probe<F: FnOnce()>(db: &Db, id: &str, after_probe: F) -> Result<()> {
-    let list = Kind::Dsp.migrations();
+    let list = &Kind::DSP.migrations();
     let done = applied(db)?;
     if done.contains(&5) {
         verify_dsp_identity(db, id)?;
-        return run(db, Kind::Dsp.name(), list);
+        return run(db, Kind::DSP.name(), list);
     }
     after_probe();
     let tx = immediate(db)?;
@@ -255,7 +274,7 @@ fn migrate_dsp_after_probe<F: FnOnce()>(db: &Db, id: &str, after_probe: F) -> Re
             503,
         )?;
     }
-    apply(db, Kind::Dsp.name(), list)?;
+    apply(db, Kind::DSP.name(), list)?;
     if bind {
         db.0.execute(
             "INSERT INTO storage_identity(dsp_id,provider,source) VALUES (?,'dispatch','dispatch-v1')",
@@ -321,7 +340,7 @@ mod tests {
     }
     fn legacy(kind: Kind) -> String {
         let schema = recorded(kind).replace(RECORD, "");
-        if kind == Kind::Dsp {
+        if kind == Kind::DSP {
             schema.replace(DSP_IDENTITY, "")
         } else {
             schema
@@ -367,14 +386,14 @@ mod tests {
         let routedata = store.routedata(&id).unwrap();
         let dvic = store.dvic(&id).unwrap();
         let databases: [(Kind, &Db); 8] = [
-            (Kind::Platform, &store.platform),
-            (Kind::Jobs, &store.jobs),
-            (Kind::Dsp, &dsp),
-            (Kind::Paycom, &paycom),
-            (Kind::Cortex, &cortex),
-            (Kind::Scorecard, &scorecard),
-            (Kind::RouteData, &routedata),
-            (Kind::Dvic, &dvic),
+            (Kind::PLATFORM, &store.platform),
+            (Kind::JOBS, &store.jobs),
+            (Kind::DSP, &dsp),
+            (crate::collectors::paycom::DATABASE, &paycom),
+            (crate::collectors::cortex::DATABASE, &cortex),
+            (crate::scorecard::DATABASE, &scorecard),
+            (crate::routedata::DATABASE, &routedata),
+            (crate::dvic::DATABASE, &dvic),
         ];
         for (kind, db) in databases {
             if std::env::var_os("DISPATCH_UPDATE_SCHEMA").is_some() {
@@ -392,7 +411,7 @@ mod tests {
 
     #[test]
     fn lists_are_numbered_from_one_without_gaps_or_repeats() {
-        for kind in Kind::ALL {
+        for kind in registry().databases() {
             for (index, migration) in kind.migrations().iter().enumerate() {
                 assert_eq!(migration.id as usize, index + 1, "{}", kind.name());
                 assert!(!migration.name.is_empty());
@@ -401,10 +420,52 @@ mod tests {
     }
 
     #[test]
+    fn a_kind_gathers_its_owners_migrations_in_order() {
+        let owners = [
+            Migrations {
+                kind: Kind::DSP,
+                list: &[Migration {
+                    id: 3,
+                    name: "third",
+                    apply: Apply::Sql(""),
+                }],
+            },
+            Migrations {
+                kind: Kind::JOBS,
+                list: &[Migration {
+                    id: 2,
+                    name: "another_kind",
+                    apply: Apply::Sql(""),
+                }],
+            },
+            Migrations {
+                kind: Kind::DSP,
+                list: &[
+                    Migration {
+                        id: 1,
+                        name: "first",
+                        apply: Apply::Sql(""),
+                    },
+                    Migration {
+                        id: 2,
+                        name: "second",
+                        apply: Apply::Sql(""),
+                    },
+                ],
+            },
+        ];
+        let list: Vec<_> = ledger(Kind::DSP, &owners)
+            .iter()
+            .map(|migration| (migration.id, migration.name))
+            .collect();
+        assert_eq!(list, [(1, "first"), (2, "second"), (3, "third")]);
+    }
+
+    #[test]
     fn employee_history_uses_the_code_index() {
         let root = private();
         let file = root.path().join("paycom.sqlite");
-        let db = Db::create(&file, Kind::Paycom, "").unwrap();
+        let db = Db::create(&file, crate::collectors::paycom::DATABASE, "").unwrap();
         let plan = db
             .all(
                 "EXPLAIN QUERY PLAN SELECT p.id FROM publications p \
@@ -432,11 +493,11 @@ mod tests {
     #[test]
     fn a_database_an_older_binary_made_ends_like_a_new_one() {
         let root = private();
-        for kind in Kind::ALL {
+        for kind in registry().databases() {
             let file = root.path().join(format!("{}.sqlite", kind.name()));
-            older(&file, *kind, &legacy(*kind));
-            let db = Db::create(&file, *kind, "INSERT INTO never_run VALUES (1);").unwrap();
-            assert_eq!(dump(&db), recorded(*kind), "{}", kind.name());
+            older(&file, kind, &legacy(kind));
+            let db = Db::create(&file, kind, "INSERT INTO never_run VALUES (1);").unwrap();
+            assert_eq!(dump(&db), recorded(kind), "{}", kind.name());
         }
     }
 
@@ -445,9 +506,9 @@ mod tests {
         let root = private();
         let file = root.path().join("dsp.sqlite");
         let id = format!("dsp_{}", "1".repeat(32));
-        older(&file, Kind::Dsp, &legacy(Kind::Dsp));
-        let first = Db::open(&file, Kind::Dsp).unwrap();
-        let second = Db::open(&file, Kind::Dsp).unwrap();
+        older(&file, Kind::DSP, &legacy(Kind::DSP));
+        let first = Db::open(&file, Kind::DSP).unwrap();
+        let second = Db::open(&file, Kind::DSP).unwrap();
         let probed = std::sync::Barrier::new(2);
         let resume = std::sync::Barrier::new(2);
 
@@ -482,10 +543,10 @@ mod tests {
             .unwrap()
         };
         let new = root.path().join("new.sqlite");
-        let new = Db::create(&new, Kind::Platform, "").unwrap();
+        let new = Db::create(&new, Kind::PLATFORM, "").unwrap();
         // v0.0.9 has no audit data or shown. Before v0.0.6 there was no actor_name,
         // and before roles no role_id or its indexes.
-        let v9 = recorded(Kind::Platform)
+        let v9 = recorded(Kind::PLATFORM)
             .replace(RECORD, "")
             .replace(", data TEXT, shown INTEGER)", ")");
         let first = v9
@@ -503,12 +564,12 @@ mod tests {
         assert!(!first.contains("role_id") && !first.contains("actor_name"));
         for (name, schema) in [("v9", v9), ("first", first)] {
             let file = root.path().join(format!("{name}.sqlite"));
-            older(&file, Kind::Platform, &schema);
+            older(&file, Kind::PLATFORM, &schema);
             rusqlite::Connection::open(&file)
                 .unwrap()
                 .execute("INSERT INTO audit(at,action) VALUES ('then','kept')", [])
                 .unwrap();
-            let db = Db::create(&file, Kind::Platform, "").unwrap();
+            let db = Db::create(&file, Kind::PLATFORM, "").unwrap();
             for table in ["audit", "memberships", "invitations"] {
                 assert_eq!(columns(&db, table), columns(&new, table), "{name} {table}");
             }
@@ -525,12 +586,12 @@ mod tests {
     fn jobs_and_schedules_from_before_the_scorecard_keep_their_rows_through_the_rebuild() {
         let root = private();
         // v0.0.9 names neither the scorecard job kind nor the scorecard collection.
-        let jobs_schema = recorded(Kind::Jobs)
+        let jobs_schema = recorded(Kind::JOBS)
             .replace(RECORD, "")
             .replace(",'cortex.scorecard.collect'", "");
         assert!(!jobs_schema.contains("scorecard"));
         let file = root.path().join("jobs.sqlite");
-        older(&file, Kind::Jobs, &jobs_schema);
+        older(&file, Kind::JOBS, &jobs_schema);
         rusqlite::Connection::open(&file)
             .unwrap()
             .execute_batch(
@@ -540,8 +601,8 @@ mod tests {
                  INSERT INTO job_metrics VALUES ('job_1',1,'worker','{}');",
             )
             .unwrap();
-        let db = Db::create(&file, Kind::Jobs, "").unwrap();
-        assert_eq!(dump(&db), recorded(Kind::Jobs));
+        let db = Db::create(&file, Kind::JOBS, "").unwrap();
+        assert_eq!(dump(&db), recorded(Kind::JOBS));
         assert_eq!(
             db.all("SELECT id,kind FROM jobs", []).unwrap(),
             vec![json!({"id":"job_1","kind":"paycom.collect"})]
@@ -567,10 +628,10 @@ mod tests {
                 .is_empty()
         );
 
-        let dsp_schema = legacy(Kind::Dsp).replace(",'scorecard'", "");
+        let dsp_schema = legacy(Kind::DSP).replace(",'scorecard'", "");
         assert!(!dsp_schema.contains("scorecard"));
         let file = root.path().join("dsp.sqlite");
-        older(&file, Kind::Dsp, &dsp_schema);
+        older(&file, Kind::DSP, &dsp_schema);
         rusqlite::Connection::open(&file)
             .unwrap()
             .execute_batch(
@@ -578,8 +639,8 @@ mod tests {
                  enabled,created_at) VALUES ('s1','Meals','meal_break','daily','06:00',0,1,'2026-01-01')",
             )
             .unwrap();
-        let db = Db::create(&file, Kind::Dsp, "").unwrap();
-        assert_eq!(dump(&db), recorded(Kind::Dsp));
+        let db = Db::create(&file, Kind::DSP, "").unwrap();
+        assert_eq!(dump(&db), recorded(Kind::DSP));
         assert_eq!(
             db.all("SELECT id,collection,enabled FROM collection_schedules", [])
                 .unwrap(),
@@ -597,12 +658,12 @@ mod tests {
     fn jobs_and_schedules_from_before_the_routes_collection_keep_their_rows_through_the_rebuild() {
         let root = private();
         // v0.0.12 names neither the routes job kind nor the routes collection.
-        let jobs_schema = recorded(Kind::Jobs)
+        let jobs_schema = recorded(Kind::JOBS)
             .replace(RECORD, "")
             .replace(",'cortex.routes.collect'", "");
         assert!(!jobs_schema.contains("routes"));
         let file = root.path().join("jobs.sqlite");
-        older(&file, Kind::Jobs, &jobs_schema);
+        older(&file, Kind::JOBS, &jobs_schema);
         rusqlite::Connection::open(&file)
             .unwrap()
             .execute_batch(
@@ -612,8 +673,8 @@ mod tests {
                  INSERT INTO job_metrics VALUES ('job_1',1,'worker','{}');",
             )
             .unwrap();
-        let db = Db::create(&file, Kind::Jobs, "").unwrap();
-        assert_eq!(dump(&db), recorded(Kind::Jobs));
+        let db = Db::create(&file, Kind::JOBS, "").unwrap();
+        assert_eq!(dump(&db), recorded(Kind::JOBS));
         assert_eq!(
             db.all("SELECT id,kind FROM jobs", []).unwrap(),
             vec![json!({"id":"job_1","kind":"cortex.scorecard.collect"})]
@@ -639,10 +700,10 @@ mod tests {
                 .is_empty()
         );
 
-        let dsp_schema = legacy(Kind::Dsp).replace(",'routes'", "");
+        let dsp_schema = legacy(Kind::DSP).replace(",'routes'", "");
         assert!(!dsp_schema.contains("routes"));
         let file = root.path().join("dsp.sqlite");
-        older(&file, Kind::Dsp, &dsp_schema);
+        older(&file, Kind::DSP, &dsp_schema);
         rusqlite::Connection::open(&file)
             .unwrap()
             .execute_batch(
@@ -650,8 +711,8 @@ mod tests {
                  enabled,created_at) VALUES ('s1','Scorecard','scorecard','daily','07:00',0,1,'2026-01-01')",
             )
             .unwrap();
-        let db = Db::create(&file, Kind::Dsp, "").unwrap();
-        assert_eq!(dump(&db), recorded(Kind::Dsp));
+        let db = Db::create(&file, Kind::DSP, "").unwrap();
+        assert_eq!(dump(&db), recorded(Kind::DSP));
         assert_eq!(
             db.all("SELECT id,collection,enabled FROM collection_schedules", [])
                 .unwrap(),
@@ -669,10 +730,10 @@ mod tests {
     fn jobs_and_schedules_from_before_the_dvic_collection_keep_their_rows_through_the_rebuild() {
         let root = private();
         // The previous release names neither the DVIC job kind nor its schedule collection.
-        let jobs_schema = recorded(Kind::Jobs).replace(",'cortex.dvic.collect'", "");
+        let jobs_schema = recorded(Kind::JOBS).replace(",'cortex.dvic.collect'", "");
         assert!(!jobs_schema.contains("dvic"));
         let file = root.path().join("jobs.sqlite");
-        older(&file, Kind::Jobs, &jobs_schema);
+        older(&file, Kind::JOBS, &jobs_schema);
         rusqlite::Connection::open(&file)
             .unwrap()
             .execute_batch(
@@ -683,8 +744,8 @@ mod tests {
                  INSERT INTO job_metrics VALUES ('job_1',1,'worker','{}');",
             )
             .unwrap();
-        let db = Db::create(&file, Kind::Jobs, "").unwrap();
-        assert_eq!(dump(&db), recorded(Kind::Jobs));
+        let db = Db::create(&file, Kind::JOBS, "").unwrap();
+        assert_eq!(dump(&db), recorded(Kind::JOBS));
         assert_eq!(
             db.all("SELECT id,kind FROM jobs", []).unwrap(),
             vec![json!({"id":"job_1","kind":"cortex.routes.collect"})]
@@ -712,11 +773,11 @@ mod tests {
 
         // A DSP database already bound by migration 5 migrates through the startup path,
         // which verifies its identity before and after the rebuild.
-        let dsp_schema = recorded(Kind::Dsp).replace(",'dvic'", "");
+        let dsp_schema = recorded(Kind::DSP).replace(",'dvic'", "");
         assert!(!dsp_schema.contains("dvic"));
         let file = root.path().join("dsp.sqlite");
         let id = format!("dsp_{}", "2".repeat(32));
-        older(&file, Kind::Dsp, &dsp_schema);
+        older(&file, Kind::DSP, &dsp_schema);
         rusqlite::Connection::open(&file)
             .unwrap()
             .execute_batch(&format!(
@@ -727,11 +788,11 @@ mod tests {
                  enabled,created_at) VALUES ('s1','Routes','routes','daily','07:00',0,1,'2026-01-01')"
             ))
             .unwrap();
-        let db = Db::open(&file, Kind::Dsp).unwrap();
+        let db = Db::open(&file, Kind::DSP).unwrap();
         migrate_dsp(&db, &id).unwrap();
         verify_dsp_identity(&db, &id).unwrap();
         assert_eq!(ids(&db), vec![1, 2, 3, 4, 5, 6, 7]);
-        assert_eq!(dump(&db), recorded(Kind::Dsp));
+        assert_eq!(dump(&db), recorded(Kind::DSP));
         assert_eq!(
             db.all("SELECT id,collection,enabled FROM collection_schedules", [])
                 .unwrap(),
@@ -751,8 +812,8 @@ mod tests {
         let file = root.path().join("platform.sqlite");
         older(
             &file,
-            Kind::Platform,
-            &recorded(Kind::Platform).replace(RECORD, ""),
+            Kind::PLATFORM,
+            &recorded(Kind::PLATFORM).replace(RECORD, ""),
         );
         // One DSP read every feature at its old default, on; the other had switched one off.
         rusqlite::Connection::open(&file)
@@ -765,7 +826,7 @@ mod tests {
                  ('dsp_b','uniforms',0,'2026-01-02');",
             )
             .unwrap();
-        let db = Db::create(&file, Kind::Platform, "").unwrap();
+        let db = Db::create(&file, Kind::PLATFORM, "").unwrap();
         assert_eq!(
             db.all(
                 "SELECT dsp_id,feature,enabled FROM dsp_features ORDER BY dsp_id,feature",
@@ -791,7 +852,7 @@ mod tests {
     fn the_scorecard_switch_starts_on_wherever_the_timecard_was() {
         let root = private();
         let file = root.path().join("platform.sqlite");
-        let db = Db::create(&file, Kind::Platform, "").unwrap();
+        let db = Db::create(&file, Kind::PLATFORM, "").unwrap();
         // The release before the switch: Timecard on for one DSP, off for another and never
         // switched for a third; a role granting the timecard.
         db.0.execute_batch(
@@ -806,7 +867,7 @@ mod tests {
              ('manager','dsp_on','Manager','[\"timecard.manage\",\"collections.run\"]',0,'2026-01-02');",
         )
         .unwrap();
-        migrate(&db, Kind::Platform).unwrap();
+        migrate(&db, Kind::PLATFORM).unwrap();
         assert_eq!(
             db.all(
                 "SELECT dsp_id FROM dsp_features WHERE feature='scorecard' AND enabled=1",
@@ -827,10 +888,10 @@ mod tests {
     #[test]
     fn agent_keys_from_before_connected_apps_stay_keys() {
         let root = private();
-        let new = Db::create(&root.path().join("new.sqlite"), Kind::Platform, "").unwrap();
+        let new = Db::create(&root.path().join("new.sqlite"), Kind::PLATFORM, "").unwrap();
         // The release before Sign in with Dispatch: no OAuth tables, and keys of one kind
         // that read no differently.
-        let before: String = recorded(Kind::Platform)
+        let before: String = recorded(Kind::PLATFORM)
             .replace(RECORD, "")
             .replace(
                 ", kind TEXT NOT NULL DEFAULT 'key' CHECK(kind IN ('key','app')), client_id TEXT, \
@@ -845,7 +906,7 @@ mod tests {
             .collect();
         assert!(!before.contains("client_verified"));
         let file = root.path().join("platform.sqlite");
-        older(&file, Kind::Platform, &before);
+        older(&file, Kind::PLATFORM, &before);
         rusqlite::Connection::open(&file)
             .unwrap()
             .execute_batch(
@@ -855,7 +916,7 @@ mod tests {
                  locations,created_at) VALUES ('k','Laptop','h','abcd','u',1,'read','full',0,'then');",
             )
             .unwrap();
-        let db = Db::create(&file, Kind::Platform, "").unwrap();
+        let db = Db::create(&file, Kind::PLATFORM, "").unwrap();
         assert_eq!(dump(&db), dump(&new));
         assert_eq!(
             db.all(
@@ -870,10 +931,10 @@ mod tests {
     #[test]
     fn agent_keys_from_before_reads_read_every_kind_with_their_addresses() {
         let root = private();
-        let new = Db::create(&root.path().join("new.sqlite"), Kind::Platform, "").unwrap();
+        let new = Db::create(&root.path().join("new.sqlite"), Kind::PLATFORM, "").unwrap();
         // The release before reads: tools and addresses on each key, no DSP's own settings,
         // and calls never marked as bypassing features.
-        let before: String = recorded(Kind::Platform)
+        let before: String = recorded(Kind::PLATFORM)
             .replace(RECORD, "")
             .replace(
                 ", areas TEXT NOT NULL DEFAULT 'routes,timecards,meal_breaks,dvic,feedback,\
@@ -888,7 +949,7 @@ mod tests {
             .collect();
         assert!(!before.contains("bypass") && !before.contains("areas"));
         let file = root.path().join("platform.sqlite");
-        older(&file, Kind::Platform, &before);
+        older(&file, Kind::PLATFORM, &before);
         rusqlite::Connection::open(&file)
             .unwrap()
             .execute_batch(
@@ -905,7 +966,7 @@ mod tests {
                  VALUES (1,'full','Full','key','rest:whoami','ok',1,1);",
             )
             .unwrap();
-        let db = Db::create(&file, Kind::Platform, "").unwrap();
+        let db = Db::create(&file, Kind::PLATFORM, "").unwrap();
         assert_eq!(dump(&db), dump(&new));
         let every = "routes,locations,timecards,meal_breaks,dvic,feedback,safety,returns,scorecard";
         let unplaced = "routes,timecards,meal_breaks,dvic,feedback,safety,returns,scorecard";
@@ -934,17 +995,17 @@ mod tests {
     fn migrations_a_newer_release_recorded_are_tolerated() {
         let root = private();
         let file = root.path().join("dsp.sqlite");
-        let db = Db::create(&file, Kind::Dsp, "").unwrap();
+        let db = Db::create(&file, Kind::DSP, "").unwrap();
         db.0.execute_batch(
             "CREATE TABLE from_the_next_release (id TEXT); INSERT INTO \
             schema_migrations VALUES (9000,'from_the_next_release',1);",
         )
         .unwrap();
         drop(db);
-        let db = Db::create(&file, Kind::Dsp, "").unwrap();
-        migrate(&db, Kind::Dsp).unwrap();
-        Db::open(&file, Kind::Dsp).unwrap();
-        let mut expected: Vec<i64> = Kind::Dsp
+        let db = Db::create(&file, Kind::DSP, "").unwrap();
+        migrate(&db, Kind::DSP).unwrap();
+        Db::open(&file, Kind::DSP).unwrap();
+        let mut expected: Vec<i64> = Kind::DSP
             .migrations()
             .iter()
             .map(|m| i64::from(m.id))
@@ -959,10 +1020,10 @@ mod tests {
     fn a_failing_migration_changes_nothing() {
         let root = private();
         let file = root.path().join("dsp.sqlite");
-        let db = Db::create(&file, Kind::Dsp, "").unwrap();
+        let db = Db::create(&file, Kind::DSP, "").unwrap();
         let before = dump(&db);
         let before_ids = ids(&db);
-        let next = Kind::Dsp.migrations().last().unwrap().id + 1;
+        let next = Kind::DSP.migrations().last().unwrap().id + 1;
         let list = [
             Migration {
                 id: next,
@@ -988,7 +1049,7 @@ mod tests {
     fn connections_racing_to_open_first_apply_each_migration_once() {
         let root = private();
         // Neither statement can run twice.
-        let next = Kind::Dsp.migrations().last().unwrap().id + 1;
+        let next = Kind::DSP.migrations().last().unwrap().id + 1;
         let list: &[Migration] = &[Migration {
             id: next,
             name: "once",
@@ -1006,7 +1067,7 @@ mod tests {
                         // The seed would fail on its primary key if two connections ran it.
                         let db = Db::create(
                             &file,
-                            Kind::Dsp,
+                            Kind::DSP,
                             "INSERT INTO settings VALUES ('seeded','1');",
                         )
                         .unwrap();
@@ -1014,8 +1075,8 @@ mod tests {
                     });
                 }
             });
-            let db = Db::open(&file, Kind::Dsp).unwrap();
-            let mut expected: Vec<i64> = Kind::Dsp
+            let db = Db::open(&file, Kind::DSP).unwrap();
+            let mut expected: Vec<i64> = Kind::DSP
                 .migrations()
                 .iter()
                 .map(|m| i64::from(m.id))

@@ -1,13 +1,31 @@
-//! The migration list of every database kind. See `migrations` for the rules.
+//! Core's own databases, and the migrations core's parts add to them. Collectors and
+//! features declare theirs in their manifests. See `migrations` for the rules.
 //! Each 0001 creates what a new database needs and changes nothing on a database
 //! that older code created, which is how those were adopted.
 use super::{
     Db,
-    migrations::{Apply::Code, Apply::Sql, Migration, add_column},
+    migrations::{Apply::Code, Apply::Sql, Kind, Migration, Migrations, add_column},
 };
 use crate::Result;
 
-pub const PLATFORM: &[Migration] = &[
+/// The platform's accounts, the environment's jobs and each DSP's own database.
+pub const DATABASES: &[Kind] = &[Kind::PLATFORM, Kind::JOBS, Kind::DSP];
+pub const MIGRATIONS: &[Migrations] = &[
+    Migrations {
+        kind: Kind::PLATFORM,
+        list: PLATFORM,
+    },
+    Migrations {
+        kind: Kind::JOBS,
+        list: JOBS,
+    },
+    Migrations {
+        kind: Kind::DSP,
+        list: DSP,
+    },
+];
+
+const PLATFORM: &[Migration] = &[
     Migration {
         id: 1,
         name: "baseline",
@@ -62,13 +80,6 @@ pub const PLATFORM: &[Migration] = &[
         )),
     },
     Migration {
-        id: 10,
-        name: "driver_codes",
-        apply: Sql(include_str!(
-            "../../../features/driver_match/migrations/platform/0010_driver_codes.sql"
-        )),
-    },
-    Migration {
         id: 11,
         name: "agent_keys",
         apply: Sql(include_str!(
@@ -105,7 +116,7 @@ pub const PLATFORM: &[Migration] = &[
         apply: Code(agent_reads),
     },
 ];
-pub const JOBS: &[Migration] = &[
+const JOBS: &[Migration] = &[
     Migration {
         id: 1,
         name: "baseline",
@@ -133,18 +144,11 @@ pub const JOBS: &[Migration] = &[
         )),
     },
 ];
-pub const DSP: &[Migration] = &[
+const DSP: &[Migration] = &[
     Migration {
         id: 1,
         name: "baseline",
         apply: Sql(include_str!("../migrations/dsp/0001_baseline.sql")),
-    },
-    Migration {
-        id: 2,
-        name: "uniform_inventory",
-        apply: Sql(include_str!(
-            "../../../features/uniforms/migrations/dsp/0002_uniform_inventory.sql"
-        )),
     },
     Migration {
         id: 3,
@@ -174,117 +178,7 @@ pub const DSP: &[Migration] = &[
             "../../collection/migrations/dsp/0006_dvic_collection.sql"
         )),
     },
-    Migration {
-        id: 7,
-        name: "driver_match",
-        apply: Sql(include_str!(
-            "../../../features/driver_match/migrations/dsp/0007_driver_match.sql"
-        )),
-    },
 ];
-pub const PAYCOM: &[Migration] = &[
-    Migration {
-        id: 1,
-        name: "baseline",
-        apply: Sql(include_str!("../migrations/paycom/0001_baseline.sql")),
-    },
-    Migration {
-        id: 2,
-        name: "employee_timecard_syncs",
-        apply: Sql(include_str!(
-            "../../../features/timecard/migrations/paycom/0002_employee_timecard_syncs.sql"
-        )),
-    },
-    Migration {
-        id: 3,
-        name: "employee_history_index",
-        apply: Sql(include_str!(
-            "../../../features/timecard/migrations/paycom/0003_employee_history_index.sql"
-        )),
-    },
-];
-pub const CORTEX: &[Migration] = &[
-    Migration {
-        id: 1,
-        name: "baseline",
-        apply: Sql(include_str!("../migrations/cortex/0001_baseline.sql")),
-    },
-    Migration {
-        id: 2,
-        name: "meal_stops",
-        apply: Sql(include_str!(
-            "../../../features/timecard/migrations/cortex/0002_meal_stops.sql"
-        )),
-    },
-];
-pub const SCORECARD: &[Migration] = &[
-    Migration {
-        id: 1,
-        name: "baseline",
-        apply: Sql(include_str!(
-            "../../../features/scorecard/migrations/scorecard/0001_baseline.sql"
-        )),
-    },
-    Migration {
-        id: 2,
-        name: "sources",
-        apply: Sql(include_str!(
-            "../../../features/scorecard/migrations/scorecard/0002_sources.sql"
-        )),
-    },
-    Migration {
-        id: 3,
-        name: "verified_scope",
-        apply: Code(scorecard_verified_scope),
-    },
-];
-pub const ROUTEDATA: &[Migration] = &[
-    Migration {
-        id: 1,
-        name: "baseline",
-        apply: Sql(include_str!(
-            "../../../features/routes/migrations/routedata/0001_baseline.sql"
-        )),
-    },
-    Migration {
-        id: 2,
-        name: "details",
-        apply: Code(routedata_details),
-    },
-    Migration {
-        id: 3,
-        name: "task_keys",
-        apply: Sql(include_str!(
-            "../../../features/routes/migrations/routedata/0003_task_keys.sql"
-        )),
-    },
-];
-
-/// Removed tasks join `tasks`, marked inactive; the itinerary keeps its route-level lists;
-/// breaks and unknown stops get tables, and two views pre-join the common questions.
-fn routedata_details(db: &Db) -> Result<()> {
-    add_column(db, "tasks", "active", "INTEGER NOT NULL DEFAULT 1")?;
-    for column in ["rescue_actions", "sequence_edits", "pause_events"] {
-        add_column(db, "itineraries", column, "TEXT")?;
-    }
-    db.0.execute_batch(include_str!(
-        "../../../features/routes/migrations/routedata/0002_details.sql"
-    ))?;
-    Ok(())
-}
-
-fn scorecard_verified_scope(db: &Db) -> Result<()> {
-    for table in ["scorecard_publications", "scorecard_weeks"] {
-        add_column(
-            db,
-            table,
-            "scope_verified",
-            "INTEGER NOT NULL DEFAULT 0 CHECK(scope_verified IN (0,1))",
-        )?;
-    }
-    Ok(())
-}
-
 fn role_columns(db: &Db) -> Result<()> {
     add_column(db, "memberships", "role_id", "TEXT REFERENCES roles(id)")?;
     add_column(db, "invitations", "role_id", "TEXT")?;
@@ -384,44 +278,5 @@ fn security_hardening(db: &Db) -> Result<()> {
     db.0.execute_batch(
         "CREATE INDEX IF NOT EXISTS throttle_namespace_expiry ON throttle(namespace, reset_at)",
     )?;
-    Ok(())
-}
-
-pub const DVIC: &[Migration] = &[
-    Migration {
-        id: 1,
-        name: "baseline",
-        apply: Sql(include_str!(
-            "../../../features/dvic/migrations/dvic/0001_baseline.sql"
-        )),
-    },
-    Migration {
-        id: 2,
-        name: "hidden_drivers",
-        apply: Sql(include_str!(
-            "../../../features/dvic/migrations/dvic/0002_hidden_drivers.sql"
-        )),
-    },
-    Migration {
-        id: 3,
-        name: "verified_scope",
-        apply: Code(dvic_verified_scope),
-    },
-];
-
-fn dvic_verified_scope(db: &Db) -> Result<()> {
-    for table in [
-        "dvic_reports",
-        "dvic_inspections",
-        "dvic_weeks",
-        "dvic_runs",
-    ] {
-        add_column(
-            db,
-            table,
-            "scope_verified",
-            "INTEGER NOT NULL DEFAULT 0 CHECK(scope_verified IN (0,1))",
-        )?;
-    }
     Ok(())
 }

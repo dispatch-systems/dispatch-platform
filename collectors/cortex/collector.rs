@@ -26,7 +26,7 @@ use crate::{
         egress::HostPolicy,
         http::RequestHosts,
     },
-    db::{self, Db, Kind},
+    db::{self, Db, Kind, Migration, Migrations, migrations::Apply::Sql},
     ensure,
     job_metrics::Counts,
     manifest::{Collection, Collector},
@@ -87,6 +87,17 @@ pub static REPORT_HOSTS: RequestHosts = RequestHosts {
     http2: false,
 };
 
+/// Its database, `cortex/cortex.sqlite` in each DSP's data.
+pub const DATABASE: Kind = Kind::new("cortex", 1);
+const MIGRATIONS: &[Migrations] = &[Migrations {
+    kind: DATABASE,
+    list: &[Migration {
+        id: 1,
+        name: "baseline",
+        apply: Sql(include_str!("migrations/cortex/0001_baseline.sql")),
+    }],
+}];
+
 /// What it reads, meal breaks first.
 static COLLECTIONS: [Collection; 4] = [
     Collection {
@@ -137,7 +148,10 @@ impl Collector for Cortex {
         }
     }
     fn database(&self) -> Kind {
-        Kind::Cortex
+        DATABASE
+    }
+    fn migrations(&self) -> &'static [Migrations] {
+        MIGRATIONS
     }
     fn seed(&self, dsp: &str) -> String {
         format!(

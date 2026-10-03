@@ -25,7 +25,7 @@ use crate::{
         RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteRetention,
         RouteStop, RouteTask, RouteUnknownStop,
     },
-    db::{Db, DspLease, Kind, Store, at, s},
+    db::{Db, DspLease, Kind, Store, at, migrations::add_column, s},
     ensure,
 };
 use chrono::{Duration, NaiveDate};
@@ -38,14 +38,27 @@ pub const COLLECTION: &str = "routes";
 /// What shaped a publication's rows. 2 keys tasks by itinerary and keeps their events
 /// as triples; a reprocess brings an older publication up to date.
 pub const ADAPTER_VERSION: i64 = 2;
-/// The route data database beside `cortex.sqlite`.
+/// The route data database beside `cortex.sqlite`. It holds a day of tasks per
+/// publication and answers day-range reads, so its indexes stay in memory.
+pub const DATABASE: Kind = Kind::new("routedata", 1).cache(32768);
 pub static STORAGE: AddedStorage = AddedStorage {
     id: "routedata",
-    kind: Kind::RouteData,
+    kind: DATABASE,
     marker: "storage.routedata",
     source: "routedata-v1",
     verify,
 };
+/// Migration 2: removed tasks join `tasks`, marked inactive; the itinerary keeps its
+/// route-level lists; breaks and unknown stops get tables, and two views pre-join the
+/// common questions.
+pub(crate) fn add_details(db: &Db) -> Result<()> {
+    add_column(db, "tasks", "active", "INTEGER NOT NULL DEFAULT 1")?;
+    for column in ["rescue_actions", "sequence_edits", "pause_events"] {
+        add_column(db, "itineraries", column, "TEXT")?;
+    }
+    db.0.execute_batch(include_str!("../migrations/routedata/0002_details.sql"))?;
+    Ok(())
+}
 /// How far back a schedule collects days it has no final publication of.
 pub const BACKFILL_DAYS: usize = 7;
 /// Jobs one scheduled run queues at most; the queue admits five active per DSP.

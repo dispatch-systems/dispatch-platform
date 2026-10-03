@@ -45,12 +45,12 @@ impl Store {
         let store = Self {
             platform: Db::create(
                 &config.platform().join("accounts.sqlite"),
-                Kind::Platform,
+                Kind::PLATFORM,
                 "",
             )?,
             jobs: Db::create(
                 &config.environment_root().join("jobs.sqlite"),
-                Kind::Jobs,
+                Kind::JOBS,
                 "",
             )?,
             config,
@@ -72,8 +72,8 @@ impl Store {
     }
     pub fn open(config: Config, key: Vec<u8>) -> Result<Self> {
         Ok(Self {
-            platform: Db::open(&config.platform().join("accounts.sqlite"), Kind::Platform)?,
-            jobs: Db::open(&config.environment_root().join("jobs.sqlite"), Kind::Jobs)?,
+            platform: Db::open(&config.platform().join("accounts.sqlite"), Kind::PLATFORM)?,
+            jobs: Db::open(&config.environment_root().join("jobs.sqlite"), Kind::JOBS)?,
             config,
             key,
             dsp_cache: std::cell::RefCell::new(Vec::new()),
@@ -106,7 +106,7 @@ impl Store {
     }
     fn dsp_unverified(&self, id: &str) -> Result<DspLease<'_>> {
         let path = self.area(id, "data")?.join("dispatch.sqlite");
-        self.cached_database(&path, Kind::Dsp)
+        self.cached_database(&path, Kind::DSP)
     }
     pub(crate) fn cached_database(&self, path: &Path, kind: Kind) -> Result<DspLease<'_>> {
         private_file(path, false)?;

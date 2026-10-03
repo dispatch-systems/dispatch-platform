@@ -4,7 +4,7 @@ use crate::{
     Code, Error, Result, State,
     browsers::{Collected, Driver, Pending, browseros},
     collectors::AddedStorage,
-    db::{Db, Kind, Store},
+    db::{self, Db, Kind, Migration, Migrations, Store},
     job_metrics::Counts,
 };
 use serde_json::Value;
@@ -63,6 +63,32 @@ impl Registry {
             .find(|keeper| keeper.keeps() == kind)
             .unwrap_or_else(|| panic!("no feature keeps {kind}"))
     }
+    /// Every kind of database: core's, each collector's, then those the keepers of its
+    /// collections add beside it, in the order of its collections.
+    pub fn databases(&self) -> impl Iterator<Item = Kind> {
+        let collectors = self.collectors.iter().map(|collector| collector.database());
+        let added = self
+            .collectors
+            .iter()
+            .flat_map(|collector| collector.collections())
+            .flat_map(|collection| self.keepers().filter(|k| k.keeps() == collection.job_kind))
+            .flat_map(|keeper| keeper.storages().iter().map(|storage| storage.kind));
+        db::CORE_DATABASES
+            .iter()
+            .copied()
+            .chain(collectors)
+            .chain(added)
+    }
+    /// What every owner adds to the databases: core's parts, each collector, each feature.
+    fn migration_lists(&self) -> impl Iterator<Item = &'static Migrations> {
+        let collectors = self.collectors.iter().flat_map(|c| c.migrations());
+        let features = self.features.iter().flat_map(|feature| feature.migrations);
+        db::CORE_MIGRATIONS.iter().chain(collectors).chain(features)
+    }
+    /// One kind of database's migrations, gathered from every owner, in order.
+    pub fn migrations(&self, kind: Kind) -> Vec<Migration> {
+        db::migrations::ledger(kind, self.migration_lists())
+    }
     /// Every permission as declared: core's own, then each feature's, in the registry's
     /// order. Lists of permissions follow their `order` instead.
     pub fn permissions(&self) -> impl Iterator<Item = &'static Permission> {
@@ -70,9 +96,10 @@ impl Registry {
         CORE_PERMISSIONS.iter().copied().chain(features)
     }
     /// Panics unless every collection has exactly one keeper, every keeper keeps a
-    /// registered collection, one page runs the schedules, only a page has tabs, and
-    /// every permission has an id and an order of its own and implies only permissions
-    /// that exist.
+    /// registered collection, one page runs the schedules, only a page has tabs, every
+    /// permission has an id and an order of its own and implies only permissions that
+    /// exist, and every database is declared once, with migrations numbered from 1
+    /// without a gap or a repeat.
     pub fn check(&self) {
         let kinds: Vec<&str> = self
             .collectors
@@ -120,6 +147,24 @@ impl Registry {
                 );
             }
         }
+        let databases: Vec<Kind> = self.databases().collect();
+        for (index, kind) in databases.iter().enumerate() {
+            assert!(
+                databases[..index]
+                    .iter()
+                    .all(|other| other.name() != kind.name()),
+                "the {} database is declared twice",
+                kind.name()
+            );
+            self.migrations(*kind);
+        }
+        for owned in self.migration_lists() {
+            assert!(
+                databases.contains(&owned.kind),
+                "migrations name a {} database that is not declared, or not as declared",
+                owned.kind.name()
+            );
+        }
     }
 }
 
@@ -141,6 +186,8 @@ pub struct Feature {
     pub live: &'static [&'static str],
     /// The collections it keeps.
     pub keeps: &'static [&'static dyn Keeper],
+    /// What it adds to databases: its own, kept beside a collector's, or another owner's.
+    pub migrations: &'static [Migrations],
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
@@ -153,6 +200,7 @@ pub const fn feature(name: &'static str) -> Feature {
         permissions: &[],
         live: &[],
         keeps: &[],
+        migrations: &[],
     }
 }
 
@@ -271,8 +319,10 @@ pub trait Collector: Sync {
     fn job_kind_for(&self, _request: &Value) -> &'static str {
         self.collections()[0].job_kind
     }
-    /// Its database, and with it the migration list in `db::schema`.
+    /// Its database. Its migrations are every owner's, its own included (`migrations`).
     fn database(&self) -> Kind;
+    /// What it adds to databases, starting with its own's baseline.
+    fn migrations(&self) -> &'static [Migrations];
     /// Written into a new database with its schema. Must identify the storage.
     fn seed(&self, dsp: &str) -> String;
     /// The DSP setting recording that this storage was added to an existing DSP.

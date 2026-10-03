@@ -4,7 +4,8 @@
 //! migration never changes, wherever it is declared.
 use crate::{
     crypto,
-    db::{Db, Kind, migrations::Apply},
+    db::{Db, Kind, Migration, Migrations, migrations::Apply},
+    manifest::{Feature, Registry, feature},
 };
 use std::os::unix::fs::PermissionsExt;
 
@@ -118,7 +119,7 @@ const DATABASES: &[Database] = &[
 ];
 
 fn databases() -> Vec<Kind> {
-    Kind::ALL.to_vec()
+    crate::manifest::registry().databases().collect()
 }
 
 #[test]
@@ -171,4 +172,52 @@ fn every_database_keeps_its_version_cache_and_migrations() {
         })
         .collect();
     assert_eq!(found, expected);
+}
+
+/// The registry with one more feature, as `install` would check it.
+fn with(extra: &'static Feature) -> Registry {
+    let features: Vec<&'static Feature> = crate::REGISTRY
+        .features
+        .iter()
+        .copied()
+        .chain([extra])
+        .collect();
+    Registry {
+        collectors: crate::REGISTRY.collectors,
+        features: Box::leak(features.into_boxed_slice()),
+    }
+}
+
+#[test]
+#[should_panic(expected = "dsp migration 8 is missing")]
+fn a_registry_whose_migrations_skip_an_id_is_refused() {
+    static GAP: Feature = Feature {
+        migrations: &[Migrations {
+            kind: Kind::DSP,
+            list: &[Migration {
+                id: 9,
+                name: "after_a_gap",
+                apply: Apply::Sql(""),
+            }],
+        }],
+        ..feature("gap")
+    };
+    with(&GAP).check();
+}
+
+#[test]
+#[should_panic(expected = "dsp migration 7 is declared twice")]
+fn a_registry_whose_migrations_repeat_an_id_is_refused() {
+    static REPEAT: Feature = Feature {
+        migrations: &[Migrations {
+            kind: Kind::DSP,
+            list: &[Migration {
+                id: 7,
+                name: "again",
+                apply: Apply::Sql(""),
+            }],
+        }],
+        ..feature("repeat")
+    };
+    with(&REPEAT).check();
 }
