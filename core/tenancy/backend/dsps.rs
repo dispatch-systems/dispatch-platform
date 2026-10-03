@@ -1,4 +1,5 @@
-use super::collectors::Provider;
+// A4: provisioning and the DSP list name Paycom, until tenancy asks the registry.
+use super::collectors::{Provider, paycom};
 use super::{
     Error, Result,
     accounts::{Auth, Context},
@@ -161,7 +162,7 @@ impl Store {
         let result = (|| {
             self.initialize_dsp(id)?;
             self.initialize_collectors(id)?;
-            let db = self.collector(id, Provider::Paycom)?;
+            let db = self.collector(id, paycom::PROVIDER)?;
             db.exec(
                 "INSERT OR IGNORE INTO connections(provider,updated_at) VALUES ('paycom',?)",
                 [iso()],
@@ -229,21 +230,21 @@ impl Store {
             if [DspStatus::Active, DspStatus::Suspended].contains(&summary.dsp.status) {
                 let id = &summary.dsp.id;
                 summary.profile = self.profile(id)?;
-                for provider in Provider::ALL {
+                for provider in Provider::all() {
                     let status: Option<(ConnectionStatus,)> =
-                        self.collector(id, *provider)?.one_as(
+                        self.collector(id, provider)?.one_as(
                             "SELECT status FROM connections WHERE provider=?",
                             [provider.id()],
                         )?;
                     if let Some((status,)) = status {
                         summary.connections.insert(provider.id().to_owned(), status);
-                        if *provider == Provider::Paycom {
+                        if provider == paycom::PROVIDER {
                             summary.paycom = status;
                         }
                     }
                 }
                 let collected: Option<(String,)> = self
-                    .collector(id, Provider::Paycom)?
+                    .collector(id, paycom::PROVIDER)?
                     .one_as("SELECT collected_at FROM publications WHERE active=1", [])?;
                 summary.last_collection = collected.map(|(at,)| at);
                 let next: Option<(Option<String>,)> = self.dsp(id)?.one_as(

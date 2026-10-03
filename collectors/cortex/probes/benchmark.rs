@@ -106,7 +106,7 @@ async fn record_data_requests() -> Result<()> {
         .start(
             &profile,
             browseros::Mode::Windowed,
-            browseros::NetworkPolicy::Cortex,
+            browseros::NetworkPolicy::Hosts(&crate::collectors::cortex::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;
@@ -296,7 +296,7 @@ async fn compare_tabs() -> Result<()> {
         .start(
             &profile,
             browseros::Mode::Windowed,
-            browseros::NetworkPolicy::Cortex,
+            browseros::NetworkPolicy::Hosts(&crate::collectors::cortex::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;
@@ -439,7 +439,7 @@ async fn diagnose_tabs() -> Result<()> {
         .start(
             &profile,
             browseros::Mode::Windowed,
-            browseros::NetworkPolicy::Cortex,
+            browseros::NetworkPolicy::Hosts(&crate::collectors::cortex::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser.clone(), &profile, None).await?;
@@ -665,7 +665,7 @@ async fn probe_scorecard_api() -> Result<()> {
         .start(
             &profile,
             browseros::Mode::Windowed,
-            browseros::NetworkPolicy::Cortex,
+            browseros::NetworkPolicy::Hosts(&crate::collectors::cortex::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;
@@ -1168,7 +1168,7 @@ async fn probe_routes_api() -> Result<()> {
         .start(
             &profile,
             browseros::Mode::Windowed,
-            browseros::NetworkPolicy::Cortex,
+            browseros::NetworkPolicy::Hosts(&crate::collectors::cortex::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;
@@ -1416,7 +1416,11 @@ async fn measure_route_method() -> Result<()> {
     let cgroup = own_cgroup().ok_or_else(|| Error::new("benchmark_cgroup_required", 400))?;
     let launched = Instant::now();
     let browser = runtime
-        .start(&profile, mode, browseros::NetworkPolicy::Cortex)
+        .start(
+            &profile,
+            mode,
+            browseros::NetworkPolicy::Hosts(&crate::collectors::cortex::BROWSER_HOSTS),
+        )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;
     let result = async {
@@ -1623,7 +1627,11 @@ async fn measure_meal_method() -> Result<()> {
     )?;
     let cgroup = own_cgroup().ok_or_else(|| Error::new("benchmark_cgroup_required", 400))?;
     let browser = runtime
-        .start(&profile, mode, browseros::NetworkPolicy::Cortex)
+        .start(
+            &profile,
+            mode,
+            browseros::NetworkPolicy::Hosts(&crate::collectors::cortex::BROWSER_HOSTS),
+        )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;
     let result = async {

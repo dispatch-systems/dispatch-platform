@@ -112,7 +112,7 @@ async fn measure_live_collection() -> Result<()> {
         .start(
             &profile,
             browseros::Mode::Windowed,
-            browseros::NetworkPolicy::Paycom,
+            browseros::NetworkPolicy::Hosts(&crate::collectors::paycom::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;
@@ -157,7 +157,7 @@ async fn measure_live_collection() -> Result<()> {
             "spotChecked":reads["spotChecked"],"pageRetries":reads["retries"],"failedReads":reads["failures"].as_array().map(Vec::len)}));
         let collection_peak=peak.each_ref().map(|value| value.load(Ordering::Relaxed));
         let database=rusqlite::Connection::open_with_flags(crate::collectors::database_path(&dsp,
-            crate::collectors::Provider::Paycom)?,rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+            crate::collectors::paycom::PROVIDER)?,rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         let mut expected=std::collections::BTreeMap::new();
         let mut statement=database.prepare("SELECT employee_code,date,hours,status,punches \
             FROM timecards WHERE publication_id=(SELECT id FROM publications WHERE active=1)")?;
@@ -557,7 +557,7 @@ async fn http_extraction_parity() -> Result<()> {
         .start(
             &profile,
             browseros::Mode::Windowed,
-            browseros::NetworkPolicy::Paycom,
+            browseros::NetworkPolicy::Hosts(&crate::collectors::paycom::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;
@@ -670,7 +670,7 @@ async fn http_concurrency() -> Result<()> {
         .start(
             &profile,
             browseros::Mode::Windowed,
-            browseros::NetworkPolicy::Paycom,
+            browseros::NetworkPolicy::Hosts(&crate::collectors::paycom::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;

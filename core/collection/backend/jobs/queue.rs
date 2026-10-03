@@ -1,4 +1,4 @@
-use crate::collectors::Provider;
+use crate::collectors::{Provider, cortex, paycom};
 use crate::{
     Code, Error, Result,
     contracts::{ActiveJobStatus, Dsp, JobRow, JobStatus, PublicJob, UserStatus},
@@ -206,9 +206,10 @@ impl Store {
             .one_as(JOB, params![id, dsp, dsp])?
             .ok_or_else(|| Error::new("job_not_found", 404))
     }
+    // A4: the timecard page's and Cortex's own requests, until their routes queue them.
     /// Queue helpers return the public JSON response used by collection requests.
     pub fn enqueue(&self, id: &str, actor: Option<&str>, key: &str) -> Result<Value> {
-        self.enqueue_for(id, actor, key, Provider::Paycom, &json!({}))
+        self.enqueue_for(id, actor, key, paycom::PROVIDER, &json!({}))
     }
     pub fn enqueue_paycom_date(
         &self,
@@ -222,7 +223,7 @@ impl Store {
             &request,
             &self.find_dsp(id)?.timezone,
         )?;
-        self.enqueue_for(id, actor, key, Provider::Paycom, &request)
+        self.enqueue_for(id, actor, key, paycom::PROVIDER, &request)
     }
     pub fn enqueue_employee_timecard(
         &self,
@@ -246,7 +247,7 @@ impl Store {
             id,
             actor,
             key,
-            Provider::Paycom,
+            paycom::PROVIDER,
             &serde_json::to_value(scope)?,
         )
     }
@@ -262,7 +263,7 @@ impl Store {
             id,
             actor,
             key,
-            Provider::Cortex,
+            cortex::PROVIDER,
             &serde_json::to_value(scope)?,
         )
     }
@@ -389,10 +390,10 @@ impl Store {
         provider.collector().discard(self, id, None)
     }
     pub fn cancel_dsp(&self, id: &str) -> Result<()> {
-        for provider in Provider::ALL {
-            self.clear_live(id, *provider, None)?;
+        for provider in Provider::all() {
+            self.clear_live(id, provider, None)?;
         }
-        for provider in Provider::ALL {
+        for provider in Provider::all() {
             provider.collector().discard(self, id, None)?;
         }
         self.cancel_jobs(CancelJobs::Dsp(id))?;
@@ -506,7 +507,7 @@ impl Store {
         if !row.held_by(owner) {
             return Ok(());
         }
-        let retry = error.is_some_and(|e| Code::text_is_any(e, Code::RETRYABLE))
+        let retry = error.is_some_and(|e| Code::retryable().any(|code| code.as_str() == e))
             && row.attempt < row.max_attempts;
         let (status, message) = if retry {
             (JobStatus::Queued, "Retry scheduled")

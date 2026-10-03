@@ -1,13 +1,16 @@
 //! Validated, temporary driver results. Complete publications remain authoritative
 //! for history; failed/cancelled/replaced attempts never overwrite them.
+// A3: Paycom's staging and Cortex's live writer, until they move to their collectors.
 use super::{
     Error, Result, State,
     collectors::{
         Provider,
         cortex::{
+            self,
             discovery::{CollectionRequest, Scope},
             meals::Capture,
         },
+        paycom,
     },
     db::{self, Db, Store, s},
     ensure,
@@ -46,7 +49,7 @@ impl Store {
         records: &[Value],
     ) -> Result<()> {
         let dsp = self.guard(job, owner)?;
-        let db = self.collector(&dsp.id, Provider::Paycom)?;
+        let db = self.collector(&dsp.id, paycom::PROVIDER)?;
         db.transaction(|| stage_paycom_page(&db, job, owner, employee, records))
     }
 
@@ -196,7 +199,7 @@ impl Writer {
                 state
                     .read_cache
                     .invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::Live);
-                db.collector(&dsp.id, Provider::Cortex)?.exec(
+                db.collector(&dsp.id, cortex::PROVIDER)?.exec(
                     "UPDATE collection_live_runs \
                 SET metadata=json_set(metadata,'$.drivers',json(?1)) WHERE job_id=?2 AND owner=?3",
                     params![drivers.to_string(), job, owner],
@@ -204,9 +207,10 @@ impl Writer {
                 Ok(dsp.id)
             })
             .await?;
-        self.state
-            .updates
-            .changed(&dsp, crate::contracts::CollectionChange::provider("cortex"));
+        self.state.updates.changed(
+            &dsp,
+            crate::contracts::CollectionChange::provider(cortex::PROVIDER.id()),
+        );
         Ok(())
     }
     pub async fn cortex(&self, capture: &Capture) -> Result<()> {
@@ -216,7 +220,7 @@ impl Writer {
         let data = serde_json::to_string(capture)?;
         ensure(data.len() <= 64 * 1024, "invalid_live_capture", 502)?;
         let change = crate::contracts::CollectionChange {
-            provider: "cortex".into(),
+            provider: cortex::PROVIDER.id().into(),
             dates: vec![capture.scope.date.clone()],
             employee_code: None,
             roster: false,
@@ -234,11 +238,11 @@ impl Writer {
                     .invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::Live);
                 let row = db.job_row(&job, None)?;
                 ensure(
-                    row.kind.as_str() == Provider::Cortex.job_kind(),
+                    row.kind.as_str() == cortex::PROVIDER.job_kind(),
                     "unsupported_collector",
                     409,
                 )?;
-                let storage = db.collector(&dsp.id, Provider::Cortex)?;
+                let storage = db.collector(&dsp.id, cortex::PROVIDER)?;
                 let run = storage
                     .one(
                         "SELECT metadata FROM collection_live_runs WHERE job_id=? \
@@ -298,8 +302,8 @@ mod tests {
                     "live-password-test",
                 )?;
                 let dsp = s(&bootstrap["dsp"], "id").to_owned();
-                for provider in Provider::ALL {
-                    db.collector(&dsp, *provider)?
+                for provider in Provider::all() {
+                    db.collector(&dsp, provider)?
                         .exec("UPDATE connections SET enabled=1", [])?;
                 }
                 let old = fixtures::fixture_date("UTC", Some("2026-01-19".parse().unwrap()))?;
@@ -325,7 +329,7 @@ mod tests {
         state
             .read(move |db| {
                 let live =
-                    db.live_results_range(&tenant, Provider::Paycom, "2026-01-05", "2026-01-20")?;
+                    db.live_results_range(&tenant, paycom::PROVIDER, "2026-01-05", "2026-01-20")?;
                 assert_eq!(live.len(), 14, "only metadata-covered days are included");
                 assert_eq!(
                     live["2026-01-06"][0].0["roster"].as_array().unwrap().len(),
@@ -364,10 +368,10 @@ mod tests {
                 assert_eq!(row["hours"], 9.0);
                 assert_eq!(daily["collectedAt"], old_snapshot["collectedAt"]);
                 let range =
-                    db.live_results_range(&tenant, Provider::Paycom, "2026-01-18", "2026-01-20")?;
+                    db.live_results_range(&tenant, paycom::PROVIDER, "2026-01-18", "2026-01-20")?;
                 assert_eq!(range.len(), 2);
                 for day in ["2026-01-18", "2026-01-19"] {
-                    assert_eq!(range[day], db.live_results(&tenant, Provider::Paycom, day)?);
+                    assert_eq!(range[day], db.live_results(&tenant, paycom::PROVIDER, day)?);
                     assert_eq!(range[day][0].1.len(), 1);
                 }
                 let comparison = db
@@ -388,13 +392,13 @@ mod tests {
                         .is_empty()
                 );
                 // A changed connection must immediately hide the old attempt.
-                db.collector(&tenant, Provider::Paycom)?
+                db.collector(&tenant, paycom::PROVIDER)?
                     .exec("UPDATE connections SET revision=revision+1", [])?;
                 assert!(
-                    db.live_results(&tenant, Provider::Paycom, "2026-01-19")?
+                    db.live_results(&tenant, paycom::PROVIDER, "2026-01-19")?
                         .is_empty()
                 );
-                db.collector(&tenant, Provider::Paycom)?
+                db.collector(&tenant, paycom::PROVIDER)?
                     .exec("UPDATE connections SET revision=revision-1", [])?;
                 Ok(())
             })
@@ -430,7 +434,7 @@ mod tests {
                     .unwrap();
                 assert_eq!(row["hours"], 8.5);
                 assert!(
-                    db.collector(&tenant, Provider::Paycom)?
+                    db.collector(&tenant, paycom::PROVIDER)?
                         .all("SELECT * FROM collection_live_items", [])?
                         .is_empty()
                 );
@@ -517,7 +521,7 @@ mod tests {
                 );
                 db.finish(&flex_job, "flex-owner", Some("invalid_cortex_capture"))?;
                 assert!(
-                    db.collector(&dsp, Provider::Cortex)?
+                    db.collector(&dsp, cortex::PROVIDER)?
                         .all("SELECT * FROM collection_live_items", [])?
                         .is_empty()
                 );

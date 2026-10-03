@@ -9,6 +9,7 @@
 use super::*;
 use crate::{
     collectors::cortex::{
+        codes,
         discovery::Scope,
         routes::{
             Capture, Collection, ItineraryCapture, MAX_BODY, MAX_ITINERARIES, Request,
@@ -33,7 +34,7 @@ const PAGE_DEADLINE: Duration = Duration::from_secs(45);
 /// A move that failed for one of these is read by loading the itinerary's page instead:
 /// the application did not answer, or was between documents.
 const MOVE_FAILED: &[crate::Code] = &[
-    crate::Code::RoutesMoveUnanswered,
+    codes::ROUTES_MOVE_UNANSWERED,
     crate::Code::BrowserNavigationPending,
     crate::Code::BrowserScriptFailed,
 ];

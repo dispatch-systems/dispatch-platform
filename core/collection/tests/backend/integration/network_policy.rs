@@ -1,4 +1,4 @@
-use dispatch_backend::browsers::egress;
+use dispatch_backend::{browsers::egress, collectors::paycom};
 
 #[test]
 fn egress_rejects_private_and_lookalike_destinations() {
@@ -35,28 +35,28 @@ fn egress_rejects_private_and_lookalike_destinations() {
         ));
     }
     assert!(egress::public_address("8.8.8.8".parse().unwrap()));
-    assert!(egress::allowed_host("time-and-attendance.paycomonline.net"));
+    assert!(paycom::allowed_host("time-and-attendance.paycomonline.net"));
     for host in [
         "evilpaycomonline.net",
         "paycomonline.net.evil.test",
         "localhost",
         "127.0.0.1",
     ] {
-        assert!(!egress::allowed_host(host));
+        assert!(!paycom::allowed_host(host));
     }
 }
 
 #[test]
 fn cortex_network_policy_keeps_provider_hosts_separate() {
-    use dispatch_backend::browsers::egress;
+    use dispatch_backend::collectors::{cortex, paycom};
     for host in [
         "logistics.amazon.com",
         "www.amazon.com",
         "m.media-amazon.com",
         "images-na.ssl-images-amazon.com",
     ] {
-        assert!(egress::allowed_cortex_host(host));
-        assert!(!egress::allowed_host(host));
+        assert!(cortex::allowed_host(host));
+        assert!(!paycom::allowed_host(host));
     }
     for host in [
         "www.paycomonline.net",
@@ -66,6 +66,6 @@ fn cortex_network_policy_keeps_provider_hosts_separate() {
         "127.0.0.1",
         "metadata.google.internal",
     ] {
-        assert!(!egress::allowed_cortex_host(host));
+        assert!(!cortex::allowed_host(host));
     }
 }

@@ -26,8 +26,12 @@ pub mod driver_match;
 pub mod dvic;
 #[path = "../../core/foundation/backend/error.rs"]
 pub mod error;
+#[path = "feature_manifests.rs"]
+pub mod feature_manifests;
 #[path = "../../core/tenancy/backend/catalog.rs"]
 pub mod features;
+#[path = "../../features/home/backend/mod.rs"]
+pub mod home;
 #[path = "../../core/server/backend/http/mod.rs"]
 pub mod http;
 #[path = "../../core/collection/backend/metrics.rs"]
@@ -40,6 +44,8 @@ pub mod live_collection;
 pub mod live_updates;
 #[path = "../../core/server/backend/mail/mod.rs"]
 pub mod mail;
+#[path = "../../core/manifest/backend/mod.rs"]
+pub mod manifest;
 #[path = "../../features/timecard/backend/meals/mod.rs"]
 pub mod meals;
 #[path = "../../core/foundation/backend/names.rs"]
@@ -79,3 +85,27 @@ pub mod workforce;
 
 pub use error::{Code, Error, Result, ensure};
 pub use state::{State, cancelled, supervise};
+
+/// Everything this build of Dispatch is made of: its collectors and its features.
+pub static REGISTRY: manifest::Registry = manifest::Registry {
+    collectors: &[
+        &collectors::paycom::COLLECTOR,
+        &collectors::cortex::COLLECTOR,
+    ],
+    features: &[
+        &feature_manifests::timecard::FEATURE,
+        &feature_manifests::uniforms::FEATURE,
+        &feature_manifests::routes::FEATURE,
+        &feature_manifests::dvic::FEATURE,
+        &feature_manifests::scorecard::FEATURE,
+        &feature_manifests::driver_match::FEATURE,
+        &feature_manifests::team::FEATURE,
+        &feature_manifests::settings::FEATURE,
+        &feature_manifests::home::FEATURE,
+    ],
+};
+/// Installs `REGISTRY`. Every entry point calls this before anything reads the registry;
+/// calling it again changes nothing.
+pub fn install() {
+    manifest::install(&REGISTRY);
+}

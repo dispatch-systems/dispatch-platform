@@ -7,6 +7,7 @@ use crate::{
 };
 use std::{io::Read, path::Path};
 pub async fn run() -> Result<()> {
+    crate::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let command = args.first().map(String::as_str).unwrap_or("serve");
     if command == "browseros-worker" {

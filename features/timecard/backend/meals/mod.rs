@@ -7,12 +7,10 @@ mod sync;
 // Cortex meal evidence and atomic publication. Browser data is untrusted input.
 use crate::{
     Result,
-    collectors::{
-        Provider,
-        cortex::{
-            discovery::Scope,
-            meals::{Capture, Coverage, Itinerary, Meal},
-        },
+    collectors::cortex::{
+        self,
+        discovery::Scope,
+        meals::{Capture, Coverage, Itinerary, Meal},
     },
     db::{Store, at, s},
     ensure,
@@ -91,7 +89,7 @@ impl Store {
         expected: &Scope,
     ) -> Result<Value> {
         capture.validate(expected)?;
-        let db = self.collector(dsp, Provider::Cortex)?;
+        let db = self.collector(dsp, cortex::PROVIDER)?;
         db.transaction(|| {
             // Recovered workers may repeat publication after a crash between databases.
             if let Some(existing)=db.one("SELECT id FROM meal_publications WHERE job_id=?",[job])? {return Ok(existing);}
@@ -160,7 +158,7 @@ impl Store {
             "invalid_date",
             400,
         )?;
-        Ok(json!(self.collector(dsp, Provider::Cortex)?.all(
+        Ok(json!(self.collector(dsp, cortex::PROVIDER)?.all(
             "SELECT id,job_id \
             jobId,report_date date,station,service_area_id \
             serviceAreaId,provider,timezone,started_at startedAt,collected_at \

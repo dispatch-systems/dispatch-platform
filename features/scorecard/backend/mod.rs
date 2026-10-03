@@ -5,8 +5,9 @@
 use crate::{
     Error, Result,
     collectors::{
-        AddedStorage, Provider,
+        AddedStorage,
         cortex::{
+            self,
             discovery::Scope,
             scorecard::{Capture, Collection, DATASETS, Dataset, Request},
         },
@@ -89,7 +90,7 @@ fn keys(dataset: &Dataset, row: &Value) -> Keys {
 
 impl Store {
     pub fn scorecard(&self, id: &str) -> Result<DspLease<'_>> {
-        self.added_storage(id, Provider::Cortex, &STORAGE)
+        self.added_storage(id, cortex::PROVIDER, &STORAGE)
     }
     /// Today, where the DSP is.
     fn scorecard_today(&self, id: &str) -> Result<NaiveDate> {
@@ -142,7 +143,7 @@ impl Store {
         let week = week_or_latest(week, self.scorecard_today(id)?)?;
         let request = self.scorecard_request(id, &week)?;
         let job = self
-            .enqueue_batch(id, actor, &[(key.into(), Provider::Cortex, request)])?
+            .enqueue_batch(id, actor, &[(key.into(), cortex::PROVIDER, request)])?
             .remove(0);
         Ok(serde_json::to_value(job)?)
     }
@@ -200,7 +201,7 @@ impl Store {
         scope: &Scope,
     ) -> Result<()> {
         let request: Value = serde_json::from_str(&self.job_row(job, Some(id))?.request)?;
-        let request = Provider::Cortex
+        let request = cortex::PROVIDER
             .collector()
             .bind_request(self, id, &request)?;
         let request = Request::parse(&request)?.ok_or_else(|| Error::new("invalid_input", 400))?;

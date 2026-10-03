@@ -54,8 +54,8 @@ impl Mode {
 /// Chosen by trusted host code, never deserialized from a DSP request.
 #[derive(Clone, Copy)]
 pub enum NetworkPolicy {
-    Paycom,
-    Cortex,
+    /// A provider's own hosts, as its collector declares them.
+    Hosts(&'static super::egress::HostPolicy),
     /// Synthetic local server, reachable only as fixture.dispatch.invalid.
     Fixture(std::num::NonZeroU16),
 }

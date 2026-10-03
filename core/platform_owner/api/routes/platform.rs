@@ -1,4 +1,5 @@
 //! What only a platform owner sees: every DSP, the platform's health and diagnostics.
+// A4: a test DSP's demo timecards, until the timecard feature seeds them.
 use crate::{
     Error, Result, State,
     collectors::{Provider, paycom::fixtures},
@@ -200,7 +201,7 @@ async fn set_feature(state: Arc<State>, input: Input, access: PlatformRoutine) -
             let result = db.set_feature(&dsp, &feature, enabled, owner.user.id.as_str())?;
             let mut cancelled = Vec::new();
             // Each collection's owning feature stops only its own jobs.
-            for provider in Provider::ALL {
+            for provider in Provider::all() {
                 let collector = provider.collector();
                 for kind in std::iter::once(collector.job_kind())
                     .chain(collector.other_job_kinds().iter().copied())
@@ -215,14 +216,14 @@ async fn set_feature(state: Arc<State>, input: Input, access: PlatformRoutine) -
                         )?;
                         for job in &jobs {
                             if job.status.is_leased() {
-                                cancelled.push((*provider, job.connection_revision));
+                                cancelled.push((provider, job.connection_revision));
                             }
                         }
                         db.cancel_jobs(crate::jobs::CancelJobs::Kind { dsp: &dsp, kind })?;
                         // Cancelling clears the lease, so a worker's finish no longer owns
                         // the job and skips this; drop what each job kept, as `cancel` does.
                         for job in &jobs {
-                            db.clear_live(&dsp, *provider, Some(&job.id))?;
+                            db.clear_live(&dsp, provider, Some(&job.id))?;
                             collector.discard(db, &dsp, Some(&job.id))?;
                         }
                     }
@@ -262,9 +263,7 @@ fn switched(result: &DspFeatures, feature: &str, enabled: bool) -> bool {
 }
 /// Connections switched off by this change, including dependency cascades.
 fn stopped(result: &DspFeatures) -> Vec<Provider> {
-    Provider::ALL
-        .iter()
-        .copied()
+    Provider::all()
         .filter(|p| switched(result, p.id(), false))
         .collect()
 }

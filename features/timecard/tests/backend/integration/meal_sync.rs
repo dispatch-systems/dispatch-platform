@@ -3,7 +3,8 @@ mod common;
 use dispatch_backend::{
     collectors::{
         Provider,
-        cortex::{discovery::Scope, meals},
+        cortex::{self, discovery::Scope, meals},
+        paycom,
     },
     contracts::PublicJob,
     db::{Store, s},
@@ -50,8 +51,8 @@ fn jobs(db: &Store, id: &str) -> Vec<PublicJob> {
 #[test]
 fn first_sync_discovers_from_tenant_profile_and_replays_after_publication() {
     let (_root, db, id, actor) = fixture();
-    enable(&db, &id, Provider::Paycom);
-    enable(&db, &id, Provider::Cortex);
+    enable(&db, &id, paycom::PROVIDER);
+    enable(&db, &id, cortex::PROVIDER);
     db.set_profile(&id, json!({"stationCode":"TST1", "abbreviation":"NLOG"}))
         .unwrap();
     assert_eq!(
@@ -88,8 +89,8 @@ fn first_sync_discovers_from_tenant_profile_and_replays_after_publication() {
 #[test]
 fn combined_sync_reuses_tenant_scope_records_date_and_is_idempotent() {
     let (_root, db, id, actor) = fixture();
-    enable(&db, &id, Provider::Paycom);
-    enable(&db, &id, Provider::Cortex);
+    enable(&db, &id, paycom::PROVIDER);
+    enable(&db, &id, cortex::PROVIDER);
     assert_eq!(
         db.enqueue_meal_sync(&id, &actor, "first", "2026-01-11")
             .unwrap_err()
@@ -157,14 +158,14 @@ fn combined_sync_reuses_tenant_scope_records_date_and_is_idempotent() {
 fn invalid_dates_missing_connections_and_capacity_never_queue_half_a_sync() {
     let (_root, db, id, actor) = fixture();
     seed(&db, &id, "2026-01-10", 1);
-    enable(&db, &id, Provider::Paycom);
+    enable(&db, &id, paycom::PROVIDER);
     assert_eq!(
         db.enqueue_meal_sync(&id, &actor, "missing", "2026-01-10")
             .unwrap_err()
             .code,
         "meal_sync_flex_required"
     );
-    enable(&db, &id, Provider::Cortex);
+    enable(&db, &id, cortex::PROVIDER);
     for date in ["2026-02-30", "2099-01-01", "2026-1-10", "1999-12-31"] {
         assert_eq!(
             db.enqueue_meal_sync(&id, &actor, "invalid", date)
@@ -203,8 +204,8 @@ fn invalid_dates_missing_connections_and_capacity_never_queue_half_a_sync() {
 #[test]
 fn successful_station_does_not_hide_a_failed_station_in_the_same_sync() {
     let (_root, db, id, actor) = fixture();
-    enable(&db, &id, Provider::Paycom);
-    enable(&db, &id, Provider::Cortex);
+    enable(&db, &id, paycom::PROVIDER);
+    enable(&db, &id, cortex::PROVIDER);
     seed(&db, &id, "2026-01-10", 1);
     seed(&db, &id, "2026-01-10", 2);
     let result = db
@@ -248,8 +249,8 @@ fn status_reads_allow_a_viewer_date_ahead_of_the_dsp_but_collection_does_not() {
 #[test]
 fn manual_sync_lock_and_original_date_follow_the_entire_batch() {
     let (_root, db, id, actor) = fixture();
-    enable(&db, &id, Provider::Paycom);
-    enable(&db, &id, Provider::Cortex);
+    enable(&db, &id, paycom::PROVIDER);
+    enable(&db, &id, cortex::PROVIDER);
     seed(&db, &id, "2026-01-10", 1);
     let original = db
         .enqueue_meal_sync(&id, &actor, "original", "2026-01-11")

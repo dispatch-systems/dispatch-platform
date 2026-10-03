@@ -42,10 +42,11 @@ pub fn routes() -> Vec<Route> {
     ]
 }
 
-/// The Paycom connection, with the browser session a member can take over when there is one.
-pub fn summary(db: &Store, c: &Member) -> Result<Connection> {
-    let mut value = db.connection(c.dsp_id())?;
-    if let Some(session) = c.state.browsers.get(c.dsp_id())
+/// A provider's connection, with the browser session a member can take over when there
+/// is one.
+pub fn summary(db: &Store, c: &Member, provider: Provider) -> Result<Connection> {
+    let mut value = db.connection_for(c.dsp_id(), provider)?;
+    if let Some(session) = c.state.browsers.get_for(c.dsp_id(), provider)
         && session.interactive()
     {
         value.verification_session_id = Some(session.id.clone());
@@ -53,9 +54,11 @@ pub fn summary(db: &Store, c: &Member) -> Result<Connection> {
     Ok(value)
 }
 
+// A4: the Paycom connection's own address, from before every provider had one.
 fn connection(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    ensure(c.has(Provider::Paycom.id()), "not_found", 404)?;
-    Reply::of(&summary(db, c)?)
+    let paycom = crate::collectors::paycom::PROVIDER;
+    ensure(c.has(paycom.id()), "not_found", 404)?;
+    Reply::of(&summary(db, c, paycom)?)
 }
 
 // Every flow starts the same way: who is asking, and about which provider. An

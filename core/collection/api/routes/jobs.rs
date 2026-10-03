@@ -1,4 +1,5 @@
 //! Collection jobs: listing, requesting and cancelling them.
+// A4: Cortex's meal-break request, until its routes are built from the registry.
 use crate::{
     Error, Result, State,
     collectors::cortex::discovery::Scope,
@@ -47,7 +48,7 @@ fn timecards(kind: &str) -> bool {
 
 fn jobs(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
     let mut kinds = vec![];
-    for provider in crate::collectors::Provider::ALL {
+    for provider in crate::collectors::Provider::all() {
         let collector = provider.collector();
         kinds.extend(
             std::iter::once(collector.job_kind())

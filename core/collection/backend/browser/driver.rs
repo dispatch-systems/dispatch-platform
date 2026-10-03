@@ -1,6 +1,7 @@
 //! What a session asks of a provider's browser. `paycom`, `cortex` and `fixture`
 //! implement it; nothing outside this directory knows which one it is driving.
 use super::browseros;
+// A3: `Collected.scope` is Cortex's, until the keeper split makes it opaque.
 use crate::{
     Result, State, collectors::cortex::discovery::Scope, contracts::ActiveJobStatus,
     job_metrics::Recorder,

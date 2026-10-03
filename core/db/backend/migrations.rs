@@ -358,10 +358,10 @@ mod tests {
         store.provision(&id).unwrap();
         let dsp = store.dsp(&id).unwrap();
         let paycom = store
-            .collector(&id, crate::collectors::Provider::Paycom)
+            .collector(&id, crate::collectors::paycom::PROVIDER)
             .unwrap();
         let cortex = store
-            .collector(&id, crate::collectors::Provider::Cortex)
+            .collector(&id, crate::collectors::cortex::PROVIDER)
             .unwrap();
         let scorecard = store.scorecard(&id).unwrap();
         let routedata = store.routedata(&id).unwrap();

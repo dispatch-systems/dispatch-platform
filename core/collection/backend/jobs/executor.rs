@@ -73,7 +73,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
         let collected = session
             .collect(&state, &id, &owner, &metrics, &request, job.attempt)
             .await?;
-        metrics.counts(&collected.data);
+        metrics.counts(provider.collector().counts(&collected.data));
         // Work that needs no database first; then staging stores what it can in short
         // steps, so the platform lock is only ever taken for moments.
         let collected = provider.collector().prepare(collected)?;
@@ -200,7 +200,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
             .get("employeeCode")
             .and_then(Value::as_str)
             .map(str::to_owned),
-        roster: provider == Provider::Paycom && request.get("employeeCode").is_none(),
+        roster: provider.collector().roster() && request.get("employeeCode").is_none(),
     };
     let _ = state
         .run_scoped(dsp.clone(), domain, move |db| {

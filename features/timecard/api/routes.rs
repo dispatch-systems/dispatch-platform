@@ -2,7 +2,7 @@
 use super::connections;
 use crate::{
     Result,
-    collectors::Provider,
+    collectors::paycom,
     contracts::{EmployeeTimecardPeriod, PaycomSettings},
     db::Store,
     http::{
@@ -128,10 +128,10 @@ fn sync_employee(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 
 fn paycom_status(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
     let publication = db
-        .collector(c.dsp_id(), Provider::Paycom)?
+        .collector(c.dsp_id(), paycom::PROVIDER)?
         .one("SELECT collected_at FROM publications WHERE active=1", [])?;
     Ok(Reply::json(json!({
-        "connection":connections::summary(db, c)?,
+        "connection":connections::summary(db, c, paycom::PROVIDER)?,
         "workforce":{"collectedAt":publication.map(|p| p["collected_at"].clone())}
     })))
 }

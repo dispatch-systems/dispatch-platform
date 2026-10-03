@@ -187,7 +187,7 @@ static CATALOG: LazyLock<Vec<Feature>> = LazyLock::new(|| {
         .iter()
         .chain(TABS)
         .copied()
-        .chain(Provider::ALL.iter().map(|p| connection(*p)))
+        .chain(Provider::all().map(connection))
         .collect()
 });
 pub fn catalog() -> &'static [Feature] {

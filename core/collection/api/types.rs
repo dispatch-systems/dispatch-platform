@@ -108,6 +108,7 @@ text_enum! {
         Error => "error",
     }
 }
+// A4: the schedule collections, until the registry declares them.
 text_enum! {
     /// What a schedule collects: one provider's data, or every scheduled provider's.
     #[cfg_attr(test, derive(ts_rs::TS))]

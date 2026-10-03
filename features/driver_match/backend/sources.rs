@@ -2,7 +2,7 @@
 //! days it saw them. Read afresh each time; Driver Match stores only what was decided.
 use crate::{
     Result,
-    collectors::Provider,
+    collectors::{cortex, paycom},
     contracts::{DriverData, DriverSource},
     db::{Db, Store, n, s},
     weeks,
@@ -73,7 +73,7 @@ fn week_start(week: &str) -> String {
 /// the scorecard often adds a middle name and DVIC sometimes only a last initial.
 pub(crate) fn identities(store: &Store, dsp: &str) -> Result<Vec<Identity>> {
     let mut found: BTreeMap<Key, Identity> = BTreeMap::new();
-    let paycom = store.collector(dsp, Provider::Paycom)?;
+    let paycom = store.collector(dsp, paycom::PROVIDER)?;
     // The newest roster names an employee as Paycom lists them now.
     for row in paycom.all(
         "SELECT e.code,e.name,e.department,e.position,substr(p.collected_at,1,10) day,\
@@ -138,7 +138,7 @@ pub(crate) fn identities(store: &Store, dsp: &str) -> Result<Vec<Identity>> {
     );
     let plain = |row: &Value| s(row, "name").to_owned();
     amazon(
-        store.collector(dsp, Provider::Cortex)?.all(
+        store.collector(dsp, cortex::PROVIDER)?.all(
             "SELECT i.transporter_id id,i.driver_name name,min(p.report_date) first,\
              max(p.report_date) last FROM meal_itineraries i JOIN meal_publications p \
              ON p.id=i.publication_id GROUP BY i.transporter_id,i.driver_name \
@@ -187,7 +187,7 @@ pub(crate) fn name_of(store: &Store, dsp: &str, (source, id): &Key) -> Result<Op
     };
     if *source == DriverSource::Paycom {
         return first(
-            &*store.collector(dsp, Provider::Paycom)?,
+            &*store.collector(dsp, paycom::PROVIDER)?,
             "SELECT e.name FROM employees e JOIN publications p ON p.id=e.publication_id \
              WHERE e.code=? ORDER BY p.collected_at DESC,p.id DESC LIMIT 1",
         );
@@ -200,7 +200,7 @@ pub(crate) fn name_of(store: &Store, dsp: &str, (source, id): &Key) -> Result<Op
         return Ok(routes);
     }
     let meals = first(
-        &*store.collector(dsp, Provider::Cortex)?,
+        &*store.collector(dsp, cortex::PROVIDER)?,
         "SELECT i.driver_name FROM meal_itineraries i JOIN meal_publications p \
          ON p.id=i.publication_id WHERE i.transporter_id=? ORDER BY p.report_date DESC",
     )?;
@@ -254,7 +254,7 @@ pub(crate) fn activity(
         }
     };
     add(
-        store.collector(dsp, Provider::Paycom)?.all(
+        store.collector(dsp, paycom::PROVIDER)?.all(
             "SELECT employee_code id,count(DISTINCT date) count,max(date) last \
              FROM timecards WHERE hours>0 GROUP BY employee_code",
             [],
@@ -275,7 +275,7 @@ pub(crate) fn activity(
         false,
     );
     add(
-        store.collector(dsp, Provider::Cortex)?.all(
+        store.collector(dsp, cortex::PROVIDER)?.all(
             "SELECT i.transporter_id id,count(DISTINCT p.report_date) count,\
              max(p.report_date) last FROM meal_itineraries i JOIN meal_publications p \
              ON p.id=i.publication_id AND p.active=1 GROUP BY i.transporter_id",
@@ -326,7 +326,7 @@ impl Days {
 /// When Paycom shows hours and when Amazon shows a route, a meal break or an inspection.
 pub(crate) fn days(store: &Store, dsp: &str) -> Result<Days> {
     let mut out = Days::default();
-    let paycom = store.collector(dsp, Provider::Paycom)?;
+    let paycom = store.collector(dsp, paycom::PROVIDER)?;
     for (code, date) in paycom.query_as::<(String, String)>(
         "SELECT DISTINCT employee_code,date FROM timecards WHERE hours>0",
         [],
@@ -358,7 +358,7 @@ pub(crate) fn days(store: &Store, dsp: &str) -> Result<Days> {
             .insert(day);
     }
     drop(routes);
-    let cortex = store.collector(dsp, Provider::Cortex)?;
+    let cortex = store.collector(dsp, cortex::PROVIDER)?;
     for (id, day) in cortex.query_as::<(String, String)>(
         "SELECT DISTINCT i.transporter_id,p.report_date FROM meal_itineraries i \
          JOIN meal_publications p ON p.id=i.publication_id AND p.active=1",

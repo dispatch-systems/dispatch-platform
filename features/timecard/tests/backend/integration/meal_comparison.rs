@@ -3,9 +3,8 @@ mod common;
 use dispatch_backend::{
     accounts::{Auth, Context},
     collectors::{
-        Provider,
-        cortex::{discovery::Scope, meals},
-        paycom::fixtures,
+        cortex::{self, discovery::Scope, meals},
+        paycom::{self, fixtures},
     },
     contracts::DriverSource,
     db::{Store, s},
@@ -152,7 +151,7 @@ fn drivers_join_employees_through_driver_match_and_names_cover_the_rest() {
             .is_err()
     );
     assert_eq!(
-        db.collector(&id, Provider::Cortex)
+        db.collector(&id, cortex::PROVIDER)
             .unwrap()
             .one("SELECT count(*) n FROM meal_delivery_events", [])
             .unwrap()
@@ -162,7 +161,7 @@ fn drivers_join_employees_through_driver_match_and_names_cover_the_rest() {
 }
 /// Adds a meal-break driver to the day's publication, as a collection would have.
 fn add_driver(db: &Store, id: &str, transporter: &str, name: &str) {
-    let cortex = db.collector(id, Provider::Cortex).unwrap();
+    let cortex = db.collector(id, cortex::PROVIDER).unwrap();
     let itinerary = format!("itinerary-{transporter}");
     cortex
         .exec(
@@ -230,7 +229,7 @@ fn newer_empty_scope_suppresses_stale_meals_and_latest_paycom_period_wins() {
     capture.itineraries[0].meals.clear();
     db.publish_meals(&id, "new-scope", &capture, &scope)
         .unwrap();
-    db.collector(&id,Provider::Cortex).unwrap().exec("UPDATE meal_publications SET collected_at='2099-01-01T00:00:00.000Z' WHERE job_id='new-scope'",[]).unwrap();
+    db.collector(&id,cortex::PROVIDER).unwrap().exec("UPDATE meal_publications SET collected_at='2099-01-01T00:00:00.000Z' WHERE job_id='new-scope'",[]).unwrap();
     let data = db
         .meal_comparison(&id, &date, "UTC")
         .map(|value| serde_json::to_value(value).unwrap())
@@ -259,7 +258,7 @@ fn newer_empty_scope_suppresses_stale_meals_and_latest_paycom_period_wins() {
 fn ambiguity_includes_employees_without_punches_and_drivers_without_meals() {
     let (_root, db, id) = common::bootstrapped();
     let (date, _) = seed(&db, &id);
-    let paycom = db.collector(&id, Provider::Paycom).unwrap();
+    let paycom = db.collector(&id, paycom::PROVIDER).unwrap();
     paycom
         .exec(
             "UPDATE employees SET name='DEMO DRIVER' WHERE code='E002'",
@@ -278,7 +277,7 @@ fn ambiguity_includes_employees_without_punches_and_drivers_without_meals() {
             [],
         )
         .unwrap();
-    db.collector(&id, Provider::Cortex).unwrap().exec(
+    db.collector(&id, cortex::PROVIDER).unwrap().exec(
         "INSERT INTO meal_itineraries SELECT publication_id,itinerary_id||'-2',transporter_id||'-2',driver_name,route_code,observed_at,route_complete,delivery_coverage,meal_state FROM meal_itineraries",[]
     ).unwrap();
     let data = db

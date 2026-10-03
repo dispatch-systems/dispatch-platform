@@ -67,6 +67,7 @@ fn param<'a>(params: &'a [(String, String)], name: &str) -> Option<&'a str> {
 }
 impl Server {
     async fn start() -> Self {
+        dispatch_backend::install();
         let root = tempfile::tempdir().unwrap();
         std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
         let dashboard = root.path().join("dashboard");

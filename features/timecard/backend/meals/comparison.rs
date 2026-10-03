@@ -2,7 +2,7 @@
 //! Driver Match; unique names join the drivers it has not reached yet.
 use crate::{
     Result,
-    collectors::Provider,
+    collectors::cortex,
     contracts::{LateRule, MealComparison, MealSource},
     db::{Store, s},
     driver_match,
@@ -120,7 +120,7 @@ impl Store {
                 .collect::<Vec<_>>()
         });
         let days = self.daily_sources(id, from, to, codes.as_deref())?;
-        let cortex = self.collector(id, Provider::Cortex)?;
+        let cortex = self.collector(id, cortex::PROVIDER)?;
         let mut publications: BTreeMap<String, Vec<Value>> = BTreeMap::new();
         let mut ids = vec![];
         for mut publication in cortex.all(
@@ -180,7 +180,7 @@ impl Store {
                 "SELECT timezone FROM meal_publications WHERE active=1                  ORDER BY collected_at DESC,id DESC LIMIT 1", [],
             )?,
         };
-        let mut live = self.live_results_range(id, Provider::Cortex, from, to)?;
+        let mut live = self.live_results_range(id, cortex::PROVIDER, from, to)?;
         days.into_iter()
             .map(|(date, source)| {
                 let publications = publications.remove(&date).unwrap_or_default();

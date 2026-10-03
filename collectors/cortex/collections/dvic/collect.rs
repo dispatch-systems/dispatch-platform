@@ -1,7 +1,8 @@
 use super::*;
 use crate::{
-    browsers::http::{Http, Refusal},
+    browsers::http::{FIXTURE, Http, Refusal},
     collectors::cortex::{
+        self,
         discovery::Scope,
         dvic::{self, Capture, Collection, Report, Request},
     },
@@ -19,6 +20,19 @@ struct Listed {
     week: String,
     date: String,
     modified_at: i64,
+}
+/// S3 pre-signed downloads use a separate client with no Amazon cookies or referer.
+/// Redirects and every host other than the observed report host fail.
+fn reports(origin: &str) -> Result<Http> {
+    let url = url::Url::parse(origin).map_err(|_| Error::new("egress_denied", 403))?;
+    if url.host_str() != Some(FIXTURE) {
+        ensure(
+            url.origin().ascii_serialization() == format!("https://{}", cortex::HOST),
+            "egress_denied",
+            403,
+        )?;
+    }
+    Http::detached(origin, &cortex::REPORT_HOSTS)
 }
 fn refusal(error: Refusal) -> Error {
     match error {
@@ -146,8 +160,8 @@ impl Driver {
         let api = self
             .performance_api(&scope, &request.dsp_abbreviation, run.metrics)
             .await?;
-        let http = Http::signed_in(&self.browser, &self.origin).await?;
-        let downloads = Http::cortex_reports(&self.origin)?;
+        let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
+        let downloads = reports(&self.origin)?;
         let job = run.job.to_owned();
         let station = request.station.clone();
         let company = api.company_id.clone();
@@ -286,6 +300,13 @@ impl Driver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{
+        Router,
+        body::Body,
+        http::{HeaderMap, Response, StatusCode},
+        routing::get,
+    };
+    use url::Url;
     #[test]
     fn listings_use_publication_dates_and_reject_foreign_hosts_paths_and_duplicate_objects() {
         let capture = dvic::fixture(&Request {
@@ -332,5 +353,78 @@ mod tests {
         }
         assert!(read(json!({"tableData":{}})).unwrap().is_empty());
         assert!(read(json!({"message":"signed out"})).is_err());
+    }
+    #[tokio::test]
+    async fn report_downloads_use_validators_bound_bodies_and_never_follow_redirects_or_forward_cookies()
+     {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let app = Router::new()
+            .route(
+                "/report",
+                get(|headers: HeaderMap| async move {
+                    assert!(headers.get("cookie").is_none());
+                    assert!(headers.get("referer").is_none());
+                    let unchanged = headers.get("if-none-match").is_some_and(|h| h == "\"v1\"");
+                    Response::builder()
+                        .status(if unchanged { 304 } else { 200 })
+                        .header("etag", "\"v1\"")
+                        .header("last-modified", "Sun, 27 Sep 2026 14:04:00 GMT")
+                        .body(Body::from(if unchanged { "" } else { "workbook" }))
+                        .unwrap()
+                }),
+            )
+            .route(
+                "/redirect",
+                get(|| async {
+                    Response::builder()
+                        .status(302)
+                        .header("location", "/report")
+                        .body(Body::empty())
+                        .unwrap()
+                }),
+            )
+            .route(
+                "/throttled",
+                get(|| async { StatusCode::TOO_MANY_REQUESTS }),
+            );
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let origin = format!("http://{FIXTURE}:{port}");
+        let client = reports(&origin).unwrap();
+        let url = format!("{origin}/report");
+        let first = client.download(&url, None, 8).await.ok().unwrap();
+        assert_eq!(first.body.unwrap(), b"workbook");
+        assert!(first.modified_at.is_some());
+        let cached = client
+            .download(&url, first.etag.as_deref(), 8)
+            .await
+            .ok()
+            .unwrap();
+        assert!(cached.body.is_none());
+        assert!(matches!(
+            client.download(&url, None, 4).await,
+            Err(Refusal::Unreadable("http_body_too_large"))
+        ));
+        assert!(matches!(
+            client
+                .download(&format!("{origin}/redirect"), None, 8)
+                .await,
+            Err(Refusal::Unreadable("http_download_refused"))
+        ));
+        assert!(matches!(
+            client
+                .download(&format!("{origin}/throttled"), None, 8)
+                .await,
+            Err(Refusal::Unavailable)
+        ));
+        let s3 = Url::parse(&format!("https://{}/report", REPORT_HOST)).unwrap();
+        assert!(cortex::REPORT_HOSTS.allows(&s3));
+        assert!(!cortex::HOSTS.allows(&s3));
+        assert!(!(cortex::REPORT_HOSTS.cookies)("amazon.com"));
+        assert!(
+            !cortex::REPORT_HOSTS
+                .allows(&Url::parse("https://logistics.amazon.com/report").unwrap())
+        );
+        server.abort();
     }
 }

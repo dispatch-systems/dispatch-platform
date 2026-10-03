@@ -1,7 +1,7 @@
 use super::preferences::preferences;
 use crate::{
     Result,
-    collectors::Provider,
+    collectors::paycom,
     contracts::EmployeesResponse,
     db::{Store, boolean, s},
 };
@@ -17,7 +17,7 @@ impl Store {
         desc: bool,
         active: Option<bool>,
     ) -> Result<EmployeesResponse> {
-        let db = self.collector(id, Provider::Paycom)?;
+        let db = self.collector(id, paycom::PROVIDER)?;
         let settings = preferences(&db)?;
         let p = &settings["values"];
         let Some(publication) = db.one(

@@ -2,6 +2,7 @@
 //! source would hold them. Routes and meal breaks go through the same staging and
 //! publishing a collection uses, so they read exactly as collected data does. Only a
 //! development server with fixture providers, seeded first, can make it.
+// A4: the demo data, until each feature seeds its own.
 use crate::{
     Error, Result,
     collectors::cortex::{
@@ -115,11 +116,10 @@ pub fn seed(db: &Store) -> Result<Value> {
         &id,
         json!({"stationCode": STATION, "abbreviation": "NLOG", "setupRequired": false}),
     )?;
-    db.collector(&id, crate::collectors::Provider::Cortex)?
-        .exec(
-            "UPDATE connections SET enabled=1,status='ready',account_label='fixture'",
-            [],
-        )?;
+    db.collector(&id, cortex::PROVIDER)?.exec(
+        "UPDATE connections SET enabled=1,status='ready',account_label='fixture'",
+        [],
+    )?;
     let today = chrono::Utc::now().with_timezone(&zone).date_naive();
     let dates: Vec<NaiveDate> = (1..=DAYS)
         .rev()
@@ -355,7 +355,7 @@ fn scorecards(
             db.enqueue_scorecard(id, None, &format!("synthetic-scorecard:{week}"), Some(week))?;
         let job = s(&jobs, "id").to_owned();
         let request: Value = serde_json::from_str(&db.job_row(&job, Some(id))?.request)?;
-        let request = crate::collectors::Provider::Cortex
+        let request = cortex::PROVIDER
             .collector()
             .bind_request(db, id, &request)?;
         let request = cortex::scorecard::Request::parse(&request)?

@@ -2,6 +2,7 @@
 //! understood (the DSP, its date today, the days and any driver), gives the figure the
 //! question is about, then a table whose column names appear once, one page at a time.
 //! Every row of detail waits for a request that asks for it.
+// A4: the features' views and their sources' names, until each feature answers for its own.
 use super::{
     Answer, Refusal,
     access::{self, Access, Read},

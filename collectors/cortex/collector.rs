@@ -1,6 +1,8 @@
 //! Cortex: meal evidence, the scorecard, daily routes, and short DVIC inspections from Amazon Logistics.
 //! Its storage was added to DSPs that already existed, which is the path every later
 //! provider takes.
+#[path = "codes.rs"]
+pub mod codes;
 #[path = "discovery/scope.rs"]
 pub mod discovery;
 #[path = "collections/dvic/capture.rs"]
@@ -12,26 +14,81 @@ pub mod routes;
 #[path = "collections/scorecard/capture.rs"]
 pub mod scorecard;
 
-use super::AddedStorage;
-use super::Collector;
+use super::{AddedStorage, Provider};
 use crate::{
-    Error, Result,
+    Code, Error, Result,
     browsers::{
         Collected, Driver, Pending,
         browseros::{self, NetworkPolicy},
-        cortex,
+        cortex::{self, dvic::REPORT_HOST},
+        egress::HostPolicy,
+        http::RequestHosts,
     },
     db::{self, Db, Kind, Store},
-    ensure, validate as v,
+    ensure,
+    job_metrics::Counts,
+    manifest::Collector,
+    validate as v,
 };
 use discovery::CollectionRequest;
 use serde_json::{Value, json};
 use std::path::Path;
 
-pub(super) struct Cortex;
+pub const PROVIDER: Provider = Provider::new("cortex");
+pub static COLLECTOR: Cortex = Cortex;
+
+/// The application's own host.
+pub const HOST: &str = "logistics.amazon.com";
+/// What its browser may open: Amazon's sign-in and the application, the report host its
+/// downloads come from, and the media hosts its pages load.
+pub fn allowed_host(host: &str) -> bool {
+    [
+        HOST,
+        REPORT_HOST,
+        "amazon.com",
+        "www.amazon.com",
+        "unagi.amazon.com",
+        "unagi-na.amazon.com",
+    ]
+    .contains(&host)
+        || ["media-amazon.com", "ssl-images-amazon.com"]
+            .iter()
+            .any(|root| host == *root || host.ends_with(&format!(".{root}")))
+}
+// Only the application's own host: its data API lives there.
+fn own_host(host: &str) -> bool {
+    allowed_host(host) && host == HOST
+}
+fn amazon_cookie(domain: &str) -> bool {
+    domain == HOST || domain == "amazon.com" || domain.ends_with(".amazon.com")
+}
+fn report_host(host: &str) -> bool {
+    host == REPORT_HOST && allowed_host(host)
+}
+fn no_cookie(_: &str) -> bool {
+    false
+}
+pub static BROWSER_HOSTS: HostPolicy = HostPolicy {
+    allowed: allowed_host,
+};
+/// Its reads over plain HTTP, with Amazon's cookies. It answers over HTTP/2 and
+/// compresses its JSON to a twelfth: every read of a job shares one connection.
+pub static HOSTS: RequestHosts = RequestHosts {
+    allowed: own_host,
+    cookies: amazon_cookie,
+    http2: true,
+};
+/// S3 pre-signed report downloads: the observed report host only, with no Amazon cookies.
+pub static REPORT_HOSTS: RequestHosts = RequestHosts {
+    allowed: report_host,
+    cookies: no_cookie,
+    http2: false,
+};
+
+pub struct Cortex;
 impl Collector for Cortex {
     fn id(&self) -> &'static str {
-        "cortex"
+        PROVIDER.id()
     }
     fn label(&self) -> &'static str {
         "Cortex"
@@ -130,7 +187,7 @@ impl Collector for Cortex {
         ]
     }
     fn network(&self) -> NetworkPolicy {
-        NetworkPolicy::Cortex
+        NetworkPolicy::Hosts(&BROWSER_HOSTS)
     }
     fn validate_credentials(&self, value: &Value) -> Result<()> {
         v::fields(value, &["username", "password"])?;
@@ -202,6 +259,32 @@ impl Collector for Cortex {
         } else {
             "Collecting meal breaks"
         }
+    }
+    fn counts(&self, data: &Value) -> Counts {
+        let total_rows = |items: &Value| {
+            items.as_array().map(|items| {
+                items
+                    .iter()
+                    .map(|item| item["rows"].as_array().map_or(0, Vec::len))
+                    .sum()
+            })
+        };
+        Counts {
+            itineraries: data["itineraries"].as_array().map(Vec::len),
+            meals: data["itineraries"].as_array().map(|rows| {
+                rows.iter()
+                    .map(|r| r["meals"].as_array().map_or(0, Vec::len))
+                    .sum()
+            }),
+            rows: total_rows(&data["reports"]).or_else(|| total_rows(&data["datasets"])),
+            ..Counts::default()
+        }
+    }
+    fn codes(&self) -> &'static [Code] {
+        codes::ALL
+    }
+    fn retryable(&self) -> &'static [Code] {
+        codes::RETRYABLE
     }
     fn stage<'a>(
         &'a self,

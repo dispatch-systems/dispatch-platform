@@ -221,7 +221,7 @@ impl Store {
     fn scheduled_collections(
         collection: ScheduleCollection,
     ) -> impl Iterator<Item = (Provider, &'static str, &'static str)> {
-        Provider::ALL.iter().copied().flat_map(move |provider| {
+        Provider::all().flat_map(move |provider| {
             provider
                 .collector()
                 .schedules()
@@ -310,6 +310,7 @@ impl Store {
             ],
         )?;
         let name = v::name(value, "name", 60)?;
+        // A4: the schedule collections, until the registry declares them.
         let collection = v::choice(
             value,
             "collection",
@@ -575,7 +576,10 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::s;
+    use crate::{
+        collectors::{cortex, paycom},
+        db::s,
+    };
     use std::os::unix::fs::PermissionsExt;
     fn ms(value: &str) -> i64 {
         chrono::DateTime::parse_from_rfc3339(value)
@@ -598,7 +602,7 @@ mod tests {
             .unwrap();
         db.provision(&id).unwrap();
         db.enable_all_features(&id).unwrap();
-        db.collector(&id, Provider::Paycom)
+        db.collector(&id, paycom::PROVIDER)
             .unwrap()
             .exec("UPDATE connections SET enabled=1", [])
             .unwrap();
@@ -608,7 +612,7 @@ mod tests {
         json!({"name":"Collection","collection":collection,"cadence":"interval","intervalMinutes":120,"localTime":"00:00","enabled":true})
     }
     fn meals(db: &Store, id: &str) {
-        db.collector(id, Provider::Cortex)
+        db.collector(id, cortex::PROVIDER)
             .unwrap()
             .exec("UPDATE connections SET enabled=1", [])
             .unwrap();
@@ -776,7 +780,7 @@ mod tests {
         db.jobs
             .exec("UPDATE jobs SET status='succeeded'", [])
             .unwrap();
-        db.collector(&id, Provider::Cortex)
+        db.collector(&id, cortex::PROVIDER)
             .unwrap()
             .exec("UPDATE connections SET enabled=0", [])
             .unwrap();
@@ -786,7 +790,7 @@ mod tests {
             stored(&second).last_error.as_deref(),
             Some("schedule_meals_required")
         );
-        db.pause_provider_schedules(&id, Provider::Cortex).unwrap();
+        db.pause_provider_schedules(&id, cortex::PROVIDER).unwrap();
         assert!(!stored(&second).enabled);
         assert!(stored(&first).enabled);
     }

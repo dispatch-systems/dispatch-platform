@@ -1,7 +1,7 @@
 //! Historical daily sources loaded once for a range, including guarded employee overlays.
 use crate::{
     Result,
-    collectors::Provider,
+    collectors::paycom,
     db::{Store, s},
     ensure, validate,
 };
@@ -30,7 +30,7 @@ impl Store {
         ensure(from <= to, "invalid_date", 400)?;
         let first = chrono::NaiveDate::parse_from_str(from, "%Y-%m-%d").unwrap();
         let last = chrono::NaiveDate::parse_from_str(to, "%Y-%m-%d").unwrap();
-        let db = self.collector(id, Provider::Paycom)?;
+        let db = self.collector(id, paycom::PROVIDER)?;
         let publications = db.all(
             "SELECT id,period_from,period_to,collected_at FROM publications \
              WHERE period_from<=? AND period_to>=? ORDER BY collected_at DESC,id DESC LIMIT ?",
@@ -145,7 +145,7 @@ impl Store {
                 }
             }
         }
-        for (date, live) in self.live_results_range(id, Provider::Paycom, from, to)? {
+        for (date, live) in self.live_results_range(id, paycom::PROVIDER, from, to)? {
             let Some(source) = days.get_mut(&date) else {
                 continue;
             };

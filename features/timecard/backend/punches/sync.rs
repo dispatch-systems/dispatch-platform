@@ -1,12 +1,10 @@
 //! Single-employee Paycom requests and captures, separate from full roster snapshots.
 use crate::{
     Result,
-    collectors::{
-        Provider,
-        paycom::{
-            timecards::{EmployeeSync, PERIOD_DAYS},
-            validation::validate_workforce,
-        },
+    collectors::paycom::{
+        self,
+        timecards::{EmployeeSync, PERIOD_DAYS},
+        validation::validate_workforce,
     },
     db::{Store, s},
     ensure,
@@ -56,7 +54,7 @@ impl Store {
         )?;
         // Kept outside full publications: a single-employee sync never becomes the roster.
         // Older releases safely ignore this additive table on rollback.
-        self.collector(id, Provider::Paycom)?.exec(
+        self.collector(id, paycom::PROVIDER)?.exec(
             "INSERT INTO employee_timecard_syncs VALUES (?,?,?,?,?) \
              ON CONFLICT(employee_code,period_from,period_to) DO UPDATE SET \
              collected_at=excluded.collected_at,data=excluded.data \

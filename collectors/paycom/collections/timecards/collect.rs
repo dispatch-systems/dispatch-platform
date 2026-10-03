@@ -2,7 +2,11 @@ use super::{
     super::http::{Http, Refusal},
     *,
 };
-use crate::{collection_checkpoint::Checkpoint, job_metrics::Recorder};
+use crate::{
+    collection_checkpoint::Checkpoint,
+    collectors::paycom::{self, codes},
+    job_metrics::Recorder,
+};
 use chrono::{Datelike, NaiveDate};
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
@@ -11,8 +15,8 @@ use std::{
 };
 // A timecard page that is still rendering reads as one of these; wait for it to settle.
 const UNSETTLED_PAGE: &[crate::Code] = &[
-    crate::Code::TimecardExtractionFailed,
-    crate::Code::InvalidTimecardHours,
+    codes::TIMECARD_EXTRACTION_FAILED,
+    codes::INVALID_TIMECARD_HOURS,
     crate::Code::ProviderHoursMismatch,
     crate::Code::BrowserNavigationPending,
 ];
@@ -424,8 +428,8 @@ impl Driver {
         let mut reader = None;
         let mut raw = None;
         if http {
-            match Http::signed_in(&self.browser, &self.origin).await {
-                Ok(client) => match client.roster(&api, &headers, body.to_string()).await {
+            match Http::signed_in(&self.browser, &self.origin, &paycom::HOSTS).await {
+                Ok(client) => match read_roster(&client, &api, &headers, body.to_string()).await {
                     Ok(value) => {
                         raw = Some(value);
                         reader = Some(client);
@@ -690,6 +694,22 @@ enum Reader<'r> {
     Http(&'r Http),
 }
 
+/// The roster request the search page made, sent again with the selected period.
+async fn read_roster(
+    http: &Http,
+    url: &str,
+    headers: &serde_json::Map<String, Value>,
+    body: String,
+) -> Result<Value> {
+    let text = http
+        .post(url, headers, body, Duration::from_secs(55))
+        .await?;
+    let value: Value =
+        serde_json::from_str(&text).map_err(|_| Error::new("roster_not_complete", 409))?;
+    ensure(value.is_object(), "roster_not_complete", 409)?;
+    Ok(value)
+}
+
 /// Why a job reads through the browser after all. Fixed labels only.
 fn fallback(stage: &str, code: &str) {
     crate::observability::event(
@@ -837,7 +857,7 @@ async fn read_http(
             };
             let record = extract::timecard(&html, &source)?;
             project(&record, &code).map_err(|error| {
-                extract::Unreadable::Invalid(if error.is(crate::Code::InvalidTimecardHours) {
+                extract::Unreadable::Invalid(if error.is(codes::INVALID_TIMECARD_HOURS) {
                     "invalid_timecard_hours"
                 } else {
                     "provider_hours_mismatch"

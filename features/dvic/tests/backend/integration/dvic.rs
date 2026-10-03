@@ -1,12 +1,10 @@
 #[path = "../../../../../core/db/tests/support/common.rs"]
 mod common;
 use dispatch_backend::{
-    collectors::{
-        Provider,
-        cortex::{
-            discovery::{CollectionRequest, Scope},
-            dvic::{self, Capture, Request},
-        },
+    collectors::cortex::{
+        self,
+        discovery::{CollectionRequest, Scope},
+        dvic::{self, Capture, Request},
     },
     db::{self, Store, s},
     dvic::{hidden, weeks_ending},
@@ -57,7 +55,7 @@ fn ready() -> (tempfile::TempDir, Store, String) {
         json!({"stationCode":"TST1","abbreviation":"FXTR","setupRequired":false}),
     )
     .unwrap();
-    db.collector(&id, Provider::Cortex)
+    db.collector(&id, cortex::PROVIDER)
         .unwrap()
         .exec("UPDATE connections SET enabled=1,status='ready'", [])
         .unwrap();

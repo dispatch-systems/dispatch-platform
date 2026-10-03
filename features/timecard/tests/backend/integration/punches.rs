@@ -2,7 +2,7 @@
 mod common;
 use common::bootstrapped;
 use dispatch_backend::{
-    collectors::{Provider, paycom::fixtures},
+    collectors::paycom::{self, fixtures},
     db::s,
     workforce,
 };
@@ -235,7 +235,7 @@ fn timecard_links_publish_with_unchanged_hours_and_are_returned() {
     }
     // Identical hours still publish: the links are part of the change fingerprint.
     db.publish(id, &linked).unwrap();
-    let paycom = db.collector(id, Provider::Paycom).unwrap();
+    let paycom = db.collector(id, paycom::PROVIDER).unwrap();
     let count = |table: &str| {
         paycom
             .one(&format!("SELECT count(*) n FROM {table}"), [])
@@ -262,12 +262,11 @@ fn timecard_links_publish_with_unchanged_hours_and_are_returned() {
 
 #[test]
 fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
-    use dispatch_backend::collectors::Provider;
     let (_root, db, id) = bootstrapped();
     let id = id.as_str();
     let mut data = fixtures::fixture("UTC").unwrap();
     db.publish(id, &data).unwrap();
-    let provider = db.collector(id, Provider::Paycom).unwrap();
+    let provider = db.collector(id, paycom::PROVIDER).unwrap();
     let first = provider
         .one("SELECT id FROM publications WHERE active=1", [])
         .unwrap()
@@ -370,7 +369,7 @@ fn retired_sync_preferences_are_not_returned_and_open_dashboards_may_still_send_
     let mut older = workforce::defaults();
     older["automatic_sync"] = json!(true);
     older["sync_interval_seconds"] = json!(3600);
-    db.collector(id, Provider::Paycom)
+    db.collector(id, paycom::PROVIDER)
         .unwrap()
         .set(
             "paycom.preferences",
@@ -383,7 +382,7 @@ fn retired_sync_preferences_are_not_returned_and_open_dashboards_may_still_send_
     assert_eq!(saved["revision"], 5);
     assert_eq!(saved["values"], workforce::defaults());
     let stored = db
-        .collector(id, Provider::Paycom)
+        .collector(id, paycom::PROVIDER)
         .unwrap()
         .setting("paycom.preferences", Value::Null)
         .unwrap();
@@ -404,7 +403,7 @@ fn late_da_settings_default_for_older_preferences_and_validate() {
     for key in ["late_da_time", "late_da_departments"] {
         older.as_object_mut().unwrap().remove(key);
     }
-    db.collector(id, Provider::Paycom)
+    db.collector(id, paycom::PROVIDER)
         .unwrap()
         .set(
             "paycom.preferences",

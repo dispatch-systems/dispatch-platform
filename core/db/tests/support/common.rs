@@ -14,6 +14,7 @@ use std::os::unix::fs::PermissionsExt;
 /// `Config` has no test constructor, so this is the one place that reads the process
 /// environment; everything a test relies on is overridden here.
 pub fn store() -> (tempfile::TempDir, Store) {
+    dispatch_backend::install();
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut config = Config::load().unwrap();

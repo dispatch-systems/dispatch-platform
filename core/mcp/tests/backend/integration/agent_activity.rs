@@ -31,6 +31,7 @@ impl Server {
     /// The router alone, without the scheduler, so nothing is written down unless a test
     /// flushes it.
     async fn start() -> Self {
+        dispatch_backend::install();
         let root = tempfile::tempdir().unwrap();
         std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
         let dashboard = root.path().join("dashboard");

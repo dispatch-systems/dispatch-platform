@@ -1,4 +1,4 @@
-use super::{browseros::NetworkPolicy, cortex::dvic::REPORT_HOST};
+use super::browseros::NetworkPolicy;
 use crate::{Error, Result, ensure};
 use std::{net::IpAddr, os::fd::AsRawFd, os::unix::fs::PermissionsExt, path::Path, sync::Arc};
 use tokio::{
@@ -7,34 +7,10 @@ use tokio::{
     sync::Semaphore,
     task::JoinHandle,
 };
-pub fn allowed_host(host: &str) -> bool {
-    host.bytes()
-        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-')
-        && (host == "paycomonline.net"
-            || host.ends_with(".paycomonline.net")
-            || [
-                "www.paycom.com",
-                "fonts.googleapis.com",
-                "fonts.gstatic.com",
-                "www.google.com",
-                "www.gstatic.com",
-                "www.recaptcha.net",
-            ]
-            .contains(&host))
-}
-pub fn allowed_cortex_host(host: &str) -> bool {
-    [
-        "logistics.amazon.com",
-        REPORT_HOST,
-        "amazon.com",
-        "www.amazon.com",
-        "unagi.amazon.com",
-        "unagi-na.amazon.com",
-    ]
-    .contains(&host)
-        || ["media-amazon.com", "ssl-images-amazon.com"]
-            .iter()
-            .any(|root| host == *root || host.ends_with(&format!(".{root}")))
+/// The hosts a provider's browser may open, declared by its collector. The proxy lets it
+/// reach them only over HTTPS on port 443, at public IPv4 addresses.
+pub struct HostPolicy {
+    pub allowed: fn(&str) -> bool,
 }
 pub fn public_address(address: IpAddr) -> bool {
     let IpAddr::V4(ip) = address else {
@@ -77,17 +53,12 @@ impl Drop for Egress {
     }
 }
 impl Egress {
-    pub fn start(run: &Path, fixture: Option<(String, u16)>) -> Result<Self> {
-        let policy = match fixture {
-            Some((host, port)) => {
-                ensure(host == "fixture.dispatch.invalid", "egress_denied", 403)?;
-                NetworkPolicy::Fixture(
-                    std::num::NonZeroU16::new(port)
-                        .ok_or_else(|| Error::new("egress_denied", 403))?,
-                )
-            }
-            None => NetworkPolicy::Paycom,
-        };
+    /// A proxy to the local stand-in at `fixture`'s host and port.
+    pub fn start(run: &Path, (host, port): (String, u16)) -> Result<Self> {
+        ensure(host == "fixture.dispatch.invalid", "egress_denied", 403)?;
+        let policy = NetworkPolicy::Fixture(
+            std::num::NonZeroU16::new(port).ok_or_else(|| Error::new("egress_denied", 403))?,
+        );
         Self::start_with_policy(run, policy)
     }
     pub fn start_with_policy(run: &Path, policy: NetworkPolicy) -> Result<Self> {
@@ -177,8 +148,7 @@ async fn proxy(client: UnixStream, policy: NetworkPolicy) -> Result<()> {
             connect
                 && port == 443
                 && match policy {
-                    NetworkPolicy::Paycom => allowed_host(host),
-                    NetworkPolicy::Cortex => allowed_cortex_host(host),
+                    NetworkPolicy::Hosts(hosts) => (hosts.allowed)(host),
                     NetworkPolicy::Fixture(_) => false,
                 },
             "egress_denied",

@@ -51,6 +51,7 @@ fn area_permission(input: &Input) -> &'static str {
         ("roles", _, true) => "roles.manage",
         ("members" | "roles", _, false) => TEAM,
         ("profile", _, true) => "settings.manage",
+        // A4: the features' areas, until their routes declare them.
         ("paycom", _, true) | ("schedules", ..) => "timecard.manage",
         ("jobs", Some("meal-breaks"), false) => "timecard.view",
         ("jobs", ..) | ("cortex", _, true) => "collections.run",

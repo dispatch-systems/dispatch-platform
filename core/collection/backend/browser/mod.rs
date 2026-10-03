@@ -166,9 +166,6 @@ impl Manager {
         }
     }
 
-    pub fn get(&self, id: &str) -> Option<Arc<Session>> {
-        self.get_for(id, Provider::Paycom)
-    }
     pub fn get_for(&self, id: &str, provider: Provider) -> Option<Arc<Session>> {
         self.sessions.lock().ok()?.get(&provider.key(id)).cloned()
     }
@@ -183,8 +180,8 @@ impl Manager {
         self.sessions.lock().map(|s| s.len()).unwrap_or(0)
     }
     pub async fn revoke(&self, id: &str) {
-        for provider in Provider::ALL {
-            self.revoke_for(id, *provider).await;
+        for provider in Provider::all() {
+            self.revoke_for(id, provider).await;
         }
     }
     pub async fn revoke_for(&self, id: &str, provider: Provider) {
@@ -348,9 +345,6 @@ impl Session {
     }
 }
 impl Store {
-    pub fn connection(&self, id: &str) -> Result<Connection> {
-        self.connection_for(id, Provider::Paycom)
-    }
     pub fn connection_for(&self, id: &str, provider: Provider) -> Result<Connection> {
         self.collector(id, provider)?
             .one_as(

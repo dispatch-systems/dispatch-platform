@@ -554,6 +554,7 @@ pub struct AgentActivityPage {
     pub rows: Vec<AgentActivity>,
     pub next: Option<String>,
 }
+// A4: the identity sources, until the features that hold them declare them.
 text_enum! {
     #[cfg_attr(test, derive(ts_rs::TS))]
     #[derive(PartialOrd, Ord)]

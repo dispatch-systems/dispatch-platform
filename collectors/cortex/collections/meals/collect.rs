@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
     collectors::cortex::{
+        codes,
         discovery::Scope,
         meals::{Capture, Itinerary},
     },
@@ -19,10 +20,10 @@ use std::{
 };
 // The route's content has not settled yet; read it again.
 pub(super) const CONTENT_NOT_READY: &[crate::Code] = &[
-    crate::Code::CortexContentIncomplete,
+    codes::CORTEX_CONTENT_INCOMPLETE,
     crate::Code::BrowserNavigationPending,
     crate::Code::BrowserScriptFailed,
-    crate::Code::CortexScopeMismatch,
+    codes::CORTEX_SCOPE_MISMATCH,
     crate::Code::VerificationRequired,
 ];
 /// A page script without the trailing `;` its formatter adds, so it can be called.
@@ -163,7 +164,7 @@ impl Driver {
                 Err(error) if error.is_any(CONTENT_NOT_READY) => {
                     last = None;
                     stable = 0;
-                    if error.is(crate::Code::CortexScopeMismatch)
+                    if error.is(codes::CORTEX_SCOPE_MISMATCH)
                         && reload.is_some_and(|at| Instant::now() >= at)
                     {
                         reload = None;
@@ -491,14 +492,14 @@ fn evidence(result: Value, metrics: &Recorder) -> Result<Value> {
     if let Some(error) = result["error"].as_str() {
         metrics.detail(s(&result, "reason"));
         let allowed = [
-            crate::Code::CortexScopeMismatch,
-            crate::Code::CortexContentIncomplete,
-            crate::Code::CortexTimezoneMismatch,
-            crate::Code::CortexSourceTooLarge,
-            crate::Code::CortexInvalidMealEvidence,
-            crate::Code::CortexInvalidIdentity,
-            crate::Code::CortexSourceChanged,
-            crate::Code::InvalidCortexScope,
+            codes::CORTEX_SCOPE_MISMATCH,
+            codes::CORTEX_CONTENT_INCOMPLETE,
+            codes::CORTEX_TIMEZONE_MISMATCH,
+            codes::CORTEX_SOURCE_TOO_LARGE,
+            codes::CORTEX_INVALID_MEAL_EVIDENCE,
+            codes::CORTEX_INVALID_IDENTITY,
+            codes::CORTEX_SOURCE_CHANGED,
+            codes::INVALID_CORTEX_SCOPE,
         ];
         return Err(Error::new(
             if crate::Code::text_is_any(error, &allowed) {
@@ -610,7 +611,7 @@ where
                         Some((candidate.revision.clone(), route)),
                     ));
                 }
-                Err(error) if error.is(crate::Code::CortexSourceChanged) => {
+                Err(error) if error.is(codes::CORTEX_SOURCE_CHANGED) => {
                     reads.push((candidate.id.clone(), None));
                 }
                 Err(error) => return Err(error),

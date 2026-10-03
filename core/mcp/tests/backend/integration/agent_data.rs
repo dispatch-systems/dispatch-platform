@@ -7,13 +7,13 @@ use dispatch_backend::{
     State,
     agents::{Caller, data, synthetic},
     collectors::{
-        Provider,
         cortex::{
+            self,
             discovery::Scope,
             meals,
             routes::{self, Mode, Request},
         },
-        paycom::fixtures,
+        paycom::{self, fixtures},
     },
     contracts::{AgentArea, AgentKeyRequest},
     db::{Store, s},
@@ -36,7 +36,7 @@ fn ready() -> (tempfile::TempDir, Store, String) {
         json!({"stationCode":"TST1","abbreviation":"NLOG","setupRequired":false}),
     )
     .unwrap();
-    db.collector(&id, Provider::Cortex)
+    db.collector(&id, cortex::PROVIDER)
         .unwrap()
         .exec("UPDATE connections SET enabled=1,status='ready'", [])
         .unwrap();
@@ -1276,11 +1276,11 @@ async fn meal_duration_answers_preserve_unknown_totals_and_overnight_clocks() {
     for (case, punches, minutes) in cases {
         let tenant = id.clone();
         state.run(move |db| {
-            db.collector(&tenant, Provider::Paycom)?.exec(
+            db.collector(&tenant, paycom::PROVIDER)?.exec(
                 "UPDATE timecards SET status='Complete',punches=? WHERE employee_code='E002' AND date=?",
                 [punches.to_string(), DAY.into()],
             )?;
-            let cortex = db.collector(&tenant, Provider::Cortex)?;
+            let cortex = db.collector(&tenant, cortex::PROVIDER)?;
             cortex.exec("DELETE FROM meal_records", [])?;
             let start = if case == "overnight" { "2026-09-12T23:50:00Z" } else { "2026-09-12T12:00:00Z" };
             let end = match case {
@@ -1383,7 +1383,7 @@ async fn driver_periods_keep_historical_sync_and_meal_context_across_batches() {
             ],
         })).collect::<Vec<_>>()
     });
-    db.collector(&id, Provider::Paycom)
+    db.collector(&id, paycom::PROVIDER)
         .unwrap()
         .exec(
             "INSERT INTO employee_timecard_syncs VALUES ('E002','2026-09-06','2026-09-19',?,?)",

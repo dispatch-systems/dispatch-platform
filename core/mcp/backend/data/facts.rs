@@ -1,9 +1,10 @@
 //! The facts every answer is made of: each source's rows for a DSP's days, in the DSP's
 //! own time, with the days each source has. Which of them an answer may read is `access`'s.
 use super::{Failure, Refusal, scope::Period};
+// A4: each source's facts, until its feature answers for them.
 use crate::{
     Code, Result,
-    collectors::Provider,
+    collectors::{cortex, paycom},
     contracts::{DailyTimecard, Dsp, MealStatus},
     db::{Store, n, s},
     workforce::assessment::paycom_day,
@@ -326,7 +327,7 @@ pub fn meal_breaks_for(
 /// Each day's drivers Cortex had a route for, by transporter ID: those who could have
 /// taken a meal break in it.
 pub fn meal_routes(db: &Store, dsp: &Dsp, period: &Period) -> Result<BTreeSet<(String, String)>> {
-    let rows = db.collector(&dsp.id, Provider::Cortex)?.all(
+    let rows = db.collector(&dsp.id, cortex::PROVIDER)?.all(
         "SELECT p.report_date day,i.transporter_id id FROM meal_itineraries i \
          JOIN meal_publications p ON p.id=i.publication_id AND p.active=1 \
          WHERE p.report_date BETWEEN ? AND ?",
@@ -735,11 +736,11 @@ pub fn inspections(
 /// When each source last brought something in, for the status answer.
 pub fn freshness(db: &Store, dsp: &Dsp) -> Result<Value> {
     let station = db.profile(&dsp.id)?.station_code;
-    let paycom = db.collector(&dsp.id, Provider::Paycom)?.one(
+    let paycom = db.collector(&dsp.id, paycom::PROVIDER)?.one(
         "SELECT collected_at,period_from,period_to FROM publications WHERE active=1",
         [],
     )?;
-    let meals = db.collector(&dsp.id, Provider::Cortex)?.one(
+    let meals = db.collector(&dsp.id, cortex::PROVIDER)?.one(
         "SELECT max(report_date) day,max(collected_at) collected_at FROM meal_publications WHERE active=1",
         [],
     )?;

@@ -1,8 +1,8 @@
 use crate::{
     Result,
-    collectors::{
-        Provider,
-        paycom::validation::{sources, validate_workforce},
+    collectors::paycom::{
+        self,
+        validation::{sources, validate_workforce},
     },
     crypto,
     db::{Store, flag, s},
@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 impl Store {
     pub fn publish(&self, id: &str, value: &Value) -> Result<Value> {
         validate_workforce(value)?;
-        let db = self.collector(id, Provider::Paycom)?;
+        let db = self.collector(id, paycom::PROVIDER)?;
         let mut employees = value["employees"].as_array().unwrap().clone();
         employees.sort_by(|a, b| s(a, "code").cmp(s(b, "code")));
         let mut timecards = value["timecards"].as_array().unwrap().clone();

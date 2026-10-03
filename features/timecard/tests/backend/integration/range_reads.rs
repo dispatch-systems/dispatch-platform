@@ -3,9 +3,8 @@
 mod common;
 use dispatch_backend::{
     collectors::{
-        Provider,
         cortex::{discovery::Scope, meals},
-        paycom::fixtures,
+        paycom::{self, fixtures},
     },
     db::s,
 };
@@ -43,7 +42,7 @@ fn daily_ranges_select_each_days_latest_publication_and_employee_overlay() {
     for card in sync["timecards"].as_array_mut().unwrap() {
         card["hours"] = json!(4.25);
     }
-    db.collector(&id, Provider::Paycom)
+    db.collector(&id, paycom::PROVIDER)
         .unwrap()
         .exec(
             "INSERT INTO employee_timecard_syncs VALUES ('E002',?,?,?,?)",

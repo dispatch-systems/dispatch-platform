@@ -1,7 +1,8 @@
 //! Host-owned, unpublished Paycom progress. Workers never receive storage paths.
+// A3: Paycom's checkpoint, until it moves to its collector.
 use super::{
     Result, State,
-    collectors::{Provider, paycom::validation::validate_workforce},
+    collectors::paycom::{self, validation::validate_workforce},
     crypto,
     db::{self, Store, n, s},
     ensure,
@@ -14,7 +15,7 @@ use std::{collections::BTreeMap, sync::Arc};
 pub const TTL_MS: i64 = 15 * 60 * 1000;
 impl Store {
     pub fn clear_checkpoint(&self, dsp: &str, job: Option<&str>) -> Result<()> {
-        let db = self.collector(dsp, Provider::Paycom)?;
+        let db = self.collector(dsp, paycom::PROVIDER)?;
         db.exec(
             "DELETE FROM collection_checkpoints WHERE (?1 IS NULL OR job_id=?1)",
             [job],
@@ -22,7 +23,7 @@ impl Store {
         Ok(())
     }
     pub fn prune_checkpoints(&self, dsp: &str) -> Result<()> {
-        let db = self.collector(dsp, Provider::Paycom)?;
+        let db = self.collector(dsp, paycom::PROVIDER)?;
         db.transaction(|| {
             for row in db.all("SELECT job_id,created_at FROM collection_checkpoints", [])? {
                 let live = self.job_row(s(&row, "job_id"), None).ok();
@@ -30,7 +31,7 @@ impl Store {
                     && n(&row, "created_at") >= db::now() - TTL_MS
                     && live.is_some_and(|job| {
                         job.dsp_id == dsp
-                            && job.provider() == Provider::Paycom
+                            && job.provider() == paycom::PROVIDER
                             && job.status.is_active()
                     });
                 if !keep {
@@ -83,10 +84,10 @@ impl Checkpoint {
             let dsp=db.guard(&job,&owner)?;
             state.read_cache.invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::Live);
             let row=db.job_row(&job,None)?;
-            ensure(row.kind.as_str()==Provider::Paycom.job_kind(),"unsupported_collector",409)?;
+            ensure(row.kind.as_str()==paycom::PROVIDER.job_kind(),"unsupported_collector",409)?;
             let tenant=dsp.id.as_str();
             db.prune_checkpoints(tenant)?;
-            let storage=db.collector(tenant,Provider::Paycom)?;
+            let storage=db.collector(tenant,paycom::PROVIDER)?;
             let resume = storage.transaction(|| {
                 let existing=storage.one("SELECT * FROM collection_checkpoints WHERE job_id=?",[&job])?;
                 if let Some(existing)=existing.filter(|r| s(r,
@@ -122,9 +123,10 @@ impl Checkpoint {
             }
             Ok((tenant.to_owned(), resume))
         }).await?;
-        self.state
-            .updates
-            .changed(&dsp, crate::contracts::CollectionChange::provider("paycom"));
+        self.state.updates.changed(
+            &dsp,
+            crate::contracts::CollectionChange::provider(paycom::PROVIDER.id()),
+        );
         Ok(resume)
     }
     pub async fn save(
@@ -136,7 +138,7 @@ impl Checkpoint {
     ) -> Result<()> {
         validate_page(employee, period, records)?;
         let change = crate::contracts::CollectionChange {
-            provider: "paycom".into(),
+            provider: paycom::PROVIDER.id().into(),
             dates: records.iter().map(|r| s(r, "date").to_owned()).collect(),
             employee_code: Some(s(employee, "code").to_owned()),
             roster: false,
@@ -158,7 +160,7 @@ impl Checkpoint {
                     .read_cache
                     .invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::Live);
                 let row = db.job_row(&job, None)?;
-                let storage = db.collector(&dsp.id, Provider::Paycom)?;
+                let storage = db.collector(&dsp.id, paycom::PROVIDER)?;
                 // Save resume data and visible results with one transaction per driver.
                 storage.transaction(|| {
                     // An expired checkpoint simply stops accepting new progress. The
@@ -250,7 +252,7 @@ mod tests {
                     "checkpoint-password",
                 )?;
                 let dsp = s(&bootstrap["dsp"], "id").to_owned();
-                db.collector(&dsp, Provider::Paycom)?
+                db.collector(&dsp, paycom::PROVIDER)?
                     .exec("UPDATE connections SET enabled=1,revision=1", [])?;
                 let job = db.enqueue(&dsp, None, "checkpoint-test")?;
                 db.claim_job("owner", |_, _| true)?;
@@ -333,7 +335,7 @@ mod tests {
         let id = job.clone();
         state
             .run(move |db| {
-                let storage = db.collector(&tenant, Provider::Paycom)?;
+                let storage = db.collector(&tenant, paycom::PROVIDER)?;
                 storage.exec(
                     "UPDATE collection_checkpoints SET created_at=? WHERE job_id=?",
                     params![db::now() - TTL_MS - 1, id],
@@ -351,7 +353,7 @@ mod tests {
         let id = job.clone();
         state
             .run(move |db| {
-                let storage = db.collector(&tenant, Provider::Paycom)?;
+                let storage = db.collector(&tenant, paycom::PROVIDER)?;
                 storage.exec("UPDATE connections SET revision=2", [])?;
                 db.jobs
                     .exec("UPDATE jobs SET connection_revision=2 WHERE id=?", [id])?;
@@ -387,7 +389,7 @@ mod tests {
             .run(move |db| {
                 db.finish(&other, "new-owner", None)?;
                 assert_eq!(
-                    db.collector(&tenant, Provider::Paycom)?
+                    db.collector(&tenant, paycom::PROVIDER)?
                         .all("SELECT * FROM collection_checkpoint_pages", [])?
                         .len(),
                     1,
@@ -413,7 +415,7 @@ mod tests {
         state
             .run(move |db| {
                 assert!(
-                    db.collector(&dsp, Provider::Paycom)?
+                    db.collector(&dsp, paycom::PROVIDER)?
                         .all("SELECT * FROM collection_checkpoint_pages", [])?
                         .is_empty()
                 );

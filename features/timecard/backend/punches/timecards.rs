@@ -1,7 +1,7 @@
 //! Employee timecards: calendar navigation and explicitly scoped collections.
 use crate::{
     Error, Result,
-    collectors::{Provider, paycom::timecards::PERIOD_DAYS},
+    collectors::paycom::{self, timecards::PERIOD_DAYS},
     contracts::{EmployeeTimecardPeriod, EmployeeTimecardResponse, JobRow, Timecard},
     db::{Store, boolean, s},
     ensure,
@@ -19,7 +19,7 @@ impl Store {
     pub(crate) fn paycom_employee(&self, id: &str, code: &str) -> Result<Value> {
         v::code(code)?;
         let mut employee = self
-            .collector(id, Provider::Paycom)?
+            .collector(id, paycom::PROVIDER)?
             .one(
                 "SELECT e.code,e.name,e.department,e.position,e.station,e.active \
              FROM employees e JOIN publications p ON p.id=e.publication_id \
@@ -38,7 +38,7 @@ impl Store {
         requested: Option<&EmployeeTimecardPeriod>,
     ) -> Result<EmployeeTimecardResponse> {
         let mut employee = self.paycom_employee(id, code)?;
-        let db = self.collector(id, Provider::Paycom)?;
+        let db = self.collector(id, paycom::PROVIDER)?;
         let latest = db
             .one_as::<EmployeeTimecardPeriod>(
                 "SELECT p.period_from,p.period_to FROM publications p \

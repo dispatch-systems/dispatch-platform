@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    collectors::Provider,
+    collectors::cortex,
     contracts::{DvicInspection, DvicInspections, DvicStatus},
     db::{DspLease, Store, at, now, s},
 };
@@ -16,7 +16,7 @@ pub struct KnownReport {
 
 impl Store {
     pub fn dvic(&self, id: &str) -> Result<DspLease<'_>> {
-        self.added_storage(id, Provider::Cortex, &STORAGE)
+        self.added_storage(id, cortex::PROVIDER, &STORAGE)
     }
 
     pub(crate) fn bind_dvic_request(&self, id: &str, weeks: Vec<String>) -> Result<Value> {
@@ -66,7 +66,7 @@ impl Store {
         ensure(week <= latest.as_str(), "dvic_week_not_available", 400)?;
         let request = self.dvic_request(id, weeks_ending(week, weeks)?)?;
         let job = self
-            .enqueue_batch(id, actor, &[(key.into(), Provider::Cortex, request)])?
+            .enqueue_batch(id, actor, &[(key.into(), cortex::PROVIDER, request)])?
             .remove(0);
         Ok(serde_json::to_value(job)?)
     }
@@ -139,7 +139,7 @@ impl Store {
             502,
         )?;
         let request: Value = serde_json::from_str(&job_row.request)?;
-        let request = Provider::Cortex
+        let request = cortex::PROVIDER
             .collector()
             .bind_request(self, id, &request)?;
         let request =

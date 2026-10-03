@@ -5,21 +5,20 @@ use axum::{
 };
 use serde_json::json;
 
-/// The error codes the backend itself branches on. The wire format stays the code's
-/// text; a code that is only ever produced stays a string literal where it is raised.
-/// Compare with `Error::is`/`Error::is_any`/`Code::parse`, never with the text.
+/// An error code the backend itself branches on. The wire format stays the code's text;
+/// a code that is only ever produced stays a string literal where it is raised. Core's own
+/// are listed here; a collector declares its own beside the collections that raise them.
+/// Compare with `Error::is`/`Error::is_any`/`Code::text_is_any`, never with the text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Code(&'static str);
 macro_rules! codes {
     ($($name:ident => $text:literal,)*) => {
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-        pub enum Code { $($name,)* }
+        // Core's codes keep the names every comparison of them already reads.
+        #[allow(non_upper_case_globals)]
         impl Code {
+            $(pub const $name: Code = Code($text);)*
+            /// Core's own codes. `Code::all` adds each registered collector's.
             pub const ALL: &'static [Code] = &[$(Code::$name,)*];
-            pub const fn as_str(self) -> &'static str {
-                match self { $(Code::$name => $text,)* }
-            }
-            pub fn parse(text: &str) -> Option<Self> {
-                match text { $($text => Some(Code::$name),)* _ => None }
-            }
         }
     };
 }
@@ -39,22 +38,7 @@ codes! {
     ProviderContentMissing => "provider_content_missing",
     ProviderHoursMismatch => "provider_hours_mismatch",
     ProviderResponseUnreadable => "provider_response_unreadable",
-    CortexSourceChanged => "cortex_source_changed",
-    RoutesMoveUnanswered => "routes_move_unanswered",
-    CortexContentIncomplete => "cortex_content_incomplete",
-    CortexScopeMismatch => "cortex_scope_mismatch",
-    CortexTimezoneMismatch => "cortex_timezone_mismatch",
-    CortexSourceTooLarge => "cortex_source_too_large",
-    CortexStationUnavailable => "cortex_station_unavailable",
-    CortexProviderAmbiguous => "cortex_provider_ambiguous",
-    CortexInvalidMealEvidence => "cortex_invalid_meal_evidence",
-    CortexInvalidIdentity => "cortex_invalid_identity",
     QueryLimitExceeded => "query_limit_exceeded",
-    InvalidCortexScope => "invalid_cortex_scope",
-    DvicSourceChanged => "dvic_source_changed",
-    ScorecardApiUnreadable => "scorecard_api_unreadable",
-    TimecardExtractionFailed => "timecard_extraction_failed",
-    InvalidTimecardHours => "invalid_timecard_hours",
     VerificationRequired => "verification_required",
     ManualVerificationRequired => "manual_verification_required",
     VerificationIncomplete => "verification_incomplete",
@@ -70,7 +54,15 @@ codes! {
     AccountLocked => "account_locked",
 }
 impl Code {
-    /// A failed attempt with one of these is queued again while attempts remain.
+    /// A collector raises its own codes as these.
+    pub const fn new(text: &'static str) -> Self {
+        Self(text)
+    }
+    pub const fn as_str(self) -> &'static str {
+        self.0
+    }
+    /// Core's own codes a failed attempt is queued again after, while attempts remain.
+    /// `Code::retryable` adds each registered collector's.
     pub const RETRYABLE: &'static [Code] = &[
         Code::BrowserLost,
         Code::BrowserClosed,
@@ -80,10 +72,6 @@ impl Code {
         Code::ProviderNavigationTimeout,
         Code::ProviderContentTimeout,
         Code::ProviderResponseUnreadable,
-        Code::CortexSourceChanged,
-        Code::DvicSourceChanged,
-        Code::CortexContentIncomplete,
-        Code::ScorecardApiUnreadable,
     ];
     /// The job stopped because someone withdrew it or its access; that is not a failure.
     pub const WITHDRAWN: &'static [Code] = &[
@@ -110,12 +98,9 @@ impl Code {
     /// No browser could be admitted right now; the job goes back without using an attempt.
     pub const ADMISSION_BUSY: &'static [Code] =
         &[Code::BrowserMemoryBusy, Code::BrowserCapacityBusy];
-    pub fn is_retryable(self) -> bool {
-        Self::RETRYABLE.contains(&self)
-    }
     /// Classifies a stored or reported code, such as a job's `error` column.
     pub fn text_is_any(text: &str, codes: &[Code]) -> bool {
-        Self::parse(text).is_some_and(|code| codes.contains(&code))
+        codes.iter().any(|code| code.0 == text)
     }
 }
 impl From<Code> for String {
@@ -152,17 +137,11 @@ impl Error {
             ..Self::new(code, status)
         }
     }
-    pub fn known(&self) -> Option<Code> {
-        Code::parse(&self.code)
-    }
     pub fn is(&self, code: Code) -> bool {
         self.code == code.as_str()
     }
     pub fn is_any(&self, codes: &[Code]) -> bool {
-        self.known().is_some_and(|code| codes.contains(&code))
-    }
-    pub fn is_retryable(&self) -> bool {
-        self.is_any(Code::RETRYABLE)
+        Code::text_is_any(&self.code, codes)
     }
 }
 pub fn ensure(ok: bool, code: &str, status: u16) -> Result<()> {
@@ -222,7 +201,7 @@ mod tests {
     use super::*;
     #[test]
     fn the_retryable_codes_are_exactly_the_ones_jobs_always_retried() {
-        let retryable: Vec<_> = Code::RETRYABLE.iter().map(|code| code.as_str()).collect();
+        let retryable: Vec<_> = Code::retryable().map(|code| code.as_str()).collect();
         assert_eq!(
             retryable,
             [
@@ -240,8 +219,8 @@ mod tests {
                 "scorecard_api_unreadable",
             ]
         );
-        for code in Code::ALL {
-            assert_eq!(Code::parse(code.as_str()), Some(*code));
+        for code in Code::all() {
+            assert_eq!(Code::parse(code.as_str()), Some(code));
             assert_eq!(code.is_retryable(), retryable.contains(&code.as_str()));
         }
         assert!(Error::new("browser_lost", 503).is_retryable());

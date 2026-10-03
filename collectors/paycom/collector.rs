@@ -1,4 +1,6 @@
 //! Paycom: employees and timecards. Every DSP was created with this storage.
+#[path = "codes.rs"]
+pub mod codes;
 #[path = "fixtures/timecards.rs"]
 pub mod fixtures;
 #[path = "collections/timecards/types.rs"]
@@ -6,25 +8,65 @@ pub mod timecards;
 #[path = "collections/timecards/validation.rs"]
 pub mod validation;
 
-use super::Collector;
+use super::Provider;
 use crate::{
-    Error, Result,
+    Code, Error, Result,
     browsers::{
         Collected, Driver, Pending,
         browseros::{self, NetworkPolicy},
+        egress::HostPolicy,
+        http::RequestHosts,
         paycom,
     },
     db::{Db, Kind, Store, s},
-    ensure, validate as v,
+    ensure,
+    job_metrics::Counts,
+    manifest::Collector,
+    validate as v,
 };
 use serde_json::{Value, json};
 use std::{collections::HashSet, path::Path};
 use timecards::EmployeeSync;
 
-pub(super) struct Paycom;
+pub const PROVIDER: Provider = Provider::new("paycom");
+pub static COLLECTOR: Paycom = Paycom;
+
+/// What its browser may open: Paycom's own hosts, and the fonts and reCAPTCHA its
+/// sign-in pages load.
+pub fn allowed_host(host: &str) -> bool {
+    host.bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-')
+        && (host == "paycomonline.net"
+            || host.ends_with(".paycomonline.net")
+            || [
+                "www.paycom.com",
+                "fonts.googleapis.com",
+                "fonts.gstatic.com",
+                "www.google.com",
+                "www.gstatic.com",
+                "www.recaptcha.net",
+            ]
+            .contains(&host))
+}
+// Its own hosts, where its pages are read over plain HTTP.
+fn own_host(host: &str) -> bool {
+    allowed_host(host) && (host == "paycomonline.net" || host.ends_with(".paycomonline.net"))
+}
+pub static BROWSER_HOSTS: HostPolicy = HostPolicy {
+    allowed: allowed_host,
+};
+/// Its reads over plain HTTP: its own hosts, with the browser's cookies for them, over
+/// uncompressed HTTP/1.1 as measured.
+pub static HOSTS: RequestHosts = RequestHosts {
+    allowed: own_host,
+    cookies: own_host,
+    http2: false,
+};
+
+pub struct Paycom;
 impl Collector for Paycom {
     fn id(&self) -> &'static str {
-        "paycom"
+        PROVIDER.id()
     }
     fn label(&self) -> &'static str {
         "Paycom"
@@ -57,7 +99,7 @@ impl Collector for Paycom {
         ]
     }
     fn network(&self) -> NetworkPolicy {
-        NetworkPolicy::Paycom
+        NetworkPolicy::Hosts(&BROWSER_HOSTS)
     }
     fn validate_credentials(&self, value: &Value) -> Result<()> {
         v::fields(
@@ -110,6 +152,19 @@ impl Collector for Paycom {
     }
     fn progress(&self, _: &Value) -> &'static str {
         "Collecting workforce"
+    }
+    fn counts(&self, data: &Value) -> Counts {
+        Counts {
+            employees: data["employees"].as_array().map(Vec::len),
+            timecards: data["timecards"].as_array().map(Vec::len),
+            ..Counts::default()
+        }
+    }
+    fn roster(&self) -> bool {
+        true
+    }
+    fn codes(&self) -> &'static [Code] {
+        codes::ALL
     }
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
         let request: Value = serde_json::from_str(&store.job_row(job, Some(dsp))?.request)?;

@@ -1,6 +1,6 @@
 use crate::{
     Error, Result,
-    collectors::Provider,
+    collectors::paycom,
     db::{AuditChange, Db, Store, iso, n},
     ensure, validate as v,
 };
@@ -158,11 +158,11 @@ fn preference_changes(before: &Value, after: &Value) -> Vec<AuditChange> {
 impl Store {
     /// Values and revision without scanning the roster for editor options.
     pub fn preference_values(&self, id: &str) -> Result<Value> {
-        let db = self.collector(id, Provider::Paycom)?;
+        let db = self.collector(id, paycom::PROVIDER)?;
         preferences(&db)
     }
     pub fn preferences(&self, id: &str) -> Result<Value> {
-        let db = self.collector(id, Provider::Paycom)?;
+        let db = self.collector(id, paycom::PROVIDER)?;
         let mut out = preferences(&db)?;
         let departments=db.all("SELECT department value,count(*) count FROM employees WHERE \
             publication_id=(SELECT id FROM publications WHERE active=1) GROUP BY department ORDER BY department",[])?;
@@ -191,7 +191,7 @@ impl Store {
         let values = &values;
         validate_preferences(values)?;
         let previous = self.preferences(id)?;
-        let db = self.collector(id, Provider::Paycom)?;
+        let db = self.collector(id, paycom::PROVIDER)?;
         db.transaction(|| {
             let before = preferences(&db)?;
             ensure(

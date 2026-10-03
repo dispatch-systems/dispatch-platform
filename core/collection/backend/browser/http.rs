@@ -3,8 +3,8 @@
 //! Requests keep to the browser's egress rules: the provider's own HTTPS hosts on
 //! public IPv4 addresses, no redirects and no proxies, bounded in size and time. The
 //! session's cookies stay in memory for the job and are never written or logged.
-use super::{browseros, cortex::dvic::REPORT_HOST, egress};
-use crate::{Error, Result, db::s, ensure};
+use super::{browseros, egress};
+use crate::{Error, Result, db::s};
 use reqwest::{
     Client, Response, StatusCode,
     cookie::Jar,
@@ -18,72 +18,58 @@ use url::Url;
 
 /// As much as a reader in the tab accepts.
 const LIMIT: usize = 2 * 1024 * 1024;
-const FIXTURE: &str = "fixture.dispatch.invalid";
+/// The local stand-in's host.
+pub const FIXTURE: &str = "fixture.dispatch.invalid";
+
+/// The hosts a provider's own requests go to, declared by its collector. They are
+/// reached only over HTTPS on port 443, at public IPv4 addresses.
+pub struct RequestHosts {
+    pub allowed: fn(&str) -> bool,
+    /// The domains whose browser cookies its requests carry.
+    pub cookies: fn(&str) -> bool,
+    /// Over HTTP/2 with compression; otherwise uncompressed HTTP/1.1.
+    pub http2: bool,
+}
+impl RequestHosts {
+    pub fn allows(&self, url: &Url) -> bool {
+        url.username().is_empty()
+            && url.password().is_none()
+            && url.fragment().is_none()
+            && url.scheme() == "https"
+            && url.port_or_known_default() == Some(443)
+            && (self.allowed)(url.host_str().unwrap_or(""))
+    }
+}
 
 /// Where requests may go: one provider's hosts, or the local stand-in the browser
 /// was pointed at.
 #[derive(Clone, Copy)]
 enum Hosts {
-    Paycom,
-    Cortex,
-    CortexReports,
+    Provider(&'static RequestHosts),
     Fixture(u16),
 }
-const CORTEX: &str = "logistics.amazon.com";
 impl Hosts {
     fn allows(self, url: &Url) -> bool {
-        let host = url.host_str().unwrap_or("");
-        url.username().is_empty()
-            && url.password().is_none()
-            && url.fragment().is_none()
-            && match self {
-                Self::Paycom => {
-                    url.scheme() == "https"
-                        && url.port_or_known_default() == Some(443)
-                        && Self::paycom(host)
-                }
-                Self::Cortex => {
-                    url.scheme() == "https"
-                        && url.port_or_known_default() == Some(443)
-                        && Self::cortex(host)
-                }
-                Self::CortexReports => {
-                    url.scheme() == "https"
-                        && url.port_or_known_default() == Some(443)
-                        && host == REPORT_HOST
-                        && egress::allowed_cortex_host(host)
-                }
-                Self::Fixture(port) => {
-                    url.scheme() == "http" && host == FIXTURE && url.port() == Some(port)
-                }
-            }
-    }
-    /// Whether the provider's own requests may go to `host`.
-    fn host(self, host: &str) -> bool {
         match self {
-            Self::Paycom => Self::paycom(host),
-            Self::Cortex => Self::cortex(host),
-            Self::CortexReports => host == REPORT_HOST && egress::allowed_cortex_host(host),
-            Self::Fixture(_) => host == FIXTURE,
+            Self::Provider(hosts) => hosts.allows(url),
+            Self::Fixture(port) => {
+                url.username().is_empty()
+                    && url.password().is_none()
+                    && url.fragment().is_none()
+                    && url.scheme() == "http"
+                    && url.host_str() == Some(FIXTURE)
+                    && url.port() == Some(port)
+            }
         }
-    }
-    fn paycom(host: &str) -> bool {
-        egress::allowed_host(host)
-            && (host == "paycomonline.net" || host.ends_with(".paycomonline.net"))
-    }
-    // Only the application's own host: its data API lives there.
-    fn cortex(host: &str) -> bool {
-        egress::allowed_cortex_host(host) && host == CORTEX
     }
     fn cookie(self, domain: &str) -> bool {
         match self {
-            Self::Paycom => Self::paycom(domain),
-            Self::Cortex => {
-                domain == CORTEX || domain == "amazon.com" || domain.ends_with(".amazon.com")
-            }
-            Self::CortexReports => false,
+            Self::Provider(hosts) => (hosts.cookies)(domain),
             Self::Fixture(_) => domain == FIXTURE,
         }
+    }
+    fn http2(self) -> bool {
+        matches!(self, Self::Provider(hosts) if hosts.http2)
     }
 }
 /// Resolves only allowed hosts, and only to public IPv4 addresses.
@@ -97,7 +83,7 @@ impl Resolve for Resolver {
                 Hosts::Fixture(port) if host == FIXTURE => {
                     vec![SocketAddr::from(([127, 0, 0, 1], port))]
                 }
-                Hosts::Paycom | Hosts::Cortex | Hosts::CortexReports if hosts.host(&host) => {
+                Hosts::Provider(provider) if (provider.allowed)(&host) => {
                     tokio::net::lookup_host((host, 443))
                         .await?
                         .filter(|a| a.is_ipv4() && egress::public_address(a.ip()))
@@ -132,25 +118,20 @@ pub(super) struct Download {
     pub modified_at: Option<i64>,
 }
 impl Http {
-    /// S3 pre-signed requests use a separate client with no Amazon cookies or
-    /// referer. Redirects and every host other than the observed report host fail.
-    pub fn cortex_reports(origin: &str) -> Result<Self> {
+    /// A client that carries nothing of a browser's session: no cookies, user agent or
+    /// referer. It reaches only `hosts`, or the local stand-in when `origin` is one.
+    pub fn detached(origin: &str, hosts: &'static RequestHosts) -> Result<Self> {
         let url = Url::parse(origin).map_err(|_| Error::new("egress_denied", 403))?;
         let hosts = if url.host_str() == Some(FIXTURE) {
             Hosts::Fixture(url.port().ok_or_else(|| Error::new("egress_denied", 403))?)
         } else {
-            ensure(
-                url.origin().ascii_serialization() == format!("https://{CORTEX}"),
-                "egress_denied",
-                403,
-            )?;
-            Hosts::CortexReports
+            Hosts::Provider(hosts)
         };
-        let client = Client::builder()
-            .redirect(Policy::none())
-            .no_proxy()
-            .http1_only()
-            .no_gzip()
+        let mut client = Client::builder().redirect(Policy::none()).no_proxy();
+        if !hosts.http2() {
+            client = client.http1_only().no_gzip();
+        }
+        let client = client
             .dns_resolver(Arc::new(Resolver(hosts)))
             .https_only(!matches!(hosts, Hosts::Fixture(_)))
             .connect_timeout(Duration::from_secs(10))
@@ -220,9 +201,13 @@ impl Http {
             modified_at,
         })
     }
-    /// The browser's session for the provider at `origin`: its cookies and user
-    /// agent, nothing else.
-    pub async fn signed_in(browser: &browseros::Session, origin: &str) -> Result<Self> {
+    /// The browser's session for the provider at `origin`, one of its `hosts`: its
+    /// cookies and user agent, nothing else.
+    pub async fn signed_in(
+        browser: &browseros::Session,
+        origin: &str,
+        hosts: &'static RequestHosts,
+    ) -> Result<Self> {
         let origin_url = Url::parse(origin).map_err(|_| Error::new("egress_denied", 403))?;
         let hosts = match origin_url.host_str() {
             Some(FIXTURE) => Hosts::Fixture(
@@ -230,8 +215,7 @@ impl Http {
                     .port()
                     .ok_or_else(|| Error::new("egress_denied", 403))?,
             ),
-            Some(CORTEX) => Hosts::Cortex,
-            Some(host) if Hosts::paycom(host) => Hosts::Paycom,
+            Some(host) if (hosts.allowed)(host) => Hosts::Provider(hosts),
             _ => return Err(Error::new("egress_denied", 403)),
         };
         let cookies = browser
@@ -269,10 +253,8 @@ impl Http {
             .cookie_provider(Arc::new(jar))
             .redirect(Policy::none())
             .no_proxy();
-        // Cortex answers over HTTP/2 and compresses its JSON to a twelfth: every read
-        // of a job shares one connection. Paycom's reads, and the local stand-in's,
-        // stay uncompressed HTTP/1.1, as measured.
-        if !matches!(hosts, Hosts::Cortex) {
+        // HTTP/2 only where the provider's hosts ask for it, never for the local stand-in.
+        if !hosts.http2() {
             client = client.http1_only().no_gzip();
         }
         let client = client
@@ -343,20 +325,23 @@ impl Http {
         let text = String::from_utf8(bytes).map_err(|_| Refusal::Unreadable("http_encoding"))?;
         Ok(text.strip_prefix('\u{feff}').unwrap_or(&text).to_owned())
     }
-    /// The roster request the search page made, sent again with the selected period.
-    pub async fn roster(
+    /// Sends `body` with `headers` as a page at the session's origin would, and answers
+    /// the JSON text that comes back, within the size a tab accepts. A target outside the
+    /// provider's hosts fails `egress_denied`; no usable answer, `provider_unavailable`.
+    pub async fn post(
         &self,
         url: &str,
         headers: &Map<String, Value>,
         body: String,
-    ) -> Result<Value> {
+        timeout: Duration,
+    ) -> Result<String> {
         let target = self
             .target(url)
             .map_err(|_| Error::new("egress_denied", 403))?;
         let mut request = self
             .client
             .post(target)
-            .timeout(Duration::from_secs(55))
+            .timeout(timeout)
             .header("Origin", &self.origin)
             .header("Referer", format!("{}/", self.origin))
             .body(body);
@@ -367,13 +352,9 @@ impl Http {
             .send()
             .await
             .map_err(|_| Error::new("provider_unavailable", 502))?;
-        let text = Self::body(response, "application/json")
+        Self::body(response, "application/json")
             .await
-            .map_err(|_| Error::new("provider_unavailable", 502))?;
-        let value: Value =
-            serde_json::from_str(&text).map_err(|_| Error::new("roster_not_complete", 409))?;
-        ensure(value.is_object(), "roster_not_complete", 409)?;
-        Ok(value)
+            .map_err(|_| Error::new("provider_unavailable", 502))
     }
     /// A JSON document within `limit` bytes, as a tab's `fetch` of it would receive.
     pub async fn json(
@@ -410,89 +391,5 @@ impl Http {
             .await
             .map_err(|_| Refusal::Unavailable)?;
         Self::body(response, "text/html").await
-    }
-}
-
-#[cfg(test)]
-mod dvic_tests {
-    use super::*;
-    use axum::{
-        Router,
-        body::Body,
-        http::{HeaderMap, Response},
-        routing::get,
-    };
-    #[tokio::test]
-    async fn report_downloads_use_validators_bound_bodies_and_never_follow_redirects_or_forward_cookies()
-     {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let app = Router::new()
-            .route(
-                "/report",
-                get(|headers: HeaderMap| async move {
-                    assert!(headers.get("cookie").is_none());
-                    assert!(headers.get("referer").is_none());
-                    let unchanged = headers.get("if-none-match").is_some_and(|h| h == "\"v1\"");
-                    Response::builder()
-                        .status(if unchanged { 304 } else { 200 })
-                        .header("etag", "\"v1\"")
-                        .header("last-modified", "Sun, 27 Sep 2026 14:04:00 GMT")
-                        .body(Body::from(if unchanged { "" } else { "workbook" }))
-                        .unwrap()
-                }),
-            )
-            .route(
-                "/redirect",
-                get(|| async {
-                    Response::builder()
-                        .status(302)
-                        .header("location", "/report")
-                        .body(Body::empty())
-                        .unwrap()
-                }),
-            )
-            .route(
-                "/throttled",
-                get(|| async { StatusCode::TOO_MANY_REQUESTS }),
-            );
-        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let origin = format!("http://{FIXTURE}:{port}");
-        let client = Http::cortex_reports(&origin).unwrap();
-        let url = format!("{origin}/report");
-        let first = client.download(&url, None, 8).await.ok().unwrap();
-        assert_eq!(first.body.unwrap(), b"workbook");
-        assert!(first.modified_at.is_some());
-        let cached = client
-            .download(&url, first.etag.as_deref(), 8)
-            .await
-            .ok()
-            .unwrap();
-        assert!(cached.body.is_none());
-        assert!(matches!(
-            client.download(&url, None, 4).await,
-            Err(Refusal::Unreadable("http_body_too_large"))
-        ));
-        assert!(matches!(
-            client
-                .download(&format!("{origin}/redirect"), None, 8)
-                .await,
-            Err(Refusal::Unreadable("http_download_refused"))
-        ));
-        assert!(matches!(
-            client
-                .download(&format!("{origin}/throttled"), None, 8)
-                .await,
-            Err(Refusal::Unavailable)
-        ));
-        let s3 = Url::parse(&format!("https://{}/report", REPORT_HOST)).unwrap();
-        assert!(Hosts::CortexReports.allows(&s3));
-        assert!(!Hosts::Cortex.allows(&s3));
-        assert!(!Hosts::CortexReports.cookie("amazon.com"));
-        assert!(
-            !Hosts::CortexReports
-                .allows(&Url::parse("https://logistics.amazon.com/report").unwrap())
-        );
-        server.abort();
     }
 }

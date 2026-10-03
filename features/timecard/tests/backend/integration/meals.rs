@@ -1,12 +1,10 @@
 #[path = "../../../../../core/db/tests/support/common.rs"]
 mod common;
 use dispatch_backend::{
-    collectors::{
-        Provider,
-        cortex::{
-            discovery::Scope,
-            meals::{self, Coverage, Meal},
-        },
+    collectors::cortex::{
+        self,
+        discovery::Scope,
+        meals::{self, Coverage, Meal},
     },
     db::{now, s},
     meals::comparison_meal,
@@ -41,7 +39,7 @@ fn four_timestamps_multiple_meals_midnight_and_unknown_boundaries_survive_round_
         first_delivery_stop: None,
     });
     let p = db.publish_meals(&id, "job-first", &c, &scope).unwrap();
-    let data = db.collector(&id, Provider::Cortex).unwrap();
+    let data = db.collector(&id, cortex::PROVIDER).unwrap();
     let row=data.one("SELECT last_delivery_at,started_at,ended_at,first_delivery_at FROM meal_records WHERE meal_id='meal-2'",[]).unwrap().unwrap();
     assert_eq!(
         row,
@@ -133,7 +131,7 @@ fn itinerary_page_links_are_stored_returned_and_bound_to_the_route() {
     c.finished_at = now();
     db.publish_meals(&id, "job-linked", &c, &scope).unwrap();
     assert_eq!(meal(&db)["sourceUrl"], json!(url));
-    let data = db.collector(&id, Provider::Cortex).unwrap();
+    let data = db.collector(&id, cortex::PROVIDER).unwrap();
     assert_eq!(
         data.all("SELECT itinerary_id,url FROM meal_sources", [])
             .unwrap(),
@@ -186,7 +184,7 @@ fn deliveries_open_the_route_at_the_stop_that_held_them() {
         json!(format!("{url}&selectedStopId=12"))
     );
     assert!(read.get("lastDeliveryStop").is_none());
-    let data = db.collector(&id, Provider::Cortex).unwrap();
+    let data = db.collector(&id, cortex::PROVIDER).unwrap();
     assert_eq!(
         data.all(
             "SELECT meal_id,last_delivery_stop,first_delivery_stop FROM meal_stops",
@@ -274,7 +272,7 @@ fn invalid_or_shrinking_refresh_preserves_publication_and_retention_is_bounded()
         db.publish_meals(&id, &format!("refresh-{i}"), &next, &scope)
             .unwrap();
     }
-    let data = db.collector(&id, Provider::Cortex).unwrap();
+    let data = db.collector(&id, cortex::PROVIDER).unwrap();
     assert_eq!(
         data.one("SELECT count(*) n FROM meal_publications", [])
             .unwrap()
@@ -287,7 +285,7 @@ fn invalid_or_shrinking_refresh_preserves_publication_and_retention_is_bounded()
 fn provider_jobs_bind_request_identity_and_connection_revision() {
     let (_root, db, id) = common::bootstrapped();
     let scope = scope();
-    db.collector(&id, Provider::Cortex)
+    db.collector(&id, cortex::PROVIDER)
         .unwrap()
         .exec("UPDATE connections SET enabled=1", [])
         .unwrap();
@@ -307,7 +305,7 @@ fn provider_jobs_bind_request_identity_and_connection_revision() {
     );
     db.claim_job("worker", |_, _| true).unwrap().unwrap();
     db.guard(s(&job, "id"), "worker").unwrap();
-    db.collector(&id, Provider::Cortex)
+    db.collector(&id, cortex::PROVIDER)
         .unwrap()
         .exec("UPDATE connections SET revision=revision+1", [])
         .unwrap();

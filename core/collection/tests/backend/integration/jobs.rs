@@ -2,7 +2,7 @@
 mod common;
 use common::{seeded, store};
 use dispatch_backend::{
-    collectors::Provider,
+    collectors::{cortex, paycom},
     db::{self, s},
     jobs::JobFacts,
     schedules,
@@ -50,7 +50,7 @@ fn queue_limits_and_authority_are_checked_again_before_publication() {
     db.platform
         .exec("UPDATE users SET status='active' WHERE id=?", [actor])
         .unwrap();
-    db.collector(id, dispatch_backend::collectors::Provider::Paycom)
+    db.collector(id, dispatch_backend::collectors::paycom::PROVIDER)
         .unwrap()
         .exec("UPDATE connections SET revision=revision+1", [])
         .unwrap();
@@ -117,7 +117,7 @@ fn collection_outcomes_record_their_schedule_provider_date_and_duration() {
     let started = db::at(db::now() - 108_000);
     let job = JobFacts {
         idempotency_key: "manual",
-        provider: Some(Provider::Paycom),
+        provider: Some(paycom::PROVIDER),
         attempt: 1,
         max_attempts: 1,
         request: "{\"date\":\"2026-09-18\"}",
@@ -135,7 +135,7 @@ fn collection_outcomes_record_their_schedule_provider_date_and_duration() {
     );
     let job = JobFacts {
         idempotency_key: "schedule:gone:2026:flex:0",
-        provider: Some(Provider::Cortex),
+        provider: Some(cortex::PROVIDER),
         request: "{}",
         started_at: None,
         ..job

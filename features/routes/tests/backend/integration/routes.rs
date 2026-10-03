@@ -3,9 +3,9 @@
 #[path = "../../../../../core/db/tests/support/common.rs"]
 mod common;
 use dispatch_backend::{
-    collectors::{
-        Provider,
-        cortex::routes::{self, Capture, Mode, Request},
+    collectors::cortex::{
+        self,
+        routes::{self, Capture, Mode, Request},
     },
     db::{Store, s},
     routedata,
@@ -28,7 +28,7 @@ fn ready() -> (tempfile::TempDir, Store, String) {
         json!({"stationCode":"TST1","abbreviation":"NLOG","setupRequired":false}),
     )
     .unwrap();
-    db.collector(&id, Provider::Cortex)
+    db.collector(&id, cortex::PROVIDER)
         .unwrap()
         .exec("UPDATE connections SET enabled=1,status='ready'", [])
         .unwrap();
@@ -501,7 +501,7 @@ fn a_schedule_queues_recent_days_without_a_final_publication() {
 #[test]
 fn collection_requests_need_a_station_and_an_allowed_day() {
     let (_root, db, id) = common::bootstrapped();
-    db.collector(&id, Provider::Cortex)
+    db.collector(&id, cortex::PROVIDER)
         .unwrap()
         .exec("UPDATE connections SET enabled=1,status='ready'", [])
         .unwrap();
@@ -795,6 +795,7 @@ fn a_stored_day_goes_through_storage_at_full_size() {
     let root = std::env::var("DISPATCH_BENCHMARK_STATE").expect("DISPATCH_BENCHMARK_STATE");
     let id = std::env::var("DISPATCH_BENCHMARK_DSP_ID").expect("DISPATCH_BENCHMARK_DSP_ID");
     let day = std::env::var("DISPATCH_BENCHMARK_DAY").expect("DISPATCH_BENCHMARK_DAY");
+    dispatch_backend::install();
     let mut config = dispatch_backend::config::Config::load().unwrap();
     config.root = root.into();
     config.environment = "preview".into();

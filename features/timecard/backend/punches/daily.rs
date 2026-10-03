@@ -1,7 +1,7 @@
 use super::preferences::preferences;
 use crate::{
     Result,
-    collectors::Provider,
+    collectors::paycom,
     contracts::DailyTimecards,
     db::{Db, Store, s},
     names::{compare, display_name},
@@ -59,7 +59,7 @@ impl Store {
         desc: bool,
         codes: Option<&[String]>,
     ) -> Result<BTreeMap<String, DailyTimecards>> {
-        let db = self.collector(id, Provider::Paycom)?;
+        let db = self.collector(id, paycom::PROVIDER)?;
         let settings = preferences(&db)?;
         let p = &settings["values"];
         self.daily_sources(id, from, to, codes)?

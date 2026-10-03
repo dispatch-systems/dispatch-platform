@@ -1,7 +1,10 @@
 use super::*;
 use crate::{
     Code,
-    collectors::cortex::discovery::{CollectionRequest, Scope},
+    collectors::cortex::{
+        codes,
+        discovery::{CollectionRequest, Scope},
+    },
     job_metrics::Recorder,
 };
 // The page is between documents or signing in again; ask it again.
@@ -83,16 +86,19 @@ impl Driver {
                     metrics.detail(s(&value, "reason"));
                     if Code::text_is_any(
                         error,
-                        &[Code::CortexTimezoneMismatch, Code::CortexSourceTooLarge],
+                        &[
+                            codes::CORTEX_TIMEZONE_MISMATCH,
+                            codes::CORTEX_SOURCE_TOO_LARGE,
+                        ],
                     ) {
                         return Err(Error::new(error, 502));
                     }
                     last_error = if Code::text_is_any(
                         error,
                         &[
-                            Code::CortexStationUnavailable,
-                            Code::CortexProviderAmbiguous,
-                            Code::CortexScopeMismatch,
+                            codes::CORTEX_STATION_UNAVAILABLE,
+                            codes::CORTEX_PROVIDER_AMBIGUOUS,
+                            codes::CORTEX_SCOPE_MISMATCH,
                         ],
                     ) {
                         error

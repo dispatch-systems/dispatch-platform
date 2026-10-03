@@ -7,24 +7,19 @@ pub mod cortex;
 pub mod paycom;
 use super::{
     Result,
-    browsers::{
-        Collected, Driver, Pending,
-        browseros::{self, NetworkPolicy},
-    },
     db::{self, Db, DspLease, Kind, Store, s},
     ensure,
+    manifest::{Collector, registry},
 };
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
 const LAYOUT: &str = "storage.collectors";
 
-/// The closed, typed identity of a provider. What a provider is lives in its `Collector`.
+/// A provider, named by its collector's id. Each collector declares its own
+/// (`PROVIDER`); what a provider is lives in its `Collector`, found in the registry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Provider {
-    Paycom,
-    Cortex,
-}
+pub struct Provider(&'static str);
 /// A database a provider added beside its own, for one collection: its files are
 /// named after `id`, and `marker` records that a DSP gained it.
 pub struct AddedStorage {
@@ -36,129 +31,29 @@ pub struct AddedStorage {
     /// Fails closed when initialized storage lost what it must hold.
     pub verify: fn(&Db) -> Result<()>,
 }
-/// Everything the platform needs to know about one provider. Storage, credentials,
-/// the browser and the job queue ask here instead of matching on the provider.
-pub(crate) trait Collector: Sync {
-    /// Names its connection row, its files, its secrets and its API path.
-    fn id(&self) -> &'static str;
-    /// Its name as the dashboard shows it.
-    fn label(&self) -> &'static str;
-    /// What its connection supplies to the pages that require it (`features`).
-    fn capabilities(&self) -> &'static [&'static str];
-    /// The kind of job that runs its main collection.
-    fn job_kind(&self) -> &'static str;
-    /// The kinds of its other collections, each chosen by `job_kind_for`.
-    fn other_job_kinds(&self) -> &'static [&'static str] {
-        &[]
-    }
-    /// The kind of job a request queues.
-    fn job_kind_for(&self, _request: &Value) -> &'static str {
-        self.job_kind()
-    }
-    /// Adds current tenant context needed only while a queued request executes. The
-    /// persisted request stays compatible with the previous binary for rollback.
-    fn bind_request(&self, _: &Store, _: &str, request: &Value) -> Result<Value> {
-        Ok(request.clone())
-    }
-    /// Databases beside its own, one per added collection.
-    fn added_storages(&self) -> &'static [&'static AddedStorage] {
-        &[]
-    }
-    /// Its database, and with it the migration list in `db::schema`.
-    fn database(&self) -> Kind;
-    /// Written into a new database with its schema. Must identify the storage.
-    fn seed(&self, dsp: &str) -> String;
-    /// The DSP setting recording that this storage was added to an existing DSP.
-    /// `None` only for Paycom, whose storage every DSP was created with.
-    fn marker(&self) -> Option<&'static str>;
-    /// Fails closed when initialized storage lost what it must hold.
-    fn verify(&self, _: &Db) -> Result<()> {
-        Ok(())
-    }
-    /// After every collector of a DSP opened at startup.
-    fn opened(&self, _: &Store, _dsp: &str) -> Result<()> {
-        Ok(())
-    }
-    /// What a credential change removes from `state/browsers`.
-    fn browser_entries(&self) -> &'static [&'static str];
-    /// The hosts its browser may reach. The lists themselves stay in `browsers::egress`.
-    fn network(&self) -> NetworkPolicy;
-    fn validate_credentials(&self, value: &Value) -> Result<()>;
-    /// Shown beside the connection. Never a secret.
-    fn account_label<'a>(&self, _credentials: &'a Value) -> &'a str {
-        ""
-    }
-    /// Its driver, on a browser already running under `network`. `fixture` is the
-    /// origin of a local stand-in for the provider's site.
-    fn driver<'a>(
-        &self,
-        browser: browseros::Session,
-        profile: &'a Path,
-        fixture: Option<&'a str>,
-    ) -> Pending<'a, Box<dyn Driver>>;
-    /// What a collection returns in fixture mode, where no browser runs.
-    fn fixture(&self, timezone: &str, request: &Value) -> Result<Collected>;
-    /// The job's message while it collects `request`.
-    fn progress(&self, _request: &Value) -> &'static str;
-    /// Work a finished collection needs before it is stored, done without the database
-    /// and outside the platform lock: parsing, shaping rows, compressing.
-    fn prepare(&self, collected: Collected) -> Result<Collected> {
-        Ok(collected)
-    }
-    /// Stores what it can of a finished collection before the job publishes it, in
-    /// steps short enough that the platform lock is never held for long; `publish` then
-    /// only makes it current. Each step checks the job is still this worker's.
-    fn stage<'a>(
-        &'a self,
-        _state: &'a std::sync::Arc<crate::State>,
-        _dsp: &'a str,
-        _job: &'a str,
-        _owner: &'a str,
-        collected: Collected,
-    ) -> Pending<'a, Collected> {
-        Box::pin(async move { Ok(collected) })
-    }
-    /// Stores a finished collection. Runs while the job is still this worker's.
-    fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()>;
-    /// Drops what an unfinished job kept to resume from. `None` means every job.
-    fn discard(&self, _: &Store, _dsp: &str, _job: Option<&str>) -> Result<()> {
-        Ok(())
-    }
-    /// When `date` was last collected, as a row with `collected_at`.
-    fn collected_at(&self, db: &Db, date: &str) -> Result<Option<Value>>;
-    /// The schedule `collection`s that run this collector, each with the error a
-    /// schedule answers while it is not connected. `both` runs the first of every
-    /// collector's.
-    fn schedules(&self) -> &'static [(&'static str, &'static str)] {
-        &[]
-    }
-    /// What else a schedule needs before it can run `collection`.
-    fn schedule_ready(&self, _: &Store, _dsp: &str, _collection: &str) -> Result<()> {
-        Ok(())
-    }
-    /// The jobs one scheduled run of `collection` queues: an idempotency key suffix
-    /// and a request each.
-    fn scheduled(&self, _: &Store, _dsp: &str, _collection: &str) -> Result<Vec<(String, Value)>> {
-        Ok(vec![])
-    }
-    /// Runs with the connection's own disable, in its transaction.
-    fn disabled(&self, _: &Db) -> Result<()> {
-        Ok(())
-    }
-}
 impl Provider {
-    pub const ALL: &[Self] = &[Self::Paycom, Self::Cortex];
-    /// The registry: the one place that matches on the provider.
-    pub(crate) fn collector(self) -> &'static dyn Collector {
-        match self {
-            Self::Paycom => &paycom::Paycom,
-            Self::Cortex => &cortex::Cortex,
-        }
+    /// The provider whose collector's id is `id`. Only that collector names it.
+    pub const fn new(id: &'static str) -> Self {
+        Self(id)
     }
-    pub fn parse(value: &str) -> Result<Self> {
-        Self::ALL
+    /// Every registered provider, in the registry's order.
+    pub fn all() -> impl Iterator<Item = Self> {
+        registry()
+            .collectors
+            .iter()
+            .map(|collector| Self(collector.id()))
+    }
+    /// The registry: the one place that finds what a provider is.
+    pub(crate) fn collector(self) -> &'static dyn Collector {
+        registry()
+            .collectors
             .iter()
             .copied()
+            .find(|collector| collector.id() == self.0)
+            .unwrap_or_else(|| panic!("the {} collector is not registered", self.0))
+    }
+    pub fn parse(value: &str) -> Result<Self> {
+        Self::all()
             .find(|p| p.id() == value)
             .ok_or_else(|| super::Error::new("not_found", 404))
     }
@@ -166,7 +61,7 @@ impl Provider {
         format!("{dsp}:{}", self.id())
     }
     pub fn id(self) -> &'static str {
-        self.collector().id()
+        self.0
     }
     pub fn job_kind(self) -> &'static str {
         self.collector().job_kind()
@@ -178,9 +73,7 @@ impl Provider {
     }
     /// The provider of a job kind, and the kind as it is spelled in the registry.
     pub fn from_job_kind(kind: &str) -> Result<(Self, &'static str)> {
-        Self::ALL
-            .iter()
-            .copied()
+        Self::all()
             .find_map(|p| p.job_kinds().find(|k| *k == kind).map(|k| (p, k)))
             .ok_or_else(|| super::Error::new("unsupported_collector", 409))
     }
@@ -264,12 +157,12 @@ impl Store {
     }
 
     pub(crate) fn initialize_collectors(&self, id: &str) -> Result<()> {
-        for provider in Provider::ALL.iter().filter(|p| p.marker().is_none()) {
-            self.create_collector(id, *provider)?;
+        for provider in Provider::all().filter(|p| p.marker().is_none()) {
+            self.create_collector(id, provider)?;
         }
         self.dsp(id)?.set(LAYOUT, &json!(1))?;
-        for provider in Provider::ALL.iter().filter(|p| p.marker().is_some()) {
-            self.initialize_added(id, *provider)?;
+        for provider in Provider::all().filter(|p| p.marker().is_some()) {
+            self.initialize_added(id, provider)?;
         }
         self.initialize_added_storages(id)?;
         self.reset_live(id)
@@ -292,13 +185,13 @@ impl Store {
     // Added databases follow the same path as added providers: created for a DSP
     // that lacks the marker, migrated and verified for one that has it.
     fn initialize_added_storages(&self, id: &str) -> Result<()> {
-        for provider in Provider::ALL {
+        for provider in Provider::all() {
             for storage in provider.collector().added_storages() {
                 let core = self.dsp(id)?;
                 let marker = core.setting(storage.marker, Value::Null)?;
                 if marker == json!(1) {
-                    db::migrate(&*self.added_storage(id, *provider, storage)?, storage.kind)?;
-                    (storage.verify)(&*self.added_storage(id, *provider, storage)?)?;
+                    db::migrate(&*self.added_storage(id, provider, storage)?, storage.kind)?;
+                    (storage.verify)(&*self.added_storage(id, provider, storage)?)?;
                     continue;
                 }
                 ensure(marker.is_null(), "unsupported_storage_layout", 503)?;
@@ -314,10 +207,10 @@ impl Store {
                     storage.kind,
                     &seed,
                 )?;
-                added_identity(&target, id, *provider, storage)?;
+                added_identity(&target, id, provider, storage)?;
                 drop(target);
                 core.set(storage.marker, &json!(1))?;
-                (storage.verify)(&*self.added_storage(id, *provider, storage)?)?;
+                (storage.verify)(&*self.added_storage(id, provider, storage)?)?;
             }
         }
         Ok(())
@@ -330,24 +223,24 @@ impl Store {
             "unsupported_storage_layout",
             503,
         )?;
-        for provider in Provider::ALL {
+        for provider in Provider::all() {
             if provider.marker().is_some() {
-                self.initialize_added(id, *provider)?;
+                self.initialize_added(id, provider)?;
             } else {
-                db::migrate(&*self.collector(id, *provider)?, provider.database())?;
+                db::migrate(&*self.collector(id, provider)?, provider.database())?;
             }
         }
         self.initialize_added_storages(id)?;
         self.reset_live(id)?;
-        for provider in Provider::ALL {
+        for provider in Provider::all() {
             provider.collector().opened(self, id)?;
         }
         Ok(())
     }
 
     fn reset_live(&self, id: &str) -> Result<()> {
-        for provider in Provider::ALL {
-            super::live_collection::reset(&*self.collector(id, *provider)?)?;
+        for provider in Provider::all() {
+            super::live_collection::reset(&*self.collector(id, provider)?)?;
         }
         Ok(())
     }
@@ -430,7 +323,7 @@ mod tests {
             .unwrap()
             .set("dsp.profile", &json!({"stationCode":"TEST"}))
             .unwrap();
-        let paycom = store.collector(&id, Provider::Paycom).unwrap();
+        let paycom = store.collector(&id, paycom::PROVIDER).unwrap();
         paycom
             .exec(
                 "UPDATE connections SET enabled=1,status='ready',revision=7",
@@ -475,10 +368,10 @@ mod tests {
                 .len()
                 == values.len()
         };
-        let all = || Provider::ALL.iter().map(|p| p.collector());
+        let all = || Provider::all().map(|p| p.collector());
         assert!(unique(all().map(|c| c.id()).collect()));
         assert!(unique(
-            Provider::ALL.iter().flat_map(|p| p.job_kinds()).collect()
+            Provider::all().flat_map(|p| p.job_kinds()).collect()
         ));
         assert!(unique(all().filter_map(|c| c.marker()).collect()));
         assert!(unique(
@@ -491,11 +384,11 @@ mod tests {
                 .flat_map(|c| c.added_storages().iter().map(|s| s.marker))
                 .collect()
         ));
-        for provider in Provider::ALL {
+        for provider in Provider::all() {
             let collector = provider.collector();
-            assert_eq!(Provider::parse(collector.id()).unwrap(), *provider);
+            assert_eq!(Provider::parse(collector.id()).unwrap(), provider);
             for kind in provider.job_kinds() {
-                assert_eq!(Provider::from_job_kind(kind).unwrap(), (*provider, kind));
+                assert_eq!(Provider::from_job_kind(kind).unwrap(), (provider, kind));
             }
             for storage in collector.added_storages() {
                 assert_eq!(storage.kind.name(), storage.id);
@@ -514,7 +407,7 @@ mod tests {
     #[test]
     fn provider_records_stay_apart_from_core_settings_and_survive_reopening() {
         let (root, store, id) = provisioned();
-        let before = snapshot(&store.collector(&id, Provider::Paycom).unwrap());
+        let before = snapshot(&store.collector(&id, paycom::PROVIDER).unwrap());
         assert_eq!(before["employees"].as_array().unwrap().len(), 12);
         let core = store.dsp(&id).unwrap();
         for table in ["connections", "publications", "employees", "timecards"] {
@@ -531,7 +424,7 @@ mod tests {
             core.setting("paycom.preferences", Value::Null).unwrap(),
             Value::Null
         );
-        let provider = store.collector(&id, Provider::Paycom).unwrap();
+        let provider = store.collector(&id, paycom::PROVIDER).unwrap();
         assert_eq!(
             provider.setting("dsp.profile", Value::Null).unwrap(),
             Value::Null
@@ -543,7 +436,7 @@ mod tests {
             .execute_batch("DROP TABLE timecard_sources; DROP TABLE schema_migrations;")
             .unwrap();
         store
-            .collector(&id, Provider::Cortex)
+            .collector(&id, cortex::PROVIDER)
             .unwrap()
             .0
             .execute_batch("DROP TABLE meal_sources; DROP TABLE schema_migrations;")
@@ -552,8 +445,8 @@ mod tests {
         drop(core);
         store.open_collectors(&id).unwrap();
         for (provider, table) in [
-            (Provider::Paycom, "timecard_sources"),
-            (Provider::Cortex, "meal_sources"),
+            (paycom::PROVIDER, "timecard_sources"),
+            (cortex::PROVIDER, "meal_sources"),
         ] {
             store
                 .collector(&id, provider)
@@ -562,10 +455,10 @@ mod tests {
                 .unwrap();
         }
         assert_eq!(
-            snapshot(&store.collector(&id, Provider::Paycom).unwrap()),
+            snapshot(&store.collector(&id, paycom::PROVIDER).unwrap()),
             before
         );
-        let path = database_path(&root.path().join("dsps").join(&id), Provider::Paycom).unwrap();
+        let path = database_path(&root.path().join("dsps").join(&id), paycom::PROVIDER).unwrap();
         assert!(path.ends_with("data/paycom/paycom.sqlite"));
         assert_eq!(
             std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
@@ -581,7 +474,7 @@ mod tests {
         );
         let reopened = Store::open(store.config.clone(), store.key.clone()).unwrap();
         assert_eq!(
-            snapshot(&reopened.collector(&id, Provider::Paycom).unwrap()),
+            snapshot(&reopened.collector(&id, paycom::PROVIDER).unwrap()),
             before
         );
         let mut next = fixtures::fixture("UTC").unwrap();
@@ -599,7 +492,7 @@ mod tests {
     #[test]
     fn startup_refuses_a_dsp_whose_provider_storage_was_never_separated() {
         let (_root, store, id) = provisioned();
-        let before = snapshot(&store.collector(&id, Provider::Paycom).unwrap());
+        let before = snapshot(&store.collector(&id, paycom::PROVIDER).unwrap());
         store
             .dsp(&id)
             .unwrap()
@@ -611,14 +504,14 @@ mod tests {
             Store::initialize(config.clone()).err().unwrap().code,
             "unsupported_storage_layout"
         );
-        let path = database_path(&config.root.join("dsps").join(&id), Provider::Paycom).unwrap();
+        let path = database_path(&config.root.join("dsps").join(&id), paycom::PROVIDER).unwrap();
         let provider = Db::open(&path, Kind::Paycom).unwrap();
         assert_eq!(snapshot(&provider), before);
     }
     #[test]
     fn storage_survives_backup_and_restore() {
         let (_root, store, id) = provisioned();
-        let before = snapshot(&store.collector(&id, Provider::Paycom).unwrap());
+        let before = snapshot(&store.collector(&id, paycom::PROVIDER).unwrap());
         let pulse = db::private_dir(
             &store
                 .area(&id, "state")
@@ -652,7 +545,7 @@ mod tests {
         let reopened = Store::initialize(config).unwrap();
         reopened.open_collectors(&id).unwrap();
         assert_eq!(
-            snapshot(&reopened.collector(&id, Provider::Paycom).unwrap()),
+            snapshot(&reopened.collector(&id, paycom::PROVIDER).unwrap()),
             before
         );
     }
@@ -663,9 +556,9 @@ mod tests {
             .platform
             .exec("UPDATE dsps SET status='suspended' WHERE id=?", [&id])
             .unwrap();
-        let before = snapshot(&store.collector(&id, Provider::Paycom).unwrap());
+        let before = snapshot(&store.collector(&id, paycom::PROVIDER).unwrap());
         store
-            .collector(&id, Provider::Paycom)
+            .collector(&id, paycom::PROVIDER)
             .unwrap()
             .0
             .execute_batch("DROP TABLE timecard_sources; DROP TABLE schema_migrations;")
@@ -678,7 +571,7 @@ mod tests {
         let mut config = store.config.clone();
         config.root = restored;
         let reopened = Store::initialize(config).unwrap();
-        let provider = reopened.collector(&id, Provider::Paycom).unwrap();
+        let provider = reopened.collector(&id, paycom::PROVIDER).unwrap();
         provider
             .one("SELECT count(*) FROM timecard_sources", [])
             .unwrap();
@@ -688,9 +581,9 @@ mod tests {
     #[test]
     fn cortex_storage_recovers_initialization_and_preserves_provider_identity() {
         let (_root, store, id) = provisioned();
-        let before = snapshot(&store.collector(&id, Provider::Paycom).unwrap());
+        let before = snapshot(&store.collector(&id, paycom::PROVIDER).unwrap());
         store
-            .collector(&id, Provider::Cortex)
+            .collector(&id, cortex::PROVIDER)
             .unwrap()
             .exec(
                 "UPDATE connections SET enabled=1,status='ready',revision=8",
@@ -705,16 +598,16 @@ mod tests {
             .unwrap();
         store.open_collectors(&id).unwrap();
         assert_eq!(
-            store.connection_for(&id, Provider::Cortex).unwrap().status,
+            store.connection_for(&id, cortex::PROVIDER).unwrap().status,
             crate::contracts::ConnectionStatus::Ready
         );
         assert_eq!(
-            snapshot(&store.collector(&id, Provider::Paycom).unwrap()),
+            snapshot(&store.collector(&id, paycom::PROVIDER).unwrap()),
             before
         );
         assert!(Provider::from_job_kind("cortex.collect").is_err());
         store
-            .collector(&id, Provider::Cortex)
+            .collector(&id, cortex::PROVIDER)
             .unwrap()
             .exec("UPDATE storage_identity SET dsp_id='another-dsp'", [])
             .unwrap();
@@ -723,7 +616,7 @@ mod tests {
     #[test]
     fn cortex_storage_opens_without_the_emptied_delivery_history_tables() {
         let (_root, store, id) = provisioned();
-        let cortex = store.collector(&id, Provider::Cortex).unwrap();
+        let cortex = store.collector(&id, cortex::PROVIDER).unwrap();
         cortex
             .0
             .execute_batch(
@@ -736,7 +629,7 @@ mod tests {
         let config = store.config.clone();
         drop(store);
         let reopened = Store::initialize(config).unwrap();
-        let cortex = reopened.collector(&id, Provider::Cortex).unwrap();
+        let cortex = reopened.collector(&id, cortex::PROVIDER).unwrap();
         assert!(cortex.one("SELECT count(*) FROM meal_breaks", []).is_err());
         cortex.one("SELECT count(*) FROM meal_records", []).unwrap();
         // The tables that hold meal evidence are still required.
@@ -748,7 +641,7 @@ mod tests {
     fn missing_initialized_cortex_database_is_not_recreated() {
         let (_root, store, id) = provisioned();
         let path =
-            database_path(&store.config.root.join("dsps").join(&id), Provider::Cortex).unwrap();
+            database_path(&store.config.root.join("dsps").join(&id), cortex::PROVIDER).unwrap();
         let config = store.config.clone();
         drop(store);
         std::fs::remove_file(&path).unwrap();
@@ -758,7 +651,7 @@ mod tests {
     #[test]
     fn resetting_paycom_browser_state_preserves_other_collectors_and_business_data() {
         let (_root, store, id) = provisioned();
-        let before = snapshot(&store.collector(&id, Provider::Paycom).unwrap());
+        let before = snapshot(&store.collector(&id, paycom::PROVIDER).unwrap());
         let browsers = store.area(&id, "state").unwrap().join("browsers");
         for name in ["paycom", "paycom-browseros", "future-collector"] {
             db::private_dir(&browsers.join(name)).unwrap();
@@ -766,7 +659,7 @@ mod tests {
         }
         db::write_private(&browsers.join("paycom-attempt.json"), b"{}").unwrap();
         store
-            .clear_collector_browser_state(&id, Provider::Paycom)
+            .clear_collector_browser_state(&id, paycom::PROVIDER)
             .unwrap();
         assert!(!browsers.join("paycom").exists());
         assert!(!browsers.join("paycom-browseros").exists());
@@ -776,11 +669,11 @@ mod tests {
             b"private session"
         );
         assert_eq!(
-            snapshot(&store.collector(&id, Provider::Paycom).unwrap()),
+            snapshot(&store.collector(&id, paycom::PROVIDER).unwrap()),
             before
         );
         store
-            .clear_collector_browser_state(&id, Provider::Paycom)
+            .clear_collector_browser_state(&id, paycom::PROVIDER)
             .unwrap();
     }
     #[test]
@@ -796,12 +689,12 @@ mod tests {
         std::fs::remove_file(data.join("paycom")).unwrap();
         store.provision(&id).unwrap();
         store
-            .collector(&id, Provider::Paycom)
+            .collector(&id, paycom::PROVIDER)
             .unwrap()
             .exec("UPDATE storage_identity SET dsp_id='another-tenant'", [])
             .unwrap();
         assert_eq!(
-            store.collector(&id, Provider::Paycom).err().unwrap().code,
+            store.collector(&id, paycom::PROVIDER).err().unwrap().code,
             "collector_storage_identity_mismatch"
         );
         let config = store.config.clone();
@@ -809,9 +702,9 @@ mod tests {
         drop(store);
         std::fs::remove_file(data.join("paycom/paycom.sqlite")).unwrap();
         let store = Store::open(config, key).unwrap();
-        assert!(store.collector(&id, Provider::Paycom).is_err());
+        assert!(store.collector(&id, paycom::PROVIDER).is_err());
         assert!(!data.join("paycom/paycom.sqlite").exists());
         assert!(Provider::from_job_kind("../../unknown.collect").is_err());
-        assert!(store.collector("../../escape", Provider::Paycom).is_err());
+        assert!(store.collector("../../escape", paycom::PROVIDER).is_err());
     }
 }

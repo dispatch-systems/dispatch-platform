@@ -7,6 +7,7 @@ use super::*;
 use crate::{
     browsers::http::{Http, Refusal},
     collectors::cortex::{
+        self, codes,
         discovery::Scope,
         scorecard::{
             Capture, Collection, DATASETS, Dataset, DatasetCapture, MAX_ROWS, POSTED_SIGNAL,
@@ -281,7 +282,7 @@ impl Driver {
         request: &Request,
         run: &Run<'_>,
     ) -> std::result::Result<Vec<(String, Vec<Value>)>, Failed> {
-        let http = Http::signed_in(&self.browser, &self.origin).await?;
+        let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
         let referer = format!("{}/performance", self.origin);
         let next = AtomicUsize::new(0);
         let done = AtomicUsize::new(0);
@@ -372,7 +373,7 @@ impl Driver {
                 Err(failed)
                     if saved
                         && !failed.answered
-                        && failed.error.is(crate::Code::ScorecardApiUnreadable) =>
+                        && failed.error.is(codes::SCORECARD_API_UNREADABLE) =>
                 {
                     api = self
                         .performance_api(&scope, &request.dsp_abbreviation, run.metrics)

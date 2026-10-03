@@ -1,4 +1,7 @@
-use dispatch_backend::browsers::egress::Egress;
+use dispatch_backend::{
+    browsers::{browseros::NetworkPolicy, egress::Egress},
+    collectors::paycom,
+};
 use std::{
     os::{fd::AsRawFd, unix::fs::PermissionsExt},
     sync::Arc,
@@ -39,7 +42,7 @@ async fn long_socket_paths_proxy_concurrent_fixture_requests_and_close_cleanly()
             result.unwrap();
         }
     });
-    let proxy = Egress::start(&directory, Some(("fixture.dispatch.invalid".into(), port))).unwrap();
+    let proxy = Egress::start(&directory, ("fixture.dispatch.invalid".into(), port)).unwrap();
     let handle = Arc::new(std::fs::File::open(&directory).unwrap());
     let mut clients = tokio::task::JoinSet::new();
     for _ in 0..20 {
@@ -58,7 +61,9 @@ async fn long_socket_paths_proxy_concurrent_fixture_requests_and_close_cleanly()
 async fn denied_connections_and_failed_start_never_replace_existing_files() {
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
-    let proxy = Egress::start(root.path(), None).unwrap();
+    let proxy =
+        Egress::start_with_policy(root.path(), NetworkPolicy::Hosts(&paycom::BROWSER_HOSTS))
+            .unwrap();
     let mut socket = UnixStream::connect(root.path().join("egress.sock"))
         .await
         .unwrap();
@@ -71,7 +76,10 @@ async fn denied_connections_and_failed_start_never_replace_existing_files() {
     assert!(bytes.is_empty());
     drop(proxy);
     std::fs::write(root.path().join("egress.sock"), "preserve").unwrap();
-    assert!(Egress::start(root.path(), None).is_err());
+    assert!(
+        Egress::start_with_policy(root.path(), NetworkPolicy::Hosts(&paycom::BROWSER_HOSTS))
+            .is_err()
+    );
     assert_eq!(
         std::fs::read_to_string(root.path().join("egress.sock")).unwrap(),
         "preserve"
@@ -91,8 +99,7 @@ async fn buffered_connect_preserves_prefetched_tunnel_bytes() {
         assert_eq!(&bytes, b"clienthello");
         socket.write_all(b"serverhello").await.unwrap();
     });
-    let _proxy =
-        Egress::start(root.path(), Some(("fixture.dispatch.invalid".into(), port))).unwrap();
+    let _proxy = Egress::start(root.path(), ("fixture.dispatch.invalid".into(), port)).unwrap();
     let mut client = UnixStream::connect(root.path().join("egress.sock"))
         .await
         .unwrap();

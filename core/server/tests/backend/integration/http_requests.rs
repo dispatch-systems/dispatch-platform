@@ -3,7 +3,7 @@
 //! how the HTTP layer answers rather than how it is built.
 use dispatch_backend::{
     State,
-    collectors::Provider,
+    collectors::paycom,
     config::Config,
     crypto,
     db::{self, Store, s},
@@ -94,6 +94,7 @@ impl<'a> Call<'a> {
 }
 impl Server {
     async fn start() -> Self {
+        dispatch_backend::install();
         let root = tempfile::tempdir().unwrap();
         std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
         let dashboard = root.path().join("dashboard");
@@ -251,7 +252,7 @@ async fn meal_cache_rechecks_live_visibility_after_lease_bookkeeping_and_authori
         .state
         .read(move |db| {
             let publication = db
-                .collector(&tenant, Provider::Paycom)?
+                .collector(&tenant, paycom::PROVIDER)?
                 .one("SELECT period_to FROM publications WHERE active=1", [])?
                 .unwrap();
             Ok(s(&publication, "period_to").into())
@@ -273,12 +274,12 @@ async fn meal_cache_rechecks_live_visibility_after_lease_bookkeeping_and_authori
             let queued = db.enqueue(&tenant, None, "meal-cache-live")?;
             let job = db
                 .claim_job("meal-cache-owner", |id, provider| {
-                    id == tenant && provider == Provider::Paycom
+                    id == tenant && provider == paycom::PROVIDER
                 })?
                 .unwrap();
             assert_eq!(job.id, s(&queued, "id"));
             let employee = db
-                .collector(&tenant, Provider::Paycom)?
+                .collector(&tenant, paycom::PROVIDER)?
                 .one(
                     "SELECT e.* FROM employees e JOIN publications p ON p.id=e.publication_id \
              WHERE p.active=1 AND e.code='E001'",
@@ -423,7 +424,7 @@ async fn revoked_connection_manager_cannot_persist_a_pending_provider_result() {
                 crypto::encrypt(&key, &format!("{setup_dsp}:paycom:2"), &credentials)?
                     .as_bytes(),
             )?;
-            db.collector(&setup_dsp, Provider::Paycom)?.exec(
+            db.collector(&setup_dsp, paycom::PROVIDER)?.exec(
                 "UPDATE connections SET status='not_connected',error=NULL,verified_at=NULL",
                 [],
             )?;
@@ -444,7 +445,7 @@ async fn revoked_connection_manager_cannot_persist_a_pending_provider_result() {
             let status = revoke_state
                 .read(move |db| {
                     Ok(db
-                        .collector(&id, Provider::Paycom)?
+                        .collector(&id, paycom::PROVIDER)?
                         .one("SELECT status FROM connections WHERE provider='paycom'", [])?
                         .and_then(|row| row["status"].as_str().map(str::to_owned))
                         .unwrap_or_default())
@@ -483,7 +484,7 @@ async fn revoked_connection_manager_cannot_persist_a_pending_provider_result() {
         .state
         .read(move |db| {
             Ok(db
-                .collector(&final_dsp, Provider::Paycom)?
+                .collector(&final_dsp, paycom::PROVIDER)?
                 .one("SELECT status FROM connections WHERE provider='paycom'", [])?
                 .unwrap()["status"]
                 .as_str()

@@ -14,6 +14,16 @@ use std::{
     time::Instant,
 };
 
+/// What a finished collection brought, as its collector counts it from its data.
+#[derive(Default)]
+pub struct Counts {
+    pub employees: Option<usize>,
+    pub timecards: Option<usize>,
+    pub itineraries: Option<usize>,
+    pub meals: Option<usize>,
+    pub rows: Option<usize>,
+}
+
 /// The journal line for one attempt: outcome and timings, without page reads.
 pub fn summary(metrics: &Metrics) -> Value {
     serde_json::json!({"outcome":metrics.outcome,"detail":metrics.detail,"queueMs":metrics.queue_ms,
@@ -247,32 +257,13 @@ impl Recorder {
             && label.bytes().all(|b| b.is_ascii_lowercase() || b == b'_');
         self.0.lock().expect("job metrics").value.detail = valid.then(|| label.to_owned());
     }
-    pub fn counts(&self, data: &Value) {
+    pub fn counts(&self, counts: Counts) {
         let mut clock = self.0.lock().expect("job metrics");
-        clock.value.employees = data["employees"].as_array().map(Vec::len);
-        clock.value.timecards = data["timecards"].as_array().map(Vec::len);
-        clock.value.itineraries = data["itineraries"].as_array().map(Vec::len);
-        clock.value.meals = data["itineraries"].as_array().map(|rows| {
-            rows.iter()
-                .map(|r| r["meals"].as_array().map_or(0, Vec::len))
-                .sum()
-        });
-        clock.value.rows = data["reports"]
-            .as_array()
-            .map(|reports| {
-                reports
-                    .iter()
-                    .map(|r| r["rows"].as_array().map_or(0, Vec::len))
-                    .sum()
-            })
-            .or_else(|| {
-                data["datasets"].as_array().map(|datasets| {
-                    datasets
-                        .iter()
-                        .map(|d| d["rows"].as_array().map_or(0, Vec::len))
-                        .sum()
-                })
-            });
+        clock.value.employees = counts.employees;
+        clock.value.timecards = counts.timecards;
+        clock.value.itineraries = counts.itineraries;
+        clock.value.meals = counts.meals;
+        clock.value.rows = counts.rows;
     }
     pub fn snapshot(&self) -> Metrics {
         let clock = self.0.lock().expect("job metrics");

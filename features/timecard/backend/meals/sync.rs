@@ -3,8 +3,11 @@ use crate::{
     Result,
     collectors::{
         Provider,
-        cortex::discovery::{Discovery, Scope},
-        paycom::validation::collection_date,
+        cortex::{
+            self,
+            discovery::{Discovery, Scope},
+        },
+        paycom::{self, validation::collection_date},
     },
     contracts::JobRow,
     db::{Store, s},
@@ -46,7 +49,7 @@ impl Store {
         })
     }
     pub(crate) fn meal_sync_scopes(&self, id: &str, date: &str) -> Result<Vec<Scope>> {
-        let db = self.collector(id, Provider::Cortex)?;
+        let db = self.collector(id, cortex::PROVIDER)?;
         let rows = db.all(SCOPES, [date])?;
         Ok(rows
             .iter()
@@ -65,7 +68,7 @@ impl Store {
         let mut latest: Option<JobRow> =
             self.jobs.one_as(LATEST_FOR_DATE, params![id, kind, date])?;
         if let Some(row) = &latest
-            && provider == Provider::Cortex
+            && provider == cortex::PROVIDER
             && let Some((prefix, _)) = row.idempotency_key.rsplit_once(":flex:")
         {
             let prefix = format!("{prefix}:flex:");
@@ -106,19 +109,19 @@ impl Store {
                 .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit());
         Ok(
             json!({"date":date,"scopeAvailable":station_available || !self.meal_sync_scopes(id,date)?.is_empty(),
-            "paycom":self.sync_source(id,date,Provider::Paycom)?,
-            "flex":self.sync_source(id,date,Provider::Cortex)?}),
+            "paycom":self.sync_source(id,date,paycom::PROVIDER)?,
+            "flex":self.sync_source(id,date,cortex::PROVIDER)?}),
         )
     }
     pub fn enqueue_meal_sync(&self, id: &str, actor: &str, key: &str, date: &str) -> Result<Value> {
         collection_date(&json!({"date":date}), &self.find_dsp(id)?.timezone)?;
         ensure(
-            self.connection_for(id, Provider::Paycom)?.enabled,
+            self.connection_for(id, paycom::PROVIDER)?.enabled,
             "meal_sync_paycom_required",
             409,
         )?;
         ensure(
-            self.connection_for(id, Provider::Cortex)?.enabled,
+            self.connection_for(id, cortex::PROVIDER)?.enabled,
             "meal_sync_flex_required",
             409,
         )?;
@@ -150,7 +153,7 @@ impl Store {
         let scopes = self.meal_sync_scopes(id, date)?;
         let mut requests = vec![(
             format!("meal:{key}:paycom"),
-            Provider::Paycom,
+            paycom::PROVIDER,
             json!({"date":date}),
         )];
         if scopes.is_empty() {
@@ -163,7 +166,7 @@ impl Store {
             discovery.scope("discovery", "discovery")?;
             requests.push((
                 format!("meal:{key}:flex:0"),
-                Provider::Cortex,
+                cortex::PROVIDER,
                 serde_json::to_value(discovery)?,
             ));
         }
@@ -171,7 +174,7 @@ impl Store {
             scope.validate()?;
             requests.push((
                 format!("meal:{key}:flex:{index}"),
-                Provider::Cortex,
+                cortex::PROVIDER,
                 serde_json::to_value(scope)?,
             ));
         }

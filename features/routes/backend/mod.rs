@@ -7,8 +7,9 @@
 use crate::{
     Error, Result,
     collectors::{
-        AddedStorage, Provider,
+        AddedStorage,
         cortex::{
+            self,
             discovery::Scope,
             routes::{
                 Capture, Collection, ItineraryCapture, JOB_KIND, MAX_BODY, MAX_CAPTURE_BYTES, Mode,
@@ -365,7 +366,7 @@ struct Flat {
 
 impl Store {
     pub fn routedata(&self, id: &str) -> Result<DspLease<'_>> {
-        self.added_storage(id, Provider::Cortex, &STORAGE)
+        self.added_storage(id, cortex::PROVIDER, &STORAGE)
     }
     /// Today, where the DSP is.
     fn routes_today(&self, id: &str) -> Result<NaiveDate> {
@@ -448,7 +449,7 @@ impl Store {
                 };
                 Ok((
                     format!("{key}{suffix}"),
-                    Provider::Cortex,
+                    cortex::PROVIDER,
                     self.routes_request(id, &day, mode)?,
                 ))
             })
@@ -1903,7 +1904,7 @@ mod tests {
             json!({"stationCode":"TST1","abbreviation":"NLOG","setupRequired":false}),
         )
         .unwrap();
-        db.collector(dsp, crate::collectors::Provider::Cortex)
+        db.collector(dsp, crate::collectors::cortex::PROVIDER)
             .unwrap()
             .exec("UPDATE connections SET enabled=1,status='ready'", [])
             .unwrap();
