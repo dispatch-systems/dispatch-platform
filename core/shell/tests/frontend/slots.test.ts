@@ -2,6 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Award, Shirt } from 'lucide-react';
 import {
+  collectionAffects,
+  collectionData,
+  mutationAffects,
+} from '../../frontend/runtime/data-policy.js';
+import {
+  cacheRules,
   collectionLabels,
   connectionCard,
   connectionCards,
@@ -86,4 +92,50 @@ test('collections come with the collector that runs them, in the order they are 
       ['alpha', 'alpha.a'],
     ],
   );
+});
+
+test('cache rules keep each owner’s reads current, a read changing when any owner says so', () => {
+  installFeatures([
+    {
+      name: 'alpha',
+      cache: {
+        collected: ['/api/dsp/alpha/days', '/api/dsp/alpha/status'],
+        collection: (url, changes) =>
+          url.startsWith('/api/dsp/alpha/status') || changes.some((change) => change.roster),
+        jobs: ['/api/dsp/alpha/status'],
+        write: (write, url) =>
+          write.startsWith('/api/dsp/alpha/') ? url.startsWith('/api/dsp/alpha/') : undefined,
+      },
+    },
+    { name: 'beta' },
+    {
+      name: 'gamma',
+      cache: {
+        collected: ['/api/dsp/gamma'],
+        connections: ['/api/dsp/gamma/'],
+        // Alpha's writes move gamma's rows too.
+        write: (write, url) =>
+          write.startsWith('/api/dsp/alpha/') ? url.startsWith('/api/dsp/gamma/rows') : undefined,
+      },
+    },
+  ]);
+  assert.equal(cacheRules().length, 2);
+  const change = { provider: 'fixture', dates: [], employeeCode: null, roster: false };
+  assert.equal(collectionData('/api/dsp/alpha/days?date=2026-09-22'), true);
+  assert.equal(collectionData('/api/dsp/delta'), false);
+  assert.equal(collectionAffects('/api/dsp/alpha/days', [change]), false);
+  assert.equal(collectionAffects('/api/dsp/alpha/days', [{ ...change, roster: true }]), true);
+  assert.equal(collectionAffects('/api/dsp/alpha/status', []), true);
+  assert.equal(collectionAffects('/api/dsp/gamma/rows', [change]), true);
+  assert.equal(collectionAffects('/api/dsp/jobs', []), true);
+  assert.equal(mutationAffects('/api/dsp/alpha/edit', '/api/dsp/alpha/days'), true);
+  assert.equal(mutationAffects('/api/dsp/alpha/edit', '/api/dsp/gamma/rows'), true);
+  assert.equal(mutationAffects('/api/dsp/alpha/edit', '/api/dsp/gamma/other'), false);
+  // A write an owner knows changes nothing else, the jobs included.
+  assert.equal(mutationAffects('/api/dsp/alpha/collect', '/api/dsp/jobs'), false);
+  assert.equal(mutationAffects('/api/dsp/delta/collect', '/api/dsp/alpha/status'), true);
+  assert.equal(mutationAffects('/api/dsp/delta/collect', '/api/dsp/gamma/rows'), false);
+  assert.equal(mutationAffects('/api/dsp/connections/fixture', '/api/dsp/gamma/rows'), true);
+  assert.equal(mutationAffects('/api/dsp/connections/fixture', '/api/dsp/alpha/status'), true);
+  assert.equal(mutationAffects('/api/dsp/connections/fixture', '/api/dsp/alpha/days'), false);
 });

@@ -1,6 +1,7 @@
 import { createElement, lazy } from 'react';
 import { ClipboardCheck } from 'lucide-react';
 import type { DspView } from '../../../shared/contracts/index.js';
+import { begins } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
 
@@ -39,6 +40,11 @@ export const feature: FrontendFeature = {
   ],
   auditWording: () => import('./audit-wording.js').then((module) => module.wording),
   switch: { id: 'dvic', icon: ClipboardCheck },
+  cache: {
+    connections: ['/api/dsp/dvic/'],
+    write: (write, url) =>
+      write.startsWith('/api/dsp/dvic/') ? begins(url, '/api/dsp/dvic/') : undefined,
+  },
   readToggles: {
     label: 'DVIC',
     missing: 'DVIC inspections',

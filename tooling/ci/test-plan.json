@@ -8,7 +8,7 @@
     "features/timecard/tests/frontend/daily-sort.test.ts",
     "core/shell/tests/frontend/dashboard-format.test.ts",
     "app/tests/rules/dashboard-structure.test.ts",
-    "core/shell/tests/frontend/data-policy.test.ts",
+    "app/tests/frontend/data-policy.test.ts",
     "core/platform_owner/tests/frontend/diagnostics.test.ts",
     "features/driver_match/tests/frontend/driver-match.test.ts",
     "features/dvic/tests/frontend/dvic.test.ts",

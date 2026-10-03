@@ -4,6 +4,7 @@ import type {
   AgentArea,
   AgentSource,
   AuditEvent,
+  CollectionChange,
   ConnectionFeature,
   DspView,
   Feature,
@@ -177,6 +178,23 @@ export type CollectionLabels = {
   count: (metrics: JobMetrics) => number | null;
 };
 
+/** How the response cache keeps an owner's reads current, each read named by its path prefix. */
+export type CacheRules = {
+  /** Its reads that hold collected data. */
+  collected?: readonly string[];
+  /** Whether a finished collection's changes reach one of its `collected` reads; omitted, any do. */
+  collection?: (url: string, changes: readonly CollectionChange[]) => boolean;
+  /** Its reads that change as a job starts, runs or ends. */
+  jobs?: readonly string[];
+  /** Its reads that change with the DSP's connections. */
+  connections?: readonly string[];
+  /**
+   * Whether a write changes a read, for the writes it knows; undefined for the others. A read
+   * changes when any owner says so, and a write an owner knows changes nothing else.
+   */
+  write?: (write: string, url: string) => boolean | undefined;
+};
+
 /** An owner's frontend: what it puts in each slot. */
 export type FrontendFeature = {
   /** The owner's directory name. */
@@ -195,6 +213,8 @@ export type FrontendFeature = {
   connectionCard?: ConnectionCard;
   /** The collections it runs. */
   collections?: readonly CollectionLabels[];
+  /** How the response cache treats its reads. */
+  cache?: CacheRules;
 };
 
 let installed: readonly FrontendFeature[] = [];
@@ -232,6 +252,9 @@ export const collectionLabels = () =>
   installed.flatMap((feature) =>
     (feature.collections ?? []).map((collection) => ({ ...collection, provider: feature.name })),
   );
+
+/** Every owner's cache rules, in the order the owners are listed. */
+export const cacheRules = () => installed.flatMap((feature) => feature.cache ?? []);
 
 /** Every owner's kinds of data agents may read, group by group in their order. */
 export const readToggles = () =>

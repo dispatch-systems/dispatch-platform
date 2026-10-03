@@ -1,5 +1,6 @@
 import { createElement, lazy } from 'react';
 import { Shirt } from 'lucide-react';
+import { begins } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
 
@@ -30,4 +31,8 @@ export const feature: FrontendFeature = {
     },
   ],
   switch: { id: 'uniforms', icon: Shirt },
+  cache: {
+    write: (write, url) =>
+      write.startsWith('/api/dsp/uniforms') ? begins(url, '/api/dsp/uniforms') : undefined,
+  },
 };

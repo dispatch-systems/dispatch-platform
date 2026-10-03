@@ -5,6 +5,7 @@ import { featureCatalog } from '../../../core/shell/frontend/runtime/features.js
 import { features } from '../../frontend/features.js';
 import { jobSchema } from '../../../shared/contracts/runtime.js';
 import {
+  cacheRules,
   collectionLabels,
   connectionCard,
   connectionCards,
@@ -68,4 +69,19 @@ test('each job kind and schedule collection is named once, by a connection', () 
       featureCatalog.some((entry) => entry.kind === 'connection' && entry.id === provider),
       `${provider} is no connection`,
     );
+});
+
+test('a read of collected data belongs to one owner', () => {
+  const owners = cacheRules().map((rules) => rules.collected ?? []);
+  owners.forEach((prefixes, owner) =>
+    owners.forEach((others, other) => {
+      if (other !== owner)
+        for (const prefix of prefixes)
+          for (const otherPrefix of others)
+            assert(
+              !prefix.startsWith(otherPrefix) && !otherPrefix.startsWith(prefix),
+              `${prefix} and ${otherPrefix} overlap`,
+            );
+    }),
+  );
 });

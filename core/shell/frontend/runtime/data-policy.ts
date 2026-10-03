@@ -1,66 +1,42 @@
-/** Cache dependencies, independent of React and transport. */
+/** Cache dependencies, independent of React and transport: core's own, and each owner's rules. */
 import type { CollectionChange } from '../../../../shared/contracts/index.js';
+import { cacheRules } from './slots.js';
 export type { CollectionChange };
-const path = (url: string) => url.split('?')[0]!;
-const begins = (url: string, ...prefixes: string[]) =>
+export const path = (url: string) => url.split('?')[0]!;
+export const begins = (url: string, ...prefixes: readonly string[]) =>
   prefixes.some((p) => path(url).startsWith(p));
+/** The owner's rules for a read of its collected data. */
+const collector = (url: string) =>
+  cacheRules().find((rules) => begins(url, ...(rules.collected ?? [])));
 export const collectionData = (url: string) =>
-  begins(
-    url,
-    '/api/dsp/timecards',
-    '/api/dsp/employees',
-    '/api/dsp/paycom/meal-breaks',
-    '/api/dsp/paycom/settings',
-    '/api/dsp/jobs',
-    '/api/dsp/paycom/status',
-    '/api/dsp/driver-match',
-  );
+  begins(url, '/api/dsp/jobs') || collector(url) !== undefined;
 
-export function collectionAffects(url: string, changes: CollectionChange[]) {
-  const route = path(url);
-  if (!collectionData(url)) return false;
-  if (begins(url, '/api/dsp/jobs', '/api/dsp/paycom/status', '/api/dsp/driver-match')) return true;
-  return changes.some((change) => {
-    if (change.provider === 'all') return true;
-    if (change.provider === 'cortex' && route !== '/api/dsp/paycom/meal-breaks') return false;
-    if (route === '/api/dsp/paycom/settings') return Boolean(change.roster);
-    if (route === '/api/dsp/employees') return Boolean(change.roster);
-    if (route.startsWith('/api/dsp/employees/'))
-      return (
-        !change.employeeCode ||
-        decodeURIComponent(route.slice('/api/dsp/employees/'.length)) === change.employeeCode
-      );
-    const day = new URLSearchParams(url.split('?')[1]).get('date');
-    return !day || !change.dates?.length || change.dates.includes(day);
-  });
+export function collectionAffects(url: string, changes: readonly CollectionChange[]) {
+  if (begins(url, '/api/dsp/jobs')) return true;
+  const rules = collector(url);
+  if (!rules) return false;
+  return rules.collection?.(url, changes) ?? true;
 }
 
 export function mutationAffects(mutation: string, url: string) {
   const write = path(mutation);
   if (write === '/api/session/dsp' || write.startsWith('/api/auth/')) return false;
-  if (write.startsWith('/api/dsp/dvic/')) return begins(url, '/api/dsp/dvic/');
-  if (write.startsWith('/api/dsp/uniforms')) return begins(url, '/api/dsp/uniforms');
-  if (write === '/api/dsp/paycom/settings') return collectionData(url) || path(url) === write;
-  // A Driver Match decision moves drivers between rows of the meal-break comparison.
-  if (write.startsWith('/api/dsp/driver-match'))
-    return begins(url, '/api/dsp/driver-match', '/api/dsp/paycom/meal-breaks');
+  const rules = cacheRules();
+  const said = rules.map((owner) => owner.write?.(write, url));
+  if (said.includes(true)) return true;
+  if (said.includes(false)) return false;
+  const jobs = ['/api/dsp/jobs', ...rules.flatMap((owner) => owner.jobs ?? [])];
   if (write.startsWith('/api/dsp/jobs') || write.endsWith('/sync') || write.endsWith('/collect'))
-    return (
-      begins(url, '/api/dsp/jobs', '/api/dsp/paycom/status') ||
-      (write.endsWith('/sync') && path(url) === write.slice(0, -5))
-    );
+    return begins(url, ...jobs) || (write.endsWith('/sync') && path(url) === write.slice(0, -5));
   if (write.startsWith('/api/dsp/connections'))
     return begins(
       url,
       '/api/dsp/connections',
-      '/api/dsp/jobs',
-      '/api/dsp/paycom/status',
       '/api/dsp/schedules',
-      '/api/dsp/dvic/',
+      ...jobs,
+      ...rules.flatMap((owner) => owner.connections ?? []),
     );
   if (write.startsWith('/api/dsp/schedules')) return begins(url, '/api/dsp/schedules');
-  if (begins(write, '/api/dsp/members', '/api/dsp/roles', '/api/dsp/invitations'))
-    return begins(url, '/api/dsp/members', '/api/dsp/roles', '/api/dsp/invitations');
   if (write.startsWith('/api/platform/')) return url.startsWith('/api/platform/');
   // Unclassified DSP edits conservatively revalidate their DSP, not platform pages.
   return write.startsWith('/api/dsp/') && url.startsWith('/api/dsp/');
