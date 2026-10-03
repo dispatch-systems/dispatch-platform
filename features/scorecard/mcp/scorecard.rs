@@ -2,17 +2,19 @@
 //! events, returns to station with their contact-compliance notes, and each driver's tiers.
 //! Each reads the week's active publication and answers a count or a short table, as the
 //! route questions do.
-use super::{
-    Answer, Refusal,
-    access::{self, Access, Read},
-    catalog::{self, flag},
-    facts,
-    scope::{DEFAULT_PERIOD, People, Period, param, period, today},
-    shape::{Table, limit, page, paged, understood},
-};
 use crate::{
     State,
-    agents::Caller,
+    agents::{
+        Caller,
+        data::{
+            Answer, Refusal,
+            access::{self, Access, Read},
+            catalog::{self, flag},
+            facts,
+            scope::{DEFAULT_PERIOD, People, Period, Person, param, period, today},
+            shape::{Table, limit, page, paged, understood},
+        },
+    },
     contracts::{DriverSource, Dsp},
     db::{Store, s},
     weeks,
@@ -219,10 +221,7 @@ fn yes(row: &Value, field: &str) -> bool {
     )
 }
 /// The driver a question names, as the Amazon IDs they hold.
-fn person_ids<'a>(
-    people: &'a People,
-    query: &Value,
-) -> Result<Option<&'a super::scope::Person>, Refusal> {
+fn person_ids<'a>(people: &'a People, query: &Value) -> Result<Option<&'a Person>, Refusal> {
     let named = param(query, "driver");
     if named.is_empty() {
         Ok(None)

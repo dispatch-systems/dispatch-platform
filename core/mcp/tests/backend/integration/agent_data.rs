@@ -5,7 +5,7 @@
 mod common;
 use dispatch_backend::{
     State,
-    agents::{Caller, data, synthetic},
+    agents::{Caller, synthetic},
     collectors::{
         cortex::{
             self,
@@ -20,6 +20,14 @@ use dispatch_backend::{
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
+
+/// The agent API's answers: core's, and those of each feature that answers for its own.
+mod data {
+    pub use dispatch_backend::agents::data::*;
+    pub use dispatch_backend::feature_manifests::scorecard::mcp::scorecard::{
+        feedback, returns, safety, weekly,
+    };
+}
 
 const DAY: &str = "2026-09-12";
 

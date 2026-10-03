@@ -3,24 +3,23 @@
 //! the days, the driver) and which days each source has, so missing data never reads as
 //! zero. Requests that leave something unclear are refused with the choices, never guessed.
 #[path = "access.rs"]
-mod access;
+pub mod access;
 #[path = "catalog.rs"]
 pub mod catalog;
 #[path = "facts.rs"]
-mod facts;
+pub mod facts;
 #[path = "scope.rs"]
-mod scope;
-#[path = "../../../../features/scorecard/mcp/scorecard.rs"]
-mod scorecard;
+pub mod scope;
 #[path = "shape.rs"]
-mod shape;
+pub mod shape;
 #[path = "views.rs"]
 mod views;
 
 pub use access::switched_on;
-pub use scorecard::{feedback, returns, safety, weekly};
 pub use shape::BUDGET;
 pub use views::*;
+// A4: Scorecard's answers, until it answers for its own endpoints.
+use crate::feature_manifests::scorecard::mcp::scorecard;
 
 use crate::{Error, State, agents::Caller, contracts::AgentDsp, db::Store};
 use access::{Access, Read};

@@ -1,5 +1,7 @@
 //! What agents can ask of Scorecard: Amazon's weekly scorecard, its customer feedback,
 //! Netradyne safety events and returns to station.
+pub mod scorecard;
+
 use crate::{
     agents::Mcp,
     contracts::{AgentArea, AgentSource, DriverSource, ReadSource, ReadToggle},
