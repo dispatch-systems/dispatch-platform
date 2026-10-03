@@ -8,6 +8,7 @@ use dispatch_backend::{
     },
     contracts::DriverSource,
     db::{Store, s},
+    driver_match::DriverMatchStore,
 };
 use serde_json::{Value, json};
 

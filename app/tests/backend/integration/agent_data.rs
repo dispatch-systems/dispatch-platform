@@ -17,6 +17,7 @@ use dispatch_backend::{
     },
     contracts::{AgentArea, AgentKeyRequest},
     db::{Store, s},
+    driver_match::DriverMatchStore,
     dvic::DvicStore,
     routedata::RoutesStore,
     scorecard::ScorecardStore,

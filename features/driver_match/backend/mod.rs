@@ -205,21 +205,41 @@ fn driver(
     }
 }
 
-impl Store {
+/// What Driver Match reads and writes for a DSP: its codes, the decisions about them and the
+/// IDs they lead to.
+pub trait DriverMatchStore {
+    fn match_drivers(&self, dsp: &str) -> Result<usize>;
+    fn driver_sources(&self, dsp: &str) -> Result<DriverSources>;
+    fn assign_drivers(&self, dsp: &str, found: DriverSources) -> Result<usize>;
+    fn driver_match(&self, dsp: &str) -> Result<DriverMatch>;
+    fn driver_counts(&self, dsp: &str) -> Result<DriverCounts>;
+    fn driver_details(&self, dsp: &str, code: &str) -> Result<DriverDetails>;
+    fn driver_links(&self, dsp: &str) -> Result<BTreeMap<String, (Vec<String>, bool)>>;
+    fn merge_drivers(&self, c: &Context, code: &str, into: &str) -> Result<DriverMatch>;
+    fn split_driver(
+        &self,
+        c: &Context,
+        code: &str,
+        source: DriverSource,
+        id: &str,
+    ) -> Result<DriverMatch>;
+    fn keep_drivers_apart(&self, c: &Context, code: &str, other: &str) -> Result<DriverMatch>;
+}
+impl DriverMatchStore for Store {
     /// Gives every new ID in the DSP's collections a person. Answers how many IDs were new.
-    pub fn match_drivers(&self, dsp: &str) -> Result<usize> {
+    fn match_drivers(&self, dsp: &str) -> Result<usize> {
         self.assign_drivers(dsp, self.driver_sources(dsp)?)
     }
     /// Reads what a pass needs, without writing: run it under the shared lock.
-    pub fn driver_sources(&self, dsp: &str) -> Result<DriverSources> {
+    fn driver_sources(&self, dsp: &str) -> Result<DriverSources> {
         Ok(DriverSources {
             identities: sources::identities(self, dsp)?,
-            saved: self.saved_links(dsp)?,
+            saved: saved_links(self, dsp)?,
         })
     }
     /// Writes what a pass found: a person for every new ID. Who already holds what is read
     /// again here, so a decision made since the read stands.
-    pub fn assign_drivers(&self, dsp: &str, found: DriverSources) -> Result<usize> {
+    fn assign_drivers(&self, dsp: &str, found: DriverSources) -> Result<usize> {
         let DriverSources { identities, saved } = found;
         let db = self.dsp(dsp)?;
         db.transaction(|| {
@@ -255,7 +275,7 @@ impl Store {
                 } else if let Some(code) = fresh.get(person) {
                     code.clone()
                 } else {
-                    let code = self.new_person(&db, dsp, &now, None, None)?;
+                    let code = new_person(self, &db, dsp, &now, None, None)?;
                     fresh.insert(person.clone(), code.clone());
                     code
                 };
@@ -271,358 +291,22 @@ impl Store {
         })
     }
 
-    /// The links saved on the meal-break page before Driver Match, read as decisions.
-    fn saved_links(&self, dsp: &str) -> Result<Saved> {
-        let value = self.dsp(dsp)?.setting(LINKS, Value::Null)?;
-        let text = |v: &Value| v.as_str().map(str::to_owned);
-        Ok(Saved {
-            links: value["links"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(|l| Some((text(&l["cortexId"])?, text(&l["paycomCode"])?)))
-                .collect(),
-            separate: value["separate"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(text)
-                .collect(),
-        })
-    }
-
-    /// A person with a new code, unique on the platform: every DSP's codes are listed in
-    /// `driver_codes`, so a code never leads to two people anywhere.
-    fn new_person(
-        &self,
-        db: &Db,
-        dsp: &str,
-        now: &str,
-        split_from: Option<&str>,
-        actor: Option<&str>,
-    ) -> Result<String> {
-        for _ in 0..16 {
-            // 240 is the largest multiple of 30 a byte holds; larger bytes would favour
-            // the alphabet's first letters, so they are skipped.
-            let code: String = crypto::random::<24>()?
-                .into_iter()
-                .filter(|b| *b < 240)
-                .take(CODE_LENGTH)
-                .map(|b| ALPHABET[usize::from(b % 30)] as char)
-                .collect();
-            if code.len() == CODE_LENGTH
-                && self.platform.exec(
-                    "INSERT OR IGNORE INTO driver_codes(code,dsp_id,created_at) VALUES (?,?,?)",
-                    params![code, dsp, now],
-                )? == 1
-            {
-                db.exec(
-                    "INSERT INTO people(code,created_at,split_from,created_by) VALUES (?,?,?,?)",
-                    params![code, now, split_from, actor],
-                )?;
-                return Ok(code);
-            }
-        }
-        Err(Error::new("driver_code_unavailable", 500))
-    }
-
-    fn overview(&self, dsp: &str) -> Result<Overview> {
-        let found: Found = sources::identities(self, dsp)?
-            .into_iter()
-            .map(|x| ((x.source, x.id.clone()), x))
-            .collect();
-        let activity = sources::activity(self, dsp)?;
-        let days = sources::days(self, dsp)?;
-        let saved = self.saved_links(dsp)?;
-        let departments = sources::driver_departments(self, dsp)?;
-        // Counted from what was collected, not from today, so a DSP whose collections
-        // pause does not see everyone leave.
-        let recent = found
-            .values()
-            .filter_map(|x| x.last_seen.as_deref())
-            .chain(
-                activity
-                    .values()
-                    .flat_map(|data| data.values().filter_map(|s| s.last.as_deref())),
-            )
-            .filter_map(|day| chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d").ok())
-            .max()
-            .map(|newest| (newest - chrono::Duration::days(FORMER_AFTER_DAYS)).to_string())
-            .unwrap_or_default();
-        let db = self.dsp(dsp)?;
-        let rows: Vec<IdRow> = db.query_as(
-            "SELECT i.* FROM person_ids i JOIN people p ON p.code=i.code \
-             WHERE p.merged_into IS NULL ORDER BY i.linked_at,i.source,i.external_id",
-            [],
-        )?;
-        let apart: BTreeSet<(String, String)> = db
-            .query_as::<(String, String)>("SELECT first,second FROM people_apart", [])?
-            .into_iter()
-            .collect();
-        let checked_at = db
-            .setting(CHECKED, Value::Null)?
-            .as_str()
-            .map(str::to_owned);
-        drop(db);
-        let mut held: BTreeMap<&str, Vec<&IdRow>> = BTreeMap::new();
-        for row in &rows {
-            held.entry(&row.code).or_default().push(row);
-        }
-        let mut drivers: BTreeMap<String, Driver> = held
-            .iter()
-            .map(|(code, ids)| {
-                (
-                    (*code).to_owned(),
-                    driver(code, ids, &activity, &departments, &found, &recent),
-                )
-            })
-            .collect();
-        // Someone kept these apart from Paycom on the meal-break page; that decision stands.
-        let kept: BTreeSet<&str> = held
-            .iter()
-            .filter(|(_, ids)| {
-                ids.iter().any(|i| {
-                    i.source == DriverSource::Amazon && saved.separate.contains(&i.external_id)
-                })
-            })
-            .map(|(code, _)| *code)
-            .collect();
-        // Everyone only one source knows, those who have left included: their records
-        // are worth joining all the same.
-        let side = |source: DriverSource| -> Vec<review::Side<'_>> {
-            let only = [
-                DriverStatus::PaycomOnly,
-                DriverStatus::AmazonOnly,
-                DriverStatus::Former,
-            ];
-            held.iter()
-                .filter(|(code, ids)| {
-                    only.contains(&drivers[**code].status)
-                        && ids.iter().all(|i| i.source == source)
-                        && !kept.contains(**code)
-                })
-                .map(|(code, ids)| review::Side {
-                    code,
-                    // Every name an ID's sources write, so a middle name or a different
-                    // spelling in one of them still counts.
-                    names: ids
-                        .iter()
-                        .filter_map(|i| found.get(&i.key()))
-                        .flat_map(|x| x.names.iter().map(String::as_str))
-                        .collect(),
-                })
-                .collect()
-        };
-        let suggestions = review::suggest(
-            &side(DriverSource::Paycom),
-            &side(DriverSource::Amazon),
-            &apart,
-        );
-        let worked = |code: &str| -> Option<BTreeSet<String>> {
-            let sets: Vec<&BTreeSet<String>> = held
-                .get(code)?
-                .iter()
-                .filter_map(|i| days.of(&i.key()))
-                .collect();
-            (!sets.is_empty()).then(|| sets.into_iter().flatten().cloned().collect())
-        };
-        let mut pairs: Vec<(
-            DriverStrength,
-            usize,
-            String,
-            String,
-            Vec<crate::contracts::DriverEvidence>,
-        )> = vec![];
-        for mut suggestion in suggestions {
-            if let Some(days) = review::worked_days(
-                worked(&suggestion.paycom).as_ref(),
-                worked(&suggestion.amazon).as_ref(),
-                &days.paycom,
-                &days.amazon,
-            ) {
-                suggestion.evidence.push(days);
-            }
-            let strength = review::strength(&suggestion.evidence);
-            pairs.push((
-                strength,
-                suggestion.evidence.len(),
-                suggestion.paycom,
-                suggestion.amazon,
-                suggestion.evidence,
-            ));
-        }
-        // The strongest first, and no more than three choices for any one Amazon driver.
-        pairs.sort_by(|a, b| {
-            (a.0 != DriverStrength::Strong)
-                .cmp(&(b.0 != DriverStrength::Strong))
-                .then(b.1.cmp(&a.1))
-                .then_with(|| names::compare(&drivers[&a.3].name, &drivers[&b.3].name))
-        });
-        let mut shown: BTreeMap<String, usize> = BTreeMap::new();
-        pairs.retain(|pair| {
-            let count = shown.entry(pair.3.clone()).or_default();
-            *count += 1;
-            *count <= 3
-        });
-        for (_, _, paycom, amazon, _) in &pairs {
-            for code in [paycom, amazon] {
-                drivers.get_mut(code).unwrap().status = DriverStatus::Review;
-            }
-        }
-        let review: Vec<DriverPair> = pairs
-            .into_iter()
-            .map(|(strength, _, paycom, amazon, evidence)| DriverPair {
-                paycom: drivers[&paycom].clone(),
-                amazon: drivers[&amazon].clone(),
-                strength,
-                evidence,
-            })
-            .collect();
-        let mut list: Vec<Driver> = drivers.into_values().collect();
-        list.sort_by(|a, b| names::compare(&a.name, &b.name).then_with(|| a.code.cmp(&b.code)));
-        let count = |statuses: &[DriverStatus]| {
-            list.iter().filter(|d| statuses.contains(&d.status)).count()
-        };
-        let office = count(&[DriverStatus::Office]);
-        let former = count(&[DriverStatus::Former]);
-        let counts = DriverCounts {
-            all: list.len(),
-            drivers: list.len() - office - former,
-            matched: count(&[
-                DriverStatus::Matched,
-                DriverStatus::Variant,
-                DriverStatus::Confirmed,
-            ]),
-            review: review.len(),
-            paycom_only: count(&[DriverStatus::PaycomOnly]),
-            amazon_only: count(&[DriverStatus::AmazonOnly]),
-            office,
-            former,
-        };
-        Ok(Overview {
-            result: DriverMatch {
-                checked_at,
-                counts,
-                review,
-                drivers: list,
-            },
-            rows,
-            found,
-            activity,
-            days,
-        })
-    }
-
     /// The Driver Match tab: the pairs to decide, then every person with a code.
-    pub fn driver_match(&self, dsp: &str) -> Result<DriverMatch> {
-        Ok(self.overview(dsp)?.result)
+    fn driver_match(&self, dsp: &str) -> Result<DriverMatch> {
+        Ok(overview(self, dsp)?.result)
     }
 
     /// The Settings tab badge uses the same decisions without transferring the roster.
-    pub fn driver_counts(&self, dsp: &str) -> Result<DriverCounts> {
-        Ok(self.overview(dsp)?.result.counts)
-    }
-
-    /// The code a merged person's IDs went to, followed to the end.
-    fn surviving(&self, db: &Db, code: &str) -> Result<String> {
-        let mut code = code.to_owned();
-        for _ in 0..32 {
-            let row = db
-                .query_as::<(Option<String>,)>(
-                    "SELECT merged_into FROM people WHERE code=?",
-                    [&code],
-                )?
-                .into_iter()
-                .next()
-                .ok_or_else(|| Error::new("not_found", 404))?;
-            match row.0 {
-                Some(next) => code = next,
-                None => return Ok(code),
-            }
-        }
-        Err(Error::new("not_found", 404))
-    }
-
-    /// The name a code's person goes by now, as the tab shows it: Paycom's when they have
-    /// one, else Amazon's. A merged code answers for the person who kept its IDs.
-    fn driver_name(&self, dsp: &str, code: &str) -> Result<Option<String>> {
-        let ids = {
-            let db = self.dsp(dsp)?;
-            let code = self.surviving(&db, code)?;
-            db.query_as::<(DriverSource, String)>(
-                "SELECT source,external_id FROM person_ids WHERE code=? \
-                 ORDER BY source='amazon',linked_at,external_id",
-                [&code],
-            )?
-        };
-        for key in &ids {
-            if let Some(name) = sources::name_of(self, dsp, key)? {
-                return Ok(Some(names::display(&name)));
-            }
-        }
-        Ok(None)
-    }
-    /// Puts today's names to the codes Driver Match's activity entries name. The entries
-    /// keep codes, as what a collection says about someone stays in its database; a code
-    /// that finds no name stays as it is.
-    pub(crate) fn name_driver_events(&self, events: &mut [Value]) {
-        let mut known: BTreeMap<(String, String), String> = BTreeMap::new();
-        for event in events {
-            let action = event["action"].as_str().unwrap_or_default();
-            let (Some(dsp), Some(target)) = (event["dspId"].as_str(), event["target"].as_str())
-            else {
-                continue;
-            };
-            let codes: Vec<&str> = target.split(" and ").collect();
-            if !action.starts_with("driver_match.") || !codes.iter().all(|c| valid_code(c)) {
-                continue;
-            }
-            let mut named: Vec<String> = vec![];
-            for code in codes {
-                let name = known
-                    .entry((dsp.to_owned(), code.to_owned()))
-                    .or_insert_with(|| {
-                        self.driver_name(dsp, code)
-                            .ok()
-                            .flatten()
-                            .unwrap_or_else(|| code.to_owned())
-                    })
-                    .clone();
-                // Two codes merged into one person are that one person now.
-                if action != "driver_match.merged" || !named.contains(&name) {
-                    named.push(name);
-                }
-            }
-            event["target"] = json!(named.join(" and "));
-        }
-    }
-
-    /// Who did something, as the DSP sees them: a platform owner is always Platform support.
-    fn actor_name(&self, id: Option<&str>) -> Result<Option<String>> {
-        let Some(id) = id else { return Ok(None) };
-        Ok(self
-            .platform
-            .query_as::<(String, bool)>(
-                "SELECT first_name||' '||last_name,platform_owner FROM users WHERE id=?",
-                [id],
-            )?
-            .into_iter()
-            .next()
-            .map(|(name, owner)| {
-                if owner {
-                    "Platform support".to_owned()
-                } else {
-                    name
-                }
-            }))
+    fn driver_counts(&self, dsp: &str) -> Result<DriverCounts> {
+        Ok(overview(self, dsp)?.result.counts)
     }
 
     /// One person in full: what they appear in, their last fourteen days and every
     /// decision about them. A merged person's code opens whoever kept their IDs.
-    pub fn driver_details(&self, dsp: &str, code: &str) -> Result<DriverDetails> {
+    fn driver_details(&self, dsp: &str, code: &str) -> Result<DriverDetails> {
         ensure(valid_code(code), "not_found", 404)?;
-        let code = self.surviving(&*self.dsp(dsp)?, code)?;
-        let overview = self.overview(dsp)?;
+        let code = surviving(&*self.dsp(dsp)?, code)?;
+        let overview = overview(self, dsp)?;
         let driver = overview
             .result
             .drivers
@@ -691,7 +375,7 @@ impl Store {
                     .get(&id.key())
                     .map(|x| names::display(x.name())),
                 code: None,
-                actor: self.actor_name(id.actor_id.as_deref())?,
+                actor: actor_name(self, id.actor_id.as_deref())?,
             });
         }
         let named = |code: &str| {
@@ -714,7 +398,7 @@ impl Store {
                 link: None,
                 name: None,
                 code: Some(merged.clone()),
-                actor: self.actor_name(by.as_deref())?,
+                actor: actor_name(self, by.as_deref())?,
             });
             merged_codes.push(merged);
         }
@@ -729,7 +413,7 @@ impl Store {
                 link: None,
                 name: from.as_deref().and_then(named),
                 code: from,
-                actor: self.actor_name(by.as_deref())?,
+                actor: actor_name(self, by.as_deref())?,
             });
         }
         for (first, second, at, by) in db.query_as::<(String, String, String, Option<String>)>(
@@ -744,7 +428,7 @@ impl Store {
                 link: None,
                 name: named(&other),
                 code: Some(other),
-                actor: self.actor_name(by.as_deref())?,
+                actor: actor_name(self, by.as_deref())?,
             });
         }
         history.sort_by(|a, b| b.at.cmp(&a.at));
@@ -759,7 +443,7 @@ impl Store {
 
     /// Every Amazon driver with a person: the Paycom codes that person holds, and whether
     /// someone confirmed them rather than a name. The meal-break comparison joins by this.
-    pub fn driver_links(&self, dsp: &str) -> Result<BTreeMap<String, (Vec<String>, bool)>> {
+    fn driver_links(&self, dsp: &str) -> Result<BTreeMap<String, (Vec<String>, bool)>> {
         let rows: Vec<IdRow> = self.dsp(dsp)?.query_as(
             "SELECT * FROM person_ids ORDER BY linked_at,external_id",
             [],
@@ -785,69 +469,9 @@ impl Store {
         Ok(out)
     }
 
-    /// Writes the confirmed links back where the meal-break page kept them, so the previous
-    /// release still sees them after a rollback. Remove once that release can no longer be
-    /// rolled back to.
-    fn mirror_links(db: &Db) -> Result<()> {
-        let before = db.setting(LINKS, json!({"revision":0,"links":[]}))?;
-        let mut taken = BTreeSet::new();
-        let mut links = vec![];
-        for (amazon, paycom) in db.query_as::<(String, String)>(
-            "SELECT a.external_id,p.external_id FROM person_ids a JOIN person_ids p \
-             ON p.code=a.code AND p.source='paycom' WHERE a.source='amazon' AND EXISTS \
-             (SELECT 1 FROM person_ids c WHERE c.code=a.code AND c.linked_by IN ('saved','person')) \
-             ORDER BY a.linked_at,a.external_id,p.linked_at",
-            [],
-        )? {
-            // The previous release lets each Paycom code be linked once.
-            if taken.insert(paycom.clone()) {
-                links.push(json!({"id":crypto::id("employee")?,"cortexId":amazon,"paycomCode":paycom}));
-            }
-        }
-        // A link saved for a driver whose data is no longer stored has no person to speak
-        // for it, so it stays as it was saved.
-        let known: BTreeSet<String> = db
-            .query_as::<(String,)>(
-                "SELECT external_id FROM person_ids WHERE source='amazon'",
-                [],
-            )?
-            .into_iter()
-            .map(|(id,)| id)
-            .collect();
-        for link in before["links"].as_array().into_iter().flatten() {
-            if let (Some(amazon), Some(paycom)) =
-                (link["cortexId"].as_str(), link["paycomCode"].as_str())
-                && !known.contains(amazon)
-                && taken.insert(paycom.to_owned())
-            {
-                links.push(link.clone());
-            }
-        }
-        db.set(
-            LINKS,
-            &json!({
-                "revision": before["revision"].as_i64().unwrap_or(0) + 1,
-                "links": links,
-                "separate": before["separate"].clone(),
-            }),
-        )
-    }
-
-    /// Answers whether `code` is a person who still holds their IDs.
-    fn current(db: &Db, code: &str) -> Result<()> {
-        ensure(
-            db.count(
-                "SELECT count(*) FROM people WHERE code=? AND merged_into IS NULL",
-                [code],
-            )? == 1,
-            "driver_changed",
-            409,
-        )
-    }
-
     /// Makes two people one: `code`'s IDs move to `into`, and `code` leads to `into` from
     /// now on. A decision that the two were different people no longer stands.
-    pub fn merge_drivers(&self, c: &Context, code: &str, into: &str) -> Result<DriverMatch> {
+    fn merge_drivers(&self, c: &Context, code: &str, into: &str) -> Result<DriverMatch> {
         ensure(
             valid_code(code) && valid_code(into) && code != into,
             "invalid_input",
@@ -856,8 +480,8 @@ impl Store {
         let dsp = c.dsp.id.as_str();
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            Self::current(&db, code)?;
-            Self::current(&db, into)?;
+            current(&db, code)?;
+            current(&db, into)?;
             let now = iso();
             db.exec(
                 "UPDATE person_ids SET code=?1,linked_by='person',linked_at=?2,actor_id=?3 \
@@ -886,7 +510,7 @@ impl Store {
                     params![a, b, at, by],
                 )?;
             }
-            Self::mirror_links(&db)
+            mirror_links(&db)
         })?;
         drop(db);
         // Codes, not names: what a collection says about someone stays in its database.
@@ -904,7 +528,7 @@ impl Store {
 
     /// Moves one ID off to a new person, when a link was wrong. The two are then kept
     /// apart, so they are not suggested as one again.
-    pub fn split_driver(
+    fn split_driver(
         &self,
         c: &Context,
         code: &str,
@@ -915,7 +539,7 @@ impl Store {
         let dsp = c.dsp.id.as_str();
         let db = self.dsp(dsp)?;
         let fresh = db.transaction(|| {
-            Self::current(&db, code)?;
+            current(&db, code)?;
             ensure(
                 db.count(
                     "SELECT count(*) FROM person_ids WHERE source=? AND external_id=? AND code=?",
@@ -930,7 +554,7 @@ impl Store {
                 409,
             )?;
             let now = iso();
-            let fresh = self.new_person(&db, dsp, &now, Some(code), Some(c.actor()))?;
+            let fresh = new_person(self, &db, dsp, &now, Some(code), Some(c.actor()))?;
             db.exec(
                 "UPDATE person_ids SET code=?1,linked_by='person',linked_at=?2,actor_id=?3 \
                  WHERE source=?4 AND external_id=?5",
@@ -941,7 +565,7 @@ impl Store {
                 "INSERT OR IGNORE INTO people_apart(first,second,decided_at,actor_id) VALUES (?,?,?,?)",
                 params![a, b, now, c.actor()],
             )?;
-            Self::mirror_links(&db)?;
+            mirror_links(&db)?;
             Ok(fresh)
         })?;
         drop(db);
@@ -958,7 +582,7 @@ impl Store {
     }
 
     /// Records that two people are different, so they are never suggested as one again.
-    pub fn keep_drivers_apart(&self, c: &Context, code: &str, other: &str) -> Result<DriverMatch> {
+    fn keep_drivers_apart(&self, c: &Context, code: &str, other: &str) -> Result<DriverMatch> {
         ensure(
             valid_code(code) && valid_code(other) && code != other,
             "invalid_input",
@@ -972,8 +596,8 @@ impl Store {
             (other, code)
         };
         db.transaction(|| {
-            Self::current(&db, code)?;
-            Self::current(&db, other)?;
+            current(&db, code)?;
+            current(&db, other)?;
             db.exec(
                 "INSERT OR IGNORE INTO people_apart(first,second,decided_at,actor_id) VALUES (?,?,?,?)",
                 params![first, second, iso(), c.actor()],
@@ -991,4 +615,395 @@ impl Store {
         )?;
         self.driver_match(dsp)
     }
+}
+
+/// The links saved on the meal-break page before Driver Match, read as decisions.
+fn saved_links(store: &Store, dsp: &str) -> Result<Saved> {
+    let value = store.dsp(dsp)?.setting(LINKS, Value::Null)?;
+    let text = |v: &Value| v.as_str().map(str::to_owned);
+    Ok(Saved {
+        links: value["links"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|l| Some((text(&l["cortexId"])?, text(&l["paycomCode"])?)))
+            .collect(),
+        separate: value["separate"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(text)
+            .collect(),
+    })
+}
+
+/// A person with a new code, unique on the platform: every DSP's codes are listed in
+/// `driver_codes`, so a code never leads to two people anywhere.
+fn new_person(
+    store: &Store,
+    db: &Db,
+    dsp: &str,
+    now: &str,
+    split_from: Option<&str>,
+    actor: Option<&str>,
+) -> Result<String> {
+    for _ in 0..16 {
+        // 240 is the largest multiple of 30 a byte holds; larger bytes would favour
+        // the alphabet's first letters, so they are skipped.
+        let code: String = crypto::random::<24>()?
+            .into_iter()
+            .filter(|b| *b < 240)
+            .take(CODE_LENGTH)
+            .map(|b| ALPHABET[usize::from(b % 30)] as char)
+            .collect();
+        if code.len() == CODE_LENGTH
+            && store.platform.exec(
+                "INSERT OR IGNORE INTO driver_codes(code,dsp_id,created_at) VALUES (?,?,?)",
+                params![code, dsp, now],
+            )? == 1
+        {
+            db.exec(
+                "INSERT INTO people(code,created_at,split_from,created_by) VALUES (?,?,?,?)",
+                params![code, now, split_from, actor],
+            )?;
+            return Ok(code);
+        }
+    }
+    Err(Error::new("driver_code_unavailable", 500))
+}
+
+fn overview(store: &Store, dsp: &str) -> Result<Overview> {
+    let found: Found = sources::identities(store, dsp)?
+        .into_iter()
+        .map(|x| ((x.source, x.id.clone()), x))
+        .collect();
+    let activity = sources::activity(store, dsp)?;
+    let days = sources::days(store, dsp)?;
+    let saved = saved_links(store, dsp)?;
+    let departments = sources::driver_departments(store, dsp)?;
+    // Counted from what was collected, not from today, so a DSP whose collections
+    // pause does not see everyone leave.
+    let recent = found
+        .values()
+        .filter_map(|x| x.last_seen.as_deref())
+        .chain(
+            activity
+                .values()
+                .flat_map(|data| data.values().filter_map(|s| s.last.as_deref())),
+        )
+        .filter_map(|day| chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d").ok())
+        .max()
+        .map(|newest| (newest - chrono::Duration::days(FORMER_AFTER_DAYS)).to_string())
+        .unwrap_or_default();
+    let db = store.dsp(dsp)?;
+    let rows: Vec<IdRow> = db.query_as(
+        "SELECT i.* FROM person_ids i JOIN people p ON p.code=i.code \
+         WHERE p.merged_into IS NULL ORDER BY i.linked_at,i.source,i.external_id",
+        [],
+    )?;
+    let apart: BTreeSet<(String, String)> = db
+        .query_as::<(String, String)>("SELECT first,second FROM people_apart", [])?
+        .into_iter()
+        .collect();
+    let checked_at = db
+        .setting(CHECKED, Value::Null)?
+        .as_str()
+        .map(str::to_owned);
+    drop(db);
+    let mut held: BTreeMap<&str, Vec<&IdRow>> = BTreeMap::new();
+    for row in &rows {
+        held.entry(&row.code).or_default().push(row);
+    }
+    let mut drivers: BTreeMap<String, Driver> = held
+        .iter()
+        .map(|(code, ids)| {
+            (
+                (*code).to_owned(),
+                driver(code, ids, &activity, &departments, &found, &recent),
+            )
+        })
+        .collect();
+    // Someone kept these apart from Paycom on the meal-break page; that decision stands.
+    let kept: BTreeSet<&str> = held
+        .iter()
+        .filter(|(_, ids)| {
+            ids.iter().any(|i| {
+                i.source == DriverSource::Amazon && saved.separate.contains(&i.external_id)
+            })
+        })
+        .map(|(code, _)| *code)
+        .collect();
+    // Everyone only one source knows, those who have left included: their records
+    // are worth joining all the same.
+    let side = |source: DriverSource| -> Vec<review::Side<'_>> {
+        let only = [
+            DriverStatus::PaycomOnly,
+            DriverStatus::AmazonOnly,
+            DriverStatus::Former,
+        ];
+        held.iter()
+            .filter(|(code, ids)| {
+                only.contains(&drivers[**code].status)
+                    && ids.iter().all(|i| i.source == source)
+                    && !kept.contains(**code)
+            })
+            .map(|(code, ids)| review::Side {
+                code,
+                // Every name an ID's sources write, so a middle name or a different
+                // spelling in one of them still counts.
+                names: ids
+                    .iter()
+                    .filter_map(|i| found.get(&i.key()))
+                    .flat_map(|x| x.names.iter().map(String::as_str))
+                    .collect(),
+            })
+            .collect()
+    };
+    let suggestions = review::suggest(
+        &side(DriverSource::Paycom),
+        &side(DriverSource::Amazon),
+        &apart,
+    );
+    let worked = |code: &str| -> Option<BTreeSet<String>> {
+        let sets: Vec<&BTreeSet<String>> = held
+            .get(code)?
+            .iter()
+            .filter_map(|i| days.of(&i.key()))
+            .collect();
+        (!sets.is_empty()).then(|| sets.into_iter().flatten().cloned().collect())
+    };
+    let mut pairs: Vec<(
+        DriverStrength,
+        usize,
+        String,
+        String,
+        Vec<crate::contracts::DriverEvidence>,
+    )> = vec![];
+    for mut suggestion in suggestions {
+        if let Some(days) = review::worked_days(
+            worked(&suggestion.paycom).as_ref(),
+            worked(&suggestion.amazon).as_ref(),
+            &days.paycom,
+            &days.amazon,
+        ) {
+            suggestion.evidence.push(days);
+        }
+        let strength = review::strength(&suggestion.evidence);
+        pairs.push((
+            strength,
+            suggestion.evidence.len(),
+            suggestion.paycom,
+            suggestion.amazon,
+            suggestion.evidence,
+        ));
+    }
+    // The strongest first, and no more than three choices for any one Amazon driver.
+    pairs.sort_by(|a, b| {
+        (a.0 != DriverStrength::Strong)
+            .cmp(&(b.0 != DriverStrength::Strong))
+            .then(b.1.cmp(&a.1))
+            .then_with(|| names::compare(&drivers[&a.3].name, &drivers[&b.3].name))
+    });
+    let mut shown: BTreeMap<String, usize> = BTreeMap::new();
+    pairs.retain(|pair| {
+        let count = shown.entry(pair.3.clone()).or_default();
+        *count += 1;
+        *count <= 3
+    });
+    for (_, _, paycom, amazon, _) in &pairs {
+        for code in [paycom, amazon] {
+            drivers.get_mut(code).unwrap().status = DriverStatus::Review;
+        }
+    }
+    let review: Vec<DriverPair> = pairs
+        .into_iter()
+        .map(|(strength, _, paycom, amazon, evidence)| DriverPair {
+            paycom: drivers[&paycom].clone(),
+            amazon: drivers[&amazon].clone(),
+            strength,
+            evidence,
+        })
+        .collect();
+    let mut list: Vec<Driver> = drivers.into_values().collect();
+    list.sort_by(|a, b| names::compare(&a.name, &b.name).then_with(|| a.code.cmp(&b.code)));
+    let count =
+        |statuses: &[DriverStatus]| list.iter().filter(|d| statuses.contains(&d.status)).count();
+    let office = count(&[DriverStatus::Office]);
+    let former = count(&[DriverStatus::Former]);
+    let counts = DriverCounts {
+        all: list.len(),
+        drivers: list.len() - office - former,
+        matched: count(&[
+            DriverStatus::Matched,
+            DriverStatus::Variant,
+            DriverStatus::Confirmed,
+        ]),
+        review: review.len(),
+        paycom_only: count(&[DriverStatus::PaycomOnly]),
+        amazon_only: count(&[DriverStatus::AmazonOnly]),
+        office,
+        former,
+    };
+    Ok(Overview {
+        result: DriverMatch {
+            checked_at,
+            counts,
+            review,
+            drivers: list,
+        },
+        rows,
+        found,
+        activity,
+        days,
+    })
+}
+
+/// The code a merged person's IDs went to, followed to the end.
+fn surviving(db: &Db, code: &str) -> Result<String> {
+    let mut code = code.to_owned();
+    for _ in 0..32 {
+        let row = db
+            .query_as::<(Option<String>,)>("SELECT merged_into FROM people WHERE code=?", [&code])?
+            .into_iter()
+            .next()
+            .ok_or_else(|| Error::new("not_found", 404))?;
+        match row.0 {
+            Some(next) => code = next,
+            None => return Ok(code),
+        }
+    }
+    Err(Error::new("not_found", 404))
+}
+
+/// The name a code's person goes by now, as the tab shows it: Paycom's when they have
+/// one, else Amazon's. A merged code answers for the person who kept its IDs.
+fn driver_name(store: &Store, dsp: &str, code: &str) -> Result<Option<String>> {
+    let ids = {
+        let db = store.dsp(dsp)?;
+        let code = surviving(&db, code)?;
+        db.query_as::<(DriverSource, String)>(
+            "SELECT source,external_id FROM person_ids WHERE code=? \
+             ORDER BY source='amazon',linked_at,external_id",
+            [&code],
+        )?
+    };
+    for key in &ids {
+        if let Some(name) = sources::name_of(store, dsp, key)? {
+            return Ok(Some(names::display(&name)));
+        }
+    }
+    Ok(None)
+}
+/// Puts today's names to the codes Driver Match's activity entries name. The entries
+/// keep codes, as what a collection says about someone stays in its database; a code
+/// that finds no name stays as it is.
+pub(crate) fn name_driver_events(store: &Store, events: &mut [Value]) {
+    let mut known: BTreeMap<(String, String), String> = BTreeMap::new();
+    for event in events {
+        let action = event["action"].as_str().unwrap_or_default();
+        let (Some(dsp), Some(target)) = (event["dspId"].as_str(), event["target"].as_str()) else {
+            continue;
+        };
+        let codes: Vec<&str> = target.split(" and ").collect();
+        if !action.starts_with("driver_match.") || !codes.iter().all(|c| valid_code(c)) {
+            continue;
+        }
+        let mut named: Vec<String> = vec![];
+        for code in codes {
+            let name = known
+                .entry((dsp.to_owned(), code.to_owned()))
+                .or_insert_with(|| {
+                    driver_name(store, dsp, code)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| code.to_owned())
+                })
+                .clone();
+            // Two codes merged into one person are that one person now.
+            if action != "driver_match.merged" || !named.contains(&name) {
+                named.push(name);
+            }
+        }
+        event["target"] = json!(named.join(" and "));
+    }
+}
+
+/// Who did something, as the DSP sees them: a platform owner is always Platform support.
+fn actor_name(store: &Store, id: Option<&str>) -> Result<Option<String>> {
+    let Some(id) = id else { return Ok(None) };
+    Ok(store
+        .platform
+        .query_as::<(String, bool)>(
+            "SELECT first_name||' '||last_name,platform_owner FROM users WHERE id=?",
+            [id],
+        )?
+        .into_iter()
+        .next()
+        .map(|(name, owner)| {
+            if owner {
+                "Platform support".to_owned()
+            } else {
+                name
+            }
+        }))
+}
+
+/// Writes the confirmed links back where the meal-break page kept them, so the previous
+/// release still sees them after a rollback. Remove once that release can no longer be
+/// rolled back to.
+fn mirror_links(db: &Db) -> Result<()> {
+    let before = db.setting(LINKS, json!({"revision":0,"links":[]}))?;
+    let mut taken = BTreeSet::new();
+    let mut links = vec![];
+    for (amazon, paycom) in db.query_as::<(String, String)>(
+        "SELECT a.external_id,p.external_id FROM person_ids a JOIN person_ids p \
+         ON p.code=a.code AND p.source='paycom' WHERE a.source='amazon' AND EXISTS \
+         (SELECT 1 FROM person_ids c WHERE c.code=a.code AND c.linked_by IN ('saved','person')) \
+         ORDER BY a.linked_at,a.external_id,p.linked_at",
+        [],
+    )? {
+        // The previous release lets each Paycom code be linked once.
+        if taken.insert(paycom.clone()) {
+            links.push(json!({"id":crypto::id("employee")?,"cortexId":amazon,"paycomCode":paycom}));
+        }
+    }
+    // A link saved for a driver whose data is no longer stored has no person to speak
+    // for it, so it stays as it was saved.
+    let known: BTreeSet<String> = db
+        .query_as::<(String,)>(
+            "SELECT external_id FROM person_ids WHERE source='amazon'",
+            [],
+        )?
+        .into_iter()
+        .map(|(id,)| id)
+        .collect();
+    for link in before["links"].as_array().into_iter().flatten() {
+        if let (Some(amazon), Some(paycom)) =
+            (link["cortexId"].as_str(), link["paycomCode"].as_str())
+            && !known.contains(amazon)
+            && taken.insert(paycom.to_owned())
+        {
+            links.push(link.clone());
+        }
+    }
+    db.set(
+        LINKS,
+        &json!({
+            "revision": before["revision"].as_i64().unwrap_or(0) + 1,
+            "links": links,
+            "separate": before["separate"].clone(),
+        }),
+    )
+}
+
+/// Answers whether `code` is a person who still holds their IDs.
+fn current(db: &Db, code: &str) -> Result<()> {
+    ensure(
+        db.count(
+            "SELECT count(*) FROM people WHERE code=? AND merged_into IS NULL",
+            [code],
+        )? == 1,
+        "driver_changed",
+        409,
+    )
 }

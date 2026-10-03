@@ -1,6 +1,5 @@
 //! Driver Match: one code per driver across Paycom and every Amazon source.
 use crate::{
-    db::Store,
     db::{Kind, Migration, Migrations, migrations::Apply::Sql},
     driver_match,
     manifest::{Audit, Feature, Switch, feature, perm},
@@ -42,7 +41,7 @@ pub const FEATURE: Feature = Feature {
     // Its events name drivers by their codes, and the log puts today's names to them.
     audit: Audit {
         subjects: &["driver"],
-        names: Some(Store::name_driver_events),
+        names: Some(driver_match::name_driver_events),
         ..Audit::NONE
     },
     mcp: mcp::MCP,

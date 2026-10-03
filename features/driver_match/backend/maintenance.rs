@@ -2,6 +2,7 @@
 //! collection and hourly.
 use crate::{
     Error, Result, State,
+    driver_match::DriverMatchStore,
     manifest::{Maintenance, Upkeep},
     observability,
 };

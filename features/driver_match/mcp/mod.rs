@@ -10,6 +10,7 @@ use crate::{
         data::scope::{Identity, Known},
     },
     db::Store,
+    driver_match::DriverMatchStore,
 };
 
 pub const MCP: Mcp = Mcp {

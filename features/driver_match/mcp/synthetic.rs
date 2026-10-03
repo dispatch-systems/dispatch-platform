@@ -4,6 +4,7 @@ use crate::{
     Result,
     agents::synthetic::{Made, Step, Synthetic, World},
     db::Store,
+    driver_match::DriverMatchStore,
 };
 use serde_json::json;
 

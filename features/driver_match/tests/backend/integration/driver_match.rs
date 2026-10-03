@@ -10,6 +10,7 @@ use dispatch_backend::{
     },
     contracts::{DriverEventKind, DriverMatch, DriverSource, DriverStatus, DriverStrength},
     db::{Store, s},
+    driver_match::DriverMatchStore,
     driver_match::valid_code,
 };
 use serde_json::{Value, json};

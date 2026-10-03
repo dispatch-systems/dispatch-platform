@@ -6,6 +6,7 @@ use crate::{
     contracts::{LateRule, MealComparison, MealSource},
     db::{Store, s},
     driver_match,
+    driver_match::DriverMatchStore,
     names::{self, Name, name_key},
     workforce,
 };

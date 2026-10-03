@@ -4,6 +4,7 @@ use crate::{
     Result,
     contracts::DriverSource,
     db::Store,
+    driver_match::DriverMatchStore,
     http::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, read, write},
