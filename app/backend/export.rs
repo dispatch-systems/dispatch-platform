@@ -238,7 +238,11 @@ fn access_catalog() -> String {
     let groups: Vec<_> = features::PAGES
         .iter()
         .map(|feature| (feature.label, feature.permissions))
-        .chain(roles::GROUPS.iter().copied())
+        .chain(
+            roles::GROUPS
+                .iter()
+                .map(|(group, permissions)| (*group, permissions.as_slice())),
+        )
         .collect();
     let mut grouped: Vec<_> = groups
         .iter()
@@ -267,7 +271,7 @@ fn access_catalog() -> String {
         ),
         ("featureCatalog", json!(entries)),
         ("schedulesFeature", json!(features::SCHEDULES)),
-        ("permissions", json!(roles::PERMISSIONS)),
+        ("permissions", json!(*roles::PERMISSIONS)),
         ("permissionLabels", json!(labels)),
         ("permissionGroups", json!(groups)),
         ("impliedPermissions", json!(implied)),

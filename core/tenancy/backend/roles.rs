@@ -5,9 +5,11 @@ use super::{
     crypto,
     db::{Db, FromRow, Row, Store, iso, now, s},
     ensure,
+    manifest::{DefaultRole, Permission, registry},
 };
 use rusqlite::params;
 use serde_json::json;
+use std::sync::LazyLock;
 
 const ROLES: &str = "SELECT r.*,\
     (SELECT count(*) FROM memberships m WHERE m.role_id=r.id) members,\
@@ -15,77 +17,69 @@ const ROLES: &str = "SELECT r.*,\
      AND i.expires_at>?1) invitations \
     FROM roles r WHERE r.dsp_id=?2 ORDER BY r.system DESC,r.created_at,r.name";
 
-// Every permission a DSP owner can grant. Owners implicitly hold all of them,
-// so additions here reach owners without touching stored roles.
-macro_rules! permissions {
-    ($($id:literal => $label:literal),* $(,)?) => {
-        pub const PERMISSIONS: &[&str] = &[$($id),*];
-        // Build-time metadata for the generated dashboard catalog; not shipped at runtime.
-        #[cfg(test)]
-        pub(crate) const LABELS: &[(&str, &str)] = &[$(($id, $label)),*];
-    };
-}
-permissions! {
-    "uniforms.view" => "View Uniform Inventory",
-    "uniforms.adjust" => "Adjust Uniform Inventory",
-    "uniforms.manage" => "Manage Uniform Inventory",
-    "timecard.view" => "View Timecard",
-    "timecard.manage" => "Manage Timecard",
-    "collections.run" => "Run Collections",
-    "routes.view" => "View Routes",
-    "routes.collect" => "Collect Routes",
-    "routes.manage" => "Manage Routes",
-    "dvic.view" => "View DVIC",
-    "dvic.collect" => "Collect DVIC",
-    "dvic.manage" => "Manage DVIC",
-    "scorecard.view" => "View Scorecard",
-    "scorecard.collect" => "Collect Scorecard",
-    "scorecard.manage" => "Manage Scorecard",
-    "driver_match.manage" => "Manage Driver Match",
-    "connections.manage" => "Manage Connections",
-    "members.invite" => "Invite Members",
-    "members.manage" => "Manage Members",
-    "roles.manage" => "Manage Roles",
-    "settings.manage" => "Manage DSP Settings",
-}
+// Every permission a DSP owner can grant, as core and the features declare them, in their
+// order. Owners implicitly hold all of them, so a permission added to a manifest reaches
+// owners without touching stored roles.
+static DECLARED: LazyLock<Vec<&'static Permission>> = LazyLock::new(|| {
+    let mut all: Vec<_> = registry().permissions().collect();
+    all.sort_by_key(|permission| permission.order);
+    all
+});
+pub static PERMISSIONS: LazyLock<Vec<&'static str>> =
+    LazyLock::new(|| DECLARED.iter().map(|permission| permission.id).collect());
+// Build-time metadata for the generated dashboard catalog; not shipped at runtime.
+#[cfg(test)]
+pub(crate) static LABELS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
+    DECLARED
+        .iter()
+        .map(|permission| (permission.id, permission.label))
+        .collect()
+});
 // Any membership satisfies this; it guards pages every member may open.
 pub const ACCESS: &str = "access";
-// Anyone who works with the team needs the member and role lists to do so.
-pub const TEAM: &str = "members.invite|members.manage|roles.manage";
-pub(crate) const IMPLIED: &[(&str, &str)] = &[
-    ("timecard.manage", "timecard.view"),
-    ("uniforms.adjust", "uniforms.view"),
-    ("uniforms.manage", "uniforms.view"),
-    ("routes.collect", "routes.view"),
-    ("routes.manage", "routes.view"),
-    ("dvic.collect", "dvic.view"),
-    ("dvic.manage", "dvic.view"),
-    ("scorecard.collect", "scorecard.view"),
-    ("scorecard.manage", "scorecard.view"),
-];
-// Permissions outside a feature-owned page have these role-sheet sections.
+// What each permission grants as well, in the order the registry declares them.
+pub(crate) static IMPLIED: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
+    registry()
+        .permissions()
+        .flat_map(|permission| {
+            permission
+                .implies
+                .iter()
+                .map(|implied| (permission.id, *implied))
+        })
+        .collect()
+});
+// Permissions outside a feature-owned page have these role-sheet sections, each where its
+// first permission falls in the order.
 #[cfg(test)]
-pub(crate) const GROUPS: &[(&str, &[&str])] = &[
-    ("Connections", &["connections.manage"]),
-    (
-        "Team",
-        &["members.invite", "members.manage", "roles.manage"],
-    ),
-    ("DSP", &["settings.manage"]),
-];
-pub(crate) const DEFAULTS: &[(&str, &str, &[&str])] = &[
-    (
-        "manager",
-        "Manager",
-        &[
-            "uniforms.view",
-            "uniforms.adjust",
-            "timecard.view",
-            "collections.run",
-        ],
-    ),
-    ("member", "Member", &["uniforms.view", "timecard.view"]),
-];
+pub(crate) static GROUPS: LazyLock<Vec<(&'static str, Vec<&'static str>)>> = LazyLock::new(|| {
+    let mut groups: Vec<(&str, Vec<&str>)> = Vec::new();
+    for permission in DECLARED.iter() {
+        let Some(group) = permission.group else {
+            continue;
+        };
+        match groups.iter_mut().find(|(name, _)| *name == group) {
+            Some((_, permissions)) => permissions.push(permission.id),
+            None => groups.push((group, vec![permission.id])),
+        }
+    }
+    groups
+});
+// Each default role's key, name and permissions, in their order.
+pub(crate) static DEFAULTS: LazyLock<Vec<(&'static str, &'static str, Vec<&'static str>)>> =
+    LazyLock::new(|| {
+        DefaultRole::ALL
+            .iter()
+            .map(|role| {
+                let permissions = DECLARED
+                    .iter()
+                    .filter(|permission| permission.defaults.contains(role))
+                    .map(|permission| permission.id)
+                    .collect();
+                (role.key(), role.name(), permissions)
+            })
+            .collect()
+    });
 
 pub fn all() -> Vec<String> {
     PERMISSIONS.iter().map(|p| (*p).to_owned()).collect()
@@ -154,7 +148,8 @@ impl FromRow for CountedRole {
     }
 }
 // The legacy role column stays populated so an older Rust runtime keeps
-// working after rollback, never with more access than the role grants.
+// working after rollback, never with more access than the role grants. That runtime's
+// managers were the members who could run collections, so the mapping stays frozen on it.
 fn legacy(system: bool, permissions: &[String]) -> &'static str {
     if system {
         "owner"
@@ -209,7 +204,7 @@ pub fn default_role(db: &Db, dsp: &str, role: &str) -> Result<String> {
         other => DEFAULTS
             .iter()
             .find(|d| d.0 == other)
-            .map(|d| (d.1, false, d.2))
+            .map(|d| (d.1, false, d.2.as_slice()))
             .ok_or_else(|| Error::new("invalid_role", 400))?,
     };
     let found = if system {
@@ -315,7 +310,7 @@ impl Store {
             400,
         )?;
         let mut wanted = requested.to_vec();
-        for (permission, implied) in IMPLIED {
+        for (permission, implied) in IMPLIED.iter() {
             if wanted.iter().any(|p| p == permission) && !wanted.iter().any(|p| p == implied) {
                 wanted.push((*implied).to_owned());
             }

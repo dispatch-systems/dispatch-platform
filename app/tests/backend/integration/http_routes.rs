@@ -2,12 +2,18 @@
 use dispatch_backend::{
     http::{
         Access::{self, Agent, Dsp, PlatformOwner, Public, Session},
+        Route,
         Work::{self, Async, Memory, Read, Write},
-        table,
     },
     roles,
 };
 use std::collections::BTreeSet;
+
+/// The route table, with the registry the permissions and routes are read from.
+fn table() -> Vec<Route> {
+    dispatch_backend::install();
+    dispatch_backend::http::table()
+}
 
 const TEAM: &str = "members.invite|members.manage|roles.manage";
 const LIVE: &str = "timecard.view|collections.run";

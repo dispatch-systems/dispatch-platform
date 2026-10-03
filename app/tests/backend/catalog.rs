@@ -175,8 +175,16 @@ fn the_permissions_keep_their_order_labels_implications_groups_and_defaults() {
     assert_eq!(roles::all(), ids);
     assert_eq!(roles::LABELS.to_vec(), PERMISSIONS);
     assert_eq!(roles::IMPLIED.to_vec(), IMPLIED);
-    assert_eq!(roles::GROUPS.to_vec(), GROUPS);
-    assert_eq!(roles::DEFAULTS.to_vec(), DEFAULTS);
+    let groups: Vec<_> = roles::GROUPS
+        .iter()
+        .map(|(group, permissions)| (*group, permissions.as_slice()))
+        .collect();
+    assert_eq!(groups, GROUPS);
+    let defaults: Vec<_> = roles::DEFAULTS
+        .iter()
+        .map(|(key, name, permissions)| (*key, *name, permissions.as_slice()))
+        .collect();
+    assert_eq!(defaults, DEFAULTS);
 }
 
 #[test]

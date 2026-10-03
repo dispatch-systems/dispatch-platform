@@ -1,4 +1,11 @@
 //! Team & Roles: a DSP's members and the roles that grant their permissions.
-use crate::manifest::{Feature, feature};
+use crate::manifest::{Feature, feature, perm};
 
-pub const FEATURE: Feature = feature("team");
+pub const FEATURE: Feature = Feature {
+    permissions: &[
+        perm("members.invite", "Invite Members", 80).group("Team"),
+        perm("members.manage", "Manage Members", 81).group("Team"),
+        perm("roles.manage", "Manage Roles", 82).group("Team"),
+    ],
+    ..feature("team")
+};

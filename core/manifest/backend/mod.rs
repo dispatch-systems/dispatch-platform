@@ -56,8 +56,15 @@ impl Registry {
             .find(|keeper| keeper.keeps() == kind)
             .unwrap_or_else(|| panic!("no feature keeps {kind}"))
     }
-    /// Panics unless every collection has exactly one keeper, and every keeper keeps a
-    /// registered collection.
+    /// Every permission as declared: core's own, then each feature's, in the registry's
+    /// order. Lists of permissions follow their `order` instead.
+    pub fn permissions(&self) -> impl Iterator<Item = &'static Permission> {
+        let features = self.features.iter().flat_map(|feature| feature.permissions);
+        CORE_PERMISSIONS.iter().copied().chain(features)
+    }
+    /// Panics unless every collection has exactly one keeper, every keeper keeps a
+    /// registered collection, and every permission has an id and an order of its own and
+    /// implies only permissions that exist.
     pub fn check(&self) {
         let kinds: Vec<&str> = self
             .collectors
@@ -76,6 +83,23 @@ impl Registry {
                 keeper.keeps()
             );
         }
+        let permissions: Vec<_> = self.permissions().collect();
+        for (index, permission) in permissions.iter().enumerate() {
+            assert!(
+                permissions[..index]
+                    .iter()
+                    .all(|other| other.id != permission.id && other.order != permission.order),
+                "{} repeats another permission's id or order",
+                permission.id
+            );
+            for implied in permission.implies {
+                assert!(
+                    permissions.iter().any(|other| other.id == *implied),
+                    "{} implies {implied}, which is not a permission",
+                    permission.id
+                );
+            }
+        }
     }
 }
 
@@ -83,13 +107,87 @@ impl Registry {
 pub struct Feature {
     /// Its directory's name.
     pub name: &'static str,
+    /// The permissions it owns, for the role sheet.
+    pub permissions: &'static [Permission],
     /// The collections it keeps.
     pub keeps: &'static [&'static dyn Keeper],
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
 pub const fn feature(name: &'static str) -> Feature {
-    Feature { name, keeps: &[] }
+    Feature {
+        name,
+        permissions: &[],
+        keeps: &[],
+    }
+}
+
+/// Core's own permissions, each declared by the core part that checks it.
+const CORE_PERMISSIONS: &[&Permission] = &[&crate::collectors::CONNECTIONS];
+
+/// A permission a DSP's roles grant, as the role sheet offers it.
+pub struct Permission {
+    /// Permanent: roles store it and routes ask for it.
+    pub id: &'static str,
+    pub label: &'static str,
+    /// Its place in the one order every list of permissions follows: the role sheet, API
+    /// answers and audit entries.
+    pub order: u16,
+    /// What holding it grants as well.
+    pub implies: &'static [&'static str],
+    /// The default roles a DSP's roles start out holding it in.
+    pub defaults: &'static [DefaultRole],
+    /// The role sheet's section for a permission no page owns, such as `Team`. A page's own
+    /// permissions are listed under the page.
+    pub group: Option<&'static str>,
+}
+/// A permission in its own place in the order, implying nothing, in no default role and
+/// owned by its feature's page: `perm("dvic.collect", "Collect DVIC", 41).implies(…)`.
+pub const fn perm(id: &'static str, label: &'static str, order: u16) -> Permission {
+    Permission {
+        id,
+        label,
+        order,
+        implies: &[],
+        defaults: &[],
+        group: None,
+    }
+}
+impl Permission {
+    pub const fn implies(self, implies: &'static [&'static str]) -> Self {
+        Self { implies, ..self }
+    }
+    pub const fn defaults(self, defaults: &'static [DefaultRole]) -> Self {
+        Self { defaults, ..self }
+    }
+    pub const fn group(self, group: &'static str) -> Self {
+        Self {
+            group: Some(group),
+            ..self
+        }
+    }
+}
+/// The roles besides the owner's that every DSP starts with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DefaultRole {
+    Manager,
+    Member,
+}
+impl DefaultRole {
+    pub const ALL: [Self; 2] = [Self::Manager, Self::Member];
+    /// The legacy role value it stands for.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Manager => "manager",
+            Self::Member => "member",
+        }
+    }
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Manager => "Manager",
+            Self::Member => "Member",
+        }
+    }
 }
 
 /// One kind of data a collector reads. A job of `job_kind` collects it for one DSP, and
