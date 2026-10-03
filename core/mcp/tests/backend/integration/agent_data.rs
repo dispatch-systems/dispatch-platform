@@ -17,6 +17,7 @@ use dispatch_backend::{
     },
     contracts::{AgentArea, AgentKeyRequest},
     db::{Store, s},
+    dvic::DvicStore,
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -94,7 +95,7 @@ fn ready() -> (tempfile::TempDir, Store, String) {
     db.publish_meals(&id, "agent-meals", &meals, &scope)
         .unwrap();
     // Two inspections, one of them short.
-    let dvic = db.dvic(&id).unwrap();
+    let dvic = db.dvic_db(&id).unwrap();
     dvic.exec(
         "INSERT INTO dvic_reports(id,company_id,dsp_code,station,source_key,name,week,report_date,\
          modified_at,sha256,revision_id,row_count,short_count,min_date,max_date,checked_at,scope_verified) VALUES \
@@ -479,7 +480,7 @@ async fn default_answers_never_expose_unmatched_provider_ids() {
 #[tokio::test]
 async fn agents_never_see_legacy_unverified_provider_rows() {
     let (_root, db, id) = ready();
-    let dvic = db.dvic(&id).unwrap();
+    let dvic = db.dvic_db(&id).unwrap();
     dvic.exec(
         "INSERT INTO dvic_reports(id,company_id,dsp_code,station,source_key,name,week,report_date,\
          modified_at,sha256,revision_id,row_count,short_count,min_date,max_date,checked_at) VALUES \

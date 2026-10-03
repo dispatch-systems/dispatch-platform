@@ -7,7 +7,7 @@ use dispatch_backend::{
         dvic::{self, Capture, Request},
     },
     db::{self, Store, s},
-    dvic::{hidden, weeks_ending},
+    dvic::{DvicStore, hidden, weeks_ending},
 };
 use serde_json::json;
 
@@ -79,7 +79,7 @@ fn publish(db: &Store, id: &str, key: &str, capture: &Capture) -> String {
     job
 }
 fn count(db: &Store, id: &str, table: &str) -> i64 {
-    db.dvic(id)
+    db.dvic_db(id)
         .unwrap()
         .count(&format!("SELECT count(*) FROM {table}"), [])
         .unwrap()
@@ -131,7 +131,7 @@ fn unchanged_reports_require_a_matching_committed_revision_and_batches_are_atomi
     assert_eq!(count(&db, &id, "dvic_revisions"), 2);
     assert_eq!(count(&db, &id, "dvic_inspections"), 2);
     let raw = db
-        .dvic(&id)
+        .dvic_db(&id)
         .unwrap()
         .all(
             "SELECT downloaded,unchanged FROM dvic_runs WHERE job_id<>?",
@@ -229,7 +229,7 @@ fn publication_rejects_wrong_scope_and_reads_are_paginated_and_isolated() {
 #[test]
 fn legacy_unverified_reports_and_inspections_stay_quarantined() {
     let (_root, db, id) = ready();
-    let storage = db.dvic(&id).unwrap();
+    let storage = db.dvic_db(&id).unwrap();
     storage.exec(
         "INSERT INTO dvic_reports(id,company_id,dsp_code,station,source_key,name,week,report_date,\
          modified_at,sha256,revision_id,row_count,short_count,min_date,max_date,checked_at) VALUES \
@@ -401,7 +401,7 @@ fn catch_up_prioritizes_unseen_weeks_before_refreshing_older_observations() {
     let (_root, db, id) = ready();
     let latest = dvic::report_week(chrono::Utc::now().date_naive());
     let weeks = weeks_ending(&latest, dvic::MAX_WEEKS).unwrap();
-    let storage = db.dvic(&id).unwrap();
+    let storage = db.dvic_db(&id).unwrap();
     for week in weeks.iter().skip(2).take(22) {
         storage.exec(
             "INSERT INTO dvic_weeks(station,company_id,week,checked_at,report_count,scope_verified) \
@@ -428,12 +428,12 @@ fn a_hidden_driver_is_never_stored_and_hiding_removes_what_was() {
     rows.push(other);
     publish(&db, &id, "both", &capture);
     assert_eq!(count(&db, &id, "dvic_inspections"), 2);
-    let stored = |sql: &str| db.dvic(&id).unwrap().count(sql, []).unwrap();
+    let stored = |sql: &str| db.dvic_db(&id).unwrap().count(sql, []).unwrap();
     let theirs = "SELECT count(*) FROM dvic_inspections WHERE transporter_id='A2HIDDEN00001'";
     let copies = "SELECT count(*) FROM dvic_revisions WHERE rows LIKE '%A2HIDDEN00001%' \
                   OR rows LIKE '%Hidden Driver%'";
     let counts = || {
-        db.dvic(&id)
+        db.dvic_db(&id)
             .unwrap()
             .all("SELECT row_count,short_count FROM dvic_reports", [])
             .unwrap()
@@ -441,7 +441,7 @@ fn a_hidden_driver_is_never_stored_and_hiding_removes_what_was() {
 
     // Hiding removes their inspection and their row from the report copy, then recounts it.
     let summary = hidden::hide(
-        &db.dvic(&id).unwrap(),
+        &db.dvic_db(&id).unwrap(),
         "A2HIDDEN00001",
         " Platform test ",
         "2026-10-01T00:00:00.000Z",
@@ -462,19 +462,19 @@ fn a_hidden_driver_is_never_stored_and_hiding_removes_what_was() {
     assert_eq!((stored(theirs), stored(copies)), (0, 0));
     assert_eq!(counts(), vec![json!({"row_count":1,"short_count":1})]);
     assert_eq!(
-        hidden::list(&db.dvic(&id).unwrap()).unwrap(),
+        hidden::list(&db.dvic_db(&id).unwrap()).unwrap(),
         json!([{"driver":"A2HIDDEN00001","note":"Platform test","hiddenAt":"2026-10-01T00:00:00.000Z"}])
     );
 
     // Shown again, their later reports are stored; nothing earlier comes back by itself.
-    hidden::unhide(&db.dvic(&id).unwrap(), "A2HIDDEN00001").unwrap();
+    hidden::unhide(&db.dvic_db(&id).unwrap(), "A2HIDDEN00001").unwrap();
     assert_eq!(stored(theirs), 0);
     capture.reports[0].sha256 = dvic::hash(b"newest bytes");
     capture.reports[0].modified_at += 1000;
     publish(&db, &id, "shown", &capture);
     assert_eq!(stored(theirs), 1);
 
-    let dvic = db.dvic(&id).unwrap();
+    let dvic = db.dvic_db(&id).unwrap();
     let code = |result: dispatch_backend::Result<serde_json::Value>| result.unwrap_err().code;
     assert_eq!(
         code(hidden::unhide(&dvic, "A2HIDDEN00001")),
@@ -498,7 +498,7 @@ fn the_operator_commands_hide_list_and_unhide_without_stopping_the_server() {
         dispatch_backend::dvic::cli::run(&db.config, &args)
     };
     // The server's own connection stays open throughout, as it would on a live host.
-    let server = db.dvic(&id).unwrap();
+    let server = db.dvic_db(&id).unwrap();
     assert_eq!(run(&["dvic-hidden", &id]).unwrap(), json!([]));
     let hidden = run(&["dvic-hide", &id, "A2HIDDEN00001", "Platform test"]).unwrap();
     assert_eq!(hidden["inspectionsDeleted"], 0);

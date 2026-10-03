@@ -3,6 +3,7 @@ use crate::{
     Result,
     contracts::{DriverData, DriverSource},
     db::{Store, n, s},
+    dvic::DvicStore,
     manifest::people::{self, Appearances, Named, People, Workdays},
 };
 
@@ -19,7 +20,7 @@ impl People for Drivers {
         50
     }
     fn named(&self, store: &Store, dsp: &str) -> Result<Vec<Named>> {
-        let rows = store.dvic(dsp)?.all(
+        let rows = store.dvic_db(dsp)?.all(
             "SELECT transporter_id id,transporter_name name,min(start_date) first,\
              max(start_date) last FROM dvic_inspections WHERE scope_verified=1 GROUP BY 1,2 ORDER BY last DESC",
             [],
@@ -36,14 +37,14 @@ impl People for Drivers {
     }
     fn name(&self, store: &Store, dsp: &str, id: &str) -> Result<Option<String>> {
         people::first_name(
-            &*store.dvic(dsp)?,
+            &*store.dvic_db(dsp)?,
             "SELECT transporter_name FROM dvic_inspections WHERE transporter_id=? AND scope_verified=1 \
              ORDER BY start_date DESC",
             id,
         )
     }
     fn appearances(&self, store: &Store, dsp: &str) -> Result<Vec<Appearances>> {
-        let rows = store.dvic(dsp)?.all(
+        let rows = store.dvic_db(dsp)?.all(
             "SELECT transporter_id id,count(*) count,max(start_date) last \
              FROM dvic_inspections WHERE scope_verified=1 GROUP BY transporter_id",
             [],
@@ -61,7 +62,7 @@ impl People for Drivers {
     /// which days were collected.
     fn workdays(&self, store: &Store, dsp: &str) -> Result<Workdays> {
         Ok(Workdays {
-            worked: store.dvic(dsp)?.query_as::<(String, String)>(
+            worked: store.dvic_db(dsp)?.query_as::<(String, String)>(
                 "SELECT DISTINCT transporter_id,start_date FROM dvic_inspections WHERE scope_verified=1",
                 [],
             )?,

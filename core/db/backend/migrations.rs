@@ -289,7 +289,7 @@ fn migrate_dsp_after_probe<F: FnOnce()>(db: &Db, id: &str, after_probe: F) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{config::Config, db::Store};
+    use crate::{config::Config, db::Store, dvic::DvicStore};
     use std::{
         os::unix::fs::PermissionsExt,
         path::{Path, PathBuf},
@@ -384,7 +384,7 @@ mod tests {
             .unwrap();
         let scorecard = store.scorecard(&id).unwrap();
         let routedata = store.routedata(&id).unwrap();
-        let dvic = store.dvic(&id).unwrap();
+        let dvic = store.dvic_db(&id).unwrap();
         let databases: [(Kind, &Db); 8] = [
             (Kind::PLATFORM, &store.platform),
             (Kind::JOBS, &store.jobs),

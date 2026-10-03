@@ -4,6 +4,7 @@ use crate::{
     Result,
     collectors::cortex::dvic,
     db::Store,
+    dvic::DvicStore,
     http::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, read, write},

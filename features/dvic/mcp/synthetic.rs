@@ -4,6 +4,7 @@ use crate::{
     Result,
     agents::synthetic::{Made, STATION, Step, Synthetic, World, hhmm, plan},
     db::Store,
+    dvic::DvicStore,
 };
 use serde_json::json;
 
@@ -17,7 +18,7 @@ pub const SYNTHETIC: Synthetic = Synthetic {
 
 fn inspections(db: &Store, world: &mut World) -> Result<Made> {
     let dates = &world.dates;
-    let dvic = db.dvic(&world.dsp)?;
+    let dvic = db.dvic_db(&world.dsp)?;
     let (first, last) = (dates[0].to_string(), dates[dates.len() - 1].to_string());
     dvic.exec(
         "INSERT OR REPLACE INTO dvic_reports(id,company_id,dsp_code,station,source_key,name,week,\

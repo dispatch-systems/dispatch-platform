@@ -13,6 +13,8 @@ use crate::{
 };
 use serde_json::Value;
 
+use super::{DvicStore, storage};
+
 pub struct Dvic;
 impl Keeper for Dvic {
     fn keeps(&self) -> &'static str {
@@ -30,13 +32,14 @@ impl Keeper for Dvic {
             .ok_or_else(|| Error::new("invalid_dvic_request", 400))?;
         let weeks: Vec<String> = serde_json::from_value(request["weeks"].clone())
             .map_err(|_| Error::new("invalid_dvic_request", 400))?;
-        let bound = store.bind_dvic_request(dsp, weeks)?;
+        let bound = storage::bind_dvic_request(store, dsp, weeks)?;
         ensure(bound["station"] == station, "dvic_scope_mismatch", 409)?;
         Ok(bound)
     }
     /// The reports already held for `station` and `company`, by their source.
     fn kept(&self, store: &Store, dsp: &str, question: &Value) -> Result<Value> {
-        let known = store.dvic_known(dsp, s(question, "station"), s(question, "company"))?;
+        let known =
+            storage::dvic_known(store, dsp, s(question, "station"), s(question, "company"))?;
         Ok(serde_json::to_value(known)?)
     }
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
@@ -49,7 +52,7 @@ impl Keeper for Dvic {
         )
     }
     fn schedule_ready(&self, store: &Store, dsp: &str) -> Result<()> {
-        store.dvic_schedule_ready(dsp)
+        storage::dvic_schedule_ready(store, dsp)
     }
     fn scheduled(&self, store: &Store, dsp: &str) -> Result<Vec<(String, Value)>> {
         store.dvic_jobs(dsp)

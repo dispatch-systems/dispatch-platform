@@ -9,6 +9,7 @@ use crate::{
     },
     contracts::{AgentArea, DriverSource, Dsp},
     db::{Store, n, s},
+    dvic::DvicStore,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -36,7 +37,7 @@ pub fn inspections(
     drivers: Option<&[String]>,
 ) -> Result<(Vec<Inspection>, Coverage)> {
     let station = db.profile(&dsp.id)?.station_code;
-    let data = db.dvic(&dsp.id)?;
+    let data = db.dvic_db(&dsp.id)?;
     // A report covers every day from its first to its last row.
     let mut held = BTreeSet::new();
     for report in data.all(
@@ -73,7 +74,7 @@ pub fn inspections(
 
 /// The latest day DVIC's reports cover.
 pub fn fresh(db: &Store, dsp: &Dsp, station: &str) -> Result<Option<Value>> {
-    let dvic = db.dvic(&dsp.id)?.one(
+    let dvic = db.dvic_db(&dsp.id)?.one(
         "SELECT max(max_date) day,max(checked_at) checked_at FROM dvic_reports WHERE station=? AND scope_verified=1",
         [station],
     )?;

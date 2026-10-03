@@ -11,6 +11,8 @@ pub mod people;
 #[path = "storage.rs"]
 mod storage;
 
+pub use storage::DvicStore;
+
 use crate::{
     Error, Result,
     collectors::{

@@ -8,45 +8,42 @@ use crate::{
 use rusqlite::params;
 use std::collections::HashMap;
 
-impl Store {
-    pub fn dvic(&self, id: &str) -> Result<DspLease<'_>> {
+/// What DVIC reads and writes for a DSP: its inspections, in the database beside Cortex's,
+/// and the collections that bring them.
+pub trait DvicStore {
+    fn dvic_db(&self, id: &str) -> Result<DspLease<'_>>;
+    fn enqueue_dvic(
+        &self,
+        id: &str,
+        actor: Option<&str>,
+        key: &str,
+        week: Option<&str>,
+        weeks: usize,
+    ) -> Result<Value>;
+    fn dvic_jobs(&self, id: &str) -> Result<Vec<(String, Value)>>;
+    fn publish_dvic(
+        &self,
+        id: &str,
+        job: &str,
+        capture: &Capture,
+        scope: &crate::collectors::cortex::discovery::Scope,
+    ) -> Result<()>;
+    fn dvic_status(&self, id: &str) -> Result<DvicStatus>;
+    fn dvic_inspections(
+        &self,
+        id: &str,
+        from: &str,
+        to: &str,
+        driver: Option<&str>,
+        after: &str,
+        limit: usize,
+    ) -> Result<DvicInspections>;
+}
+impl DvicStore for Store {
+    fn dvic_db(&self, id: &str) -> Result<DspLease<'_>> {
         self.added_storage(id, cortex::PROVIDER, &STORAGE)
     }
-
-    pub(crate) fn bind_dvic_request(&self, id: &str, weeks: Vec<String>) -> Result<Value> {
-        let dsp = self.find_dsp(id)?;
-        let profile = self.profile(id)?;
-        ensure(
-            !profile.station_code.is_empty(),
-            "dvic_station_required",
-            409,
-        )?;
-        let timezone: chrono_tz::Tz = dsp
-            .timezone
-            .parse()
-            .map_err(|_| Error::new("invalid_timezone", 400))?;
-        let request = Request {
-            collection: Collection::Dvic,
-            station: profile.station_code,
-            weeks,
-            date: chrono::Utc::now()
-                .with_timezone(&timezone)
-                .date_naive()
-                .to_string(),
-            timezone: dsp.timezone,
-            dsp_name: dsp.name,
-            dsp_abbreviation: profile.abbreviation,
-        };
-        request.validate()?;
-        Ok(serde_json::to_value(request)?)
-    }
-    pub(crate) fn dvic_request(&self, id: &str, weeks: Vec<String>) -> Result<Value> {
-        let request = self.bind_dvic_request(id, weeks)?;
-        // Keep the durable job payload readable by the previous binary. The worker
-        // binds live tenant context immediately before collection and publication.
-        Ok(json!({"collection":"dvic","station":request["station"],"weeks":request["weeks"]}))
-    }
-    pub fn enqueue_dvic(
+    fn enqueue_dvic(
         &self,
         id: &str,
         actor: Option<&str>,
@@ -58,25 +55,18 @@ impl Store {
         let week = week.unwrap_or(&latest);
         weeks::parse_week(week)?;
         ensure(week <= latest.as_str(), "dvic_week_not_available", 400)?;
-        let request = self.dvic_request(id, weeks_ending(week, weeks)?)?;
+        let request = dvic_request(self, id, weeks_ending(week, weeks)?)?;
         let job = self
             .enqueue_batch(id, actor, &[(key.into(), cortex::PROVIDER, request)])?
             .remove(0);
         Ok(serde_json::to_value(job)?)
     }
-    pub(crate) fn dvic_schedule_ready(&self, id: &str) -> Result<()> {
-        ensure(
-            !self.profile(id)?.station_code.is_empty(),
-            "dvic_station_required",
-            409,
-        )
-    }
     /// Recheck the current and previous publication weeks each run, and catch up
     /// two older weeks per run. One browser session handles the entire batch.
-    pub fn dvic_jobs(&self, id: &str) -> Result<Vec<(String, Value)>> {
+    fn dvic_jobs(&self, id: &str) -> Result<Vec<(String, Value)>> {
         let latest = report_week(chrono::Utc::now().date_naive());
         let station = self.profile(id)?.station_code;
-        let db = self.dvic(id)?;
+        let db = self.dvic_db(id)?;
         let checked: HashMap<String, i64> = db.all(
             "SELECT week,max(checked_at) checked_at FROM dvic_weeks WHERE station=? AND scope_verified=1 GROUP BY week",
             [&station],
@@ -92,34 +82,12 @@ impl Store {
         // starve the older backlog by repeatedly refreshing the newest old weeks.
         older.sort_by_key(|week| checked.get(week).copied().unwrap_or(i64::MIN));
         weeks.extend(older.into_iter().take(2));
-        Ok(vec![("dvic".into(), self.dvic_request(id, weeks)?)])
-    }
-    pub(crate) fn dvic_known(
-        &self,
-        id: &str,
-        station: &str,
-        company: &str,
-    ) -> Result<HashMap<String, KnownReport>> {
-        self.dvic(id)?
-            .all(
-                "SELECT source_key,etag,sha256,modified_at FROM dvic_reports WHERE station=? AND company_id=? AND scope_verified=1",
-                params![station, company],
-            )?
-            .into_iter()
-            .map(|row| {
-                Ok((s(&row, "source_key").into(), KnownReport {
-                    etag: row["etag"].as_str().map(str::to_owned),
-                    sha256: s(&row, "sha256").into(),
-                    modified_at: row["modified_at"].as_i64()
-                        .ok_or_else(|| Error::new("invalid_stored_record", 500))?,
-                }))
-            })
-            .collect()
+        Ok(vec![("dvic".into(), dvic_request(self, id, weeks)?)])
     }
 
     /// Validate the complete batch before committing any report, revision, or row.
     /// A job can be published again after interruption without adding history twice.
-    pub fn publish_dvic(
+    fn publish_dvic(
         &self,
         id: &str,
         job: &str,
@@ -137,7 +105,7 @@ impl Store {
         let request =
             Request::parse(&request)?.ok_or_else(|| Error::new("invalid_dvic_request", 400))?;
         capture.validate_scope(&request, scope)?;
-        let db = self.dvic(id)?;
+        let db = self.dvic_db(id)?;
         let checked = at(capture.finished_at);
         db.transaction(|| {
             if db.one("SELECT job_id FROM dvic_runs WHERE job_id=?", [job])?.is_some() { return Ok(()); }
@@ -234,9 +202,9 @@ impl Store {
             Ok(())
         })
     }
-    pub fn dvic_status(&self, id: &str) -> Result<DvicStatus> {
+    fn dvic_status(&self, id: &str) -> Result<DvicStatus> {
         let station = self.profile(id)?.station_code;
-        let db = self.dvic(id)?;
+        let db = self.dvic_db(id)?;
         let decode = |sql: &str| db.all(sql, [&station]);
         Ok(DvicStatus {
             latest_week: report_week(chrono::Utc::now().date_naive()),
@@ -261,7 +229,7 @@ impl Store {
             station,
         })
     }
-    pub fn dvic_inspections(
+    fn dvic_inspections(
         &self,
         id: &str,
         from: &str,
@@ -281,7 +249,7 @@ impl Store {
             ensure(validate::token(driver, 128), "invalid_input", 400)?;
         }
         let station = self.profile(id)?.station_code;
-        let mut rows: Vec<DvicInspection>=self.dvic(id)?.all(
+        let mut rows: Vec<DvicInspection>=self.dvic_db(id)?.all(
                     "SELECT company_id||':'||inspection_key AS id,start_date AS startDate,transporter_id AS \
                     driverId,transporter_name AS driverName,vin,fleet_type AS fleetType,inspection_type AS \
                     inspectionType,inspection_status AS status,start_time AS startTime,end_time AS \
@@ -305,4 +273,67 @@ impl Store {
             next_cursor,
         })
     }
+}
+
+pub(crate) fn bind_dvic_request(store: &Store, id: &str, weeks: Vec<String>) -> Result<Value> {
+    let dsp = store.find_dsp(id)?;
+    let profile = store.profile(id)?;
+    ensure(
+        !profile.station_code.is_empty(),
+        "dvic_station_required",
+        409,
+    )?;
+    let timezone: chrono_tz::Tz = dsp
+        .timezone
+        .parse()
+        .map_err(|_| Error::new("invalid_timezone", 400))?;
+    let request = Request {
+        collection: Collection::Dvic,
+        station: profile.station_code,
+        weeks,
+        date: chrono::Utc::now()
+            .with_timezone(&timezone)
+            .date_naive()
+            .to_string(),
+        timezone: dsp.timezone,
+        dsp_name: dsp.name,
+        dsp_abbreviation: profile.abbreviation,
+    };
+    request.validate()?;
+    Ok(serde_json::to_value(request)?)
+}
+pub(crate) fn dvic_request(store: &Store, id: &str, weeks: Vec<String>) -> Result<Value> {
+    let request = bind_dvic_request(store, id, weeks)?;
+    // Keep the durable job payload readable by the previous binary. The worker
+    // binds live tenant context immediately before collection and publication.
+    Ok(json!({"collection":"dvic","station":request["station"],"weeks":request["weeks"]}))
+}
+pub(crate) fn dvic_schedule_ready(store: &Store, id: &str) -> Result<()> {
+    ensure(
+        !store.profile(id)?.station_code.is_empty(),
+        "dvic_station_required",
+        409,
+    )
+}
+pub(crate) fn dvic_known(
+    store: &Store,
+    id: &str,
+    station: &str,
+    company: &str,
+) -> Result<HashMap<String, KnownReport>> {
+    store.dvic_db(id)?
+        .all(
+            "SELECT source_key,etag,sha256,modified_at FROM dvic_reports WHERE station=? AND company_id=? AND scope_verified=1",
+            params![station, company],
+        )?
+        .into_iter()
+        .map(|row| {
+            Ok((s(&row, "source_key").into(), KnownReport {
+                etag: row["etag"].as_str().map(str::to_owned),
+                sha256: s(&row, "sha256").into(),
+                modified_at: row["modified_at"].as_i64()
+                    .ok_or_else(|| Error::new("invalid_stored_record", 500))?,
+            }))
+        })
+        .collect()
 }
