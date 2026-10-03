@@ -42,9 +42,8 @@ pub struct State {
     pub oauth_limits: agents::oauth::limits::Limits,
 }
 impl State {
+    /// Reads the registry, which the app installs before it builds one.
     pub fn new(config: config::Config) -> Result<Arc<Self>> {
-        // Everything below reads the registry; installing it again changes nothing.
-        crate::install();
         let store = db::Store::initialize(config.clone())?;
         for dsp in store.platform.all(
             "SELECT id FROM dsps WHERE status IN ('active','suspended')",
