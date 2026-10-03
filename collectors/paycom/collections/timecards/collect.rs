@@ -305,7 +305,7 @@ impl Driver {
         &mut self,
         run: &Run<'_>,
         employee: &Value,
-        requested: &crate::contracts::EmployeeTimecardPeriod,
+        requested: &crate::collectors::paycom::timecards::EmployeeTimecardPeriod,
     ) -> Result<Value> {
         self.credentials = Value::Null;
         self.assistance = None;

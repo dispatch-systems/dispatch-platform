@@ -3,9 +3,12 @@
 #[path = "../../../../../core/db/tests/support/common.rs"]
 mod common;
 use dispatch_backend::{
-    collectors::Provider,
+    collectors::{
+        Provider,
+        cortex::routes::{self, Capture, Mode, Request},
+    },
     db::{Store, s},
-    routedata::{self, Capture, Mode, Request},
+    routedata,
 };
 use serde_json::{Value, json};
 
@@ -60,7 +63,7 @@ fn count(db: &Store, id: &str, sql: &str) -> i64 {
 #[test]
 fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
     let (_root, db, id) = ready();
-    let capture = routedata::fixture(&request("2026-09-25", Mode::Final)).unwrap();
+    let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     let job = publish(&db, &id, "first", "2026-09-25", &capture);
     let queued = db.job_row(&job, Some(&id)).unwrap();
     assert_eq!(queued.kind.as_str(), "cortex.routes.collect");
@@ -245,7 +248,7 @@ fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
 #[test]
 fn a_reprocess_rebuilds_every_row_from_the_stored_responses() {
     let (_root, db, id) = ready();
-    let capture = routedata::fixture(&request("2026-09-25", Mode::Final)).unwrap();
+    let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     publish(&db, &id, "first", "2026-09-25", &capture);
     let before = db.route_days(&id).unwrap().days.remove(0);
     let storage = db.routedata(&id).unwrap();
@@ -289,7 +292,7 @@ fn a_reprocess_rebuilds_every_row_from_the_stored_responses() {
 #[test]
 fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publications() {
     let (_root, db, id) = ready();
-    let capture = routedata::fixture(&request("2026-09-25", Mode::Final)).unwrap();
+    let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     // An itinerary that is not the one listed is refused before anything is stored.
     let mut swapped = capture.clone();
     swapped.itineraries.swap(0, 1);
@@ -335,7 +338,7 @@ fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publication
         .unwrap()
         .exec(
             "UPDATE route_raw SET raw_bytes=? WHERE name LIKE 'itinerary:%'",
-            [routedata::MAX_CAPTURE_BYTES as i64],
+            [routes::MAX_CAPTURE_BYTES as i64],
         )
         .unwrap();
     let error = db.reprocess_routes(&id, None).unwrap_err();
@@ -346,7 +349,7 @@ fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publication
 #[test]
 fn a_package_moved_between_drivers_keeps_a_row_under_each() {
     let (_root, db, id) = ready();
-    let mut capture = routedata::fixture(&request("2026-09-25", Mode::Final)).unwrap();
+    let mut capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     // The second driver delivered task-13; the first driver's itinerary lists it as
     // removed from their route, as Amazon lists a rescued package.
     let second: Value = serde_json::from_str(&capture.itineraries[1].detail).unwrap();
@@ -398,7 +401,7 @@ fn a_package_moved_between_drivers_keeps_a_row_under_each() {
 #[test]
 fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
     let (_root, db, id) = ready();
-    let capture = routedata::fixture(&request("2026-09-25", Mode::Final)).unwrap();
+    let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     let first = publish(&db, &id, "first", "2026-09-25", &capture);
     let mut again = capture.clone();
     again.itineraries.truncate(1);
@@ -455,7 +458,7 @@ fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
             .is_empty()
     );
     // A capture for another day or station is refused.
-    let other = routedata::fixture(&request("2026-09-24", Mode::Final)).unwrap();
+    let other = routes::fixture(&request("2026-09-24", Mode::Final)).unwrap();
     let jobs = db
         .enqueue_routes(&id, None, "third", Some("2026-09-25"), Mode::Final, 1)
         .unwrap();
@@ -477,7 +480,7 @@ fn a_schedule_queues_recent_days_without_a_final_publication() {
     assert_eq!(jobs[0].1["station"], "TST1");
     assert_eq!(jobs[3].0, format!("routes:{}", day(4)));
     // A published day is not asked for again.
-    let capture = routedata::fixture(&request(&day(1), Mode::Final)).unwrap();
+    let capture = routes::fixture(&request(&day(1), Mode::Final)).unwrap();
     publish(&db, &id, "yesterday", &day(1), &capture);
     let jobs = db.routes_jobs(&id).unwrap();
     assert_eq!(jobs[0].0, format!("routes:{}", day(2)));
@@ -486,7 +489,7 @@ fn a_schedule_queues_recent_days_without_a_final_publication() {
             .all(|(key, _)| key != &format!("routes:{}", day(1)))
     );
     // A snapshot of today is a different reading and leaves the schedule's view alone.
-    let snapshot = routedata::fixture(&request(&day(0), Mode::Snapshot)).unwrap();
+    let snapshot = routes::fixture(&request(&day(0), Mode::Snapshot)).unwrap();
     publish(&db, &id, "today", &day(0), &snapshot);
     assert_eq!(db.route_days(&id).unwrap().days.len(), 2);
     assert_eq!(
@@ -544,7 +547,7 @@ fn collection_requests_need_a_station_and_an_allowed_day() {
 #[test]
 fn the_sweep_keeps_a_running_jobs_day_and_deletes_what_no_reader_sees() {
     let (_root, db, id) = ready();
-    let capture = routedata::fixture(&request("2026-09-25", Mode::Final)).unwrap();
+    let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     let jobs = db
         .enqueue_routes(&id, None, "staging", Some("2026-09-25"), Mode::Final, 1)
         .unwrap();
@@ -614,7 +617,7 @@ fn a_retention_window_retires_older_days_only_while_routes_are_on() {
     let old = (today - chrono::Duration::days(40)).to_string();
     let recent = (today - chrono::Duration::days(1)).to_string();
     for (key, day) in [("old", &old), ("recent", &recent)] {
-        let capture = routedata::fixture(&request(day, Mode::Final)).unwrap();
+        let capture = routes::fixture(&request(day, Mode::Final)).unwrap();
         publish(&db, &id, key, day, &capture);
     }
     assert_eq!(db.expire_routes(&id).unwrap(), 0);
@@ -887,8 +890,8 @@ fn a_stored_day_goes_through_storage_at_full_size() {
         )
         .unwrap();
     let job = s(&jobs[0], "id").to_owned();
-    let mut capture = routedata::fixture(
-        &routedata::Request::parse(
+    let mut capture = routes::fixture(
+        &routes::Request::parse(
             &serde_json::from_str::<Value>(&db.job_row(&job, Some(&id)).unwrap().request).unwrap(),
         )
         .unwrap()
@@ -912,9 +915,9 @@ fn a_stored_day_goes_through_storage_at_full_size() {
     capture.scope.service_area_id = s(&publication, "service_area_id").into();
     capture.scope.provider = s(&publication, "provider").into();
     capture.scope.timezone = s(&publication, "timezone").into();
-    capture.itineraries = routedata::listed(&capture.summaries, &capture.scope)
+    capture.itineraries = routes::listed(&capture.summaries, &capture.scope)
         .into_iter()
-        .map(|(itinerary, transporter)| routedata::ItineraryCapture {
+        .map(|(itinerary, transporter)| routes::ItineraryCapture {
             detail: blob(&format!("itinerary:{itinerary}")),
             id: itinerary,
             transporter_id: transporter,
@@ -922,7 +925,7 @@ fn a_stored_day_goes_through_storage_at_full_size() {
         .collect();
     let before = resident("VmRSS:");
     // As `stage` does it: checking and shaping without the lock, each insert a step.
-    let request = routedata::Request::parse(
+    let request = routes::Request::parse(
         &serde_json::from_str::<Value>(&db.job_row(&job, Some(&id)).unwrap().request).unwrap(),
     )
     .unwrap()

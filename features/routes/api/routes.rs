@@ -2,13 +2,14 @@
 //! here and in its paths; its module and database are `routedata`.
 use crate::{
     Error, Result, State,
+    collectors::cortex::routes::{JOB_KIND, Mode, token},
     db::Store,
     ensure,
     http::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, async_post, read, write},
     },
-    routedata::{self, MAX_DAYS_PER_REQUEST, Mode},
+    routedata::{self, MAX_DAYS_PER_REQUEST},
     validate as v,
 };
 use std::sync::Arc;
@@ -39,7 +40,7 @@ fn itinerary(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let day = input.param("day");
     v::date(day)?;
     let id = input.param("id");
-    ensure(routedata::token(id, 128), "invalid_input", 400)?;
+    ensure(token(id, 128), "invalid_input", 400)?;
     let view = db
         .route_itinerary(c.dsp_id(), day, id)?
         .ok_or_else(|| Error::new("not_found", 404))?;
@@ -48,7 +49,7 @@ fn itinerary(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 
 fn package(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let tracking = input.param("tracking");
-    ensure(routedata::token(tracking, 64), "invalid_input", 400)?;
+    ensure(token(tracking, 64), "invalid_input", 400)?;
     Reply::of(&db.route_package(c.dsp_id(), tracking)?)
 }
 
@@ -66,10 +67,10 @@ fn day(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 
 fn jobs(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    Reply::of(&db.recent_jobs_of(c.dsp_id(), routedata::JOB_KIND)?)
+    Reply::of(&db.recent_jobs_of(c.dsp_id(), JOB_KIND)?)
 }
 async fn cancel(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
-    super::jobs::cancel_kind(state, input, access, Some(routedata::JOB_KIND)).await
+    super::jobs::cancel_kind(state, input, access, Some(JOB_KIND)).await
 }
 
 fn retention(db: &Store, c: &Member, _: &Input) -> Result<Reply> {

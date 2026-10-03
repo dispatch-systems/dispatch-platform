@@ -1,7 +1,9 @@
-use super::validation::{sources, validate_workforce};
 use crate::{
     Result,
-    collectors::Provider,
+    collectors::{
+        Provider,
+        paycom::validation::{sources, validate_workforce},
+    },
     crypto,
     db::{Store, flag, s},
 };

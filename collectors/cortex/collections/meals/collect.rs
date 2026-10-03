@@ -1,9 +1,12 @@
 use super::*;
 use crate::{
+    collectors::cortex::{
+        discovery::Scope,
+        meals::{Capture, Itinerary},
+    },
     db::now,
     job_metrics::Recorder,
     live_collection::Writer,
-    meals::{Capture, Itinerary, Scope},
 };
 use serde::{Deserialize, Serialize};
 use std::{

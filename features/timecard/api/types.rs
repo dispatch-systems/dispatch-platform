@@ -1,25 +1,8 @@
 use crate::{
-    Result,
-    contracts::{JobStatus, PaycomDay},
-    db::{FromRow, Row},
+    contracts::{EmployeeTimecardPeriod, JobStatus, PaycomDay},
     text_enum,
 };
 use serde::{Deserialize, Serialize};
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-pub struct EmployeeTimecardPeriod {
-    pub from: String,
-    pub to: String,
-}
-impl FromRow for EmployeeTimecardPeriod {
-    fn from_row(row: &Row<'_>) -> Result<Self> {
-        Ok(Self {
-            from: row.get("period_from")?,
-            to: row.get("period_to")?,
-        })
-    }
-}
-
 #[derive(Debug, PartialEq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]

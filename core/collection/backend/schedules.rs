@@ -612,7 +612,7 @@ mod tests {
             .unwrap()
             .exec("UPDATE connections SET enabled=1", [])
             .unwrap();
-        let scope = super::super::meals::Scope {
+        let scope = super::super::collectors::cortex::discovery::Scope {
             date: "2026-01-10".into(),
             station: "DEMO1".into(),
             service_area_id: "area-demo".into(),
@@ -622,7 +622,7 @@ mod tests {
         db.publish_meals(
             id,
             "seed-meals",
-            &super::super::meals::fixture(&scope),
+            &super::super::collectors::cortex::meals::fixture(&scope),
             &scope,
         )
         .unwrap();

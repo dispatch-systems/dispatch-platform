@@ -1,6 +1,17 @@
 //! Cortex: meal evidence, the scorecard, daily routes, and short DVIC inspections from Amazon Logistics.
 //! Its storage was added to DSPs that already existed, which is the path every later
 //! provider takes.
+#[path = "discovery/scope.rs"]
+pub mod discovery;
+#[path = "collections/dvic/capture.rs"]
+pub mod dvic;
+#[path = "collections/meals/capture.rs"]
+pub mod meals;
+#[path = "collections/routes/capture.rs"]
+pub mod routes;
+#[path = "collections/scorecard/capture.rs"]
+pub mod scorecard;
+
 use super::AddedStorage;
 use super::Collector;
 use crate::{
@@ -11,10 +22,9 @@ use crate::{
         cortex,
     },
     db::{self, Db, Kind, Store},
-    dvic, ensure,
-    meals::{self, CollectionRequest},
-    routedata, scorecard, validate as v,
+    ensure, validate as v,
 };
+use discovery::CollectionRequest;
 use serde_json::{Value, json};
 use std::path::Path;
 
@@ -33,15 +43,15 @@ impl Collector for Cortex {
         "cortex.meal_breaks.collect"
     }
     fn other_job_kinds(&self) -> &'static [&'static str] {
-        &[scorecard::JOB_KIND, routedata::JOB_KIND, dvic::JOB_KIND]
+        &[scorecard::JOB_KIND, routes::JOB_KIND, dvic::JOB_KIND]
     }
     fn job_kind_for(&self, request: &Value) -> &'static str {
         if dvic::Request::is(request) {
             dvic::JOB_KIND
         } else if scorecard::Request::is(request) {
             scorecard::JOB_KIND
-        } else if routedata::Request::is(request) {
-            routedata::JOB_KIND
+        } else if routes::Request::is(request) {
+            routes::JOB_KIND
         } else {
             self.job_kind()
         }
@@ -71,8 +81,11 @@ impl Collector for Cortex {
         Ok(request.clone())
     }
     fn added_storages(&self) -> &'static [&'static AddedStorage] {
-        static ADDED: [&AddedStorage; 3] =
-            [&scorecard::STORAGE, &routedata::STORAGE, &dvic::STORAGE];
+        static ADDED: [&AddedStorage; 3] = [
+            &crate::scorecard::STORAGE,
+            &crate::routedata::STORAGE,
+            &crate::dvic::STORAGE,
+        ];
         &ADDED
     }
     fn database(&self) -> Kind {
@@ -160,8 +173,8 @@ impl Collector for Cortex {
                 scope: Some(scope),
             });
         }
-        if let Some(request) = routedata::Request::parse(request)? {
-            let capture = routedata::fixture(&request)?;
+        if let Some(request) = routes::Request::parse(request)? {
+            let capture = routes::fixture(&request)?;
             let scope = capture.scope.clone();
             return Ok(Collected {
                 data: serde_json::to_value(capture)?,
@@ -184,7 +197,7 @@ impl Collector for Cortex {
             "Collecting DVIC"
         } else if scorecard::Request::is(request) {
             "Collecting scorecard"
-        } else if routedata::Request::is(request) {
+        } else if routes::Request::is(request) {
             "Collecting routes"
         } else {
             "Collecting meal breaks"
@@ -199,11 +212,11 @@ impl Collector for Cortex {
         collected: Collected,
     ) -> Pending<'a, Collected> {
         Box::pin(async move {
-            if !routedata::Request::is(&collected.data) {
+            if !routes::Request::is(&collected.data) {
                 return Ok(collected);
             }
-            let capture: routedata::Capture = serde_json::from_value(collected.data)?;
-            let staged = routedata::stage(state, dsp, job, owner, capture).await?;
+            let capture: routes::Capture = serde_json::from_value(collected.data)?;
+            let staged = crate::routedata::stage(state, dsp, job, owner, capture).await?;
             Ok(Collected {
                 data: serde_json::to_value(staged)?,
                 scope: collected.scope,
@@ -228,7 +241,7 @@ impl Collector for Cortex {
                 &scope.ok_or_else(|| Error::new("invalid_cortex_scope", 502))?,
             );
         }
-        if routedata::Request::is(&data) {
+        if routes::Request::is(&data) {
             return store.publish_routes(dsp, job, &serde_json::from_value(data)?);
         }
         store.publish_meals(

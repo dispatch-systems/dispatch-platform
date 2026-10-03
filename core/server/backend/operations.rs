@@ -1,10 +1,10 @@
-use super::collectors::Provider;
+use super::collectors::{Provider, paycom::fixtures};
 use super::{
     Error, Result,
     config::Config,
     crypto,
     db::{self, Store, iso, n, s},
-    ensure, workforce,
+    ensure,
 };
 use fs2::FileExt;
 use rusqlite::params;
@@ -174,7 +174,7 @@ pub fn seed(db: &Store) -> Result<()> {
             "UPDATE connections SET enabled=1,status='ready',account_label='DEMO1',verified_at=?",
             [iso()],
         )?;
-        db.publish(id, &workforce::fixture(&dsp.timezone)?)?;
+        db.publish(id, &fixtures::fixture(&dsp.timezone)?)?;
         db.audit(Some(&owner.id), Some(id), "development.fixtures_loaded", "")?;
     }
     db::write_private(

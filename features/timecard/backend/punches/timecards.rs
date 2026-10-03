@@ -1,7 +1,7 @@
 //! Employee timecards: calendar navigation and explicitly scoped collections.
 use crate::{
     Error, Result,
-    collectors::Provider,
+    collectors::{Provider, paycom::timecards::PERIOD_DAYS},
     contracts::{EmployeeTimecardPeriod, EmployeeTimecardResponse, JobRow, Timecard},
     db::{Store, boolean, s},
     ensure,
@@ -10,43 +10,10 @@ use crate::{
     workforce::cards,
     workforce::sync::synced_cards,
 };
-use chrono::{Duration, NaiveDate};
 use rusqlite::params;
 use serde_json::{Value, json};
 
-pub(crate) const PERIOD_DAYS: i64 = 14;
 const EARLIEST_DATE: &str = "2000-01-01";
-
-impl EmployeeTimecardPeriod {
-    pub(crate) fn start(&self) -> Result<NaiveDate> {
-        v::date(&self.from)?;
-        v::date(&self.to)?;
-        let start: NaiveDate = self
-            .from
-            .parse()
-            .map_err(|_| Error::new("invalid_period", 400))?;
-        ensure(
-            (start + Duration::days(PERIOD_DAYS - 1)).to_string() == self.to,
-            "invalid_period",
-            400,
-        )?;
-        Ok(start)
-    }
-    fn shift(&self, periods: i64) -> Result<Self> {
-        let start = self.start()? + Duration::days(periods * PERIOD_DAYS);
-        Ok(Self {
-            from: start.to_string(),
-            to: (start + Duration::days(PERIOD_DAYS - 1)).to_string(),
-        })
-    }
-    pub(crate) fn provider_period(&self) -> Result<Value> {
-        let start = self.start()?;
-        Ok(
-            json!({"start":self.from,"end":self.to,"key":format!("{}_{}",self.from,self.to),
-            "dates":(0..PERIOD_DAYS).map(|i|(start+Duration::days(i)).to_string()).collect::<Vec<_>>()}),
-        )
-    }
-}
 
 impl Store {
     pub(crate) fn paycom_employee(&self, id: &str, code: &str) -> Result<Value> {

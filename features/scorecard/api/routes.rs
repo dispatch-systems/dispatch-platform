@@ -2,12 +2,13 @@
 //! feature of its own; nothing here asks for another's permission.
 use crate::{
     Result, State,
+    collectors::cortex::scorecard,
     db::Store,
     http::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, async_post, read, write},
     },
-    scorecard, validate as v, weeks,
+    validate as v, weeks,
 };
 use std::sync::Arc;
 

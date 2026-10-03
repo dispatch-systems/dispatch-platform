@@ -6,12 +6,15 @@
 use super::*;
 use crate::{
     browsers::http::{Http, Refusal},
+    collectors::cortex::{
+        discovery::Scope,
+        scorecard::{
+            Capture, Collection, DATASETS, Dataset, DatasetCapture, MAX_ROWS, POSTED_SIGNAL,
+            Request,
+        },
+    },
     db::now,
     job_metrics::Recorder,
-    meals::Scope,
-    scorecard::{
-        Capture, Collection, DATASETS, Dataset, DatasetCapture, MAX_ROWS, POSTED_SIGNAL, Request,
-    },
     validate::token,
 };
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -474,7 +477,9 @@ mod tests {
             dsp: "NLOG".into(),
             company_id: "company".into(),
         };
-        let dataset = crate::scorecard::dataset("da_dsp_station_weekly_performance").unwrap();
+        let dataset =
+            crate::collectors::cortex::scorecard::dataset("da_dsp_station_weekly_performance")
+                .unwrap();
         assert_eq!(
             api.address(dataset, "TST1", "2026-W38", "2026-W38"),
             concat!(

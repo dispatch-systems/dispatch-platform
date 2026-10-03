@@ -6,12 +6,17 @@ mod common;
 use dispatch_backend::{
     State,
     agents::{Caller, data, synthetic},
-    collectors::Provider,
+    collectors::{
+        Provider,
+        cortex::{
+            discovery::Scope,
+            meals,
+            routes::{self, Mode, Request},
+        },
+        paycom::fixtures,
+    },
     contracts::{AgentArea, AgentKeyRequest},
     db::{Store, s},
-    meals::{self, Scope},
-    routedata::{self, Mode, Request},
-    workforce,
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -36,7 +41,7 @@ fn ready() -> (tempfile::TempDir, Store, String) {
         .exec("UPDATE connections SET enabled=1,status='ready'", [])
         .unwrap();
     // Paycom's roster, with E002 named as Amazon writes the fixture's first driver.
-    let mut roster = workforce::fixture_date("UTC", Some(day())).unwrap();
+    let mut roster = fixtures::fixture_date("UTC", Some(day())).unwrap();
     for employee in roster["employees"].as_array_mut().unwrap() {
         if employee["code"] == "E002" {
             employee["name"] = json!("DRIVER, FIXTURE");
@@ -48,7 +53,7 @@ fn ready() -> (tempfile::TempDir, Store, String) {
         "station":"TST1","timezone":"UTC","dspName":"Test Owner","dspAbbreviation":"NLOG"}))
     .unwrap()
     .unwrap();
-    let capture = routedata::fixture(&request).unwrap();
+    let capture = routes::fixture(&request).unwrap();
     let jobs = db
         .enqueue_routes(&id, None, "agent-routes", Some(DAY), Mode::Final, 1)
         .unwrap();
@@ -832,7 +837,7 @@ async fn package_group_and_list_cursors_advance_independently_within_the_final_b
         "station":"TST1","timezone":"UTC","dspName":"Test Owner","dspAbbreviation":"NLOG"}))
     .unwrap()
     .unwrap();
-    let mut capture = routedata::fixture(&request).unwrap();
+    let mut capture = routes::fixture(&request).unwrap();
     let summary = capture.summaries["itinerarySummaries"][0].clone();
     let route = capture.route_summaries["rmsRouteSummaries"][0].clone();
     let itinerary = capture.itineraries[0].clone();
@@ -1362,7 +1367,7 @@ async fn meal_duration_answers_preserve_unknown_totals_and_overnight_clocks() {
 #[tokio::test]
 async fn driver_periods_keep_historical_sync_and_meal_context_across_batches() {
     let (_root, db, id) = ready();
-    let mut history = workforce::fixture_date("UTC", Some("2026-09-05".parse().unwrap())).unwrap();
+    let mut history = fixtures::fixture_date("UTC", Some("2026-09-05".parse().unwrap())).unwrap();
     history["employees"][1]["name"] = json!("DRIVER, FIXTURE");
     history["collectedAt"] = json!("2099-01-01T00:00:00Z");
     db.publish(&id, &history).unwrap();

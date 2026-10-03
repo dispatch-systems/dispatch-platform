@@ -4,9 +4,12 @@
 //! development server with fixture providers, seeded first, can make it.
 use crate::{
     Error, Result,
+    collectors::cortex::{
+        self, meals,
+        routes::{ItineraryCapture, Mode, Request},
+    },
     db::{Store, s},
-    ensure, meals,
-    routedata::{self, ItineraryCapture, Mode, Request},
+    ensure,
 };
 use chrono::{Datelike, Duration, NaiveDate, TimeZone};
 use serde_json::{Value, json};
@@ -130,7 +133,7 @@ pub fn seed(db: &Store) -> Result<Value> {
     };
 
     // Paycom: Avery Morgan dispatches; everyone else drives.
-    let roster = crate::workforce::fixture(&timezone)?;
+    let roster = crate::collectors::paycom::fixtures::fixture(&timezone)?;
     let employees = roster["employees"].as_array().cloned().unwrap_or_default();
     let drivers: Vec<(u64, String, String)> = employees
         .iter()
@@ -198,7 +201,7 @@ pub fn seed(db: &Store) -> Result<Value> {
         let job = s(&jobs[0], "id").to_owned();
         let request: Value = serde_json::from_str(&db.job_row(&job, Some(&id))?.request)?;
         let request = Request::parse(&request)?.ok_or_else(|| Error::new("invalid_input", 400))?;
-        let mut capture = routedata::fixture(&request)?;
+        let mut capture = cortex::routes::fixture(&request)?;
         let (summaries, route_summaries, itineraries) =
             routes_day(&capture, *date, d as i64, &drivers, &transporter, &at);
         routes += itineraries.len();
@@ -213,7 +216,7 @@ pub fn seed(db: &Store) -> Result<Value> {
             .exec("UPDATE jobs SET status='succeeded' WHERE id=?", [&job])?;
 
         // Cortex's meal breaks for the same itineraries.
-        let scope = meals::Scope {
+        let scope = cortex::discovery::Scope {
             date: day.clone(),
             station: STATION.into(),
             service_area_id: request
@@ -355,9 +358,9 @@ fn scorecards(
         let request = crate::collectors::Provider::Cortex
             .collector()
             .bind_request(db, id, &request)?;
-        let request = crate::scorecard::Request::parse(&request)?
+        let request = cortex::scorecard::Request::parse(&request)?
             .ok_or_else(|| Error::new("invalid_input", 400))?;
-        let mut capture = crate::scorecard::fixture(&request)?;
+        let mut capture = cortex::scorecard::fixture(&request)?;
         let (mut feedback, mut returns, mut events, mut cards) = (vec![], vec![], vec![], vec![]);
         for (d, date) in dates.iter().enumerate() {
             if *date < sunday || *date > saturday {
@@ -471,10 +474,10 @@ fn scorecards(
             };
         }
         let scope = match request.scope_request() {
-            crate::meals::CollectionRequest::Discover(discovery) => {
+            cortex::discovery::CollectionRequest::Discover(discovery) => {
                 discovery.scope("area-synthetic", "company-fixture")?
             }
-            crate::meals::CollectionRequest::Scoped(scope) => scope,
+            cortex::discovery::CollectionRequest::Scoped(scope) => scope,
         };
         db.publish_scorecard(id, &job, &capture, &scope)?;
         db.jobs
@@ -519,7 +522,7 @@ fn address_id(driver: u64, stop: i64) -> String {
 type Summaries = (Value, Value);
 /// One day's lists and itineraries, in the shape Cortex answers with.
 fn routes_day(
-    capture: &routedata::Capture,
+    capture: &cortex::routes::Capture,
     date: NaiveDate,
     d: i64,
     drivers: &[(u64, String, String)],

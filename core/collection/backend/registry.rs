@@ -2,9 +2,9 @@
 //! reached through `Provider`. Provider identities and paths are compiled code,
 //! never user-controlled paths.
 #[path = "../../../collectors/cortex/collector.rs"]
-mod cortex;
+pub mod cortex;
 #[path = "../../../collectors/paycom/collector.rs"]
-mod paycom;
+pub mod paycom;
 use super::{
     Result,
     browsers::{
@@ -397,6 +397,7 @@ impl Store {
 mod tests {
     use super::*;
     use crate::{config::Config, operations, workforce};
+    use paycom::fixtures;
     use std::os::unix::fs::{PermissionsExt, symlink};
 
     fn platform() -> (tempfile::TempDir, Store) {
@@ -444,7 +445,7 @@ mod tests {
             .unwrap();
         drop(paycom);
         store
-            .publish(&id, &workforce::fixture("UTC").unwrap())
+            .publish(&id, &fixtures::fixture("UTC").unwrap())
             .unwrap();
         (root, store, id)
     }
@@ -583,7 +584,7 @@ mod tests {
             snapshot(&reopened.collector(&id, Provider::Paycom).unwrap()),
             before
         );
-        let mut next = workforce::fixture("UTC").unwrap();
+        let mut next = fixtures::fixture("UTC").unwrap();
         next["employees"][0]["name"] = json!("New Collection");
         reopened.publish(&id, &next).unwrap();
         assert_eq!(

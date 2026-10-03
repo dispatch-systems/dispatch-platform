@@ -1,4 +1,11 @@
 //! Paycom: employees and timecards. Every DSP was created with this storage.
+#[path = "fixtures/timecards.rs"]
+pub mod fixtures;
+#[path = "collections/timecards/types.rs"]
+pub mod timecards;
+#[path = "collections/timecards/validation.rs"]
+pub mod validation;
+
 use super::Collector;
 use crate::{
     Error, Result,
@@ -8,11 +15,11 @@ use crate::{
         paycom,
     },
     db::{Db, Kind, Store, s},
-    ensure, validate as v, workforce,
-    workforce::sync::EmployeeSync,
+    ensure, validate as v,
 };
 use serde_json::{Value, json};
 use std::{collections::HashSet, path::Path};
+use timecards::EmployeeSync;
 
 pub(super) struct Paycom;
 impl Collector for Paycom {
@@ -97,7 +104,7 @@ impl Collector for Paycom {
         let data = if let Some(scope) = EmployeeSync::parse(request)? {
             scope.fixture(timezone)?
         } else {
-            workforce::fixture_date(timezone, workforce::collection_date(request, timezone)?)?
+            fixtures::fixture_date(timezone, validation::collection_date(request, timezone)?)?
         };
         Ok(Collected { data, scope: None })
     }

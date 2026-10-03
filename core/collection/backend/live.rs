@@ -2,10 +2,15 @@
 //! for history; failed/cancelled/replaced attempts never overwrite them.
 use super::{
     Error, Result, State,
-    collectors::Provider,
+    collectors::{
+        Provider,
+        cortex::{
+            discovery::{CollectionRequest, Scope},
+            meals::Capture,
+        },
+    },
     db::{self, Db, Store, s},
     ensure,
-    meals::{Capture, CollectionRequest, Scope},
 };
 use rusqlite::params;
 use serde_json::{Value, json};
@@ -267,7 +272,9 @@ impl Writer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{collection_checkpoint::Checkpoint, config::Config, operations, workforce};
+    use crate::{
+        collection_checkpoint::Checkpoint, collectors::paycom::fixtures, config::Config, operations,
+    };
     use std::os::unix::fs::PermissionsExt;
 
     #[tokio::test]
@@ -295,7 +302,7 @@ mod tests {
                     db.collector(&dsp, *provider)?
                         .exec("UPDATE connections SET enabled=1", [])?;
                 }
-                let old = workforce::fixture_date("UTC", Some("2026-01-19".parse().unwrap()))?;
+                let old = fixtures::fixture_date("UTC", Some("2026-01-19".parse().unwrap()))?;
                 db.publish(&dsp, &old)?;
                 let paycom = db.enqueue(&dsp, None, "live-paycom")?;
                 db.claim_job("paycom-owner", |_, _| true)?;
@@ -452,7 +459,7 @@ mod tests {
                 Ok(s(&job, "id").to_owned())
             })
             .await?;
-        let mut capture = crate::meals::fixture(&scope);
+        let mut capture = crate::collectors::cortex::meals::fixture(&scope);
         capture.itineraries[0].driver = s(&employee, "name").into();
         let writer = Writer::new(state.clone(), &flex_job, "flex-owner");
         writer

@@ -236,7 +236,8 @@ impl ComparisonContext<'_> {
                 drivers.insert(s(driver, "id").to_owned(), driver.clone());
             }
             for capture in captures {
-                let capture: crate::meals::Capture = serde_json::from_value(capture.clone())?;
+                let capture: crate::collectors::cortex::meals::Capture =
+                    serde_json::from_value(capture.clone())?;
                 let p = json!({"station":capture.scope.station,"serviceAreaId":capture.scope.service_area_id,
                     "timezone":capture.scope.timezone,"collectedAt":crate::db::at(capture.finished_at)});
                 for route in capture.itineraries {

@@ -1,8 +1,8 @@
 use super::*;
 use crate::{
     Code,
+    collectors::cortex::discovery::{CollectionRequest, Scope},
     job_metrics::Recorder,
-    meals::{CollectionRequest, Scope},
 };
 // The page is between documents or signing in again; ask it again.
 const PAGE_NOT_READY: &[crate::Code] = &[

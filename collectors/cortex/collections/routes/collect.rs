@@ -8,13 +8,15 @@
 //! answer for is read by loading its own page instead.
 use super::*;
 use crate::{
+    collectors::cortex::{
+        discovery::Scope,
+        routes::{
+            Capture, Collection, ItineraryCapture, MAX_BODY, MAX_ITINERARIES, Request,
+            add_capture_bytes, listed,
+        },
+    },
     db::now,
     job_metrics::Recorder,
-    meals::Scope,
-    routedata::{
-        Capture, Collection, ItineraryCapture, MAX_BODY, MAX_ITINERARIES, Request,
-        add_capture_bytes, listed,
-    },
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
@@ -637,7 +639,9 @@ mod tests {
 
     #[test]
     fn concurrent_lanes_cannot_overbook_the_capture_budget() {
-        let budget = Arc::new(CaptureBudget::new(crate::routedata::MAX_CAPTURE_BYTES - 1).unwrap());
+        let budget = Arc::new(
+            CaptureBudget::new(crate::collectors::cortex::routes::MAX_CAPTURE_BYTES - 1).unwrap(),
+        );
         let results = std::thread::scope(|scope| {
             let first = scope.spawn({
                 let budget = budget.clone();

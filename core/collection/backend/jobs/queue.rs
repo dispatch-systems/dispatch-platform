@@ -218,7 +218,10 @@ impl Store {
         date: &str,
     ) -> Result<Value> {
         let request = json!({"date":date});
-        crate::workforce::collection_date(&request, &self.find_dsp(id)?.timezone)?;
+        crate::collectors::paycom::validation::collection_date(
+            &request,
+            &self.find_dsp(id)?.timezone,
+        )?;
         self.enqueue_for(id, actor, key, Provider::Paycom, &request)
     }
     pub fn enqueue_employee_timecard(
@@ -230,11 +233,11 @@ impl Store {
         period: &crate::contracts::EmployeeTimecardPeriod,
     ) -> Result<Value> {
         self.employee_timecard(id, code, Some(period))?;
-        crate::workforce::collection_date(
+        crate::collectors::paycom::validation::collection_date(
             &json!({"date":period.from}),
             &self.find_dsp(id)?.timezone,
         )?;
-        let scope = crate::workforce::sync::EmployeeSync {
+        let scope = crate::collectors::paycom::timecards::EmployeeSync {
             employee_code: code.into(),
             from: period.from.clone(),
             to: period.to.clone(),
@@ -252,7 +255,7 @@ impl Store {
         id: &str,
         actor: Option<&str>,
         key: &str,
-        scope: &crate::meals::Scope,
+        scope: &crate::collectors::cortex::discovery::Scope,
     ) -> Result<Value> {
         scope.validate()?;
         self.enqueue_for(

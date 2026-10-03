@@ -2,10 +2,12 @@
 #[path = "../../../../../core/db/tests/support/common.rs"]
 mod common;
 use dispatch_backend::{
-    collectors::Provider,
+    collectors::{
+        Provider,
+        cortex::{discovery::Scope, meals},
+        paycom::fixtures,
+    },
     db::s,
-    meals::{self, Scope},
-    workforce,
 };
 use serde_json::json;
 
@@ -13,7 +15,7 @@ use serde_json::json;
 fn daily_ranges_select_each_days_latest_publication_and_employee_overlay() {
     let (_root, db, id) = common::bootstrapped();
     let fixture = |day: &str, collected: &str| {
-        let mut data = workforce::fixture_date("UTC", Some(day.parse().unwrap())).unwrap();
+        let mut data = fixtures::fixture_date("UTC", Some(day.parse().unwrap())).unwrap();
         data["collectedAt"] = json!(collected);
         data
     };
@@ -124,7 +126,7 @@ fn daily_ranges_select_each_days_latest_publication_and_employee_overlay() {
 #[test]
 fn meal_ranges_keep_full_name_context_and_newest_observation_per_day() {
     let (_root, db, id) = common::bootstrapped();
-    let mut roster = workforce::fixture_date("UTC", Some("2026-09-05".parse().unwrap())).unwrap();
+    let mut roster = fixtures::fixture_date("UTC", Some("2026-09-05".parse().unwrap())).unwrap();
     roster["employees"][1]["name"] = json!("DOE, ALEX");
     roster["employees"][2]["name"] = json!("DOE, ALEX");
     db.publish(&id, &roster).unwrap();

@@ -1,7 +1,11 @@
 #[path = "../../../../../core/db/tests/support/common.rs"]
 mod common;
 use common::bootstrapped;
-use dispatch_backend::{collectors::Provider, db::s, workforce};
+use dispatch_backend::{
+    collectors::{Provider, paycom::fixtures},
+    db::s,
+    workforce,
+};
 use serde_json::{Value, json};
 
 #[test]
@@ -15,7 +19,7 @@ fn demo_periods_follow_the_paycom_cycle_and_never_record_future_punches() {
         ("2026-03-08", "2026-03-08", "2026-03-21"),
         ("2028-02-29", "2028-02-20", "2028-03-04"),
     ] {
-        let data = workforce::fixture_date("America/Chicago", Some(day.parse().unwrap())).unwrap();
+        let data = fixtures::fixture_date("America/Chicago", Some(day.parse().unwrap())).unwrap();
         assert_eq!(data["from"], from);
         assert_eq!(data["to"], to);
         assert!(data["timecards"].as_array().unwrap().iter().all(|card| {
@@ -29,7 +33,7 @@ fn employee_timecards_use_period_order_and_the_latest_revision_within_each_perio
     use dispatch_backend::contracts::EmployeeTimecardPeriod;
     let (_root, db, id) = bootstrapped();
     let period_data = |date: &str, collected: &str, hours: f64| {
-        let mut data = workforce::fixture_date("UTC", Some(date.parse().unwrap())).unwrap();
+        let mut data = fixtures::fixture_date("UTC", Some(date.parse().unwrap())).unwrap();
         data["collectedAt"] = json!(collected);
         data["timecards"][0]["hours"] = json!(hours);
         data
@@ -108,7 +112,7 @@ fn employee_timecards_use_period_order_and_the_latest_revision_within_each_perio
 #[test]
 fn employee_status_filter_applies_before_counting_and_pagination() {
     let (_root, db, id) = bootstrapped();
-    let mut data = workforce::fixture("UTC").unwrap();
+    let mut data = fixtures::fixture("UTC").unwrap();
     data["employees"][1]["active"] = json!(false);
     data["employees"][4]["active"] = json!(false);
     db.publish(&id, &data).unwrap();
@@ -151,7 +155,7 @@ fn employee_status_filter_applies_before_counting_and_pagination() {
 fn publication_is_atomic_and_keeps_the_last_successful_dataset() {
     let (_root, db, id) = bootstrapped();
     let id = id.as_str();
-    let data = workforce::fixture("UTC").unwrap();
+    let data = fixtures::fixture("UTC").unwrap();
     db.publish(id, &data).unwrap();
     let before = db.employee_timecard(id, "E001", None).unwrap();
     let mut bad = data.clone();
@@ -191,7 +195,7 @@ fn publication_is_atomic_and_keeps_the_last_successful_dataset() {
 fn timecard_links_publish_with_unchanged_hours_and_are_returned() {
     let (_root, db, id) = bootstrapped();
     let id = id.as_str();
-    let data = workforce::fixture("UTC").unwrap();
+    let data = fixtures::fixture("UTC").unwrap();
     db.publish(id, &data).unwrap();
     // Publications from before links were retained return none.
     assert_eq!(
@@ -261,7 +265,7 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
     use dispatch_backend::collectors::Provider;
     let (_root, db, id) = bootstrapped();
     let id = id.as_str();
-    let mut data = workforce::fixture("UTC").unwrap();
+    let mut data = fixtures::fixture("UTC").unwrap();
     db.publish(id, &data).unwrap();
     let provider = db.collector(id, Provider::Paycom).unwrap();
     let first = provider
@@ -325,12 +329,12 @@ fn settings_reject_unknown_fields_and_preserve_empty_driver_selection() {
         .one("SELECT id FROM users WHERE platform_owner=1", [])
         .unwrap()
         .unwrap();
-    db.publish(id, &workforce::fixture("UTC").unwrap()).unwrap();
+    db.publish(id, &fixtures::fixture("UTC").unwrap()).unwrap();
     let mut values = db.preferences(id).unwrap()["values"].clone();
     values["driver_departments"] = json!([]);
     db.save_preferences(id, s(&actor, "id"), 0, &values)
         .unwrap();
-    let day = workforce::fixture("UTC").unwrap()["timecards"][0]["date"]
+    let day = fixtures::fixture("UTC").unwrap()["timecards"][0]["date"]
         .as_str()
         .unwrap()
         .to_owned();

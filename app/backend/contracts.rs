@@ -44,6 +44,7 @@ mod uniforms;
 #[path = "../../features/timecard/api/types.rs"]
 mod workforce;
 
+pub use crate::collectors::paycom::timecards::EmployeeTimecardPeriod;
 pub use crate::config::{Environment, ProviderMode};
 pub use crate::wire::request;
 pub use accounts::*;

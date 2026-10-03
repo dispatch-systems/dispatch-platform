@@ -1,10 +1,15 @@
 #[path = "../../../../../core/db/tests/support/common.rs"]
 mod common;
 use dispatch_backend::{
-    collectors::Provider,
+    collectors::{
+        Provider,
+        cortex::{
+            discovery::{CollectionRequest, Scope},
+            dvic::{self, Capture, Request},
+        },
+    },
     db::{self, Store, s},
-    dvic::{self, Capture, Request},
-    meals::{CollectionRequest, Scope},
+    dvic::{hidden, weeks_ending},
 };
 use serde_json::json;
 
@@ -383,7 +388,7 @@ fn thresholds_are_strict_and_publication_weeks_follow_iso_including_year_rollove
         );
     }
     assert_eq!(
-        dvic::weeks_ending("2027-W01", 2).unwrap(),
+        weeks_ending("2027-W01", 2).unwrap(),
         ["2027-W01", "2026-W53"]
     );
 }
@@ -392,7 +397,7 @@ fn thresholds_are_strict_and_publication_weeks_follow_iso_including_year_rollove
 fn catch_up_prioritizes_unseen_weeks_before_refreshing_older_observations() {
     let (_root, db, id) = ready();
     let latest = dvic::report_week(chrono::Utc::now().date_naive());
-    let weeks = dvic::weeks_ending(&latest, dvic::MAX_WEEKS).unwrap();
+    let weeks = weeks_ending(&latest, dvic::MAX_WEEKS).unwrap();
     let storage = db.dvic(&id).unwrap();
     for week in weeks.iter().skip(2).take(22) {
         storage.exec(
@@ -432,7 +437,7 @@ fn a_hidden_driver_is_never_stored_and_hiding_removes_what_was() {
     };
 
     // Hiding removes their inspection and their row from the report copy, then recounts it.
-    let summary = dvic::hidden::hide(
+    let summary = hidden::hide(
         &db.dvic(&id).unwrap(),
         "A2HIDDEN00001",
         " Platform test ",
@@ -454,12 +459,12 @@ fn a_hidden_driver_is_never_stored_and_hiding_removes_what_was() {
     assert_eq!((stored(theirs), stored(copies)), (0, 0));
     assert_eq!(counts(), vec![json!({"row_count":1,"short_count":1})]);
     assert_eq!(
-        dvic::hidden::list(&db.dvic(&id).unwrap()).unwrap(),
+        hidden::list(&db.dvic(&id).unwrap()).unwrap(),
         json!([{"driver":"A2HIDDEN00001","note":"Platform test","hiddenAt":"2026-10-01T00:00:00.000Z"}])
     );
 
     // Shown again, their later reports are stored; nothing earlier comes back by itself.
-    dvic::hidden::unhide(&db.dvic(&id).unwrap(), "A2HIDDEN00001").unwrap();
+    hidden::unhide(&db.dvic(&id).unwrap(), "A2HIDDEN00001").unwrap();
     assert_eq!(stored(theirs), 0);
     capture.reports[0].sha256 = dvic::hash(b"newest bytes");
     capture.reports[0].modified_at += 1000;
@@ -469,15 +474,15 @@ fn a_hidden_driver_is_never_stored_and_hiding_removes_what_was() {
     let dvic = db.dvic(&id).unwrap();
     let code = |result: dispatch_backend::Result<serde_json::Value>| result.unwrap_err().code;
     assert_eq!(
-        code(dvic::hidden::unhide(&dvic, "A2HIDDEN00001")),
+        code(hidden::unhide(&dvic, "A2HIDDEN00001")),
         "driver_not_hidden"
     );
     assert_eq!(
-        code(dvic::hidden::hide(&dvic, "a2hidden", "x", "t")),
+        code(hidden::hide(&dvic, "a2hidden", "x", "t")),
         "invalid_driver_id"
     );
     assert_eq!(
-        code(dvic::hidden::hide(&dvic, "A2HIDDEN00001", " ", "t")),
+        code(hidden::hide(&dvic, "A2HIDDEN00001", " ", "t")),
         "invalid_note"
     );
 }

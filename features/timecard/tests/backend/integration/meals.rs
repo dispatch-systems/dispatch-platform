@@ -1,9 +1,15 @@
 #[path = "../../../../../core/db/tests/support/common.rs"]
 mod common;
 use dispatch_backend::{
-    collectors::Provider,
+    collectors::{
+        Provider,
+        cortex::{
+            discovery::Scope,
+            meals::{self, Coverage, Meal},
+        },
+    },
     db::{now, s},
-    meals::{self, Coverage, Meal, Scope},
+    meals::comparison_meal,
 };
 use serde_json::json;
 
@@ -190,7 +196,7 @@ fn deliveries_open_the_route_at_the_stop_that_held_them() {
         vec![json!({"meal_id":"meal-1","last_delivery_stop":11,"first_delivery_stop":12})]
     );
     // The page reads a live capture's stops the same way, before it is published.
-    let live = meals::comparison_meal(&original.itineraries[0], &original.itineraries[0].meals[0]);
+    let live = comparison_meal(&original.itineraries[0], &original.itineraries[0].meals[0]);
     assert_eq!(
         (&live["lastDeliveryStop"], &live["firstDeliveryStop"]),
         (&json!(11), &json!(12))

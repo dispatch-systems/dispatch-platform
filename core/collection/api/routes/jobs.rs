@@ -1,13 +1,14 @@
 //! Collection jobs: listing, requesting and cancelling them.
 use crate::{
     Error, Result, State,
+    collectors::cortex::discovery::Scope,
     contracts::CollectionRequest,
     db::Store,
     http::{
         input::{Input, Reply},
         route::{Dsp, Grant, Member, PlatformOwner, Route, User, async_post, read, write},
     },
-    meals, validate as v,
+    validate as v,
 };
 use std::sync::Arc;
 
@@ -143,7 +144,7 @@ fn sync_meal_breaks(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 
 fn collect_cortex_meal_breaks(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let b = &input.body;
-    let scope = meals::Scope::request(b, c.dsp.timezone.as_str())?;
+    let scope = Scope::request(b, c.dsp.timezone.as_str())?;
     let (id, actor) = (c.dsp_id(), Some(c.actor()));
     let job = db.enqueue_meals(id, actor, v::text(b, "requestId", 1, 128)?, &scope)?;
     db.audit(actor, Some(id), "cortex.collection.requested", "")?;

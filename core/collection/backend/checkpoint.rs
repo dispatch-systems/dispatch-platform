@@ -1,10 +1,10 @@
 //! Host-owned, unpublished Paycom progress. Workers never receive storage paths.
 use super::{
     Result, State,
-    collectors::Provider,
+    collectors::{Provider, paycom::validation::validate_workforce},
     crypto,
     db::{self, Store, n, s},
-    ensure, workforce,
+    ensure,
 };
 use rusqlite::params;
 use serde_json::{Value, json};
@@ -219,7 +219,7 @@ fn validate_page(employee: &Value, period: &Value, records: &[Value]) -> Result<
             502,
         )?;
     }
-    workforce::validate_workforce(
+    validate_workforce(
         &json!({"employees":[employee],"timecards":records,"from":period["start"],"to":period["end"],"collectedAt":db::iso()}),
     )
 }

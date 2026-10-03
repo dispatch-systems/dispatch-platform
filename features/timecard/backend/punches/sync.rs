@@ -1,78 +1,19 @@
 //! Single-employee Paycom requests and captures, separate from full roster snapshots.
 use crate::{
-    Error, Result,
-    collectors::Provider,
-    contracts::EmployeeTimecardPeriod,
+    Result,
+    collectors::{
+        Provider,
+        paycom::{
+            timecards::{EmployeeSync, PERIOD_DAYS},
+            validation::validate_workforce,
+        },
+    },
     db::{Store, s},
-    ensure, validate as v, workforce,
-    workforce::timecards::PERIOD_DAYS,
+    ensure,
 };
 use chrono::Duration;
 use rusqlite::params;
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-
-/// A job with this scope can only read and publish this employee's period.
-#[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct EmployeeSync {
-    pub employee_code: String,
-    pub from: String,
-    pub to: String,
-}
-impl EmployeeSync {
-    pub fn parse(request: &Value) -> Result<Option<Self>> {
-        if request.get("employeeCode").is_none() {
-            return Ok(None);
-        }
-        let scope: Self = crate::contracts::request(request)?;
-        v::code(&scope.employee_code)?;
-        scope.period().start()?;
-        Ok(Some(scope))
-    }
-    pub fn period(&self) -> EmployeeTimecardPeriod {
-        EmployeeTimecardPeriod {
-            from: self.from.clone(),
-            to: self.to.clone(),
-        }
-    }
-    pub fn fixture(&self, timezone: &str) -> Result<Value> {
-        let zone: chrono_tz::Tz = timezone
-            .parse()
-            .map_err(|_| Error::new("invalid_timezone", 400))?;
-        let today = chrono::Utc::now().with_timezone(&zone).date_naive();
-        let end = self.period().start()? + Duration::days(PERIOD_DAYS - 1);
-        let mut data = workforce::fixture_date(timezone, Some(end.min(today)))?;
-        data["employees"]
-            .as_array_mut()
-            .unwrap()
-            .retain(|e| e["code"] == self.employee_code);
-        ensure(
-            data["employees"].as_array().unwrap().len() == 1,
-            "employee_not_found",
-            404,
-        )?;
-        let cards = data["timecards"].as_array().unwrap();
-        let start = self.period().start()?;
-        let records = (0..PERIOD_DAYS)
-            .map(|i| {
-                let date = (start + Duration::days(i)).to_string();
-                cards
-                    .iter()
-                    .find(|card| card["employeeCode"] == self.employee_code && card["date"] == date)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        json!({"employeeCode":self.employee_code,"date":date,
-                    "hours":0,"status":"Complete","punches":[]})
-                    })
-            })
-            .collect::<Vec<_>>();
-        data["timecards"] = json!(records);
-        data["from"] = json!(self.from);
-        data["to"] = json!(self.to);
-        Ok(data)
-    }
-}
+use serde_json::Value;
 
 /// Apply the source link once, for both the employee and daily views.
 pub(crate) fn synced_cards(data: &Value) -> Vec<Value> {
@@ -95,7 +36,7 @@ impl Store {
         scope: &EmployeeSync,
         data: &Value,
     ) -> Result<()> {
-        workforce::validate_workforce(data)?;
+        validate_workforce(data)?;
         let start = scope.period().start()?;
         let records = data["timecards"].as_array().unwrap();
         ensure(
@@ -135,7 +76,8 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{config::Config, operations};
+    use crate::{collectors::paycom::fixtures, config::Config, operations};
+    use serde_json::json;
     use std::os::unix::fs::PermissionsExt;
 
     #[test]
@@ -157,7 +99,7 @@ mod tests {
             "test-password-long",
         )?;
         let id = s(&bootstrap["dsp"], "id");
-        let full = workforce::fixture_date("UTC", Some("2026-08-22".parse().unwrap()))?;
+        let full = fixtures::fixture_date("UTC", Some("2026-08-22".parse().unwrap()))?;
         store.publish(id, &full)?;
         let scope = EmployeeSync {
             employee_code: "E001".into(),

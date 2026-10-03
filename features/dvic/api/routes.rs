@@ -1,8 +1,8 @@
 //! DVIC collection controls and read APIs; no dashboard is required.
 use crate::{
     Result, State,
+    collectors::cortex::dvic,
     db::Store,
-    dvic,
     http::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, async_post, read, write},

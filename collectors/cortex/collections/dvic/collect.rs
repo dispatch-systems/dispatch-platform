@@ -1,8 +1,11 @@
 use super::*;
 use crate::{
     browsers::http::{Http, Refusal},
+    collectors::cortex::{
+        discovery::Scope,
+        dvic::{self, Capture, Collection, Report, Request},
+    },
     db::now,
-    dvic::{self, Capture, Collection, Report, Request},
 };
 use chrono::NaiveDate;
 use std::collections::HashSet;
@@ -133,7 +136,7 @@ impl Driver {
         &mut self,
         request: &Request,
         run: &Run<'_>,
-    ) -> Result<(Capture, crate::meals::Scope)> {
+    ) -> Result<(Capture, Scope)> {
         request.validate()?;
         let started_at = now();
         run.progress(5, "Finding DVIC reports".into()).await?;

@@ -1,12 +1,14 @@
 //! Queue both sources together; a missing connection/scope cannot start half a sync.
 use crate::{
     Result,
-    collectors::Provider,
+    collectors::{
+        Provider,
+        cortex::discovery::{Discovery, Scope},
+        paycom::validation::collection_date,
+    },
     contracts::JobRow,
     db::{Store, s},
     ensure, job_statuses,
-    meals::{Discovery, Scope},
-    workforce,
 };
 use rusqlite::params;
 use serde_json::{Value, json};
@@ -109,7 +111,7 @@ impl Store {
         )
     }
     pub fn enqueue_meal_sync(&self, id: &str, actor: &str, key: &str, date: &str) -> Result<Value> {
-        workforce::collection_date(&json!({"date":date}), &self.find_dsp(id)?.timezone)?;
+        collection_date(&json!({"date":date}), &self.find_dsp(id)?.timezone)?;
         ensure(
             self.connection_for(id, Provider::Paycom)?.enabled,
             "meal_sync_paycom_required",

@@ -1,7 +1,7 @@
 //! What only a platform owner sees: every DSP, the platform's health and diagnostics.
 use crate::{
     Error, Result, State,
-    collectors::Provider,
+    collectors::{Provider, paycom::fixtures},
     contracts::{BrowserHealth, DspFeatures, DspStatus, JobStatus, PlatformHealth, ProviderMode},
     db::{Store, iso},
     ensure, features,
@@ -9,7 +9,7 @@ use crate::{
         input::{Input, Reply, optional},
         route::{Grant, PlatformOwner, PlatformRoutine, Route, User, async_post, read, write},
     },
-    mail, operations, validate as v, workforce,
+    mail, operations, validate as v,
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -353,7 +353,7 @@ fn load_test_dsp(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     let dsp = db.new_dsp(&name, "America/Chicago", owner.actor(), false)?;
     let id = dsp.id.as_str();
     db.enable_all_features(id)?;
-    db.publish(id, &workforce::fixture("America/Chicago")?)?;
+    db.publish(id, &fixtures::fixture("America/Chicago")?)?;
     db.audit(
         Some(owner.actor()),
         Some(id),

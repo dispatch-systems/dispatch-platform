@@ -200,21 +200,23 @@ impl Drives for Driver {
     }
     fn collect<'a>(&'a mut self, run: &'a Run<'a>) -> Pending<'a, Collected> {
         Box::pin(async move {
-            if let Some(request) = crate::dvic::Request::parse(run.request)? {
+            if let Some(request) = crate::collectors::cortex::dvic::Request::parse(run.request)? {
                 let (capture, scope) = self.collect_dvic(&request, run).await?;
                 return Ok(Collected {
                     data: serde_json::to_value(capture)?,
                     scope: Some(scope),
                 });
             }
-            if let Some(request) = crate::scorecard::Request::parse(run.request)? {
+            if let Some(request) =
+                crate::collectors::cortex::scorecard::Request::parse(run.request)?
+            {
                 let (capture, scope) = self.collect_scorecard(&request, run).await?;
                 return Ok(Collected {
                     data: serde_json::to_value(capture)?,
                     scope: Some(scope),
                 });
             }
-            if let Some(request) = crate::routedata::Request::parse(run.request)? {
+            if let Some(request) = crate::collectors::cortex::routes::Request::parse(run.request)? {
                 let capture = self.collect_routes(&request, run).await?;
                 let scope = capture.scope.clone();
                 return Ok(Collected {

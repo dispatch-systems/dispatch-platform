@@ -1,6 +1,6 @@
 //! Operator-only observations of Cortex. Never run by CI or print provider records.
 use super::*;
-use crate::{db, job_metrics::Recorder, meals::Scope};
+use crate::{collectors::cortex::discovery::Scope, db, job_metrics::Recorder};
 use std::path::PathBuf;
 
 fn env_path(name: &str) -> Result<PathBuf> {
@@ -48,7 +48,7 @@ fn adjacent_week(week: &str, delta: i64) -> Result<String> {
     let shifted = day
         .checked_add_signed(chrono::Duration::weeks(delta))
         .ok_or_else(|| Error::new("invalid_week", 400))?;
-    Ok(crate::dvic::report_week(shifted))
+    Ok(crate::collectors::cortex::dvic::report_week(shifted))
 }
 #[test]
 fn probe_inputs_and_response_decoding_preserve_boundaries() {
@@ -1468,9 +1468,9 @@ async fn measure_route_method() -> Result<()> {
                 (max_pss, sum_pss / samples.max(1), max_own)
             })
         };
-        let request = crate::routedata::Request {
-            collection: crate::routedata::Collection::Routes,
-            mode: crate::routedata::Mode::Final,
+        let request = crate::collectors::cortex::routes::Request {
+            collection: crate::collectors::cortex::routes::Collection::Routes,
+            mode: crate::collectors::cortex::routes::Mode::Final,
             date: scope.date.clone(),
             station: scope.station.clone(),
             timezone: scope.timezone.clone(),

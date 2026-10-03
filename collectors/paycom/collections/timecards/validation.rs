@@ -125,7 +125,7 @@ pub fn validate_workforce(value: &Value) -> Result<()> {
     Ok(())
 }
 /// Collections from before links were retained, and fixtures, carry none.
-pub(super) fn sources(value: &Value) -> &[Value] {
+pub(crate) fn sources(value: &Value) -> &[Value] {
     value["sources"].as_array().map_or(&[], Vec::as_slice)
 }
 /// A missing date preserves scheduled/current-period collection behavior.

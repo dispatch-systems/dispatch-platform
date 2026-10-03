@@ -4,11 +4,13 @@
 mod common;
 use dispatch_backend::{
     accounts::{Auth, Context},
+    collectors::{
+        cortex::{discovery::Scope, meals},
+        paycom::fixtures,
+    },
     contracts::{DriverEventKind, DriverMatch, DriverSource, DriverStatus, DriverStrength},
     db::{Store, s},
     driver_match::valid_code,
-    meals::{self, Scope},
-    workforce,
 };
 use serde_json::{Value, json};
 
@@ -27,7 +29,7 @@ fn ready(saved: Option<Value>) -> (tempfile::TempDir, Store, String, Context) {
             .set("employees.provider_links", &saved)
             .unwrap();
     }
-    let mut roster = workforce::fixture_date("UTC", Some(DAY)).unwrap();
+    let mut roster = fixtures::fixture_date("UTC", Some(DAY)).unwrap();
     for (code, name) in [
         ("E002", "REYES, ANTONIO"),
         ("E003", "HERNANDEZ ORTIZ, LUIS"),

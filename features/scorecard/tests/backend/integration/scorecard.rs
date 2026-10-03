@@ -3,10 +3,14 @@
 #[path = "../../../../../core/db/tests/support/common.rs"]
 mod common;
 use dispatch_backend::{
-    collectors::Provider,
+    collectors::{
+        Provider,
+        cortex::{
+            discovery::{CollectionRequest, Scope},
+            scorecard::{self, Capture, Request},
+        },
+    },
     db::{Store, s},
-    meals::{CollectionRequest, Scope},
-    scorecard::{self, Capture, Request},
 };
 use serde_json::json;
 

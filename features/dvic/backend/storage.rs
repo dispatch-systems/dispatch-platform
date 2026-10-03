@@ -130,7 +130,7 @@ impl Store {
         id: &str,
         job: &str,
         capture: &Capture,
-        scope: &crate::meals::Scope,
+        scope: &crate::collectors::cortex::discovery::Scope,
     ) -> Result<()> {
         let job_row = self.job_row(job, Some(id))?;
         ensure(
