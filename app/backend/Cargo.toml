@@ -1,12 +1,10 @@
-# The platform version lives in package.json. Crate versions stay fixed so a release
-# bump leaves the Rust inputs, and the cached release backend, unchanged.
 [package]
 name = "dispatch-backend"
-version = "0.0.0"
-edition = "2024"
-rust-version = "1.94"
-publish = false
-license = "FSL-1.1-ALv2"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
 autotests = false
 autoexamples = false
 
@@ -23,43 +21,43 @@ operator-probes = []
 
 [dependencies]
 dispatch-host = { path = "../../ops/host-manager" }
-axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
-rusqlite = { version = "0.40", features = ["bundled", "functions", "collation", "hooks"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
-aes-gcm = "0.11"
-argon2 = "0.6"
-base64 = "0.23"
-chrono = { version = "0.4", features = ["serde"] }
-chrono-tz = "0.10"
-flate2 = "1"
-fs2 = "0.4"
-getrandom = "0.4"
-hmac = "0.13"
-libc = "0.2"
-icu_collator = "2"
-sha2 = "0.11"
-subtle = "2"
-url = "2"
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "cookies", "gzip", "http2", "json", "rustls-tls"] }
-scraper = { version = "0.27", default-features = false }
-ego-tree = "0.11"
-html5ever = "0.39"
-futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
-lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "rustls-tls"] }
-qrcode = { version = "0.14", default-features = false, features = ["svg"] }
-sha1 = "0.11"
-webauthn-rs = { version = "0.5.5", default-features = false, features = ["danger-allow-state-serialisation"] }
-calamine = { version = "0.36.1", default-features = false }
-zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
-rmcp = { version = "3.5", default-features = false, features = ["server", "transport-streamable-http-server"] }
+axum = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+aes-gcm = { workspace = true }
+argon2 = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+flate2 = { workspace = true }
+fs2 = { workspace = true }
+getrandom = { workspace = true }
+hmac = { workspace = true }
+libc = { workspace = true }
+icu_collator = { workspace = true }
+sha2 = { workspace = true }
+subtle = { workspace = true }
+url = { workspace = true }
+reqwest = { workspace = true }
+scraper = { workspace = true }
+ego-tree = { workspace = true }
+html5ever = { workspace = true }
+futures-util = { workspace = true }
+lettre = { workspace = true }
+qrcode = { workspace = true }
+sha1 = { workspace = true }
+webauthn-rs = { workspace = true }
+calamine = { workspace = true }
+zip = { workspace = true }
+rmcp = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3"
-tokio = { version = "1", features = ["test-util"] }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
 # Writes shared/contracts/generated from the response types; never part of the binary.
-ts-rs = { version = "12", default-features = false, features = ["serde-compat"] }
+ts-rs = { workspace = true }
 
 [[test]]
 name = "accounts"
