@@ -24,7 +24,7 @@ export function Pagination({
     </button>
   );
   return variant === 'range' ? (
-    <div className="paycom-pagination">
+    <div className="pagination-range">
       <span>
         {page * pageSize + 1}–{Math.min((page + 1) * pageSize, total)} of {total}
       </span>
@@ -32,7 +32,7 @@ export function Pagination({
       {next}
     </div>
   ) : (
-    <div className="meal-pagination">
+    <div className="pagination-pages">
       {previous}
       <span>
         Page {page + 1} of {Math.ceil(total / pageSize)}

@@ -274,7 +274,7 @@ export function PaycomPage({ view }: { view: DspView }) {
             </CommittedTab>
           ) : canConnect && data && !data.enabled && !overview.data?.workforce.collectedAt ? (
             <button
-              className="primary paycom-connect"
+              className="primary connect-button"
               onClick={() => navigate(dspHash(view.dsp.id, 'settings', { tab: 'connections' }))}
             >
               Connect Paycom
