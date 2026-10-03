@@ -34,8 +34,9 @@ export const featureCatalog: readonly FeatureEntry[] = generatedFeatureCatalog;
 /** The page whose schedules, collections and jobs run. */
 export const schedulesFeature: PageFeature = generatedSchedulesFeature;
 /**
- * A capability as a page that needs it names it, from the connections that provide it. Every
- * capability a page requires has a label; the catalog test checks.
+ * A capability as a page that needs it names it, from the connections that provide it, once the
+ * platform owner's slots have loaded. Every capability a page requires has a label; the catalog
+ * test checks.
  */
 export const capabilityLabel = (capability: string) => capabilityLabelOf(capability) ?? capability;
 /** The tabs of `page`, in catalog order. */

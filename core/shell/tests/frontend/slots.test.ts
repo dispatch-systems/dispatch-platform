@@ -199,11 +199,17 @@ test('an owner says what its error codes, schedule issues and long reads are', (
   assert.equal(isLongPoll('/api/dsp/gamma'), false);
 });
 
-test('a capability is named by the first connection listed that provides it', () => {
+test('a capability is named by the first connection listed that provides it', async () => {
   installFeatures([
-    { name: 'alpha', capabilities: { photos: 'a photo source' } },
-    { name: 'beta', capabilities: { photos: 'another photo source', notes: 'a notes source' } },
+    { name: 'alpha', platformSlots: async () => ({ capabilities: { photos: 'a photo source' } }) },
+    {
+      name: 'beta',
+      platformSlots: async () => ({
+        capabilities: { photos: 'another photo source', notes: 'a notes source' },
+      }),
+    },
   ]);
+  await loadPlatformSlots();
   assert.equal(capabilityLabelOf('photos'), 'a photo source');
   assert.equal(capabilityLabelOf('notes'), 'a notes source');
   assert.equal(capabilityLabelOf('maps'), undefined);
