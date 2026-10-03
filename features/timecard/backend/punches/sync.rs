@@ -27,54 +27,54 @@ pub(crate) fn synced_cards(data: &Value) -> Vec<Value> {
         .collect()
 }
 
-impl Store {
-    pub(crate) fn publish_employee_timecard(
-        &self,
-        id: &str,
-        scope: &EmployeeSync,
-        data: &Value,
-    ) -> Result<()> {
-        validate_workforce(data)?;
-        let start = scope.period().start()?;
-        let records = data["timecards"].as_array().unwrap();
-        ensure(
-            data["from"] == scope.from
-                && data["to"] == scope.to
-                && data["employees"].as_array().unwrap().len() == 1
-                && data["employees"][0]["code"] == scope.employee_code
-                && records.len() == PERIOD_DAYS as usize
-                && (0..PERIOD_DAYS).all(|i| {
-                    records.iter().any(|card| {
-                        card["employeeCode"] == scope.employee_code
-                            && card["date"] == (start + Duration::days(i)).to_string()
-                    })
-                }),
-            "timecard_identity_mismatch",
-            502,
-        )?;
-        // Kept outside full publications: a single-employee sync never becomes the roster.
-        // Older releases safely ignore this additive table on rollback.
-        self.collector(id, paycom::PROVIDER)?.exec(
-            "INSERT INTO employee_timecard_syncs VALUES (?,?,?,?,?) \
-             ON CONFLICT(employee_code,period_from,period_to) DO UPDATE SET \
-             collected_at=excluded.collected_at,data=excluded.data \
-             WHERE excluded.collected_at>=employee_timecard_syncs.collected_at",
-            params![
-                scope.employee_code,
-                scope.from,
-                scope.to,
-                s(data, "collectedAt"),
-                data.to_string()
-            ],
-        )?;
-        Ok(())
-    }
+pub(crate) fn publish_employee_timecard(
+    store: &Store,
+    id: &str,
+    scope: &EmployeeSync,
+    data: &Value,
+) -> Result<()> {
+    validate_workforce(data)?;
+    let start = scope.period().start()?;
+    let records = data["timecards"].as_array().unwrap();
+    ensure(
+        data["from"] == scope.from
+            && data["to"] == scope.to
+            && data["employees"].as_array().unwrap().len() == 1
+            && data["employees"][0]["code"] == scope.employee_code
+            && records.len() == PERIOD_DAYS as usize
+            && (0..PERIOD_DAYS).all(|i| {
+                records.iter().any(|card| {
+                    card["employeeCode"] == scope.employee_code
+                        && card["date"] == (start + Duration::days(i)).to_string()
+                })
+            }),
+        "timecard_identity_mismatch",
+        502,
+    )?;
+    // Kept outside full publications: a single-employee sync never becomes the roster.
+    // Older releases safely ignore this additive table on rollback.
+    store.collector(id, paycom::PROVIDER)?.exec(
+        "INSERT INTO employee_timecard_syncs VALUES (?,?,?,?,?) \
+         ON CONFLICT(employee_code,period_from,period_to) DO UPDATE SET \
+         collected_at=excluded.collected_at,data=excluded.data \
+         WHERE excluded.collected_at>=employee_timecard_syncs.collected_at",
+        params![
+            scope.employee_code,
+            scope.from,
+            scope.to,
+            s(data, "collectedAt"),
+            data.to_string()
+        ],
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{collectors::paycom::fixtures, config::Config, operations};
+    use crate::{
+        collectors::paycom::fixtures, config::Config, operations, workforce::TimecardStore,
+    };
     use serde_json::json;
     use std::os::unix::fs::PermissionsExt;
 
@@ -98,41 +98,37 @@ mod tests {
         )?;
         let id = s(&bootstrap["dsp"], "id");
         let full = fixtures::fixture_date("UTC", Some("2026-08-22".parse().unwrap()))?;
-        store.publish(id, &full)?;
+        store.publish_timecards(id, &full)?;
         let scope = EmployeeSync {
             employee_code: "E001".into(),
             from: "2026-08-09".into(),
             to: "2026-08-22".into(),
         };
         let capture = scope.fixture("UTC")?;
-        store.publish_employee_timecard(id, &scope, &capture)?;
+        publish_employee_timecard(&store, id, &scope, &capture)?;
         let saved = store.employee_timecard(id, "E001", Some(&scope.period()))?;
         assert_eq!(saved.timecards.len(), 14);
         let mut wrong = capture.clone();
         wrong["employees"] = full["employees"].clone();
-        assert!(store.publish_employee_timecard(id, &scope, &wrong).is_err());
+        assert!(publish_employee_timecard(&store, id, &scope, &wrong).is_err());
         let mut wrong = capture.clone();
         wrong["from"] = json!("2026-08-08");
-        assert!(store.publish_employee_timecard(id, &scope, &wrong).is_err());
+        assert!(publish_employee_timecard(&store, id, &scope, &wrong).is_err());
         let mut wrong = capture.clone();
         wrong["timecards"].as_array_mut().unwrap().pop();
-        assert!(store.publish_employee_timecard(id, &scope, &wrong).is_err());
+        assert!(publish_employee_timecard(&store, id, &scope, &wrong).is_err());
         let other = EmployeeSync {
             employee_code: "E002".into(),
             ..scope.clone()
         };
-        assert!(
-            store
-                .publish_employee_timecard(id, &other, &capture)
-                .is_err()
-        );
+        assert!(publish_employee_timecard(&store, id, &other, &capture).is_err());
         assert_eq!(
             store.employee_timecard(id, "E001", Some(&scope.period()))?,
             saved
         );
         assert_eq!(
             store
-                .employees(id, "", 0, None, false, None)
+                .timecard_employees(id, "", 0, None, false, None)
                 .map(|value| serde_json::to_value(value).unwrap())?["total"],
             12
         );

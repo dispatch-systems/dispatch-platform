@@ -5,6 +5,7 @@ use crate::{
     contracts::DailyTimecards,
     db::{Db, Store, s},
     names::{compare, display_name},
+    workforce::TimecardStore,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -25,48 +26,51 @@ pub(crate) fn cards(db: &Db, sql: &str, p: impl rusqlite::Params) -> Result<Vec<
     }
     Ok(rows)
 }
-impl Store {
-    /// Overlay completed employee pages from the current guarded attempt.
-    pub fn daily_source(
-        &self,
-        id: &str,
-        date: &str,
-    ) -> Result<(Option<Value>, Vec<Value>, Vec<Value>)> {
-        let source = self
-            .daily_sources(id, date, date, None)?
-            .remove(date)
-            .unwrap();
-        Ok((
-            source.publication,
-            source.roster.values().cloned().collect(),
-            source.rows.into_values().collect(),
-        ))
-    }
-    pub fn daily(&self, id: &str, date: &str, sort: &str, desc: bool) -> Result<DailyTimecards> {
-        Ok(self
-            .daily_range(id, date, date, sort, desc, None)?
-            .remove(date)
-            .unwrap())
-    }
-    /// Loads publications, employee syncs and guarded live pages once for the
-    /// period, filtering requested employees before parsing their cards.
-    pub fn daily_range(
-        &self,
-        id: &str,
-        from: &str,
-        to: &str,
-        sort: &str,
-        desc: bool,
-        codes: Option<&[String]>,
-    ) -> Result<BTreeMap<String, DailyTimecards>> {
-        let db = self.collector(id, paycom::PROVIDER)?;
-        let settings = preferences(&db)?;
-        let p = &settings["values"];
-        self.daily_sources(id, from, to, codes)?
-            .into_iter()
-            .map(|(date, source)| Ok((date, display_daily(source, p, sort, desc)?)))
-            .collect()
-    }
+/// Overlay completed employee pages from the current guarded attempt.
+pub(super) fn daily_timecards_source(
+    store: &Store,
+    id: &str,
+    date: &str,
+) -> Result<(Option<Value>, Vec<Value>, Vec<Value>)> {
+    let source = super::range::daily_sources(store, id, date, date, None)?
+        .remove(date)
+        .unwrap();
+    Ok((
+        source.publication,
+        source.roster.values().cloned().collect(),
+        source.rows.into_values().collect(),
+    ))
+}
+pub(super) fn daily_timecards(
+    store: &Store,
+    id: &str,
+    date: &str,
+    sort: &str,
+    desc: bool,
+) -> Result<DailyTimecards> {
+    Ok(store
+        .daily_timecards_range(id, date, date, sort, desc, None)?
+        .remove(date)
+        .unwrap())
+}
+/// Loads publications, employee syncs and guarded live pages once for the
+/// period, filtering requested employees before parsing their cards.
+pub(super) fn daily_timecards_range(
+    store: &Store,
+    id: &str,
+    from: &str,
+    to: &str,
+    sort: &str,
+    desc: bool,
+    codes: Option<&[String]>,
+) -> Result<BTreeMap<String, DailyTimecards>> {
+    let db = store.collector(id, paycom::PROVIDER)?;
+    let settings = preferences(&db)?;
+    let p = &settings["values"];
+    super::range::daily_sources(store, id, from, to, codes)?
+        .into_iter()
+        .map(|(date, source)| Ok((date, display_daily(source, p, sort, desc)?)))
+        .collect()
 }
 fn display_daily(
     source: super::range::DailySource,

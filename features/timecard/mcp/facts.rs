@@ -12,6 +12,7 @@ use crate::{
     collectors::{cortex, paycom},
     contracts::{AgentArea, DailyTimecard, DriverSource, Dsp, MealStatus},
     db::{Store, s},
+    workforce::TimecardStore,
     workforce::assessment::paycom_day,
 };
 use serde::Serialize;
@@ -75,7 +76,7 @@ pub fn timecards(
     // bounded batch before loading the next, even for a whole-team question.
     let days = period.days();
     for chunk in days.chunks(7) {
-        for (day, daily) in db.daily_range(
+        for (day, daily) in db.daily_timecards_range(
             &dsp.id,
             &chunk[0],
             chunk.last().unwrap(),

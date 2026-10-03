@@ -7,6 +7,7 @@ use dispatch_backend::{
         paycom::{self, fixtures},
     },
     db::s,
+    workforce::TimecardStore,
 };
 use serde_json::json;
 
@@ -19,9 +20,9 @@ fn daily_ranges_select_each_days_latest_publication_and_employee_overlay() {
         data
     };
     let old = fixture("2026-09-05", "2099-01-01T00:00:00Z");
-    db.publish(&id, &old).unwrap();
+    db.publish_timecards(&id, &old).unwrap();
     let current = fixture("2026-09-19", "2099-01-02T00:00:00Z");
-    db.publish(&id, &current).unwrap();
+    db.publish_timecards(&id, &current).unwrap();
     let mut revision = old.clone();
     revision["collectedAt"] = json!("2099-01-03T00:00:00Z");
     for card in revision["timecards"].as_array_mut().unwrap() {
@@ -29,7 +30,7 @@ fn daily_ranges_select_each_days_latest_publication_and_employee_overlay() {
             card["hours"] = json!(6.25);
         }
     }
-    db.publish(&id, &revision).unwrap();
+    db.publish_timecards(&id, &revision).unwrap();
     let mut sync = revision.clone();
     sync["employees"]
         .as_array_mut()
@@ -56,7 +57,7 @@ fn daily_ranges_select_each_days_latest_publication_and_employee_overlay() {
         .unwrap();
     let selected = ["E002".to_owned()];
     let range = db
-        .daily_range(
+        .daily_timecards_range(
             &id,
             "2026-09-04",
             "2026-09-20",
@@ -83,7 +84,7 @@ fn daily_ranges_select_each_days_latest_publication_and_employee_overlay() {
     // Source coverage is independent of whether a selected employee has rows.
     let absent = ["not-listed".to_owned()];
     let missing = db
-        .daily_range(
+        .daily_timecards_range(
             &id,
             "2026-09-04",
             "2026-09-05",
@@ -104,9 +105,9 @@ fn daily_ranges_select_each_days_latest_publication_and_employee_overlay() {
             card["hours"] = json!(7.25);
         }
     }
-    db.publish(&id, &revision).unwrap();
+    db.publish_timecards(&id, &revision).unwrap();
     assert_eq!(
-        db.daily_range(
+        db.daily_timecards_range(
             &id,
             "2026-09-04",
             "2026-09-05",
@@ -128,7 +129,7 @@ fn meal_ranges_keep_full_name_context_and_newest_observation_per_day() {
     let mut roster = fixtures::fixture_date("UTC", Some("2026-09-05".parse().unwrap())).unwrap();
     roster["employees"][1]["name"] = json!("DOE, ALEX");
     roster["employees"][2]["name"] = json!("DOE, ALEX");
-    db.publish(&id, &roster).unwrap();
+    db.publish_timecards(&id, &roster).unwrap();
     let scope = |date: &str, provider: &str, timezone: &str| Scope {
         date: date.into(),
         station: "TST1".into(),

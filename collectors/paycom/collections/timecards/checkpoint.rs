@@ -299,7 +299,8 @@ mod tests {
                 let dsp = s(&bootstrap["dsp"], "id").to_owned();
                 db.collector(&dsp, paycom::PROVIDER)?
                     .exec("UPDATE connections SET enabled=1,revision=1", [])?;
-                let job = db.enqueue(&dsp, None, "checkpoint-test")?;
+                let job =
+                    db.enqueue_for(&dsp, None, "checkpoint-test", paycom::PROVIDER, &json!({}))?;
                 db.claim_job("owner", |_, _| true)?;
                 Ok((dsp, s(&job, "id").to_owned()))
             })
@@ -416,7 +417,8 @@ mod tests {
         let other = state
             .run(move |db| {
                 db.finish(&id, "owner", Some("provider_unavailable"))?;
-                let other = db.enqueue(&tenant, None, "separate-job")?;
+                let other =
+                    db.enqueue_for(&tenant, None, "separate-job", paycom::PROVIDER, &json!({}))?;
                 db.claim_job("new-owner", |_, _| true)?;
                 Ok(s(&other, "id").to_owned())
             })

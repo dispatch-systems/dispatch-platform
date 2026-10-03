@@ -21,6 +21,7 @@ use dispatch_backend::{
     dvic::DvicStore,
     routedata::RoutesStore,
     scorecard::ScorecardStore,
+    workforce::TimecardStore,
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -67,7 +68,7 @@ fn ready() -> (tempfile::TempDir, Store, String) {
             employee["name"] = json!("DRIVER, FIXTURE");
         }
     }
-    db.publish(&id, &roster).unwrap();
+    db.publish_timecards(&id, &roster).unwrap();
     // The day's routes.
     let request = Request::parse(&json!({"collection":"routes","mode":"final","date":DAY,
         "station":"TST1","timezone":"UTC","dspName":"Test Owner","dspAbbreviation":"NLOG"}))
@@ -1389,7 +1390,7 @@ async fn driver_periods_keep_historical_sync_and_meal_context_across_batches() {
     let mut history = fixtures::fixture_date("UTC", Some("2026-09-05".parse().unwrap())).unwrap();
     history["employees"][1]["name"] = json!("DRIVER, FIXTURE");
     history["collectedAt"] = json!("2099-01-01T00:00:00Z");
-    db.publish(&id, &history).unwrap();
+    db.publish_timecards(&id, &history).unwrap();
     let employee = history["employees"][1].clone();
     let sync = json!({
         "employees":[employee], "from":"2026-09-06", "to":"2026-09-19",

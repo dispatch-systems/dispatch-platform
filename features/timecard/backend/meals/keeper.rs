@@ -7,6 +7,7 @@ use crate::{
     ensure,
     manifest::Keeper,
     read_cache::DataDomain,
+    workforce::TimecardStore,
 };
 use serde_json::Value;
 
@@ -40,16 +41,13 @@ impl Keeper for MealBreaks {
     }
     fn schedule_ready(&self, store: &Store, dsp: &str) -> Result<()> {
         ensure(
-            !store
-                .meal_sync_scopes(dsp, &store.local_date(dsp)?)?
-                .is_empty(),
+            !super::sync::meal_sync_scopes(store, dsp, &store.local_date(dsp)?)?.is_empty(),
             "schedule_scope_required",
             409,
         )
     }
     fn scheduled(&self, store: &Store, dsp: &str) -> Result<Vec<(String, Value)>> {
-        store
-            .meal_sync_scopes(dsp, &store.local_date(dsp)?)?
+        super::sync::meal_sync_scopes(store, dsp, &store.local_date(dsp)?)?
             .iter()
             .enumerate()
             .map(|(index, scope)| {

@@ -17,6 +17,8 @@ mod publication;
 mod queue;
 #[path = "range.rs"]
 mod range;
+#[path = "../storage.rs"]
+mod storage;
 #[path = "sync.rs"]
 pub(crate) mod sync;
 #[path = "timecards.rs"]
@@ -24,7 +26,7 @@ pub(crate) mod timecards;
 
 /// A new DSP's demo timecards: Paycom's fixture, published as a collection would be.
 pub fn demo(store: &crate::db::Store, dsp: &str, timezone: &str) -> crate::Result<()> {
-    store.publish(
+    store.publish_timecards(
         dsp,
         &crate::collectors::paycom::fixtures::fixture(timezone)?,
     )?;
@@ -35,4 +37,5 @@ pub const DOMAIN: crate::read_cache::DataDomain = crate::read_cache::DataDomain:
 
 pub(crate) use daily::cards;
 pub use preferences::defaults;
-pub(crate) use range::DailySource;
+pub(crate) use range::{DailySource, daily_sources};
+pub use storage::TimecardStore;

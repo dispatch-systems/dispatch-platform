@@ -137,6 +137,7 @@ mod tests {
         },
         config::Config,
         operations,
+        workforce::TimecardStore,
     };
     use serde_json::json;
     use std::os::unix::fs::PermissionsExt;
@@ -167,8 +168,8 @@ mod tests {
                         .exec("UPDATE connections SET enabled=1", [])?;
                 }
                 let old = fixtures::fixture_date("UTC", Some("2026-01-19".parse().unwrap()))?;
-                db.publish(&dsp, &old)?;
-                let paycom = db.enqueue(&dsp, None, "live-paycom")?;
+                db.publish_timecards(&dsp, &old)?;
+                let paycom = db.enqueue_timecards(&dsp, None, "live-paycom")?;
                 db.claim_job("paycom-owner", |_, _| true)?;
                 Ok((dsp, s(&paycom, "id").to_owned(), old))
             })
@@ -216,7 +217,7 @@ mod tests {
         state
             .run(move |db| {
                 let daily = db
-                    .daily(&tenant, "2026-01-19", "name", false)
+                    .daily_timecards(&tenant, "2026-01-19", "name", false)
                     .map(|value| serde_json::to_value(value).unwrap())?;
                 assert_eq!(daily["rows"].as_array().unwrap().len(), 12);
                 let row = daily["rows"]
@@ -245,7 +246,7 @@ mod tests {
                     .unwrap();
                 assert_eq!(row["paycom"]["punches"][0]["in"], "09:00");
                 assert!(
-                    db.daily(&tenant, "2026-02-01", "name", false)
+                    db.daily_timecards(&tenant, "2026-02-01", "name", false)
                         .map(|value| serde_json::to_value(value).unwrap())?["rows"]
                         .as_array()
                         .unwrap()
@@ -284,7 +285,7 @@ mod tests {
                 );
                 db.finish(&job, "paycom-owner", Some("invalid_checkpoint"))?;
                 let daily = db
-                    .daily(&tenant, "2026-01-19", "name", false)
+                    .daily_timecards(&tenant, "2026-01-19", "name", false)
                     .map(|value| serde_json::to_value(value).unwrap())?;
                 let row = daily["rows"]
                     .as_array()

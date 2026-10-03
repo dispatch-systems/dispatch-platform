@@ -3,6 +3,7 @@ use crate::{
     collectors::paycom,
     db::{AuditChange, Db, Store, iso, n},
     ensure, validate as v,
+    workforce::TimecardStore,
 };
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -155,67 +156,65 @@ fn preference_changes(before: &Value, after: &Value) -> Vec<AuditChange> {
         .map(|(key, field)| (*field, Some(text(&before[key])), Some(text(&after[key]))))
         .collect()
 }
-impl Store {
-    /// Values and revision without scanning the roster for editor options.
-    pub fn preference_values(&self, id: &str) -> Result<Value> {
-        let db = self.collector(id, paycom::PROVIDER)?;
-        preferences(&db)
-    }
-    pub fn preferences(&self, id: &str) -> Result<Value> {
-        let db = self.collector(id, paycom::PROVIDER)?;
-        let mut out = preferences(&db)?;
-        let departments=db.all("SELECT department value,count(*) count FROM employees WHERE \
-            publication_id=(SELECT id FROM publications WHERE active=1) GROUP BY department ORDER BY department",[])?;
-        let stations: Vec<Value> = db
-            .all(
-                "SELECT DISTINCT station FROM employees WHERE \
-            publication_id=(SELECT id FROM publications WHERE active=1) ORDER BY \
-            station",
-                [],
-            )?
-            .into_iter()
-            .map(|r| r["station"].clone())
-            .collect();
-        out["options"] = json!({"departments":departments,"stations":stations});
-        Ok(out)
-    }
-    pub fn save_preferences(
-        &self,
-        id: &str,
-        actor: &str,
-        revision: i64,
-        values: &Value,
-    ) -> Result<Value> {
-        let mut values = values.clone();
-        without_retired(&mut values);
-        let values = &values;
-        validate_preferences(values)?;
-        let previous = self.preferences(id)?;
-        let db = self.collector(id, paycom::PROVIDER)?;
-        db.transaction(|| {
-            let before = preferences(&db)?;
-            ensure(
-                n(&before, "revision") == revision,
-                "settings_changed_reload_before_saving",
-                409,
-            )?;
-            let mut history =
-                vec![json!({"revision":before["revision"],"at":iso(),"values":before["values"]})];
-            history.extend(before["history"].as_array().cloned().unwrap_or_default());
-            history.truncate(20);
-            db.set(
-                "paycom.preferences",
-                &json!({"revision":revision+1,"values":values,"history":history}),
-            )
-        })?;
-        self.audit_with(
-            Some(actor),
-            Some(id),
-            "paycom.settings_updated",
-            &format!("Revision {}", revision + 1),
-            None,
-            &preference_changes(&previous["values"], values),
+/// Values and revision without scanning the roster for editor options.
+pub(super) fn timecard_preference_values(store: &Store, id: &str) -> Result<Value> {
+    let db = store.collector(id, paycom::PROVIDER)?;
+    preferences(&db)
+}
+pub(super) fn timecard_preferences(store: &Store, id: &str) -> Result<Value> {
+    let db = store.collector(id, paycom::PROVIDER)?;
+    let mut out = preferences(&db)?;
+    let departments=db.all("SELECT department value,count(*) count FROM employees WHERE \
+        publication_id=(SELECT id FROM publications WHERE active=1) GROUP BY department ORDER BY department",[])?;
+    let stations: Vec<Value> = db
+        .all(
+            "SELECT DISTINCT station FROM employees WHERE \
+        publication_id=(SELECT id FROM publications WHERE active=1) ORDER BY \
+        station",
+            [],
+        )?
+        .into_iter()
+        .map(|r| r["station"].clone())
+        .collect();
+    out["options"] = json!({"departments":departments,"stations":stations});
+    Ok(out)
+}
+pub(super) fn save_timecard_preferences(
+    store: &Store,
+    id: &str,
+    actor: &str,
+    revision: i64,
+    values: &Value,
+) -> Result<Value> {
+    let mut values = values.clone();
+    without_retired(&mut values);
+    let values = &values;
+    validate_preferences(values)?;
+    let previous = store.timecard_preferences(id)?;
+    let db = store.collector(id, paycom::PROVIDER)?;
+    db.transaction(|| {
+        let before = preferences(&db)?;
+        ensure(
+            n(&before, "revision") == revision,
+            "settings_changed_reload_before_saving",
+            409,
         )?;
-        self.preferences(id)
-    }
+        let mut history =
+            vec![json!({"revision":before["revision"],"at":iso(),"values":before["values"]})];
+        history.extend(before["history"].as_array().cloned().unwrap_or_default());
+        history.truncate(20);
+        db.set(
+            "paycom.preferences",
+            &json!({"revision":revision+1,"values":values,"history":history}),
+        )
+    })?;
+    store.audit_with(
+        Some(actor),
+        Some(id),
+        "paycom.settings_updated",
+        &format!("Revision {}", revision + 1),
+        None,
+        &preference_changes(&previous["values"], values),
+    )?;
+    store.timecard_preferences(id)
 }

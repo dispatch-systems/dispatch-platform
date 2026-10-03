@@ -8,6 +8,7 @@ use dispatch_backend::{
     },
     contracts::PublicJob,
     db::{Store, s},
+    workforce::TimecardStore,
 };
 use serde_json::{Value, json};
 
@@ -278,7 +279,7 @@ fn manual_sync_lock_and_original_date_follow_the_entire_batch() {
         assert_eq!(viewed["paycom"]["active"], false);
         assert_eq!(viewed["flex"]["collectedAt"], Value::Null);
         for rejected in [
-            db.enqueue(&id, Some(&actor), "employees"),
+            db.enqueue_timecards(&id, Some(&actor), "employees"),
             db.enqueue_paycom_date(&id, Some(&actor), "timecard", "2026-01-12"),
             db.enqueue_meals(&id, Some(&actor), "flex-only", &scope),
             db.enqueue_meal_sync(&id, &actor, "other-day", "2026-01-12"),
@@ -302,7 +303,7 @@ fn manual_sync_lock_and_original_date_follow_the_entire_batch() {
             false
         );
         let next = db
-            .enqueue(&id, Some(&actor), &format!("after-{status}"))
+            .enqueue_timecards(&id, Some(&actor), &format!("after-{status}"))
             .unwrap();
         assert_eq!(next["status"], "queued");
         db.cancel(s(&next, "id"), &id).unwrap();

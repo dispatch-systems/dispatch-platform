@@ -8,6 +8,7 @@ use crate::{
         paycom,
     },
     db::{Store, s},
+    workforce::TimecardStore,
 };
 use chrono::Datelike;
 use serde_json::{Value, json};
@@ -74,7 +75,7 @@ fn timecards(db: &Store, world: &mut World) -> Result<Made> {
         }
     }
     let dates = &world.dates;
-    db.publish(
+    db.publish_timecards(
         &world.dsp,
         &json!({"employees": world.employees, "timecards": timecards, "collectedAt": crate::db::iso(),
             "from": dates[0].to_string(), "to": dates[dates.len() - 1].to_string()}),

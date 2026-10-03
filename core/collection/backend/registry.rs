@@ -310,7 +310,11 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{config::Config, operations, workforce};
+    use crate::{
+        config::Config,
+        operations,
+        workforce::{self, TimecardStore},
+    };
     use paycom::fixtures;
     use std::os::unix::fs::{PermissionsExt, symlink};
 
@@ -359,7 +363,7 @@ mod tests {
             .unwrap();
         drop(paycom);
         store
-            .publish(&id, &fixtures::fixture("UTC").unwrap())
+            .publish_timecards(&id, &fixtures::fixture("UTC").unwrap())
             .unwrap();
         (root, store, id)
     }
@@ -500,7 +504,7 @@ mod tests {
         );
         let mut next = fixtures::fixture("UTC").unwrap();
         next["employees"][0]["name"] = json!("New Collection");
-        reopened.publish(&id, &next).unwrap();
+        reopened.publish_timecards(&id, &next).unwrap();
         assert_eq!(
             reopened
                 .employee_timecard(&id, "E001", None)

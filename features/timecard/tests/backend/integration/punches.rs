@@ -5,6 +5,7 @@ use dispatch_backend::{
     collectors::paycom::{self, fixtures},
     db::s,
     workforce,
+    workforce::TimecardStore,
 };
 use serde_json::{Value, json};
 
@@ -42,12 +43,12 @@ fn employee_timecards_use_period_order_and_the_latest_revision_within_each_perio
     let middle = period_data("2026-09-05", "2026-09-06T00:00:00Z", 6.0);
     let current = period_data("2026-09-19", "2026-09-20T00:00:00Z", 7.0);
     for data in [&old, &middle, &current] {
-        db.publish(&id, data).unwrap();
+        db.publish_timecards(&id, data).unwrap();
     }
     // A later sync of an older period must update that period, not replace Latest.
     let mut revision = period_data("2026-09-05", "2026-09-21T00:00:00Z", 9.0);
     revision["employees"][0]["name"] = json!("Old employee name");
-    db.publish(&id, &revision).unwrap();
+    db.publish_timecards(&id, &revision).unwrap();
     let latest = db.employee_timecard(&id, "E001", None).unwrap();
     assert_eq!(latest.period.from, "2026-09-06");
     assert_eq!(latest.period.to, "2026-09-19");
@@ -102,7 +103,7 @@ fn employee_timecards_use_period_order_and_the_latest_revision_within_each_perio
         .unwrap()
         .retain(|e| e["employeeCode"] != "E002");
     revision["collectedAt"] = json!("2026-09-22T00:00:00Z");
-    db.publish(&id, &revision).unwrap();
+    db.publish_timecards(&id, &revision).unwrap();
     assert_eq!(
         db.employee_timecard(&id, "E002", None).unwrap().period.to,
         "2026-09-19"
@@ -115,16 +116,16 @@ fn employee_status_filter_applies_before_counting_and_pagination() {
     let mut data = fixtures::fixture("UTC").unwrap();
     data["employees"][1]["active"] = json!(false);
     data["employees"][4]["active"] = json!(false);
-    db.publish(&id, &data).unwrap();
+    db.publish_timecards(&id, &data).unwrap();
     let inactive = db
-        .employees(&id, "", 0, Some(1), false, Some(false))
+        .timecard_employees(&id, "", 0, Some(1), false, Some(false))
         .map(|value| serde_json::to_value(value).unwrap())
         .unwrap();
     assert_eq!(inactive["total"], 2);
     assert_eq!(inactive["employees"].as_array().unwrap().len(), 1);
     assert_eq!(inactive["employees"][0]["active"], false);
     let next = db
-        .employees(&id, "", 1, Some(1), false, Some(false))
+        .timecard_employees(&id, "", 1, Some(1), false, Some(false))
         .map(|value| serde_json::to_value(value).unwrap())
         .unwrap();
     assert_ne!(
@@ -132,19 +133,19 @@ fn employee_status_filter_applies_before_counting_and_pagination() {
         next["employees"][0]["code"]
     );
     assert_eq!(
-        db.employees(&id, "", 0, Some(100), false, Some(true))
+        db.timecard_employees(&id, "", 0, Some(100), false, Some(true))
             .map(|value| serde_json::to_value(value).unwrap())
             .unwrap()["total"],
         10
     );
     assert_eq!(
-        db.employees(&id, "Jordan", 0, Some(100), false, Some(false))
+        db.timecard_employees(&id, "Jordan", 0, Some(100), false, Some(false))
             .map(|value| serde_json::to_value(value).unwrap())
             .unwrap()["total"],
         1
     );
     assert_eq!(
-        db.employees(&id, "Jordan", 0, Some(100), false, Some(true))
+        db.timecard_employees(&id, "Jordan", 0, Some(100), false, Some(true))
             .map(|value| serde_json::to_value(value).unwrap())
             .unwrap()["total"],
         0
@@ -156,23 +157,26 @@ fn publication_is_atomic_and_keeps_the_last_successful_dataset() {
     let (_root, db, id) = bootstrapped();
     let id = id.as_str();
     let data = fixtures::fixture("UTC").unwrap();
-    db.publish(id, &data).unwrap();
+    db.publish_timecards(id, &data).unwrap();
     let before = db.employee_timecard(id, "E001", None).unwrap();
     let mut bad = data.clone();
     bad["employees"][1]["code"] = json!("E001");
-    assert_eq!(db.publish(id, &bad).unwrap_err().code, "duplicate_employee");
+    assert_eq!(
+        db.publish_timecards(id, &bad).unwrap_err().code,
+        "duplicate_employee"
+    );
     bad = data.clone();
     bad["timecards"][0]["employeeCode"] = json!("unowned");
     assert_eq!(
-        db.publish(id, &bad).unwrap_err().code,
+        db.publish_timecards(id, &bad).unwrap_err().code,
         "timecard_identity_mismatch"
     );
     bad = data.clone();
     bad["timecards"][0]["hours"] = json!(49);
-    assert!(db.publish(id, &bad).is_err());
+    assert!(db.publish_timecards(id, &bad).is_err());
     bad = data.clone();
     bad["timecards"][0]["date"] = json!("2026-02-30");
-    assert!(db.publish(id, &bad).is_err());
+    assert!(db.publish_timecards(id, &bad).is_err());
     assert_eq!(db.employee_timecard(id, "E001", None).unwrap(), before);
     let mut later = data.clone();
     later["collectedAt"] = json!("2099-01-01T00:00:00.000Z");
@@ -181,9 +185,9 @@ fn publication_is_atomic_and_keeps_the_last_successful_dataset() {
         .as_array_mut()
         .unwrap()
         .retain(|r| r["employeeCode"] != "E001");
-    db.publish(id, &later).unwrap();
+    db.publish_timecards(id, &later).unwrap();
     assert_eq!(
-        db.employees(id, "", 0, Some(100), false, None)
+        db.timecard_employees(id, "", 0, Some(100), false, None)
             .map(|value| serde_json::to_value(value).unwrap())
             .unwrap()["total"],
         11
@@ -196,7 +200,7 @@ fn timecard_links_publish_with_unchanged_hours_and_are_returned() {
     let (_root, db, id) = bootstrapped();
     let id = id.as_str();
     let data = fixtures::fixture("UTC").unwrap();
-    db.publish(id, &data).unwrap();
+    db.publish_timecards(id, &data).unwrap();
     // Publications from before links were retained return none.
     assert_eq!(
         db.employee_timecard(id, "E001", None).unwrap().timecards[0]
@@ -231,10 +235,10 @@ fn timecard_links_publish_with_unchanged_hours_and_are_returned() {
     ] {
         let mut bad = linked.clone();
         bad["sources"][0][field] = value;
-        assert_eq!(db.publish(id, &bad).unwrap_err().code, code);
+        assert_eq!(db.publish_timecards(id, &bad).unwrap_err().code, code);
     }
     // Identical hours still publish: the links are part of the change fingerprint.
-    db.publish(id, &linked).unwrap();
+    db.publish_timecards(id, &linked).unwrap();
     let paycom = db.collector(id, paycom::PROVIDER).unwrap();
     let count = |table: &str| {
         paycom
@@ -247,13 +251,13 @@ fn timecard_links_publish_with_unchanged_hours_and_are_returned() {
     assert_eq!(count("timecard_sources"), 12);
     // An identical repeat only refreshes the collection time.
     linked["collectedAt"] = json!("2099-01-02T00:00:00.000Z");
-    db.publish(id, &linked).unwrap();
+    db.publish_timecards(id, &linked).unwrap();
     assert_eq!(count("publications"), 2);
     for card in db.employee_timecard(id, "E003", None).unwrap().timecards {
         assert_eq!(card.card.source_url, Some(link("E003")));
     }
     let date = s(&data["timecards"][0], "date");
-    let (_, _, rows) = db.daily_source(id, date).unwrap();
+    let (_, _, rows) = db.daily_timecards_source(id, date).unwrap();
     assert_eq!(rows.len(), 12);
     for row in rows {
         assert_eq!(row["sourceUrl"], json!(link(s(&row, "employeeCode"))));
@@ -265,7 +269,7 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
     let (_root, db, id) = bootstrapped();
     let id = id.as_str();
     let mut data = fixtures::fixture("UTC").unwrap();
-    db.publish(id, &data).unwrap();
+    db.publish_timecards(id, &data).unwrap();
     let provider = db.collector(id, paycom::PROVIDER).unwrap();
     let first = provider
         .one("SELECT id FROM publications WHERE active=1", [])
@@ -274,20 +278,20 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
     data["collectedAt"] = json!("2099-01-01T00:00:00.000Z");
     data["employees"].as_array_mut().unwrap().reverse();
     data["timecards"].as_array_mut().unwrap().reverse();
-    db.publish(id, &data).unwrap();
+    db.publish_timecards(id, &data).unwrap();
     assert_eq!(
         provider.all("SELECT id FROM publications", []).unwrap(),
         vec![first.clone()]
     );
     assert_eq!(
-        db.employees(id, "", 0, Some(100), false, None)
+        db.timecard_employees(id, "", 0, Some(100), false, None)
             .map(|value| serde_json::to_value(value).unwrap())
             .unwrap()["collectedAt"],
         data["collectedAt"]
     );
     data["timecards"][0]["hours"] = json!(7.25);
     data["collectedAt"] = json!("2099-01-02T00:00:00.000Z");
-    db.publish(id, &data).unwrap();
+    db.publish_timecards(id, &data).unwrap();
     assert_eq!(
         provider
             .all("SELECT id FROM publications", [])
@@ -309,7 +313,7 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
         )
         .unwrap();
     data["collectedAt"] = json!("2099-01-03T00:00:00.000Z");
-    db.publish(id, &data).unwrap();
+    db.publish_timecards(id, &data).unwrap();
     assert_eq!(
         provider
             .all("SELECT id FROM publications", [])
@@ -328,30 +332,31 @@ fn settings_reject_unknown_fields_and_preserve_empty_driver_selection() {
         .one("SELECT id FROM users WHERE platform_owner=1", [])
         .unwrap()
         .unwrap();
-    db.publish(id, &fixtures::fixture("UTC").unwrap()).unwrap();
-    let mut values = db.preferences(id).unwrap()["values"].clone();
+    db.publish_timecards(id, &fixtures::fixture("UTC").unwrap())
+        .unwrap();
+    let mut values = db.timecard_preferences(id).unwrap()["values"].clone();
     values["driver_departments"] = json!([]);
-    db.save_preferences(id, s(&actor, "id"), 0, &values)
+    db.save_timecard_preferences(id, s(&actor, "id"), 0, &values)
         .unwrap();
     let day = fixtures::fixture("UTC").unwrap()["timecards"][0]["date"]
         .as_str()
         .unwrap()
         .to_owned();
     assert_eq!(
-        db.daily(id, &day, "name", false)
+        db.daily_timecards(id, &day, "name", false)
             .map(|value| serde_json::to_value(value).unwrap())
             .unwrap()["rows"],
         json!([])
     );
     assert_eq!(
-        db.employees(id, "", 0, Some(100), false, None)
+        db.timecard_employees(id, "", 0, Some(100), false, None)
             .map(|value| serde_json::to_value(value).unwrap())
             .unwrap()["total"],
         12
     );
     values["unknown"] = json!(true);
     assert!(
-        db.save_preferences(id, s(&actor, "id"), 1, &values)
+        db.save_timecard_preferences(id, s(&actor, "id"), 1, &values)
             .is_err()
     );
 }
@@ -376,9 +381,11 @@ fn retired_sync_preferences_are_not_returned_and_open_dashboards_may_still_send_
             &json!({"revision":4,"values":older,"history":[]}),
         )
         .unwrap();
-    let values = db.preferences(id).unwrap()["values"].clone();
+    let values = db.timecard_preferences(id).unwrap()["values"].clone();
     assert_eq!(values, workforce::defaults());
-    let saved = db.save_preferences(id, s(&actor, "id"), 4, &older).unwrap();
+    let saved = db
+        .save_timecard_preferences(id, s(&actor, "id"), 4, &older)
+        .unwrap();
     assert_eq!(saved["revision"], 5);
     assert_eq!(saved["values"], workforce::defaults());
     let stored = db
@@ -410,13 +417,13 @@ fn late_da_settings_default_for_older_preferences_and_validate() {
             &json!({"revision":0,"values":older,"history":[]}),
         )
         .unwrap();
-    let mut values = db.preferences(id).unwrap()["values"].clone();
+    let mut values = db.timecard_preferences(id).unwrap()["values"].clone();
     assert_eq!(values["late_da_time"], "10:01");
     assert_eq!(values["late_da_departments"], json!([]));
     for time in ["24:00", "10:60", "9:30", "10-01", "ab:cd", "10:011"] {
         values["late_da_time"] = json!(time);
         assert!(
-            db.save_preferences(id, s(&actor, "id"), 0, &values)
+            db.save_timecard_preferences(id, s(&actor, "id"), 0, &values)
                 .is_err(),
             "{time}"
         );
@@ -424,12 +431,12 @@ fn late_da_settings_default_for_older_preferences_and_validate() {
     values["late_da_time"] = json!("09:45");
     values["late_da_departments"] = Value::Null;
     assert!(
-        db.save_preferences(id, s(&actor, "id"), 0, &values)
+        db.save_timecard_preferences(id, s(&actor, "id"), 0, &values)
             .is_err()
     );
     values["late_da_departments"] = json!(["Delivery"]);
     let saved = db
-        .save_preferences(id, s(&actor, "id"), 0, &values)
+        .save_timecard_preferences(id, s(&actor, "id"), 0, &values)
         .unwrap();
     assert_eq!(saved["values"]["late_da_time"], "09:45");
     assert_eq!(saved["values"]["late_da_departments"], json!(["Delivery"]));

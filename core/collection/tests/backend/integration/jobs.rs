@@ -6,6 +6,7 @@ use dispatch_backend::{
     db::{self, s},
     jobs::JobFacts,
     schedules,
+    workforce::TimecardStore,
 };
 use serde_json::json;
 
@@ -24,18 +25,24 @@ fn queue_limits_and_authority_are_checked_again_before_publication() {
         .unwrap()
         .unwrap();
     let actor = s(&user, "id");
-    db.enqueue(id, Some(actor), "request-0").unwrap();
+    db.enqueue_timecards(id, Some(actor), "request-0").unwrap();
     assert_eq!(
-        db.enqueue(id, Some(actor), "another-manual")
+        db.enqueue_timecards(id, Some(actor), "another-manual")
             .unwrap_err()
             .code,
         "sync_in_progress"
     );
     // The underlying queue still bounds internal batches independently of the manual lock.
     for i in 1..5 {
-        db.enqueue(id, None, &format!("request-{i}")).unwrap();
+        db.enqueue_timecards(id, None, &format!("request-{i}"))
+            .unwrap();
     }
-    assert_eq!(db.enqueue(id, None, "overflow").unwrap_err().status, 429);
+    assert_eq!(
+        db.enqueue_timecards(id, None, "overflow")
+            .unwrap_err()
+            .status,
+        429
+    );
     let job = db.claim_job("worker", |_, _| true).unwrap().unwrap();
     let jid = job.id.as_str();
     db.guard(jid, "worker").unwrap();
@@ -232,7 +239,7 @@ fn nothing_collects_for_a_dsp_without_the_timecard() {
         .unwrap()
         .unwrap();
     let actor = s(&user, "id");
-    db.enqueue(id, Some(actor), "request-0").unwrap();
+    db.enqueue_timecards(id, Some(actor), "request-0").unwrap();
     let job = db.claim_job("worker", |_, _| true).unwrap().unwrap();
     let jid = job.id.as_str();
     db.guard(jid, "worker").unwrap();

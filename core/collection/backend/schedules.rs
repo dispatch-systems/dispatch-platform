@@ -577,6 +577,7 @@ mod tests {
     use crate::{
         collectors::{cortex, paycom},
         db::s,
+        workforce::TimecardStore,
     };
     use std::os::unix::fs::PermissionsExt;
     fn ms(value: &str) -> i64 {

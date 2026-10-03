@@ -8,6 +8,7 @@ use dispatch_backend::{
     crypto,
     db::{self, Store, s},
     operations,
+    workforce::TimecardStore,
 };
 use serde_json::{Value, json};
 use std::{
@@ -271,7 +272,7 @@ async fn meal_cache_rechecks_live_visibility_after_lease_bookkeeping_and_authori
     let job = server
         .state
         .run_scoped(dsp.clone(), workforce::DOMAIN, move |db| {
-            let queued = db.enqueue(&tenant, None, "meal-cache-live")?;
+            let queued = db.enqueue_timecards(&tenant, None, "meal-cache-live")?;
             let job = db
                 .claim_job("meal-cache-owner", |id, provider| {
                     id == tenant && provider == paycom::PROVIDER

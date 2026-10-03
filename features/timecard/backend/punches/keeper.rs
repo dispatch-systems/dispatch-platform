@@ -9,6 +9,7 @@ use crate::{
     db::{Store, s},
     manifest::Keeper,
     read_cache::DataDomain,
+    workforce::TimecardStore,
 };
 use serde_json::{Value, json};
 
@@ -25,14 +26,14 @@ impl Keeper for Timecards {
     }
     /// The employee a single-employee sync reads, as the latest publication holds them.
     fn kept(&self, store: &Store, dsp: &str, question: &Value) -> Result<Value> {
-        store.paycom_employee(dsp, s(question, "employeeCode"))
+        super::timecards::paycom_employee(store, dsp, s(question, "employeeCode"))
     }
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
         let request: Value = serde_json::from_str(&store.job_row(job, Some(dsp))?.request)?;
         if let Some(scope) = EmployeeSync::parse(&request)? {
-            store.publish_employee_timecard(dsp, &scope, &collected.data)?;
+            super::sync::publish_employee_timecard(store, dsp, &scope, &collected.data)?;
         } else {
-            store.publish(dsp, &collected.data)?;
+            store.publish_timecards(dsp, &collected.data)?;
         }
         Ok(())
     }

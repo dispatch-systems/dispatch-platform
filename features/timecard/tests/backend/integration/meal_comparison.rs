@@ -9,6 +9,7 @@ use dispatch_backend::{
     contracts::DriverSource,
     db::{Store, s},
     driver_match::DriverMatchStore,
+    workforce::TimecardStore,
 };
 use serde_json::{Value, json};
 
@@ -43,7 +44,7 @@ fn seed(db: &Store, id: &str) -> (String, String) {
             card["status"] = json!("Missing punch");
         }
     }
-    db.publish(id, &workforce).unwrap();
+    db.publish_timecards(id, &workforce).unwrap();
     let scope = Scope {
         date: date.clone(),
         station: "DEMO1".into(),
@@ -187,7 +188,7 @@ fn a_driver_driver_match_has_not_reached_never_takes_an_employee_it_gave_someone
     // Driver Match joins "Luis Hernandez" to the employee by a name variant.
     let mut roster = fixtures::fixture_date("America/Los_Angeles", Some(DEMO_DAY)).unwrap();
     roster["employees"][2]["name"] = json!("HERNANDEZ ORTIZ, LUIS");
-    db.publish(&id, &roster).unwrap();
+    db.publish_timecards(&id, &roster).unwrap();
     add_driver(&db, &id, "luis", "Luis Hernandez");
     db.match_drivers(&id).unwrap();
     assert_eq!(
@@ -246,7 +247,7 @@ fn newer_empty_scope_suppresses_stale_meals_and_latest_paycom_period_wins() {
     let mut newer = fixtures::fixture_date("America/Los_Angeles", Some(DEMO_DAY)).unwrap();
     newer["collectedAt"] = json!("2099-01-01T00:00:00Z");
     newer["timecards"] = json!([]);
-    db.publish(&id, &newer).unwrap();
+    db.publish_timecards(&id, &newer).unwrap();
     assert_eq!(
         db.meal_comparison(&id, &date, "UTC")
             .map(|value| serde_json::to_value(value).unwrap())

@@ -18,6 +18,7 @@ use crate::{
         route::{Dsp, Member, Route, read, write},
     },
     validate as v,
+    workforce::TimecardStore,
 };
 use serde_json::json;
 
@@ -93,7 +94,7 @@ fn employees(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         "inactive" => Some(false),
         _ => None,
     };
-    let page = db.employees(c.dsp_id(), query, offset, limit, desc, active)?;
+    let page = db.timecard_employees(c.dsp_id(), query, offset, limit, desc, active)?;
     Reply::of(&page)
 }
 
@@ -123,7 +124,7 @@ fn timecards(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(q, &["date", "sort", "direction"])?;
     let sort = optional(q, "sort", |q, key| v::choice(q, key, SORTS))?.unwrap_or("name");
     let date = v::text(q, "date", 10, 10)?;
-    Reply::of(&db.daily(c.dsp_id(), date, sort, descending(q)?)?)
+    Reply::of(&db.daily_timecards(c.dsp_id(), date, sort, descending(q)?)?)
 }
 
 fn sync_employee(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -162,7 +163,7 @@ fn paycom_status(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
 
 // The change history names people, so only those who manage timecards see it.
 fn paycom_settings(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    let mut value: PaycomSettings = serde_json::from_value(db.preferences(c.dsp_id())?)?;
+    let mut value: PaycomSettings = serde_json::from_value(db.timecard_preferences(c.dsp_id())?)?;
     if !c.can("timecard.manage") {
         value.history.clear();
     }
@@ -173,7 +174,7 @@ fn save_paycom_settings(db: &Store, c: &Member, input: &Input) -> Result<Reply> 
     let b = &input.body;
     v::fields(b, &["revision", "values"])?;
     let revision = v::integer(b, "revision", 0, i64::MAX)?;
-    let saved = db.save_preferences(c.dsp_id(), c.actor(), revision, &b["values"])?;
+    let saved = db.save_timecard_preferences(c.dsp_id(), c.actor(), revision, &b["values"])?;
     Reply::of(&serde_json::from_value::<PaycomSettings>(saved)?)
 }
 
@@ -221,7 +222,7 @@ fn collect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let job = if let Some(date) = &request.date {
         db.enqueue_paycom_date(id, actor, &request.request_id, date)?
     } else {
-        db.enqueue(id, actor, &request.request_id)?
+        db.enqueue_timecards(id, actor, &request.request_id)?
     };
     let date = request.date.as_deref().unwrap_or("");
     db.audit(actor, Some(id), "collection.requested", date)?;

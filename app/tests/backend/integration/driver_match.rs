@@ -12,6 +12,7 @@ use dispatch_backend::{
     db::{Store, s},
     driver_match::DriverMatchStore,
     driver_match::valid_code,
+    workforce::TimecardStore,
 };
 use serde_json::{Value, json};
 
@@ -44,7 +45,7 @@ fn ready(saved: Option<Value>) -> (tempfile::TempDir, Store, String, Context) {
             .unwrap();
         employee["name"] = json!(name);
     }
-    db.publish(&id, &roster).unwrap();
+    db.publish_timecards(&id, &roster).unwrap();
     let scope = Scope {
         date: s(&roster, "from").to_owned(),
         station: "DEMO1".into(),
@@ -169,9 +170,9 @@ fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
     assert_eq!(reyes.amazon.code, tony);
     assert_eq!(reyes.strength, DriverStrength::Strong);
     // The Timecard settings' driver departments set the rest apart as office staff.
-    let mut values = db.preference_values(&id).unwrap()["values"].clone();
+    let mut values = db.timecard_preference_values(&id).unwrap()["values"].clone();
     values["driver_departments"] = json!(["Delivery"]);
-    db.save_preferences(&id, &context.auth.user.id, 0, &values)
+    db.save_timecard_preferences(&id, &context.auth.user.id, 0, &values)
         .unwrap();
     let staffed = db.driver_match(&id).unwrap();
     assert_eq!(
