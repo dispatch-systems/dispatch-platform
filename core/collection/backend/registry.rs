@@ -14,7 +14,8 @@ use super::{
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
-const LAYOUT: &str = "storage.collectors";
+/// The DSP setting recording that its collectors' storage is kept apart.
+pub(crate) const LAYOUT: &str = "storage.collectors";
 
 /// What a member needs to manage the DSP's connections. It exists while any connection
 /// does, and the role sheet lists it under Connections.
@@ -339,7 +340,3 @@ impl Store {
         Ok(())
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/backend/registry.rs"]
-mod tests;

@@ -1,10 +1,14 @@
-use super::*;
+//! The collector registry and the storage it opens for each collector, with Paycom and
+//! Cortex registered and Timecard's data in their databases.
 use crate::{
+    collectors::{LAYOUT, Provider, cortex, database_path, paycom},
     config::Config,
+    db::{self, Db, Store},
     operations,
     workforce::{self, TimecardStore},
 };
 use paycom::fixtures;
+use serde_json::{Value, json};
 use std::os::unix::fs::{PermissionsExt, symlink};
 
 fn platform() -> (tempfile::TempDir, Store) {

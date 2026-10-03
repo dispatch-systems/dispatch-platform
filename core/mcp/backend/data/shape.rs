@@ -37,7 +37,7 @@ impl Table {
     pub fn push(&mut self, row: Vec<Value>) {
         self.rows.push(row);
     }
-    fn value(&self, rows: &[Vec<Value>]) -> Value {
+    pub(crate) fn value(&self, rows: &[Vec<Value>]) -> Value {
         json!({"columns": self.columns, "rows": rows})
     }
 }
@@ -221,7 +221,3 @@ pub fn ranges(days: &[String]) -> Value {
 pub fn hours(value: f64) -> Value {
     json!((value * 100.0).round() / 100.0)
 }
-
-#[cfg(test)]
-#[path = "../../tests/backend/data/shape.rs"]
-mod tests;

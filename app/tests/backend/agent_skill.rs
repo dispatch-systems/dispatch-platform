@@ -1,17 +1,22 @@
+//! The agent skill names every registered feature's tools and metrics.
+use crate::agents::{
+    data::catalog::{ENDPOINTS, METRICS},
+    skill::{EXAMPLES, skill},
+};
 #[test]
 fn the_skill_names_every_tool_and_metric() {
-    let skill = super::skill("https://dispatch.example.com");
+    let skill = skill("https://dispatch.example.com");
     assert!(skill.starts_with("---\nname: dispatch\ndescription: "));
     let description = skill.lines().nth(2).unwrap();
     assert!(description.len() <= 1024 + "description: ".len());
-    for endpoint in super::ENDPOINTS.iter() {
+    for endpoint in ENDPOINTS.iter() {
         assert!(
             skill.contains(&format!("`{}`", endpoint.tool)),
             "{}",
             endpoint.tool
         );
     }
-    for metric in super::METRICS.iter() {
+    for metric in METRICS.iter() {
         assert!(
             skill.contains(&format!("`{}`", metric.name)),
             "{}",
@@ -19,7 +24,7 @@ fn the_skill_names_every_tool_and_metric() {
         );
     }
     // Every example calls a tool that exists, with parameters it takes.
-    for (_, call, _) in super::EXAMPLES {
+    for (_, call, _) in EXAMPLES {
         let (name, args) = call.split_once('(').unwrap();
         let endpoint = crate::agents::data::catalog::tool(name).unwrap();
         for arg in args.trim_end_matches(')').split(", ") {

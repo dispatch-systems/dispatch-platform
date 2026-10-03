@@ -2,7 +2,7 @@
 //! a key or connected app makes is held in memory and written down in batches, never one by
 //! one; refusals keep their code; the log pages newest first, narrows to one key or to what
 //! was refused, and forgets calls past 90 days.
-#[path = "../../../../db/tests/support/common.rs"]
+#[path = "../../../../core/db/tests/support/common.rs"]
 mod common;
 use dispatch_backend::{
     State,

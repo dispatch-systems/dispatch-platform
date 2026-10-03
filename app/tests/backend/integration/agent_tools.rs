@@ -1,7 +1,7 @@
 //! Agent keys: a key is shown once and kept as a hash, reaches only what it was given, and
 //! stops the moment it is revoked, expires, or its maker stops being an active platform
 //! owner. Nothing about keys appears in a DSP's activity log.
-#[path = "../../../../db/tests/support/common.rs"]
+#[path = "../../../../core/db/tests/support/common.rs"]
 mod common;
 use common::{audits, bootstrapped};
 use dispatch_backend::{

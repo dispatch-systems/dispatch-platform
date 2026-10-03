@@ -1,7 +1,7 @@
 //! Sign in with Dispatch, over HTTP against the real router: discovery, the authorization
 //! request and its refusals, the owner's approval, the token endpoint, revocation, and the
 //! connected app signing in to the agent API and MCP like a key.
-#[path = "../../../../db/tests/support/common.rs"]
+#[path = "../../../../core/db/tests/support/common.rs"]
 mod common;
 use dispatch_backend::{
     State,

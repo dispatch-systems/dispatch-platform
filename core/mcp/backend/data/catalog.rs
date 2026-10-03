@@ -468,7 +468,3 @@ pub fn openapi(origin: &str) -> Value {
         "paths": paths,
     })
 }
-
-#[cfg(test)]
-#[path = "../../tests/backend/data/catalog.rs"]
-mod tests;

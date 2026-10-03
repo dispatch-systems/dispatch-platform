@@ -137,7 +137,7 @@ pub fn collection_permission(kind: &str) -> String {
     registry().keeper(kind).permission().to_owned()
 }
 /// The permission every connection shares; it exists while any connection does.
-const CONNECTIONS: &str = collectors::CONNECTIONS.id;
+pub(crate) const CONNECTIONS: &str = collectors::CONNECTIONS.id;
 
 fn connection(provider: Provider) -> Feature {
     let collector = provider.collector();
@@ -428,7 +428,3 @@ impl Store {
         })
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/backend/catalog.rs"]
-mod tests;

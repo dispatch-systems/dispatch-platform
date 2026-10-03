@@ -67,7 +67,7 @@ path = "../../core/accounts/tests/backend/integration/accounts.rs"
 
 [[test]]
 name = "agent_activity"
-path = "../../core/mcp/tests/backend/integration/agent_activity.rs"
+path = "../../app/tests/backend/integration/agent_activity.rs"
 
 [[test]]
 name = "agent_api"
@@ -78,8 +78,8 @@ name = "agent_data"
 path = "../../app/tests/backend/integration/agent_data.rs"
 
 [[test]]
-name = "agents"
-path = "../../core/mcp/tests/backend/integration/agents.rs"
+name = "agent_tools"
+path = "../../app/tests/backend/integration/agent_tools.rs"
 
 [[test]]
 name = "audit"
@@ -96,6 +96,10 @@ path = "../../core/collection/tests/backend/integration/browseros_host.rs"
 [[test]]
 name = "browseros_worker"
 path = "../../core/collection/tests/backend/integration/browseros_worker.rs"
+
+[[test]]
+name = "collection_jobs"
+path = "../../app/tests/backend/integration/collection_jobs.rs"
 
 [[test]]
 name = "contracts"
@@ -115,7 +119,7 @@ path = "../../core/collection/tests/backend/integration/egress.rs"
 
 [[test]]
 name = "http_requests"
-path = "../../core/server/tests/backend/integration/http_requests.rs"
+path = "../../app/tests/backend/integration/http_requests.rs"
 
 [[test]]
 name = "http_routes"
@@ -132,6 +136,7 @@ path = "../../core/server/tests/backend/integration/mail.rs"
 [[test]]
 name = "meal_cache"
 path = "../../app/tests/backend/integration/meal_cache.rs"
+
 [[test]]
 name = "meal_comparison"
 path = "../../features/timecard/tests/backend/integration/meal_comparison.rs"
@@ -146,11 +151,11 @@ path = "../../features/timecard/tests/backend/integration/meals.rs"
 
 [[test]]
 name = "network_policy"
-path = "../../core/collection/tests/backend/integration/network_policy.rs"
+path = "../../app/tests/backend/integration/network_policy.rs"
 
 [[test]]
 name = "oauth"
-path = "../../core/mcp/tests/backend/integration/oauth.rs"
+path = "../../app/tests/backend/integration/oauth.rs"
 
 [[test]]
 name = "punches"

@@ -7,7 +7,7 @@ use super::{
 };
 
 /// Questions people ask, with the tool and arguments that answer them.
-const EXAMPLES: &[(&str, &str, &str)] = &[
+pub(crate) const EXAMPLES: &[(&str, &str, &str)] = &[
     (
         "How many packages did Daniel deliver last week?",
         r#"packages(driver: "Daniel", period: "last week", outcome: "delivered")"#,
@@ -128,7 +128,3 @@ pub fn skill(origin: &str) -> String {
     }
     out
 }
-
-#[cfg(test)]
-#[path = "../tests/backend/skill.rs"]
-mod tests;

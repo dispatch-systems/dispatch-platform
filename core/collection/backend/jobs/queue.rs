@@ -375,7 +375,7 @@ impl Store {
     /// Writes one queued job, answering with its id. Every job is queued here. The table
     /// takes any kind, so a kind no registered collector collects is refused here instead,
     /// with the error the table's list of kinds refused it with.
-    fn insert_job(
+    pub(crate) fn insert_job(
         &self,
         id: &str,
         actor: Option<&str>,
@@ -633,7 +633,3 @@ fn retry_delay(id: &str, attempt: i64) -> i64 {
 #[cfg(test)]
 #[path = "../../tests/backend/jobs/queue/retry_tests.rs"]
 mod retry_tests;
-
-#[cfg(test)]
-#[path = "../../tests/backend/jobs/queue.rs"]
-mod tests;

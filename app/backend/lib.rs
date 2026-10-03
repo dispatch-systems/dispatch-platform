@@ -112,29 +112,68 @@ pub fn install() {
 }
 
 #[cfg(test)]
+#[path = "../tests/backend/agent_calls.rs"]
+mod agent_calls;
+#[cfg(test)]
+#[path = "../tests/backend/agent_catalog.rs"]
+mod agent_catalog;
+#[cfg(test)]
+#[path = "../tests/backend/agent_pages.rs"]
+mod agent_pages;
+#[cfg(test)]
+#[path = "../tests/backend/agent_skill.rs"]
+mod agent_skill;
+#[cfg(test)]
 #[path = "../tests/backend/audit.rs"]
 mod audit_areas;
 #[cfg(test)]
 #[path = "../tests/backend/cache.rs"]
 mod cache;
 #[cfg(test)]
+#[path = "../tests/backend/cache_domains.rs"]
+mod cache_domains;
+#[cfg(test)]
 #[path = "../tests/backend/catalog.rs"]
 mod catalog;
+#[cfg(test)]
+#[path = "../tests/backend/collector_registry.rs"]
+mod collector_registry;
 #[cfg(test)]
 #[path = "../tests/backend/collector_storage.rs"]
 mod collector_storage;
 #[cfg(test)]
+#[path = "../tests/backend/connected_app_mail.rs"]
+mod connected_app_mail;
+#[cfg(test)]
 #[path = "../tests/backend/databases.rs"]
 mod databases;
 #[cfg(test)]
+#[path = "../tests/backend/feature_switches.rs"]
+mod feature_switches;
+#[cfg(test)]
 #[path = "../tests/backend/hooks.rs"]
 mod hooks;
+#[cfg(test)]
+#[path = "../tests/backend/job_queue.rs"]
+mod job_queue;
+#[cfg(test)]
+#[path = "../tests/backend/live_results.rs"]
+mod live_results;
 #[cfg(test)]
 #[path = "../tests/backend/registry.rs"]
 mod registry_checks;
 #[cfg(test)]
 #[path = "../tests/backend/request_log.rs"]
 mod request_log;
+#[cfg(test)]
+#[path = "../tests/backend/retryable_codes.rs"]
+mod retryable_codes;
+#[cfg(test)]
+#[path = "../tests/backend/schedules.rs"]
+mod schedule_runs;
+#[cfg(test)]
+#[path = "../tests/backend/schema.rs"]
+mod schema;
 #[cfg(test)]
 #[path = "../tests/backend/tables.rs"]
 mod tables;

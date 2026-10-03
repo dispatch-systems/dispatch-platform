@@ -149,7 +149,3 @@ pub fn stage_item(
     )?;
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "../tests/backend/live.rs"]
-mod tests;

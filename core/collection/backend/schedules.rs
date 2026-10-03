@@ -114,7 +114,7 @@ pub fn next_daily(time: &str, tz: &str, after: i64) -> Result<String> {
     }
     Err(Error::new("schedule_unresolvable", 400))
 }
-fn anchor(time: &str, tz: &str, after: i64) -> Result<i64> {
+pub(crate) fn anchor(time: &str, tz: &str, after: i64) -> Result<i64> {
     let tz = timezone(tz)?;
     let date = chrono::DateTime::from_timestamp_millis(after)
         .ok_or_else(|| Error::new("invalid_schedule", 400))?

@@ -28,49 +28,49 @@
       "reason": "A systemd instance name, not an email address."
     },
     {
-      "path": "core/collection/tests/backend/integration/network_policy.rs",
+      "path": "app/tests/backend/integration/network_policy.rs",
       "rule": "fixed-network-address",
       "lineSha256": "aead42e64bef28efc05d6652e74387592b5448b018687e1332ce958036705b38",
       "reason": "Exercise blocked address ranges and a public resolver in network-policy tests."
     },
     {
-      "path": "core/collection/tests/backend/integration/network_policy.rs",
+      "path": "app/tests/backend/integration/network_policy.rs",
       "rule": "fixed-network-address",
       "lineSha256": "5b1f4af095eb41372e977823e256113b56fbf48c1eae2c74054554f19897ea6c",
       "reason": "Exercise blocked address ranges and a public resolver in network-policy tests."
     },
     {
-      "path": "core/collection/tests/backend/integration/network_policy.rs",
+      "path": "app/tests/backend/integration/network_policy.rs",
       "rule": "fixed-network-address",
       "lineSha256": "dfd036046a554f2ad05de3ebe23d5343d717221d344d9d0bebd33a957071944e",
       "reason": "Exercise blocked address ranges and a public resolver in network-policy tests."
     },
     {
-      "path": "core/collection/tests/backend/integration/network_policy.rs",
+      "path": "app/tests/backend/integration/network_policy.rs",
       "rule": "fixed-network-address",
       "lineSha256": "0be4def5907d672bf02fc0d53522347331852c50ce5d42f7b8c231b15cff9442",
       "reason": "Exercise blocked address ranges and a public resolver in network-policy tests."
     },
     {
-      "path": "core/collection/tests/backend/integration/network_policy.rs",
+      "path": "app/tests/backend/integration/network_policy.rs",
       "rule": "fixed-network-address",
       "lineSha256": "0a9bab98b590e7cd1a0b7f66043e605c134ac792072ea9d74a07493f59ee1a80",
       "reason": "Exercise blocked address ranges and a public resolver in network-policy tests."
     },
     {
-      "path": "core/collection/tests/backend/integration/network_policy.rs",
+      "path": "app/tests/backend/integration/network_policy.rs",
       "rule": "fixed-network-address",
       "lineSha256": "f97a5d081f69c2710f48001862239b2db686fa5d0d3b873bbc92a825b93f9484",
       "reason": "Exercise blocked address ranges and a public resolver in network-policy tests."
     },
     {
-      "path": "core/collection/tests/backend/integration/network_policy.rs",
+      "path": "app/tests/backend/integration/network_policy.rs",
       "rule": "fixed-network-address",
       "lineSha256": "c577fac4f9f063c5988eb2e6127be27cf913b881663b13b25d6d0f8862f466ff",
       "reason": "Exercise blocked address ranges and a public resolver in network-policy tests."
     },
     {
-      "path": "core/collection/tests/backend/integration/network_policy.rs",
+      "path": "app/tests/backend/integration/network_policy.rs",
       "rule": "fixed-network-address",
       "lineSha256": "ffdeac63e5326e560546318904beed01e921727bedd573e4ff7a980e5afc1a48",
       "reason": "Exercise blocked address ranges and a public resolver in network-policy tests."

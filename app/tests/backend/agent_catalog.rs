@@ -1,4 +1,6 @@
-use super::*;
+//! The agents' catalog of every registered feature's endpoints and metrics.
+use crate::agents::data::catalog::*;
+use serde_json::json;
 
 #[test]
 fn every_endpoint_and_metric_is_listed_once() {

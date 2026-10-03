@@ -1,4 +1,6 @@
-use super::*;
+//! A page of an agent's answer, with room for every feature a gate may name as bypassed.
+use crate::agents::data::shape::*;
+use serde_json::json;
 
 #[test]
 fn a_page_stops_at_the_budget_and_names_the_next() {

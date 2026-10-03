@@ -28,9 +28,9 @@ use serde_json::{Value, json};
 #[derive(Debug)]
 pub struct Refusal {
     status: u16,
-    code: &'static str,
+    pub(crate) code: &'static str,
     message: String,
-    choices: Vec<String>,
+    pub(crate) choices: Vec<String>,
 }
 impl Refusal {
     pub fn new(status: u16, code: &'static str, message: impl Into<String>) -> Self {
