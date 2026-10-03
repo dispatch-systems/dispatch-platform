@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import unittest
 
-spec = importlib.util.spec_from_file_location("monitor", Path(__file__).resolve().parents[2] / "tooling/host/security-monitor.py")
+spec = importlib.util.spec_from_file_location("monitor", Path(__file__).resolve().parents[2] / "ops/scripts/security-monitor.py")
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 

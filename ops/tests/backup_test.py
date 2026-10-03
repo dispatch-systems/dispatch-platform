@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 spec = importlib.util.spec_from_file_location(
-    "dispatch_backup", Path(__file__).resolve().parents[2] / "tooling/host/backup.py"
+    "dispatch_backup", Path(__file__).resolve().parents[2] / "ops/scripts/backup.py"
 )
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)

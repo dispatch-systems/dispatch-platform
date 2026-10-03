@@ -22,7 +22,7 @@ def prebuilt(root, name):
 
 
 def launch(*args):
-    root = Path(__file__).resolve().parent.parent
+    root = Path(__file__).resolve().parents[2]
     binary = prebuilt(root, "dispatch-ci")
     if binary is None:
         subprocess.check_call(["cargo", "build", "--locked", "-p", "dispatch-ci"], cwd=root, stdout=sys.stderr)

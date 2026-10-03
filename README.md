@@ -24,7 +24,7 @@ Use an isolated worktree branched from `origin/main`, then `npm ci` and `npm run
 The preview prints a private fixture URL. `npm run check:ci` runs full validation;
 `npm run check:ci -- checks` runs the dashboard checks against a build. `npm test` discovers
 TypeScript tests recursively; Python tooling tests use
-`python3 -m unittest discover -s tests/tooling -p '*_test.py'`.
+`python3 -m unittest discover -s tooling/tests -p '*_test.py'` and `-s ops/tests`.
 
 `npm run contracts:generate` updates the committed TypeScript bindings. Normal Rust
 tests verify them without rewriting files. Generated types, schema snapshots and

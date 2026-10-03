@@ -255,7 +255,7 @@ fn queue_run(runner: &dyn Runner, number: u64) -> Option<Value> {
 }
 
 /// Jobs of `checks.yml` that may fail without failing the gate, its `continue-on-error` jobs;
-/// `tests/tooling/build_pipeline_test.py` holds this list to the workflow.
+/// `tooling/tests/build_pipeline_test.py` holds this list to the workflow.
 const ADVISORY: &[&str] = &["tools"];
 
 /// The failed jobs of `run`, as "name: conclusion link" lines. With `gating`, only the

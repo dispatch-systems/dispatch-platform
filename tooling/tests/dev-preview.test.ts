@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { startPreview } from '../../tooling/dev/dev-server.js';
+import { startPreview } from '../dev/dev-server.js';
 import { demo, until } from '../../core/shell/tests/support/support.js';
 
 test('parallel worktree previews isolate ports, files, fixtures and browser sessions', async (t) => {

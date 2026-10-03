@@ -5,7 +5,7 @@ import stat
 import tempfile
 import unittest
 
-spec = importlib.util.spec_from_file_location("isolation", Path(__file__).resolve().parents[2] / "tooling/host/prepare-isolated-runtime.py")
+spec = importlib.util.spec_from_file_location("isolation", Path(__file__).resolve().parents[2] / "ops/scripts/prepare-isolated-runtime.py")
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 

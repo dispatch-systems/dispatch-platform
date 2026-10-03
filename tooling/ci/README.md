@@ -54,7 +54,7 @@ BrowserOS package. A run's own `tools` job builds what its inputs lack for the j
 later in that run. Launchers use a restored tool only on CI and only from the workspace's own
 `.ci-tools` directory; otherwise they build with Cargo.
 
-The repository Cargo config runs `tooling/rustc-remap.py` for dependencies and workspace
+The repository Cargo config runs `tooling/build/rustc-remap.py` for dependencies and workspace
 crates, giving compiler paths neutral `/dispatch-build/...` prefixes. The wrapper's SHA-256
 in `build.rustflags` invalidates Cargo's dependency objects when the policy changes; update
 the hash after editing the wrapper. `check:rules` verifies it. Binary-cache schema 4 and the
@@ -69,14 +69,15 @@ Run the tests with:
 
 ```sh
 cargo test --locked -p dispatch-ci -p dispatch-host
-python3 -m unittest discover -s tests/tooling -p '*_test.py'
+python3 -m unittest discover -s tooling/tests -p '*_test.py'
+python3 -m unittest discover -s ops/tests -p '*_test.py'
 ```
 
 `check:rules` runs the source-only Python partition and every dashboard helper test without
 compiling Rust. The API job runs those Python modules and the separate real compiler and
 installed-manager modules once each. Native collector files run only in their collector
 shards, so the API job does not launch them merely to skip their browser cases.
-`tests/tooling/test-plan.test.ts` checks complete, disjoint file coverage against the commands
+`tooling/tests/test-plan.test.ts` checks complete, disjoint file coverage against the commands
 the runners actually use. Real compiler/manager modules are listed under `pythonIntegration`
 in `test-plan.json`; the default unittest discovery command above still runs every module.
 

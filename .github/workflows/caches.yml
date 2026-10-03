@@ -59,7 +59,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/dispatch-browseros/browseros.deb
-          key: dispatch-browseros-${{ hashFiles('tooling/browseros-release.json') }}
+          key: dispatch-browseros-${{ hashFiles('ops/launchers/browseros-release.json') }}
   # The release backend, both as Cargo's dependency cache and as the exact-input binary the
   # build job restores when the Rust sources are unchanged.
   release-binary:
@@ -79,7 +79,7 @@ jobs:
           reuse-binary: ${{ github.event_name != 'schedule' }}
       - name: Compile the release backend
         if: steps.tools.outputs.binary-hit != 'true'
-        run: python3 tooling/cargo-build.py --release
+        run: python3 tooling/build/cargo-build.py --release
       - name: Save the release backend
         if: steps.tools.outputs.binary-key != '' && steps.tools.outputs.binary-hit != 'true' && hashFiles('.ci-rust-cache/**/sha256') != ''
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9

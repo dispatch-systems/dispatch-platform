@@ -9,12 +9,13 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "tooling"))
+sys.path.insert(0, str(ROOT / "tooling/ci"))
+sys.path.insert(0, str(ROOT / "ops/launchers"))
 import ci_tool
 
 
 def module(name, filename):
-    spec = importlib.util.spec_from_file_location(name, ROOT / "tooling" / filename)
+    spec = importlib.util.spec_from_file_location(name, ROOT / "tooling/ci" / filename)
     value = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(value)
     return value

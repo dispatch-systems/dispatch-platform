@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import worker, { type Env } from '../../services/cloudflare-screenshots/worker.js';
+import worker, { type Env } from '../screenshots/worker/worker.js';
 
 const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
 const key = `${'a'.repeat(64)}.png`;

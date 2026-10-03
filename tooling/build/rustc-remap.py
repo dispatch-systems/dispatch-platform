@@ -28,7 +28,7 @@ def mappings(root, env):
 def main():
     if len(sys.argv) < 2:
         raise SystemExit("Cargo must supply a compiler executable")
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     compiler, *arguments = sys.argv[1:]
     os.execvp(compiler, [compiler, *arguments, *mappings(root, os.environ)])
 

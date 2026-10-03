@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { sourceLineViolations } from '../../tooling/ci/source-lines.js';
+import { sourceLineViolations } from '../ci/source-lines.js';
 
 test('the source lint counts Unicode characters, handles CRLF and ratchets exceptions', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-source-lines-'));

@@ -1,10 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  checkBenchmark,
-  budgets,
-  type BenchmarkReport,
-} from '../../tooling/benchmarks/benchmark-budget.js';
+import { checkBenchmark, budgets, type BenchmarkReport } from '../benchmarks/benchmark-budget.js';
 const sample = (): BenchmarkReport => ({
   startupMs: 50,
   idleRssBytes: 12 * 1024 ** 2,

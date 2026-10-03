@@ -9,7 +9,7 @@ import sys
 import tempfile
 import unittest
 
-TOOLING = Path(__file__).parents[2] / "tooling"
+TOOLING = Path(__file__).parents[2] / "ops/launchers"
 sys.path.insert(0, str(TOOLING))
 import runtime_artifact as runtime
 

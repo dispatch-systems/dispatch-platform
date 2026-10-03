@@ -5,11 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fixture } from '../../core/shell/tests/support/support.js';
-import { verifyArtifact, writeManifest } from '../../tooling/build/artifact.js';
-import {
-  dashboardGraphSizes,
-  type DashboardAssets,
-} from '../../tooling/testing/dashboard-assets.js';
+import { verifyArtifact, writeManifest } from '../build/artifact.js';
+import { dashboardGraphSizes, type DashboardAssets } from '../testing/dashboard-assets.js';
 
 test(
   'installed artifact serves the complete platform directly from Rust and has no Node runtime payload',

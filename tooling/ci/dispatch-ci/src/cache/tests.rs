@@ -220,12 +220,12 @@ fn every_rust_and_embedded_launcher_input_is_fingerprinted_but_dashboard_is_not(
         "core/foundation/backend/error.rs",
         "collectors/cortex/scripts/meal.js",
         "features/dvic/migrations/dvic/0001_baseline.sql",
-        "tooling/cargo-build.py",
-        "tooling/rustc-remap.py",
-        "tooling/ci_tool.py",
-        "tooling/runtime_artifact.py",
-        "tooling/update-dev.py",
-        "tooling/update-production.py",
+        "tooling/build/cargo-build.py",
+        "tooling/build/rustc-remap.py",
+        "tooling/ci/ci_tool.py",
+        "ops/launchers/runtime_artifact.py",
+        "ops/launchers/update-dev.py",
+        "ops/launchers/update-production.py",
     ] {
         let path = f.root.join(name);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -254,11 +254,12 @@ fn only_the_exact_fingerprinted_remap_config_allows_cache_reuse() {
     let f = Fixture::new();
     fs::create_dir(f.root.join(".cargo")).unwrap();
     let config = f.root.join(".cargo/config.toml");
-    let wrapper = f.root.join("tooling/rustc-remap.py");
+    let wrapper = f.root.join("tooling/build/rustc-remap.py");
+    fs::create_dir_all(wrapper.parent().unwrap()).unwrap();
     fs::write(&wrapper, "reviewed policy").unwrap();
     let hash = crate::to_hex(&sha2::Sha256::digest(b"reviewed policy"));
     let text = format!(
-        "[build]\nrustc-wrapper = 'tooling/rustc-remap.py'\nrustflags = ['--cfg=dispatch_path_policy_{hash}']\n"
+        "[build]\nrustc-wrapper = 'tooling/build/rustc-remap.py'\nrustflags = ['--cfg=dispatch_path_policy_{hash}']\n"
     );
     fs::write(&config, &text).unwrap();
     assert!(eligible(&f.root, &f.env, false).unwrap());

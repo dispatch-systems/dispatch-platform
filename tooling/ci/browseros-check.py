@@ -11,7 +11,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 # The one list of native suites, shared with the check that no test file is left out.
-PLAN = json.loads((Path(__file__).resolve().parent / "ci/test-plan.json").read_text())
+PLAN = json.loads((Path(__file__).resolve().parent / "test-plan.json").read_text())
 SHARDS = PLAN["native"]
 REAL_TIMEOUT = PLAN["nativeRealTimeout"]
 
@@ -36,11 +36,11 @@ def main():
     shard = args.shard
     if args.real_timeouts and (args.host_only or shard != "all"):
         parser.error("--real-timeouts runs only its sentinel; do not combine it with other selectors")
-    root = Path(__file__).resolve().parent.parent
+    root = Path(__file__).resolve().parents[2]
     environment = dict(os.environ)
     environment.setdefault("DISPATCH_BWRAP_EXECUTABLE", "/usr/local/libexec/dispatch-dev/bwrap")
     environment.pop("DISPATCH_TEST_REAL_TIMEOUTS", None)
-    subprocess.run(["python3", "tooling/cargo-build.py"], cwd=root, env=environment, check=True)
+    subprocess.run(["python3", "tooling/build/cargo-build.py"], cwd=root, env=environment, check=True)
     if not args.real_timeouts and (args.host_only or shard in ("all", "capacity")):
         subprocess.run([
             "cargo", "test", "--locked", "--test", "browseros_host", "--",

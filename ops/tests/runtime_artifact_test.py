@@ -8,7 +8,7 @@ import unittest
 import unittest.mock
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).parents[2] / "tooling"))
+sys.path.insert(0, str(Path(__file__).parents[2] / "ops/launchers"))
 import runtime_artifact as runtime
 
 
@@ -30,26 +30,38 @@ class SharedToolingTests(unittest.TestCase):
     def test_source_verifier_uses_cargos_configured_output_and_never_a_stale_default(self):
         (self.root / "ops/host-manager").mkdir(parents=True)
         (self.root / "ops/host-manager/Cargo.toml").touch()
-        (self.root / "tooling").mkdir()
+        (self.root / "ops/launchers").mkdir(parents=True)
         custom = self.root / "custom-target"
-        with patch.object(runtime, "__file__", str(self.root / "tooling/runtime_artifact.py")), \
+        with patch.object(runtime, "__file__", str(self.root / "ops/launchers/runtime_artifact.py")), \
                 patch.object(runtime.subprocess, "check_call") as build, \
                 patch.object(runtime, "command", return_value=json.dumps({"target_directory": str(custom)})):
             self.assertEqual(runtime.host_binary.__wrapped__(), custom / "release/dispatch-host")
             build.assert_called_once_with(["cargo", "build", "--locked", "--release", "--workspace", "--bin", "dispatch-host"],
                                           cwd=self.root, stdout=sys.stderr)
 
+    def test_an_installed_copy_inside_a_checkout_never_builds_the_checkout(self):
+        # Dev installs management under its own checkout; that copy must keep using its binary.
+        (self.root / "ops/host-manager").mkdir(parents=True)
+        (self.root / "ops/host-manager/Cargo.toml").touch()
+        management = self.root / ".runtime/management"
+        management.mkdir(parents=True)
+        with patch.object(runtime, "__file__", str(management / "runtime_artifact.py")), \
+                patch.object(runtime.subprocess, "check_call") as build:
+            with self.assertRaisesRegex(RuntimeError, "Installed host management is missing"):
+                runtime.host_binary.__wrapped__()
+            build.assert_not_called()
+
     def test_source_verifier_prefers_a_restored_host_only_from_its_own_ci_cache(self):
         (self.root / "ops/host-manager").mkdir(parents=True)
         (self.root / "ops/host-manager/Cargo.toml").touch()
-        (self.root / "tooling").mkdir()
+        (self.root / "ops/launchers").mkdir(parents=True)
         tools = self.root / ".ci-tools"
         binary = tools / "tools/dispatch-host"
         binary.parent.mkdir(parents=True)
         binary.write_text("#!/bin/sh\n")
         binary.chmod(0o700)
         trusted = {"CI": "true", "DISPATCH_CI_TOOLS": str(tools)}
-        with patch.object(runtime, "__file__", str(self.root / "tooling/runtime_artifact.py")), \
+        with patch.object(runtime, "__file__", str(self.root / "ops/launchers/runtime_artifact.py")), \
                 patch.object(runtime.subprocess, "check_call") as build, \
                 patch.object(runtime, "command", return_value=json.dumps({"target_directory": str(self.root / "target")})):
             with patch.dict(os.environ, trusted, clear=False):

@@ -9,7 +9,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).parents[2]
-sys.path.insert(0, str(ROOT / "tooling"))
+sys.path.insert(0, str(ROOT / "tooling/ci"))
+sys.path.insert(0, str(ROOT / "ops/launchers"))
 
 
 def module(name, path):
@@ -19,10 +20,10 @@ def module(name, path):
     return value
 
 
-cache = module("cargo_build", "tooling/cargo-build.py")
+cache = module("cargo_build", "tooling/build/cargo-build.py")
 prepare = module("pr_prepare", "tooling/ci/pr-prepare.py")
 ship = module("pr_ship", "tooling/ci/pr-ship.py")
-collectors = module("browseros_check", "tooling/browseros-check.py")
+collectors = module("browseros_check", "tooling/ci/browseros-check.py")
 
 
 class PipelineTests(unittest.TestCase):
@@ -40,7 +41,7 @@ class PipelineTests(unittest.TestCase):
     def test_setup_launchers_use_trusted_host_and_preserve_paths_and_owner_names(self):
         args = ["--root", "/private path/dev", "--first-name", "Two Names"]
         for environment in ["dev", "production"]:
-            launcher = module(f"setup_{environment}", f"tooling/setup-{environment}.py")
+            launcher = module(f"setup_{environment}", f"ops/launchers/setup-{environment}.py")
             with patch.object(launcher, "host_binary", return_value=Path("/trusted path/dispatch-host")), \
                     patch.object(launcher.os, "execv") as execute:
                 launcher.main(args)

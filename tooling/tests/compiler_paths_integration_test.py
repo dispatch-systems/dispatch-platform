@@ -13,10 +13,10 @@ class CompilerPathIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "checkout"
             dependency = Path(directory) / "private-cargo/registry/dependency"
-            for path in [root / "src", root / ".cargo", root / "tooling", dependency / "src"]:
+            for path in [root / "src", root / ".cargo", root / "tooling/build", dependency / "src"]:
                 path.mkdir(parents=True)
-            wrapper = root / "tooling/rustc-remap.py"
-            shutil.copy2(ROOT / "tooling/rustc-remap.py", wrapper)
+            wrapper = root / "tooling/build/rustc-remap.py"
+            shutil.copy2(ROOT / "tooling/build/rustc-remap.py", wrapper)
             (dependency / "Cargo.toml").write_text('[package]\nname="path-probe"\nversion="0.0.0"\nedition="2024"\n')
             (dependency / "src/lib.rs").write_text('pub fn origin() -> &\'static str { file!() }\n')
             (root / "Cargo.toml").write_text('[package]\nname="compiler-path-probe"\nversion="0.0.0"\nedition="2024"\n'
@@ -29,7 +29,7 @@ class CompilerPathIntegrationTests(unittest.TestCase):
                 if destination != "cargo":
                     wrapper.write_text(wrapper.read_text().replace('/dispatch-build/cargo', '/dispatch-build/updated-cargo'))
                 flag = config(wrapper)["build"]["rustflags"][0]
-                (root / ".cargo/config.toml").write_text('[build]\nrustc-wrapper="tooling/rustc-remap.py"\n'
+                (root / ".cargo/config.toml").write_text('[build]\nrustc-wrapper="tooling/build/rustc-remap.py"\n'
                                                          f'rustflags=["{flag}"]\n')
                 # Starting in a member source directory also checks Cargo's config path resolution.
                 result = subprocess.run(["cargo", "build", "--offline"], cwd=root / "src", env=env,

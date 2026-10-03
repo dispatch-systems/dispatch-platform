@@ -8,6 +8,7 @@ import {
   allPythonTests,
   pythonRuleTests,
   pythonIntegrationTests,
+  pythonTestDirs,
 } from './test-plan.js';
 
 export type Command = {
@@ -54,7 +55,9 @@ export function pythonTests(suite: 'all' | 'rules' | 'integration'): Command {
     name: `Python ${suite} tests`,
     command: 'python3',
     args: ['-m', 'unittest', ...files.map((file) => path.basename(file, '.py'))],
-    env: { PYTHONPATH: path.resolve('tests/tooling') },
+    env: {
+      PYTHONPATH: pythonTestDirs.map((directory) => path.resolve(directory)).join(path.delimiter),
+    },
   };
 }
 

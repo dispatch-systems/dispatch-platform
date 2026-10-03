@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { replaceBuild } from '../../tooling/build/build-output.js';
-import { writeManifest } from '../../tooling/build/artifact.js';
+import { replaceBuild } from '../build/build-output.js';
+import { writeManifest } from '../build/artifact.js';
 
 test('failed or invalid builds preserve the previous artifact; verified builds replace it', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-build-'));

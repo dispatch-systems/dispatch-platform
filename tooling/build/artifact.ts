@@ -13,7 +13,7 @@ export interface Artifact {
 function host<T>(...args: string[]): T {
   try {
     return JSON.parse(
-      execFileSync('python3', ['tooling/runtime_artifact.py', 'artifact', ...args], {
+      execFileSync('python3', ['ops/launchers/runtime_artifact.py', 'artifact', ...args], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
         maxBuffer: 32 * 1024 * 1024,

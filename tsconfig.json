@@ -16,5 +16,5 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["shared", "app", "core", "collectors", "features", "tooling", "tests", "*.ts"]
+  "include": ["shared", "app", "core", "collectors", "features", "tooling", "*.ts"]
 }

@@ -16,20 +16,20 @@ def load(name, path):
     return module
 
 
-remap = load("remap", "tooling/rustc-remap.py")
+remap = load("remap", "tooling/build/rustc-remap.py")
 gate = load("build_paths", "tooling/security/check-build-paths.py")
 
 
 def config(wrapper):
     digest = hashlib.sha256(wrapper.read_bytes()).hexdigest()
-    return {"build": {"rustc-wrapper": "tooling/rustc-remap.py",
+    return {"build": {"rustc-wrapper": "tooling/build/rustc-remap.py",
                       "rustflags": ["--cfg=dispatch_path_policy_" + digest]}}
 
 
 class CompilerPathTests(unittest.TestCase):
     def test_cargo_fingerprint_tracks_the_current_policy(self):
         self.assertEqual(tomllib.loads((ROOT / ".cargo/config.toml").read_text()),
-                         config(ROOT / "tooling/rustc-remap.py"))
+                         config(ROOT / "tooling/build/rustc-remap.py"))
 
     def test_specific_paths_override_home_and_cover_symlink_locations(self):
         with tempfile.TemporaryDirectory() as directory:

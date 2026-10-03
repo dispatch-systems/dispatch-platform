@@ -107,7 +107,7 @@ pub fn affected(changed: &[String], plan: &Value) -> Vec<String> {
     }
     if !node.is_empty() {
         commands.push(format!(
-            "python3 tooling/cargo-build.py && npx tsx --test {}",
+            "python3 tooling/build/cargo-build.py && npx tsx --test {}",
             node.join(" ")
         ));
     }
@@ -252,7 +252,7 @@ mod tests {
     fn affected_names_the_changed_crates_and_the_tests_the_diff_changes_or_watches() {
         let plan = json!({
             "dashboard": ["core/tenancy/tests/frontend/features.test.ts"],
-            "rules": ["tests/tooling/test-plan.test.ts"],
+            "rules": ["tooling/tests/test-plan.test.ts"],
             "native": {"cortex": ["collectors/cortex/tests/native/cortex-worker.test.ts"]},
             "watch": [{"sources": ["core/tenancy/backend/roles.rs"], "tests": [
                 "core/tenancy/tests/api/roles.test.ts",
@@ -271,14 +271,14 @@ mod tests {
             [
                 "cargo clippy --locked --all-targets -- -D warnings",
                 "cargo test --locked -p dispatch-backend",
-                "python3 tooling/cargo-build.py && npx tsx --test core/tenancy/tests/api/roles.test.ts",
+                "python3 tooling/build/cargo-build.py && npx tsx --test core/tenancy/tests/api/roles.test.ts",
                 "npm run test:browseros -- --shard cortex",
                 "npm run build && npm run test:ui -- core/platform_owner/tests/browser/dsp-features.spec.ts",
             ]
         );
         // A workspace input touches every crate; rule tests are check:rules' own.
         assert_eq!(
-            changed(&["Cargo.lock", "tests/tooling/test-plan.test.ts"]),
+            changed(&["Cargo.lock", "tooling/tests/test-plan.test.ts"]),
             [
                 "cargo clippy --locked --all-targets -- -D warnings",
                 "cargo test --locked -p dispatch-backend -p dispatch-ci -p dispatch-host",
@@ -306,7 +306,7 @@ mod tests {
         assert_eq!(
             affected(&files, &Value::Null),
             [
-                "python3 tooling/cargo-build.py && npx tsx --test core/tenancy/tests/api/roles.test.ts"
+                "python3 tooling/build/cargo-build.py && npx tsx --test core/tenancy/tests/api/roles.test.ts"
             ]
         );
     }

@@ -67,9 +67,11 @@ def prebuilt_host(root):
 
 @functools.cache
 def host_binary():
-    tooling = Path(__file__).resolve().parent
-    root = tooling.parent
-    if (root / "ops/host-manager/Cargo.toml").is_file():
+    here = Path(__file__).resolve().parent
+    root = here.parent.parent
+    # A checkout runs this from ops/launchers. An installed copy runs from its management
+    # directory, which may sit inside a checkout (Dev's), so only this file's own place counts.
+    if here.name == "launchers" and here.parent.name == "ops" and (root / "ops/host-manager/Cargo.toml").is_file():
         # Build from this checkout, never search the candidate being verified.
         restored = prebuilt_host(root)
         if restored is not None:
@@ -80,8 +82,8 @@ def host_binary():
                               cwd=root, stdout=sys.stderr)
         metadata = json.loads(command("cargo", "metadata", "--locked", "--no-deps", "--format-version=1", cwd=root))
         return Path(metadata["target_directory"]) / "release/dispatch-host"
-    require(tooling.name == "management", "Run host tooling from a checkout or installed management directory")
-    binary = tooling / "dispatch-host"
+    require(here.name == "management", "Run host tooling from a checkout or installed management directory")
+    binary = here / "dispatch-host"
     require(binary.exists(), "Installed host management is missing; install it from a checkout with --install-management")
     info = binary.lstat()
     require(binary.is_file() and not binary.is_symlink() and info.st_nlink == 1

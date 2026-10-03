@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { assessmentFixture } from '../../tooling/testing/ci-tools.js';
+import { assessmentFixture } from '../testing/ci-tools.js';
 
 test('the browser suite uses a restored assessment fixture only from its own CI cache', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-ci-tools-'));

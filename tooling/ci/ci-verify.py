@@ -3,7 +3,11 @@
 host manager verify its inventory and source commit against the run's own commit."""
 import argparse
 import os
-from runtime_artifact import host_binary
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ops/launchers"))
+from runtime_artifact import host_binary  # noqa: E402
 
 
 def main(argv=None):

@@ -13,7 +13,7 @@ class ProductionLauncherTests(unittest.TestCase):
             result = subprocess.run([sys.executable, str(launcher), "--help"], capture_output=True)
             self.assertEqual(result.returncode, 0)
             self.assertIn(b"--verify", result.stdout)
-            unit = (TOOLING / f"systemd/dispatch-{environment}.service").read_text()
+            unit = (TOOLING.parent / f"systemd/dispatch-{environment}.service").read_text()
             self.assertIn(f"update-{environment}.py", unit)
             self.assertNotIn("--verify-management", unit)
 

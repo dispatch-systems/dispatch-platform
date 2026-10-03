@@ -12,12 +12,12 @@ const INPUTS: &[&str] = &[
     "Cargo.lock",
     "rust-toolchain.toml",
     "rust-toolchain",
-    "tooling/cargo-build.py",
-    "tooling/rustc-remap.py",
-    "tooling/ci_tool.py",
-    "tooling/runtime_artifact.py",
-    "tooling/update-dev.py",
-    "tooling/update-production.py",
+    "tooling/build/cargo-build.py",
+    "tooling/build/rustc-remap.py",
+    "tooling/ci/ci_tool.py",
+    "ops/launchers/runtime_artifact.py",
+    "ops/launchers/update-dev.py",
+    "ops/launchers/update-production.py",
 ];
 /// Every directory the Rust workspace compiles from: crates, their modules, the files they
 /// embed, migrations and tests.
@@ -163,13 +163,14 @@ fn external(value: &toml::Value, manifest: &Path, sources: &[PathBuf]) -> bool {
 }
 /// Only the repository's exact path-remapping config may use the shared binary cache.
 fn remap_config(root: &Path, file: &Path) -> bool {
-    let wrapper = root.join("tooling/rustc-remap.py");
-    if file != root.join(".cargo/config.toml")
-        || file.is_symlink()
-        || file.parent().is_some_and(Path::is_symlink)
-        || wrapper.is_symlink()
-        || wrapper.parent().is_some_and(Path::is_symlink)
-    {
+    let wrapper = root.join("tooling/build/rustc-remap.py");
+    // The file itself or any directory between it and the checkout's root.
+    let linked = |path: &Path| {
+        path.ancestors()
+            .take_while(|ancestor| *ancestor != root)
+            .any(Path::is_symlink)
+    };
+    if file != root.join(".cargo/config.toml") || linked(file) || linked(&wrapper) {
         return false;
     }
     let (Ok(bytes), Ok(text)) = (fs::read(wrapper), fs::read_to_string(file)) else {
@@ -177,7 +178,7 @@ fn remap_config(root: &Path, file: &Path) -> bool {
     };
     let hash = crate::to_hex(&Sha256::digest(bytes));
     let expected: toml::Value = toml::from_str(&format!(
-        "[build]\nrustc-wrapper = 'tooling/rustc-remap.py'\nrustflags = ['--cfg=dispatch_path_policy_{hash}']\n"
+        "[build]\nrustc-wrapper = 'tooling/build/rustc-remap.py'\nrustflags = ['--cfg=dispatch_path_policy_{hash}']\n"
     ))
     .unwrap();
     toml::from_str::<toml::Value>(&text).is_ok_and(|config| config == expected)

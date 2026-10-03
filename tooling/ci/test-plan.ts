@@ -28,12 +28,17 @@ export const nativeTests = Object.values(nativeShards).flat();
 export const nativeRealTimeout = plan.nativeRealTimeout;
 /** Real compiler/installed-manager checks; source-only rules do not build Rust. */
 export const pythonIntegrationTests = plan.pythonIntegration;
+/** Where the Python tests live: the tooling's own and the host scripts'. */
+export const pythonTestDirs = ['tooling/tests', 'ops/tests'];
 export function allPythonTests() {
-  return fs
-    .readdirSync('tests/tooling')
-    .filter((name) => name.endsWith('_test.py'))
-    .sort()
-    .map((name) => `tests/tooling/${name}`);
+  return pythonTestDirs
+    .flatMap((directory) =>
+      fs
+        .readdirSync(directory)
+        .filter((name) => name.endsWith('_test.py'))
+        .map((name) => `${directory}/${name}`),
+    )
+    .sort();
 }
 export function pythonRuleTests() {
   return allPythonTests().filter((file) => !pythonIntegrationTests.includes(file));
@@ -43,8 +48,8 @@ export function pythonRuleTests() {
  * tests the diff changes. Each group comes from queue runs such changes failed.
  */
 export const watchedTests = plan.watch;
-/** Where tests live: each owner's `tests/<kind>/`, and the tooling's own `tests/tooling/`. */
-export const testRoots = ['app', 'collectors', 'core', 'features', 'tests'];
+/** Where tests live: each owner's `tests/<kind>/`, the tooling's `tooling/tests/` and ops' `ops/tests/`. */
+export const testRoots = ['app', 'collectors', 'core', 'features', 'tooling', 'ops'];
 /** Every other test file: the api job runs these, so nothing runs twice in a full run. */
 export function allTests(roots = testRoots) {
   return roots

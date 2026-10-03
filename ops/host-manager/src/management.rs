@@ -105,9 +105,9 @@ pub fn refresh(updater: &Updater<'_>) -> Result<()> {
     Ok(())
 }
 
-const RUNTIME_LAUNCHER: &[u8] = include_bytes!("../../../tooling/runtime_artifact.py");
-const DEV_LAUNCHER: &[u8] = include_bytes!("../../../tooling/update-dev.py");
-const PRODUCTION_LAUNCHER: &[u8] = include_bytes!("../../../tooling/update-production.py");
+const RUNTIME_LAUNCHER: &[u8] = include_bytes!("../../launchers/runtime_artifact.py");
+const DEV_LAUNCHER: &[u8] = include_bytes!("../../launchers/update-dev.py");
+const PRODUCTION_LAUNCHER: &[u8] = include_bytes!("../../launchers/update-production.py");
 
 /// Prepare all three installation files before exposing any of them to a unit.
 pub(super) fn prepare_bundle(

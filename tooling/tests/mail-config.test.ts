@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { mailConfig, writeMailConfig } from '../../tooling/host/mail-config.js';
+import { mailConfig, writeMailConfig } from '../mail/mail-config.js';
 
 const settings = {
   environment: 'preview',

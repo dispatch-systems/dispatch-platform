@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { manualBrowserSelection } from '../../tooling/ci/browser-input.js';
-import { browserTests, shards } from '../../tooling/ci/browser-shards.js';
-import { workflowField, workflowNumbers } from '../../tooling/testing/workflow.js';
+import { manualBrowserSelection } from '../ci/browser-input.js';
+import { browserTests, shards } from '../ci/browser-shards.js';
+import { workflowField, workflowNumbers } from '../testing/workflow.js';
 
 test('the browser shards split every test into exactly one shard by recorded time', () => {
   const times = Object.fromEntries(

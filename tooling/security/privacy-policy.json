@@ -22,7 +22,7 @@
       "reason": "Exercise validation of the legacy repository identity."
     },
     {
-      "path": "tooling/host/setup-swap.sh",
+      "path": "ops/scripts/setup-swap.sh",
       "rule": "non-example-email",
       "lineSha256": "bf0893437b30efbb2aa3d380bff33e24b5c0f68cd383dd50b68c6f56ab612fc9",
       "reason": "A systemd instance name, not an email address."

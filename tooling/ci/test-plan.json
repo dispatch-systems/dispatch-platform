@@ -18,16 +18,16 @@
     "app/tests/rules/unused-css.test.ts"
   ],
   "pythonIntegration": [
-    "tests/tooling/compiler_paths_integration_test.py",
-    "tests/tooling/production_launcher_integration_test.py"
+    "tooling/tests/compiler_paths_integration_test.py",
+    "ops/tests/production_launcher_integration_test.py"
   ],
   "rules": [
     "app/tests/rules/audit-actions.test.ts",
-    "tests/tooling/browser-shards.test.ts",
-    "tests/tooling/mail-config.test.ts",
-    "tests/tooling/screenshots-worker.test.ts",
-    "tests/tooling/source-lines.test.ts",
-    "tests/tooling/test-plan.test.ts"
+    "tooling/tests/browser-shards.test.ts",
+    "tooling/tests/mail-config.test.ts",
+    "tooling/tests/screenshots-worker.test.ts",
+    "tooling/tests/source-lines.test.ts",
+    "tooling/tests/test-plan.test.ts"
   ],
   "native": {
     "paycom": [

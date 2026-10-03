@@ -14,13 +14,14 @@ import {
   nativeRealTimeout,
   pythonIntegrationTests,
   pythonRuleTests,
+  pythonTestDirs,
   ruleTests,
   sourceLints,
   watchedTests,
-} from '../../tooling/ci/test-plan.js';
-import { pythonTests, type Command } from '../../tooling/ci/execution-plan.js';
-import { readsEnvironment } from '../../tooling/testing/source-analysis.js';
-import { workflowField } from '../../tooling/testing/workflow.js';
+} from '../ci/test-plan.js';
+import { pythonTests, type Command } from '../ci/execution-plan.js';
+import { readsEnvironment } from '../testing/source-analysis.js';
+import { workflowField } from '../testing/workflow.js';
 
 const names = (directory: string, pattern: RegExp) =>
   fs
@@ -28,7 +29,7 @@ const names = (directory: string, pattern: RegExp) =>
     .filter((name) => pattern.test(name))
     .map((name) => `${directory}/${name}`)
     .sort();
-// Test files in every owner's tests/ folder and in tests/tooling.
+// Test files in every owner's tests/ folder, the tooling's and ops'.
 const owned = (pattern: RegExp) =>
   testRoots
     .flatMap((root) => names(root, pattern))
@@ -81,7 +82,7 @@ test('every test file is run by exactly one check of full validation and none is
   assert.deepEqual(
     files.filter(
       (file) =>
-        !/^((app|(core|collectors|features)\/[a-z_]+)\/tests\/(api|frontend|native|rules)|tests\/tooling)\//.test(
+        !/^((app|(core|collectors|features)\/[a-z_]+)\/tests\/(api|frontend|native|rules)|(tooling|ops)\/tests)\//.test(
           file,
         ),
     ),
@@ -128,18 +129,20 @@ test('every test file is run by exactly one check of full validation and none is
   );
 
   // Python source checks and real compiler/host checks cover every module once in CI.
-  const python = names('tests', /\.py$/);
+  const python = pythonTestDirs.flatMap((directory) => names(directory, /\.py$/)).sort();
   assert.deepEqual(
-    python.filter((file) => !/^tests\/tooling\/[a-z_]+_test\.py$/.test(file)),
+    python.filter((file) => !/^(tooling|ops)\/tests\/[a-z_]+_test\.py$/.test(file)),
     [],
-    'a Python file in tests/ is not matched by the unittest discovery pattern',
+    'a Python test file is not matched by the unittest discovery pattern',
   );
+  const modules = python.map((file) => path.basename(file, '.py'));
+  assert.equal(new Set(modules).size, modules.length, 'two Python test modules share a name');
   const pythonCommands = apiPlan.filter(
     ({ command, args }) => command === 'python3' && args.includes('unittest'),
   );
   assert.deepEqual(pythonCommands, [pythonTests('rules'), pythonTests('integration')]);
   const pythonScheduled = pythonCommands.flatMap(({ args }) =>
-    args.slice(2).map((module) => `tests/tooling/${module}.py`),
+    args.slice(2).map((module) => python.find((file) => path.basename(file, '.py') === module)!),
   );
   assert.deepEqual(pythonScheduled.sort(), python);
   assert.equal(new Set(pythonScheduled).size, python.length);
@@ -165,8 +168,15 @@ test('every test file is run by exactly one check of full validation and none is
     '--features',
     'operator-probes',
   ]);
-  for (const directory of ['tooling', 'shared', 'services'])
-    assert.deepEqual(names(directory, /\.(test|spec)\.tsx?$|_test\.py$/), []);
+  // Tooling and ops keep their tests in their own tests/ folder; shared and services have none.
+  for (const directory of ['tooling', 'ops', 'shared', 'services'])
+    assert.deepEqual(
+      names(directory, /\.(test|spec)\.tsx?$|_test\.py$/).filter(
+        (file) =>
+          !file.startsWith(`${directory}/tests/`) || !['tooling', 'ops'].includes(directory),
+      ),
+      [],
+    );
   // Owners keep tests only in their tests/ folder, never beside the code.
   assert.deepEqual(
     testRoots

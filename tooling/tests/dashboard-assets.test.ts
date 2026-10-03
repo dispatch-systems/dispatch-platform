@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { dashboardGraphSizes } from '../../tooling/testing/dashboard-assets.js';
+import { dashboardGraphSizes } from '../testing/dashboard-assets.js';
 
 test('critical dashboard graphs count shared dependencies and CSS once while leaving dynamic panels deferred', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-dashboard-graph-'));
