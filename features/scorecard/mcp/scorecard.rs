@@ -17,6 +17,7 @@ use crate::{
     },
     contracts::{DriverSource, Dsp},
     db::{Store, s},
+    scorecard::ScorecardStore,
     weeks,
 };
 use serde_json::{Map, Value, json};
@@ -109,7 +110,7 @@ fn rows(
     drivers: Option<&[String]>,
 ) -> crate::Result<Vec<Row>> {
     let station = db.profile(&dsp.id)?.station_code;
-    let data = db.scorecard(&dsp.id)?;
+    let data = db.scorecard_db(&dsp.id)?;
     let mut sql = format!(
         "SELECT x.week,COALESCE(x.transporter_id,'') transporter_id,COALESCE(x.tracking_id,'') tracking_id,x.row \
          FROM {table} x JOIN scorecard_publications p ON p.id=x.publication_id AND p.active=1 AND p.scope_verified=1 \
@@ -155,7 +156,7 @@ fn weeks(db: &Store, dsp: &Dsp, period: &Period) -> crate::Result<Value> {
         day = saturday + chrono::Duration::days(1);
     }
     let posted: BTreeSet<String> = db
-        .scorecard(&dsp.id)?
+        .scorecard_db(&dsp.id)?
         .all(
             "SELECT week FROM scorecard_publications WHERE station=? AND active=1 AND scope_verified=1",
             [&station],
@@ -182,7 +183,7 @@ fn weeks(db: &Store, dsp: &Dsp, period: &Period) -> crate::Result<Value> {
 }
 /// The latest scorecard week collected.
 pub fn fresh(db: &Store, dsp: &Dsp, station: &str) -> crate::Result<Option<Value>> {
-    let scorecard = db.scorecard(&dsp.id)?.one(
+    let scorecard = db.scorecard_db(&dsp.id)?.one(
         "SELECT max(week) week,max(collected_at) collected_at FROM scorecard_publications \
          WHERE station=? AND active=1 AND scope_verified=1",
         [station],
@@ -282,7 +283,7 @@ fn first_page(answer: &mut Value, table: Table, query: &Value) -> Result<(), Ref
 fn ever(db: &Store, dsp: &Dsp, table: &str, field: &str) -> crate::Result<BTreeSet<String>> {
     let station = db.profile(&dsp.id)?.station_code;
     Ok(db
-        .scorecard(&dsp.id)?
+        .scorecard_db(&dsp.id)?
         .all(
             &format!(
                 "SELECT DISTINCT json_extract(x.row,'$.{field}') v FROM {table} x \
@@ -785,7 +786,7 @@ pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
     let access = Access::of(db, caller, query)?;
     let dsp = access.dsp;
     let station = db.profile(&dsp.id)?.station_code;
-    let data = db.scorecard(&dsp.id)?;
+    let data = db.scorecard_db(&dsp.id)?;
     let posted: Vec<String> = data
         .all(
             "SELECT week FROM scorecard_publications WHERE station=? AND active=1 AND scope_verified=1 ORDER BY week DESC",

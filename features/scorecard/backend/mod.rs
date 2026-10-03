@@ -111,74 +111,53 @@ fn keys(dataset: &Dataset, row: &Value) -> Keys {
     }
 }
 
-impl Store {
-    pub fn scorecard(&self, id: &str) -> Result<DspLease<'_>> {
+/// What Scorecard reads and writes for a DSP: its weekly scorecards, in the database beside
+/// Cortex's, and the collections that bring them.
+pub trait ScorecardStore {
+    fn scorecard_db(&self, id: &str) -> Result<DspLease<'_>>;
+    fn enqueue_scorecard(
+        &self,
+        id: &str,
+        actor: Option<&str>,
+        key: &str,
+        week: Option<&str>,
+    ) -> Result<Value>;
+    fn scorecard_jobs(&self, id: &str) -> Result<Vec<(String, Value)>>;
+    fn scorecard_address(&self, id: &str, station: &str) -> Result<Option<(String, String)>>;
+    fn publish_scorecard(
+        &self,
+        id: &str,
+        job: &str,
+        capture: &Capture,
+        scope: &Scope,
+    ) -> Result<()>;
+    fn scorecard_weeks(&self, id: &str) -> Result<ScorecardWeeks>;
+}
+impl ScorecardStore for Store {
+    fn scorecard_db(&self, id: &str) -> Result<DspLease<'_>> {
         self.added_storage(id, cortex::PROVIDER, &STORAGE)
     }
-    /// Today, where the DSP is.
-    fn scorecard_today(&self, id: &str) -> Result<NaiveDate> {
-        let tz: chrono_tz::Tz = self
-            .find_dsp(id)?
-            .timezone
-            .parse()
-            .map_err(|_| Error::new("invalid_timezone", 400))?;
-        Ok(chrono::Utc::now().with_timezone(&tz).date_naive())
-    }
-    /// The station the DSP's profile names, which every scorecard request carries.
-    fn scorecard_station(&self, id: &str) -> Result<String> {
-        let station = self.profile(id)?.station_code;
-        ensure(!station.is_empty(), "scorecard_station_required", 409)?;
-        Ok(station)
-    }
-    pub(crate) fn bind_scorecard_request(&self, id: &str, week: &str) -> Result<Value> {
-        let dsp = self.find_dsp(id)?;
-        let profile = self.profile(id)?;
-        ensure(
-            !profile.station_code.is_empty(),
-            "scorecard_station_required",
-            409,
-        )?;
-        let request = Request {
-            collection: Collection::Scorecard,
-            week: week.into(),
-            station: profile.station_code,
-            timezone: dsp.timezone,
-            dsp_name: dsp.name,
-            dsp_abbreviation: profile.abbreviation,
-        };
-        request.validate()?;
-        Ok(serde_json::to_value(request)?)
-    }
-    pub(crate) fn scorecard_request(&self, id: &str, week: &str) -> Result<Value> {
-        let request = self.bind_scorecard_request(id, week)?;
-        // Keep the durable job payload readable by the previous binary. The worker
-        // binds live tenant context immediately before collection and publication.
-        Ok(json!({"collection":"scorecard","week":request["week"],"station":request["station"]}))
-    }
     /// Queues `week`, or the most recent completed one, answering with the job.
-    pub fn enqueue_scorecard(
+    fn enqueue_scorecard(
         &self,
         id: &str,
         actor: Option<&str>,
         key: &str,
         week: Option<&str>,
     ) -> Result<Value> {
-        let week = week_or_latest(week, self.scorecard_today(id)?)?;
-        let request = self.scorecard_request(id, &week)?;
+        let week = week_or_latest(week, scorecard_today(self, id)?)?;
+        let request = scorecard_request(self, id, &week)?;
         let job = self
             .enqueue_batch(id, actor, &[(key.into(), cortex::PROVIDER, request)])?
             .remove(0);
         Ok(serde_json::to_value(job)?)
     }
-    pub(crate) fn scorecard_schedule_ready(&self, id: &str) -> Result<()> {
-        self.scorecard_station(id).map(|_| ())
-    }
     /// What a scheduled run collects: the latest completed week, until it is
     /// published. A week not posted yet is asked for again after `RECHECK_AFTER_MS`.
-    pub fn scorecard_jobs(&self, id: &str) -> Result<Vec<(String, Value)>> {
-        let week = last_completed_week(self.scorecard_today(id)?);
-        let station = self.scorecard_station(id)?;
-        let db = self.scorecard(id)?;
+    fn scorecard_jobs(&self, id: &str) -> Result<Vec<(String, Value)>> {
+        let week = last_completed_week(scorecard_today(self, id)?);
+        let station = scorecard_station(self, id)?;
+        let db = self.scorecard_db(id)?;
         let published = db
             .one(
                 "SELECT id FROM scorecard_publications WHERE week=? AND station=? AND active=1 AND scope_verified=1",
@@ -197,14 +176,14 @@ impl Store {
         }
         Ok(vec![(
             format!("scorecard:{week}"),
-            self.scorecard_request(id, &week)?,
+            scorecard_request(self, id, &week)?,
         )])
     }
     /// The API address the station's last publication read, with the company it
     /// named. A job reads there again without opening Cortex's page.
-    pub fn scorecard_address(&self, id: &str, station: &str) -> Result<Option<(String, String)>> {
+    fn scorecard_address(&self, id: &str, station: &str) -> Result<Option<(String, String)>> {
         Ok(self
-            .scorecard(id)?
+            .scorecard_db(id)?
             .one(
                 "SELECT s.url,p.company_id FROM scorecard_publications p JOIN scorecard_sources s \
                  ON s.publication_id=p.id WHERE p.station=? AND s.source='api' \
@@ -216,7 +195,7 @@ impl Store {
     }
     /// Stores a week's capture as its active publication, or records that the week
     /// is not posted yet. One transaction: a reader never sees part of a week.
-    pub fn publish_scorecard(
+    fn publish_scorecard(
         &self,
         id: &str,
         job: &str,
@@ -227,7 +206,7 @@ impl Store {
         let request = keeper::Scorecard.bind(self, id, &request)?;
         let request = Request::parse(&request)?.ok_or_else(|| Error::new("invalid_input", 400))?;
         capture.validate_scope(&request, scope)?;
-        let db = self.scorecard(id)?;
+        let db = self.scorecard_db(id)?;
         let checked_at = at(capture.finished_at);
         db.transaction(|| {
             if !capture.posted {
@@ -316,10 +295,10 @@ impl Store {
     }
     /// Every week checked so far at the DSP's station, newest first, with its
     /// active publication and how many rows each table holds for it.
-    pub fn scorecard_weeks(&self, id: &str) -> Result<ScorecardWeeks> {
-        let today = self.scorecard_today(id)?;
+    fn scorecard_weeks(&self, id: &str) -> Result<ScorecardWeeks> {
+        let today = scorecard_today(self, id)?;
         let station = self.profile(id)?.station_code;
-        let db = self.scorecard(id)?;
+        let db = self.scorecard_db(id)?;
         let states = db.all(
             "SELECT w.week,w.checked_at,w.posted,p.id,p.station,p.dsp_code,p.collected_at,p.row_count \
              FROM scorecard_weeks w LEFT JOIN scorecard_publications p \
@@ -406,6 +385,49 @@ impl Store {
             weeks,
         })
     }
+}
+/// Today, where the DSP is.
+fn scorecard_today(store: &Store, id: &str) -> Result<NaiveDate> {
+    let tz: chrono_tz::Tz = store
+        .find_dsp(id)?
+        .timezone
+        .parse()
+        .map_err(|_| Error::new("invalid_timezone", 400))?;
+    Ok(chrono::Utc::now().with_timezone(&tz).date_naive())
+}
+/// The station the DSP's profile names, which every scorecard request carries.
+fn scorecard_station(store: &Store, id: &str) -> Result<String> {
+    let station = store.profile(id)?.station_code;
+    ensure(!station.is_empty(), "scorecard_station_required", 409)?;
+    Ok(station)
+}
+pub(crate) fn bind_scorecard_request(store: &Store, id: &str, week: &str) -> Result<Value> {
+    let dsp = store.find_dsp(id)?;
+    let profile = store.profile(id)?;
+    ensure(
+        !profile.station_code.is_empty(),
+        "scorecard_station_required",
+        409,
+    )?;
+    let request = Request {
+        collection: Collection::Scorecard,
+        week: week.into(),
+        station: profile.station_code,
+        timezone: dsp.timezone,
+        dsp_name: dsp.name,
+        dsp_abbreviation: profile.abbreviation,
+    };
+    request.validate()?;
+    Ok(serde_json::to_value(request)?)
+}
+pub(crate) fn scorecard_request(store: &Store, id: &str, week: &str) -> Result<Value> {
+    let request = bind_scorecard_request(store, id, week)?;
+    // Keep the durable job payload readable by the previous binary. The worker
+    // binds live tenant context immediately before collection and publication.
+    Ok(json!({"collection":"scorecard","week":request["week"],"station":request["station"]}))
+}
+pub(crate) fn scorecard_schedule_ready(store: &Store, id: &str) -> Result<()> {
+    scorecard_station(store, id).map(|_| ())
 }
 
 #[cfg(test)]

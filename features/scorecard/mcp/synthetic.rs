@@ -7,6 +7,7 @@ use crate::{
     },
     collectors::cortex,
     db::{Store, s},
+    scorecard::ScorecardStore,
 };
 use chrono::{Datelike, Duration};
 use serde_json::{Value, json};

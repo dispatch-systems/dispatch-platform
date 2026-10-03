@@ -289,7 +289,7 @@ fn migrate_dsp_after_probe<F: FnOnce()>(db: &Db, id: &str, after_probe: F) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{config::Config, db::Store, dvic::DvicStore};
+    use crate::{config::Config, db::Store, dvic::DvicStore, scorecard::ScorecardStore};
     use std::{
         os::unix::fs::PermissionsExt,
         path::{Path, PathBuf},
@@ -382,7 +382,7 @@ mod tests {
         let cortex = store
             .collector(&id, crate::collectors::cortex::PROVIDER)
             .unwrap();
-        let scorecard = store.scorecard(&id).unwrap();
+        let scorecard = store.scorecard_db(&id).unwrap();
         let routedata = store.routedata(&id).unwrap();
         let dvic = store.dvic_db(&id).unwrap();
         let databases: [(Kind, &Db); 8] = [

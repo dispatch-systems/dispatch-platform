@@ -12,6 +12,7 @@ use crate::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, read, write},
     },
+    scorecard::ScorecardStore,
     validate as v, weeks,
 };
 

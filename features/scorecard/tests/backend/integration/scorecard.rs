@@ -9,6 +9,7 @@ use dispatch_backend::{
         scorecard::{self, Capture, Request},
     },
     db::{Store, s},
+    scorecard::ScorecardStore,
 };
 use serde_json::json;
 
@@ -66,7 +67,7 @@ fn a_posted_week_is_published_into_one_table_per_dataset_with_its_keys() {
     let job = publish(&db, &id, "first", "2026-W38", &capture);
     let queued = db.job_row(&job, Some(&id)).unwrap();
     assert_eq!(queued.kind.as_str(), "cortex.scorecard.collect");
-    let storage = db.scorecard(&id).unwrap();
+    let storage = db.scorecard_db(&id).unwrap();
     let publication = storage
         .one(
             "SELECT * FROM scorecard_publications WHERE job_id=?",
@@ -183,7 +184,7 @@ fn collecting_a_week_again_supersedes_its_publication_and_keeps_the_history() {
     again.started_at += 1000;
     again.finished_at += 2000;
     let second = publish(&db, &id, "two", "2026-W37", &again);
-    let storage = db.scorecard(&id).unwrap();
+    let storage = db.scorecard_db(&id).unwrap();
     assert_eq!(
         storage
             .all(
@@ -231,7 +232,7 @@ fn week_counts_use_capture_metadata_and_recover_missing_legacy_dataset_counts() 
     current.started_at += 1000;
     current.finished_at += 2000;
     publish(&db, &id, "current", "2026-W37", &current);
-    let storage = db.scorecard(&id).unwrap();
+    let storage = db.scorecard_db(&id).unwrap();
     // Migration 0002 adopted old publications without source metadata. A
     // partially missing catalog also falls back only for its missing dataset.
     storage
@@ -286,7 +287,7 @@ fn a_week_not_posted_yet_is_noted_without_a_publication() {
     }
     capture.posted = false;
     let job = publish(&db, &id, "empty", "2026-W36", &capture);
-    let storage = db.scorecard(&id).unwrap();
+    let storage = db.scorecard_db(&id).unwrap();
     assert!(
         storage
             .one(
@@ -329,7 +330,7 @@ fn publication_rechecks_the_discovered_company_and_pinned_dsp_code() {
             .is_err()
     );
     assert_eq!(
-        db.scorecard(&id)
+        db.scorecard_db(&id)
             .unwrap()
             .count("SELECT count(*) FROM scorecard_publications", [])
             .unwrap(),
@@ -344,7 +345,7 @@ fn publication_rechecks_the_discovered_company_and_pinned_dsp_code() {
 fn legacy_unverified_publications_are_quarantined_until_a_bound_recollection() {
     let (_root, db, id) = ready();
     let week = db.scorecard_weeks(&id).unwrap().latest_week;
-    let storage = db.scorecard(&id).unwrap();
+    let storage = db.scorecard_db(&id).unwrap();
     storage
         .exec(
             "INSERT INTO scorecard_publications(id,job_id,week,station,company_id,dsp_code,\
@@ -433,7 +434,7 @@ fn a_schedule_queues_the_latest_week_until_it_is_published() {
     empty.posted = false;
     publish(&db, &id, "empty", &latest, &empty);
     assert!(db.scorecard_jobs(&id).unwrap().is_empty());
-    let storage = db.scorecard(&id).unwrap();
+    let storage = db.scorecard_db(&id).unwrap();
     storage
         .exec(
             "UPDATE scorecard_weeks SET checked_at='2020-01-01T00:00:00.000Z' WHERE week=?",

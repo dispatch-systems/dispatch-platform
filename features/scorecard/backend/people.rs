@@ -4,6 +4,7 @@ use crate::{
     contracts::{DriverData, DriverSource},
     db::{Store, n, s},
     manifest::people::{self, Appearances, Named, People},
+    scorecard::ScorecardStore,
     weeks,
 };
 
@@ -28,7 +29,7 @@ impl People for Drivers {
         40
     }
     fn named(&self, store: &Store, dsp: &str) -> Result<Vec<Named>> {
-        let rows = store.scorecard(dsp)?.all(
+        let rows = store.scorecard_db(dsp)?.all(
             "SELECT d.transporter_id id,json_extract(d.row,'$.da_name') name,\
              min(p.week) first,max(p.week) last FROM driver_scorecards d \
              JOIN scorecard_publications p ON p.id=d.publication_id \
@@ -47,7 +48,7 @@ impl People for Drivers {
     }
     fn name(&self, store: &Store, dsp: &str, id: &str) -> Result<Option<String>> {
         people::first_name(
-            &*store.scorecard(dsp)?,
+            &*store.scorecard_db(dsp)?,
             "SELECT json_extract(d.row,'$.da_name') FROM driver_scorecards d \
              JOIN scorecard_publications p ON p.id=d.publication_id \
              WHERE d.transporter_id=? AND p.scope_verified=1 ORDER BY p.week DESC",
@@ -56,7 +57,7 @@ impl People for Drivers {
     }
     /// Counted in weeks, each last seen on the Saturday it ends.
     fn appearances(&self, store: &Store, dsp: &str) -> Result<Vec<Appearances>> {
-        let rows = store.scorecard(dsp)?.all(
+        let rows = store.scorecard_db(dsp)?.all(
             "SELECT d.transporter_id id,count(DISTINCT p.week) count,max(p.week) last \
              FROM driver_scorecards d JOIN scorecard_publications p \
              ON p.id=d.publication_id AND p.active=1 AND p.scope_verified=1 \

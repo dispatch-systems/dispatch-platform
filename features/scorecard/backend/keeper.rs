@@ -10,6 +10,7 @@ use crate::{
     ensure,
     manifest::Keeper,
     read_cache::DataDomain,
+    scorecard::ScorecardStore,
 };
 use serde_json::Value;
 
@@ -31,7 +32,7 @@ impl Keeper for Scorecard {
         let station = request["station"]
             .as_str()
             .ok_or_else(|| Error::new("invalid_input", 400))?;
-        let bound = store.bind_scorecard_request(dsp, week)?;
+        let bound = super::bind_scorecard_request(store, dsp, week)?;
         ensure(bound["station"] == station, "scorecard_scope_mismatch", 409)?;
         Ok(bound)
     }
@@ -50,7 +51,7 @@ impl Keeper for Scorecard {
         )
     }
     fn schedule_ready(&self, store: &Store, dsp: &str) -> Result<()> {
-        store.scorecard_schedule_ready(dsp)
+        super::scorecard_schedule_ready(store, dsp)
     }
     fn scheduled(&self, store: &Store, dsp: &str) -> Result<Vec<(String, Value)>> {
         store.scorecard_jobs(dsp)

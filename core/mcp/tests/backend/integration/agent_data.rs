@@ -18,6 +18,7 @@ use dispatch_backend::{
     contracts::{AgentArea, AgentKeyRequest},
     db::{Store, s},
     dvic::DvicStore,
+    scorecard::ScorecardStore,
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -503,7 +504,7 @@ async fn agents_never_see_legacy_unverified_provider_rows() {
         [DAY, DAY],
     ).unwrap();
     drop(dvic);
-    let scorecard = db.scorecard(&id).unwrap();
+    let scorecard = db.scorecard_db(&id).unwrap();
     scorecard.exec(
         "INSERT INTO scorecard_publications(id,job_id,week,station,company_id,dsp_code,started_at,\
          collected_at,active,row_count,adapter_version) VALUES ('foreign-publication','foreign-job',\
