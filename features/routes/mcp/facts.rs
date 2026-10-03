@@ -11,6 +11,7 @@ use crate::{
     },
     contracts::{AgentArea, DriverSource, Dsp},
     db::{Store, n, s},
+    routedata::RoutesStore,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -51,7 +52,7 @@ pub fn routes(
     drivers: Option<&[String]>,
 ) -> Result<(Vec<RouteDay>, Coverage)> {
     let station = db.profile(&dsp.id)?.station_code;
-    let data = db.routedata(&dsp.id)?;
+    let data = db.routes_db(&dsp.id)?;
     let published = data.all(
         "SELECT day,mode FROM route_publications WHERE station=? AND active=1 AND day BETWEEN ? AND ?",
         [&station, &period.first(), &period.last()],
@@ -153,7 +154,7 @@ pub fn find_itinerary(
     wanted: &str,
 ) -> Result<Vec<(String, String, String)>> {
     let station = db.profile(&dsp.id)?.station_code;
-    let rows = db.routedata(&dsp.id)?.all(
+    let rows = db.routes_db(&dsp.id)?.all(
         "SELECT i.itinerary_id,COALESCE(i.route_code,'') route,i.driver_name FROM itineraries i \
          JOIN route_publications p ON p.id=i.publication_id AND p.active=1 \
          WHERE p.station=?1 AND p.day=?2 AND (i.itinerary_id=?3 OR upper(i.route_code)=upper(?3)) \
@@ -263,7 +264,7 @@ pub fn package_counts(
     wanted: &Packages,
     groups: &[&str],
 ) -> std::result::Result<(i64, Grouped), Failure> {
-    let data = db.routedata(&dsp.id)?;
+    let data = db.routes_db(&dsp.id)?;
     let (scope, params) = package_scope(dsp, db, period, wanted)?;
     let total = package_query(data.all_bounded(
         &format!("SELECT COUNT(*) n{scope}"),
@@ -333,7 +334,7 @@ pub fn package_rows(
     offset: usize,
     limit: usize,
 ) -> std::result::Result<Vec<PackageRow>, Failure> {
-    let data = db.routedata(&dsp.id)?;
+    let data = db.routes_db(&dsp.id)?;
     let (scope, mut params) = package_scope(dsp, db, period, wanted)?;
     params.push(limit.to_string());
     params.push(offset.to_string());
@@ -370,7 +371,7 @@ pub fn unknown_package_reason_choices(
     dsp: &Dsp,
     wanted: &str,
 ) -> std::result::Result<Option<Vec<String>>, Failure> {
-    let data = db.routedata(&dsp.id)?;
+    let data = db.routes_db(&dsp.id)?;
     let station = db.profile(&dsp.id)?.station_code;
     let scope = " FROM tasks t JOIN route_publications p ON p.id=t.publication_id AND p.active=1 \
                  WHERE p.station=? AND t.task_type='DROP_OFF' AND t.active=1";
@@ -396,7 +397,7 @@ pub fn unknown_package_reason_choices(
 }
 /// One-line addresses, by the IDs Amazon gives them.
 pub fn addresses(db: &Store, dsp: &Dsp, ids: &[String]) -> Result<HashMap<String, String>> {
-    let data = db.routedata(&dsp.id)?;
+    let data = db.routes_db(&dsp.id)?;
     let mut out = HashMap::new();
     for chunk in ids.chunks(400) {
         let rows = data.all(
@@ -421,7 +422,7 @@ pub fn addresses(db: &Store, dsp: &Dsp, ids: &[String]) -> Result<HashMap<String
 /// The days routes were collected for, and which of them are snapshots.
 pub fn route_coverage(db: &Store, dsp: &Dsp, period: &Period) -> Result<Coverage> {
     let station = db.profile(&dsp.id)?.station_code;
-    let data = db.routedata(&dsp.id)?;
+    let data = db.routes_db(&dsp.id)?;
     let published = data.all(
         "SELECT day,mode FROM route_publications WHERE station=? AND active=1 AND day BETWEEN ? AND ?",
         [&station, &period.first(), &period.last()],
@@ -441,7 +442,7 @@ pub fn route_coverage(db: &Store, dsp: &Dsp, period: &Period) -> Result<Coverage
 
 /// The latest route day collected, and whether it is final.
 pub fn fresh(db: &Store, dsp: &Dsp, station: &str) -> Result<Option<Value>> {
-    let routes = db.routedata(&dsp.id)?.one(
+    let routes = db.routes_db(&dsp.id)?.one(
         "SELECT day,mode,collected_at FROM route_publications WHERE station=? AND active=1 \
          ORDER BY day DESC LIMIT 1",
         [station],
@@ -454,7 +455,7 @@ pub fn fresh(db: &Store, dsp: &Dsp, station: &str) -> Result<Option<Value>> {
 }
 /// Each delivered package's address, by tracking ID, from the routes that carried it.
 pub fn places(db: &Store, dsp: &Dsp, tracking: &[String]) -> Result<HashMap<String, String>> {
-    let data = db.routedata(&dsp.id)?;
+    let data = db.routes_db(&dsp.id)?;
     let mut ids: HashMap<String, String> = HashMap::new();
     for chunk in tracking.chunks(400) {
         let rows = data.all(

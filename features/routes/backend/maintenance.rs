@@ -4,6 +4,7 @@ use crate::{
     Error, State,
     manifest::{Maintenance, Upkeep},
     observability,
+    routedata::RoutesStore,
 };
 use serde_json::json;
 use std::{sync::Arc, time::Duration};
@@ -49,7 +50,7 @@ fn clean(state: Arc<State>, expire: bool) -> Upkeep {
                 let id = dsp.clone();
                 match state
                     .run_bookkeeping(move |db| {
-                        let more = db.sweep_routes_step(&id, &mut selected)?;
+                        let more = super::sweep_routes_step(db, &id, &mut selected)?;
                         Ok((more, selected))
                     })
                     .await

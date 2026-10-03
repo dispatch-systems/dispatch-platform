@@ -387,53 +387,63 @@ struct Flat {
     itinerary: Vec<(&'static str, Value)>,
 }
 
-impl Store {
-    pub fn routedata(&self, id: &str) -> Result<DspLease<'_>> {
+/// What Routes reads and writes for a DSP: each day's routes, itineraries and packages, in
+/// the database beside Cortex's, the collections that bring them and how long they are kept.
+pub trait RoutesStore {
+    fn routes_db(&self, id: &str) -> Result<DspLease<'_>>;
+    fn enqueue_routes(
+        &self,
+        id: &str,
+        actor: Option<&str>,
+        key: &str,
+        day: Option<&str>,
+        mode: Mode,
+        days: i64,
+    ) -> Result<Value>;
+    fn routes_schedule_ready(&self, id: &str) -> Result<()>;
+    fn routes_jobs(&self, id: &str) -> Result<Vec<(String, Value)>>;
+    fn stage_routes_start(
+        &self,
+        id: &str,
+        job: &str,
+        lists: &Capture,
+        itineraries: usize,
+    ) -> Result<Staged>;
+    fn stage_routes(&self, id: &str, job: &str, capture: Capture) -> Result<Staged>;
+    fn stage_routes_itinerary(
+        &self,
+        id: &str,
+        staged: &Staged,
+        itinerary: &PreparedItinerary,
+    ) -> Result<()>;
+    fn publish_routes(&self, id: &str, job: &str, staged: &Staged) -> Result<()>;
+    fn route_retention(&self, id: &str) -> Result<RouteRetention>;
+    fn set_route_retention(
+        &self,
+        id: &str,
+        actor: Option<&str>,
+        days: Option<i64>,
+    ) -> Result<RouteRetention>;
+    fn expire_routes(&self, id: &str) -> Result<usize>;
+    fn sweep_routes(&self, id: &str) -> Result<bool>;
+    fn reprocess_routes(&self, id: &str, day: Option<&str>) -> Result<RouteReprocess>;
+    fn route_days(&self, id: &str) -> Result<RouteDays>;
+    fn route_day(&self, id: &str, day: &str) -> Result<Option<RouteDayView>>;
+    fn route_itinerary(
+        &self,
+        id: &str,
+        day: &str,
+        itinerary_id: &str,
+    ) -> Result<Option<RouteItineraryDetail>>;
+    fn route_package(&self, id: &str, tracking: &str) -> Result<RoutePackage>;
+}
+impl RoutesStore for Store {
+    fn routes_db(&self, id: &str) -> Result<DspLease<'_>> {
         self.added_storage(id, cortex::PROVIDER, &STORAGE)
-    }
-    /// Today, where the DSP is.
-    fn routes_today(&self, id: &str) -> Result<NaiveDate> {
-        let tz: chrono_tz::Tz = self
-            .find_dsp(id)?
-            .timezone
-            .parse()
-            .map_err(|_| Error::new("invalid_timezone", 400))?;
-        Ok(chrono::Utc::now().with_timezone(&tz).date_naive())
-    }
-    /// The request for one day: the DSP's station and names, which the driver resolves
-    /// to a service area and provider on Cortex.
-    pub(crate) fn routes_request(&self, id: &str, day: &str, mode: Mode) -> Result<Value> {
-        let profile = self.profile(id)?;
-        let dsp = self.find_dsp(id)?;
-        ensure(
-            !profile.station_code.is_empty(),
-            "routes_station_required",
-            409,
-        )?;
-        // A scope proven by an earlier day at this station spares discovery, which
-        // starts from an address Cortex may send elsewhere.
-        let known = self.routedata(id)?.one(
-            "SELECT service_area_id,provider FROM route_publications WHERE station=? AND active=1 \
-             ORDER BY collected_at DESC LIMIT 1",
-            [&profile.station_code],
-        )?;
-        let request = Request {
-            collection: Collection::Routes,
-            mode,
-            date: day.into(),
-            station: profile.station_code,
-            timezone: dsp.timezone,
-            dsp_name: dsp.name,
-            dsp_abbreviation: profile.abbreviation,
-            service_area_id: known.as_ref().map(|k| s(k, "service_area_id").to_owned()),
-            provider: known.as_ref().map(|k| s(k, "provider").to_owned()),
-        };
-        request.validate()?;
-        Ok(serde_json::to_value(request)?)
     }
     /// Queues `days` days ending at `day`, or the default day of `mode`, answering with
     /// the jobs. A day already queued under `key` answers the same job.
-    pub fn enqueue_routes(
+    fn enqueue_routes(
         &self,
         id: &str,
         actor: Option<&str>,
@@ -447,14 +457,14 @@ impl Store {
             "invalid_input",
             400,
         )?;
-        let today = self.routes_today(id)?;
+        let today = routes_today(self, id)?;
         let last = day
             .map(str::to_owned)
             .unwrap_or_else(|| default_day(mode, today));
         day_allowed(mode, &last, today)?;
         ensure(days == 1 || mode == Mode::Final, "invalid_input", 400)?;
         // A day the retention window has passed would be deleted again within the hour.
-        if let Some(start) = self.retention_start(id)? {
+        if let Some(start) = retention_start(self, id)? {
             let first = NaiveDate::parse_from_str(&last, "%Y-%m-%d")
                 .map_err(|_| Error::new("invalid_date", 400))?
                 - Duration::days(days - 1);
@@ -473,14 +483,14 @@ impl Store {
                 Ok((
                     format!("{key}{suffix}"),
                     cortex::PROVIDER,
-                    self.routes_request(id, &day, mode)?,
+                    routes_request(self, id, &day, mode)?,
                 ))
             })
             .collect::<Result<Vec<_>>>()?;
         let jobs = self.enqueue_batch(id, actor, &requests)?;
         Ok(serde_json::to_value(jobs)?)
     }
-    pub fn routes_schedule_ready(&self, id: &str) -> Result<()> {
+    fn routes_schedule_ready(&self, id: &str) -> Result<()> {
         ensure(
             !self.profile(id)?.station_code.is_empty(),
             "routes_station_required",
@@ -489,10 +499,10 @@ impl Store {
     }
     /// The days a scheduled run collects: yesterday, and recent days without a final
     /// publication, newest first.
-    pub fn routes_jobs(&self, id: &str) -> Result<Vec<(String, Value)>> {
-        let today = self.routes_today(id)?;
+    fn routes_jobs(&self, id: &str) -> Result<Vec<(String, Value)>> {
+        let today = routes_today(self, id)?;
         let station = self.profile(id)?.station_code;
-        let db = self.routedata(id)?;
+        let db = self.routes_db(id)?;
         let mut jobs = Vec::new();
         for back in 1..=(BACKFILL_DAYS as i64) {
             let day = (today - Duration::days(back)).to_string();
@@ -503,7 +513,7 @@ impl Store {
             if published.is_none() {
                 jobs.push((
                     format!("routes:{day}"),
-                    self.routes_request(id, &day, Mode::Final)?,
+                    routes_request(self, id, &day, Mode::Final)?,
                 ));
                 if jobs.len() >= MAX_JOBS_PER_RUN {
                     break;
@@ -517,7 +527,7 @@ impl Store {
     /// sweep.
     /// `lists` is the validated capture with its itineraries taken out; `itineraries`
     /// is how many it had.
-    pub fn stage_routes_start(
+    fn stage_routes_start(
         &self,
         id: &str,
         job: &str,
@@ -525,7 +535,7 @@ impl Store {
         itineraries: usize,
     ) -> Result<Staged> {
         let capture = lists;
-        let db = self.routedata(id)?;
+        let db = self.routes_db(id)?;
         let publication = crate::crypto::id("routes")?;
         let routes = capture.route_summaries["rmsRouteSummaries"]
             .as_array()
@@ -584,7 +594,7 @@ impl Store {
     }
     /// Stages a whole capture at once, without the platform's lock: what tests and
     /// tools use where `stage` would need a running job.
-    pub fn stage_routes(&self, id: &str, job: &str, mut capture: Capture) -> Result<Staged> {
+    fn stage_routes(&self, id: &str, job: &str, mut capture: Capture) -> Result<Staged> {
         let request: Value = serde_json::from_str(&self.job_row(job, Some(id))?.request)?;
         let request = Request::parse(&request)?.ok_or_else(|| Error::new("invalid_input", 400))?;
         capture.validate(&request)?;
@@ -598,13 +608,13 @@ impl Store {
         Ok(staged)
     }
     /// Adds one shaped itinerary to a staged publication, in one short transaction.
-    pub fn stage_routes_itinerary(
+    fn stage_routes_itinerary(
         &self,
         id: &str,
         staged: &Staged,
         itinerary: &PreparedItinerary,
     ) -> Result<()> {
-        let db = self.routedata(id)?;
+        let db = self.routes_db(id)?;
         db.transaction(|| {
             ensure(
                 db.one(
@@ -637,8 +647,8 @@ impl Store {
     /// Makes a staged day its scope's active publication. Only flags change here, so the
     /// platform lock is held for moments; the day's previous publication is left
     /// inactive, and `sweep_routes` deletes it and its rows in small steps.
-    pub fn publish_routes(&self, id: &str, job: &str, staged: &Staged) -> Result<()> {
-        let db = self.routedata(id)?;
+    fn publish_routes(&self, id: &str, job: &str, staged: &Staged) -> Result<()> {
+        let db = self.routes_db(id)?;
         db.transaction(|| {
             let row = db
                 .one(
@@ -671,8 +681,8 @@ impl Store {
         })
     }
     /// The DSP's retention window and what its route data holds.
-    pub fn route_retention(&self, id: &str) -> Result<RouteRetention> {
-        let db = self.routedata(id)?;
+    fn route_retention(&self, id: &str) -> Result<RouteRetention> {
+        let db = self.routes_db(id)?;
         let setting = db.one("SELECT days,changed_at FROM route_retention WHERE id=1", [])?;
         let stored = db
             .one(
@@ -691,7 +701,7 @@ impl Store {
     }
     /// Sets how many days of route data the DSP keeps; `None` keeps every day. A window
     /// takes effect at the next hourly expiry, not in this request.
-    pub fn set_route_retention(
+    fn set_route_retention(
         &self,
         id: &str,
         actor: Option<&str>,
@@ -704,7 +714,7 @@ impl Store {
                 400,
             )?;
         }
-        let db = self.routedata(id)?;
+        let db = self.routes_db(id)?;
         db.exec(
             "INSERT INTO route_retention(id,days,changed_by,changed_at) VALUES (1,?,?,?) \
              ON CONFLICT(id) DO UPDATE SET days=excluded.days,changed_by=excluded.changed_by,\
@@ -719,30 +729,19 @@ impl Store {
         )?;
         self.route_retention(id)
     }
-    /// The first day the DSP's window keeps, or none when every day is kept.
-    fn retention_start(&self, id: &str) -> Result<Option<NaiveDate>> {
-        let days = self
-            .routedata(id)?
-            .one("SELECT days FROM route_retention WHERE id=1", [])?
-            .and_then(|row| row["days"].as_i64());
-        Ok(match days {
-            Some(days) => Some(self.routes_today(id)? - Duration::days(days)),
-            None => None,
-        })
-    }
     /// Retires the days a DSP's retention window has passed: they become inactive, and
     /// `sweep_routes` deletes them in small steps. Addresses and drivers last seen before
     /// the window go with them. Nothing is retired while the routes feature is off, so
     /// switching it off never deletes. Answers how many days were retired.
-    pub fn expire_routes(&self, id: &str) -> Result<usize> {
+    fn expire_routes(&self, id: &str) -> Result<usize> {
         if !self.feature_enabled(id, COLLECTION)? {
             return Ok(0);
         }
-        let Some(start) = self.retention_start(id)? else {
+        let Some(start) = retention_start(self, id)? else {
             return Ok(0);
         };
         let start = start.to_string();
-        let db = self.routedata(id)?;
+        let db = self.routes_db(id)?;
         let retired = db.transaction(|| {
             let retired = db.exec(
                 "UPDATE route_publications SET active=0 WHERE active=1 AND day<?",
@@ -760,92 +759,16 @@ impl Store {
     /// One small step of removing what no reader sees: publications a newer one
     /// replaced, a retention window retired, or a job left unfinished. Answers whether
     /// more remains. A publication whose job still runs is being staged and is kept.
-    pub fn sweep_routes(&self, id: &str) -> Result<bool> {
-        self.sweep_routes_step(id, &mut None)
-    }
-    /// Reuse the chosen publication during a scheduler batch. Every step checks its
-    /// activity and job again, because another transition can run between deletions.
-    pub(crate) fn sweep_routes_step(
-        &self,
-        id: &str,
-        selected: &mut Option<String>,
-    ) -> Result<bool> {
-        const BATCH: i64 = 2000;
-        let db = self.routedata(id)?;
-        let running: Vec<String> = self
-            .jobs
-            .query_as::<(String,)>(
-                concat!(
-                    "SELECT id FROM jobs WHERE dsp_id=? AND kind=? AND status IN ",
-                    crate::job_statuses!(active)
-                ),
-                params![id, JOB_KIND],
-            )?
-            .into_iter()
-            .map(|(job,)| job)
-            .collect();
-        let retained = match selected.as_deref() {
-            Some(publication) => db
-                .one_as::<(String, String)>(
-                    "SELECT id,job_id FROM route_publications WHERE id=? AND active=0",
-                    [publication],
-                )?
-                .filter(|(_, job)| !running.contains(job))
-                .map(|(publication, _)| publication),
-            None => None,
-        };
-        let publication = match retained {
-            Some(publication) => Some(publication),
-            None => db
-                .one_as::<(String,)>(
-                    "SELECT id FROM route_publications WHERE active=0 AND \
-                 job_id NOT IN (SELECT value FROM json_each(?)) ORDER BY collected_at,id LIMIT 1",
-                    [serde_json::to_string(&running)?],
-                )?
-                .map(|(publication,)| publication),
-        };
-        let Some(publication) = publication else {
-            *selected = None;
-            return Ok(false);
-        };
-        *selected = Some(publication.clone());
-        let remaining = db.transaction(|| {
-            for table in [
-                "tasks",
-                "stops",
-                "route_raw",
-                "breaks",
-                "unknown_stops",
-                "driver_days",
-                "itineraries",
-                "routes",
-            ] {
-                let removed = db.exec(
-                    &format!(
-                        "DELETE FROM {table} WHERE rowid IN \
-                         (SELECT rowid FROM {table} WHERE publication_id=? LIMIT ?)"
-                    ),
-                    params![publication, BATCH],
-                )?;
-                if removed > 0 {
-                    return Ok(true);
-                }
-            }
-            db.exec("DELETE FROM route_publications WHERE id=?", [&publication])?;
-            Ok(false)
-        })?;
-        if !remaining {
-            *selected = None;
-        }
-        Ok(true)
+    fn sweep_routes(&self, id: &str) -> Result<bool> {
+        sweep_routes_step(self, id, &mut None)
     }
     /// Rebuilds every active publication's rows, or one day's, from the responses it
     /// stored: what a release that reads more of them needs, without collecting again.
-    pub fn reprocess_routes(&self, id: &str, day: Option<&str>) -> Result<RouteReprocess> {
+    fn reprocess_routes(&self, id: &str, day: Option<&str>) -> Result<RouteReprocess> {
         if let Some(day) = day {
             crate::validate::date(day)?;
         }
-        let db = self.routedata(id)?;
+        let db = self.routes_db(id)?;
         let publications = db.all(
             "SELECT id,day,mode,station,service_area_id,provider,timezone,started_at,collected_at \
              FROM route_publications WHERE active=1 AND (?1 IS NULL OR day=?1) ORDER BY day",
@@ -854,7 +777,7 @@ impl Store {
         let mut rebuilt = Vec::new();
         for row in &publications {
             let publication = s(row, "id").to_owned();
-            let capture = self.stored_capture(&db, row)?;
+            let capture = stored_capture(&db, row)?;
             let prepared = prepare(&capture)?;
             let routes = capture.route_summaries["rmsRouteSummaries"]
                 .as_array()
@@ -907,72 +830,11 @@ impl Store {
             publications: rebuilt,
         })
     }
-    /// A publication's capture as it was collected, from its stored responses.
-    fn stored_capture(&self, db: &Db, row: &Value) -> Result<Capture> {
-        let publication = s(row, "id");
-        let declared: i64 = db.0.query_row(
-            "SELECT COALESCE(SUM(raw_bytes),0) FROM route_raw WHERE publication_id=?",
-            [publication],
-            |row| row.get(0),
-        )?;
-        ensure(
-            (0..=MAX_CAPTURE_BYTES as i64).contains(&declared),
-            "routes_source_too_large",
-            502,
-        )?;
-        let mut bytes = 0;
-        let mut blob = |name: &str| -> Result<String> {
-            let body: Vec<u8> = db.0.query_row(
-                "SELECT body FROM route_raw WHERE publication_id=? AND name=?",
-                [publication, name],
-                |r| r.get(0),
-            )?;
-            let text = String::from_utf8(gunzip(&body)?)
-                .map_err(|_| Error::new("routes_capture_invalid", 502))?;
-            bytes = add_capture_bytes(bytes, text.len())?;
-            Ok(text)
-        };
-        let scope = Scope {
-            date: s(row, "day").into(),
-            station: s(row, "station").into(),
-            service_area_id: s(row, "service_area_id").into(),
-            provider: s(row, "provider").into(),
-            timezone: s(row, "timezone").into(),
-        };
-        let summaries: Value = serde_json::from_str(&blob("summaries")?)?;
-        let route_summaries: Value = serde_json::from_str(&blob("route_summaries")?)?;
-        let itineraries = listed(&summaries, &scope)
-            .into_iter()
-            .map(|(id, transporter_id)| {
-                Ok(ItineraryCapture {
-                    detail: blob(&format!("itinerary:{id}"))?,
-                    id,
-                    transporter_id,
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
-        let ms = |key: &str| {
-            chrono::DateTime::parse_from_rfc3339(s(row, key))
-                .map(|t| t.timestamp_millis())
-                .unwrap_or(0)
-        };
-        Ok(Capture {
-            version: 1,
-            collection: Collection::Routes,
-            mode: Mode::parse(s(row, "mode")).unwrap_or_default(),
-            scope,
-            started_at: ms("started_at"),
-            finished_at: ms("collected_at"),
-            summaries,
-            route_summaries,
-            itineraries,
-        })
-    }
     /// Every day with a publication at the DSP's station, newest first.
-    pub fn route_days(&self, id: &str) -> Result<RouteDays> {
-        let today = self.routes_today(id)?;
+    fn route_days(&self, id: &str) -> Result<RouteDays> {
+        let today = routes_today(self, id)?;
         let station = self.profile(id)?.station_code;
-        let db = self.routedata(id)?;
+        let db = self.routes_db(id)?;
         let days = db
             .all(
                 "SELECT id,day,mode,station,collected_at,route_count,itinerary_count,stop_count,task_count \
@@ -989,10 +851,10 @@ impl Store {
         })
     }
     /// A day's publication with its driver summaries, or none.
-    pub fn route_day(&self, id: &str, day: &str) -> Result<Option<RouteDayView>> {
+    fn route_day(&self, id: &str, day: &str) -> Result<Option<RouteDayView>> {
         crate::validate::date(day)?;
         let station = self.profile(id)?.station_code;
-        let db = self.routedata(id)?;
+        let db = self.routes_db(id)?;
         let Some(row) = db.one(
             "SELECT id,day,mode,station,collected_at,route_count,itinerary_count,stop_count,task_count \
              FROM route_publications WHERE station=? AND day=? AND active=1",
@@ -1014,11 +876,9 @@ impl Store {
             itineraries,
         }))
     }
-}
-impl Store {
     /// One driver's itinerary for a day: its stops with their tasks and locations, its
     /// breaks, its unknown stops and the tasks removed from it.
-    pub fn route_itinerary(
+    fn route_itinerary(
         &self,
         id: &str,
         day: &str,
@@ -1026,7 +886,7 @@ impl Store {
     ) -> Result<Option<RouteItineraryDetail>> {
         crate::validate::date(day)?;
         let station = self.profile(id)?.station_code;
-        let db = self.routedata(id)?;
+        let db = self.routes_db(id)?;
         let Some(row) = db.one(
             "SELECT id,day,mode,station,collected_at,route_count,itinerary_count,stop_count,task_count \
              FROM route_publications WHERE station=? AND day=? AND active=1",
@@ -1120,8 +980,8 @@ impl Store {
         }))
     }
     /// Everything that happened to a package across the days stored, newest first.
-    pub fn route_package(&self, id: &str, tracking: &str) -> Result<RoutePackage> {
-        let db = self.routedata(id)?;
+    fn route_package(&self, id: &str, tracking: &str) -> Result<RoutePackage> {
+        let db = self.routes_db(id)?;
         let events = db
             .all(
                 "SELECT t.*,i.driver_name,i.route_code,a.address1,a.city,a.state,a.postal_code,\
@@ -1148,6 +1008,194 @@ impl Store {
             events,
         })
     }
+}
+/// Today, where the DSP is.
+fn routes_today(store: &Store, id: &str) -> Result<NaiveDate> {
+    let tz: chrono_tz::Tz = store
+        .find_dsp(id)?
+        .timezone
+        .parse()
+        .map_err(|_| Error::new("invalid_timezone", 400))?;
+    Ok(chrono::Utc::now().with_timezone(&tz).date_naive())
+}
+/// The request for one day: the DSP's station and names, which the driver resolves
+/// to a service area and provider on Cortex.
+pub(crate) fn routes_request(store: &Store, id: &str, day: &str, mode: Mode) -> Result<Value> {
+    let profile = store.profile(id)?;
+    let dsp = store.find_dsp(id)?;
+    ensure(
+        !profile.station_code.is_empty(),
+        "routes_station_required",
+        409,
+    )?;
+    // A scope proven by an earlier day at this station spares discovery, which
+    // starts from an address Cortex may send elsewhere.
+    let known = store.routes_db(id)?.one(
+        "SELECT service_area_id,provider FROM route_publications WHERE station=? AND active=1 \
+         ORDER BY collected_at DESC LIMIT 1",
+        [&profile.station_code],
+    )?;
+    let request = Request {
+        collection: Collection::Routes,
+        mode,
+        date: day.into(),
+        station: profile.station_code,
+        timezone: dsp.timezone,
+        dsp_name: dsp.name,
+        dsp_abbreviation: profile.abbreviation,
+        service_area_id: known.as_ref().map(|k| s(k, "service_area_id").to_owned()),
+        provider: known.as_ref().map(|k| s(k, "provider").to_owned()),
+    };
+    request.validate()?;
+    Ok(serde_json::to_value(request)?)
+}
+/// The first day the DSP's window keeps, or none when every day is kept.
+fn retention_start(store: &Store, id: &str) -> Result<Option<NaiveDate>> {
+    let days = store
+        .routes_db(id)?
+        .one("SELECT days FROM route_retention WHERE id=1", [])?
+        .and_then(|row| row["days"].as_i64());
+    Ok(match days {
+        Some(days) => Some(routes_today(store, id)? - Duration::days(days)),
+        None => None,
+    })
+}
+/// Reuse the chosen publication during a scheduler batch. Every step checks its
+/// activity and job again, because another transition can run between deletions.
+pub(crate) fn sweep_routes_step(
+    store: &Store,
+    id: &str,
+    selected: &mut Option<String>,
+) -> Result<bool> {
+    const BATCH: i64 = 2000;
+    let db = store.routes_db(id)?;
+    let running: Vec<String> = store
+        .jobs
+        .query_as::<(String,)>(
+            concat!(
+                "SELECT id FROM jobs WHERE dsp_id=? AND kind=? AND status IN ",
+                crate::job_statuses!(active)
+            ),
+            params![id, JOB_KIND],
+        )?
+        .into_iter()
+        .map(|(job,)| job)
+        .collect();
+    let retained = match selected.as_deref() {
+        Some(publication) => db
+            .one_as::<(String, String)>(
+                "SELECT id,job_id FROM route_publications WHERE id=? AND active=0",
+                [publication],
+            )?
+            .filter(|(_, job)| !running.contains(job))
+            .map(|(publication, _)| publication),
+        None => None,
+    };
+    let publication = match retained {
+        Some(publication) => Some(publication),
+        None => db
+            .one_as::<(String,)>(
+                "SELECT id FROM route_publications WHERE active=0 AND \
+             job_id NOT IN (SELECT value FROM json_each(?)) ORDER BY collected_at,id LIMIT 1",
+                [serde_json::to_string(&running)?],
+            )?
+            .map(|(publication,)| publication),
+    };
+    let Some(publication) = publication else {
+        *selected = None;
+        return Ok(false);
+    };
+    *selected = Some(publication.clone());
+    let remaining = db.transaction(|| {
+        for table in [
+            "tasks",
+            "stops",
+            "route_raw",
+            "breaks",
+            "unknown_stops",
+            "driver_days",
+            "itineraries",
+            "routes",
+        ] {
+            let removed = db.exec(
+                &format!(
+                    "DELETE FROM {table} WHERE rowid IN \
+                     (SELECT rowid FROM {table} WHERE publication_id=? LIMIT ?)"
+                ),
+                params![publication, BATCH],
+            )?;
+            if removed > 0 {
+                return Ok(true);
+            }
+        }
+        db.exec("DELETE FROM route_publications WHERE id=?", [&publication])?;
+        Ok(false)
+    })?;
+    if !remaining {
+        *selected = None;
+    }
+    Ok(true)
+}
+/// A publication's capture as it was collected, from its stored responses.
+fn stored_capture(db: &Db, row: &Value) -> Result<Capture> {
+    let publication = s(row, "id");
+    let declared: i64 = db.0.query_row(
+        "SELECT COALESCE(SUM(raw_bytes),0) FROM route_raw WHERE publication_id=?",
+        [publication],
+        |row| row.get(0),
+    )?;
+    ensure(
+        (0..=MAX_CAPTURE_BYTES as i64).contains(&declared),
+        "routes_source_too_large",
+        502,
+    )?;
+    let mut bytes = 0;
+    let mut blob = |name: &str| -> Result<String> {
+        let body: Vec<u8> = db.0.query_row(
+            "SELECT body FROM route_raw WHERE publication_id=? AND name=?",
+            [publication, name],
+            |r| r.get(0),
+        )?;
+        let text = String::from_utf8(gunzip(&body)?)
+            .map_err(|_| Error::new("routes_capture_invalid", 502))?;
+        bytes = add_capture_bytes(bytes, text.len())?;
+        Ok(text)
+    };
+    let scope = Scope {
+        date: s(row, "day").into(),
+        station: s(row, "station").into(),
+        service_area_id: s(row, "service_area_id").into(),
+        provider: s(row, "provider").into(),
+        timezone: s(row, "timezone").into(),
+    };
+    let summaries: Value = serde_json::from_str(&blob("summaries")?)?;
+    let route_summaries: Value = serde_json::from_str(&blob("route_summaries")?)?;
+    let itineraries = listed(&summaries, &scope)
+        .into_iter()
+        .map(|(id, transporter_id)| {
+            Ok(ItineraryCapture {
+                detail: blob(&format!("itinerary:{id}"))?,
+                id,
+                transporter_id,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let ms = |key: &str| {
+        chrono::DateTime::parse_from_rfc3339(s(row, key))
+            .map(|t| t.timestamp_millis())
+            .unwrap_or(0)
+    };
+    Ok(Capture {
+        version: 1,
+        collection: Collection::Routes,
+        mode: Mode::parse(s(row, "mode")).unwrap_or_default(),
+        scope,
+        started_at: ms("started_at"),
+        finished_at: ms("collected_at"),
+        summaries,
+        route_summaries,
+        itineraries,
+    })
 }
 /// The itinerary and day-summary columns a `RouteItinerary` is read from.
 const ITINERARY_SELECT: &str = "SELECT i.itinerary_id,i.transporter_id,i.driver_name,i.route_code,i.execution_status,i.progress_status,\
@@ -1949,10 +1997,10 @@ mod tests {
             .exec("UPDATE jobs SET status='failed' WHERE id=?", [job])
             .unwrap();
         let mut selected = None;
-        assert!(db.sweep_routes_step(dsp, &mut selected).unwrap());
+        assert!(sweep_routes_step(&db, dsp, &mut selected).unwrap());
         assert_eq!(selected.as_deref(), Some(staged.publication.as_str()));
         let remaining = || {
-            db.routedata(dsp)
+            db.routes_db(dsp)
                 .unwrap()
                 .count("SELECT count(*) FROM stops", [])
                 .unwrap()
@@ -1963,34 +2011,34 @@ mod tests {
         db.jobs
             .exec("UPDATE jobs SET status='queued' WHERE id=?", [job])
             .unwrap();
-        assert!(!db.sweep_routes_step(dsp, &mut selected).unwrap());
+        assert!(!sweep_routes_step(&db, dsp, &mut selected).unwrap());
         assert_eq!(remaining(), stops);
         assert!(selected.is_none());
         db.jobs
             .exec("UPDATE jobs SET status='failed' WHERE id=?", [job])
             .unwrap();
         selected = Some(staged.publication.clone());
-        db.routedata(dsp)
+        db.routes_db(dsp)
             .unwrap()
             .exec(
                 "UPDATE route_publications SET active=1 WHERE id=?",
                 [&staged.publication],
             )
             .unwrap();
-        assert!(!db.sweep_routes_step(dsp, &mut selected).unwrap());
+        assert!(!sweep_routes_step(&db, dsp, &mut selected).unwrap());
         assert_eq!(remaining(), stops);
         assert!(selected.is_none());
-        db.routedata(dsp)
+        db.routes_db(dsp)
             .unwrap()
             .exec(
                 "UPDATE route_publications SET active=0 WHERE id=?",
                 [&staged.publication],
             )
             .unwrap();
-        while db.sweep_routes_step(dsp, &mut selected).unwrap() {}
+        while sweep_routes_step(&db, dsp, &mut selected).unwrap() {}
         assert!(selected.is_none());
         assert_eq!(
-            db.routedata(dsp)
+            db.routes_db(dsp)
                 .unwrap()
                 .count("SELECT count(*) FROM route_publications", [])
                 .unwrap(),

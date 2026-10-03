@@ -4,6 +4,7 @@ use crate::{
     contracts::{DriverData, DriverSource},
     db::{Store, n, s},
     manifest::people::{self, Appearances, Named, People, Workdays},
+    routedata::RoutesStore,
 };
 
 pub struct Drivers;
@@ -19,7 +20,7 @@ impl People for Drivers {
         20
     }
     fn named(&self, store: &Store, dsp: &str) -> Result<Vec<Named>> {
-        let rows = store.routedata(dsp)?.all(
+        let rows = store.routes_db(dsp)?.all(
             "SELECT transporter_id id,first_name,last_name,first_seen_day first,\
              last_seen_day last FROM drivers",
             [],
@@ -36,13 +37,13 @@ impl People for Drivers {
     }
     fn name(&self, store: &Store, dsp: &str, id: &str) -> Result<Option<String>> {
         people::first_name(
-            &*store.routedata(dsp)?,
+            &*store.routes_db(dsp)?,
             "SELECT first_name||' '||last_name FROM drivers WHERE transporter_id=?",
             id,
         )
     }
     fn appearances(&self, store: &Store, dsp: &str) -> Result<Vec<Appearances>> {
-        let rows = store.routedata(dsp)?.all(
+        let rows = store.routes_db(dsp)?.all(
             "SELECT i.transporter_id id,count(DISTINCT i.day) count,max(i.day) last \
              FROM itineraries i JOIN route_publications p ON p.id=i.publication_id \
              AND p.active=1 GROUP BY i.transporter_id",
@@ -59,7 +60,7 @@ impl People for Drivers {
     }
     /// Every day with a route was collected, and its drivers were out.
     fn workdays(&self, store: &Store, dsp: &str) -> Result<Workdays> {
-        let worked = store.routedata(dsp)?.query_as::<(String, String)>(
+        let worked = store.routes_db(dsp)?.query_as::<(String, String)>(
             "SELECT DISTINCT i.transporter_id,i.day FROM itineraries i \
              JOIN route_publications p ON p.id=i.publication_id AND p.active=1",
             [],

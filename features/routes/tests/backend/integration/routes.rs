@@ -9,6 +9,7 @@ use dispatch_backend::{
     },
     db::{Store, s},
     routedata,
+    routedata::RoutesStore,
 };
 use serde_json::{Value, json};
 
@@ -57,7 +58,7 @@ fn sweep(db: &Store, id: &str) -> usize {
     steps
 }
 fn count(db: &Store, id: &str, sql: &str) -> i64 {
-    db.routedata(id).unwrap().count(sql, []).unwrap()
+    db.routes_db(id).unwrap().count(sql, []).unwrap()
 }
 
 #[test]
@@ -67,7 +68,7 @@ fn a_day_is_published_into_normalized_rows_with_its_raw_responses() {
     let job = publish(&db, &id, "first", "2026-09-25", &capture);
     let queued = db.job_row(&job, Some(&id)).unwrap();
     assert_eq!(queued.kind.as_str(), "cortex.routes.collect");
-    let storage = db.routedata(&id).unwrap();
+    let storage = db.routes_db(&id).unwrap();
     let publication = storage
         .one("SELECT * FROM route_publications WHERE job_id=?", [&job])
         .unwrap()
@@ -251,7 +252,7 @@ fn a_reprocess_rebuilds_every_row_from_the_stored_responses() {
     let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     publish(&db, &id, "first", "2026-09-25", &capture);
     let before = db.route_days(&id).unwrap().days.remove(0);
-    let storage = db.routedata(&id).unwrap();
+    let storage = db.routes_db(&id).unwrap();
     for table in ["tasks", "stops", "breaks", "unknown_stops", "driver_days"] {
         storage.exec(&format!("DELETE FROM {table}"), []).unwrap();
     }
@@ -313,7 +314,7 @@ fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publication
         .unwrap();
     let job = s(&jobs[0], "id");
     let staged = db.stage_routes(&id, job, capture.clone()).unwrap();
-    db.routedata(&id)
+    db.routes_db(&id)
         .unwrap()
         .exec(
             "DELETE FROM itineraries WHERE itinerary_id='itinerary-2'",
@@ -334,7 +335,7 @@ fn mismatched_incomplete_and_oversized_captures_fail_before_changing_publication
 
     publish(&db, &id, "ordinary", "2026-09-25", &capture);
     let before = count(&db, &id, "SELECT count(*) FROM tasks");
-    db.routedata(&id)
+    db.routes_db(&id)
         .unwrap()
         .exec(
             "UPDATE route_raw SET raw_bytes=? WHERE name LIKE 'itinerary:%'",
@@ -363,7 +364,7 @@ fn a_package_moved_between_drivers_keeps_a_row_under_each() {
     capture.itineraries[0].detail = first.to_string();
     publish(&db, &id, "rescue", "2026-09-25", &capture);
     let rows = db
-        .routedata(&id)
+        .routes_db(&id)
         .unwrap()
         .all(
             "SELECT itinerary_id,transporter_id,active,task_state FROM tasks WHERE task_id='task-13' \
@@ -413,7 +414,7 @@ fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
     again.finished_at += 2000;
     let second = publish(&db, &id, "second", "2026-09-25", &again);
     assert_ne!(first, second);
-    let storage = db.routedata(&id).unwrap();
+    let storage = db.routes_db(&id).unwrap();
     // Readers see only the new day at once; the sweep deletes the old one in steps.
     let days = db.route_days(&id).unwrap();
     assert_eq!(days.days.len(), 1);
@@ -569,7 +570,7 @@ fn the_sweep_keeps_a_running_jobs_day_and_deletes_what_no_reader_sees() {
     );
     assert!(sweep(&db, &id) > 1);
     assert_eq!(
-        db.routedata(&id)
+        db.routes_db(&id)
             .unwrap()
             .all("SELECT job_id FROM route_publications", [])
             .unwrap(),
@@ -806,7 +807,7 @@ fn a_stored_day_goes_through_storage_at_full_size() {
     let started = std::time::Instant::now();
     let rebuilt = db.reprocess_routes(&id, Some(&day)).unwrap();
     let reprocess_ms = started.elapsed().as_millis();
-    let storage = db.routedata(&id).unwrap();
+    let storage = db.routes_db(&id).unwrap();
     let publication = storage
         .one(
             "SELECT id,station,service_area_id,provider,timezone,mode,started_at,collected_at,day \

@@ -18,6 +18,7 @@ use dispatch_backend::{
     contracts::{AgentArea, AgentKeyRequest},
     db::{Store, s},
     dvic::DvicStore,
+    routedata::RoutesStore,
     scorecard::ScorecardStore,
 };
 use serde_json::{Value, json};
@@ -443,7 +444,7 @@ async fn default_answers_never_expose_unmatched_provider_ids() {
     let dsp = id.clone();
     state
         .run(move |db| {
-            db.routedata(&dsp)?.exec(
+            db.routes_db(&dsp)?.exec(
                 "UPDATE itineraries SET driver_name='Same Driver' \
                  WHERE transporter_id IN ('driver-1','driver-2')",
                 [],
@@ -955,7 +956,7 @@ async fn package_group_and_list_cursors_advance_independently_within_the_final_b
 async fn package_grouping_bounds_scan_work_and_raw_cardinality() {
     let (_root, db, id) = ready();
     let me = caller(&db, &[&id], true);
-    let route = db.routedata(&id).unwrap();
+    let route = db.routes_db(&id).unwrap();
     let config = db.config.clone();
     let state = State::new(config).unwrap();
 
