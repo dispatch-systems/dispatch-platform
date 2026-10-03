@@ -3,6 +3,7 @@ import { Shirt } from 'lucide-react';
 import { begins } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
+import { replies } from '../../../shared/contracts/runtime-uniforms.js';
 
 declare module '../../../core/shell/frontend/runtime/slots.js' {
   interface DspPages {
@@ -32,6 +33,7 @@ export const feature: FrontendFeature = {
   ],
   platformSlots: () => import('./platform-slots.js'),
   longPolls: ['/api/dsp/uniforms/updates'],
+  replies,
   errors: {
     uniform_changed:
       'This uniform changed in another session. Close and reopen the editor before saving.',

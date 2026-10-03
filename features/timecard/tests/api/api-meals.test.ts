@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { MealEmployee } from '../../../../shared/contracts/timecard.js';
 import type { Driver, DriverMatch } from '../../../../shared/contracts/driver-match.js';
+import { checkReply } from '../../../../shared/contracts/runtime.js';
+import { replies as timecardReplies } from '../../../../shared/contracts/runtime-timecard.js';
 import { fixture, until } from '../../../../core/shell/tests/support/support.js';
 
 test('meal API requires DSP context, exposes the punch union to members, and links only through Driver Match', async () => {
@@ -127,7 +129,6 @@ test('name variants combine existing source records without recollection or losi
 });
 
 test('typed workforce responses carry Rust assessments and reject malformed nested records', async (t) => {
-  const { parseApiResponse } = await import('../../../../shared/contracts/runtime.js');
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
@@ -147,7 +148,7 @@ test('typed workforce responses carry Rust assessments and reject malformed nest
     routes.map(async (route) => {
       const reply = await owner.get(route);
       assert.equal(reply.status, 200);
-      assert.deepEqual(parseApiResponse(route, 'GET', reply.value), reply.value);
+      assert.deepEqual(checkReply([timecardReplies], route, 'GET', reply.value), reply.value);
       return reply.value;
     }),
   );
@@ -168,7 +169,10 @@ test('typed workforce responses carry Rust assessments and reject malformed nest
   ] as const) {
     const invalid = structuredClone(replies[index]);
     corrupt(invalid);
-    assert.throws(() => parseApiResponse(routes[index]!, 'GET', invalid), /invalid_api_response/);
+    assert.throws(
+      () => checkReply([timecardReplies], routes[index]!, 'GET', invalid),
+      /invalid_api_response/,
+    );
   }
   assert.equal(employees.total, 12);
   assert.equal(daily.available, true);

@@ -5,8 +5,8 @@ import type {
   UniformUpdates,
   UniformHistory,
 } from './uniforms.js';
+import { count, type Replies } from './runtime.js';
 
-const count = z.number().int().nonnegative();
 const fit = z.enum(['men', 'women', 'unisex']);
 const variant = z.object({
   id: z.string(),
@@ -53,3 +53,17 @@ export const uniformHistorySchema = z.object({
   ),
   nextBefore: count.nullable(),
 }) satisfies z.ZodType<UniformHistory>;
+
+/** The replies of the inventory, its live updates and history, and its edits. */
+export const replies: Replies = (route, method) => {
+  if (method === 'GET') {
+    if (route === '/api/dsp/uniforms') return uniformInventorySchema;
+    if (route === '/api/dsp/uniforms/updates') return uniformUpdatesSchema;
+    if (route === '/api/dsp/uniforms/history') return uniformHistorySchema;
+    return undefined;
+  }
+  if (route.startsWith('/api/dsp/uniforms/stock/')) return uniformAdjustmentSchema;
+  if (route === '/api/dsp/uniforms' || route.startsWith('/api/dsp/uniforms/'))
+    return uniformInventorySchema;
+  return undefined;
+};

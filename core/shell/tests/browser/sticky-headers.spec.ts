@@ -1,11 +1,13 @@
 import type { Locator, Page } from '@playwright/test';
-import type { DailyTimecards, MealComparison } from '../../../../shared/contracts/timecard.js';
 import { demo, expect, login, openDsp, test } from '../support/fixtures.js';
+
+// What this reads of a page's reply: its rows, the first copied to fill a long table.
+type Rows = { rows: Record<string, unknown>[] };
 
 async function longTables(page: Page) {
   await page.route('**/api/dsp/timecards?*', async (route) => {
     const response = await route.fetch();
-    const data: DailyTimecards = await response.json();
+    const data: Rows = await response.json();
     expect(data.rows.length).toBeGreaterThan(0);
     data.rows = Array.from({ length: 80 }, (_, index) => ({
       ...data.rows[0]!,
@@ -18,7 +20,7 @@ async function longTables(page: Page) {
   });
   await page.route('**/api/dsp/paycom/meal-breaks?*', async (route) => {
     const response = await route.fetch();
-    const data: MealComparison = await response.json();
+    const data: Rows = await response.json();
     expect(data.rows.length).toBeGreaterThan(0);
     data.rows = Array.from({ length: 80 }, (_, index) => ({
       ...data.rows[0]!,

@@ -12,9 +12,9 @@ import type {
   PaycomPreferences,
   PaycomSettings,
 } from './timecard.js';
+import { jobSchema, jobsSchema } from './runtime-collection.js';
+import { count, text, type Replies } from './runtime.js';
 
-const text = z.string();
-const count = z.number().int().nonnegative();
 const optionalText = text.nullable().optional();
 export const employeeSchema = z.object({
   code: text,
@@ -195,3 +195,19 @@ export const paycomSettingsSchema = z.object({
     stations: z.array(text),
   }),
 }) satisfies z.ZodType<PaycomSettings>;
+
+/** The replies of Timecard's reads, its Paycom settings and its meal break collections. */
+export const replies: Replies = (route, method) => {
+  if (method === 'GET') {
+    if (route === '/api/dsp/paycom/settings') return paycomSettingsSchema;
+    if (route === '/api/dsp/employees') return employeesSchema;
+    if (/^\/api\/dsp\/employees\/[^/]+$/.test(route)) return employeeTimecardSchema;
+    if (route === '/api/dsp/timecards') return dailyTimecardsSchema;
+    if (route === '/api/dsp/paycom/meal-breaks') return mealComparisonSchema;
+    return undefined;
+  }
+  if (route === '/api/dsp/paycom/settings') return paycomSettingsSchema;
+  if (route === '/api/dsp/cortex/meal-breaks/collect') return jobSchema;
+  if (route === '/api/dsp/jobs/meal-breaks') return z.object({ date: text, jobs: jobsSchema });
+  return undefined;
+};

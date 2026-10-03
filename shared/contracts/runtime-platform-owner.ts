@@ -1,10 +1,9 @@
 import { z } from 'zod';
 import type { AuditPage, PlatformHealth } from './platform-owner.js';
+import { count, environment, providerMode, text, type Replies } from './runtime.js';
 
-const text = z.string();
-const count = z.number().int().nonnegative();
 export const platformHealthSchema = z.object({
-  environment: z.enum(['preview', 'production']),
+  environment,
   release: text,
   jobs: z.partialRecord(
     z.enum(['queued', 'running', 'waiting_verification', 'succeeded', 'failed', 'cancelled']),
@@ -31,7 +30,7 @@ export const platformHealthSchema = z.object({
     lastError: text.nullable(),
     transport: z.object({ error: text.nullable(), checkedAt: text.nullable() }),
   }),
-  providerMode: z.enum(['fixture', 'native']),
+  providerMode,
 }) satisfies z.ZodType<PlatformHealth>;
 const area = z.enum([
   'team',
@@ -66,3 +65,13 @@ export const auditPageSchema = z.object({
   actors: z.array(named),
   dsps: z.array(named),
 }) satisfies z.ZodType<AuditPage>;
+
+/** The replies of the platform's health and the audit log. */
+export const replies: Replies = (route, method) => {
+  if (method === 'GET') {
+    if (route === '/api/platform/audit') return auditPageSchema;
+    if (route === '/api/platform/health') return platformHealthSchema;
+    return undefined;
+  }
+  return route === '/api/platform/audit/export' ? auditPageSchema : undefined;
+};

@@ -4,6 +4,7 @@ import type { DspView } from '../../../shared/contracts/accounts.js';
 import { begins, collectionData, path } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { Access, FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
+import { replies } from '../../../shared/contracts/runtime-timecard.js';
 import { isTimecardDataReady, prefetchTimecard } from './prefetch.js';
 
 declare module '../../../core/shell/frontend/runtime/slots.js' {
@@ -60,6 +61,7 @@ export const feature: FrontendFeature = {
     },
   ],
   platformSlots: () => import('./platform-slots.js'),
+  replies,
   errors: {
     meal_sync_paycom_required: 'Connect Paycom before syncing meal breaks.',
     meal_sync_flex_required: 'Connect Cortex in Settings → Connections before syncing Flex.',
