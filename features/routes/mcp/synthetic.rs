@@ -1,17 +1,15 @@
 //! What Routes holds of the synthetic DSP: each day's routes, through the collection's own
 //! staging and publishing, so they read exactly as collected routes do.
-use crate::{
-    collectors::cortex::{
-        self,
-        routes::{Capture, ItineraryCapture, Mode, Request},
-    },
-    routedata::RoutesStore,
-};
+use crate::routedata::RoutesStore;
 use chrono::{Datelike, NaiveDate};
 use dispatch_core::{
     Error, Result,
     db::{Store, s},
     mcp::synthetic::{Made, Step, Synthetic, World, context_at, packages_at, plan, tracking},
+};
+use dispatch_cortex::{
+    self as cortex,
+    routes::{Capture, ItineraryCapture, Mode, Request},
 };
 use serde_json::{Value, json};
 

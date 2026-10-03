@@ -3,7 +3,7 @@
 #[path = "xlsx.rs"]
 pub mod xlsx;
 
-use super::discovery::{CollectionRequest as ScopeRequest, Discovery, Scope};
+use crate::discovery::{CollectionRequest as ScopeRequest, Discovery, Scope};
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime};
 use dispatch_core::{
     Error, Result, ensure,

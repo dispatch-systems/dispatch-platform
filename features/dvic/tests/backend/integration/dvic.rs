@@ -1,13 +1,11 @@
-use dispatch_backend::{
-    collectors::cortex::{
-        self,
-        discovery::{CollectionRequest, Scope},
-        dvic::{self, Capture, Request},
-    },
-    dvic::{DvicStore, hidden, weeks_ending},
-};
+use dispatch_backend::dvic::{DvicStore, hidden, weeks_ending};
 use dispatch_core::db::{Store, s};
 use dispatch_core::testing as common;
+use dispatch_cortex::{
+    self as cortex,
+    discovery::{CollectionRequest, Scope},
+    dvic::{self, Capture, Request},
+};
 use serde_json::json;
 
 /// DVIC, and the Cortex collector whose inspections it keeps.

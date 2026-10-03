@@ -1,13 +1,13 @@
 //! Queue both sources together; a missing connection/scope cannot start half a sync.
-use crate::collectors::cortex::{
-    self,
-    discovery::{Discovery, Scope},
-};
 use dispatch_core::{
     Result,
     collection::registry::Provider,
     db::{Store, s},
     ensure,
+};
+use dispatch_cortex::{
+    self as cortex,
+    discovery::{Discovery, Scope},
 };
 use dispatch_paycom::{self as paycom, timecards::collection_date};
 use serde_json::{Value, json};

@@ -1,8 +1,5 @@
 //! Timecard keeps the meal breaks Cortex reports.
-use crate::{
-    collectors::cortex::{self, discovery::Scope, meals::JOB_KIND},
-    workforce::TimecardStore,
-};
+use crate::workforce::TimecardStore;
 use dispatch_core::{
     Result,
     collection::browser::Collected,
@@ -11,6 +8,7 @@ use dispatch_core::{
     manifest::Keeper,
     server::cache::DataDomain,
 };
+use dispatch_cortex::{self as cortex, discovery::Scope, meals::JOB_KIND};
 use serde_json::{Value, json};
 
 pub struct MealBreaks;

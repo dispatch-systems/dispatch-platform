@@ -1,6 +1,6 @@
 //! What a routes collection reads from Cortex: a day's route list, the newer routes
 //! page's list and every itinerary, each kept as Amazon sent it.
-use super::discovery::{CollectionRequest, Discovery, Scope};
+use crate::discovery::{CollectionRequest, Discovery, Scope};
 use chrono::NaiveDate;
 use dispatch_core::{Error, Result, db::now, ensure};
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,7 @@ pub const MAX_BODY: usize = 32 * 1024 * 1024;
 pub const MAX_CAPTURE_BYTES: usize = 128 * 1024 * 1024;
 
 /// Adds one response to a day's total without allowing overflow or a partial capture.
-pub(crate) fn add_capture_bytes(total: usize, additional: usize) -> Result<usize> {
+pub fn add_capture_bytes(total: usize, additional: usize) -> Result<usize> {
     let next = total
         .checked_add(additional)
         .filter(|next| *next <= MAX_CAPTURE_BYTES);
@@ -212,7 +212,7 @@ pub fn listed(summaries: &Value, scope: &Scope) -> Vec<(String, String)> {
 }
 impl Capture {
     /// The total uncompressed provider data this capture holds.
-    pub(crate) fn validate_response_budget(&self) -> Result<()> {
+    pub fn validate_response_budget(&self) -> Result<()> {
         let mut total = add_capture_bytes(0, serde_json::to_vec(&self.summaries)?.len())?;
         total = add_capture_bytes(total, serde_json::to_vec(&self.route_summaries)?.len())?;
         for itinerary in &self.itineraries {

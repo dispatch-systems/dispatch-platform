@@ -1,12 +1,10 @@
 use super::*;
-use crate::{
-    collectors::cortex,
-    contracts::{DvicInspection, DvicInspections, DvicStatus},
-};
+use crate::contracts::{DvicInspection, DvicInspections, DvicStatus};
 use dispatch_core::{
     db::{DspLease, Store, at, now, s},
     manifest::Keeper,
 };
+use dispatch_cortex as cortex;
 use rusqlite::params;
 use std::collections::HashMap;
 
@@ -28,7 +26,7 @@ pub trait DvicStore {
         id: &str,
         job: &str,
         capture: &Capture,
-        scope: &crate::collectors::cortex::discovery::Scope,
+        scope: &dispatch_cortex::discovery::Scope,
     ) -> Result<()>;
     fn dvic_status(&self, id: &str) -> Result<DvicStatus>;
     fn dvic_inspections(
@@ -94,7 +92,7 @@ impl DvicStore for Store {
         id: &str,
         job: &str,
         capture: &Capture,
-        scope: &crate::collectors::cortex::discovery::Scope,
+        scope: &dispatch_cortex::discovery::Scope,
     ) -> Result<()> {
         let job_row = self.job_row(job, Some(id))?;
         ensure(

@@ -1,15 +1,13 @@
 //! Scorecard storage: publication, supersession, weeks not posted, where the next
 //! job reads and what a schedule queues.
-use dispatch_backend::{
-    collectors::cortex::{
-        self,
-        discovery::{CollectionRequest, Scope},
-        scorecard::{self, Capture, Request},
-    },
-    scorecard::ScorecardStore,
-};
+use dispatch_backend::scorecard::ScorecardStore;
 use dispatch_core::db::{Store, s};
 use dispatch_core::testing as common;
+use dispatch_cortex::{
+    self as cortex,
+    discovery::{CollectionRequest, Scope},
+    scorecard::{self, Capture, Request},
+};
 use serde_json::json;
 
 /// Scorecard, and the Cortex collector whose scorecard it keeps.

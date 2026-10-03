@@ -1,12 +1,19 @@
-use super::*;
-use crate::collectors::cortex::{
-    codes,
-    discovery::Scope,
+use super::{
+    capture::{Capture, Itinerary},
     live::Writer,
-    meals::{Capture, Itinerary},
 };
-use dispatch_core::{collection::metrics::Recorder, db::now};
+use crate::{codes, connection::Driver, discovery::Scope};
+use dispatch_core::{
+    Error, Result,
+    collection::{
+        browser::page::{Page, call},
+        metrics::Recorder,
+    },
+    db::{now, s},
+    ensure,
+};
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, HashSet},
     future::Future,
@@ -14,9 +21,11 @@ use std::{
         LazyLock,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
+    time::Duration,
 };
+use tokio::time::{Instant, sleep};
 // The route's content has not settled yet; read it again.
-pub(super) const CONTENT_NOT_READY: &[dispatch_core::Code] = &[
+pub(crate) const CONTENT_NOT_READY: &[dispatch_core::Code] = &[
     codes::CORTEX_CONTENT_INCOMPLETE,
     dispatch_core::Code::BrowserNavigationPending,
     dispatch_core::Code::BrowserScriptFailed,
@@ -46,7 +55,7 @@ static HOOK: LazyLock<String> = LazyLock::new(|| {
 });
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct Candidate {
+pub(crate) struct Candidate {
     id: String,
     transporter_id: String,
     driver: String,
@@ -125,7 +134,7 @@ impl Driver {
             .await?;
         evidence(result, metrics)
     }
-    pub(super) async fn meal_page(
+    pub(crate) async fn meal_page(
         &self,
         page: &Page,
         scope: &Scope,
@@ -204,7 +213,10 @@ impl Driver {
             let told = self.browser.evaluate(&page.id, &expect).await;
             let moved = told.is_ok_and(|v| v == true)
                 && page
-                    .evaluate(&call(super::routedata::MOVE, &json!(url)))
+                    .evaluate(&call(
+                        crate::collections::routes::collect::MOVE,
+                        &json!(url),
+                    ))
                     .await
                     .is_ok_and(|v| v == true);
             if moved && let Some(result) = self.hook_result(page, candidate, metrics).await? {
@@ -289,7 +301,7 @@ impl Driver {
         let _ = page.close().await;
         result
     }
-    pub(super) async fn candidates(
+    pub(crate) async fn candidates(
         &self,
         scope: &Scope,
         metrics: &Recorder,

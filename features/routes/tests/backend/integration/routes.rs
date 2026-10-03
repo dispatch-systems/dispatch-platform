@@ -1,14 +1,12 @@
 //! Routes storage: publication, supersession, the days a schedule queues and what the
 //! views read.
-use dispatch_backend::{
-    collectors::cortex::{
-        self,
-        routes::{self, Capture, Mode, Request},
-    },
-    routedata::{self, RoutesStore},
-};
+use dispatch_backend::routedata::{self, RoutesStore};
 use dispatch_core::db::{Store, s};
 use dispatch_core::testing as common;
+use dispatch_cortex::{
+    self as cortex,
+    routes::{self, Capture, Mode, Request},
+};
 use serde_json::{Value, json};
 
 /// Routes, and the Cortex collector whose routes it keeps.

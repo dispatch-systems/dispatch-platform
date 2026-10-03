@@ -1,13 +1,13 @@
 use super::*;
-use crate::collectors::cortex::{
+use crate::testing;
+use dispatch_cortex::{
     discovery::CollectionRequest,
     routes::{MAX_ITINERARIES, fixture},
 };
-use crate::testing;
 #[test]
 fn retained_sweep_selection_rechecks_running_jobs_and_publication_activity() {
     crate::testing::install(
-        &[&crate::collectors::cortex::COLLECTOR],
+        &[&dispatch_cortex::COLLECTOR],
         &[&crate::feature_manifests::routes::FEATURE],
     );
     use std::os::unix::fs::PermissionsExt;
@@ -34,7 +34,7 @@ fn retained_sweep_selection_rechecks_running_jobs_and_publication_activity() {
         json!({"stationCode":"TST1","abbreviation":"NLOG","setupRequired":false}),
     )
     .unwrap();
-    testing::ready_connection(&db, dsp, crate::collectors::cortex::PROVIDER).unwrap();
+    testing::ready_connection(&db, dsp, dispatch_cortex::PROVIDER).unwrap();
     let queued = db
         .enqueue_routes(
             dsp,

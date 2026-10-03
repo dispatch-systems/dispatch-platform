@@ -49,7 +49,7 @@ fn egress_rejects_private_and_lookalike_destinations() {
 
 #[test]
 fn cortex_network_policy_keeps_provider_hosts_separate() {
-    use dispatch_backend::collectors::cortex;
+    use dispatch_cortex as cortex;
     use dispatch_paycom as paycom;
     for host in [
         "logistics.amazon.com",

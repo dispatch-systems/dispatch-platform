@@ -2,12 +2,13 @@
 //! limits, the lists each page reads, the facts an outcome records, and what the Timecard's
 //! switch stops.
 use common::{seeded, store};
-use dispatch_backend::{collectors::cortex, dvic::DvicStore, workforce::TimecardStore};
+use dispatch_backend::{dvic::DvicStore, workforce::TimecardStore};
 use dispatch_core::testing as common;
 use dispatch_core::{
     collection::jobs::JobFacts,
     db::{self, Store, s},
 };
+use dispatch_cortex as cortex;
 use dispatch_paycom as paycom;
 use serde_json::json;
 

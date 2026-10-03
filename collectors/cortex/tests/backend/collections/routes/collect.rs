@@ -3,9 +3,7 @@ use std::sync::Arc;
 
 #[test]
 fn concurrent_lanes_cannot_overbook_the_capture_budget() {
-    let budget = Arc::new(
-        CaptureBudget::new(crate::collectors::cortex::routes::MAX_CAPTURE_BYTES - 1).unwrap(),
-    );
+    let budget = Arc::new(CaptureBudget::new(crate::routes::MAX_CAPTURE_BYTES - 1).unwrap());
     let results = std::thread::scope(|scope| {
         let first = scope.spawn({
             let budget = budget.clone();

@@ -1,6 +1,5 @@
 //! DVIC's operator commands.
 use super::hidden;
-use crate::collectors::cortex;
 use dispatch_core::{
     Result,
     collection::registry::added_identity,
@@ -9,6 +8,7 @@ use dispatch_core::{
     foundation::config::Config,
     tenancy::dsps,
 };
+use dispatch_cortex as cortex;
 use serde_json::Value;
 
 /// The operator's hidden DVIC drivers: `dvic-hidden <dsp>` lists them, `dvic-hide <dsp>

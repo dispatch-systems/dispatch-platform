@@ -7,13 +7,8 @@ pub mod keeper;
 #[path = "people.rs"]
 pub mod people;
 
-use crate::{
-    collectors::cortex::{
-        self,
-        discovery::Scope,
-        scorecard::{Capture, Collection, DATASETS, Dataset, Request},
-    },
-    contracts::{ScorecardDatasetCount, ScorecardPublication, ScorecardWeek, ScorecardWeeks},
+use crate::contracts::{
+    ScorecardDatasetCount, ScorecardPublication, ScorecardWeek, ScorecardWeeks,
 };
 use chrono::NaiveDate;
 use dispatch_core::{
@@ -24,6 +19,11 @@ use dispatch_core::{
     foundation::weeks::{last_completed_week, week_or_latest},
     manifest::Keeper,
     server::cache::DataDomain,
+};
+use dispatch_cortex::{
+    self as cortex,
+    discovery::Scope,
+    scorecard::{Capture, Collection, DATASETS, Dataset, Request},
 };
 use rusqlite::params;
 use serde_json::{Value, json};

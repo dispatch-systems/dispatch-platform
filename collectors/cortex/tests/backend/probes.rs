@@ -1,7 +1,10 @@
 //! Cortex's live probes that need Cortex alone, ignored: an operator runs one at a time
 //! against a copy of a DSP, with the `operator-probes` feature. Never run by CI or print
-//! provider records.
+//! provider records. Each installs a registry of Cortex, as the app installs its own.
 use super::*;
+use crate::collections::meals::collect as collection;
+use dispatch_core::collection::browser::page::call;
+use tokio::time::sleep;
 fn response_bytes(body: &Value) -> Result<Vec<u8>> {
     use base64::{Engine, engine::general_purpose::STANDARD};
     if body["base64Encoded"] == true {
@@ -35,7 +38,7 @@ fn adjacent_week(week: &str, delta: i64) -> Result<String> {
     let shifted = day
         .checked_add_signed(chrono::Duration::weeks(delta))
         .ok_or_else(|| Error::new("invalid_week", 400))?;
-    Ok(crate::collectors::cortex::dvic::report_week(shifted))
+    Ok(crate::dvic::report_week(shifted))
 }
 #[test]
 fn probe_inputs_and_response_decoding_preserve_boundaries() {
@@ -80,6 +83,7 @@ const REQUESTS: &str = r#"(()=>{const mask=s=>/\d/.test(s)||s.length>32?'{id}':s
 #[tokio::test]
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn record_data_requests() -> Result<()> {
+    dispatch_core::testing::install(&[&crate::COLLECTOR], &[]);
     let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
     let profile = dsp.join("state/browsers/cortex-browseros");
     let runtime = browseros::Runtime::new(
@@ -93,7 +97,7 @@ async fn record_data_requests() -> Result<()> {
         .start(
             &profile,
             browseros::Mode::Windowed,
-            browseros::NetworkPolicy::Hosts(&crate::collectors::cortex::BROWSER_HOSTS),
+            browseros::NetworkPolicy::Hosts(&crate::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;
@@ -268,6 +272,7 @@ fn differences(a: &Value, b: &Value, path: &str, out: &mut std::collections::BTr
 #[tokio::test]
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn compare_tabs() -> Result<()> {
+    dispatch_core::testing::install(&[&crate::COLLECTOR], &[]);
     let runs =
         tab_pair(&std::env::var("DISPATCH_BENCHMARK_TABS").unwrap_or_else(|_| "1,2".into()))?;
     let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
@@ -283,7 +288,7 @@ async fn compare_tabs() -> Result<()> {
         .start(
             &profile,
             browseros::Mode::Windowed,
-            browseros::NetworkPolicy::Hosts(&crate::collectors::cortex::BROWSER_HOSTS),
+            browseros::NetworkPolicy::Hosts(&crate::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;
@@ -413,6 +418,7 @@ const DIAGNOSE: &str = r#"(()=>{let root;const seen=new Set();
 #[tokio::test]
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn diagnose_tabs() -> Result<()> {
+    dispatch_core::testing::install(&[&crate::COLLECTOR], &[]);
     let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
     let profile = dsp.join("state/browsers/cortex-browseros");
     let runtime = browseros::Runtime::new(
@@ -426,7 +432,7 @@ async fn diagnose_tabs() -> Result<()> {
         .start(
             &profile,
             browseros::Mode::Windowed,
-            browseros::NetworkPolicy::Hosts(&crate::collectors::cortex::BROWSER_HOSTS),
+            browseros::NetworkPolicy::Hosts(&crate::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser.clone(), &profile, None).await?;
@@ -616,6 +622,7 @@ const API_SHAPES: &str = include_str!("../../probes/api_shapes.js");
 #[tokio::test]
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn probe_scorecard_api() -> Result<()> {
+    dispatch_core::testing::install(&[&crate::COLLECTOR], &[]);
     let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
     let week = std::env::var("DISPATCH_BENCHMARK_WEEK")
         .map_err(|_| Error::new("benchmark_configuration_required", 400))?;
@@ -652,7 +659,7 @@ async fn probe_scorecard_api() -> Result<()> {
         .start(
             &profile,
             browseros::Mode::Windowed,
-            browseros::NetworkPolicy::Hosts(&crate::collectors::cortex::BROWSER_HOSTS),
+            browseros::NetworkPolicy::Hosts(&crate::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;
@@ -1136,6 +1143,7 @@ async fn survey_routes_page(driver: &Driver, input: Value) -> Result<Value> {
 #[tokio::test]
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn probe_routes_api() -> Result<()> {
+    dispatch_core::testing::install(&[&crate::COLLECTOR], &[]);
     let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
     let output = std::env::var_os("DISPATCH_BENCHMARK_OUTPUT").map(PathBuf::from);
     let scope: Scope = serde_json::from_str(
@@ -1155,7 +1163,7 @@ async fn probe_routes_api() -> Result<()> {
         .start(
             &profile,
             browseros::Mode::Windowed,
-            browseros::NetworkPolicy::Hosts(&crate::collectors::cortex::BROWSER_HOSTS),
+            browseros::NetworkPolicy::Hosts(&crate::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;
@@ -1321,6 +1329,7 @@ async fn probe_routes_api() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn measure_meal_method() -> Result<()> {
+    dispatch_core::testing::install(&[&crate::COLLECTOR], &[]);
     use collection::MealMethod;
     use dispatch_core::collection::browser::egress::counted::{RECEIVED, SENT};
     let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
@@ -1350,7 +1359,7 @@ async fn measure_meal_method() -> Result<()> {
         .start(
             &profile,
             mode,
-            browseros::NetworkPolicy::Hosts(&crate::collectors::cortex::BROWSER_HOSTS),
+            browseros::NetworkPolicy::Hosts(&crate::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;

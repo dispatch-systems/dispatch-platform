@@ -9,17 +9,17 @@ pub mod people;
 #[path = "sync.rs"]
 pub(crate) mod sync;
 // Cortex meal evidence and atomic publication. Browser data is untrusted input.
-use crate::collectors::cortex::{
-    self,
-    discovery::Scope,
-    meals::{Capture, Coverage, Itinerary, Meal},
-};
 use chrono::NaiveDate;
 use dispatch_core::{
     Result,
     db::{Store, at, s},
     ensure,
     server::cache::DataDomain,
+};
+use dispatch_cortex::{
+    self as cortex,
+    discovery::Scope,
+    meals::{Capture, Coverage, Itinerary, Meal},
 };
 use rusqlite::params;
 use serde_json::{Value, json};

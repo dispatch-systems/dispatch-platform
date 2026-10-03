@@ -13,9 +13,6 @@ mod storage;
 
 pub use storage::DvicStore;
 
-use crate::collectors::cortex::dvic::{
-    Capture, Collection, JOB_KIND, KnownReport, MAX_WEEKS, Request, hash, report_week,
-};
 use dispatch_core::{
     Error, Result,
     collection::registry::AddedStorage,
@@ -23,6 +20,9 @@ use dispatch_core::{
     ensure,
     foundation::{validate, weeks},
     server::cache::DataDomain,
+};
+use dispatch_cortex::dvic::{
+    Capture, Collection, JOB_KIND, KnownReport, MAX_WEEKS, Request, hash, report_week,
 };
 use serde_json::{Value, json};
 

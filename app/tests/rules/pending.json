@@ -18,9 +18,6 @@
         "features/team has no Cargo.toml": "Phase B",
         "features/timecard has no Cargo.toml": "Phase B",
         "features/uniforms has no Cargo.toml": "Phase B"
-      },
-      "roots": {
-        "collectors/cortex has no Cargo.toml": "Phase B"
       }
     },
     "encapsulation": {
@@ -40,13 +37,10 @@
     "names": {
       "retired names": {
         "file core/mcp/tests/support/agents.ts is named agents": "Phase B",
-        "module browsers in app/backend/lib.rs is named browsers": "Phase B",
-        "module collectors in app/backend/lib.rs is named collectors": "Phase B",
         "module meals in app/backend/contracts.rs is named meals": "Phase B",
         "module meals in app/backend/lib.rs is named meals": "Phase B",
         "module routedata in app/backend/contracts.rs is named routedata": "Phase B",
         "module routedata in app/backend/lib.rs is named routedata": "Phase B",
-        "module routedata in collectors/cortex/connection/mod.rs is named routedata": "Phase B",
         "module workforce in app/backend/contracts.rs is named workforce": "Phase B",
         "module workforce in app/backend/lib.rs is named workforce": "Phase B"
       }

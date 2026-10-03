@@ -1,17 +1,5 @@
 //! Cortex authentication, meal evidence, the scorecard and daily routes from Amazon Logistics.
-#[path = "../collections/meals/collect.rs"]
-mod collection;
-#[path = "../discovery/mod.rs"]
-mod discovery;
-#[path = "../collections/dvic/collect.rs"]
-pub(crate) mod dvic;
-#[cfg(all(test, feature = "operator-probes"))]
-#[path = "../probes/mod.rs"]
-pub(crate) mod probes;
-#[path = "../collections/routes/collect.rs"]
-pub(crate) mod routedata;
-#[path = "../collections/scorecard/collect.rs"]
-mod scorecard;
+use crate::collections::meals::collect as collection;
 use dispatch_core::collection::browser::{
     Collected, Driver as Drives, Pending, Run,
     attempt::Attempts,
@@ -34,9 +22,9 @@ const LANDING: &str = "/dspconsolev2";
 const AUTH: &str = include_str!("../scripts/auth.js");
 pub struct Driver {
     pub browser: browseros::Session,
-    page: Page,
-    origin: String,
-    origins: Vec<String>,
+    pub(crate) page: Page,
+    pub(crate) origin: String,
+    pub(crate) origins: Vec<String>,
     attempts: Attempts,
     credentials: Value,
     username_submitted: bool,
@@ -200,23 +188,21 @@ impl Drives for Driver {
     }
     fn collect<'a>(&'a mut self, run: &'a Run<'a>) -> Pending<'a, Collected> {
         Box::pin(async move {
-            if let Some(request) = crate::collectors::cortex::dvic::Request::parse(run.request)? {
+            if let Some(request) = crate::dvic::Request::parse(run.request)? {
                 let (capture, scope) = self.collect_dvic(&request, run).await?;
                 return Ok(Collected {
                     data: serde_json::to_value(capture)?,
                     scope: Some(serde_json::to_value(scope)?),
                 });
             }
-            if let Some(request) =
-                crate::collectors::cortex::scorecard::Request::parse(run.request)?
-            {
+            if let Some(request) = crate::scorecard::Request::parse(run.request)? {
                 let (capture, scope) = self.collect_scorecard(&request, run).await?;
                 return Ok(Collected {
                     data: serde_json::to_value(capture)?,
                     scope: Some(serde_json::to_value(scope)?),
                 });
             }
-            if let Some(request) = crate::collectors::cortex::routes::Request::parse(run.request)? {
+            if let Some(request) = crate::routes::Request::parse(run.request)? {
                 let capture = self.collect_routes(&request, run).await?;
                 let scope = serde_json::to_value(&capture.scope)?;
                 return Ok(Collected {
@@ -231,7 +217,7 @@ impl Drives for Driver {
                 self,
                 &scope,
                 run.metrics,
-                Some(&crate::collectors::cortex::live::Writer::new(
+                Some(&crate::meals::Writer::new(
                     run.state.clone(),
                     run.job,
                     run.owner,

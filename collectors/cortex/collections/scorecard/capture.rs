@@ -1,6 +1,6 @@
 //! What a scorecard collection reads from Cortex's performance API: the datasets behind
 //! each scorecard page, one week at a time, every row as Amazon sent it.
-use super::discovery::{CollectionRequest as ScopeRequest, Discovery, Scope};
+use crate::discovery::{CollectionRequest as ScopeRequest, Discovery, Scope};
 use dispatch_core::{
     Error, Result,
     db::now,

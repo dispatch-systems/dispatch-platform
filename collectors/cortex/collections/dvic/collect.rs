@@ -1,15 +1,19 @@
-use super::*;
-use crate::collectors::cortex::{
-    self,
-    discovery::Scope,
-    dvic::{self, Capture, Collection, KnownReport, Report, Request},
-};
+use super::capture as dvic;
+use super::capture::{Capture, Collection, KnownReport, Report, Request};
+use crate as cortex;
+use crate::{connection::Driver, discovery::Scope};
 use chrono::NaiveDate;
 use dispatch_core::{
-    collection::browser::http::{FIXTURE, Http, Refusal},
+    Error, Result,
+    collection::browser::{
+        Run,
+        http::{FIXTURE, Http, Refusal},
+    },
     db::now,
+    ensure,
     manifest::registry,
 };
+use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
 pub const REPORT_HOST: &str = "flex-peer-performance-reports-prod-usamazon.s3.amazonaws.com";
@@ -147,7 +151,7 @@ fn listing(
 }
 
 impl Driver {
-    pub(super) async fn collect_dvic(
+    pub(crate) async fn collect_dvic(
         &mut self,
         request: &Request,
         run: &Run<'_>,

@@ -1,5 +1,5 @@
 use super::*;
-use crate::collectors::cortex::scorecard::{dataset, fixture};
+use dispatch_cortex::scorecard::{dataset, fixture};
 #[test]
 fn requests_are_recognized_by_their_collection() {
     assert!(

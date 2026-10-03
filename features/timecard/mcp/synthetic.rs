@@ -1,15 +1,13 @@
 //! What Timecard holds of the synthetic DSP: Paycom's roster and timecards, and the meal
 //! breaks Cortex records beside the routes.
-use crate::{
-    collectors::cortex::{discovery::Scope, meals},
-    workforce::TimecardStore,
-};
+use crate::workforce::TimecardStore;
 use chrono::Datelike;
 use dispatch_core::{
     Error, Result,
     db::{Store, s},
     mcp::synthetic::{Made, Step, Synthetic, World, hhmm, plan},
 };
+use dispatch_cortex::{discovery::Scope, meals};
 use dispatch_paycom as paycom;
 use serde_json::{Value, json};
 

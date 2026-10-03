@@ -3,7 +3,6 @@
 //! team's table.
 use super::{MEAL_BREAKS, TIMECARDS};
 use crate::{
-    collectors::cortex,
     contracts::{DailyTimecard, MealStatus},
     workforce::{TimecardStore, assessment::paycom_day},
 };
@@ -20,6 +19,7 @@ use dispatch_core::{
         },
     },
 };
+use dispatch_cortex as cortex;
 use dispatch_paycom as paycom;
 use serde::Serialize;
 use serde_json::{Value, json};

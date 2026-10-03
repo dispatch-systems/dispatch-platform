@@ -1,9 +1,9 @@
 //! Cortex's meal breaks as a collection finds them: each itinerary, validated against
 //! the run's scope, is shown beside the published day until the job ends.
-use super::{
+use super::Capture;
+use crate::{
     PROVIDER,
     discovery::{CollectionRequest, Scope},
-    meals::Capture,
 };
 use dispatch_core::{Error, Result, State, collection::live, ensure};
 use serde_json::{Value, json};

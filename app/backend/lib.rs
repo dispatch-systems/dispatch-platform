@@ -17,19 +17,6 @@ pub mod uniforms;
 #[path = "../../features/timecard/backend/punches/mod.rs"]
 pub mod workforce;
 
-/// Each collector's manifest, until each collector is a crate of its own.
-#[path = "../../collectors"]
-pub mod collectors {
-    #[path = "cortex/collector.rs"]
-    pub mod cortex;
-}
-/// What reads each collector's site, until each collector is a crate of its own.
-#[path = "../../collectors"]
-pub mod browsers {
-    #[path = "cortex/connection/mod.rs"]
-    pub(crate) mod cortex;
-}
-
 use dispatch_core::{
     manifest::{self, Registry},
     server::http,
@@ -37,7 +24,7 @@ use dispatch_core::{
 
 /// Everything this build of Dispatch is made of: its collectors and its features.
 pub static REGISTRY: Registry = Registry {
-    collectors: &[&dispatch_paycom::COLLECTOR, &collectors::cortex::COLLECTOR],
+    collectors: &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
     features: &[
         &feature_manifests::timecard::FEATURE,
         &feature_manifests::uniforms::FEATURE,

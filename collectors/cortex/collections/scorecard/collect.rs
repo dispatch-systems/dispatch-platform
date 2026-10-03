@@ -3,25 +3,32 @@
 //! station's last publication; when there is none, or nothing answers there, the
 //! overview page's own first data request names them. Every dataset is read at once,
 //! and the browser closes as soon as the API has answered one.
-use super::*;
-use crate::collectors::cortex::{
-    self, codes,
-    discovery::Scope,
-    scorecard::{
-        Capture, Collection, DATASETS, Dataset, DatasetCapture, JOB_KIND, MAX_ROWS, POSTED_SIGNAL,
-        Request,
-    },
+use super::capture::{
+    Capture, Collection, DATASETS, Dataset, DatasetCapture, JOB_KIND, MAX_ROWS, POSTED_SIGNAL,
+    Request,
 };
+use crate as cortex;
+use crate::{codes, connection::Driver, discovery::Scope};
 use dispatch_core::{
+    Error, Result,
     collection::{
-        browser::http::{Http, Refusal},
+        browser::{
+            Run,
+            http::{Http, Refusal},
+        },
         metrics::Recorder,
     },
-    db::now,
+    db::{now, s},
+    ensure,
     foundation::validate::token,
     manifest::registry,
 };
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use serde_json::{Value, json};
+use std::{
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    time::Duration,
+};
+use tokio::time::{Instant, sleep};
 
 /// As much as one reply may hold once decompressed. The largest week seen was 2 MB.
 const LIMIT: usize = 16 * 1024 * 1024;
@@ -30,13 +37,13 @@ const LIMIT: usize = 16 * 1024 * 1024;
 const LANES: usize = DATASETS.len();
 
 /// Where the page sends its data requests, and how it names this DSP there.
-pub(super) struct Api {
+pub(crate) struct Api {
     /// The origin and path up to the version segment.
-    pub(super) base: String,
+    pub(crate) base: String,
     /// The `dsp` parameter, the DSP's code.
-    pub(super) dsp: String,
+    pub(crate) dsp: String,
     /// The `companyId` the page settled on.
-    pub(super) company_id: String,
+    pub(crate) company_id: String,
 }
 impl Api {
     fn address(&self, dataset: &Dataset, station: &str, from: &str, to: &str) -> String {
@@ -144,7 +151,7 @@ impl Driver {
     }
     /// Opens the overview for the provider identity discovery resolved, then accepts
     /// only a data request and settled page that still name that provider.
-    pub(super) async fn performance_api(
+    pub(crate) async fn performance_api(
         &mut self,
         scope: &Scope,
         expected_dsp: &str,
@@ -346,7 +353,7 @@ impl Driver {
             .map(|reply| reply.ok_or_else(|| Error::new("scorecard_capture_invalid", 502)))
             .collect::<Result<Vec<_>>>()?)
     }
-    pub(super) async fn collect_scorecard(
+    pub(crate) async fn collect_scorecard(
         &mut self,
         request: &Request,
         run: &Run<'_>,

@@ -1,6 +1,6 @@
 //! Paycom's live probes that need Paycom alone, ignored: an operator runs one at a time
 //! against a copy of a DSP, with the `operator-probes` feature. Never run by CI or print
-//! provider records.
+//! provider records. Each installs a registry of Paycom, as the app installs its own.
 use super::*;
 use crate::{collections::timecards::extract, connection::SEARCH};
 
@@ -147,6 +147,7 @@ async fn read_here(
 #[tokio::test]
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn http_extraction_parity() -> Result<()> {
+    dispatch_core::testing::install(&[&crate::COLLECTOR], &[]);
     let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
     let profile = dsp.join("state/browsers/paycom-browseros");
     let runtime = browseros::Runtime::new(
@@ -257,6 +258,7 @@ async fn http_extraction_parity() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn http_concurrency() -> Result<()> {
+    dispatch_core::testing::install(&[&crate::COLLECTOR], &[]);
     let levels = concurrency_levels(
         &std::env::var("DISPATCH_BENCHMARK_LEVELS").unwrap_or_else(|_| "2,4,6".into()),
     )?;

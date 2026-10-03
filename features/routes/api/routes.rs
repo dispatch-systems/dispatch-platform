@@ -1,9 +1,6 @@
 //! Daily routes: what is stored, collecting a day, and its jobs. The collection is `routes`
 //! here and in its paths; its module and database are `routedata`.
-use crate::{
-    collectors::cortex::routes::{JOB_KIND, Mode, token},
-    routedata::{self, MAX_DAYS_PER_REQUEST, RoutesStore},
-};
+use crate::routedata::{self, MAX_DAYS_PER_REQUEST, RoutesStore};
 use dispatch_core::{
     Error, Result,
     collection::api::routes::{
@@ -18,6 +15,7 @@ use dispatch_core::{
         route::{Dsp, Member, PlatformOwner, Route, User, read, write},
     },
 };
+use dispatch_cortex::routes::{JOB_KIND, Mode, token};
 
 const VIEW: Dsp = Dsp("routes.view");
 const COLLECT: Dsp = Dsp("routes.collect");

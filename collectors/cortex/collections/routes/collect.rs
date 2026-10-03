@@ -6,22 +6,32 @@
 //! application: the address changes as a click in the list would change it, and the
 //! application fetches just that itinerary. An itinerary the application does not
 //! answer for is read by loading its own page instead.
-use super::*;
-use crate::collectors::cortex::{
-    codes,
-    discovery::Scope,
-    routes::{
-        Capture, Collection, ItineraryCapture, MAX_BODY, MAX_ITINERARIES, Request,
-        add_capture_bytes, listed,
-    },
+use super::capture::{
+    Capture, Collection, ItineraryCapture, MAX_BODY, MAX_ITINERARIES, Request, add_capture_bytes,
+    listed,
 };
+use crate::{codes, connection::Driver, discovery::Scope};
 use base64::{Engine, engine::general_purpose::STANDARD};
-use dispatch_core::{collection::metrics::Recorder, db::now};
+use dispatch_core::{
+    Error, Result,
+    collection::{
+        browser::{
+            Run,
+            page::{Page, call},
+        },
+        metrics::Recorder,
+    },
+    db::{now, s},
+    ensure,
+};
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use std::{
     future::Future,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    time::Duration,
 };
+use tokio::time::Instant;
 
 const SUMMARIES: &str = "/operations/execution/api/summaries";
 const ROUTE_SUMMARIES: &str = "/operations/execution/api/route-summaries";
@@ -39,7 +49,7 @@ const MOVE_FAILED: &[dispatch_core::Code] = &[
 const MOVE_DEADLINE: Duration = Duration::from_secs(20);
 /// Moves the loaded application to `url` as its own links do: the address changes and
 /// the application is told, so it fetches, and signs, what the new address shows.
-pub(super) const MOVE: &str = r#"(url)=>{const next=new URL(url);if(next.origin!==location.origin)return false;
+pub(crate) const MOVE: &str = r#"(url)=>{const next=new URL(url);if(next.origin!==location.origin)return false;
   history.pushState(history.state,'',next.pathname+next.search);
   dispatchEvent(new PopStateEvent('popstate',{state:history.state}));return true;}"#;
 
@@ -81,7 +91,7 @@ impl Default for Method {
 }
 impl Method {
     /// How days were read before in-app moves: a page load per itinerary, two windows.
-    #[cfg(all(test, feature = "operator-probes"))]
+    #[cfg(feature = "operator-probes")]
     pub(crate) fn reload() -> Self {
         Self {
             navigation: Navigation::Reload,
@@ -331,7 +341,7 @@ impl Driver {
             metrics.detail("route_changed");
         }
     }
-    pub(super) async fn collect_routes(
+    pub(crate) async fn collect_routes(
         &mut self,
         request: &Request,
         run: &Run<'_>,
@@ -344,7 +354,7 @@ impl Driver {
         )
         .await
     }
-    pub(super) async fn collect_routes_with<F, Fut>(
+    pub(crate) async fn collect_routes_with<F, Fut>(
         &mut self,
         request: &Request,
         method: &Method,

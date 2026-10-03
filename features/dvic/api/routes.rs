@@ -1,5 +1,5 @@
 //! DVIC collection controls and read APIs; no dashboard is required.
-use crate::{collectors::cortex::dvic, dvic::DvicStore};
+use crate::dvic::DvicStore;
 use dispatch_core::{
     Result,
     collection::api::routes::{jobs::job_cancel, schedules::schedule_routes},
@@ -10,6 +10,7 @@ use dispatch_core::{
         route::{Dsp, Member, Route, read, write},
     },
 };
+use dispatch_cortex::dvic;
 
 pub fn routes() -> Vec<Route> {
     let mut routes = vec![

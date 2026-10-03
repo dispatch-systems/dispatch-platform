@@ -2,17 +2,8 @@
 //! Paycom, routes, meal breaks and DVIC by Driver Match, everyone's numbers for a day,
 //! and refusals that say what to fix instead of guessing.
 use dispatch_backend::{
-    collectors::cortex::{
-        self,
-        discovery::Scope,
-        meals,
-        routes::{self, Mode, Request},
-    },
-    driver_match::DriverMatchStore,
-    dvic::DvicStore,
-    routedata::RoutesStore,
-    scorecard::ScorecardStore,
-    workforce::TimecardStore,
+    driver_match::DriverMatchStore, dvic::DvicStore, routedata::RoutesStore,
+    scorecard::ScorecardStore, workforce::TimecardStore,
 };
 use dispatch_core::testing as common;
 use dispatch_core::{
@@ -23,6 +14,12 @@ use dispatch_core::{
         api::types::{AgentArea, AgentKeyRequest},
         synthetic,
     },
+};
+use dispatch_cortex::{
+    self as cortex,
+    discovery::Scope,
+    meals,
+    routes::{self, Mode, Request},
 };
 use dispatch_paycom::{self as paycom, fixtures};
 use serde_json::{Value, json};

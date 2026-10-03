@@ -599,25 +599,22 @@ version = "0.0.0"
 dependencies = [
  "axum",
  "base64 0.23.1",
- "calamine",
  "chrono",
  "chrono-tz",
  "dispatch-core",
+ "dispatch-cortex",
  "dispatch-host",
  "dispatch-paycom",
  "flate2",
- "futures-util",
  "libc",
  "reqwest",
  "rusqlite",
  "serde",
  "serde_json",
- "sha2",
  "tempfile",
  "tokio",
  "ts-rs",
  "url",
- "zip",
 ]
 
 [[package]]
@@ -665,6 +662,26 @@ dependencies = [
  "ts-rs",
  "url",
  "webauthn-rs",
+]
+
+[[package]]
+name = "dispatch-cortex"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "base64 0.23.1",
+ "calamine",
+ "chrono",
+ "chrono-tz",
+ "dispatch-core",
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "url",
+ "zip",
 ]
 
 [[package]]

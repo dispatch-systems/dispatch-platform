@@ -1,5 +1,5 @@
 //! Timecard: Paycom's punches and timecards, and the meal breaks Cortex reports.
-use crate::{collectors::cortex, driver_match, meals, workforce};
+use crate::{driver_match, meals, workforce};
 use dispatch_core::{
     db::{Migration, Migrations, migrations::Apply::Sql},
     manifest::{
@@ -10,6 +10,7 @@ use dispatch_core::{
     server::cache::{Cached, DataDomain, Evicted::By, LISTINGS},
     tenancy::api::audit::AuditArea::Collections,
 };
+use dispatch_cortex as cortex;
 use dispatch_paycom as paycom;
 
 #[path = "api/routes.rs"]

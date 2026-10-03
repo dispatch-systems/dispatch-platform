@@ -11,20 +11,10 @@ pub mod maintenance;
 #[path = "people.rs"]
 pub mod people;
 
-use crate::{
-    collectors::cortex::{
-        self,
-        discovery::Scope,
-        routes::{
-            Capture, Collection, ItineraryCapture, JOB_KIND, MAX_BODY, MAX_CAPTURE_BYTES, Mode,
-            Request, add_capture_bytes, listed,
-        },
-    },
-    contracts::{
-        RouteAddress, RouteBreak, RouteDayView, RouteDays, RouteItinerary, RouteItineraryDetail,
-        RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteRetention,
-        RouteStop, RouteTask, RouteUnknownStop,
-    },
+use crate::contracts::{
+    RouteAddress, RouteBreak, RouteDayView, RouteDays, RouteItinerary, RouteItineraryDetail,
+    RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteRetention, RouteStop,
+    RouteTask, RouteUnknownStop,
 };
 use chrono::{Duration, NaiveDate};
 use dispatch_core::{
@@ -33,6 +23,14 @@ use dispatch_core::{
     db::{Db, DspLease, Kind, Store, at, migrations::add_column, s},
     ensure,
     server::cache::DataDomain,
+};
+use dispatch_cortex::{
+    self as cortex,
+    discovery::Scope,
+    routes::{
+        Capture, Collection, ItineraryCapture, JOB_KIND, MAX_BODY, MAX_CAPTURE_BYTES, Mode,
+        Request, add_capture_bytes, listed,
+    },
 };
 use rusqlite::params;
 use serde::{Deserialize, Serialize};

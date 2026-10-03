@@ -3,8 +3,8 @@
 //! `dvic-hidden`. Publication drops a hidden driver's rows before anything is written, and
 //! hiding a driver removes what was stored before, so the DSP's DVIC database never holds
 //! them. Showing a driver again lets later reports in; it restores nothing.
-use crate::collectors::cortex::dvic::Inspection;
 use dispatch_core::{Result, db::Db, ensure};
+use dispatch_cortex::dvic::Inspection;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 

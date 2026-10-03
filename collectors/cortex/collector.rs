@@ -1,20 +1,19 @@
 //! Cortex: meal evidence, the scorecard, daily routes, and short DVIC inspections from Amazon Logistics.
 //! Its storage was added to DSPs that already existed, which is the path every later
 //! provider takes.
-#[path = "discovery/scope.rs"]
+mod collections;
+mod connection;
 pub mod discovery;
-#[path = "collections/dvic/capture.rs"]
-pub mod dvic;
-#[path = "collections/meals/live.rs"]
-pub mod live;
-#[path = "collections/meals/capture.rs"]
-pub mod meals;
-#[path = "collections/routes/capture.rs"]
-pub mod routes;
-#[path = "collections/scorecard/capture.rs"]
-pub mod scorecard;
+#[cfg(feature = "operator-probes")]
+mod probes;
 
-use crate::browsers::cortex::{self, dvic::REPORT_HOST};
+pub use collections::{dvic, meals, routes, scorecard};
+/// Measures a day's routes read by a method, with the rows the feature keeping them shapes
+/// them into, which only the app's registry holds: the app's tests run it.
+#[cfg(feature = "operator-probes")]
+pub use probes::measure_route_method;
+
+use collections::dvic::collect::REPORT_HOST;
 use discovery::CollectionRequest;
 use dispatch_core::collection::registry::Provider;
 use dispatch_core::{
@@ -188,7 +187,10 @@ impl Collector for Cortex {
         fixture: Option<&'a str>,
     ) -> Pending<'a, Box<dyn Driver>> {
         Box::pin(async move {
-            Ok(Box::new(cortex::Driver::new(browser, profile, fixture).await?) as Box<dyn Driver>)
+            Ok(
+                Box::new(connection::Driver::new(browser, profile, fixture).await?)
+                    as Box<dyn Driver>,
+            )
         })
     }
     fn fixture(&self, _: &str, request: &Value) -> Result<Collected> {

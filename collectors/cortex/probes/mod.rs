@@ -2,10 +2,20 @@
 //! A probe that measures what the feature keeping a collection makes of it needs that
 //! feature, so the app's tests run it and hand it the feature's part. The probes that
 //! need Cortex alone are its ignored tests.
-use super::*;
-use crate::collectors::cortex::discovery::Scope;
-use dispatch_core::{collection::metrics::Recorder, db};
-use std::path::PathBuf;
+use crate::{connection::Driver, discovery::Scope};
+use dispatch_core::{
+    Error, Result,
+    collection::{browser::browseros, metrics::Recorder},
+    db::{self, s},
+    ensure,
+};
+use serde_json::{Value, json};
+use std::{
+    path::{Path, PathBuf},
+    sync::atomic::AtomicU64,
+    time::Duration,
+};
+use tokio::time::Instant;
 
 fn env_path(name: &str) -> Result<PathBuf> {
     std::env::var_os(name)
@@ -79,12 +89,14 @@ fn own_rss() -> u64 {
 // browser. Prints times, CPU, memory, bytes through the egress proxy, and digests of
 // what was read and of the rows it becomes; never a value.
 // `prepare` is how the feature that keeps the routes shapes a day into its rows: what
-// the probe times and digests.
-pub(crate) async fn measure_route_method<R: serde::Serialize>(
-    prepare: impl FnOnce(&crate::collectors::cortex::routes::Capture) -> Result<R>,
+// the probe times and digests. `sent` and `received` count the bytes through the egress
+// proxy, which only test builds count.
+pub async fn measure_route_method<R: serde::Serialize>(
+    prepare: impl FnOnce(&crate::routes::Capture) -> Result<R>,
+    sent: &AtomicU64,
+    received: &AtomicU64,
 ) -> Result<()> {
-    use dispatch_core::collection::browser::egress::counted::{RECEIVED, SENT};
-    use routedata::Method;
+    use crate::collections::routes::collect::Method;
     let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
     let method: Method = match std::env::var("DISPATCH_BENCHMARK_METHOD").as_deref() {
         Ok("reload") => Method::reload(),
@@ -114,7 +126,7 @@ pub(crate) async fn measure_route_method<R: serde::Serialize>(
         .start(
             &profile,
             mode,
-            browseros::NetworkPolicy::Hosts(&crate::collectors::cortex::BROWSER_HOSTS),
+            browseros::NetworkPolicy::Hosts(&crate::BROWSER_HOSTS),
         )
         .await?;
     let mut driver = Driver::new(browser, &profile, None).await?;
@@ -144,9 +156,9 @@ pub(crate) async fn measure_route_method<R: serde::Serialize>(
             use std::io::Write;
             let _ = peak.write_all(b"reset\n");
         }
-        let (sent, received) = (
-            SENT.load(std::sync::atomic::Ordering::Relaxed),
-            RECEIVED.load(std::sync::atomic::Ordering::Relaxed),
+        let (sent_before, received_before) = (
+            sent.load(std::sync::atomic::Ordering::Relaxed),
+            received.load(std::sync::atomic::Ordering::Relaxed),
         );
         let pid = driver.browser.process_id();
         let sampling = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
@@ -167,9 +179,9 @@ pub(crate) async fn measure_route_method<R: serde::Serialize>(
                 (max_pss, sum_pss / samples.max(1), max_own)
             })
         };
-        let request = crate::collectors::cortex::routes::Request {
-            collection: crate::collectors::cortex::routes::Collection::Routes,
-            mode: crate::collectors::cortex::routes::Mode::Final,
+        let request = crate::routes::Request {
+            collection: crate::routes::Collection::Routes,
+            mode: crate::routes::Mode::Final,
             date: scope.date.clone(),
             station: scope.station.clone(),
             timezone: scope.timezone.clone(),
@@ -258,8 +270,8 @@ pub(crate) async fn measure_route_method<R: serde::Serialize>(
                 "browserPeakPssMB": max_pss / 1_048_576,
                 "browserAvgPssMB": avg_pss / 1_048_576,
                 "processPeakRssMB": max_own / 1_048_576,
-                "sentKB": (SENT.load(std::sync::atomic::Ordering::Relaxed) - sent) / 1024,
-                "receivedKB": (RECEIVED.load(std::sync::atomic::Ordering::Relaxed) - received) / 1024,
+                "sentKB": (sent.load(std::sync::atomic::Ordering::Relaxed) - sent_before) / 1024,
+                "receivedKB": (received.load(std::sync::atomic::Ordering::Relaxed) - received_before) / 1024,
                 "itineraries": capture.itineraries.len(),
                 "pages": {"completed": pages["completed"], "retries": pages["retries"], "direct": pages["direct"],
                     "totalMs": pages["totalMs"], "slowest": slowest},

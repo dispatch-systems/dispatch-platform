@@ -1,12 +1,10 @@
 //! Live results from both collectors, overlaid on Timecard's views before they publish.
-use crate::{
-    collectors::cortex::{self, discovery::Scope, live::Writer},
-    workforce::TimecardStore,
-};
+use crate::workforce::TimecardStore;
 use dispatch_core::{
     Result, State, collection::registry::Provider, db::s, foundation::config::Config,
     server::operations,
 };
+use dispatch_cortex::{self as cortex, discovery::Scope, meals::Writer};
 use dispatch_paycom::{self as paycom, fixtures, timecards::Checkpoint};
 use serde_json::json;
 use std::os::unix::fs::PermissionsExt;
@@ -193,7 +191,7 @@ async fn driver_results_overlay_both_views_without_publishing_and_revert_on_fail
             Ok(s(&job, "id").to_owned())
         })
         .await?;
-    let mut capture = crate::collectors::cortex::meals::fixture(&scope);
+    let mut capture = dispatch_cortex::meals::fixture(&scope);
     capture.itineraries[0].driver = s(&employee, "name").into();
     let writer = Writer::new(state.clone(), &flex_job, "flex-owner");
     writer

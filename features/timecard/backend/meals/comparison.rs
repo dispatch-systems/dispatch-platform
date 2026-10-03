@@ -1,7 +1,6 @@
 //! Read-only comparison across provider snapshots. Drivers join employees through
 //! Driver Match; unique names join the drivers it has not reached yet.
 use crate::{
-    collectors::cortex,
     contracts::{LateRule, MealComparison, MealSource},
     driver_match::{self, DriverMatchStore},
     workforce::{self, TimecardStore},
@@ -11,6 +10,7 @@ use dispatch_core::{
     db::{Store, s},
     foundation::names::{self, Name, name_key},
 };
+use dispatch_cortex as cortex;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -239,7 +239,7 @@ impl ComparisonContext<'_> {
                 drivers.insert(s(driver, "id").to_owned(), driver.clone());
             }
             for capture in captures {
-                let capture: crate::collectors::cortex::meals::Capture =
+                let capture: dispatch_cortex::meals::Capture =
                     serde_json::from_value(capture.clone())?;
                 let p = json!({"station":capture.scope.station,"serviceAreaId":capture.scope.service_area_id,
                     "timezone":capture.scope.timezone,"collectedAt":dispatch_core::db::at(capture.finished_at)});

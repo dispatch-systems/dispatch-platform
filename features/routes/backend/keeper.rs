@@ -1,9 +1,6 @@
 //! Routes keeps the days Cortex's execution pages bring.
 use super::stage;
-use crate::{
-    collectors::cortex::routes::{Capture, JOB_KIND},
-    routedata::RoutesStore,
-};
+use crate::routedata::RoutesStore;
 use dispatch_core::{
     Result, State,
     collection::{
@@ -14,6 +11,7 @@ use dispatch_core::{
     manifest::Keeper,
     server::cache::DataDomain,
 };
+use dispatch_cortex::routes::{Capture, JOB_KIND};
 use serde_json::Value;
 use std::sync::Arc;
 

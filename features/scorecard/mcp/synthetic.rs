@@ -1,6 +1,6 @@
 //! What Scorecard holds of the synthetic DSP: Amazon's weekly scorecards for the weeks the
 //! routes cover, through the collection's own publishing.
-use crate::{collectors::cortex, scorecard::ScorecardStore};
+use crate::scorecard::ScorecardStore;
 use chrono::{Datelike, Duration};
 use dispatch_core::{
     Error, Result,
@@ -9,6 +9,7 @@ use dispatch_core::{
         Made, STATION, Step, Synthetic, World, context_at, hhmm, packages_at, plan, roll, tracking,
     },
 };
+use dispatch_cortex as cortex;
 use serde_json::{Value, json};
 
 pub const SYNTHETIC: Synthetic = Synthetic {

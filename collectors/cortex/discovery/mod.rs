@@ -1,9 +1,18 @@
-use super::*;
-use crate::collectors::cortex::{
-    codes,
-    discovery::{CollectionRequest, Scope},
+//! The station and day a Cortex collection covers, resolved from what it was asked for.
+mod scope;
+
+pub use scope::{CollectionRequest, Discovery, Scope};
+
+use crate::{codes, connection::Driver};
+use dispatch_core::{
+    Code, Error, Result,
+    collection::{browser::page::call, metrics::Recorder},
+    db::s,
+    ensure,
 };
-use dispatch_core::{Code, collection::metrics::Recorder};
+use serde_json::json;
+use std::time::Duration;
+use tokio::time::{Instant, sleep};
 // The page is between documents or signing in again; ask it again.
 const PAGE_NOT_READY: &[dispatch_core::Code] = &[
     dispatch_core::Code::BrowserNavigationPending,

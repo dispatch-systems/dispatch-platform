@@ -1,11 +1,11 @@
 //! The drivers Cortex's meal breaks name, as Driver Match reads them.
-use crate::collectors::cortex;
 use dispatch_core::{
     Result,
     db::{Store, n, s},
     manifest::people::{self, Appearances, Named, People, Workdays},
     mcp::api::types::{DriverData, DriverSource},
 };
+use dispatch_cortex as cortex;
 
 pub struct MealDrivers;
 impl People for MealDrivers {

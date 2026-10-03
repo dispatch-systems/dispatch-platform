@@ -1,14 +1,12 @@
 //! What Timecard reads and writes for a DSP, as one extension of the store: Paycom's
 //! employees, timecards and preferences, and the meal breaks Cortex reports. Each method is
 //! written beside the rest of its part of Timecard.
-use crate::{
-    collectors::cortex::{discovery::Scope, meals::Capture},
-    contracts::{
-        DailyTimecards, EmployeeTimecardPeriod, EmployeeTimecardResponse, EmployeesResponse,
-        MealComparison,
-    },
+use crate::contracts::{
+    DailyTimecards, EmployeeTimecardPeriod, EmployeeTimecardResponse, EmployeesResponse,
+    MealComparison,
 };
 use dispatch_core::{Result, db::Store};
+use dispatch_cortex::{discovery::Scope, meals::Capture};
 use serde_json::Value;
 use std::collections::BTreeMap;
 

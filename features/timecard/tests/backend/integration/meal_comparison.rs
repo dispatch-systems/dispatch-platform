@@ -1,24 +1,18 @@
-use dispatch_backend::{
-    collectors::cortex::{self, discovery::Scope, meals},
-    driver_match::DriverMatchStore,
-    workforce::TimecardStore,
-};
+use dispatch_backend::{driver_match::DriverMatchStore, workforce::TimecardStore};
 use dispatch_core::testing as common;
 use dispatch_core::{
     accounts::{Auth, Context},
     db::{Store, s},
     mcp::api::types::DriverSource,
 };
+use dispatch_cortex::{self as cortex, discovery::Scope, meals};
 use dispatch_paycom::{self as paycom, fixtures};
 use serde_json::{Value, json};
 
 /// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
 fn install() {
     common::install(
-        &[
-            &dispatch_paycom::COLLECTOR,
-            &dispatch_backend::collectors::cortex::COLLECTOR,
-        ],
+        &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
         &[
             &dispatch_backend::feature_manifests::driver_match::FEATURE,
             &dispatch_backend::feature_manifests::timecard::FEATURE,

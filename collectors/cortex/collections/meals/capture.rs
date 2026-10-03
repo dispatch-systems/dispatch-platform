@@ -1,5 +1,5 @@
 //! Cortex meal evidence as collected. Browser data is untrusted input.
-use super::discovery::Scope;
+use crate::discovery::Scope;
 use chrono::{NaiveDate, TimeZone};
 use dispatch_core::{Error, Result, db::now, ensure};
 use serde::{Deserialize, Serialize};

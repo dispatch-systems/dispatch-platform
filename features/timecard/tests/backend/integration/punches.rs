@@ -8,10 +8,7 @@ use serde_json::{Value, json};
 /// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
 fn install() {
     common::install(
-        &[
-            &dispatch_paycom::COLLECTOR,
-            &dispatch_backend::collectors::cortex::COLLECTOR,
-        ],
+        &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
         &[
             &dispatch_backend::feature_manifests::driver_match::FEATURE,
             &dispatch_backend::feature_manifests::timecard::FEATURE,

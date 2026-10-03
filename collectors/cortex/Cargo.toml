@@ -1,0 +1,38 @@
+[package]
+name = "dispatch-cortex"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+autotests = false
+
+[lib]
+path = "collector.rs"
+doctest = false
+
+[features]
+# Its live probes, for an operator who asks for them; never in a build that ships.
+operator-probes = []
+
+# Core's parts only: a collector names no feature.
+[dependencies]
+dispatch-core = { path = "../../core" }
+base64 = { workspace = true }
+calamine = { workspace = true }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+futures-util = { workspace = true }
+serde = { workspace = true }
+# What it collects keeps the order its fields are written in.
+serde_json = { workspace = true, features = ["preserve_order"] }
+sha2 = { workspace = true }
+tokio = { workspace = true }
+url = { workspace = true }
+zip = { workspace = true }
+
+[dev-dependencies]
+dispatch-core = { path = "../../core", features = ["testing"] }
+axum = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
