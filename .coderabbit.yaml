@@ -91,13 +91,26 @@ reviews:
         enrollment, factor removal, recovery-code replacement and session revocation must
         enforce their own recent-authentication requirement.
         (codebase.md, security.md)
-    - path: '{core/tenancy/backend/roles.rs,shared/contracts/accounts.ts,core/shell/frontend/runtime/permissions.ts}'
+    - path: '{features/*/feature.rs,collectors/*/collector.rs}'
       instructions: |
-        A permission lives in all three of `core/tenancy/backend/roles.rs`, `shared/contracts/accounts.ts`
-        and `core/shell/frontend/runtime/permissions.ts`, with a label. A feature's permissions take their
-        role-sheet section from the feature catalog; only a permission of no feature is listed in
-        `permissionGroups` directly. Flag a change that updates one file without the others.
-        (dispatch-features skill)
+        A switch, tab, permission, read toggle or collection is declared once, in its owner's
+        manifest, with its label; the catalog, the role sheet and the DSPs page are built from
+        it. Flag one copied by hand anywhere else. (dispatch-features skill)
+    - path: 'core/**'
+      instructions: |
+        Core names no feature or collector: flag a feature's or collector's name, id, table,
+        host or wording in core outside its tests. What a feature adds reaches core through a
+        slot. Anything for the platform owner's dashboard belongs in `core/platform_owner/`.
+        (codebase.md)
+    - path: 'collectors/**'
+      instructions: |
+        A collector names no feature and none of a feature's tables. It returns typed data; the
+        feature that keeps the collection writes it. (dispatch-collectors skill)
+    - path: 'features/**'
+      instructions: |
+        A feature uses only its own tables, core, and the collectors and features its manifest
+        declares. Flag SQL against another owner's tables and imports beyond those
+        dependencies. (codebase.md)
     - path: 'collectors/paycom/{collections/timecards/extract.rs,scripts/timecard.js}'
       instructions: |
         `extract.rs` ports `timecard.js`'s detached reading. A change to one must be matched in
