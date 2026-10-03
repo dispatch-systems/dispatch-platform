@@ -1,0 +1,51 @@
+//! {{collectionTitle}}: what one collection reads from {{label}} for a DSP, and the typed data
+//! it returns to the feature that keeps it.
+use dispatch_core::{
+    Error, Result,
+    collection::browser::page::{Page, call},
+};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+
+/// The kind of job that collects it. Permanent: jobs and schedules store it.
+pub const JOB_KIND: &str = "{{name}}.{{collection}}.collect";
+const SCRIPT: &str = include_str!("../../scripts/{{collection}}.js");
+
+/// What a queued job asks for.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Request {
+    pub collection: String,
+}
+impl Request {
+    pub fn parse(value: &Value) -> Result<Self> {
+        let invalid = || Error::new("invalid_{{name}}_request", 400);
+        let request: Self = serde_json::from_value(value.clone()).map_err(|_| invalid())?;
+        if request.collection != "{{collection}}" {
+            return Err(invalid());
+        }
+        Ok(request)
+    }
+}
+
+/// What a finished collection returns.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Capture {
+    pub rows: Vec<Record>,
+}
+/// One thing the site lists.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Record {
+    pub id: String,
+    pub name: String,
+}
+
+/// Reads the collection from the signed-in page.
+pub(crate) async fn collect(page: &Page) -> Result<Capture> {
+    let value = page.evaluate(&call(SCRIPT, &json!({}))).await?;
+    Ok(serde_json::from_value(value)?)
+}
+
+#[cfg(test)]
+#[path = "../../tests/backend/{{collection}}.rs"]
+mod tests;

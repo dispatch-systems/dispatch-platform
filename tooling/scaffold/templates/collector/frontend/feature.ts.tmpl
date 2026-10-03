@@ -1,0 +1,17 @@
+import type { FrontendFeature } from '{{toRoot}}core/shell/frontend/runtime/slots.js';
+
+// {{label}}'s connection card: the Connections page draws it from what the collector declares
+// here, and signs in with the fields it asks for.
+export const feature: FrontendFeature = {
+  name: '{{name}}',
+  connectionCards: [
+    {
+      provider: '{{name}}',
+      label: '{{label}}',
+      fields: [
+        { name: 'username', label: 'Username', type: 'text', autoComplete: 'username' },
+        { name: 'password', label: 'Password', type: 'password', autoComplete: 'current-password' },
+      ],
+    },
+  ],
+};

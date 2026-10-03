@@ -1,0 +1,28 @@
+import type { DspView } from '{{toRoot}}{{dspView}}';
+import { {{#api}}DataState, {{/api}}Empty, Header } from '{{toRoot}}core/shell/frontend/ui/index.js';
+{{#api}}
+import { use{{pascal}}Summary } from '../api/client.js';
+{{/api}}
+
+export function {{pascal}}Page({ view }: { view: DspView }) {
+{{#api}}
+  const { data, error, refresh } = use{{pascal}}Summary();
+{{/api}}
+  return (
+    <>
+      <Header title="{{label}}" />
+{{#api}}
+      <DataState data={data} error={error} retry={refresh}>
+        {(summary) => (
+          <Empty title="Nothing here yet">
+            {{label}} for {view.dsp.name} starts here{{#tables}} ({summary.items} items){{/tables}}.
+          </Empty>
+        )}
+      </DataState>
+{{/api}}
+{{^api}}
+      <Empty title="Nothing here yet">{{label}} for {view.dsp.name} starts here.</Empty>
+{{/api}}
+    </>
+  );
+}

@@ -1,0 +1,39 @@
+//! {{label}} keeps {{siteLabel}}'s `{{collection}}` collection: the engine hands it what each
+//! finished job brought, and it stores it for that DSP.
+{{#tables}}
+use crate::{{pascal}}Store;
+{{/tables}}
+{{#ownDatabase}}
+use super::storage::STORAGE;
+use dispatch_core::collection::registry::AddedStorage;
+{{/ownDatabase}}
+use dispatch_core::{Result, collection::browser::Collected, db::Store, manifest::Keeper};
+use {{siteIdent}}::collections::{{collection}}::JOB_KIND;
+
+pub(crate) struct {{pascal}}Keeper;
+impl Keeper for {{pascal}}Keeper {
+    fn keeps(&self) -> &'static str {
+        JOB_KIND
+    }
+    fn permission(&self) -> &'static str {
+        "{{name}}.collect"
+    }
+    /// Stores a finished collection: `collected.data` is what the collector returned.
+    fn publish(&self, {{publishParameters}}) -> Result<()> {
+{{#tables}}
+        // The starter records the job; store the rows `collected.data` holds instead.
+        store.add_{{name}}_item(dsp, job)?;
+{{/tables}}
+        Ok(())
+    }
+{{#ownDatabase}}
+    fn storages(&self) -> &'static [&'static AddedStorage] {
+        static STORAGES: [&AddedStorage; 1] = [&STORAGE];
+        &STORAGES
+    }
+{{/ownDatabase}}
+}
+
+#[cfg(test)]
+#[path = "../tests/backend/keeper.rs"]
+mod tests;

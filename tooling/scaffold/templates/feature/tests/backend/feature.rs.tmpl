@@ -1,0 +1,22 @@
+//! The manifest: what the DSPs page and the role sheet show for {{label}}.
+use super::FEATURE;
+
+#[test]
+fn declares_its_switch_and_permissions() {
+    assert_eq!(FEATURE.name, "{{name}}");
+{{#switch}}
+    let switch = FEATURE.switch.expect("a switch on the DSPs page");
+    assert_eq!((switch.id, switch.label), ("{{name}}", "{{label}}"));
+{{/switch}}
+{{^switch}}
+    assert!(FEATURE.switch.is_none(), "an always-on feature has no switch");
+{{/switch}}
+{{#permission}}
+    let view = FEATURE.permissions.iter().find(|p| p.id == "{{name}}.view");
+    // Only a DSP's owners hold it until a role grants it.
+    assert!(view.is_some_and(|p| p.defaults.is_empty()));
+{{/permission}}
+{{^permission}}
+    assert!(FEATURE.permissions.is_empty());
+{{/permission}}
+}

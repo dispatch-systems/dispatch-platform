@@ -1,0 +1,22 @@
+# The platform version lives in package.json. Crate versions stay fixed.
+[package]
+name = "{{crate}}"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.94"
+publish = false
+license = "FSL-1.1-ALv2"
+autotests = false
+
+[lib]
+path = "feature.rs"
+doctest = false
+
+# Core, the collectors it uses and the features it declares: nothing else compiles.
+[dependencies]
+{{dependencies}}
+{{#devDependencies}}
+
+[dev-dependencies]
+{{devDependencies}}
+{{/devDependencies}}

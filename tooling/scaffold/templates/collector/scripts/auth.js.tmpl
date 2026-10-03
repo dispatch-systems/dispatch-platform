@@ -1,0 +1,18 @@
+// DOM-only {{label}} sign-in steps. No cookies, tokens or page text leave this function.
+(input) => {
+  if (new URL(location.href).origin !== input.origin) return { state: 'untrusted' };
+  const find = (selector) => document.querySelector(selector);
+  const username = find('input[name="username"]');
+  const password = find('input[name="password"]');
+  if (input.action === 'sign_in') {
+    if (!username || !password) return { state: 'pending' };
+    username.value = input.credentials.username;
+    password.value = input.credentials.password;
+    password.form.requestSubmit();
+    return { state: 'submitted' };
+  }
+  if (find('#signed-in')) return { state: 'signed_in' };
+  if (find('#rejected')) return { state: 'invalid_credentials' };
+  if (password) return { state: 'sign_in' };
+  return { state: 'pending' };
+};
