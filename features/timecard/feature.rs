@@ -18,6 +18,8 @@ use crate::{
 pub mod mcp;
 
 pub const FEATURE: Feature = Feature {
+    // Its meal-break comparison joins drivers to employees by Driver Match's codes.
+    depends_on: &["driver_match"],
     switch: Some(Switch {
         id: "timecard",
         label: "Timecard",

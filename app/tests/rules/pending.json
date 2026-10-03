@@ -88,8 +88,7 @@
         "features/driver_match names collectors/paycom": "A5",
         "features/driver_match's tests name collectors/cortex": "A6",
         "features/driver_match's tests name collectors/paycom": "A6",
-        "features/routes's tests name app": "A6",
-        "features/timecard names features/driver_match": "A5"
+        "features/routes's tests name app": "A6"
       }
     },
     "encapsulation": {

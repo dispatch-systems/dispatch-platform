@@ -121,11 +121,12 @@ impl Registry {
     }
     /// Panics unless every collection has exactly one keeper, every keeper keeps a
     /// registered collection, one page runs the schedules, only a page has tabs, every
-    /// permission has an id and an order of its own and implies only permissions that
-    /// exist, one lets members invite, every database is declared once, with migrations numbered from 1 without a
-    /// gap or a repeat, every domain is declared once and before it is named, every audit
-    /// prefix is a dotted name listed under an area other than settings, and what agents
-    /// may read is declared as `agents::pieces::check` asks.
+    /// feature depends only on registered features and collectors, every permission has an
+    /// id and an order of its own and implies only permissions that exist, one lets
+    /// members invite, every database is declared once, with migrations numbered from 1
+    /// without a gap or a repeat, every domain is declared once and before it is named,
+    /// every audit prefix is a dotted name listed under an area other than settings, and
+    /// what agents may read is declared as `agents::pieces::check` asks.
     pub fn check(&self) {
         let kinds: Vec<&str> = self
             .collectors
@@ -155,6 +156,14 @@ impl Registry {
                 "{} has tabs but no page",
                 feature.name
             );
+            for dependency in feature.depends_on {
+                assert!(
+                    self.features.iter().any(|other| other.name == *dependency)
+                        || self.collectors.iter().any(|c| c.id() == *dependency),
+                    "{} depends on {dependency}, which is not registered",
+                    feature.name
+                );
+            }
         }
         let permissions: Vec<_> = self.permissions().collect();
         let inviting = permissions.iter().filter(|p| p.invites).count();
@@ -238,6 +247,9 @@ impl Registry {
 pub struct Feature {
     /// Its directory's name.
     pub name: &'static str,
+    /// The features and collectors it uses, by name, beyond the collectors whose
+    /// collections it keeps.
+    pub depends_on: &'static [&'static str],
     /// Its page's switch on the DSPs page. `None` for a feature that is always on.
     pub switch: Option<Switch>,
     /// Its page's tabs, each switched on its own, in the order the page shows them.
@@ -278,6 +290,7 @@ pub struct Feature {
 pub const fn feature(name: &'static str) -> Feature {
     Feature {
         name,
+        depends_on: &[],
         switch: None,
         tabs: &[],
         schedules: false,
