@@ -6,6 +6,7 @@ use crate::{
         input::{Input, Reply},
         route::{Dsp, Grant, Member, Route, async_get, read, write},
     },
+    uniforms::UniformsStore,
     validate as v,
 };
 use std::{sync::Arc, time::Duration};

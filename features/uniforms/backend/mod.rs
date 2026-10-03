@@ -10,7 +10,10 @@ mod templates;
 use crate::{
     Error, Result,
     accounts::Context,
-    contracts::{Uniform, UniformHistory, UniformInventory, UniformUpdates, UniformVariant},
+    contracts::{
+        Uniform, UniformAdjustment, UniformHistory, UniformInput, UniformInventory, UniformUpdates,
+        UniformVariant,
+    },
     db::{Db, FromRow, Row, Store, iso},
 };
 use rusqlite::params;
@@ -93,12 +96,34 @@ fn inventory(db: &Db) -> Result<UniformInventory> {
         uniforms,
     })
 }
-impl Store {
-    pub fn uniform_inventory(&self, dsp: &str) -> Result<UniformInventory> {
+/// What Uniform Inventory reads and writes for a DSP: its catalog's edits are written in
+/// `catalog`, its stock counts in `stock`.
+pub(crate) trait UniformsStore {
+    fn uniform_inventory(&self, dsp: &str) -> Result<UniformInventory>;
+    fn uniform_updates(&self, dsp: &str, after: i64) -> Result<UniformUpdates>;
+    fn uniform_history(&self, dsp: &str, before: i64) -> Result<UniformHistory>;
+    fn initialize_uniforms(&self, c: &Context, starter: bool) -> Result<UniformInventory>;
+    fn save_uniform(
+        &self,
+        c: &Context,
+        id: Option<&str>,
+        input: &UniformInput,
+    ) -> Result<UniformInventory>;
+    fn archive_uniform(&self, c: &Context, id: &str, expected: i64) -> Result<UniformInventory>;
+    fn adjust_uniform(
+        &self,
+        c: &Context,
+        variant: &str,
+        delta: i32,
+        request_id: &str,
+    ) -> Result<UniformAdjustment>;
+}
+impl UniformsStore for Store {
+    fn uniform_inventory(&self, dsp: &str) -> Result<UniformInventory> {
         let db = self.dsp(dsp)?;
         db.transaction(|| inventory(&db))
     }
-    pub fn uniform_updates(&self, dsp: &str, after: i64) -> Result<UniformUpdates> {
+    fn uniform_updates(&self, dsp: &str, after: i64) -> Result<UniformUpdates> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let current = revision(&db)?;
@@ -115,7 +140,7 @@ impl Store {
             })
         })
     }
-    pub fn uniform_history(&self, dsp: &str, before: i64) -> Result<UniformHistory> {
+    fn uniform_history(&self, dsp: &str, before: i64) -> Result<UniformHistory> {
         let db = self.dsp(dsp)?;
         let mut events = db.query_as::<crate::contracts::UniformEvent>(
             "SELECT * FROM uniform_events WHERE revision<? ORDER BY revision DESC LIMIT 51",
@@ -131,5 +156,28 @@ impl Store {
             },
             events,
         })
+    }
+    fn initialize_uniforms(&self, c: &Context, starter: bool) -> Result<UniformInventory> {
+        catalog::initialize_uniforms(self, c, starter)
+    }
+    fn save_uniform(
+        &self,
+        c: &Context,
+        id: Option<&str>,
+        input: &UniformInput,
+    ) -> Result<UniformInventory> {
+        catalog::save_uniform(self, c, id, input)
+    }
+    fn archive_uniform(&self, c: &Context, id: &str, expected: i64) -> Result<UniformInventory> {
+        catalog::archive_uniform(self, c, id, expected)
+    }
+    fn adjust_uniform(
+        &self,
+        c: &Context,
+        variant: &str,
+        delta: i32,
+        request_id: &str,
+    ) -> Result<UniformAdjustment> {
+        stock::adjust_uniform(self, c, variant, delta, request_id)
     }
 }
