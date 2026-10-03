@@ -289,21 +289,11 @@ pub struct People {
     /// The features whose IDs it holds only by bypassing them, as the DSP has them off.
     bypassed: Vec<AgentSource>,
 }
-/// The kinds of data whose drivers Paycom's IDs name, and those Amazon's name.
-const PAYCOM: &[AgentArea] = &[AgentArea::Timecards, AgentArea::MealBreaks];
-const AMAZON: &[AgentArea] = &[
-    AgentArea::MealBreaks,
-    AgentArea::Routes,
-    AgentArea::Dvic,
-    AgentArea::Feedback,
-    AgentArea::Safety,
-    AgentArea::Returns,
-    AgentArea::Scorecard,
-];
 /// Whether the key or app reads a source's IDs at the DSP, with any kind of data they name
 /// drivers in, and the features it reads them from only by bypassing them: none when it reads
 /// any of them from a feature switched on.
-fn read_ids(access: &Access, areas: &[AgentArea]) -> (bool, Vec<AgentSource>) {
+fn read_ids(access: &Access, source: DriverSource) -> (bool, Vec<AgentSource>) {
+    let areas: Vec<AgentArea> = AgentArea::all().filter(|area| area.names(source)).collect();
     if areas.iter().any(|area| access.read(*area) == Read::On) {
         return (true, vec![]);
     }
@@ -323,8 +313,8 @@ impl People {
         // read, so a switch or an allowance changed takes effect at once without invalidating
         // or rebuilding it.
         let dsp = access.dsp.id.as_str();
-        let (paycom_on, paycom_bypassed) = read_ids(access, PAYCOM);
-        let (amazon_on, amazon_bypassed) = read_ids(access, AMAZON);
+        let (paycom_on, paycom_bypassed) = read_ids(access, DriverSource::Paycom);
+        let (amazon_on, amazon_bypassed) = read_ids(access, DriverSource::Amazon);
         let revision = state
             .data_revision
             .load(std::sync::atomic::Ordering::Relaxed);
@@ -403,8 +393,7 @@ impl People {
                 bypassed.extend(sources);
             }
         }
-        let bypassed = AgentSource::ALL
-            .into_iter()
+        let bypassed = AgentSource::all()
             .filter(|source| bypassed.contains(source))
             .collect();
         Ok(Self {

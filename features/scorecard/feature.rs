@@ -8,6 +8,9 @@ use crate::{
     scorecard,
 };
 
+#[path = "mcp/mod.rs"]
+pub mod mcp;
+
 pub const FEATURE: Feature = Feature {
     // No page of its own yet, but its collection, its schedules and its weeks, apart from
     // the Timecard page.
@@ -43,5 +46,6 @@ pub const FEATURE: Feature = Feature {
         ],
     }],
     domains: &[scorecard::DOMAIN],
+    mcp: mcp::MCP,
     ..feature("scorecard")
 };

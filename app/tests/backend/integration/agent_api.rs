@@ -38,8 +38,7 @@ fn pretty(value: &Value) -> String {
 /// is read from.
 fn areas() -> Value {
     json!(
-        AgentArea::ALL
-            .iter()
+        AgentArea::all()
             .map(|area| json!({"id": area.as_str(), "label": area.label(),
                 "source": area.source().as_str()}))
             .collect::<Vec<_>>()
@@ -48,8 +47,7 @@ fn areas() -> Value {
 /// Every feature agents read from, in their order, with its switch's name.
 fn sources() -> Value {
     json!(
-        AgentSource::ALL
-            .iter()
+        AgentSource::all()
             .map(|source| json!({"id": source.as_str(), "switch": source.switch()}))
             .collect::<Vec<_>>()
     )

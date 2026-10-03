@@ -290,7 +290,7 @@ impl ConnectedApp<'_> {
         let kinds: Vec<&str> = self.reads.areas.iter().map(|area| area.label()).collect();
         let reads = match kinds.len() {
             0 => "Reads nothing".to_owned(),
-            count if count == AgentArea::ALL.len() => "Reads all data".to_owned(),
+            count if count == AgentArea::all().count() => "Reads all data".to_owned(),
             _ => format!("Reads {}", kinds.join(", ")),
         };
         if self.reads.bypass {
@@ -465,9 +465,12 @@ mod tests {
             bypass,
         }
     }
+    fn kind(id: &str) -> AgentArea {
+        AgentArea::parse(id).unwrap()
+    }
     #[test]
     fn a_connected_app_is_described_plainly_and_escaped() {
-        let some = reading(&[AgentArea::Routes, AgentArea::Timecards], false);
+        let some = reading(&[kind("routes"), kind("timecards")], false);
         let mail = app_connected(&connected(true, &[], &some));
         assert_eq!(mail.subject, "Claude Code connected to Dispatch");
         for line in [
@@ -485,7 +488,7 @@ mod tests {
         assert!(mail.html.contains("Laptop &lt;Claude&gt;") && !mail.html.contains("<Claude>"));
         assert!(mail.text.ends_with(NO_REPLY) && mail.html.contains(NO_REPLY));
         // Every kind of data reads as all of it; bypassing features is said beside it.
-        let everything = reading(&AgentArea::ALL, true);
+        let everything = reading(&AgentArea::all().collect::<Vec<_>>(), true);
         let mail = app_connected(&connected(true, &[], &everything));
         assert!(
             mail.text

@@ -13,6 +13,8 @@ pub mod data;
 pub mod mcp;
 #[path = "oauth/mod.rs"]
 pub mod oauth;
+#[path = "pieces.rs"]
+pub mod pieces;
 #[path = "skill.rs"]
 pub mod skill;
 #[path = "synthetic.rs"]
@@ -23,6 +25,7 @@ mod token;
 mod usage;
 
 pub use activity::Activity;
+pub use pieces::Mcp;
 pub use usage::{LastUse, PER_MINUTE, Usage};
 
 use crate::{
@@ -39,7 +42,7 @@ use crate::{
 };
 use rusqlite::params;
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::LazyLock};
 
 /// Keys that may be in use at once.
 const MOST_KEYS: i64 = 50;
@@ -144,17 +147,16 @@ fn expiry(value: Option<&str>) -> Result<Option<String>> {
 
 /// The audit log's field for an app-wide kind of data, as `reads.timecards`.
 fn read_field(area: AgentArea) -> &'static str {
-    match area {
-        AgentArea::Routes => "reads.routes",
-        AgentArea::Locations => "reads.locations",
-        AgentArea::Timecards => "reads.timecards",
-        AgentArea::MealBreaks => "reads.meal_breaks",
-        AgentArea::Dvic => "reads.dvic",
-        AgentArea::Feedback => "reads.feedback",
-        AgentArea::Safety => "reads.safety",
-        AgentArea::Returns => "reads.returns",
-        AgentArea::Scorecard => "reads.scorecard",
-    }
+    static FIELDS: LazyLock<Vec<(AgentArea, String)>> = LazyLock::new(|| {
+        AgentArea::all()
+            .map(|area| (area, format!("reads.{}", area.as_str())))
+            .collect()
+    });
+    FIELDS
+        .iter()
+        .find(|(kind, _)| *kind == area)
+        .map(|(_, field)| field.as_str())
+        .expect("a declared kind of data")
 }
 
 impl Store {
@@ -233,8 +235,7 @@ impl Store {
         for dsp in self.agent_dsp_choices()? {
             let on = data::switched_on(self, &dsp.id)?;
             dsps.push(AgentKeyDsp {
-                switched_off: AgentSource::ALL
-                    .into_iter()
+                switched_off: AgentSource::all()
                     .filter(|source| !on.contains(source))
                     .collect(),
                 id: dsp.id,
@@ -335,7 +336,7 @@ impl Store {
                 let name = names.get(&own.dsp).unwrap_or(&own.dsp);
                 let bypass = if own.bypass { ", bypass on" } else { "" };
                 let count = own.areas.len();
-                format!("{name}: {count} of {}{bypass}", AgentArea::ALL.len())
+                format!("{name}: {count} of {}{bypass}", AgentArea::all().count())
             })
             .collect();
         lines.sort_by_key(|line| line.to_lowercase());
@@ -362,7 +363,7 @@ impl Store {
                     user,
                     i64::from(input.all_dsps),
                     input.access,
-                    i64::from(input.reads.has(AgentArea::Locations)),
+                    i64::from(input.reads.locations()),
                     input.reads.areas_text(),
                     i64::from(input.reads.bypass),
                     iso(),
@@ -429,7 +430,7 @@ impl Store {
             before.access.as_str().into(),
             input.access.as_str().into(),
         );
-        for area in AgentArea::ALL {
+        for area in AgentArea::all() {
             change(
                 read_field(area),
                 before.reads.has(area).to_string(),
@@ -472,7 +473,7 @@ impl Store {
                     input.name,
                     i64::from(input.all_dsps),
                     input.access,
-                    i64::from(input.reads.has(AgentArea::Locations)),
+                    i64::from(input.reads.locations()),
                     input.reads.areas_text(),
                     i64::from(input.reads.bypass),
                     expires,

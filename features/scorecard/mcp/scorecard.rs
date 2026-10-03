@@ -13,10 +13,12 @@ use super::{
 use crate::{
     State,
     agents::Caller,
-    contracts::{AgentArea, AgentSource, DriverSource, Dsp},
+    contracts::{DriverSource, Dsp},
     db::{Store, s},
     weeks,
 };
+// A4: Routes' addresses, until it answers for them.
+use crate::feature_manifests::routes::mcp::{LOCATIONS, SOURCE as ROUTES_SOURCE};
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -370,9 +372,9 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
     let groups = groups_of(query, &["driver", "address", "type", "week", "day"])?;
     // Addresses come from the stored routes, so only as the key or app reads those.
     if groups.contains(&"address") {
-        access.check(AgentArea::Locations)?;
+        access.check(LOCATIONS)?;
     }
-    let placed = access.reads(AgentArea::Locations);
+    let placed = access.reads(LOCATIONS);
     let min = param(query, "min_count").parse::<i64>().unwrap_or(1);
     let impacting = flag(query, "impacting");
     let coverage = weeks(db, dsp, &period)?;
@@ -430,8 +432,8 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         "coverage": coverage,
     });
     people.mark(&mut answer);
-    if looked_up && access.read(AgentArea::Locations) == Read::Bypassed {
-        access::bypassed(&mut answer, AgentSource::Routes);
+    if looked_up && access.read(LOCATIONS) == Read::Bypassed {
+        access::bypassed(&mut answer, ROUTES_SOURCE);
     }
     if !groups.is_empty() {
         let mut counted: HashMap<Vec<String>, i64> = HashMap::new();

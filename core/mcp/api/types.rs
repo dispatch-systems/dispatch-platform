@@ -2,11 +2,14 @@ use crate::{
     Result,
     config::Environment,
     db::{FromRow, Row},
-    ensure, text_enum, validate as v,
+    ensure,
+    manifest::registry,
+    text_enum, validate as v,
     wire::request,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::LazyLock;
 
 text_enum! {
     #[cfg_attr(test, derive(ts_rs::TS))]
@@ -17,34 +20,43 @@ text_enum! {
         Operator => "operator",
     }
 }
-text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
-    /// A kind of data a key or app may read. `locations` is the delivery addresses and GPS
-    /// that route answers carry, and only matters with `routes`.
-    pub enum AgentArea {
-        Routes => "routes",
-        Locations => "locations",
-        Timecards => "timecards",
-        MealBreaks => "meal_breaks",
-        Dvic => "dvic",
-        Feedback => "feedback",
-        Safety => "safety",
-        Returns => "returns",
-        Scorecard => "scorecard",
-    }
+/// A kind of data a key or app may read, as the feature that holds it declares it in its
+/// manifest's `mcp`.
+pub struct ReadToggle {
+    /// Permanent: keys, apps and the audit log store it.
+    pub id: &'static str,
+    /// The kind as the Agents page names it.
+    pub label: &'static str,
+    /// Its place in the one order the kinds are listed in everywhere.
+    pub order: u16,
+    /// The feature it is read from.
+    pub source: AgentSource,
+    /// The kind it comes with and only matters beside, as delivery addresses come with the
+    /// routes: allowed only with it, and refused as it is.
+    pub with: Option<AgentArea>,
+    /// The sources whose IDs it names drivers by.
+    pub names: &'static [DriverSource],
 }
-text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
-    /// A feature switched per DSP that agents read data from: Routes, Timecard, its Meal
-    /// Breaks tab, DVIC and Scorecard.
-    pub enum AgentSource {
-        Routes => "routes",
-        Timecards => "timecards",
-        MealBreaks => "meal_breaks",
-        Dvic => "dvic",
-        Scorecard => "scorecard",
-    }
+/// A kind of data a key or app may read. `locations` is the delivery addresses and GPS
+/// that route answers carry, and only matters with `routes`.
+#[derive(Clone, Copy)]
+pub struct AgentArea(&'static ReadToggle);
+/// A feature switched per DSP that agents read data from, as it declares itself in its
+/// manifest's `mcp`.
+pub struct ReadSource {
+    /// Permanent: answers name it.
+    pub id: &'static str,
+    /// The switch's name on the platform's DSPs page.
+    pub switch: &'static str,
+    /// Its place in the one order the sources are listed in everywhere.
+    pub order: u16,
+    /// The switches of the catalog that turn it on, any one of them.
+    pub features: &'static [&'static str],
 }
+/// A feature switched per DSP that agents read data from: Routes, Timecard, its Meal
+/// Breaks tab, DVIC and Scorecard.
+#[derive(Clone, Copy)]
+pub struct AgentSource(&'static ReadSource);
 /// What a key or app may read: the kinds of data, and whether it bypasses features, reading
 /// them even where a DSP has the feature switched off. Bypassing only ever reads.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,73 +76,178 @@ pub struct AgentDspReads {
     pub bypass: bool,
 }
 
+/// Every kind the features declare, in their order.
+static AREAS: LazyLock<Vec<AgentArea>> = LazyLock::new(|| {
+    let mut all: Vec<AgentArea> = registry()
+        .features
+        .iter()
+        .flat_map(|feature| feature.mcp.reads)
+        .copied()
+        .collect();
+    all.sort_by_key(|area| area.0.order);
+    all
+});
+/// Every source the features declare, in their order.
+static SOURCES: LazyLock<Vec<AgentSource>> = LazyLock::new(|| {
+    let mut all: Vec<AgentSource> = registry()
+        .features
+        .iter()
+        .flat_map(|feature| feature.mcp.sources)
+        .copied()
+        .collect();
+    all.sort_by_key(|source| source.0.order);
+    all
+});
 impl AgentArea {
+    pub const fn new(toggle: &'static ReadToggle) -> Self {
+        Self(toggle)
+    }
     /// Every kind, in the order they are listed everywhere.
-    pub const ALL: [AgentArea; 9] = [
-        Self::Routes,
-        Self::Locations,
-        Self::Timecards,
-        Self::MealBreaks,
-        Self::Dvic,
-        Self::Feedback,
-        Self::Safety,
-        Self::Returns,
-        Self::Scorecard,
-    ];
+    pub fn all() -> impl Iterator<Item = Self> {
+        AREAS.iter().copied()
+    }
+    pub fn parse(text: &str) -> Option<Self> {
+        Self::all().find(|area| area.0.id == text)
+    }
+    pub const fn as_str(self) -> &'static str {
+        self.0.id
+    }
+    pub const fn order(self) -> u16 {
+        self.0.order
+    }
     /// The kind as the Agents page names it.
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::Routes => "Routes & packages",
-            Self::Locations => "Delivery addresses & GPS",
-            Self::Timecards => "Timecards",
-            Self::MealBreaks => "Meal breaks",
-            Self::Dvic => "DVIC inspections",
-            Self::Feedback => "Customer feedback",
-            Self::Safety => "Safety events",
-            Self::Returns => "Returns & contact compliance",
-            Self::Scorecard => "Weekly scorecard",
-        }
+        self.0.label
     }
     /// The feature it is read from.
     pub const fn source(self) -> AgentSource {
-        match self {
-            Self::Routes | Self::Locations => AgentSource::Routes,
-            Self::Timecards => AgentSource::Timecards,
-            Self::MealBreaks => AgentSource::MealBreaks,
-            Self::Dvic => AgentSource::Dvic,
-            Self::Feedback | Self::Safety | Self::Returns | Self::Scorecard => {
-                AgentSource::Scorecard
-            }
-        }
+        self.0.source
+    }
+    /// The kind it comes with, if it only matters beside one.
+    pub const fn with(self) -> Option<AgentArea> {
+        self.0.with
+    }
+    /// Whether it names drivers by `source`'s IDs.
+    pub fn names(self, source: DriverSource) -> bool {
+        self.0.names.contains(&source)
     }
 }
 impl AgentSource {
+    pub const fn new(source: &'static ReadSource) -> Self {
+        Self(source)
+    }
     /// Every feature agents read from, in the order they are listed everywhere.
-    pub const ALL: [AgentSource; 5] = [
-        Self::Routes,
-        Self::Timecards,
-        Self::MealBreaks,
-        Self::Dvic,
-        Self::Scorecard,
-    ];
+    pub fn all() -> impl Iterator<Item = Self> {
+        SOURCES.iter().copied()
+    }
+    pub const fn as_str(self) -> &'static str {
+        self.0.id
+    }
+    pub const fn order(self) -> u16 {
+        self.0.order
+    }
     /// The switch's name on the platform's DSPs page.
     pub const fn switch(self) -> &'static str {
-        match self {
-            Self::Routes => "Routes",
-            Self::Timecards => "Timecard",
-            Self::MealBreaks => "Timecard · Meal Breaks",
-            Self::Dvic => "DVIC",
-            Self::Scorecard => "Scorecard",
-        }
+        self.0.switch
+    }
+    /// Whether a DSP whose switches `on` are on has it on.
+    pub fn on(self, on: &[String]) -> bool {
+        self.0.features.iter().any(|id| on.iter().any(|f| f == id))
     }
 }
-/// Kinds of data once each, in their order. Delivery addresses come only with the routes, so
-/// nothing says it reads them where it can't.
+/// A declared kind or source as everything outside the registry sees it: its id, compared,
+/// hashed, sent and read as such, and in TypeScript the union of the declared ids, with the
+/// docs the closed enum it replaced had.
+macro_rules! declared {
+    ($name:ident, $what:literal, $all:ident, $docs:literal) => {
+        impl PartialEq for $name {
+            fn eq(&self, other: &Self) -> bool {
+                self.0.id == other.0.id
+            }
+        }
+        impl Eq for $name {}
+        impl std::hash::Hash for $name {
+            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+                self.0.id.hash(state);
+            }
+        }
+        impl std::fmt::Debug for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(self.0.id)
+            }
+        }
+        impl Serialize for $name {
+            fn serialize<S: serde::Serializer>(
+                &self,
+                serializer: S,
+            ) -> std::result::Result<S::Ok, S::Error> {
+                serializer.serialize_str(self.0.id)
+            }
+        }
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D: serde::Deserializer<'de>>(
+                deserializer: D,
+            ) -> std::result::Result<Self, D::Error> {
+                let id = String::deserialize(deserializer)?;
+                $all.iter()
+                    .copied()
+                    .find(|named| named.0.id == id)
+                    .ok_or_else(|| serde::de::Error::custom(concat!("unknown ", $what)))
+            }
+        }
+        #[cfg(test)]
+        impl ts_rs::TS for $name {
+            type WithoutGenerics = Self;
+            type OptionInnerType = Self;
+            const IS_ENUM: bool = true;
+            fn docs() -> Option<String> {
+                Some($docs.to_owned())
+            }
+            fn name(_: &ts_rs::Config) -> String {
+                stringify!($name).to_owned()
+            }
+            fn inline(_: &ts_rs::Config) -> String {
+                let ids: Vec<_> = $all
+                    .iter()
+                    .map(|named| format!("{:?}", named.0.id))
+                    .collect();
+                ids.join(" | ")
+            }
+            fn decl(cfg: &ts_rs::Config) -> String {
+                format!("type {} = {};", stringify!($name), Self::inline(cfg))
+            }
+            fn decl_concrete(cfg: &ts_rs::Config) -> String {
+                Self::decl(cfg)
+            }
+            fn output_path() -> Option<std::path::PathBuf> {
+                Some(concat!(stringify!($name), ".ts").into())
+            }
+        }
+    };
+}
+declared!(
+    AgentArea,
+    "kind of data",
+    AREAS,
+    "/**\n * A kind of data a key or app may read. `locations` is the delivery addresses and \
+     GPS\n * that route answers carry, and only matters with `routes`.\n */\n"
+);
+declared!(
+    AgentSource,
+    "source",
+    SOURCES,
+    "/**\n * A feature switched per DSP that agents read data from: Routes, Timecard, its \
+     Meal\n * Breaks tab, DVIC and Scorecard.\n */\n"
+);
+/// The kind of data the `locations` field of a key's row and of an approval stands for,
+/// which an older release reads and writes beside `areas`.
+pub const OLDER_LOCATIONS: &str = "locations";
+/// Kinds of data once each, in their order. One that comes with another, as delivery
+/// addresses come with the routes, is kept only beside it, so nothing says it reads them
+/// where it can't.
 fn canonical(areas: &[AgentArea]) -> Vec<AgentArea> {
-    let routes = areas.contains(&AgentArea::Routes);
-    AgentArea::ALL
-        .into_iter()
-        .filter(|area| areas.contains(area) && (routes || *area != AgentArea::Locations))
+    AgentArea::all()
+        .filter(|area| areas.contains(area) && area.with().is_none_or(|with| areas.contains(&with)))
         .collect()
 }
 impl AgentReads {
@@ -149,7 +266,7 @@ impl AgentReads {
     pub fn stored_key(areas: &str, bypass: i64, locations: i64) -> Self {
         let mut reads = Self::stored(areas, bypass);
         if locations != 1 {
-            reads.areas.retain(|area| *area != AgentArea::Locations);
+            reads.areas.retain(|area| area.as_str() != OLDER_LOCATIONS);
         }
         reads
     }
@@ -163,6 +280,12 @@ impl AgentReads {
     }
     pub fn has(&self, area: AgentArea) -> bool {
         self.areas.contains(&area)
+    }
+    /// What the `locations` column an older release reads is written as.
+    pub fn locations(&self) -> bool {
+        self.areas
+            .iter()
+            .any(|area| area.as_str() == OLDER_LOCATIONS)
     }
 }
 impl AgentDspReads {

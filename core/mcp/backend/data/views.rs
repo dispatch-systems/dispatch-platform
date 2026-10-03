@@ -2,7 +2,6 @@
 //! understood (the DSP, its date today, the days and any driver), gives the figure the
 //! question is about, then a table whose column names appear once, one page at a time.
 //! Every row of detail waits for a request that asks for it.
-// A4: the features' views and their sources' names, until each feature answers for its own.
 use super::{
     Answer, Refusal,
     access::{self, Access, Read},
@@ -19,6 +18,13 @@ use crate::{
     agents::Caller,
     contracts::{AgentArea, AgentSource, DriverSource, Dsp, MealStatus, RouteAddress},
     db::Store,
+};
+// A4: the features' views and their sources' names, until each feature answers for its own.
+use crate::feature_manifests::{
+    dvic::mcp::{DVIC, SOURCE as DVIC_SOURCE},
+    routes::mcp::{LOCATIONS, ROUTES, SOURCE as ROUTES_SOURCE},
+    scorecard::mcp::SOURCE as SCORECARD_SOURCE,
+    timecard::mcp::{MEAL_BREAKS, MEAL_BREAKS_SOURCE, TIMECARDS, TIMECARDS_SOURCE},
 };
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -106,11 +112,11 @@ pub fn status(db: &Store, caller: &Caller, query: &Value) -> Answer {
     Ok(json!({
         "understood": understood(dsp, None),
         "sources": {
-            "timecards": source(AgentSource::Timecards, "timecards"),
-            "mealBreaks": source(AgentSource::MealBreaks, "mealBreaks"),
-            "routes": source(AgentSource::Routes, "routes"),
-            "dvic": source(AgentSource::Dvic, "dvic"),
-            "scorecard": source(AgentSource::Scorecard, "scorecard"),
+            "timecards": source(TIMECARDS_SOURCE, "timecards"),
+            "mealBreaks": source(MEAL_BREAKS_SOURCE, "mealBreaks"),
+            "routes": source(ROUTES_SOURCE, "routes"),
+            "dvic": source(DVIC_SOURCE, "dvic"),
+            "scorecard": source(SCORECARD_SOURCE, "scorecard"),
         }
     }))
 }
@@ -175,17 +181,17 @@ fn gather(
     let wants = |area: AgentArea| wanted.contains(&area);
     let amazon = person.map(|p| p.amazon.as_slice());
     let paycom = person.map(|p| p.paycom.as_slice());
-    let routes = if wants(AgentArea::Routes) {
+    let routes = if wants(ROUTES) {
         facts::routes(db, dsp, period, amazon)?
     } else {
         (vec![], Coverage::default())
     };
-    let timecards = if wants(AgentArea::Timecards) {
+    let timecards = if wants(TIMECARDS) {
         facts::timecards(db, dsp, period, paycom)?
     } else {
         (vec![], Coverage::default())
     };
-    let meals = if wants(AgentArea::MealBreaks) {
+    let meals = if wants(MEAL_BREAKS) {
         let sources = person.map(|p| {
             p.paycom
                 .iter()
@@ -199,7 +205,7 @@ fn gather(
     } else {
         (vec![], Coverage::default())
     };
-    let inspections = if wants(AgentArea::Dvic) {
+    let inspections = if wants(DVIC) {
         facts::inspections(db, dsp, period, amazon)?
     } else {
         (vec![], Coverage::default())
@@ -220,12 +226,7 @@ fn coverage(gathered: &Gathered) -> Value {
     })
 }
 /// The kinds of data a driver's days and the team's table are made of.
-const DAILY: [AgentArea; 4] = [
-    AgentArea::Routes,
-    AgentArea::Timecards,
-    AgentArea::MealBreaks,
-    AgentArea::Dvic,
-];
+const DAILY: [AgentArea; 4] = [ROUTES, TIMECARDS, MEAL_BREAKS, DVIC];
 
 /// Marks each meal row whose person Cortex had a route for that day.
 fn mark_routes(
@@ -326,23 +327,23 @@ pub fn driver(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &
     let mut answer = json!({
         "understood": head,
         "totals": {
-            "routes": known(AgentArea::Routes, json!(routes.len())),
-            "stops_completed": known(AgentArea::Routes, json!(sum(|r| r.stops_completed))),
-            "packages_delivered": known(AgentArea::Routes, json!(sum(|r| r.packages_delivered))),
+            "routes": known(ROUTES, json!(routes.len())),
+            "stops_completed": known(ROUTES, json!(sum(|r| r.stops_completed))),
+            "packages_delivered": known(ROUTES, json!(sum(|r| r.packages_delivered))),
             "packages_undeliverable":
-                known(AgentArea::Routes, json!(sum(|r| r.packages_undeliverable))),
-            "hours_worked": known(AgentArea::Timecards, hours(worked)),
+                known(ROUTES, json!(sum(|r| r.packages_undeliverable))),
+            "hours_worked": known(TIMECARDS, hours(worked)),
             "days_worked": known(
-                AgentArea::Timecards,
+                TIMECARDS,
                 json!(gathered.timecards.0.iter().filter(|c| c.hours > 0.0).count()),
             ),
             "meal_issues": known(
-                AgentArea::MealBreaks,
+                MEAL_BREAKS,
                 json!(gathered.meals.0.iter().filter(|m| meal_issue(m)).count()),
             ),
-            "inspections": known(AgentArea::Dvic, json!(gathered.inspections.0.len())),
+            "inspections": known(DVIC, json!(gathered.inspections.0.len())),
             "short_inspections": known(
-                AgentArea::Dvic,
+                DVIC,
                 json!(gathered.inspections.0.iter().filter(|i| i.short).count()),
             ),
         },
@@ -620,7 +621,7 @@ pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
         .into_iter()
         .filter(|area| chosen.iter().any(|m| m.area == *area))
         .collect();
-    if areas.contains(&AgentArea::Timecards) || areas.contains(&AgentArea::MealBreaks) {
+    if areas.contains(&TIMECARDS) || areas.contains(&MEAL_BREAKS) {
         daily_limit(&period)?;
     }
     // A metric whose data can't be read here is refused; one read by bypassing its feature
@@ -876,7 +877,7 @@ pub fn route(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &V
     let people = People::load(db, state, &access)?;
     let zone = facts::zone(dsp);
     let full = param(query, "detail") == "full";
-    let places = access.reads(AgentArea::Locations);
+    let places = access.reads(LOCATIONS);
     let mut columns = vec!["stop", "tracking", "outcome", "reason", "at"];
     if places {
         columns.push("address");
@@ -960,7 +961,7 @@ pub fn package(
     }
     let people = People::load(db, state, &access)?;
     let zone = facts::zone(dsp);
-    let places = access.reads(AgentArea::Locations);
+    let places = access.reads(LOCATIONS);
     let mut columns = vec!["date", "route", "driver", "outcome", "reason", "at"];
     if places {
         columns.push("address");
@@ -1051,9 +1052,9 @@ pub fn packages(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         .into());
     }
     if groups.contains(&"address") {
-        access.check(AgentArea::Locations)?;
+        access.check(LOCATIONS)?;
     }
-    let places = access.reads(AgentArea::Locations);
+    let places = access.reads(LOCATIONS);
     let wanted = Packages {
         drivers: person.map(|p| p.amazon.as_slice()),
         outcome,

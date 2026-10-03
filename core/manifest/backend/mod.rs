@@ -2,6 +2,7 @@
 //! Core reaches collectors and features through `registry()`, never by name.
 use crate::{
     Code, Error, Result, State,
+    agents::{self, Mcp},
     browsers::{Collected, Driver, Pending, browseros},
     collectors::AddedStorage,
     config::Config,
@@ -122,8 +123,9 @@ impl Registry {
     /// registered collection, one page runs the schedules, only a page has tabs, every
     /// permission has an id and an order of its own and implies only permissions that
     /// exist, one lets members invite, every database is declared once, with migrations numbered from 1 without a
-    /// gap or a repeat, every domain is declared once and before it is named, and every
-    /// audit prefix is a dotted name listed under an area other than settings.
+    /// gap or a repeat, every domain is declared once and before it is named, every audit
+    /// prefix is a dotted name listed under an area other than settings, and what agents
+    /// may read is declared as `agents::pieces::check` asks.
     pub fn check(&self) {
         let kinds: Vec<&str> = self
             .collectors
@@ -228,6 +230,7 @@ impl Registry {
                 "{prefix} is no audit prefix of an area"
             );
         }
+        agents::pieces::check(self.features);
     }
 }
 
@@ -267,6 +270,8 @@ pub struct Feature {
     pub demo: Option<Demo>,
     /// Operator commands of the binary it answers for.
     pub commands: Option<Commands>,
+    /// What agents can ask of it.
+    pub mcp: Mcp,
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
@@ -287,6 +292,7 @@ pub const fn feature(name: &'static str) -> Feature {
         audit: Audit::NONE,
         demo: None,
         commands: None,
+        mcp: Mcp::NONE,
     }
 }
 

@@ -3,6 +3,13 @@
 //! built from it, and later the MCP tools are too, so none of them can drift apart.
 use super::Refusal;
 use crate::contracts::AgentArea;
+// A4: the features' endpoints and metrics, until each feature declares its own.
+use crate::feature_manifests::{
+    dvic::mcp::DVIC,
+    routes::mcp::ROUTES,
+    scorecard::mcp::{FEEDBACK, RETURNS, SAFETY, SCORECARD},
+    timecard::mcp::{MEAL_BREAKS, TIMECARDS},
+};
 use serde_json::{Map, Value, json};
 
 /// What a parameter holds.
@@ -172,7 +179,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "packages",
         tool: "packages",
-        area: Some(AgentArea::Routes),
+        area: Some(ROUTES),
         path: "/api/v1/packages",
         summary: "Count packages by what happened",
         description: "Use for questions about packages: how many a driver delivered, who \
@@ -278,7 +285,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "routes",
         tool: "route_day",
-        area: Some(AgentArea::Routes),
+        area: Some(ROUTES),
         path: "/api/v1/routes",
         summary: "A day's routes",
         description: "Use for one day's routes: each route's driver, packages delivered and \
@@ -289,7 +296,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "route",
         tool: "route_stops",
-        area: Some(AgentArea::Routes),
+        area: Some(ROUTES),
         path: "/api/v1/routes/{route}",
         summary: "One route's packages",
         description: "Use for what happened on one route: outcomes, reasons and the packages \
@@ -301,7 +308,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "package",
         tool: "find_package",
-        area: Some(AgentArea::Routes),
+        area: Some(ROUTES),
         path: "/api/v1/packages/{tracking}",
         summary: "Find a package",
         description: "Use for one tracking ID: who carried it, on which route and day, and \
@@ -316,7 +323,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "timecards",
         tool: "timecards",
-        area: Some(AgentArea::Timecards),
+        area: Some(TIMECARDS),
         path: "/api/v1/timecards",
         summary: "Timecards",
         description: "Use for Paycom hours and punches: everyone's for one day, or one \
@@ -327,7 +334,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "meal_breaks",
         tool: "meal_breaks",
-        area: Some(AgentArea::MealBreaks),
+        area: Some(MEAL_BREAKS),
         path: "/api/v1/meal-breaks",
         summary: "Meal breaks",
         description: "Use for one day's meal breaks: Cortex's meal break beside Paycom's \
@@ -349,7 +356,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "dvic",
         tool: "dvic_inspections",
-        area: Some(AgentArea::Dvic),
+        area: Some(DVIC),
         path: "/api/v1/dvic",
         summary: "Vehicle inspections",
         description: "Use for DVIC questions, as which drivers were short: each driver's \
@@ -376,7 +383,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "feedback",
         tool: "customer_feedback",
-        area: Some(AgentArea::Feedback),
+        area: Some(FEEDBACK),
         path: "/api/v1/feedback",
         summary: "Customer feedback (CDF)",
         description: "Use for customer delivery feedback (CDF) from Amazon's weekly scorecard: \
@@ -429,7 +436,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "safety",
         tool: "safety_events",
-        area: Some(AgentArea::Safety),
+        area: Some(SAFETY),
         path: "/api/v1/safety",
         summary: "Netradyne safety events",
         description: "Use for Netradyne safety infractions from Amazon's scorecard: speeding, \
@@ -465,7 +472,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "returns",
         tool: "returns",
-        area: Some(AgentArea::Returns),
+        area: Some(RETURNS),
         path: "/api/v1/returns",
         summary: "Contact compliance and returns to station (RTS)",
         description: "Use for contact compliance: which drivers didn't do it, that is returned \
@@ -514,7 +521,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
         id: "scorecard",
         tool: "scorecard",
-        area: Some(AgentArea::Scorecard),
+        area: Some(SCORECARD),
         path: "/api/v1/scorecard",
         summary: "A week's scorecard",
         description: "Use for Amazon's weekly scorecard: the DSP's tier and focus areas, and each \
@@ -604,105 +611,105 @@ pub struct Metric {
 pub const METRICS: &[Metric] = &[
     Metric {
         name: "routes",
-        area: AgentArea::Routes,
+        area: ROUTES,
         unit: "itineraries",
         total: "count",
         description: "Itineraries the driver was assigned.",
     },
     Metric {
         name: "stops_completed",
-        area: AgentArea::Routes,
+        area: ROUTES,
         unit: "stops",
         total: "sum",
         description: "Delivery stops completed, as Amazon's itinerary summary counts them; the station pickup is not a stop.",
     },
     Metric {
         name: "stops_total",
-        area: AgentArea::Routes,
+        area: ROUTES,
         unit: "stops",
         total: "sum",
         description: "Delivery stops on the itinerary.",
     },
     Metric {
         name: "packages_delivered",
-        area: AgentArea::Routes,
+        area: ROUTES,
         unit: "packages",
         total: "sum",
         description: "Packages delivered, as Amazon's itinerary summary counts them.",
     },
     Metric {
         name: "packages_total",
-        area: AgentArea::Routes,
+        area: ROUTES,
         unit: "packages",
         total: "sum",
         description: "Packages on the itinerary.",
     },
     Metric {
         name: "packages_remaining",
-        area: AgentArea::Routes,
+        area: ROUTES,
         unit: "packages",
         total: "sum",
         description: "Packages not yet delivered or returned when the day was collected.",
     },
     Metric {
         name: "packages_undeliverable",
-        area: AgentArea::Routes,
+        area: ROUTES,
         unit: "packages",
         total: "sum",
         description: "Packages Amazon marked undeliverable.",
     },
     Metric {
         name: "break_minutes",
-        area: AgentArea::Routes,
+        area: ROUTES,
         unit: "minutes",
         total: "sum",
         description: "Break time Amazon recorded on the itinerary.",
     },
     Metric {
         name: "overtime_minutes",
-        area: AgentArea::Routes,
+        area: ROUTES,
         unit: "minutes",
         total: "sum",
         description: "Overtime Amazon recorded on the itinerary.",
     },
     Metric {
         name: "hours_worked",
-        area: AgentArea::Timecards,
+        area: TIMECARDS,
         unit: "hours",
         total: "sum",
         description: "Hours on the Paycom timecard.",
     },
     Metric {
         name: "days_worked",
-        area: AgentArea::Timecards,
+        area: TIMECARDS,
         unit: "days",
         total: "count",
         description: "Days with hours on the Paycom timecard.",
     },
     Metric {
         name: "lunch_minutes",
-        area: AgentArea::Timecards,
+        area: TIMECARDS,
         unit: "minutes",
         total: "sum",
         description: "Minutes between Paycom's lunch out and lunch in punches.",
     },
     Metric {
         name: "clock_in",
-        area: AgentArea::Timecards,
+        area: TIMECARDS,
         unit: "time",
         total: "day",
         description: "First clock in, in the DSP's time.",
     },
     Metric {
         name: "clock_out",
-        area: AgentArea::Timecards,
+        area: TIMECARDS,
         unit: "time",
         total: "day",
         description: "Last clock out, in the DSP's time.",
     },
     Metric {
         name: "meal_issues",
-        area: AgentArea::MealBreaks,
+        area: MEAL_BREAKS,
         unit: "days",
         total: "count",
         description: "Days the meal-break comparison found something to look at, among the \
@@ -710,21 +717,21 @@ pub const METRICS: &[Metric] = &[
     },
     Metric {
         name: "meal_status",
-        area: AgentArea::MealBreaks,
+        area: MEAL_BREAKS,
         unit: "verdict",
         total: "day",
         description: "The meal-break comparison's verdict; see the glossary.",
     },
     Metric {
         name: "inspections",
-        area: AgentArea::Dvic,
+        area: DVIC,
         unit: "inspections",
         total: "sum",
         description: "DVIC inspections done.",
     },
     Metric {
         name: "short_inspections",
-        area: AgentArea::Dvic,
+        area: DVIC,
         unit: "inspections",
         total: "sum",
         description: "DVIC inspections shorter than their minimum.",
