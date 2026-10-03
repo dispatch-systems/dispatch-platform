@@ -1,23 +1,14 @@
 //! Validated, temporary driver results. Complete publications remain authoritative
-//! for history; failed/cancelled/replaced attempts never overwrite them.
-// A3: Paycom's staging and Cortex's live writer, until they move to their collectors.
+//! for history; failed/cancelled/replaced attempts never overwrite them. Each collector
+//! stages its own items; this is the store they are staged in and read from.
 use super::{
-    Error, Result, State,
-    collectors::{
-        Provider,
-        cortex::{
-            self,
-            discovery::{CollectionRequest, Scope},
-            meals::Capture,
-        },
-        paycom,
-    },
+    Error, Result,
+    collectors::Provider,
     db::{self, Db, Store, s},
-    ensure,
 };
 use rusqlite::params;
-use serde_json::{Value, json};
-use std::{collections::BTreeMap, sync::Arc};
+use serde_json::Value;
+use std::collections::BTreeMap;
 
 pub type LiveResults = Vec<(Value, Vec<Value>)>;
 
@@ -41,18 +32,6 @@ impl Store {
             Ok(())
         })
     }
-    pub fn stage_paycom(
-        &self,
-        job: &str,
-        owner: &str,
-        employee: &Value,
-        records: &[Value],
-    ) -> Result<()> {
-        let dsp = self.guard(job, owner)?;
-        let db = self.collector(&dsp.id, paycom::PROVIDER)?;
-        db.transaction(|| stage_paycom_page(&db, job, owner, employee, records))
-    }
-
     pub fn live_results(&self, dsp: &str, provider: Provider, date: &str) -> Result<LiveResults> {
         Ok(self
             .live_results_range(dsp, provider, date, date)?
@@ -129,156 +108,37 @@ impl Store {
     }
 }
 
-/// Caller has validated the whole employee page and holds its write transaction.
-pub fn stage_paycom_page(
+/// Stages one validated item of a live run, while the run is still `owner`'s. A later
+/// item with the same key and date replaces it.
+pub fn stage_item(
     db: &Db,
     job: &str,
     owner: &str,
-    employee: &Value,
-    records: &[Value],
+    key: &str,
+    date: &str,
+    data: &str,
 ) -> Result<()> {
-    for record in records {
-        let mut data = record.clone();
-        for key in ["name", "department", "station"] {
-            data[key] = employee[key].clone();
-        }
-        db.exec(
-            "INSERT OR REPLACE INTO collection_live_items SELECT job_id,?1,?2,?3 FROM \
-            collection_live_runs WHERE job_id=?4 AND owner=?5",
-            params![
-                s(employee, "code"),
-                s(record, "date"),
-                data.to_string(),
-                job,
-                owner
-            ],
-        )?;
-    }
+    db.exec(
+        "INSERT OR REPLACE INTO collection_live_items SELECT job_id,?1,?2,?3 FROM \
+        collection_live_runs WHERE job_id=?4 AND owner=?5",
+        params![key, date, data, job, owner],
+    )?;
     Ok(())
-}
-
-pub struct Writer {
-    state: Arc<State>,
-    job: String,
-    owner: String,
-}
-impl Writer {
-    pub fn new(state: Arc<State>, job: &str, owner: &str) -> Self {
-        Self {
-            state,
-            job: job.into(),
-            owner: owner.into(),
-        }
-    }
-    pub async fn start_cortex(&self, scope: &Scope, drivers: Value) -> Result<()> {
-        let scope = scope.clone();
-        let metadata = json!({"from":scope.date,"to":scope.date,"scope":scope,"drivers":drivers});
-        let job = self.job.clone();
-        let owner = self.owner.clone();
-        let state = self.state.clone();
-        self.state
-            .run_bookkeeping(move |db| {
-                let row = db.job_row(&job, None)?;
-                let request: CollectionRequest = serde_json::from_str(&row.request)?;
-                request.validate_scope(&scope)?;
-                state
-                    .read_cache
-                    .invalidate_tenant(&row.dsp_id, crate::read_cache::DataDomain::Live);
-                db.start_live(&job, &owner, &metadata)
-            })
-            .await
-    }
-    pub async fn cortex_drivers(&self, drivers: Value) -> Result<()> {
-        let job = self.job.clone();
-        let owner = self.owner.clone();
-        let state = self.state.clone();
-        let dsp = self
-            .state
-            .run_bookkeeping(move |db| {
-                let dsp = db.guard(&job, &owner)?;
-                state
-                    .read_cache
-                    .invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::Live);
-                db.collector(&dsp.id, cortex::PROVIDER)?.exec(
-                    "UPDATE collection_live_runs \
-                SET metadata=json_set(metadata,'$.drivers',json(?1)) WHERE job_id=?2 AND owner=?3",
-                    params![drivers.to_string(), job, owner],
-                )?;
-                Ok(dsp.id)
-            })
-            .await?;
-        self.state.updates.changed(
-            &dsp,
-            crate::contracts::CollectionChange::provider(cortex::PROVIDER.id()),
-        );
-        Ok(())
-    }
-    pub async fn cortex(&self, capture: &Capture) -> Result<()> {
-        // One complete itinerary, reduced to the four requested meal timestamps.
-        capture.validate(&capture.scope)?;
-        ensure(capture.itineraries.len() == 1, "invalid_live_capture", 502)?;
-        let data = serde_json::to_string(capture)?;
-        ensure(data.len() <= 64 * 1024, "invalid_live_capture", 502)?;
-        let change = crate::contracts::CollectionChange {
-            provider: cortex::PROVIDER.id().into(),
-            dates: vec![capture.scope.date.clone()],
-            employee_code: None,
-            roster: false,
-        };
-        let capture = capture.clone();
-        let job = self.job.clone();
-        let owner = self.owner.clone();
-        let state = self.state.clone();
-        let dsp = self
-            .state
-            .run_bookkeeping(move |db| {
-                let dsp = db.guard(&job, &owner)?;
-                state
-                    .read_cache
-                    .invalidate_tenant(&dsp.id, crate::read_cache::DataDomain::Live);
-                let row = db.job_row(&job, None)?;
-                ensure(
-                    row.kind.as_str() == cortex::PROVIDER.job_kind(),
-                    "unsupported_collector",
-                    409,
-                )?;
-                let storage = db.collector(&dsp.id, cortex::PROVIDER)?;
-                let run = storage
-                    .one(
-                        "SELECT metadata FROM collection_live_runs WHERE job_id=? \
-                AND owner=?",
-                        [&job, &owner],
-                    )?
-                    .ok_or_else(|| Error::new("invalid_live_capture", 502))?;
-                let metadata: Value = serde_json::from_str(s(&run, "metadata"))?;
-                let expected: Scope = serde_json::from_value(metadata["scope"].clone())?;
-                capture.validate(&expected)?;
-                storage.exec(
-                    "INSERT OR REPLACE INTO collection_live_items SELECT \
-                job_id,?1,?2,?3 FROM collection_live_runs WHERE job_id=?4 AND \
-                owner=?5",
-                    params![
-                        capture.itineraries[0].id,
-                        capture.scope.date,
-                        data,
-                        job,
-                        owner
-                    ],
-                )?;
-                Ok(dsp.id)
-            })
-            .await?;
-        self.state.updates.changed(&dsp, change);
-        Ok(())
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        collection_checkpoint::Checkpoint, collectors::paycom::fixtures, config::Config, operations,
+        State,
+        collectors::{
+            cortex::{self, discovery::Scope, live::Writer},
+            paycom::{self, checkpoint::Checkpoint, fixtures},
+        },
+        config::Config,
+        operations,
     };
+    use serde_json::json;
     use std::os::unix::fs::PermissionsExt;
 
     #[tokio::test]

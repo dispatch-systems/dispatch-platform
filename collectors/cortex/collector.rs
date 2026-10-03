@@ -7,6 +7,8 @@ pub mod codes;
 pub mod discovery;
 #[path = "collections/dvic/capture.rs"]
 pub mod dvic;
+#[path = "collections/meals/live.rs"]
+pub mod live;
 #[path = "collections/meals/capture.rs"]
 pub mod meals;
 #[path = "collections/routes/capture.rs"]

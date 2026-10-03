@@ -1,4 +1,6 @@
 //! Paycom: employees and timecards. Every DSP was created with this storage.
+#[path = "collections/timecards/checkpoint.rs"]
+pub mod checkpoint;
 #[path = "codes.rs"]
 pub mod codes;
 #[path = "fixtures/timecards.rs"]
@@ -175,6 +177,9 @@ impl Collector for Paycom {
     }
     fn discard(&self, store: &Store, dsp: &str, job: Option<&str>) -> Result<()> {
         store.clear_checkpoint(dsp, job)
+    }
+    fn prune(&self, store: &Store, dsp: &str) -> Result<()> {
+        store.prune_checkpoints(dsp)
     }
     // v0.0.9 refuses Paycom settings saves while its old schedule row is on
     // and Paycom is disconnected. Drop this with the table.

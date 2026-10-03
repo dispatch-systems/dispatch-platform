@@ -3,11 +3,11 @@ use crate::{
     collectors::cortex::{
         codes,
         discovery::Scope,
+        live::Writer,
         meals::{Capture, Itinerary},
     },
     db::now,
     job_metrics::Recorder,
-    live_collection::Writer,
 };
 use serde::{Deserialize, Serialize};
 use std::{

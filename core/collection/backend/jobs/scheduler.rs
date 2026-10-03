@@ -2,6 +2,7 @@ use super::executor::execute;
 use crate::{
     Error, Result, State,
     agents::activity,
+    collectors::Provider,
     contracts::JobRow,
     crypto,
     db::{FromRow, Row, now},
@@ -102,7 +103,9 @@ impl Scheduler {
                     [],
                 )?;
                 for (dsp,) in dsps {
-                    db.prune_checkpoints(&dsp)?;
+                    for provider in Provider::all() {
+                        provider.collector().prune(db, &dsp)?;
+                    }
                 }
                 Ok(())
             })

@@ -8,8 +8,6 @@ pub mod audit;
 pub mod browsers;
 #[path = "cli.rs"]
 pub mod cli;
-#[path = "../../core/collection/backend/checkpoint.rs"]
-pub mod collection_checkpoint;
 #[path = "../../core/collection/backend/registry.rs"]
 pub mod collectors;
 #[path = "../../core/foundation/backend/config/mod.rs"]

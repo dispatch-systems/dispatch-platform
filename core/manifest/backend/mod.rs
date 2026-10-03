@@ -185,6 +185,11 @@ pub trait Collector: Sync {
     fn discard(&self, _: &Store, _dsp: &str, _job: Option<&str>) -> Result<()> {
         Ok(())
     }
+    /// Drops what it kept to resume jobs that have ended or expired. The platform's
+    /// periodic cleanup runs it for every DSP.
+    fn prune(&self, _: &Store, _dsp: &str) -> Result<()> {
+        Ok(())
+    }
     /// Runs with the connection's own disable, in its transaction.
     fn disabled(&self, _: &Db) -> Result<()> {
         Ok(())

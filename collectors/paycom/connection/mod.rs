@@ -422,7 +422,7 @@ impl Drives for Driver {
                 run.timezone,
                 crate::collectors::paycom::validation::collection_date(run.request, run.timezone)?,
                 run.metrics,
-                Some(&crate::collection_checkpoint::Checkpoint::new(
+                Some(&crate::collectors::paycom::checkpoint::Checkpoint::new(
                     run.state.clone(),
                     run.job,
                     run.owner,

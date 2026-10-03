@@ -1,11 +1,10 @@
 //! Host-owned, unpublished Paycom progress. Workers never receive storage paths.
-// A3: Paycom's checkpoint, until it moves to its collector.
-use super::{
+use crate::{
     Result, State,
     collectors::paycom::{self, validation::validate_workforce},
     crypto,
-    db::{self, Store, n, s},
-    ensure,
+    db::{self, Db, Store, n, s},
+    ensure, live_collection,
 };
 use rusqlite::params;
 use serde_json::{Value, json};
@@ -44,6 +43,42 @@ impl Store {
             Ok(())
         })
     }
+    pub fn stage_paycom(
+        &self,
+        job: &str,
+        owner: &str,
+        employee: &Value,
+        records: &[Value],
+    ) -> Result<()> {
+        let dsp = self.guard(job, owner)?;
+        let db = self.collector(&dsp.id, paycom::PROVIDER)?;
+        db.transaction(|| stage_paycom_page(&db, job, owner, employee, records))
+    }
+}
+
+/// Caller has validated the whole employee page and holds its write transaction.
+pub fn stage_paycom_page(
+    db: &Db,
+    job: &str,
+    owner: &str,
+    employee: &Value,
+    records: &[Value],
+) -> Result<()> {
+    for record in records {
+        let mut data = record.clone();
+        for key in ["name", "department", "station"] {
+            data[key] = employee[key].clone();
+        }
+        live_collection::stage_item(
+            db,
+            job,
+            owner,
+            s(employee, "code"),
+            s(record, "date"),
+            &data.to_string(),
+        )?;
+    }
+    Ok(())
 }
 
 #[derive(Clone)]
@@ -191,9 +226,7 @@ impl Checkpoint {
                         )?
                         .is_some()
                     {
-                        super::live_collection::stage_paycom_page(
-                            &storage, &job, &owner, &employee, &records,
-                        )?;
+                        stage_paycom_page(&storage, &job, &owner, &employee, &records)?;
                     }
                     Ok(())
                 })?;
@@ -207,14 +240,14 @@ impl Checkpoint {
 fn validate_page(employee: &Value, period: &Value, records: &[Value]) -> Result<()> {
     ensure(records.len() == 14, "invalid_checkpoint", 502)?;
     let start = chrono::NaiveDate::parse_from_str(s(period, "start"), "%Y-%m-%d")
-        .map_err(|_| super::Error::new("invalid_checkpoint", 502))?;
+        .map_err(|_| crate::Error::new("invalid_checkpoint", 502))?;
     for (index, record) in records.iter().enumerate() {
         ensure(
             record["employeeCode"] == employee["code"]
                 && s(record, "date")
                     == start
                         .checked_add_signed(chrono::Duration::days(index as i64))
-                        .ok_or_else(|| super::Error::new("invalid_checkpoint", 502))?
+                        .ok_or_else(|| crate::Error::new("invalid_checkpoint", 502))?
                         .format("%Y-%m-%d")
                         .to_string(),
             "invalid_checkpoint",

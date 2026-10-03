@@ -231,7 +231,7 @@ impl Drives for Driver {
                 self,
                 &scope,
                 run.metrics,
-                Some(&crate::live_collection::Writer::new(
+                Some(&crate::collectors::cortex::live::Writer::new(
                     run.state.clone(),
                     run.job,
                     run.owner,

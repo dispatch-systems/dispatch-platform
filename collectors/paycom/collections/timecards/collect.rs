@@ -3,8 +3,7 @@ use super::{
     *,
 };
 use crate::{
-    collection_checkpoint::Checkpoint,
-    collectors::paycom::{self, codes},
+    collectors::paycom::{self, checkpoint::Checkpoint, codes},
     job_metrics::Recorder,
 };
 use chrono::{Datelike, NaiveDate};
