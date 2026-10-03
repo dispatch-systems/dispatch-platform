@@ -59,7 +59,7 @@ export const feature: FrontendFeature = {
       },
     },
   ],
-  platformSlots: () => import('./platform-slots.js').then((module) => module.slots),
+  platformSlots: () => import('./platform-slots.js'),
   errors: {
     meal_sync_paycom_required: 'Connect Paycom before syncing meal breaks.',
     meal_sync_flex_required: 'Connect Cortex in Settings → Connections before syncing Flex.',

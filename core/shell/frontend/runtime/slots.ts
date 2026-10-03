@@ -241,8 +241,8 @@ export type FrontendFeature = {
   settingsTabs?: readonly SettingsTab[];
   /** Its tabs on another feature's page. */
   pageTabs?: readonly PageTab[];
-  /** Loads what it puts in the platform owner's slots. */
-  platformSlots?: () => Promise<PlatformSlots>;
+  /** Loads its module that exports what it puts in the platform owner's slots, as `slots`. */
+  platformSlots?: () => Promise<{ slots: PlatformSlots }>;
   /** Its connection's card. */
   connectionCard?: ConnectionCard;
   /** How the response cache treats its reads. */
@@ -320,7 +320,7 @@ let slotsLoad: Promise<void> | undefined;
 export function loadPlatformSlots() {
   slotsLoad ??= Promise.all(
     installed.flatMap(({ name, platformSlots }) =>
-      platformSlots ? [platformSlots().then((slots) => ({ ...slots, owner: name }))] : [],
+      platformSlots ? [platformSlots().then(({ slots }) => ({ ...slots, owner: name }))] : [],
     ),
   ).then(
     (slots) => void (loadedSlots = slots),

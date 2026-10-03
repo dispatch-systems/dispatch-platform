@@ -30,7 +30,7 @@ export const feature: FrontendFeature = {
       render: ({ view }) => createElement(UniformInventoryPage, { key: view.token, view }),
     },
   ],
-  platformSlots: () => import('./platform-slots.js').then((module) => module.slots),
+  platformSlots: () => import('./platform-slots.js'),
   longPolls: ['/api/dsp/uniforms/updates'],
   errors: {
     uniform_changed:

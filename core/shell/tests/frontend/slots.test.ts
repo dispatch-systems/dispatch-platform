@@ -26,10 +26,13 @@ import {
   type ConnectionCard,
   type DspRoute,
   type PageTab,
+  type PlatformSlots,
   type ReadToggles,
 } from '../../frontend/runtime/slots.js';
 
-// Synthetic owners, installed as the app installs its manifests.
+// Synthetic owners, installed as the app installs its manifests. A platform-slots module's
+// loader resolves to the module.
+const loads = (slots: PlatformSlots) => async () => ({ slots });
 const group = (label: string, order: number): ReadToggles => ({
   label,
   missing: `${label.toLowerCase()} data`,
@@ -40,10 +43,10 @@ const group = (label: string, order: number): ReadToggles => ({
 
 test('read toggles come group by group in their order, ties in the order the owners are listed', async () => {
   installFeatures([
-    { name: 'alpha', platformSlots: async () => ({ readToggles: group('Alpha', 20) }) },
+    { name: 'alpha', platformSlots: loads({ readToggles: group('Alpha', 20) }) },
     { name: 'beta' },
-    { name: 'gamma', platformSlots: async () => ({ readToggles: group('Gamma', 10) }) },
-    { name: 'delta', platformSlots: async () => ({ readToggles: group('Delta', 20) }) },
+    { name: 'gamma', platformSlots: loads({ readToggles: group('Gamma', 10) }) },
+    { name: 'delta', platformSlots: loads({ readToggles: group('Delta', 20) }) },
   ]);
   await loadPlatformSlots();
   assert.deepEqual(
@@ -54,9 +57,9 @@ test('read toggles come group by group in their order, ties in the order the own
 
 test("a page's switch shows the icon its feature declares, once loaded", async () => {
   installFeatures([
-    { name: 'alpha', platformSlots: async () => ({ switch: { id: 'uniforms', icon: Shirt } }) },
+    { name: 'alpha', platformSlots: loads({ switch: { id: 'uniforms', icon: Shirt } }) },
     { name: 'beta' },
-    { name: 'gamma', platformSlots: async () => ({ switch: { id: 'scorecard', icon: Award } }) },
+    { name: 'gamma', platformSlots: loads({ switch: { id: 'scorecard', icon: Award } }) },
   ]);
   assert.equal(switchIcon('uniforms'), undefined);
   await loadPlatformSlots();
@@ -66,16 +69,16 @@ test("a page's switch shows the icon its feature declares, once loaded", async (
 });
 
 test("the platform owner's slots load once, in the order the owners are listed, and again after a failure", async () => {
-  let loads = 0;
+  let attempts = 0;
   let fail = true;
   installFeatures([
-    { name: 'alpha', platformSlots: async () => ({ auditWording: { spoken: ['alpha'] } }) },
+    { name: 'alpha', platformSlots: loads({ auditWording: { spoken: ['alpha'] } }) },
     {
       name: 'beta',
       platformSlots: async () => {
-        loads++;
+        attempts++;
         if (fail) throw new Error('offline');
-        return { auditWording: { spoken: ['beta'] } };
+        return { slots: { auditWording: { spoken: ['beta'] } } };
       },
     },
   ]);
@@ -84,7 +87,7 @@ test("the platform owner's slots load once, in the order the owners are listed, 
   fail = false;
   await loadPlatformSlots();
   await loadPlatformSlots();
-  assert.equal(loads, 2);
+  assert.equal(attempts, 2);
   assert.deepEqual(
     auditWording().map((wording) => wording.spoken),
     [['alpha'], ['beta']],
@@ -121,10 +124,10 @@ test('collections come with the collector that runs them, in the order they are 
   installFeatures([
     {
       name: 'beta',
-      platformSlots: async () => ({ collections: [collection('beta.b'), collection('beta.a')] }),
+      platformSlots: loads({ collections: [collection('beta.b'), collection('beta.a')] }),
     },
     { name: 'gamma' },
-    { name: 'alpha', platformSlots: async () => ({ collections: [collection('alpha.a')] }) },
+    { name: 'alpha', platformSlots: loads({ collections: [collection('alpha.a')] }) },
   ]);
   await loadPlatformSlots();
   assert.deepEqual(
@@ -201,10 +204,10 @@ test('an owner says what its error codes, schedule issues and long reads are', (
 
 test('a capability is named by the first connection listed that provides it', async () => {
   installFeatures([
-    { name: 'alpha', platformSlots: async () => ({ capabilities: { photos: 'a photo source' } }) },
+    { name: 'alpha', platformSlots: loads({ capabilities: { photos: 'a photo source' } }) },
     {
       name: 'beta',
-      platformSlots: async () => ({
+      platformSlots: loads({
         capabilities: { photos: 'another photo source', notes: 'a notes source' },
       }),
     },

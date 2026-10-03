@@ -34,9 +34,9 @@ test('each kind of data agents may read is declared once, and each group has its
 });
 
 test("each page's switch has its icon, declared once", async () => {
-  const slots = await Promise.all(features.map((feature) => feature.platformSlots?.()));
+  const modules = await Promise.all(features.map((feature) => feature.platformSlots?.()));
   once(
-    slots.flatMap((each) => (each?.switch ? [each.switch.id] : [])),
+    modules.flatMap((module) => (module?.slots.switch ? [module.slots.switch.id] : [])),
     'switches',
   );
   await loadPlatformSlots();

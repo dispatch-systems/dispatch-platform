@@ -13,7 +13,7 @@ export const feature: FrontendFeature = {
     load,
     render: (context) => createElement(CortexCard, { ...context, read }),
   },
-  platformSlots: () => import('./platform-slots.js').then((module) => module.slots),
+  platformSlots: () => import('./platform-slots.js'),
   errors: {
     cortex_station_unavailable:
       'Your saved station was not found in Cortex. Check your DSP profile and Cortex access.',

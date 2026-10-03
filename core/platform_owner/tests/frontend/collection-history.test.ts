@@ -9,20 +9,22 @@ installFeatures([
   {
     name: 'fixture',
     platformSlots: async () => ({
-      collections: [
-        {
-          kind: 'paycom.collect',
-          schedule: { id: 'fixture', label: 'Fixture' },
-          unit: 'employee',
-          count: (metrics) => metrics.employees,
-        },
-        {
-          kind: 'cortex.meal_breaks.collect',
-          schedule: { id: 'fixture_meals', label: 'Fixture meals' },
-          unit: 'itinerary',
-          count: (metrics) => metrics.itineraries,
-        },
-      ],
+      slots: {
+        collections: [
+          {
+            kind: 'paycom.collect',
+            schedule: { id: 'fixture', label: 'Fixture' },
+            unit: 'employee',
+            count: (metrics) => metrics.employees,
+          },
+          {
+            kind: 'cortex.meal_breaks.collect',
+            schedule: { id: 'fixture_meals', label: 'Fixture meals' },
+            unit: 'itinerary',
+            count: (metrics) => metrics.itineraries,
+          },
+        ],
+      },
     }),
   },
 ]);

@@ -28,7 +28,7 @@ export const feature: FrontendFeature = {
           : [],
     },
   ],
-  platformSlots: () => import('./platform-slots.js').then((module) => module.slots),
+  platformSlots: () => import('./platform-slots.js'),
   // A finished collection can bring new drivers to match.
   cache: {
     collected: ['/api/dsp/driver-match'],

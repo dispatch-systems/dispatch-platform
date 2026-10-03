@@ -14,7 +14,7 @@ export const feature: FrontendFeature = {
     load,
     render: (context) => createElement(PaycomCard, { ...context, read }),
   },
-  platformSlots: () => import('./platform-slots.js').then((module) => module.slots),
+  platformSlots: () => import('./platform-slots.js'),
   // Core's codes, as they read since Paycom was the only connection.
   errors: {
     connection_required: 'Connect Paycom before starting a collection.',

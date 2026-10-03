@@ -19,7 +19,7 @@ export const feature: FrontendFeature = {
         tab === 'data' && can(view, 'routes.manage') ? ['/api/dsp/routes/retention'] : [],
     },
   ],
-  platformSlots: () => import('./platform-slots.js').then((module) => module.slots),
+  platformSlots: () => import('./platform-slots.js'),
   errors: {
     invalid_retention: 'Choose a retention window from 30 to 3,650 days.',
     routes_day_outside_retention:
