@@ -11,8 +11,11 @@ import {
   collectionLabels,
   connectionCard,
   connectionCards,
+  errorLabelOf,
   installFeatures,
+  isLongPoll,
   readToggles,
+  scheduleIssueOf,
   switchIcon,
   type CollectionLabels,
   type ConnectionCard,
@@ -138,4 +141,20 @@ test('cache rules keep each owner’s reads current, a read changing when any ow
   assert.equal(mutationAffects('/api/dsp/connections/fixture', '/api/dsp/gamma/rows'), true);
   assert.equal(mutationAffects('/api/dsp/connections/fixture', '/api/dsp/alpha/status'), true);
   assert.equal(mutationAffects('/api/dsp/connections/fixture', '/api/dsp/alpha/days'), false);
+});
+
+test('an owner says what its error codes, schedule issues and long reads are', () => {
+  installFeatures([
+    { name: 'alpha', errors: { alpha_full: 'Alpha is full.' } },
+    { name: 'beta', scheduleIssues: { beta_waits: 'Connect Beta first.' } },
+    { name: 'gamma', longPolls: ['/api/dsp/gamma/updates'] },
+  ]);
+  assert.equal(errorLabelOf('alpha_full'), 'Alpha is full.');
+  // A schedule's issue is also what its error says.
+  assert.equal(errorLabelOf('beta_waits'), 'Connect Beta first.');
+  assert.equal(scheduleIssueOf('beta_waits'), 'Connect Beta first.');
+  assert.equal(scheduleIssueOf('alpha_full'), undefined);
+  assert.equal(errorLabelOf('unknown'), undefined);
+  assert.equal(isLongPoll('/api/dsp/gamma/updates?after=1'), true);
+  assert.equal(isLongPoll('/api/dsp/gamma'), false);
 });

@@ -215,6 +215,12 @@ export type FrontendFeature = {
   collections?: readonly CollectionLabels[];
   /** How the response cache treats its reads. */
   cache?: CacheRules;
+  /** Its reads that wait for a change before they answer, by path prefix. */
+  longPolls?: readonly string[];
+  /** What its error codes say. */
+  errors?: Record<string, string>;
+  /** Why a schedule of its collections waits, by the code it last stopped on; its error too. */
+  scheduleIssues?: Record<string, string>;
 };
 
 let installed: readonly FrontendFeature[] = [];
@@ -255,6 +261,24 @@ export const collectionLabels = () =>
 
 /** Every owner's cache rules, in the order the owners are listed. */
 export const cacheRules = () => installed.flatMap((feature) => feature.cache ?? []);
+
+/** Whether a read waits for a change before it answers. */
+export const isLongPoll = (url: string) =>
+  installed.some((feature) => feature.longPolls?.some((prefix) => url.startsWith(prefix)));
+
+/** The first answer an owner gives, in the order the owners are listed. */
+function first(read: (feature: FrontendFeature) => string | undefined) {
+  for (const feature of installed) {
+    const answer = read(feature);
+    if (answer !== undefined) return answer;
+  }
+  return undefined;
+}
+/** What an owner's error code says. */
+export const errorLabelOf = (code: string) =>
+  first((feature) => feature.errors?.[code] ?? feature.scheduleIssues?.[code]);
+/** Why a schedule of an owner's collections waits. */
+export const scheduleIssueOf = (code: string) => first((feature) => feature.scheduleIssues?.[code]);
 
 /** Every owner's kinds of data agents may read, group by group in their order. */
 export const readToggles = () =>

@@ -1,8 +1,9 @@
-export const scheduleIssues: Record<string, string> = {
-  schedule_paycom_required: 'Connect Paycom before enabling this schedule.',
-  schedule_meals_required: 'Connect Cortex before enabling Meal Break collections.',
-  schedule_dvic_required: 'Connect Cortex before enabling DVIC collections.',
-  schedule_scope_required: 'Run an initial Meal Break collection to set up the DSP’s station.',
+import { scheduleIssueOf } from './slots.js';
+
+// Why a schedule waits: the collection engine's own reasons, else as its collector or keeper
+// words them.
+const issues: Record<string, string> = {
   sync_in_progress: 'Waiting for the current collection',
   queue_full: 'Waiting for the collection queue',
 };
+export const scheduleIssue = (code: string) => issues[code] ?? scheduleIssueOf(code);

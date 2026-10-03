@@ -4,6 +4,7 @@ import '../support/manifests.js';
 import { featureCatalog } from '../../../core/shell/frontend/runtime/features.js';
 import { features } from '../../frontend/features.js';
 import { jobSchema } from '../../../shared/contracts/runtime.js';
+import { errorLabel } from '../../../core/shell/frontend/runtime/api.js';
 import {
   cacheRules,
   collectionLabels,
@@ -84,4 +85,15 @@ test('a read of collected data belongs to one owner', () => {
             );
     }),
   );
+});
+
+test("each error code is worded once, and core's own wording doesn't hide an owner's", () => {
+  const worded = features.flatMap((feature) =>
+    Object.entries({ ...feature.errors, ...feature.scheduleIssues }),
+  );
+  once(
+    worded.map(([code]) => code),
+    'error codes',
+  );
+  for (const [code, label] of worded) assert.equal(errorLabel(code), label, code);
 });

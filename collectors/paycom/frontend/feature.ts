@@ -15,6 +15,15 @@ export const feature: FrontendFeature = {
     render: (context) => createElement(PaycomCard, { ...context, read }),
   },
   auditWording: () => import('./audit-wording.js').then((module) => module.wording),
+  // Core's codes, as they read since Paycom was the only connection.
+  errors: {
+    connection_required: 'Connect Paycom before starting a collection.',
+    verification_incomplete:
+      'Paycom still needs verification. Complete the CAPTCHA, then press Submit again.',
+  },
+  scheduleIssues: {
+    schedule_paycom_required: 'Connect Paycom before enabling this schedule.',
+  },
   collections: [
     {
       kind: 'paycom.collect',

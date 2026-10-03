@@ -8,7 +8,7 @@ import {
   useDataTable,
   type TableColumn,
 } from '../../../../core/shell/frontend/ui/index.js';
-import { scheduleIssues } from '../../../../core/shell/frontend/runtime/schedule-issues.js';
+import { scheduleIssue } from '../../../../core/shell/frontend/runtime/schedule-issues.js';
 import {
   type CollectionSchedule,
   type ScheduleInput,
@@ -120,7 +120,7 @@ export function PaycomSettingsPage({ dspId }: { dspId: string }) {
           {schedule.enabled ? nextCollection(schedule.nextRun, timezone) : 'Paused'}
           {schedule.lastError && (
             <small>
-              {scheduleIssues[schedule.lastError] ?? 'Collection delayed. Check connections.'}
+              {scheduleIssue(schedule.lastError) ?? 'Collection delayed. Check connections.'}
             </small>
           )}
         </>

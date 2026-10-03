@@ -1,6 +1,5 @@
 import { performancePolicy } from '../lib/performance-policy.js';
 import { beginBrowserWrite, clearNavigationState } from './browser-update.js';
-import { scheduleIssues } from './schedule-issues.js';
 import { useEffect, useState, useCallback, useRef, useSyncExternalStore } from 'react';
 import { parseApiResponse } from '../../../../shared/contracts/runtime.js';
 import { backoff } from '../lib/backoff.js';
@@ -8,6 +7,7 @@ import { dataCache } from './data-cache.js';
 import { clearDestinations } from './navigation.js';
 import { mutationAffects } from './data-policy.js';
 import { useReadAvailability } from '../lib/read-availability.js';
+import { errorLabelOf, isLongPoll } from './slots.js';
 export let csrf = '',
   view = '';
 export function credentials(nextCsrf: string, nextView = '') {
@@ -30,11 +30,6 @@ export class ApiError extends Error {
   }
 }
 const labels: Record<string, string> = {
-  dvic_station_required: 'Set your station code in the DSP profile before collecting DVIC reports.',
-  invalid_retention: 'Choose a retention window from 30 to 3,650 days.',
-  routes_day_outside_retention:
-    'That day is older than your route data retention window. Lengthen the window first.',
-  dvic_week_not_available: 'That report week is not available yet.',
   already_a_member: 'This person already has access. Change their role in the member list.',
   email_queue_full: 'Email capacity is temporarily full. Try again later.',
   mfa_required: 'Verify your identity to continue.',
@@ -48,52 +43,19 @@ const labels: Record<string, string> = {
   authenticator_exists: 'An authenticator app is already registered.',
   invalid_recovery_code: 'That recovery code is invalid or has already been used.',
   browser_update_required: 'Dispatch was updated. Refresh the page and try again.',
-  uniform_changed:
-    'This uniform changed in another session. Close and reopen the editor before saving.',
-  uniform_not_found: 'This uniform was removed. Refresh the inventory.',
-  uniform_size_not_found: 'This size was removed or changed. Refresh the inventory.',
-  uniform_name_taken: 'Another uniform already uses this name.',
-  uniform_size_duplicate: 'Each fit can only have one entry for a size.',
-  invalid_uniform_size: 'Size names must contain 1 to 24 characters.',
-  uniform_size_in_stock: 'Remove the remaining stock before removing a size.',
-  uniform_in_stock: 'Remove the remaining stock before archiving a uniform.',
-  uniform_out_of_stock:
-    'Another adjustment used the remaining stock. The current count has been refreshed.',
-  uniform_quantity_limit: 'This size has reached the inventory limit.',
-  uniform_inventory_initialized: 'Inventory was already set up by another user. Refresh to see it.',
-  uniform_limit: 'You can create up to 200 uniforms per DSP.',
-  uniform_size_limit: 'A uniform can have up to 150 size and fit combinations.',
-  uniform_request_conflict: 'This inventory request does not match its original adjustment.',
-
-  ...scheduleIssues,
   schedule_changed: 'This schedule changed in another session. Reload it before saving.',
   schedule_not_found: 'This schedule was deleted. Close the editor and refresh.',
   schedule_limit: 'You can create up to 50 schedules for this DSP.',
   invalid_schedule_time: 'Choose a valid collection time.',
   invalid_schedule_interval: 'Choose an interval from 0.5 to 24 hours in half-hour increments.',
-  meal_sync_paycom_required: 'Connect Paycom before syncing meal breaks.',
-  meal_sync_flex_required: 'Connect Cortex in Settings → Connections before syncing Flex.',
-  meal_sync_scope_required: 'Complete your DSP profile with a station code to sync Flex.',
-  cortex_station_unavailable:
-    'Your saved station was not found in Cortex. Check your DSP profile and Cortex access.',
-  cortex_provider_ambiguous:
-    'Cortex could not identify your DSP. Check your DSP name and abbreviation.',
   sync_in_progress: 'A collection is already in progress. Wait for it to finish, then sync again.',
   queue_full: 'The collection queue is full. Try again after the current collections finish.',
   invalid_date: 'Choose a valid date that is not in the future.',
-  settings_changed_reload_before_saving:
-    'These settings changed in another session. Discard your draft and try again.',
-  connect_paycom_before_automatic_sync: 'Connect Paycom before turning on automatic sync.',
-  employee_already_linked:
-    'A Paycom employee can only link to one Flex driver. Review duplicate selections.',
-  employee_link_source_missing:
-    'This employee is no longer available. Refresh and review the links again.',
   email_unavailable: 'Email sending is not configured for this environment.',
   invitation_expired: 'This invitation has expired or was revoked. Ask for a new invitation.',
   sign_in_with_existing_password: 'Use your existing Dispatch password to accept this invitation.',
   invalid_login: 'The email or password is incorrect.',
   permission_denied: 'Your role does not allow this action.',
-  connection_required: 'Connect Paycom before starting a collection.',
   last_owner_required: 'Keep at least one DSP owner.',
   dsp_view_expired: 'Your DSP access changed. Refreshing your view…',
   role_exceeds_permissions: 'You can only manage roles and members within your own permissions.',
@@ -103,8 +65,6 @@ const labels: Record<string, string> = {
   role_not_found: 'This role no longer exists. Refresh and try again.',
   role_limit: 'You can create up to 50 roles for this DSP.',
   owner_role_locked: 'The Owner role cannot be changed.',
-  verification_incomplete:
-    'Paycom still needs verification. Complete the CAPTCHA, then press Submit again.',
   connection_busy: 'The browser is busy. Please try again in a moment.',
   verification_expired: 'Verification expired. Check the connection to start again.',
   browser_capacity: 'Browser capacity is full. Try again shortly.',
@@ -121,8 +81,9 @@ const recoveryCodeResponses = new Set([
   '/api/auth/security/authenticator/register/finish',
   '/api/auth/security/recovery-codes',
 ]);
+/** What an error code says: core's own, else as the owner that raises it words it. */
 export function errorLabel(code: string): string | undefined {
-  return labels[code];
+  return labels[code] ?? errorLabelOf(code);
 }
 export async function api<T>(
   url: string,
@@ -146,9 +107,8 @@ export async function api<T>(
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       signal:
-        body === undefined &&
-        !url.startsWith('/api/dsp/collection-updates') &&
-        !url.startsWith('/api/dsp/uniforms/updates')
+        // A read that waits for a change has no read timeout.
+        body === undefined && !url.startsWith('/api/dsp/collection-updates') && !isLongPoll(url)
           ? AbortSignal.any([
               ...(signal ? [signal] : []),
               AbortSignal.timeout(performancePolicy.readTimeoutMs),

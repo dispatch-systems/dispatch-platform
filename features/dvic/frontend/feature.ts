@@ -40,6 +40,11 @@ export const feature: FrontendFeature = {
   ],
   auditWording: () => import('./audit-wording.js').then((module) => module.wording),
   switch: { id: 'dvic', icon: ClipboardCheck },
+  errors: {
+    dvic_station_required:
+      'Set your station code in the DSP profile before collecting DVIC reports.',
+    dvic_week_not_available: 'That report week is not available yet.',
+  },
   cache: {
     connections: ['/api/dsp/dvic/'],
     write: (write, url) =>
