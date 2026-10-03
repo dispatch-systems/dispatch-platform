@@ -160,16 +160,19 @@ test('every test file is run by exactly one check of full validation and none is
   );
   assert(operator, 'operator probes must compile in CI without executing');
   // The probes live in the collectors, whose own tests hold most of them; the app runs those
-  // that measure a feature's part too.
+  // that measure a feature's part too. Each such crate has an operator-probes feature.
+  const probing = testRoots
+    .flatMap((root) => names(root, /(^|\/)Cargo\.toml$/))
+    .map((manifest) => fs.readFileSync(manifest, 'utf8'))
+    .filter((text) => /^\[features\]\n(?:(?!\[)[^\n]*\n)*operator-probes\s*=/m.test(text))
+    .map((text) => /^name = "([^"]+)"/m.exec(text)![1]!)
+    .sort();
+  for (const name of ['dispatch-backend', 'dispatch-cortex', 'dispatch-paycom'])
+    assert(probing.includes(name), `${name} has an operator-probes feature`);
   assert.deepEqual(operator.args, [
     'check',
     '--locked',
-    '-p',
-    'dispatch-backend',
-    '-p',
-    'dispatch-cortex',
-    '-p',
-    'dispatch-paycom',
+    ...probing.flatMap((name) => ['-p', name]),
     '--tests',
     '--features',
     'operator-probes',

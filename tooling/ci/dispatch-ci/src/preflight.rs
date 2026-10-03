@@ -1,6 +1,10 @@
 use crate::{REPOSITORY, Result, Runner, cache::frontend};
 use serde_json::Value;
-use std::{collections::BTreeSet, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::Path,
+};
 /// Problems that stop a push. With a merge queue on `main`, the queue validates the actual
 /// merged state, so a moved `main` and other ready PRs no longer block.
 pub fn blockers(
@@ -31,10 +35,79 @@ pub fn blockers(
     }
     problems
 }
+/// The workspace's crates: each member's directory and the package name its `Cargo.toml`
+/// gives, as the root `Cargo.toml` lists the members. A member such as `features/*` is every
+/// directory under it with a `Cargo.toml`.
+#[derive(Debug, Default)]
+pub struct Workspace {
+    crates: BTreeMap<String, String>,
+}
+impl Workspace {
+    pub fn read(root: &Path) -> Result<Self> {
+        let manifest = |dir: &Path| -> Result<toml::Value> {
+            Ok(toml::from_str(&fs::read_to_string(
+                dir.join("Cargo.toml"),
+            )?)?)
+        };
+        let workspace = manifest(root)?;
+        let members = workspace
+            .get("workspace")
+            .and_then(|v| v.get("members"))
+            .and_then(toml::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(toml::Value::as_str);
+        let mut crates = BTreeMap::new();
+        for member in members {
+            let dirs = match member.strip_suffix("/*") {
+                Some(parent) => fs::read_dir(root.join(parent))?
+                    .map(|entry| Ok(format!("{parent}/{}", entry?.file_name().to_string_lossy())))
+                    .collect::<Result<Vec<_>>>()?,
+                None => vec![member.to_owned()],
+            };
+            for dir in dirs {
+                if !root.join(&dir).join("Cargo.toml").is_file() {
+                    continue;
+                }
+                let name = manifest(&root.join(&dir))?
+                    .get("package")
+                    .and_then(|v| v.get("name"))
+                    .and_then(toml::Value::as_str)
+                    .ok_or_else(|| format!("{dir}/Cargo.toml names no package"))?
+                    .to_owned();
+                crates.insert(dir, name);
+            }
+        }
+        Ok(Self { crates })
+    }
+    /// The crate in an owner's directory: core's, a collector's, a feature's or the app's.
+    fn owned(&self, owner: &str) -> Option<&String> {
+        self.crates
+            .iter()
+            .find(|(dir, _)| *dir == owner || dir.starts_with(&format!("{owner}/")))
+            .map(|(_, name)| name)
+    }
+    /// The crate of the member whose directory holds `file`.
+    fn holding(&self, file: &str) -> Option<&String> {
+        self.crates
+            .iter()
+            .find(|(dir, _)| file.starts_with(&format!("{dir}/")))
+            .map(|(_, name)| name)
+    }
+}
+/// The owner a file belongs to, by its directory: core, a collector, a feature or the app.
+fn owner(file: &str) -> Option<String> {
+    let mut parts = file.split('/');
+    match (parts.next()?, parts.next()?, parts.next()) {
+        (top @ ("core" | "app"), _, _) => Some(top.to_owned()),
+        (top @ ("collectors" | "features"), name, Some(_)) => Some(format!("{top}/{name}")),
+        _ => None,
+    }
+}
 /// The local commands that check what the diff touches: the Rust crates it changes, and the
 /// test files it changes or that watch a source it changes, from `tooling/ci/test-plan.json`.
 /// `npm run check:rules` already runs the rule and dashboard tests, so they are left out.
-pub fn affected(changed: &[String], plan: &Value) -> Vec<String> {
+pub fn affected(changed: &[String], plan: &Value, workspace: &Workspace) -> Vec<String> {
     let list = |value: &Value| -> Vec<String> {
         value
             .as_array()
@@ -60,49 +133,27 @@ pub fn affected(changed: &[String], plan: &Value) -> Vec<String> {
             tests.extend(list(&group["tests"]));
         }
     }
+    // Each owner's crate is the one in its directory, whatever its name, so a new feature or
+    // collector needs no change here.
+    let app = workspace.owned("app");
     let mut crates = BTreeSet::new();
     for file in changed {
-        let collector = file
-            .strip_prefix("collectors/")
-            .and_then(|rest| rest.split_once('/'))
-            .map(|(site, _)| site);
-        if file.starts_with("ops/host-manager/") {
-            crates.insert("dispatch-host".to_owned());
-        } else if file.starts_with("tooling/ci/dispatch-ci/") {
-            crates.insert("dispatch-ci".to_owned());
-        } else if file.starts_with("core/") && !frontend(Path::new(file)) {
-            // Core's crate, and the app's, which builds on it.
-            crates.extend(["dispatch-core".to_owned(), "dispatch-backend".to_owned()]);
-        } else if let Some(site) = collector
-            && !frontend(Path::new(file))
-        {
-            // The collector's crate, and the app's, which builds on it.
-            crates.extend([
-                format!("dispatch-{}", site.replace('_', "-")),
-                "dispatch-backend".to_owned(),
-            ]);
-        } else if ["app/", "features/"]
-            .iter()
-            .any(|root| file.starts_with(root))
-            && !frontend(Path::new(file))
-        {
-            crates.insert("dispatch-backend".to_owned());
-        } else if matches!(
+        if matches!(
             file.as_str(),
             "Cargo.toml" | "Cargo.lock" | "rust-toolchain.toml"
         ) || file.starts_with(".cargo/")
         {
-            crates.extend(
-                [
-                    "dispatch-backend",
-                    "dispatch-ci",
-                    "dispatch-core",
-                    "dispatch-cortex",
-                    "dispatch-host",
-                    "dispatch-paycom",
-                ]
-                .map(str::to_owned),
-            );
+            crates.extend(workspace.crates.values());
+        } else if let Some(owner) = owner(file) {
+            if !frontend(Path::new(file)) {
+                // The owner's crate, or the app's for one not yet a crate of its own, which the
+                // app mounts; and the app's, which builds on every owner.
+                crates.extend(workspace.owned(&owner).or(app));
+                crates.extend(app);
+            }
+        } else if let Some(name) = workspace.holding(file) {
+            // A crate of the tooling's or the hosts'.
+            crates.insert(name);
         }
     }
     let mut commands = vec![];
@@ -196,7 +247,9 @@ pub fn run(root: &Path, concurrent: bool, runner: &dyn Runner) -> Result<()> {
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or(Value::Null);
-    let commands = affected(&changed, &plan);
+    // Without a readable workspace, as in a checkout with no Rust, no crate is named.
+    let workspace = Workspace::read(root).unwrap_or_default();
+    let commands = affected(&changed, &plan, &workspace);
     if commands.is_empty() {
         println!(
             "Nothing in the diff has tests beyond npm run check:rules. The merge queue runs the full suite on the squash commit; nothing runs on the PR itself."
@@ -273,8 +326,40 @@ mod tests {
         assert!(!blockers("feature", true, true, &[], true, true).is_empty());
         assert!(!blockers("main", false, true, &[], true, true).is_empty());
     }
+    /// A workspace on disk of `members`, each crate a directory and its package's name.
+    fn workspace(members: &str, crates: &[(&str, &str)]) -> (tempfile::TempDir, Workspace) {
+        let root = tempfile::tempdir().unwrap();
+        let write = |file: &str, text: String| {
+            let path = root.path().join(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        };
+        write(
+            "Cargo.toml",
+            format!("[workspace]\nmembers = [{members}]\n"),
+        );
+        for (dir, name) in crates {
+            write(
+                &format!("{dir}/Cargo.toml"),
+                format!("[package]\nname = \"{name}\"\n"),
+            );
+        }
+        let workspace = Workspace::read(root.path()).unwrap();
+        (root, workspace)
+    }
     #[test]
     fn affected_names_the_changed_crates_and_the_tests_the_diff_changes_or_watches() {
+        let (_root, workspace) = workspace(
+            r#""core", "collectors/*", "app/backend", "ops/host-manager", "tooling/ci/dispatch-ci""#,
+            &[
+                ("core", "dispatch-core"),
+                ("collectors/cortex", "dispatch-cortex"),
+                ("collectors/paycom", "dispatch-paycom"),
+                ("app/backend", "dispatch-backend"),
+                ("ops/host-manager", "dispatch-host"),
+                ("tooling/ci/dispatch-ci", "dispatch-ci"),
+            ],
+        );
         let plan = json!({
             "dashboard": ["core/tenancy/tests/frontend/features.test.ts"],
             "rules": ["tooling/tests/test-plan.test.ts"],
@@ -286,7 +371,7 @@ mod tests {
         });
         let changed = |files: &[&str]| -> Vec<String> {
             let files: Vec<String> = files.iter().map(|file| (*file).to_owned()).collect();
-            affected(&files, &plan)
+            affected(&files, &plan, &workspace)
         };
         assert_eq!(
             changed(&[
@@ -335,10 +420,61 @@ mod tests {
         // Without a plan, the changed tests themselves are still named.
         let files = vec!["core/tenancy/tests/api/roles.test.ts".to_owned()];
         assert_eq!(
-            affected(&files, &Value::Null),
+            affected(&files, &Value::Null, &workspace),
             [
                 "python3 tooling/build/cargo-build.py && npx tsx --test core/tenancy/tests/api/roles.test.ts"
             ]
+        );
+    }
+    #[test]
+    fn each_owners_crate_is_the_one_its_directory_holds() {
+        let (root, _) = workspace(
+            r#""core", "features/*", "app/backend""#,
+            &[
+                ("core", "dispatch-core"),
+                ("features/driver_match", "dispatch-driver-match"),
+                ("app/backend", "dispatch-backend"),
+            ],
+        );
+        // A feature the app still mounts has a directory and no Cargo.toml.
+        fs::create_dir_all(root.path().join("features/timecard/backend")).unwrap();
+        let before = Workspace::read(root.path()).unwrap();
+        let changed = |workspace: &Workspace, file: &str| {
+            affected(&[file.to_owned()], &Value::Null, workspace)
+        };
+        let test = |packages: &str| {
+            vec![
+                "cargo clippy --locked --all-targets -- -D warnings".to_owned(),
+                format!("cargo test --locked {packages}"),
+            ]
+        };
+        // Its package name, not one made from its directory's, with the app, which builds on it.
+        assert_eq!(
+            changed(&before, "features/driver_match/backend/matching.rs"),
+            test("-p dispatch-backend -p dispatch-driver-match")
+        );
+        assert_eq!(
+            changed(&before, "features/timecard/backend/meals/sync.rs"),
+            test("-p dispatch-backend")
+        );
+        assert!(changed(&before, "features/driver_match/frontend/DriverMatchTab.tsx").is_empty());
+        // A new feature's crate is found as soon as it has a Cargo.toml.
+        fs::create_dir_all(root.path().join("features/parking")).unwrap();
+        fs::write(
+            root.path().join("features/parking/Cargo.toml"),
+            "[package]\nname = \"dispatch-parking\"\n",
+        )
+        .unwrap();
+        let after = Workspace::read(root.path()).unwrap();
+        assert_eq!(
+            changed(&after, "features/parking/feature.rs"),
+            test("-p dispatch-backend -p dispatch-parking")
+        );
+        assert_eq!(
+            changed(&after, "Cargo.lock"),
+            test(
+                "-p dispatch-backend -p dispatch-core -p dispatch-driver-match -p dispatch-parking"
+            )
         );
     }
     #[test]

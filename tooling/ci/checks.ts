@@ -6,6 +6,7 @@ import { assessmentFixture } from '../testing/ci-tools.js';
 import { manualBrowserSelection } from './browser-input.js';
 import { PAINT_BUDGET, WORKERS, browserTests, shards } from './browser-shards.js';
 import { nodeTests, pythonTests, sourceLintCommands, type Command } from './execution-plan.js';
+import { workspaceCrates } from './workspace.js';
 
 // One job of the platform checks, or locally the whole suite in sequence. CI runs each mode
 // on its own runner: `build` packages the runtime, and the modes that need it download that
@@ -21,6 +22,15 @@ const dashboardCommand = nodeTests('dashboard', {
 });
 const coreCommand = nodeTests('core', { concurrency: os.availableParallelism() });
 const pythonCommands = [pythonTests('rules'), pythonTests('integration')];
+/**
+ * The crates with live probes, behind their operator-probes feature: each collector's, whose own
+ * tests hold most of them, and the app's, which runs those that measure a feature's part too.
+ * Read from their Cargo.toml, so a new collector's are checked without being named here.
+ */
+const probing = workspaceCrates(path.resolve(import.meta.dirname, '../..'))
+  .filter(({ features }) => features.includes('operator-probes'))
+  .map(({ name }) => name)
+  .sort();
 const rustCommands: Command[] = [
   { name: 'check:rust', command: 'npm', args: ['run', 'check:rust'] },
   {
@@ -29,12 +39,7 @@ const rustCommands: Command[] = [
     args: [
       'check',
       '--locked',
-      '-p',
-      'dispatch-backend',
-      '-p',
-      'dispatch-cortex',
-      '-p',
-      'dispatch-paycom',
+      ...probing.flatMap((name) => ['-p', name]),
       '--tests',
       '--features',
       'operator-probes',
