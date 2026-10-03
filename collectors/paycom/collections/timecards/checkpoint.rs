@@ -12,8 +12,20 @@ use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, sync::Arc};
 
 pub const TTL_MS: i64 = 15 * 60 * 1000;
-impl Store {
-    pub fn clear_checkpoint(&self, dsp: &str, job: Option<&str>) -> Result<()> {
+/// What Paycom keeps of a collection before a feature publishes it.
+pub trait PaycomStore {
+    fn clear_paycom_checkpoints(&self, dsp: &str, job: Option<&str>) -> Result<()>;
+    fn prune_paycom_checkpoints(&self, dsp: &str) -> Result<()>;
+    fn stage_paycom(
+        &self,
+        job: &str,
+        owner: &str,
+        employee: &Value,
+        records: &[Value],
+    ) -> Result<()>;
+}
+impl PaycomStore for Store {
+    fn clear_paycom_checkpoints(&self, dsp: &str, job: Option<&str>) -> Result<()> {
         let db = self.collector(dsp, paycom::PROVIDER)?;
         db.exec(
             "DELETE FROM collection_checkpoints WHERE (?1 IS NULL OR job_id=?1)",
@@ -21,7 +33,7 @@ impl Store {
         )?;
         Ok(())
     }
-    pub fn prune_checkpoints(&self, dsp: &str) -> Result<()> {
+    fn prune_paycom_checkpoints(&self, dsp: &str) -> Result<()> {
         let db = self.collector(dsp, paycom::PROVIDER)?;
         db.transaction(|| {
             for row in db.all("SELECT job_id,created_at FROM collection_checkpoints", [])? {
@@ -43,7 +55,7 @@ impl Store {
             Ok(())
         })
     }
-    pub fn stage_paycom(
+    fn stage_paycom(
         &self,
         job: &str,
         owner: &str,
@@ -121,7 +133,7 @@ impl Checkpoint {
             let row=db.job_row(&job,None)?;
             ensure(row.kind.as_str()==paycom::PROVIDER.job_kind(),"unsupported_collector",409)?;
             let tenant=dsp.id.as_str();
-            db.prune_checkpoints(tenant)?;
+            db.prune_paycom_checkpoints(tenant)?;
             let storage=db.collector(tenant,paycom::PROVIDER)?;
             let resume = storage.transaction(|| {
                 let existing=storage.one("SELECT * FROM collection_checkpoints WHERE job_id=?",[&job])?;

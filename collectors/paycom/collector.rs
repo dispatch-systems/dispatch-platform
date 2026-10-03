@@ -29,6 +29,8 @@ use serde_json::{Value, json};
 use std::{collections::HashSet, path::Path};
 use timecards::EmployeeSync;
 
+pub use checkpoint::PaycomStore;
+
 pub const PROVIDER: Provider = Provider::new("paycom");
 pub static COLLECTOR: Paycom = Paycom;
 
@@ -109,7 +111,7 @@ impl Collector for Paycom {
         None
     }
     fn opened(&self, store: &Store, dsp: &str) -> Result<()> {
-        store.prune_checkpoints(dsp)
+        store.prune_paycom_checkpoints(dsp)
     }
     fn provision(&self, store: &Store, dsp: &str, timezone: &str) -> Result<()> {
         let db = store.collector(dsp, PROVIDER)?;
@@ -218,10 +220,10 @@ impl Collector for Paycom {
         codes::ALL
     }
     fn discard(&self, store: &Store, dsp: &str, job: Option<&str>) -> Result<()> {
-        store.clear_checkpoint(dsp, job)
+        store.clear_paycom_checkpoints(dsp, job)
     }
     fn prune(&self, store: &Store, dsp: &str) -> Result<()> {
-        store.prune_checkpoints(dsp)
+        store.prune_paycom_checkpoints(dsp)
     }
     // v0.0.9 refuses Paycom settings saves while its old schedule row is on
     // and Paycom is disconnected. Drop this with the table.

@@ -243,7 +243,7 @@ impl Server {
 
 #[tokio::test]
 async fn meal_cache_rechecks_live_visibility_after_lease_bookkeeping_and_authorizes_hits() {
-    use dispatch_backend::workforce;
+    use dispatch_backend::{collectors::paycom::PaycomStore, workforce};
     let server = Server::start().await;
     let member = server.member("member@dispatch.test").await;
     let dsp = server.dsp("Northline Logistics").await;
