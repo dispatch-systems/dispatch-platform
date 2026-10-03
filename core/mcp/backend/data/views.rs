@@ -7,8 +7,8 @@ use super::{
     access::{self, Access, Read},
     catalog::{self, METRICS, Metric, flag},
     facts::{
-        self, Coverage, Inspection, MealDay, Packages, RouteDay, TimecardDay, clock, outcome_of,
-        reason_of,
+        self, Coverage, Daily, Facts, Inspection, MealDay, Packages, RouteDay, TimecardDay, clock,
+        outcome_of, reason_of,
     },
     scope::{DEFAULT_PERIOD, People, Period, Person, daily_limit, param, period, today},
     shape::{BUDGET, Table, hours, offset_named, page, page_named, paged, understood},
@@ -16,18 +16,21 @@ use super::{
 use crate::{
     State,
     agents::Caller,
-    contracts::{AgentArea, AgentSource, DriverSource, Dsp, MealStatus, RouteAddress},
+    contracts::{AgentArea, DriverSource, Dsp, MealStatus, RouteAddress},
     db::Store,
+    manifest::registry,
 };
 // A4: the features' views and their sources' names, until each feature answers for its own.
 use crate::feature_manifests::{
-    dvic::mcp::{DVIC, SOURCE as DVIC_SOURCE},
-    routes::mcp::{LOCATIONS, ROUTES, SOURCE as ROUTES_SOURCE},
-    scorecard::mcp::SOURCE as SCORECARD_SOURCE,
-    timecard::mcp::{MEAL_BREAKS, MEAL_BREAKS_SOURCE, TIMECARDS, TIMECARDS_SOURCE},
+    dvic::mcp::DVIC,
+    routes::mcp::{LOCATIONS, ROUTES},
+    timecard::mcp::{MEAL_BREAKS, TIMECARDS},
 };
 use serde_json::{Map, Value, json};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap},
+    sync::LazyLock,
+};
 
 /// A person as answers name them: their name, with their code when another has it too.
 fn label(people: &People, person: &Person) -> String {
@@ -93,31 +96,27 @@ fn address_line(address: &RouteAddress) -> String {
     .join(", ")
 }
 /// `GET /api/v1/status`: which sources are on, which the key or app reads, and how fresh
-/// each it reads is.
+/// each it reads is, each feature's in the registry's order.
 pub fn status(db: &Store, caller: &Caller, query: &Value) -> Answer {
     catalog::check("status", query)?;
     let access = Access::of(db, caller, query)?;
     let dsp = access.dsp;
-    let fresh = facts::freshness(db, dsp)?;
-    let source = |source: AgentSource, key: &str| {
-        let reads = access.reads_from(source);
-        let mut value = json!({"enabled": access.on(source), "reads": reads});
-        if reads && let Some(found) = fresh[key].as_object() {
+    let station = db.profile(&dsp.id)?.station_code;
+    let mut sources = Map::new();
+    for source in registry().features.iter().flat_map(|f| f.mcp.sources) {
+        let fresh = source.fresh(db, dsp, &station)?;
+        let reads = access.reads_from(*source);
+        let mut value = json!({"enabled": access.on(*source), "reads": reads});
+        if reads && let Some(found) = fresh.as_ref().and_then(Value::as_object) {
             for (k, v) in found {
                 value[k] = v.clone();
             }
         }
-        value
-    };
+        sources.insert(source.key().into(), value);
+    }
     Ok(json!({
         "understood": understood(dsp, None),
-        "sources": {
-            "timecards": source(TIMECARDS_SOURCE, "timecards"),
-            "mealBreaks": source(MEAL_BREAKS_SOURCE, "mealBreaks"),
-            "routes": source(ROUTES_SOURCE, "routes"),
-            "dvic": source(DVIC_SOURCE, "dvic"),
-            "scorecard": source(SCORECARD_SOURCE, "scorecard"),
-        }
+        "sources": sources
     }))
 }
 
@@ -162,14 +161,23 @@ pub fn drivers(db: &Store, state: &State, caller: &Caller, query: &Value) -> Ans
     Ok(answer)
 }
 
-struct Gathered {
-    routes: (Vec<RouteDay>, Coverage),
-    timecards: (Vec<TimecardDay>, Coverage),
-    meals: (Vec<MealDay>, Coverage),
-    inspections: (Vec<Inspection>, Coverage),
+/// Every kind of facts a driver's days and the team's table are made of, in the order of
+/// the kinds of data they are read as.
+fn daily() -> &'static [&'static dyn Daily] {
+    static DAILY: LazyLock<Vec<&'static dyn Daily>> = LazyLock::new(|| {
+        let mut all: Vec<&'static dyn Daily> = registry()
+            .features
+            .iter()
+            .flat_map(|f| f.mcp.daily)
+            .copied()
+            .collect();
+        all.sort_by_key(|kind| kind.area().order());
+        all
+    });
+    &DAILY
 }
-/// What each source holds for the period, all of it or one person's: those of `wanted`, the
-/// kinds of data the answer reads.
+/// What each kind holds for the period, all of it or one person's: those of `wanted`, the
+/// kinds of data the answer reads, and nothing of the rest.
 fn gather(
     db: &Store,
     dsp: &Dsp,
@@ -177,56 +185,25 @@ fn gather(
     people: &People,
     person: Option<&Person>,
     wanted: &[AgentArea],
-) -> crate::Result<Gathered> {
-    let wants = |area: AgentArea| wanted.contains(&area);
-    let amazon = person.map(|p| p.amazon.as_slice());
-    let paycom = person.map(|p| p.paycom.as_slice());
-    let routes = if wants(ROUTES) {
-        facts::routes(db, dsp, period, amazon)?
-    } else {
-        (vec![], Coverage::default())
-    };
-    let timecards = if wants(TIMECARDS) {
-        facts::timecards(db, dsp, period, paycom)?
-    } else {
-        (vec![], Coverage::default())
-    };
-    let meals = if wants(MEAL_BREAKS) {
-        let sources = person.map(|p| {
-            p.paycom
-                .iter()
-                .map(|c| format!("paycom:{c}"))
-                .chain(p.amazon.iter().map(|id| format!("cortex:{id}")))
-                .collect::<Vec<_>>()
-        });
-        let (mut rows, coverage) = facts::meal_breaks_for(db, dsp, period, sources.as_deref())?;
-        mark_routes(db, dsp, period, people, &mut rows)?;
-        (rows, coverage)
-    } else {
-        (vec![], Coverage::default())
-    };
-    let inspections = if wants(DVIC) {
-        facts::inspections(db, dsp, period, amazon)?
-    } else {
-        (vec![], Coverage::default())
-    };
-    Ok(Gathered {
-        routes,
-        timecards,
-        meals,
-        inspections,
-    })
+) -> crate::Result<Vec<Box<dyn Facts>>> {
+    daily()
+        .iter()
+        .map(|kind| {
+            if wanted.contains(&kind.area()) {
+                kind.gather(db, dsp, period, people, person)
+            } else {
+                Ok(kind.none())
+            }
+        })
+        .collect()
 }
-fn coverage(gathered: &Gathered) -> Value {
-    json!({
-        "routes": gathered.routes.1,
-        "timecards": gathered.timecards.1,
-        "mealBreaks": gathered.meals.1,
-        "dvic": gathered.inspections.1,
-    })
+fn coverage(gathered: &[Box<dyn Facts>]) -> Value {
+    let mut out = Map::new();
+    for (kind, facts) in daily().iter().zip(gathered) {
+        out.insert(kind.coverage().into(), json!(facts.coverage()));
+    }
+    Value::Object(out)
 }
-/// The kinds of data a driver's days and the team's table are made of.
-const DAILY: [AgentArea; 4] = [ROUTES, TIMECARDS, MEAL_BREAKS, DVIC];
 
 /// Marks each meal row whose person Cortex had a route for that day.
 fn mark_routes(
@@ -280,20 +257,372 @@ fn meal_span(meal: &MealDay) -> (Value, Value) {
     )
 }
 
-/// One day of a driver's report, as one line.
-#[derive(Default)]
-struct Line {
-    routes: i64,
-    route: Vec<String>,
-    stops: i64,
-    delivered: i64,
-    undeliverable: i64,
-    hours: Option<f64>,
-    clock_in: Option<String>,
-    clock_out: Option<String>,
-    meal: Option<MealStatus>,
-    inspections: i64,
-    short: i64,
+/// Routes driven, for a driver's days and the team's table.
+pub struct RouteDays;
+struct Routed(Vec<RouteDay>, Coverage);
+impl Daily for RouteDays {
+    fn area(&self) -> AgentArea {
+        ROUTES
+    }
+    fn coverage(&self) -> &'static str {
+        "routes"
+    }
+    fn records(&self) -> &'static str {
+        "routes"
+    }
+    fn columns(&self) -> &'static [&'static str] {
+        &["route", "stops", "delivered", "undeliverable"]
+    }
+    fn gather(
+        &self,
+        db: &Store,
+        dsp: &Dsp,
+        period: &Period,
+        _: &People,
+        person: Option<&Person>,
+    ) -> crate::Result<Box<dyn Facts>> {
+        let (rows, coverage) = facts::routes(db, dsp, period, person.map(|p| p.amazon.as_slice()))?;
+        Ok(Box::new(Routed(rows, coverage)))
+    }
+    fn none(&self) -> Box<dyn Facts> {
+        Box::new(Routed(vec![], Coverage::default()))
+    }
+}
+impl Routed {
+    fn sum(&self, records: &[usize], f: fn(&RouteDay) -> i64) -> i64 {
+        records.iter().map(|&r| f(&self.0[r])).sum()
+    }
+}
+impl Facts for Routed {
+    fn coverage(&self) -> &Coverage {
+        &self.1
+    }
+    fn count(&self) -> usize {
+        self.0.len()
+    }
+    fn whose(&self, record: usize) -> (&str, DriverSource, &str, &str) {
+        let route = &self.0[record];
+        (
+            &route.date,
+            DriverSource::Amazon,
+            &route.transporter_id,
+            &route.driver_name,
+        )
+    }
+    fn record(&self, record: usize) -> Value {
+        json!(self.0[record])
+    }
+    fn line(&self, records: &[usize]) -> Vec<Value> {
+        let routed = !records.is_empty();
+        let some = |value: i64| if routed { json!(value) } else { Value::Null };
+        let route: Vec<String> = records
+            .iter()
+            .flat_map(|&r| self.0[r].route.clone())
+            .collect();
+        vec![
+            if routed {
+                json!(route.join(", "))
+            } else {
+                Value::Null
+            },
+            some(self.sum(records, |r| r.stops_completed)),
+            some(self.sum(records, |r| r.packages_delivered)),
+            some(self.sum(records, |r| r.packages_undeliverable)),
+        ]
+    }
+    fn totals(&self) -> Vec<(&'static str, Value)> {
+        let all: Vec<usize> = (0..self.0.len()).collect();
+        vec![
+            ("routes", json!(self.0.len())),
+            (
+                "stops_completed",
+                json!(self.sum(&all, |r| r.stops_completed)),
+            ),
+            (
+                "packages_delivered",
+                json!(self.sum(&all, |r| r.packages_delivered)),
+            ),
+            (
+                "packages_undeliverable",
+                json!(self.sum(&all, |r| r.packages_undeliverable)),
+            ),
+        ]
+    }
+    fn metric(&self, name: &str, records: &[usize]) -> Option<Value> {
+        let sum = |f: fn(&RouteDay) -> i64| Some(json!(self.sum(records, f)));
+        let opt_sum = |f: fn(&RouteDay) -> Option<i64>| {
+            Some(json!(
+                records.iter().filter_map(|&r| f(&self.0[r])).sum::<i64>()
+            ))
+        };
+        match name {
+            "routes" => Some(json!(records.len())),
+            "stops_completed" => sum(|r| r.stops_completed),
+            "stops_total" => sum(|r| r.stops_total),
+            "packages_delivered" => sum(|r| r.packages_delivered),
+            "packages_total" => sum(|r| r.packages_total),
+            "packages_remaining" => sum(|r| r.packages_remaining),
+            "packages_undeliverable" => sum(|r| r.packages_undeliverable),
+            "break_minutes" => opt_sum(|r| r.break_minutes),
+            "overtime_minutes" => opt_sum(|r| r.overtime_minutes),
+            _ => None,
+        }
+    }
+}
+
+/// Timecards, for a driver's days and the team's table.
+pub struct TimecardDays;
+struct Carded(Vec<TimecardDay>, Coverage);
+impl Daily for TimecardDays {
+    fn area(&self) -> AgentArea {
+        TIMECARDS
+    }
+    fn coverage(&self) -> &'static str {
+        "timecards"
+    }
+    fn records(&self) -> &'static str {
+        "timecards"
+    }
+    fn columns(&self) -> &'static [&'static str] {
+        &["hours", "in", "out"]
+    }
+    fn assessed(&self) -> bool {
+        true
+    }
+    fn pooled(&self) -> &'static [&'static str] {
+        &["lunch_minutes"]
+    }
+    fn gather(
+        &self,
+        db: &Store,
+        dsp: &Dsp,
+        period: &Period,
+        _: &People,
+        person: Option<&Person>,
+    ) -> crate::Result<Box<dyn Facts>> {
+        let (rows, coverage) =
+            facts::timecards(db, dsp, period, person.map(|p| p.paycom.as_slice()))?;
+        Ok(Box::new(Carded(rows, coverage)))
+    }
+    fn none(&self) -> Box<dyn Facts> {
+        Box::new(Carded(vec![], Coverage::default()))
+    }
+}
+impl Facts for Carded {
+    fn coverage(&self) -> &Coverage {
+        &self.1
+    }
+    fn count(&self) -> usize {
+        self.0.len()
+    }
+    fn whose(&self, record: usize) -> (&str, DriverSource, &str, &str) {
+        let card = &self.0[record];
+        (
+            &card.date,
+            DriverSource::Paycom,
+            &card.employee_code,
+            &card.name,
+        )
+    }
+    fn record(&self, record: usize) -> Value {
+        json!(self.0[record])
+    }
+    fn line(&self, records: &[usize]) -> Vec<Value> {
+        let (mut worked, mut clock_in, mut clock_out) = (None, None, None);
+        for card in records.iter().map(|&r| &self.0[r]) {
+            worked = Some(worked.unwrap_or(0.0) + card.hours);
+            clock_in = clock_in.take().or(card.clock_in.clone());
+            clock_out = card.clock_out.clone().or(clock_out.take());
+        }
+        vec![
+            worked.map(hours).unwrap_or(Value::Null),
+            json!(clock_in),
+            json!(clock_out),
+        ]
+    }
+    fn totals(&self) -> Vec<(&'static str, Value)> {
+        let worked: f64 = self.0.iter().map(|c| c.hours).sum();
+        vec![
+            ("hours_worked", hours(worked)),
+            (
+                "days_worked",
+                json!(self.0.iter().filter(|c| c.hours > 0.0).count()),
+            ),
+        ]
+    }
+    fn metric(&self, name: &str, records: &[usize]) -> Option<Value> {
+        let cards = || records.iter().map(|&r| &self.0[r]);
+        match name {
+            "hours_worked" => Some(hours(cards().map(|c| c.hours).sum())),
+            "days_worked" => Some(json!(cards().filter(|c| c.hours > 0.0).count())),
+            "lunch_minutes" => Some(json!(facts::total_minutes(
+                cards().map(|c| c.lunch_minutes)
+            ))),
+            "clock_in" => self.0[*records.first()?].clock_in.clone().map(Value::from),
+            "clock_out" => self.0[*records.last()?].clock_out.clone().map(Value::from),
+            _ => None,
+        }
+    }
+}
+
+/// Meal breaks, for a driver's days and the team's table: each day's comparison, marked
+/// where Cortex had a route for the person.
+pub struct MealDays;
+struct Compared(Vec<MealDay>, Coverage);
+impl Daily for MealDays {
+    fn area(&self) -> AgentArea {
+        MEAL_BREAKS
+    }
+    fn coverage(&self) -> &'static str {
+        "mealBreaks"
+    }
+    fn records(&self) -> &'static str {
+        "mealBreaks"
+    }
+    fn columns(&self) -> &'static [&'static str] {
+        &["meal"]
+    }
+    fn assessed(&self) -> bool {
+        true
+    }
+    fn gather(
+        &self,
+        db: &Store,
+        dsp: &Dsp,
+        period: &Period,
+        people: &People,
+        person: Option<&Person>,
+    ) -> crate::Result<Box<dyn Facts>> {
+        let sources = person.map(|p| {
+            p.paycom
+                .iter()
+                .map(|c| format!("paycom:{c}"))
+                .chain(p.amazon.iter().map(|id| format!("cortex:{id}")))
+                .collect::<Vec<_>>()
+        });
+        let (mut rows, coverage) = facts::meal_breaks_for(db, dsp, period, sources.as_deref())?;
+        mark_routes(db, dsp, period, people, &mut rows)?;
+        Ok(Box::new(Compared(rows, coverage)))
+    }
+    fn none(&self) -> Box<dyn Facts> {
+        Box::new(Compared(vec![], Coverage::default()))
+    }
+}
+impl Facts for Compared {
+    fn coverage(&self) -> &Coverage {
+        &self.1
+    }
+    fn count(&self) -> usize {
+        self.0.len()
+    }
+    fn whose(&self, record: usize) -> (&str, DriverSource, &str, &str) {
+        let meal = &self.0[record];
+        let (kind, id) = meal.source.split_once(':').unwrap_or(("", ""));
+        let source = if kind == "paycom" {
+            DriverSource::Paycom
+        } else {
+            DriverSource::Amazon
+        };
+        (&meal.date, source, id, &meal.name)
+    }
+    fn record(&self, record: usize) -> Value {
+        json!(self.0[record])
+    }
+    fn lined(&self, record: usize) -> bool {
+        self.0[record].cortex_route
+    }
+    fn line(&self, records: &[usize]) -> Vec<Value> {
+        vec![json!(records.last().map(|&r| self.0[r].status))]
+    }
+    fn totals(&self) -> Vec<(&'static str, Value)> {
+        vec![(
+            "meal_issues",
+            json!(self.0.iter().filter(|m| meal_issue(m)).count()),
+        )]
+    }
+    fn metric(&self, name: &str, records: &[usize]) -> Option<Value> {
+        let meals = || records.iter().map(|&r| &self.0[r]);
+        match name {
+            "meal_issues" => Some(json!(meals().filter(|m| meal_issue(m)).count())),
+            "meal_status" => meals().next().map(|m| json!(m.status)),
+            _ => None,
+        }
+    }
+}
+
+/// Vehicle inspections, for a driver's days and the team's table.
+pub struct InspectionDays;
+struct Inspected(Vec<Inspection>, Coverage);
+impl Daily for InspectionDays {
+    fn area(&self) -> AgentArea {
+        DVIC
+    }
+    fn coverage(&self) -> &'static str {
+        "dvic"
+    }
+    fn records(&self) -> &'static str {
+        "inspections"
+    }
+    fn columns(&self) -> &'static [&'static str] {
+        &["inspections", "short"]
+    }
+    fn gather(
+        &self,
+        db: &Store,
+        dsp: &Dsp,
+        period: &Period,
+        _: &People,
+        person: Option<&Person>,
+    ) -> crate::Result<Box<dyn Facts>> {
+        let (rows, coverage) =
+            facts::inspections(db, dsp, period, person.map(|p| p.amazon.as_slice()))?;
+        Ok(Box::new(Inspected(rows, coverage)))
+    }
+    fn none(&self) -> Box<dyn Facts> {
+        Box::new(Inspected(vec![], Coverage::default()))
+    }
+}
+impl Facts for Inspected {
+    fn coverage(&self) -> &Coverage {
+        &self.1
+    }
+    fn count(&self) -> usize {
+        self.0.len()
+    }
+    fn whose(&self, record: usize) -> (&str, DriverSource, &str, &str) {
+        let inspection = &self.0[record];
+        (
+            &inspection.date,
+            DriverSource::Amazon,
+            &inspection.transporter_id,
+            &inspection.driver_name,
+        )
+    }
+    fn record(&self, record: usize) -> Value {
+        json!(self.0[record])
+    }
+    fn line(&self, records: &[usize]) -> Vec<Value> {
+        let short = records.iter().filter(|&&r| self.0[r].short).count();
+        vec![json!(records.len()), json!(short)]
+    }
+    fn totals(&self) -> Vec<(&'static str, Value)> {
+        vec![
+            ("inspections", json!(self.0.len())),
+            (
+                "short_inspections",
+                json!(self.0.iter().filter(|i| i.short).count()),
+            ),
+        ]
+    }
+    fn metric(&self, name: &str, records: &[usize]) -> Option<Value> {
+        match name {
+            "inspections" => Some(json!(records.len())),
+            "short_inspections" => {
+                Some(json!(records.iter().filter(|&&r| self.0[r].short).count()))
+            }
+            _ => None,
+        }
+    }
 }
 
 /// `GET /api/v1/drivers/{driver}`: one driver's days, one line each, with totals.
@@ -305,53 +634,37 @@ pub fn driver(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &
     let person = people.find(wanted)?;
     let period = period(query, today(dsp), DEFAULT_PERIOD)?;
     daily_limit(&period)?;
-    let read: Vec<AgentArea> = DAILY
-        .into_iter()
+    let kinds = daily();
+    let read: Vec<AgentArea> = kinds
+        .iter()
+        .map(|kind| kind.area())
         .filter(|area| access.reads(*area))
         .collect();
     let gathered = gather(db, dsp, &period, &people, Some(person), &read)?;
-    let routes = &gathered.routes.0;
-    let sum = |f: fn(&RouteDay) -> i64| routes.iter().map(f).sum::<i64>();
-    let worked: f64 = gathered.timecards.0.iter().map(|c| c.hours).sum();
     let mut head = understood(dsp, Some(&period));
     head.insert("driver".into(), driver_json(person));
     // A source not read is unknown, never zero: its figures are null, and it is named as not
     // allowed or switched off. One read by bypassing its feature is named too.
-    let known = |area: AgentArea, value: Value| {
-        if read.contains(&area) {
-            value
-        } else {
-            Value::Null
+    let mut totals = Map::new();
+    for (kind, facts) in kinds.iter().zip(&gathered) {
+        for (name, value) in facts.totals() {
+            let known = if read.contains(&kind.area()) {
+                value
+            } else {
+                Value::Null
+            };
+            totals.insert(name.into(), known);
         }
-    };
+    }
     let mut answer = json!({
         "understood": head,
-        "totals": {
-            "routes": known(ROUTES, json!(routes.len())),
-            "stops_completed": known(ROUTES, json!(sum(|r| r.stops_completed))),
-            "packages_delivered": known(ROUTES, json!(sum(|r| r.packages_delivered))),
-            "packages_undeliverable":
-                known(ROUTES, json!(sum(|r| r.packages_undeliverable))),
-            "hours_worked": known(TIMECARDS, hours(worked)),
-            "days_worked": known(
-                TIMECARDS,
-                json!(gathered.timecards.0.iter().filter(|c| c.hours > 0.0).count()),
-            ),
-            "meal_issues": known(
-                MEAL_BREAKS,
-                json!(gathered.meals.0.iter().filter(|m| meal_issue(m)).count()),
-            ),
-            "inspections": known(DVIC, json!(gathered.inspections.0.len())),
-            "short_inspections": known(
-                DVIC,
-                json!(gathered.inspections.0.iter().filter(|i| i.short).count()),
-            ),
-        },
+        "totals": totals,
         "coverage": coverage(&gathered),
     });
     let named = |how: Read, name: fn(AgentArea) -> &'static str| -> Vec<&str> {
-        DAILY
-            .into_iter()
+        kinds
+            .iter()
+            .map(|kind| kind.area())
             .filter(|area| access.read(*area) == how)
             .map(name)
             .collect()
@@ -379,17 +692,11 @@ pub fn driver(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &
                 }
             }
         };
-        for route in routes {
-            push(&route.date, "routes", json!(route));
-        }
-        for card in &gathered.timecards.0 {
-            push(&card.date, "timecards", json!(card));
-        }
-        for meal in &gathered.meals.0 {
-            push(&meal.date, "mealBreaks", json!(meal));
-        }
-        for inspection in &gathered.inspections.0 {
-            push(&inspection.date, "inspections", json!(inspection));
+        for (kind, facts) in kinds.iter().zip(&gathered) {
+            for record in 0..facts.count() {
+                let (date, ..) = facts.whose(record);
+                push(date, kind.records(), facts.record(record));
+            }
         }
         let mut table = Table::new(&["date", "records"]);
         for (date, records) in days {
@@ -398,116 +705,45 @@ pub fn driver(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &
         paged(&mut answer, "days", table, query, 31)?;
         return Ok(answer);
     }
-    let mut lines: BTreeMap<&str, Line> = BTreeMap::new();
-    for route in routes {
-        let line = lines.entry(&route.date).or_default();
-        line.routes += 1;
-        line.route.extend(route.route.clone());
-        line.stops += route.stops_completed;
-        line.delivered += route.packages_delivered;
-        line.undeliverable += route.packages_undeliverable;
+    // One line a day: each kind's records of the day that make a line.
+    let mut lines: BTreeMap<&str, Vec<Vec<usize>>> = BTreeMap::new();
+    for (index, facts) in gathered.iter().enumerate() {
+        for record in (0..facts.count()).filter(|record| facts.lined(*record)) {
+            let (date, ..) = facts.whose(record);
+            lines
+                .entry(date)
+                .or_insert_with(|| vec![vec![]; kinds.len()])[index]
+                .push(record);
+        }
     }
-    for card in &gathered.timecards.0 {
-        let line = lines.entry(&card.date).or_default();
-        line.hours = Some(line.hours.unwrap_or(0.0) + card.hours);
-        line.clock_in = line.clock_in.take().or(card.clock_in.clone());
-        line.clock_out = card.clock_out.clone().or(line.clock_out.take());
-    }
-    for meal in gathered.meals.0.iter().filter(|m| m.cortex_route) {
-        lines.entry(&meal.date).or_default().meal = Some(meal.status);
-    }
-    for inspection in &gathered.inspections.0 {
-        let line = lines.entry(&inspection.date).or_default();
-        line.inspections += 1;
-        line.short += i64::from(inspection.short);
-    }
-    let mut table = Table::new(&[
-        "date",
-        "route",
-        "stops",
-        "delivered",
-        "undeliverable",
-        "hours",
-        "in",
-        "out",
-        "meal",
-        "inspections",
-        "short",
-    ]);
-    for (date, line) in lines {
-        let routed = line.routes > 0;
-        let some = |value: i64| if routed { json!(value) } else { Value::Null };
-        table.push(vec![
-            json!(date),
-            if routed {
-                json!(line.route.join(", "))
-            } else {
-                Value::Null
-            },
-            some(line.stops),
-            some(line.delivered),
-            some(line.undeliverable),
-            line.hours.map(hours).unwrap_or(Value::Null),
-            json!(line.clock_in),
-            json!(line.clock_out),
-            json!(line.meal),
-            json!(line.inspections),
-            json!(line.short),
-        ]);
+    let mut columns = vec!["date"];
+    columns.extend(kinds.iter().flat_map(|kind| kind.columns()));
+    let mut table = Table::new(&columns);
+    for (date, records) in lines {
+        let mut row = vec![json!(date)];
+        for (facts, records) in gathered.iter().zip(&records) {
+            row.extend(facts.line(records));
+        }
+        table.push(row);
     }
     paged(&mut answer, "days", table, query, 100)?;
     Ok(answer)
 }
 
-/// One driver's (or one driver-day's) numbers as `team` adds them up.
-#[derive(Default)]
+/// One driver's (or one driver-day's) records as `team` adds them up: each kind's, by their
+/// place in what the kind gathered.
 struct Tally {
     label: String,
-    routes: Vec<RouteDay>,
-    timecards: Vec<TimecardDay>,
-    meals: Vec<MealDay>,
-    inspections: Vec<Inspection>,
+    records: Vec<Vec<usize>>,
 }
-impl Tally {
-    fn value(&self, metric: &Metric) -> Value {
-        let routes =
-            || -> Option<&Vec<RouteDay>> { (!self.routes.is_empty()).then_some(&self.routes) };
-        let sum = |f: fn(&RouteDay) -> i64| routes().map(|r| json!(r.iter().map(f).sum::<i64>()));
-        let opt_sum = |f: fn(&RouteDay) -> Option<i64>| {
-            routes().map(|r| json!(r.iter().filter_map(f).sum::<i64>()))
-        };
-        let cards = (!self.timecards.is_empty()).then_some(&self.timecards);
-        let meals = (!self.meals.is_empty()).then_some(&self.meals);
-        let inspections = (!self.inspections.is_empty()).then_some(&self.inspections);
-        match metric.name {
-            "routes" => routes().map(|r| json!(r.len())),
-            "stops_completed" => sum(|r| r.stops_completed),
-            "stops_total" => sum(|r| r.stops_total),
-            "packages_delivered" => sum(|r| r.packages_delivered),
-            "packages_total" => sum(|r| r.packages_total),
-            "packages_remaining" => sum(|r| r.packages_remaining),
-            "packages_undeliverable" => sum(|r| r.packages_undeliverable),
-            "break_minutes" => opt_sum(|r| r.break_minutes),
-            "overtime_minutes" => opt_sum(|r| r.overtime_minutes),
-            "hours_worked" => cards.map(|c| hours(c.iter().map(|c| c.hours).sum())),
-            "days_worked" => cards.map(|c| json!(c.iter().filter(|c| c.hours > 0.0).count())),
-            "lunch_minutes" => {
-                cards.map(|c| json!(facts::total_minutes(c.iter().map(|c| c.lunch_minutes))))
-            }
-            "clock_in" => cards
-                .and_then(|c| c.first()?.clock_in.clone())
-                .map(Value::from),
-            "clock_out" => cards
-                .and_then(|c| c.last()?.clock_out.clone())
-                .map(Value::from),
-            "meal_issues" => meals.map(|m| json!(m.iter().filter(|m| meal_issue(m)).count())),
-            "meal_status" => meals.and_then(|m| m.first()).map(|m| json!(m.status)),
-            "inspections" => inspections.map(|i| json!(i.len())),
-            "short_inspections" => inspections.map(|i| json!(i.iter().filter(|i| i.short).count())),
-            _ => None,
-        }
+/// A metric's value over a tally's records of its kind of data: null when it has none.
+fn value(gathered: &[Box<dyn Facts>], records: &[Vec<usize>], metric: &Metric) -> Value {
+    daily()
+        .iter()
+        .position(|kind| kind.area() == metric.area)
+        .filter(|&index| !records[index].is_empty())
+        .and_then(|index| gathered[index].metric(metric.name, &records[index]))
         .unwrap_or(Value::Null)
-    }
 }
 
 /// The tally a source's record adds to: one per person, or per person per day.
@@ -524,7 +760,7 @@ fn tally<'a>(
     };
     tallies.entry((day, driver.key)).or_insert_with(|| Tally {
         label: driver.label,
-        ..Tally::default()
+        records: vec![vec![]; daily().len()],
     })
 }
 
@@ -617,11 +853,16 @@ pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
         )
         .into());
     }
-    let areas: Vec<AgentArea> = DAILY
-        .into_iter()
+    let kinds = daily();
+    let areas: Vec<AgentArea> = kinds
+        .iter()
+        .map(|kind| kind.area())
         .filter(|area| chosen.iter().any(|m| m.area == *area))
         .collect();
-    if areas.contains(&TIMECARDS) || areas.contains(&MEAL_BREAKS) {
+    if kinds
+        .iter()
+        .any(|kind| kind.assessed() && areas.contains(&kind.area()))
+    {
         daily_limit(&period)?;
     }
     // A metric whose data can't be read here is refused; one read by bypassing its feature
@@ -637,56 +878,21 @@ pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
     // One tally per private identity, or per private identity per day. Display labels are not
     // identities: two unmatched source records may have the same or no name.
     let mut tallies: BTreeMap<(String, String), Tally> = BTreeMap::new();
-    for route in &gathered.routes.0 {
-        let driver = driver_group(
-            &people,
-            DriverSource::Amazon,
-            &route.transporter_id,
-            &route.driver_name,
-        );
-        tally(&mut tallies, per_day, &route.date, driver)
-            .routes
-            .push(route.clone());
-    }
-    for card in &gathered.timecards.0 {
-        let driver = driver_group(
-            &people,
-            DriverSource::Paycom,
-            &card.employee_code,
-            &card.name,
-        );
-        tally(&mut tallies, per_day, &card.date, driver)
-            .timecards
-            .push(card.clone());
-    }
-    for meal in &gathered.meals.0 {
-        let (kind, id) = meal.source.split_once(':').unwrap_or(("", ""));
-        let source = if kind == "paycom" {
-            DriverSource::Paycom
-        } else {
-            DriverSource::Amazon
-        };
-        let driver = driver_group(&people, source, id, &meal.name);
-        tally(&mut tallies, per_day, &meal.date, driver)
-            .meals
-            .push(meal.clone());
-    }
-    for inspection in &gathered.inspections.0 {
-        let driver = driver_group(
-            &people,
-            DriverSource::Amazon,
-            &inspection.transporter_id,
-            &inspection.driver_name,
-        );
-        tally(&mut tallies, per_day, &inspection.date, driver)
-            .inspections
-            .push(inspection.clone());
+    for (index, facts) in gathered.iter().enumerate() {
+        for record in 0..facts.count() {
+            let (date, source, id, name) = facts.whose(record);
+            let driver = driver_group(&people, source, id, name);
+            tally(&mut tallies, per_day, date, driver).records[index].push(record);
+        }
     }
     let display_names = display_names(&tallies);
     let mut rows: Vec<(String, String, Vec<Value>)> = tallies
         .into_iter()
         .map(|((date, identity), t)| {
-            let values = chosen.iter().map(|m| t.value(m)).collect();
+            let values = chosen
+                .iter()
+                .map(|m| value(&gathered, &t.records, m))
+                .collect();
             let name = display_names
                 .get(&identity)
                 .cloned()
@@ -713,13 +919,12 @@ pub fn team(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
     // The whole team's figure for each metric that adds up, so nobody adds the rows.
     let mut totals = Map::new();
     for (k, metric) in chosen.iter().enumerate().filter(|(_, m)| m.total != "day") {
-        if metric.name == "lunch_minutes" {
-            totals.insert(
-                metric.name.into(),
-                json!(facts::total_minutes(
-                    gathered.timecards.0.iter().map(|card| card.lunch_minutes)
-                )),
-            );
+        // A total one unknown makes unknown is its kind's, over every record.
+        let kind = kinds.iter().position(|kind| kind.area() == metric.area);
+        if let Some(index) = kind.filter(|&index| kinds[index].pooled().contains(&metric.name)) {
+            let mut every = vec![vec![]; kinds.len()];
+            every[index] = (0..gathered[index].count()).collect();
+            totals.insert(metric.name.into(), value(&gathered, &every, metric));
             continue;
         }
         let values: Vec<f64> = rows.iter().filter_map(|r| r.2[k].as_f64()).collect();

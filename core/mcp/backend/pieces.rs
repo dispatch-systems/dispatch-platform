@@ -1,7 +1,10 @@
 //! What a feature lets agents ask of it, declared in its manifest's `mcp`. The agent API,
 //! the MCP server, the OpenAPI document, the Agent Skill and the Agents page are built from
 //! every feature's, so each is listed once.
-use super::data::catalog::{self, Endpoint, Metric, Term};
+use super::data::{
+    catalog::{self, Endpoint, Metric, Term},
+    facts::Daily,
+};
 use crate::{
     contracts::{AgentArea, AgentSource},
     manifest::Feature,
@@ -18,6 +21,8 @@ pub struct Mcp {
     pub metrics: &'static [Metric],
     /// The words its answers use, for the glossary.
     pub terms: &'static [Term],
+    /// Its facts by driver and day, for the answers that join every feature's.
+    pub daily: &'static [&'static dyn Daily],
 }
 impl Mcp {
     pub const NONE: Self = Self {
@@ -26,13 +31,14 @@ impl Mcp {
         endpoints: &[],
         metrics: &[],
         terms: &[],
+        daily: &[],
     };
 }
 
 /// Panics unless every kind and source is declared once, in a place of its own, and every
 /// kind is read from a declared source, with a declared kind if any; and unless every
-/// endpoint and term has a place of its own, and every endpoint and metric reads a declared
-/// kind.
+/// endpoint and term has a place of its own, every endpoint and metric reads a declared
+/// kind, and each kind has facts by driver and day once at most.
 pub fn check(features: &[&Feature]) {
     let areas: Vec<AgentArea> = features
         .iter()
@@ -91,6 +97,14 @@ pub fn check(features: &[&Feature]) {
             areas.contains(&metric.area),
             "{} comes from a kind of data that is not declared",
             metric.name
+        );
+    }
+    let daily: Vec<AgentArea> = mcp().flat_map(|mcp| mcp.daily).map(|d| d.area()).collect();
+    for (index, area) in daily.iter().enumerate() {
+        assert!(
+            areas.contains(area) && !daily[..index].contains(area),
+            "{} has facts by driver and day that are undeclared or declared twice",
+            area.as_str()
         );
     }
     let terms: Vec<&Term> = catalog::CORE_TERMS

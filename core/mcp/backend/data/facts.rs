@@ -1,11 +1,14 @@
 //! The facts every answer is made of: each source's rows for a DSP's days, in the DSP's
 //! own time, with the days each source has. Which of them an answer may read is `access`'s.
-use super::{Failure, Refusal, scope::Period};
+use super::{
+    Failure, Refusal,
+    scope::{People, Period, Person},
+};
 // A4: each source's facts, until its feature answers for them.
 use crate::{
     Code, Result,
     collectors::{cortex, paycom},
-    contracts::{DailyTimecard, Dsp, MealStatus},
+    contracts::{AgentArea, DailyTimecard, DriverSource, Dsp, MealStatus},
     db::{Store, n, s},
     workforce::assessment::paycom_day,
 };
@@ -733,48 +736,124 @@ pub fn inspections(
     Ok((found, Coverage::of(true, held, period)))
 }
 
-/// When each source last brought something in, for the status answer.
-pub fn freshness(db: &Store, dsp: &Dsp) -> Result<Value> {
-    let station = db.profile(&dsp.id)?.station_code;
+/// When Paycom last brought timecards in, for the status answer.
+pub fn fresh_timecards(db: &Store, dsp: &Dsp, _station: &str) -> Result<Option<Value>> {
     let paycom = db.collector(&dsp.id, paycom::PROVIDER)?.one(
         "SELECT collected_at,period_from,period_to FROM publications WHERE active=1",
         [],
     )?;
+    Ok(paycom.map(|r| {
+        serde_json::json!({
+            "collectedAt": r["collected_at"], "periodFrom": r["period_from"], "periodTo": r["period_to"]
+        })
+    }))
+}
+/// The latest day Cortex's meal breaks were collected for.
+pub fn fresh_meals(db: &Store, dsp: &Dsp, _station: &str) -> Result<Option<Value>> {
     let meals = db.collector(&dsp.id, cortex::PROVIDER)?.one(
         "SELECT max(report_date) day,max(collected_at) collected_at FROM meal_publications WHERE active=1",
         [],
     )?;
+    Ok(meals.filter(|r| !r["day"].is_null()).map(|r| {
+        serde_json::json!({
+            "latestDay": r["day"], "collectedAt": r["collected_at"]
+        })
+    }))
+}
+/// The latest route day collected, and whether it is final.
+pub fn fresh_routes(db: &Store, dsp: &Dsp, station: &str) -> Result<Option<Value>> {
     let routes = db.routedata(&dsp.id)?.one(
         "SELECT day,mode,collected_at FROM route_publications WHERE station=? AND active=1 \
          ORDER BY day DESC LIMIT 1",
-        [&station],
+        [station],
     )?;
+    Ok(routes.map(|r| {
+        serde_json::json!({
+            "latestDay": r["day"], "final": r["mode"] == "final", "collectedAt": r["collected_at"]
+        })
+    }))
+}
+/// The latest day DVIC's reports cover.
+pub fn fresh_dvic(db: &Store, dsp: &Dsp, station: &str) -> Result<Option<Value>> {
     let dvic = db.dvic(&dsp.id)?.one(
         "SELECT max(max_date) day,max(checked_at) checked_at FROM dvic_reports WHERE station=? AND scope_verified=1",
-        [&station],
+        [station],
     )?;
+    Ok(dvic.filter(|r| !r["day"].is_null()).map(|r| {
+        serde_json::json!({
+            "latestDay": r["day"], "checkedAt": r["checked_at"]
+        })
+    }))
+}
+/// The latest scorecard week collected.
+pub fn fresh_scorecard(db: &Store, dsp: &Dsp, station: &str) -> Result<Option<Value>> {
     let scorecard = db.scorecard(&dsp.id)?.one(
         "SELECT max(week) week,max(collected_at) collected_at FROM scorecard_publications \
          WHERE station=? AND active=1 AND scope_verified=1",
-        [&station],
+        [station],
     )?;
-    Ok(serde_json::json!({
-        "timecards": paycom.map(|r| serde_json::json!({
-            "collectedAt": r["collected_at"], "periodFrom": r["period_from"], "periodTo": r["period_to"]
-        })),
-        "mealBreaks": meals.filter(|r| !r["day"].is_null()).map(|r| serde_json::json!({
-            "latestDay": r["day"], "collectedAt": r["collected_at"]
-        })),
-        "routes": routes.map(|r| serde_json::json!({
-            "latestDay": r["day"], "final": r["mode"] == "final", "collectedAt": r["collected_at"]
-        })),
-        "dvic": dvic.filter(|r| !r["day"].is_null()).map(|r| serde_json::json!({
-            "latestDay": r["day"], "checkedAt": r["checked_at"]
-        })),
-        "scorecard": scorecard.filter(|r| !r["week"].is_null()).map(|r| serde_json::json!({
+    Ok(scorecard.filter(|r| !r["week"].is_null()).map(|r| {
+        serde_json::json!({
             "latestWeek": r["week"], "collectedAt": r["collected_at"]
-        })),
+        })
     }))
+}
+
+/// One kind of a DSP's facts by driver and day, which `drivers/{driver}` joins into a
+/// driver's days and `team` into the team's table. A feature answers for each kind it
+/// holds, in its manifest's `mcp`.
+pub trait Daily: Sync {
+    /// The kind of data it is read as.
+    fn area(&self) -> AgentArea;
+    /// Its name under an answer's `coverage`.
+    fn coverage(&self) -> &'static str;
+    /// Its name for its records on each day of a driver's full report.
+    fn records(&self) -> &'static str;
+    /// Its columns of a driver's days.
+    fn columns(&self) -> &'static [&'static str];
+    /// Whether its days are assessed one at a time, so that a question needing it is held
+    /// to `DAILY_LONGEST` days.
+    fn assessed(&self) -> bool {
+        false
+    }
+    /// Its metrics whose team total is their value over every record, not the sum of the
+    /// drivers', as a total that one unknown makes unknown.
+    fn pooled(&self) -> &'static [&'static str] {
+        &[]
+    }
+    /// What it holds in a period: everyone's, or one person's.
+    fn gather(
+        &self,
+        db: &Store,
+        dsp: &Dsp,
+        period: &Period,
+        people: &People,
+        person: Option<&Person>,
+    ) -> Result<Box<dyn Facts>>;
+    /// Nothing, for an answer that doesn't read it.
+    fn none(&self) -> Box<dyn Facts>;
+}
+
+/// What one kind holds for a period: its records, in its own order, and the days it has.
+pub trait Facts {
+    fn coverage(&self) -> &Coverage;
+    fn count(&self) -> usize;
+    /// A record's day, and whom it names: the source, the ID it knows them by and the name
+    /// it gives them.
+    fn whose(&self, record: usize) -> (&str, DriverSource, &str, &str);
+    /// A record in full, for a driver's full report.
+    fn record(&self, record: usize) -> Value;
+    /// Whether a record makes a line of a driver's days.
+    fn lined(&self, _record: usize) -> bool {
+        true
+    }
+    /// Its columns of one of a driver's days, from that day's records that make a line,
+    /// which may be none.
+    fn line(&self, records: &[usize]) -> Vec<Value>;
+    /// Its figures in a driver's report, by name.
+    fn totals(&self) -> Vec<(&'static str, Value)>;
+    /// One of its kind's metrics over some of its records, never none.
+    fn metric(&self, name: &str, records: &[usize]) -> Option<Value>;
 }
 
 #[cfg(test)]

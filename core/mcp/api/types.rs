@@ -1,7 +1,8 @@
 use crate::{
     Result,
     config::Environment,
-    db::{FromRow, Row},
+    contracts::Dsp,
+    db::{FromRow, Row, Store},
     ensure,
     manifest::registry,
     text_enum, validate as v,
@@ -52,6 +53,11 @@ pub struct ReadSource {
     pub order: u16,
     /// The switches of the catalog that turn it on, any one of them.
     pub features: &'static [&'static str],
+    /// Its name among the status answer's sources.
+    pub key: &'static str,
+    /// When it last brought something in, for the status answer: what to say, or nothing
+    /// while it holds nothing. Given the DSP and its station.
+    pub fresh: fn(&Store, &Dsp, &str) -> Result<Option<Value>>,
 }
 /// A feature switched per DSP that agents read data from: Routes, Timecard, its Meal
 /// Breaks tab, DVIC and Scorecard.
@@ -153,6 +159,14 @@ impl AgentSource {
     /// Whether a DSP whose switches `on` are on has it on.
     pub fn on(self, on: &[String]) -> bool {
         self.0.features.iter().any(|id| on.iter().any(|f| f == id))
+    }
+    /// Its name among the status answer's sources.
+    pub const fn key(self) -> &'static str {
+        self.0.key
+    }
+    /// When it last brought something in at the DSP, at `station`.
+    pub fn fresh(self, db: &Store, dsp: &Dsp, station: &str) -> Result<Option<Value>> {
+        (self.0.fresh)(db, dsp, station)
     }
 }
 /// A declared kind or source as everything outside the registry sees it: its id, compared,

@@ -3,7 +3,7 @@
 mod catalog;
 
 use crate::{
-    agents::Mcp,
+    agents::{Mcp, data},
     contracts::{AgentArea, AgentSource, DriverSource, ReadSource, ReadToggle},
 };
 
@@ -12,6 +12,8 @@ pub const SOURCE: AgentSource = AgentSource::new(&ReadSource {
     switch: "Routes",
     order: 10,
     features: &["routes"],
+    key: "routes",
+    fresh: data::facts::fresh_routes,
 });
 pub const ROUTES: AgentArea = AgentArea::new(&ReadToggle {
     id: "routes",
@@ -37,4 +39,5 @@ pub const MCP: Mcp = Mcp {
     endpoints: catalog::ENDPOINTS,
     metrics: catalog::METRICS,
     terms: catalog::TERMS,
+    daily: &[&data::RouteDays],
 };

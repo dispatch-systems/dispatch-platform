@@ -4,7 +4,7 @@ mod catalog;
 pub mod scorecard;
 
 use crate::{
-    agents::Mcp,
+    agents::{Mcp, data},
     contracts::{AgentArea, AgentSource, DriverSource, ReadSource, ReadToggle},
 };
 
@@ -13,6 +13,8 @@ pub const SOURCE: AgentSource = AgentSource::new(&ReadSource {
     switch: "Scorecard",
     order: 50,
     features: &["scorecard"],
+    key: "scorecard",
+    fresh: data::facts::fresh_scorecard,
 });
 pub const FEEDBACK: AgentArea = AgentArea::new(&ReadToggle {
     id: "feedback",

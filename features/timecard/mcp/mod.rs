@@ -3,7 +3,7 @@
 mod catalog;
 
 use crate::{
-    agents::Mcp,
+    agents::{Mcp, data},
     contracts::{AgentArea, AgentSource, DriverSource, ReadSource, ReadToggle},
 };
 
@@ -13,12 +13,16 @@ pub const TIMECARDS_SOURCE: AgentSource = AgentSource::new(&ReadSource {
     switch: "Timecard",
     order: 20,
     features: &["timecard.daily", "timecard.employees"],
+    key: "timecards",
+    fresh: data::facts::fresh_timecards,
 });
 pub const MEAL_BREAKS_SOURCE: AgentSource = AgentSource::new(&ReadSource {
     id: "meal_breaks",
     switch: "Timecard · Meal Breaks",
     order: 30,
     features: &["timecard.meal_breaks"],
+    key: "mealBreaks",
+    fresh: data::facts::fresh_meals,
 });
 pub const TIMECARDS: AgentArea = AgentArea::new(&ReadToggle {
     id: "timecards",
@@ -45,4 +49,5 @@ pub const MCP: Mcp = Mcp {
     endpoints: catalog::ENDPOINTS,
     metrics: catalog::METRICS,
     terms: catalog::TERMS,
+    daily: &[&data::TimecardDays, &data::MealDays],
 };
