@@ -122,6 +122,9 @@ mod databases;
 #[path = "../tests/backend/hooks.rs"]
 mod hooks;
 #[cfg(test)]
+#[path = "../tests/backend/registry.rs"]
+mod registry_checks;
+#[cfg(test)]
 #[path = "../tests/backend/request_log.rs"]
 mod request_log;
 #[cfg(test)]
