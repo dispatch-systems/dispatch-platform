@@ -1,5 +1,5 @@
 use super::preferences::preferences;
-use crate::{contracts::DailyTimecards, workforce::TimecardStore};
+use crate::{api::types::DailyTimecards, backend::TimecardStore};
 use dispatch_core::{
     Result,
     db::{Db, Store, s},
@@ -26,7 +26,7 @@ pub(crate) fn cards(db: &Db, sql: &str, p: impl rusqlite::Params) -> Result<Vec<
     Ok(rows)
 }
 /// Overlay completed employee pages from the current guarded attempt.
-pub(super) fn daily_timecards_source(
+pub(crate) fn daily_timecards_source(
     store: &Store,
     id: &str,
     date: &str,
@@ -40,7 +40,7 @@ pub(super) fn daily_timecards_source(
         source.rows.into_values().collect(),
     ))
 }
-pub(super) fn daily_timecards(
+pub(crate) fn daily_timecards(
     store: &Store,
     id: &str,
     date: &str,
@@ -54,7 +54,7 @@ pub(super) fn daily_timecards(
 }
 /// Loads publications, employee syncs and guarded live pages once for the
 /// period, filtering requested employees before parsing their cards.
-pub(super) fn daily_timecards_range(
+pub(crate) fn daily_timecards_range(
     store: &Store,
     id: &str,
     from: &str,

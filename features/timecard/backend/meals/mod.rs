@@ -1,12 +1,7 @@
-#[path = "assessment.rs"]
-pub mod assessment;
-#[path = "comparison.rs"]
+pub(crate) mod assessment;
 pub(crate) mod comparison;
-#[path = "keeper.rs"]
-pub mod keeper;
-#[path = "people.rs"]
-pub mod people;
-#[path = "sync.rs"]
+pub(crate) mod keeper;
+pub(crate) mod people;
 pub(crate) mod sync;
 // Cortex meal evidence and atomic publication. Browser data is untrusted input.
 use chrono::NaiveDate;

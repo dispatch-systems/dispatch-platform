@@ -38,7 +38,7 @@ fn domain(name: &str) -> DataDomain {
 fn scope(read: &str, dsp: &str) -> Scope {
     match read {
         "listings" => Scope::listings(),
-        "meals" => Scope::tenant(crate::meals::CACHED, dsp),
+        "meals" => Scope::tenant(dispatch_timecard::CACHED, dsp),
         "people" => Scope::tenant(cache::PEOPLE, dsp),
         _ => panic!("no cached read {read}"),
     }

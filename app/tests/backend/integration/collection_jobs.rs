@@ -2,7 +2,6 @@
 //! limits, the lists each page reads, the facts an outcome records, and what the Timecard's
 //! switch stops.
 use common::{seeded, store};
-use dispatch_backend::workforce::TimecardStore;
 use dispatch_core::testing as common;
 use dispatch_core::{
     collection::jobs::JobFacts,
@@ -11,6 +10,7 @@ use dispatch_core::{
 use dispatch_cortex as cortex;
 use dispatch_dvic::DvicStore;
 use dispatch_paycom as paycom;
+use dispatch_timecard::TimecardStore;
 use serde_json::json;
 
 /// A DSP with a DVIC station and an enabled Cortex connection.

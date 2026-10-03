@@ -612,6 +612,7 @@ dependencies = [
  "dispatch-scorecard",
  "dispatch-settings",
  "dispatch-team",
+ "dispatch-timecard",
  "dispatch-uniforms",
  "flate2",
  "libc",
@@ -813,6 +814,24 @@ version = "0.0.0"
 dependencies = [
  "dispatch-core",
  "serde_json",
+]
+
+[[package]]
+name = "dispatch-timecard"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "dispatch-core",
+ "dispatch-cortex",
+ "dispatch-driver-match",
+ "dispatch-paycom",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "ts-rs",
+ "url",
 ]
 
 [[package]]

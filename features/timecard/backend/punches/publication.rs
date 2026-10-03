@@ -9,7 +9,7 @@ use dispatch_paycom::{
 };
 use rusqlite::params;
 use serde_json::{Value, json};
-pub(super) fn publish_timecards(store: &Store, id: &str, value: &Value) -> Result<Value> {
+pub(crate) fn publish_timecards(store: &Store, id: &str, value: &Value) -> Result<Value> {
     validate_workforce(value)?;
     let db = store.collector(id, paycom::PROVIDER)?;
     let mut employees = value["employees"].as_array().unwrap().clone();

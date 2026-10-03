@@ -1,7 +1,13 @@
 //! Pair meal evidence with assessed Paycom punches; preserve source order and uncertainty.
 use crate::{
-    contracts::*,
-    workforce::assessment::{parse_clock, paycom_day},
+    api::{
+        assessment::{
+            AssessedClock, DeliveryGap, DeliveryGaps, LateRule, MealAssessment, MealPair,
+            MealStatus,
+        },
+        meals::{CortexMeal, MealEmployee, MealSource},
+    },
+    backend::punches::assessment::{parse_clock, paycom_day},
 };
 use chrono::{DateTime, NaiveDate, Timelike};
 

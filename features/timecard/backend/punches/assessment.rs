@@ -1,5 +1,8 @@
 //! Interpret collected punch kinds and day offsets. Display labels stay in the dashboard.
-use crate::contracts::*;
+use crate::api::{
+    assessment::{AssessedClock, Lunch, PaycomDay, PunchEvent},
+    types::{EmployeeTimecard, Punch, Timecard},
+};
 
 // Collected display strings historically used JavaScript's whitespace rules.
 fn clock_space(c: char) -> bool {

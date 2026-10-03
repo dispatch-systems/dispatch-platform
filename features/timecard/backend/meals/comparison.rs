@@ -1,8 +1,11 @@
 //! Read-only comparison across provider snapshots. Drivers join employees through
 //! Driver Match; unique names join the drivers it has not reached yet.
 use crate::{
-    contracts::{LateRule, MealComparison, MealSource},
-    workforce::{self, TimecardStore},
+    api::{
+        assessment::LateRule,
+        meals::{MealComparison, MealSource},
+    },
+    backend::{TimecardStore, punches},
 };
 use dispatch_core::{
     Result,
@@ -125,7 +128,7 @@ pub(crate) fn meal_comparisons(
             .filter_map(|source| source.strip_prefix("paycom:").map(str::to_owned))
             .collect::<Vec<_>>()
     });
-    let days = crate::workforce::daily_sources(store, id, from, to, codes.as_deref())?;
+    let days = punches::daily_sources(store, id, from, to, codes.as_deref())?;
     let cortex = store.collector(id, cortex::PROVIDER)?;
     let mut publications: BTreeMap<String, Vec<Value>> = BTreeMap::new();
     let mut ids = vec![];
@@ -208,7 +211,7 @@ impl ComparisonContext<'_> {
     fn day(
         &mut self,
         date: &str,
-        source: workforce::DailySource,
+        source: punches::DailySource,
         publications: &[Value],
         live: &dispatch_core::collection::live::LiveResults,
     ) -> Result<MealComparison> {
@@ -252,7 +255,7 @@ impl ComparisonContext<'_> {
                     let meals = route
                         .meals
                         .iter()
-                        .map(|meal| crate::meals::comparison_meal(&route, meal))
+                        .map(|meal| super::comparison_meal(&route, meal))
                         .collect();
                     drivers.insert(
                         route.transporter_id.clone(),
@@ -363,7 +366,7 @@ impl ComparisonContext<'_> {
                     let url = itinerary["sourceUrl"]
                         .as_str()
                         .zip(place)
-                        .and_then(|(route, place)| crate::meals::stop_url(route, place));
+                        .and_then(|(route, place)| super::stop_url(route, place));
                     meal[link] = json!(url);
                 }
                 meal["station"] = p["station"].clone();

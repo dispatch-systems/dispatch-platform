@@ -1,6 +1,6 @@
 //! What Timecard holds of the synthetic DSP: Paycom's roster and timecards, and the meal
 //! breaks Cortex records beside the routes.
-use crate::workforce::TimecardStore;
+use crate::backend::TimecardStore;
 use chrono::Datelike;
 use dispatch_core::{
     Error, Result,

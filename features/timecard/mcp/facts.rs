@@ -3,8 +3,8 @@
 //! team's table.
 use super::{MEAL_BREAKS, TIMECARDS};
 use crate::{
-    contracts::{DailyTimecard, MealStatus},
-    workforce::{TimecardStore, assessment::paycom_day},
+    api::{assessment::MealStatus, types::DailyTimecard},
+    backend::{TimecardStore, punches::assessment::paycom_day},
 };
 use dispatch_core::{
     Result,

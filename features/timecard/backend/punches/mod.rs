@@ -1,27 +1,14 @@
 //! Workforce preferences, employees, timecards and collection publication.
-#[path = "assessment.rs"]
-pub mod assessment;
-#[path = "daily.rs"]
-mod daily;
-#[path = "employees.rs"]
-mod employees;
-#[path = "keeper.rs"]
-pub mod keeper;
-#[path = "people.rs"]
-pub mod people;
-#[path = "preferences.rs"]
-mod preferences;
-#[path = "publication.rs"]
-mod publication;
-#[path = "queue.rs"]
-mod queue;
-#[path = "range.rs"]
+pub(crate) mod assessment;
+pub(crate) mod daily;
+pub(crate) mod employees;
+pub(crate) mod keeper;
+pub(crate) mod people;
+pub(crate) mod preferences;
+pub(crate) mod publication;
+pub(crate) mod queue;
 mod range;
-#[path = "../storage.rs"]
-mod storage;
-#[path = "sync.rs"]
 pub(crate) mod sync;
-#[path = "timecards.rs"]
 pub(crate) mod timecards;
 
 /// A new DSP's demo timecards: Paycom's fixture, published as a collection would be.
@@ -37,7 +24,7 @@ pub fn demo(
 pub const DOMAIN: dispatch_core::server::cache::DataDomain =
     dispatch_core::server::cache::DataDomain::new("paycom");
 
+use super::TimecardStore;
 pub(crate) use daily::cards;
 pub use preferences::defaults;
 pub(crate) use range::{DailySource, daily_sources};
-pub use storage::TimecardStore;

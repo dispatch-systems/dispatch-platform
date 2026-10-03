@@ -7,11 +7,6 @@
     "tolerated violations. Never add an entry to make a new violation pass."
   ],
   "pending": {
-    "anatomy": {
-      "feature minimum": {
-        "features/timecard has no Cargo.toml": "Phase B"
-      }
-    },
     "encapsulation": {
       "typescript": {
         "core/accounts imports shared/contracts": "Phase B",
@@ -28,11 +23,7 @@
     },
     "names": {
       "retired names": {
-        "file core/mcp/tests/support/agents.ts is named agents": "Phase B",
-        "module meals in app/backend/contracts.rs is named meals": "Phase B",
-        "module meals in app/backend/lib.rs is named meals": "Phase B",
-        "module workforce in app/backend/contracts.rs is named workforce": "Phase B",
-        "module workforce in app/backend/lib.rs is named workforce": "Phase B"
+        "file core/mcp/tests/support/agents.ts is named agents": "Phase B"
       }
     },
     "ownership": {
@@ -43,9 +34,6 @@
     "tests": {
       "inline tests": {
         "app/backend/export.rs has a #[test]": "Phase B"
-      },
-      "integration tests": {
-        "features/timecard's integration tests are tests of app/backend/Cargo.toml": "Phase B"
       }
     }
   }

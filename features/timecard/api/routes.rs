@@ -1,9 +1,6 @@
 //! What Paycom and Cortex collected: employees, timecards, meal breaks and the Paycom
 //! preferences, and the jobs and schedules that collect them.
-use crate::{
-    contracts::{EmployeeTimecardPeriod, PaycomSettings},
-    workforce::TimecardStore,
-};
+use crate::{api::settings::PaycomSettings, backend::TimecardStore};
 use dispatch_core::{
     Error, Result,
     accounts::api::requests::CollectionRequest,
@@ -20,7 +17,7 @@ use dispatch_core::{
     },
 };
 use dispatch_cortex::{self as cortex, discovery::Scope};
-use dispatch_paycom as paycom;
+use dispatch_paycom::{self as paycom, timecards::EmployeeTimecardPeriod};
 use serde_json::json;
 
 const VIEW: Dsp = Dsp("timecard.view");
@@ -189,7 +186,7 @@ fn meal_comparison(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         return Reply::of(&db.meal_comparison(c.dsp_id(), date, c.dsp.timezone.as_str())?);
     }
     let comparison = c.state.read_cache.json(
-        dispatch_core::server::cache::Scope::tenant(crate::meals::CACHED, c.dsp_id()),
+        dispatch_core::server::cache::Scope::tenant(crate::backend::meals::CACHED, c.dsp_id()),
         format!("meals:{}:{}:{}", c.dsp_id(), date, c.dsp.timezone),
         c.state
             .data_revision

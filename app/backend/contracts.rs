@@ -2,19 +2,10 @@
 //! text the database stores. The wire format and the stored schema do not change when
 //! an endpoint moves here. Each type is defined by its owner, in its `api/`; this module
 //! gathers them under one path.
-#[path = "../../features/timecard/api/assessment.rs"]
-mod assessment;
 #[cfg(test)]
 #[path = "export.rs"]
 mod generated;
-#[path = "../../features/timecard/api/meals.rs"]
-mod meals;
-#[path = "../../features/timecard/api/settings.rs"]
-mod settings;
-#[path = "../../features/timecard/api/types.rs"]
-mod workforce;
 
-pub use assessment::*;
 pub use dispatch_core::accounts::api::{requests::*, types::*};
 pub use dispatch_core::collection::api::{jobs::*, metrics::*, types::*};
 pub use dispatch_core::foundation::config::{Environment, ProviderMode};
@@ -38,13 +29,18 @@ pub use dispatch_routes::{
 pub use dispatch_scorecard::{
     ScorecardDatasetCount, ScorecardPublication, ScorecardWeek, ScorecardWeeks,
 };
+pub use dispatch_timecard::{
+    AssessedClock, CortexMeal, CortexPublication, DailyTimecard, DailyTimecards, DeliveryGap,
+    DeliveryGaps, DepartmentOption, Employee, EmployeeTimecard, EmployeeTimecardResponse,
+    EmployeesResponse, InPunchKind, LateRule, Lunch, MatchType, MealAssessment, MealComparison,
+    MealDriver, MealEmployee, MealPair, MealPaycom, MealSource, MealStatus, NameOrder,
+    OutPunchKind, PaycomColumn, PaycomDay, PaycomOptions, PaycomPage, PaycomPreferences,
+    PaycomSettings, PaycomSort, PreferenceRevision, Punch, PunchEvent, Timecard,
+};
 pub use dispatch_uniforms::{
     Uniform, UniformAdjustment, UniformEvent, UniformEventKind, UniformFit, UniformHistory,
     UniformInventory, UniformUpdates, UniformVariant,
 };
-pub use meals::*;
-pub use settings::*;
-pub use workforce::*;
 
 #[cfg(test)]
 #[path = "../tests/backend/contracts.rs"]

@@ -1,0 +1,60 @@
+[package]
+name = "dispatch-timecard"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+autotests = false
+
+[lib]
+path = "feature.rs"
+doctest = false
+
+[features]
+# TypeScript definitions of its API types, for the app's export test; never in a build. They
+# name core's and Paycom's, whose definitions their own ts features bring.
+ts = ["dep:ts-rs", "dispatch-core/ts", "dispatch-paycom/ts"]
+
+# Core; Paycom and Cortex, whose timecards and meal breaks it keeps; and Driver Match, which
+# it declares it depends on.
+[dependencies]
+dispatch-core = { path = "../../core" }
+dispatch-cortex = { path = "../../collectors/cortex" }
+dispatch-driver-match = { path = "../driver_match" }
+dispatch-paycom = { path = "../../collectors/paycom" }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+ts-rs = { workspace = true, optional = true }
+url = { workspace = true }
+
+[dev-dependencies]
+dispatch-core = { path = "../../core", features = ["testing"] }
+tempfile = { workspace = true }
+
+[[test]]
+name = "meal_comparison"
+path = "tests/backend/integration/meal_comparison.rs"
+
+[[test]]
+name = "meal_sync"
+path = "tests/backend/integration/meal_sync.rs"
+
+[[test]]
+name = "meals"
+path = "tests/backend/integration/meals.rs"
+
+[[test]]
+name = "punches"
+path = "tests/backend/integration/punches.rs"
+
+[[test]]
+name = "range_reads"
+path = "tests/backend/integration/range_reads.rs"
+
+[[example]]
+name = "assessment-fixture"
+path = "tests/support/assessment-fixture.rs"

@@ -1,11 +1,6 @@
 pub mod cli;
 pub mod contracts;
-pub mod feature_manifests;
-#[path = "../../features/timecard/backend/meals/mod.rs"]
-pub mod meals;
 pub mod routes;
-#[path = "../../features/timecard/backend/punches/mod.rs"]
-pub mod workforce;
 
 use dispatch_core::{
     manifest::{self, Registry},
@@ -16,7 +11,7 @@ use dispatch_core::{
 pub static REGISTRY: Registry = Registry {
     collectors: &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
     features: &[
-        &feature_manifests::timecard::FEATURE,
+        &dispatch_timecard::FEATURE,
         &dispatch_uniforms::FEATURE,
         &dispatch_routes::FEATURE,
         &dispatch_dvic::FEATURE,

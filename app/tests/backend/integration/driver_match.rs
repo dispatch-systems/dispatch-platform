@@ -1,9 +1,6 @@
 //! Driver Match: every ID the collections hold gets one person's code, certain names join
 //! on their own, and the rest wait for a decision that merges, splits or keeps apart.
-use dispatch_backend::{
-    contracts::{DriverEventKind, DriverMatch, DriverStrength},
-    workforce::TimecardStore,
-};
+use dispatch_backend::contracts::{DriverEventKind, DriverMatch, DriverStrength};
 use dispatch_core::testing as common;
 use dispatch_core::{
     accounts::{Auth, Context},
@@ -13,6 +10,7 @@ use dispatch_core::{
 use dispatch_cortex::{discovery::Scope, meals};
 use dispatch_driver_match::{DriverMatchStore, valid_code};
 use dispatch_paycom::fixtures;
+use dispatch_timecard::TimecardStore;
 use serde_json::{Value, json};
 
 /// A day inside the fixture's pay period, so its timecards exist whatever today is.

@@ -1,6 +1,5 @@
 //! Collector storage that holds Timecard's tables: what startup does with a DSP's Paycom
 //! and Cortex databases, read through the tables Timecard keeps in them.
-use crate::workforce::{self, TimecardStore};
 use dispatch_core::{
     collection::registry::database_path,
     db::{self, Db, Store},
@@ -9,6 +8,7 @@ use dispatch_core::{
 };
 use dispatch_cortex as cortex;
 use dispatch_paycom as paycom;
+use dispatch_timecard::TimecardStore;
 use paycom::fixtures;
 use serde_json::{Value, json};
 use std::os::unix::fs::PermissionsExt;
@@ -53,7 +53,7 @@ fn provisioned() -> (tempfile::TempDir, Store, String) {
     paycom
         .set(
             "paycom.preferences",
-            &json!({"revision":3,"values":workforce::defaults(),"history":[]}),
+            &json!({"revision":3,"values":dispatch_timecard::defaults(),"history":[]}),
         )
         .unwrap();
     drop(paycom);

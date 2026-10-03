@@ -2,19 +2,19 @@ use dispatch_core::text_enum;
 use serde::{Deserialize, Serialize};
 
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     pub enum NameOrder { FirstLast => "first_last", LastFirst => "last_first", }
 }
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     pub enum PaycomPage { Timecards => "timecards", Meals => "meal-breaks", Employees => "employees", }
 }
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     pub enum PaycomSort { EmployeeName => "employeeName", Condition => "condition", InDay => "inDay", }
 }
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     pub enum PaycomColumn {
         InDay => "inDay", OutLunch => "outLunch", InLunch => "inLunch",
         OutDay => "outDay", TotalHours => "totalHours", Condition => "condition",
@@ -22,7 +22,7 @@ text_enum! {
 }
 /// Historical revisions inherit defaults for fields introduced after they were saved.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(default)]
 pub struct PaycomPreferences {
     pub opening_page: PaycomPage,
@@ -60,29 +60,29 @@ impl Default for PaycomPreferences {
     }
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct PreferenceRevision {
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub revision: i64,
     pub at: String,
     pub values: PaycomPreferences,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct DepartmentOption {
     pub value: String,
     pub count: usize,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct PaycomOptions {
     pub departments: Vec<DepartmentOption>,
     pub stations: Vec<String>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct PaycomSettings {
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub revision: i64,
     pub values: PaycomPreferences,
     pub history: Vec<PreferenceRevision>,

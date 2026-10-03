@@ -1,5 +1,5 @@
 //! Timecard keeps Paycom's timecards: a pay period's, or one employee's.
-use crate::workforce::TimecardStore;
+use crate::backend::TimecardStore;
 use dispatch_core::{
     Result,
     collection::browser::Collected,

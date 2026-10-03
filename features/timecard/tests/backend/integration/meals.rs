@@ -1,4 +1,3 @@
-use dispatch_backend::{meals::comparison_meal, workforce::TimecardStore};
 use dispatch_core::db::{now, s};
 use dispatch_core::testing as common;
 use dispatch_cortex::{
@@ -6,16 +5,14 @@ use dispatch_cortex::{
     discovery::Scope,
     meals::{self, Coverage, Meal},
 };
+use dispatch_timecard::{TimecardStore, comparison_meal};
 use serde_json::json;
 
 /// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
 fn install() {
     common::install(
         &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
-        &[
-            &dispatch_driver_match::FEATURE,
-            &dispatch_backend::feature_manifests::timecard::FEATURE,
-        ],
+        &[&dispatch_driver_match::FEATURE, &dispatch_timecard::FEATURE],
     );
 }
 

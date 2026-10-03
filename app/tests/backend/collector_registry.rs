@@ -1,9 +1,6 @@
 //! The collector registry and the storage it opens for each collector, with Paycom and
 //! Cortex registered and Timecard's data in their databases.
-use crate::{
-    testing,
-    workforce::{self, TimecardStore},
-};
+use crate::testing;
 use dispatch_core::{
     collection::registry::{LAYOUT, Provider, database_path},
     db::{self, Db, Store},
@@ -12,6 +9,7 @@ use dispatch_core::{
 };
 use dispatch_cortex as cortex;
 use dispatch_paycom as paycom;
+use dispatch_timecard::TimecardStore;
 use paycom::fixtures;
 use serde_json::{Value, json};
 use std::os::unix::fs::{PermissionsExt, symlink};
@@ -56,7 +54,7 @@ fn provisioned() -> (tempfile::TempDir, Store, String) {
     paycom
         .set(
             "paycom.preferences",
-            &json!({"revision":3,"values":workforce::defaults(),"history":[]}),
+            &json!({"revision":3,"values":dispatch_timecard::defaults(),"history":[]}),
         )
         .unwrap();
     drop(paycom);

@@ -1,5 +1,5 @@
 use super::preferences::preferences;
-use crate::contracts::EmployeesResponse;
+use crate::api::types::EmployeesResponse;
 use dispatch_core::{
     Result,
     db::{Store, boolean, s},
@@ -7,7 +7,7 @@ use dispatch_core::{
 use dispatch_paycom as paycom;
 use rusqlite::params;
 use serde_json::json;
-pub(super) fn timecard_employees(
+pub(crate) fn timecard_employees(
     store: &Store,
     id: &str,
     query: &str,

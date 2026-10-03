@@ -1,5 +1,7 @@
 //! Offline test fixture builder. Uses the same assessment as HTTP responses; never shipped.
-use dispatch_backend::{contracts::*, meals::assessment};
+use dispatch_timecard::{
+    EmployeeTimecard, LateRule, MealEmployee, MealSource, Timecard, assess_meal,
+};
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read};
 
@@ -28,8 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .rows
                 .into_iter()
                 .map(|row| {
-                    let assessment =
-                        assessment::assess_meal(&row, &input.date, input.late.as_ref());
+                    let assessment = assess_meal(&row, &input.date, input.late.as_ref());
                     MealEmployee {
                         source: row,
                         assessment,

@@ -1,19 +1,16 @@
 //! Range reads keep historical selection, overlays and complete identity context.
-use dispatch_backend::workforce::TimecardStore;
 use dispatch_core::db::s;
 use dispatch_core::testing as common;
 use dispatch_cortex::{discovery::Scope, meals};
 use dispatch_paycom::{self as paycom, fixtures};
+use dispatch_timecard::TimecardStore;
 use serde_json::json;
 
 /// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
 fn install() {
     common::install(
         &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
-        &[
-            &dispatch_driver_match::FEATURE,
-            &dispatch_backend::feature_manifests::timecard::FEATURE,
-        ],
+        &[&dispatch_driver_match::FEATURE, &dispatch_timecard::FEATURE],
     );
 }
 

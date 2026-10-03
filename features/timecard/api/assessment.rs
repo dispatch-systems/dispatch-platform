@@ -2,7 +2,7 @@ use dispatch_core::text_enum;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AssessedClock {
     pub minute: i32,
@@ -10,7 +10,7 @@ pub struct AssessedClock {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Lunch {
     pub out: Option<AssessedClock>,
@@ -19,7 +19,7 @@ pub struct Lunch {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PunchEvent {
     pub kind: String,
@@ -28,7 +28,7 @@ pub struct PunchEvent {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PaycomDay {
     pub in_day: Option<AssessedClock>,
@@ -40,16 +40,16 @@ pub struct PaycomDay {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DeliveryGap {
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub milliseconds: i64,
     pub over_limit: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DeliveryGaps {
     pub before: Option<DeliveryGap>,
@@ -57,7 +57,7 @@ pub struct DeliveryGaps {
 }
 
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     pub enum MealStatus {
         FlexOnly => "flex_only", NoFlexMeal => "no_flex_meal",
         ReviewPunches => "review_punches", MissingLunch => "missing_lunch",
@@ -66,7 +66,7 @@ text_enum! {
     }
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MealPair {
     pub cortex_index: Option<usize>,
@@ -79,7 +79,7 @@ pub struct MealPair {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MealAssessment {
     pub paycom: PaycomDay,
@@ -92,7 +92,7 @@ pub struct MealAssessment {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct LateRule {
     pub time: String,

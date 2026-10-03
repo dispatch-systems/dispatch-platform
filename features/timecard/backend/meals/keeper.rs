@@ -1,5 +1,5 @@
 //! Timecard keeps the meal breaks Cortex reports.
-use crate::workforce::TimecardStore;
+use crate::backend::TimecardStore;
 use dispatch_core::{
     Result,
     collection::browser::Collected,

@@ -1,7 +1,8 @@
 //! Employee timecards: calendar navigation and explicitly scoped collections.
+use super::{cards, sync::synced_cards};
 use crate::{
-    contracts::{EmployeeTimecardPeriod, EmployeeTimecardResponse, Timecard},
-    workforce::{TimecardStore, cards, sync::synced_cards},
+    api::types::{EmployeeTimecardResponse, Timecard},
+    backend::TimecardStore,
 };
 use dispatch_core::{
     Error, Result,
@@ -9,7 +10,10 @@ use dispatch_core::{
     ensure,
     foundation::{names::display_name, validate as v},
 };
-use dispatch_paycom::{self as paycom, timecards::PERIOD_DAYS};
+use dispatch_paycom::{
+    self as paycom,
+    timecards::{EmployeeTimecardPeriod, PERIOD_DAYS},
+};
 use rusqlite::params;
 use serde_json::{Value, json};
 
@@ -30,7 +34,7 @@ pub(crate) fn paycom_employee(store: &Store, id: &str, code: &str) -> Result<Val
     boolean(&mut employee, &["active"]);
     Ok(employee)
 }
-pub(super) fn employee_timecard(
+pub(crate) fn employee_timecard(
     store: &Store,
     id: &str,
     code: &str,

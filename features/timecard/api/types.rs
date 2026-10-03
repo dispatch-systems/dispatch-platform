@@ -1,8 +1,9 @@
-use crate::contracts::{EmployeeTimecardPeriod, PaycomDay};
+use crate::api::assessment::PaycomDay;
 use dispatch_core::{collection::api::jobs::JobStatus, text_enum};
+use dispatch_paycom::timecards::EmployeeTimecardPeriod;
 use serde::{Deserialize, Serialize};
 #[derive(Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct EmployeeTimecardResponse {
     pub employee: Employee,
@@ -15,7 +16,7 @@ pub struct EmployeeTimecardResponse {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Employee {
     pub code: String,
@@ -35,22 +36,22 @@ where
     Option::<T>::deserialize(deserializer).map(Some)
 }
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     pub enum InPunchKind { Day => "IN DAY", Lunch => "IN LUNCH", }
 }
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     pub enum OutPunchKind { Lunch => "OUT LUNCH", Day => "OUT DAY", }
 }
 #[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Punch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(as = "Option<InPunchKind>", optional = nullable))]
+    #[cfg_attr(feature = "ts", ts(as = "Option<InPunchKind>", optional = nullable))]
     pub in_kind: Option<Option<InPunchKind>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(as = "Option<OutPunchKind>", optional = nullable))]
+    #[cfg_attr(feature = "ts", ts(as = "Option<OutPunchKind>", optional = nullable))]
     pub out_kind: Option<Option<OutPunchKind>>,
     #[serde(rename = "in")]
     pub clock_in: Option<String>,
@@ -87,7 +88,7 @@ impl<'de> Deserialize<'de> for Punch {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Timecard {
     pub employee_code: String,
@@ -96,12 +97,12 @@ pub struct Timecard {
     pub status: String,
     pub punches: Vec<Punch>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub source_url: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct EmployeeTimecard {
     #[serde(flatten)]
@@ -110,7 +111,7 @@ pub struct EmployeeTimecard {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DailyTimecard {
     #[serde(flatten)]
@@ -119,7 +120,7 @@ pub struct DailyTimecard {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DailyTimecards {
     pub rows: Vec<DailyTimecard>,
@@ -128,7 +129,7 @@ pub struct DailyTimecards {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct EmployeesResponse {
     pub employees: Vec<Employee>,

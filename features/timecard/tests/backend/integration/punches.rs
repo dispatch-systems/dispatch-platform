@@ -1,18 +1,15 @@
 use common::bootstrapped;
-use dispatch_backend::workforce::{self, TimecardStore};
 use dispatch_core::db::s;
 use dispatch_core::testing as common;
 use dispatch_paycom::{self as paycom, fixtures};
+use dispatch_timecard::TimecardStore;
 use serde_json::{Value, json};
 
 /// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
 fn install() {
     common::install(
         &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
-        &[
-            &dispatch_driver_match::FEATURE,
-            &dispatch_backend::feature_manifests::timecard::FEATURE,
-        ],
+        &[&dispatch_driver_match::FEATURE, &dispatch_timecard::FEATURE],
     );
 }
 
@@ -39,7 +36,7 @@ fn demo_periods_follow_the_paycom_cycle_and_never_record_future_punches() {
 #[test]
 fn employee_timecards_use_period_order_and_the_latest_revision_within_each_period() {
     install();
-    use dispatch_backend::contracts::EmployeeTimecardPeriod;
+    use dispatch_paycom::timecards::EmployeeTimecardPeriod;
     let (_root, db, id) = bootstrapped();
     let period_data = |date: &str, collected: &str, hours: f64| {
         let mut data = fixtures::fixture_date("UTC", Some(date.parse().unwrap())).unwrap();
@@ -377,7 +374,7 @@ fn retired_sync_preferences_are_not_returned_and_open_dashboards_may_still_send_
     let id = id.as_str();
     let actor = common::platform_owner(&db);
     // Preferences as v0.0.9 stored them.
-    let mut older = workforce::defaults();
+    let mut older = dispatch_timecard::defaults();
     older["automatic_sync"] = json!(true);
     older["sync_interval_seconds"] = json!(3600);
     db.collector(id, paycom::PROVIDER)
@@ -388,16 +385,16 @@ fn retired_sync_preferences_are_not_returned_and_open_dashboards_may_still_send_
         )
         .unwrap();
     let values = db.timecard_preferences(id).unwrap()["values"].clone();
-    assert_eq!(values, workforce::defaults());
+    assert_eq!(values, dispatch_timecard::defaults());
     let saved = db.save_timecard_preferences(id, &actor, 4, &older).unwrap();
     assert_eq!(saved["revision"], 5);
-    assert_eq!(saved["values"], workforce::defaults());
+    assert_eq!(saved["values"], dispatch_timecard::defaults());
     let stored = db
         .collector(id, paycom::PROVIDER)
         .unwrap()
         .setting("paycom.preferences", Value::Null)
         .unwrap();
-    assert_eq!(stored["values"], workforce::defaults());
+    assert_eq!(stored["values"], dispatch_timecard::defaults());
 }
 
 #[test]
@@ -407,7 +404,7 @@ fn late_da_settings_default_for_older_preferences_and_validate() {
     let id = id.as_str();
     let actor = common::platform_owner(&db);
     // Preferences stored before the Late DA keys existed.
-    let mut older = workforce::defaults();
+    let mut older = dispatch_timecard::defaults();
     for key in ["late_da_time", "late_da_departments"] {
         older.as_object_mut().unwrap().remove(key);
     }

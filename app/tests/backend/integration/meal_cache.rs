@@ -1,7 +1,6 @@
 //! The meal-break page's cache and live results over HTTP, against the real router served
 //! in-process over a loopback socket: Timecard's page, Paycom's live collection and core's
 //! cache and leases together.
-use dispatch_backend::workforce::TimecardStore;
 use dispatch_core::{
     State,
     db::{self, Store, s},
@@ -9,6 +8,7 @@ use dispatch_core::{
     server::operations,
 };
 use dispatch_paycom as paycom;
+use dispatch_timecard::TimecardStore;
 use serde_json::{Value, json};
 use std::{os::unix::fs::PermissionsExt, sync::Arc};
 
@@ -219,7 +219,6 @@ impl Server {
 
 #[tokio::test]
 async fn meal_cache_rechecks_live_visibility_after_lease_bookkeeping_and_authorizes_hits() {
-    use dispatch_backend::workforce;
     use dispatch_paycom::PaycomStore;
     let server = Server::start().await;
     let member = server.member("member@dispatch.test").await;
@@ -247,7 +246,7 @@ async fn meal_cache_rechecks_live_visibility_after_lease_bookkeeping_and_authori
     let day = date.clone();
     let job = server
         .state
-        .run_scoped(dsp.clone(), workforce::DOMAIN, move |db| {
+        .run_scoped(dsp.clone(), dispatch_timecard::DOMAIN, move |db| {
             let queued = db.enqueue_timecards(&tenant, None, "meal-cache-live")?;
             let job = db
                 .claim_job("meal-cache-owner", |id, provider| {

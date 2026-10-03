@@ -1,12 +1,13 @@
 //! What Timecard reads and writes for a DSP, as one extension of the store: Paycom's
 //! employees, timecards and preferences, and the meal breaks Cortex reports. Each method is
 //! written beside the rest of its part of Timecard.
-use crate::contracts::{
-    DailyTimecards, EmployeeTimecardPeriod, EmployeeTimecardResponse, EmployeesResponse,
-    MealComparison,
+use crate::api::{
+    meals::MealComparison,
+    types::{DailyTimecards, EmployeeTimecardResponse, EmployeesResponse},
 };
 use dispatch_core::{Result, db::Store};
 use dispatch_cortex::{discovery::Scope, meals::Capture};
+use dispatch_paycom::timecards::EmployeeTimecardPeriod;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -106,7 +107,7 @@ impl TimecardStore for Store {
         id: &str,
         date: &str,
     ) -> Result<(Option<Value>, Vec<Value>, Vec<Value>)> {
-        super::daily::daily_timecards_source(self, id, date)
+        super::punches::daily::daily_timecards_source(self, id, date)
     }
     fn daily_timecards(
         &self,
@@ -115,7 +116,7 @@ impl TimecardStore for Store {
         sort: &str,
         desc: bool,
     ) -> Result<DailyTimecards> {
-        super::daily::daily_timecards(self, id, date, sort, desc)
+        super::punches::daily::daily_timecards(self, id, date, sort, desc)
     }
     fn daily_timecards_range(
         &self,
@@ -126,7 +127,7 @@ impl TimecardStore for Store {
         desc: bool,
         codes: Option<&[String]>,
     ) -> Result<BTreeMap<String, DailyTimecards>> {
-        super::daily::daily_timecards_range(self, id, from, to, sort, desc, codes)
+        super::punches::daily::daily_timecards_range(self, id, from, to, sort, desc, codes)
     }
     fn timecard_employees(
         &self,
@@ -137,13 +138,13 @@ impl TimecardStore for Store {
         desc: bool,
         active: Option<bool>,
     ) -> Result<EmployeesResponse> {
-        super::employees::timecard_employees(self, id, query, offset, limit, desc, active)
+        super::punches::employees::timecard_employees(self, id, query, offset, limit, desc, active)
     }
     fn timecard_preference_values(&self, id: &str) -> Result<Value> {
-        super::preferences::timecard_preference_values(self, id)
+        super::punches::preferences::timecard_preference_values(self, id)
     }
     fn timecard_preferences(&self, id: &str) -> Result<Value> {
-        super::preferences::timecard_preferences(self, id)
+        super::punches::preferences::timecard_preferences(self, id)
     }
     fn save_timecard_preferences(
         &self,
@@ -152,13 +153,13 @@ impl TimecardStore for Store {
         revision: i64,
         values: &Value,
     ) -> Result<Value> {
-        super::preferences::save_timecard_preferences(self, id, actor, revision, values)
+        super::punches::preferences::save_timecard_preferences(self, id, actor, revision, values)
     }
     fn publish_timecards(&self, id: &str, value: &Value) -> Result<Value> {
-        super::publication::publish_timecards(self, id, value)
+        super::punches::publication::publish_timecards(self, id, value)
     }
     fn enqueue_timecards(&self, id: &str, actor: Option<&str>, key: &str) -> Result<Value> {
-        super::queue::enqueue_timecards(self, id, actor, key)
+        super::punches::queue::enqueue_timecards(self, id, actor, key)
     }
     fn enqueue_paycom_date(
         &self,
@@ -167,7 +168,7 @@ impl TimecardStore for Store {
         key: &str,
         date: &str,
     ) -> Result<Value> {
-        super::queue::enqueue_paycom_date(self, id, actor, key, date)
+        super::punches::queue::enqueue_paycom_date(self, id, actor, key, date)
     }
     fn enqueue_employee_timecard(
         &self,
@@ -177,7 +178,7 @@ impl TimecardStore for Store {
         code: &str,
         period: &EmployeeTimecardPeriod,
     ) -> Result<Value> {
-        super::queue::enqueue_employee_timecard(self, id, actor, key, code, period)
+        super::punches::queue::enqueue_employee_timecard(self, id, actor, key, code, period)
     }
     fn employee_timecard(
         &self,
@@ -185,10 +186,10 @@ impl TimecardStore for Store {
         code: &str,
         requested: Option<&EmployeeTimecardPeriod>,
     ) -> Result<EmployeeTimecardResponse> {
-        super::timecards::employee_timecard(self, id, code, requested)
+        super::punches::timecards::employee_timecard(self, id, code, requested)
     }
     fn meal_comparison(&self, id: &str, date: &str, timezone: &str) -> Result<MealComparison> {
-        crate::meals::comparison::meal_comparison(self, id, date, timezone)
+        super::meals::comparison::meal_comparison(self, id, date, timezone)
     }
     fn meal_comparisons(
         &self,
@@ -198,7 +199,7 @@ impl TimecardStore for Store {
         timezone: &str,
         selected: Option<&[String]>,
     ) -> Result<BTreeMap<String, MealComparison>> {
-        crate::meals::comparison::meal_comparisons(self, id, from, to, timezone, selected)
+        super::meals::comparison::meal_comparisons(self, id, from, to, timezone, selected)
     }
     fn publish_meals(
         &self,
@@ -207,13 +208,13 @@ impl TimecardStore for Store {
         capture: &Capture,
         expected: &Scope,
     ) -> Result<Value> {
-        crate::meals::publish_meals(self, dsp, job, capture, expected)
+        super::meals::publish_meals(self, dsp, job, capture, expected)
     }
     fn meal_publications(&self, dsp: &str, date: &str) -> Result<Value> {
-        crate::meals::meal_publications(self, dsp, date)
+        super::meals::meal_publications(self, dsp, date)
     }
     fn meal_sync_status(&self, id: &str, date: &str) -> Result<Value> {
-        crate::meals::sync::meal_sync_status(self, id, date)
+        super::meals::sync::meal_sync_status(self, id, date)
     }
     fn enqueue_meals(
         &self,
@@ -222,9 +223,9 @@ impl TimecardStore for Store {
         key: &str,
         scope: &Scope,
     ) -> Result<Value> {
-        crate::meals::sync::enqueue_meals(self, id, actor, key, scope)
+        super::meals::sync::enqueue_meals(self, id, actor, key, scope)
     }
     fn enqueue_meal_sync(&self, id: &str, actor: &str, key: &str, date: &str) -> Result<Value> {
-        crate::meals::sync::enqueue_meal_sync(self, id, actor, key, date)
+        super::meals::sync::enqueue_meal_sync(self, id, actor, key, date)
     }
 }

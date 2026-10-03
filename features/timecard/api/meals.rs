@@ -1,9 +1,9 @@
-use crate::contracts::{MealAssessment, Punch};
+use crate::api::{assessment::MealAssessment, types::Punch};
 use dispatch_core::text_enum;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CortexMeal {
     pub meal_id: String,
@@ -20,44 +20,44 @@ pub struct CortexMeal {
     pub before_status: String,
     pub after_status: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub source_url: Option<String>,
     /// The route's page with the stop of each delivery selected, when the stop was read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub last_delivery_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub first_delivery_url: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MealPaycom {
     pub employee_code: String,
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub department: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub station: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub date: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub hours: Option<f64>,
     pub status: String,
     pub punches: Vec<Punch>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub source_url: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MealSource {
     pub id: String,
@@ -67,7 +67,7 @@ pub struct MealSource {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MealEmployee {
     #[serde(flatten)]
@@ -76,11 +76,11 @@ pub struct MealEmployee {
 }
 
 text_enum! {
-    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     pub enum MatchType { Name => "name", Saved => "saved", Separate => "separate", Unmatched => "unmatched", }
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MealDriver {
     pub id: String,
@@ -90,25 +90,25 @@ pub struct MealDriver {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CortexPublication {
     pub station: String,
     pub timezone: String,
     pub collected_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub service_area_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub provider: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MealComparison {
     pub date: String,

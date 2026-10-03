@@ -1,15 +1,15 @@
 //! The Paycom collections the Timecard page queues: the roster, one day of it, or one
 //! employee's period.
-use crate::{contracts::EmployeeTimecardPeriod, workforce::TimecardStore};
+use crate::backend::TimecardStore;
 use dispatch_core::{Result, db::Store};
 use dispatch_paycom::{
     self as paycom,
-    timecards::{EmployeeSync, collection_date},
+    timecards::{EmployeeSync, EmployeeTimecardPeriod, collection_date},
 };
 use serde_json::{Value, json};
 
 /// Queue helpers return the public JSON response used by collection requests.
-pub(super) fn enqueue_timecards(
+pub(crate) fn enqueue_timecards(
     store: &Store,
     id: &str,
     actor: Option<&str>,
@@ -17,7 +17,7 @@ pub(super) fn enqueue_timecards(
 ) -> Result<Value> {
     store.enqueue_for(id, actor, key, paycom::PROVIDER, &json!({}))
 }
-pub(super) fn enqueue_paycom_date(
+pub(crate) fn enqueue_paycom_date(
     store: &Store,
     id: &str,
     actor: Option<&str>,
@@ -28,7 +28,7 @@ pub(super) fn enqueue_paycom_date(
     collection_date(&request, &store.find_dsp(id)?.timezone)?;
     store.enqueue_for(id, actor, key, paycom::PROVIDER, &request)
 }
-pub(super) fn enqueue_employee_timecard(
+pub(crate) fn enqueue_employee_timecard(
     store: &Store,
     id: &str,
     actor: Option<&str>,

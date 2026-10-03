@@ -1,5 +1,45 @@
 //! Timecard: Paycom's punches and timecards, and the meal breaks Cortex reports.
-use crate::{meals, workforce};
+mod api;
+mod backend;
+mod mcp;
+
+/// What its API answers with, which the app writes to TypeScript.
+pub use api::{
+    assessment::{
+        AssessedClock, DeliveryGap, DeliveryGaps, LateRule, Lunch, MealAssessment, MealPair,
+        MealStatus, PaycomDay, PunchEvent,
+    },
+    meals::{
+        CortexMeal, CortexPublication, MatchType, MealComparison, MealDriver, MealEmployee,
+        MealPaycom, MealSource,
+    },
+    settings::{
+        DepartmentOption, NameOrder, PaycomColumn, PaycomOptions, PaycomPage, PaycomPreferences,
+        PaycomSettings, PaycomSort, PreferenceRevision,
+    },
+    types::{
+        DailyTimecard, DailyTimecards, Employee, EmployeeTimecard, EmployeeTimecardResponse,
+        EmployeesResponse, InPunchKind, OutPunchKind, Punch, Timecard,
+    },
+};
+/// What its integration tests and its offline fixture builder use beside: how a meal break
+/// is assessed, and the comparison row a Cortex meal becomes.
+pub use backend::meals::{assessment::assess_meal, comparison_meal};
+/// What the app uses: its storage, the cache domain of the Paycom data it keeps, its cached
+/// meal-break reads, and the preferences a DSP starts with.
+pub use backend::{
+    TimecardStore,
+    meals::CACHED,
+    punches::{DOMAIN, defaults},
+};
+/// What agents can ask of it, which the app's tests ask directly.
+pub use mcp::views::{meal_breaks, timecards};
+
+/// Core's test support, for this crate's module tests.
+#[cfg(test)]
+use dispatch_core::testing;
+
+use backend::{meals, punches};
 use dispatch_core::{
     db::{Migration, Migrations, migrations::Apply::Sql},
     manifest::{
@@ -13,11 +53,6 @@ use dispatch_core::{
 use dispatch_cortex as cortex;
 use dispatch_driver_match as driver_match;
 use dispatch_paycom as paycom;
-
-#[path = "api/routes.rs"]
-mod api;
-#[path = "mcp/mod.rs"]
-pub mod mcp;
 
 pub const FEATURE: Feature = Feature {
     // Its meal-break comparison joins drivers to employees by Driver Match's codes.
@@ -38,10 +73,10 @@ pub const FEATURE: Feature = Feature {
         perm("timecard.manage", "Manage Timecard", 21).implies(&["timecard.view"]),
         perm("collections.run", "Run Collections", 22).defaults(&[Manager]),
     ],
-    routes: api::routes,
+    routes: api::routes::routes,
     // Collection progress refreshes both the timecard pages and the collections page.
     live: &["timecard.view", "collections.run"],
-    keeps: &[&workforce::keeper::Timecards, &meals::keeper::MealBreaks],
+    keeps: &[&punches::keeper::Timecards, &meals::keeper::MealBreaks],
     // Its tables live in the collectors' databases, beside what each collection reads.
     tables: &[
         (
@@ -99,17 +134,17 @@ pub const FEATURE: Feature = Feature {
             }],
         },
     ],
-    domains: &[workforce::DOMAIN, meals::DOMAIN],
+    domains: &[punches::DOMAIN, meals::DOMAIN],
     cached: &[
         // The DSP listings' collection dates are its timecards'.
         Cached {
             read: LISTINGS,
-            evicted: By(&[workforce::DOMAIN]),
+            evicted: By(&[punches::DOMAIN]),
         },
         Cached {
             read: meals::CACHED,
             evicted: By(&[
-                workforce::DOMAIN,
+                punches::DOMAIN,
                 meals::DOMAIN,
                 DataDomain::LIVE,
                 driver_match::DOMAIN,
@@ -125,8 +160,8 @@ pub const FEATURE: Feature = Feature {
         ],
         ..Audit::NONE
     },
-    demo: Some(workforce::demo),
+    demo: Some(punches::demo),
     mcp: mcp::MCP,
-    people: &[&workforce::people::Employees, &meals::people::MealDrivers],
+    people: &[&punches::people::Employees, &meals::people::MealDrivers],
     ..feature("timecard")
 };

@@ -1,4 +1,4 @@
-use crate::workforce::TimecardStore;
+use crate::backend::TimecardStore;
 use dispatch_core::{
     Error, Result,
     db::{AuditChange, Db, Store, iso, n},
@@ -17,7 +17,7 @@ const COLUMNS: [&str; 6] = [
     "condition",
 ];
 pub fn defaults() -> Value {
-    serde_json::to_value(crate::contracts::PaycomPreferences::default())
+    serde_json::to_value(crate::api::settings::PaycomPreferences::default())
         .expect("preference defaults")
 }
 pub(super) fn preferences(db: &Db) -> Result<Value> {
@@ -158,11 +158,11 @@ fn preference_changes(before: &Value, after: &Value) -> Vec<AuditChange> {
         .collect()
 }
 /// Values and revision without scanning the roster for editor options.
-pub(super) fn timecard_preference_values(store: &Store, id: &str) -> Result<Value> {
+pub(crate) fn timecard_preference_values(store: &Store, id: &str) -> Result<Value> {
     let db = store.collector(id, paycom::PROVIDER)?;
     preferences(&db)
 }
-pub(super) fn timecard_preferences(store: &Store, id: &str) -> Result<Value> {
+pub(crate) fn timecard_preferences(store: &Store, id: &str) -> Result<Value> {
     let db = store.collector(id, paycom::PROVIDER)?;
     let mut out = preferences(&db)?;
     let departments=db.all("SELECT department value,count(*) count FROM employees WHERE \
@@ -180,7 +180,7 @@ pub(super) fn timecard_preferences(store: &Store, id: &str) -> Result<Value> {
     out["options"] = json!({"departments":departments,"stations":stations});
     Ok(out)
 }
-pub(super) fn save_timecard_preferences(
+pub(crate) fn save_timecard_preferences(
     store: &Store,
     id: &str,
     actor: &str,
