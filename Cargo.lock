@@ -606,6 +606,7 @@ dependencies = [
  "dispatch-home",
  "dispatch-host",
  "dispatch-paycom",
+ "dispatch-settings",
  "flate2",
  "libc",
  "reqwest",
@@ -731,6 +732,13 @@ dependencies = [
  "tempfile",
  "tokio",
  "ts-rs",
+]
+
+[[package]]
+name = "dispatch-settings"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
 ]
 
 [[package]]

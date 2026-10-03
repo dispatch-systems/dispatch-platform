@@ -26,6 +26,7 @@ dispatch-cortex = { path = "../../collectors/cortex" }
 dispatch-home = { path = "../../features/home" }
 dispatch-host = { path = "../../ops/host-manager" }
 dispatch-paycom = { path = "../../collectors/paycom" }
+dispatch-settings = { path = "../../features/settings" }
 axum = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
