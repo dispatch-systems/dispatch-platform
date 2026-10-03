@@ -27,6 +27,7 @@
     "app/tests/rules/audit-actions.test.ts",
     "tooling/tests/browser-shards.test.ts",
     "tooling/tests/mail-config.test.ts",
+    "tooling/tests/scaffold.test.ts",
     "tooling/tests/screenshots-worker.test.ts",
     "tooling/tests/source-lines.test.ts",
     "tooling/tests/test-plan.test.ts"
