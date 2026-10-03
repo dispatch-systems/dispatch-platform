@@ -98,7 +98,7 @@ test("a core part's list names its integration tests, API tests and browser spec
   assert.deepEqual(targets('core/accounts'), ['accounts']);
   assert.equal(commands[0], 'cargo test --locked -p dispatch-backend --test accounts');
   const api = owned('core/accounts/tests/api', /\.test\.ts$/);
-  assert(api.includes('core/accounts/tests/api/api-auth.test.ts'));
+  assert(api.includes('core/accounts/tests/api/api-sign-in.test.ts'));
   assert(commands.includes(`node node_modules/tsx/dist/cli.mjs --test ${api.join(' ')}`));
   assert(
     commands.includes(
