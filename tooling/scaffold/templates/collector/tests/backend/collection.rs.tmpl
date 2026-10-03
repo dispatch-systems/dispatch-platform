@@ -1,0 +1,17 @@
+//! The {{collection}} collection's requests, and the fixture that stands in for the site.
+use super::*;
+
+#[test]
+fn reads_only_its_own_requests() {
+    assert!(Request::parse(&json!({"collection": "{{collection}}"})).is_ok());
+    assert!(Request::parse(&json!({"collection": "other"})).is_err());
+    assert!(Request::parse(&json!({"collection": "{{collection}}", "extra": true})).is_err());
+}
+
+#[test]
+fn its_fixture_is_what_a_collection_returns() {
+    let capture = crate::fixtures::{{collection}}::capture();
+    assert!(!capture.rows.is_empty());
+    let sent = serde_json::to_value(&capture).unwrap();
+    assert_eq!(serde_json::from_value::<Capture>(sent).unwrap(), capture);
+}

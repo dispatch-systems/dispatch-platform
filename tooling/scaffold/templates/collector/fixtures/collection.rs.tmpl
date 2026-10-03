@@ -1,0 +1,17 @@
+//! {{collectionTitle}} as fixture mode returns it.
+use crate::collections::{{collection}}::{Capture, Record};
+
+pub(crate) fn capture() -> Capture {
+    Capture {
+        rows: vec![
+            Record {
+                id: "fixture-1".into(),
+                name: "First fixture record".into(),
+            },
+            Record {
+                id: "fixture-2".into(),
+                name: "Second fixture record".into(),
+            },
+        ],
+    }
+}

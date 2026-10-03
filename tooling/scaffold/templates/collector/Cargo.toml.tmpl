@@ -1,0 +1,20 @@
+# The platform version lives in package.json. Crate versions stay fixed.
+[package]
+name = "{{crate}}"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.94"
+publish = false
+license = "FSL-1.1-ALv2"
+autotests = false
+
+[lib]
+path = "collector.rs"
+doctest = false
+
+# Core's parts only: a collector names no feature.
+[dependencies]
+dispatch-core = { path = "../../core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }

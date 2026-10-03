@@ -1,0 +1,10 @@
+# {{label}}
+
+How Dispatch reads {{host}}, and what to watch for there, in a few lines.
+
+- **Connection:** a username and password, entered through `scripts/auth.js` in the sandboxed
+  browser, which may open `{{host}}` and nothing else.
+- **Collections:** `{{collection}}` (job kind `{{name}}.{{collection}}.collect`), read by
+  `scripts/{{collection}}.js`. Fixture mode returns `fixtures/{{collection}}.rs` instead.
+- **Database:** `{{name}}/{{name}}.sqlite` in each DSP's data.
+- **Kept by:** one feature's `keeps`, as `npm run new:feature -- <name> --keeps {{name}}.{{collection}}` writes it.
