@@ -1,0 +1,196 @@
+{
+  "metrics": [
+    {
+      "name": "routes",
+      "source": "routes",
+      "unit": "itineraries",
+      "total": "count",
+      "description": "Itineraries the driver was assigned."
+    },
+    {
+      "name": "stops_completed",
+      "source": "routes",
+      "unit": "stops",
+      "total": "sum",
+      "description": "Delivery stops completed, as Amazon's itinerary summary counts them; the station pickup is not a stop."
+    },
+    {
+      "name": "stops_total",
+      "source": "routes",
+      "unit": "stops",
+      "total": "sum",
+      "description": "Delivery stops on the itinerary."
+    },
+    {
+      "name": "packages_delivered",
+      "source": "routes",
+      "unit": "packages",
+      "total": "sum",
+      "description": "Packages delivered, as Amazon's itinerary summary counts them."
+    },
+    {
+      "name": "packages_total",
+      "source": "routes",
+      "unit": "packages",
+      "total": "sum",
+      "description": "Packages on the itinerary."
+    },
+    {
+      "name": "packages_remaining",
+      "source": "routes",
+      "unit": "packages",
+      "total": "sum",
+      "description": "Packages not yet delivered or returned when the day was collected."
+    },
+    {
+      "name": "packages_undeliverable",
+      "source": "routes",
+      "unit": "packages",
+      "total": "sum",
+      "description": "Packages Amazon marked undeliverable."
+    },
+    {
+      "name": "break_minutes",
+      "source": "routes",
+      "unit": "minutes",
+      "total": "sum",
+      "description": "Break time Amazon recorded on the itinerary."
+    },
+    {
+      "name": "overtime_minutes",
+      "source": "routes",
+      "unit": "minutes",
+      "total": "sum",
+      "description": "Overtime Amazon recorded on the itinerary."
+    },
+    {
+      "name": "hours_worked",
+      "source": "timecards",
+      "unit": "hours",
+      "total": "sum",
+      "description": "Hours on the Paycom timecard."
+    },
+    {
+      "name": "days_worked",
+      "source": "timecards",
+      "unit": "days",
+      "total": "count",
+      "description": "Days with hours on the Paycom timecard."
+    },
+    {
+      "name": "lunch_minutes",
+      "source": "timecards",
+      "unit": "minutes",
+      "total": "sum",
+      "description": "Minutes between Paycom's lunch out and lunch in punches."
+    },
+    {
+      "name": "clock_in",
+      "source": "timecards",
+      "unit": "time",
+      "total": "day",
+      "description": "First clock in, in the DSP's time."
+    },
+    {
+      "name": "clock_out",
+      "source": "timecards",
+      "unit": "time",
+      "total": "day",
+      "description": "Last clock out, in the DSP's time."
+    },
+    {
+      "name": "meal_issues",
+      "source": "meal_breaks",
+      "unit": "days",
+      "total": "count",
+      "description": "Days the meal-break comparison found something to look at, among the days the driver had a Cortex route."
+    },
+    {
+      "name": "meal_status",
+      "source": "meal_breaks",
+      "unit": "verdict",
+      "total": "day",
+      "description": "The meal-break comparison's verdict; see the glossary."
+    },
+    {
+      "name": "inspections",
+      "source": "dvic",
+      "unit": "inspections",
+      "total": "sum",
+      "description": "DVIC inspections done."
+    },
+    {
+      "name": "short_inspections",
+      "source": "dvic",
+      "unit": "inspections",
+      "total": "sum",
+      "description": "DVIC inspections shorter than their minimum."
+    }
+  ],
+  "glossary": [
+    {
+      "term": "Driver Match code",
+      "meaning": "A six-character code for one person, the same across every source. Use it to name a driver exactly."
+    },
+    {
+      "term": "transporter ID",
+      "meaning": "Amazon's ID for a driver, in routes, meal breaks, DVIC and the scorecard."
+    },
+    {
+      "term": "employee code",
+      "meaning": "Paycom's ID for an employee."
+    },
+    {
+      "term": "Amazon week",
+      "meaning": "Sunday to Saturday, named by the ISO week of its Saturday, as 2026-W39."
+    },
+    {
+      "term": "departed",
+      "meaning": "When the driver left the station to start the route, in the DSP's time."
+    },
+    {
+      "term": "ended",
+      "meaning": "When the route's session ended, after the last stop."
+    },
+    {
+      "term": "snapshot",
+      "meaning": "A route day collected while it was still in progress; numbers can still change."
+    },
+    {
+      "term": "DVIC",
+      "meaning": "Daily Vehicle Inspection Checklist, done before driving. Inspections under their minimum (90 or 300 seconds by vehicle) count as short."
+    },
+    {
+      "term": "meal status: same",
+      "meaning": "Cortex's meal break and Paycom's lunch punches agree."
+    },
+    {
+      "term": "meal status: different",
+      "meaning": "They disagree by more than the allowed difference."
+    },
+    {
+      "term": "meal status: missing_lunch",
+      "meaning": "Cortex has a meal break; Paycom has no lunch punches."
+    },
+    {
+      "term": "meal status: no_flex_meal",
+      "meaning": "Paycom has lunch punches; Cortex has no meal break. With cortexRoute false, Cortex had no route for the person, so no meal break was expected there."
+    },
+    {
+      "term": "meal status: flex_only",
+      "meaning": "Only Cortex has the driver that day."
+    },
+    {
+      "term": "meal status: review_punches",
+      "meaning": "Paycom's punches don't read as a whole day."
+    },
+    {
+      "term": "meal status: review_pairing",
+      "meaning": "Meal breaks and lunches don't pair up one to one."
+    },
+    {
+      "term": "meal status: missing_data",
+      "meaning": "A source has nothing for the driver yet."
+    }
+  ]
+}
