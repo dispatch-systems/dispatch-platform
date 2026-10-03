@@ -246,7 +246,6 @@
         "core/server/backend/mail/templates.rs has a #[test]": "Phase B",
         "core/server/backend/presence.rs has a #[test]": "Phase B",
         "core/tenancy/backend/catalog.rs has a #[test]": "Phase B",
-        "features/driver_match/backend/matching.rs has a #[test]": "Phase B",
         "features/driver_match/backend/review.rs has a #[test]": "Phase B",
         "features/routes/backend/mod.rs has a #[test]": "Phase B",
         "features/scorecard/backend/mod.rs has a #[test]": "Phase B",
