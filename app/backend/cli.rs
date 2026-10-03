@@ -3,6 +3,7 @@ use crate::{
     config::Config,
     db::Store,
     ensure,
+    manifest::registry,
     operations::{self, Lock},
 };
 use std::{io::Read, path::Path};
@@ -27,9 +28,13 @@ pub async fn run() -> Result<()> {
         println!("{}", operations::status(&config)?);
         return Ok(());
     }
-    // Without the platform lock: see `operations::dvic_drivers`.
-    if command.starts_with("dvic-") {
-        println!("{}", operations::dvic_drivers(&config, &args)?);
+    // Without the platform lock: each family of commands says why it needs none.
+    let mut families = registry()
+        .features
+        .iter()
+        .filter_map(|f| f.commands.as_ref());
+    if let Some(family) = families.find(|family| command.starts_with(family.prefix)) {
+        println!("{}", (family.run)(&config, &args)?);
         return Ok(());
     }
     let _lock = Lock::acquire(&config.root)?;

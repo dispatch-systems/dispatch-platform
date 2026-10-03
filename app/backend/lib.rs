@@ -121,8 +121,8 @@ mod catalog;
 #[path = "../tests/backend/databases.rs"]
 mod databases;
 #[cfg(test)]
-#[path = "../tests/backend/maintenance.rs"]
-mod maintenance;
+#[path = "../tests/backend/hooks.rs"]
+mod hooks;
 #[cfg(test)]
 #[path = "../tests/backend/request_log.rs"]
 mod request_log;

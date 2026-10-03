@@ -1,8 +1,7 @@
 //! What only a platform owner sees: every DSP, the platform's health and diagnostics.
-// A4: a test DSP's demo timecards, until the timecard feature seeds them.
 use crate::{
     Error, Result, State,
-    collectors::{Provider, paycom::fixtures},
+    collectors::Provider,
     contracts::{BrowserHealth, DspFeatures, DspStatus, JobStatus, PlatformHealth, ProviderMode},
     db::{Store, iso},
     ensure, features,
@@ -24,11 +23,6 @@ pub fn routes() -> Vec<Route> {
         read("/api/platform/dsps", PlatformOwner, dsps),
         write("/api/platform/dsps", PlatformOwner, create_dsp).invalidates_schedules(),
         write("/api/platform/dsps/{id}/retry", PlatformOwner, retry_dsp).invalidates_schedules(),
-        write(
-            "/api/platform/dsps/{id}/routes/reprocess",
-            PlatformOwner,
-            reprocess_routes,
-        ),
         async_post("/api/platform/dsps/{id}/status", PlatformOwner, set_status),
         async_post(
             "/api/platform/dsps/{id}/support-visibility",
@@ -99,21 +93,6 @@ fn create_dsp(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
         out["invitation"] = json!({"email":email,"status":"queued"});
     }
     Ok(Reply::status(out, 201))
-}
-
-// A4: Routes' reprocessing, until its route moves to the routes feature.
-/// Rebuilds a DSP's route rows from the responses it stored, for every day or one,
-/// after a release that reads fields the earlier one did not.
-fn reprocess_routes(db: &Store, _: &User, input: &Input) -> Result<Reply> {
-    v::fields(&input.body, &["day"])?;
-    let day = if input.body.get("day").is_some() {
-        let day = v::text(&input.body, "day", 10, 10)?;
-        v::date(day)?;
-        Some(day)
-    } else {
-        None
-    };
-    Reply::of(&db.reprocess_routes(input.param("id"), day)?)
 }
 
 fn retry_dsp(db: &Store, _: &User, input: &Input) -> Result<Reply> {
@@ -351,7 +330,7 @@ fn load_test_dsp(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     let dsp = db.new_dsp(&name, "America/Chicago", owner.actor(), false)?;
     let id = dsp.id.as_str();
     db.enable_all_features(id)?;
-    db.publish(id, &fixtures::fixture("America/Chicago")?)?;
+    operations::demo(db, id, "America/Chicago")?;
     db.audit(
         Some(owner.actor()),
         Some(id),

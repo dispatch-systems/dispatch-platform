@@ -490,7 +490,7 @@ fn the_operator_commands_hide_list_and_unhide_without_stopping_the_server() {
     let (_root, db, id) = ready();
     let run = |args: &[&str]| {
         let args: Vec<String> = args.iter().map(|a| (*a).to_owned()).collect();
-        dispatch_backend::operations::dvic_drivers(&db.config, &args)
+        dispatch_backend::dvic::cli::run(&db.config, &args)
     };
     // The server's own connection stays open throughout, as it would on a live host.
     let server = db.dvic(&id).unwrap();

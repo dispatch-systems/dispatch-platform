@@ -1,14 +1,10 @@
-// A4: the development seed and the DVIC commands, until their owners declare them.
-use super::collectors::{
-    cortex,
-    paycom::{self, fixtures},
-};
 use super::{
     Error, Result,
     config::Config,
     crypto,
     db::{self, Store, iso, n, s},
     ensure,
+    manifest::registry,
 };
 use fs2::FileExt;
 use rusqlite::params;
@@ -166,25 +162,23 @@ pub fn seed(db: &Store) -> Result<()> {
     )?;
     for dsp in [&dev, &north] {
         let id = dsp.id.as_str();
-        let area = db.area(id, "secrets")?;
-        let key = db::key_file(&area.join("vault.key"))?;
-        let credentials = json!({"clientCode":"DEMO1","username":"fixture-user","password":"synthetic-password",
-            "securityAnswers":["one","two","three","four","five"]});
-        db::write_private(
-            &area.join("paycom.enc"),
-            crypto::encrypt(&key, &format!("{id}:paycom:2"), &credentials)?.as_bytes(),
-        )?;
-        db.collector(id, paycom::PROVIDER)?.exec(
-            "UPDATE connections SET enabled=1,status='ready',account_label='DEMO1',verified_at=?",
-            [iso()],
-        )?;
-        db.publish(id, &fixtures::fixture(&dsp.timezone)?)?;
+        for collector in registry().collectors {
+            collector.demo(db, id)?;
+        }
+        demo(db, id, &dsp.timezone)?;
         db.audit(Some(&owner.id), Some(id), "development.fixtures_loaded", "")?;
     }
     db::write_private(
         &db.config.platform().join("development-seeded"),
         b"synthetic fixtures initialized\n",
     )
+}
+/// Fills a new DSP with every feature's demo data, given its timezone.
+pub fn demo(db: &Store, dsp: &str, timezone: &str) -> Result<()> {
+    for demo in registry().features.iter().filter_map(|f| f.demo) {
+        demo(db, dsp, timezone)?;
+    }
+    Ok(())
 }
 pub fn backup(config: &Config, destination: &Path) -> Result<Value> {
     ensure(
@@ -364,60 +358,6 @@ pub fn status(config: &Config) -> Result<Value> {
     )
 }
 
-/// The operator's hidden DVIC drivers: `dvic-hidden <dsp>` lists them, `dvic-hide <dsp>
-/// <driver> <note>` hides one and removes what was stored of them, `dvic-unhide <dsp>
-/// <driver>` lets their later reports in. Each is one transaction on that DSP's DVIC
-/// database, which SQLite serializes with the running server's writes, so it needs no
-/// stopped service. It reads the platform's DSP list read-only and migrates nothing.
-pub fn dvic_drivers(config: &Config, args: &[String]) -> Result<Value> {
-    let usage = match args[0].as_str() {
-        "dvic-hidden" => args.len() == 2,
-        "dvic-hide" => args.len() == 4,
-        "dvic-unhide" => args.len() == 3,
-        _ => false,
-    };
-    ensure(usage, "usage_dvic_hidden_hide_unhide", 400)?;
-    let dsp = args[1].as_str();
-    ensure(db::identifier(dsp, "dsp_"), "invalid_dsp_id", 400)?;
-    let path = config.platform().join("accounts.sqlite");
-    ensure(path.is_file(), "platform_not_initialized", 404)?;
-    db::private_file(&path, false)?;
-    let platform = db::Db(rusqlite::Connection::open_with_flags(
-        path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )?);
-    ensure(
-        platform
-            .one("SELECT id FROM dsps WHERE id=?", [dsp])?
-            .is_some(),
-        "dsp_not_found",
-        404,
-    )?;
-    let path = config
-        .root
-        .join("dsps")
-        .join(dsp)
-        .join("data/dvic/dvic.sqlite");
-    ensure(path.is_file(), "dvic_storage_missing", 404)?;
-    db::private_file(&path, false)?;
-    let dvic = db::Db::open(&path, crate::dvic::DATABASE)?;
-    crate::collectors::added_identity(&dvic, dsp, cortex::PROVIDER, &crate::dvic::STORAGE)?;
-    // The server adds the table when it starts the release that has it.
-    ensure(
-        dvic.one(
-            "SELECT name FROM sqlite_master WHERE name='dvic_hidden_drivers'",
-            [],
-        )?
-        .is_some(),
-        "dvic_not_migrated",
-        409,
-    )?;
-    match args[0].as_str() {
-        "dvic-hide" => crate::dvic::hidden::hide(&dvic, &args[2], &args[3], &iso()),
-        "dvic-unhide" => crate::dvic::hidden::unhide(&dvic, &args[2]),
-        _ => crate::dvic::hidden::list(&dvic),
-    }
-}
 /// The environment lock proves no previous core can own these ephemeral runs.
 pub fn clean_browser_runs(config: &Config) -> Result<()> {
     let root = db::private_dir(&config.environment_root().join("browser-runs"))?;

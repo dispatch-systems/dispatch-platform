@@ -4,6 +4,7 @@ use crate::{
     Code, Error, Result, State,
     browsers::{Collected, Driver, Pending, browseros},
     collectors::AddedStorage,
+    config::Config,
     contracts::AuditArea,
     db::{self, Db, Kind, Migration, Migrations, Store},
     job_metrics::Counts,
@@ -249,6 +250,11 @@ pub struct Feature {
     pub after_collection: Option<fn(Arc<State>, String) -> Upkeep>,
     /// How its actions read in the activity log.
     pub audit: Audit,
+    /// Fills a new DSP with demo data: the development seed's DSPs and Diagnostics' test
+    /// DSPs.
+    pub demo: Option<Demo>,
+    /// Operator commands of the binary it answers for.
+    pub commands: Option<Commands>,
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
@@ -267,7 +273,21 @@ pub const fn feature(name: &'static str) -> Feature {
         maintenance: &[],
         after_collection: None,
         audit: Audit::NONE,
+        demo: None,
+        commands: None,
     }
+}
+
+/// Fills one DSP, given its timezone, with what a feature shows.
+pub type Demo = fn(&Store, &str, &str) -> Result<()>;
+/// A family of operator commands, run as `dispatch-backend <name> <arguments>` without the
+/// platform lock, so each must be safe beside a running server.
+pub struct Commands {
+    /// What their names begin with. Every name so begun is theirs, and `run` answers one it
+    /// does not know with its usage error.
+    pub prefix: &'static str,
+    /// Runs one, given every argument, its name first, and answers what it prints.
+    pub run: fn(&Config, &[String]) -> Result<Value>,
 }
 
 /// How a feature's actions read in the activity log.
@@ -432,6 +452,10 @@ pub trait Collector: Sync {
     }
     /// Writes what a new DSP's storage holds beyond `seed`, once all of its storage exists.
     fn provision(&self, _: &Store, _dsp: &str, _timezone: &str) -> Result<()> {
+        Ok(())
+    }
+    /// Connects a development seed's DSP with fixture credentials, as its owner would.
+    fn demo(&self, _: &Store, _dsp: &str) -> Result<()> {
         Ok(())
     }
     /// What a credential change removes from `state/browsers`.

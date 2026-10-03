@@ -11,7 +11,7 @@ use crate::{
     ensure,
     http::{
         input::{Input, Reply},
-        route::{Dsp, Member, Route, read, write},
+        route::{Dsp, Member, PlatformOwner, Route, User, read, write},
     },
     routedata::{self, MAX_DAYS_PER_REQUEST},
     validate as v,
@@ -36,6 +36,11 @@ pub fn routes() -> Vec<Route> {
         job_cancel("/api/dsp/routes/jobs/{id}/cancel", COLLECT, &[JOB_KIND]),
         read("/api/dsp/routes/retention", MANAGE, retention),
         write("/api/dsp/routes/retention", MANAGE, set_retention),
+        write(
+            "/api/platform/dsps/{id}/routes/reprocess",
+            PlatformOwner,
+            reprocess,
+        ),
     ];
     routes.extend(schedule_routes(
         "/api/dsp/routes/schedules",
@@ -43,6 +48,20 @@ pub fn routes() -> Vec<Route> {
         "routes",
     ));
     routes
+}
+
+/// Rebuilds a DSP's route rows from the responses it stored, for every day or one,
+/// after a release that reads fields the earlier one did not.
+fn reprocess(db: &Store, _: &User, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &["day"])?;
+    let day = if input.body.get("day").is_some() {
+        let day = v::text(&input.body, "day", 10, 10)?;
+        v::date(day)?;
+        Some(day)
+    } else {
+        None
+    };
+    Reply::of(&db.reprocess_routes(input.param("id"), day)?)
 }
 
 fn itinerary(db: &Store, c: &Member, input: &Input) -> Result<Reply> {

@@ -6,7 +6,7 @@ use crate::{
         migrations::Apply::{Code, Sql},
     },
     dvic,
-    manifest::{Audit, Feature, Switch, feature, perm, tab},
+    manifest::{Audit, Commands, Feature, Switch, feature, perm, tab},
 };
 
 pub const FEATURE: Feature = Feature {
@@ -47,5 +47,9 @@ pub const FEATURE: Feature = Feature {
         areas: &[("dvic.", Collections)],
         ..Audit::NONE
     },
+    commands: Some(Commands {
+        prefix: "dvic-",
+        run: dvic::cli::run,
+    }),
     ..feature("dvic")
 };

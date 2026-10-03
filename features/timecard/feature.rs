@@ -90,5 +90,6 @@ pub const FEATURE: Feature = Feature {
         ],
         ..Audit::NONE
     },
+    demo: Some(workforce::demo),
     ..feature("timecard")
 };

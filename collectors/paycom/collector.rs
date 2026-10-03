@@ -20,13 +20,14 @@ use crate::{
         http::RequestHosts,
         paycom,
     },
-    db::{Db, Kind, Migration, Migrations, Store, iso, migrations::Apply::Sql, s},
+    crypto,
+    db::{self, Db, Kind, Migration, Migrations, Store, iso, migrations::Apply::Sql, s},
     ensure,
     job_metrics::Counts,
     manifest::{Collection, Collector},
     validate as v,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::{collections::HashSet, path::Path};
 use timecards::EmployeeSync;
 
@@ -123,6 +124,21 @@ impl Collector for Paycom {
         db.exec(
             "INSERT OR IGNORE INTO schedules(provider,timezone) VALUES ('paycom',?)",
             [timezone],
+        )?;
+        Ok(())
+    }
+    fn demo(&self, store: &Store, dsp: &str) -> Result<()> {
+        let area = store.area(dsp, "secrets")?;
+        let key = db::key_file(&area.join("vault.key"))?;
+        let credentials = json!({"clientCode":"DEMO1","username":"fixture-user","password":"synthetic-password",
+            "securityAnswers":["one","two","three","four","five"]});
+        db::write_private(
+            &area.join("paycom.enc"),
+            crypto::encrypt(&key, &format!("{dsp}:paycom:2"), &credentials)?.as_bytes(),
+        )?;
+        store.collector(dsp, PROVIDER)?.exec(
+            "UPDATE connections SET enabled=1,status='ready',account_label='DEMO1',verified_at=?",
+            [iso()],
         )?;
         Ok(())
     }
