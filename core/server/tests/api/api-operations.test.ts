@@ -118,7 +118,10 @@ test('SQLite write contention leaves health responsive and the pending write rec
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
-  const db = new DatabaseSync(path.join(f.root, 'data/platform/accounts.sqlite'));
+  // The server may still be finishing a write, such as the sign-in's, when BEGIN IMMEDIATE runs.
+  const db = new DatabaseSync(path.join(f.root, 'data/platform/accounts.sqlite'), {
+    timeout: 5000,
+  });
   let pending: Promise<unknown> | undefined;
   try {
     db.exec('BEGIN IMMEDIATE');
