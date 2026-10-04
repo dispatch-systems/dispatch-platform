@@ -5,12 +5,4 @@ import { wording } from './audit-wording.js';
 export const slots: PlatformSlots = {
   auditWording: wording,
   capabilities: { timecards: 'a timecard source' },
-  collections: [
-    {
-      kind: 'paycom.collect',
-      schedule: { id: 'paycom', label: 'Paycom' },
-      unit: 'employee',
-      count: (metrics) => metrics.employees,
-    },
-  ],
 };

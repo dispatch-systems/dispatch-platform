@@ -5,12 +5,12 @@ import { errorLabel } from '../../../shell/frontend/runtime/api.js';
 import { elapsed, timeOfDay, title } from '../../../shell/frontend/lib/format.js';
 import { permissionLabels } from '../../../shell/frontend/runtime/permissions.js';
 import { featureCatalog, featureLabel } from '../../../shell/frontend/runtime/features.js';
-import {
-  collectionLabels,
-  type AuditPart,
-  type AuditPhrases,
-  type AuditWording,
-  type AuditWords,
+import { collections } from '../../../collection/api/generated/collections.js';
+import type {
+  AuditPart,
+  AuditPhrases,
+  AuditWording,
+  AuditWords,
 } from '../../../shell/frontend/runtime/slots.js';
 import { agentAreas, areaLabels } from '../agents/agents.js';
 
@@ -274,7 +274,7 @@ const agentValues: Record<string, string> = {
 const agentFields = ['access', 'expires', 'bypass', 'tools', 'locations'];
 // A schedule's collection as its collector names it.
 const scheduleLabel = (value: string) =>
-  collectionLabels().find((collection) => collection.schedule.id === value)?.schedule.label;
+  collections.find((collection) => collection.schedule === value)?.label;
 function ownerValue(field: string, value: string) {
   for (const owner of owners) {
     const read = owner.value?.(field, value, words);

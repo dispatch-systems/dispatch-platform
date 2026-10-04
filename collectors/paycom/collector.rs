@@ -21,7 +21,7 @@ use dispatch_core::{
             egress::HostPolicy,
             http::RequestHosts,
         },
-        metrics::Counts,
+        metrics::{Counted, Counts},
         registry,
     },
     db::{self, Db, Kind, Migration, Migrations, Store, migrations::Apply::Sql, s},
@@ -98,6 +98,9 @@ const TABLES: Tables = &[(
 static COLLECTIONS: [Collection; 1] = [Collection {
     job_kind: timecards::JOB_KIND,
     schedule: "paycom",
+    label: "Paycom",
+    unit: "employee",
+    counted: Counted::Employees,
     unconnected: "schedule_paycom_required",
 }];
 

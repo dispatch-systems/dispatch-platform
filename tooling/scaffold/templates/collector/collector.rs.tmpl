@@ -13,6 +13,7 @@ use dispatch_core::{
             browseros::{self, NetworkPolicy},
             egress::HostPolicy,
         },
+        metrics::Counted,
         registry::{Provider, connection_seed, identity_seed},
     },
     db::{Kind, Migration, Migrations, migrations::Apply::Sql},
@@ -49,6 +50,10 @@ const MIGRATIONS: &[Migrations] = &[Migrations {
 static COLLECTIONS: [Collection; 1] = [Collection {
     job_kind: collections::{{collection}}::JOB_KIND,
     schedule: "{{collection}}",
+    label: "{{collectionTitle}}",
+    // What Diagnostics compares its runs per, once `counts` counts its rows.
+    unit: "row",
+    counted: Counted::Rows,
     unconnected: "schedule_{{collection}}_required",
 }];
 

@@ -4,11 +4,11 @@ import '../support/manifests.js';
 import { featureCatalog } from '../../../core/shell/frontend/runtime/features.js';
 import { features } from '../../frontend/features.js';
 import { jobSchema } from '../../../core/collection/api/runtime.js';
+import { collections } from '../../../core/collection/api/generated/collections.js';
 import { readToggleGroups } from '../../../core/mcp/api/generated/read-toggles.js';
 import { errorLabel } from '../../../core/shell/frontend/runtime/api.js';
 import {
   cacheRules,
-  collectionLabels,
   connectionCard,
   connectionCards,
   loadPlatformSlots,
@@ -54,13 +54,12 @@ test('each connection has one card', () => {
 });
 
 test('each job kind and schedule collection is named once, by a connection', () => {
-  const collections = collectionLabels();
   once(
     collections.map((collection) => collection.kind),
     'job kinds',
   );
   once(
-    collections.map((collection) => collection.schedule.id),
+    collections.map((collection) => collection.schedule),
     'schedule collections',
   );
   for (const kind of jobSchema.shape.kind.options)

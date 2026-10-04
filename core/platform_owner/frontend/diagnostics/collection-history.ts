@@ -1,13 +1,13 @@
 import type { Job } from '../../../collection/api/index.js';
+import { collections } from '../../../collection/api/generated/collections.js';
 import { featureLabel } from '../../../shell/frontend/runtime/features.js';
-import { collectionLabels } from '../../../shell/frontend/runtime/slots.js';
 
 const finished = ['succeeded', 'failed', 'cancelled'];
 /** Queued, running or waiting for verification. */
 export const isUnderway = (status: Job['status']) => !finished.includes(status);
-// Each collector names its collections.
+// Each collector names its collections, as the backend generates them.
 const collectionOf = (kind: Job['kind']) =>
-  collectionLabels().find((collection) => collection.kind === kind);
+  collections.find((collection) => collection.kind === kind);
 /** The connection a job of `kind` collects through. */
 export const providerName = (kind: Job['kind']) => {
   const collection = collectionOf(kind);
@@ -27,7 +27,8 @@ export function runHistory(job: Job) {
   const collections = metrics.flatMap((m) => (m.collectionMs === null ? [] : [m.collectionMs]));
   const peaks = metrics.flatMap((m) => (m.peakPssBytes === null ? [] : [m.peakPssBytes]));
   const resumed = metrics.reduce((n, m) => n + (m.pageReads?.resumed ?? 0), 0);
-  const count = latest && collectionOf(job.kind)?.count(latest);
+  const counted = collectionOf(job.kind)?.counted;
+  const count = latest && counted && latest[counted];
   const collectionMs = collections.length ? collections.reduce((a, b) => a + b, 0) : null;
   // Interrupted measurements end at the last saved sample. Compare only complete
   // first attempts with a known workload, and normalize collection time by count.

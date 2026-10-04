@@ -15,7 +15,6 @@ import {
 import {
   cacheRules,
   capabilityLabelOf,
-  collectionLabels,
   connectionCard,
   connectionCards,
   errorLabelOf,
@@ -26,7 +25,6 @@ import {
   auditWording,
   loadPlatformSlots,
   switchIcon,
-  type CollectionLabels,
   type ConnectionCard,
   type DspRoute,
   type DspRouteId,
@@ -100,32 +98,6 @@ test('connection cards come in the order their collectors are listed', () => {
   );
   assert.equal(connectionCard('paycom')?.read, '/api/dsp/connections/paycom');
   assert.equal(connectionCard('other'), undefined);
-});
-
-test('collections come with the collector that runs them, in the order they are declared', async () => {
-  const collection = (kind: string): CollectionLabels => ({
-    kind,
-    schedule: { id: kind, label: kind },
-    unit: 'item',
-    count: (metrics) => metrics.rows,
-  });
-  installFeatures([
-    {
-      name: 'beta',
-      platformSlots: loads({ collections: [collection('beta.b'), collection('beta.a')] }),
-    },
-    { name: 'gamma' },
-    { name: 'alpha', platformSlots: loads({ collections: [collection('alpha.a')] }) },
-  ]);
-  await loadPlatformSlots();
-  assert.deepEqual(
-    collectionLabels().map(({ provider, kind }) => [provider, kind]),
-    [
-      ['beta', 'beta.b'],
-      ['beta', 'beta.a'],
-      ['alpha', 'alpha.a'],
-    ],
-  );
 });
 
 test('cache rules keep each owner’s reads current, a read changing when any owner says so', () => {

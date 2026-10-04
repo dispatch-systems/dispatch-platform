@@ -6,7 +6,7 @@ use crate::{
     Code, Error, Result, State,
     collection::{
         browser::{Collected, Driver, Pending, browseros},
-        metrics::Counts,
+        metrics::{Counted, Counts},
         registry::AddedStorage,
     },
     db::{self, Db, Kind, Migration, Migrations, Store},
@@ -549,6 +549,12 @@ pub struct Collection {
     pub job_kind: &'static str,
     /// The schedule `collection` that runs it.
     pub schedule: &'static str,
+    /// How Diagnostics and the audit log name it, and the schedules that run it.
+    pub label: &'static str,
+    /// One item of its workload, as Diagnostics compares its runs per item: "employee".
+    pub unit: &'static str,
+    /// The count of a run's measurements that is its workload.
+    pub counted: Counted,
     /// The error a schedule answers while its collector is not connected.
     pub unconnected: &'static str,
 }

@@ -1,7 +1,7 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import type { AuditEvent } from '../../../platform_owner/api/index.js';
-import type { CollectionChange, JobMetrics } from '../../../collection/api/index.js';
+import type { CollectionChange } from '../../../collection/api/index.js';
 import type { ConnectionFeature, Feature, PageFeature } from '../../../tenancy/api/index.js';
 import type { DspView, Permission, SessionView } from '../../../accounts/api/index.js';
 import type { Replies } from '../../../foundation/api/runtime.js';
@@ -154,18 +154,6 @@ export type ConnectionCard = {
   render: (context: ConnectionCardContext) => ReactNode;
 };
 
-/** A collection a collector runs, as Diagnostics and the audit log name it. */
-export type CollectionLabels = {
-  /** Its job kind. */
-  kind: string;
-  /** Its schedules' collection, and how the audit log names it. */
-  schedule: { id: string; label: string };
-  /** One item of its workload, for the per-item comparison. */
-  unit: string;
-  /** How many items a run's measurements counted. */
-  count: (metrics: JobMetrics) => number | null;
-};
-
 /** How the response cache keeps an owner's reads current, each read named by its path prefix. */
 export type CacheRules = {
   /** Its reads that hold collected data. */
@@ -186,15 +174,13 @@ export type CacheRules = {
 /**
  * What an owner puts in the platform owner's slots. Only the platform owner's pages read them,
  * so those pages load every owner's with them and no other page carries them. Their labels,
- * such as the read toggles', are generated from the backend instead.
+ * such as the read toggles' and the collections', are generated from the backend instead.
  */
 export type PlatformSlots = {
   /** Its page's switch, as the DSPs page lists it. */
   switch?: { id: PageFeature; icon: LucideIcon };
   /** How its events read in the audit log. */
   auditWording?: AuditWording;
-  /** The collections it runs. */
-  collections?: readonly CollectionLabels[];
   /** How a page that needs a capability its connection provides names it: "a … source". */
   capabilities?: Record<string, string>;
 };
@@ -305,7 +291,7 @@ export const errorLabelOf = (code: string) =>
 /** Why a schedule of an owner's collections waits. */
 export const scheduleIssueOf = (code: string) => first((feature) => feature.scheduleIssues?.[code]);
 
-let loadedSlots: readonly (PlatformSlots & { owner: string })[] = [];
+let loadedSlots: readonly PlatformSlots[] = [];
 let slotsLoad: Promise<void> | undefined;
 /**
  * Loads what every owner puts in the platform owner's slots, once; a failed load is tried again
@@ -313,8 +299,8 @@ let slotsLoad: Promise<void> | undefined;
  */
 export function loadPlatformSlots() {
   slotsLoad ??= Promise.all(
-    installed.flatMap(({ name, platformSlots }) =>
-      platformSlots ? [platformSlots().then(({ slots }) => ({ ...slots, owner: name }))] : [],
+    installed.flatMap(({ platformSlots }) =>
+      platformSlots ? [platformSlots().then(({ slots }) => slots)] : [],
     ),
   ).then(
     (slots) => void (loadedSlots = slots),
@@ -332,12 +318,6 @@ export const switchIcon = (id: string) =>
 
 /** Every owner's audit wording, in the order the owners are listed. */
 export const auditWording = () => loadedSlots.flatMap((slots) => slots.auditWording ?? []);
-
-/** Every collection, with the collector that runs it. */
-export const collectionLabels = () =>
-  loadedSlots.flatMap((slots) =>
-    (slots.collections ?? []).map((collection) => ({ ...collection, provider: slots.owner })),
-  );
 
 /** How a page that needs a capability names it, as the first connection listed names it. */
 export const capabilityLabelOf = (capability: string) =>

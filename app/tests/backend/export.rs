@@ -1,6 +1,6 @@
 //! The TypeScript the owners' API types are written to, each in its owner's api/generated/,
-//! and the catalogs': the access catalog in tenancy's and the Agents page's read toggles in
-//! mcp's, checked against the files committed there.
+//! and the catalogs': the access catalog in tenancy's, the Agents page's read toggles in mcp's
+//! and the collections' labels in collection's, checked against the files committed there.
 use dispatch_core::accounts::api::types::*;
 use dispatch_core::collection::api::{jobs::*, metrics::*, types::*};
 use dispatch_core::collection::registry::Provider;
@@ -51,8 +51,10 @@ use ts_rs::TS;
 /// The access catalog's file: its types are tenancy's.
 const ACCESS_CATALOG: &str = "core/tenancy/api/generated/access-catalog.ts";
 // The labels only the platform owner's pages show, each in a file of its own, so that no
-// other page loads them: the Agents page's read toggles.
+// other page loads them: the Agents page's read toggles, and how Diagnostics and the audit
+// log name each collection.
 const READ_TOGGLES: &str = "core/mcp/api/generated/read-toggles.ts";
+const COLLECTIONS: &str = "core/collection/api/generated/collections.ts";
 
 /// Each binding by its file's path from the repository root, which its type's `export_to`
 /// names, so ts-rs writes the imports between owners' folders from there.
@@ -271,6 +273,7 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
     ));
     bindings.insert(ACCESS_CATALOG.into(), access_catalog());
     bindings.insert(READ_TOGGLES.into(), read_toggles());
+    bindings.insert(COLLECTIONS.into(), collections());
     bindings
 }
 
@@ -334,6 +337,31 @@ fn read_toggles() -> String {
     generated(
         "the features' read toggles",
         &[("readToggleGroups", groups.into())],
+    )
+}
+
+/// Every collection, with the collector that runs it, as Diagnostics and the audit log name
+/// it: its job kind, its schedules' collection and label, and what its workload counts.
+fn collections() -> String {
+    use serde_json::json;
+    let collections: Vec<_> = Provider::all()
+        .flat_map(|provider| {
+            let collector = provider.collector();
+            collector.collections().iter().map(move |collection| {
+                json!({
+                    "kind": collection.job_kind,
+                    "provider": collector.id(),
+                    "schedule": collection.schedule,
+                    "label": collection.label,
+                    "unit": collection.unit,
+                    "counted": collection.counted.field(),
+                })
+            })
+        })
+        .collect();
+    generated(
+        "the collectors' collections",
+        &[("collections", collections.into())],
     )
 }
 
