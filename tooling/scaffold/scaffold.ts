@@ -517,6 +517,14 @@ export function addFrontendOwner(text: string, dir: string, file: string) {
   return `${text.slice(0, at)}    "${dir}",\n${text.slice(at)}`;
 }
 export const routeInventory = 'app/tests/backend/integration/http_routes.rs';
+/**
+ * The last step for a new owner: the app's tests hold the whole product to snapshots, which it
+ * changes. Rewriting them needs a build, so the generators name the command rather than run it.
+ */
+export const snapshotsNote =
+  "Then `npm run snapshots:update` rewrites the snapshots of the whole product the app's tests " +
+  'hold, such as the catalog, the databases and what agents read, and names each one that ' +
+  'changed: review them with the rest.';
 /** The app's test that writes every owner's API types to TypeScript, which lists each type. */
 export const typescriptExport = 'app/tests/backend/export.rs';
 export const frontendList = 'app/frontend/features.ts';
