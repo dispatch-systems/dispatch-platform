@@ -7,9 +7,9 @@ import {
   addWorkspaceMember,
   appBackend,
   appendToList,
+  change,
   collectors,
   coreParts,
-  current,
   emptyPlan,
   exists,
   forwardFeature,
@@ -124,10 +124,9 @@ export async function planCollector(root: string, argv: string[]) {
   }
   formatRust(plan);
 
-  const change = async (file: string, edit: (text: string) => string) =>
-    plan.changes.set(file, await format(file, edit(current(plan, root, file))));
-  await change('Cargo.toml', (text) => addWorkspaceMember(text, dir));
-  await change('app/backend/Cargo.toml', (text) =>
+  const edit = (file: string, apply: (text: string) => string) => change(plan, root, file, apply);
+  await edit('Cargo.toml', (text) => addWorkspaceMember(text, dir));
+  await edit('app/backend/Cargo.toml', (text) =>
     forwardFeature(
       addDependency(text, crate, `../../${dir}`, 'app/backend/Cargo.toml'),
       'operator-probes',
@@ -136,7 +135,7 @@ export async function planCollector(root: string, argv: string[]) {
     ),
   );
   const registry = holding(root, appBackend, /pub static REGISTRY\b/);
-  await change(registry, (text) =>
+  await edit(registry, (text) =>
     appendToList(
       text,
       /pub static REGISTRY\b[\s\S]*?collectors:\s*&\[/,
@@ -144,13 +143,13 @@ export async function planCollector(root: string, argv: string[]) {
       registry,
     ),
   );
-  await change(registry, (text) => addFrontendOwner(text, dir, registry));
-  await change(frontendList, (text) =>
+  await edit(registry, (text) => addFrontendOwner(text, dir, registry));
+  await edit(frontendList, (text) =>
     addFrontendFeature(text, camel, `../../${dir}/frontend/feature.js`),
   );
   const native = `${dir}/tests/native/${slug}-worker.test.ts`;
-  await change(testPlan, (text) => addNativeShard(text, slug, [native]));
-  if (exists(root, workflow)) await change(workflow, (text) => addWorkflowShard(text, slug));
+  await edit(testPlan, (text) => addNativeShard(text, slug, [native]));
+  if (exists(root, workflow)) await edit(workflow, (text) => addWorkflowShard(text, slug));
 
   const { collection } = values;
   plan.notes.push(

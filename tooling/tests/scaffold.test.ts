@@ -37,16 +37,20 @@ const registry = ['app/backend/features.rs', 'app/backend/lib.rs'].find(
     fs.existsSync(candidate) && /pub static REGISTRY\b/.test(fs.readFileSync(candidate, 'utf8')),
 )!;
 
-// A copy of the repository's owners and app/, for what needs a collector that exists only there.
+// A copy of the repository's workspace, for what needs a collector that exists only there.
 let copy = '';
 before(() => {
   copy = temporary();
   for (const entry of [
     'Cargo.toml',
+    'Cargo.lock',
+    'rust-toolchain.toml',
     'app',
     'core',
     'collectors',
     'features',
+    'ops/host-manager',
+    'tooling/ci/dispatch-ci',
     'tooling/ci/test-plan.json',
     '.github/workflows/checks.yml',
   ])
@@ -106,10 +110,8 @@ test('with no flags, a feature is a backend crate with a switch, a view permissi
   assert.match(manifest, /#\[cfg\(test\)\]\n#\[path = "tests\/backend\/feature.rs"\]\nmod tests;/);
   assert.match(file(plan, 'features/parking/tests/backend/feature.rs'), /p\.id == "parking.view"/);
 
-  assert.deepEqual(
-    [...plan.changes.keys()].sort(),
-    ['Cargo.toml', 'app/backend/Cargo.toml', registry].sort(),
-  );
+  // The workspace's members cover it already, so Cargo.toml is no change.
+  assert.deepEqual([...plan.changes.keys()].sort(), ['app/backend/Cargo.toml', registry].sort());
   // The registry's last feature, there while the app's Cargo feature of its name is on, as
   // it is by default.
   assert.match(
@@ -123,7 +125,10 @@ test('with no flags, a feature is a backend crate with a switch, a view permissi
   );
   assert.match(app, /^parking = \["dep:dispatch-parking"\]$/m);
   assert.match(app, /^default = \[[^\]]*"parking",?\s*\]/m);
-  assert.match(file(plan, 'Cargo.toml'), /members = \[[^\]]*("features\/\*"|"features\/parking")/);
+  assert.match(
+    plan.changes.get('Cargo.toml') ?? fs.readFileSync('Cargo.toml', 'utf8'),
+    /members = \[[^\]]*("features\/\*"|"features\/parking")/,
+  );
 });
 
 test('--always-on leaves out the switch and, with nothing to gate, the permission', async () => {
@@ -193,7 +198,6 @@ test('--api writes one endpoint behind the view permission, its client function 
   assert.deepEqual(
     [...plan.changes.keys()].sort(),
     [
-      'Cargo.toml',
       'app/backend/Cargo.toml',
       registry,
       'app/tests/backend/integration/http_routes.rs',
@@ -635,6 +639,16 @@ test('without --dry-run it writes into the root, and refuses to write over an ow
   assert.equal(wrote.status, 0, wrote.stderr);
   assert(fs.existsSync(path.join(copy, 'features/desk/frontend/settings/DeskSettings.tsx')));
   assert.match(fs.readFileSync(path.join(copy, registry), 'utf8'), /&dispatch_desk::FEATURE,/);
+  // Builds run with --locked: Cargo.lock lists the new crate, and the app's use of it.
+  if (spawnSync('cargo', ['--version'], { cwd: copy }).status === 0) {
+    assert(listed(wrote.stdout, 'Changed').includes('Cargo.lock'), wrote.stdout);
+    const lock = fs.readFileSync(path.join(copy, 'Cargo.lock'), 'utf8');
+    assert.match(lock, /\[\[package\]\]\nname = "dispatch-desk"\nversion = "0\.0\.0"\n/);
+    assert.match(
+      lock,
+      /name = "dispatch-backend"\nversion = "0\.0\.0"\ndependencies = \[\n( "[^"]+",\n)* "dispatch-desk",\n/,
+    );
+  }
   const again = generate('new-feature', ['desk', '--root', copy]);
   assert.equal(again.status, 1);
   assert.match(again.stderr, /desk is taken/);

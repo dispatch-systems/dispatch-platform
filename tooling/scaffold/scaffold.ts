@@ -484,6 +484,17 @@ export const emptyPlan = (): Plan => ({ files: new Map(), changes: new Map(), no
 /** A file's content as the plan leaves it: changed already, or as it is. */
 export const current = (plan: Plan, root: string, file: string) =>
   plan.changes.get(file) ?? read(root, file);
+/** Plans an edit of an existing file, formatted; an edit that leaves it as it is, is none. */
+export async function change(
+  plan: Plan,
+  root: string,
+  file: string,
+  edit: (text: string) => string,
+) {
+  const content = await format(file, edit(current(plan, root, file)));
+  if (content !== read(root, file)) plan.changes.set(file, content);
+  else plan.changes.delete(file);
+}
 
 /**
  * Writes the plan into the root, or with `dryRun` prints what it would write and changes
@@ -498,15 +509,43 @@ export function finish(plan: Plan, root: string, options: { dryRun: boolean; out
       fs.mkdirSync(path.dirname(path.join(target, file)), { recursive: true });
       fs.writeFileSync(path.join(target, file), content);
     }
+  const changed = [...plan.changes.keys()];
+  // Builds run with --locked, which refuses a crate Cargo.lock does not list.
+  const crate = [...plan.files.keys()].some((file) => file.endsWith('/Cargo.toml'));
+  if (crate && options.dryRun)
+    plan.notes.unshift(
+      'Cargo.lock would list the new crate, as `cargo update --workspace` adds it.',
+    );
+  else if (crate && exists(root, 'Cargo.lock')) {
+    const before = read(root, 'Cargo.lock');
+    if (lockWorkspace(root)) {
+      if (read(root, 'Cargo.lock') !== before) changed.push('Cargo.lock');
+    } else
+      plan.notes.unshift(
+        'Cargo.lock does not list the new crate yet, and builds with --locked refuse it: ' +
+          'run `cargo update --workspace`.',
+      );
+  }
   const verb = options.dryRun ? 'Would write' : 'Wrote';
   const lines = [
     `${verb}:`,
     ...[...plan.files.keys()].sort().map((file) => `  ${file}`),
     `${options.dryRun ? 'Would change' : 'Changed'}:`,
-    ...[...plan.changes.keys()].sort().map((file) => `  ${file}`),
+    ...changed.sort().map((file) => `  ${file}`),
   ];
   if (plan.notes.length) lines.push('Next:', ...plan.notes.map((note) => `  - ${note}`));
   process.stdout.write(`${lines.join('\n')}\n`);
+}
+/**
+ * Has Cargo.lock list the workspace's crates as they now are, without the network: only the
+ * workspace's own entries change, and every other crate keeps its locked version.
+ */
+function lockWorkspace(root: string) {
+  const result = spawnSync('cargo', ['update', '--workspace', '--offline', '--quiet'], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  return !result.error && result.status === 0;
 }
 
 /** Runs a generator's entry point: usage errors print the usage, others their message. */

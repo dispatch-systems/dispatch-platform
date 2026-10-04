@@ -9,10 +9,10 @@ import {
   appBackend,
   appendToList,
   capabilitiesOf,
+  change,
   collectionsOf,
   collectors,
   coreParts,
-  current,
   emptyPlan,
   exists,
   features,
@@ -325,10 +325,9 @@ export async function planFeature(root: string, argv: string[]) {
   // List it in app/: the workspace, the app's dependencies and its Cargo feature, the
   // registry, the route table's inventory and the frontend's order and list. Its manifest
   // brings its routes.
-  const change = async (file: string, edit: (text: string) => string) =>
-    plan.changes.set(file, await format(file, edit(current(plan, root, file))));
-  await change('Cargo.toml', (text) => addWorkspaceMember(text, dir));
-  await change('app/backend/Cargo.toml', (text) => {
+  const edit = (file: string, apply: (text: string) => string) => change(plan, root, file, apply);
+  await edit('Cargo.toml', (text) => addWorkspaceMember(text, dir));
+  await edit('app/backend/Cargo.toml', (text) => {
     const app = 'app/backend/Cargo.toml';
     const listed = addAppFeature(
       addDependency(text, crate, `../../${dir}`, app, { optional: true }),
@@ -347,16 +346,16 @@ export async function planFeature(root: string, argv: string[]) {
   // The registry has it while the app's Cargo feature does.
   const registry = holding(root, appBackend, /pub static REGISTRY\b/);
   const featureList = /pub static REGISTRY\b[\s\S]*?features:\s*&\[/;
-  await change(registry, (text) =>
+  await edit(registry, (text) =>
     [`#[cfg(feature = "${name}")]`, `&${ident}::FEATURE,`].reduce(
       (listed, line) => appendToList(listed, featureList, line, registry),
       text,
     ),
   );
-  if (values.frontend) await change(registry, (text) => addFrontendOwner(text, dir, registry));
+  if (values.frontend) await edit(registry, (text) => addFrontendOwner(text, dir, registry));
   // The app's export test writes its API type to its api/generated/ while the build has it.
   if (values.api)
-    await change(typescriptExport, (text) => {
+    await edit(typescriptExport, (text) => {
       const anchor = '    bindings.insert(ACCESS_CATALOG.into(), access_catalog());\n';
       if (!text.includes(anchor))
         throw new Error(
@@ -373,11 +372,11 @@ export async function planFeature(root: string, argv: string[]) {
     ...(values.mcp ? [`("GET", "/api/v1/${slug}", Agent("read"), Read, false),`] : []),
   ];
   for (const row of rows)
-    await change(routeInventory, (text) =>
+    await edit(routeInventory, (text) =>
       appendToList(text, /const INVENTORY: &\[Row\] = &\[/, row, routeInventory),
     );
   if (values.frontend)
-    await change(frontendList, (text) =>
+    await edit(frontendList, (text) =>
       addFrontendFeature(text, camel, `../../${dir}/frontend/feature.js`),
     );
 
