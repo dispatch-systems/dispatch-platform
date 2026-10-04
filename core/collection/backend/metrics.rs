@@ -14,6 +14,28 @@ use std::{
     time::Instant,
 };
 
+/// Which of a run's counts is its workload: what Diagnostics compares a collection's runs
+/// per item of.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Counted {
+    Employees,
+    Timecards,
+    Itineraries,
+    Meals,
+    Rows,
+}
+impl Counted {
+    /// Its field in a job's metrics, as the API sends them.
+    pub const fn field(self) -> &'static str {
+        match self {
+            Self::Employees => "employees",
+            Self::Timecards => "timecards",
+            Self::Itineraries => "itineraries",
+            Self::Meals => "meals",
+            Self::Rows => "rows",
+        }
+    }
+}
 /// What a finished collection brought, as its collector counts it from its data.
 #[derive(Default)]
 pub struct Counts {

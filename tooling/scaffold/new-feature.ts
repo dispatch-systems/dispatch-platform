@@ -27,7 +27,6 @@ import {
   nextAgentOrder,
   nextMigration,
   nextPermissionOrder,
-  nextToggleGroupOrder,
   pageOf,
   parseArguments,
   repositoryRoot,
@@ -266,7 +265,8 @@ export function featureValues(root: string, argv: string[]) {
     testCollectors: used.map((collector) => `&${identOf(collector)}::COLLECTOR`).join(', '),
     mcp,
     agentOrder: mcp ? nextAgentOrder(root) : 0,
-    toggleGroupOrder: mcp ? nextToggleGroupOrder(root) : 0,
+    // How a key's row on the Agents page names its data when the key doesn't read it.
+    missing: names.label.toLowerCase(),
     // A switch shows on the DSPs page with its icon, which the frontend's platform slots give.
     frontend: screens || switched,
     screens,

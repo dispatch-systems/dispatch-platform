@@ -6,14 +6,4 @@ import { wording } from './audit-wording.js';
 export const slots: PlatformSlots = {
   switch: { id: 'timecard', icon: CalendarDays },
   auditWording: wording,
-  readToggles: {
-    label: 'Timecard',
-    missing: 'timecard data',
-    order: 20,
-    sources: { timecards: 'Timecard', meal_breaks: 'Meal Breaks' },
-    toggles: [
-      { id: 'timecards', label: 'Timecards', missing: 'timecards', source: 'timecards' },
-      { id: 'meal_breaks', label: 'Meal breaks', missing: 'meal breaks', source: 'meal_breaks' },
-    ],
-  },
 };

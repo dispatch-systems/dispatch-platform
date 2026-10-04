@@ -1,9 +1,16 @@
 //! The TypeScript the owners' API types are written to, each in its owner's api/generated/,
-//! and the access catalog's, in tenancy's, checked against the files committed there.
+//! and the catalogs': the access catalog and the capabilities' labels in tenancy's, the
+//! Agents page's read toggles in mcp's and the collections' labels in collection's, checked
+//! against the files committed there.
 use dispatch_core::accounts::api::types::*;
 use dispatch_core::collection::api::{jobs::*, metrics::*, types::*};
-use dispatch_core::collection::registry::Provider;
+use dispatch_core::collection::{
+    browser::{self, Collected, Pending, browseros},
+    registry::Provider,
+};
+use dispatch_core::db::{Kind, Migrations};
 use dispatch_core::foundation::config::{Environment, ProviderMode};
+use dispatch_core::manifest::{Capability, Collection, Collector};
 use dispatch_core::mcp::api::types::*;
 use dispatch_core::platform_owner::api::types::*;
 use dispatch_core::server::api::types::*;
@@ -49,6 +56,12 @@ use ts_rs::TS;
 
 /// The access catalog's file: its types are tenancy's.
 const ACCESS_CATALOG: &str = "core/tenancy/api/generated/access-catalog.ts";
+// The labels only the platform owner's pages show, each in a file of its own, so that no
+// other page loads them: how the DSPs page names what a page needs, the Agents page's read
+// toggles, and how Diagnostics and the audit log name each collection.
+const CAPABILITIES: &str = "core/tenancy/api/generated/capabilities.ts";
+const READ_TOGGLES: &str = "core/mcp/api/generated/read-toggles.ts";
+const COLLECTIONS: &str = "core/collection/api/generated/collections.ts";
 
 /// Each binding by its file's path from the repository root, which its type's `export_to`
 /// names, so ts-rs writes the imports between owners' folders from there.
@@ -266,7 +279,120 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         DriverDetails,
     ));
     bindings.insert(ACCESS_CATALOG.into(), access_catalog());
+    bindings.insert(CAPABILITIES.into(), capabilities());
+    bindings.insert(READ_TOGGLES.into(), read_toggles());
+    bindings.insert(COLLECTIONS.into(), collections());
     bindings
+}
+
+/// A generated file of constants, each `as const`, under a header naming what they are
+/// generated from.
+fn generated(from: &str, constants: &[(&str, serde_json::Value)]) -> String {
+    let mut text = format!(
+        "// Generated from {from}.\n// Run `npm run contracts:generate` after changing them.\n"
+    );
+    for (name, value) in constants {
+        text.push_str(&format!(
+            "export const {name} = {} as const;\n",
+            serde_json::to_string_pretty(value).unwrap()
+        ));
+    }
+    text
+}
+
+/// How the DSPs page names each capability a page needs.
+fn capabilities() -> String {
+    let labels = capability_labels(dispatch_core::manifest::registry().collectors);
+    generated(
+        "the collectors' capabilities",
+        &[("capabilityLabels", labels.into())],
+    )
+}
+/// Each capability `collectors` supply, named as the first of them listed that supplies it
+/// names it.
+fn capability_labels(collectors: &[&dyn Collector]) -> serde_json::Map<String, serde_json::Value> {
+    let mut labels = serde_json::Map::new();
+    for collector in collectors {
+        for capability in collector.capabilities() {
+            labels
+                .entry(capability.id)
+                .or_insert(capability.label.into());
+        }
+    }
+    labels
+}
+
+/// The Agents page's switches: each feature's kinds of data under its switch's name, the
+/// features in the order of their kinds, with how a key's row names what it doesn't read.
+fn read_toggles() -> String {
+    use dispatch_core::{manifest::registry, mcp::api::types::AgentArea};
+    use serde_json::json;
+    let mut groups: Vec<_> = registry()
+        .features
+        .iter()
+        .filter(|feature| !feature.mcp.reads.is_empty())
+        .collect();
+    groups.sort_by_key(|feature| feature.mcp.reads.iter().map(|area| area.order()).min());
+    let listed = groups.iter().flat_map(|feature| feature.mcp.reads).copied();
+    assert!(
+        listed.eq(AgentArea::all()),
+        "the Agents page lists each kind of data once, under its feature, in the one order"
+    );
+    let groups: Vec<_> = groups
+        .iter()
+        .map(|feature| {
+            let switch = feature
+                .switch
+                .expect("a feature whose data agents read has a switch");
+            json!({
+                "label": switch.label,
+                "missing": feature.mcp.missing,
+                "sources": feature.mcp.sources.iter()
+                    .map(|source| json!({"id": source.as_str(), "label": source.label()}))
+                    .collect::<Vec<_>>(),
+                "toggles": feature.mcp.reads.iter()
+                    .map(|area| json!({
+                        "id": area.as_str(),
+                        "label": area.label(),
+                        "hint": area.hint(),
+                        "missing": area.missing(),
+                        "source": area.source().as_str(),
+                        "with": area.with().map(AgentArea::as_str),
+                        "optIn": area.opt_in(),
+                    }))
+                    .collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    generated(
+        "the features' read toggles",
+        &[("readToggleGroups", groups.into())],
+    )
+}
+
+/// Every collection, with the collector that runs it, as Diagnostics and the audit log name
+/// it: its job kind, its schedules' collection and label, and what its workload counts.
+fn collections() -> String {
+    use serde_json::json;
+    let collections: Vec<_> = Provider::all()
+        .flat_map(|provider| {
+            let collector = provider.collector();
+            collector.collections().iter().map(move |collection| {
+                json!({
+                    "kind": collection.job_kind,
+                    "provider": collector.id(),
+                    "schedule": collection.schedule,
+                    "label": collection.label,
+                    "unit": collection.unit,
+                    "counted": collection.counted.field(),
+                })
+            })
+        })
+        .collect();
+    generated(
+        "the collectors' collections",
+        &[("collections", collections.into())],
+    )
 }
 
 /// Runtime catalogs, exported from their actual values rather than Rust source formatting.
@@ -349,16 +475,10 @@ fn access_catalog() -> String {
         ("permissionGroups", json!(groups)),
         ("impliedPermissions", json!(implied)),
     ];
-    let mut text = "// Generated from backend feature, collector and permission catalogs.\n\
-                    // Run `npm run contracts:generate` after changing them.\n"
-        .to_owned();
-    for (name, value) in constants {
-        text.push_str(&format!(
-            "export const {name} = {} as const;\n",
-            serde_json::to_string_pretty(&value).unwrap()
-        ));
-    }
-    text
+    generated(
+        "backend feature, collector and permission catalogs",
+        &constants,
+    )
 }
 /// Every owner's api/generated/ folder there is: core's parts', the collectors' and the
 /// features'.
@@ -415,6 +535,89 @@ fn typescript_contracts_match_the_rust_types() {
     assert!(
         stored == bindings,
         "an owner's api/generated/ is out of date: run `npm run contracts:generate`"
+    );
+}
+/// A collector that only supplies capabilities, under its id.
+struct StandIn(&'static str, &'static [Capability]);
+impl Collector for StandIn {
+    fn id(&self) -> &'static str {
+        self.0
+    }
+    fn label(&self) -> &'static str {
+        self.0
+    }
+    fn capabilities(&self) -> &'static [Capability] {
+        self.1
+    }
+    fn collections(&self) -> &'static [Collection] {
+        &[]
+    }
+    fn database(&self) -> Kind {
+        unreachable!("a stand-in only supplies capabilities")
+    }
+    fn migrations(&self) -> &'static [Migrations] {
+        &[]
+    }
+    fn seed(&self, _: &str) -> String {
+        unreachable!("a stand-in only supplies capabilities")
+    }
+    fn marker(&self) -> Option<&'static str> {
+        None
+    }
+    fn browser_entries(&self) -> &'static [&'static str] {
+        &[]
+    }
+    fn network(&self) -> browseros::NetworkPolicy {
+        unreachable!("a stand-in only supplies capabilities")
+    }
+    fn validate_credentials(&self, _: &serde_json::Value) -> dispatch_core::Result<()> {
+        unreachable!("a stand-in only supplies capabilities")
+    }
+    fn driver<'a>(
+        &self,
+        _: browseros::Session,
+        _: &'a Path,
+        _: Option<&'a str>,
+    ) -> Pending<'a, Box<dyn browser::Driver>> {
+        unreachable!("a stand-in only supplies capabilities")
+    }
+    fn fixture(&self, _: &str, _: &serde_json::Value) -> dispatch_core::Result<Collected> {
+        unreachable!("a stand-in only supplies capabilities")
+    }
+    fn progress(&self, _: &serde_json::Value) -> &'static str {
+        unreachable!("a stand-in only supplies capabilities")
+    }
+}
+#[test]
+fn a_capability_is_named_by_the_first_collector_listed_that_supplies_it() {
+    let alpha = StandIn(
+        "alpha",
+        &[Capability {
+            id: "photos",
+            label: "a photo source",
+        }],
+    );
+    let beta = StandIn(
+        "beta",
+        &[
+            Capability {
+                id: "photos",
+                label: "another photo source",
+            },
+            Capability {
+                id: "notes",
+                label: "a notes source",
+            },
+        ],
+    );
+    let labels = capability_labels(&[&alpha, &beta]);
+    assert_eq!(labels["photos"], "a photo source");
+    assert_eq!(labels["notes"], "a notes source");
+    assert_eq!(labels.get("maps"), None);
+    // Listed the other way round, the other names it.
+    assert_eq!(
+        capability_labels(&[&beta, &alpha])["photos"],
+        "another photo source"
     );
 }
 #[test]

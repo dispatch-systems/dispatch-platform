@@ -14,26 +14,23 @@ import {
 } from '../../frontend/runtime/data-policy.js';
 import {
   cacheRules,
-  capabilityLabelOf,
-  collectionLabels,
   connectionCard,
   connectionCards,
   errorLabelOf,
   installFeatures,
   isLongPoll,
   pageTabs,
-  readToggles,
+  runWording,
   scheduleIssueOf,
   auditWording,
   loadPlatformSlots,
   switchIcon,
-  type CollectionLabels,
   type ConnectionCard,
   type DspRoute,
   type DspRouteId,
   type PageTab,
   type PlatformSlots,
-  type ReadToggles,
+  type RunWording,
   type SettingsTab,
 } from '../../frontend/runtime/slots.js';
 import type { PageFeature } from '../../../tenancy/api/index.js';
@@ -44,27 +41,6 @@ import type { PageFeature } from '../../../tenancy/api/index.js';
 const pageId = (id: string) => id as DspRouteId;
 const switchId = (id: string) => id as PageFeature;
 const loads = (slots: PlatformSlots) => async () => ({ slots });
-const group = (label: string, order: number): ReadToggles => ({
-  label,
-  missing: `${label.toLowerCase()} data`,
-  order,
-  sources: {},
-  toggles: [],
-});
-
-test('read toggles come group by group in their order, ties in the order the owners are listed', async () => {
-  installFeatures([
-    { name: 'alpha', platformSlots: loads({ readToggles: group('Alpha', 20) }) },
-    { name: 'beta' },
-    { name: 'gamma', platformSlots: loads({ readToggles: group('Gamma', 10) }) },
-    { name: 'delta', platformSlots: loads({ readToggles: group('Delta', 20) }) },
-  ]);
-  await loadPlatformSlots();
-  assert.deepEqual(
-    readToggles().map((each) => each.label),
-    ['Gamma', 'Alpha', 'Delta'],
-  );
-});
 
 test("a page's switch shows the icon its feature declares, once loaded", async () => {
   installFeatures([
@@ -125,30 +101,20 @@ test('connection cards come in the order their collectors are listed', () => {
   assert.equal(connectionCard('other'), undefined);
 });
 
-test('collections come with the collector that runs them, in the order they are declared', async () => {
-  const collection = (kind: string): CollectionLabels => ({
-    kind,
-    schedule: { id: kind, label: kind },
-    unit: 'item',
-    count: (metrics) => metrics.rows,
+test("a collection's runs are worded by the first owner listed that words them, once loaded", async () => {
+  const wording = (collected: string): RunWording => ({
+    collected: () => collected,
+    reads: () => [],
+    slowReads: () => null,
   });
   installFeatures([
-    {
-      name: 'beta',
-      platformSlots: loads({ collections: [collection('beta.b'), collection('beta.a')] }),
-    },
-    { name: 'gamma' },
-    { name: 'alpha', platformSlots: loads({ collections: [collection('alpha.a')] }) },
+    { name: 'alpha' },
+    { name: 'beta', platformSlots: loads({ runWording: wording('beta') }) },
+    { name: 'gamma', platformSlots: loads({ runWording: wording('gamma') }) },
   ]);
+  assert.equal(runWording(), undefined);
   await loadPlatformSlots();
-  assert.deepEqual(
-    collectionLabels().map(({ provider, kind }) => [provider, kind]),
-    [
-      ['beta', 'beta.b'],
-      ['beta', 'beta.a'],
-      ['alpha', 'alpha.a'],
-    ],
-  );
+  assert.equal(runWording()?.collected({} as never), 'beta');
 });
 
 test('cache rules keep each owner’s reads current, a read changing when any owner says so', () => {
@@ -211,22 +177,6 @@ test('an owner says what its error codes, schedule issues and long reads are', (
   assert.equal(errorLabelOf('unknown'), undefined);
   assert.equal(isLongPoll('/api/dsp/gamma/updates?after=1'), true);
   assert.equal(isLongPoll('/api/dsp/gamma'), false);
-});
-
-test('a capability is named by the first connection listed that provides it', async () => {
-  installFeatures([
-    { name: 'alpha', platformSlots: loads({ capabilities: { photos: 'a photo source' } }) },
-    {
-      name: 'beta',
-      platformSlots: loads({
-        capabilities: { photos: 'another photo source', notes: 'a notes source' },
-      }),
-    },
-  ]);
-  await loadPlatformSlots();
-  assert.equal(capabilityLabelOf('photos'), 'a photo source');
-  assert.equal(capabilityLabelOf('notes'), 'a notes source');
-  assert.equal(capabilityLabelOf('maps'), undefined);
 });
 
 const page = (id: string, remembered?: boolean): DspRoute => ({

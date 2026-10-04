@@ -234,16 +234,6 @@ export function nextAgentOrder(root: string) {
       highest = Math.max(highest, Number(match[1]));
   return (Math.floor(highest / 10) + 1) * 10;
 }
-/** A place after every group of read toggles the owners' frontends show on the Agents page. */
-export function nextToggleGroupOrder(root: string) {
-  let highest = 0;
-  for (const dir of ['features', 'collectors'])
-    for (const file of files(root, dir, /\/frontend\/platform-slots\.ts$/)) {
-      const group = /\breadToggles:\s*\{[^]*?\border:\s*(\d+)/.exec(read(root, file));
-      if (group) highest = Math.max(highest, Number(group[1]));
-    }
-  return (Math.floor(highest / 10) + 1) * 10;
-}
 /** The rules' record of every shipped migration, by database. */
 export const migrationsHistory = 'app/tests/rules/migrations-history.json';
 /** The owner a source file belongs to: `features/<name>`, `collectors/<name>`, `core` or `app`. */
@@ -323,7 +313,7 @@ export const collectionsOf = (root: string, site: string) =>
 export function capabilitiesOf(root: string, site: string) {
   const source = read(root, `collectors/${site}/collector.rs`);
   const list = /fn capabilities\(&self\)[^{]*\{\s*&\[([^\]]*)\]/.exec(source)?.[1] ?? '';
-  return [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1]!);
+  return [...list.matchAll(/\bid:\s*"([^"]+)"/g)].map((match) => match[1]!);
 }
 /**
  * The feature file that keeps `site`'s `collection` already, if any: each collection has one

@@ -142,12 +142,14 @@ pub const CONNECTIONS: &str = crate::collection::registry::CONNECTIONS.id;
 
 fn connection(provider: Provider) -> Feature {
     let collector = provider.collector();
+    let provides: Vec<_> = collector.capabilities().iter().map(|c| c.id).collect();
     Feature {
         id: collector.id(),
         label: collector.label(),
         kind: Kind::Connection,
         permissions: &[],
-        provides: collector.capabilities(),
+        // Made once, with the catalog, which lasts as long as the process.
+        provides: Box::leak(provides.into_boxed_slice()),
         requires: &[],
         default: false,
     }

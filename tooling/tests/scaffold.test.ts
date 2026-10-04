@@ -447,19 +447,20 @@ test('--mcp writes one agent endpoint, its read toggle and an eval question', as
   );
   assert.match(mcp, /features: &\["parking"\],/);
   assert.match(file(plan, 'features/parking/mcp/catalog.rs'), /path: "\/api\/v1\/parking",/);
-  // The Agents page offers its kind of data, in a group after every other owner's.
-  const slots = file(plan, 'features/parking/frontend/platform-slots.ts');
-  assert.match(
-    slots,
-    /toggles: \[\{ id: 'parking', label: 'Parking', missing: 'Parking data', source: 'parking' \}\]/,
-  );
-  const order = Number(/readToggles: \{[^}]*order: (\d+),/.exec(slots)?.[1]);
+  // The Agents page offers its kind of data, generated from its read toggle, in a group after
+  // every other owner's: the groups follow their kinds' order.
+  assert.match(mcp, /missing: "parking",\s*order: \d+,/);
+  assert.match(mcp, /reads: &\[PARKING\],\s*missing: "parking data",/);
+  const order = Number(/ReadToggle \{[^}]*order: (\d+),/.exec(mcp)?.[1]);
   for (const owner of fs.readdirSync('features')) {
-    const other = `features/${owner}/frontend/platform-slots.ts`;
+    const other = `features/${owner}/mcp/mod.rs`;
     if (!fs.existsSync(other)) continue;
-    const group = /readToggles: \{[^]*?order: (\d+),/.exec(fs.readFileSync(other, 'utf8'));
-    if (group) assert(Number(group[1]) < order, `${other} has the place ${order}`);
+    for (const toggle of fs
+      .readFileSync(other, 'utf8')
+      .matchAll(/ReadToggle \{[^}]*order: (\d+),/g))
+      assert(Number(toggle[1]) < order, `${other} has the place ${order}`);
   }
+  assert.doesNotMatch(file(plan, 'features/parking/frontend/platform-slots.ts'), /readToggles/);
   assert.match(
     file(plan, 'features/parking/tests/browser/parking.spec.ts'),
     /test\('a new key reads Parking, under Parking'/,
@@ -691,7 +692,8 @@ test('new:collector writes its connection, one collection with a fixture, a card
   ])
     assert.match(baseline, new RegExp(`CREATE TABLE IF NOT EXISTS ${table} \\(`));
   // Its card is the core's ConnectionCard, in the connectionCard slot; its collection is named
-  // for Diagnostics and the audit log, and its capability for the pages that require it.
+  // for Diagnostics and the audit log, and its capability for the pages that require it, by its
+  // manifest, which the labels are generated from.
   const manifest_ = file(plan, 'collectors/fleet/frontend/feature.ts');
   assert.match(manifest_, /connectionCard: \{\s*provider: 'fleet',\s*read,/);
   assert.match(
@@ -699,12 +701,15 @@ test('new:collector writes its connection, one collection with a fixture, a card
     /schedule_fleet_records_required: 'Connect Fleet before enabling Records collections.'/,
   );
   assert.match(file(plan, 'collectors/fleet/frontend/FleetCard.tsx'), /<ConnectionCard\b/);
-  const slots = file(plan, 'collectors/fleet/frontend/platform-slots.ts');
   assert.match(
-    slots,
-    /kind: 'fleet\.records\.collect',\s*schedule: \{ id: 'fleet_records', label: 'Records' \},/,
+    manifest,
+    /schedule: "fleet_records",\s*label: "Records",\s*(\/\/[^\n]*\s*)?unit: "row",\s*counted: Counted::Rows,/,
   );
-  assert.match(slots, /capabilities: \{ records: 'a records source' \},/);
+  assert.match(manifest, /Capability \{\s*id: "records",\s*label: "a records source",\s*\}/);
+  assert.match(
+    file(plan, 'collectors/fleet/frontend/platform-slots.ts'),
+    /auditWording: \{ collected: \{ fleet: 'Fleet' \} \},\n\};/,
+  );
   assert.match(
     file(plan, 'collectors/fleet/tests/browser/fleet.spec.ts'),
     /getByRole\('button', \{ name: 'Connect Fleet' \}\)/,

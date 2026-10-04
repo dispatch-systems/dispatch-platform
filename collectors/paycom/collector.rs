@@ -21,13 +21,13 @@ use dispatch_core::{
             egress::HostPolicy,
             http::RequestHosts,
         },
-        metrics::Counts,
+        metrics::{Counted, Counts},
         registry,
     },
     db::{self, Db, Kind, Migration, Migrations, Store, migrations::Apply::Sql, s},
     ensure,
     foundation::{crypto, validate as v},
-    manifest::{Collection, Collector, Tables},
+    manifest::{Capability, Collection, Collector, Tables},
 };
 use serde_json::{Value, json};
 use std::{collections::HashSet, path::Path};
@@ -98,6 +98,9 @@ const TABLES: Tables = &[(
 static COLLECTIONS: [Collection; 1] = [Collection {
     job_kind: timecards::JOB_KIND,
     schedule: "paycom",
+    label: "Paycom",
+    unit: "employee",
+    counted: Counted::Employees,
     unconnected: "schedule_paycom_required",
 }];
 
@@ -109,8 +112,11 @@ impl Collector for Paycom {
     fn label(&self) -> &'static str {
         "Paycom"
     }
-    fn capabilities(&self) -> &'static [&'static str] {
-        &["timecards"]
+    fn capabilities(&self) -> &'static [Capability] {
+        &[Capability {
+            id: "timecards",
+            label: "a timecard source",
+        }]
     }
     fn collections(&self) -> &'static [Collection] {
         &COLLECTIONS

@@ -14,6 +14,7 @@ use dispatch_core::mcp::{
 pub const TIMECARDS_SOURCE: AgentSource = AgentSource::new(&ReadSource {
     id: "timecards",
     switch: "Timecard",
+    label: "Timecard",
     order: 20,
     features: &["timecard.daily", "timecard.employees"],
     key: "timecards",
@@ -22,6 +23,7 @@ pub const TIMECARDS_SOURCE: AgentSource = AgentSource::new(&ReadSource {
 pub const MEAL_BREAKS_SOURCE: AgentSource = AgentSource::new(&ReadSource {
     id: "meal_breaks",
     switch: "Timecard · Meal Breaks",
+    label: "Meal Breaks",
     order: 30,
     features: &["timecard.meal_breaks"],
     key: "mealBreaks",
@@ -30,9 +32,12 @@ pub const MEAL_BREAKS_SOURCE: AgentSource = AgentSource::new(&ReadSource {
 pub const TIMECARDS: AgentArea = AgentArea::new(&ReadToggle {
     id: "timecards",
     label: "Timecards",
+    hint: None,
+    missing: "timecards",
     order: 30,
     source: TIMECARDS_SOURCE,
     with: None,
+    opt_in: false,
     names: &[DriverSource::Paycom],
 });
 /// Cortex's meal breaks name drivers by their transporter IDs, Paycom's lunches by their
@@ -40,14 +45,18 @@ pub const TIMECARDS: AgentArea = AgentArea::new(&ReadToggle {
 pub const MEAL_BREAKS: AgentArea = AgentArea::new(&ReadToggle {
     id: "meal_breaks",
     label: "Meal breaks",
+    hint: None,
+    missing: "meal breaks",
     order: 40,
     source: MEAL_BREAKS_SOURCE,
     with: None,
+    opt_in: false,
     names: &[DriverSource::Paycom, DriverSource::Amazon],
 });
 
 pub const MCP: Mcp = Mcp {
     reads: &[TIMECARDS, MEAL_BREAKS],
+    missing: "timecard data",
     sources: &[TIMECARDS_SOURCE, MEAL_BREAKS_SOURCE],
     endpoints: catalog::ENDPOINTS,
     metrics: catalog::METRICS,

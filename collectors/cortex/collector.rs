@@ -25,12 +25,12 @@ use dispatch_core::{
             egress::HostPolicy,
             http::RequestHosts,
         },
-        metrics::Counts,
+        metrics::{Counted, Counts},
         registry,
     },
     db::{Kind, Migration, Migrations, migrations::Apply::Sql},
     foundation::validate as v,
-    manifest::{Collection, Collector},
+    manifest::{Capability, Collection, Collector},
 };
 use serde_json::Value;
 use std::path::Path;
@@ -102,21 +102,33 @@ static COLLECTIONS: [Collection; 4] = [
     Collection {
         job_kind: meals::JOB_KIND,
         schedule: "meal_break",
+        label: "Meal breaks",
+        unit: "itinerary",
+        counted: Counted::Itineraries,
         unconnected: "schedule_meals_required",
     },
     Collection {
         job_kind: scorecard::JOB_KIND,
         schedule: "scorecard",
+        label: "Scorecard",
+        unit: "row",
+        counted: Counted::Rows,
         unconnected: "schedule_scorecard_required",
     },
     Collection {
         job_kind: routes::JOB_KIND,
         schedule: "routes",
+        label: "Routes",
+        unit: "itinerary",
+        counted: Counted::Itineraries,
         unconnected: "schedule_routes_required",
     },
     Collection {
         job_kind: dvic::JOB_KIND,
         schedule: "dvic",
+        label: "DVIC",
+        unit: "row",
+        counted: Counted::Rows,
         unconnected: "schedule_dvic_required",
     },
 ];
@@ -129,8 +141,25 @@ impl Collector for Cortex {
     fn label(&self) -> &'static str {
         "Cortex"
     }
-    fn capabilities(&self) -> &'static [&'static str] {
-        &["meal_breaks", "routes", "dvic", "scorecard"]
+    fn capabilities(&self) -> &'static [Capability] {
+        &[
+            Capability {
+                id: "meal_breaks",
+                label: "a meal-break source",
+            },
+            Capability {
+                id: "routes",
+                label: "a route source",
+            },
+            Capability {
+                id: "dvic",
+                label: "a DVIC source",
+            },
+            Capability {
+                id: "scorecard",
+                label: "a scorecard source",
+            },
+        ]
     }
     fn collections(&self) -> &'static [Collection] {
         &COLLECTIONS

@@ -6,7 +6,7 @@ use crate::{
     Code, Error, Result, State,
     collection::{
         browser::{Collected, Driver, Pending, browseros},
-        metrics::Counts,
+        metrics::{Counted, Counts},
         registry::AddedStorage,
     },
     db::{self, Db, Kind, Migration, Migrations, Store},
@@ -549,8 +549,22 @@ pub struct Collection {
     pub job_kind: &'static str,
     /// The schedule `collection` that runs it.
     pub schedule: &'static str,
+    /// How Diagnostics and the audit log name it, and the schedules that run it.
+    pub label: &'static str,
+    /// One item of its workload, as Diagnostics compares its runs per item: "employee".
+    pub unit: &'static str,
+    /// The count of a run's measurements that is its workload.
+    pub counted: Counted,
     /// The error a schedule answers while its collector is not connected.
     pub unconnected: &'static str,
+}
+
+/// What a collector's connection supplies to the pages that require it, such as timecards.
+#[derive(Clone, Copy, Debug)]
+pub struct Capability {
+    pub id: &'static str,
+    /// How the DSPs page names it where a page needs it: "a timecard source".
+    pub label: &'static str,
 }
 
 /// Everything the platform needs to know about one provider: how to reach it and read
@@ -562,7 +576,7 @@ pub trait Collector: Sync {
     /// Its name as the dashboard shows it.
     fn label(&self) -> &'static str;
     /// What its connection supplies to the pages that require it (`features`).
-    fn capabilities(&self) -> &'static [&'static str];
+    fn capabilities(&self) -> &'static [Capability];
     /// What it reads, its main collection first; each is chosen by `job_kind_for`. `both`
     /// schedules run the first of every collector's.
     fn collections(&self) -> &'static [Collection];

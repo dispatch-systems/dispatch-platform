@@ -16,8 +16,12 @@ use crate::{
 };
 
 pub struct Mcp {
-    /// The kinds of data it holds that a key or app may be allowed to read.
+    /// The kinds of data it holds that a key or app may be allowed to read. The Agents page
+    /// lists their switches under the feature's name.
     pub reads: &'static [AgentArea],
+    /// How a key's row on the Agents page names all of its kinds together, when the key
+    /// reads none of them.
+    pub missing: &'static str,
     /// Its switches agents read from.
     pub sources: &'static [AgentSource],
     /// Its endpoints, each also an MCP tool.
@@ -42,6 +46,7 @@ pub struct Mcp {
 impl Mcp {
     pub const NONE: Self = Self {
         reads: &[],
+        missing: "",
         sources: &[],
         endpoints: &[],
         metrics: &[],

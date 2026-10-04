@@ -4,36 +4,4 @@ import { wording } from './audit-wording.js';
 // What Cortex puts in the platform owner's slots, loaded with the platform owner's pages.
 export const slots: PlatformSlots = {
   auditWording: wording,
-  capabilities: {
-    meal_breaks: 'a meal-break source',
-    routes: 'a route source',
-    dvic: 'a DVIC source',
-    scorecard: 'a scorecard source',
-  },
-  collections: [
-    {
-      kind: 'cortex.meal_breaks.collect',
-      schedule: { id: 'meal_break', label: 'Meal breaks' },
-      unit: 'itinerary',
-      count: (metrics) => metrics.itineraries,
-    },
-    {
-      kind: 'cortex.scorecard.collect',
-      schedule: { id: 'scorecard', label: 'Scorecard' },
-      unit: 'row',
-      count: (metrics) => metrics.rows,
-    },
-    {
-      kind: 'cortex.routes.collect',
-      schedule: { id: 'routes', label: 'Routes' },
-      unit: 'itinerary',
-      count: (metrics) => metrics.itineraries,
-    },
-    {
-      kind: 'cortex.dvic.collect',
-      schedule: { id: 'dvic', label: 'DVIC' },
-      unit: 'row',
-      count: (metrics) => metrics.rows,
-    },
-  ],
 };

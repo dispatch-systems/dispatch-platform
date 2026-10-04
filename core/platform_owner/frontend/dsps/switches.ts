@@ -1,4 +1,5 @@
 import type { Feature } from '../../../tenancy/api/index.js';
+import { capabilityLabels } from '../../../tenancy/api/generated/capabilities.js';
 import {
   featureCatalog,
   tabsOf,
@@ -7,6 +8,15 @@ import {
 
 // How the DSPs page switches a feature on or off, kept with the page rather than in the shell's
 // runtime, which every page loads.
+
+/**
+ * A capability as a page that needs it names it, as the first connection listed that provides it
+ * names it. Every capability a page requires has a label; the catalog test checks.
+ */
+export const capabilityLabel = (capability: string): string =>
+  Object.hasOwn(capabilityLabels, capability)
+    ? capabilityLabels[capability as keyof typeof capabilityLabels]
+    : capability;
 
 /**
  * What switching `id` would change, mirroring `set_feature` in the backend: enabling a
