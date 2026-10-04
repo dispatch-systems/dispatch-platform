@@ -239,6 +239,8 @@ fn each_collection_is_run_by_the_page_that_keeps_it() {
     assert!(!catalog::automates(&[]));
 }
 
+// `both` is Timecard's.
+#[cfg(feature = "timecard")]
 #[test]
 fn schedules_collect_the_same_collections() {
     crate::install();

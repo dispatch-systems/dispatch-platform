@@ -120,23 +120,11 @@ text_enum! {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ScheduleCollection(&'static str);
 impl ScheduleCollection {
-    /// Every collector's main collection, together.
-    pub const BOTH: Self = Self("both");
-    /// Every collection a schedule may name, as the registry declares them: each
-    /// collector's main collection, `both`, then the others. Each is one a feature keeps,
-    /// as the registry makes sure.
+    /// Every collection a schedule may name, as the registry declares them: the
+    /// collections a feature's alias runs, such as Timecard's `both`, the aliases, then the
+    /// others. Each is one a feature keeps, as the registry makes sure.
     pub fn all() -> impl Iterator<Item = Self> {
-        let collections = |main: bool| {
-            registry().collectors.iter().flat_map(move |collector| {
-                let collections = collector.collections().iter().enumerate();
-                collections
-                    .filter(move |(index, _)| (*index == 0) == main)
-                    .map(|(_, collection)| Self(collection.schedule))
-            })
-        };
-        collections(true)
-            .chain([Self::BOTH])
-            .chain(collections(false))
+        registry().schedule_collections().into_iter().map(Self)
     }
     pub fn parse(text: &str) -> Option<Self> {
         Self::all().find(|collection| collection.0 == text)

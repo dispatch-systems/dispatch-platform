@@ -110,15 +110,25 @@ pub fn schedules() -> &'static str {
         .expect("a page runs the schedules")
 }
 /// The page that runs a job kind or a schedule collection: the page of the feature that
-/// keeps the collection. `both`, and anything else, is the schedules' page's.
+/// keeps the collection, or declares the alias, as Timecard declares `both`. Anything else
+/// is the schedules' page's.
 pub fn automation(kind_or_collection: &str) -> &'static str {
     let registry = registry();
+    let aliasing = || {
+        registry.features.iter().copied().find(|feature| {
+            feature
+                .schedule_aliases
+                .iter()
+                .any(|alias| alias.schedule == kind_or_collection)
+        })
+    };
     registry
         .collectors
         .iter()
         .flat_map(|collector| collector.collections())
         .find(|c| c.job_kind == kind_or_collection || c.schedule == kind_or_collection)
         .and_then(|collection| registry.keeping(collection.job_kind))
+        .or_else(aliasing)
         .and_then(|feature| feature.switch)
         .map_or_else(schedules, |switch| switch.id)
 }
