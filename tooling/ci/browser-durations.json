@@ -1,5 +1,6 @@
 {
   "app/tests/browser/audit-access.spec.ts › audit access is only in the Platform Owner Dashboard, including old DSP links": 4.8,
+  "app/tests/browser/browser-update.spec.ts › reload preserves DSP, meal tab, selected date and search on mobile": 4.9,
   "app/tests/browser/dashboard-performance.spec.ts › 3000 employees use bounded pages, debounced search, and retain navigation state": 6.1,
   "app/tests/browser/dashboard-performance.spec.ts › failed initial session reads offer a usable retry": 1.8,
   "app/tests/browser/dashboard-performance.spec.ts › saving a DSP preference invalidates cached timecards and preserves the edited setting": 3.4,
@@ -77,7 +78,6 @@
   "core/platform_owner/tests/browser/mail-diagnostics.spec.ts › owner diagnostics shows pending mail, a failed delivery, and later recovery": 22.6,
   "core/server/tests/browser/browser-update.spec.ts › completed update waits for two idle seconds, restores filters, and reloads once": 4.8,
   "core/server/tests/browser/browser-update.spec.ts › open editing dialog protects input until it closes": 4.2,
-  "core/server/tests/browser/browser-update.spec.ts › reload preserves DSP, meal tab, selected date and search on mobile": 4.9,
   "core/server/tests/browser/browser-update.spec.ts › the audit log keeps its filters through an automatic update": 4.3,
   "core/server/tests/browser/browser-update.spec.ts › unavailable update check does not refresh or interrupt sign in": 2.8,
   "core/shell/tests/browser/sticky-headers.spec.ts › column headings stay pinned at 1440px below the DSP banner": 11.2,
