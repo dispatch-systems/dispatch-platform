@@ -24,16 +24,3 @@
   color: var(--muted-foreground);
   font-size: 12px;
 }
-.pagination-range {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 16px;
-}
-.pagination-range > span {
-  margin-right: auto;
-  color: var(--muted-foreground);
-  font-size: 12px;
-}

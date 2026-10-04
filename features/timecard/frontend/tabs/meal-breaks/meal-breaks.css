@@ -351,16 +351,6 @@
 .meal-detail-grid li > span:first-child {
   min-width: 100px;
 }
-.pagination-pages {
-  padding: 12px 18px;
-  border-top: 1px solid var(--border);
-  flex-wrap: wrap;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  justify-content: flex-end;
-  font-size: 13px;
-}
 [data-theme='dark'] .meal-clock.different,
 [data-theme='dark'] .meal-status.attention {
   background: #493713;
