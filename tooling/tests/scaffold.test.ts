@@ -821,11 +821,16 @@ test('--dry-run prints what it would write and changes nothing; --out receives i
     for (const name of [...files, ...listed(result.stdout, 'Would change')])
       assert(fs.existsSync(path.join(out, name)), `${name} is not under --out`);
     assert.match(result.stdout, /^Next:\n/m);
+    // The snapshots of the whole product are rewritten by a command, not by hand.
+    assert.match(result.stdout, /`npm run snapshots:update` rewrites the snapshots/);
+    assert.doesNotMatch(result.stdout, /catalog\.rs|agent-keys|DISPATCH_UPDATE_/);
     assert(!fs.existsSync('features/parking'), 'a dry run wrote into the repository');
     assert.equal(fs.readFileSync(registry, 'utf8'), before);
     const site = generate('new-collector', ['fleet', '--dry-run']);
     assert.equal(site.status, 0, site.stderr);
     assert(listed(site.stdout, 'Would write').includes('collectors/fleet/collector.rs'));
+    assert.match(site.stdout, /`npm run snapshots:update` rewrites the snapshots/);
+    assert.doesNotMatch(site.stdout, /catalog\.rs/);
     assert(!fs.existsSync('collectors/fleet'));
   } finally {
     fs.rmSync(out, { recursive: true, force: true });
