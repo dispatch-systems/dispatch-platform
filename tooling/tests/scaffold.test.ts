@@ -696,13 +696,13 @@ test('new:collector writes its connection, one collection with a fixture, a card
   assert.match(manifest_, /connectionCard: \{\s*provider: 'fleet',\s*read,/);
   assert.match(
     manifest_,
-    /schedule_records_required: 'Connect Fleet before enabling Records collections.'/,
+    /schedule_fleet_records_required: 'Connect Fleet before enabling Records collections.'/,
   );
   assert.match(file(plan, 'collectors/fleet/frontend/FleetCard.tsx'), /<ConnectionCard\b/);
   const slots = file(plan, 'collectors/fleet/frontend/platform-slots.ts');
   assert.match(
     slots,
-    /kind: 'fleet\.records\.collect',\s*schedule: \{ id: 'records', label: 'Records' \},/,
+    /kind: 'fleet\.records\.collect',\s*schedule: \{ id: 'fleet_records', label: 'Records' \},/,
   );
   assert.match(slots, /capabilities: \{ records: 'a records source' \},/);
   assert.match(
@@ -720,7 +720,7 @@ test('new:collector writes its connection, one collection with a fixture, a card
   );
   assert.match(
     file(plan, 'core/collection/api/index.ts'),
-    /collection: 'paycom' \|[^;]* \| 'records';/,
+    /collection:\s+\|?\s*'paycom'[^;]*\|\s*'fleet_records';/,
   );
 
   const shards = JSON.parse(file(plan, 'tooling/ci/test-plan.json')).native;
@@ -747,10 +747,44 @@ test('new:collector writes its connection, one collection with a fixture, a card
   const named = await collector('fleet', '--collection', 'shifts');
   assert(named.files.has('collectors/fleet/collections/shifts/mod.rs'));
   assert(named.files.has('collectors/fleet/tests/backend/shifts.rs'));
+  // Schedules name a collection by an id all collectors share, so its own has the site's name.
+  assert.match(file(plan, 'collectors/fleet/collector.rs'), /schedule: "fleet_records",/);
+  assert.match(
+    file(plan, 'collectors/fleet/collector.rs'),
+    /unconnected: "schedule_fleet_records_required",/,
+  );
   await assert.rejects(
     planCollector(root, ['fleet', '--host', 'not a host']),
     /is not a host name/,
   );
+});
+
+test("new:collector adds its schedule to ScheduleInput's list once, however it is wrapped", async () => {
+  const index = 'core/collection/api/index.ts';
+  const before = fs.readFileSync(path.join(copy, index), 'utf8');
+  const union = /collection:\s+([^;]*);/;
+  const members = union.exec(before)![1]!.match(/'[^']+'/g)!;
+  // ScheduleInput's collections laid out as `layout`, and what the plan makes of them.
+  const planned = async (layout: string) => {
+    fs.writeFileSync(path.join(copy, index), before.replace(union, `collection:${layout};`));
+    const { plan } = await planCollector(copy, ['lot']);
+    return union.exec(
+      plan.changes.get(index) ?? fs.readFileSync(path.join(copy, index), 'utf8'),
+    )![1]!;
+  };
+  try {
+    // Wrapped onto the next line, and as prettier lays out a longer one: a member a line.
+    for (const layout of [
+      `\n    ${members.join(' | ')}`,
+      members.map((member) => `\n    | ${member}`).join(''),
+    ])
+      assert.match(await planned(layout), new RegExp(`${members.at(-1)}\\s*\\| 'lot_records'$`));
+    // A list that has it already keeps it once.
+    const listed = await planned(` ${[...members, "'lot_records'"].join(' | ')}`);
+    assert.equal(listed.match(/'lot_records'/g)!.length, 1);
+  } finally {
+    fs.writeFileSync(path.join(copy, index), before);
+  }
 });
 
 /** Runs a generator as `npm run` would. */

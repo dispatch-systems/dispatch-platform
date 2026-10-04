@@ -48,8 +48,8 @@ const MIGRATIONS: &[Migrations] = &[Migrations {
 /// What it reads. The one feature that keeps each stores what a job brings.
 static COLLECTIONS: [Collection; 1] = [Collection {
     job_kind: collections::{{collection}}::JOB_KIND,
-    schedule: "{{collection}}",
-    unconnected: "schedule_{{collection}}_required",
+    schedule: "{{schedule}}",
+    unconnected: "schedule_{{schedule}}_required",
 }];
 
 pub struct {{pascal}};
