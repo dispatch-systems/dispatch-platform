@@ -22,7 +22,6 @@ import {
   installFeatures,
   isLongPoll,
   pageTabs,
-  readToggles,
   scheduleIssueOf,
   auditWording,
   loadPlatformSlots,
@@ -33,7 +32,6 @@ import {
   type DspRouteId,
   type PageTab,
   type PlatformSlots,
-  type ReadToggles,
   type SettingsTab,
 } from '../../frontend/runtime/slots.js';
 import type { PageFeature } from '../../../tenancy/api/index.js';
@@ -44,27 +42,6 @@ import type { PageFeature } from '../../../tenancy/api/index.js';
 const pageId = (id: string) => id as DspRouteId;
 const switchId = (id: string) => id as PageFeature;
 const loads = (slots: PlatformSlots) => async () => ({ slots });
-const group = (label: string, order: number): ReadToggles => ({
-  label,
-  missing: `${label.toLowerCase()} data`,
-  order,
-  sources: {},
-  toggles: [],
-});
-
-test('read toggles come group by group in their order, ties in the order the owners are listed', async () => {
-  installFeatures([
-    { name: 'alpha', platformSlots: loads({ readToggles: group('Alpha', 20) }) },
-    { name: 'beta' },
-    { name: 'gamma', platformSlots: loads({ readToggles: group('Gamma', 10) }) },
-    { name: 'delta', platformSlots: loads({ readToggles: group('Delta', 20) }) },
-  ]);
-  await loadPlatformSlots();
-  assert.deepEqual(
-    readToggles().map((each) => each.label),
-    ['Gamma', 'Alpha', 'Delta'],
-  );
-});
 
 test("a page's switch shows the icon its feature declares, once loaded", async () => {
   installFeatures([

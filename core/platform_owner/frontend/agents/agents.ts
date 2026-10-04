@@ -13,19 +13,44 @@ import type {
   AgentReads,
   AgentSource,
 } from '../../api/index.js';
+import { readToggleGroups } from '../../../mcp/api/generated/read-toggles.js';
 import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
 import { utcDay } from '../../../shell/frontend/lib/format.js';
-import { readToggles, type ReadToggle } from '../../../shell/frontend/runtime/slots.js';
 
 export const accessLabels: Record<AgentAccess, string> = {
   read: 'Read only',
   operator: 'Operator',
 };
 
-// Each feature declares the kinds of its data agents may read, grouped under its name. They are
-// read when the Agents page or the audit log first loads, which their loaders hold back until
-// what every owner puts in the platform owner's slots has loaded.
-const groups = readToggles();
+/** A kind of data agents may read, as the Agents page shows its switch. */
+type ReadToggle = {
+  /** Permanent: keys, apps and the audit log store it. */
+  id: AgentArea;
+  label: string;
+  /** What it holds, where its label alone doesn't say. */
+  hint: string | null;
+  /** How a key's row names it when the key doesn't read it. */
+  missing: string;
+  /** The switch it is read from, which a DSP may have switched off. */
+  source: AgentSource;
+  /** The kind it comes with and only matters beside: it is allowed only with that one. */
+  with: AgentArea | null;
+  /** A new key or app leaves it off. */
+  optIn: boolean;
+};
+/** A feature's kinds of data agents may read, under its name on the Agents page. */
+type ReadGroup = {
+  label: string;
+  /** How a key's row names the whole group when the key reads none of it. */
+  missing: string;
+  /** Each of its switches' names, said alone when only that one is off. */
+  sources: readonly { id: AgentSource; label: string }[];
+  toggles: readonly ReadToggle[];
+};
+
+// Each feature declares the kinds of its data agents may read, grouped under its name, in the
+// one order the backend lists them in.
+const groups: readonly ReadGroup[] = readToggleGroups;
 const toggles = groups.flatMap((group) => group.toggles);
 const byArea = <T>(read: (toggle: ReadToggle) => T) =>
   Object.fromEntries(toggles.map((toggle) => [toggle.id, read(toggle)])) as Record<AgentArea, T>;
@@ -43,10 +68,9 @@ export const areaSources = byArea((toggle) => toggle.source);
 export const areaWith: Partial<Record<AgentArea, AgentArea>> = Object.fromEntries(
   toggles.flatMap((toggle) => (toggle.with ? [[toggle.id, toggle.with]] : [])),
 );
-export const sourceLabels = Object.assign({}, ...groups.map((group) => group.sources)) as Record<
-  AgentSource,
-  string
->;
+export const sourceLabels = Object.fromEntries(
+  groups.flatMap((group) => group.sources.map((source) => [source.id, source.label])),
+) as Record<AgentSource, string>;
 /** The kinds of data under the page that collects them, as the switches are grouped. `missing`
  * names a whole group a key doesn't read. */
 export const areaGroups: readonly {

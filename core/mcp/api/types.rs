@@ -28,6 +28,10 @@ pub struct ReadToggle {
     pub id: &'static str,
     /// The kind as the Agents page names it.
     pub label: &'static str,
+    /// What it holds, where its label alone doesn't say, under its switch on the Agents page.
+    pub hint: Option<&'static str>,
+    /// How a key's row on the Agents page names it when the key doesn't read it.
+    pub missing: &'static str,
     /// Its place in the one order the kinds are listed in everywhere.
     pub order: u16,
     /// The feature it is read from.
@@ -35,6 +39,8 @@ pub struct ReadToggle {
     /// The kind it comes with and only matters beside, as delivery addresses come with the
     /// routes: allowed only with it, and refused as it is.
     pub with: Option<AgentArea>,
+    /// Whether a new key or app leaves it off until it is switched on.
+    pub opt_in: bool,
     /// The sources whose IDs it names drivers by.
     pub names: &'static [DriverSource],
 }
@@ -47,8 +53,12 @@ pub struct AgentArea(&'static ReadToggle);
 pub struct ReadSource {
     /// Permanent: answers name it.
     pub id: &'static str,
-    /// The switch's name on the platform's DSPs page.
+    /// The switch's name as agents' answers say it: a tab with its page, as
+    /// "Timecard · Meal Breaks".
     pub switch: &'static str,
+    /// The switch's name on the Agents page, said alone where only it is off: a tab
+    /// without its page, as "Meal Breaks".
+    pub label: &'static str,
     /// Its place in the one order the sources are listed in everywhere.
     pub order: u16,
     /// The switches of the catalog that turn it on, any one of them.
@@ -127,6 +137,14 @@ impl AgentArea {
     pub const fn label(self) -> &'static str {
         self.0.label
     }
+    /// What it holds, where its label alone doesn't say.
+    pub const fn hint(self) -> Option<&'static str> {
+        self.0.hint
+    }
+    /// How a key's row names it when the key doesn't read it.
+    pub const fn missing(self) -> &'static str {
+        self.0.missing
+    }
     /// The feature it is read from.
     pub const fn source(self) -> AgentSource {
         self.0.source
@@ -134,6 +152,10 @@ impl AgentArea {
     /// The kind it comes with, if it only matters beside one.
     pub const fn with(self) -> Option<AgentArea> {
         self.0.with
+    }
+    /// Whether a new key or app leaves it off.
+    pub const fn opt_in(self) -> bool {
+        self.0.opt_in
     }
     /// Whether it names drivers by `source`'s IDs.
     pub fn names(self, source: DriverSource) -> bool {
@@ -154,9 +176,13 @@ impl AgentSource {
     pub const fn order(self) -> u16 {
         self.0.order
     }
-    /// The switch's name on the platform's DSPs page.
+    /// The switch's name as agents' answers say it.
     pub const fn switch(self) -> &'static str {
         self.0.switch
+    }
+    /// The switch's name on the Agents page, said alone where only it is off.
+    pub const fn label(self) -> &'static str {
+        self.0.label
     }
     /// Whether a DSP whose switches `on` are on has it on.
     pub fn on(self, on: &[String]) -> bool {

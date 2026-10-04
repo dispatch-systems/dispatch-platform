@@ -14,6 +14,7 @@ use dispatch_core::mcp::{
 pub const SOURCE: AgentSource = AgentSource::new(&ReadSource {
     id: "routes",
     switch: "Routes",
+    label: "Routes",
     order: 10,
     features: &["routes"],
     key: "routes",
@@ -22,23 +23,30 @@ pub const SOURCE: AgentSource = AgentSource::new(&ReadSource {
 pub const ROUTES: AgentArea = AgentArea::new(&ReadToggle {
     id: "routes",
     label: "Routes & packages",
+    hint: None,
+    missing: "routes",
     order: 10,
     source: SOURCE,
     with: None,
+    opt_in: false,
     names: &[DriverSource::Amazon],
 });
 /// The delivery addresses and GPS that route answers carry.
 pub const LOCATIONS: AgentArea = AgentArea::new(&ReadToggle {
     id: "locations",
     label: "Delivery addresses & GPS",
+    hint: Some("Stop addresses and GPS points"),
+    missing: "delivery addresses",
     order: 20,
     source: SOURCE,
     with: Some(ROUTES),
+    opt_in: true,
     names: &[],
 });
 
 pub const MCP: Mcp = Mcp {
     reads: &[ROUTES, LOCATIONS],
+    missing: "route data",
     sources: &[SOURCE],
     endpoints: catalog::ENDPOINTS,
     metrics: catalog::METRICS,

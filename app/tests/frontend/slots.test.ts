@@ -4,13 +4,13 @@ import '../support/manifests.js';
 import { featureCatalog } from '../../../core/shell/frontend/runtime/features.js';
 import { features } from '../../frontend/features.js';
 import { jobSchema } from '../../../core/collection/api/runtime.js';
+import { readToggleGroups } from '../../../core/mcp/api/generated/read-toggles.js';
 import { errorLabel } from '../../../core/shell/frontend/runtime/api.js';
 import {
   cacheRules,
   collectionLabels,
   connectionCard,
   connectionCards,
-  readToggles,
   loadPlatformSlots,
   switchIcon,
 } from '../../../core/shell/frontend/runtime/slots.js';
@@ -24,12 +24,12 @@ const once = (ids: readonly string[], what: string) =>
 
 test('each kind of data agents may read is declared once, and each group has its own place', () => {
   once(
-    readToggles().flatMap((group) => group.toggles.map((toggle) => toggle.id)),
+    readToggleGroups.flatMap((group) => group.toggles.map((toggle) => toggle.id)),
     'read toggles',
   );
   once(
-    readToggles().map((group) => String(group.order)),
-    'read toggle group orders',
+    readToggleGroups.map((group) => group.label),
+    'read toggle groups',
   );
 });
 

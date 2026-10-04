@@ -258,6 +258,8 @@ export function featureValues(root: string, argv: string[]) {
     testCollectors: used.map((collector) => `&${identOf(collector)}::COLLECTOR`).join(', '),
     mcp,
     agentOrder: mcp ? nextAgentOrder(root) : 0,
+    // How a key's row on the Agents page names its data when the key doesn't read it.
+    missing: names.label.toLowerCase(),
     frontend: page || Boolean(host) || settings,
     page,
     tab: Boolean(host),

@@ -26,9 +26,8 @@ const loadPicker = () => import('./dsps/picker.js');
 // Diagnostics names each collection as its collector does.
 const loadDiagnostics = () =>
   Promise.all([import('./diagnostics/index.js'), loadPlatformSlots()]).then(([module]) => module);
-// The Agents page and the audit log read every owner's kinds of data for agents as their code
-// loads, so what owners put in the slots loads first. The log is handed every owner's wording.
-const loadAgents = () => loadPlatformSlots().then(() => import('./agents/index.js'));
+const loadAgents = () => import('./agents/index.js');
+// The audit log is handed every owner's wording.
 const loadAudit = () =>
   loadPlatformSlots()
     .then(() => import('./audit/index.js'))

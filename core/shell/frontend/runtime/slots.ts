@@ -1,6 +1,6 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import type { AgentArea, AgentSource, AuditEvent } from '../../../platform_owner/api/index.js';
+import type { AuditEvent } from '../../../platform_owner/api/index.js';
 import type { CollectionChange, JobMetrics } from '../../../collection/api/index.js';
 import type { ConnectionFeature, Feature, PageFeature } from '../../../tenancy/api/index.js';
 import type { DspView, Permission, SessionView } from '../../../accounts/api/index.js';
@@ -141,34 +141,6 @@ export type AuditWording = {
   collected?: Record<string, string>;
 };
 
-/** A kind of data agents may read, as the Agents page shows its switch. */
-export type ReadToggle = {
-  /** Permanent: keys, apps and the audit log store it. */
-  id: AgentArea;
-  label: string;
-  /** What it holds, where its label alone doesn't say. */
-  hint?: string;
-  /** How a key's row names it when the key doesn't read it. */
-  missing: string;
-  /** The switch it is read from, which a DSP may have switched off. */
-  source: AgentSource;
-  /** The kind it comes with and only matters beside: it is allowed only with that one. */
-  with?: AgentArea;
-  /** A new key or app leaves it off. */
-  optIn?: boolean;
-};
-/** An owner's kinds of data agents may read, under its name on the Agents page. */
-export type ReadToggles = {
-  label: string;
-  /** How a key's row names the whole group when the key reads none of it. */
-  missing: string;
-  /** Where the group sits among the others, lowest first. */
-  order: number;
-  /** Each of its switches' names, said alone when only that one is off. */
-  sources: Partial<Record<AgentSource, string>>;
-  toggles: readonly ReadToggle[];
-};
-
 /** What a connection's card is drawn with on a DSP's Connections page. */
 export type ConnectionCardContext = { development: boolean; timezone: string };
 /** A collector's card on a DSP's Connections page. */
@@ -213,15 +185,14 @@ export type CacheRules = {
 
 /**
  * What an owner puts in the platform owner's slots. Only the platform owner's pages read them,
- * so those pages load every owner's with them and no other page carries them.
+ * so those pages load every owner's with them and no other page carries them. Their labels,
+ * such as the read toggles', are generated from the backend instead.
  */
 export type PlatformSlots = {
   /** Its page's switch, as the DSPs page lists it. */
   switch?: { id: PageFeature; icon: LucideIcon };
   /** How its events read in the audit log. */
   auditWording?: AuditWording;
-  /** The kinds of its data agents may read. */
-  readToggles?: ReadToggles;
   /** The collections it runs. */
   collections?: readonly CollectionLabels[];
   /** How a page that needs a capability its connection provides names it: "a … source". */
@@ -361,12 +332,6 @@ export const switchIcon = (id: string) =>
 
 /** Every owner's audit wording, in the order the owners are listed. */
 export const auditWording = () => loadedSlots.flatMap((slots) => slots.auditWording ?? []);
-
-/** Every owner's kinds of data agents may read, group by group in their order. */
-export const readToggles = () =>
-  loadedSlots
-    .flatMap((slots) => (slots.readToggles ? [slots.readToggles] : []))
-    .sort((a, b) => a.order - b.order);
 
 /** Every collection, with the collector that runs it. */
 export const collectionLabels = () =>
