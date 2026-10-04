@@ -24,6 +24,7 @@ fn a_new_dsp_starts_with_no_features_and_a_demo_dsp_with_all() {
     let all: Vec<_> = catalog().iter().map(|f| f.id.to_owned()).collect();
     assert_eq!(db.features(&dsp.id).unwrap(), all);
 }
+#[cfg(feature = "dvic")]
 #[test]
 fn a_tab_follows_its_page_and_the_last_one_takes_the_page() {
     use std::os::unix::fs::PermissionsExt;
@@ -117,6 +118,7 @@ fn the_catalog_is_consistent() {
     assert!(!owned.contains(&CONNECTIONS));
     assert!(find(schedules()).is_some_and(|f| f.kind == Kind::Page));
 }
+#[cfg(feature = "uniforms")]
 #[test]
 fn permissions_follow_their_feature() {
     crate::install();

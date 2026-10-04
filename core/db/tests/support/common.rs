@@ -114,7 +114,11 @@ fn stand_in(
             requires: &[],
         }),
         schedules,
-        permissions: if invites { INVITES } else { &[] },
+        permissions: match (invites, schedules) {
+            (false, _) => &[],
+            (true, true) => INVITES,
+            (true, false) => INVITES_ALONE,
+        },
         keeps: leak(keeps),
         migrations: leak(missing),
         ..feature("stand_in")
@@ -122,6 +126,10 @@ fn stand_in(
 }
 // Last, after every permission an owner declares.
 const INVITES: &[Permission] = &[perm("stand_in.invite", "Invite", u16::MAX).invites()];
+// The same, for a stand-in with no page to list it: the role sheet gives it a section.
+const INVITES_ALONE: &[Permission] = &[perm("stand_in.invite", "Invite", u16::MAX)
+    .group("Stand-in")
+    .invites()];
 /// Keeps a collection of a collector a test names whose own keeper it leaves out.
 struct Unkept(&'static str);
 impl Keeper for Unkept {

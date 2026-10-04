@@ -76,6 +76,7 @@ fn ids(db: &Db) -> Vec<i64> {
 /// shows up in review as a change to core/db/tests/backend/schema. After adding a
 /// migration, rewrite the snapshots with
 /// `DISPATCH_UPDATE_SCHEMA=1 cargo test --locked -j 3 --lib schema::`.
+#[cfg(feature = "default")]
 #[test]
 fn new_databases_match_the_recorded_schema() {
     crate::install();
@@ -147,6 +148,7 @@ fn a_database_an_older_binary_made_ends_like_a_new_one() {
     }
 }
 
+#[cfg(feature = "driver_match")]
 #[test]
 fn platform_databases_from_before_each_added_column_gain_it() {
     crate::install();
@@ -198,6 +200,7 @@ fn platform_databases_from_before_each_added_column_gain_it() {
     }
 }
 
+#[cfg(feature = "driver_match")]
 #[test]
 fn agent_keys_from_before_connected_apps_stay_keys() {
     crate::install();
@@ -242,6 +245,7 @@ fn agent_keys_from_before_connected_apps_stay_keys() {
     );
 }
 
+#[cfg(feature = "driver_match")]
 #[test]
 fn agent_keys_from_before_reads_read_every_kind_with_their_addresses() {
     crate::install();

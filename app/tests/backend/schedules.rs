@@ -108,6 +108,7 @@ fn resuming_preview_preserves_the_saved_interval_anchor() {
         next_daily("06:00", "America/Chicago", now()).unwrap()
     );
 }
+#[cfg(feature = "timecard")]
 #[test]
 fn each_collection_target_queues_the_correct_jobs_and_replay_is_idempotent() {
     crate::install();
@@ -151,6 +152,7 @@ fn each_collection_target_queues_the_correct_jobs_and_replay_is_idempotent() {
         assert_eq!(db.collection_schedule(&id, key).unwrap().last_error, None);
     }
 }
+#[cfg(feature = "timecard")]
 #[test]
 fn blocked_and_overlapping_schedules_never_start_half_a_batch() {
     crate::install();

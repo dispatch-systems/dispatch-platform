@@ -1,6 +1,8 @@
 //! Jobs and schedules running the features' collections from Paycom and Cortex: the queue's
 //! limits, the lists each page reads, the facts an outcome records, and what the Timecard's
 //! switch stops.
+// A build that leaves features out drops the tests that need them, and what only they use.
+#![cfg_attr(not(feature = "default"), allow(dead_code, unused_imports))]
 use common::{seeded, store};
 use dispatch_core::testing as common;
 use dispatch_core::{
@@ -121,6 +123,7 @@ fn collection_outcomes_record_their_schedule_provider_date_and_duration() {
     assert_eq!(facts, [("provider", None, Some("cortex".to_owned()))]);
 }
 
+#[cfg(feature = "timecard")]
 #[test]
 fn schedule_deadlines_track_changes_and_due_ticks_are_idempotent() {
     dispatch_backend::install();
@@ -176,6 +179,7 @@ fn schedule_deadlines_track_changes_and_due_ticks_are_idempotent() {
     );
 }
 
+#[cfg(feature = "timecard")]
 #[test]
 fn nothing_collects_for_a_dsp_without_the_timecard() {
     dispatch_backend::install();
@@ -321,6 +325,7 @@ fn listed_jobs_respect_the_cap_scope_names_and_attempt_order() {
     }
 }
 
+#[cfg(feature = "dvic")]
 #[test]
 fn the_status_keeps_its_jobs_however_many_of_other_kinds_came_since() {
     dispatch_backend::install();

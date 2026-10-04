@@ -3,6 +3,7 @@
 //! successful collection, Timecard's demo data and DVIC's operator commands.
 use dispatch_core::manifest::registry;
 
+#[cfg(all(feature = "routes", feature = "driver_match"))]
 #[test]
 fn the_same_upkeep_runs_in_the_same_order_and_as_often() {
     crate::install();
@@ -26,6 +27,7 @@ fn the_same_upkeep_runs_in_the_same_order_and_as_often() {
     assert_eq!(after, ["driver_match"]);
 }
 
+#[cfg(all(feature = "timecard", feature = "dvic"))]
 #[test]
 fn the_same_features_seed_demo_data_and_answer_commands() {
     crate::install();

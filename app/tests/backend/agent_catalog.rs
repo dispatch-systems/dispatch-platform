@@ -34,6 +34,7 @@ fn every_endpoint_and_metric_is_listed_once() {
         }
     }
 }
+#[cfg(feature = "dvic")]
 #[test]
 fn requests_take_only_their_own_parameters() {
     crate::install();

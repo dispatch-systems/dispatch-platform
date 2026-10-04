@@ -1,3 +1,6 @@
+// A build that leaves features out drops the tests that need them, and what only they use.
+#![cfg_attr(all(test, not(feature = "default")), allow(dead_code, unused_imports))]
+
 pub mod cli;
 pub mod routes;
 
@@ -49,6 +52,7 @@ pub fn install() {
 use dispatch_core::testing;
 
 #[cfg(test)]
+#[cfg(feature = "dvic")]
 #[path = "../tests/backend/agent_calls.rs"]
 mod agent_calls;
 #[cfg(test)]
@@ -61,12 +65,20 @@ mod agent_pages;
 #[path = "../tests/backend/agent_skill.rs"]
 mod agent_skill;
 #[cfg(test)]
+#[cfg(all(feature = "timecard", feature = "dvic"))]
 #[path = "../tests/backend/audit.rs"]
 mod audit_areas;
 #[cfg(test)]
+#[cfg(all(
+    feature = "timecard",
+    feature = "routes",
+    feature = "dvic",
+    feature = "scorecard"
+))]
 #[path = "../tests/backend/cache.rs"]
 mod cache;
 #[cfg(test)]
+#[cfg(feature = "timecard")]
 #[path = "../tests/backend/cache_domains.rs"]
 mod cache_domains;
 #[cfg(test)]
@@ -79,12 +91,14 @@ mod collector_registry;
 #[path = "../tests/backend/collector_storage.rs"]
 mod collector_storage;
 #[cfg(test)]
+#[cfg(all(feature = "timecard", feature = "routes"))]
 #[path = "../tests/backend/connected_app_mail.rs"]
 mod connected_app_mail;
 #[cfg(test)]
 #[path = "../tests/backend/contracts.rs"]
 mod contracts;
 #[cfg(test)]
+#[cfg(feature = "default")]
 #[path = "../tests/backend/databases.rs"]
 mod databases;
 #[cfg(test)]
@@ -100,16 +114,19 @@ mod hooks;
 #[path = "../tests/backend/job_queue.rs"]
 mod job_queue;
 #[cfg(test)]
+#[cfg(feature = "timecard")]
 #[path = "../tests/backend/live_results.rs"]
 mod live_results;
 #[cfg(test)]
-#[cfg(feature = "operator-probes")]
+#[cfg(all(feature = "operator-probes", feature = "default"))]
 #[path = "../tests/backend/probes.rs"]
 mod probes;
 #[cfg(test)]
+#[cfg(feature = "default")]
 #[path = "../tests/backend/registry.rs"]
 mod registry_checks;
 #[cfg(test)]
+#[cfg(feature = "timecard")]
 #[path = "../tests/backend/request_log.rs"]
 mod request_log;
 #[cfg(test)]
@@ -122,11 +139,14 @@ mod schedule_runs;
 #[path = "../tests/backend/schema.rs"]
 mod schema;
 #[cfg(test)]
+#[cfg(feature = "default")]
 #[path = "../tests/backend/tables.rs"]
 mod tables;
 #[cfg(test)]
+#[cfg(feature = "default")]
 #[path = "../tests/backend/lib.rs"]
 mod tests;
 #[cfg(test)]
+#[cfg(feature = "team")]
 #[path = "../tests/backend/verification.rs"]
 mod verification;

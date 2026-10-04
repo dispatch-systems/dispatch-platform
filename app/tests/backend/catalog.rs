@@ -171,6 +171,7 @@ const SCHEDULE_COLLECTIONS: &[&str] = &[
     "dvic",
 ];
 
+#[cfg(feature = "default")]
 #[test]
 fn the_permissions_keep_their_order_labels_implications_groups_and_defaults() {
     crate::install();
@@ -191,6 +192,7 @@ fn the_permissions_keep_their_order_labels_implications_groups_and_defaults() {
     assert_eq!(defaults, DEFAULTS);
 }
 
+#[cfg(feature = "default")]
 #[test]
 fn the_catalog_keeps_its_pages_tabs_and_order() {
     crate::install();
@@ -220,6 +222,7 @@ fn the_catalog_keeps_its_pages_tabs_and_order() {
     assert_eq!(catalog::schedules(), "timecard");
 }
 
+#[cfg(feature = "default")]
 #[test]
 fn each_collection_is_run_by_the_page_that_keeps_it() {
     crate::install();

@@ -1,6 +1,8 @@
 //! Requests against the real router, served in-process over a loopback socket.
 //! The expectations were recorded before the route table existed, so they pin
 //! how the HTTP layer answers rather than how it is built.
+// A build that leaves features out drops the tests that need them, and what only they use.
+#![cfg_attr(not(feature = "default"), allow(dead_code, unused_imports))]
 use dispatch_core::{
     State,
     db::{self, Store, s},
@@ -409,6 +411,7 @@ async fn revoked_connection_manager_cannot_persist_a_pending_provider_result() {
     );
 }
 
+#[cfg(all(feature = "timecard", feature = "team"))]
 #[tokio::test]
 async fn unmatched_paths_and_methods_answer_as_they_always_have() {
     let server = Server::start().await;
@@ -566,6 +569,7 @@ async fn the_request_pipeline_checks_host_origin_content_type_and_size() {
     );
 }
 
+#[cfg(all(feature = "timecard", feature = "team", feature = "settings"))]
 #[tokio::test]
 async fn every_access_kind_refuses_and_admits_the_right_callers() {
     let server = Server::start().await;
@@ -683,6 +687,7 @@ async fn every_access_kind_refuses_and_admits_the_right_callers() {
     server.expect(call, 400, "invalid_input").await;
 }
 
+#[cfg(all(feature = "timecard", feature = "settings"))]
 #[tokio::test]
 async fn only_dsp_and_schedule_writes_that_succeed_wake_the_scheduler() {
     let server = Server::start().await;
@@ -759,6 +764,7 @@ async fn signing_in_and_out_sets_and_clears_the_session_cookie() {
         .await;
 }
 
+#[cfg(all(feature = "uniforms", feature = "timecard"))]
 #[tokio::test(flavor = "current_thread")]
 async fn open_update_waits_reauthorize_after_the_session_expires() {
     let server = Server::start().await;

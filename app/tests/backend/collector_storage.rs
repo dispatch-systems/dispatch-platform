@@ -80,6 +80,7 @@ fn snapshot(db: &Db) -> Value {
     out
 }
 
+#[cfg(feature = "timecard")]
 #[test]
 fn provider_records_stay_apart_from_core_settings_and_survive_reopening() {
     crate::install();
@@ -196,6 +197,7 @@ fn startup_opens_suspended_dsps_from_a_restored_backup() {
     assert_eq!(snapshot(&provider), before);
     assert_eq!(reopened.get_dsp(&id).unwrap()["status"], "suspended");
 }
+#[cfg(feature = "timecard")]
 #[test]
 fn cortex_storage_opens_without_the_emptied_delivery_history_tables() {
     crate::install();

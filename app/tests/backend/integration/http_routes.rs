@@ -1,4 +1,6 @@
 //! Guardrails for the route table every owner's `api/routes` registers into.
+// A build that leaves features out drops the tests that need them, and what only they use.
+#![cfg_attr(not(feature = "default"), allow(dead_code, unused_imports))]
 use dispatch_core::{
     server::http::{
         Access::{self, Agent, Dsp, PlatformOwner, Public, Session},
@@ -240,6 +242,7 @@ fn describe(rows: impl IntoIterator<Item = Row>) -> BTreeSet<String> {
         .collect()
 }
 
+#[cfg(feature = "default")]
 #[test]
 fn the_route_table_is_exactly_the_inventory() {
     let registered = describe(table().iter().map(|route| {
