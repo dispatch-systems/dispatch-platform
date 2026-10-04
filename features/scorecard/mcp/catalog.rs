@@ -1,7 +1,8 @@
-//! Scorecard's part of the agent catalog: its endpoints.
+//! Scorecard's part of the agent catalog: its endpoints and the questions they answer.
 use super::{FEEDBACK, RETURNS, SAFETY, SCORECARD, scorecard};
-use dispatch_core::mcp::data::catalog::{
-    CURSOR, DATE, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, PERIOD, Param, TO,
+use dispatch_core::mcp::{
+    data::catalog::{CURSOR, DATE, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, PERIOD, Param, TO},
+    skill::Example,
 };
 
 pub const ENDPOINTS: &[Endpoint] = &[
@@ -178,5 +179,32 @@ pub const ENDPOINTS: &[Endpoint] = &[
         ],
         order: 170,
         answer: |db, state, caller, _, query| scorecard::weekly(db, state, caller, query),
+    },
+];
+
+pub const EXAMPLES: &[Example] = &[
+    Example {
+        question: "Which addresses have given us repeated negative feedback?",
+        call: r#"customer_feedback(group_by: "address", min_count: 2)"#,
+        rest: "/api/v1/feedback?group_by=address&min_count=2",
+        order: 50,
+    },
+    Example {
+        question: "Which drivers didn't do contact compliance last week?",
+        call: r#"returns(contact: "missed", period: "last week", group_by: "driver")"#,
+        rest: "/api/v1/returns?contact=missed&period=last%20week&group_by=driver",
+        order: 60,
+    },
+    Example {
+        question: "Did Daniel get any Netradyne infractions last week?",
+        call: r#"safety_events(driver: "Daniel", period: "last week")"#,
+        rest: "/api/v1/safety?driver=Daniel&period=last%20week",
+        order: 70,
+    },
+    Example {
+        question: "Who scored lowest on last week's scorecard?",
+        call: r#"scorecard(week: "last week")"#,
+        rest: "/api/v1/scorecard?week=last%20week",
+        order: 80,
     },
 ];

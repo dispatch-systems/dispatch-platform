@@ -7,6 +7,7 @@ use super::{
         facts::{Daily, Places},
         scope::Identify,
     },
+    skill::{self, Example},
     synthetic::{Step, Synthetic},
 };
 use crate::{
@@ -25,6 +26,8 @@ pub struct Mcp {
     pub metrics: &'static [Metric],
     /// The words its answers use, for the glossary.
     pub terms: &'static [Term],
+    /// Questions its data answers, with the calls that answer them, for the Agent Skill.
+    pub examples: &'static [Example],
     /// Its facts by driver and day, for the answers that join every feature's.
     pub daily: &'static [&'static dyn Daily],
     /// Where packages were delivered, for the answers of other features that place what
@@ -43,6 +46,7 @@ impl Mcp {
         endpoints: &[],
         metrics: &[],
         terms: &[],
+        examples: &[],
         daily: &[],
         places: None,
         identity: None,
@@ -52,10 +56,10 @@ impl Mcp {
 
 /// Panics unless every kind and source is declared once, in a place of its own, and every
 /// kind is read from a declared source, with a declared kind if any; and unless every
-/// endpoint and term has a place of its own, every endpoint and metric reads a declared
-/// kind, each kind has facts by driver and day once at most, and one feature at most says
-/// where packages were delivered, one who people are, and one names the synthetic DSP's
-/// people, whose steps each have a place of their own.
+/// endpoint, term and example has a place of its own, every endpoint and metric reads a
+/// declared kind, each kind has facts by driver and day once at most, and one feature at
+/// most says where packages were delivered, one who people are, and one names the
+/// synthetic DSP's people, whose steps each have a place of their own.
 pub fn check(features: &[&Feature]) {
     let areas: Vec<AgentArea> = features
         .iter()
@@ -153,6 +157,19 @@ pub fn check(features: &[&Feature]) {
             terms[..index].iter().all(|other| other.order != term.order),
             "{} repeats another term's order",
             term.term
+        );
+    }
+    let examples: Vec<&Example> = skill::CORE_EXAMPLES
+        .iter()
+        .chain(mcp().flat_map(|mcp| mcp.examples))
+        .collect();
+    for (index, example) in examples.iter().enumerate() {
+        assert!(
+            examples[..index]
+                .iter()
+                .all(|other| other.order != example.order),
+            "{} repeats another example's order",
+            example.question
         );
     }
 }

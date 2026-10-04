@@ -506,6 +506,7 @@ fn feature_map(root: &Path) -> String {
                 .collect::<Vec<_>>(),
             "mcp": {
                 "daily": mcp.daily.iter().map(|daily| daily.coverage()).collect::<Vec<_>>(),
+                "examples": mcp.examples.len(),
                 "endpoints": mcp.endpoints.iter().map(|endpoint| endpoint.tool)
                     .collect::<Vec<_>>(),
                 "identity": mcp.identity.is_some(),

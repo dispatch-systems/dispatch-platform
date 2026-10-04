@@ -32,6 +32,7 @@ pub const MCP: Mcp = Mcp {
     endpoints: catalog::ENDPOINTS,
     metrics: catalog::METRICS,
     terms: catalog::TERMS,
+    examples: catalog::EXAMPLES,
     daily: &[&facts::InspectionDays],
     synthetic: synthetic::SYNTHETIC,
     ..Mcp::NONE

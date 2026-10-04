@@ -1,7 +1,7 @@
 //! The agent skill names every registered feature's tools and metrics.
 use dispatch_core::mcp::{
     data::catalog::{ENDPOINTS, METRICS},
-    skill::{EXAMPLES, skill},
+    skill::{EXAMPLES, Example, skill},
 };
 #[test]
 fn the_skill_names_every_tool_and_metric() {
@@ -25,7 +25,7 @@ fn the_skill_names_every_tool_and_metric() {
         );
     }
     // Every example calls a tool that exists, with parameters it takes.
-    for (_, call, _) in EXAMPLES {
+    for &&Example { call, .. } in EXAMPLES.iter() {
         let (name, args) = call.split_once('(').unwrap();
         let endpoint = dispatch_core::mcp::data::catalog::tool(name).unwrap();
         for arg in args.trim_end_matches(')').split(", ") {

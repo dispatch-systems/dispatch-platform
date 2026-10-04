@@ -1,9 +1,12 @@
-//! Routes' part of the agent catalog: its endpoints, its metrics for team_table and the
-//! words its answers use.
+//! Routes' part of the agent catalog: its endpoints, its metrics for team_table, the words
+//! its answers use and the questions they answer.
 use super::{ROUTES, facts, views};
-use dispatch_core::mcp::data::catalog::{
-    CURSOR, DATE, DAY, DETAIL, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param, TO,
-    Term,
+use dispatch_core::mcp::{
+    data::catalog::{
+        CURSOR, DATE, DAY, DETAIL, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param,
+        TO, Term,
+    },
+    skill::Example,
 };
 
 const GROUPS_CURSOR: Param = Param {
@@ -200,5 +203,33 @@ pub const TERMS: &[Term] = &[
         term: "snapshot",
         meaning: "A route day collected while it was still in progress; numbers can still change.",
         order: 70,
+    },
+];
+
+pub const EXAMPLES: &[Example] = &[
+    Example {
+        question: "How many packages did Daniel deliver last week?",
+        call: r#"packages(driver: "Daniel", period: "last week", outcome: "delivered")"#,
+        rest: "/api/v1/packages?driver=Daniel&period=last%20week&outcome=delivered",
+        order: 10,
+    },
+    Example {
+        question: "Did Daniel return any packages last night?",
+        call: r#"packages(driver: "Daniel", date: "last night", outcome: "returned", group_by: "reason")"#,
+        rest: "/api/v1/packages?driver=Daniel&date=last%20night&outcome=returned&group_by=reason",
+        order: 20,
+    },
+    Example {
+        question: "How many business-closed packages did we have last night?",
+        call: r#"packages(date: "last night", reason: "business_closed", group_by: "driver")"#,
+        rest: "/api/v1/packages?date=last%20night&reason=business_closed&group_by=driver",
+        order: 30,
+    },
+    // Asked of core's table, by a metric of Routes'.
+    Example {
+        question: "Who had the most stops yesterday?",
+        call: r#"team_table(metrics: "stops_completed", date: "yesterday")"#,
+        rest: "/api/v1/team?metrics=stops_completed&date=yesterday",
+        order: 90,
     },
 ];

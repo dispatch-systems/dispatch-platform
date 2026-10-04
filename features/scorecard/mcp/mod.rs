@@ -54,6 +54,7 @@ pub const MCP: Mcp = Mcp {
     reads: &[FEEDBACK, SAFETY, RETURNS, SCORECARD],
     sources: &[SOURCE],
     endpoints: catalog::ENDPOINTS,
+    examples: catalog::EXAMPLES,
     synthetic: synthetic::SYNTHETIC,
     ..Mcp::NONE
 };

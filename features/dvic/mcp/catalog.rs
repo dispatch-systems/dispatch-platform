@@ -1,8 +1,12 @@
-//! DVIC's part of the agent catalog: its endpoint, its metrics for team_table and the
-//! words its answers use.
+//! DVIC's part of the agent catalog: its endpoint, its metrics for team_table, the words
+//! its answers use and the question they answer.
 use super::{DVIC, views};
-use dispatch_core::mcp::data::catalog::{
-    CURSOR, DATE, DETAIL, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param, TO, Term,
+use dispatch_core::mcp::{
+    data::catalog::{
+        CURSOR, DATE, DETAIL, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param, TO,
+        Term,
+    },
+    skill::Example,
 };
 
 pub const ENDPOINTS: &[Endpoint] = &[Endpoint {
@@ -57,4 +61,11 @@ pub const TERMS: &[Term] = &[Term {
     meaning: "Daily Vehicle Inspection Checklist, done before driving. Inspections under their \
          minimum (90 or 300 seconds by vehicle) count as short.",
     order: 80,
+}];
+
+pub const EXAMPLES: &[Example] = &[Example {
+    question: "Which drivers were short on their DVIC?",
+    call: r#"dvic_inspections(short: true)"#,
+    rest: "/api/v1/dvic?short=true",
+    order: 40,
 }];

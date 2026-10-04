@@ -42,6 +42,7 @@
       ],
       "mcp": {
         "daily": [],
+        "examples": 0,
         "endpoints": [],
         "identity": true,
         "metrics": [],
@@ -131,6 +132,7 @@
         "daily": [
           "dvic"
         ],
+        "examples": 1,
         "endpoints": [
           "dvic_inspections"
         ],
@@ -206,6 +208,7 @@
       "maintenance": [],
       "mcp": {
         "daily": [],
+        "examples": 0,
         "endpoints": [],
         "identity": false,
         "metrics": [],
@@ -274,6 +277,7 @@
         "daily": [
           "routes"
         ],
+        "examples": 4,
         "endpoints": [
           "packages",
           "route_day",
@@ -397,6 +401,7 @@
       "maintenance": [],
       "mcp": {
         "daily": [],
+        "examples": 4,
         "endpoints": [
           "customer_feedback",
           "safety_events",
@@ -484,6 +489,7 @@
       "maintenance": [],
       "mcp": {
         "daily": [],
+        "examples": 0,
         "endpoints": [],
         "identity": false,
         "metrics": [],
@@ -529,6 +535,7 @@
       "maintenance": [],
       "mcp": {
         "daily": [],
+        "examples": 0,
         "endpoints": [],
         "identity": false,
         "metrics": [],
@@ -630,6 +637,7 @@
           "timecards",
           "mealBreaks"
         ],
+        "examples": 0,
         "endpoints": [
           "timecards",
           "meal_breaks"
@@ -755,6 +763,7 @@
       "maintenance": [],
       "mcp": {
         "daily": [],
+        "examples": 0,
         "endpoints": [],
         "identity": false,
         "metrics": [],

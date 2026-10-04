@@ -2,61 +2,34 @@
 //! Code, Codex, Hermes and others load. It is written from the catalog, as the tools and the
 //! OpenAPI document are, so it always describes the API this server answers.
 use super::data::catalog::{ENDPOINTS, Endpoint, GLOSSARY, METRICS};
-use crate::mcp::server::INSTRUCTIONS;
+use crate::{manifest::registry, mcp::server::INSTRUCTIONS};
+use std::sync::LazyLock;
 
-/// Questions people ask, with the tool and arguments that answer them.
-pub const EXAMPLES: &[(&str, &str, &str)] = &[
-    (
-        "How many packages did Daniel deliver last week?",
-        r#"packages(driver: "Daniel", period: "last week", outcome: "delivered")"#,
-        "/api/v1/packages?driver=Daniel&period=last%20week&outcome=delivered",
-    ),
-    (
-        "Did Daniel return any packages last night?",
-        r#"packages(driver: "Daniel", date: "last night", outcome: "returned", group_by: "reason")"#,
-        "/api/v1/packages?driver=Daniel&date=last%20night&outcome=returned&group_by=reason",
-    ),
-    (
-        "How many business-closed packages did we have last night?",
-        r#"packages(date: "last night", reason: "business_closed", group_by: "driver")"#,
-        "/api/v1/packages?date=last%20night&reason=business_closed&group_by=driver",
-    ),
-    (
-        "Which drivers were short on their DVIC?",
-        r#"dvic_inspections(short: true)"#,
-        "/api/v1/dvic?short=true",
-    ),
-    (
-        "Which addresses have given us repeated negative feedback?",
-        r#"customer_feedback(group_by: "address", min_count: 2)"#,
-        "/api/v1/feedback?group_by=address&min_count=2",
-    ),
-    (
-        "Which drivers didn't do contact compliance last week?",
-        r#"returns(contact: "missed", period: "last week", group_by: "driver")"#,
-        "/api/v1/returns?contact=missed&period=last%20week&group_by=driver",
-    ),
-    (
-        "Did Daniel get any Netradyne infractions last week?",
-        r#"safety_events(driver: "Daniel", period: "last week")"#,
-        "/api/v1/safety?driver=Daniel&period=last%20week",
-    ),
-    (
-        "Who scored lowest on last week's scorecard?",
-        r#"scorecard(week: "last week")"#,
-        "/api/v1/scorecard?week=last%20week",
-    ),
-    (
-        "Who had the most stops yesterday?",
-        r#"team_table(metrics: "stops_completed", date: "yesterday")"#,
-        "/api/v1/team?metrics=stops_completed&date=yesterday",
-    ),
-    (
-        "How did Daniel do last week?",
-        r#"driver_report(driver: "Daniel", period: "last week")"#,
-        "/api/v1/drivers/Daniel?period=last%20week",
-    ),
-];
+/// A question people ask, with the call and the REST request that answer it.
+pub struct Example {
+    pub question: &'static str,
+    /// The tool and its arguments, as `tool(name: value, …)`.
+    pub call: &'static str,
+    pub rest: &'static str,
+    /// Its place among every feature's examples in the skill.
+    pub order: u16,
+}
+
+/// The questions core's own tools answer alone.
+pub(crate) const CORE_EXAMPLES: &[Example] = &[Example {
+    question: "How did Daniel do last week?",
+    call: r#"driver_report(driver: "Daniel", period: "last week")"#,
+    rest: "/api/v1/drivers/Daniel?period=last%20week",
+    order: 100,
+}];
+
+/// Every example, core's and each feature's, in their order.
+pub static EXAMPLES: LazyLock<Vec<&'static Example>> = LazyLock::new(|| {
+    let features = registry().features.iter().flat_map(|f| f.mcp.examples);
+    let mut all: Vec<&'static Example> = CORE_EXAMPLES.iter().chain(features).collect();
+    all.sort_by_key(|example| example.order);
+    all
+});
 
 fn endpoint(out: &mut String, endpoint: &Endpoint) {
     out.push_str(&format!(
@@ -98,8 +71,11 @@ pub fn skill(origin: &str) -> String {
          ## Questions and the calls that answer them\n\n\
          | Question | Tool | REST |\n| --- | --- | --- |\n"
     ));
-    for (question, tool, path) in EXAMPLES {
-        out.push_str(&format!("| {question} | `{tool}` | `GET {path}` |\n"));
+    for example in EXAMPLES.iter() {
+        out.push_str(&format!(
+            "| {} | `{}` | `GET {}` |\n",
+            example.question, example.call, example.rest
+        ));
     }
     out.push_str("\n## Tools\n\n");
     for each in ENDPOINTS.iter() {
