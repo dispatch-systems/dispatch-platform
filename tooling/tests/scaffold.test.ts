@@ -649,6 +649,19 @@ test('new:collector writes its connection, one collection with a fixture, a card
     file(plan, 'collectors/fleet/tests/browser/fleet.spec.ts'),
     /getByRole\('button', \{ name: 'Connect Fleet' \}\)/,
   );
+  // Core's written-out lists of job kinds and schedule collections name its own, last.
+  assert.match(
+    file(plan, 'core/collection/api/jobs.rs'),
+    /\\"cortex\.dvic\.collect\\" \| \\\n(\s+\\"[\w.]+\\" \| \\\n)*\s+\\"fleet\.records\.collect\\""\n/,
+  );
+  assert.match(
+    file(plan, 'core/collection/api/runtime.ts'),
+    /'cortex\.dvic\.collect',\n(\s+'[\w.]+',\n)*\s+'fleet\.records\.collect',\n\s+\]\),/,
+  );
+  assert.match(
+    file(plan, 'core/collection/api/index.ts'),
+    /collection: 'paycom' \|[^;]* \| 'records';/,
+  );
 
   const shards = JSON.parse(file(plan, 'tooling/ci/test-plan.json')).native;
   assert.deepEqual(shards.fleet, ['collectors/fleet/tests/native/fleet-worker.test.ts']);

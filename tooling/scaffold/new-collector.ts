@@ -46,6 +46,11 @@ const FLAGS = ['dry-run'];
 const OPTIONS = ['collection', 'host', 'label', 'out', 'root'];
 const testPlan = 'tooling/ci/test-plan.json';
 const workflow = '.github/workflows/checks.yml';
+// Core's lists of every job kind and schedule collection, which a job's or a schedule's type
+// checks against: a new collection is added to each that is still a written-out list.
+const jobKindType = 'core/collection/api/jobs.rs';
+const jobKindSchema = 'core/collection/api/runtime.ts';
+const scheduleType = 'core/collection/api/index.ts';
 
 export function collectorValues(root: string, argv: string[]) {
   const args = parseArguments(argv, FLAGS, OPTIONS);
@@ -105,6 +110,28 @@ function addNativeShard(text: string, shard: string, files: string[]) {
   const entry = `,\n    "${shard}": [${files.map((file) => `"${file}"`).join(', ')}]`;
   return `${text.slice(0, close)}${entry}${text.slice(close)}`;
 }
+/** Adds `kind` to the union a `ts(type = "…")` attribute of PublicJob's kind writes out. */
+function addJobKindType(text: string, kind: string) {
+  const union = /(ts\(\s*type = "(?:[^"\\]|\\[\s\S])*?)("\s*\)\s*\)\s*\]\s*pub kind: JobKind)/.exec(
+    text,
+  );
+  if (!union) return text;
+  const indent = /\n(\s*)\\"[^\n]*$/.exec(union[1]!)?.[1] ?? '                    ';
+  return text.replace(union[0], `${union[1]} | \\\n${indent}\\"${kind}\\"${union[2]}`);
+}
+/** Adds `kind` to the job schema's enum of kinds. */
+function addJobKindSchema(text: string, kind: string) {
+  const list = /(\bkind: z\.enum\(\[)([^\]]*)(\])/.exec(text);
+  if (!list) return text;
+  const kinds = [...list[2]!.matchAll(/'([^']+)'/g)].map((match) => `'${match[1]}'`);
+  return text.replace(list[0], `${list[1]}${[...kinds, `'${kind}'`].join(', ')}${list[3]}`);
+}
+/** Adds `collection` to ScheduleInput's union of collections. */
+function addScheduleCollection(text: string, collection: string) {
+  const union = /(\bcollection: )((?:'[^']+' \| )*'[^']+')(;)/.exec(text);
+  if (!union) return text;
+  return text.replace(union[0], `${union[1]}${union[2]} | '${collection}'${union[3]}`);
+}
 /** Adds the shard to the collectors job's matrix. */
 function addWorkflowShard(text: string, shard: string) {
   const matrix = /^(\s*shard: \[)([^\]\n]*\bcapacity\b[^\]\n]*)(\])/m.exec(text);
@@ -155,17 +182,22 @@ export async function planCollector(root: string, argv: string[]) {
   const native = `${dir}/tests/native/${slug}-worker.test.ts`;
   await edit(testPlan, (text) => addNativeShard(text, slug, [native]));
   if (exists(root, workflow)) await edit(workflow, (text) => addWorkflowShard(text, slug));
+  // Jobs of its kind, and schedules of its collection, pass core's typed lists of them.
+  const { collection, jobKind } = values as { collection: string; jobKind: string };
+  if (exists(root, jobKindType)) await edit(jobKindType, (text) => addJobKindType(text, jobKind));
+  if (exists(root, jobKindSchema))
+    await edit(jobKindSchema, (text) => addJobKindSchema(text, jobKind));
+  if (exists(root, scheduleType))
+    await edit(scheduleType, (text) => addScheduleCollection(text, collection));
 
-  const { collection } = values;
   plan.notes.push(
     `Each collection has exactly one keeper, and the registry refuses ${name}.${collection} ` +
       `without one: \`npm run new:feature -- <name> --keeps ${name}.${collection}\`.`,
   );
   plan.notes.push(
-    `Jobs and schedules store their kind under a CHECK: widen it for ${name}.${collection}.collect ` +
-      `and the ${collection} schedule with a migration, as core/collection/migrations/jobs/0004_dvic_kind.sql did.`,
+    '`npm run contracts:generate` writes the catalog with its connection switch, and its job ' +
+      "kind and schedule collection into core's generated types.",
   );
-  plan.notes.push('`npm run contracts:generate` writes the catalog with its connection switch.');
   if (exists(root, 'app/tests/backend/catalog.rs'))
     plan.notes.push(
       'app/tests/backend/catalog.rs holds the catalog as it stood: add its connection.',
