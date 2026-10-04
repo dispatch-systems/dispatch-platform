@@ -148,10 +148,16 @@ export function ReadChoices({
   );
 }
 
+// Every feature's data, with the first and the last feature the switches are listed under
+// named as examples.
+const examples = [...new Set([areaGroups[0]?.label, areaGroups.at(-1)?.label])].filter(
+  (label) => label !== undefined,
+);
+const included = examples.length ? `, ${examples.join(' and ')} included,` : '';
 /** What bypassing features does, wherever a key or app reads. */
 export const bypassHint =
-  'Reads every feature’s data, Routes and Scorecard included, even where a DSP has switched ' +
-  'the feature off. It only ever reads.';
+  `Reads every feature’s data${included} even where a DSP has switched the feature off. ` +
+  'It only ever reads.';
 
 /** One switch in a box, with what it does under it: bypassing features, which turns the box
  * amber while on, or a DSP following the key's settings. Without `set` it only shows `on`. */
