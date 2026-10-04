@@ -393,6 +393,8 @@ test('--page, --tab-of and --settings write frontend/feature.ts, the screen and 
     list.indexOf('  parking,') < list.indexOf('  accounts,'),
     "features come before core's parts",
   );
+  // The app's FRONTEND, which the list is generated from, has it in the same place.
+  assert.match(file(page, registry), /\n    "features\/parking",\n    "core\/accounts",\n/);
 
   const open = file(
     await feature('lobby', '--page', '--always-on'),
@@ -564,6 +566,7 @@ test('new:collector writes its connection, one collection with a fixture, a card
     file(plan, 'app/frontend/features.ts'),
     /feature as fleet \} from '..\/..\/collectors\/fleet\/frontend\/feature.js'/,
   );
+  assert.match(file(plan, registry), /\n    "collectors\/fleet",\n    "core\/accounts",\n/);
   assert.match(
     file(plan, 'app/backend/Cargo.toml'),
     /^dispatch-fleet = \{ path = "..\/..\/collectors\/fleet" \}$/m,

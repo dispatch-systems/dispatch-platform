@@ -431,3 +431,196 @@ fn the_job_kinds_written_for_typescript_are_the_registered_ones() {
             .contains(&kinds.join(" | "))
     );
 }
+
+/// The feature map: every feature this build has, by name, with what it declares.
+const FEATURE_MAP: &str = "app/generated/features.json";
+/// The frontend's list of every owner's manifest.
+const FRONTEND_LIST: &str = "app/frontend/features.ts";
+
+/// Whether this build has the owner at `dir`, such as `features/timecard`: core's parts are
+/// in every build, and so are the collectors it registers.
+fn in_build(dir: &str) -> bool {
+    match dir.split_once('/') {
+        Some(("core", _)) => true,
+        Some(("collectors", id)) => crate::REGISTRY.collectors.iter().any(|c| c.id() == id),
+        Some(("features", name)) => crate::REGISTRY.features.iter().any(|f| f.name == name),
+        _ => panic!("{dir} is no owner's directory"),
+    }
+}
+
+/// Each feature this build has, by name, with what it declares: its ids, the features and
+/// collectors it uses, the collections it keeps and their collectors, its tables, its
+/// migrations, and what it adds to each slot. Sorted, so it changes only with them.
+fn feature_map(root: &Path) -> String {
+    use serde_json::json;
+    use std::collections::BTreeSet;
+    let registry = &crate::REGISTRY;
+    let mut map = BTreeMap::new();
+    for feature in registry.features {
+        let kinds: Vec<_> = feature.keeps.iter().map(|keeper| keeper.keeps()).collect();
+        let collectors = registry
+            .collectors
+            .iter()
+            .filter(|collector| {
+                let collected = collector.collections().iter();
+                collected
+                    .map(|c| c.job_kind)
+                    .any(|kind| kinds.contains(&kind))
+            })
+            .map(|collector| collector.id())
+            .collect::<BTreeSet<_>>();
+        let mut tables: BTreeMap<_, BTreeSet<&str>> = BTreeMap::new();
+        for (database, names) in feature.tables {
+            tables
+                .entry(*database)
+                .or_default()
+                .extend(names.iter().copied());
+        }
+        let mut migrations: BTreeMap<_, Vec<_>> = BTreeMap::new();
+        for owned in feature.migrations {
+            let list = migrations.entry(owned.kind.name()).or_default();
+            list.extend(
+                owned
+                    .list
+                    .iter()
+                    .map(|m| json!({"id": m.id, "name": m.name})),
+            );
+            list.sort_by_key(|migration| migration["id"].as_u64());
+        }
+        let mcp = &feature.mcp;
+        let audit = &feature.audit;
+        let slots = json!({
+            "after_collection": feature.after_collection.is_some(),
+            "audit": {
+                "areas": audit.areas.iter().map(|(prefix, area)| json!([prefix, area.as_str()]))
+                    .collect::<Vec<_>>(),
+                "names": audit.names.is_some(),
+                "subjects": audit.subjects,
+            },
+            "cached": feature.cached.iter().map(|cached| cached.read).collect::<Vec<_>>(),
+            "commands": feature.commands.as_ref().map(|commands| commands.prefix),
+            "demo": feature.demo.is_some(),
+            "domains": feature.domains.iter().map(|domain| domain.id()).collect::<Vec<_>>(),
+            "live": feature.live,
+            "maintenance": feature.maintenance.iter().map(|task| task.every.as_secs())
+                .collect::<Vec<_>>(),
+            "mcp": {
+                "daily": mcp.daily.iter().map(|daily| daily.coverage()).collect::<Vec<_>>(),
+                "endpoints": mcp.endpoints.iter().map(|endpoint| endpoint.tool)
+                    .collect::<Vec<_>>(),
+                "identity": mcp.identity.is_some(),
+                "metrics": mcp.metrics.iter().map(|metric| metric.name).collect::<Vec<_>>(),
+                "places": mcp.places.is_some(),
+                "reads": mcp.reads.iter().map(|area| area.as_str()).collect::<Vec<_>>(),
+                "sources": mcp.sources.iter().map(|source| source.as_str()).collect::<Vec<_>>(),
+                "synthetic": mcp.synthetic.steps.len(),
+                "terms": mcp.terms.iter().map(|term| term.term).collect::<Vec<_>>(),
+            },
+            "people": feature.people.iter().map(|people| people.data().as_str())
+                .collect::<Vec<_>>(),
+            "routes": (feature.routes)().iter()
+                .map(|route| format!("{} {}", route.method, route.path))
+                .collect::<Vec<_>>(),
+            "schedules": feature.schedules,
+        });
+        let dir = format!("features/{}", feature.name);
+        let entry = json!({
+            "collectors": collectors,
+            "depends_on": feature.depends_on.iter().collect::<BTreeSet<_>>(),
+            "frontend": root.join(&dir).join("frontend/feature.ts").is_file(),
+            "keeps": kinds.iter().collect::<BTreeSet<_>>(),
+            "migrations": migrations,
+            "permissions": feature.permissions.iter().map(|p| p.id).collect::<Vec<_>>(),
+            "slots": slots,
+            "switch": feature.switch.map(|switch| switch.id),
+            "tables": tables,
+            "tabs": feature.tabs.iter().map(|tab| tab.id).collect::<Vec<_>>(),
+        });
+        map.insert(feature.name, entry);
+    }
+    serde_json::to_string_pretty(&map).unwrap() + "\n"
+}
+
+/// The frontend's list: an import of each owner's `frontend/feature.ts` this build has, in
+/// the order of the app's `FRONTEND`, which must name every owner that has one.
+fn frontend_list(root: &Path) -> String {
+    let manifest = |dir: &str| root.join(dir).join("frontend/feature.ts").is_file();
+    for top in ["core", "collectors", "features"] {
+        for entry in std::fs::read_dir(root.join(top)).expect("an owners' folder") {
+            let dir = format!("{top}/{}", entry.unwrap().file_name().to_string_lossy());
+            assert!(
+                !manifest(&dir) || !in_build(&dir) || crate::FRONTEND.contains(&dir.as_str()),
+                "{dir} has a frontend/feature.ts, but no place in the app's FRONTEND"
+            );
+        }
+    }
+    let owners: Vec<_> = crate::FRONTEND
+        .iter()
+        .filter(|dir| {
+            // Only a build that leaves features out may name one it does not have.
+            assert!(
+                in_build(dir) || cfg!(not(feature = "default")),
+                "the app's FRONTEND names {dir}, which the app does not register"
+            );
+            in_build(dir)
+        })
+        .collect();
+    let mut imports = String::new();
+    let mut list = String::new();
+    for dir in owners {
+        assert!(
+            manifest(dir),
+            "{dir} is in the app's FRONTEND, but has no frontend/feature.ts"
+        );
+        let name = dir.rsplit('/').next().unwrap();
+        let local: String = name
+            .split('_')
+            .enumerate()
+            .map(|(index, word)| match index {
+                0 => word.to_owned(),
+                _ => word[..1].to_uppercase() + &word[1..],
+            })
+            .collect();
+        let from = format!("'../../{dir}/frontend/feature.js'");
+        let line = format!("import {{ feature as {local} }} from {from};\n");
+        // As Prettier writes an import longer than the line.
+        imports += &if line.len() > 101 {
+            format!("import {{\n  feature as {local},\n}} from {from};\n")
+        } else {
+            line
+        };
+        list += &format!("  {local},\n");
+    }
+    format!(
+        "// Generated by `npm run contracts:generate` from the app's registry and its FRONTEND.\n\
+         import type {{ FrontendFeature }} from '../../core/shell/frontend/runtime/slots.js';\n\
+         {imports}\n\
+         // Every owner's frontend manifest: the features, the collectors, then core's parts with screens.\n\
+         // The order is the sidebar's, and the order in which Settings tabs warm their reads.\n\
+         export const features: readonly FrontendFeature[] = [\n\
+         {list}];\n"
+    )
+}
+
+#[test]
+fn the_feature_map_and_the_frontend_list_are_the_registrys() {
+    crate::install();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .find(|dir| dir.join("Cargo.lock").is_file())
+        .expect("repository root");
+    for (file, text) in [
+        (FEATURE_MAP, feature_map(root)),
+        (FRONTEND_LIST, frontend_list(root)),
+    ] {
+        let path = root.join(file);
+        if std::env::var_os("DISPATCH_UPDATE_CONTRACTS").is_some() {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, &text).unwrap();
+        }
+        assert!(
+            std::fs::read_to_string(&path).ok() == Some(text),
+            "{file} is out of date: run `npm run contracts:generate`"
+        );
+    }
+}

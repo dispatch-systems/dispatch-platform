@@ -3,6 +3,7 @@ import {
   UsageError,
   addDependency,
   addFrontendFeature,
+  addFrontendOwner,
   addWorkspaceMember,
   appBackend,
   appendToList,
@@ -143,6 +144,7 @@ export async function planCollector(root: string, argv: string[]) {
       registry,
     ),
   );
+  await change(registry, (text) => addFrontendOwner(text, dir, registry));
   await change(frontendList, (text) =>
     addFrontendFeature(text, camel, `../../${dir}/frontend/feature.js`),
   );

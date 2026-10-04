@@ -34,6 +34,26 @@ pub static REGISTRY: Registry = Registry {
         &dispatch_home::FEATURE,
     ],
 };
+/// The owners with a frontend manifest, in the order the frontend installs them: the
+/// features, the collectors, then core's parts with screens. It is the sidebar's order, and
+/// the order in which Settings tabs warm their reads. The export writes
+/// app/frontend/features.ts from it, with the owners this build has.
+pub const FRONTEND: &[&str] = &[
+    "features/home",
+    "features/timecard",
+    "features/uniforms",
+    "features/dvic",
+    "features/team",
+    "features/settings",
+    "features/driver_match",
+    "features/routes",
+    "features/scorecard",
+    "collectors/paycom",
+    "collectors/cortex",
+    "core/accounts",
+    "core/collection",
+    "core/platform_owner",
+];
 /// Installs `REGISTRY`, and hands core what a DSP path no route matches asks for. Every
 /// entry point, and every one of the app's tests, calls this before anything reads the
 /// registry; calling it again changes nothing.

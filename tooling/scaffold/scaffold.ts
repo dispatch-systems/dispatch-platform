@@ -424,6 +424,21 @@ export function holding(root: string, candidates: string[], pattern: RegExp) {
 }
 /** Where the app's backend lists every collector and feature. */
 export const appBackend = ['app/backend/features.rs', 'app/backend/lib.rs'];
+/**
+ * Lists an owner's frontend in the app's `FRONTEND`, after the last feature's or collector's
+ * and before core's parts, as the frontend's list, generated from it, has it.
+ */
+export function addFrontendOwner(text: string, dir: string, file: string) {
+  const opener = /pub const FRONTEND: &\[&str\] = &\[\n/.exec(text);
+  if (!opener) throw new Error(`${file} has no FRONTEND; add "${dir}" by hand`);
+  const start = opener.index + opener[0].length;
+  const end = text.indexOf('\n];', start);
+  const body = text.slice(start, end + 1);
+  if (body.includes(`"${dir}",`)) throw new Error(`${file} already lists ${dir} in FRONTEND`);
+  const core = /^\s*"core\//m.exec(body);
+  const at = start + (core ? core.index : body.length);
+  return `${text.slice(0, at)}    "${dir}",\n${text.slice(at)}`;
+}
 export const routeInventory = 'app/tests/backend/integration/http_routes.rs';
 /** The app's test that writes every owner's API types to TypeScript, which lists each type. */
 export const typescriptExport = 'app/tests/backend/export.rs';

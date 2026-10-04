@@ -4,6 +4,7 @@ import {
   addAppFeature,
   addDependency,
   addFrontendFeature,
+  addFrontendOwner,
   addWorkspaceMember,
   appBackend,
   appendToList,
@@ -322,8 +323,8 @@ export async function planFeature(root: string, argv: string[]) {
   formatRust(plan);
 
   // List it in app/: the workspace, the app's dependencies and its Cargo feature, the
-  // registry, the route table's inventory and the frontend's list. Its manifest brings its
-  // routes.
+  // registry, the route table's inventory and the frontend's order and list. Its manifest
+  // brings its routes.
   const change = async (file: string, edit: (text: string) => string) =>
     plan.changes.set(file, await format(file, edit(current(plan, root, file))));
   await change('Cargo.toml', (text) => addWorkspaceMember(text, dir));
@@ -352,6 +353,7 @@ export async function planFeature(root: string, argv: string[]) {
       text,
     ),
   );
+  if (values.frontend) await change(registry, (text) => addFrontendOwner(text, dir, registry));
   // The app's export test writes its API type to its api/generated/ while the build has it.
   if (values.api)
     await change(typescriptExport, (text) => {
@@ -381,11 +383,11 @@ export async function planFeature(root: string, argv: string[]) {
 
   const declared = [values.switch && 'switch', values.permission && 'permissions'].filter(Boolean);
   const generated = [
+    'the feature map',
     ...(declared.length ? [`the catalog with its ${declared.join(' and ')}`] : []),
     ...(values.api ? [`${dir}/api/generated/`] : []),
   ];
-  if (generated.length)
-    plan.notes.push(`\`npm run contracts:generate\` writes ${generated.join(', and ')}.`);
+  plan.notes.push(`\`npm run contracts:generate\` writes ${generated.join(', and ')}.`);
   if (declared.length && exists(root, 'app/tests/backend/catalog.rs'))
     plan.notes.push(
       `app/tests/backend/catalog.rs holds the catalog as it stood: add its ${declared.join(' and ')}.`,
