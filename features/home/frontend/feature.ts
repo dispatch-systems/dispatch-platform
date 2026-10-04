@@ -22,6 +22,7 @@ export const feature: FrontendFeature = {
       nav: true,
       // A DSP opens here anyway.
       remembered: false,
+      landing: true,
       preload: load,
       render: () => createElement(HomePage),
     },

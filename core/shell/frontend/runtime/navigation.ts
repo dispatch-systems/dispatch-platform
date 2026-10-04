@@ -1,4 +1,4 @@
-import { routeOf, type DspRouteId, type PlatformRouteId } from './slots.js';
+import { landingPage, routeOf, type DspRouteId, type PlatformRouteId } from './slots.js';
 
 const destinations = new Map<string, DspRouteId>();
 export function rememberDestination(dspId: string, page: DspRouteId) {
@@ -13,11 +13,15 @@ export function forgetDestination(dspId: string, page: string) {
   if (destinations.get(dspId) === page) destinations.delete(dspId);
 }
 
+/**
+ * A DSP's page, by default the last one open there, or else its landing page. Without a
+ * landing page the address names no page, and the app opens the first one the person may.
+ */
 export const dspHash = (
   dspId: string,
-  page: DspRouteId = destinations.get(dspId) ?? 'overview',
+  page: DspRouteId | undefined = destinations.get(dspId) ?? landingPage(),
   query?: Record<string, string>,
-) => `#dsp/${dspId}/${page}${query ? `?${new URLSearchParams(query)}` : ''}`;
+) => `#dsp/${dspId}/${page ?? ''}${query ? `?${new URLSearchParams(query)}` : ''}`;
 export const platformHash = (page: PlatformRouteId = 'dsps', query?: Record<string, string>) =>
   `#${page}${query ? `?${new URLSearchParams(query)}` : ''}`;
 export const signInHash = '#signin';
@@ -32,7 +36,7 @@ export function parseHash(hash: string) {
   return {
     route,
     dspId,
-    page: (dspId ? route.split('/')[2] || 'overview' : route).split('?')[0]!,
+    page: (dspId ? route.split('/')[2] || (landingPage() ?? '') : route).split('?')[0]!,
   };
 }
 export const hashQuery = () => new URLSearchParams(window.location.hash.split('?')[1]);

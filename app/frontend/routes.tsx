@@ -6,7 +6,12 @@ import { PageBoundary } from '../../core/shell/frontend/ui/PageBoundary.js';
 import { hasFeature } from '../../core/shell/frontend/runtime/features.js';
 import { NavigationStateContext } from '../../core/shell/frontend/runtime/browser-update.js';
 import { prefetchRouteData } from '../../core/shell/frontend/runtime/route-prefetch.js';
-import type { Access, PageContext, Route } from '../../core/shell/frontend/runtime/slots.js';
+import {
+  landingPage,
+  type Access,
+  type PageContext,
+  type Route,
+} from '../../core/shell/frontend/runtime/slots.js';
 import { features } from './features.js';
 
 // Every owner's pages, each with its navigation, access and component, in sidebar order.
@@ -41,6 +46,13 @@ export const navigation = (scope: Route['scope'], access: Access) =>
         allowed(route, access),
     )
     .map((route) => ({ ...route, preload: () => prepareRoute(scope, route.id, access) }));
+
+/**
+ * The page a DSP opens on: the landing page a feature declares, or else the first one this
+ * person may open.
+ */
+export const landing = (access: Access) =>
+  landingPage() ?? navigation('dsp', access).find((route) => route.scope === 'dsp')?.id;
 
 /** The page for an address, or the app's wording for one this person cannot open. */
 function PageContent({

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Award, Shirt } from 'lucide-react';
-import { dspHash, rememberDestination } from '../../frontend/runtime/navigation.js';
+import { dspHash, parseHash, rememberDestination } from '../../frontend/runtime/navigation.js';
 import {
   collectionAffects,
   collectionData,
@@ -218,22 +218,40 @@ test('a capability is named by the first connection listed that provides it', as
   assert.equal(capabilityLabelOf('maps'), undefined);
 });
 
+const page = (id: DspRoute['id'], remembered?: boolean): DspRoute => ({
+  id,
+  scope: 'dsp',
+  label: id,
+  nav: true,
+  preload: () => Promise.resolve(),
+  render: () => null,
+  ...(remembered === undefined ? {} : { remembered }),
+});
+
 test('opening a DSP again returns to the last page open, unless that page is not remembered', () => {
-  const page = (id: DspRoute['id'], remembered?: boolean): DspRoute => ({
-    id,
-    scope: 'dsp',
-    label: id,
-    nav: true,
-    preload: () => Promise.resolve(),
-    render: () => null,
-    ...(remembered === undefined ? {} : { remembered }),
-  });
-  installFeatures([{ name: 'alpha', routes: [page('team'), page('settings', false)] }]);
+  installFeatures([
+    {
+      name: 'alpha',
+      routes: [{ ...page('overview'), landing: true }, page('team'), page('settings', false)],
+    },
+  ]);
   assert.equal(dspHash('dsp_fixture'), '#dsp/dsp_fixture/overview');
   rememberDestination('dsp_fixture', 'team');
   assert.equal(dspHash('dsp_fixture'), '#dsp/dsp_fixture/team');
   rememberDestination('dsp_fixture', 'settings');
   assert.equal(dspHash('dsp_fixture'), '#dsp/dsp_fixture/team');
+});
+
+test('a DSP opens on the page a feature declares it lands on, and names none without one', () => {
+  installFeatures([
+    { name: 'alpha', routes: [page('team'), { ...page('overview'), landing: true }] },
+  ]);
+  assert.equal(dspHash('dsp_landing'), '#dsp/dsp_landing/overview');
+  assert.equal(parseHash('#dsp/dsp_landing').page, 'overview');
+  installFeatures([{ name: 'alpha', routes: [page('team')] }]);
+  assert.equal(dspHash('dsp_landing'), '#dsp/dsp_landing/');
+  assert.equal(parseHash('#dsp/dsp_landing').page, '');
+  assert.equal(parseHash('#dsp/dsp_landing/team').page, 'team');
 });
 
 test("a page's tabs from other features come in their order, ties in the order they are listed", () => {

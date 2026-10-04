@@ -56,6 +56,8 @@ export type DspRoute = Page<DspPageContext> & {
   ready?: (view: DspView) => boolean;
   /** Whether opening the DSP again returns here, as to the last page open; omitted, it does. */
   remembered?: boolean;
+  /** Whether a DSP opens here when it has no last page to return to; one page at most does. */
+  landing?: boolean;
   /** Called only for the admitted view. */
   prefetch?: (prefetch: RoutePrefetch & { view: DspView }) => void;
 };
@@ -265,6 +267,14 @@ export function routeOf(scope: Route['scope'], page: string): Route | undefined 
   for (const feature of installed)
     for (const route of feature.routes ?? [])
       if (route.scope === scope && route.id === page) return route;
+  return undefined;
+}
+
+/** The page a DSP opens on, as a feature declares it; none without one. */
+export function landingPage() {
+  for (const feature of installed)
+    for (const route of feature.routes ?? [])
+      if (route.scope === 'dsp' && route.landing) return route.id;
   return undefined;
 }
 

@@ -35,7 +35,14 @@ import {
   platformHash,
   rememberDestination,
 } from '../../core/shell/frontend/runtime/navigation.js';
-import { Page, canNavigateImmediately, findRoute, navigation, prepareRoute } from './routes.js';
+import {
+  Page,
+  canNavigateImmediately,
+  findRoute,
+  landing,
+  navigation,
+  prepareRoute,
+} from './routes.js';
 import { features } from './features.js';
 import { routeLabel } from './route-meta.js';
 import { installFeatures, type DspRouteId } from '../../core/shell/frontend/runtime/slots.js';
@@ -228,15 +235,23 @@ function App() {
   }, [session, showAuth, securityRequired, dspId, page, view]);
   useEffect(() => {
     if (!view || !dspId) return;
+    const access = { session: session!, view };
     const route = findRoute('dsp', page);
     // A page of a feature the DSP lacks is gone, whether a member was on it when it
     // was switched off or followed a link to it; they go home.
     if (route?.feature && !hasFeature(view, route.feature)) {
       forgetDestination(dspId, page);
-      navigate(dspHash(dspId, 'overview'));
+      navigate(dspHash(dspId, landing(access)));
       return;
     }
-    if (navigation('dsp', { session: session!, view }).some((route) => route.id === page))
+    // Without a landing page, an address naming no page opens the first one they may, in
+    // its place, so going back never returns to it.
+    if (!page) {
+      const first = landing(access);
+      if (first) location.replace(dspHash(dspId, first));
+      return;
+    }
+    if (navigation('dsp', access).some((route) => route.id === page))
       rememberDestination(dspId, page as DspRouteId);
   }, [view, dspId, page, session]);
   useBrowserUpdate(Boolean(session) && (!dspId || Boolean(view)) && !switching);
