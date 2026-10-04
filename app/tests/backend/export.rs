@@ -4,8 +4,13 @@
 //! against the files committed there.
 use dispatch_core::accounts::api::types::*;
 use dispatch_core::collection::api::{jobs::*, metrics::*, types::*};
-use dispatch_core::collection::registry::Provider;
+use dispatch_core::collection::{
+    browser::{self, Collected, Pending, browseros},
+    registry::Provider,
+};
+use dispatch_core::db::{Kind, Migrations};
 use dispatch_core::foundation::config::{Environment, ProviderMode};
+use dispatch_core::manifest::{Capability, Collection, Collector};
 use dispatch_core::mcp::api::types::*;
 use dispatch_core::platform_owner::api::types::*;
 use dispatch_core::server::api::types::*;
@@ -295,22 +300,26 @@ fn generated(from: &str, constants: &[(&str, serde_json::Value)]) -> String {
     text
 }
 
-/// How the DSPs page names each capability a page needs, as the first connection listed
-/// that supplies it names it.
+/// How the DSPs page names each capability a page needs.
 fn capabilities() -> String {
-    use dispatch_core::manifest::registry;
+    let labels = capability_labels(dispatch_core::manifest::registry().collectors);
+    generated(
+        "the collectors' capabilities",
+        &[("capabilityLabels", labels.into())],
+    )
+}
+/// Each capability `collectors` supply, named as the first of them listed that supplies it
+/// names it.
+fn capability_labels(collectors: &[&dyn Collector]) -> serde_json::Map<String, serde_json::Value> {
     let mut labels = serde_json::Map::new();
-    for collector in registry().collectors {
+    for collector in collectors {
         for capability in collector.capabilities() {
             labels
                 .entry(capability.id)
                 .or_insert(capability.label.into());
         }
     }
-    generated(
-        "the collectors' capabilities",
-        &[("capabilityLabels", labels.into())],
-    )
+    labels
 }
 
 /// The Agents page's switches: each feature's kinds of data under its switch's name, the
@@ -526,6 +535,89 @@ fn typescript_contracts_match_the_rust_types() {
     assert!(
         stored == bindings,
         "an owner's api/generated/ is out of date: run `npm run contracts:generate`"
+    );
+}
+/// A collector that only supplies capabilities, under its id.
+struct StandIn(&'static str, &'static [Capability]);
+impl Collector for StandIn {
+    fn id(&self) -> &'static str {
+        self.0
+    }
+    fn label(&self) -> &'static str {
+        self.0
+    }
+    fn capabilities(&self) -> &'static [Capability] {
+        self.1
+    }
+    fn collections(&self) -> &'static [Collection] {
+        &[]
+    }
+    fn database(&self) -> Kind {
+        unreachable!("a stand-in only supplies capabilities")
+    }
+    fn migrations(&self) -> &'static [Migrations] {
+        &[]
+    }
+    fn seed(&self, _: &str) -> String {
+        unreachable!("a stand-in only supplies capabilities")
+    }
+    fn marker(&self) -> Option<&'static str> {
+        None
+    }
+    fn browser_entries(&self) -> &'static [&'static str] {
+        &[]
+    }
+    fn network(&self) -> browseros::NetworkPolicy {
+        unreachable!("a stand-in only supplies capabilities")
+    }
+    fn validate_credentials(&self, _: &serde_json::Value) -> dispatch_core::Result<()> {
+        unreachable!("a stand-in only supplies capabilities")
+    }
+    fn driver<'a>(
+        &self,
+        _: browseros::Session,
+        _: &'a Path,
+        _: Option<&'a str>,
+    ) -> Pending<'a, Box<dyn browser::Driver>> {
+        unreachable!("a stand-in only supplies capabilities")
+    }
+    fn fixture(&self, _: &str, _: &serde_json::Value) -> dispatch_core::Result<Collected> {
+        unreachable!("a stand-in only supplies capabilities")
+    }
+    fn progress(&self, _: &serde_json::Value) -> &'static str {
+        unreachable!("a stand-in only supplies capabilities")
+    }
+}
+#[test]
+fn a_capability_is_named_by_the_first_collector_listed_that_supplies_it() {
+    let alpha = StandIn(
+        "alpha",
+        &[Capability {
+            id: "photos",
+            label: "a photo source",
+        }],
+    );
+    let beta = StandIn(
+        "beta",
+        &[
+            Capability {
+                id: "photos",
+                label: "another photo source",
+            },
+            Capability {
+                id: "notes",
+                label: "a notes source",
+            },
+        ],
+    );
+    let labels = capability_labels(&[&alpha, &beta]);
+    assert_eq!(labels["photos"], "a photo source");
+    assert_eq!(labels["notes"], "a notes source");
+    assert_eq!(labels.get("maps"), None);
+    // Listed the other way round, the other names it.
+    assert_eq!(
+        capability_labels(&[&beta, &alpha])["photos"],
+        "another photo source"
     );
 }
 #[test]
