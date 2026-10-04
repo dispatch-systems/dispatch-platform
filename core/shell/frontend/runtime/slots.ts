@@ -3,7 +3,7 @@ import type { LucideIcon } from 'lucide-react';
 import type { AgentArea, AgentSource, AuditEvent } from '../../../platform_owner/api/index.js';
 import type { CollectionChange, JobMetrics } from '../../../collection/api/index.js';
 import type { ConnectionFeature, Feature, PageFeature } from '../../../tenancy/api/index.js';
-import type { DspView, SessionView } from '../../../accounts/api/index.js';
+import type { DspView, Permission, SessionView } from '../../../accounts/api/index.js';
 import type { Replies } from '../../../foundation/api/runtime.js';
 
 // What an owner's `frontend/feature.ts` declares, and what the hosts read from it. Only
@@ -236,6 +236,11 @@ export type FrontendFeature = {
   routes?: readonly Route[];
   /** Its tabs on a DSP's Settings page. */
   settingsTabs?: readonly SettingsTab[];
+  /**
+   * Who may save a DSP's profile, when the owner saves it: opening a DSP that has none asks
+   * them for it. One owner at most says so; without one, nobody is asked.
+   */
+  dspSetup?: { permission: Permission };
   /** Its tabs on another feature's page. */
   pageTabs?: readonly PageTab[];
   /** Loads its module that exports what it puts in the platform owner's slots, as `slots`. */
@@ -283,6 +288,10 @@ function dspPage(says: (route: DspRoute) => boolean | undefined) {
 export const landingPage = () => dspPage((route) => route.landing);
 /** The page that draws every owner's settings tabs, as a feature declares it; none without one. */
 export const settingsPage = () => dspPage((route) => route.hostsSettings);
+
+/** Who may save a DSP's profile when it is first opened, as the owner that saves it says. */
+export const dspSetupPermission = () =>
+  installed.find((feature) => feature.dspSetup)?.dspSetup?.permission;
 
 /** Every owner's tabs on a DSP's Settings page, in the order the owners are listed. */
 export const settingsTabs = () => installed.flatMap((feature) => feature.settingsTabs ?? []);

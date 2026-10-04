@@ -110,8 +110,9 @@ test("each page's tabs from other features have their own addresses on it", () =
     );
 });
 
-test('one page at most is where a DSP lands, and one draws the settings tabs', () => {
+test("one page at most is where a DSP lands, one draws the settings tabs, and one owner saves a DSP's setup", () => {
   const pages = features.flatMap((feature) => feature.routes ?? []);
   assert(pages.filter((page) => page.scope === 'dsp' && page.landing).length <= 1);
   assert(pages.filter((page) => page.scope === 'dsp' && page.hostsSettings).length <= 1);
+  assert(features.filter((feature) => feature.dspSetup).length <= 1);
 });

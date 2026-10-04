@@ -45,7 +45,11 @@ import {
 } from './routes.js';
 import { features } from './features.js';
 import { routeLabel } from './route-meta.js';
-import { installFeatures, type DspRouteId } from '../../core/shell/frontend/runtime/slots.js';
+import {
+  dspSetupPermission,
+  installFeatures,
+  type DspRouteId,
+} from '../../core/shell/frontend/runtime/slots.js';
 const loadAuth = () => import('../../core/accounts/frontend/index.js');
 const SignedOutScreen = lazy(() =>
   loadAuth().then((module) => ({ default: module.SignedOutScreen })),
@@ -91,7 +95,8 @@ function App() {
     };
   }, []);
   const securityRequired = Boolean(session?.security.required && !session.security.verified);
-  const setupRequired = Boolean(view?.profile?.setupRequired && can(view, 'settings.manage'));
+  const setup = dspSetupPermission();
+  const setupRequired = Boolean(view?.profile?.setupRequired && setup && can(view, setup));
   const showAuth =
     session === null ||
     address.route === 'signin' ||
