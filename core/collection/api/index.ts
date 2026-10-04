@@ -1,6 +1,7 @@
 import type { Narrow } from '../../foundation/api/narrow.js';
 import type { ConnectionFeature } from '../../tenancy/api/index.js';
 import type { Connection as GeneratedConnection } from './generated/Connection';
+import type { ScheduleCollection } from './generated/ScheduleCollection';
 
 // Collection's API: jobs, schedules, connections and the browser a member signs in through.
 export type { PublicJob as Job } from './generated/PublicJob';
@@ -12,7 +13,7 @@ export type { PageReads } from './generated/PageReads';
 
 export interface ScheduleInput {
   name: string;
-  collection: 'paycom' | 'meal_break' | 'both' | 'scorecard' | 'routes' | 'dvic';
+  collection: ScheduleCollection;
   cadence: 'interval' | 'daily';
   intervalMinutes: number | null;
   localTime: string;

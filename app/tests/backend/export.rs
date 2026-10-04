@@ -58,7 +58,8 @@ use ts_rs::TS;
 const ACCESS_CATALOG: &str = "core/tenancy/api/generated/access-catalog.ts";
 // The labels only the platform owner's pages show, each in a file of its own, so that no
 // other page loads them: how the DSPs page names what a page needs, the Agents page's read
-// toggles, and how Diagnostics and the audit log name each collection.
+// toggles, and how Diagnostics and the audit log name each collection. The job schema reads
+// the collections' kinds too, so every page loads that one.
 const CAPABILITIES: &str = "core/tenancy/api/generated/capabilities.ts";
 const READ_TOGGLES: &str = "core/mcp/api/generated/read-toggles.ts";
 const COLLECTIONS: &str = "core/collection/api/generated/collections.ts";

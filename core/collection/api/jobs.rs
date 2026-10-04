@@ -77,6 +77,23 @@ impl JobKind {
         self.kind
     }
 }
+// Its TypeScript is the union of the registry's job kinds, in their order, written out where
+// a type names it.
+#[cfg(feature = "ts")]
+impl ts_rs::TS for JobKind {
+    type WithoutGenerics = Self;
+    type OptionInnerType = Self;
+    fn name(_: &ts_rs::Config) -> String {
+        let kinds: Vec<_> = Provider::all()
+            .flat_map(Provider::job_kinds)
+            .map(|kind| format!("{kind:?}"))
+            .collect();
+        kinds.join(" | ")
+    }
+    fn inline(cfg: &ts_rs::Config) -> String {
+        Self::name(cfg)
+    }
+}
 impl rusqlite::types::FromSql for JobKind {
     fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
         Self::parse(value.as_str()?).map_err(|_| rusqlite::types::FromSqlError::InvalidType)
@@ -164,13 +181,6 @@ pub struct PublicJob {
     pub dsp_id: String,
     pub dsp_name: String,
     pub environment: Environment,
-    #[cfg_attr(
-        feature = "ts",
-        ts(
-            type = "\"paycom.collect\" | \"cortex.meal_breaks.collect\" | \"cortex.scorecard.collect\" | \"cortex.routes.collect\" | \
-                    \"cortex.dvic.collect\""
-        )
-    )]
     pub kind: JobKind,
     pub status: JobStatus,
     pub progress: u8,

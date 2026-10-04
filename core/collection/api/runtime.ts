@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { CollectionUpdates, Job, JobMetrics } from './index.js';
+import { collections } from './generated/collections.js';
 import {
   count,
   environment,
@@ -75,13 +76,8 @@ export const jobSchema = z.object({
   dspId: text.min(1),
   dspName: text,
   environment,
-  kind: z.enum([
-    'paycom.collect',
-    'cortex.meal_breaks.collect',
-    'cortex.scorecard.collect',
-    'cortex.routes.collect',
-    'cortex.dvic.collect',
-  ]),
+  // Every registered collection's, as the collectors' manifests name them.
+  kind: z.enum(collections.map((collection) => collection.kind)),
   status: jobStatusSchema,
   progress: count.max(100),
   message: text,
