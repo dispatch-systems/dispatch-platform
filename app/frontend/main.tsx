@@ -48,6 +48,7 @@ import { routeLabel } from './route-meta.js';
 import {
   dspSetupPermission,
   installFeatures,
+  landingPage,
   type DspRouteId,
 } from '../../core/shell/frontend/runtime/slots.js';
 const loadAuth = () => import('../../core/accounts/frontend/index.js');
@@ -250,8 +251,9 @@ function App() {
       return;
     }
     // Without a landing page, an address naming no page opens the first one they may, in
-    // its place, so going back never returns to it.
-    if (!page) {
+    // its place, so going back never returns to it. With one, only a malformed address
+    // names no page, and it says the page isn't available.
+    if (!page && !landingPage()) {
       const first = landing(access);
       if (first) location.replace(dspHash(dspId, first));
       return;
