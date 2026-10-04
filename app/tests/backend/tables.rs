@@ -43,7 +43,8 @@ fn every_table_has_exactly_one_declared_owner() {
     assert_eq!(
         kinds,
         databases.keys().cloned().collect(),
-        "every database has a recorded schema"
+        "every database has a recorded schema, which `{}` writes",
+        crate::snapshot::UPDATE
     );
     let mut wrong = vec![];
     for (database, tables) in &databases {

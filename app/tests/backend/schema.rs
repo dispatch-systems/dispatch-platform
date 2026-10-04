@@ -1,6 +1,8 @@
 //! Every registered owner's databases, as new ones and as older binaries left them, against
 //! the recorded schema.
+use crate::snapshot;
 use dispatch_core::{
+    collection::registry::Provider,
     db::{Db, Kind, Store, migrate},
     foundation::config::Config,
     manifest::registry,
@@ -10,19 +12,15 @@ use std::{
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
 };
-#[cfg(feature = "default")]
-use {dispatch_dvic::DvicStore, dispatch_routes::RoutesStore, dispatch_scorecard::ScorecardStore};
 
 const RECORD: &str = "CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL);\n";
 const DSP_IDENTITY: &str = "CREATE TABLE storage_identity ( dsp_id TEXT PRIMARY KEY, provider TEXT NOT NULL, source TEXT NOT NULL );\n";
-fn snapshot(kind: Kind) -> PathBuf {
-    // The repository root holds Cargo.lock, wherever this crate's manifest sits in it.
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .find(|dir| dir.join("Cargo.lock").is_file())
-        .expect("repository root")
-        .join("core/db/tests/backend/schema")
-        .join(format!("{}.sql", kind.name()))
+/// Where each database's recorded schema is.
+fn schemas() -> PathBuf {
+    snapshot::root().join("core/db/tests/backend/schema")
+}
+fn recording(kind: Kind) -> PathBuf {
+    schemas().join(format!("{}.sql", kind.name()))
 }
 // Tables, then indexes, then triggers, so a snapshot also runs as a script.
 fn dump(db: &Db) -> String {
@@ -53,7 +51,13 @@ fn older(file: &Path, kind: Kind, schema: &str) {
     std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o600)).unwrap();
 }
 fn recorded(kind: Kind) -> String {
-    std::fs::read_to_string(snapshot(kind)).unwrap()
+    std::fs::read_to_string(recording(kind)).unwrap_or_else(|error| {
+        let name = kind.name();
+        panic!(
+            "{name} has no recorded schema ({error}): `{}` writes it",
+            snapshot::UPDATE
+        )
+    })
 }
 fn legacy(kind: Kind) -> String {
     let schema = recorded(kind).replace(RECORD, "");
@@ -71,10 +75,10 @@ fn ids(db: &Db) -> Vec<i64> {
         .collect()
 }
 
-/// Startup and provisioning, exactly as the core runs them. Every schema change
-/// shows up in review as a change to core/db/tests/backend/schema. After adding a
-/// migration, rewrite the snapshots with
-/// `DISPATCH_UPDATE_SCHEMA=1 cargo test --locked -j 3 --lib schema::`.
+/// Startup and provisioning, exactly as the core runs them, for every database the
+/// registry declares. Every schema change shows up in review as a change to
+/// core/db/tests/backend/schema. After adding a migration or a database, rewrite the
+/// snapshots with `npm run snapshots:update`.
 #[cfg(feature = "default")]
 #[test]
 fn new_databases_match_the_recorded_schema() {
@@ -94,26 +98,38 @@ fn new_databases_match_the_recorded_schema() {
         )
         .unwrap();
     store.provision(&id).unwrap();
-    let dsp = store.dsp(&id).unwrap();
-    let paycom = store.collector(&id, dispatch_paycom::PROVIDER).unwrap();
-    let cortex = store.collector(&id, dispatch_cortex::PROVIDER).unwrap();
-    let scorecard = store.scorecard_db(&id).unwrap();
-    let routedata = store.routes_db(&id).unwrap();
-    let dvic = store.dvic_db(&id).unwrap();
-    let databases: [(Kind, &Db); 8] = [
-        (Kind::PLATFORM, &store.platform),
-        (Kind::JOBS, &store.jobs),
-        (Kind::DSP, &dsp),
-        (dispatch_paycom::DATABASE, &paycom),
-        (dispatch_cortex::DATABASE, &cortex),
-        (dispatch_scorecard::DATABASE, &scorecard),
-        (dispatch_routes::DATABASE, &routedata),
-        (dispatch_dvic::DATABASE, &dvic),
-    ];
-    for (kind, db) in databases {
-        if std::env::var_os("DISPATCH_UPDATE_SCHEMA").is_some() {
-            std::fs::write(snapshot(kind), dump(db)).unwrap();
+    // Core's databases, then each collector's, with those its collections' keepers add.
+    let mut leases = vec![(Kind::DSP, store.dsp(&id).unwrap())];
+    for provider in Provider::all() {
+        let collector = provider.collector().database();
+        leases.push((collector, store.collector(&id, provider).unwrap()));
+        for storage in provider.added_storages() {
+            let added = store.added_storage(&id, provider, storage).unwrap();
+            leases.push((storage.kind, added));
         }
+    }
+    let databases: Vec<(Kind, &Db)> =
+        [(Kind::PLATFORM, &store.platform), (Kind::JOBS, &store.jobs)]
+            .into_iter()
+            .chain(leases.iter().map(|(kind, db)| (*kind, &**db)))
+            .collect();
+    let mut opened: Vec<_> = databases.iter().map(|(kind, _)| kind.name()).collect();
+    let mut declared: Vec<_> = registry().databases().map(|kind| kind.name()).collect();
+    opened.sort();
+    declared.sort();
+    assert_eq!(opened, declared);
+    if snapshot::updating() {
+        // A database no owner declares any longer leaves no schema behind.
+        for entry in std::fs::read_dir(schemas()).unwrap() {
+            let path = entry.unwrap().path();
+            let stem = path.file_stem().unwrap().to_string_lossy().into_owned();
+            if !declared.contains(&stem.as_str()) {
+                std::fs::remove_file(path).unwrap();
+            }
+        }
+    }
+    for (kind, db) in databases {
+        snapshot::compare(&recording(kind), &dump(db));
         assert_eq!(dump(db), recorded(kind), "{} schema", kind.name());
         let expected: Vec<i64> = kind.migrations().iter().map(|m| m.id.into()).collect();
         assert_eq!(ids(db), expected);
