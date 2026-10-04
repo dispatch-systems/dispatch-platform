@@ -86,7 +86,8 @@
         "core/tenancy/api/generated/access-catalog.ts"
       ],
       "tests": [
-        "core/platform_owner/tests/api/features.test.ts",
+        "app/tests/api/feature-switches.test.ts",
+        "app/tests/api/roles.test.ts",
         "core/tenancy/tests/api/roles.test.ts",
         "app/tests/browser/dsp-features.spec.ts",
         "app/tests/frontend/features.test.ts",
