@@ -10,8 +10,9 @@ import type { Command } from '../ci/execution-plan.js';
 // Each of those tests fails on a difference, naming this command, unless
 // DISPATCH_UPDATE_SNAPSHOTS is set, as it is here. `--list` prints the commands and runs nothing.
 //
-// Some of the tests read a snapshot another writes, and they run at once, so a first pass
-// writes the snapshots and a second, without the variable, runs every test against them.
+// Some of the tests read a snapshot another writes, and they run at once, so after the build a
+// first pass writes the snapshots and a second, without the variable, runs every test against
+// them.
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 /** Where the snapshots are. */
@@ -26,13 +27,15 @@ const frontend = fs
   .filter((name) => name.endsWith('.test.ts'))
   .map((name) => `app/tests/frontend/${name}`)
   .sort();
-/** The app's tests that hold snapshots: its Rust module tests, the agent API's, and its frontend's. */
+const rust = ['test', '--locked', '-p', 'dispatch-backend', '--lib', '--test', 'agent_api'];
+/** The build of the Rust tests, whose output shows once. */
+const build: Command = { name: 'build', command: 'cargo', args: [...rust, '--no-run'] };
+/**
+ * The app's tests that hold snapshots: its Rust module tests and the agent API's, each binary
+ * run whether or not another fails, and its frontend's.
+ */
 const commands: Command[] = [
-  {
-    name: 'Rust',
-    command: 'cargo',
-    args: ['test', '--locked', '-p', 'dispatch-backend', '--lib', '--test', 'agent_api'],
-  },
+  { name: 'Rust', command: 'cargo', args: [...rust, '--no-fail-fast'] },
   {
     name: 'frontend',
     command: process.execPath,
@@ -55,14 +58,16 @@ function snapshots() {
 }
 
 if (process.argv.includes('--list')) {
-  process.stdout.write(`${JSON.stringify(commands)}\n`);
+  process.stdout.write(`${JSON.stringify([build, ...commands])}\n`);
   process.exit(0);
 }
 const before = snapshots();
+if (spawnSync(build.command, build.args, { cwd: root, stdio: 'inherit' }).status !== 0)
+  process.exit(1);
+// The first pass's output would only repeat the second's.
 const updating = { ...process.env, DISPATCH_UPDATE_SNAPSHOTS: '1' };
-// The first pass's test output would only repeat the second's: its build output stays.
 for (const { command, args } of commands)
-  spawnSync(command, args, { cwd: root, env: updating, stdio: ['inherit', 'ignore', 'inherit'] });
+  spawnSync(command, args, { cwd: root, env: updating, stdio: 'ignore' });
 const failed = commands.filter(
   ({ command, args }) => spawnSync(command, args, { cwd: root, stdio: 'inherit' }).status !== 0,
 );
