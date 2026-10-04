@@ -357,13 +357,19 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         "" | "negative" => "negative",
         other => other,
     };
-    let groups = groups_of(query, &["driver", "address", "type", "week", "day"])?;
-    // Addresses come from the stored routes, so only as the key or app reads those.
+    // Addresses come from the stored routes, so only as the key or app reads those, and only
+    // in a build with the feature that holds them.
     let places = facts::places();
-    if groups.contains(&"address") {
+    let groups = match places {
+        Some(_) => groups_of(query, &["driver", "address", "type", "week", "day"])?,
+        None => groups_of(query, &["driver", "type", "week", "day"])?,
+    };
+    if let Some(places) = places
+        && groups.contains(&"address")
+    {
         access.check(places.area)?;
     }
-    let placed = access.reads(places.area);
+    let placed = places.is_some_and(|places| access.reads(places.area));
     let min = param(query, "min_count").parse::<i64>().unwrap_or(1);
     let impacting = flag(query, "impacting");
     let coverage = weeks(db, dsp, &period)?;
@@ -402,10 +408,9 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
     }
     let tracking: Vec<String> = kept.iter().map(|(r, _)| r.tracking_id.clone()).collect();
     let looked_up = placed && (groups.contains(&"address") || flag(query, "list"));
-    let addresses = if looked_up {
-        (places.of)(db, dsp, &tracking)?
-    } else {
-        HashMap::new()
+    let addresses = match places {
+        Some(places) if looked_up => (places.of)(db, dsp, &tracking)?,
+        _ => HashMap::new(),
     };
     let mut head = understood(dsp, Some(&period));
     head.insert("feedback".into(), json!(kind));
@@ -421,7 +426,10 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         "coverage": coverage,
     });
     people.mark(&mut answer);
-    if looked_up && access.read(places.area) == Read::Bypassed {
+    if let Some(places) = places
+        && looked_up
+        && access.read(places.area) == Read::Bypassed
+    {
         access::bypassed(&mut answer, places.area.source());
     }
     if !groups.is_empty() {

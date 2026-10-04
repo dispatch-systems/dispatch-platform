@@ -1,6 +1,11 @@
 //! Scorecard storage: publication, supersession, weeks not posted, where the next
 //! job reads and what a schedule queues.
+use dispatch_core::State;
 use dispatch_core::db::{Store, s};
+use dispatch_core::mcp::{
+    api::types::{AgentArea, AgentKeyRequest},
+    data::settle,
+};
 use dispatch_core::testing as common;
 use dispatch_cortex::{
     self as cortex,
@@ -8,7 +13,7 @@ use dispatch_cortex::{
     scorecard::{self, Capture, Request},
 };
 use dispatch_scorecard::ScorecardStore;
-use serde_json::json;
+use serde_json::{Value, json};
 
 /// Scorecard, and the Cortex collector whose scorecard it keeps.
 fn install() {
@@ -470,5 +475,40 @@ fn a_schedule_queues_the_latest_week_until_it_is_published() {
             .unwrap_err()
             .code,
         "scorecard_station_required"
+    );
+}
+
+/// A build without the feature that holds the routes has no delivery addresses: feedback
+/// still answers, and grouping it by address is refused as a grouping it can't give.
+#[test]
+fn feedback_answers_without_the_feature_that_holds_addresses() {
+    install();
+    let (_root, db, id) = ready();
+    db.enable_all_features(&id).unwrap();
+    let areas: Vec<_> = AgentArea::all().map(AgentArea::as_str).collect();
+    let request = AgentKeyRequest::parse(&json!({
+        "name": "feedback", "allDsps": false, "dsps": [id], "access": "read",
+        "reads": {"areas": areas, "bypass": false}, "dspReads": [], "expiresAt": null,
+    }))
+    .unwrap();
+    let key = db
+        .create_agent_key(&common::platform_owner(&db), &request)
+        .unwrap();
+    let caller = db.authenticate_agent(&key.token, "test").unwrap();
+    let state = State::new(db.config.clone()).unwrap();
+    let ask =
+        |query: Value| settle(dispatch_scorecard::feedback(&db, &state, &caller, &query)).unwrap();
+    let (status, body) = ask(json!({"group_by": "address"}));
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (400, Some("invalid_group_by")),
+        "{body}"
+    );
+    // With no week collected, it says so.
+    let (status, body) = ask(json!({}));
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (404, Some("not_collected")),
+        "{body}"
     );
 }

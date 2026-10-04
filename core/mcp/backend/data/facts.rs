@@ -88,13 +88,13 @@ pub struct Places {
 }
 /// One-line addresses, by tracking ID.
 pub type Addresses = HashMap<String, String>;
-/// Where packages were delivered, by the feature that answers for it.
-pub fn places() -> &'static Places {
+/// Where packages were delivered, by the feature that answers for it; none in a build
+/// without one.
+pub fn places() -> Option<&'static Places> {
     registry()
         .features
         .iter()
         .find_map(|feature| feature.mcp.places.as_ref())
-        .expect("a feature answers where packages were delivered")
 }
 
 /// One kind of a DSP's facts by driver and day, which `drivers/{driver}` joins into a
