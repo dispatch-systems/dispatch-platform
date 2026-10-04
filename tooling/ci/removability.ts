@@ -10,10 +10,12 @@ import path from 'node:path';
 //
 //   npm run check:removability -- --feature uniforms [--dry-run]
 //
-// The frontend's steps run with the left-out features' directories moved aside, so nothing
-// can still import them. They typecheck all but the app's cross-owner tests and the tooling,
-// which name every feature as the app's Rust tests do. Afterwards the checkout is as it was:
-// the directories come back and the generated TypeScript is restored.
+// Every step runs with the left-out features really gone: their directories are moved aside
+// and the app's manifest no longer names their crates, so nothing, product or test, can still
+// use them. The Cargo steps run without `--locked`, since the lock loses their crates. The
+// typecheck covers all but the app's cross-owner tests and the tooling, which name every
+// feature as the app's Rust tests do. Afterwards the checkout is as it was: the directories,
+// the manifest, the lock and the generated TypeScript all come back.
 
 const usage = 'Usage: npm run check:removability -- --feature <name> [--dry-run]';
 
@@ -31,6 +33,10 @@ export type Plan = { leftOut: string[]; kept: string[]; aside: string[]; steps: 
 
 export const repositoryRoot = path.resolve(import.meta.dirname, '../..');
 export const featureMap = 'app/generated/features.json';
+/** The app's manifest, which a run rewrites without the left-out features' crates. */
+export const appManifest = 'app/backend/Cargo.toml';
+/** The workspace's lock, which the Cargo steps rewrite without their crates. */
+const lock = 'Cargo.lock';
 /** The frontend's program without the app's cross-owner tests and the tooling. */
 export const typesConfig = 'tooling/ci/removability.tsconfig.json';
 /** Where a run keeps what it moves aside, beside the build's output. */
@@ -60,13 +66,61 @@ export function leftOut(features: FeatureMap, feature: string): string[] {
     .sort();
 }
 
+/**
+ * The app's manifest without the features `out`: their dependency and dev-dependency lines go,
+ * and no feature list names them or their crates. Their own features stay declared, empty, so
+ * the `cfg`s and `required-features` that name them read as off rather than unknown.
+ */
+export function withoutFeatures(manifest: string, out: readonly string[]): string {
+  // A feature's crate, by the directory its path names.
+  const dependency = /^([\w-]+)\s*=\s*\{.*\bpath\s*=\s*"(?:[^"]*\/)?features\/([\w-]+)"/;
+  const crates = new Set<string>();
+  for (const line of manifest.split('\n')) {
+    const found = dependency.exec(line);
+    if (found && out.includes(found[2]!)) crates.add(found[1]!);
+  }
+  // `name`, `dep:crate`, `crate/feature` and `crate?/feature` name a left-out feature.
+  const named = (entry: string) =>
+    out.includes(entry) || crates.has(entry.replace(/^dep:/, '').split(/\??\//)[0]!);
+  const unnamed = (line: string) =>
+    line
+      .replace(/"([^"]*)"\s*,?\s*/g, (quoted, entry: string) => (named(entry) ? '' : quoted))
+      .replace(/,\s*\]/, ']');
+  const lines: string[] = [];
+  let section = '';
+  // In a feature's list that goes on past its first line, and whether that feature is left out.
+  let open: { out: boolean } | undefined;
+  for (const line of manifest.split('\n')) {
+    const header = /^\[{1,2}([^\]]+)\]{1,2}\s*$/.exec(line);
+    if (header) section = header[1]!;
+    if (section.endsWith('dependencies') && crates.has(dependency.exec(line)?.[1] ?? '')) continue;
+    if (section !== 'features' || header) {
+      lines.push(line);
+      continue;
+    }
+    const definition = open ? undefined : /^([\w-]+)\s*=\s*\[/.exec(line);
+    const list = definition ? { out: out.includes(definition[1]!) } : open;
+    open = list && !line.includes(']') ? list : undefined;
+    if (!list) lines.push(line);
+    else if (list.out) {
+      if (definition) lines.push(`${definition[1]} = []`);
+    } else {
+      const left = unnamed(line);
+      // A line of a list that named only what was left out goes with it.
+      if (left.trim() || !line.trim()) lines.push(left);
+    }
+  }
+  return lines.join('\n');
+}
+
 /** What leaving `feature` out runs, in order. `bundle` is where the frontend is built to. */
 export function plan(features: FeatureMap, feature: string, bundle: string): Plan {
   const out = leftOut(features, feature);
   const kept = Object.keys(features)
     .filter((name) => !out.includes(name))
     .sort();
-  const app = ['--locked', '-p', 'dispatch-backend', '--no-default-features'];
+  // Unlocked: the lock loses the left-out crates.
+  const app = ['-p', 'dispatch-backend', '--no-default-features'];
   const cargo = [...app, '--features', kept.join(',')];
   return {
     leftOut: out,
@@ -91,9 +145,6 @@ export function plan(features: FeatureMap, feature: string, bundle: string): Pla
     ],
   };
 }
-
-/** The first step that runs without the left-out features' directories. */
-const frontendSteps = 'types';
 
 /** How a step reads in a log: its environment, command and arguments. */
 export const commandLine = ({ command, args, env }: Step) =>
@@ -155,33 +206,39 @@ function generated(root: string): string[] {
 }
 
 /**
- * Keeps the generated files and moves features aside, and puts both back as they were. It
- * refuses to start over what an interrupted run left, which `restore` would lose.
+ * Leaves the features out of the checkout, keeping what that and the steps change, and puts it
+ * all back as it was. It refuses to start over what an interrupted run left, which `restore`
+ * would lose.
  */
-function checkout(root: string, aside: string[]) {
+function checkout(root: string, removal: Plan) {
   const store = path.join(root, workspace);
   if (fs.existsSync(store))
     throw new Error(
       `${workspace} holds what an earlier run moved aside: put its features/ back and delete it`,
     );
-  const before = generated(root);
+  const before = [...generated(root), appManifest, lock];
   for (const file of before)
-    fs.cpSync(path.join(root, file), path.join(store, 'generated', file), { recursive: true });
+    fs.cpSync(path.join(root, file), path.join(store, 'kept', file), { recursive: true });
   const moved: string[] = [];
   return {
-    moveAside() {
-      for (const dir of aside) {
+    leaveOut() {
+      for (const dir of removal.aside) {
         fs.mkdirSync(path.dirname(path.join(store, dir)), { recursive: true });
         fs.renameSync(path.join(root, dir), path.join(store, dir));
         moved.push(dir);
       }
+      const manifest = path.join(root, appManifest);
+      fs.writeFileSync(
+        manifest,
+        withoutFeatures(fs.readFileSync(manifest, 'utf8'), removal.leftOut),
+      );
     },
     restore() {
       for (const dir of moved.splice(0)) fs.renameSync(path.join(store, dir), path.join(root, dir));
       for (const file of new Set([...generated(root), ...before]))
         fs.rmSync(path.join(root, file), { recursive: true, force: true });
       for (const file of before)
-        fs.cpSync(path.join(store, 'generated', file), path.join(root, file), { recursive: true });
+        fs.cpSync(path.join(store, 'kept', file), path.join(root, file), { recursive: true });
       fs.rmSync(store, { recursive: true, force: true });
     },
   };
@@ -201,15 +258,13 @@ export async function main(argv: string[], root = repositoryRoot) {
   const named = removal.leftOut.join(', ');
   process.stdout.write(`Leaving out ${named}; keeping ${removal.kept.join(', ')}.\n`);
   if (argv.includes('--dry-run')) {
-    for (const step of removal.steps) {
-      if (step.name === frontendSteps)
-        process.stdout.write(`(moves ${removal.aside.join(', ')} aside)\n`);
-      process.stdout.write(`${step.name}: ${commandLine(step)}\n`);
-    }
+    process.stdout.write(`(moves ${removal.aside.join(', ')} aside)\n`);
+    process.stdout.write(`(drops their crates from ${appManifest})\n`);
+    for (const step of removal.steps) process.stdout.write(`${step.name}: ${commandLine(step)}\n`);
     return true;
   }
   const started = Date.now();
-  const state = checkout(root, removal.aside);
+  const state = checkout(root, removal);
   const interrupted = () => {
     state.restore();
     process.exit(130);
@@ -218,8 +273,8 @@ export async function main(argv: string[], root = repositoryRoot) {
   process.once('SIGTERM', interrupted);
   const reports: string[] = [];
   try {
+    state.leaveOut();
     for (const step of removal.steps) {
-      if (step.name === frontendSteps) state.moveAside();
       const since = Date.now();
       process.stdout.write(`[${step.name}] ${commandLine(step)}\n`);
       const { ok, output } = await run(step, root);

@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  appManifest,
   commandLine,
   featureMap,
   leftOut,
@@ -12,6 +13,7 @@ import {
   readFeatures,
   repositoryRoot as root,
   typesConfig,
+  withoutFeatures,
   type FeatureMap,
 } from '../ci/removability.js';
 import { workflowField } from '../testing/workflow.js';
@@ -38,7 +40,7 @@ test('the build keeps every other feature, and each step runs with that set', ()
   assert.deepEqual(removal.leftOut, ['driver_match', 'timecard']);
   assert.deepEqual(removal.kept, ['home', 'uniforms']);
   assert.deepEqual(removal.aside, ['features/driver_match', 'features/timecard']);
-  const cargo = '--locked -p dispatch-backend --no-default-features --features home,uniforms';
+  const cargo = '-p dispatch-backend --no-default-features --features home,uniforms';
   assert.deepEqual(
     removal.steps.map((step) => [step.name, commandLine(step)]),
     [
@@ -67,6 +69,84 @@ test("the feature map names the app's Cargo features, each with what it declares
   // A leaf goes alone; Timecard declares Driver Match, so it goes with it.
   assert.deepEqual(leftOut(features, 'uniforms'), ['uniforms']);
   assert.deepEqual(leftOut(features, 'driver_match'), ['driver_match', 'timecard']);
+});
+
+test("the app's manifest loses the left-out features' crates, and no list names them", () => {
+  const manifest = [
+    '[features]',
+    '# Every feature.',
+    'default = [',
+    '    "uniforms",',
+    '    "driver_match",',
+    '    "timecard",',
+    ']',
+    'uniforms = ["dep:dispatch-uniforms"]',
+    'driver_match = ["dep:dispatch-driver-match"]',
+    'timecard = ["dep:dispatch-timecard", "driver_match"]',
+    'reports = ["uniforms", "timecard", "dispatch-timecard/ts", "dispatch-driver-match?/ts"]',
+    'probes = ["dispatch-cortex/probes"]',
+    '',
+    '[dependencies]',
+    'dispatch-core = { path = "../../core" }',
+    'dispatch-driver-match = { path = "../../features/driver_match", optional = true }',
+    'dispatch-timecard = { path = "../../features/timecard", optional = true }',
+    'dispatch-uniforms = { path = "../../features/uniforms", optional = true }',
+    '',
+    '[dev-dependencies]',
+    'dispatch-timecard = { path = "../../features/timecard", features = ["ts"] }',
+    'dispatch-uniforms = { path = "../../features/uniforms", features = ["ts"] }',
+    '',
+    '[[test]]',
+    'name = "meals"',
+    'path = "../../app/tests/backend/integration/meals.rs"',
+    'required-features = ["timecard"]',
+    '',
+  ].join('\n');
+  assert.equal(
+    withoutFeatures(manifest, ['driver_match', 'timecard']),
+    [
+      '[features]',
+      '# Every feature.',
+      'default = [',
+      '    "uniforms",',
+      ']',
+      'uniforms = ["dep:dispatch-uniforms"]',
+      'driver_match = []',
+      'timecard = []',
+      'reports = ["uniforms"]',
+      'probes = ["dispatch-cortex/probes"]',
+      '',
+      '[dependencies]',
+      'dispatch-core = { path = "../../core" }',
+      'dispatch-uniforms = { path = "../../features/uniforms", optional = true }',
+      '',
+      '[dev-dependencies]',
+      'dispatch-uniforms = { path = "../../features/uniforms", features = ["ts"] }',
+      '',
+      '[[test]]',
+      'name = "meals"',
+      'path = "../../app/tests/backend/integration/meals.rs"',
+      'required-features = ["timecard"]',
+      '',
+    ].join('\n'),
+  );
+  assert.equal(withoutFeatures(manifest, []), manifest);
+});
+
+test("each removal leaves the app's manifest naming none of what it leaves out", () => {
+  const features = readFeatures(root);
+  const manifest = fs.readFileSync(path.join(root, appManifest), 'utf8');
+  for (const feature of Object.keys(features)) {
+    const out = leftOut(features, feature);
+    const stripped = withoutFeatures(manifest, out);
+    for (const name of out) {
+      assert(!stripped.includes(`features/${name}"`), `${feature}: features/${name}`);
+      assert.match(stripped, new RegExp(`^${name} = \\[\\]$`, 'm'), feature);
+      assert(!new RegExp(`^\\s*"${name}",?$`, 'm').test(stripped), `${feature}: "${name}"`);
+    }
+    for (const name of Object.keys(features).filter((each) => !out.includes(each)))
+      assert(stripped.includes(`features/${name}"`), `${feature} keeps ${name}`);
+  }
 });
 
 test('a dry run prints the plan and changes nothing', () => {
