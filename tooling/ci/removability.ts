@@ -39,8 +39,11 @@ export const appManifest = 'app/backend/Cargo.toml';
 const lock = 'Cargo.lock';
 /** The frontend's program without the app's cross-owner tests and the tooling. */
 export const typesConfig = 'tooling/ci/removability.tsconfig.json';
-/** Where a run keeps what it moves aside, beside the build's output. */
-const workspace = '.build/removability';
+/**
+ * Where a run keeps what it moves aside: outside `.build`, which a build replaces whole, so
+ * what a run killed before it could restore leaves stays until it is put back.
+ */
+const workspace = '.removability';
 
 export function readFeatures(root: string): FeatureMap {
   return JSON.parse(fs.readFileSync(path.join(root, featureMap), 'utf8')) as FeatureMap;

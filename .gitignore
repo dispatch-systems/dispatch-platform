@@ -23,6 +23,7 @@ dispatch-dev.tar.gz
 target/
 
 .build-staging-*/
+.removability/
 
 # Private state beside the live Dev checkout. Never commit these directories.
 /config/

@@ -6,6 +6,7 @@ target/
 Cargo.lock
 
 .build-staging-*/
+.removability/
 **/generated/
 
 # Byte-for-byte what the agent API answered, compared by a test.
