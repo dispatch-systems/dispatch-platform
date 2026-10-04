@@ -30,14 +30,19 @@ import {
   type CollectionLabels,
   type ConnectionCard,
   type DspRoute,
+  type DspRouteId,
   type PageTab,
   type PlatformSlots,
   type ReadToggles,
   type SettingsTab,
 } from '../../frontend/runtime/slots.js';
+import type { PageFeature } from '../../../tenancy/api/index.js';
 
 // Synthetic owners, installed as the app installs its manifests. A platform-slots module's
-// loader resolves to the module.
+// loader resolves to the module. The pages and switches they declare are the test's own too,
+// whatever features this build has.
+const pageId = (id: string) => id as DspRouteId;
+const switchId = (id: string) => id as PageFeature;
 const loads = (slots: PlatformSlots) => async () => ({ slots });
 const group = (label: string, order: number): ReadToggles => ({
   label,
@@ -63,9 +68,9 @@ test('read toggles come group by group in their order, ties in the order the own
 
 test("a page's switch shows the icon its feature declares, once loaded", async () => {
   installFeatures([
-    { name: 'alpha', platformSlots: loads({ switch: { id: 'uniforms', icon: Shirt } }) },
+    { name: 'alpha', platformSlots: loads({ switch: { id: switchId('uniforms'), icon: Shirt } }) },
     { name: 'beta' },
-    { name: 'gamma', platformSlots: loads({ switch: { id: 'scorecard', icon: Award } }) },
+    { name: 'gamma', platformSlots: loads({ switch: { id: switchId('scorecard'), icon: Award } }) },
   ]);
   assert.equal(switchIcon('uniforms'), undefined);
   await loadPlatformSlots();
@@ -224,8 +229,8 @@ test('a capability is named by the first connection listed that provides it', as
   assert.equal(capabilityLabelOf('maps'), undefined);
 });
 
-const page = (id: DspRoute['id'], remembered?: boolean): DspRoute => ({
-  id,
+const page = (id: string, remembered?: boolean): DspRoute => ({
+  id: pageId(id),
   scope: 'dsp',
   label: id,
   nav: true,
@@ -242,22 +247,22 @@ test('opening a DSP again returns to the last page open, unless that page is not
     },
   ]);
   assert.equal(dspHash('dsp_fixture'), '#dsp/dsp_fixture/overview');
-  rememberDestination('dsp_fixture', 'team');
+  rememberDestination('dsp_fixture', pageId('team'));
   assert.equal(dspHash('dsp_fixture'), '#dsp/dsp_fixture/team');
-  rememberDestination('dsp_fixture', 'settings');
+  rememberDestination('dsp_fixture', pageId('settings'));
   assert.equal(dspHash('dsp_fixture'), '#dsp/dsp_fixture/team');
 });
 
 test('a DSP opens on the page a feature declares it lands on, and names none without one', () => {
   installFeatures([
-    { name: 'alpha', routes: [page('team'), { ...page('overview'), landing: true }] },
+    { name: 'alpha', routes: [page('board'), { ...page('lobby'), landing: true }] },
   ]);
-  assert.equal(dspHash('dsp_landing'), '#dsp/dsp_landing/overview');
-  assert.equal(parseHash('#dsp/dsp_landing').page, 'overview');
-  installFeatures([{ name: 'alpha', routes: [page('team')] }]);
+  assert.equal(dspHash('dsp_landing'), '#dsp/dsp_landing/lobby');
+  assert.equal(parseHash('#dsp/dsp_landing').page, 'lobby');
+  installFeatures([{ name: 'alpha', routes: [page('board')] }]);
   assert.equal(dspHash('dsp_landing'), '#dsp/dsp_landing/');
   assert.equal(parseHash('#dsp/dsp_landing').page, '');
-  assert.equal(parseHash('#dsp/dsp_landing/team').page, 'team');
+  assert.equal(parseHash('#dsp/dsp_landing/board').page, 'board');
 });
 
 test('a link to Settings opens the page that draws the settings tabs, and only on a tab it has', () => {
@@ -269,23 +274,23 @@ test('a link to Settings opens the page that draws the settings tabs, and only o
     render: () => id,
   });
   installFeatures([
-    { name: 'alpha', routes: [page('team'), { ...page('settings'), hostsSettings: true }] },
+    { name: 'alpha', routes: [page('board'), { ...page('options'), hostsSettings: true }] },
     { name: 'beta', settingsTabs: [tab('beta-panel')] },
   ]);
-  assert.equal(settingsHash('dsp_settings'), '#dsp/dsp_settings/settings');
+  assert.equal(settingsHash('dsp_settings'), '#dsp/dsp_settings/options');
   assert.equal(
     settingsHash('dsp_settings', 'beta-panel'),
-    '#dsp/dsp_settings/settings?tab=beta-panel',
+    '#dsp/dsp_settings/options?tab=beta-panel',
   );
   assert.equal(settingsHash('dsp_settings', 'gone'), undefined);
-  installFeatures([{ name: 'beta', routes: [page('team')], settingsTabs: [tab('beta-panel')] }]);
+  installFeatures([{ name: 'beta', routes: [page('board')], settingsTabs: [tab('beta-panel')] }]);
   assert.equal(settingsHash('dsp_settings'), undefined);
   assert.equal(settingsHash('dsp_settings', 'beta-panel'), undefined);
 });
 
 test("a page's tabs from other features come in their order, ties in the order they are listed", () => {
-  const tab = (page: PageTab['page'], id: string, order: number): PageTab => ({
-    page,
+  const tab = (page: string, id: string, order: number): PageTab => ({
+    page: pageId(page),
     id,
     label: id,
     order,
