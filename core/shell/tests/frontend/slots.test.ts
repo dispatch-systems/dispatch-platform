@@ -20,6 +20,7 @@ import {
   installFeatures,
   isLongPoll,
   pageTabs,
+  runWording,
   scheduleIssueOf,
   auditWording,
   loadPlatformSlots,
@@ -29,6 +30,7 @@ import {
   type DspRouteId,
   type PageTab,
   type PlatformSlots,
+  type RunWording,
   type SettingsTab,
 } from '../../frontend/runtime/slots.js';
 import type { PageFeature } from '../../../tenancy/api/index.js';
@@ -97,6 +99,22 @@ test('connection cards come in the order their collectors are listed', () => {
   );
   assert.equal(connectionCard('paycom')?.read, '/api/dsp/connections/paycom');
   assert.equal(connectionCard('other'), undefined);
+});
+
+test("a collection's runs are worded by the first owner listed that words them, once loaded", async () => {
+  const wording = (collected: string): RunWording => ({
+    collected: () => collected,
+    reads: () => [],
+    slowReads: () => null,
+  });
+  installFeatures([
+    { name: 'alpha' },
+    { name: 'beta', platformSlots: loads({ runWording: wording('beta') }) },
+    { name: 'gamma', platformSlots: loads({ runWording: wording('gamma') }) },
+  ]);
+  assert.equal(runWording(), undefined);
+  await loadPlatformSlots();
+  assert.equal(runWording()?.collected({} as never), 'beta');
 });
 
 test('cache rules keep each owner’s reads current, a read changing when any owner says so', () => {

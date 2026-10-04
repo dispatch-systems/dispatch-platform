@@ -23,7 +23,7 @@ declare module '../../shell/frontend/runtime/slots.js' {
 const loadDsps = () =>
   Promise.all([import('./dsps/index.js'), loadPlatformSlots()]).then(([module]) => module);
 const loadPicker = () => import('./dsps/picker.js');
-// Diagnostics names each collection as its collector does.
+// Diagnostics words each collection's runs as an owner does.
 const loadDiagnostics = () =>
   Promise.all([import('./diagnostics/index.js'), loadPlatformSlots()]).then(([module]) => module);
 const loadAgents = () => import('./agents/index.js');

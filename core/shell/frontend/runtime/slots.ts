@@ -1,7 +1,7 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import type { AuditEvent } from '../../../platform_owner/api/index.js';
-import type { CollectionChange } from '../../../collection/api/index.js';
+import type { CollectionChange, JobMetrics, PageReads } from '../../../collection/api/index.js';
 import type { ConnectionFeature, Feature, PageFeature } from '../../../tenancy/api/index.js';
 import type { DspView, Permission, SessionView } from '../../../accounts/api/index.js';
 import type { Replies } from '../../../foundation/api/runtime.js';
@@ -154,6 +154,19 @@ export type ConnectionCard = {
   render: (context: ConnectionCardContext) => ReactNode;
 };
 
+/**
+ * How Diagnostics words the measurements core keeps of every collection's runs, beyond their
+ * timings and memory: what an attempt collected, and its page reads.
+ */
+export type RunWording = {
+  /** What an attempt collected; undefined says nothing, and the row reads "—". */
+  collected: (attempt: JobMetrics) => string | undefined;
+  /** The rows its page reads add to the attempt's measurements. */
+  reads: (reads: PageReads) => [label: string, value: string][];
+  /** Draws its slow and failed reads, if it has any, below them. */
+  slowReads: ComponentType<{ attempt: JobMetrics }>;
+};
+
 /** How the response cache keeps an owner's reads current, each read named by its path prefix. */
 export type CacheRules = {
   /** Its reads that hold collected data. */
@@ -181,6 +194,8 @@ export type PlatformSlots = {
   switch?: { id: PageFeature; icon: LucideIcon };
   /** How its events read in the audit log. */
   auditWording?: AuditWording;
+  /** How Diagnostics words every collection's runs; the first owner listed with it does. */
+  runWording?: RunWording;
 };
 
 /** An owner's frontend: what it puts in each slot. */
@@ -316,3 +331,6 @@ export const switchIcon = (id: string) =>
 
 /** Every owner's audit wording, in the order the owners are listed. */
 export const auditWording = () => loadedSlots.flatMap((slots) => slots.auditWording ?? []);
+
+/** How Diagnostics words every collection's runs, as the first owner listed with it does. */
+export const runWording = () => loadedSlots.find((slots) => slots.runWording)?.runWording;
