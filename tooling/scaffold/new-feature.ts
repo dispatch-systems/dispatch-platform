@@ -13,6 +13,7 @@ import {
   collectionsOf,
   collectors,
   coreParts,
+  drawsPageTabs,
   emptyPlan,
   exists,
   features,
@@ -26,7 +27,6 @@ import {
   nextAgentOrder,
   nextMigration,
   nextPermissionOrder,
-  offersSlot,
   pageOf,
   parseArguments,
   repositoryRoot,
@@ -146,6 +146,12 @@ export function featureValues(root: string, argv: string[]) {
       throw new UsageError(`--tab-of names a feature, and ${host} is none`);
     const found = pageOf(root, host);
     if (!found) throw new UsageError(`${host} has no page to hold a tab`);
+    // The pageTabs slot holds the tab; the host's page has to draw what it holds.
+    if (!drawsPageTabs(root, host))
+      throw new UsageError(
+        `${host}'s page does not draw the tabs other features add to it yet: ` +
+          `it needs pageTabs('${found.id}') among its own tabs first`,
+      );
     hostPage = found;
   }
 
@@ -259,6 +265,7 @@ export function featureValues(root: string, argv: string[]) {
     mcp,
     agentOrder: mcp ? nextAgentOrder(root) : 0,
     frontend: page || Boolean(host) || settings,
+    canImport: permission && (page || settings),
     page,
     tab: Boolean(host),
     settings,
@@ -298,7 +305,8 @@ function pieces(values: Values): [boolean, string, string][] {
     [values.frontend as boolean, 'frontend/feature.ts', 'frontend/feature.ts'],
     [values.page as boolean, 'frontend/index.ts', 'frontend/index.ts'],
     [values.page as boolean, 'frontend/Page.tsx', `frontend/${pascal}Page.tsx`],
-    [values.tab as boolean, 'frontend/Tab.tsx', `frontend/tabs/${slug}/${pascal}Tab.tsx`],
+    // frontend/tabs/ holds the tabs of its own page, which its manifest declares.
+    [values.tab as boolean, 'frontend/Tab.tsx', `frontend/${pascal}Tab.tsx`],
     [
       values.settings as boolean,
       'frontend/Settings.tsx',
@@ -401,15 +409,6 @@ export async function planFeature(root: string, argv: string[]) {
       'The agent API documents in app/tests/backend/agent_api/ list its endpoint now: ' +
         'DISPATCH_UPDATE_AGENT_API=1 rewrites them.',
     );
-  if (values.tab) {
-    if (!offersSlot(root, 'pageTabs'))
-      plan.notes.push(
-        "core/shell's FrontendFeature has no pageTabs slot yet: add it before the tab can show.",
-      );
-    plan.notes.push(
-      `${values.host}'s page shows the tabs the pageTabs slot holds for '${values.hostPage}'.`,
-    );
-  }
   plan.notes.push(`\`npm run test:feature ${name}\` runs its tests of every kind.`);
   return { plan, args };
 }

@@ -273,6 +273,11 @@ export function pageOf(root: string, feature: string) {
 /** Whether core's frontend slots offer `slot` yet. */
 export const offersSlot = (root: string, slot: string) =>
   new RegExp(`\\b${slot}\\?:`).test(read(root, 'core/shell/frontend/runtime/slots.ts'));
+/** Whether a feature's page draws the tabs other features add to it, with `pageTabs(…)`. */
+export const drawsPageTabs = (root: string, feature: string) =>
+  files(root, `features/${feature}/frontend`, /\.tsx?$/).some((file) =>
+    /\bpageTabs\(/.test(read(root, file)),
+  );
 
 // ---- Edits that list a new owner in app/
 

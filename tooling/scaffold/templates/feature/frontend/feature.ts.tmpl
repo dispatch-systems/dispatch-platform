@@ -2,9 +2,9 @@ import { createElement, lazy } from 'react';
 {{#page}}
 import { LayoutGrid } from 'lucide-react';
 {{/page}}
-{{#permission}}
+{{#canImport}}
 import { can } from '{{toRoot}}core/shell/frontend/runtime/permissions.js';
-{{/permission}}
+{{/canImport}}
 import type { FrontendFeature } from '{{toRoot}}core/shell/frontend/runtime/slots.js';
 {{#prefetch}}
 import { {{camel}}SummaryUrl } from '../api/client.js';
@@ -23,7 +23,7 @@ const loadPage = () => import('./index.js');
 const {{pascal}}Page = lazy(() => loadPage().then((module) => ({ default: module.{{pascal}}Page })));
 {{/page}}
 {{#tab}}
-const loadTab = () => import('./tabs/{{slug}}/{{pascal}}Tab.js');
+const loadTab = () => import('./{{pascal}}Tab.js');
 const {{pascal}}Tab = lazy(() => loadTab().then((module) => ({ default: module.{{pascal}}Tab })));
 {{/tab}}
 {{#settings}}
@@ -66,9 +66,6 @@ export const feature: FrontendFeature = {
       id: '{{slug}}',
       label: '{{label}}',
       order: 100,
-{{#permission}}
-      visible: (view) => can(view, '{{name}}.view'),
-{{/permission}}
       load: loadTab,
       render: ({ view }) => createElement({{pascal}}Tab, { view }),
     },

@@ -37,7 +37,8 @@ const registry = ['app/backend/features.rs', 'app/backend/lib.rs'].find(
     fs.existsSync(candidate) && /pub static REGISTRY\b/.test(fs.readFileSync(candidate, 'utf8')),
 )!;
 
-// A copy of the repository's workspace, for what needs a collector that exists only there.
+// A copy of the repository's workspace, for what needs a collector that exists only there. Its
+// Timecard page draws the tabs other features add to it.
 let copy = '';
 before(() => {
   copy = temporary();
@@ -58,6 +59,10 @@ before(() => {
       recursive: true,
       filter: (source) => !/(^|\/)(node_modules|target)(\/|$)/.test(source),
     });
+  fs.writeFileSync(
+    path.join(copy, 'features/timecard/frontend/page-tabs.ts'),
+    "export const drawn = () => pageTabs('paycom');\n",
+  );
 });
 after(() => fs.rmSync(copy, { recursive: true, force: true }));
 
@@ -406,16 +411,25 @@ test('--page, --tab-of and --settings write frontend/feature.ts, the screen and 
   );
   assert.doesNotMatch(open, /feature: 'lobby'|can\(/);
 
-  const tab = await feature('notes', '--tab-of', 'timecard');
-  assert(tab.files.has('features/notes/frontend/tabs/notes/NotesTab.tsx'));
-  assert.match(
-    file(tab, 'features/notes/frontend/feature.ts'),
-    /pageTabs: \[\s*\{\s*page: 'paycom',/,
-  );
+  // frontend/tabs/ holds the tabs of a feature's own page, so a tab of another's sits beside its
+  // manifest. A PageTab has no permission of its own to check.
+  const { plan: tab } = await planFeature(copy, ['notes', '--tab-of', 'timecard']);
+  assert(tab.files.has('features/notes/frontend/NotesTab.tsx'));
+  const tabManifest = file(tab, 'features/notes/frontend/feature.ts');
+  assert.match(tabManifest, /pageTabs: \[\s*\{\s*page: 'paycom',/);
+  assert.match(tabManifest, /import\('.\/NotesTab.js'\)/);
+  assert.doesNotMatch(tabManifest, /visible|permissions\.js/);
   assert.match(file(tab, 'features/notes/tests/browser/notes.spec.ts'), /name: 'Timecard'/);
   assert.match(
-    file(tab, 'features/notes/frontend/tabs/notes/NotesTab.tsx'),
-    /from '..\/..\/..\/..\/..\/core\/shell\/frontend\/ui\/index.js'/,
+    file(tab, 'features/notes/frontend/NotesTab.tsx'),
+    /from '..\/..\/..\/core\/shell\/frontend\/ui\/index.js'/,
+  );
+  // A page that does not draw the tabs other features add would never show it.
+  await refused(
+    /timecard's page does not draw the tabs other features add to it yet/,
+    'notes',
+    '--tab-of',
+    'timecard',
   );
 
   const settings = await feature('notes', '--settings');
@@ -481,7 +495,7 @@ test('everything written is formatted as the repository formats it, with no plac
       '--label',
       'Parking Lot',
     ),
-    await feature('notes', '--tab-of', 'dvic', '--always-on'),
+    (await planFeature(copy, ['notes', '--tab-of', 'timecard', '--always-on'])).plan,
     await collector('fleet'),
   ];
   const config = (await prettier.resolveConfig(path.join(root, 'package.json'))) ?? {};
