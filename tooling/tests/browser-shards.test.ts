@@ -65,8 +65,8 @@ test('the recorded times name the suite, and the workflow runs as many shards as
 
 test('manual browser selectors stay inert and cannot become runner options', () => {
   assert.deepEqual(manualBrowserSelection(''), []);
-  assert.deepEqual(manualBrowserSelection('  tests/browser/a.spec.ts  '), [
-    'tests/browser/a.spec.ts',
+  assert.deepEqual(manualBrowserSelection('  features/team/tests/browser/roles.spec.ts  '), [
+    'features/team/tests/browser/roles.spec.ts',
   ]);
   for (const selector of [
     '$(touch /tmp/injected)',

@@ -521,7 +521,7 @@ mod tests {
             "cargo test --locked -p dispatch-backend -p dispatch-paycom"
         );
         assert!(changed(&["collectors/cortex/frontend/CortexCard.tsx"]).is_empty());
-        assert!(changed(&["docs/readme.md", "dashboard/src/app/App.tsx"]).is_empty());
+        assert!(changed(&["docs/readme.md", "app/frontend/main.tsx"]).is_empty());
         // Frontend code in an owner's directory never asks for the Rust checks.
         assert!(
             changed(&[
