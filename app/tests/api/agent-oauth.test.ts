@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fixture, freePort } from '../../../shell/tests/support/support.js';
-import { capturedMail } from '../../../shell/tests/support/mail-support.js';
+import { fixture, freePort } from '../../../core/shell/tests/support/support.js';
+import { capturedMail } from '../../../core/shell/tests/support/mail-support.js';
 import type {
   AgentKey,
   AgentKeys,
@@ -15,7 +15,7 @@ import type {
   OAuthPairingOpened,
   OAuthRedirect,
   OAuthRequest,
-} from '../../../platform_owner/api/index.js';
+} from '../../../core/platform_owner/api/index.js';
 
 // Sign in with Dispatch, driven over HTTP the way an MCP client drives it: a 401 that says
 // where to sign in, the discovery documents, the browser's trip through /oauth/authorize, the

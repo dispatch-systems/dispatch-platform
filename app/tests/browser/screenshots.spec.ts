@@ -4,7 +4,7 @@ import { routeMeta } from '../../frontend/route-meta.js';
 import { test, expect, login, openDsp } from '../../../core/shell/tests/support/fixtures.js';
 import { seedDvic } from '../../../features/dvic/tests/support/dvic.js';
 import { seedDriverMatch } from '../../../features/driver_match/tests/support/driver-match.js';
-import { seedAgentKeys } from '../../../core/mcp/tests/support/agent-keys.js';
+import { seedAgentKeys } from '../support/agent-keys.js';
 
 // Not a test: `npm run pr:screenshots -- capture` runs it to photograph the named screens of
 // the built dashboard, from the fixture server, for a PR's Screenshots section. A screen may
