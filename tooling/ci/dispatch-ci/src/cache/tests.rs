@@ -250,6 +250,28 @@ fn every_rust_and_embedded_launcher_input_is_fingerprinted_but_dashboard_is_not(
 }
 
 #[test]
+fn a_checkout_inside_a_folder_named_like_frontend_code_still_fingerprints_its_rust() {
+    let temp = tempfile::tempdir().unwrap();
+    let env = Environment::from([(
+        "CARGO_HOME".into(),
+        "/nonexistent-dispatch-test-home".into(),
+    )]);
+    for parent in ["frontend", "node_modules"] {
+        let root = temp.path().join(parent).join("repo");
+        let source = root.join("app/backend/main.rs");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, "one").unwrap();
+        let before = fingerprint(&root, "release", "compiler", &env).unwrap();
+        fs::write(&source, "two").unwrap();
+        assert_ne!(
+            before,
+            fingerprint(&root, "release", "compiler", &env).unwrap(),
+            "{parent}"
+        );
+    }
+}
+
+#[test]
 fn only_the_exact_fingerprinted_remap_config_allows_cache_reuse() {
     let f = Fixture::new();
     fs::create_dir(f.root.join(".cargo")).unwrap();
