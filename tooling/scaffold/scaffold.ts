@@ -325,13 +325,17 @@ export function capabilitiesOf(root: string, site: string) {
   const list = /fn capabilities\(&self\)[^{]*\{\s*&\[([^\]]*)\]/.exec(source)?.[1] ?? '';
   return [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1]!);
 }
-/** The feature file that keeps `collection` already, if any: each collection has one keeper. */
-export function keeperOf(root: string, collection: string) {
+/**
+ * The feature file that keeps `site`'s `collection` already, if any: each collection has one
+ * keeper. Another collector may have a collection of the same name.
+ */
+export function keeperOf(root: string, site: string, collection: string) {
   const names = new RegExp(`\\b${collection}::(\\{[^}]*\\bJOB_KIND\\b|JOB_KIND\\b)`);
+  const crate = new RegExp(`\\bdispatch_${site}\\b`);
   return rustSources(root).find((file) => {
     if (!file.startsWith('features/')) return false;
     const source = read(root, file);
-    return /impl Keeper for/.test(source) && names.test(source);
+    return /impl Keeper for/.test(source) && crate.test(source) && names.test(source);
   });
 }
 /** A feature's page as its `frontend/feature.ts` declares it: its address and label. */

@@ -317,6 +317,23 @@ test('--keeps refuses a collection another feature keeps, or one that does not e
   await refused(/--keeps names a collector/, 'more', '--keeps', 'nowhere.records');
 });
 
+test("--keeps tells one collector's collection from another's of the same name", async () => {
+  const site = await planCollector(copy, ['yard', '--collection', 'dvic']);
+  for (const [name, content] of [...site.plan.files, ...site.plan.changes]) {
+    fs.mkdirSync(path.dirname(path.join(copy, name)), { recursive: true });
+    fs.writeFileSync(path.join(copy, name), content);
+  }
+  const { plan } = await planFeature(copy, ['yard_checks', '--keeps', 'yard.dvic']);
+  assert.match(
+    file(plan, 'features/yard_checks/backend/keeper.rs'),
+    /use dispatch_yard::dvic::JOB_KIND;/,
+  );
+  await assert.rejects(
+    planFeature(copy, ['more', '--keeps', 'cortex.dvic']),
+    /features\/dvic\/backend\/keeper\.rs keeps cortex\.dvic already/,
+  );
+});
+
 test('the next migration follows every one declared, as SQL or as code, and every one recorded', async () => {
   const next = (plan: Plan) =>
     Number(/\bid: (\d+),\s*name: "ledger"/.exec(file(plan, 'features/ledger/feature.rs'))?.[1]);

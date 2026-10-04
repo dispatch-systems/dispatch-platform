@@ -121,7 +121,7 @@ export function featureValues(root: string, argv: string[]) {
       throw new UsageError(
         `${site} collects ${collectionsOf(root, site).join(', ')}, not ${collection}`,
       );
-    const keeper = keeperOf(root, collection);
+    const keeper = keeperOf(root, site, collection);
     if (keeper)
       throw new UsageError(
         `${keeper} keeps ${site}.${collection} already: each collection has one keeper`,
