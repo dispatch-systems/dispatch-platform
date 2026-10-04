@@ -18,7 +18,7 @@ use dispatch_core::{
     },
     db::{Kind, Migration, Migrations, migrations::Apply::Sql},
     foundation::validate as v,
-    manifest::{Collection, Collector},
+    manifest::{Capability, Collection, Collector},
 };
 use serde_json::Value;
 use std::path::Path;
@@ -65,8 +65,11 @@ impl Collector for {{pascal}} {
     fn label(&self) -> &'static str {
         "{{label}}"
     }
-    fn capabilities(&self) -> &'static [&'static str] {
-        &["{{collection}}"]
+    fn capabilities(&self) -> &'static [Capability] {
+        &[Capability {
+            id: "{{collection}}",
+            label: "a {{collectionLabel}} source",
+        }]
     }
     fn collections(&self) -> &'static [Collection] {
         &COLLECTIONS

@@ -252,7 +252,7 @@ export const collectionsOf = (root: string, site: string) =>
 export function capabilitiesOf(root: string, site: string) {
   const source = read(root, `collectors/${site}/collector.rs`);
   const list = /fn capabilities\(&self\)[^{]*\{\s*&\[([^\]]*)\]/.exec(source)?.[1] ?? '';
-  return [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1]!);
+  return [...list.matchAll(/\bid:\s*"([^"]+)"/g)].map((match) => match[1]!);
 }
 /** The feature file that keeps `collection` already, if any: each collection has one keeper. */
 export function keeperOf(root: string, collection: string) {

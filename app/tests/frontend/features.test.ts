@@ -4,13 +4,16 @@ import '../support/manifests.js';
 import { features } from '../../../core/tenancy/api/index.js';
 import { permissions } from '../../../core/accounts/api/index.js';
 import {
-  capabilityLabel,
   featureCatalog,
   featureLabel,
   grants,
   schedulesFeature,
 } from '../../../core/shell/frontend/runtime/features.js';
-import { previewSwitch, sideEffects } from '../../../core/platform_owner/frontend/dsps/switches.js';
+import {
+  capabilityLabel,
+  previewSwitch,
+  sideEffects,
+} from '../../../core/platform_owner/frontend/dsps/switches.js';
 
 test('the generated feature catalog covers every feature and its dependencies', () => {
   assert.deepEqual(

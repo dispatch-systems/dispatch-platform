@@ -9,7 +9,6 @@ import type {
   TabFeature,
 } from '../../../tenancy/api/index.js';
 import type { DspView, Permission } from '../../../accounts/api/index.js';
-import { capabilityLabelOf } from './slots.js';
 
 type Entry<Kind, Id> = {
   id: Id;
@@ -32,12 +31,6 @@ export type FeatureEntry = PageEntry | TabEntry | ConnectionEntry;
 export const featureCatalog: readonly FeatureEntry[] = generatedFeatureCatalog;
 /** The page whose schedules, collections and jobs run. */
 export const schedulesFeature: PageFeature = generatedSchedulesFeature;
-/**
- * A capability as a page that needs it names it, from the connections that provide it, once the
- * platform owner's slots have loaded. Every capability a page requires has a label; the catalog
- * test checks.
- */
-export const capabilityLabel = (capability: string) => capabilityLabelOf(capability) ?? capability;
 /** The tabs of `page`, in catalog order. */
 export const tabsOf = (page: string) =>
   featureCatalog.filter((f): f is TabEntry => f.kind === 'tab' && f.page === page);

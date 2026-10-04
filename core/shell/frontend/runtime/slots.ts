@@ -181,8 +181,6 @@ export type PlatformSlots = {
   switch?: { id: PageFeature; icon: LucideIcon };
   /** How its events read in the audit log. */
   auditWording?: AuditWording;
-  /** How a page that needs a capability its connection provides names it: "a … source". */
-  capabilities?: Record<string, string>;
 };
 
 /** An owner's frontend: what it puts in each slot. */
@@ -318,7 +316,3 @@ export const switchIcon = (id: string) =>
 
 /** Every owner's audit wording, in the order the owners are listed. */
 export const auditWording = () => loadedSlots.flatMap((slots) => slots.auditWording ?? []);
-
-/** How a page that needs a capability names it, as the first connection listed names it. */
-export const capabilityLabelOf = (capability: string) =>
-  loadedSlots.find((slots) => slots.capabilities?.[capability])?.capabilities?.[capability];

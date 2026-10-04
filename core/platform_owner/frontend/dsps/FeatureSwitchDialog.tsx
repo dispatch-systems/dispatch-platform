@@ -1,13 +1,9 @@
 import type { DspSummary } from '../../../accounts/api/index.js';
 import { setDspFeature } from '../../api/client.js';
-import {
-  capabilityLabel,
-  featureCatalog,
-  type FeatureEntry,
-} from '../../../shell/frontend/runtime/features.js';
+import { featureCatalog, type FeatureEntry } from '../../../shell/frontend/runtime/features.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { Modal } from '../../../shell/frontend/ui/index.js';
-import { previewSwitch, sideEffects, switchLabel } from './switches.js';
+import { capabilityLabel, previewSwitch, sideEffects, switchLabel } from './switches.js';
 
 // Asked only when a switch takes other features with it: names them, one line each with
 // why, then acts. A switch that changes nothing else never comes here.

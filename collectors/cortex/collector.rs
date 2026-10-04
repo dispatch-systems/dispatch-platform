@@ -30,7 +30,7 @@ use dispatch_core::{
     },
     db::{Kind, Migration, Migrations, migrations::Apply::Sql},
     foundation::validate as v,
-    manifest::{Collection, Collector},
+    manifest::{Capability, Collection, Collector},
 };
 use serde_json::Value;
 use std::path::Path;
@@ -141,8 +141,25 @@ impl Collector for Cortex {
     fn label(&self) -> &'static str {
         "Cortex"
     }
-    fn capabilities(&self) -> &'static [&'static str] {
-        &["meal_breaks", "routes", "dvic", "scorecard"]
+    fn capabilities(&self) -> &'static [Capability] {
+        &[
+            Capability {
+                id: "meal_breaks",
+                label: "a meal-break source",
+            },
+            Capability {
+                id: "routes",
+                label: "a route source",
+            },
+            Capability {
+                id: "dvic",
+                label: "a DVIC source",
+            },
+            Capability {
+                id: "scorecard",
+                label: "a scorecard source",
+            },
+        ]
     }
     fn collections(&self) -> &'static [Collection] {
         &COLLECTIONS

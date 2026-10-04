@@ -559,6 +559,14 @@ pub struct Collection {
     pub unconnected: &'static str,
 }
 
+/// What a collector's connection supplies to the pages that require it, such as timecards.
+#[derive(Clone, Copy, Debug)]
+pub struct Capability {
+    pub id: &'static str,
+    /// How the DSPs page names it where a page needs it: "a timecard source".
+    pub label: &'static str,
+}
+
 /// Everything the platform needs to know about one provider: how to reach it and read
 /// what it offers. Storage, credentials, the browser and the job queue ask here instead
 /// of matching on the provider; what a collection brings is a feature's `Keeper`'s.
@@ -568,7 +576,7 @@ pub trait Collector: Sync {
     /// Its name as the dashboard shows it.
     fn label(&self) -> &'static str;
     /// What its connection supplies to the pages that require it (`features`).
-    fn capabilities(&self) -> &'static [&'static str];
+    fn capabilities(&self) -> &'static [Capability];
     /// What it reads, its main collection first; each is chosen by `job_kind_for`. `both`
     /// schedules run the first of every collector's.
     fn collections(&self) -> &'static [Collection];

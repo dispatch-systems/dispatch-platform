@@ -27,7 +27,7 @@ use dispatch_core::{
     db::{self, Db, Kind, Migration, Migrations, Store, migrations::Apply::Sql, s},
     ensure,
     foundation::{crypto, validate as v},
-    manifest::{Collection, Collector, Tables},
+    manifest::{Capability, Collection, Collector, Tables},
 };
 use serde_json::{Value, json};
 use std::{collections::HashSet, path::Path};
@@ -112,8 +112,11 @@ impl Collector for Paycom {
     fn label(&self) -> &'static str {
         "Paycom"
     }
-    fn capabilities(&self) -> &'static [&'static str] {
-        &["timecards"]
+    fn capabilities(&self) -> &'static [Capability] {
+        &[Capability {
+            id: "timecards",
+            label: "a timecard source",
+        }]
     }
     fn collections(&self) -> &'static [Collection] {
         &COLLECTIONS

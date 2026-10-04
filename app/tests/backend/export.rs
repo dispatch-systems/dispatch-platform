@@ -1,6 +1,7 @@
 //! The TypeScript the owners' API types are written to, each in its owner's api/generated/,
-//! and the catalogs': the access catalog in tenancy's, the Agents page's read toggles in mcp's
-//! and the collections' labels in collection's, checked against the files committed there.
+//! and the catalogs': the access catalog and the capabilities' labels in tenancy's, the
+//! Agents page's read toggles in mcp's and the collections' labels in collection's, checked
+//! against the files committed there.
 use dispatch_core::accounts::api::types::*;
 use dispatch_core::collection::api::{jobs::*, metrics::*, types::*};
 use dispatch_core::collection::registry::Provider;
@@ -51,8 +52,9 @@ use ts_rs::TS;
 /// The access catalog's file: its types are tenancy's.
 const ACCESS_CATALOG: &str = "core/tenancy/api/generated/access-catalog.ts";
 // The labels only the platform owner's pages show, each in a file of its own, so that no
-// other page loads them: the Agents page's read toggles, and how Diagnostics and the audit
-// log name each collection.
+// other page loads them: how the DSPs page names what a page needs, the Agents page's read
+// toggles, and how Diagnostics and the audit log name each collection.
+const CAPABILITIES: &str = "core/tenancy/api/generated/capabilities.ts";
 const READ_TOGGLES: &str = "core/mcp/api/generated/read-toggles.ts";
 const COLLECTIONS: &str = "core/collection/api/generated/collections.ts";
 
@@ -272,6 +274,7 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         DriverDetails,
     ));
     bindings.insert(ACCESS_CATALOG.into(), access_catalog());
+    bindings.insert(CAPABILITIES.into(), capabilities());
     bindings.insert(READ_TOGGLES.into(), read_toggles());
     bindings.insert(COLLECTIONS.into(), collections());
     bindings
@@ -290,6 +293,24 @@ fn generated(from: &str, constants: &[(&str, serde_json::Value)]) -> String {
         ));
     }
     text
+}
+
+/// How the DSPs page names each capability a page needs, as the first connection listed
+/// that supplies it names it.
+fn capabilities() -> String {
+    use dispatch_core::manifest::registry;
+    let mut labels = serde_json::Map::new();
+    for collector in registry().collectors {
+        for capability in collector.capabilities() {
+            labels
+                .entry(capability.id)
+                .or_insert(capability.label.into());
+        }
+    }
+    generated(
+        "the collectors' capabilities",
+        &[("capabilityLabels", labels.into())],
+    )
 }
 
 /// The Agents page's switches: each feature's kinds of data under its switch's name, the
