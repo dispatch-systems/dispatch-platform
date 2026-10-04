@@ -1,9 +1,9 @@
 //! What Timecard holds of the synthetic DSP: Paycom's roster and timecards, and the meal
-//! breaks Cortex records beside the routes.
+//! breaks Cortex records beside each day's itineraries.
 use crate::backend::TimecardStore;
 use chrono::Datelike;
 use dispatch_core::{
-    Error, Result,
+    Result,
     db::{Store, s},
     mcp::synthetic::{Made, Step, Synthetic, World, hhmm, plan},
 };
@@ -81,18 +81,15 @@ fn timecards(db: &Store, world: &mut World) -> Result<Made> {
     Ok(Some(("timecards", json!(timecards.len()))))
 }
 
-/// Cortex's meal breaks for each day's itineraries, under the scope the day's routes were
-/// collected in.
+/// Cortex's meal breaks for each day's itineraries, under the scope the day was collected
+/// in. Meal breaks are read beside a day's itineraries, so a day no step collected has none.
 fn meal_breaks(db: &Store, world: &mut World) -> Result<Made> {
     for (d, date) in world.dates.iter().enumerate() {
         let day = date.to_string();
-        let scope: Scope = serde_json::from_value(
-            world
-                .scopes
-                .get(&day)
-                .cloned()
-                .ok_or_else(|| Error::new("synthetic_routes_required", 500))?,
-        )?;
+        let Some(scope) = world.scopes.get(&day) else {
+            continue;
+        };
+        let scope: Scope = serde_json::from_value(scope.clone())?;
         let observed = dispatch_core::db::now();
         let mut found = vec![];
         for (i, _, name) in &world.drivers {
