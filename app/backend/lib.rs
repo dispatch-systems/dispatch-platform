@@ -108,6 +108,7 @@ mod catalog;
 #[path = "../tests/backend/collector_registry.rs"]
 mod collector_registry;
 #[cfg(test)]
+#[cfg(feature = "timecard")]
 #[path = "../tests/backend/collector_storage.rs"]
 mod collector_storage;
 #[cfg(test)]

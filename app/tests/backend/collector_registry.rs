@@ -9,6 +9,7 @@ use dispatch_core::{
 };
 use dispatch_cortex as cortex;
 use dispatch_paycom as paycom;
+#[cfg(feature = "timecard")]
 use dispatch_timecard::TimecardStore;
 use paycom::fixtures;
 use serde_json::{Value, json};
@@ -35,6 +36,7 @@ fn pending(store: &Store) -> String {
         .unwrap();
     id
 }
+#[cfg(feature = "timecard")]
 fn provisioned() -> (tempfile::TempDir, Store, String) {
     let (root, store) = platform();
     let id = pending(&store);
@@ -126,6 +128,7 @@ fn the_registry_names_each_provider_job_kind_database_and_schedule_once() {
         );
     }
 }
+#[cfg(feature = "timecard")]
 #[test]
 fn startup_refuses_a_dsp_whose_provider_storage_was_never_separated() {
     crate::install();
@@ -146,6 +149,7 @@ fn startup_refuses_a_dsp_whose_provider_storage_was_never_separated() {
     let provider = Db::open(&path, paycom::DATABASE).unwrap();
     assert_eq!(snapshot(&provider), before);
 }
+#[cfg(feature = "timecard")]
 #[test]
 fn storage_survives_backup_and_restore() {
     crate::install();
@@ -188,6 +192,7 @@ fn storage_survives_backup_and_restore() {
         before
     );
 }
+#[cfg(feature = "timecard")]
 #[test]
 fn cortex_storage_recovers_initialization_and_preserves_provider_identity() {
     crate::install();
@@ -224,6 +229,7 @@ fn cortex_storage_recovers_initialization_and_preserves_provider_identity() {
         .unwrap();
     assert!(store.open_collectors(&id).is_err());
 }
+#[cfg(feature = "timecard")]
 #[test]
 fn missing_initialized_cortex_database_is_not_recreated() {
     crate::install();
@@ -235,6 +241,7 @@ fn missing_initialized_cortex_database_is_not_recreated() {
     assert!(Store::initialize(config).is_err());
     assert!(!path.exists());
 }
+#[cfg(feature = "timecard")]
 #[test]
 fn resetting_paycom_browser_state_preserves_other_collectors_and_business_data() {
     crate::install();

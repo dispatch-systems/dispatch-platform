@@ -10,8 +10,10 @@ use dispatch_core::{
     db::{self, Store, s},
 };
 use dispatch_cortex as cortex;
+#[cfg(feature = "dvic")]
 use dispatch_dvic::DvicStore;
 use dispatch_paycom as paycom;
+#[cfg(feature = "timecard")]
 use dispatch_timecard::TimecardStore;
 use serde_json::json;
 
@@ -28,6 +30,7 @@ fn dvic_ready() -> (tempfile::TempDir, Store, String) {
     (root, db, id)
 }
 
+#[cfg(feature = "timecard")]
 #[test]
 fn queue_limits_and_authority_are_checked_again_before_publication() {
     dispatch_backend::install();

@@ -7,6 +7,7 @@ use dispatch_core::{
 };
 use dispatch_cortex as cortex;
 use dispatch_paycom as paycom;
+#[cfg(feature = "timecard")]
 use dispatch_timecard::TimecardStore;
 use rusqlite::params;
 use serde_json::{Value, json};
@@ -41,6 +42,7 @@ fn setup() -> (tempfile::TempDir, Store, String) {
 fn input(collection: &str) -> Value {
     json!({"name":"Collection","collection":collection,"cadence":"interval","intervalMinutes":120,"localTime":"00:00","enabled":true})
 }
+#[cfg(feature = "timecard")]
 fn meals(db: &Store, id: &str) {
     db.collector(id, cortex::PROVIDER)
         .unwrap()

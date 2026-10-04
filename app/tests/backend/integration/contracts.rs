@@ -2,6 +2,7 @@ use dispatch_core::{
     accounts::api::types::DspProfile,
     collection::{api::metrics::JobMetrics, metrics::Recorder},
 };
+#[cfg(feature = "timecard")]
 use dispatch_timecard::{NameOrder, PaycomPreferences, PaycomSettings};
 use serde_json::{Value, json};
 
@@ -73,6 +74,7 @@ fn partial_profiles_keep_defaults_and_reject_mistyped_flags() {
     }
 }
 
+#[cfg(feature = "timecard")]
 #[test]
 fn older_preference_history_gains_new_defaults_and_keeps_empty_filters() {
     let settings: PaycomSettings = serde_json::from_value(json!({

@@ -5,14 +5,13 @@ use dispatch_core::{
     foundation::config::Config,
     manifest::registry,
 };
-use dispatch_dvic::DvicStore;
-use dispatch_routes::RoutesStore;
-use dispatch_scorecard::ScorecardStore;
 use serde_json::json;
 use std::{
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
 };
+#[cfg(feature = "default")]
+use {dispatch_dvic::DvicStore, dispatch_routes::RoutesStore, dispatch_scorecard::ScorecardStore};
 
 const RECORD: &str = "CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL);\n";
 const DSP_IDENTITY: &str = "CREATE TABLE storage_identity ( dsp_id TEXT PRIMARY KEY, provider TEXT NOT NULL, source TEXT NOT NULL );\n";
