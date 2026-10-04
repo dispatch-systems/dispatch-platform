@@ -33,7 +33,13 @@ test('timecards export every column and row in the order shown', async ({ page, 
 
 test('a second lunch stacks in its cells without widening them', async ({ page, dispatch }) => {
   let name = '';
+  // The day the page opens on, the first asked for: today, which the demo data always has. The
+  // days beside it, which the page warms, may have none, as on the first day of a pay period.
+  let opened: string | null | undefined;
   await page.route('**/api/dsp/timecards?*', async (route) => {
+    const day = new URL(route.request().url()).searchParams.get('date');
+    opened ??= day;
+    if (day !== opened) return route.fallback();
     const response = await route.fetch();
     const body = await response.json();
     name = body.rows[0].name;

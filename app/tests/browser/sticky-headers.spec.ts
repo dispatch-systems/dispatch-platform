@@ -1,11 +1,27 @@
-import type { Locator, Page } from '@playwright/test';
+import type { Locator, Page, Route } from '@playwright/test';
 import { demo, expect, login, openDsp, test } from '../../../core/shell/tests/support/fixtures.js';
 
 // What this reads of a page's reply: its rows, the first copied to fill a long table.
 type Rows = { rows: Record<string, unknown>[] };
 
+/**
+ * Whether a request reads the day the page opens on, the first one asked for: today, which
+ * the demo data always has. The days beside it, which the page warms, may have none, as on
+ * the first day of a pay period.
+ */
+function openedDay() {
+  let opened: string | null | undefined;
+  return (route: Route) => {
+    const day = new URL(route.request().url()).searchParams.get('date');
+    opened ??= day;
+    return day === opened;
+  };
+}
+
 async function longTables(page: Page) {
+  const opened = openedDay();
   await page.route('**/api/dsp/timecards?*', async (route) => {
+    if (!opened(route)) return route.fallback();
     const response = await route.fetch();
     const data: Rows = await response.json();
     expect(data.rows.length).toBeGreaterThan(0);
@@ -19,6 +35,7 @@ async function longTables(page: Page) {
     await route.fulfill({ response, json: data });
   });
   await page.route('**/api/dsp/paycom/meal-breaks?*', async (route) => {
+    if (!opened(route)) return route.fallback();
     const response = await route.fetch();
     const data: Rows = await response.json();
     expect(data.rows.length).toBeGreaterThan(0);
