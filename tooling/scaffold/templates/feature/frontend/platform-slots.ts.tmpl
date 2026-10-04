@@ -1,0 +1,17 @@
+import { LayoutGrid } from 'lucide-react';
+import type { PlatformSlots } from '{{toRoot}}core/shell/frontend/runtime/slots.js';
+
+// What {{label}} puts in the platform owner's slots, loaded with the platform owner's pages.
+export const slots: PlatformSlots = {
+  switch: { id: '{{name}}', icon: LayoutGrid },
+{{#mcp}}
+  // The kind of its data a key or app may read, as the Agents page shows its switch.
+  readToggles: {
+    label: '{{label}}',
+    missing: '{{label}} data',
+    order: {{toggleGroupOrder}},
+    sources: { {{name}}: '{{label}}' },
+    toggles: [{ id: '{{name}}', label: '{{label}}', missing: '{{label}} data', source: '{{name}}' }],
+  },
+{{/mcp}}
+};

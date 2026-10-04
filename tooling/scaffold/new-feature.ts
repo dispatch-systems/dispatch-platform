@@ -27,6 +27,7 @@ import {
   nextAgentOrder,
   nextMigration,
   nextPermissionOrder,
+  nextToggleGroupOrder,
   pageOf,
   parseArguments,
   repositoryRoot,
@@ -220,6 +221,7 @@ export function featureValues(root: string, argv: string[]) {
   const parameters = (read: boolean, list: [string, string][]) =>
     list.map(([parameter, type]) => `${read ? parameter : `_${parameter}`}: ${type}`).join(', ');
 
+  const screens = page || Boolean(host) || settings;
   const values: Values = {
     ...names,
     backend,
@@ -264,8 +266,13 @@ export function featureValues(root: string, argv: string[]) {
     testCollectors: used.map((collector) => `&${identOf(collector)}::COLLECTOR`).join(', '),
     mcp,
     agentOrder: mcp ? nextAgentOrder(root) : 0,
-    frontend: page || Boolean(host) || settings,
+    toggleGroupOrder: mcp ? nextToggleGroupOrder(root) : 0,
+    // A switch shows on the DSPs page with its icon, which the frontend's platform slots give.
+    frontend: screens || switched,
+    screens,
+    platformSlots: switched,
     canImport: permission && (page || settings),
+    labelPattern: names.label.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'),
     page,
     tab: Boolean(host),
     settings,
@@ -312,6 +319,7 @@ function pieces(values: Values): [boolean, string, string][] {
       'frontend/Settings.tsx',
       `frontend/settings/${pascal}Settings.tsx`,
     ],
+    [values.platformSlots as boolean, 'frontend/platform-slots.ts', 'frontend/platform-slots.ts'],
     [values.frontend as boolean, 'tests/browser/browser.spec.ts', `tests/browser/${slug}.spec.ts`],
   ];
 }
@@ -403,6 +411,11 @@ export async function planFeature(root: string, argv: string[]) {
     plan.notes.push(
       `It takes migration ${values.migrationId} of the ${values.database} database, after the ` +
         'numbered SQL files; a migration written as code has no file, so check none took it.',
+    );
+  if (values.mcp && exists(root, 'app/tests/frontend/agent-keys.test.ts'))
+    plan.notes.push(
+      'app/tests/frontend/agent-keys.test.ts holds the kinds of data agents read as they stood: ' +
+        `add ${name}, last.`,
     );
   if (values.mcp && exists(root, 'app/tests/backend/agent_api'))
     plan.notes.push(

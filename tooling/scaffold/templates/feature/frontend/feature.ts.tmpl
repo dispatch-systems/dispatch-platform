@@ -1,4 +1,6 @@
+{{#screens}}
 import { createElement, lazy } from 'react';
+{{/screens}}
 {{#page}}
 import { LayoutGrid } from 'lucide-react';
 {{/page}}
@@ -10,7 +12,7 @@ import type { FrontendFeature } from '{{toRoot}}core/shell/frontend/runtime/slot
 import { {{camel}}SummaryUrl } from '../api/client.js';
 {{/prefetch}}
 
-// {{label}}'s frontend manifest, loaded up front: it stays small and loads its screens lazily.
+// {{label}}'s frontend manifest, loaded up front: it stays small and loads the rest lazily.
 
 {{#page}}
 declare module '{{toRoot}}core/shell/frontend/runtime/slots.js' {
@@ -85,4 +87,8 @@ export const feature: FrontendFeature = {
     },
   ],
 {{/settings}}
+{{#platformSlots}}
+  // Its switch's icon on the DSPs page{{#mcp}}, and its kind of data on the Agents page{{/mcp}}.
+  platformSlots: () => import('./platform-slots.js'),
+{{/platformSlots}}
 };

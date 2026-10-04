@@ -234,6 +234,16 @@ export function nextAgentOrder(root: string) {
       highest = Math.max(highest, Number(match[1]));
   return (Math.floor(highest / 10) + 1) * 10;
 }
+/** A place after every group of read toggles the owners' frontends show on the Agents page. */
+export function nextToggleGroupOrder(root: string) {
+  let highest = 0;
+  for (const dir of ['features', 'collectors'])
+    for (const file of files(root, dir, /\/frontend\/platform-slots\.ts$/)) {
+      const group = /\breadToggles:\s*\{[^]*?\border:\s*(\d+)/.exec(read(root, file));
+      if (group) highest = Math.max(highest, Number(group[1]));
+    }
+  return (Math.floor(highest / 10) + 1) * 10;
+}
 /**
  * The next migration of `database`, after every owner's numbered SQL file for it. A migration
  * written as code has no file: `Registry::check` and the migrations rule catch a repeated id.

@@ -83,7 +83,10 @@ test('with no flags, a feature is a backend crate with a switch, a view permissi
     'README.md',
     'backend/mod.rs',
     'feature.rs',
+    'frontend/feature.ts',
+    'frontend/platform-slots.ts',
     'tests/backend/feature.rs',
+    'tests/browser/parking.spec.ts',
   ]);
   const cargo = file(plan, 'features/parking/Cargo.toml');
   assert.match(cargo, /^name = "dispatch-parking"$/m);
@@ -114,9 +117,26 @@ test('with no flags, a feature is a backend crate with a switch, a view permissi
   assert.match(manifest, /\.\.feature\("parking"\)\n\};/);
   assert.match(manifest, /#\[cfg\(test\)\]\n#\[path = "tests\/backend\/feature.rs"\]\nmod tests;/);
   assert.match(file(plan, 'features/parking/tests/backend/feature.rs'), /p\.id == "parking.view"/);
+  // The DSPs page shows its switch with the icon its frontend gives, which a browser test sees.
+  assert.match(
+    file(plan, 'features/parking/frontend/feature.ts'),
+    /platformSlots: \(\) => import\('.\/platform-slots.js'\),/,
+  );
+  assert.doesNotMatch(file(plan, 'features/parking/frontend/feature.ts'), /from 'react'|can\(/);
+  assert.match(
+    file(plan, 'features/parking/frontend/platform-slots.ts'),
+    /switch: \{ id: 'parking', icon: LayoutGrid \},/,
+  );
+  assert.match(
+    file(plan, 'features/parking/tests/browser/parking.spec.ts'),
+    /getByRole\('switch', \{ name: 'Parking page', exact: true \}\)\)\.toBeChecked\(\)/,
+  );
 
   // The workspace's members cover it already, so Cargo.toml is no change.
-  assert.deepEqual([...plan.changes.keys()].sort(), ['app/backend/Cargo.toml', registry].sort());
+  assert.deepEqual(
+    [...plan.changes.keys()].sort(),
+    ['app/backend/Cargo.toml', 'app/frontend/features.ts', registry].sort(),
+  );
   // The registry's last feature, there while the app's Cargo feature of its name is on, as
   // it is by default.
   assert.match(
@@ -133,6 +153,12 @@ test('with no flags, a feature is a backend crate with a switch, a view permissi
   assert.match(
     plan.changes.get('Cargo.toml') ?? fs.readFileSync('Cargo.toml', 'utf8'),
     /members = \[[^\]]*("features\/\*"|"features\/parking")/,
+  );
+  // With no switch, it has nothing to show in the frontend.
+  assert(
+    !writes(await feature('lobby', '--always-on'), 'features/lobby').includes(
+      'frontend/feature.ts',
+    ),
   );
 });
 
@@ -204,6 +230,7 @@ test('--api writes one endpoint behind the view permission, its client function 
     [...plan.changes.keys()].sort(),
     [
       'app/backend/Cargo.toml',
+      'app/frontend/features.ts',
       registry,
       'app/tests/backend/integration/http_routes.rs',
       'app/tests/backend/export.rs',
@@ -360,6 +387,23 @@ test('--mcp writes one agent endpoint, its read toggle and an eval question', as
   );
   assert.match(mcp, /features: &\["parking"\],/);
   assert.match(file(plan, 'features/parking/mcp/catalog.rs'), /path: "\/api\/v1\/parking",/);
+  // The Agents page offers its kind of data, in a group after every other owner's.
+  const slots = file(plan, 'features/parking/frontend/platform-slots.ts');
+  assert.match(
+    slots,
+    /toggles: \[\{ id: 'parking', label: 'Parking', missing: 'Parking data', source: 'parking' \}\]/,
+  );
+  const order = Number(/readToggles: \{[^}]*order: (\d+),/.exec(slots)?.[1]);
+  for (const owner of fs.readdirSync('features')) {
+    const other = `features/${owner}/frontend/platform-slots.ts`;
+    if (!fs.existsSync(other)) continue;
+    const group = /readToggles: \{[^]*?order: (\d+),/.exec(fs.readFileSync(other, 'utf8'));
+    if (group) assert(Number(group[1]) < order, `${other} has the place ${order}`);
+  }
+  assert.match(
+    file(plan, 'features/parking/tests/browser/parking.spec.ts'),
+    /test\('a new key reads Parking, under Parking'/,
+  );
   assert.match(
     file(plan, 'features/parking/tests/mcp/questions.ts'),
     /export function questions\(_world: World\): Question\[\]/,
@@ -379,6 +423,7 @@ test('--page, --tab-of and --settings write frontend/feature.ts, the screen and 
       'frontend/ParkingPage.tsx',
       'frontend/feature.ts',
       'frontend/index.ts',
+      'frontend/platform-slots.ts',
       'tests/browser/parking.spec.ts',
     ],
   );
@@ -451,6 +496,7 @@ test('--no-backend writes a frontend-only feature, and refuses the pieces that n
     'frontend/FrontPage.tsx',
     'frontend/feature.ts',
     'frontend/index.ts',
+    'frontend/platform-slots.ts',
     'tests/browser/front.spec.ts',
   ]);
   const manifest = file(plan, 'features/front/feature.rs');
@@ -496,6 +542,7 @@ test('everything written is formatted as the repository formats it, with no plac
       'Parking Lot',
     ),
     (await planFeature(copy, ['notes', '--tab-of', 'timecard', '--always-on'])).plan,
+    await feature('desk', '--mcp'),
     await collector('fleet'),
   ];
   const config = (await prettier.resolveConfig(path.join(root, 'package.json'))) ?? {};
