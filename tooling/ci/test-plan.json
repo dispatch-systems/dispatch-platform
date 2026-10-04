@@ -42,6 +42,7 @@
     "tooling/tests/browser-shards.test.ts",
     "tooling/tests/mail-config.test.ts",
     "tooling/tests/owner-tests.test.ts",
+    "tooling/tests/removability.test.ts",
     "tooling/tests/scaffold.test.ts",
     "tooling/tests/screenshots-worker.test.ts",
     "tooling/tests/source-lines.test.ts",

@@ -87,6 +87,20 @@ sets both native and real-timeout gates, and requires a passing JUnit case. Norm
 runs leave real wall-clock waits out. Live Rust operator probes require the explicit
 `operator-probes` feature; core CI typechecks them without executing them.
 
+`removability.yml` proves weekly, and on manual dispatch, that each feature can be removed:
+one job per feature in `app/generated/features.json`, named for it. Each feature is a Cargo
+feature of the app, on by default. A job leaves its feature out, with every feature that
+declares it, then builds the app, writes the TypeScript for that build (so the generated
+`app/frontend/features.ts` omits them), runs the app's tests, and with the left-out
+directories moved aside typechecks the frontend and builds it with Vite. The typecheck
+(`removability.tsconfig.json`) leaves out the app's cross-owner tests and the tooling, which
+name every feature. The app's Rust tests say which features they need with
+`cfg(feature = …)` and `required-features`; those about the whole product ask for `default`.
+A build that leaves features out runs its tests with core's stand-in for what they would
+bring, as each owner's own tests do. A failure names the step and the files or tests that
+reached into what was left out. `npm run check:removability -- --feature <name>` runs one
+job's steps locally, and `--dry-run` prints them; it puts the checkout back as it was.
+
 `npm run check:privacy` scans publishable working files, also through `check:rules` before
 pushes and the required `checks` job. It downloads the checksum-pinned Gitleaks release in
 `tooling/security/gitleaks.json`, checks for private paths, emails and known identifiers,

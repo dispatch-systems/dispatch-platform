@@ -13,6 +13,7 @@
     "check": "tsc --noEmit",
     "check:ci": "tsx tooling/ci/checks.ts",
     "check:rules": "tsx tooling/ci/rules.ts",
+    "check:removability": "tsx tooling/ci/removability.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "tsx tooling/testing/test.ts",
