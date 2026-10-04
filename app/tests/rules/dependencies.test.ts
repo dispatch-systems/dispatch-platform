@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { localDependencies, readCrate, type Crate } from './support/cargo.js';
 import { declared, inTest } from './support/manifests.js';
-import { holds, pendingNames } from './support/pending.js';
+import { holds } from './support/holds.js';
 import {
   collectors,
   features,
@@ -113,8 +113,4 @@ test('the module tree follows use trees, re-exports, globs and #[path] mounts', 
     const state = rust().resolve(lib.module, ['dispatch_core', 'State']);
     assert(state && ownerOf(state.file)?.layer === 'core', 'State is core');
   }
-});
-
-test('pending.json names only these checks', () => {
-  pendingNames('dependencies', ['cargo', 'rust']);
 });

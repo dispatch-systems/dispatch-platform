@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { holds, pendingNames } from './support/pending.js';
+import { holds } from './support/holds.js';
 import { declared, inTest } from './support/manifests.js';
 import { isTestFile, ownerOf } from './support/repo.js';
 import { lexFile, rust } from './support/rust.js';
@@ -131,8 +131,4 @@ test("a feature's or collector's tests list only itself and what it may use", ()
       listing(['collectors/cortex', 'features/dvic'], ['collectors/cortex', 'features/dvic']),
     ),
   );
-});
-
-test('pending.json names only these checks', () => {
-  pendingNames('encapsulation', ['typescript', 'lists']);
 });

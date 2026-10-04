@@ -1,5 +1,5 @@
 import test from 'node:test';
-import { holds, pendingNames } from './support/pending.js';
+import { holds } from './support/holds.js';
 import { files, isDirectory, isFile, ownerOf, owners, templated } from './support/repo.js';
 import { lexFile, rust, testAttributes } from './support/rust.js';
 
@@ -117,14 +117,4 @@ test('an owner with endpoints has tests/api/', () => {
     .filter(({ dir }) => !isDirectory(`${dir}/tests/api`))
     .map(({ dir }) => `${dir} has api/ and no tests/api/`);
   holds('tests', 'api tests', untested);
-});
-
-test('pending.json names only these checks', () => {
-  pendingNames('tests', [
-    'placement',
-    'inline tests',
-    'module tests',
-    'integration tests',
-    'api tests',
-  ]);
 });

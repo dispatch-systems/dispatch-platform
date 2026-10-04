@@ -12,7 +12,7 @@ import {
   stringOf,
   type Span,
 } from './support/manifests.js';
-import { holds, pendingNames } from './support/pending.js';
+import { holds } from './support/holds.js';
 import { files, ownerOf, root } from './support/repo.js';
 import { closing, lexFile, literalAt } from './support/rust.js';
 
@@ -297,16 +297,4 @@ test('every operator command belongs to one owner', () => {
   ];
   assert(names.length > 3, `found only ${names.length} commands`);
   holds('slots', 'commands', wrong);
-});
-
-test('pending.json names only these checks', () => {
-  pendingNames('slots', [
-    'switches',
-    'permissions',
-    'routes',
-    'addresses',
-    'mcp',
-    'job kinds',
-    'commands',
-  ]);
 });
