@@ -15,6 +15,7 @@ pub const PERIOD_DAYS: i64 = 14;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "collectors/paycom/api/generated/"))]
 pub struct EmployeeTimecardPeriod {
     pub from: String,
     pub to: String,

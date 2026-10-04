@@ -229,6 +229,7 @@ impl Config {
 
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "core/foundation/api/generated/"))]
         pub enum Environment {
         Preview => "preview",
         Production => "production",
@@ -244,6 +245,7 @@ impl Environment {
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "core/foundation/api/generated/"))]
         pub enum ProviderMode {
         Fixture => "fixture",
         Native => "native",

@@ -6,20 +6,5 @@
     "list only shrinks. It is empty before the restructure merges: enforcement.md allows no",
     "tolerated violations. Never add an entry to make a new violation pass."
   ],
-  "pending": {
-    "encapsulation": {
-      "typescript": {
-        "core/accounts imports shared/contracts": "Phase B",
-        "core/collection imports shared/contracts": "Phase B",
-        "core/platform_owner imports shared/contracts": "Phase B",
-        "core/shell imports shared/contracts": "Phase B",
-        "core/tenancy imports shared/contracts": "Phase B",
-        "features/driver_match imports shared/contracts": "Phase B",
-        "features/dvic imports shared/contracts": "Phase B",
-        "features/routes imports shared/contracts": "Phase B",
-        "features/timecard imports shared/contracts": "Phase B",
-        "features/uniforms imports shared/contracts": "Phase B"
-      }
-    }
-  }
+  "pending": {}
 }

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
 #[serde(rename_all = "snake_case")]
 pub enum JobPhase {
     Starting,
@@ -14,6 +15,7 @@ pub enum JobPhase {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct JobMetrics {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
@@ -61,6 +63,7 @@ pub struct JobMetrics {
 // identify progress without persisting employee codes, URLs or provider content.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct PageReads {
     pub completed: usize,
@@ -82,6 +85,7 @@ pub struct PageReads {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct PageRead {
     pub ordinal: usize,
@@ -101,6 +105,7 @@ pub struct PageRead {
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
     pub enum JobOutcome {
         Running => "running", Succeeded => "succeeded", Failed => "failed",
         Cancelled => "cancelled", Interrupted => "interrupted",
@@ -108,9 +113,11 @@ text_enum! {
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
     pub enum PageStage { Navigation => "navigation", Content => "content", Extraction => "extraction", }
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
     pub enum DocumentState { Loading => "loading", Interactive => "interactive", Complete => "complete", }
 }

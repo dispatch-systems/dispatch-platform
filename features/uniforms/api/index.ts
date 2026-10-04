@@ -1,12 +1,12 @@
-export type { Uniform } from '../../../shared/contracts/generated/Uniform';
-export type { UniformVariant } from '../../../shared/contracts/generated/UniformVariant';
-export type { UniformFit } from '../../../shared/contracts/generated/UniformFit';
-export type { UniformInventory } from '../../../shared/contracts/generated/UniformInventory';
-export type { UniformAdjustment } from '../../../shared/contracts/generated/UniformAdjustment';
-export type { UniformUpdates } from '../../../shared/contracts/generated/UniformUpdates';
-export type { UniformHistory } from '../../../shared/contracts/generated/UniformHistory';
-export type { UniformEvent } from '../../../shared/contracts/generated/UniformEvent';
-import type { UniformFit } from '../../../shared/contracts/generated/UniformFit';
+export type { Uniform } from './generated/Uniform';
+export type { UniformVariant } from './generated/UniformVariant';
+export type { UniformFit } from './generated/UniformFit';
+export type { UniformInventory } from './generated/UniformInventory';
+export type { UniformAdjustment } from './generated/UniformAdjustment';
+export type { UniformUpdates } from './generated/UniformUpdates';
+export type { UniformHistory } from './generated/UniformHistory';
+export type { UniformEvent } from './generated/UniformEvent';
+import type { UniformFit } from './generated/UniformFit';
 
 export interface UniformInput {
   name: string;

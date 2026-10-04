@@ -7,6 +7,7 @@ use crate::{
 use serde::Serialize;
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct Connection {
     pub provider: String,
@@ -37,6 +38,7 @@ impl FromRow for Connection {
 }
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct CollectionSchedule {
     pub id: String,
@@ -54,6 +56,7 @@ pub struct CollectionSchedule {
 }
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct CollectionSchedules {
     pub timezone: String,
@@ -62,6 +65,7 @@ pub struct CollectionSchedules {
 }
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SchedulePreview {
     pub next_run: String,
@@ -70,6 +74,7 @@ pub struct SchedulePreview {
 /// A bounded collection change hint. Missing history falls back to `all`.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct CollectionChange {
     pub provider: String,
@@ -95,12 +100,14 @@ impl CollectionChange {
 }
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
 pub struct CollectionUpdates {
     pub revision: String,
     pub changes: Vec<CollectionChange>,
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
         pub enum ConnectionStatus {
         NotConnected => "not_connected",
         Ready => "ready",
@@ -185,11 +192,12 @@ impl ts_rs::TS for ScheduleCollection {
         Self::decl(cfg)
     }
     fn output_path() -> Option<std::path::PathBuf> {
-        Some("ScheduleCollection.ts".into())
+        Some("core/collection/api/generated/ScheduleCollection.ts".into())
     }
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
         pub enum Cadence {
         Interval => "interval",
         Daily => "daily",

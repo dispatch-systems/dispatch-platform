@@ -10,10 +10,12 @@ use serde_json::Value;
 
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/uniforms/api/generated/"))]
     pub enum UniformFit { Men => "men", Women => "women", Unisex => "unisex", }
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/uniforms/api/generated/"))]
     pub enum UniformEventKind {
         Initialized => "initialized", Created => "created", Updated => "updated",
         Archived => "archived", Adjusted => "adjusted",
@@ -22,6 +24,7 @@ text_enum! {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/uniforms/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct UniformVariant {
     pub id: String,
@@ -45,6 +48,7 @@ impl FromRow for UniformVariant {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/uniforms/api/generated/"))]
 pub struct Uniform {
     pub id: String,
     pub name: String,
@@ -67,6 +71,7 @@ impl FromRow for Uniform {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/uniforms/api/generated/"))]
 pub struct UniformInventory {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub revision: i64,
@@ -75,6 +80,7 @@ pub struct UniformInventory {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/uniforms/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct UniformAdjustment {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
@@ -94,6 +100,7 @@ impl FromRow for UniformAdjustment {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/uniforms/api/generated/"))]
 pub struct UniformUpdates {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub revision: i64,
@@ -103,6 +110,7 @@ pub struct UniformUpdates {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/uniforms/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct UniformEvent {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
@@ -134,6 +142,7 @@ impl FromRow for UniformEvent {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/uniforms/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct UniformHistory {
     pub events: Vec<UniformEvent>,

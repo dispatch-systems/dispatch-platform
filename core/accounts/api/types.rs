@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct PublicUser {
     pub id: String,
@@ -38,6 +39,7 @@ impl FromRow for PublicUser {
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct Dsp {
     pub id: String,
@@ -67,6 +69,7 @@ impl FromRow for Dsp {
 /// A DSP as the session lists it: who owns it, the caller's role, and its collection state.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DspSummary {
     #[serde(flatten)]
@@ -103,6 +106,7 @@ pub struct DspSummaryLegacy {
 /// invitation does.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct MailMessage {
     pub id: String,
@@ -131,6 +135,7 @@ pub struct MailMessage {
 }
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct Member {
     pub id: String,
@@ -146,6 +151,7 @@ pub struct Member {
 /// A role as the team pages list it. The counts are only known to the list.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct Role {
     pub id: String,
@@ -159,6 +165,7 @@ pub struct Role {
 }
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 pub struct RoleSummary {
     pub id: String,
     pub name: String,
@@ -167,6 +174,7 @@ pub struct RoleSummary {
 /// What opening a DSP answers with: the signed view token and what the role may do.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 pub struct DspView {
     pub dsp: Dsp,
     pub role: RoleSummary,
@@ -183,6 +191,7 @@ pub struct DspView {
 }
 #[derive(Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionResponse {
     pub user: PublicUser,
@@ -198,6 +207,7 @@ pub struct SessionResponse {
 
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SecurityStatus {
     pub enrolled: bool,
@@ -211,6 +221,7 @@ pub struct SecurityStatus {
 
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct PasskeySummary {
     pub id: String,
@@ -230,6 +241,7 @@ impl FromRow for PasskeySummary {
 
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticatorSetup {
     pub secret: String,
@@ -239,6 +251,7 @@ pub struct AuthenticatorSetup {
 /// What the running build was made from, so the dashboard can link its source.
 #[derive(Clone, Default, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeSource {
     /// Set only on Production, which runs published releases.
@@ -248,6 +261,7 @@ pub struct RuntimeSource {
 
 #[derive(Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct AccountSession {
     pub id: String,
@@ -261,6 +275,7 @@ pub struct AccountSession {
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/accounts/api/generated/"))]
 #[serde(default, rename_all = "camelCase")]
 pub struct DspProfile {
     pub abbreviation: String,

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct CortexMeal {
     pub meal_id: String,
@@ -33,6 +34,7 @@ pub struct CortexMeal {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct MealPaycom {
     pub employee_code: String,
@@ -58,6 +60,7 @@ pub struct MealPaycom {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct MealSource {
     pub id: String,
@@ -68,6 +71,7 @@ pub struct MealSource {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct MealEmployee {
     #[serde(flatten)]
@@ -77,10 +81,12 @@ pub struct MealEmployee {
 
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
     pub enum MatchType { Name => "name", Saved => "saved", Separate => "separate", Unmatched => "unmatched", }
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct MealDriver {
     pub id: String,
@@ -91,6 +97,7 @@ pub struct MealDriver {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct CortexPublication {
     pub station: String,
@@ -109,6 +116,7 @@ pub struct CortexPublication {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct MealComparison {
     pub date: String,

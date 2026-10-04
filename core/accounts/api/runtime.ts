@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Dsp } from '../../../shared/contracts/generated/Dsp';
+import type { Dsp } from './generated/Dsp';
 import { features } from '../../tenancy/api/index.js';
 import {
   permissions,

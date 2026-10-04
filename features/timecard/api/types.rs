@@ -4,6 +4,7 @@ use dispatch_paycom::timecards::EmployeeTimecardPeriod;
 use serde::{Deserialize, Serialize};
 #[derive(Debug, PartialEq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct EmployeeTimecardResponse {
     pub employee: Employee,
@@ -17,6 +18,7 @@ pub struct EmployeeTimecardResponse {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct Employee {
     pub code: String,
@@ -37,14 +39,17 @@ where
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
     pub enum InPunchKind { Day => "IN DAY", Lunch => "IN LUNCH", }
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
     pub enum OutPunchKind { Lunch => "OUT LUNCH", Day => "OUT DAY", }
 }
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct Punch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -89,6 +94,7 @@ impl<'de> Deserialize<'de> for Punch {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct Timecard {
     pub employee_code: String,
@@ -103,6 +109,7 @@ pub struct Timecard {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct EmployeeTimecard {
     #[serde(flatten)]
@@ -112,6 +119,7 @@ pub struct EmployeeTimecard {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DailyTimecard {
     #[serde(flatten)]
@@ -121,6 +129,7 @@ pub struct DailyTimecard {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DailyTimecards {
     pub rows: Vec<DailyTimecard>,
@@ -130,6 +139,7 @@ pub struct DailyTimecards {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct EmployeesResponse {
     pub employees: Vec<Employee>,

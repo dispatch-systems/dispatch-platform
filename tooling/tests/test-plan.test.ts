@@ -177,8 +177,8 @@ test('every test file is run by exactly one check of full validation and none is
     '--features',
     'operator-probes',
   ]);
-  // Tooling and ops keep their tests in their own tests/ folder; shared and services have none.
-  for (const directory of ['tooling', 'ops', 'shared', 'services'])
+  // Tooling and ops keep their tests in their own tests/ folder; services have none.
+  for (const directory of ['tooling', 'ops', 'services'])
     assert.deepEqual(
       names(directory, /\.(test|spec)\.tsx?$|_test\.py$/).filter(
         (file) =>

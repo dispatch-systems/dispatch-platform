@@ -81,7 +81,7 @@
         "core/accounts/api/index.ts",
         "core/tenancy/api/index.ts",
         "app/tests/backend/export.rs",
-        "shared/contracts/generated/access-catalog.ts"
+        "core/tenancy/api/generated/access-catalog.ts"
       ],
       "tests": [
         "core/platform_owner/tests/api/features.test.ts",

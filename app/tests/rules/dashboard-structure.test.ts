@@ -286,15 +286,7 @@ test('every route is declared once and every parent is a route', () => {
 test('contracts, tooling, services and backends are independent of the frontends', () => {
   const frontendRoots = frontends.map((directory) => path.resolve(directory) + path.sep);
   const clientFiles = clients.map((file) => path.resolve(file));
-  for (const directory of [
-    'shared',
-    'tooling',
-    'services',
-    'app',
-    'core',
-    'collectors',
-    'features',
-  ]) {
+  for (const directory of ['tooling', 'services', 'app', 'core', 'collectors', 'features']) {
     const files = fs
       .readdirSync(directory, { recursive: true, encoding: 'utf8' })
       .filter((name) => /\.(tsx?|m?js|rs)$/.test(name))

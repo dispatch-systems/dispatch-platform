@@ -2,7 +2,7 @@ import {
   permissionLabels as generatedPermissionLabels,
   permissionGroups as generatedPermissionGroups,
   impliedPermissions as generatedImpliedPermissions,
-} from '../../../../shared/contracts/generated/access-catalog.js';
+} from '../../../tenancy/api/generated/access-catalog.js';
 import type { DspView, Permission } from '../../../accounts/api/index.js';
 import { grants } from './features.js';
 

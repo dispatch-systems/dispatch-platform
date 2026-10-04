@@ -1,7 +1,7 @@
 import {
   featureCatalog as generatedFeatureCatalog,
   schedulesFeature as generatedSchedulesFeature,
-} from '../../../../shared/contracts/generated/access-catalog.js';
+} from '../../../tenancy/api/generated/access-catalog.js';
 import type {
   ConnectionFeature,
   Feature,

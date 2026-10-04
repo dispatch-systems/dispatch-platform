@@ -1,1 +1,1 @@
-export type { RouteRetention } from '../../../shared/contracts/generated/RouteRetention.js';
+export type { RouteRetention } from './generated/RouteRetention.js';

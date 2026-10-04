@@ -59,7 +59,7 @@ rusqlite = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 url = { workspace = true }
-# Writes shared/contracts/generated from the response types; never part of the binary.
+# Writes each owner's api/generated/ from the response types; never part of the binary.
 ts-rs = { workspace = true }
 
 [[test]]

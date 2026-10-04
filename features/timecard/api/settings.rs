@@ -3,18 +3,22 @@ use serde::{Deserialize, Serialize};
 
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
     pub enum NameOrder { FirstLast => "first_last", LastFirst => "last_first", }
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
     pub enum PaycomPage { Timecards => "timecards", Meals => "meal-breaks", Employees => "employees", }
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
     pub enum PaycomSort { EmployeeName => "employeeName", Condition => "condition", InDay => "inDay", }
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
     pub enum PaycomColumn {
         InDay => "inDay", OutLunch => "outLunch", InLunch => "inLunch",
         OutDay => "outDay", TotalHours => "totalHours", Condition => "condition",
@@ -23,6 +27,7 @@ text_enum! {
 /// Historical revisions inherit defaults for fields introduced after they were saved.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(default)]
 pub struct PaycomPreferences {
     pub opening_page: PaycomPage,
@@ -61,6 +66,7 @@ impl Default for PaycomPreferences {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 pub struct PreferenceRevision {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub revision: i64,
@@ -69,18 +75,21 @@ pub struct PreferenceRevision {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 pub struct DepartmentOption {
     pub value: String,
     pub count: usize,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 pub struct PaycomOptions {
     pub departments: Vec<DepartmentOption>,
     pub stations: Vec<String>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 pub struct PaycomSettings {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub revision: i64,

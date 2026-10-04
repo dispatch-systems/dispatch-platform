@@ -6,6 +6,7 @@ use serde::Serialize;
 
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
     /// How an ID came to its person.
     pub enum DriverLink {
         New => "new",
@@ -17,6 +18,7 @@ text_enum! {
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
     pub enum DriverStrength {
         Strong => "strong",
         Possible => "possible",
@@ -24,6 +26,7 @@ text_enum! {
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
     /// Why two people might be one.
     pub enum DriverEvidenceKind {
         SameLastName => "same_last_name",
@@ -35,6 +38,7 @@ text_enum! {
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
     pub enum DriverEventKind {
         Added => "added",
         Linked => "linked",
@@ -47,6 +51,7 @@ text_enum! {
 /// One ID a person is known by, as its source wrote it.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DriverId {
     pub source: DriverSource,
@@ -62,6 +67,7 @@ pub struct DriverId {
 /// A person: their code, every ID they hold and the data they appear in.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct Driver {
     pub code: String,
@@ -73,6 +79,7 @@ pub struct Driver {
 }
 #[derive(Clone, Debug, Default, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DriverCounts {
     /// Everyone with a code, office staff and those who have left included.
@@ -93,6 +100,7 @@ pub struct DriverCounts {
 /// name it stands for; `same` of `of` days count days both sides worked.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DriverEvidence {
     pub kind: DriverEvidenceKind,
@@ -104,6 +112,7 @@ pub struct DriverEvidence {
 /// Someone known only to Paycom and someone known only to Amazon who might be one person.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DriverPair {
     pub paycom: Driver,
@@ -114,6 +123,7 @@ pub struct DriverPair {
 /// The Driver Match tab: the pairs to decide, then everyone.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DriverMatch {
     /// When collected data was last checked for new IDs.
@@ -124,6 +134,7 @@ pub struct DriverMatch {
 }
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DriverActivity {
     pub data: DriverData,
@@ -134,6 +145,7 @@ pub struct DriverActivity {
 /// One day of the last fourteen. `None` where nothing was collected for that side.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DriverDay {
     pub date: String,
@@ -142,6 +154,7 @@ pub struct DriverDay {
 }
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DriverEvent {
     pub at: String,
@@ -156,6 +169,7 @@ pub struct DriverEvent {
 /// One person in full, for the details panel.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DriverDetails {
     pub driver: Driver,

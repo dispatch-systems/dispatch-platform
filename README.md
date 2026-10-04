@@ -10,7 +10,7 @@ Run commands from the repository root.
 | `backend/src/`                                | HTTP, accounts, workforce, meals, jobs, providers and storage                |
 | `dashboard/src/features/`                     | Product screens, their styles and artwork                                    |
 | `dashboard/src/app/`, `shell/`, `ui/`, `lib/` | App infrastructure, navigation frame, reusable controls and pure helpers     |
-| `shared/contracts/generated/`                 | API types generated from Rust, which each owner's `api/` narrows and checks  |
+| `<owner>/api/generated/`                      | API types generated from Rust, which the owner's `api/` narrows and checks   |
 | `services/cloudflare-mail/`                   | Email Worker and its generated environment types                             |
 | `tests/`                                      | API, dashboard, provider, tooling and browser checks; fixtures in `support/` |
 | `tooling/`                                    | Build, CI, preview, test, benchmark and asset helpers                        |

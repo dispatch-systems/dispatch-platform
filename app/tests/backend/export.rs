@@ -1,5 +1,5 @@
-//! The TypeScript the owners' API types are written to, and the access catalog's, checked
-//! against the files committed in shared/contracts/generated.
+//! The TypeScript the owners' API types are written to, each in its owner's api/generated/,
+//! and the access catalog's, in tenancy's, checked against the files committed there.
 use dispatch_core::accounts::api::types::*;
 use dispatch_core::collection::api::{jobs::*, metrics::*, types::*};
 use dispatch_core::collection::registry::Provider;
@@ -35,9 +35,17 @@ use dispatch_uniforms::{
     Uniform, UniformAdjustment, UniformEvent, UniformEventKind, UniformFit, UniformHistory,
     UniformInventory, UniformUpdates, UniformVariant,
 };
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 use ts_rs::TS;
 
+/// The access catalog's file: its types are tenancy's.
+const ACCESS_CATALOG: &str = "core/tenancy/api/generated/access-catalog.ts";
+
+/// Each binding by its file's path from the repository root, which its type's `export_to`
+/// names, so ts-rs writes the imports between owners' folders from there.
 macro_rules! exported {
     ($cfg:expr, $($ty:ty),* $(,)?) => {
         BTreeMap::from([$((
@@ -47,8 +55,8 @@ macro_rules! exported {
         )),*])
     };
 }
-fn bindings() -> BTreeMap<PathBuf, String> {
-    let cfg = ts_rs::Config::new();
+fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
+    let cfg = ts_rs::Config::new().with_out_dir(root);
     let mut bindings = exported!(
         &cfg,
         AgentAccess,
@@ -226,7 +234,7 @@ fn bindings() -> BTreeMap<PathBuf, String> {
         AuthenticatorSetup,
         AccountSession,
     );
-    bindings.insert("access-catalog.ts".into(), access_catalog());
+    bindings.insert(ACCESS_CATALOG.into(), access_catalog());
     bindings
 }
 
@@ -321,31 +329,61 @@ fn access_catalog() -> String {
     }
     text
 }
+/// Every owner's api/generated/ folder there is: core's parts', the collectors' and the
+/// features'.
+fn generated_dirs(root: &Path) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    for top in ["core", "collectors", "features"] {
+        for entry in std::fs::read_dir(root.join(top)).expect("an owners' folder") {
+            let dir = entry.unwrap().path().join("api/generated");
+            if dir.is_dir() {
+                dirs.push(dir);
+            }
+        }
+    }
+    dirs
+}
 #[test]
 fn typescript_contracts_match_the_rust_types() {
     crate::install();
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .find(|dir| dir.join("Cargo.lock").is_file())
-        .expect("repository root")
-        .join("shared/contracts/generated");
-    let bindings = bindings();
+        .expect("repository root");
+    let bindings = bindings(root);
+    for file in bindings.keys() {
+        let parts: Vec<_> = file.iter().filter_map(|part| part.to_str()).collect();
+        assert!(
+            matches!(
+                parts[..],
+                ["core" | "collectors" | "features", _, "api", "generated", _]
+            ),
+            "{} is in no owner's api/generated/: name it in its type's export_to",
+            file.display()
+        );
+    }
     if std::env::var_os("DISPATCH_UPDATE_CONTRACTS").is_some() {
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        for dir in generated_dirs(root) {
+            std::fs::remove_dir_all(dir).unwrap();
+        }
         for (file, text) in &bindings {
-            std::fs::write(dir.join(file), text).unwrap();
+            let path = root.join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
         }
     }
+    // A file no type writes is stale too.
     let mut stored = BTreeMap::new();
-    for entry in std::fs::read_dir(&dir).expect("shared/contracts/generated") {
-        let path = entry.unwrap().path();
-        let name = PathBuf::from(path.file_name().unwrap());
-        stored.insert(name, std::fs::read_to_string(&path).unwrap());
+    for dir in generated_dirs(root) {
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            let file = path.strip_prefix(root).unwrap().to_owned();
+            stored.insert(file, std::fs::read_to_string(&path).unwrap());
+        }
     }
     assert!(
         stored == bindings,
-        "shared/contracts/generated is out of date: run `npm run contracts:generate`"
+        "an owner's api/generated/ is out of date: run `npm run contracts:generate`"
     );
 }
 #[test]

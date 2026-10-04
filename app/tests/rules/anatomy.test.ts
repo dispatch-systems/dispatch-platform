@@ -28,6 +28,12 @@ const collectorPieces = [
   'tests',
 ];
 
+/**
+ * Whether a collector's api/ holds only generated/: it serves no endpoints, but the TypeScript
+ * of its types that features answer with is written there (enforcement.md, section 2).
+ */
+const generatedOnly = (dir: string) => entries(`${dir}/api`).every((name) => name === 'generated');
+
 /** Whether a folder holds a Rust test: a `#[test]` in a file under it. */
 const hasRustTest = (directory: string) =>
   filesIn(directory).some((file) => file.endsWith('.rs') && testAttributes(lexFile(file)).length);
@@ -111,6 +117,7 @@ test("a feature's and a collector's root hold only their pieces", () => {
         .filter(
           (name) => ![...collectorPieces, 'README.md', 'Cargo.toml', 'collector.rs'].includes(name),
         )
+        .filter((name) => name !== 'api' || !generatedOnly(dir))
         .map((name) => `${dir}/${name} is no piece of a collector`),
     ]),
   ];

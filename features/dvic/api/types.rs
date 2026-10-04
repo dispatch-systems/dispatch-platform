@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/dvic/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DvicReport {
     pub name: String,
@@ -16,6 +17,7 @@ pub struct DvicReport {
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/dvic/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DvicWeek {
     pub week: String,
@@ -24,6 +26,7 @@ pub struct DvicWeek {
 }
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/dvic/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DvicStatus {
     pub station: String,
@@ -35,6 +38,7 @@ pub struct DvicStatus {
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/dvic/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DvicInspection {
     pub id: String,
@@ -55,6 +59,7 @@ pub struct DvicInspection {
 }
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/dvic/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DvicInspections {
     pub inspections: Vec<DvicInspection>,

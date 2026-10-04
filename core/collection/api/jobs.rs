@@ -9,6 +9,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
         #[derive(PartialOrd, Ord)]
         pub enum JobStatus {
         Queued => "queued",
@@ -156,6 +157,7 @@ impl JobRow {
 }
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct PublicJob {
     pub id: String,

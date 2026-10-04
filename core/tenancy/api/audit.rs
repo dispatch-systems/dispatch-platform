@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "core/tenancy/api/generated/"))]
     pub enum AuditArea {
         Team => "team", Roles => "roles", Collections => "collections", Schedules => "schedules",
         Connections => "connections", Access => "access", Dsps => "dsps", Settings => "settings",
@@ -63,17 +64,19 @@ impl ts_rs::TS for AuditSubject {
         Self::decl(cfg)
     }
     fn output_path() -> Option<std::path::PathBuf> {
-        Some("AuditSubject.ts".into())
+        Some("core/tenancy/api/generated/AuditSubject.ts".into())
     }
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/tenancy/api/generated/"))]
 pub struct AuditReference {
     pub kind: AuditSubject,
     pub id: String,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/tenancy/api/generated/"))]
 pub struct AuditChange {
     pub field: String,
     pub from: Option<String>,
@@ -81,6 +84,7 @@ pub struct AuditChange {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/tenancy/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct AuditEvent {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
@@ -100,12 +104,14 @@ pub struct AuditEvent {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/tenancy/api/generated/"))]
 pub struct AuditName {
     pub id: String,
     pub name: String,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/tenancy/api/generated/"))]
 pub struct AuditPage {
     pub events: Vec<AuditEvent>,
     #[cfg_attr(feature = "ts", ts(type = "number"))]
@@ -117,6 +123,7 @@ pub struct AuditPage {
 
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "core/tenancy/api/generated/"))]
     #[derive(PartialOrd, Ord)]
     pub enum AuditCount {
         Team => "team", Roles => "roles", Collections => "collections", Schedules => "schedules",
