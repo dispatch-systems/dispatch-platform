@@ -409,8 +409,8 @@ export async function planFeature(root: string, argv: string[]) {
     );
   if (values.tables && !values.ownDatabase)
     plan.notes.push(
-      `It takes migration ${values.migrationId} of the ${values.database} database, after the ` +
-        'numbered SQL files; a migration written as code has no file, so check none took it.',
+      `It takes migration ${values.migrationId} of the ${values.database} database, after every ` +
+        'one declared or recorded in the migrations history.',
     );
   if (values.mcp && exists(root, 'app/tests/frontend/agent-keys.test.ts'))
     plan.notes.push(

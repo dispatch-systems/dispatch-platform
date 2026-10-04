@@ -26,12 +26,17 @@ const file = (plan: Plan, name: string) => {
 };
 const refused = async (pattern: RegExp, ...argv: string[]) =>
   assert.rejects(planFeature(root, argv), pattern);
-/** Every numbered SQL file of `database`, across the owners. */
-const migrations = (database: string) =>
-  ['core', 'collectors', 'features']
-    .flatMap((dir) => fs.readdirSync(dir, { recursive: true, encoding: 'utf8' }))
+/** Every numbered SQL file of `database`, across the owners, and every recorded migration. */
+const migrations = (database: string, at = root) => [
+  ...['core', 'collectors', 'features']
+    .flatMap((dir) => fs.readdirSync(path.join(at, dir), { recursive: true, encoding: 'utf8' }))
     .filter((name) => new RegExp(`(^|/)migrations/${database}/\\d{4}_[^/]+\\.sql$`).test(name))
-    .map((name) => Number(path.basename(name).slice(0, 4)));
+    .map((name) => Number(path.basename(name).slice(0, 4))),
+  ...(history(at)[database] ?? []).map(({ id }) => id),
+];
+const historyFile = 'app/tests/rules/migrations-history.json';
+const history = (at = root): Record<string, { id: number }[]> =>
+  JSON.parse(fs.readFileSync(path.join(at, historyFile), 'utf8'));
 const registry = ['app/backend/features.rs', 'app/backend/lib.rs'].find(
   (candidate) =>
     fs.existsSync(candidate) && /pub static REGISTRY\b/.test(fs.readFileSync(candidate, 'utf8')),
@@ -245,6 +250,7 @@ test('--api writes one endpoint behind the view permission, its client function 
 test('--tables dsp writes the next migration of the DSP database, a storage module and its test', async () => {
   const plan = await feature('parking', '--tables', 'dsp');
   const next = Math.max(...migrations('dsp')) + 1;
+  assert(next > Math.max(...history().dsp!.map(({ id }) => id)));
   const sql = `migrations/dsp/${String(next).padStart(4, '0')}_parking.sql`;
   assert.deepEqual(
     writes(plan, 'features/parking').filter((name) =>
@@ -309,6 +315,43 @@ test('--keeps refuses a collection another feature keeps, or one that does not e
   );
   await refused(/cortex collects .*, not nothing/, 'more', '--keeps', 'cortex.nothing');
   await refused(/--keeps names a collector/, 'more', '--keeps', 'nowhere.records');
+});
+
+test('the next migration follows every one declared, as SQL or as code, and every one recorded', async () => {
+  const next = (plan: Plan) =>
+    Number(/\bid: (\d+),\s*name: "ledger"/.exec(file(plan, 'features/ledger/feature.rs'))?.[1]);
+  const shipped = Math.max(...migrations('dsp', copy));
+  // A migration that runs code has no file, and one not shipped yet is not in the history.
+  const probe = path.join(copy, 'core/db/backend/probe.rs');
+  fs.writeFileSync(
+    probe,
+    `const PROBE: &[Migration] = &[Migration {\n    id: ${shipped + 3},\n    name: "probe",\n` +
+      '    apply: Code(probe),\n}];\nconst ALL: &[Migrations] = &[Migrations {\n' +
+      '    kind: Kind::DSP,\n    list: PROBE,\n}];\n',
+  );
+  try {
+    assert.equal(next((await planFeature(copy, ['ledger', '--tables', 'dsp'])).plan), shipped + 4);
+  } finally {
+    fs.rmSync(probe);
+  }
+  // A shipped migration stays in the history whatever its owner does with its code.
+  const recorded = history(copy);
+  const file_ = path.join(copy, historyFile);
+  const before = fs.readFileSync(file_, 'utf8');
+  recorded.dsp = [...recorded.dsp!, { id: shipped + 6 }];
+  fs.writeFileSync(file_, JSON.stringify(recorded));
+  try {
+    assert.equal(next((await planFeature(copy, ['ledger', '--tables', 'dsp'])).plan), shipped + 7);
+  } finally {
+    fs.writeFileSync(file_, before);
+  }
+  // A collector's database, named by its own DATABASE constant.
+  const cortex = Math.max(...migrations('cortex'));
+  assert(
+    (await feature('fuel', '--tables', 'cortex')).files.has(
+      `features/fuel/migrations/cortex/${String(cortex + 1).padStart(4, '0')}_fuel.sql`,
+    ),
+  );
 });
 
 test("--keeps writes the keeper of a collector's collection, tested with its fixture", async () => {
