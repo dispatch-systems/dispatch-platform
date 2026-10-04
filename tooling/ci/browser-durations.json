@@ -1,4 +1,5 @@
 {
+  "app/tests/browser/audit-access.spec.ts › audit access is only in the Platform Owner Dashboard, including old DSP links": 4.8,
   "app/tests/browser/dashboard-performance.spec.ts › 3000 employees use bounded pages, debounced search, and retain navigation state": 6.1,
   "app/tests/browser/dashboard-performance.spec.ts › failed initial session reads offer a usable retry": 1.8,
   "app/tests/browser/dashboard-performance.spec.ts › saving a DSP preference invalidates cached timecards and preserves the edited setting": 3.4,
@@ -65,7 +66,6 @@
   "core/mcp/tests/browser/sign-in-with-dispatch.spec.ts › an app signs in with Dispatch: the owner signs in, approves it, then revokes it": 5.4,
   "core/platform_owner/tests/browser/agents.spec.ts › the platform owner makes a key, sees it once, tests it, changes and revokes it": 5.2,
   "core/platform_owner/tests/browser/audit-log.spec.ts › DSP members cannot open the platform audit page": 2.6,
-  "core/platform_owner/tests/browser/audit-log.spec.ts › audit access is only in the Platform Owner Dashboard, including old DSP links": 4.8,
   "core/platform_owner/tests/browser/audit-log.spec.ts › audit search pauses old actions and exports until the visible filter is applied": 3.8,
   "core/platform_owner/tests/browser/audit-log.spec.ts › changing an expanded audit filter requests only the first page of the new filter": 3.0,
   "core/platform_owner/tests/browser/audit-log.spec.ts › changing audit filters offline retains inert results and resumes after reconnect": 3.5,
