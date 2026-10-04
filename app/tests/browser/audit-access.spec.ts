@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import type { Page } from '@playwright/test';
 import { test, expect, login, openDsp } from '../../../core/shell/tests/support/fixtures.js';
-import { dspHash } from '../../../core/shell/frontend/runtime/navigation.js';
+import { dspHash, platformHash } from '../../../core/shell/frontend/runtime/navigation.js';
 
 // The audit log is the platform owner's alone, whichever way into a DSP's Settings once led to
 // it: a test across the platform owner's dashboard and Settings.
@@ -53,4 +53,14 @@ test('audit access is only in the Platform Owner Dashboard, including old DSP li
   await expect(item(page, 'Platform Owner exported the audit log')).toContainText(/\d+ events?/, {
     timeout: 15000,
   });
+});
+
+test('DSP members cannot open the platform audit page', async ({ page }) => {
+  await login(page, 'member@dispatch.test');
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Audit log', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Audit log', exact: true })).toHaveCount(0);
+  await page.goto(platformHash('audit'));
+  await expect(page.getByRole('heading', { name: 'Your DSPs', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Search activity')).toHaveCount(0);
 });

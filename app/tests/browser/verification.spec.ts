@@ -1,4 +1,4 @@
-import { test, expect, openDsp, signIn } from '../../../shell/tests/support/fixtures.js';
+import { test, expect, openDsp, signIn } from '../../../core/shell/tests/support/fixtures.js';
 
 test.use({ hasTouch: true });
 

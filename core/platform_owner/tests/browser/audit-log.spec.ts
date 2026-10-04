@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import type { Page } from '@playwright/test';
 import { test, expect, login } from '../../../shell/tests/support/fixtures.js';
-import { platformHash } from '../../../shell/frontend/runtime/navigation.js';
 import type { AuditEvent, AuditPage } from '../../api/index.js';
 
 let next = 100;
@@ -387,14 +386,4 @@ test('changing audit filters offline retains inert results and resumes after rec
     await page.context().setOffline(false);
     await page.clock.resume();
   }
-});
-
-test('DSP members cannot open the platform audit page', async ({ page }) => {
-  await login(page, 'member@dispatch.test');
-  await page.getByRole('link', { name: 'Settings', exact: true }).click();
-  await expect(page.getByRole('tab', { name: 'Audit log', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Audit log', exact: true })).toHaveCount(0);
-  await page.goto(platformHash('audit'));
-  await expect(page.getByRole('heading', { name: 'Your DSPs', exact: true })).toBeVisible();
-  await expect(page.getByLabel('Search activity')).toHaveCount(0);
 });

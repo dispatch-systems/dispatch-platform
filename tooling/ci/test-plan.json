@@ -88,7 +88,7 @@
       "tests": [
         "core/platform_owner/tests/api/features.test.ts",
         "core/tenancy/tests/api/roles.test.ts",
-        "core/platform_owner/tests/browser/dsp-features.spec.ts",
+        "app/tests/browser/dsp-features.spec.ts",
         "app/tests/frontend/features.test.ts",
         "app/tests/frontend/permissions.test.ts",
         "core/tenancy/tests/frontend/permissions.test.ts"
