@@ -665,10 +665,7 @@ test('new:collector writes its connection, one collection with a fixture, a card
 
   const shards = JSON.parse(file(plan, 'tooling/ci/test-plan.json')).native;
   assert.deepEqual(shards.fleet, ['collectors/fleet/tests/native/fleet-worker.test.ts']);
-  assert.match(
-    file(plan, '.github/workflows/checks.yml'),
-    /shard: \[[^\]]*cortex-meals, fleet, capacity\]/,
-  );
+  assert.match(file(plan, '.github/workflows/checks.yml'), /shard: \[[^\]]*\bfleet, capacity\]/);
   assert.match(
     file(plan, registry),
     /collectors: &\[[^\]]*\n\s+&dispatch_fleet::COLLECTOR,\n\s*\],/,

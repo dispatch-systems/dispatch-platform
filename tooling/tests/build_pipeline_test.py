@@ -51,7 +51,9 @@ class PipelineTests(unittest.TestCase):
     def test_collector_shards_preserve_coverage_and_isolate_capacity(self):
         files = [file for shard in collectors.SHARDS.values() for file in shard]
         self.assertEqual(len(files), len(set(files)))
-        self.assertEqual(set(files), {
+        # Every suite in a shard exists; a new collector adds a shard of its own.
+        self.assertEqual([file for file in files if not (ROOT / file).is_file()], [])
+        self.assertLessEqual({
             "collectors/paycom/tests/native/paycom-worker.test.ts", "collectors/paycom/tests/native/native-browser.test.ts",
             "collectors/paycom/tests/native/native-browser-recovery.test.ts",
             "collectors/cortex/tests/native/cortex-worker.test.ts", "collectors/cortex/tests/native/cortex-meals-worker.test.ts",
@@ -59,7 +61,7 @@ class PipelineTests(unittest.TestCase):
             "collectors/cortex/tests/native/cortex-routes-worker.test.ts",
             "features/timecard/tests/native/meal-sync-worker.test.ts",
             "app/tests/native/multi-dsp-browser.test.ts", "app/tests/native/collection-throughput.test.ts",
-        })
+        }, set(files))
         self.assertEqual(set(collectors.SHARDS["capacity"]), {
             "app/tests/native/multi-dsp-browser.test.ts", "app/tests/native/collection-throughput.test.ts",
         })
