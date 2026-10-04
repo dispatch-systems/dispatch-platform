@@ -17,23 +17,47 @@ name = "dispatch-backend"
 path = "main.rs"
 
 [features]
+# The product is every feature. A build may leave one out, with every feature that declares
+# it, to prove nothing else needs it: tooling/ci/removability.ts. A test that needs the
+# whole product asks for `default`.
+default = [
+    "timecard",
+    "uniforms",
+    "routes",
+    "dvic",
+    "scorecard",
+    "driver_match",
+    "team",
+    "settings",
+    "home",
+]
+# Each feature's crate, with the features it declares.
+timecard = ["dep:dispatch-timecard", "driver_match"]
+uniforms = ["dep:dispatch-uniforms"]
+routes = ["dep:dispatch-routes"]
+dvic = ["dep:dispatch-dvic"]
+scorecard = ["dep:dispatch-scorecard"]
+driver_match = ["dep:dispatch-driver-match"]
+team = ["dep:dispatch-team"]
+settings = ["dep:dispatch-settings"]
+home = ["dep:dispatch-home"]
 # Private live-provider diagnostics are compiled only when an operator asks for them.
 operator-probes = ["dispatch-cortex/operator-probes", "dispatch-paycom/operator-probes"]
 
 [dependencies]
 dispatch-core = { path = "../../core" }
 dispatch-cortex = { path = "../../collectors/cortex" }
-dispatch-driver-match = { path = "../../features/driver_match" }
-dispatch-dvic = { path = "../../features/dvic" }
-dispatch-home = { path = "../../features/home" }
+dispatch-driver-match = { path = "../../features/driver_match", optional = true }
+dispatch-dvic = { path = "../../features/dvic", optional = true }
+dispatch-home = { path = "../../features/home", optional = true }
 dispatch-host = { path = "../../ops/host-manager" }
 dispatch-paycom = { path = "../../collectors/paycom" }
-dispatch-routes = { path = "../../features/routes" }
-dispatch-scorecard = { path = "../../features/scorecard" }
-dispatch-settings = { path = "../../features/settings" }
-dispatch-team = { path = "../../features/team" }
-dispatch-timecard = { path = "../../features/timecard" }
-dispatch-uniforms = { path = "../../features/uniforms" }
+dispatch-routes = { path = "../../features/routes", optional = true }
+dispatch-scorecard = { path = "../../features/scorecard", optional = true }
+dispatch-settings = { path = "../../features/settings", optional = true }
+dispatch-team = { path = "../../features/team", optional = true }
+dispatch-timecard = { path = "../../features/timecard", optional = true }
+dispatch-uniforms = { path = "../../features/uniforms", optional = true }
 axum = { workspace = true }
 libc = { workspace = true }
 # What it prints, and the access catalog its export writes, keep the order their fields are

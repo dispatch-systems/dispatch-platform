@@ -110,11 +110,19 @@ test('with no flags, a feature is a backend crate with a switch, a view permissi
     [...plan.changes.keys()].sort(),
     ['Cargo.toml', 'app/backend/Cargo.toml', registry].sort(),
   );
-  assert.match(file(plan, registry), /features: &\[[^\]]*\n\s+&dispatch_parking::FEATURE,\n\s*\],/);
+  // The registry's last feature, there while the app's Cargo feature of its name is on, as
+  // it is by default.
   assert.match(
-    file(plan, 'app/backend/Cargo.toml'),
-    /^dispatch-parking = \{ path = "..\/..\/features\/parking" \}$/m,
+    file(plan, registry),
+    /features: &\[\n(\s+#\[cfg\(feature = "\w+"\)\]\n\s+&\w+::FEATURE,\n)*\s+#\[cfg\(feature = "parking"\)\]\n\s+&dispatch_parking::FEATURE,\n\s*\],/,
   );
+  const app = file(plan, 'app/backend/Cargo.toml');
+  assert.match(
+    app,
+    /^dispatch-parking = \{ path = "..\/..\/features\/parking", optional = true \}$/m,
+  );
+  assert.match(app, /^parking = \["dep:dispatch-parking"\]$/m);
+  assert.match(app, /^default = \[[^\]]*"parking",?\s*\]/m);
   assert.match(file(plan, 'Cargo.toml'), /members = \[[^\]]*("features\/\*"|"features\/parking")/);
 });
 
@@ -164,7 +172,7 @@ test('--api writes one endpoint behind the view permission, its client function 
   assert.match(manifest, /^pub use api::types::ParkingSummary;$/m);
   assert.match(
     file(plan, 'app/tests/backend/export.rs'),
-    /exported!\([^)]*\n        dispatch_parking::ParkingSummary,\n    \);/,
+    /\n    #\[cfg\(feature = "parking"\)\]\n    bindings\.extend\(exported!\(&cfg, dispatch_parking::ParkingSummary\)\);\n    bindings\.insert\(ACCESS_CATALOG/,
   );
   // Its API types' TypeScript comes behind its ts feature, which the app's tests enable.
   const cargo = file(plan, 'features/parking/Cargo.toml');

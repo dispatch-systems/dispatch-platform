@@ -352,7 +352,7 @@ export function addDependency(
   crate: string,
   location: string,
   file: string,
-  { section = 'dependencies', features = [] as string[] } = {},
+  { section = 'dependencies', features = [] as string[], optional = false } = {},
 ) {
   const lines = text.split('\n');
   const header = lines.findIndex((line) => line.trim() === `[${section}]`);
@@ -366,8 +366,29 @@ export function addDependency(
   const enabled = features.length
     ? `, features = [${features.map((feature) => `"${feature}"`).join(', ')}]`
     : '';
-  lines.splice(header + 1 + last + 1, 0, `${crate} = { path = "${location}"${enabled} }`);
+  const kept = optional ? ', optional = true' : '';
+  lines.splice(header + 1 + last + 1, 0, `${crate} = { path = "${location}"${enabled}${kept} }`);
   return lines.join('\n');
+}
+/**
+ * Makes a feature's crate a Cargo feature of the app, as every feature is: one the product has
+ * by default, and a build may leave out. Its line follows the other features'.
+ */
+export function addAppFeature(text: string, name: string, crate: string, file: string) {
+  const defaults = /^default = \[([^\]]*)\]/m.exec(text);
+  if (!defaults) throw new Error(`${file} has no default features; add ${name} by hand`);
+  const listed = [...defaults[1]!.matchAll(/"([^"]+)"/g)].map((match) => match[1]!);
+  if (listed.includes(name)) throw new Error(`${file} already has the ${name} feature`);
+  const multiline = defaults[1]!.includes('\n');
+  const list = multiline
+    ? `default = [\n${[...listed, name].map((item) => `    "${item}",\n`).join('')}]`
+    : `default = [${[...listed, name].map((item) => `"${item}"`).join(', ')}]`;
+  const next = text.replace(defaults[0], list);
+  const crates = [...next.matchAll(/^[a-z0-9_]+ = \["dep:dispatch-[^\n]*$/gm)];
+  const after = crates.at(-1);
+  if (!after) throw new Error(`${file} lists no feature's crate; add ${name} by hand`);
+  const at = after.index + after[0].length;
+  return `${next.slice(0, at)}\n${name} = ["dep:${crate}"]${next.slice(at)}`;
 }
 /** Has the app's `feature` enable the one of that name on `crate` as well. */
 export function forwardFeature(text: string, feature: string, crate: string, file: string) {

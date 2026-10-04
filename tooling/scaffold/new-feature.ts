@@ -1,6 +1,7 @@
 import path from 'node:path';
 import {
   UsageError,
+  addAppFeature,
   addDependency,
   addFrontendFeature,
   addWorkspaceMember,
@@ -320,40 +321,51 @@ export async function planFeature(root: string, argv: string[]) {
   }
   formatRust(plan);
 
-  // List it in app/: the workspace, the app's dependencies, the registry, the route table's
-  // inventory and the frontend's list. Its manifest brings its routes.
+  // List it in app/: the workspace, the app's dependencies and its Cargo feature, the
+  // registry, the route table's inventory and the frontend's list. Its manifest brings its
+  // routes.
   const change = async (file: string, edit: (text: string) => string) =>
     plan.changes.set(file, await format(file, edit(current(plan, root, file))));
   await change('Cargo.toml', (text) => addWorkspaceMember(text, dir));
   await change('app/backend/Cargo.toml', (text) => {
-    const listed = addDependency(text, crate, `../../${dir}`, 'app/backend/Cargo.toml');
+    const app = 'app/backend/Cargo.toml';
+    const listed = addAppFeature(
+      addDependency(text, crate, `../../${dir}`, app, { optional: true }),
+      name,
+      crate,
+      app,
+    );
     // The app's export test writes its API types' TypeScript, as it does every feature's.
     return values.api
-      ? addDependency(listed, crate, `../../${dir}`, 'app/backend/Cargo.toml', {
+      ? addDependency(listed, crate, `../../${dir}`, app, {
           section: 'dev-dependencies',
           features: ['ts'],
         })
       : listed;
   });
+  // The registry has it while the app's Cargo feature does.
   const registry = holding(root, appBackend, /pub static REGISTRY\b/);
+  const featureList = /pub static REGISTRY\b[\s\S]*?features:\s*&\[/;
   await change(registry, (text) =>
-    appendToList(
+    [`#[cfg(feature = "${name}")]`, `&${ident}::FEATURE,`].reduce(
+      (listed, line) => appendToList(listed, featureList, line, registry),
       text,
-      /pub static REGISTRY\b[\s\S]*?features:\s*&\[/,
-      `&${ident}::FEATURE,`,
-      registry,
     ),
   );
-  // The app's export test writes its API type to its api/generated/, once it lists it.
+  // The app's export test writes its API type to its api/generated/ while the build has it.
   if (values.api)
-    await change(typescriptExport, (text) =>
-      appendToList(
-        text,
-        /let mut bindings = exported!\(/,
-        `${ident}::${pascal}Summary,`,
-        typescriptExport,
-      ),
-    );
+    await change(typescriptExport, (text) => {
+      const anchor = '    bindings.insert(ACCESS_CATALOG.into(), access_catalog());\n';
+      if (!text.includes(anchor))
+        throw new Error(
+          `${typescriptExport}: cannot find its last binding; list ${name}'s by hand`,
+        );
+      return text.replace(
+        anchor,
+        `    #[cfg(feature = "${name}")]\n` +
+          `    bindings.extend(exported!(&cfg, ${ident}::${pascal}Summary));\n${anchor}`,
+      );
+    });
   const rows = [
     ...(values.api ? [`("GET", "${values.apiPath}", Dsp("${name}.view"), Read, false),`] : []),
     ...(values.mcp ? [`("GET", "/api/v1/${slug}", Agent("read"), Read, false),`] : []),

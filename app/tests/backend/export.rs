@@ -8,21 +8,26 @@ use dispatch_core::mcp::api::types::*;
 use dispatch_core::platform_owner::api::types::*;
 use dispatch_core::server::api::types::*;
 use dispatch_core::tenancy::api::{audit::*, types::*};
+#[cfg(feature = "driver_match")]
 use dispatch_driver_match::{
     Driver, DriverActivity, DriverCounts, DriverDay, DriverDetails, DriverEvent, DriverEventKind,
     DriverEvidence, DriverEvidenceKind, DriverId, DriverLink, DriverMatch, DriverPair,
     DriverStrength,
 };
+#[cfg(feature = "dvic")]
 use dispatch_dvic::{DvicInspection, DvicInspections, DvicReport, DvicStatus, DvicWeek};
 use dispatch_paycom::timecards::EmployeeTimecardPeriod;
+#[cfg(feature = "routes")]
 use dispatch_routes::{
     RouteAddress, RouteBreak, RouteDayView, RouteDays, RouteItinerary, RouteItineraryDetail,
     RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteRetention, RouteStop,
     RouteTask, RouteUnknownStop,
 };
+#[cfg(feature = "scorecard")]
 use dispatch_scorecard::{
     ScorecardDatasetCount, ScorecardPublication, ScorecardWeek, ScorecardWeeks,
 };
+#[cfg(feature = "timecard")]
 use dispatch_timecard::{
     AssessedClock, CortexMeal, CortexPublication, DailyTimecard, DailyTimecards, DeliveryGap,
     DeliveryGaps, DepartmentOption, Employee, EmployeeTimecard, EmployeeTimecardResponse,
@@ -31,6 +36,7 @@ use dispatch_timecard::{
     OutPunchKind, PaycomColumn, PaycomDay, PaycomOptions, PaycomPage, PaycomPreferences,
     PaycomSettings, PaycomSort, PreferenceRevision, Punch, PunchEvent, Timecard,
 };
+#[cfg(feature = "uniforms")]
 use dispatch_uniforms::{
     Uniform, UniformAdjustment, UniformEvent, UniformEventKind, UniformFit, UniformHistory,
     UniformInventory, UniformUpdates, UniformVariant,
@@ -93,31 +99,8 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         OAuthAppChoice,
         Cadence,
         DriverSource,
-        DriverLink,
         DriverStatus,
         DriverData,
-        DriverStrength,
-        DriverEvidenceKind,
-        DriverEventKind,
-        DriverId,
-        Driver,
-        DriverCounts,
-        DriverEvidence,
-        DriverPair,
-        DriverMatch,
-        DriverActivity,
-        DriverDay,
-        DriverEvent,
-        DriverDetails,
-        UniformFit,
-        UniformEventKind,
-        UniformVariant,
-        Uniform,
-        UniformInventory,
-        UniformAdjustment,
-        UniformUpdates,
-        UniformEvent,
-        UniformHistory,
         DspProfile,
         JobMetrics,
         JobPhase,
@@ -126,15 +109,6 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         PageReads,
         PageStage,
         DocumentState,
-        PaycomPreferences,
-        PaycomPage,
-        PaycomSort,
-        PaycomColumn,
-        NameOrder,
-        PreferenceRevision,
-        DepartmentOption,
-        PaycomOptions,
-        PaycomSettings,
         AuditArea,
         AuditSubject,
         AuditReference,
@@ -148,6 +122,54 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         TransportHealth,
         MailHealth,
         PlatformHealth,
+        CollectionChange,
+        CollectionUpdates,
+        CollectionSchedule,
+        CollectionSchedules,
+        Connection,
+        ConnectionStatus,
+        Dsp,
+        DspStatus,
+        DspFeatureReport,
+        DspFeatures,
+        DspSummary,
+        DspView,
+        FeatureChange,
+        FeatureState,
+        EmployeeTimecardPeriod,
+        Environment,
+        JobStatus,
+        MailMessage,
+        Member,
+        OwnerStatus,
+        Presence,
+        ProviderMode,
+        PublicJob,
+        PublicUser,
+        Role,
+        RoleSummary,
+        RuntimeSource,
+        ScheduleCollection,
+        SchedulePreview,
+        SessionResponse,
+        SecurityStatus,
+        PasskeySummary,
+        AuthenticatorSetup,
+        AccountSession,
+    );
+    // Each feature's, when the build has it.
+    #[cfg(feature = "timecard")]
+    bindings.extend(exported!(
+        &cfg,
+        PaycomPreferences,
+        PaycomPage,
+        PaycomSort,
+        PaycomColumn,
+        NameOrder,
+        PreferenceRevision,
+        DepartmentOption,
+        PaycomOptions,
+        PaycomSettings,
         Employee,
         Punch,
         InPunchKind,
@@ -175,36 +197,24 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         MealDriver,
         CortexPublication,
         MealComparison,
-        CollectionChange,
-        CollectionUpdates,
-        CollectionSchedule,
-        CollectionSchedules,
-        Connection,
-        ConnectionStatus,
-        Dsp,
-        DspStatus,
-        DspFeatureReport,
-        DspFeatures,
-        DspSummary,
-        DspView,
-        FeatureChange,
-        FeatureState,
-        EmployeeTimecardPeriod,
         EmployeeTimecardResponse,
-        Environment,
-        JobStatus,
-        MailMessage,
-        Member,
-        OwnerStatus,
-        Presence,
-        ProviderMode,
-        PublicJob,
-        PublicUser,
-        Role,
-        RoleSummary,
-        RuntimeSource,
-        ScheduleCollection,
-        SchedulePreview,
+    ));
+    #[cfg(feature = "uniforms")]
+    bindings.extend(exported!(
+        &cfg,
+        UniformFit,
+        UniformEventKind,
+        UniformVariant,
+        Uniform,
+        UniformInventory,
+        UniformAdjustment,
+        UniformUpdates,
+        UniformEvent,
+        UniformHistory,
+    ));
+    #[cfg(feature = "routes")]
+    bindings.extend(exported!(
+        &cfg,
         RouteAddress,
         RouteBreak,
         RouteDayView,
@@ -219,21 +229,42 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         RouteStop,
         RouteTask,
         RouteUnknownStop,
-        ScorecardDatasetCount,
-        ScorecardPublication,
-        ScorecardWeek,
-        ScorecardWeeks,
+    ));
+    #[cfg(feature = "dvic")]
+    bindings.extend(exported!(
+        &cfg,
         DvicReport,
         DvicWeek,
         DvicStatus,
         DvicInspection,
         DvicInspections,
-        SessionResponse,
-        SecurityStatus,
-        PasskeySummary,
-        AuthenticatorSetup,
-        AccountSession,
-    );
+    ));
+    #[cfg(feature = "scorecard")]
+    bindings.extend(exported!(
+        &cfg,
+        ScorecardDatasetCount,
+        ScorecardPublication,
+        ScorecardWeek,
+        ScorecardWeeks,
+    ));
+    #[cfg(feature = "driver_match")]
+    bindings.extend(exported!(
+        &cfg,
+        DriverLink,
+        DriverStrength,
+        DriverEvidenceKind,
+        DriverEventKind,
+        DriverId,
+        Driver,
+        DriverCounts,
+        DriverEvidence,
+        DriverPair,
+        DriverMatch,
+        DriverActivity,
+        DriverDay,
+        DriverEvent,
+        DriverDetails,
+    ));
     bindings.insert(ACCESS_CATALOG.into(), access_catalog());
     bindings
 }

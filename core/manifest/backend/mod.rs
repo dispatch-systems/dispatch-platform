@@ -47,6 +47,19 @@ pub fn install(registry: &'static Registry) {
     );
 }
 
+/// Installs a registry that leaves out features the product has, as only the proof that
+/// each can be removed builds. Its tests run it the way each owner's tests run theirs, with a
+/// stand-in for what the features left out would bring; nothing else may run it.
+pub fn install_partial(registry: &'static Registry) {
+    #[cfg(feature = "testing")]
+    crate::testing::install(registry.collectors, registry.features);
+    #[cfg(not(feature = "testing"))]
+    panic!(
+        "this build leaves features out, so only its tests run; it has {} features",
+        registry.features.len()
+    );
+}
+
 /// The installed registry.
 pub fn registry() -> &'static Registry {
     installed().expect("no registry is installed: the app installs one before anything reads it")

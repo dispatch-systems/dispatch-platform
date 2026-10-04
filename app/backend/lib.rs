@@ -6,18 +6,28 @@ use dispatch_core::{
     server::http,
 };
 
-/// Everything this build of Dispatch is made of: its collectors and its features.
+/// Everything this build of Dispatch is made of: its collectors and its features. Each
+/// feature is a Cargo feature of the app, which a build may leave out.
 pub static REGISTRY: Registry = Registry {
     collectors: &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
     features: &[
+        #[cfg(feature = "timecard")]
         &dispatch_timecard::FEATURE,
+        #[cfg(feature = "uniforms")]
         &dispatch_uniforms::FEATURE,
+        #[cfg(feature = "routes")]
         &dispatch_routes::FEATURE,
+        #[cfg(feature = "dvic")]
         &dispatch_dvic::FEATURE,
+        #[cfg(feature = "scorecard")]
         &dispatch_scorecard::FEATURE,
+        #[cfg(feature = "driver_match")]
         &dispatch_driver_match::FEATURE,
+        #[cfg(feature = "team")]
         &dispatch_team::FEATURE,
+        #[cfg(feature = "settings")]
         &dispatch_settings::FEATURE,
+        #[cfg(feature = "home")]
         &dispatch_home::FEATURE,
     ],
 };
@@ -25,7 +35,12 @@ pub static REGISTRY: Registry = Registry {
 /// entry point, and every one of the app's tests, calls this before anything reads the
 /// registry; calling it again changes nothing.
 pub fn install() {
+    #[cfg(feature = "default")]
     manifest::install(&REGISTRY);
+    // A build that leaves features out lacks what only they bring, such as a collection's
+    // keeper, so only its tests run it, as each owner's tests run theirs.
+    #[cfg(not(feature = "default"))]
+    manifest::install_partial(&REGISTRY);
     http::unmatched_areas(routes::area_permission);
 }
 
