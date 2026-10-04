@@ -23,6 +23,7 @@ export const feature: FrontendFeature = {
       label: 'Settings',
       icon: Settings,
       nav: true,
+      hostsSettings: true,
       preload: load,
       render: ({ session, view }) => createElement(SettingsPage, { session, view }),
       prefetch: ({ view, immediate }) => prefetchSettings(view, immediate),

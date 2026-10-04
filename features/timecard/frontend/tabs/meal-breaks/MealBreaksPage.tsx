@@ -2,7 +2,7 @@ import { useUpdateState } from '../../../../../core/shell/frontend/runtime/brows
 import { useDeferredValue, useMemo } from 'react';
 import { AlertTriangle, ArrowRight, Download, Globe, Info, RefreshCw } from 'lucide-react';
 import { mealComparisonUrl, useMealComparison } from '../../../api/client.js';
-import { dspHash, navigate } from '../../../../../core/shell/frontend/runtime/navigation.js';
+import { navigate, settingsHash } from '../../../../../core/shell/frontend/runtime/navigation.js';
 import { useTableState } from '../../../../../core/shell/frontend/runtime/useTableState.js';
 import {
   DataState,
@@ -46,6 +46,7 @@ export function MealBreaksPage({
   canMatch: boolean;
   preferences: PaycomPreferences;
 }) {
+  const driverMatch = settingsHash(dspId, 'driver-match');
   const [query, setQuery] = useUpdateState('meal-query', ''),
     [filter, setFilter] = useUpdateState('meal-filter', 'all');
   const state = useTableState('meal', { id: 'employee', desc: false });
@@ -200,11 +201,8 @@ export function MealBreaksPage({
             {unlinked} Flex {unlinked === 1 ? 'driver is' : 'drivers are'} not matched to a Paycom
             employee and {unlinked === 1 ? 'appears' : 'appear'} on their own.
           </span>
-          {canMatch && (
-            <button
-              className="text-button"
-              onClick={() => navigate(dspHash(dspId, 'settings', { tab: 'driver-match' }))}
-            >
+          {canMatch && driverMatch && (
+            <button className="text-button" onClick={() => navigate(driverMatch)}>
               Review in Driver Match
               <ArrowRight size={15} />
             </button>

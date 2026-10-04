@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Award, Shirt } from 'lucide-react';
-import { dspHash, parseHash, rememberDestination } from '../../frontend/runtime/navigation.js';
+import {
+  dspHash,
+  parseHash,
+  rememberDestination,
+  settingsHash,
+} from '../../frontend/runtime/navigation.js';
 import {
   collectionAffects,
   collectionData,
@@ -28,6 +33,7 @@ import {
   type PageTab,
   type PlatformSlots,
   type ReadToggles,
+  type SettingsTab,
 } from '../../frontend/runtime/slots.js';
 
 // Synthetic owners, installed as the app installs its manifests. A platform-slots module's
@@ -252,6 +258,29 @@ test('a DSP opens on the page a feature declares it lands on, and names none wit
   assert.equal(dspHash('dsp_landing'), '#dsp/dsp_landing/');
   assert.equal(parseHash('#dsp/dsp_landing').page, '');
   assert.equal(parseHash('#dsp/dsp_landing/team').page, 'team');
+});
+
+test('a link to Settings opens the page that draws the settings tabs, and only on a tab it has', () => {
+  const tab = (id: string): SettingsTab => ({
+    id,
+    label: id,
+    order: 1,
+    load: () => Promise.resolve(),
+    render: () => id,
+  });
+  installFeatures([
+    { name: 'alpha', routes: [page('team'), { ...page('settings'), hostsSettings: true }] },
+    { name: 'beta', settingsTabs: [tab('beta-panel')] },
+  ]);
+  assert.equal(settingsHash('dsp_settings'), '#dsp/dsp_settings/settings');
+  assert.equal(
+    settingsHash('dsp_settings', 'beta-panel'),
+    '#dsp/dsp_settings/settings?tab=beta-panel',
+  );
+  assert.equal(settingsHash('dsp_settings', 'gone'), undefined);
+  installFeatures([{ name: 'beta', routes: [page('team')], settingsTabs: [tab('beta-panel')] }]);
+  assert.equal(settingsHash('dsp_settings'), undefined);
+  assert.equal(settingsHash('dsp_settings', 'beta-panel'), undefined);
 });
 
 test("a page's tabs from other features come in their order, ties in the order they are listed", () => {

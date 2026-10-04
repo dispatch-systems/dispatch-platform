@@ -4,7 +4,7 @@ import type { DspView, SessionView } from '../../../accounts/api/index.js';
 import { Brand } from '../runtime/Brand.js';
 import { Popover } from '../ui/Popover.js';
 import { useFocusTrap } from '../ui/useFocusTrap.js';
-import { dspHash, platformHash } from '../runtime/navigation.js';
+import { dspHash, platformHash, settingsHash } from '../runtime/navigation.js';
 import { sourceLink } from '../lib/source.js';
 import type { DspRouteId, PlatformRouteId } from '../runtime/slots.js';
 import { ViewRoleMenu } from './ViewRoleMenu.js';
@@ -132,9 +132,7 @@ export function Shell({
               </>
             }
           >
-            <a href={dspId ? dspHash(dspId, 'settings') : platformHash('account')}>
-              Account settings
-            </a>
+            <a href={(dspId && settingsHash(dspId)) || platformHash('account')}>Account settings</a>
             {!session.user.platformOwner && session.dsps.length > 1 && (
               <a href={platformHash()}>Switch DSP</a>
             )}

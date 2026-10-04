@@ -1,4 +1,11 @@
-import { landingPage, routeOf, type DspRouteId, type PlatformRouteId } from './slots.js';
+import {
+  landingPage,
+  routeOf,
+  settingsPage,
+  settingsTabs,
+  type DspRouteId,
+  type PlatformRouteId,
+} from './slots.js';
 
 const destinations = new Map<string, DspRouteId>();
 export function rememberDestination(dspId: string, page: DspRouteId) {
@@ -22,6 +29,16 @@ export const dspHash = (
   page: DspRouteId | undefined = destinations.get(dspId) ?? landingPage(),
   query?: Record<string, string>,
 ) => `#dsp/${dspId}/${page ?? ''}${query ? `?${new URLSearchParams(query)}` : ''}`;
+/**
+ * A DSP's Settings, on `tab` if one is named: the page that draws the settings tabs. None
+ * without that page, or without the tab, so a link to it is left out.
+ */
+export function settingsHash(dspId: string, tab?: string) {
+  const page = settingsPage();
+  if (!page || (tab !== undefined && !settingsTabs().some((each) => each.id === tab)))
+    return undefined;
+  return dspHash(dspId, page, tab === undefined ? undefined : { tab });
+}
 export const platformHash = (page: PlatformRouteId = 'dsps', query?: Record<string, string>) =>
   `#${page}${query ? `?${new URLSearchParams(query)}` : ''}`;
 export const signInHash = '#signin';

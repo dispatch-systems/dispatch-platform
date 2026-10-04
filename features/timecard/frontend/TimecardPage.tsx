@@ -31,7 +31,11 @@ import { prefetchRouteData } from '../../../core/shell/frontend/runtime/route-pr
 import { prefetchTimecardTab } from './prefetch.js';
 import { usePaycomDate } from './DateControls.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
-import { dspHash, navigate } from '../../../core/shell/frontend/runtime/navigation.js';
+import {
+  dspHash,
+  navigate,
+  settingsHash,
+} from '../../../core/shell/frontend/runtime/navigation.js';
 import { SourceSyncStatus, type SyncSource } from './SourceSyncStatus.js';
 
 const loadEmployees = () => import('./tabs/employees/EmployeesPage.js');
@@ -148,6 +152,7 @@ export function PaycomPage({ view }: { view: DspView }) {
       ? 'Connect Paycom to sync.'
       : '';
   const canConnect = can(view, 'connections.manage');
+  const connections = settingsHash(view.dsp.id, 'connections');
   const sync = useAction(
     async (timecard?: EmployeeTimecardResponse) => {
       try {
@@ -270,11 +275,12 @@ export function PaycomPage({ view }: { view: DspView }) {
                 preferences={preferences.data?.values ?? paycomDefaults}
               />
             </CommittedTab>
-          ) : canConnect && data && !data.enabled && !overview.data?.workforce.collectedAt ? (
-            <button
-              className="primary connect-button"
-              onClick={() => navigate(dspHash(view.dsp.id, 'settings', { tab: 'connections' }))}
-            >
+          ) : canConnect &&
+            connections &&
+            data &&
+            !data.enabled &&
+            !overview.data?.workforce.collectedAt ? (
+            <button className="primary connect-button" onClick={() => navigate(connections)}>
               Connect Paycom
               <ArrowRight size={16} />
             </button>

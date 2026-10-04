@@ -58,6 +58,8 @@ export type DspRoute = Page<DspPageContext> & {
   remembered?: boolean;
   /** Whether a DSP opens here when it has no last page to return to; one page at most does. */
   landing?: boolean;
+  /** Whether the page draws every owner's settings tabs, as a DSP's Settings; one at most does. */
+  hostsSettings?: boolean;
   /** Called only for the admitted view. */
   prefetch?: (prefetch: RoutePrefetch & { view: DspView }) => void;
 };
@@ -270,13 +272,17 @@ export function routeOf(scope: Route['scope'], page: string): Route | undefined 
   return undefined;
 }
 
-/** The page a DSP opens on, as a feature declares it; none without one. */
-export function landingPage() {
+/** The DSP page that says so, the first listed if more do. */
+function dspPage(says: (route: DspRoute) => boolean | undefined) {
   for (const feature of installed)
     for (const route of feature.routes ?? [])
-      if (route.scope === 'dsp' && route.landing) return route.id;
+      if (route.scope === 'dsp' && says(route)) return route.id;
   return undefined;
 }
+/** The page a DSP opens on, as a feature declares it; none without one. */
+export const landingPage = () => dspPage((route) => route.landing);
+/** The page that draws every owner's settings tabs, as a feature declares it; none without one. */
+export const settingsPage = () => dspPage((route) => route.hostsSettings);
 
 /** Every owner's tabs on a DSP's Settings page, in the order the owners are listed. */
 export const settingsTabs = () => installed.flatMap((feature) => feature.settingsTabs ?? []);
