@@ -616,6 +616,16 @@ test('new:collector writes its connection, one collection with a fixture, a card
     file(plan, 'collectors/fleet/tests/native/fleet-worker.test.ts'),
     /process\.env\.DISPATCH_TEST_NATIVE !== '1'/,
   );
+  // Its database holds what core keeps in every collector's: its connection, its identity and
+  // a running collection's live results.
+  const baseline = file(plan, 'collectors/fleet/migrations/fleet/0001_baseline.sql');
+  for (const table of [
+    'connections',
+    'storage_identity',
+    'collection_live_runs',
+    'collection_live_items',
+  ])
+    assert.match(baseline, new RegExp(`CREATE TABLE IF NOT EXISTS ${table} \\(`));
 
   const shards = JSON.parse(file(plan, 'tooling/ci/test-plan.json')).native;
   assert.deepEqual(shards.fleet, ['collectors/fleet/tests/native/fleet-worker.test.ts']);
