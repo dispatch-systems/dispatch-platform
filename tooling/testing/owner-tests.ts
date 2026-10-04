@@ -8,8 +8,7 @@ import type { Command } from '../ci/execution-plan.js';
 // before it runs; `--list` prints them and runs nothing, `--no-build` skips the builds.
 //
 //   Rust      its crate's tests, `cargo test -p <crate>`. A core part's are the core crate's,
-//             filtered to the part. An owner without a crate yet runs the integration tests the
-//             app's Cargo.toml lists under its directory.
+//             filtered to the part.
 //   node      tests/api/ and tests/frontend/, and tests/native/ suites no native shard holds,
 //             against the debug backend.
 //   browser   tests/browser/ through `npm run test:ui`, against the built artifact.
@@ -58,7 +57,7 @@ const cargo = (name: string, args: string[]): Command => ({
   args: ['test', '--locked', ...args],
 });
 
-/** The Rust tests: the owner's crate, the core crate's part, or the app's targets under it. */
+/** The Rust tests: the owner's crate, or the core crate's part. */
 function rust(root: string, kind: Kind, dir: string, part: string, notes: string[]): Command[] {
   const own = `${dir}/Cargo.toml`;
   if (exists(root, own)) return [cargo('Rust tests', ['-p', packageOf(root, own)!])];
@@ -81,28 +80,7 @@ function rust(root: string, kind: Kind, dir: string, part: string, notes: string
         : []),
     ];
   }
-  // Until the owner is a crate of its own, its integration tests are targets of the app's crate.
-  const commands: Command[] = [];
-  for (const manifest of ['app/backend/Cargo.toml'].filter((file) => exists(root, file))) {
-    const targets = testTargets(root, manifest).filter(({ file }) => file.startsWith(`${dir}/`));
-    if (targets.length)
-      commands.push(
-        cargo('Rust integration tests', [
-          '-p',
-          packageOf(root, manifest)!,
-          ...targets.flatMap(({ name }) => ['--test', name]),
-        ]),
-      );
-  }
-  const modules = files(root, `${dir}/tests/backend`, /\.rs$/).filter(
-    (file) => !file.startsWith(`${dir}/tests/backend/integration/`),
-  );
-  if (modules.length)
-    notes.push(
-      `${dir} has no crate yet: its ${modules.length} module test file(s) in tests/backend/ run with ` +
-        "the app crate's own, in `cargo test -p dispatch-backend --lib`.",
-    );
-  return commands;
+  return [];
 }
 
 export function ownerTests(root: string, kind: Kind, name: string, options = { build: true }) {

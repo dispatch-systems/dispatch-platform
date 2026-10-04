@@ -31,8 +31,8 @@ const owned = (dir: string, pattern: RegExp) =>
     .map((name) => `${dir}/${name}`)
     .filter((file) => pattern.test(file))
     .sort();
-/** A crate's integration targets whose file sits under `dir`: the app crate's by default. */
-const targets = (dir: string, manifest = 'app/backend/Cargo.toml') =>
+/** A crate's integration targets whose file sits under `dir`. */
+const targets = (dir: string, manifest: string) =>
   fs
     .readFileSync(manifest, 'utf8')
     .split('[[test]]')
