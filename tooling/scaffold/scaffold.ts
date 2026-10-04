@@ -75,7 +75,6 @@ const RESERVED = [
   'features',
   'meals',
   'routedata',
-  'shared',
   'workforce',
 ];
 export function names(name: string, label?: string): Names {
@@ -405,6 +404,8 @@ export function holding(root: string, candidates: string[], pattern: RegExp) {
 /** Where the app's backend lists every collector and feature. */
 export const appBackend = ['app/backend/features.rs', 'app/backend/lib.rs'];
 export const routeInventory = 'app/tests/backend/integration/http_routes.rs';
+/** The app's test that writes every owner's API types to TypeScript, which lists each type. */
+export const typescriptExport = 'app/tests/backend/export.rs';
 export const frontendList = 'app/frontend/features.ts';
 
 /**

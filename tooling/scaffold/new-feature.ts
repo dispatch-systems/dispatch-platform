@@ -31,6 +31,7 @@ import {
   routeInventory,
   run,
   template,
+  typescriptExport,
   type Plan,
   type Values,
 } from './scaffold.js';
@@ -307,7 +308,7 @@ function pieces(values: Values): [boolean, string, string][] {
 
 export async function planFeature(root: string, argv: string[]) {
   const { args, names, values, ident } = featureValues(root, argv);
-  const { name, slug, camel, crate } = names;
+  const { name, slug, camel, pascal, crate } = names;
   const dir = `features/${name}`;
   const plan: Plan = emptyPlan();
   for (const [wanted, source, target] of pieces(values)) {
@@ -343,6 +344,16 @@ export async function planFeature(root: string, argv: string[]) {
       registry,
     ),
   );
+  // The app's export test writes its API type to its api/generated/, once it lists it.
+  if (values.api)
+    await change(typescriptExport, (text) =>
+      appendToList(
+        text,
+        /let mut bindings = exported!\(/,
+        `${ident}::${pascal}Summary,`,
+        typescriptExport,
+      ),
+    );
   const rows = [
     ...(values.api ? [`("GET", "${values.apiPath}", Dsp("${name}.view"), Read, false),`] : []),
     ...(values.mcp ? [`("GET", "/api/v1/${slug}", Agent("read"), Read, false),`] : []),

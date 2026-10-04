@@ -159,6 +159,13 @@ test('--api writes one endpoint behind the view permission, its client function 
   const manifest = file(plan, 'features/parking/feature.rs');
   assert.match(manifest, /^mod api;$/m);
   assert.match(manifest, /^    routes: api::routes::routes,$/m);
+  // The app's export test lists its API type, which its root re-exports, and writes it to
+  // features/parking/api/generated/.
+  assert.match(manifest, /^pub use api::types::ParkingSummary;$/m);
+  assert.match(
+    file(plan, 'app/tests/backend/export.rs'),
+    /exported!\([^)]*\n        dispatch_parking::ParkingSummary,\n    \);/,
+  );
   // Its API types' TypeScript comes behind its ts feature, which the app's tests enable.
   const cargo = file(plan, 'features/parking/Cargo.toml');
   assert.match(cargo, /^\[features\]\n#[^\n]*\nts = \["dep:ts-rs"\]$/m);
@@ -173,7 +180,8 @@ test('--api writes one endpoint behind the view permission, its client function 
     app.slice(app.indexOf('\n[dev-dependencies]\n')).split(/\n\[/)[1]!,
     /^dispatch-parking = \{ path = "..\/..\/features\/parking", features = \["ts"\] \}$/m,
   );
-  // Its manifest brings its routes: in app/, only its listing and the inventory change.
+  // Its manifest brings its routes: in app/, only its listing, the inventory and the export
+  // change.
   assert.deepEqual(
     [...plan.changes.keys()].sort(),
     [
@@ -181,6 +189,7 @@ test('--api writes one endpoint behind the view permission, its client function 
       'app/backend/Cargo.toml',
       registry,
       'app/tests/backend/integration/http_routes.rs',
+      'app/tests/backend/export.rs',
     ].sort(),
   );
   assert.match(

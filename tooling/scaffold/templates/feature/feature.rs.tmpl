@@ -9,6 +9,10 @@ mod backend;
 mod mcp;
 {{/mcp}}
 
+{{#api}}
+/// What its API answers with, which the app writes to TypeScript.
+pub use api::types::{{pascal}}Summary;
+{{/api}}
 {{#tables}}
 pub use backend::storage::{{storageExports}};
 {{/tables}}
