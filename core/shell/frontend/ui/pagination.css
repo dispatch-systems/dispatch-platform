@@ -1,12 +1,11 @@
 /* Pagination's two layouts: `range` reads "1–100 of 240" before the buttons, `pages` reads
-   "Page 1 of 3" between them. */
+   "Page 1 of 3" between them. Padding and borders belong to the table footer that holds it. */
 .pagination-range {
   display: flex;
   justify-content: flex-end;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 16px;
 }
 .pagination-range > span {
   margin-right: auto;
@@ -14,12 +13,9 @@
   font-size: 12px;
 }
 .pagination-pages {
-  padding: 12px 18px;
-  border-top: 1px solid var(--border);
-  flex-wrap: wrap;
   display: flex;
+  justify-content: flex-end;
   align-items: center;
   gap: 14px;
-  justify-content: flex-end;
-  font-size: 13px;
+  flex-wrap: wrap;
 }

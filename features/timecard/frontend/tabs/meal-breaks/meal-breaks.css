@@ -351,6 +351,11 @@
 .meal-detail-grid li > span:first-child {
   min-width: 100px;
 }
+.paycom-day-results .pagination-pages {
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
 [data-theme='dark'] .meal-clock.different,
 [data-theme='dark'] .meal-status.attention {
   background: #493713;
