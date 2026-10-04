@@ -1,9 +1,6 @@
 import type { Locator } from '@playwright/test';
-import {
-  test,
-  expect,
-  openAuthenticatedDsp,
-} from '../../../../core/shell/tests/support/fixtures.js';
+import { test, expect } from '../../../../core/shell/tests/support/fixtures.js';
+import { openAuthenticatedDsp } from '../support/page.js';
 
 function holdResponse() {
   let release!: () => void;

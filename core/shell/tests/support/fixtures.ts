@@ -1,9 +1,7 @@
 import { test as base, expect, type Locator, type Page } from '@playwright/test';
 import { built, demo, fixture, type FixtureOptions } from './support.js';
-import type { SessionView } from '../../../accounts/api/index.js';
-import { dspHash } from '../../frontend/runtime/navigation.js';
 
-type Dispatch = Awaited<ReturnType<typeof fixture>>;
+export type Dispatch = Awaited<ReturnType<typeof fixture>>;
 export const test = base.extend<{
   /** Set with `test.use`, or override in `test.extend`, to change the server under test. */
   dispatchOptions: Pick<FixtureOptions, 'seed' | 'env'>;
@@ -68,25 +66,6 @@ export async function openDsp(page: Page, name: string) {
     .getByRole('region', { name: new RegExp(name) })
     .getByRole('button', { name: 'View', exact: true })
     .click();
-}
-
-/** Opt-in setup for tests of a DSP page rather than the sign-in form or DSP picker.
- * The real login endpoint sets the context's HttpOnly cookie; the dashboard still
- * bootstraps its session and obtains its own admitted DSP view through the real API.
- */
-export async function openAuthenticatedDsp(page: Page, dispatch: Dispatch, name: string) {
-  const origin = dispatch.env.DISPATCH_ORIGIN;
-  const signedIn = await page.request.post(`${origin}/api/auth/login`, {
-    headers: { origin },
-    data: { email: demo.email, password: demo.password },
-  });
-  expect(signedIn.status()).toBe(200);
-  const response = await page.request.get(`${origin}/api/session`);
-  expect(response.status()).toBe(200);
-  const session = (await response.json()) as SessionView;
-  const dsp = session.dsps.find((item) => item.name === name);
-  expect(dsp, `seeded DSP ${name}`).toBeDefined();
-  await page.goto(`/${dspHash(dsp!.id, 'paycom')}`);
 }
 
 const shown = (day: string) => `${day.slice(5, 7)}/${day.slice(8)}/${day.slice(0, 4)}`;
