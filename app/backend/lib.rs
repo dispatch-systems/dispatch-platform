@@ -160,6 +160,9 @@ mod schedule_runs;
 #[path = "../tests/backend/schema.rs"]
 mod schema;
 #[cfg(test)]
+#[path = "../tests/backend/snapshot.rs"]
+mod snapshot;
+#[cfg(test)]
 #[cfg(feature = "default")]
 #[path = "../tests/backend/tables.rs"]
 mod tables;

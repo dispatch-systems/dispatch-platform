@@ -5,6 +5,15 @@ use dispatch_core::{
     db::{Store, iso, now, s},
     foundation::{config::Config, crypto},
 };
+#[cfg(feature = "timecard")]
+use dispatch_core::{
+    collection::{
+        browser::{Collected, Driver, Pending, browseros},
+        metrics::Counted,
+    },
+    db::{Kind, Migrations},
+    manifest::{Capability, Collection, Collector, Registry},
+};
 use dispatch_cortex as cortex;
 use dispatch_paycom as paycom;
 #[cfg(feature = "timecard")]
@@ -209,5 +218,104 @@ fn timezone_changes_recompute_deadlines_and_stale_edits_are_rejected() {
             .unwrap_err()
             .code,
         "schedule_changed"
+    );
+}
+
+/// A collector added later: one collection, which no feature names in an alias.
+#[cfg(feature = "timecard")]
+struct Later;
+#[cfg(feature = "timecard")]
+impl Collector for Later {
+    fn id(&self) -> &'static str {
+        "later"
+    }
+    fn label(&self) -> &'static str {
+        "Later"
+    }
+    fn capabilities(&self) -> &'static [Capability] {
+        &[]
+    }
+    fn collections(&self) -> &'static [Collection] {
+        &[Collection {
+            job_kind: "later.records.collect",
+            schedule: "later_records",
+            label: "Later records",
+            unit: "record",
+            counted: Counted::Rows,
+            unconnected: "schedule_later_required",
+        }]
+    }
+    fn database(&self) -> Kind {
+        unreachable!("a schedule's collections need no database")
+    }
+    fn migrations(&self) -> &'static [Migrations] {
+        &[]
+    }
+    fn seed(&self, _: &str) -> String {
+        String::new()
+    }
+    fn marker(&self) -> Option<&'static str> {
+        None
+    }
+    fn browser_entries(&self) -> &'static [&'static str] {
+        &[]
+    }
+    fn network(&self) -> browseros::NetworkPolicy {
+        unreachable!("a schedule's collections need no browser")
+    }
+    fn validate_credentials(&self, _: &Value) -> dispatch_core::Result<()> {
+        Ok(())
+    }
+    fn driver<'a>(
+        &self,
+        _: browseros::Session,
+        _: &'a std::path::Path,
+        _: Option<&'a str>,
+    ) -> Pending<'a, Box<dyn Driver>> {
+        unreachable!("a schedule's collections need no browser")
+    }
+    fn fixture(&self, _: &str, _: &Value) -> dispatch_core::Result<Collected> {
+        unreachable!("a schedule's collections collect nothing")
+    }
+    fn progress(&self, _: &Value) -> &'static str {
+        ""
+    }
+}
+
+#[cfg(feature = "timecard")]
+#[test]
+fn a_new_collection_leaves_what_both_runs_as_it_is() {
+    crate::install();
+    let registry = &crate::REGISTRY;
+    let collectors: Vec<&'static dyn Collector> = registry
+        .collectors
+        .iter()
+        .copied()
+        .chain([&Later as &'static dyn Collector])
+        .collect();
+    let later = Registry {
+        collectors: Box::leak(collectors.into_boxed_slice()),
+        features: registry.features,
+    };
+    let runs = |registry: &Registry, collection: &str| -> Vec<(&str, &str)> {
+        registry
+            .scheduled(collection)
+            .map(|(collector, scheduled)| (collector.id(), scheduled.job_kind))
+            .collect()
+    };
+    // `both` is Timecard's: its timecards from Paycom and its meal breaks from Cortex.
+    let both = [
+        ("paycom", "paycom.collect"),
+        ("cortex", "cortex.meal_breaks.collect"),
+    ];
+    assert_eq!(runs(registry, "both"), both);
+    assert_eq!(runs(&later, "both"), both);
+    // The new collection is a choice of its own, after every other, and runs alone.
+    let mut choices = registry.schedule_collections();
+    choices.push("later_records");
+    assert_eq!(later.schedule_collections(), choices);
+    assert_eq!(
+        runs(&later, "later_records"),
+        [("later", "later.records.collect")]
     );
 }

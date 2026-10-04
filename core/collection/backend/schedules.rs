@@ -25,7 +25,7 @@ const SAVE: &str = "INSERT INTO collection_schedules\
     anchor=excluded.anchor,enabled=excluded.enabled,next_run=excluded.next_run,last_error=NULL,\
     revision=collection_schedules.revision+1";
 const PAUSE: &str = "UPDATE collection_schedules SET enabled=0,next_run=NULL,last_error=NULL,\
-    revision=revision+1 WHERE enabled=1 AND collection IN (?, 'both')";
+    revision=revision+1 WHERE enabled=1 AND collection=?";
 const RETIME: &str = "UPDATE collection_schedules SET anchor=?,next_run=?,last_error=NULL,\
     revision=revision+1 WHERE id=?";
 const NEXT_DEADLINE: &str =
@@ -219,26 +219,14 @@ impl Store {
             .one_as("SELECT * FROM collection_schedules WHERE id=?", [schedule])?
             .ok_or_else(|| Error::new("schedule_not_found", 404))
     }
-    // `both` selects every collector's first collection; any other value selects the
-    // collection it names. Each comes with its provider.
+    // An alias, such as Timecard's `both`, selects the collections its feature declares it
+    // runs; any other value selects the collection it names. Each comes with its provider.
     fn scheduled_collections(
         collection: ScheduleCollection,
     ) -> impl Iterator<Item = (Provider, &'static Collection)> {
-        Provider::all().flat_map(move |provider| {
-            provider
-                .collector()
-                .collections()
-                .iter()
-                .enumerate()
-                .filter(move |(index, scheduled)| {
-                    if collection == ScheduleCollection::BOTH {
-                        *index == 0
-                    } else {
-                        collection.as_str() == scheduled.schedule
-                    }
-                })
-                .map(move |(_, scheduled)| (provider, scheduled))
-        })
+        registry()
+            .scheduled(collection.as_str())
+            .map(|(collector, scheduled)| (Provider::new(collector.id()), scheduled))
     }
     /// Today, where the DSP is.
     pub fn local_date(&self, id: &str) -> Result<String> {
@@ -435,9 +423,14 @@ impl Store {
             .exec("DELETE FROM collection_schedules WHERE id=?", [schedule])?;
         Ok(())
     }
+    /// Pauses the schedules that need `provider`: those of its collections, and of each
+    /// alias that runs one of them.
     pub fn pause_provider_schedules(&self, id: &str, provider: Provider) -> Result<()> {
-        for collection in provider.collector().collections() {
-            self.dsp(id)?.exec(PAUSE, [collection.schedule])?;
+        for collection in ScheduleCollection::all() {
+            let needs = Self::scheduled_collections(collection).any(|(other, _)| other == provider);
+            if needs {
+                self.dsp(id)?.exec(PAUSE, [collection.as_str()])?;
+            }
         }
         Ok(())
     }

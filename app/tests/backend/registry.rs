@@ -3,7 +3,7 @@ use dispatch_core::{
     Result,
     db::Store,
     manifest::{
-        Feature, Registry, feature,
+        Feature, Registry, ScheduleAlias, feature,
         people::{Appearances, Named, People},
     },
     mcp::api::types::{DriverData, DriverSource},
@@ -32,6 +32,22 @@ fn a_feature_that_depends_on_one_not_registered_is_refused() {
     };
     crate::install();
     with(&LONELY).check();
+}
+
+#[test]
+#[should_panic(
+    expected = "greedy's everything schedule runs cortex.dvic.collect, which it does not keep"
+)]
+fn a_schedule_alias_of_a_collection_its_feature_does_not_keep_is_refused() {
+    static GREEDY: Feature = Feature {
+        schedule_aliases: &[ScheduleAlias {
+            schedule: "everything",
+            runs: &["cortex.dvic.collect"],
+        }],
+        ..feature("greedy")
+    };
+    crate::install();
+    with(&GREEDY).check();
 }
 
 /// Routes' drivers, named a second time.

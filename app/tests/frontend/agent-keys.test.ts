@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import '../support/manifests.js';
+import { differs, snapshot } from '../support/snapshots.js';
 import type { AgentKey } from '../../../core/platform_owner/api/index.js';
 
 // The Agents page's code reads every owner's kinds of data as it loads, so it loads after them.
@@ -35,6 +36,17 @@ const {
   withArea,
 } = await import('../../../core/platform_owner/frontend/agents/agents.js');
 const { changeText } = await import('../../../core/platform_owner/frontend/audit/wording.js');
+
+// The kinds of data agents read, each with its label and the feature it is read from, their
+// groups, and what a new key reads of them: the whole product's, as it stood. A feature that
+// adds a kind changes this snapshot.
+const pinned = new URL('./snapshots/agent-kinds.json', import.meta.url);
+const held = snapshot(pinned, {
+  kinds: agentAreas.map((id) => ({ id, label: areaLabels[id], source: areaSources[id] })),
+  groups: areaGroups.map((group) => group.label),
+  newKey: blankKey().reads.areas,
+});
+const changed = differs(pinned);
 
 const now = Date.parse('2026-10-01T15:00:00');
 const DAY = 86_400_000;
@@ -256,19 +268,7 @@ test('a key sheet knows when nothing changed', () => {
   assert.equal(blankKey().allDsps, true);
   // A new key or app reads everything but addresses and GPS, through no switched-off feature,
   // and no DSP has settings of its own.
-  assert.deepEqual(blankKey().reads, {
-    areas: [
-      'routes',
-      'timecards',
-      'meal_breaks',
-      'dvic',
-      'feedback',
-      'safety',
-      'returns',
-      'scorecard',
-    ],
-    bypass: false,
-  });
+  assert.deepEqual(blankKey().reads, { areas: held.newKey, bypass: false }, changed);
   assert.deepEqual(blankKey().dspReads, []);
 });
 
@@ -310,17 +310,11 @@ test('a key keeps the own settings of the DSPs it still reaches, and only theirs
 });
 
 test('the kinds of data come in one order, grouped under the feature that collects them', () => {
-  assert.deepEqual(agentAreas, [
-    'routes',
-    'locations',
-    'timecards',
-    'meal_breaks',
-    'dvic',
-    'feedback',
-    'safety',
-    'returns',
-    'scorecard',
-  ]);
+  assert.deepEqual(
+    agentAreas,
+    held.kinds.map(({ id }) => id),
+    changed,
+  );
   // Every kind once, in its group, in the same order.
   assert.deepEqual(
     areaGroups.flatMap((group) => group.areas),
@@ -328,35 +322,18 @@ test('the kinds of data come in one order, grouped under the feature that collec
   );
   assert.deepEqual(
     areaGroups.map((group) => group.label),
-    ['Routes', 'Timecard', 'DVIC', 'Scorecard'],
+    held.groups,
+    changed,
   );
   assert.deepEqual(
     agentAreas.map((area) => areaLabels[area]),
-    [
-      'Routes & packages',
-      'Delivery addresses & GPS',
-      'Timecards',
-      'Meal breaks',
-      'DVIC inspections',
-      'Customer feedback',
-      'Safety events',
-      'Returns & contact compliance',
-      'Weekly scorecard',
-    ],
+    held.kinds.map(({ label }) => label),
+    changed,
   );
   assert.deepEqual(
     agentAreas.map((area) => areaSources[area]),
-    [
-      'routes',
-      'routes',
-      'timecards',
-      'meal_breaks',
-      'dvic',
-      'scorecard',
-      'scorecard',
-      'scorecard',
-      'scorecard',
-    ],
+    held.kinds.map(({ source }) => source),
+    changed,
   );
   // Switching keeps the order; addresses and GPS go with routes and need them back on.
   assert.deepEqual(withArea(['dvic', 'routes'], 'timecards', true), [
@@ -378,6 +355,9 @@ test('a row says how much a key or app reads, and what to know about it', () => 
   const reads = (areas: readonly (typeof agentAreas)[number][], bypass = false) =>
     key({ reads: { areas: [...areas], bypass } });
   const without = (...missing: string[]) => agentAreas.filter((area) => !missing.includes(area));
+  // What it reads, of every kind there is.
+  const every = held.kinds.length;
+  const of = (count: number) => `${count} of ${every} kinds`;
   assert.deepEqual(accessText(reads(agentAreas), dsps), {
     count: 'All data',
     note: '',
@@ -385,12 +365,12 @@ test('a row says how much a key or app reads, and what to know about it', () => 
   });
   // One or two things it doesn't read are named; a whole group by what it holds.
   assert.deepEqual(accessText(reads(without('locations')), dsps), {
-    count: '8 of 9 kinds',
+    count: of(every - 1),
     note: 'No delivery addresses',
     bypass: false,
   });
   assert.deepEqual(accessText(reads(without('feedback', 'safety', 'returns', 'scorecard')), dsps), {
-    count: '5 of 9 kinds',
+    count: of(every - 4),
     note: 'No scorecard data',
     bypass: false,
   });
@@ -399,10 +379,10 @@ test('a row says how much a key or app reads, and what to know about it', () => 
     'No route data or meal breaks',
   );
   assert.equal(accessText(reads(without('dvic', 'safety', 'returns')), dsps).note, '');
-  assert.deepEqual(accessText(reads([]), dsps), { count: '0 of 9 kinds', note: '', bypass: false });
+  assert.deepEqual(accessText(reads([]), dsps), { count: of(0), note: '', bypass: false });
   // Bypassing features says so, in place of what it misses.
   assert.deepEqual(accessText(reads(without('locations'), true), dsps), {
-    count: '8 of 9 kinds',
+    count: of(every - 1),
     note: 'Bypass on',
     bypass: true,
   });

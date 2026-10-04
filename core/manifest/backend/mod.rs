@@ -90,6 +90,51 @@ impl Registry {
             .find(|keeper| keeper.keeps() == kind)
             .unwrap_or_else(|| panic!("no feature keeps {kind}"))
     }
+    /// Every feature's schedule aliases, in the registry's order.
+    pub fn schedule_aliases(&self) -> impl Iterator<Item = &'static ScheduleAlias> {
+        self.features
+            .iter()
+            .flat_map(|feature| feature.schedule_aliases)
+    }
+    /// Every collection a schedule may name: the collections an alias runs, the aliases,
+    /// then the other collections, each in the registry's order.
+    pub fn schedule_collections(&self) -> Vec<&'static str> {
+        let (together, alone): (Vec<&'static Collection>, Vec<_>) = self
+            .collectors
+            .iter()
+            .flat_map(|collector| collector.collections())
+            .partition(|collection| {
+                self.schedule_aliases()
+                    .any(|alias| alias.runs.contains(&collection.job_kind))
+            });
+        let aliases = self.schedule_aliases().map(|alias| alias.schedule);
+        together
+            .iter()
+            .map(|collection| collection.schedule)
+            .chain(aliases)
+            .chain(alone.iter().map(|collection| collection.schedule))
+            .collect()
+    }
+    /// What a schedule of `collection` runs, each collection with its collector, in the
+    /// registry's order: the collections the alias of that name runs, or the one it names.
+    pub fn scheduled<'a>(
+        &'a self,
+        collection: &'a str,
+    ) -> impl Iterator<Item = (&'static dyn Collector, &'static Collection)> + 'a {
+        let alias = self
+            .schedule_aliases()
+            .find(|alias| alias.schedule == collection);
+        self.collectors.iter().copied().flat_map(move |collector| {
+            collector
+                .collections()
+                .iter()
+                .filter(move |scheduled| match alias {
+                    Some(alias) => alias.runs.contains(&scheduled.job_kind),
+                    None => scheduled.schedule == collection,
+                })
+                .map(move |scheduled| (collector, scheduled))
+        })
+    }
     /// Every kind of database: core's, each collector's, then those the keepers of its
     /// collections add beside it, in the order of its collections.
     pub fn databases(&self) -> impl Iterator<Item = Kind> {
@@ -169,7 +214,8 @@ impl Registry {
             .id
     }
     /// Panics unless every collection has exactly one keeper, every keeper keeps a
-    /// registered collection, one page runs the schedules, only a page has tabs, every
+    /// registered collection, one page runs the schedules, every schedule alias has a name
+    /// of its own and runs only collections its feature keeps, only a page has tabs, every
     /// feature depends only on registered features and collectors, every permission has an
     /// id and an order of its own and implies only permissions that exist, one lets
     /// members invite, every database is declared once, with migrations numbered from 1
@@ -200,6 +246,30 @@ impl Registry {
             schedules.len() == 1 && schedules[0].switch.is_some(),
             "exactly one page runs the schedules"
         );
+        let mut schedule_names: Vec<&str> = self
+            .collectors
+            .iter()
+            .flat_map(|collector| collector.collections())
+            .map(|collection| collection.schedule)
+            .collect();
+        for feature in self.features {
+            for alias in feature.schedule_aliases {
+                assert!(
+                    !schedule_names.contains(&alias.schedule),
+                    "the {} schedule collection is declared twice",
+                    alias.schedule
+                );
+                schedule_names.push(alias.schedule);
+                for kind in alias.runs {
+                    assert!(
+                        feature.keeps.iter().any(|keeper| keeper.keeps() == *kind),
+                        "{}'s {} schedule runs {kind}, which it does not keep",
+                        feature.name,
+                        alias.schedule
+                    );
+                }
+            }
+        }
         for feature in self.features {
             assert!(
                 feature.switch.is_some() || feature.tabs.is_empty(),
@@ -328,8 +398,11 @@ pub struct Feature {
     /// Its page's tabs, each switched on its own, in the order the page shows them.
     pub tabs: &'static [Tab],
     /// Whether its page is the one whose schedules, collections and jobs run: the
-    /// generic schedule and job routes', and a `both` schedule's. One feature's is.
+    /// generic schedule and job routes'. One feature's is.
     pub schedules: bool,
+    /// The names a schedule may give to several of the collections it keeps, to run them
+    /// at once, as Timecard's `both` runs Paycom's timecards and Cortex's meal breaks.
+    pub schedule_aliases: &'static [ScheduleAlias],
     /// The permissions it owns, for the role sheet.
     pub permissions: &'static [Permission],
     /// Its endpoints, each with its path and access. The app serves every feature's.
@@ -373,6 +446,7 @@ pub const fn feature(name: &'static str) -> Feature {
         switch: None,
         tabs: &[],
         schedules: false,
+        schedule_aliases: &[],
         permissions: &[],
         routes: Vec::new,
         live: &[],
@@ -543,6 +617,14 @@ impl DefaultRole {
     }
 }
 
+/// A name a schedule collects by that runs several collections at once.
+pub struct ScheduleAlias {
+    /// The `collection` a schedule names it by. Permanent: schedules store it.
+    pub schedule: &'static str,
+    /// The job kinds of the collections it runs, each one its feature keeps.
+    pub runs: &'static [&'static str],
+}
+
 /// One kind of data a collector reads. A job of `job_kind` collects it for one DSP, and
 /// the one feature that keeps it stores what the job brings.
 pub struct Collection {
@@ -577,8 +659,7 @@ pub trait Collector: Sync {
     fn label(&self) -> &'static str;
     /// What its connection supplies to the pages that require it (`features`).
     fn capabilities(&self) -> &'static [Capability];
-    /// What it reads, its main collection first; each is chosen by `job_kind_for`. `both`
-    /// schedules run the first of every collector's.
+    /// What it reads, its main collection first; each is chosen by `job_kind_for`.
     fn collections(&self) -> &'static [Collection];
     /// The kind of job a request queues.
     fn job_kind_for(&self, _request: &Value) -> &'static str {

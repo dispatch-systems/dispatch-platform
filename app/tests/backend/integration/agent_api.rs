@@ -1,8 +1,8 @@
 //! The agent API as agents meet it, held to what it was before the features declared their
 //! parts of it: the OpenAPI document, the MCP server's handshake, tools and prompts, the Agent
 //! Skill, the metrics and the kinds of data a key may read with the switches each follows.
-//! Each is compared with its file in `app/tests/backend/agent_api/`;
-//! `DISPATCH_UPDATE_AGENT_API=1` writes them anew.
+//! Each is compared with its file in `app/tests/backend/agent_api/`, which
+//! `npm run snapshots:update` writes anew: it sets `DISPATCH_UPDATE_SNAPSHOTS`.
 use dispatch_core::testing as common;
 use dispatch_core::{
     State,
@@ -22,14 +22,15 @@ fn golden(name: &str, text: &str) {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../tests/backend/agent_api")
         .join(name);
-    if std::env::var_os("DISPATCH_UPDATE_AGENT_API").is_some() {
+    if std::env::var_os("DISPATCH_UPDATE_SNAPSHOTS").is_some() {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, text).unwrap();
     }
     let stored = std::fs::read_to_string(&path).unwrap_or_default();
     assert!(
         stored == text,
-        "{name} differs from what the agent API answers now"
+        "{name} differs from what the agent API answers now: `npm run snapshots:update` \
+         rewrites it, to review with the change"
     );
 }
 fn pretty(value: &Value) -> String {

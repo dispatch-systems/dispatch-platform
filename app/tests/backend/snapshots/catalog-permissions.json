@@ -1,0 +1,49 @@
+{
+  "permissions": [
+    ["uniforms.view", "View Uniform Inventory"],
+    ["uniforms.adjust", "Adjust Uniform Inventory"],
+    ["uniforms.manage", "Manage Uniform Inventory"],
+    ["timecard.view", "View Timecard"],
+    ["timecard.manage", "Manage Timecard"],
+    ["collections.run", "Run Collections"],
+    ["routes.view", "View Routes"],
+    ["routes.collect", "Collect Routes"],
+    ["routes.manage", "Manage Routes"],
+    ["dvic.view", "View DVIC"],
+    ["dvic.collect", "Collect DVIC"],
+    ["dvic.manage", "Manage DVIC"],
+    ["scorecard.view", "View Scorecard"],
+    ["scorecard.collect", "Collect Scorecard"],
+    ["scorecard.manage", "Manage Scorecard"],
+    ["driver_match.manage", "Manage Driver Match"],
+    ["connections.manage", "Manage Connections"],
+    ["members.invite", "Invite Members"],
+    ["members.manage", "Manage Members"],
+    ["roles.manage", "Manage Roles"],
+    ["settings.manage", "Manage DSP Settings"]
+  ],
+  "implied": [
+    ["timecard.manage", "timecard.view"],
+    ["uniforms.adjust", "uniforms.view"],
+    ["uniforms.manage", "uniforms.view"],
+    ["routes.collect", "routes.view"],
+    ["routes.manage", "routes.view"],
+    ["dvic.collect", "dvic.view"],
+    ["dvic.manage", "dvic.view"],
+    ["scorecard.collect", "scorecard.view"],
+    ["scorecard.manage", "scorecard.view"]
+  ],
+  "groups": [
+    ["Connections", ["connections.manage"]],
+    ["Team", ["members.invite", "members.manage", "roles.manage"]],
+    ["DSP", ["settings.manage"]]
+  ],
+  "defaults": [
+    [
+      "manager",
+      "Manager",
+      ["uniforms.view", "uniforms.adjust", "timecard.view", "collections.run"]
+    ],
+    ["member", "Member", ["uniforms.view", "timecard.view"]]
+  ]
+}

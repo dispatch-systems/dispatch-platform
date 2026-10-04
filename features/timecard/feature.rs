@@ -45,7 +45,7 @@ use dispatch_core::{
     manifest::{
         Audit,
         DefaultRole::{Manager, Member},
-        Feature, Switch, feature, perm, tab,
+        Feature, ScheduleAlias, Switch, feature, perm, tab,
     },
     server::cache::{Cached, DataDomain, Evicted::By, LISTINGS},
     tenancy::api::audit::AuditArea::Collections,
@@ -68,6 +68,11 @@ pub const FEATURE: Feature = Feature {
         tab("timecard.employees", "Employee Search"),
     ],
     schedules: true,
+    // A schedule of `both` runs its two collections at once.
+    schedule_aliases: &[ScheduleAlias {
+        schedule: "both",
+        runs: &[paycom::timecards::JOB_KIND, cortex::meals::JOB_KIND],
+    }],
     permissions: &[
         perm("timecard.view", "View Timecard", 20).defaults(&[Manager, Member]),
         perm("timecard.manage", "Manage Timecard", 21).implies(&["timecard.view"]),

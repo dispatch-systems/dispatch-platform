@@ -37,6 +37,7 @@
     "agents:signin": "tsx tooling/agent-evals/signin.ts",
     "mail:types": "node services/cloudflare-mail/generate-types.mjs",
     "contracts:generate": "DISPATCH_UPDATE_CONTRACTS=1 cargo test --locked -p dispatch-backend --lib export::",
+    "snapshots:update": "tsx tooling/testing/snapshots.ts",
     "check:privacy": "python3 tooling/security/scan.py",
     "check:exports": "python3 tooling/security/exports.py",
     "mail:configure": "tsx tooling/mail/mail-config.ts"

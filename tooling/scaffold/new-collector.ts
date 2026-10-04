@@ -23,6 +23,7 @@ import {
   parseArguments,
   repositoryRoot,
   run,
+  snapshotsNote,
   template,
   type Plan,
   type Values,
@@ -167,10 +168,7 @@ export async function planCollector(root: string, argv: string[]) {
     '`npm run contracts:generate` writes the catalog with its connection switch, and its job ' +
       "kind, schedule collection and labels into core's generated files.",
   );
-  if (exists(root, 'app/tests/backend/catalog.rs'))
-    plan.notes.push(
-      'app/tests/backend/catalog.rs holds the catalog as it stood: add its connection.',
-    );
+  plan.notes.push(snapshotsNote);
   plan.notes.push(
     `\`npm run test:collector ${name}\` runs its tests, the native shard \`${slug}\` included.`,
   );

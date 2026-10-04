@@ -32,6 +32,7 @@ import {
   repositoryRoot,
   routeInventory,
   run,
+  snapshotsNote,
   template,
   typescriptExport,
   type Plan,
@@ -403,24 +404,11 @@ export async function planFeature(root: string, argv: string[]) {
     ...(values.api ? [`${dir}/api/generated/`] : []),
   ];
   plan.notes.push(`\`npm run contracts:generate\` writes ${generated.join(', and ')}.`);
-  if (declared.length && exists(root, 'app/tests/backend/catalog.rs'))
-    plan.notes.push(
-      `app/tests/backend/catalog.rs holds the catalog as it stood: add its ${declared.join(' and ')}.`,
-    );
+  plan.notes.push(snapshotsNote);
   if (values.tables && !values.ownDatabase)
     plan.notes.push(
       `It takes migration ${values.migrationId} of the ${values.database} database, after every ` +
         'one declared or recorded in the migrations history.',
-    );
-  if (values.mcp && exists(root, 'app/tests/frontend/agent-keys.test.ts'))
-    plan.notes.push(
-      'app/tests/frontend/agent-keys.test.ts holds the kinds of data agents read as they stood: ' +
-        `add ${name}, last.`,
-    );
-  if (values.mcp && exists(root, 'app/tests/backend/agent_api'))
-    plan.notes.push(
-      'The agent API documents in app/tests/backend/agent_api/ list its endpoint now: ' +
-        'DISPATCH_UPDATE_AGENT_API=1 rewrites them.',
     );
   plan.notes.push(`\`npm run test:feature ${name}\` runs its tests of every kind.`);
   return { plan, args };

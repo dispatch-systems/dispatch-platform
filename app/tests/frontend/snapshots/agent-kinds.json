@@ -1,0 +1,24 @@
+{
+  "kinds": [
+    {"id": "routes", "label": "Routes & packages", "source": "routes"},
+    {"id": "locations", "label": "Delivery addresses & GPS", "source": "routes"},
+    {"id": "timecards", "label": "Timecards", "source": "timecards"},
+    {"id": "meal_breaks", "label": "Meal breaks", "source": "meal_breaks"},
+    {"id": "dvic", "label": "DVIC inspections", "source": "dvic"},
+    {"id": "feedback", "label": "Customer feedback", "source": "scorecard"},
+    {"id": "safety", "label": "Safety events", "source": "scorecard"},
+    {"id": "returns", "label": "Returns & contact compliance", "source": "scorecard"},
+    {"id": "scorecard", "label": "Weekly scorecard", "source": "scorecard"}
+  ],
+  "groups": ["Routes", "Timecard", "DVIC", "Scorecard"],
+  "newKey": [
+    "routes",
+    "timecards",
+    "meal_breaks",
+    "dvic",
+    "feedback",
+    "safety",
+    "returns",
+    "scorecard"
+  ]
+}
