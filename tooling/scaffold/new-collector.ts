@@ -20,7 +20,6 @@ import {
   frontendList,
   holding,
   names as namesOf,
-  offersSlot,
   parseArguments,
   repositoryRoot,
   run,
@@ -67,7 +66,9 @@ export function collectorValues(root: string, argv: string[]) {
     collection: collection.name,
     collectionTitle: collection.label,
     collectionLabel: collection.label.toLowerCase(),
+    jobKind: `${name}.${collection.name}.collect`,
     host,
+    credentials: "{{ username: { label: 'Username', type: 'text' } }}",
   };
   return { args, names, values };
 }
@@ -87,6 +88,10 @@ function pieces(values: Values): [string, string][] {
     ['scripts/collection.js', `scripts/${collection}.js`],
     ['migrations/baseline.sql', `migrations/${name}/0001_baseline.sql`],
     ['frontend/feature.ts', 'frontend/feature.ts'],
+    ['frontend/index.ts', 'frontend/index.ts'],
+    ['frontend/Card.tsx', `frontend/${values.pascal}Card.tsx`],
+    ['frontend/platform-slots.ts', 'frontend/platform-slots.ts'],
+    ['tests/browser/connection.spec.ts', `tests/browser/${slug}.spec.ts`],
     ['tests/backend/collection.rs', `tests/backend/${collection}.rs`],
     ['tests/native/worker.test.ts', `tests/native/${slug}-worker.test.ts`],
   ];
@@ -160,10 +165,6 @@ export async function planCollector(root: string, argv: string[]) {
     `Jobs and schedules store their kind under a CHECK: widen it for ${name}.${collection}.collect ` +
       `and the ${collection} schedule with a migration, as core/collection/migrations/jobs/0004_dvic_kind.sql did.`,
   );
-  if (!offersSlot(root, 'connectionCards'))
-    plan.notes.push(
-      "core/shell's FrontendFeature has no connectionCards slot yet: add it so the card shows.",
-    );
   plan.notes.push('`npm run contracts:generate` writes the catalog with its connection switch.');
   if (exists(root, 'app/tests/backend/catalog.rs'))
     plan.notes.push(

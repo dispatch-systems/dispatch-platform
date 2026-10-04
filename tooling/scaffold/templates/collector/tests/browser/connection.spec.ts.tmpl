@@ -1,0 +1,12 @@
+import { test, expect, login, openDsp } from '{{toRoot}}core/shell/tests/support/fixtures.js';
+
+test('{{label}} has its card on the Connections tab', async ({ page }) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Connections', exact: true }).click();
+  const card = page
+    .getByRole('article')
+    .filter({ has: page.getByRole('heading', { name: '{{label}}', exact: true }) });
+  await expect(card.getByRole('button', { name: 'Connect {{label}}' })).toBeVisible();
+});

@@ -586,11 +586,15 @@ test('new:collector writes its connection, one collection with a fixture, a card
     'connection/mod.rs',
     'fixtures/mod.rs',
     'fixtures/records.rs',
+    'frontend/FleetCard.tsx',
     'frontend/feature.ts',
+    'frontend/index.ts',
+    'frontend/platform-slots.ts',
     'migrations/fleet/0001_baseline.sql',
     'scripts/auth.js',
     'scripts/records.js',
     'tests/backend/records.rs',
+    'tests/browser/fleet.spec.ts',
     'tests/native/fleet-worker.test.ts',
   ]);
   const cargo = file(plan, 'collectors/fleet/Cargo.toml');
@@ -626,6 +630,25 @@ test('new:collector writes its connection, one collection with a fixture, a card
     'collection_live_items',
   ])
     assert.match(baseline, new RegExp(`CREATE TABLE IF NOT EXISTS ${table} \\(`));
+  // Its card is the core's ConnectionCard, in the connectionCard slot; its collection is named
+  // for Diagnostics and the audit log, and its capability for the pages that require it.
+  const manifest_ = file(plan, 'collectors/fleet/frontend/feature.ts');
+  assert.match(manifest_, /connectionCard: \{\s*provider: 'fleet',\s*read,/);
+  assert.match(
+    manifest_,
+    /schedule_records_required: 'Connect Fleet before enabling Records collections.'/,
+  );
+  assert.match(file(plan, 'collectors/fleet/frontend/FleetCard.tsx'), /<ConnectionCard\b/);
+  const slots = file(plan, 'collectors/fleet/frontend/platform-slots.ts');
+  assert.match(
+    slots,
+    /kind: 'fleet\.records\.collect',\s*schedule: \{ id: 'records', label: 'Records' \},/,
+  );
+  assert.match(slots, /capabilities: \{ records: 'a records source' \},/);
+  assert.match(
+    file(plan, 'collectors/fleet/tests/browser/fleet.spec.ts'),
+    /getByRole\('button', \{ name: 'Connect Fleet' \}\)/,
+  );
 
   const shards = JSON.parse(file(plan, 'tooling/ci/test-plan.json')).native;
   assert.deepEqual(shards.fleet, ['collectors/fleet/tests/native/fleet-worker.test.ts']);

@@ -1,17 +1,22 @@
+import { createElement, lazy } from 'react';
 import type { FrontendFeature } from '{{toRoot}}core/shell/frontend/runtime/slots.js';
 
-// {{label}}'s connection card: the Connections page draws it from what the collector declares
-// here, and signs in with the fields it asks for.
+// {{label}}'s frontend manifest, loaded up front: its connection's card, loaded lazily, and
+// what it puts in the platform owner's slots.
+const load = () => import('./index.js');
+const {{pascal}}Card = lazy(() => load().then((module) => ({ default: module.{{pascal}}Card })));
+const read = '/api/dsp/connections/{{name}}';
+
 export const feature: FrontendFeature = {
   name: '{{name}}',
-  connectionCards: [
-    {
-      provider: '{{name}}',
-      label: '{{label}}',
-      fields: [
-        { name: 'username', label: 'Username', type: 'text', autoComplete: 'username' },
-        { name: 'password', label: 'Password', type: 'password', autoComplete: 'current-password' },
-      ],
-    },
-  ],
+  connectionCard: {
+    provider: '{{name}}',
+    read,
+    load,
+    render: (context) => createElement({{pascal}}Card, { ...context, read }),
+  },
+  platformSlots: () => import('./platform-slots.js'),
+  scheduleIssues: {
+    schedule_{{collection}}_required: 'Connect {{label}} before enabling {{collectionTitle}} collections.',
+  },
 };

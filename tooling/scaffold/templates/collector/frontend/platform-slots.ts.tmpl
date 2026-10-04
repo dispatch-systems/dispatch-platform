@@ -1,0 +1,17 @@
+import type { PlatformSlots } from '{{toRoot}}core/shell/frontend/runtime/slots.js';
+
+// What {{label}} puts in the platform owner's slots, loaded with the platform owner's pages.
+export const slots: PlatformSlots = {
+  auditWording: { collected: { {{name}}: '{{label}}' } },
+  // How a page that requires its collection names what it lacks.
+  capabilities: { {{collection}}: 'a {{collectionLabel}} source' },
+  collections: [
+    {
+      kind: '{{jobKind}}',
+      schedule: { id: '{{collection}}', label: '{{collectionTitle}}' },
+      unit: 'record',
+      // What a run's measurements counted of it, once its runs count what they read.
+      count: () => null,
+    },
+  ],
+};

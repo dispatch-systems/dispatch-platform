@@ -280,9 +280,6 @@ export function pageOf(root: string, feature: string) {
   const match = /id:\s*'([^']+)',\s*scope:\s*'dsp',\s*label:\s*'([^']+)'/.exec(read(root, file));
   return match ? { id: match[1]!, label: match[2]! } : undefined;
 }
-/** Whether core's frontend slots offer `slot` yet. */
-export const offersSlot = (root: string, slot: string) =>
-  new RegExp(`\\b${slot}\\?:`).test(read(root, 'core/shell/frontend/runtime/slots.ts'));
 /** Whether a feature's page draws the tabs other features add to it, with `pageTabs(…)`. */
 export const drawsPageTabs = (root: string, feature: string) =>
   files(root, `features/${feature}/frontend`, /\.tsx?$/).some((file) =>
