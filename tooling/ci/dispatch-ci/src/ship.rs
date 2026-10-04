@@ -1175,23 +1175,29 @@ mod tests {
     #[test]
     fn review_threads_waiting_for_our_answer_stop_a_labelled_pr() {
         let github = github(vec![reviewed(vec![
-            thread("backend/src/jobs.rs", Some(42), CODERABBIT, &[], false),
             thread(
-                "backend/src/mail.rs",
+                "core/collection/api/jobs.rs",
+                Some(42),
+                CODERABBIT,
+                &[],
+                false,
+            ),
+            thread(
+                "core/server/backend/mail/mod.rs",
                 Some(7),
                 CODERABBIT,
                 &["fixture-owner"],
                 true,
             ),
             thread(
-                "backend/src/http.rs",
+                "core/collection/backend/browser/http.rs",
                 Some(9),
                 CODERABBIT,
                 &["fixture-owner"],
                 false,
             ),
             thread(
-                "backend/src/roles.rs",
+                "core/tenancy/backend/roles.rs",
                 Some(3),
                 CODERABBIT,
                 &["fixture-owner", CODERABBIT],
@@ -1205,7 +1211,7 @@ mod tests {
         assert_eq!(
             error,
             "#7 has review threads to answer; reply to each, then ship it again:\n\
-             - backend/src/jobs.rs:42 coderabbitai https://github.com/backend/src/jobs.rs\n\
+             - core/collection/api/jobs.rs:42 coderabbitai https://github.com/core/collection/api/jobs.rs\n\
              - docs/ci.md fixture-owner https://github.com/docs/ci.md"
         );
         assert!(github.queued.borrow().is_empty());
@@ -1214,7 +1220,7 @@ mod tests {
     #[test]
     fn a_labelled_pr_waits_for_coderabbit_to_answer_the_replies() {
         let replied = thread(
-            "backend/src/http.rs",
+            "core/collection/backend/browser/http.rs",
             Some(9),
             CODERABBIT,
             &["fixture-owner"],
@@ -1241,14 +1247,14 @@ mod tests {
         assert_eq!(
             result.unwrap_err().to_string(),
             "CodeRabbit has not answered these replies on #7 after 5 minutes; resolve the ones your reply settles, then ship it again:\n\
-             - backend/src/http.rs:9 coderabbitai https://github.com/backend/src/http.rs"
+             - core/collection/backend/browser/http.rs:9 coderabbitai https://github.com/core/collection/backend/browser/http.rs"
         );
         assert_eq!(pauses, ANSWER_LOOKS as usize);
         assert!(github.queued.borrow().is_empty());
         // Its answer comes a moment before it resolves the thread, so one look finding the
         // thread answered and open waits; a second means it disagrees.
         let answered = thread(
-            "backend/src/http.rs",
+            "core/collection/backend/browser/http.rs",
             Some(9),
             CODERABBIT,
             &["fixture-owner", CODERABBIT],
@@ -1274,7 +1280,7 @@ mod tests {
         assert_eq!(pauses, 1);
         // Each thread gets that second look: one resolving as another is answered is no dispute.
         let other = thread(
-            "backend/src/jobs.rs",
+            "core/collection/api/jobs.rs",
             Some(4),
             CODERABBIT,
             &["fixture-owner", CODERABBIT],

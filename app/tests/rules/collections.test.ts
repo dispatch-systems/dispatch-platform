@@ -1,7 +1,7 @@
 import test from 'node:test';
 import { localDependencies, readCrate } from './support/cargo.js';
 import { collections, keepers, kept } from './support/manifests.js';
-import { holds, pendingNames } from './support/pending.js';
+import { holds } from './support/holds.js';
 import { features, files, isFile, ownerOf, type Owner } from './support/repo.js';
 import { rust } from './support/rust.js';
 
@@ -66,8 +66,4 @@ test('a feature keeps only collections of the collectors it uses', () => {
         );
     }
   holds('collections', 'collectors used', wrong);
-});
-
-test('pending.json names only these checks', () => {
-  pendingNames('collections', ['keepers', 'collectors used']);
 });

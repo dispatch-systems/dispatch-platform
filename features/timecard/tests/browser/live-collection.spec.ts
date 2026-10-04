@@ -1,14 +1,8 @@
 import { assessMealResponse } from '../support/assessment.js';
 import type { CortexMeal } from '../../api/index.js';
 import type { Route } from '@playwright/test';
-import {
-  test,
-  expect,
-  demo,
-  login,
-  setDate,
-  expectDate,
-} from '../../../../core/shell/tests/support/fixtures.js';
+import { test, expect, demo, login } from '../../../../core/shell/tests/support/fixtures.js';
+import { expectDate, setDate } from '../support/page.js';
 import { paycomDefaults } from '../../frontend/paycom.js';
 
 test('driver results update open timecards and meal breaks without resetting the view', async ({

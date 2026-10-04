@@ -1,4 +1,4 @@
-import { test as base, expect, type Locator, type Page } from '@playwright/test';
+import { test as base, expect, type Page } from '@playwright/test';
 import { built, demo, fixture, type FixtureOptions } from './support.js';
 
 export type Dispatch = Awaited<ReturnType<typeof fixture>>;
@@ -66,22 +66,4 @@ export async function openDsp(page: Page, name: string) {
     .getByRole('region', { name: new RegExp(name) })
     .getByRole('button', { name: 'View', exact: true })
     .click();
-}
-
-const shown = (day: string) => `${day.slice(5, 7)}/${day.slice(8)}/${day.slice(0, 4)}`;
-/** Type a date draft into the Timecard date and finish editing it. */
-export async function setDate(page: Page, day: string) {
-  // By role: the open calendar's own label also contains the field's.
-  const field = page.getByRole('textbox', { name: 'Paycom date' });
-  // A lazy tab retains its previous date field while that content is inert.
-  await expect.poll(() => field.evaluate((element) => !element.closest('[inert]'))).toBe(true);
-  await field.fill(day);
-  await expect(field).toHaveValue(day);
-  await field.press('Enter');
-  // The calendar finishes editing accepted and rejected drafts; callers check the resulting day.
-  await expect(field).not.toHaveAttribute('data-typing');
-}
-/** The Timecard date, within `scope` when a page shows more than one, reads as this day. */
-export async function expectDate(scope: Page | Locator, day: string) {
-  await expect(scope.getByRole('textbox', { name: 'Paycom date' })).toHaveValue(shown(day));
 }

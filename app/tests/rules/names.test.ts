@@ -3,7 +3,7 @@ import test from 'node:test';
 import ts from 'typescript';
 import { readCrate } from './support/cargo.js';
 import { collectorManifest, featureManifest } from './support/manifests.js';
-import { holds, pendingNames } from './support/pending.js';
+import { holds } from './support/holds.js';
 import { collectors, features, files, isFile, owners, read, templated } from './support/repo.js';
 import { lexFile, modDeclarations, rust } from './support/rust.js';
 
@@ -156,8 +156,4 @@ test("a directory's name is the name its manifests give", () => {
   if (isFile('core/Cargo.toml'))
     same('core', 'Cargo.toml', readCrate('core/Cargo.toml').name, 'dispatch-core');
   holds('names', 'manifest names', differ);
-});
-
-test('pending.json names only these checks', () => {
-  pendingNames('names', ['retired names', 'manifest names']);
 });

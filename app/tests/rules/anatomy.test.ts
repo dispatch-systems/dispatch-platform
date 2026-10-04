@@ -1,6 +1,6 @@
 import test from 'node:test';
 import { featureManifest, literals, textOf } from './support/manifests.js';
-import { holds, pendingNames } from './support/pending.js';
+import { holds } from './support/holds.js';
 import {
   collectors,
   entries,
@@ -165,15 +165,4 @@ test("each tab sits in its feature's frontend/tabs/, and each folder there is a 
         `${file.slice(0, file.indexOf('tabs/') + 4)} is outside a feature's frontend/`,
       );
   holds('anatomy', 'tabs', misplaced);
-});
-
-test('pending.json names only these checks', () => {
-  pendingNames('anatomy', [
-    'feature minimum',
-    'switch without permission',
-    'companions',
-    'roots',
-    'core parts',
-    'tabs',
-  ]);
 });

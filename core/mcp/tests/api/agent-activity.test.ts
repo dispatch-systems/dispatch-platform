@@ -18,7 +18,8 @@ test('the Activity log lists what a key called over REST and MCP, written down i
     allDsps: false,
     dsps: [north.id],
     access: 'read',
-    reads: { areas: ['routes', 'timecards', 'dvic'], bypass: false },
+    // No kind of data a feature declares: the calls below are core's own.
+    reads: { areas: [], bypass: false },
     dspReads: [],
     expiresAt: null,
   });

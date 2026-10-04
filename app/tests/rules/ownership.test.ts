@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { inTest, productRust, stringsIn } from './support/manifests.js';
-import { holds, pendingNames } from './support/pending.js';
+import { holds } from './support/holds.js';
 import { files, ownerOf, read, unitOf } from './support/repo.js';
 import { closing, lexFile, rust } from './support/rust.js';
 import { createdTables, isSql, namedTables } from './support/sql.js';
@@ -131,8 +131,4 @@ test('SQL table names are read from every statement and clause', () => {
     'z',
   ]);
   assert(!isSql('Select the DSP from the list'));
-});
-
-test('pending.json names only these checks', () => {
-  pendingNames('ownership', ['tables']);
 });

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { migrations, type Migration } from './support/manifests.js';
-import { holds, pendingNames } from './support/pending.js';
+import { holds } from './support/holds.js';
 import { files, ownerOf, read, root, unitOf } from './support/repo.js';
 
 // Every shipped migration, per database: its number, name, and a digest of what it applies:
@@ -119,8 +119,4 @@ test('the history records every database the migrations name', () => {
   const databases = new Set(gathered.map((migration) => migration.database));
   for (const database of Object.keys(history))
     assert(databases.has(database), `the history records ${database}, which no migration names`);
-});
-
-test('pending.json names only these checks', () => {
-  pendingNames('migrations', ['ledger', 'files']);
 });

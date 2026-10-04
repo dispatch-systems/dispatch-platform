@@ -478,7 +478,7 @@ mod tests {
             "native": {"cortex": ["collectors/cortex/tests/native/cortex-worker.test.ts"]},
             "watch": [{"sources": ["core/tenancy/backend/roles.rs"], "tests": [
                 "core/tenancy/tests/api/roles.test.ts",
-                "core/platform_owner/tests/browser/dsp-features.spec.ts",
+                "app/tests/browser/dsp-features.spec.ts",
                 "core/tenancy/tests/frontend/features.test.ts"]}]
         });
         let changed = |files: &[&str]| -> Vec<String> {
@@ -496,7 +496,7 @@ mod tests {
                 "cargo test --locked -p dispatch-backend -p dispatch-core -p dispatch-cortex -p dispatch-paycom",
                 "python3 tooling/build/cargo-build.py && npx tsx --test core/tenancy/tests/api/roles.test.ts",
                 "npm run test:browseros -- --shard cortex",
-                "npm run build && npm run test:ui -- core/platform_owner/tests/browser/dsp-features.spec.ts",
+                "npm run build && npm run test:ui -- app/tests/browser/dsp-features.spec.ts",
             ]
         );
         // A workspace input touches every crate; rule tests are check:rules' own.
@@ -521,7 +521,7 @@ mod tests {
             "cargo test --locked -p dispatch-backend -p dispatch-paycom"
         );
         assert!(changed(&["collectors/cortex/frontend/CortexCard.tsx"]).is_empty());
-        assert!(changed(&["docs/readme.md", "dashboard/src/app/App.tsx"]).is_empty());
+        assert!(changed(&["docs/readme.md", "app/frontend/main.tsx"]).is_empty());
         // Frontend code in an owner's directory never asks for the Rust checks.
         assert!(
             changed(&[

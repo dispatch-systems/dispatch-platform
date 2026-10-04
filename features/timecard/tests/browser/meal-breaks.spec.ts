@@ -6,9 +6,8 @@ import {
   demo,
   login,
   openDsp,
-  setDate,
-  expectDate,
 } from '../../../../core/shell/tests/support/fixtures.js';
+import { expectDate, setDate } from '../support/page.js';
 import type { MealSource } from '../../api/index.js';
 import { paycomDefaults } from '../../frontend/paycom.js';
 

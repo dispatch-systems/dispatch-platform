@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { demo, expect, login, openDsp, test } from '../support/fixtures.js';
+import { demo, expect, login, openDsp, test } from '../../../core/shell/tests/support/fixtures.js';
 
 // What this reads of a page's reply: its rows, the first copied to fill a long table.
 type Rows = { rows: Record<string, unknown>[] };

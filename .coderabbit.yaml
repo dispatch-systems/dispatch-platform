@@ -117,7 +117,7 @@ reviews:
         the other and proved with `http_extraction_parity`. (dispatch-collectors skill)
     - path: '{app,core,features,collectors}/**/frontend/**'
       instructions: |
-        (ui.md, codebase.md)
+        (ui.md, dispatch-frontend skill)
         - No Tailwind, shadcn, Motion or TanStack Virtual. TanStack Table is used only through
           `core/shell/frontend/ui/useDataTable.ts`. Styles use the tokens in
           `core/shell/frontend/styles/tokens.css` and live with the
