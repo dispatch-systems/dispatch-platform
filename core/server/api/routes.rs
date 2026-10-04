@@ -24,16 +24,26 @@ static LIVE_UPDATES: LazyLock<String> = LazyLock::new(|| {
 });
 
 pub fn routes() -> Vec<Route> {
-    vec![
-        probe("/api/health", health),
-        probe("/api/browser-update", browser_update),
+    // With no feature that follows collections live, nothing may follow their progress.
+    let live = (!LIVE_UPDATES.is_empty()).then(|| {
         async_get(
             "/api/dsp/collection-updates",
             Dsp(LIVE_UPDATES.as_str()),
             collection_updates,
-        ),
-        async_post("/api/dsp/presence", Dsp(roles::ACCESS), presence),
+        )
+    });
+    [
+        probe("/api/health", health),
+        probe("/api/browser-update", browser_update),
     ]
+    .into_iter()
+    .chain(live)
+    .chain([async_post(
+        "/api/dsp/presence",
+        Dsp(roles::ACCESS),
+        presence,
+    )])
+    .collect()
 }
 
 fn health(state: &State) -> Reply {
