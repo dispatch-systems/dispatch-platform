@@ -4,16 +4,17 @@ import path from 'node:path';
 
 /**
  * The Rust test build's size budget, checked after the core job's tests. Debug builds keep
- * line tables only (`[profile.dev]` in Cargo.toml): the workspace's 53 test programs took
- * 2.67 GB together, the largest 129 MB. With full debug info each was up to four times that,
- * and one worktree's build passed 25 GB. The budgets leave about a quarter of headroom. Never
- * raise one to let a run pass: find what grew.
+ * line tables only (`[profile.dev]` in Cargo.toml), and each crate's integration tests share one
+ * program: the workspace's 32 test programs and binaries took 1.36 GB together, the largest
+ * 141 MB. With full debug info and a program per test file they were 55 taking 2.87 GB, each
+ * up to four times its size now, and one worktree's build passed 25 GB. The budgets leave
+ * headroom. Never raise one to let a run pass: find what grew.
  */
 export const budgets = {
   /** The largest test program. */
   programBytes: 160 * 1024 ** 2,
   /** Every test program together. */
-  totalBytes: 3.5 * 1024 ** 3,
+  totalBytes: 1.75 * 1024 ** 3,
 };
 
 export interface Program {
