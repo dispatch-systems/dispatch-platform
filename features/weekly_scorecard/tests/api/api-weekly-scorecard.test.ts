@@ -90,17 +90,20 @@ test('a scorecard week is collected on request, stored per dataset and listed, a
   assert.equal(canonical.status, 200, canonical.body);
   assert.deepEqual(legacy.value, canonical.value);
   const rpc = async (method: string, params: object) => {
-    const response = await f.request(
-      '/api/v1/mcp',
-      { jsonrpc: '2.0', id: 1, method, params },
-      {
+    // MCP keys are native-client credentials; the browser fixture adds an Origin header.
+    const response = await fetch(`http://127.0.0.1:${f.env.PORT}/api/v1/mcp`, {
+      method: 'POST',
+      headers: {
         ...headers,
+        'content-type': 'application/json',
         accept: 'application/json, text/event-stream',
         'mcp-protocol-version': '2025-06-18',
       },
-    );
-    assert.equal(response.status, 200, response.body);
-    return response.value.result;
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    });
+    const body = await response.text();
+    assert.equal(response.status, 200, body);
+    return JSON.parse(body).result;
   };
   const listed = await rpc('tools/list', {});
   assert.equal(listed.tools.filter((tool: any) => tool.name === 'weekly_scorecard').length, 1);
