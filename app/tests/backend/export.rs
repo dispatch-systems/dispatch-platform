@@ -63,6 +63,9 @@ const ACCESS_CATALOG: &str = "core/tenancy/api/generated/access-catalog.ts";
 const CAPABILITIES: &str = "core/tenancy/api/generated/capabilities.ts";
 const READ_TOGGLES: &str = "core/mcp/api/generated/read-toggles.ts";
 const COLLECTIONS: &str = "core/collection/api/generated/collections.ts";
+/// The kinds of record an audit event names, core's and the features', which the audit
+/// log's reply check accepts.
+const AUDIT_SUBJECTS: &str = "core/tenancy/api/generated/audit-subjects.ts";
 
 /// Each binding by its file's path from the repository root, which its type's `export_to`
 /// names, so ts-rs writes the imports between owners' folders from there.
@@ -283,6 +286,7 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
     bindings.insert(CAPABILITIES.into(), capabilities());
     bindings.insert(READ_TOGGLES.into(), read_toggles());
     bindings.insert(COLLECTIONS.into(), collections());
+    bindings.insert(AUDIT_SUBJECTS.into(), audit_subjects());
     bindings
 }
 
@@ -393,6 +397,15 @@ fn collections() -> String {
     generated(
         "the collectors' collections",
         &[("collections", collections.into())],
+    )
+}
+
+/// Every kind of record an audit event may name, in the registry's order.
+fn audit_subjects() -> String {
+    let kinds: Vec<_> = AuditSubject::all().map(AuditSubject::as_str).collect();
+    generated(
+        "the audit log's subjects",
+        &[("auditSubjects", kinds.into())],
     )
 }
 

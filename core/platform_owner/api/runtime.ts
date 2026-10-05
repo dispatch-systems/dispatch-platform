@@ -7,6 +7,7 @@ import {
   text,
   type Replies,
 } from '../../foundation/api/runtime.js';
+import { auditSubjects } from '../../tenancy/api/generated/audit-subjects.js';
 
 export const platformHealthSchema = z.object({
   environment,
@@ -62,7 +63,7 @@ export const auditPageSchema = z.object({
       detail: text,
       area,
       target: text.nullable(),
-      ref: z.object({ kind: z.enum(['member', 'role', 'schedule', 'job']), id: text }).nullable(),
+      ref: z.object({ kind: z.enum(auditSubjects), id: text }).nullable(),
       changes: z.array(z.object({ field: text, from: text.nullable(), to: text.nullable() })),
     }),
   ),
