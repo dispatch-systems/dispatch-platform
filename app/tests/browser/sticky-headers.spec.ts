@@ -49,6 +49,14 @@ async function longTables(page: Page) {
 }
 
 async function expectPinned(table: Locator) {
+  // Measure what the page paints. The heading row follows a scroll or resize in the frame
+  // that handles it, and a size change its observer reports in the frame after.
+  await table.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
   await expect
     .poll(() =>
       table.evaluate((element) => {
