@@ -2,8 +2,10 @@
 //! the words its answers use.
 use super::{MEAL_BREAKS, TIMECARDS, views};
 use dispatch_core::mcp::data::catalog::{
-    CURSOR, DATE, DAY, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param, TO, Term,
+    CURSOR, DATE, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param, RECENT_PERIOD,
+    TO, Term,
 };
+use dispatch_core::mcp::data::schema;
 
 pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
@@ -12,11 +14,45 @@ pub const ENDPOINTS: &[Endpoint] = &[
         area: Some(TIMECARDS),
         path: "/api/v1/timecards",
         summary: "Timecards",
-        description: "Use for Paycom hours and punches: everyone's for one day, or one \
-            driver's over a period with driver. Hours, clock in and out, lunch minutes.",
+        description: "Paycom hours and punches for one driver or everyone over a period, up to 92 days.",
         path_params: &[],
-        params: &[DSP, DATE, DRIVER, PERIOD, FROM, TO, LIMIT, CURSOR],
+        params: &[
+            DSP,
+            DATE,
+            DRIVER,
+            Param {
+                description: "The days in the DSP's time, as last week, last 14 days or 2026-W39. \
+                    Defaults to yesterday for everyone, or the last 30 days for one driver. \
+                    At most 92 days.",
+                ..PERIOD
+            },
+            FROM,
+            TO,
+            LIMIT,
+            CURSOR,
+        ],
         order: 110,
+        output: || {
+            schema::answer(
+                &[
+                    ("hours", schema::nullable(schema::number())),
+                    ("coverage", schema::coverage()),
+                    (
+                        "timecards",
+                        schema::table(&[
+                            "date",
+                            "driver",
+                            "hours",
+                            "in",
+                            "out",
+                            "lunch_minutes",
+                            "needs_review",
+                        ]),
+                    ),
+                ],
+                &["hours", "coverage", "timecards"],
+            )
+        },
         answer: |db, state, caller, _, query| views::timecards(db, state, caller, query),
     },
     Endpoint {
@@ -25,13 +61,15 @@ pub const ENDPOINTS: &[Endpoint] = &[
         area: Some(MEAL_BREAKS),
         path: "/api/v1/meal-breaks",
         summary: "Meal breaks",
-        description: "Use for one day's meal breaks: Cortex's meal break beside Paycom's \
-            lunch punches and the comparison's verdict, for each driver Cortex had a route \
-            for.",
+        description: "Compare Cortex meals with Paycom lunches for drivers with routes, over up to 92 days.",
         path_params: &[],
         params: &[
             DSP,
-            DAY,
+            RECENT_PERIOD,
+            DATE,
+            FROM,
+            TO,
+            DRIVER,
             Param {
                 name: "issues",
                 kind: Kind::Boolean,
@@ -41,6 +79,27 @@ pub const ENDPOINTS: &[Endpoint] = &[
             CURSOR,
         ],
         order: 120,
+        output: || {
+            schema::answer(
+                &[
+                    ("collected", schema::boolean()),
+                    ("coverage", schema::coverage()),
+                    (
+                        "drivers",
+                        schema::table(&[
+                            "date",
+                            "driver",
+                            "status",
+                            "meal",
+                            "minutes",
+                            "late_clock_in",
+                            "long_gap",
+                        ]),
+                    ),
+                ],
+                &["collected", "coverage", "drivers"],
+            )
+        },
         answer: |db, state, caller, _, query| views::meal_breaks(db, state, caller, query),
     },
 ];

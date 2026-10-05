@@ -39,41 +39,102 @@ pub fn inspections(
     period: &Period,
     drivers: Option<&[String]>,
 ) -> Result<(Vec<Inspection>, Coverage)> {
-    let station = db.profile(&dsp.id)?.station_code;
-    let data = db.dvic_db(&dsp.id)?;
-    // A report covers every day from its first to its last row.
-    let mut held = BTreeSet::new();
-    for report in data.all(
-        "SELECT min_date,max_date FROM dvic_reports WHERE station=? AND scope_verified=1 AND min_date IS NOT NULL",
-        [&station],
-    )? {
-        held.extend(period.days().into_iter().filter(|day| {
-            day.as_str() >= s(&report, "min_date") && day.as_str() <= s(&report, "max_date")
-        }));
-    }
-    let rows = data.all(
-        "SELECT start_date,transporter_id,transporter_name,fleet_type,inspection_type,start_time,\
-         duration_seconds,minimum_seconds,short FROM dvic_inspections \
-         WHERE station=? AND scope_verified=1 AND start_date BETWEEN ? AND ? ORDER BY start_date,start_time",
-        [&station, &period.first(), &period.last()],
-    )?;
-    let found = rows
-        .iter()
-        .filter(|r| drivers.is_none_or(|ids| ids.iter().any(|id| id == s(r, "transporter_id"))))
-        .map(|r| Inspection {
-            date: s(r, "start_date").into(),
-            transporter_id: s(r, "transporter_id").into(),
-            driver_name: s(r, "transporter_name").into(),
-            vehicle_type: s(r, "fleet_type").into(),
-            inspection_type: s(r, "inspection_type").into(),
-            started: s(r, "start_time").into(),
-            seconds: r["duration_seconds"].as_f64().unwrap_or(0.0).round() as i64,
-            minimum_seconds: n(r, "minimum_seconds"),
-            short: n(r, "short") == 1,
-        })
-        .collect();
-    Ok((found, Coverage::of(true, held, period)))
+    let scope = InspectionQuery::new(db, dsp, period, drivers)?;
+    Ok((scope.list(0, None)?, scope.coverage))
 }
+
+/// A short-inspection scope shared by counts, summaries and bounded detail reads.
+pub struct InspectionQuery<'a> {
+    data: dispatch_core::db::DspLease<'a>,
+    sql: String,
+    params: Vec<String>,
+    pub coverage: Coverage,
+}
+impl<'a> InspectionQuery<'a> {
+    pub fn new(
+        db: &'a Store,
+        dsp: &Dsp,
+        period: &Period,
+        drivers: Option<&[String]>,
+    ) -> Result<Self> {
+        let station = db.profile(&dsp.id)?.station_code;
+        let data = db.dvic_db(&dsp.id)?;
+        let mut held = BTreeSet::new();
+        for report in data.all(
+            "SELECT min_date,max_date FROM dvic_reports WHERE station=? AND scope_verified=1 AND min_date IS NOT NULL",
+            [&station],
+        )? {
+            held.extend(period.days().into_iter().filter(|day| {
+                day.as_str() >= s(&report, "min_date") && day.as_str() <= s(&report, "max_date")
+            }));
+        }
+        let mut sql = String::from(
+            " FROM dvic_inspections WHERE station=? AND scope_verified=1 AND short=1 AND start_date BETWEEN ? AND ?",
+        );
+        let mut params = vec![station, period.first(), period.last()];
+        if let Some(ids) = drivers {
+            if ids.is_empty() {
+                sql.push_str(" AND 0");
+            } else {
+                sql.push_str(&format!(
+                    " AND transporter_id IN ({})",
+                    vec!["?"; ids.len()].join(",")
+                ));
+                params.extend_from_slice(ids);
+            }
+        }
+        Ok(Self {
+            data,
+            sql,
+            params,
+            coverage: Coverage::of(true, held, period),
+        })
+    }
+    pub fn count(&self) -> Result<usize> {
+        Ok(self.data.count(
+            &format!("SELECT COUNT(*){}", self.sql),
+            rusqlite::params_from_iter(&self.params),
+        )? as usize)
+    }
+    pub fn groups(&self) -> Result<Vec<Value>> {
+        self.data.all(&format!(
+            "SELECT transporter_id,transporter_name,COUNT(*) inspections,MIN(CAST(ROUND(duration_seconds) AS INTEGER)) \
+             shortest{} GROUP BY transporter_id,transporter_name", self.sql
+        ), rusqlite::params_from_iter(&self.params))
+    }
+    pub fn list(&self, offset: usize, limit: Option<usize>) -> Result<Vec<Inspection>> {
+        let mut sql = format!(
+            "SELECT start_date,transporter_id,transporter_name,fleet_type,inspection_type,start_time,duration_seconds,\
+             minimum_seconds,short{} ORDER BY start_date,start_time,company_id,inspection_key",
+            self.sql
+        );
+        let mut params = self.params.clone();
+        if let Some(limit) = limit {
+            sql.push_str(" LIMIT ? OFFSET ?");
+            params.extend([limit.to_string(), offset.min(i64::MAX as usize).to_string()]);
+        }
+        Ok(self
+            .data
+            .all(&sql, rusqlite::params_from_iter(&params))?
+            .iter()
+            .map(|r| Inspection {
+                date: s(r, "start_date").into(),
+                transporter_id: s(r, "transporter_id").into(),
+                driver_name: s(r, "transporter_name").into(),
+                vehicle_type: s(r, "fleet_type").into(),
+                inspection_type: s(r, "inspection_type").into(),
+                started: s(r, "start_time").into(),
+                seconds: r["duration_seconds"].as_f64().unwrap_or(0.0).round() as i64,
+                minimum_seconds: n(r, "minimum_seconds"),
+                short: true,
+            })
+            .collect())
+    }
+}
+
+#[cfg(test)]
+#[path = "../tests/backend/mcp/facts.rs"]
+mod tests;
 
 /// The latest day DVIC's reports cover.
 pub fn fresh(db: &Store, dsp: &Dsp, station: &str) -> Result<Option<Value>> {
@@ -138,7 +199,10 @@ impl Facts for Inspected {
     fn record(&self, record: usize) -> Value {
         json!(self.0[record])
     }
-    fn line(&self, records: &[usize]) -> Vec<Value> {
+    fn line(&self, date: &str, records: &[usize]) -> Vec<Value> {
+        if !self.1.days.iter().any(|day| day == date) {
+            return vec![Value::Null, Value::Null];
+        }
         let short = records.iter().filter(|&&r| self.0[r].short).count();
         vec![json!(records.len()), json!(short)]
     }

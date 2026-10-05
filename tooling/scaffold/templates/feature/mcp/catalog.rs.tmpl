@@ -1,6 +1,9 @@
 //! {{label}}'s part of the agent catalog: its endpoint, also an MCP tool.
 use super::{{{constant}}, views};
-use dispatch_core::mcp::data::catalog::{DSP, Endpoint};
+use dispatch_core::mcp::data::{
+    catalog::{DSP, Endpoint},
+    schema,
+};
 
 pub(super) const ENDPOINTS: &[Endpoint] = &[Endpoint {
     id: "{{name}}",
@@ -12,5 +15,6 @@ pub(super) const ENDPOINTS: &[Endpoint] = &[Endpoint {
     path_params: &[],
     params: &[DSP],
     order: {{agentOrder}},
+    output: || schema::answer(&[("items", schema::array(schema::object(&[], &[])))], &["items"]),
     answer: |db, _, caller, _, query| views::{{name}}(db, caller, query),
 }];

@@ -1,5 +1,4 @@
-//! What DVIC holds of the synthetic DSP: one pre-trip inspection each route day; under 90
-//! seconds is short.
+//! Short pre-trip inspection exceptions in the synthetic DSP.
 use crate::backend::DvicStore;
 use dispatch_core::{
     Result,
@@ -38,6 +37,9 @@ fn inspections(db: &Store, world: &mut World) -> Result<Made> {
             let Some(plan) = plan(*i, d as i64) else {
                 continue;
             };
+            if plan.inspection_seconds >= 90 {
+                continue;
+            }
             dvic.exec(
                 "INSERT OR REPLACE INTO dvic_inspections(company_id,inspection_key,dsp_code,station,\
                  start_date,transporter_id,transporter_name,vin,fleet_type,inspection_type,\

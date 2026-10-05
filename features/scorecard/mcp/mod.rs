@@ -1,6 +1,7 @@
 //! What agents can ask of Scorecard: Amazon's weekly scorecard, its customer feedback,
 //! Netradyne safety events and returns to station.
 mod catalog;
+mod query;
 pub mod scorecard;
 mod synthetic;
 

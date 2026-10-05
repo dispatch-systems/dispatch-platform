@@ -96,7 +96,17 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   assert.equal(hello.headers.get('mcp-session-id'), null);
   assert.equal(hello.body.result.protocolVersion, '2025-06-18');
   assert.equal(hello.body.result.serverInfo.name, 'dispatch');
-  assert.match(hello.body.result.instructions, /No date means the last 30 days/);
+  assert.match(hello.body.result.instructions, /Period tools default to the last 30 days/);
+  assert.match(hello.body.result.instructions, /routes and meal breaks to yesterday/);
+  assert.match(
+    hello.body.result.instructions,
+    /groups_cursor pages groups and cursor pages the list independently/,
+  );
+  assert.match(
+    hello.body.result.instructions,
+    /split longer requests into nonoverlapping date ranges/,
+  );
+  assert.match(hello.body.result.instructions, /DVIC contains short exceptions only/);
   assert.ok(hello.body.result.capabilities.tools && hello.body.result.capabilities.prompts);
   assert.equal((await rpc(full, 'notifications/initialized')).status, 202);
 
@@ -206,6 +216,17 @@ test('any MCP client reaches the agent API with a key, on every protocol version
     arguments: { driver: 'Avery Morgan' },
   });
   assert.match(review.body.result.messages[0].content.text, /review Avery Morgan for last week/);
+  const scopedReview = await rpc(full, 'prompts/get', {
+    name: 'driver_review',
+    arguments: { driver: 'Avery Morgan', dsp: 'Northline Logistics' },
+  });
+  assert.match(scopedReview.body.result.messages[0].content.text, /Northline Logistics/);
+  const daily = await rpc(full, 'prompts/get', {
+    name: 'daily_summary',
+    arguments: { date: 'yesterday' },
+  });
+  assert.match(daily.body.result.messages[0].content.text, /tools resolve/);
+  assert.doesNotMatch(daily.body.result.messages[0].content.text, /Call whoami first/);
 
   // 2026-07-28 drops the handshake: each request says who it is and what it speaks.
   const meta = {
@@ -241,6 +262,13 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   assert.equal(modernTools.body.result.cacheScope, 'private');
   assert.equal(typeof modernTools.body.result.ttlMs, 'number');
   assert.equal(modernTools.body.result.tools.length, listed.length);
+  const structuredTools = await rpc(
+    full,
+    'tools/list',
+    {},
+    { 'mcp-protocol-version': '2025-06-18' },
+  );
+  assert.deepEqual(modernTools.body.result.tools, structuredTools.body.result.tools);
   const modernPrompts = await rpc(
     full,
     'prompts/list',

@@ -1,19 +1,15 @@
 //! Routes' part of the agent catalog: its endpoints, its metrics for team_table, the words
 //! its answers use and the questions they answer.
 use super::{ROUTES, facts, views};
+use dispatch_core::mcp::data::schema;
 use dispatch_core::mcp::{
     data::catalog::{
-        CURSOR, DATE, DAY, DETAIL, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param,
-        TO, Term,
+        CURSOR, DATE, DAY, DETAIL, DRIVER, DSP, Endpoint, FROM, GROUPS_CURSOR, Kind, LIMIT, Metric,
+        PERIOD, Param, RECENT_PERIOD, TO, Term,
     },
     skill::Example,
 };
 
-const GROUPS_CURSOR: Param = Param {
-    name: "groups_cursor",
-    kind: Kind::Text,
-    description: "The groups table's next_cursor; cursor separately pages the package list.",
-};
 const ROUTE_PATH: Param = Param {
     name: "route",
     kind: Kind::Text,
@@ -74,6 +70,28 @@ pub const ENDPOINTS: &[Endpoint] = &[
             GROUPS_CURSOR,
         ],
         order: 50,
+        output: || {
+            schema::answer(
+                &[
+                    ("packages", schema::nullable(schema::count())),
+                    ("coverage", schema::coverage()),
+                    (
+                        "groups",
+                        schema::table(&[
+                            "driver", "day", "outcome", "reason", "route", "address", "packages",
+                        ]),
+                    ),
+                    (
+                        "list",
+                        schema::table(&[
+                            "date", "tracking", "driver", "route", "outcome", "reason", "at",
+                            "address",
+                        ]),
+                    ),
+                ],
+                &["packages", "coverage"],
+            )
+        },
         answer: |db, state, caller, _, query| views::packages(db, state, caller, query),
     },
     Endpoint {
@@ -81,12 +99,36 @@ pub const ENDPOINTS: &[Endpoint] = &[
         tool: "route_day",
         area: Some(ROUTES),
         path: "/api/v1/routes",
-        summary: "A day's routes",
-        description: "Use for one day's routes: each route's driver, packages delivered and \
-            undeliverable, stops, departure and end, and whether the day is final.",
+        summary: "Routes over a period",
+        description: "Routes for one driver or everyone over a period, with package and stop totals, departure and end.",
         path_params: &[],
-        params: &[DSP, DAY, LIMIT, CURSOR],
+        params: &[DSP, RECENT_PERIOD, DATE, FROM, TO, DRIVER, LIMIT, CURSOR],
         order: 80,
+        output: || {
+            schema::answer(
+                &[
+                    ("final", schema::boolean()),
+                    ("coverage", schema::coverage()),
+                    ("totals", schema::nullable(schema::totals())),
+                    (
+                        "routes",
+                        schema::table(&[
+                            "date",
+                            "route",
+                            "driver",
+                            "packages",
+                            "delivered",
+                            "undeliverable",
+                            "stops",
+                            "completed",
+                            "departed",
+                            "ended",
+                        ]),
+                    ),
+                ],
+                &["final", "coverage", "totals"],
+            )
+        },
         answer: |db, state, caller, _, query| views::routes(db, state, caller, query),
     },
     Endpoint {
@@ -101,6 +143,30 @@ pub const ENDPOINTS: &[Endpoint] = &[
         path_params: &[ROUTE_PATH],
         params: &[DSP, DAY, DETAIL, LIMIT, CURSOR],
         order: 90,
+        output: || {
+            schema::answer(
+                &[
+                    ("route", schema::nullable(schema::text())),
+                    ("driver", schema::text()),
+                    ("final", schema::boolean()),
+                    ("stops", schema::count()),
+                    ("packages", schema::count()),
+                    ("outcomes", schema::map(schema::count())),
+                    ("reasons", schema::map(schema::count())),
+                    (
+                        "packages_list",
+                        schema::table(&["stop", "tracking", "outcome", "reason", "at", "address"]),
+                    ),
+                    (
+                        "not_delivered",
+                        schema::table(&["stop", "tracking", "outcome", "reason", "at", "address"]),
+                    ),
+                ],
+                &[
+                    "route", "driver", "final", "stops", "packages", "outcomes", "reasons",
+                ],
+            )
+        },
         answer: |db, state, caller, named, query| views::route(db, state, caller, named, query),
     },
     Endpoint {
@@ -118,6 +184,20 @@ pub const ENDPOINTS: &[Endpoint] = &[
         }],
         params: &[DSP],
         order: 100,
+        output: || {
+            schema::answer(
+                &[
+                    ("tracking", schema::text()),
+                    (
+                        "events",
+                        schema::table(&[
+                            "date", "route", "driver", "outcome", "reason", "at", "address",
+                        ]),
+                    ),
+                ],
+                &["tracking", "events"],
+            )
+        },
         answer: |db, state, caller, named, query| views::package(db, state, caller, named, query),
     },
 ];

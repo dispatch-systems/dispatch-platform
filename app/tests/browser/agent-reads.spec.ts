@@ -72,7 +72,7 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   await sheet.getByLabel('Name').fill('Laptop – Claude Code');
   await sheet.getByText('Choose DSPs', { exact: true }).click();
   await sheet.getByRole('checkbox', { name: 'Northline Logistics' }).check();
-  await expect(sheet.getByRole('radio', { name: /Read only/ })).toBeChecked();
+  await expect(sheet.getByRole('radio', { name: /Operator/ })).toHaveCount(0);
   await sheet.getByRole('button', { name: 'Create key', exact: true }).click();
 
   // The key is shown this once, with its setup and a working test.
@@ -106,10 +106,10 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   // A changed key asks before its edits are thrown away.
   await row.getByRole('button', { name: 'Open Laptop – Claude Code' }).click();
   const edit = page.getByRole('dialog', { name: 'Laptop – Claude Code' });
-  await edit.getByText('Operator', { exact: true }).click();
+  await edit.getByRole('combobox', { name: /^Expires/ }).selectOption('30');
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Save changes', exact: true }).last().click();
-  await expect(row).toContainText('Operator');
+  await expect(row).toContainText('Read only');
 
   // Using keys, folded away beneath them: testing a key answers as an agent would.
   const using = page.getByRole('group').filter({ hasText: 'Using keys' });
@@ -121,7 +121,7 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   await expect(using.locator('summary')).toHaveText('Using keys');
   await using.getByLabel('Key to test').fill(token!);
   await using.getByRole('button', { name: 'Test key', exact: true }).click();
-  await expect(using.getByRole('status')).toContainText('Connected · Operator · 1 DSP');
+  await expect(using.getByRole('status')).toContainText('Connected · Read only · 1 DSP');
   // The addresses an agent needs, ready to copy, the OpenAPI spec and the skill.
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseURL });
   const addresses = using.locator('.agents-endpoint');
@@ -155,6 +155,39 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   await using.getByLabel('Key to test').fill(token!);
   await using.getByRole('button', { name: 'Test key', exact: true }).click();
   await expect(using.getByRole('status')).toContainText('That key was revoked.');
+});
+
+test('an existing Operator key keeps its access when edited and can be changed to read only', async ({
+  page,
+  dispatch,
+}) => {
+  const owner = await dispatch.client();
+  const made = await owner.post('/api/platform/agents/keys', {
+    name: 'Existing Operator',
+    allDsps: true,
+    dsps: [],
+    access: 'operator',
+    reads: { areas: ['routes'], bypass: false },
+    dspReads: [],
+    expiresAt: null,
+  });
+  expect(made.status, made.body).toBe(200);
+  await login(page);
+  await page.getByRole('link', { name: 'Agents', exact: true }).click();
+  await page.getByRole('tab', { name: 'Keys', exact: true }).click();
+  await page.getByRole('button', { name: 'Open Existing Operator' }).click();
+  let edit = page.getByRole('dialog', { name: 'Existing Operator', exact: true });
+  await expect(edit.getByRole('radio', { name: /Operator/ })).toBeChecked();
+  await expect(edit).toContainText('collection controls unavailable');
+  await edit.getByLabel('Name', { exact: true }).fill('Existing Operator renamed');
+  await edit.getByRole('button', { name: 'Save changes', exact: true }).click();
+  const row = page.getByRole('row').filter({ hasText: 'Existing Operator renamed' });
+  await expect(row.locator('.agents-tag')).toHaveText('Operator');
+  await row.getByRole('button', { name: 'Open Existing Operator renamed' }).click();
+  edit = page.getByRole('dialog', { name: 'Existing Operator renamed', exact: true });
+  await edit.getByRole('radio', { name: /Read only/ }).check();
+  await edit.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(row).toContainText('Read only');
 });
 
 test('the Activity tab lists each call a key makes, and what Dispatch answered', async ({

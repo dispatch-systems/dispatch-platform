@@ -192,8 +192,8 @@ export function KeySheet({
             edit={view}
             editId={(dsp) => `${editId}${dsp}`}
           />
-          {/* An app only ever reads. */}
-          {!app && (
+          {/* Existing Operator keys retain their setting; new keys only read. */}
+          {!app && existing?.access === 'operator' && (
             <fieldset>
               <legend>Access</legend>
               <div className="agents-choices two">
@@ -218,7 +218,7 @@ export function KeySheet({
                   />
                   <span>
                     <strong>Operator</strong>
-                    <small>Also run collections and test connections</small>
+                    <small>Read access; collection controls unavailable</small>
                   </span>
                 </label>
               </div>

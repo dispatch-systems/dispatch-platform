@@ -5,7 +5,9 @@
 pub mod access;
 pub mod catalog;
 pub mod facts;
+pub mod schema;
 pub mod scope;
+mod selected;
 pub mod shape;
 mod views;
 
