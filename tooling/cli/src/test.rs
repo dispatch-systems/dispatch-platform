@@ -98,6 +98,32 @@ pub fn everything(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
         format!("tooling/cli/dispatchdev build && {}", quoted.join(" ")),
     ])
 }
+/// A command as a line reads it: a long list of test files as their count.
+pub fn label(command: &str) -> String {
+    let words: Vec<&str> = command.split_whitespace().collect();
+    let is_test = |word: &str| {
+        let word = word.trim_matches('\'');
+        word.ends_with(".test.ts") || word.ends_with(".spec.ts")
+    };
+    let tests = words.iter().filter(|word| is_test(word)).count();
+    if tests <= 3 {
+        return command.to_owned();
+    }
+    let kept: Vec<String> = words
+        .iter()
+        .filter(|word| !is_test(word))
+        .map(|word| {
+            let word = word.trim_matches('\'');
+            Path::new(word)
+                .file_name()
+                .filter(|_| word.starts_with('/'))
+                .and_then(|name| name.to_str())
+                .unwrap_or(word)
+                .to_owned()
+        })
+        .collect();
+    format!("{} ({tests} test files)", kept.join(" "))
+}
 /// Removes the build folders of runs that ended without cleaning up, killed or interrupted.
 fn sweep(builds: &Path) {
     let Ok(entries) = fs::read_dir(builds) else {
@@ -155,10 +181,10 @@ pub fn run_commands(root: &Path, commands: &[String], keep: bool) -> Result<bool
         let (ok, took) = workspace::logged(&step.command, root, &log, env)?;
         let took = workspace::duration(took);
         if ok {
-            println!("ok    {took:>7}  {}", step.command);
+            println!("ok    {took:>7}  {}", label(&step.command));
             continue;
         }
-        println!("FAIL  {took:>7}  {}", step.command);
+        println!("FAIL  {took:>7}  {}", label(&step.command));
         for line in check::failure(&fs::read_to_string(&log).unwrap_or_default()) {
             println!("      {line}");
         }
@@ -227,6 +253,23 @@ mod tests {
                     isolated: true
                 },
             ]
+        );
+    }
+    #[test]
+    fn a_long_list_of_test_files_reads_as_its_count() {
+        assert_eq!(
+            label("cargo test --locked -p dispatch-core"),
+            "cargo test --locked -p dispatch-core"
+        );
+        assert_eq!(
+            label("npx tsx --test a.test.ts b.test.ts"),
+            "npx tsx --test a.test.ts b.test.ts"
+        );
+        assert_eq!(
+            label(
+                "tooling/cli/dispatchdev build && '/opt/node/bin/node' 'tsx.mjs' '--test' 'a.test.ts' 'b.test.ts' 'c.test.ts' 'd.spec.ts'"
+            ),
+            "tooling/cli/dispatchdev build && node tsx.mjs --test (4 test files)"
         );
     }
     #[test]
