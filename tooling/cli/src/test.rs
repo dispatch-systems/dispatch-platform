@@ -124,7 +124,8 @@ pub fn run_commands(root: &Path, commands: &[String], keep: bool) -> Result<bool
         .and_then(|name| name.to_str())
         .ok_or("A checkout without a folder name")?;
     let scratch = workspace::scratch_dir(name)?;
-    let logs = scratch.join("test");
+    // Each run's logs apart, so runs side by side never write over each other's.
+    let logs = scratch.join("test").join(std::process::id().to_string());
     fs::create_dir_all(&logs)?;
     let builds = root.join(BUILDS);
     sweep(&builds);
@@ -175,6 +176,9 @@ pub fn run_commands(root: &Path, commands: &[String], keep: bool) -> Result<bool
         fs::remove_dir_all(&path)?;
     }
     let _ = fs::remove_dir(&builds);
+    if passed {
+        fs::remove_dir_all(&logs)?;
+    }
     println!("Deleted the run's builds: {}.", workspace::human(freed));
     Ok(passed)
 }
