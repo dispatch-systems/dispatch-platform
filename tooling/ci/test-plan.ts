@@ -44,7 +44,7 @@ export function pythonRuleTests() {
   return allPythonTests().filter((file) => !pythonIntegrationTests.includes(file));
 }
 /**
- * Sources whose changes break tests elsewhere, which `npm run pr:prepare` names with the
+ * Sources whose changes break tests elsewhere, which `dispatchdev check` names with the
  * tests the diff changes. Each group comes from queue runs such changes failed.
  */
 export const watchedTests = plan.watch;

@@ -204,7 +204,7 @@ async function api() {
     for (const command of pythonCommands) await execute(command);
   })();
   const audit = run('dependency audit', 'npm', ['audit', '--audit-level=high']);
-  if (await run('debug build', 'python3', ['tooling/build/cargo-build.py'])) {
+  if (await run('debug build', 'tooling/cli/dispatchdev', ['build'])) {
     await execute(coreCommand);
   }
   await Promise.all([python, audit]);

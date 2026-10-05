@@ -6,15 +6,14 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 pub type Environment = BTreeMap<String, String>;
-// The host embeds these compatibility launchers for fresh management installs.
+// The workspace, the toolchain and the compiler wrapper, and the launchers the host manager
+// embeds for fresh management installs.
 const INPUTS: &[&str] = &[
     "Cargo.toml",
     "Cargo.lock",
     "rust-toolchain.toml",
     "rust-toolchain",
-    "tooling/build/cargo-build.py",
     "tooling/build/rustc-remap.py",
-    "tooling/ci/ci_tool.py",
     "ops/launchers/runtime_artifact.py",
     "ops/launchers/update-dev.py",
     "ops/launchers/update-production.py",
@@ -27,7 +26,8 @@ pub const SOURCE_ROOTS: &[&str] = &[
     "collectors",
     "features",
     "ops/host-manager",
-    "tooling/ci/dispatch-ci",
+    "tooling/cli",
+    "tooling/shared",
 ];
 /// Frontend code shares the owners' directories with Rust but never compiles into it: a
 /// `frontend/` folder, or a TypeScript or CSS file. The structure rules forbid Rust from

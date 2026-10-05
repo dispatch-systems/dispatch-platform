@@ -110,8 +110,8 @@ export function ownerTests(root: string, kind: Kind, name: string, options = { b
     if (options.build)
       commands.push({
         name: 'debug build',
-        command: 'python3',
-        args: ['tooling/build/cargo-build.py'],
+        command: 'tooling/cli/dispatchdev',
+        args: ['build'],
       });
     commands.push({
       name: 'node tests',

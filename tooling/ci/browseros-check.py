@@ -40,7 +40,7 @@ def main():
     environment = dict(os.environ)
     environment.setdefault("DISPATCH_BWRAP_EXECUTABLE", "/usr/local/libexec/dispatch-dev/bwrap")
     environment.pop("DISPATCH_TEST_REAL_TIMEOUTS", None)
-    subprocess.run(["python3", "tooling/build/cargo-build.py"], cwd=root, env=environment, check=True)
+    subprocess.run(["tooling/cli/dispatchdev", "build"], cwd=root, env=environment, check=True)
     if not args.real_timeouts and (args.host_only or shard in ("all", "capacity")):
         subprocess.run([
             "cargo", "test", "--locked", "--test", "browseros_host", "--",

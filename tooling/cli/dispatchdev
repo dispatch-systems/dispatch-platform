@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Runs the dispatchdev of the checkout this script is in, on the checkout the current
+# directory is in. On CI, the tools job's copy runs when it was restored into this
+# workspace's own .ci-tools. Anywhere else the binary is built once for each version of its
+# source, kept beside the repository's shared Git data, and reused by every worktree.
+set -euo pipefail
+source=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd -P)
+prebuilt="$source/.ci-tools/tools/dispatchdev"
+if [[ ${CI:-} == true && ${DISPATCH_CI_TOOLS:-} == "$source/.ci-tools" &&
+  -f $prebuilt && ! -L $prebuilt && -x $prebuilt ]]; then
+  exec "$prebuilt" "$@"
+fi
+cache="$(git -C "$source" rev-parse --path-format=absolute --git-common-dir)/dispatchdev"
+version=$(
+  cd "$source"
+  {
+    find tooling/cli tooling/shared -type f -not -path '*/target/*' -print0 | sort -z | xargs -0 sha256sum
+    sha256sum Cargo.toml Cargo.lock rust-toolchain.toml
+  } | sha256sum | cut -c1-16
+)
+binary="$cache/$version/dispatchdev"
+if [[ ! -x $binary ]]; then
+  (cd "$source" && cargo build --quiet --locked -p dispatchdev-cli --bin dispatchdev --target-dir "$cache/target") >&2
+  mkdir -p "$cache/$version"
+  install -m 755 "$cache/target/debug/dispatchdev" "$binary.$$"
+  mv -f "$binary.$$" "$binary"
+  # The three newest versions stay; an older one is rebuilt if its source comes back.
+  find "$cache" -mindepth 1 -maxdepth 1 -type d -not -name target -printf '%T@ %p\n' |
+    sort -rn | tail -n +4 | cut -d' ' -f2- | xargs -r rm -rf
+fi
+exec "$binary" "$@"

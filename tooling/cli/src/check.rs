@@ -1,4 +1,4 @@
-use crate::{REPOSITORY, Result, Runner, cache::frontend};
+use crate::{REPOSITORY, Result, Runner, build::frontend};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -23,7 +23,7 @@ pub fn blockers(
         problems.push("Commit the completed changes before starting final validation.".into());
     }
     if !current && !queued {
-        problems.push("origin/main has advanced. Incorporate it once, review the combined change, then rerun this preflight.".into());
+        problems.push("origin/main has advanced. Incorporate it once, review the combined change, then run dispatchdev check again.".into());
     }
     let others: Vec<_> = pulls
         .iter()
@@ -269,7 +269,7 @@ pub fn affected(changed: &[String], plan: &Value, workspace: &Workspace) -> Vec<
     }
     if !node.is_empty() {
         commands.push(format!(
-            "python3 tooling/build/cargo-build.py && npx tsx --test {}",
+            "tooling/cli/dispatchdev build && npx tsx --test {}",
             node.join(" ")
         ));
     }
@@ -313,7 +313,7 @@ pub fn run(root: &Path, concurrent: bool, runner: &dyn Runner) -> Result<()> {
     let problems = blockers(&branch, dirty, base == ancestor, &pulls, concurrent, queued);
     if !problems.is_empty() {
         return Err(format!(
-            "PR preparation needs attention:\n- {}",
+            "The branch needs attention before it is pushed:\n- {}",
             problems.join("\n- ")
         )
         .into());
@@ -373,7 +373,7 @@ pub fn run(root: &Path, concurrent: bool, runner: &dyn Runner) -> Result<()> {
         if running {
             "This PR is already being checked in the queue. Avoid another push unless there is a necessary correction."
         } else {
-            "Push the final head, open the PR and ship it: npm run pr:ship -- <n> queues it at once."
+            "Push the final head, open the PR and ship it: dispatchdev ship <n> queues it at once."
         }
     );
     Ok(())
@@ -394,7 +394,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     #[test]
-    fn preflight_coordinates_ready_branches_without_blocking_drafts() {
+    fn a_check_coordinates_ready_branches_without_blocking_drafts() {
         let mut pull = json!({"number":1,"headRefName":"another","isDraft":true});
         assert!(blockers("feature", false, true, &[pull.clone()], false, false).is_empty());
         pull["isDraft"] = false.into();
@@ -449,7 +449,7 @@ mod tests {
     #[test]
     fn affected_names_the_changed_crates_and_the_tests_the_diff_changes_or_watches() {
         let (_root, workspace) = workspace(
-            r#""core", "collectors/*", "app/backend", "ops/host-manager", "tooling/ci/dispatch-ci""#,
+            r#""core", "collectors/*", "app/backend", "ops/host-manager", "tooling/shared""#,
             &[
                 ("core", "dispatch-core", &[]),
                 ("collectors/cortex", "dispatch-cortex", &["core"]),
@@ -464,12 +464,8 @@ mod tests {
                         "ops/host-manager",
                     ],
                 ),
-                (
-                    "ops/host-manager",
-                    "dispatch-host",
-                    &["tooling/ci/dispatch-ci"],
-                ),
-                ("tooling/ci/dispatch-ci", "dispatch-ci", &[]),
+                ("ops/host-manager", "dispatch-host", &["tooling/shared"]),
+                ("tooling/shared", "dispatch-shared", &[]),
             ],
         );
         let plan = json!({
@@ -494,7 +490,7 @@ mod tests {
             [
                 "cargo clippy --locked --all-targets -- -D warnings",
                 "cargo test --locked -p dispatch-backend -p dispatch-core -p dispatch-cortex -p dispatch-paycom",
-                "python3 tooling/build/cargo-build.py && npx tsx --test core/tenancy/tests/api/roles.test.ts",
+                "tooling/cli/dispatchdev build && npx tsx --test core/tenancy/tests/api/roles.test.ts",
                 "npm run test:browseros -- --shard cortex",
                 "npm run build && npm run test:ui -- app/tests/browser/dsp-features.spec.ts",
             ]
@@ -504,7 +500,7 @@ mod tests {
             changed(&["Cargo.lock", "tooling/tests/test-plan.test.ts"]),
             [
                 "cargo clippy --locked --all-targets -- -D warnings",
-                "cargo test --locked -p dispatch-backend -p dispatch-ci -p dispatch-core -p dispatch-cortex -p dispatch-host -p dispatch-paycom",
+                "cargo test --locked -p dispatch-backend -p dispatch-core -p dispatch-cortex -p dispatch-host -p dispatch-paycom -p dispatch-shared",
             ]
         );
         // The hosts' crate runs its own tests, and the app's, which builds on it.
@@ -536,7 +532,7 @@ mod tests {
         assert_eq!(
             affected(&files, &Value::Null, &workspace),
             [
-                "python3 tooling/build/cargo-build.py && npx tsx --test core/tenancy/tests/api/roles.test.ts"
+                "tooling/cli/dispatchdev build && npx tsx --test core/tenancy/tests/api/roles.test.ts"
             ]
         );
     }
@@ -597,7 +593,7 @@ mod tests {
         // whose collections it keeps, Timecard on Driver Match too, and the app on every
         // owner and on the hosts' crate, which uses the tooling's.
         let (_root, workspace) = workspace(
-            r#""core", "collectors/*", "features/*", "app/backend", "ops/host-manager", "tooling/ci/dispatch-ci""#,
+            r#""core", "collectors/*", "features/*", "app/backend", "ops/host-manager", "tooling/shared""#,
             &[
                 ("core", "dispatch-core", &[]),
                 ("collectors/cortex", "dispatch-cortex", &["core"]),
@@ -645,12 +641,8 @@ mod tests {
                         "ops/host-manager",
                     ],
                 ),
-                (
-                    "ops/host-manager",
-                    "dispatch-host",
-                    &["tooling/ci/dispatch-ci"],
-                ),
-                ("tooling/ci/dispatch-ci", "dispatch-ci", &[]),
+                ("ops/host-manager", "dispatch-host", &["tooling/shared"]),
+                ("tooling/shared", "dispatch-shared", &[]),
             ],
         );
         let tested = |file: &str| affected(&[file.to_owned()], &Value::Null, &workspace)[1].clone();
@@ -674,8 +666,8 @@ mod tests {
         );
         // Through the hosts' crate, the tooling's reaches the app.
         assert_eq!(
-            tested("tooling/ci/dispatch-ci/src/preflight.rs"),
-            "cargo test --locked -p dispatch-backend -p dispatch-ci -p dispatch-host"
+            tested("tooling/shared/src/process.rs"),
+            "cargo test --locked -p dispatch-backend -p dispatch-host -p dispatch-shared"
         );
     }
     #[test]

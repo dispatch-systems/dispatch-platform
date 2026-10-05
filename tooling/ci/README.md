@@ -38,11 +38,12 @@ The ruleset expects the `platform` check on a PR head before the queue admits it
 nothing; the queue's own gate decides, and a PR queued before it passed is dropped as an
 invalid merge commit.
 
-`tooling/ci/dispatch-ci` builds as `dispatch-ci` and holds what runs on this machine: the Rust build
-cache and compiler fingerprint (`cargo-build.py`), the PR preflight (`npm run pr:prepare`) and
-the ship command. `npm run pr:ship -- <number>` reads the PR from GitHub's API every 20
-seconds, adds it to the merge queue once its admission check passed and GitHub knows it merges
-cleanly, and waits until GitHub merges it, printing the squash commit. A newer push is queued
+`dispatchdev` (`tooling/cli/`) holds what runs on this machine. `dispatchdev build` builds the
+backend through a cache keyed by its exact inputs and the compiler's fingerprint. `dispatchdev
+check` stops a branch that isn't ready to push and names the tests its diff touches.
+`dispatchdev ship <number>` reads the PR from GitHub's API every 10 seconds, adds it to the
+merge queue once its admission check passed and GitHub knows it merges cleanly, and waits
+until GitHub merges it, printing the squash commit. A newer push is queued
 in its turn. It stops with the reason when the PR conflicts with `main`, is a draft, closes,
 leaves the queue unmerged, with GitHub's reason and the failed jobs of its own queue run, or
 has not merged after 90 minutes.
@@ -51,8 +52,9 @@ Caches: only `main`'s reach every branch, since the queue's branches are deleted
 run. `caches.yml` refreshes them on every push to `main`: the release backend keyed by its
 inputs, the CI and host tools, the assessment fixture, the Playwright browser and the
 BrowserOS package. A run's own `tools` job builds what its inputs lack for the jobs that start
-later in that run. Launchers use a restored tool only on CI and only from the workspace's own
-`.ci-tools` directory; otherwise they build with Cargo.
+later in that run. `tooling/cli/dispatchdev` runs a restored copy only on CI and only from the
+workspace's own `.ci-tools` directory. Anywhere else it builds the binary once for each
+version of its source, beside the repository's shared Git data, for every worktree to reuse.
 
 The repository Cargo config runs `tooling/build/rustc-remap.py` for dependencies and workspace
 crates, giving compiler paths neutral `/dispatch-build/...` prefixes. The wrapper's SHA-256
@@ -68,7 +70,7 @@ adopting this policy recompiles dependencies. Compiler diagnostics use the neutr
 Run the tests with:
 
 ```sh
-cargo test --locked -p dispatch-ci -p dispatch-host
+cargo test --locked -p dispatchdev-cli -p dispatch-shared -p dispatch-host
 python3 -m unittest discover -s tooling/tests -p '*_test.py'
 python3 -m unittest discover -s ops/tests -p '*_test.py'
 ```

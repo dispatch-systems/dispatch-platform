@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 # CodeRabbit reviews only the PRs we ask it to: a `@coderabbitai review` comment on a PR
-# labelled `ai-review`, which `npm run pr:ship` holds until the review is done and CodeRabbit
+# labelled `ai-review`, which `dispatchdev ship` holds until the review is done and CodeRabbit
 # has resolved its threads.
 reviews:
   profile: chill
@@ -13,7 +13,8 @@ reviews:
   suggested_reviewers: false
   # No notes on the PRs it skips, which are most of them.
   review_status: false
-  # pr:ship reads the `CodeRabbit` commit status, which says "Review completed" once it is done.
+  # `dispatchdev ship` reads the `CodeRabbit` commit status, which says "Review completed"
+  # once it is done.
   review_progress: false
   commit_status: true
   fail_commit_status: true
@@ -132,6 +133,6 @@ reviews:
           card titles.
         - Links use `dspHash`/`platformHash` and `navigate`, never hand-written hash strings.
 chat:
-  # pr:ship waits for CodeRabbit to answer each reply to its threads and resolve the ones it
-  # accepts.
+  # `dispatchdev ship` waits for CodeRabbit to answer each reply to its threads and resolve
+  # the ones it accepts.
   auto_reply: true

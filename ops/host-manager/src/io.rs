@@ -56,7 +56,7 @@ impl System for Native {
         timeout: u64,
         output: Option<&Path>,
     ) -> Result<Vec<u8>> {
-        dispatch_ci::process::command(args, cwd, timeout, output)
+        dispatch_shared::process::command(args, cwd, timeout, output)
     }
 
     fn bootstrap(
@@ -66,7 +66,7 @@ impl System for Native {
         env: &std::collections::BTreeMap<String, String>,
         input: &[u8],
     ) -> Result<()> {
-        dispatch_ci::process::isolated(args, cwd, 120, env, input)
+        dispatch_shared::process::isolated(args, cwd, 120, env, input)
     }
 
     fn request(&self, url: &str, head: bool, follow: bool, timeout: u64) -> Result<Response> {

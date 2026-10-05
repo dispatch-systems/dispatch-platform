@@ -32,7 +32,7 @@ pub struct Manifest {
     pub files: Vec<Entry>,
     pub digest: String,
 }
-pub use dispatch_ci::hex;
+pub use dispatch_shared::hex;
 pub fn hash(bytes: &[u8]) -> String {
     crate::to_hex(&Sha256::digest(bytes))
 }

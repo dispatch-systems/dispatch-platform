@@ -324,10 +324,10 @@ jobs:
       - name: Build the CI and host tools
         if: steps.restore.outputs.tools-hit != 'true'
         run: |
-          cargo build --locked --release -p dispatch-ci -p dispatch-host
+          cargo build --locked --release -p dispatchdev-cli -p dispatch-host
           target=$(cargo metadata --locked --no-deps --format-version=1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
           install -d -m 700 .ci-tools/tools
-          install -m 700 "$target/release/dispatch-ci" "$target/release/dispatch-host" .ci-tools/tools/
+          install -m 700 "$target/release/dispatchdev" "$target/release/dispatch-host" .ci-tools/tools/
       - name: Save the CI and host tools
         if: steps.restore.outputs.tools-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
