@@ -53,6 +53,15 @@ ts-rs = { version = "12", default-features = false, features = ["serde-compat"] 
 lto = "thin"
 strip = true
 
+# Debug builds keep file and line numbers, for panics and backtraces, and nothing more. Full
+# debug info was nine tenths of every test program, hundreds of megabytes each, linked into
+# each of them again. Libraries carry none.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 # Unoptimised, one password hash takes about half a second against 22 ms in release, and the
 # API and collector tests sign in hundreds of times against a debug backend. Only the hashing
 # crates are optimised; debug assertions stay on everywhere.
