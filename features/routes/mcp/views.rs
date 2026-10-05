@@ -81,6 +81,7 @@ pub fn routes(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
     let mut answer = json!({
         "understood": understood(dsp, Some(&period)),
         "final": coverage.snapshots.is_empty() && collected,
+        "coverage": coverage,
         // A day not collected has no totals: nothing is known, which is not zero.
         "totals": collected.then(|| json!({
             "routes": found.len(),
@@ -346,10 +347,11 @@ pub fn packages(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
             head.insert(key.into(), json!(value));
         }
     }
+    let coverage = facts::route_coverage(db, dsp, &period)?;
     let mut answer = json!({
         "understood": head,
-        "packages": total,
-        "coverage": facts::route_coverage(db, dsp, &period)?,
+        "packages": coverage.known().then_some(total),
+        "coverage": coverage,
     });
     people.mark(&mut answer);
     // Nothing with both: say what that reason did come with, so a guessed outcome is fixed.

@@ -1,5 +1,6 @@
 //! Scorecard's part of the agent catalog: its endpoints and the questions they answer.
 use super::{FEEDBACK, RETURNS, SAFETY, SCORECARD, scorecard};
+use dispatch_core::mcp::data::schema;
 use dispatch_core::mcp::{
     data::catalog::{CURSOR, DATE, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, PERIOD, Param, TO},
     skill::Example,
@@ -59,6 +60,34 @@ pub const ENDPOINTS: &[Endpoint] = &[
             CURSOR,
         ],
         order: 140,
+        output: || {
+            schema::answer(
+                &[
+                    ("feedback", schema::count()),
+                    (
+                        "coverage",
+                        schema::object(&[("weeks", schema::coverage())], &["weeks"]),
+                    ),
+                    ("unplaced", schema::count()),
+                    (
+                        "groups",
+                        schema::table(&["driver", "address", "type", "week", "day", "feedback"]),
+                    ),
+                    (
+                        "list",
+                        schema::table(&[
+                            "date",
+                            "tracking",
+                            "driver",
+                            "types",
+                            "impacting",
+                            "address",
+                        ]),
+                    ),
+                ],
+                &["feedback", "coverage"],
+            )
+        },
         answer: |db, state, caller, _, query| scorecard::feedback(db, state, caller, query),
     },
     Endpoint {
@@ -97,6 +126,36 @@ pub const ENDPOINTS: &[Endpoint] = &[
             CURSOR,
         ],
         order: 150,
+        output: || {
+            schema::answer(
+                &[
+                    ("events", schema::count()),
+                    ("counting", schema::count()),
+                    (
+                        "coverage",
+                        schema::object(&[("weeks", schema::coverage())], &["weeks"]),
+                    ),
+                    ("by_type", schema::table(&["type", "events", "counting"])),
+                    (
+                        "groups",
+                        schema::table(&["driver", "type", "day", "week", "events", "counting"]),
+                    ),
+                    (
+                        "list",
+                        schema::table(&[
+                            "date",
+                            "time",
+                            "driver",
+                            "type",
+                            "subtype",
+                            "severity",
+                            "resolution",
+                        ]),
+                    ),
+                ],
+                &["events", "counting", "coverage", "by_type"],
+            )
+        },
         answer: |db, state, caller, _, query| scorecard::safety(db, state, caller, query),
     },
     Endpoint {
@@ -148,6 +207,36 @@ pub const ENDPOINTS: &[Endpoint] = &[
             CURSOR,
         ],
         order: 160,
+        output: || {
+            schema::answer(
+                &[
+                    ("returns", schema::count()),
+                    ("hurting_dcr", schema::count()),
+                    ("contact_missed", schema::count()),
+                    (
+                        "coverage",
+                        schema::object(&[("weeks", schema::coverage())], &["weeks"]),
+                    ),
+                    (
+                        "groups",
+                        schema::table(&["driver", "reason", "coaching", "week", "day", "returns"]),
+                    ),
+                    (
+                        "list",
+                        schema::table(&[
+                            "date",
+                            "tracking",
+                            "driver",
+                            "reason",
+                            "coaching",
+                            "hurts_dcr",
+                            "exemption",
+                        ]),
+                    ),
+                ],
+                &["returns", "hurting_dcr", "contact_missed", "coverage"],
+            )
+        },
         answer: |db, state, caller, _, query| scorecard::returns(db, state, caller, query),
     },
     Endpoint {
@@ -178,6 +267,51 @@ pub const ENDPOINTS: &[Endpoint] = &[
             CURSOR,
         ],
         order: 170,
+        output: || {
+            schema::answer(
+                &[
+                    ("posted", schema::boolean()),
+                    ("weeks_collected", schema::array(schema::text())),
+                    (
+                        "dsp",
+                        schema::object(
+                            &[
+                                ("tier", schema::text()),
+                                ("score", schema::nullable(schema::number())),
+                                ("focus_areas", schema::array(schema::text())),
+                                ("dcr", schema::text()),
+                                ("contact_compliance", schema::text()),
+                                ("dsb", schema::text()),
+                                ("pod", schema::text()),
+                                ("rts", schema::text()),
+                                ("contact_compliance_by_driver", schema::text()),
+                            ],
+                            &[],
+                        ),
+                    ),
+                    ("drivers_by_tier", schema::map(schema::count())),
+                    (
+                        "drivers",
+                        schema::table(&[
+                            "driver",
+                            "score",
+                            "overall",
+                            "cdf",
+                            "dsb",
+                            "pod",
+                            "rts",
+                            "speeding",
+                            "seatbelt",
+                            "distractions",
+                            "following_distance",
+                            "signals",
+                            "delivered",
+                        ]),
+                    ),
+                ],
+                &["posted"],
+            )
+        },
         answer: |db, state, caller, _, query| scorecard::weekly(db, state, caller, query),
     },
 ];

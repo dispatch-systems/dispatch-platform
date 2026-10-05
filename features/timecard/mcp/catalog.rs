@@ -4,6 +4,7 @@ use super::{MEAL_BREAKS, TIMECARDS, views};
 use dispatch_core::mcp::data::catalog::{
     CURSOR, DATE, DAY, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param, TO, Term,
 };
+use dispatch_core::mcp::data::schema;
 
 pub const ENDPOINTS: &[Endpoint] = &[
     Endpoint {
@@ -15,8 +16,43 @@ pub const ENDPOINTS: &[Endpoint] = &[
         description: "Use for Paycom hours and punches: everyone's for one day, or one \
             driver's over a period with driver. Hours, clock in and out, lunch minutes.",
         path_params: &[],
-        params: &[DSP, DATE, DRIVER, PERIOD, FROM, TO, LIMIT, CURSOR],
+        params: &[
+            DSP,
+            DATE,
+            DRIVER,
+            Param {
+                description: "The days in the DSP's time, as last week, last 14 days or 2026-W39. \
+                    Defaults to yesterday for everyone, or the last 30 days for one driver. \
+                    At most 92 days.",
+                ..PERIOD
+            },
+            FROM,
+            TO,
+            LIMIT,
+            CURSOR,
+        ],
         order: 110,
+        output: || {
+            schema::answer(
+                &[
+                    ("hours", schema::nullable(schema::number())),
+                    ("coverage", schema::coverage()),
+                    (
+                        "timecards",
+                        schema::table(&[
+                            "date",
+                            "driver",
+                            "hours",
+                            "in",
+                            "out",
+                            "lunch_minutes",
+                            "needs_review",
+                        ]),
+                    ),
+                ],
+                &["hours", "coverage", "timecards"],
+            )
+        },
         answer: |db, state, caller, _, query| views::timecards(db, state, caller, query),
     },
     Endpoint {
@@ -41,6 +77,26 @@ pub const ENDPOINTS: &[Endpoint] = &[
             CURSOR,
         ],
         order: 120,
+        output: || {
+            schema::answer(
+                &[
+                    ("collected", schema::boolean()),
+                    ("coverage", schema::coverage()),
+                    (
+                        "drivers",
+                        schema::table(&[
+                            "driver",
+                            "status",
+                            "meal",
+                            "minutes",
+                            "late_clock_in",
+                            "long_gap",
+                        ]),
+                    ),
+                ],
+                &["collected", "coverage", "drivers"],
+            )
+        },
         answer: |db, state, caller, _, query| views::meal_breaks(db, state, caller, query),
     },
 ];

@@ -1,14 +1,14 @@
 ---
 name: dispatch
-description: Answers questions about a delivery service partner's drivers from Dispatch: routes, stops and packages, hours and timecards, meal breaks and DVIC vehicle inspections, for one driver or the whole team, on any day or period. Use when asked how a driver did, who led or trailed on a number, what happened on a route or to a package, or about hours, lunches or inspections.
+description: Answers questions about a delivery service partner's drivers from Dispatch: routes, stops and packages, hours and timecards, meal breaks and DVIC vehicle inspections, customer feedback, returns, safety events and weekly scorecards, for one driver or the whole team, on any day or period. Use when asked how a driver did, who led or trailed on a number, what happened on a route or to a package, or about hours, lunches, inspections, feedback, safety, returns or scorecard performance.
 ---
 
 # Dispatch
 
-Dispatch answers questions about a delivery service partner's drivers from what it collected from Amazon (routes and packages, meal breaks, DVIC inspections) and Paycom (timecards). Ask for the figure the question needs: a count or a short table comes back; rows of detail only when asked for.
+Dispatch answers questions about a delivery service partner's drivers from what it collected from Amazon (routes and packages, meal breaks, DVIC inspections, weekly scorecards, feedback, returns and safety events) and Paycom (timecards). Ask for the figure the question needs: a count or a short table comes back; rows of detail only when asked for.
 
-- Pass the user's own words for days (yesterday, last night, last week, 2026-W39) and for drivers (a name or part of one). No date means the last 30 days. You need not look up today's date or a driver's ID first. Days are the DSP's own and can differ from your clock: say yesterday, not a date you worked out.
-- Each answer says what it understood. Under coverage, days a source did not collect are unknown, never zero: say so.
+- Pass the user's own words for days (yesterday, last night, last week, 2026-W39) and for drivers (a name or part of one). Period tools default to the last 30 days; day tools to yesterday, and scorecard to the latest week. Timecards defaults to yesterday for everyone or the last 30 days for one driver. You need not look up today's date or a driver's ID first. Days are the DSP's own and can differ from your clock: say yesterday, not a date you worked out.
+- Each answer says what it understood. Coverage status is complete, partial, missing or unavailable. Totals with partial coverage cover only the collected days. Days a source did not collect are unknown, never zero: say so.
 - A feature the DSP has switched off is refused as source_off, or listed under switched_off with null figures: tell the user it is switched off, and don't work the answer out from other tools.
 - Data this key may not read at a DSP is refused as not_allowed, or listed under not_allowed with null figures: tell the user, who can allow it on the Agents page in Dispatch.
 - An answer naming bypassed read a feature the DSP has switched off, which this key may: that data ends the day the feature was switched off; say so.
@@ -21,7 +21,7 @@ Dispatch answers questions about a delivery service partner's drivers from what 
 Use the Dispatch MCP tools when they are connected. Otherwise call the REST API with the key in `$DISPATCH_KEY`; every tool below is also an endpoint taking the same parameters, and gives the same answer:
 
 ```sh
-curl -fsS -H "Authorization: Bearer $DISPATCH_KEY" "https://dispatch.example.com/api/v1/whoami"
+curl --fail-with-body -sS -H "Authorization: Bearer $DISPATCH_KEY" "https://dispatch.example.com/api/v1/whoami"
 ```
 
 MCP: `https://dispatch.example.com/api/v1/mcp`. OpenAPI: `https://dispatch.example.com/api/v1/openapi.json`.
@@ -154,7 +154,7 @@ Use for Paycom hours and punches: everyone's for one day, or one driver's over a
 - `dsp`: The DSP, by name. Leave it out when the key reaches one DSP.
 - `date`: One day: today, yesterday, last night or 2026-09-28.
 - `driver`: A driver as the user named them: a name or part of one, a Driver Match code, a Paycom employee code or an Amazon transporter ID.
-- `period`: The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.
+- `period`: The days in the DSP's time, as last week, last 14 days or 2026-W39. Defaults to yesterday for everyone, or the last 30 days for one driver. At most 92 days.
 - `from`: The first day, as 2026-09-01, with `to`; instead of `period`.
 - `to`: The last day, as 2026-09-30, with `from`.
 - `limit`: The most rows to return, 1 to 500.

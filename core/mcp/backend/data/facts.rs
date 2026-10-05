@@ -46,6 +46,7 @@ impl Serialize for Coverage {
         serializer: S,
     ) -> std::result::Result<S::Ok, S::Error> {
         let mut out = serde_json::Map::new();
+        out.insert("status".into(), self.status().into());
         if !self.enabled {
             out.insert("enabled".into(), Value::Bool(false));
         } else {
@@ -62,6 +63,16 @@ impl Serialize for Coverage {
     }
 }
 impl Coverage {
+    pub fn known(&self) -> bool {
+        !self.days.is_empty()
+    }
+    pub fn status(&self) -> &'static str {
+        if self.enabled {
+            coverage_status(self.days.len(), self.days.len() + self.missing.len())
+        } else {
+            "unavailable"
+        }
+    }
     pub fn of(enabled: bool, held: BTreeSet<String>, period: &Period) -> Self {
         if !enabled {
             return Self::default();
@@ -76,6 +87,17 @@ impl Coverage {
             missing,
             snapshots: vec![],
         }
+    }
+}
+
+/// Whether the collected part covers all, some or none of the requested days or weeks.
+pub fn coverage_status(collected: usize, expected: usize) -> &'static str {
+    if collected == 0 {
+        "missing"
+    } else if collected < expected {
+        "partial"
+    } else {
+        "complete"
     }
 }
 
@@ -147,7 +169,7 @@ pub trait Facts {
     }
     /// Its columns of one of a driver's days, from that day's records that make a line,
     /// which may be none.
-    fn line(&self, records: &[usize]) -> Vec<Value>;
+    fn line(&self, date: &str, records: &[usize]) -> Vec<Value>;
     /// Its figures in a driver's report, by name.
     fn totals(&self) -> Vec<(&'static str, Value)>;
     /// One of its kind's metrics over some of its records, never none.

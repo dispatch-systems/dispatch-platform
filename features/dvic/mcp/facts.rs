@@ -138,7 +138,10 @@ impl Facts for Inspected {
     fn record(&self, record: usize) -> Value {
         json!(self.0[record])
     }
-    fn line(&self, records: &[usize]) -> Vec<Value> {
+    fn line(&self, date: &str, records: &[usize]) -> Vec<Value> {
+        if !self.1.days.iter().any(|day| day == date) {
+            return vec![Value::Null, Value::Null];
+        }
         let short = records.iter().filter(|&&r| self.0[r].short).count();
         vec![json!(records.len()), json!(short)]
     }

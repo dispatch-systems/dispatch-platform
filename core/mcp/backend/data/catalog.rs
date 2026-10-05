@@ -46,6 +46,8 @@ pub struct Endpoint {
     /// document, the MCP tools and the skill.
     pub order: u16,
     pub answer: Answerer,
+    /// The successful response, declared by the endpoint's owner for both surfaces.
+    pub output: fn() -> Value,
 }
 /// Answers one endpoint, given what fills its path parameter (empty when it has none) and
 /// its query, once the key or app is known to read what it reads.
@@ -126,6 +128,7 @@ pub(crate) const CORE: &[Endpoint] = &[
         path_params: &[],
         params: &[],
         order: 10,
+        output: super::schema::whoami,
         answer: |db, _, caller, _, query| {
             check("whoami", query)?;
             Ok(json!(db.agent_whoami(caller)?))
@@ -143,6 +146,7 @@ pub(crate) const CORE: &[Endpoint] = &[
         path_params: &[],
         params: &[DSP],
         order: 20,
+        output: super::schema::status,
         answer: |db, _, caller, _, query| super::status(db, caller, query),
     },
     Endpoint {
@@ -156,6 +160,7 @@ pub(crate) const CORE: &[Endpoint] = &[
         path_params: &[],
         params: &[],
         order: 30,
+        output: super::schema::metrics,
         answer: |_, _, _, _, query| super::metrics(query),
     },
     Endpoint {
@@ -185,6 +190,7 @@ pub(crate) const CORE: &[Endpoint] = &[
             CURSOR,
         ],
         order: 40,
+        output: super::schema::drivers,
         answer: |db, state, caller, _, query| super::drivers(db, state, caller, query),
     },
     Endpoint {
@@ -199,6 +205,7 @@ pub(crate) const CORE: &[Endpoint] = &[
         path_params: &[DRIVER_PATH],
         params: &[DSP, PERIOD, DATE, FROM, TO, DETAIL, LIMIT, CURSOR],
         order: 60,
+        output: super::schema::driver,
         answer: |db, state, caller, named, query| super::driver(db, state, caller, named, query),
     },
     Endpoint {
@@ -242,6 +249,7 @@ pub(crate) const CORE: &[Endpoint] = &[
             CURSOR,
         ],
         order: 70,
+        output: super::schema::team,
         answer: |db, state, caller, _, query| super::team(db, state, caller, query),
     },
 ];
@@ -441,13 +449,16 @@ pub fn openapi(origin: &str) -> Value {
                 "description": endpoint.description,
                 "parameters": parameters,
                 "responses": {
-                    "200": {"description": "The answer.", "content": {"application/json": {"schema": {"type":"object"}}}},
-                    "400": {"description": "Something unclear; `message` says what and `choices` what it could mean."},
-                    "401": {"description": "No key, or a key that is revoked, expired or not for this Dispatch."},
-                    "403": {"description": "Not for this key here: `not_allowed` when the key may not read it at \
-                        the DSP, `source_off` when the DSP has the feature switched off."},
-                    "404": {"description": "Nothing by that name."},
-                    "429": {"description": "Too many calls this minute; wait for `Retry-After` seconds."}
+                    "200": response("The answer.", (endpoint.output)()),
+                    "400": response("Something unclear; message says what and choices what it could mean.", super::schema::error()),
+                    "401": response("No key, or a key that is revoked, expired or not for this Dispatch.", super::schema::error()),
+                    "403": response("Not for this key here: not_allowed when the key may not read it at the DSP, \
+                        source_off when the DSP has the feature switched off.", super::schema::error()),
+                    "404": response("Nothing by that name, or data not collected or posted yet.", super::schema::error()),
+                    "422": response("The query needs too much database work; narrow the days or filters.", super::schema::error()),
+                    "429": retry_response("Too many calls this minute; wait for Retry-After seconds."),
+                    "500": response("Dispatch could not answer.", super::schema::error()),
+                    "503": retry_response("Dispatch is temporarily busy or unavailable.")
                 }
             }}),
         );
@@ -472,4 +483,14 @@ pub fn openapi(origin: &str) -> Value {
         }}},
         "paths": paths,
     })
+}
+
+fn response(description: &str, schema: Value) -> Value {
+    json!({"description":description,"content":{"application/json":{"schema":schema}}})
+}
+fn retry_response(description: &str) -> Value {
+    let mut response = response(description, super::schema::error());
+    response["headers"] = json!({"Retry-After":{"description":"Seconds to wait before retrying.",
+        "schema":{"type":"integer","minimum":1}}});
+    response
 }

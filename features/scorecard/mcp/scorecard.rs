@@ -172,8 +172,9 @@ fn weeks(db: &Store, dsp: &Dsp, period: &Period) -> dispatch_core::Result<Value>
         .iter()
         .filter(|w| !posted.contains(*w))
         .partition(|w| **w >= completed);
-    let mut out =
-        json!({"collected": wanted.len() - missing.len() - pending.len(), "of": wanted.len()});
+    let collected = wanted.len() - missing.len() - pending.len();
+    let mut out = json!({"status": facts::coverage_status(collected, wanted.len()),
+        "collected": collected, "of": wanted.len()});
     if !missing.is_empty() {
         out["missing"] = json!(missing);
     }
@@ -816,6 +817,7 @@ pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
             None => {
                 return Ok(json!({
                     "understood": understood(dsp, None),
+                    "posted": false,
                     "note": "No scorecard week has been collected yet.",
                 }));
             }

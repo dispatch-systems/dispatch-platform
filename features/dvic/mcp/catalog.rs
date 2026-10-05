@@ -1,6 +1,7 @@
 //! DVIC's part of the agent catalog: its endpoint, its metrics for team_table, the words
 //! its answers use and the question they answer.
 use super::{DVIC, views};
+use dispatch_core::mcp::data::schema;
 use dispatch_core::mcp::{
     data::catalog::{
         CURSOR, DATE, DETAIL, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param, TO,
@@ -36,6 +37,26 @@ pub const ENDPOINTS: &[Endpoint] = &[Endpoint {
         CURSOR,
     ],
     order: 130,
+    output: || {
+        schema::answer(
+            &[
+                ("inspections", schema::nullable(schema::count())),
+                ("short", schema::nullable(schema::count())),
+                ("coverage", schema::coverage()),
+                (
+                    "drivers",
+                    schema::table(&["driver", "inspections", "short", "shortest_seconds"]),
+                ),
+                (
+                    "list",
+                    schema::table(&[
+                        "date", "driver", "type", "started", "seconds", "minimum", "short",
+                    ]),
+                ),
+            ],
+            &["inspections", "short", "coverage"],
+        )
+    },
     answer: |db, state, caller, _, query| views::dvic(db, state, caller, query),
 }];
 

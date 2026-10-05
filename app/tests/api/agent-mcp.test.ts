@@ -96,7 +96,8 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   assert.equal(hello.headers.get('mcp-session-id'), null);
   assert.equal(hello.body.result.protocolVersion, '2025-06-18');
   assert.equal(hello.body.result.serverInfo.name, 'dispatch');
-  assert.match(hello.body.result.instructions, /No date means the last 30 days/);
+  assert.match(hello.body.result.instructions, /Period tools default to the last 30 days/);
+  assert.match(hello.body.result.instructions, /day tools to yesterday/);
   assert.ok(hello.body.result.capabilities.tools && hello.body.result.capabilities.prompts);
   assert.equal((await rpc(full, 'notifications/initialized')).status, 202);
 
@@ -206,6 +207,17 @@ test('any MCP client reaches the agent API with a key, on every protocol version
     arguments: { driver: 'Avery Morgan' },
   });
   assert.match(review.body.result.messages[0].content.text, /review Avery Morgan for last week/);
+  const scopedReview = await rpc(full, 'prompts/get', {
+    name: 'driver_review',
+    arguments: { driver: 'Avery Morgan', dsp: 'Northline Logistics' },
+  });
+  assert.match(scopedReview.body.result.messages[0].content.text, /Northline Logistics/);
+  const daily = await rpc(full, 'prompts/get', {
+    name: 'daily_summary',
+    arguments: { date: 'yesterday' },
+  });
+  assert.match(daily.body.result.messages[0].content.text, /tools resolve/);
+  assert.doesNotMatch(daily.body.result.messages[0].content.text, /Call whoami first/);
 
   // 2026-07-28 drops the handshake: each request says who it is and what it speaks.
   const meta = {

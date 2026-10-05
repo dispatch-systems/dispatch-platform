@@ -29,6 +29,7 @@
     "predev": "tooling/cli/dispatchdev build",
     "pretest": "tooling/cli/dispatchdev build",
     "benchmark:rust": "tooling/cli/dispatchdev build --release && tsx tooling/benchmarks/benchmark-rust.ts",
+    "benchmark:agents": "tooling/cli/dispatchdev build --release && tsx tooling/benchmarks/benchmark-agent-api.ts",
     "check:rust": "cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked",
     "check:test-build": "tsx tooling/ci/test-build-budget.ts",
     "pr:screenshots": "python3 tooling/screenshots/pr-screenshots.py",

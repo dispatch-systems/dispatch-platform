@@ -541,7 +541,7 @@ impl Facts for Routed {
     fn record(&self, record: usize) -> Value {
         json!(self.0[record])
     }
-    fn line(&self, records: &[usize]) -> Vec<Value> {
+    fn line(&self, _date: &str, records: &[usize]) -> Vec<Value> {
         let routed = !records.is_empty();
         let some = |value: i64| if routed { json!(value) } else { Value::Null };
         let route: Vec<String> = records

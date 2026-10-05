@@ -39,8 +39,8 @@ pub fn dvic(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
     }
     let mut answer = json!({
         "understood": head,
-        "inspections": found.len(),
-        "short": found.iter().filter(|i| i.short).count(),
+        "inspections": coverage.known().then_some(found.len()),
+        "short": coverage.known().then(|| found.iter().filter(|i| i.short).count()),
         "coverage": coverage,
     });
     people.mark(&mut answer);

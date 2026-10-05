@@ -331,7 +331,7 @@ impl Facts for Carded {
     fn record(&self, record: usize) -> Value {
         json!(self.0[record])
     }
-    fn line(&self, records: &[usize]) -> Vec<Value> {
+    fn line(&self, _date: &str, records: &[usize]) -> Vec<Value> {
         let (mut worked, mut clock_in, mut clock_out) = (None, None, None);
         for card in records.iter().map(|&r| &self.0[r]) {
             worked = Some(worked.unwrap_or(0.0) + card.hours);
@@ -433,7 +433,7 @@ impl Facts for Compared {
     fn lined(&self, record: usize) -> bool {
         self.0[record].cortex_route
     }
-    fn line(&self, records: &[usize]) -> Vec<Value> {
+    fn line(&self, _date: &str, records: &[usize]) -> Vec<Value> {
         vec![json!(records.last().map(|&r| self.0[r].status))]
     }
     fn totals(&self) -> Vec<(&'static str, Value)> {

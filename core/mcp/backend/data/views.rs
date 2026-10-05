@@ -163,7 +163,7 @@ pub fn driver(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &
     let mut totals = Map::new();
     for (kind, facts) in kinds.iter().zip(&gathered) {
         for (name, value) in facts.totals() {
-            let known = if read.contains(&kind.area()) {
+            let known = if read.contains(&kind.area()) && facts.coverage().known() {
                 value
             } else {
                 Value::Null
@@ -237,7 +237,7 @@ pub fn driver(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &
     for (date, records) in lines {
         let mut row = vec![json!(date)];
         for (facts, records) in gathered.iter().zip(&records) {
-            row.extend(facts.line(records));
+            row.extend(facts.line(date, records));
         }
         table.push(row);
     }

@@ -74,7 +74,7 @@ pub fn timecards(db: &Store, state: &State, caller: &Caller, query: &Value) -> A
     }
     let mut answer = json!({
         "understood": head,
-        "hours": hours(cards.iter().map(|c| c.hours).sum()),
+        "hours": coverage.known().then(|| hours(cards.iter().map(|c| c.hours).sum())),
         "coverage": coverage,
     });
     people.mark(&mut answer);
@@ -129,6 +129,7 @@ pub fn meal_breaks(db: &Store, state: &State, caller: &Caller, query: &Value) ->
     let mut answer = json!({
         "understood": understood(dsp, Some(&period)),
         "collected": !coverage.days.is_empty(),
+        "coverage": coverage,
     });
     people.mark(&mut answer);
     paged(&mut answer, "drivers", table, query, 100)?;

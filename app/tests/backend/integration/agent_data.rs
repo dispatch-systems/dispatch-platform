@@ -195,6 +195,108 @@ fn row<'a>(table: &'a Value, column: &str, value: &str) -> &'a Value {
 }
 
 #[tokio::test]
+async fn coverage_distinguishes_missing_partial_and_collected_zero() {
+    dispatch_backend::install();
+    let (_root, db, id) = ready();
+    let me = caller(&db, &[&id], false);
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+    for (endpoint, total) in [
+        ("routes", "totals"),
+        ("packages", "packages"),
+        ("timecards", "hours"),
+        ("dvic", "inspections"),
+    ] {
+        let who = me.clone();
+        let (status, answer) = ask(&state, move |db, state| {
+            (data::catalog::endpoint(endpoint).answer)(
+                db,
+                state,
+                &who,
+                "",
+                &json!({"date": "2099-01-01"}),
+            )
+        })
+        .await;
+        assert_eq!(status, 200, "{endpoint}: {answer}");
+        assert_eq!(answer["coverage"]["status"], "missing", "{answer}");
+        assert_eq!(answer["coverage"]["collected"], 0, "{answer}");
+        assert!(answer[total].is_null(), "{endpoint}: {answer}");
+    }
+    let who = me.clone();
+    let (status, missing) = ask(&state, move |db, state| {
+        data::driver(
+            db,
+            state,
+            &who,
+            "Fixture Driver",
+            &json!({"date": "2099-01-01"}),
+        )
+    })
+    .await;
+    assert_eq!(status, 200, "{missing}");
+    assert!(
+        missing["totals"]
+            .as_object()
+            .unwrap()
+            .values()
+            .all(Value::is_null),
+        "{missing}"
+    );
+
+    // The publication is present, but this filter matches no package: a genuine zero.
+    let who = me.clone();
+    let (status, zero) = ask(&state, move |db, state| {
+        data::packages(db, state, &who, &json!({"date": DAY, "route": "CX99999"}))
+    })
+    .await;
+    assert_eq!(status, 200, "{zero}");
+    assert_eq!(zero["coverage"]["status"], "complete");
+    assert_eq!(zero["packages"], 0);
+
+    // A partial period keeps the collected figures and identifies the missing day.
+    let who = me.clone();
+    let (status, partial) = ask(&state, move |db, state| {
+        data::dvic(db, state, &who, &json!({"from": DAY, "to": "2026-09-13"}))
+    })
+    .await;
+    assert_eq!(status, 200, "{partial}");
+    assert_eq!(partial["coverage"]["status"], "partial");
+    assert_eq!(partial["coverage"]["collected"], 1);
+    assert_eq!(partial["coverage"]["of"], 2);
+    assert_eq!(partial["inspections"], 2);
+
+    // Paycom knows the preceding day; DVIC doesn't. Joining them must not invent zero DVICs.
+    let who = me.clone();
+    let (status, joined) = ask(&state, move |db, state| {
+        data::driver(
+            db,
+            state,
+            &who,
+            "Fixture Driver",
+            &json!({"from": "2026-09-11", "to": DAY}),
+        )
+    })
+    .await;
+    assert_eq!(status, 200, "{joined}");
+    let previous = row(&joined["days"], "date", "2026-09-11");
+    assert!(
+        previous[col(&joined["days"], "hours")].is_number(),
+        "{joined}"
+    );
+    assert!(
+        previous[col(&joined["days"], "inspections")].is_null(),
+        "{joined}"
+    );
+    assert!(
+        previous[col(&joined["days"], "short")].is_null(),
+        "{joined}"
+    );
+    assert_eq!(joined["totals"]["inspections"], 2);
+}
+
+#[tokio::test]
 async fn one_driver_is_one_person_across_every_source() {
     dispatch_backend::install();
     let (_root, db, id) = ready();
@@ -228,7 +330,7 @@ async fn one_driver_is_one_person_across_every_source() {
     // Each source says how many of the days it holds; missing days are never zero.
     assert_eq!(
         report["coverage"]["routes"],
-        json!({"collected": 1, "of": 1})
+        json!({"status": "complete", "collected": 1, "of": 1})
     );
 
     // Everyone's numbers, the joined driver in one row, the team's totals beside them.

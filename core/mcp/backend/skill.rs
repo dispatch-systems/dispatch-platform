@@ -52,9 +52,11 @@ pub fn skill(origin: &str) -> String {
          name: dispatch\n\
          description: Answers questions about a delivery service partner's drivers from \
          Dispatch: routes, stops and packages, hours and timecards, meal breaks and DVIC \
-         vehicle inspections, for one driver or the whole team, on any day or period. Use \
+         vehicle inspections, customer feedback, returns, safety events and weekly scorecards, \
+         for one driver or the whole team, on any day or period. Use \
          when asked how a driver did, who led or trailed on a number, what happened on a \
-         route or to a package, or about hours, lunches or inspections.\n\
+         route or to a package, or about hours, lunches, inspections, feedback, safety, returns \
+         or scorecard performance.\n\
          ---\n\n\
          # Dispatch\n\n",
     );
@@ -65,7 +67,7 @@ pub fn skill(origin: &str) -> String {
          with the key in `$DISPATCH_KEY`; every tool below is also an endpoint taking the \
          same parameters, and gives the same answer:\n\n\
          ```sh\n\
-         curl -fsS -H \"Authorization: Bearer $DISPATCH_KEY\" \"{origin}/api/v1/whoami\"\n\
+         curl --fail-with-body -sS -H \"Authorization: Bearer $DISPATCH_KEY\" \"{origin}/api/v1/whoami\"\n\
          ```\n\n\
          MCP: `{origin}/api/v1/mcp`. OpenAPI: `{origin}/api/v1/openapi.json`.\n\n\
          ## Questions and the calls that answer them\n\n\
