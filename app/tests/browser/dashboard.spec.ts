@@ -135,6 +135,34 @@ test('member lands in own DSP, cannot see privileged navigation, mobile drawer w
   );
 });
 
+test('a link followed the moment a DSP opens keeps its view', async ({ page }) => {
+  await login(page);
+  // The instant the DSP's view arrives, before the page has drawn it, follow a link within
+  // the DSP: the address changes while the view is admitted but not yet shown.
+  await page.evaluate(() => {
+    const fetch = window.fetch.bind(window);
+    window.fetch = async (...args: Parameters<typeof fetch>) => {
+      const response = await fetch(...args);
+      const url = args[0] instanceof Request ? args[0].url : String(args[0]);
+      if (!url.endsWith('/api/session/dsp')) return response;
+      const json = response.json.bind(response);
+      response.json = async () => {
+        const value = await json();
+        location.hash = location.hash.replace(/\/[^/?]*(\?.*)?$/, '/settings');
+        return value;
+      };
+      return response;
+    };
+  });
+  await openDsp(page, 'Northline Logistics');
+  await expect(page).toHaveURL(/#dsp\/[^/]+\/settings$/);
+  await expect(page.getByRole('tab', { name: 'Profile', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page.getByRole('button', { name: 'Retry connection' })).toHaveCount(0);
+});
+
 test('the mobile drawer stays open while the DSP behind it finishes loading', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page);
