@@ -20,7 +20,8 @@ fn dispatchdev_names_its_commands_and_refuses_the_rest() {
     let (ok, help, _) = run(&["help"]);
     assert!(ok);
     for command in [
-        "start", "preview", "api", "test", "check", "pr", "ship", "finish", "status", "build",
+        "start", "preview", "api", "logs", "test", "prove", "check", "pr", "ship", "finish",
+        "status", "build",
     ] {
         assert!(help.contains(&format!("\n  {command} ")), "{help}");
     }
