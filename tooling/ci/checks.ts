@@ -33,6 +33,8 @@ const probing = workspaceCrates(path.resolve(import.meta.dirname, '../..'))
   .sort();
 const rustCommands: Command[] = [
   { name: 'check:rust', command: 'npm', args: ['run', 'check:rust'] },
+  // What the tests just built, held to its size budget.
+  { name: 'test build budget', command: 'npm', args: ['run', 'check:test-build'] },
   {
     name: 'operator probe compilation',
     command: 'cargo',

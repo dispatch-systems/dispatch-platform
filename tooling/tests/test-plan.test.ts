@@ -159,6 +159,13 @@ test('every test file is run by exactly one check of full validation and none is
     ({ name }) => name === 'operator probe compilation',
   );
   assert(operator, 'operator probes must compile in CI without executing');
+  assert.deepEqual(
+    listing('tooling/ci/checks.ts', ['core'])
+      .slice(0, 2)
+      .map(({ name }) => name),
+    ['check:rust', 'test build budget'],
+    'the test build is held to its budget right after the Rust tests built it',
+  );
   // The probes live in the collectors, whose own tests hold most of them; the app runs those
   // that measure a feature's part too. Each such crate has an operator-probes feature.
   const probing = testRoots
