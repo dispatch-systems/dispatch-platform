@@ -257,8 +257,9 @@ impl Store {
                     summary.last_collection = summary.last_collection.take().max(collected);
                 }
                 let next: Option<(Option<String>,)> = self.dsp(id)?.one_as(
-                    "SELECT MIN(next_run) FROM collection_schedules WHERE enabled=1",
-                    [],
+                    "SELECT MIN(next_run) FROM collection_schedules WHERE enabled=1 \
+                    AND collection IN (SELECT value FROM json_each(?))",
+                    [crate::collection::api::types::ScheduleCollection::known()?],
                 )?;
                 summary.next_collection = next.and_then(|(at,)| at);
             }

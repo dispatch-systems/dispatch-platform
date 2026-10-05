@@ -220,6 +220,96 @@ fn timezone_changes_recompute_deadlines_and_stale_edits_are_rejected() {
         "schedule_changed"
     );
 }
+/// After a rollback, a newer release's schedule and queued job name a collection no
+/// registered collector offers. This release lists, counts, retimes and runs neither, runs
+/// the DSP's own as before, and leaves them as they were for the release that knows them.
+#[test]
+fn a_newer_releases_schedule_and_job_wait_untouched_for_it() {
+    crate::install();
+    let (_root, db, id) = setup();
+    let own = db.save_schedule(&id, None, &input("paycom")).unwrap().id;
+    db.dsp(&id)
+        .unwrap()
+        .exec(
+            "INSERT INTO collection_schedules(id,name,collection,cadence,interval_minutes,\
+            local_time,anchor,enabled,next_run,created_at) VALUES ('sch_newer','Newer',\
+            'newer','interval',120,'00:00',0,1,'2026-01-01T00:00:00.000Z',?)",
+            [iso()],
+        )
+        .unwrap();
+    db.jobs
+        .exec(
+            "INSERT INTO jobs(id,dsp_id,environment,kind,status,available_at,created_at,\
+            release,connection_revision,idempotency_key) \
+            VALUES ('job_newer',?,?,'newer.collect','queued',0,?,'next',1,'newer')",
+            params![id, db.config.environment, iso()],
+        )
+        .unwrap();
+    let newer = || {
+        (
+            db.dsp(&id)
+                .unwrap()
+                .all(
+                    "SELECT * FROM collection_schedules WHERE id='sch_newer'",
+                    [],
+                )
+                .unwrap(),
+            db.jobs
+                .all("SELECT * FROM jobs WHERE id='job_newer'", [])
+                .unwrap(),
+        )
+    };
+    let left = newer();
+
+    let listed: Vec<_> = db
+        .collection_schedules(&id)
+        .unwrap()
+        .schedules
+        .into_iter()
+        .map(|schedule| schedule.id)
+        .collect();
+    assert_eq!(listed, [own.as_str()]);
+    let unknown = db.collection_schedule(&id, "sch_newer").unwrap_err();
+    assert_eq!(unknown.code, "schedule_not_found");
+    assert!(db.recent_jobs(None).unwrap().is_empty());
+    assert!(db.recent_jobs(Some(&id)).unwrap().is_empty());
+    assert_eq!(
+        db.job_row("job_newer", None).unwrap_err().code,
+        "job_not_found"
+    );
+
+    // The DSP's own schedule runs, neither held back by the job nor timed by the schedule.
+    due(&db, &id, &own, "2026-01-01T00:00:00.000Z");
+    db.schedule_due(&id).unwrap();
+    assert_eq!(db.collection_schedule(&id, &own).unwrap().last_error, None);
+    let deadlines = db.schedule_deadlines().unwrap();
+    let (_, deadline) = deadlines.iter().find(|(dsp, _)| *dsp == id).unwrap();
+    assert!(*deadline > now());
+    db.retime_schedules(&id, "Asia/Tokyo").unwrap();
+
+    // A worker runs the DSP's job, never the newer one, and a manual sync isn't refused
+    // as one already in progress.
+    let claimed = db.claim_job("worker", |_, _| true).unwrap().unwrap();
+    assert_eq!(claimed.kind.as_str(), "paycom.collect");
+    db.jobs
+        .exec(
+            "UPDATE jobs SET status='succeeded',lease_owner=NULL WHERE id=?",
+            [&claimed.id],
+        )
+        .unwrap();
+    assert!(db.claim_job("worker", |_, _| true).unwrap().is_none());
+    db.enqueue_for(
+        &id,
+        Some("usr_sync"),
+        "manual",
+        paycom::PROVIDER,
+        &json!({}),
+    )
+    .unwrap();
+    assert_eq!(db.recent_jobs(Some(&id)).unwrap().len(), 2);
+
+    assert_eq!(newer(), left);
+}
 
 /// A collector added later: one collection, which no feature names in an alias.
 #[cfg(feature = "timecard")]
