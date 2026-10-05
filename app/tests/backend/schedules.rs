@@ -223,6 +223,8 @@ fn timezone_changes_recompute_deadlines_and_stale_edits_are_rejected() {
 /// After a rollback, a newer release's schedule and queued job name a collection no
 /// registered collector offers. This release lists, counts, retimes and runs neither, runs
 /// the DSP's own as before, and leaves them as they were for the release that knows them.
+/// The DSP's own runs Paycom's timecards, which Timecard keeps.
+#[cfg(feature = "timecard")]
 #[test]
 fn a_newer_releases_schedule_and_job_wait_untouched_for_it() {
     crate::install();
