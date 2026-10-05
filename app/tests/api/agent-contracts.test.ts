@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { z } from 'zod';
 import { fixture } from '../../../core/shell/tests/support/support.js';
 
-test('REST and MCP publish the same contracts and their answers satisfy them', async (t) => {
+test('REST and compact MCP contracts validate the same answers', async (t) => {
   const f = await fixture({ start: false });
   t.after(f.close);
   const world = JSON.parse(f.cli(['seed-agents']));
@@ -82,11 +82,14 @@ test('REST and MCP publish the same contracts and their answers satisfy them', a
     named: Record<string, string> = {},
   ) => {
     const listed = tools.find((candidate: any) => candidate.name === tool);
+    const fullSchema = document.paths[path].get.responses['200'].content['application/json'].schema;
+    assert.equal(listed.outputSchema.type, fullSchema.type, tool);
     assert.deepEqual(
-      listed.outputSchema,
-      document.paths[path].get.responses['200'].content['application/json'].schema,
+      Object.keys(listed.outputSchema.properties).sort(),
+      Object.keys(fullSchema.properties).sort(),
       tool,
     );
+    assert.deepEqual(listed.outputSchema.required, fullSchema.required, tool);
     const url = Object.entries(named).reduce(
       (url, [key, value]) => url.replace(`{${key}}`, encodeURIComponent(value)),
       path,
@@ -98,7 +101,9 @@ test('REST and MCP publish the same contracts and their answers satisfy them', a
     const mcp = await rpc('tools/call', { name: tool, arguments: { ...query, ...named } });
     assert.equal(mcp.isError, false, JSON.stringify(mcp));
     const structured = mcp.structuredContent;
+    // Discovery summarizes nested records; both transports still satisfy the full contract.
     schemas.get(path)!.parse(structured);
+    z.fromJSONSchema(listed.outputSchema).parse(structured);
     assert.deepEqual(JSON.parse(mcp.content[0].text), structured, tool);
     // whoami's timestamp belongs to each separate request.
     assert.deepEqual(
@@ -132,6 +137,29 @@ test('REST and MCP publish the same contracts and their answers satisfy them', a
     group_by: 'driver,reason',
     limit: 1,
   });
+  const packageContract = z.fromJSONSchema(
+    tools.find((tool: any) => tool.name === 'packages').outputSchema,
+  );
+  // Compaction preserves count/null types, coverage states, table rows and page cursors.
+  packageContract.parse({ ...packages, packages: null });
+  for (const invalid of [
+    { packages: -1 },
+    { packages: '0' },
+    { coverage: { ...packages.coverage, status: 'unknown' } },
+    { coverage: {} },
+    { groups: { ...packages.groups, rows: 'not rows' } },
+    { groups: { rows: [] } },
+    {
+      groups: {
+        ...packages.groups,
+        page: { returned: 1, total: 2, next_cursor: 3 },
+      },
+    },
+    { groups: { ...packages.groups, page: { returned: 1 } } },
+  ])
+    assert.equal(packageContract.safeParse({ ...packages, ...invalid }).success, false);
+  const { understood: _understood, ...withoutInterpretation } = packages;
+  assert.equal(packageContract.safeParse(withoutInterpretation).success, false);
   const tracking = packages.list.rows[0][packages.list.columns.indexOf('tracking')];
   await check('/api/v1/packages/{tracking}', 'find_package', {}, { tracking });
   const routes = await check('/api/v1/routes', 'route_day', { date: world.to, limit: 1 });

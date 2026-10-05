@@ -195,10 +195,14 @@ async fn the_mcp_server_offers_the_same_tools_and_prompts() {
     );
     for protocol in ["2025-03-26", "2025-06-18", "2026-07-28"] {
         for method in ["tools/list", "prompts/list"] {
-            answers.insert(
-                format!("{method} {protocol}"),
-                mcp(&state, &full, method, json!({}), protocol).await,
-            );
+            let answer = mcp(&state, &full, method, json!({}), protocol).await;
+            if method == "tools/list" {
+                assert!(
+                    serde_json::to_vec(&answer).unwrap().len() <= 45_000,
+                    "MCP tool discovery exceeds 45 KB; keep response contracts compact"
+                );
+            }
+            answers.insert(format!("{method} {protocol}"), answer);
         }
     }
     let offered = mcp(&state, &few, "tools/list", json!({}), "2025-06-18").await;

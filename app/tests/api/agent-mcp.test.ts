@@ -253,6 +253,13 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   assert.equal(modernTools.body.result.cacheScope, 'private');
   assert.equal(typeof modernTools.body.result.ttlMs, 'number');
   assert.equal(modernTools.body.result.tools.length, listed.length);
+  const structuredTools = await rpc(
+    full,
+    'tools/list',
+    {},
+    { 'mcp-protocol-version': '2025-06-18' },
+  );
+  assert.deepEqual(modernTools.body.result.tools, structuredTools.body.result.tools);
   const modernPrompts = await rpc(
     full,
     'prompts/list',

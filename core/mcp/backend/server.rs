@@ -153,6 +153,103 @@ fn metadata(profile: bool) -> MetaObject {
     MetaObject(meta)
 }
 
+/// MCP discovery keeps the fields an agent needs to interpret an answer. OpenAPI publishes the
+/// full nested contracts; repeating them on every tool spends context on record details.
+/// Keep coverage and table/page structures, including null totals and next cursors.
+fn compact_output(mut schema: Value) -> Value {
+    fn visit(schema: &mut Value, nested: bool) {
+        let Some(object) = schema.as_object_mut() else {
+            return;
+        };
+        if nested && object.get("type").and_then(Value::as_str) == Some("object") {
+            let properties = object.get_mut("properties").and_then(Value::as_object_mut);
+            let keep = properties.is_some_and(|properties| {
+                if properties.contains_key("columns") && properties.contains_key("rows") {
+                    // Tables name their columns in the answer, including dynamic metrics.
+                    if let Some(column) = properties
+                        .get_mut("columns")
+                        .and_then(|columns| columns.get_mut("items"))
+                        .and_then(Value::as_object_mut)
+                    {
+                        column.remove("enum");
+                    }
+                    true
+                } else {
+                    properties
+                        .get("status")
+                        .is_some_and(|status| status.get("enum").is_some())
+                        || (properties.contains_key("returned")
+                            && properties.contains_key("total")
+                            && properties.contains_key("next_cursor"))
+                }
+            });
+            if !keep {
+                object.remove("properties");
+                object.remove("required");
+            }
+        }
+        if let Some(properties) = object.get_mut("properties").and_then(Value::as_object_mut) {
+            for child in properties.values_mut() {
+                visit(child, true);
+            }
+        }
+        for keyword in ["items", "additionalProperties"] {
+            if let Some(child) = object.get_mut(keyword) {
+                visit(child, true);
+            }
+        }
+        for keyword in ["anyOf", "oneOf", "allOf"] {
+            if let Some(children) = object.get_mut(keyword).and_then(Value::as_array_mut) {
+                for child in children {
+                    visit(child, nested);
+                }
+            }
+        }
+        if object.get("required") == Some(&json!([])) {
+            object.remove("required");
+        }
+        if object.get("items") == Some(&json!({})) {
+            object.remove("items");
+        }
+        // A type union expresses these nullable values without an extra schema branch.
+        if object.len() == 1
+            && let Some(options) = object.get("anyOf").and_then(Value::as_array)
+            && options.len() == 2
+            && options[1] == json!({"type":"null"})
+            && let Some(kind) = options[0].get("type").and_then(Value::as_str)
+            && !["enum", "const", "$ref", "anyOf", "oneOf", "allOf"]
+                .iter()
+                .any(|keyword| options[0].get(keyword).is_some())
+        {
+            let mut value = options[0].clone();
+            value["type"] = json!([kind, "null"]);
+            *schema = value;
+        }
+    }
+    visit(&mut schema, false);
+    let share_tables = schema.get("$defs").is_none();
+    let properties = schema["properties"].as_object_mut().unwrap();
+    let tables: Vec<String> = properties
+        .iter()
+        .filter(|(_, value)| {
+            value["properties"].get("columns").is_some()
+                && value["properties"].get("rows").is_some()
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+    if share_tables && tables.len() > 1 {
+        let table = properties[&tables[0]].clone();
+        // Each schema is self-contained; clients need no separate schema fetch.
+        if tables.iter().all(|name| properties[name] == table) {
+            for name in tables {
+                properties.insert(name, json!({"$ref":"#/$defs/table"}));
+            }
+            schema["$defs"] = json!({"table":table});
+        }
+    }
+    schema
+}
+
 fn tool(endpoint: &catalog::Endpoint, with_output: bool) -> Tool {
     let mut tool = Tool::new(
         endpoint.tool,
@@ -169,8 +266,12 @@ fn tool(endpoint: &catalog::Endpoint, with_output: bool) -> Tool {
     )
     .with_meta(metadata(false));
     if with_output {
-        tool =
-            tool.with_raw_output_schema(Arc::new((endpoint.output)().as_object().unwrap().clone()));
+        tool = tool.with_raw_output_schema(Arc::new(
+            compact_output((endpoint.output)())
+                .as_object()
+                .unwrap()
+                .clone(),
+        ));
     }
     tool
 }
