@@ -8,7 +8,7 @@
 //! it reads. Anything else takes two releases: the first stops using it and ships,
 //! and only the next, whose rollback target no longer needs it, removes it. The one
 //! rewrite allowed is widening a `CHECK` list by rebuilding the table under the same
-//! name with the same columns (`docs/database.md`, Rebuilding a table): the previous
+//! name with the same columns, as `jobs/0002_scorecard_kind.sql` does: the previous
 //! release reads it unchanged, and the release that rebuilds never writes the new
 //! values. Never edit or renumber a migration that has shipped; append a new one.
 //!
