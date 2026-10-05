@@ -34,12 +34,11 @@ reviews:
     - '!package-lock.json'
     - '!Cargo.lock'
     - '!**/generated/**'
-  # The project's rules, which live outside the repository. Keep them in step with the docs
-  # or skills they come from, named in each entry.
+  # The project's rules, by the paths they apply to.
   path_instructions:
     - path: '**'
       instructions: |
-        Privacy rules (docs/privacy.md and docs/tests.md, maintained outside Git):
+        Privacy rules:
         Use synthetic people, businesses, example emails and deployment addresses in fixtures.
         Keep credentials, runtime state and host-specific configuration out of source and logs.
         Preserve required copyright attribution and narrowly reviewed legacy compatibility identifiers. Do not broadly allowlist
@@ -54,11 +53,11 @@ reviews:
         Never accept a change that weakens a test, budget or check to get a pass: a deleted or
         loosened assertion, a skipped or removed test, a raised limit or budget, or a new
         suppression such as `#[allow]`, `eslint-disable`, `@ts-ignore` or `@ts-expect-error`.
-        Flag each and ask why it is needed. (workflow.md)
+        Flag each and ask why it is needed.
     - path: '**/migrations/**'
       instructions: |
         Production rolls back one release, so each release must open, and leave usable, the
-        previous release's data (database.md):
+        previous release's data:
         - Migrations are additive only: new tables, nullable or defaulted columns, indexes.
           Flag any edit to or renumbering of an existing migration, any change to
           `PRAGMA user_version`, and any drop, rename or rewrite of what the previous release
@@ -74,13 +73,13 @@ reviews:
         - Logs and request events never carry request bodies, raw emails or IP addresses,
           cookies, tokens or employee records. Session identifiers shown to users are HMAC
           identifiers, never bearer tokens or token hashes. Browser data and provider
-          profiles are credentials. (security.md)
+          profiles are credentials.
         - MFA challenge state and authenticator secrets stay encrypted at rest; recovery codes
           are high-entropy, hashed and one-use. Factor changes revoke other sessions, and
           sensitive writes require recent verification. Existing retired passkeys must not
-          enroll or lock an account implicitly. (security.md)
+          enroll or lock an account implicitly.
         - Compare errors with `error.is(Code::X)`, never by their text. Never hard-code job
-          titles; customizable roles stay in the role system. (codebase.md, security.md)
+          titles; customizable roles stay in the role system.
     - path: '{**/api/routes.rs,**/api/routes/**}'
       instructions: |
         A route's access (`Public`, `Session`, `PlatformOwner` or `Dsp("permission")`) must be
@@ -90,34 +89,31 @@ reviews:
         Security routes are exempt from the normal MFA gate only so verification can complete;
         enrollment, factor removal, recovery-code replacement and session revocation must
         enforce their own recent-authentication requirement.
-        (codebase.md, security.md)
     - path: '{features/*/feature.rs,collectors/*/collector.rs}'
       instructions: |
         A switch, tab, permission, read toggle or collection is declared once, in its owner's
         manifest, with its label; the catalog, the role sheet and the DSPs page are built from
-        it. Flag one copied by hand anywhere else. (dispatch-features skill)
+        it. Flag one copied by hand anywhere else.
     - path: 'core/**'
       instructions: |
         Core names no feature or collector: flag a feature's or collector's name, id, table,
         host or wording in core outside its tests. What a feature adds reaches core through a
         slot. Anything for the platform owner's dashboard belongs in `core/platform_owner/`.
-        (codebase.md)
     - path: 'collectors/**'
       instructions: |
         A collector names no feature and none of a feature's tables. It returns typed data; the
-        feature that keeps the collection writes it. (dispatch-collectors skill)
+        feature that keeps the collection writes it.
     - path: 'features/**'
       instructions: |
         A feature uses only its own tables, core, and the collectors and features its manifest
         declares. Flag SQL against another owner's tables and imports beyond those
-        dependencies. (codebase.md)
+        dependencies.
     - path: 'collectors/paycom/{collections/timecards/extract.rs,scripts/timecard.js}'
       instructions: |
         `extract.rs` ports `timecard.js`'s detached reading. A change to one must be matched in
-        the other and proved with `http_extraction_parity`. (dispatch-collectors skill)
+        the other and proved with `http_extraction_parity`.
     - path: '{app,core,features,collectors}/**/frontend/**'
       instructions: |
-        (ui.md, dispatch-frontend skill)
         - No Tailwind, shadcn, Motion or TanStack Virtual. TanStack Table is used only through
           `core/shell/frontend/ui/useDataTable.ts`. Styles use the tokens in
           `core/shell/frontend/styles/tokens.css` and live with the
