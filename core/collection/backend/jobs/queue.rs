@@ -3,7 +3,7 @@ use crate::{
     Code, Error, Result,
     accounts::api::types::{Dsp, UserStatus},
     collection::{
-        api::jobs::{ActiveJobStatus, JobRow, JobStatus, PublicJob},
+        api::jobs::{ActiveJobStatus, JobKind, JobRow, JobStatus, PublicJob},
         metrics::Metrics,
     },
     db::{AuditChange, FromRow, Row, Store, iso, now},
@@ -15,8 +15,12 @@ use rusqlite::params;
 use serde_json::Value;
 use std::collections::HashMap;
 
-const RECENT: &str = "SELECT * FROM jobs ORDER BY created_at DESC LIMIT 200";
-const RECENT_FOR_DSP: &str = "SELECT * FROM jobs WHERE dsp_id=? ORDER BY created_at DESC LIMIT 200";
+// Each query that reads, counts or runs a job takes `JobKind::known()`, so that none
+// reaches a job of a kind this release doesn't run.
+const RECENT: &str = "SELECT * FROM jobs WHERE kind IN (SELECT value FROM json_each(?)) \
+    ORDER BY created_at DESC LIMIT 200";
+const RECENT_FOR_DSP: &str = "SELECT * FROM jobs WHERE dsp_id=? \
+    AND kind IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC LIMIT 200";
 const RECENT_OF_KIND: &str =
     "SELECT * FROM jobs WHERE dsp_id=? AND kind=? ORDER BY created_at DESC LIMIT 200";
 const RECENT_IN: &str = "SELECT * FROM jobs WHERE dsp_id=? \
@@ -24,14 +28,16 @@ const RECENT_IN: &str = "SELECT * FROM jobs WHERE dsp_id=? \
 const DSP_NAMES: &str = "SELECT id,name FROM dsps WHERE id IN (SELECT value FROM json_each(?))";
 const METRICS: &str = "SELECT job_id,metrics FROM job_metrics \
     WHERE job_id IN (SELECT value FROM json_each(?)) ORDER BY attempt";
-const JOB: &str = "SELECT * FROM jobs WHERE id=? AND (? IS NULL OR dsp_id=?)";
+const JOB: &str = "SELECT * FROM jobs WHERE id=? AND (? IS NULL OR dsp_id=?) \
+    AND kind IN (SELECT value FROM json_each(?))";
 const ACTIVE_OF_KIND: &str = concat!(
     "SELECT * FROM jobs WHERE dsp_id=? AND kind=? AND status IN ",
     job_statuses!(active),
     " ORDER BY created_at DESC LIMIT 1"
 );
 const ACTIVE_COUNT: &str = concat!(
-    "SELECT count(*) FROM jobs WHERE dsp_id=? AND status IN ",
+    "SELECT count(*) FROM jobs WHERE dsp_id=? AND kind IN (SELECT value FROM json_each(?)) \
+     AND status IN ",
     job_statuses!(active)
 );
 const LEASED_COUNT: &str = concat!(
@@ -166,9 +172,10 @@ impl Store {
         PublicJob::new(row, name, metrics)
     }
     pub fn recent_jobs(&self, id: Option<&str>) -> Result<Vec<PublicJob>> {
+        let known = JobKind::known()?;
         let rows: Vec<JobRow> = match id {
-            Some(id) => self.jobs.query_as(RECENT_FOR_DSP, [id])?,
-            None => self.jobs.query_as(RECENT, [])?,
+            Some(id) => self.jobs.query_as(RECENT_FOR_DSP, [id, &known])?,
+            None => self.jobs.query_as(RECENT, [known])?,
         };
         self.public_jobs(rows)
     }
@@ -248,8 +255,15 @@ impl Store {
     pub fn jobs_keyed(&self, id: &str, prefix: &str, first: &str) -> Result<Vec<JobRow>> {
         self.jobs.query_as(
             "SELECT * FROM jobs WHERE dsp_id=? AND substr(idempotency_key,1,?)=? \
+            AND kind IN (SELECT value FROM json_each(?)) \
             ORDER BY CASE kind WHEN ? THEN 0 ELSE 1 END,idempotency_key",
-            params![id, prefix.chars().count() as i64, prefix, first],
+            params![
+                id,
+                prefix.chars().count() as i64,
+                prefix,
+                JobKind::known()?,
+                first
+            ],
         )
     }
     /// A DSP's latest job of a kind queued under a key that begins with `prefix` that
@@ -293,7 +307,7 @@ impl Store {
     }
     pub fn job_row(&self, id: &str, dsp: Option<&str>) -> Result<JobRow> {
         self.jobs
-            .one_as(JOB, params![id, dsp, dsp])?
+            .one_as(JOB, params![id, dsp, dsp, JobKind::known()?])?
             .ok_or_else(|| Error::new("job_not_found", 404))
     }
     /// Queues one request, answering with the job's public JSON, as collection requests do.
@@ -325,6 +339,7 @@ impl Store {
                 Ok(connection)
             })
             .collect::<Result<Vec<_>>>()?;
+        let known = JobKind::known()?;
         self.jobs.transaction(|| {
             let existing = requests
                 .iter()
@@ -349,7 +364,7 @@ impl Store {
             // allowing retries of a request that already queued successfully.
             if actor.is_some() && existing.iter().any(Option::is_none) {
                 ensure(
-                    self.jobs.count(ACTIVE_COUNT, [id])? == 0,
+                    self.jobs.count(ACTIVE_COUNT, [id, &known])? == 0,
                     "sync_in_progress",
                     409,
                 )?;
@@ -362,7 +377,11 @@ impl Store {
                     if let Some(row) = existing {
                         return self.public_job(row);
                     }
-                    ensure(self.jobs.count(ACTIVE_COUNT, [id])? < 5, "queue_full", 429)?;
+                    ensure(
+                        self.jobs.count(ACTIVE_COUNT, [id, &known])? < 5,
+                        "queue_full",
+                        429,
+                    )?;
                     let job = self.insert_job(
                         id,
                         actor,

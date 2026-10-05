@@ -132,6 +132,14 @@ impl ScheduleCollection {
     pub const fn as_str(self) -> &'static str {
         self.0
     }
+    /// Every collection a schedule may name, as a JSON array for
+    /// `collection IN (SELECT value FROM json_each(?))`. A schedule of any other is a newer
+    /// release's, left by a rollback: this release lists, retimes and runs none of them,
+    /// and keeps them for the release that knows them.
+    pub fn known() -> crate::Result<String> {
+        let collections: Vec<_> = Self::all().map(Self::as_str).collect();
+        Ok(serde_json::to_string(&collections)?)
+    }
 }
 impl Serialize for ScheduleCollection {
     fn serialize<S: serde::Serializer>(

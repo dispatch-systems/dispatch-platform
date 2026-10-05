@@ -73,6 +73,14 @@ impl JobKind {
     pub fn provider(self) -> Provider {
         self.provider
     }
+    /// Every kind a registered provider runs, as a JSON array for
+    /// `kind IN (SELECT value FROM json_each(?))`. A job of any other kind is a newer
+    /// release's, left by a rollback: this release lists, counts and runs none of them,
+    /// and keeps them for the release that knows them.
+    pub fn known() -> Result<String> {
+        let kinds: Vec<_> = Provider::all().flat_map(Provider::job_kinds).collect();
+        Ok(serde_json::to_string(&kinds)?)
+    }
     pub fn as_str(self) -> &'static str {
         self.kind
     }

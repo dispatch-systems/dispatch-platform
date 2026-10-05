@@ -2,8 +2,12 @@
 use crate::{
     Error, Result,
     collection::{
-        api::types::{
-            Cadence, CollectionSchedule, CollectionSchedules, ScheduleCollection, SchedulePreview,
+        api::{
+            jobs::JobKind,
+            types::{
+                Cadence, CollectionSchedule, CollectionSchedules, ScheduleCollection,
+                SchedulePreview,
+            },
         },
         registry::Provider,
     },
@@ -28,10 +32,14 @@ const PAUSE: &str = "UPDATE collection_schedules SET enabled=0,next_run=NULL,las
     revision=revision+1 WHERE enabled=1 AND collection=?";
 const RETIME: &str = "UPDATE collection_schedules SET anchor=?,next_run=?,last_error=NULL,\
     revision=revision+1 WHERE id=?";
-const NEXT_DEADLINE: &str =
-    "SELECT collection,next_run FROM collection_schedules WHERE enabled=1 ORDER BY next_run";
+// Each query that reads, retimes or runs a schedule takes `ScheduleCollection::known()`,
+// and each that asks for a DSP's jobs `JobKind::known()`, so that none reaches what this
+// release doesn't run.
+const NEXT_DEADLINE: &str = "SELECT collection,next_run FROM collection_schedules \
+    WHERE enabled=1 AND collection IN (SELECT value FROM json_each(?)) ORDER BY next_run";
 const ACTIVE_JOB: &str = concat!(
-    "SELECT id FROM jobs WHERE dsp_id=? AND status IN ",
+    "SELECT id FROM jobs WHERE dsp_id=? AND kind IN (SELECT value FROM json_each(?)) \
+     AND status IN ",
     job_statuses!(active),
     " LIMIT 1"
 );
@@ -202,8 +210,9 @@ impl Store {
     pub fn collection_schedules(&self, id: &str) -> Result<CollectionSchedules> {
         let dsp = self.find_dsp(id)?;
         let rows: Vec<ScheduleRow> = self.dsp(id)?.query_as(
-            "SELECT * FROM collection_schedules ORDER BY created_at,id",
-            [],
+            "SELECT * FROM collection_schedules \
+            WHERE collection IN (SELECT value FROM json_each(?)) ORDER BY created_at,id",
+            [ScheduleCollection::known()?],
         )?;
         Ok(CollectionSchedules {
             timezone: dsp.timezone,
@@ -216,7 +225,11 @@ impl Store {
     }
     fn schedule_row(&self, id: &str, schedule: &str) -> Result<ScheduleRow> {
         self.dsp(id)?
-            .one_as("SELECT * FROM collection_schedules WHERE id=?", [schedule])?
+            .one_as(
+                "SELECT * FROM collection_schedules WHERE id=? \
+                AND collection IN (SELECT value FROM json_each(?))",
+                [schedule, &ScheduleCollection::known()?],
+            )?
             .ok_or_else(|| Error::new("schedule_not_found", 404))
     }
     // An alias, such as Timecard's `both`, selects the collections its feature declares it
@@ -443,7 +456,12 @@ impl Store {
     fn retime_schedules_for(&self, id: &str, tz: &str, feature: Option<&str>) -> Result<()> {
         let db = self.dsp(id)?;
         db.transaction(|| {
-            for mut row in db.query_as::<ScheduleRow>("SELECT * FROM collection_schedules", [])? {
+            let rows: Vec<ScheduleRow> = db.query_as(
+                "SELECT * FROM collection_schedules \
+                WHERE collection IN (SELECT value FROM json_each(?))",
+                [ScheduleCollection::known()?],
+            )?;
+            for mut row in rows {
                 if feature.is_some_and(|f| {
                     crate::tenancy::catalog::automation(row.schedule.collection.as_str()) != f
                 }) {
@@ -472,7 +490,9 @@ impl Store {
                 continue;
             }
             // The soonest schedule whose page is on; the others wait for their page.
-            let rows: Vec<(String, Option<String>)> = self.dsp(&id)?.query_as(NEXT_DEADLINE, [])?;
+            let rows: Vec<(String, Option<String>)> = self
+                .dsp(&id)?
+                .query_as(NEXT_DEADLINE, [ScheduleCollection::known()?])?;
             let next = rows
                 .into_iter()
                 .find(|(collection, _)| {
@@ -513,7 +533,9 @@ impl Store {
         }
         // Other collections finish before another recurring batch enters the queue.
         ensure(
-            self.jobs.one(ACTIVE_JOB, [id])?.is_none(),
+            self.jobs
+                .one(ACTIVE_JOB, [id, &JobKind::known()?])?
+                .is_none(),
             "sync_in_progress",
             409,
         )?;
@@ -529,8 +551,9 @@ impl Store {
         let db = self.dsp(id)?;
         let mut earliest = None;
         let rows: Vec<ScheduleRow> = db.query_as(
-            "SELECT * FROM collection_schedules WHERE enabled=1 ORDER BY next_run,id",
-            [],
+            "SELECT * FROM collection_schedules WHERE enabled=1 \
+            AND collection IN (SELECT value FROM json_each(?)) ORDER BY next_run,id",
+            [ScheduleCollection::known()?],
         )?;
         for mut row in rows {
             // A schedule whose page is off waits, as every schedule does without the page.

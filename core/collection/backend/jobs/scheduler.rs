@@ -1,7 +1,10 @@
 use super::executor::execute;
 use crate::{
     Error, Result, State,
-    collection::{api::jobs::JobRow, registry::Provider},
+    collection::{
+        api::jobs::{JobKind, JobRow},
+        registry::Provider,
+    },
     db::{FromRow, Row, now},
     foundation::crypto,
     job_statuses,
@@ -17,15 +20,17 @@ use std::{
     time::Duration,
 };
 
-// Poll indexed queue/lease state without a write lock.
+// Poll indexed queue/lease state without a write lock. A queued job counts only if this
+// release runs its kind, `?2` (`JobKind::known()`).
 const READY: &str = concat!(
-    "SELECT EXISTS(SELECT 1 FROM jobs WHERE status='queued' AND available_at<=?1) queued,\
+    "SELECT EXISTS(SELECT 1 FROM jobs WHERE status='queued' AND available_at<=?1 \
+     AND kind IN (SELECT value FROM json_each(?2))) queued,\
      EXISTS(SELECT 1 FROM jobs WHERE status IN ",
     job_statuses!(leased),
     " AND lease_until<?1) expired"
 );
-const WAITING_MESSAGE: &str =
-    "UPDATE jobs SET message=?1 WHERE status='queued' AND available_at<=?2 AND message<>?1";
+const WAITING_MESSAGE: &str = "UPDATE jobs SET message=?1 WHERE status='queued' \
+    AND available_at<=?2 AND message<>?1 AND kind IN (SELECT value FROM json_each(?3))";
 
 struct Ready {
     queued: bool,
@@ -203,7 +208,8 @@ impl Scheduler {
                 } else {
                     "Waiting for available memory"
                 };
-                db.jobs.exec(WAITING_MESSAGE, params![message, now()])?;
+                db.jobs
+                    .exec(WAITING_MESSAGE, params![message, now(), JobKind::known()?])?;
                 db.claim_job(&owner, |id, provider| {
                     !running.contains(id)
                         && pool
@@ -224,7 +230,10 @@ impl Scheduler {
         // Recovery still runs on the first tick after expiry, including quiet DSPs.
         let ready = match self
             .state
-            .read(|db| db.jobs.one_as::<Ready>(READY, [now()]))
+            .read(|db| {
+                db.jobs
+                    .one_as::<Ready>(READY, params![now(), JobKind::known()?])
+            })
             .await
         {
             Ok(Some(value)) => value,
