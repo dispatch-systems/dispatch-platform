@@ -111,20 +111,63 @@ pub fn text(runner: &dyn Runner, args: &[&str], cwd: Option<&Path>) -> Result<St
         .trim()
         .to_owned())
 }
-/// Runs `command` through the shell in `cwd`, its output going to `log`, and answers whether
-/// it passed and how long it took.
-pub fn logged(command: &str, cwd: &Path, log: &Path, scratch: &Path) -> Result<(bool, Duration)> {
+/// Whether this user can run a command in a systemd scope of its own, as on this machine; CI's
+/// runners can't.
+fn scopes() -> bool {
+    static SCOPES: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *SCOPES.get_or_init(|| {
+        Command::new("systemd-run")
+            .args(["--user", "--scope", "--quiet", "--collect", "true"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+    })
+}
+/// Runs `command` through the shell in `cwd` with `env` added, its output going to `log`, and
+/// answers whether it passed and how long it took. It runs below Dev: in a scope with a low CPU
+/// weight and a soft memory ceiling, and first in line for the out-of-memory killer after the
+/// previews, so tests running side by side never starve Dev.
+pub fn logged(
+    command: &str,
+    cwd: &Path,
+    log: &Path,
+    env: &[(&str, &std::ffi::OsStr)],
+) -> Result<(bool, Duration)> {
     let file = fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
         .mode(0o600)
         .open(log)?;
+    let mut process = if scopes() {
+        let mut process = Command::new("systemd-run");
+        process.args([
+            "--user",
+            "--scope",
+            "--quiet",
+            "--collect",
+            "-p",
+            "CPUWeight=20",
+            "-p",
+            "MemoryHigh=3G",
+            "--",
+            "choom",
+            "-n",
+            "300",
+            "--",
+        ]);
+        process
+    } else {
+        let mut process = Command::new("nice");
+        process.args(["-n", "10"]);
+        process
+    };
     let started = Instant::now();
-    let status = Command::new("sh")
-        .args(["-c", command])
+    let status = process
+        .args(["sh", "-c", command])
         .current_dir(cwd)
-        .env("TMPDIR", scratch)
+        .envs(env.iter().copied())
         .stdin(Stdio::null())
         .stdout(file.try_clone()?)
         .stderr(file)

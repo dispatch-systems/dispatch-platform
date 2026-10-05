@@ -43,8 +43,14 @@ it. A change goes from `start` (its worktree, branch and scratch folder) through
 (its link), `api` (signed-in calls to the preview), `check`, `pr` and `ship` to `finish`, which
 removes what it made and waits for Dev; `status` shows the workspace. `dispatchdev build`
 builds the backend through a cache keyed by its exact inputs and the compiler's fingerprint.
-`dispatchdev check` stops a branch that isn't ready to push, then runs the rule checks and the
-tests its diff touches one at a time, a line each; `--plan` only names them.
+`dispatchdev test` runs the tests a change touches, committed or not, or `--all` of the Rust and
+API tests, one at a time, a line each. Each run builds in a folder of its own under
+`.test-build/`, without incremental data, and deletes it when it ends, with the release build
+and package it made for the browser tests (`--keep` keeps them), so worktrees hold no test
+builds and several can test at once. Its commands run in a systemd scope with a low CPU
+weight, a soft memory ceiling and a high out-of-memory score, so Dev keeps priority.
+`dispatchdev check` stops a branch that isn't ready to push, then runs the rule checks, clippy
+and the tests the same way; `--plan` only names them.
 `dispatchdev ship <number>` reads the PR from GitHub's API every 10 seconds, adds it to the
 merge queue once its admission check passed and GitHub knows it merges cleanly, and waits
 until GitHub merges it, printing the squash commit. A newer push is queued
