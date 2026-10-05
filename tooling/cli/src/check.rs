@@ -759,7 +759,7 @@ mod tests {
         let tested = |file: &str| affected(&[file.to_owned()], &Value::Null, &workspace)[1].clone();
         assert_eq!(
             tested("collectors/cortex/collections/routes/mod.rs"),
-            "cargo test --locked -p dispatch-backend -p dispatch-cortex -p dispatch-dvic -p dispatch-routes -p dispatch-weekly-scorecard -p dispatch-timecard"
+            "cargo test --locked -p dispatch-backend -p dispatch-cortex -p dispatch-dvic -p dispatch-routes -p dispatch-timecard -p dispatch-weekly-scorecard"
         );
         assert_eq!(
             tested("features/driver_match/backend/matching.rs"),
@@ -768,7 +768,7 @@ mod tests {
         // Every owner's crate depends on core.
         assert_eq!(
             tested("core/db/backend/mod.rs"),
-            "cargo test --locked -p dispatch-backend -p dispatch-core -p dispatch-cortex -p dispatch-driver-match -p dispatch-dvic -p dispatch-paycom -p dispatch-routes -p dispatch-weekly-scorecard -p dispatch-timecard -p dispatch-uniforms"
+            "cargo test --locked -p dispatch-backend -p dispatch-core -p dispatch-cortex -p dispatch-driver-match -p dispatch-dvic -p dispatch-paycom -p dispatch-routes -p dispatch-timecard -p dispatch-uniforms -p dispatch-weekly-scorecard"
         );
         // A crate nothing else depends on runs its own tests, and the app's.
         assert_eq!(
