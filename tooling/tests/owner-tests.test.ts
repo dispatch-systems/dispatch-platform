@@ -98,10 +98,11 @@ test("a collector's list runs its sharded native suites through their shards and
 test("a core part's list names its integration tests, API tests and browser specs", () => {
   const { status, commands } = list('core', 'accounts');
   assert.equal(status, 0);
-  assert.deepEqual(targets('core/accounts', 'core/Cargo.toml'), ['accounts']);
+  // Its integration tests are a module of core's one integration program.
+  assert.deepEqual(targets('core/accounts', 'core/Cargo.toml'), []);
   assert.deepEqual(commands.slice(0, 2), [
     'cargo test --locked -p dispatch-core --lib -- accounts::',
-    'cargo test --locked -p dispatch-core --test accounts',
+    'cargo test --locked -p dispatch-core --test integration -- accounts::',
   ]);
   const api = owned('core/accounts/tests/api', /\.test\.ts$/);
   assert(api.includes('core/accounts/tests/api/api-sign-in.test.ts'));
@@ -168,6 +169,30 @@ test("a core part's Rust tests are the core crate's, filtered to the part", () =
       'cargo test --locked -p dispatch-core --test accounts',
     ]);
     assert.match(notes.join('\n'), /accounts::/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a core part's integration tests in core's one program run by their modules' names", () => {
+  const dir = repository({
+    'core/Cargo.toml':
+      '[package]\nname = "dispatch-core"\n\n[lib]\npath = "core.rs"\n\n' +
+      '[[test]]\nname = "integration"\npath = "db/tests/backend/integration/main.rs"\n',
+    'core/db/tests/backend/integration/main.rs': '',
+    'core/db/tests/backend/integration/storage.rs': '',
+    'core/server/tests/backend/integration/browser_update.rs': '',
+    'core/server/tests/backend/integration/mail.rs': '',
+  });
+  try {
+    const run = (part: string) =>
+      ownerTests(dir, 'core', part, { build: false }).commands.map(shell)[1];
+    assert.equal(
+      run('server'),
+      'cargo test --locked -p dispatch-core --test integration -- browser_update:: mail::',
+    );
+    // The program's own root holds no tests of the part it sits in.
+    assert.equal(run('db'), 'cargo test --locked -p dispatch-core --test integration -- storage::');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

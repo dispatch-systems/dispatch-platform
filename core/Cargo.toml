@@ -54,29 +54,6 @@ tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 
 [[test]]
-name = "accounts"
-path = "accounts/tests/backend/integration/accounts.rs"
+name = "integration"
+path = "db/tests/backend/integration/main.rs"
 
-[[test]]
-name = "audit"
-path = "platform_owner/tests/backend/integration/audit.rs"
-
-[[test]]
-name = "browser_update"
-path = "server/tests/backend/integration/browser_update.rs"
-
-[[test]]
-name = "egress"
-path = "collection/tests/backend/integration/egress.rs"
-
-[[test]]
-name = "jobs"
-path = "collection/tests/backend/integration/jobs.rs"
-
-[[test]]
-name = "mail"
-path = "server/tests/backend/integration/mail.rs"
-
-[[test]]
-name = "storage"
-path = "db/tests/backend/integration/storage.rs"

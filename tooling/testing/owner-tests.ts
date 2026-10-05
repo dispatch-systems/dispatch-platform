@@ -63,18 +63,39 @@ function rust(root: string, kind: Kind, dir: string, part: string, notes: string
   if (exists(root, own)) return [cargo('Rust tests', ['-p', packageOf(root, own)!])];
   if (kind === 'core' && exists(root, 'core/Cargo.toml')) {
     const crate = packageOf(root, 'core/Cargo.toml')!;
-    const targets = testTargets(root, 'core/Cargo.toml').filter(({ file }) =>
-      file.startsWith(`${dir}/`),
-    );
+    const targets = testTargets(root, 'core/Cargo.toml');
+    // The part's integration test files: a [[test]] program of their own, or modules of core's
+    // one `integration` program, named for their files.
+    const own: string[] = [];
+    const modules: string[] = [];
+    for (const file of files(root, `${dir}/tests/backend/integration`, /\.rs$/)) {
+      if (path.posix.dirname(file) !== `${dir}/tests/backend/integration`) continue;
+      const target = targets.find((target) => target.file === file);
+      if (target?.name === 'integration') continue;
+      if (target) own.push(target.name);
+      else modules.push(`${path.posix.basename(file, '.rs')}::`);
+    }
     notes.push(`The core crate's tests whose path names ${part}:: are this part's module tests.`);
     return [
       cargo('Rust module tests', ['-p', crate, '--lib', '--', `${part}::`]),
-      ...(targets.length
+      ...(own.length
         ? [
             cargo('Rust integration tests', [
               '-p',
               crate,
-              ...targets.flatMap(({ name }) => ['--test', name]),
+              ...own.flatMap((name) => ['--test', name]),
+            ]),
+          ]
+        : []),
+      ...(modules.length
+        ? [
+            cargo('Rust integration tests', [
+              '-p',
+              crate,
+              '--test',
+              'integration',
+              '--',
+              ...modules,
             ]),
           ]
         : []),

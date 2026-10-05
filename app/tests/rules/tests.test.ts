@@ -83,8 +83,9 @@ test('a module test file is mounted by exactly one module of its owner, for test
   holds('tests', 'module tests', wrong);
 });
 
-// An integration test is a [[test]] of the crate whose tests/backend/integration/ holds it:
-// a feature's or collector's own, core's, or the app's.
+// An integration test is a [[test]] of the crate whose tests/backend/integration/ holds it, or a
+// module of exactly one, as a crate's tests share one program: a feature's or collector's own,
+// core's, or the app's.
 test("each integration test is a test of its owner's crate", () => {
   const crateOf = (dir: string) =>
     dir === 'app'
@@ -97,20 +98,26 @@ test("each integration test is a test of its owner's crate", () => {
       .filter((target) => target.kind === 'test')
       .map((target) => ({ manifest: crate.manifest, file: target.file })),
   );
+  const programs = new Map(targets.map(({ manifest, file }) => [file, manifest]));
   const wrong = new Set<string>();
   for (const file of files) {
     const at = placed(file);
     if (!at || at.kind !== 'backend' || !/^integration\/[^/]+\.rs$/.test(at.rest)) continue;
-    const listed = targets.filter((target) => target.file === file);
-    if (listed.length !== 1) wrong.add(`${file} is a [[test]] of ${listed.length} crates`);
-    for (const { manifest } of listed)
+    const crates = [
+      ...targets.filter((target) => target.file === file).map(({ manifest }) => manifest),
+      ...(rust().mounted.get(file) ?? [])
+        .filter((mount) => programs.has(mount.file))
+        .map((mount) => programs.get(mount.file)!),
+    ];
+    if (crates.length !== 1)
+      wrong.add(`${file} is a [[test]], or a module of one, of ${crates.length} crates`);
+    for (const manifest of crates)
       if (manifest !== crateOf(at.owner.dir))
         wrong.add(`${at.owner.dir}'s integration tests are tests of ${manifest}`);
   }
   holds('tests', 'integration tests', wrong);
 });
 
-// An api/ with no endpoints, such as core/foundation's TypeScript primitives, has none to test.
 test('an owner with endpoints has tests/api/', () => {
   const untested = owners()
     .filter(({ dir }) => isFile(`${dir}/api/routes.rs`) || isDirectory(`${dir}/api/routes`))
