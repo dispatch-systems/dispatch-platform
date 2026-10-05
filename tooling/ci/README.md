@@ -38,9 +38,13 @@ The ruleset expects the `platform` check on a PR head before the queue admits it
 nothing; the queue's own gate decides, and a PR queued before it passed is dropped as an
 invalid merge commit.
 
-`dispatchdev` (`tooling/cli/`) holds what runs on this machine. `dispatchdev build` builds the
-backend through a cache keyed by its exact inputs and the compiler's fingerprint. `dispatchdev
-check` stops a branch that isn't ready to push and names the tests its diff touches.
+`dispatchdev` (`tooling/cli/`) holds what runs on this machine, and `dispatchdev help` lists
+it. A change goes from `start` (its worktree, branch and scratch folder) through `preview`
+(its link), `api` (signed-in calls to the preview), `check`, `pr` and `ship` to `finish`, which
+removes what it made and waits for Dev; `status` shows the workspace. `dispatchdev build`
+builds the backend through a cache keyed by its exact inputs and the compiler's fingerprint.
+`dispatchdev check` stops a branch that isn't ready to push, then runs the rule checks and the
+tests its diff touches one at a time, a line each; `--plan` only names them.
 `dispatchdev ship <number>` reads the PR from GitHub's API every 10 seconds, adds it to the
 merge queue once its admission check passed and GitHub knows it merges cleanly, and waits
 until GitHub merges it, printing the squash commit. A newer push is queued

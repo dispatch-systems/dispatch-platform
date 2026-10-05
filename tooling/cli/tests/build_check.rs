@@ -123,7 +123,7 @@ fn native_check_fetches_actual_base_and_refuses_dirty_or_stale_work() {
     executable(&bin.join("gh"), "#!/bin/sh\nprintf '[]'\n");
     let run = || {
         Command::new(env!("CARGO_BIN_EXE_dispatchdev"))
-            .args(["check", "--root", checkout.to_str().unwrap()])
+            .args(["check", "--plan", "--root", checkout.to_str().unwrap()])
             .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
             .output()
             .unwrap()

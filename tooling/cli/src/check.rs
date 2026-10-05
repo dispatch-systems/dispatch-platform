@@ -284,7 +284,17 @@ pub fn affected(changed: &[String], plan: &Value, workspace: &Workspace) -> Vec<
     }
     commands
 }
-pub fn run(root: &Path, concurrent: bool, runner: &dyn Runner) -> Result<()> {
+/// What a branch needs before it is pushed: the commands its diff touches, and the state of
+/// `main` and of its PR.
+pub struct Plan {
+    pub commands: Vec<String>,
+    pub base: String,
+    pub queued: bool,
+    /// The branch's PR is being checked in the queue already.
+    pub running: bool,
+}
+/// The branch's plan, or what stops it from being pushed.
+pub fn plan(root: &Path, concurrent: bool, runner: &dyn Runner) -> Result<Plan> {
     let command = |args: &[&str]| -> Result<String> {
         Ok(String::from_utf8(runner.command(args, Some(root), 120)?)?
             .trim()
@@ -336,25 +346,6 @@ pub fn run(root: &Path, concurrent: bool, runner: &dyn Runner) -> Result<()> {
     // Without a readable workspace, as in a checkout with no Rust, no crate is named.
     let workspace = Workspace::read(root).unwrap_or_default();
     let commands = affected(&changed, &plan, &workspace);
-    if commands.is_empty() {
-        println!(
-            "Nothing in the diff has tests beyond npm run check:rules. The merge queue runs the full suite on the squash commit; nothing runs on the PR itself."
-        );
-    } else {
-        println!(
-            "Run what the diff touches before pushing. The merge queue runs the full suite on the squash commit; nothing runs on the PR itself.\n- {}",
-            commands.join("\n- ")
-        );
-    }
-    println!(
-        "Ready for final validation against {}.",
-        command(&["git", "rev-parse", "--short", "origin/main"])?
-    );
-    if queued {
-        println!(
-            "main has a merge queue: merging enqueues the PR, and the queue validates the actual merged state."
-        );
-    }
     let running = pulls
         .iter()
         .find(|pr| pr["headRefName"] == branch)
@@ -368,15 +359,161 @@ pub fn run(root: &Path, concurrent: bool, runner: &dyn Runner) -> Result<()> {
                 })
             })
         });
-    println!(
-        "{}",
-        if running {
-            "This PR is already being checked in the queue. Avoid another push unless there is a necessary correction."
-        } else {
-            "Push the final head, open the PR and ship it: dispatchdev ship <n> queues it at once."
+    Ok(Plan {
+        commands,
+        base: command(&["git", "rev-parse", "--short", "origin/main"])?,
+        queued,
+        running,
+    })
+}
+fn next_step(plan: &Plan) -> &'static str {
+    if plan.running {
+        "This PR is already being checked in the queue. Avoid another push unless there is a necessary correction."
+    } else {
+        "Push the final head, open the PR and ship it: dispatchdev ship <n> queues it at once."
+    }
+}
+/// `dispatchdev check --plan`: what to run, without running it.
+pub fn print(plan: &Plan) {
+    if plan.commands.is_empty() {
+        println!(
+            "Nothing in the diff has tests beyond npm run check:rules. The merge queue runs the full suite on the squash commit; nothing runs on the PR itself."
+        );
+    } else {
+        println!(
+            "Run what the diff touches before pushing. The merge queue runs the full suite on the squash commit; nothing runs on the PR itself.\n- {}",
+            plan.commands.join("\n- ")
+        );
+    }
+    println!("Ready for final validation against {}.", plan.base);
+    if plan.queued {
+        println!(
+            "main has a merge queue: merging enqueues the PR, and the queue validates the actual merged state."
+        );
+    }
+    println!("{}", next_step(plan));
+}
+/// `dispatchdev check`: the rule checks, then each command the plan names, a line each. Every
+/// command's whole output is in the change's scratch folder.
+pub fn execute(root: &Path, plan: &Plan) -> Result<bool> {
+    let name = root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or("A checkout without a folder name")?;
+    let scratch = crate::workspace::scratch_dir(name)?;
+    let commands: Vec<String> = ["npm run check:rules".to_owned()]
+        .into_iter()
+        .chain(plan.commands.iter().cloned())
+        .collect();
+    let passed = run_all(root, &commands, &scratch)?;
+    if passed {
+        println!(
+            "All {} passed against {}. {}",
+            commands.len(),
+            plan.base,
+            next_step(plan)
+        );
+    }
+    Ok(passed)
+}
+/// Runs `commands` in `root` one at a time, so builds never run side by side, logging each to
+/// `scratch/check/`. It stops at the first that fails, with the lines saying why.
+pub fn run_all(root: &Path, commands: &[String], scratch: &Path) -> Result<bool> {
+    let logs = scratch.join("check");
+    std::fs::create_dir_all(&logs)?;
+    for (index, command) in commands.iter().enumerate() {
+        let log = logs.join(format!("{}.log", index + 1));
+        let (passed, took) = crate::workspace::logged(command, root, &log, scratch)?;
+        let took = crate::workspace::duration(took);
+        if passed {
+            println!("ok    {took:>7}  {command}");
+            continue;
         }
-    );
-    Ok(())
+        println!("FAIL  {took:>7}  {command}");
+        for line in failure(&std::fs::read_to_string(&log).unwrap_or_default()) {
+            println!("      {line}");
+        }
+        println!("      Whole output: {}", log.display());
+        return Ok(false);
+    }
+    Ok(true)
+}
+/// The lines of a failed command's output that say what failed: failing tests, panics,
+/// compiler errors and assertions; or else its last lines.
+pub fn failure(log: &str) -> Vec<String> {
+    const SIGNS: &[&str] = &[
+        "FAILED",
+        "panicked at",
+        "error[",
+        "error:",
+        "Error:",
+        "  --> ",
+        "left:",
+        "right:",
+        "not ok",
+        "\u{2716}",
+        "\u{2718}",
+        "AssertionError",
+        "Expected",
+        "Received",
+        "Failed rules",
+        "check failed",
+        "[warn]",
+    ];
+    let lines: Vec<String> = log.lines().map(plain).collect();
+    let mut found: Vec<String> = vec![];
+    for line in &lines {
+        let trimmed = line.trim();
+        if !trimmed.is_empty()
+            && (SIGNS.iter().any(|sign| line.contains(sign)) || located(trimmed))
+            && found.last().is_none_or(|last| last != trimmed)
+        {
+            found.push(trimmed.to_owned());
+        }
+    }
+    if found.is_empty() {
+        let tail = lines.len().saturating_sub(25);
+        return lines[tail..]
+            .iter()
+            .map(|line| line.trim_end().to_owned())
+            .collect();
+    }
+    found.truncate(30);
+    found
+}
+/// Whether a line names a finding by its place, as linters and scanners print one:
+/// `path/to/file.rs:12: rule` or `file.ts:3:9: message`.
+fn located(line: &str) -> bool {
+    let Some((place, said)) = line.split_once(": ") else {
+        return false;
+    };
+    let mut parts = place.split(':');
+    let file = parts.next().unwrap_or("");
+    let numbers: Vec<&str> = parts.collect();
+    file.contains('.')
+        && !file.contains(' ')
+        && !said.trim().is_empty()
+        && matches!(numbers.len(), 1 | 2)
+        && numbers
+            .iter()
+            .all(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
+/// A line without its terminal colour codes.
+fn plain(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' && chars.peek() == Some(&'[') {
+            for c in chars.by_ref() {
+                if c.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 /// Whether `main` requires a merge queue. Any failure or unexpected answer counts as no queue.
 fn merge_queue(command: &dyn Fn(&[&str]) -> Result<String>) -> bool {
@@ -712,6 +849,75 @@ mod tests {
         );
         assert_eq!(dependents("dispatch-parking"), ["dispatch-backend"]);
         assert!(dependents("dispatch-backend").is_empty());
+    }
+    #[test]
+    fn commands_run_in_turn_until_one_fails_and_each_keeps_its_output() {
+        let root = tempfile::tempdir().unwrap();
+        let scratch = tempfile::tempdir().unwrap();
+        let commands = |list: &[&str]| list.iter().map(|c| (*c).to_owned()).collect::<Vec<_>>();
+        let marker = root.path().join("ran");
+        assert!(
+            run_all(
+                root.path(),
+                &commands(&["true", "echo here > ran"]),
+                scratch.path()
+            )
+            .unwrap()
+        );
+        assert!(marker.is_file(), "commands run in the checkout");
+        fs::remove_file(&marker).unwrap();
+        let failed = run_all(
+            root.path(),
+            &commands(&["echo 'error: it broke'; exit 1", "echo here > ran"]),
+            scratch.path(),
+        )
+        .unwrap();
+        assert!(!failed);
+        assert!(!marker.exists(), "nothing runs after a failure");
+        assert_eq!(
+            fs::read_to_string(scratch.path().join("check/1.log")).unwrap(),
+            "error: it broke\n"
+        );
+    }
+    #[test]
+    fn a_failure_shows_the_lines_that_say_what_failed() {
+        let cargo = "running 3 tests\ntest a ... ok\ntest b ... FAILED\n\n---- b stdout ----\n\
+            thread 'b' panicked at src/lib.rs:4:5:\nassertion `left == right` failed\n  left: 1\n right: 2\n\
+            test result: FAILED. 1 passed; 1 failed\nerror: test failed, to rerun pass `--lib`\n";
+        assert_eq!(
+            failure(cargo),
+            [
+                "test b ... FAILED",
+                "thread 'b' panicked at src/lib.rs:4:5:",
+                "left: 1",
+                "right: 2",
+                "test result: FAILED. 1 passed; 1 failed",
+                "error: test failed, to rerun pass `--lib`",
+            ]
+        );
+        let coloured = "\u{1b}[31m\u{2716} the audit log refuses nothing\u{1b}[39m\n  AssertionError [ERR_ASSERTION]: Got unwanted exception\n";
+        assert_eq!(
+            failure(coloured),
+            [
+                "\u{2716} the audit log refuses nothing",
+                "AssertionError [ERR_ASSERTION]: Got unwanted exception"
+            ]
+        );
+        let scan = "Scanning 812 files\ntooling/cli/src/pr.rs:259: fixed-network-address\n\
+            Privacy check failed; matching values are withheld.\nsee: the docs\n";
+        assert_eq!(
+            failure(scan),
+            [
+                "tooling/cli/src/pr.rs:259: fixed-network-address",
+                "Privacy check failed; matching values are withheld."
+            ]
+        );
+        let quiet: String = (1..=40).map(|n| format!("line {n}\n")).collect();
+        let tail = failure(&quiet);
+        assert_eq!(
+            (tail.len(), tail[0].as_str(), tail[24].as_str()),
+            (25, "line 16", "line 40")
+        );
     }
     #[test]
     fn merge_queue_is_detected_only_from_a_well_formed_answer() {
