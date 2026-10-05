@@ -1,0 +1,127 @@
+//! Signing in to {{label}} in the sandboxed browser, and reading a collection from the
+//! signed-in page. No credentials, page text or URLs reach the logs.
+use crate::collections::{{collection}};
+use dispatch_core::{
+    Error, Result,
+    collection::browser::{
+        Collected, Driver, Pending, Run,
+        attempt::Attempts,
+        browseros,
+        page::{Page, call},
+    },
+    db::s,
+};
+use serde_json::{Value, json};
+use std::{path::Path, time::Duration};
+use tokio::time::{Instant, sleep};
+
+const ORIGIN: &str = "https://{{host}}";
+/// The page that shows whether the browser is signed in.
+const LANDING: &str = "/";
+const AUTH: &str = include_str!("../scripts/auth.js");
+
+pub(crate) struct Session {
+    browser: browseros::Session,
+    page: Page,
+    origin: String,
+    attempts: Attempts,
+}
+impl Session {
+    /// `fixture` is the origin of a local stand-in for the site, in place of its own.
+    pub(crate) fn new(
+        browser: browseros::Session,
+        profile: &Path,
+        fixture: Option<&str>,
+    ) -> Result<Self> {
+        let origin = fixture.unwrap_or(ORIGIN).trim_end_matches('/').to_owned();
+        Ok(Self {
+            page: Page::empty(browser.clone(), origin.clone()),
+            browser,
+            origin,
+            attempts: Attempts::beside(profile, "{{name}}")?,
+        })
+    }
+    async fn script(&self, mut input: Value) -> Result<Value> {
+        input["origin"] = json!(self.origin);
+        self.page.evaluate(&call(AUTH, &input)).await
+    }
+    /// Where sign-in stands once the page settles, or `challenge` after `seconds`.
+    async fn observe(&self, seconds: u64) -> Result<String> {
+        let deadline = Instant::now() + Duration::from_secs(seconds);
+        while Instant::now() < deadline {
+            // Between documents the script cannot run: ask again.
+            if let Ok(value) = self.script(json!({"action": "observe"})).await
+                && s(&value, "state") != "pending"
+            {
+                return Ok(s(&value, "state").to_owned());
+            }
+            sleep(Duration::from_millis(200)).await;
+        }
+        Ok("challenge".into())
+    }
+    /// The connection's reply for where sign-in stands.
+    fn settle(&mut self, state: &str) -> Result<Value> {
+        match state {
+            "signed_in" => {
+                self.attempts.succeeded()?;
+                Ok(json!({"type": "ready"}))
+            }
+            "invalid_credentials" => Err(Error::new("invalid_credentials", 409)),
+            _ => {
+                self.attempts.failed("manual_verification_required")?;
+                Ok(json!({"type": "challenge"}))
+            }
+        }
+    }
+    async fn sign_in(&mut self, command: &Value) -> Result<Value> {
+        let retry = s(command, "action") == "check" || command["ownerRetry"] == true;
+        let observe_only = self.attempts.check(retry)?;
+        if self.page.id.is_empty() {
+            self.page = Page::open(self.browser.clone(), self.origin.clone()).await?;
+        }
+        self.page.navigate(LANDING).await?;
+        let mut state = self.observe(30).await?;
+        if state == "sign_in" && !observe_only {
+            self.attempts.submitted()?;
+            let input = json!({"action": "sign_in", "credentials": command["credentials"]});
+            self.script(input).await?;
+            state = self.observe(30).await?;
+        }
+        self.settle(&state)
+    }
+}
+impl Driver for Session {
+    fn request(&mut self, command: Value) -> Pending<'_, Value> {
+        Box::pin(async move {
+            let result = match s(&command, "action") {
+                "start" | "check" => self.sign_in(&command).await,
+                "complete_assistance" => {
+                    let state = self.observe(2).await?;
+                    self.settle(&state)
+                }
+                "screenshot" => self.page.screenshot().await,
+                "assist" => self.page.assisted(&command["input"]).await,
+                _ => Err(Error::new("verification_expired", 409)),
+            };
+            if let Err(error) = &result {
+                self.attempts.failed(&error.code)?;
+            }
+            result
+        })
+    }
+    fn collect<'a>(&'a mut self, run: &'a Run<'a>) -> Pending<'a, Collected> {
+        Box::pin(async move {
+            {{collection}}::Request::parse(run.request)?;
+            run.progress(50, "Reading {{collectionLabel}}".into())
+                .await?;
+            let capture = {{collection}}::collect(&self.page).await?;
+            Ok(Collected {
+                data: serde_json::to_value(capture)?,
+                scope: None,
+            })
+        })
+    }
+    fn browser(&self) -> Option<&browseros::Session> {
+        Some(&self.browser)
+    }
+}

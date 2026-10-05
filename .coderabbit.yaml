@@ -33,7 +33,7 @@ reviews:
   path_filters:
     - '!package-lock.json'
     - '!Cargo.lock'
-    - '!shared/contracts/generated/**'
+    - '!**/generated/**'
   # The project's rules, which live outside the repository. Keep them in step with the docs
   # or skills they come from, named in each entry.
   path_instructions:
@@ -55,7 +55,7 @@ reviews:
         loosened assertion, a skipped or removed test, a raised limit or budget, or a new
         suppression such as `#[allow]`, `eslint-disable`, `@ts-ignore` or `@ts-expect-error`.
         Flag each and ask why it is needed. (workflow.md)
-    - path: 'backend/src/db/schema/**'
+    - path: '**/migrations/**'
       instructions: |
         Production rolls back one release, so each release must open, and leave usable, the
         previous release's data (database.md):
@@ -69,7 +69,7 @@ reviews:
           copying rows with an explicit column list, rebuilding referencing tables before
           their parent, and recreating the indexes, as `jobs/0002_scorecard_kind.sql` does.
           The release that rebuilds must not write the new values yet.
-    - path: 'backend/src/**'
+    - path: '{app,core,collectors,features}/**/*.rs'
       instructions: |
         - Logs and request events never carry request bodies, raw emails or IP addresses,
           cookies, tokens or employee records. Session identifiers shown to users are HMAC
@@ -81,41 +81,55 @@ reviews:
           enroll or lock an account implicitly. (security.md)
         - Compare errors with `error.is(Code::X)`, never by their text. Never hard-code job
           titles; customizable roles stay in the role system. (codebase.md, security.md)
-    - path: 'backend/src/http/routes/**'
+    - path: '{**/api/routes.rs,**/api/routes/**}'
       instructions: |
         A route's access (`Public`, `Session`, `PlatformOwner` or `Dsp("permission")`) must be
         no broader than what it reads or changes. Work that waits outside the database uses
         `async_get`/`async_post` and re-authorizes after each wait. A new route needs its row
-        in `backend/tests/http_routes.rs`. A password change verifies the current password.
+        in `app/tests/backend/integration/http_routes.rs`. A password change verifies the current password.
         Security routes are exempt from the normal MFA gate only so verification can complete;
         enrollment, factor removal, recovery-code replacement and session revocation must
         enforce their own recent-authentication requirement.
         (codebase.md, security.md)
-    - path: '{backend/src/roles.rs,shared/contracts/accounts.ts,dashboard/src/app/permissions.ts}'
+    - path: '{features/*/feature.rs,collectors/*/collector.rs}'
       instructions: |
-        A permission lives in all three of `backend/src/roles.rs`, `shared/contracts/accounts.ts`
-        and `dashboard/src/app/permissions.ts`, with a label. A feature's permissions take their
-        role-sheet section from the feature catalog; only a permission of no feature is listed in
-        `permissionGroups` directly. Flag a change that updates one file without the others.
-        (dispatch-features skill)
-    - path: 'backend/src/browsers/paycom/{extract.rs,timecard.js}'
+        A switch, tab, permission, read toggle or collection is declared once, in its owner's
+        manifest, with its label; the catalog, the role sheet and the DSPs page are built from
+        it. Flag one copied by hand anywhere else. (dispatch-features skill)
+    - path: 'core/**'
+      instructions: |
+        Core names no feature or collector: flag a feature's or collector's name, id, table,
+        host or wording in core outside its tests. What a feature adds reaches core through a
+        slot. Anything for the platform owner's dashboard belongs in `core/platform_owner/`.
+        (codebase.md)
+    - path: 'collectors/**'
+      instructions: |
+        A collector names no feature and none of a feature's tables. It returns typed data; the
+        feature that keeps the collection writes it. (dispatch-collectors skill)
+    - path: 'features/**'
+      instructions: |
+        A feature uses only its own tables, core, and the collectors and features its manifest
+        declares. Flag SQL against another owner's tables and imports beyond those
+        dependencies. (codebase.md)
+    - path: 'collectors/paycom/{collections/timecards/extract.rs,scripts/timecard.js}'
       instructions: |
         `extract.rs` ports `timecard.js`'s detached reading. A change to one must be matched in
         the other and proved with `http_extraction_parity`. (dispatch-collectors skill)
-    - path: 'dashboard/src/**'
+    - path: '{app,core,features,collectors}/**/frontend/**'
       instructions: |
-        (ui.md, codebase.md)
+        (ui.md, dispatch-frontend skill)
         - No Tailwind, shadcn, Motion or TanStack Virtual. TanStack Table is used only through
-          `ui/useDataTable.ts`. Styles use the tokens in `styles/tokens.css` and live with the
+          `core/shell/frontend/ui/useDataTable.ts`. Styles use the tokens in
+          `core/shell/frontend/styles/tokens.css` and live with the
           component that owns them. Animation is hand-written CSS or a small rAF loop, and is
           off under `prefers-reduced-motion`.
         - Use the existing primitives before new markup: `Header`, `Tabs`, `Modal`,
           `ConfirmDialog`, `Popover`, `DataState` (for loading and errors), `SearchInput`,
           `Pagination`, `SortHeader`, `DetailList`, `Badge`, `DspAvatar`, `Empty`, `ErrorBox`,
           `Loading`, `useDataTable`, `useFocusTrap`. Mutations use `useAction`; formatting
-          comes from `lib/format.ts`.
+          comes from `core/shell/frontend/lib/format.ts`.
         - An editor with unsaved changes never just closes: Escape, the backdrop and the close
-          button ask "Save changes?" with only Save and Discard, as `features/team/RoleSheet.tsx`
+          button ask "Save changes?" with only Save and Discard, as `features/team/frontend/RoleSheet.tsx`
           does. Closing or refreshing the browser tab discards silently, with no
           `beforeunload` prompt.
         - No subtitles, taglines or descriptive text beneath page titles, section headings or

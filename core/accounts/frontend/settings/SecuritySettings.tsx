@@ -1,0 +1,16 @@
+import { PasswordPanel } from './PasswordPanel.js';
+import { SessionsPanel } from './SessionsPanel.js';
+import { useAccountSessions } from '../../api/client.js';
+import { MultiFactorPanel } from './MultiFactorPanel.js';
+import './security.css';
+
+export function SecuritySettings() {
+  const sessions = useAccountSessions();
+  return (
+    <div className="security-settings">
+      <PasswordPanel />
+      <MultiFactorPanel />
+      <SessionsPanel sessions={sessions} />
+    </div>
+  );
+}

@@ -1,0 +1,150 @@
+[package]
+name = "dispatch-backend"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+autotests = false
+autoexamples = false
+
+[lib]
+path = "lib.rs"
+doctest = false
+
+[[bin]]
+name = "dispatch-backend"
+path = "main.rs"
+
+[features]
+# The product is every feature. A build may leave one out, with every feature that declares
+# it, to prove nothing else needs it: tooling/ci/removability.ts. A test that needs the
+# whole product asks for `default`.
+default = [
+    "timecard",
+    "uniforms",
+    "routes",
+    "dvic",
+    "scorecard",
+    "driver_match",
+    "team",
+    "settings",
+    "home",
+]
+# Each feature's crate, with the features it declares.
+timecard = ["dep:dispatch-timecard", "driver_match"]
+uniforms = ["dep:dispatch-uniforms"]
+routes = ["dep:dispatch-routes"]
+dvic = ["dep:dispatch-dvic"]
+scorecard = ["dep:dispatch-scorecard"]
+driver_match = ["dep:dispatch-driver-match"]
+team = ["dep:dispatch-team"]
+settings = ["dep:dispatch-settings"]
+home = ["dep:dispatch-home"]
+# Private live-provider diagnostics are compiled only when an operator asks for them.
+operator-probes = ["dispatch-cortex/operator-probes", "dispatch-paycom/operator-probes"]
+
+[dependencies]
+dispatch-core = { path = "../../core" }
+dispatch-cortex = { path = "../../collectors/cortex" }
+dispatch-driver-match = { path = "../../features/driver_match", optional = true }
+dispatch-dvic = { path = "../../features/dvic", optional = true }
+dispatch-home = { path = "../../features/home", optional = true }
+dispatch-host = { path = "../../ops/host-manager" }
+dispatch-paycom = { path = "../../collectors/paycom" }
+dispatch-routes = { path = "../../features/routes", optional = true }
+dispatch-scorecard = { path = "../../features/scorecard", optional = true }
+dispatch-settings = { path = "../../features/settings", optional = true }
+dispatch-team = { path = "../../features/team", optional = true }
+dispatch-timecard = { path = "../../features/timecard", optional = true }
+dispatch-uniforms = { path = "../../features/uniforms", optional = true }
+axum = { workspace = true }
+libc = { workspace = true }
+# What it prints, and the access catalog its export writes, keep the order their fields are
+# written in.
+serde_json = { workspace = true, features = ["preserve_order"] }
+tokio = { workspace = true }
+
+[dev-dependencies]
+# Core's test support, and the TypeScript of every crate's API types for the export test.
+dispatch-core = { path = "../../core", features = ["testing", "ts"] }
+dispatch-driver-match = { path = "../../features/driver_match", features = ["ts"] }
+dispatch-dvic = { path = "../../features/dvic", features = ["ts"] }
+dispatch-paycom = { path = "../../collectors/paycom", features = ["ts"] }
+dispatch-routes = { path = "../../features/routes", features = ["ts"] }
+dispatch-scorecard = { path = "../../features/scorecard", features = ["ts"] }
+dispatch-timecard = { path = "../../features/timecard", features = ["ts"] }
+dispatch-uniforms = { path = "../../features/uniforms", features = ["ts"] }
+base64 = { workspace = true }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+reqwest = { workspace = true }
+rusqlite = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
+url = { workspace = true }
+# Writes each owner's api/generated/ from the response types; never part of the binary.
+ts-rs = { workspace = true }
+
+[[test]]
+name = "agent_activity"
+path = "../../app/tests/backend/integration/agent_activity.rs"
+required-features = ["timecard", "routes", "dvic", "scorecard"]
+
+[[test]]
+name = "agent_api"
+path = "../../app/tests/backend/integration/agent_api.rs"
+required-features = ["default"]
+
+[[test]]
+name = "agent_data"
+path = "../../app/tests/backend/integration/agent_data.rs"
+required-features = ["timecard", "routes", "dvic", "scorecard"]
+
+[[test]]
+name = "agent_tools"
+path = "../../app/tests/backend/integration/agent_tools.rs"
+required-features = ["timecard", "routes", "dvic", "scorecard"]
+
+[[test]]
+name = "browseros_host"
+path = "../../app/tests/backend/integration/browseros_host.rs"
+
+[[test]]
+name = "browseros_worker"
+path = "../../app/tests/backend/integration/browseros_worker.rs"
+
+[[test]]
+name = "collection_jobs"
+path = "../../app/tests/backend/integration/collection_jobs.rs"
+
+[[test]]
+name = "contracts"
+path = "../../app/tests/backend/integration/contracts.rs"
+
+[[test]]
+name = "driver_match"
+path = "../../app/tests/backend/integration/driver_match.rs"
+required-features = ["timecard"]
+
+[[test]]
+name = "http_requests"
+path = "../../app/tests/backend/integration/http_requests.rs"
+
+[[test]]
+name = "http_routes"
+path = "../../app/tests/backend/integration/http_routes.rs"
+
+[[test]]
+name = "meal_cache"
+path = "../../app/tests/backend/integration/meal_cache.rs"
+required-features = ["timecard"]
+
+[[test]]
+name = "network_policy"
+path = "../../app/tests/backend/integration/network_policy.rs"
+
+[[test]]
+name = "oauth"
+path = "../../app/tests/backend/integration/oauth.rs"
+required-features = ["timecard", "routes", "dvic", "scorecard"]

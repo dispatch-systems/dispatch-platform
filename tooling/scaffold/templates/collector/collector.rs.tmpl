@@ -1,0 +1,134 @@
+//! {{label}}: what Dispatch reads from {{host}} for a DSP. Its README says how.
+mod collections;
+mod connection;
+mod fixtures;
+
+pub use collections::{{collection}};
+
+use dispatch_core::{
+    Result,
+    collection::{
+        browser::{
+            Collected, Driver, Pending,
+            browseros::{self, NetworkPolicy},
+            egress::HostPolicy,
+        },
+        metrics::Counted,
+        registry::{Provider, connection_seed, identity_seed},
+    },
+    db::{Kind, Migration, Migrations, migrations::Apply::Sql},
+    foundation::validate as v,
+    manifest::{Capability, Collection, Collector},
+};
+use serde_json::Value;
+use std::path::Path;
+
+pub const PROVIDER: Provider = Provider::new("{{name}}");
+pub static COLLECTOR: {{pascal}} = {{pascal}};
+
+/// The site's own host, the only one its browser may open.
+pub const HOST: &str = "{{host}}";
+fn allowed_host(host: &str) -> bool {
+    host == HOST
+}
+static BROWSER_HOSTS: HostPolicy = HostPolicy {
+    allowed: allowed_host,
+};
+
+/// Its database, `{{name}}/{{name}}.sqlite` in each DSP's data.
+pub const DATABASE: Kind = Kind::new("{{name}}", 1);
+const MIGRATIONS: &[Migrations] = &[Migrations {
+    kind: DATABASE,
+    list: &[Migration {
+        id: 1,
+        name: "baseline",
+        apply: Sql(include_str!("migrations/{{name}}/0001_baseline.sql")),
+    }],
+}];
+
+/// What it reads. The one feature that keeps each stores what a job brings.
+static COLLECTIONS: [Collection; 1] = [Collection {
+    job_kind: collections::{{collection}}::JOB_KIND,
+    schedule: "{{schedule}}",
+    label: "{{collectionTitle}}",
+    // What Diagnostics compares its runs per, once `counts` counts its rows.
+    unit: "row",
+    counted: Counted::Rows,
+    unconnected: "schedule_{{schedule}}_required",
+}];
+
+pub struct {{pascal}};
+impl Collector for {{pascal}} {
+    fn id(&self) -> &'static str {
+        PROVIDER.id()
+    }
+    fn label(&self) -> &'static str {
+        "{{label}}"
+    }
+    fn capabilities(&self) -> &'static [Capability] {
+        &[Capability {
+            id: "{{collection}}",
+            label: "a {{collectionLabel}} source",
+        }]
+    }
+    fn collections(&self) -> &'static [Collection] {
+        &COLLECTIONS
+    }
+    fn database(&self) -> Kind {
+        DATABASE
+    }
+    fn migrations(&self) -> &'static [Migrations] {
+        MIGRATIONS
+    }
+    // Its connection row commits with its schema: an added collector's storage counts as
+    // created only once it holds one.
+    fn seed(&self, dsp: &str) -> String {
+        format!(
+            "{}\n{}",
+            identity_seed(dsp, PROVIDER, "{{name}}-v1"),
+            connection_seed(PROVIDER)
+        )
+    }
+    fn marker(&self) -> Option<&'static str> {
+        Some("storage.{{name}}")
+    }
+    fn browser_entries(&self) -> &'static [&'static str] {
+        &[
+            "{{name}}-browseros",
+            "{{name}}-attempt.json",
+            ".{{name}}-browseros.browseros.lock",
+        ]
+    }
+    fn network(&self) -> NetworkPolicy {
+        NetworkPolicy::Hosts(&BROWSER_HOSTS)
+    }
+    fn validate_credentials(&self, value: &Value) -> Result<()> {
+        v::fields(value, &["username", "password"])?;
+        v::name(value, "username", 200)?;
+        v::text(value, "password", 1, 256)?;
+        Ok(())
+    }
+    fn account_label<'a>(&self, credentials: &'a Value) -> &'a str {
+        credentials["username"].as_str().unwrap_or("")
+    }
+    fn driver<'a>(
+        &self,
+        browser: browseros::Session,
+        profile: &'a Path,
+        fixture: Option<&'a str>,
+    ) -> Pending<'a, Box<dyn Driver>> {
+        Box::pin(async move {
+            Ok(Box::new(connection::Session::new(browser, profile, fixture)?) as Box<dyn Driver>)
+        })
+    }
+    fn fixture(&self, _: &str, request: &Value) -> Result<Collected> {
+        collections::{{collection}}::Request::parse(request)?;
+        Ok(Collected {
+            data: serde_json::to_value(fixtures::{{collection}}::capture())?,
+            scope: None,
+        })
+    }
+    fn progress(&self, _: &Value) -> &'static str {
+        "Collecting {{collectionLabel}}"
+    }
+}

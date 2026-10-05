@@ -6,4 +6,11 @@ target/
 Cargo.lock
 
 .build-staging-*/
-shared/contracts/generated/
+.removability/
+**/generated/
+
+# Byte-for-byte what the agent API answered, compared by a test.
+app/tests/backend/agent_api/
+# What the app's tests hold the whole product to, as `npm run snapshots:update` writes it.
+app/tests/backend/snapshots/
+app/tests/frontend/snapshots/

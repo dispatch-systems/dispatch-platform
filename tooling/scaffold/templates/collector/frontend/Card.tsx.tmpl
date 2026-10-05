@@ -1,0 +1,15 @@
+import { ConnectionCard } from '{{toRoot}}core/collection/frontend/index.js';
+import type { ConnectionCardContext } from '{{toRoot}}core/shell/frontend/runtime/slots.js';
+
+/** {{label}} signs in with a username and password. */
+export function {{pascal}}Card({ read, ...context }: ConnectionCardContext & { read: string }) {
+  return (
+    <ConnectionCard
+      {...context}
+      provider="{{name}}"
+      read={read}
+      verification="Finish signing in to {{label}}"
+      credentials={{credentials}}
+    />
+  );
+}

@@ -1,6 +1,10 @@
 import { defineConfig } from '@playwright/test';
 export default defineConfig({
-  testDir: './tests/browser',
+  // Specs live in each owner's tests/browser/. An explicit testDir turns off .gitignore
+  // pruning, so ask for it: discovery must not walk target/ or .build/.
+  testDir: '.',
+  testMatch: '**/tests/browser/**/*.spec.ts',
+  respectGitIgnore: true,
   fullyParallel: true,
   workers: 4,
   timeout: 30000,

@@ -1,0 +1,321 @@
+//! Schedules of the collections Timecard keeps from Paycom and Cortex: what they queue,
+//! when, and what stops them.
+use dispatch_core::{
+    collection::schedules::{anchor, next_daily},
+    db::{Store, iso, now, s},
+    foundation::{config::Config, crypto},
+};
+#[cfg(feature = "timecard")]
+use dispatch_core::{
+    collection::{
+        browser::{Collected, Driver, Pending, browseros},
+        metrics::Counted,
+    },
+    db::{Kind, Migrations},
+    manifest::{Capability, Collection, Collector, Registry},
+};
+use dispatch_cortex as cortex;
+use dispatch_paycom as paycom;
+#[cfg(feature = "timecard")]
+use dispatch_timecard::TimecardStore;
+use rusqlite::params;
+use serde_json::{Value, json};
+use std::os::unix::fs::PermissionsExt;
+fn ms(value: &str) -> i64 {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .unwrap()
+        .timestamp_millis()
+}
+fn setup() -> (tempfile::TempDir, Store, String) {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    let mut config = Config::load().unwrap();
+    config.root = root.path().into();
+    let db = Store::initialize(config).unwrap();
+    let id = crypto::id("dsp").unwrap();
+    db.platform
+        .exec(
+            "INSERT INTO dsps(id,name,environment,status,timezone,created_at) \
+        VALUES (?,'Schedule test','preview','provisioning','America/Chicago',?)",
+            [&id, &iso()],
+        )
+        .unwrap();
+    db.provision(&id).unwrap();
+    db.enable_all_features(&id).unwrap();
+    db.collector(&id, paycom::PROVIDER)
+        .unwrap()
+        .exec("UPDATE connections SET enabled=1", [])
+        .unwrap();
+    (root, db, id)
+}
+fn input(collection: &str) -> Value {
+    json!({"name":"Collection","collection":collection,"cadence":"interval","intervalMinutes":120,"localTime":"00:00","enabled":true})
+}
+#[cfg(feature = "timecard")]
+fn meals(db: &Store, id: &str) {
+    db.collector(id, cortex::PROVIDER)
+        .unwrap()
+        .exec("UPDATE connections SET enabled=1", [])
+        .unwrap();
+    let scope = cortex::discovery::Scope {
+        date: "2026-01-10".into(),
+        station: "DEMO1".into(),
+        service_area_id: "area-demo".into(),
+        provider: "provider-demo".into(),
+        timezone: "America/Chicago".into(),
+    };
+    db.publish_meals(id, "seed-meals", &cortex::meals::fixture(&scope), &scope)
+        .unwrap();
+}
+fn due(db: &Store, id: &str, key: &str, deadline: &str) {
+    db.dsp(id)
+        .unwrap()
+        .exec(
+            "UPDATE collection_schedules SET next_run=? WHERE id=?",
+            [deadline, key],
+        )
+        .unwrap();
+}
+#[test]
+fn resuming_preview_preserves_the_saved_interval_anchor() {
+    crate::install();
+    let (_root, db, id) = setup();
+    let mut value = input("paycom");
+    value["intervalMinutes"] = json!(300);
+    value["enabled"] = json!(false);
+    let saved = db.save_schedule(&id, None, &value).unwrap();
+    let key = saved.id.as_str();
+    // Simulate an interval created on a prior day. Five hours does not
+    // divide into a day, so anchoring anew would change its future runs.
+    let old_anchor = anchor("00:00", "America/Chicago", now()).unwrap() - 86400000;
+    db.dsp(&id)
+        .unwrap()
+        .exec(
+            "UPDATE collection_schedules SET anchor=? WHERE id=?",
+            params![old_anchor, key],
+        )
+        .unwrap();
+    let preview = db
+        .preview_schedule(
+            &id,
+            &json!({"scheduleId":key,"cadence":"interval",
+        "intervalMinutes":300,"localTime":"00:00"}),
+        )
+        .unwrap();
+    let resumed = db
+        .enable_schedule(&id, key, &json!({"revision":1,"enabled":true}))
+        .unwrap();
+    assert_eq!(Some(&preview.next_run), resumed.next_run.as_ref());
+    assert_eq!((ms(&preview.next_run) - old_anchor) % (300 * 60000), 0);
+    let changed = db
+        .preview_schedule(
+            &id,
+            &json!({"scheduleId":key,"cadence":"daily","intervalMinutes":null,
+        "localTime":"06:00"}),
+        )
+        .unwrap();
+    assert_eq!(
+        changed.next_run,
+        next_daily("06:00", "America/Chicago", now()).unwrap()
+    );
+}
+#[cfg(feature = "timecard")]
+#[test]
+fn each_collection_target_queues_the_correct_jobs_and_replay_is_idempotent() {
+    crate::install();
+    for collection in ["paycom", "meal_break", "both"] {
+        let (_root, db, id) = setup();
+        meals(&db, &id);
+        let row = db.save_schedule(&id, None, &input(collection)).unwrap();
+        let key = row.id.as_str();
+        let deadline = "2026-01-01T00:00:00.000Z";
+        due(&db, &id, key, deadline);
+        let next = db.schedule_due(&id).unwrap().unwrap();
+        assert!(next > now());
+        let jobs = db.jobs.all("SELECT * FROM jobs", []).unwrap();
+        assert_eq!(jobs.len(), if collection == "both" { 2 } else { 1 });
+        assert_eq!(
+            jobs.iter()
+                .filter(|j| s(j, "kind") == "paycom.collect")
+                .count(),
+            usize::from(collection != "meal_break")
+        );
+        for job in jobs
+            .iter()
+            .filter(|j| s(j, "kind") == "cortex.meal_breaks.collect")
+        {
+            let request: Value = serde_json::from_str(s(job, "request")).unwrap();
+            assert_eq!(request["station"], "DEMO1");
+            assert_eq!(
+                request["date"],
+                chrono::Utc::now()
+                    .with_timezone(&chrono_tz::America::Chicago)
+                    .format("%Y-%m-%d")
+                    .to_string()
+            );
+        }
+        due(&db, &id, key, deadline); // Crash after the batch committed, before advancing the schedule.
+        db.schedule_due(&id).unwrap();
+        assert_eq!(
+            db.jobs.all("SELECT id FROM jobs", []).unwrap().len(),
+            jobs.len()
+        );
+        assert_eq!(db.collection_schedule(&id, key).unwrap().last_error, None);
+    }
+}
+#[cfg(feature = "timecard")]
+#[test]
+fn blocked_and_overlapping_schedules_never_start_half_a_batch() {
+    crate::install();
+    let (_root, db, id) = setup();
+    meals(&db, &id);
+    let first = db.save_schedule(&id, None, &input("paycom")).unwrap().id;
+    let second = db.save_schedule(&id, None, &input("both")).unwrap().id;
+    let stored = |key: &str| db.collection_schedule(&id, key).unwrap();
+    due(&db, &id, &first, "2026-01-01T00:00:00.000Z");
+    due(&db, &id, &second, "2026-01-02T00:00:00.000Z");
+    db.schedule_due(&id).unwrap();
+    assert_eq!(db.jobs.all("SELECT id FROM jobs", []).unwrap().len(), 1);
+    assert_eq!(
+        stored(&second).last_error.as_deref(),
+        Some("sync_in_progress")
+    );
+    db.jobs
+        .exec("UPDATE jobs SET status='succeeded'", [])
+        .unwrap();
+    db.collector(&id, cortex::PROVIDER)
+        .unwrap()
+        .exec("UPDATE connections SET enabled=0", [])
+        .unwrap();
+    db.schedule_due(&id).unwrap();
+    assert_eq!(db.jobs.all("SELECT id FROM jobs", []).unwrap().len(), 1);
+    assert_eq!(
+        stored(&second).last_error.as_deref(),
+        Some("schedule_meals_required")
+    );
+    db.pause_provider_schedules(&id, cortex::PROVIDER).unwrap();
+    assert!(!stored(&second).enabled);
+    assert!(stored(&first).enabled);
+}
+#[test]
+fn timezone_changes_recompute_deadlines_and_stale_edits_are_rejected() {
+    crate::install();
+    let (_root, db, id) = setup();
+    let mut value = input("paycom");
+    value["cadence"] = json!("daily");
+    value["intervalMinutes"] = Value::Null;
+    value["localTime"] = json!("06:00");
+    let row = db.save_schedule(&id, None, &value).unwrap();
+    db.retime_schedules(&id, "Asia/Tokyo").unwrap();
+    let changed = db.collection_schedule(&id, &row.id).unwrap();
+    assert_eq!(
+        changed.next_run,
+        Some(next_daily("06:00", "Asia/Tokyo", now()).unwrap())
+    );
+    value["revision"] = json!(1);
+    assert_eq!(
+        db.save_schedule(&id, Some(&row.id), &value)
+            .unwrap_err()
+            .code,
+        "schedule_changed"
+    );
+}
+
+/// A collector added later: one collection, which no feature names in an alias.
+#[cfg(feature = "timecard")]
+struct Later;
+#[cfg(feature = "timecard")]
+impl Collector for Later {
+    fn id(&self) -> &'static str {
+        "later"
+    }
+    fn label(&self) -> &'static str {
+        "Later"
+    }
+    fn capabilities(&self) -> &'static [Capability] {
+        &[]
+    }
+    fn collections(&self) -> &'static [Collection] {
+        &[Collection {
+            job_kind: "later.records.collect",
+            schedule: "later_records",
+            label: "Later records",
+            unit: "record",
+            counted: Counted::Rows,
+            unconnected: "schedule_later_required",
+        }]
+    }
+    fn database(&self) -> Kind {
+        unreachable!("a schedule's collections need no database")
+    }
+    fn migrations(&self) -> &'static [Migrations] {
+        &[]
+    }
+    fn seed(&self, _: &str) -> String {
+        String::new()
+    }
+    fn marker(&self) -> Option<&'static str> {
+        None
+    }
+    fn browser_entries(&self) -> &'static [&'static str] {
+        &[]
+    }
+    fn network(&self) -> browseros::NetworkPolicy {
+        unreachable!("a schedule's collections need no browser")
+    }
+    fn validate_credentials(&self, _: &Value) -> dispatch_core::Result<()> {
+        Ok(())
+    }
+    fn driver<'a>(
+        &self,
+        _: browseros::Session,
+        _: &'a std::path::Path,
+        _: Option<&'a str>,
+    ) -> Pending<'a, Box<dyn Driver>> {
+        unreachable!("a schedule's collections need no browser")
+    }
+    fn fixture(&self, _: &str, _: &Value) -> dispatch_core::Result<Collected> {
+        unreachable!("a schedule's collections collect nothing")
+    }
+    fn progress(&self, _: &Value) -> &'static str {
+        ""
+    }
+}
+
+#[cfg(feature = "timecard")]
+#[test]
+fn a_new_collection_leaves_what_both_runs_as_it_is() {
+    crate::install();
+    let registry = &crate::REGISTRY;
+    let collectors: Vec<&'static dyn Collector> = registry
+        .collectors
+        .iter()
+        .copied()
+        .chain([&Later as &'static dyn Collector])
+        .collect();
+    let later = Registry {
+        collectors: Box::leak(collectors.into_boxed_slice()),
+        features: registry.features,
+    };
+    let runs = |registry: &Registry, collection: &str| -> Vec<(&str, &str)> {
+        registry
+            .scheduled(collection)
+            .map(|(collector, scheduled)| (collector.id(), scheduled.job_kind))
+            .collect()
+    };
+    // `both` is Timecard's: its timecards from Paycom and its meal breaks from Cortex.
+    let both = [
+        ("paycom", "paycom.collect"),
+        ("cortex", "cortex.meal_breaks.collect"),
+    ];
+    assert_eq!(runs(registry, "both"), both);
+    assert_eq!(runs(&later, "both"), both);
+    // The new collection is a choice of its own, after every other, and runs alone.
+    let mut choices = registry.schedule_collections();
+    choices.push("later_records");
+    assert_eq!(later.schedule_collections(), choices);
+    assert_eq!(
+        runs(&later, "later_records"),
+        [("later", "later.records.collect")]
+    );
+}

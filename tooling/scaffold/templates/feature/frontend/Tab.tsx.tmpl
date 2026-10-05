@@ -1,0 +1,11 @@
+import type { DspView } from '{{toRoot}}{{dspView}}';
+import { Empty } from '{{toRoot}}core/shell/frontend/ui/index.js';
+
+/** {{label}}, as a tab of {{hostLabel}}'s page. */
+export function {{pascal}}Tab({ view }: { view: DspView }) {
+  return (
+    <section aria-label="{{label}}">
+      <Empty title="Nothing here yet">{{label}} for {view.dsp.name} starts here.</Empty>
+    </section>
+  );
+}

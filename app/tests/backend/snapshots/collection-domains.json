@@ -1,0 +1,7 @@
+[
+  ["paycom.collect", "paycom"],
+  ["cortex.meal_breaks.collect", "meals"],
+  ["cortex.scorecard.collect", "scorecard"],
+  ["cortex.routes.collect", "routes"],
+  ["cortex.dvic.collect", "dvic"]
+]

@@ -16,8 +16,8 @@ import sys
 REPOSITORY = "dispatch-systems/dispatch-platform"
 OUTPUT = Path(__file__).resolve().parent / "browser-durations.json"
 # The list reporter's line for a passing test, as
-# `✓  12 tests/browser/roles.spec.ts:7:1 › describe › title (3.4s)`.
-PASSED = re.compile(r"✓\s+\d+ tests/browser/([^:\s]+):\d+:\d+ › (.+) \((\d+(?:\.\d+)?)(ms|s|m)\)\s*$")
+# `✓  12 features/team/tests/browser/roles.spec.ts:7:1 › describe › title (3.4s)`.
+PASSED = re.compile(r"✓\s+\d+ ((?:[\w.-]+/)*tests/browser/[^:\s]+):\d+:\d+ › (.+) \((\d+(?:\.\d+)?)(ms|s|m)\)\s*$")
 UNITS = {"ms": 0.001, "s": 1, "m": 60}
 
 

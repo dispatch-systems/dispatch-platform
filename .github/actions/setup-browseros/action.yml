@@ -13,13 +13,13 @@ runs:
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: ~/.cache/dispatch-browseros/browseros.deb
-        key: dispatch-browseros-${{ hashFiles('tooling/browseros-release.json') }}
+        key: dispatch-browseros-${{ hashFiles('ops/launchers/browseros-release.json') }}
     - name: Download the pinned browser package
       if: steps.package.outputs.cache-hit != 'true'
       shell: bash
       run: |
         mkdir -p ~/.cache/dispatch-browseros
-        url=$(python3 -c "import json; print(json.load(open('tooling/browseros-release.json'))['url'])")
+        url=$(python3 -c "import json; print(json.load(open('ops/launchers/browseros-release.json'))['url'])")
         curl --fail --location --silent --show-error --retry 3 --output ~/.cache/dispatch-browseros/browseros.deb "$url"
     # Packages the runner image has stay as they are: upgrading them only downloads from a
     # mirror that can stall for minutes. A stalled download is dropped and tried again.
@@ -33,8 +33,8 @@ runs:
         sudo install -d -m 755 /usr/local/libexec/dispatch-dev
         sudo install -m 755 /usr/bin/bwrap /usr/local/libexec/dispatch-dev/bwrap
         if command -v apparmor_parser >/dev/null; then
-          sudo apparmor_parser -r tooling/host/dispatch-dev-bwrap.apparmor
+          sudo apparmor_parser -r ops/scripts/dispatch-dev-bwrap.apparmor
         fi
         sudo install -d -o root -g root -m 755 /opt
         # The installer verifies the pinned checksum and size of its own copy, cached or not.
-        sudo python3 tooling/install-browseros.py --archive ~/.cache/dispatch-browseros/browseros.deb
+        sudo python3 ops/launchers/install-browseros.py --archive ~/.cache/dispatch-browseros/browseros.deb

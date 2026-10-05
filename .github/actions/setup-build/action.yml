@@ -33,7 +33,7 @@ runs:
       if: inputs.profile == 'release'
       shell: bash
       run: |
-        python3 tooling/cargo-build.py --release --cache-key >> "$GITHUB_OUTPUT"
+        python3 tooling/build/cargo-build.py --release --cache-key >> "$GITHUB_OUTPUT"
         echo "DISPATCH_CI_RUST_CACHE=$GITHUB_WORKSPACE/.ci-rust-cache" >> "$GITHUB_ENV"
     - name: Bind the selected Rust inputs
       if: steps.binary-key.outputs.key != ''

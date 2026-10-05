@@ -1,0 +1,8 @@
+import { useData } from '{{toRoot}}core/shell/frontend/runtime/api.js';
+import type { {{pascal}}Summary } from './generated/{{pascal}}Summary.js';
+
+// {{label}}'s endpoints, as its screens call them.
+
+export const {{camel}}SummaryUrl = '{{apiPath}}';
+/** What {{label}} holds for the DSP in view. */
+export const use{{pascal}}Summary = () => useData<{{pascal}}Summary>({{camel}}SummaryUrl);

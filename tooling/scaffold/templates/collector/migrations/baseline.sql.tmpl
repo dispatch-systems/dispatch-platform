@@ -1,0 +1,7 @@
+-- {{label}}'s connection, and the identity that keeps another DSP's file from passing for this one.
+-- What its collections bring is stored by the features that keep them.
+CREATE TABLE IF NOT EXISTS connections (provider TEXT PRIMARY KEY CHECK(provider='{{name}}'), enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)), status TEXT NOT NULL DEFAULT 'not_connected', error TEXT, account_label TEXT, updated_at TEXT NOT NULL, verified_at TEXT, revision INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE IF NOT EXISTS storage_identity (dsp_id TEXT NOT NULL, provider TEXT NOT NULL, source TEXT NOT NULL);
+-- A running collection's results so far, which its pages show while it runs.
+CREATE TABLE IF NOT EXISTS collection_live_runs (job_id TEXT PRIMARY KEY, owner TEXT NOT NULL, metadata TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS collection_live_items (job_id TEXT NOT NULL REFERENCES collection_live_runs(job_id) ON DELETE CASCADE, item_key TEXT NOT NULL, date TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(job_id,date,item_key));

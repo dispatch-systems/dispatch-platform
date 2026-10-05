@@ -1,5 +1,5 @@
 # The policy hash changes Cargo dependency fingerprints when the wrapper changes.
-# Recompute it with SHA-256 after editing tooling/rustc-remap.py.
+# Recompute it with SHA-256 after editing tooling/build/rustc-remap.py.
 [build]
-rustc-wrapper = "tooling/rustc-remap.py"
-rustflags = ["--cfg=dispatch_path_policy_02932e86067c66a21ba5e054310011a1696f84b95d73cf0ce65b29c98268cab2"]
+rustc-wrapper = "tooling/build/rustc-remap.py"
+rustflags = ["--cfg=dispatch_path_policy_e526d87bef6112cc4c003138b9f8d550c4d40db2262f00e5d4b5542b998e9fa4"]

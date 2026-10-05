@@ -1,0 +1,73 @@
+use dispatch_core::collection::browser::egress;
+use dispatch_paycom as paycom;
+
+#[test]
+fn egress_rejects_private_and_lookalike_destinations() {
+    for address in [
+        "127.0.0.1",
+        "10.0.0.1",
+        "172.16.0.1",
+        "192.168.1.1",
+        "169.254.169.254",
+        "100.64.0.1",
+        "198.18.0.1",
+        "192.0.2.1",
+        "198.51.100.1",
+        "203.0.113.1",
+        "::1",
+        "::ffff:8.8.8.8",
+    ] {
+        assert!(
+            !egress::public_address(address.parse().unwrap()),
+            "{address}"
+        );
+    }
+    for address in [
+        [192, 0, 0, 1],
+        [192, 31, 196, 1],
+        [192, 52, 193, 1],
+        [192, 88, 99, 1],
+        [192, 175, 48, 1],
+        [233, 252, 0, 1],
+        [240, 0, 0, 1],
+    ] {
+        assert!(!egress::public_address(
+            std::net::Ipv4Addr::from(address).into()
+        ));
+    }
+    assert!(egress::public_address("8.8.8.8".parse().unwrap()));
+    assert!(paycom::allowed_host("time-and-attendance.paycomonline.net"));
+    for host in [
+        "evilpaycomonline.net",
+        "paycomonline.net.evil.test",
+        "localhost",
+        "127.0.0.1",
+    ] {
+        assert!(!paycom::allowed_host(host));
+    }
+}
+
+#[test]
+fn cortex_network_policy_keeps_provider_hosts_separate() {
+    use dispatch_cortex as cortex;
+    use dispatch_paycom as paycom;
+    for host in [
+        "logistics.amazon.com",
+        "www.amazon.com",
+        "m.media-amazon.com",
+        "images-na.ssl-images-amazon.com",
+    ] {
+        assert!(cortex::allowed_host(host));
+        assert!(!paycom::allowed_host(host));
+    }
+    for host in [
+        "www.paycomonline.net",
+        "amazon.com.evil.test",
+        "evilamazon.com",
+        "evilmedia-amazon.com",
+        "127.0.0.1",
+        "metadata.google.internal",
+    ] {
+        assert!(!cortex::allowed_host(host));
+    }
+}

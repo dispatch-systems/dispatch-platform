@@ -38,7 +38,7 @@ The ruleset expects the `platform` check on a PR head before the queue admits it
 nothing; the queue's own gate decides, and a PR queued before it passed is dropped as an
 invalid merge commit.
 
-`backend/ci` builds as `dispatch-ci` and holds what runs on this machine: the Rust build
+`tooling/ci/dispatch-ci` builds as `dispatch-ci` and holds what runs on this machine: the Rust build
 cache and compiler fingerprint (`cargo-build.py`), the PR preflight (`npm run pr:prepare`) and
 the ship command. `npm run pr:ship -- <number>` reads the PR from GitHub's API every 20
 seconds, adds it to the merge queue once its admission check passed and GitHub knows it merges
@@ -54,7 +54,7 @@ BrowserOS package. A run's own `tools` job builds what its inputs lack for the j
 later in that run. Launchers use a restored tool only on CI and only from the workspace's own
 `.ci-tools` directory; otherwise they build with Cargo.
 
-The repository Cargo config runs `tooling/rustc-remap.py` for dependencies and workspace
+The repository Cargo config runs `tooling/build/rustc-remap.py` for dependencies and workspace
 crates, giving compiler paths neutral `/dispatch-build/...` prefixes. The wrapper's SHA-256
 in `build.rustflags` invalidates Cargo's dependency objects when the policy changes; update
 the hash after editing the wrapper. `check:rules` verifies it. Binary-cache schema 4 and the
@@ -69,14 +69,15 @@ Run the tests with:
 
 ```sh
 cargo test --locked -p dispatch-ci -p dispatch-host
-python3 -m unittest discover -s tests/tooling -p '*_test.py'
+python3 -m unittest discover -s tooling/tests -p '*_test.py'
+python3 -m unittest discover -s ops/tests -p '*_test.py'
 ```
 
 `check:rules` runs the source-only Python partition and every dashboard helper test without
 compiling Rust. The API job runs those Python modules and the separate real compiler and
 installed-manager modules once each. Native collector files run only in their collector
 shards, so the API job does not launch them merely to skip their browser cases.
-`tests/tooling/test-plan.test.ts` checks complete, disjoint file coverage against the commands
+`tooling/tests/test-plan.test.ts` checks complete, disjoint file coverage against the commands
 the runners actually use. Real compiler/manager modules are listed under `pythonIntegration`
 in `test-plan.json`; the default unittest discovery command above still runs every module.
 
@@ -85,6 +86,22 @@ dispatching `native-timeouts.yml` with its optional exact `ref`. It selects only
 sets both native and real-timeout gates, and requires a passing JUnit case. Normal collector
 runs leave real wall-clock waits out. Live Rust operator probes require the explicit
 `operator-probes` feature; core CI typechecks them without executing them.
+
+`removability.yml` proves weekly, and on manual dispatch, that each feature can be removed:
+one job per feature in `app/generated/features.json`, named for it. Each feature is a Cargo
+feature of the app, on by default. A job leaves its feature out, with every feature that
+declares it: their directories are moved aside and the app's manifest drops their crates
+(unlocked, so `Cargo.lock` loses them too), so nothing, product or test, can still use
+them. Then it builds the app, writes the TypeScript for that build (so the generated
+`app/frontend/features.ts` omits them), runs the app's tests, typechecks the frontend and
+builds it with Vite. The typecheck (`removability.tsconfig.json`) leaves out the app's
+cross-owner tests and the tooling, which name every feature. The app's Rust tests say which
+features they need with `cfg(feature = …)` and `required-features`; those about the whole
+product ask for `default`. A build that leaves features out runs its tests with core's
+stand-in for what they would bring, as each owner's own tests do. A failure names the step
+and the files or tests that reached into what was left out. `npm run check:removability -- --feature <name>` runs one
+job's steps locally, and `--dry-run` prints them; it puts the checkout back as it was, the
+manifest and lock included.
 
 `npm run check:privacy` scans publishable working files, also through `check:rules` before
 pushes and the required `checks` job. It downloads the checksum-pinned Gitleaks release in

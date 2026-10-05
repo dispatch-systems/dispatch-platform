@@ -1,0 +1,15 @@
+CREATE TABLE "collection_schedules" ( id TEXT PRIMARY KEY, name TEXT NOT NULL, collection TEXT NOT NULL, cadence TEXT NOT NULL CHECK(cadence IN ('interval','daily')), interval_minutes INTEGER, local_time TEXT NOT NULL, anchor INTEGER NOT NULL, enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), next_run TEXT, revision INTEGER NOT NULL DEFAULT 1, last_error TEXT, created_at TEXT NOT NULL );
+CREATE TABLE people ( code TEXT PRIMARY KEY, created_at TEXT NOT NULL, merged_into TEXT REFERENCES people(code), merged_at TEXT, merged_by TEXT, split_from TEXT REFERENCES people(code), created_by TEXT );
+CREATE TABLE people_apart ( first TEXT NOT NULL REFERENCES people(code), second TEXT NOT NULL REFERENCES people(code), decided_at TEXT NOT NULL, actor_id TEXT, PRIMARY KEY(first, second), CHECK(first < second) );
+CREATE TABLE person_ids ( source TEXT NOT NULL CHECK(source IN ('paycom','amazon')), external_id TEXT NOT NULL, code TEXT NOT NULL REFERENCES people(code), linked_by TEXT NOT NULL CHECK(linked_by IN ('new','name','variant','saved','person')), linked_at TEXT NOT NULL, actor_id TEXT, PRIMARY KEY(source, external_id) );
+CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL);
+CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE storage_identity ( dsp_id TEXT PRIMARY KEY, provider TEXT NOT NULL, source TEXT NOT NULL );
+CREATE TABLE uniform_events ( revision INTEGER PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('initialized', 'created', 'updated', 'archived', 'adjusted')), uniform_id TEXT, uniform_name TEXT NOT NULL, variant_id TEXT, fit TEXT, size TEXT, delta INTEGER, quantity INTEGER, actor_id TEXT NOT NULL, actor_name TEXT NOT NULL, request_id TEXT UNIQUE, at TEXT NOT NULL );
+CREATE TABLE uniform_inventory ( id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL DEFAULT 0 );
+CREATE TABLE uniform_variants ( id TEXT PRIMARY KEY, uniform_id TEXT NOT NULL REFERENCES uniforms(id), fit TEXT NOT NULL CHECK (fit IN ('men', 'women', 'unisex')), size TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity BETWEEN 0 AND 1000000), revision INTEGER NOT NULL, position INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)) );
+CREATE TABLE uniforms ( id TEXT PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL, revision INTEGER NOT NULL, position INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)) );
+CREATE INDEX person_ids_code ON person_ids(code);
+CREATE UNIQUE INDEX uniform_variants_size ON uniform_variants (uniform_id, fit, size COLLATE NOCASE) WHERE archived = 0;
+CREATE INDEX uniform_variants_uniform ON uniform_variants (uniform_id, archived, position);
+CREATE UNIQUE INDEX uniforms_name ON uniforms (name COLLATE NOCASE) WHERE archived = 0;

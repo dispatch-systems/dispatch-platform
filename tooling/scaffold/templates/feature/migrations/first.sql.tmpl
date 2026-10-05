@@ -1,0 +1,10 @@
+{{#ownDatabase}}
+-- Identifies the file as this DSP's {{name}} storage, so another cannot pass for it.
+CREATE TABLE IF NOT EXISTS storage_identity (dsp_id TEXT NOT NULL, provider TEXT NOT NULL, source TEXT NOT NULL);
+{{/ownDatabase}}
+-- What {{label}} keeps for a DSP. Shipped migrations never change: add the next one instead.
+CREATE TABLE IF NOT EXISTS {{table}} (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);

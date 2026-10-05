@@ -1,0 +1,101 @@
+[
+  {
+    "name": "platform",
+    "user_version": 3,
+    "cache_size": -512,
+    "migrations": [
+      [1, "baseline", "7c4ca236b93777bc"],
+      [2, "role_columns_and_indexes", "code"],
+      [3, "audit_actor_name", "code"],
+      [4, "audit_data_and_shown", "code"],
+      [5, "outbox_context", "code"],
+      [6, "account_security", "18f68ad78ae2529c"],
+      [7, "dsp_features", "db94d28ce3bb0de7"],
+      [8, "security_hardening", "code"],
+      [9, "features_kept_on", "538da674f555fc7a"],
+      [10, "driver_codes", "4ad9dc4324530a4e"],
+      [11, "agent_keys", "49750173a66d1f9d"],
+      [12, "scorecard_feature", "0e5742ffeb7ac0f3"],
+      [13, "oauth", "code"],
+      [14, "oauth_guard", "code"],
+      [15, "agent_activity", "58be6602d76e2bec"],
+      [16, "agent_reads", "code"]
+    ]
+  },
+  {
+    "name": "jobs",
+    "user_version": 1,
+    "cache_size": -512,
+    "migrations": [
+      [1, "baseline", "3e2853f942d01e7d"],
+      [2, "scorecard_kind", "ebd9416e6f0716d4"],
+      [3, "routes_kind", "de8b5fe1fb72270b"],
+      [4, "dvic_kind", "311993998eedd13c"],
+      [5, "open_kinds", "13830dde50ae8243"]
+    ]
+  },
+  {
+    "name": "dsp",
+    "user_version": 1,
+    "cache_size": -512,
+    "migrations": [
+      [1, "baseline", "2053225a86ff281c"],
+      [2, "uniform_inventory", "5f838f287f095dc0"],
+      [3, "scorecard_collection", "68cc293773d6f259"],
+      [4, "routes_collection", "f7b5427163604372"],
+      [5, "storage_identity", "1389abbd3214cd37"],
+      [6, "dvic_collection", "8bb4e0b288be4890"],
+      [7, "driver_match", "dd7cd53bbdbd5805"],
+      [8, "open_collections", "a28a44cb4df03634"]
+    ]
+  },
+  {
+    "name": "paycom",
+    "user_version": 1,
+    "cache_size": -512,
+    "migrations": [
+      [1, "baseline", "a9424b780613b6ee"],
+      [2, "employee_timecard_syncs", "21d5410af8708ea4"],
+      [3, "employee_history_index", "84322bbfe8d97d08"]
+    ]
+  },
+  {
+    "name": "cortex",
+    "user_version": 1,
+    "cache_size": -512,
+    "migrations": [
+      [1, "baseline", "76af5a5dacd69f70"],
+      [2, "meal_stops", "fd745ffd2ec11469"]
+    ]
+  },
+  {
+    "name": "scorecard",
+    "user_version": 1,
+    "cache_size": -512,
+    "migrations": [
+      [1, "baseline", "3e392d1896de8f02"],
+      [2, "sources", "8be86f869c2b0ebf"],
+      [3, "verified_scope", "code"]
+    ]
+  },
+  {
+    "name": "routedata",
+    "user_version": 1,
+    "cache_size": -32768,
+    "migrations": [
+      [1, "baseline", "2c060a3b390b65b7"],
+      [2, "details", "code"],
+      [3, "task_keys", "0e69273e130b765a"]
+    ]
+  },
+  {
+    "name": "dvic",
+    "user_version": 1,
+    "cache_size": -512,
+    "migrations": [
+      [1, "baseline", "c58606f7b1e05e4a"],
+      [2, "hidden_drivers", "ddd0114315e99a2a"],
+      [3, "verified_scope", "code"]
+    ]
+  }
+]

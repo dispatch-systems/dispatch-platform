@@ -1,0 +1,94 @@
+{{#screens}}
+import { createElement, lazy } from 'react';
+{{/screens}}
+{{#page}}
+import { LayoutGrid } from 'lucide-react';
+{{/page}}
+{{#canImport}}
+import { can } from '{{toRoot}}core/shell/frontend/runtime/permissions.js';
+{{/canImport}}
+import type { FrontendFeature } from '{{toRoot}}core/shell/frontend/runtime/slots.js';
+{{#prefetch}}
+import { {{camel}}SummaryUrl } from '../api/client.js';
+{{/prefetch}}
+
+// {{label}}'s frontend manifest, loaded up front: it stays small and loads the rest lazily.
+
+{{#page}}
+declare module '{{toRoot}}core/shell/frontend/runtime/slots.js' {
+  interface DspPages {
+    {{pageKey}}: true;
+  }
+}
+
+const loadPage = () => import('./index.js');
+const {{pascal}}Page = lazy(() => loadPage().then((module) => ({ default: module.{{pascal}}Page })));
+{{/page}}
+{{#tab}}
+const loadTab = () => import('./{{pascal}}Tab.js');
+const {{pascal}}Tab = lazy(() => loadTab().then((module) => ({ default: module.{{pascal}}Tab })));
+{{/tab}}
+{{#settings}}
+const loadSettings = () => import('./settings/{{pascal}}Settings.js');
+const {{pascal}}Settings = lazy(() =>
+  loadSettings().then((module) => ({ default: module.{{pascal}}Settings })),
+);
+{{/settings}}
+
+export const feature: FrontendFeature = {
+  name: '{{name}}',
+{{#page}}
+  routes: [
+    {
+      id: '{{slug}}',
+      scope: 'dsp',
+      label: '{{label}}',
+      icon: LayoutGrid,
+      nav: true,
+{{#switch}}
+      feature: '{{name}}',
+{{/switch}}
+{{#permission}}
+      permission: ({ view }) => can(view, '{{name}}.view'),
+{{/permission}}
+      preload: loadPage,
+      render: ({ view }) => createElement({{pascal}}Page, { key: view.token, view }),
+{{#prefetch}}
+      prefetch: ({ view, warm }) => {
+        if (can(view, '{{name}}.view')) warm([{{camel}}SummaryUrl]);
+      },
+{{/prefetch}}
+    },
+  ],
+{{/page}}
+{{#tab}}
+  pageTabs: [
+    {
+      page: '{{hostPage}}',
+      id: '{{slug}}',
+      label: '{{label}}',
+      order: 100,
+      load: loadTab,
+      render: ({ view }) => createElement({{pascal}}Tab, { view }),
+    },
+  ],
+{{/tab}}
+{{#settings}}
+  settingsTabs: [
+    {
+      id: '{{slug}}',
+      label: '{{label}}',
+      order: 100,
+{{#permission}}
+      visible: (view) => can(view, '{{name}}.view'),
+{{/permission}}
+      load: loadSettings,
+      render: ({ view }) => view && createElement({{pascal}}Settings, { view }),
+    },
+  ],
+{{/settings}}
+{{#platformSlots}}
+  // Its switch's icon on the DSPs page.
+  platformSlots: () => import('./platform-slots.js'),
+{{/platformSlots}}
+};

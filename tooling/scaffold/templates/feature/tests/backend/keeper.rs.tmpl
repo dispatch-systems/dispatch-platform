@@ -1,0 +1,21 @@
+//! The keeper, with what {{siteLabel}}'s fixture returns for `{{collection}}`.
+use super::*;
+use dispatch_core::{manifest::Collector, testing};
+use serde_json::json;
+
+#[test]
+fn publishes_what_the_collectors_fixture_brings() {
+    testing::install(&[{{testCollectors}}], &[&crate::FEATURE]);
+    let (_root, store, dsp) = testing::bootstrapped();
+    let collected = {{siteIdent}}::COLLECTOR
+        .fixture("America/Chicago", &json!({{fixtureRequest}}))
+        .unwrap();
+    {{pascal}}Keeper.publish(&store, &dsp, "job-1", collected).unwrap();
+{{#tables}}
+    let kept = store.{{name}}_items(&dsp).unwrap();
+    assert_eq!(
+        kept.iter().map(|item| item.name.as_str()).collect::<Vec<_>>(),
+        ["job-1"]
+    );
+{{/tables}}
+}

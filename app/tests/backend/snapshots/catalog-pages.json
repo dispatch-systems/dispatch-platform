@@ -1,0 +1,69 @@
+{
+  "pages": [
+    {
+      "id": "timecard",
+      "label": "Timecard",
+      "permissions": ["timecard.view", "timecard.manage", "collections.run"],
+      "requires": ["timecards", "meal_breaks"],
+      "default": false
+    },
+    {
+      "id": "uniforms",
+      "label": "Uniform Inventory",
+      "permissions": ["uniforms.view", "uniforms.adjust", "uniforms.manage"],
+      "requires": [],
+      "default": false
+    },
+    {
+      "id": "routes",
+      "label": "Routes",
+      "permissions": ["routes.view", "routes.collect", "routes.manage"],
+      "requires": ["routes"],
+      "default": false
+    },
+    {
+      "id": "dvic",
+      "label": "DVIC",
+      "permissions": ["dvic.view", "dvic.collect", "dvic.manage"],
+      "requires": ["dvic"],
+      "default": false
+    },
+    {
+      "id": "scorecard",
+      "label": "Scorecard",
+      "permissions": ["scorecard.view", "scorecard.collect", "scorecard.manage"],
+      "requires": ["scorecard"],
+      "default": false
+    },
+    {
+      "id": "driver_match",
+      "label": "Driver Match",
+      "permissions": ["driver_match.manage"],
+      "requires": ["timecards", "routes"],
+      "default": false
+    }
+  ],
+  "tabs": [
+    {"id": "timecard.daily", "label": "Timecard", "page": "timecard"},
+    {"id": "timecard.meal_breaks", "label": "Meal Breaks", "page": "timecard"},
+    {"id": "timecard.employees", "label": "Employee Search", "page": "timecard"},
+    {"id": "dvic.day", "label": "Day", "page": "dvic"},
+    {"id": "dvic.week", "label": "Week", "page": "dvic"}
+  ],
+  "catalog": [
+    "timecard",
+    "uniforms",
+    "routes",
+    "dvic",
+    "scorecard",
+    "driver_match",
+    "timecard.daily",
+    "timecard.meal_breaks",
+    "timecard.employees",
+    "dvic.day",
+    "dvic.week",
+    "paycom",
+    "cortex"
+  ],
+  "schedules": "timecard"
+}

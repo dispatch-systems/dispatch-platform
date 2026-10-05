@@ -21,7 +21,7 @@ try {
   const page = await browser.newPage();
   await page.goto(server.resolvedUrls!.local[0]! + '__van-export');
   const bytes = await page.evaluate<number[]>(`(async () => {
-    const font = new FontFace('Inter', 'url(/dashboard/public/assets/inter.woff2)');
+    const font = new FontFace('Inter', 'url(/app/frontend/public/assets/inter.woff2)');
     document.fonts.add(await font.load());
     const { createStepVan } = await import('/tooling/assets/login-van.js');
     const { GLTFExporter } = await import('/node_modules/three/examples/jsm/exporters/GLTFExporter.js');
@@ -29,10 +29,10 @@ try {
     const result = await new GLTFExporter().parseAsync(model, { binary: true, maxTextureSize: 1024 });
     return Array.from(new Uint8Array(result));
   })()`);
-  const file = path.join(root, 'dashboard/src/features/auth/sign-in/assets/login-van.glb');
+  const file = path.join(root, 'core/accounts/frontend/sign-in/assets/login-van.glb');
   await fs.writeFile(file, Buffer.from(bytes));
   const poster = await page.evaluate<string>(`(async () => {
-    const { startVan } = await import('/dashboard/src/features/auth/sign-in/van/renderer.ts');
+    const { startVan } = await import('/core/accounts/frontend/sign-in/van/renderer.ts');
     const canvas = document.createElement('canvas');
     canvas.style.cssText = 'width:749px;height:717px';
     document.body.append(canvas);

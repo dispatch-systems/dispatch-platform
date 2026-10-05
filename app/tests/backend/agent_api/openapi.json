@@ -1,0 +1,1881 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Dispatch agent API",
+    "version": "1",
+    "description": "Read a DSP's drivers, routes, timecards, meal breaks, DVIC and scorecard, as far as the key may read them there. Every answer names the DSP, the days and the driver it understood, and which days each source has. An answer read from a feature the DSP has switched off, by a key that bypasses features, names it under `bypassed`. Times are the DSP's own."
+  },
+  "servers": [
+    {
+      "url": "https://dispatch.example.com"
+    }
+  ],
+  "security": [
+    {
+      "key": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "key": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "An agent key made on the Agents page, or an OAuth access token issued by Sign in with Dispatch."
+      }
+    }
+  },
+  "paths": {
+    "/api/v1/whoami": {
+      "get": {
+        "operationId": "whoami",
+        "summary": "Who this key belongs to",
+        "description": "Use when you need the DSPs this key reaches, each DSP's date today or what the key may do and read there. Questions about days need no call to this first: every answer says which days it read.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something unclear; `message` says what and `choices` what it could mean."
+          },
+          "401": {
+            "description": "No key, or a key that is revoked, expired or not for this Dispatch."
+          },
+          "403": {
+            "description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."
+          },
+          "404": {
+            "description": "Nothing by that name."
+          },
+          "429": {
+            "description": "Too many calls this minute; wait for `Retry-After` seconds."
+          }
+        }
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "operationId": "status",
+        "summary": "How fresh each source is",
+        "description": "Use when asked how current the data is: which sources the DSP has on (Paycom timecards, Cortex meal breaks, routes, DVIC, the scorecard), which this key reads there, and when each last collected.",
+        "parameters": [
+          {
+            "name": "dsp",
+            "in": "query",
+            "required": false,
+            "description": "The DSP, by name. Leave it out when the key reaches one DSP.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something unclear; `message` says what and `choices` what it could mean."
+          },
+          "401": {
+            "description": "No key, or a key that is revoked, expired or not for this Dispatch."
+          },
+          "403": {
+            "description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."
+          },
+          "404": {
+            "description": "Nothing by that name."
+          },
+          "429": {
+            "description": "Too many calls this minute; wait for `Retry-After` seconds."
+          }
+        }
+      }
+    },
+    "/api/v1/metrics": {
+      "get": {
+        "operationId": "metrics",
+        "summary": "Every metric and term",
+        "description": "Use when unsure what a team_table metric or an Amazon term means: each metric's source, unit and meaning, and a glossary.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something unclear; `message` says what and `choices` what it could mean."
+          },
+          "401": {
+            "description": "No key, or a key that is revoked, expired or not for this Dispatch."
+          },
+          "403": {
+            "description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."
+          },
+          "404": {
+            "description": "Nothing by that name."
+          },
+          "429": {
+            "description": "Too many calls this minute; wait for `Retry-After` seconds."
+          }
+        }
+      }
+    },
+    "/api/v1/drivers": {
+      "get": {
+        "operationId": "drivers",
+        "summary": "Find drivers",
+        "description": "Use to look a driver up or list the DSP's people: name, Driver Match code and matching status. Other tools already accept a driver's name, so look up only when asked to. Provider IDs are included only when explicitly requested.",
+        "parameters": [
+          {
+            "name": "dsp",
+            "in": "query",
+            "required": false,
+            "description": "The DSP, by name. Leave it out when the key reaches one DSP.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Part of a name, a code or an ID.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "include_ids",
+            "in": "query",
+            "required": false,
+            "description": "Include Paycom employee codes and Amazon transporter IDs only when the user explicitly needs provider identifiers.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The most rows to return, 1 to 500.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The next_cursor an earlier answer gave, for its next page.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something unclear; `message` says what and `choices` what it could mean."
+          },
+          "401": {
+            "description": "No key, or a key that is revoked, expired or not for this Dispatch."
+          },
+          "403": {
+            "description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."
+          },
+          "404": {
+            "description": "Nothing by that name."
+          },
+          "429": {
+            "description": "Too many calls this minute; wait for `Retry-After` seconds."
+          }
+        }
+      }
+    },
+    "/api/v1/packages": {
+      "get": {
+        "operationId": "packages",
+        "summary": "Count packages by what happened",
+        "description": "Use for questions about packages: how many a driver delivered, who returned packages and why, how many were business closed. Answers a count, optionally grouped, from Amazon's record of every drop-off. Add list only when the user wants the packages themselves.",
+        "parameters": [
+          {
+            "name": "dsp",
+            "in": "query",
+            "required": false,
+            "description": "The DSP, by name. Leave it out when the key reaches one DSP.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "description": "The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "description": "One day: today, yesterday, last night or 2026-09-28.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "The first day, as 2026-09-01, with `to`; instead of `period`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "The last day, as 2026-09-30, with `from`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "driver",
+            "in": "query",
+            "required": false,
+            "description": "A driver as the user named them: a name or part of one, a Driver Match code, a Paycom employee code or an Amazon transporter ID.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "outcome",
+            "in": "query",
+            "required": false,
+            "description": "delivered, returned (brought back to the station), attempted, not_picked_up (missing at the station), cancelled or open (still out when collected).",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "delivered",
+                "returned",
+                "attempted",
+                "not_picked_up",
+                "cancelled",
+                "open"
+              ]
+            }
+          },
+          {
+            "name": "reason",
+            "in": "query",
+            "required": false,
+            "description": "Amazon's reason, as business_closed, object_missing, damaged, inaccessible_delivery_location, address_not_found or locker_issue; for delivered packages, where they were left, as doorstep.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "route",
+            "in": "query",
+            "required": false,
+            "description": "A route code, as CX101.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "description": "Count per driver, day, outcome, reason, route or address; two may be joined, as driver,reason.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "list",
+            "in": "query",
+            "required": false,
+            "description": "Also list the packages, a page at a time.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The most rows to return, 1 to 500.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The next_cursor an earlier answer gave, for its next page.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "groups_cursor",
+            "in": "query",
+            "required": false,
+            "description": "The groups table's next_cursor; cursor separately pages the package list.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something unclear; `message` says what and `choices` what it could mean."
+          },
+          "401": {
+            "description": "No key, or a key that is revoked, expired or not for this Dispatch."
+          },
+          "403": {
+            "description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."
+          },
+          "404": {
+            "description": "Nothing by that name."
+          },
+          "429": {
+            "description": "Too many calls this minute; wait for `Retry-After` seconds."
+          }
+        }
+      }
+    },
+    "/api/v1/drivers/{driver}": {
+      "get": {
+        "operationId": "driver",
+        "summary": "One driver's days",
+        "description": "Use for how one driver did over some days, and their averages: one line per day with their route, stops, packages delivered and undeliverable, hours, clock in and out, meal break and inspections, plus totals.",
+        "parameters": [
+          {
+            "name": "driver",
+            "in": "path",
+            "required": true,
+            "description": "A driver as the user named them: a name or part of one, a Driver Match code, a Paycom employee code or an Amazon transporter ID.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "dsp",
+            "in": "query",
+            "required": false,
+            "description": "The DSP, by name. Leave it out when the key reaches one DSP.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "description": "The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "description": "One day: today, yesterday, last night or 2026-09-28.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "The first day, as 2026-09-01, with `to`; instead of `period`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "The last day, as 2026-09-30, with `from`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "detail",
+            "in": "query",
+            "required": false,
+            "description": "summary (the default) or full, only when the user wants every row.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "summary",
+                "full"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The most rows to return, 1 to 500.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The next_cursor an earlier answer gave, for its next page.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something unclear; `message` says what and `choices` what it could mean."
+          },
+          "401": {
+            "description": "No key, or a key that is revoked, expired or not for this Dispatch."
+          },
+          "403": {
+            "description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."
+          },
+          "404": {
+            "description": "Nothing by that name."
+          },
+          "429": {
+            "description": "Too many calls this minute; wait for `Retry-After` seconds."
+          }
+        }
+      }
+    },
+    "/api/v1/team": {
+      "get": {
+        "operationId": "team",
+        "summary": "Compare drivers",
+        "description": "Use to rank or compare drivers on chosen metrics: one row per driver, or per driver per day, with the team's total for each metric.",
+        "parameters": [
+          {
+            "name": "dsp",
+            "in": "query",
+            "required": false,
+            "description": "The DSP, by name. Leave it out when the key reaches one DSP.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "description": "The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "description": "One day: today, yesterday, last night or 2026-09-28.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "The first day, as 2026-09-01, with `to`; instead of `period`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "The last day, as 2026-09-30, with `from`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "metrics",
+            "in": "query",
+            "required": false,
+            "description": "Comma-separated metric names; stops, packages and hours when left out.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "per",
+            "in": "query",
+            "required": false,
+            "description": "driver (totals, the default) or day.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "driver",
+                "day"
+              ]
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "One of the metrics asked for, or name.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "description": "highest first (the default) or lowest first, as for who did the fewest.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "highest",
+                "lowest"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The most rows to return, 1 to 500.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The next_cursor an earlier answer gave, for its next page.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something unclear; `message` says what and `choices` what it could mean."
+          },
+          "401": {
+            "description": "No key, or a key that is revoked, expired or not for this Dispatch."
+          },
+          "403": {
+            "description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."
+          },
+          "404": {
+            "description": "Nothing by that name."
+          },
+          "429": {
+            "description": "Too many calls this minute; wait for `Retry-After` seconds."
+          }
+        }
+      }
+    },
+    "/api/v1/routes": {
+      "get": {
+        "operationId": "routes",
+        "summary": "A day's routes",
+        "description": "Use for one day's routes: each route's driver, packages delivered and undeliverable, stops, departure and end, and whether the day is final.",
+        "parameters": [
+          {
+            "name": "dsp",
+            "in": "query",
+            "required": false,
+            "description": "The DSP, by name. Leave it out when the key reaches one DSP.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "description": "The day: yesterday, last night, today or 2026-09-28. Leave out for yesterday.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The most rows to return, 1 to 500.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The next_cursor an earlier answer gave, for its next page.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something unclear; `message` says what and `choices` what it could mean."
+          },
+          "401": {
+            "description": "No key, or a key that is revoked, expired or not for this Dispatch."
+          },
+          "403": {
+            "description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."
+          },
+          "404": {
+            "description": "Nothing by that name."
+          },
+          "429": {
+            "description": "Too many calls this minute; wait for `Retry-After` seconds."
+          }
+        }
+      }
+    },
+    "/api/v1/routes/{route}": {
+      "get": {
+        "operationId": "route",
+        "summary": "One route's packages",
+        "description": "Use for what happened on one route: outcomes, reasons and the packages that were not delivered. detail full lists every package, only when the user asks for all of them. Addresses appear only for keys allowed them.",
+        "parameters": [
+          {
+            "name": "route",
+            "in": "path",
+            "required": true,
+            "description": "The route code, as CX101, or the itinerary ID route_day gives.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "dsp",
+            "in": "query",
+            "required": false,
+            "description": "The DSP, by name. Leave it out when the key reaches one DSP.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "description": "The day: yesterday, last night, today or 2026-09-28. Leave out for yesterday.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "detail",
+            "in": "query",
+            "required": false,
+            "description": "summary (the default) or full, only when the user wants every row.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "summary",
+                "full"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The most rows to return, 1 to 500.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The next_cursor an earlier answer gave, for its next page.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something unclear; `message` says what and `choices` what it could mean."
+          },
+          "401": {
+            "description": "No key, or a key that is revoked, expired or not for this Dispatch."
+          },
+          "403": {
+            "description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."
+          },
+          "404": {
+            "description": "Nothing by that name."
+          },
+          "429": {
+            "description": "Too many calls this minute; wait for `Retry-After` seconds."
+          }
+        }
+      }
+    },
+    "/api/v1/packages/{tracking}": {
+      "get": {
+        "operationId": "package",
+        "summary": "Find a package",
+        "description": "Use for one tracking ID: who carried it, on which route and day, and what happened to it.",
+        "parameters": [
+          {
+            "name": "tracking",
+            "in": "path",
+            "required": true,
+            "description": "The tracking ID, as TBA123456789000.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "dsp",
+            "in": "query",
+            "required": false,
+            "description": "The DSP, by name. Leave it out when the key reaches one DSP.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something unclear; `message` says what and `choices` what it could mean."
+          },
+          "401": {
+            "description": "No key, or a key that is revoked, expired or not for this Dispatch."
+          },
+          "403": {
+            "description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."
+          },
+          "404": {
+            "description": "Nothing by that name."
+          },
+          "429": {
+            "description": "Too many calls this minute; wait for `Retry-After` seconds."
+          }
+        }
+      }
+    },
+    "/api/v1/timecards": {
+      "get": {
+        "operationId": "timecards",
+        "summary": "Timecards",
+        "description": "Use for Paycom hours and punches: everyone's for one day, or one driver's over a period with driver. Hours, clock in and out, lunch minutes.",
+        "parameters": [
+          {
+            "name": "dsp",
+            "in": "query",
+            "required": false,
+            "description": "The DSP, by name. Leave it out when the key reaches one DSP.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "description": "One day: today, yesterday, last night or 2026-09-28.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "driver",
+            "in": "query",
+            "required": false,
+            "description": "A driver as the user named them: a name or part of one, a Driver Match code, a Paycom employee code or an Amazon transporter ID.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "description": "The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "The first day, as 2026-09-01, with `to`; instead of `period`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "The last day, as 2026-09-30, with `from`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The most rows to return, 1 to 500.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The next_cursor an earlier answer gave, for its next page.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something unclear; `message` says what and `choices` what it could mean."
+          },
+          "401": {
+            "description": "No key, or a key that is revoked, expired or not for this Dispatch."
+          },
+          "403": {
+            "description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."
+          },
+          "404": {
+            "description": "Nothing by that name."
+          },
+          "429": {
+            "description": "Too many calls this minute; wait for `Retry-After` seconds."
+          }
+        }
+      }
+    },
+    "/api/v1/meal-breaks": {
+      "get": {
+        "operationId": "meal_breaks",
+        "summary": "Meal breaks",
+        "description": "Use for one day's meal breaks: Cortex's meal break beside Paycom's lunch punches and the comparison's verdict, for each driver Cortex had a route for.",
+        "parameters": [
+          {
+            "name": "dsp",
+            "in": "query",
+            "required": false,
+            "description": "The DSP, by name. Leave it out when the key reaches one DSP.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "description": "The day: yesterday, last night, today or 2026-09-28. Leave out for yesterday.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "issues",
+            "in": "query",
+            "required": false,
+            "description": "Only drivers whose meal break needs a look.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The most rows to return, 1 to 500.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The next_cursor an earlier answer gave, for its next page.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something unclear; `message` says what and `choices` what it could mean."
+          },
+          "401": {
+            "description": "No key, or a key that is revoked, expired or not for this Dispatch."
+          },
+          "403": {
+            "description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."
+          },
+          "404": {
+            "description": "Nothing by that name."
+          },
+          "429": {
+            "description": "Too many calls this minute; wait for `Retry-After` seconds."
+          }
+        }
+      }
+    },
+    "/api/v1/dvic": {
+      "get": {
+        "operationId": "dvic",
+        "summary": "Vehicle inspections",
+        "description": "Use for DVIC questions, as which drivers were short: each driver's inspections, how many were shorter than the minimum, and the shortest. detail full lists the inspections.",
+        "parameters": [
+          {
+            "name": "dsp",
+            "in": "query",
+            "required": false,
+            "description": "The DSP, by name. Leave it out when the key reaches one DSP.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "description": "The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "description": "One day: today, yesterday, last night or 2026-09-28.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "The first day, as 2026-09-01, with `to`; instead of `period`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "The last day, as 2026-09-30, with `from`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "driver",
+            "in": "query",
+            "required": false,
+            "description": "A driver as the user named them: a name or part of one, a Driver Match code, a Paycom employee code or an Amazon transporter ID.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "short",
+            "in": "query",
+            "required": false,
+            "description": "Only drivers, or inspections, short of the minimum.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "detail",
+            "in": "query",
+            "required": false,
+            "description": "summary (the default) or full, only when the user wants every row.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "summary",
+                "full"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The most rows to return, 1 to 500.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The next_cursor an earlier answer gave, for its next page.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something unclear; `message` says what and `choices` what it could mean."
+          },
+          "401": {
+            "description": "No key, or a key that is revoked, expired or not for this Dispatch."
+          },
+          "403": {
+            "description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."
+          },
+          "404": {
+            "description": "Nothing by that name."
+          },
+          "429": {
+            "description": "Too many calls this minute; wait for `Retry-After` seconds."
+          }
+        }
+      }
+    },
+    "/api/v1/feedback": {
+      "get": {
+        "operationId": "feedback",
+        "summary": "Customer feedback (CDF)",
+        "description": "Use for customer delivery feedback (CDF) from Amazon's weekly scorecard: how much negative feedback, of which kinds, for which drivers, and repeated feedback at the same address (group_by address, min_count 2; needs a key allowed addresses). CDF means negative feedback; ask for positive only when the user asks for praise.",
+        "parameters": [
+          {
+            "name": "dsp",
+            "in": "query",
+            "required": false,
+            "description": "The DSP, by name. Leave it out when the key reaches one DSP.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "description": "The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "description": "One day: today, yesterday, last night or 2026-09-28.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "The first day, as 2026-09-01, with `to`; instead of `period`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "The last day, as 2026-09-30, with `from`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "driver",
+            "in": "query",
+            "required": false,
+            "description": "A driver as the user named them: a name or part of one, a Driver Match code, a Paycom employee code or an Amazon transporter ID.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "feedback",
+            "in": "query",
+            "required": false,
+            "description": "negative (the default), positive or all.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "negative",
+                "positive",
+                "all"
+              ]
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "description": "One kind of feedback, as wrong_address or never_received.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "wrong_address",
+                "never_received",
+                "mishandled",
+                "unprofessional",
+                "not_preferred_location",
+                "wrong_item",
+                "above_and_beyond",
+                "delivered_with_care",
+                "friendly",
+                "followed_instructions",
+                "respectful_of_property",
+                "thank_my_driver"
+              ]
+            }
+          },
+          {
+            "name": "impacting",
+            "in": "query",
+            "required": false,
+            "description": "Only feedback that counts against the scorecard.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "description": "Count per driver, address, type, week or day; two may be joined.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "min_count",
+            "in": "query",
+            "required": false,
+            "description": "Only groups with at least this many, as 2 for repeated feedback.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "list",
+            "in": "query",
+            "required": false,
+            "description": "Also list the feedback, a page at a time.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The most rows to return, 1 to 500.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The next_cursor an earlier answer gave, for its next page.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something unclear; `message` says what and `choices` what it could mean."
+          },
+          "401": {
+            "description": "No key, or a key that is revoked, expired or not for this Dispatch."
+          },
+          "403": {
+            "description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."
+          },
+          "404": {
+            "description": "Nothing by that name."
+          },
+          "429": {
+            "description": "Too many calls this minute; wait for `Retry-After` seconds."
+          }
+        }
+      }
+    },
+    "/api/v1/safety": {
+      "get": {
+        "operationId": "safety",
+        "summary": "Netradyne safety events",
+        "description": "Use for Netradyne safety infractions from Amazon's scorecard: speeding, distraction, sign violations, following distance, seatbelt. Gives counts by type; for one driver also each event with its severity and dispute outcome.",
+        "parameters": [
+          {
+            "name": "dsp",
+            "in": "query",
+            "required": false,
+            "description": "The DSP, by name. Leave it out when the key reaches one DSP.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "description": "The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "description": "One day: today, yesterday, last night or 2026-09-28.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "The first day, as 2026-09-01, with `to`; instead of `period`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "The last day, as 2026-09-30, with `from`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "driver",
+            "in": "query",
+            "required": false,
+            "description": "A driver as the user named them: a name or part of one, a Driver Match code, a Paycom employee code or an Amazon transporter ID.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "description": "One kind, as speeding, distraction or seatbelt.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "description": "Count per driver, type, day or week; two may be joined.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "list",
+            "in": "query",
+            "required": false,
+            "description": "List the events, a page at a time.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The most rows to return, 1 to 500.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The next_cursor an earlier answer gave, for its next page.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something unclear; `message` says what and `choices` what it could mean."
+          },
+          "401": {
+            "description": "No key, or a key that is revoked, expired or not for this Dispatch."
+          },
+          "403": {
+            "description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."
+          },
+          "404": {
+            "description": "Nothing by that name."
+          },
+          "429": {
+            "description": "Too many calls this minute; wait for `Retry-After` seconds."
+          }
+        }
+      }
+    },
+    "/api/v1/returns": {
+      "get": {
+        "operationId": "returns",
+        "summary": "Contact compliance and returns to station (RTS)",
+        "description": "Use for contact compliance: which drivers didn't do it, that is returned packages without the required call or text (contact missed, group_by driver). Also Amazon's returns to station from the weekly scorecard, their reasons, and which returns hurt the completion rate (DCR). Amazon posts a week's scorecard after it ends: for packages returned last night or this week, use packages.",
+        "parameters": [
+          {
+            "name": "dsp",
+            "in": "query",
+            "required": false,
+            "description": "The DSP, by name. Leave it out when the key reaches one DSP.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "description": "The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "description": "One day: today, yesterday, last night or 2026-09-28.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "The first day, as 2026-09-01, with `to`; instead of `period`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "The last day, as 2026-09-30, with `from`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "driver",
+            "in": "query",
+            "required": false,
+            "description": "A driver as the user named them: a name or part of one, a Driver Match code, a Paycom employee code or an Amazon transporter ID.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "contact",
+            "in": "query",
+            "required": false,
+            "description": "missed: the driver did not call or text as required; compliant: the return was excused because they did.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "missed",
+                "compliant"
+              ]
+            }
+          },
+          {
+            "name": "reason",
+            "in": "query",
+            "required": false,
+            "description": "Amazon's RTS reason, as business_closed or object_missing.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "impacting",
+            "in": "query",
+            "required": false,
+            "description": "Only returns that hurt the completion rate (DCR).",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "description": "Count per driver, reason, coaching, week or day; two may be joined.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "list",
+            "in": "query",
+            "required": false,
+            "description": "Also list the returns, a page at a time.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The most rows to return, 1 to 500.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The next_cursor an earlier answer gave, for its next page.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something unclear; `message` says what and `choices` what it could mean."
+          },
+          "401": {
+            "description": "No key, or a key that is revoked, expired or not for this Dispatch."
+          },
+          "403": {
+            "description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."
+          },
+          "404": {
+            "description": "Nothing by that name."
+          },
+          "429": {
+            "description": "Too many calls this minute; wait for `Retry-After` seconds."
+          }
+        }
+      }
+    },
+    "/api/v1/scorecard": {
+      "get": {
+        "operationId": "scorecard",
+        "summary": "A week's scorecard",
+        "description": "Use for Amazon's weekly scorecard: the DSP's tier and focus areas, and each driver's overall tier, score and tiers for CDF, DSB, POD, RTS and safety, lowest scores first. Which drivers missed contact compliance is in returns; feedback, safety events and returns themselves have their own tools.",
+        "parameters": [
+          {
+            "name": "dsp",
+            "in": "query",
+            "required": false,
+            "description": "The DSP, by name. Leave it out when the key reaches one DSP.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "week",
+            "in": "query",
+            "required": false,
+            "description": "An Amazon week as 2026-W39, last week, or latest (the default).",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "driver",
+            "in": "query",
+            "required": false,
+            "description": "A driver as the user named them: a name or part of one, a Driver Match code, a Paycom employee code or an Amazon transporter ID.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "below",
+            "in": "query",
+            "required": false,
+            "description": "Only drivers whose overall tier is below this one.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "platinum",
+                "gold",
+                "silver",
+                "bronze"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The most rows to return, 1 to 500.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The next_cursor an earlier answer gave, for its next page.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something unclear; `message` says what and `choices` what it could mean."
+          },
+          "401": {
+            "description": "No key, or a key that is revoked, expired or not for this Dispatch."
+          },
+          "403": {
+            "description": "Not for this key here: `not_allowed` when the key may not read it at the DSP, `source_off` when the DSP has the feature switched off."
+          },
+          "404": {
+            "description": "Nothing by that name."
+          },
+          "429": {
+            "description": "Too many calls this minute; wait for `Retry-After` seconds."
+          }
+        }
+      }
+    }
+  }
+}

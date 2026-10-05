@@ -1,0 +1,73 @@
+//! {{label}}: what it does for a DSP, in a sentence. Its README says more.
+{{#api}}
+mod api;
+{{/api}}
+{{#backend}}
+mod backend;
+{{/backend}}
+{{#mcp}}
+mod mcp;
+{{/mcp}}
+
+{{#api}}
+/// What its API answers with, which the app writes to TypeScript.
+pub use api::types::{{pascal}}Summary;
+{{/api}}
+{{#tables}}
+pub use backend::storage::{{storageExports}};
+{{/tables}}
+
+{{#dbImports}}
+use dispatch_core::db::{{dbImports}};
+{{/dbImports}}
+use dispatch_core::manifest::{{manifestImports}};
+
+{{#bare}}
+pub const FEATURE: Feature = feature("{{name}}");
+{{/bare}}
+{{^bare}}
+pub const FEATURE: Feature = Feature {
+{{#switch}}
+    switch: Some(Switch {
+        id: "{{name}}",
+        label: "{{label}}",
+        requires: &[{{requires}}],
+    }),
+{{/switch}}
+{{#permission}}
+    permissions: &[
+        perm("{{name}}.view", "View {{label}}", {{viewOrder}}),
+{{#keeps}}
+        perm("{{name}}.collect", "Collect {{label}}", {{collectOrder}}).implies(&["{{name}}.view"]),
+{{/keeps}}
+    ],
+{{/permission}}
+{{#api}}
+    routes: api::routes::routes,
+{{/api}}
+{{#keeps}}
+    keeps: &[&backend::keeper::{{pascal}}Keeper],
+{{/keeps}}
+{{#tables}}
+    tables: &[("{{database}}", &["{{table}}"])],
+    migrations: &[Migrations {
+        kind: {{kind}},
+        list: &[Migration {
+            id: {{migrationId}},
+            name: "{{migrationName}}",
+            apply: Sql(include_str!("migrations/{{database}}/{{migrationFile}}")),
+        }],
+    }],
+{{/tables}}
+{{#mcp}}
+    mcp: mcp::MCP,
+{{/mcp}}
+    ..feature("{{name}}")
+};
+{{/bare}}
+{{#backend}}
+
+#[cfg(test)]
+#[path = "tests/backend/feature.rs"]
+mod tests;
+{{/backend}}

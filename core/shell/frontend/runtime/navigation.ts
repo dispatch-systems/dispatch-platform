@@ -1,0 +1,74 @@
+import {
+  landingPage,
+  routeOf,
+  settingsPage,
+  settingsTabs,
+  type DspRouteId,
+  type PlatformRouteId,
+} from './slots.js';
+
+const destinations = new Map<string, DspRouteId>();
+export function rememberDestination(dspId: string, page: DspRouteId) {
+  if (routeOf('dsp', page)?.remembered === false) return;
+  destinations.delete(dspId);
+  destinations.set(dspId, page);
+  while (destinations.size > 100) destinations.delete(destinations.keys().next().value!);
+}
+export const clearDestinations = () => destinations.clear();
+/** Drops the remembered page if it is `page`. */
+export function forgetDestination(dspId: string, page: string) {
+  if (destinations.get(dspId) === page) destinations.delete(dspId);
+}
+
+/**
+ * A DSP's page, by default the last one open there, or else its landing page. Without a
+ * landing page the address names no page, and the app opens the first one the person may.
+ */
+export const dspHash = (
+  dspId: string,
+  page: DspRouteId | undefined = destinations.get(dspId) ?? landingPage(),
+  query?: Record<string, string>,
+) => `#dsp/${dspId}/${page ?? ''}${query ? `?${new URLSearchParams(query)}` : ''}`;
+/**
+ * A DSP's Settings, on `tab` if one is named: the page that draws the settings tabs. None
+ * without that page, or without the tab, so a link to it is left out.
+ */
+export function settingsHash(dspId: string, tab?: string) {
+  const page = settingsPage();
+  if (!page || (tab !== undefined && !settingsTabs().some((each) => each.id === tab)))
+    return undefined;
+  return dspHash(dspId, page, tab === undefined ? undefined : { tab });
+}
+export const platformHash = (page: PlatformRouteId = 'dsps', query?: Record<string, string>) =>
+  `#${page}${query ? `?${new URLSearchParams(query)}` : ''}`;
+export const signInHash = '#signin';
+
+export function navigate(hash: string) {
+  window.location.hash = hash;
+}
+/** Where the address points: `#dsp/<id>/<page>?…` inside a DSP, `#<page>?…` outside one. */
+export function parseHash(hash: string) {
+  const route = hash.replace(/^#/, '') || 'dsps';
+  const dspId = route.startsWith('dsp/') ? route.split('/')[1] : undefined;
+  return {
+    route,
+    dspId,
+    page: (dspId ? route.split('/')[2] || (landingPage() ?? '') : route).split('?')[0]!,
+  };
+}
+export const hashQuery = () => new URLSearchParams(window.location.hash.split('?')[1]);
+/** Read a one-time link secret once, then remove it from browser history immediately. */
+export function consumeHashToken(kind: 'invite' | 'reset') {
+  if (!window.location.hash.startsWith(`#${kind}?`)) return undefined;
+  const token = hashQuery().get('token') ?? '';
+  history.replaceState(history.state, '', `${location.pathname}${location.search}#${kind}`);
+  return token;
+}
+/** Records a page's own state in the address without navigating. */
+export function replaceHashQuery(query: Record<string, string>) {
+  history.replaceState(
+    {},
+    '',
+    `${location.pathname}${location.search}${location.hash.split('?')[0]}?${new URLSearchParams(query)}`,
+  );
+}

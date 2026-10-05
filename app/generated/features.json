@@ -1,0 +1,800 @@
+{
+  "driver_match": {
+    "collectors": [],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {
+      "dsp": [
+        {
+          "id": 7,
+          "name": "driver_match"
+        }
+      ],
+      "platform": [
+        {
+          "id": 10,
+          "name": "driver_codes"
+        }
+      ]
+    },
+    "permissions": [
+      "driver_match.manage"
+    ],
+    "slots": {
+      "after_collection": true,
+      "audit": {
+        "areas": [],
+        "names": true,
+        "subjects": [
+          "driver"
+        ]
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [
+        "drivers"
+      ],
+      "live": [],
+      "maintenance": [
+        3600
+      ],
+      "mcp": {
+        "daily": [],
+        "examples": 0,
+        "endpoints": [],
+        "identity": true,
+        "metrics": [],
+        "places": false,
+        "reads": [],
+        "sources": [],
+        "synthetic": 1,
+        "terms": [
+          "Driver Match code"
+        ]
+      },
+      "people": [],
+      "routes": [
+        "GET /api/dsp/driver-match",
+        "GET /api/dsp/driver-match/counts",
+        "GET /api/dsp/driver-match/drivers/{code}",
+        "POST /api/dsp/driver-match/merge",
+        "POST /api/dsp/driver-match/split",
+        "POST /api/dsp/driver-match/apart"
+      ],
+      "schedules": false
+    },
+    "switch": "driver_match",
+    "tables": {
+      "dsp": [
+        "people",
+        "people_apart",
+        "person_ids"
+      ],
+      "platform": [
+        "driver_codes"
+      ]
+    },
+    "tabs": []
+  },
+  "dvic": {
+    "collectors": [
+      "cortex"
+    ],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [
+      "cortex.dvic.collect"
+    ],
+    "migrations": {
+      "dvic": [
+        {
+          "id": 1,
+          "name": "baseline"
+        },
+        {
+          "id": 2,
+          "name": "hidden_drivers"
+        },
+        {
+          "id": 3,
+          "name": "verified_scope"
+        }
+      ]
+    },
+    "permissions": [
+      "dvic.view",
+      "dvic.collect",
+      "dvic.manage"
+    ],
+    "slots": {
+      "after_collection": false,
+      "audit": {
+        "areas": [
+          [
+            "dvic.",
+            "collections"
+          ]
+        ],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": "dvic-",
+      "demo": false,
+      "domains": [
+        "dvic"
+      ],
+      "live": [],
+      "maintenance": [],
+      "mcp": {
+        "daily": [
+          "dvic"
+        ],
+        "examples": 1,
+        "endpoints": [
+          "dvic_inspections"
+        ],
+        "identity": false,
+        "metrics": [
+          "inspections",
+          "short_inspections"
+        ],
+        "places": false,
+        "reads": [
+          "dvic"
+        ],
+        "sources": [
+          "dvic"
+        ],
+        "synthetic": 1,
+        "terms": [
+          "DVIC"
+        ]
+      },
+      "people": [
+        "dvic"
+      ],
+      "routes": [
+        "GET /api/dsp/dvic/status",
+        "GET /api/dsp/dvic/inspections",
+        "POST /api/dsp/dvic/collect",
+        "POST /api/dsp/dvic/jobs/{id}/cancel",
+        "GET /api/dsp/dvic/schedules",
+        "POST /api/dsp/dvic/schedules",
+        "POST /api/dsp/dvic/schedules/preview",
+        "POST /api/dsp/dvic/schedules/{key}",
+        "POST /api/dsp/dvic/schedules/{key}/enabled",
+        "POST /api/dsp/dvic/schedules/{key}/remove"
+      ],
+      "schedules": false
+    },
+    "switch": "dvic",
+    "tables": {
+      "dvic": [
+        "dvic_hidden_drivers",
+        "dvic_inspections",
+        "dvic_reports",
+        "dvic_revisions",
+        "dvic_runs",
+        "dvic_weeks"
+      ]
+    },
+    "tabs": [
+      "dvic.day",
+      "dvic.week"
+    ]
+  },
+  "home": {
+    "collectors": [],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {},
+    "permissions": [],
+    "slots": {
+      "after_collection": false,
+      "audit": {
+        "areas": [],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [],
+      "live": [],
+      "maintenance": [],
+      "mcp": {
+        "daily": [],
+        "examples": 0,
+        "endpoints": [],
+        "identity": false,
+        "metrics": [],
+        "places": false,
+        "reads": [],
+        "sources": [],
+        "synthetic": 0,
+        "terms": []
+      },
+      "people": [],
+      "routes": [],
+      "schedules": false
+    },
+    "switch": null,
+    "tables": {},
+    "tabs": []
+  },
+  "routes": {
+    "collectors": [
+      "cortex"
+    ],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [
+      "cortex.routes.collect"
+    ],
+    "migrations": {
+      "routedata": [
+        {
+          "id": 1,
+          "name": "baseline"
+        },
+        {
+          "id": 2,
+          "name": "details"
+        },
+        {
+          "id": 3,
+          "name": "task_keys"
+        }
+      ]
+    },
+    "permissions": [
+      "routes.view",
+      "routes.collect",
+      "routes.manage"
+    ],
+    "slots": {
+      "after_collection": false,
+      "audit": {
+        "areas": [],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [
+        "routes"
+      ],
+      "live": [],
+      "maintenance": [
+        3600
+      ],
+      "mcp": {
+        "daily": [
+          "routes"
+        ],
+        "examples": 4,
+        "endpoints": [
+          "packages",
+          "route_day",
+          "route_stops",
+          "find_package"
+        ],
+        "identity": false,
+        "metrics": [
+          "routes",
+          "stops_completed",
+          "stops_total",
+          "packages_delivered",
+          "packages_total",
+          "packages_remaining",
+          "packages_undeliverable",
+          "break_minutes",
+          "overtime_minutes"
+        ],
+        "places": true,
+        "reads": [
+          "routes",
+          "locations"
+        ],
+        "sources": [
+          "routes"
+        ],
+        "synthetic": 1,
+        "terms": [
+          "departed",
+          "ended",
+          "snapshot"
+        ]
+      },
+      "people": [
+        "routes"
+      ],
+      "routes": [
+        "GET /api/dsp/routes/days",
+        "GET /api/dsp/routes/days/{day}",
+        "GET /api/dsp/routes/days/{day}/itineraries/{id}",
+        "GET /api/dsp/routes/packages/{tracking}",
+        "POST /api/dsp/routes/collect",
+        "GET /api/dsp/routes/jobs",
+        "POST /api/dsp/routes/jobs/{id}/cancel",
+        "GET /api/dsp/routes/retention",
+        "POST /api/dsp/routes/retention",
+        "POST /api/platform/dsps/{id}/routes/reprocess",
+        "GET /api/dsp/routes/schedules",
+        "POST /api/dsp/routes/schedules",
+        "POST /api/dsp/routes/schedules/preview",
+        "POST /api/dsp/routes/schedules/{key}",
+        "POST /api/dsp/routes/schedules/{key}/enabled",
+        "POST /api/dsp/routes/schedules/{key}/remove"
+      ],
+      "schedules": false
+    },
+    "switch": "routes",
+    "tables": {
+      "routedata": [
+        "addresses",
+        "breaks",
+        "driver_days",
+        "drivers",
+        "itineraries",
+        "route_publications",
+        "route_raw",
+        "route_retention",
+        "routedata_schema",
+        "routes",
+        "stops",
+        "tasks",
+        "unknown_stops"
+      ]
+    },
+    "tabs": []
+  },
+  "scorecard": {
+    "collectors": [
+      "cortex"
+    ],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [
+      "cortex.scorecard.collect"
+    ],
+    "migrations": {
+      "scorecard": [
+        {
+          "id": 1,
+          "name": "baseline"
+        },
+        {
+          "id": 2,
+          "name": "sources"
+        },
+        {
+          "id": 3,
+          "name": "verified_scope"
+        }
+      ]
+    },
+    "permissions": [
+      "scorecard.view",
+      "scorecard.collect",
+      "scorecard.manage"
+    ],
+    "slots": {
+      "after_collection": false,
+      "audit": {
+        "areas": [],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [
+        "scorecard"
+      ],
+      "live": [],
+      "maintenance": [],
+      "mcp": {
+        "daily": [],
+        "examples": 4,
+        "endpoints": [
+          "customer_feedback",
+          "safety_events",
+          "returns",
+          "scorecard"
+        ],
+        "identity": false,
+        "metrics": [],
+        "places": false,
+        "reads": [
+          "feedback",
+          "safety",
+          "returns",
+          "scorecard"
+        ],
+        "sources": [
+          "scorecard"
+        ],
+        "synthetic": 1,
+        "terms": []
+      },
+      "people": [
+        "scorecard"
+      ],
+      "routes": [
+        "GET /api/dsp/scorecard/weeks",
+        "GET /api/dsp/scorecard/jobs",
+        "POST /api/dsp/scorecard/collect",
+        "POST /api/dsp/scorecard/jobs/{id}/cancel",
+        "GET /api/dsp/scorecard/schedules",
+        "POST /api/dsp/scorecard/schedules",
+        "POST /api/dsp/scorecard/schedules/preview",
+        "POST /api/dsp/scorecard/schedules/{key}",
+        "POST /api/dsp/scorecard/schedules/{key}/enabled",
+        "POST /api/dsp/scorecard/schedules/{key}/remove"
+      ],
+      "schedules": false
+    },
+    "switch": "scorecard",
+    "tables": {
+      "scorecard": [
+        "customer_feedback",
+        "delivery_concessions",
+        "driver_safety",
+        "driver_scorecards",
+        "dsp_compliance",
+        "dsp_feedback",
+        "dsp_pickups",
+        "dsp_quality",
+        "dsp_safety",
+        "dsp_team",
+        "dsp_working_device",
+        "pickup_failures",
+        "returns_to_station",
+        "safety_events",
+        "scorecard_publications",
+        "scorecard_schema",
+        "scorecard_sources",
+        "scorecard_weeks"
+      ]
+    },
+    "tabs": []
+  },
+  "settings": {
+    "collectors": [],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {},
+    "permissions": [
+      "settings.manage"
+    ],
+    "slots": {
+      "after_collection": false,
+      "audit": {
+        "areas": [],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [],
+      "live": [],
+      "maintenance": [],
+      "mcp": {
+        "daily": [],
+        "examples": 0,
+        "endpoints": [],
+        "identity": false,
+        "metrics": [],
+        "places": false,
+        "reads": [],
+        "sources": [],
+        "synthetic": 0,
+        "terms": []
+      },
+      "people": [],
+      "routes": [
+        "POST /api/dsp/profile"
+      ],
+      "schedules": false
+    },
+    "switch": null,
+    "tables": {},
+    "tabs": []
+  },
+  "team": {
+    "collectors": [],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {},
+    "permissions": [
+      "members.invite",
+      "members.manage",
+      "roles.manage"
+    ],
+    "slots": {
+      "after_collection": false,
+      "audit": {
+        "areas": [],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [],
+      "live": [],
+      "maintenance": [],
+      "mcp": {
+        "daily": [],
+        "examples": 0,
+        "endpoints": [],
+        "identity": false,
+        "metrics": [],
+        "places": false,
+        "reads": [],
+        "sources": [],
+        "synthetic": 0,
+        "terms": []
+      },
+      "people": [],
+      "routes": [
+        "GET /api/dsp/members",
+        "POST /api/dsp/members/invite",
+        "POST /api/dsp/members/{id}",
+        "GET /api/dsp/invitations",
+        "POST /api/dsp/invitations/revoke",
+        "GET /api/dsp/roles",
+        "POST /api/dsp/roles",
+        "POST /api/dsp/roles/{id}",
+        "POST /api/dsp/roles/{id}/remove",
+        "GET /api/invitations/{token}",
+        "POST /api/invitations/{token}/accept"
+      ],
+      "schedules": false
+    },
+    "switch": null,
+    "tables": {},
+    "tabs": []
+  },
+  "timecard": {
+    "collectors": [
+      "cortex",
+      "paycom"
+    ],
+    "depends_on": [
+      "driver_match"
+    ],
+    "frontend": true,
+    "keeps": [
+      "cortex.meal_breaks.collect",
+      "paycom.collect"
+    ],
+    "migrations": {
+      "cortex": [
+        {
+          "id": 2,
+          "name": "meal_stops"
+        }
+      ],
+      "paycom": [
+        {
+          "id": 2,
+          "name": "employee_timecard_syncs"
+        },
+        {
+          "id": 3,
+          "name": "employee_history_index"
+        }
+      ]
+    },
+    "permissions": [
+      "timecard.view",
+      "timecard.manage",
+      "collections.run"
+    ],
+    "slots": {
+      "after_collection": false,
+      "audit": {
+        "areas": [
+          [
+            "cortex.collection.",
+            "collections"
+          ],
+          [
+            "meal_breaks.",
+            "collections"
+          ]
+        ],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [
+        "listings",
+        "meals"
+      ],
+      "commands": null,
+      "demo": true,
+      "domains": [
+        "paycom",
+        "meals"
+      ],
+      "live": [
+        "timecard.view",
+        "collections.run"
+      ],
+      "maintenance": [],
+      "mcp": {
+        "daily": [
+          "timecards",
+          "mealBreaks"
+        ],
+        "examples": 0,
+        "endpoints": [
+          "timecards",
+          "meal_breaks"
+        ],
+        "identity": false,
+        "metrics": [
+          "hours_worked",
+          "days_worked",
+          "lunch_minutes",
+          "clock_in",
+          "clock_out",
+          "meal_issues",
+          "meal_status"
+        ],
+        "places": false,
+        "reads": [
+          "timecards",
+          "meal_breaks"
+        ],
+        "sources": [
+          "timecards",
+          "meal_breaks"
+        ],
+        "synthetic": 2,
+        "terms": [
+          "meal status: same",
+          "meal status: different",
+          "meal status: missing_lunch",
+          "meal status: no_flex_meal",
+          "meal status: flex_only",
+          "meal status: review_punches",
+          "meal status: review_pairing",
+          "meal status: missing_data"
+        ]
+      },
+      "people": [
+        "timecards",
+        "meal_breaks"
+      ],
+      "routes": [
+        "GET /api/dsp/employees",
+        "GET /api/dsp/employees/{code}",
+        "POST /api/dsp/employees/{code}/sync",
+        "GET /api/dsp/timecards",
+        "GET /api/dsp/paycom/status",
+        "GET /api/dsp/paycom/settings",
+        "POST /api/dsp/paycom/settings",
+        "GET /api/dsp/paycom/meal-breaks",
+        "GET /api/dsp/cortex/meal-breaks",
+        "GET /api/dsp/jobs",
+        "POST /api/dsp/jobs",
+        "POST /api/dsp/jobs/{id}/cancel",
+        "GET /api/dsp/jobs/meal-breaks",
+        "POST /api/dsp/jobs/meal-breaks",
+        "POST /api/dsp/cortex/meal-breaks/collect",
+        "GET /api/dsp/schedules",
+        "POST /api/dsp/schedules",
+        "POST /api/dsp/schedules/preview",
+        "POST /api/dsp/schedules/{key}",
+        "POST /api/dsp/schedules/{key}/enabled",
+        "POST /api/dsp/schedules/{key}/remove"
+      ],
+      "schedules": true
+    },
+    "switch": "timecard",
+    "tables": {
+      "cortex": [
+        "meal_breaks",
+        "meal_delivery_events",
+        "meal_itineraries",
+        "meal_publications",
+        "meal_record_schema",
+        "meal_records",
+        "meal_schema",
+        "meal_sources",
+        "meal_stops"
+      ],
+      "paycom": [
+        "employee_timecard_syncs",
+        "employees",
+        "publications",
+        "settings",
+        "timecard_sources",
+        "timecards"
+      ]
+    },
+    "tabs": [
+      "timecard.daily",
+      "timecard.meal_breaks",
+      "timecard.employees"
+    ]
+  },
+  "uniforms": {
+    "collectors": [],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {
+      "dsp": [
+        {
+          "id": 2,
+          "name": "uniform_inventory"
+        }
+      ]
+    },
+    "permissions": [
+      "uniforms.view",
+      "uniforms.adjust",
+      "uniforms.manage"
+    ],
+    "slots": {
+      "after_collection": false,
+      "audit": {
+        "areas": [],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [],
+      "live": [],
+      "maintenance": [],
+      "mcp": {
+        "daily": [],
+        "examples": 0,
+        "endpoints": [],
+        "identity": false,
+        "metrics": [],
+        "places": false,
+        "reads": [],
+        "sources": [],
+        "synthetic": 0,
+        "terms": []
+      },
+      "people": [],
+      "routes": [
+        "GET /api/dsp/uniforms",
+        "GET /api/dsp/uniforms/updates",
+        "GET /api/dsp/uniforms/history",
+        "POST /api/dsp/uniforms/initialize",
+        "POST /api/dsp/uniforms",
+        "POST /api/dsp/uniforms/{id}",
+        "POST /api/dsp/uniforms/{id}/archive",
+        "POST /api/dsp/uniforms/stock/{id}"
+      ],
+      "schedules": false
+    },
+    "switch": "uniforms",
+    "tables": {
+      "dsp": [
+        "uniform_events",
+        "uniform_inventory",
+        "uniform_variants",
+        "uniforms"
+      ]
+    },
+    "tabs": []
+  }
+}

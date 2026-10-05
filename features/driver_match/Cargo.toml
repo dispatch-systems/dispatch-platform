@@ -1,0 +1,28 @@
+[package]
+name = "dispatch-driver-match"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+autotests = false
+
+[lib]
+path = "feature.rs"
+doctest = false
+
+[features]
+# TypeScript definitions of its API types, for the app's export test; never in a build. They
+# name core's, whose definitions core's own ts feature brings.
+ts = ["dep:ts-rs", "dispatch-core/ts"]
+
+# Core alone: it declares no collector or feature.
+[dependencies]
+dispatch-core = { path = "../../core" }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+# Its answers keep the order their fields are written in.
+serde_json = { workspace = true, features = ["preserve_order"] }
+ts-rs = { workspace = true, optional = true }

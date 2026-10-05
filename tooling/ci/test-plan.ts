@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 
-// Which check runs which `tests/**/*.test.ts` file. `test-plan.json` is the only list;
+// Which check runs which `<owner>/tests/<kind>/*.test.ts` file. `test-plan.json` is the only list;
 // `browseros-check.py` reads `native` from it too.
 const plan = JSON.parse(fs.readFileSync(new URL('./test-plan.json', import.meta.url), 'utf8')) as {
   dashboard: string[];
@@ -28,12 +28,17 @@ export const nativeTests = Object.values(nativeShards).flat();
 export const nativeRealTimeout = plan.nativeRealTimeout;
 /** Real compiler/installed-manager checks; source-only rules do not build Rust. */
 export const pythonIntegrationTests = plan.pythonIntegration;
+/** Where the Python tests live: the tooling's own and the host scripts'. */
+export const pythonTestDirs = ['tooling/tests', 'ops/tests'];
 export function allPythonTests() {
-  return fs
-    .readdirSync('tests/tooling')
-    .filter((name) => name.endsWith('_test.py'))
-    .sort()
-    .map((name) => `tests/tooling/${name}`);
+  return pythonTestDirs
+    .flatMap((directory) =>
+      fs
+        .readdirSync(directory)
+        .filter((name) => name.endsWith('_test.py'))
+        .map((name) => `${directory}/${name}`),
+    )
+    .sort();
 }
 export function pythonRuleTests() {
   return allPythonTests().filter((file) => !pythonIntegrationTests.includes(file));
@@ -43,13 +48,16 @@ export function pythonRuleTests() {
  * tests the diff changes. Each group comes from queue runs such changes failed.
  */
 export const watchedTests = plan.watch;
+/** Where tests live: each owner's `tests/<kind>/`, the tooling's `tooling/tests/` and ops' `ops/tests/`. */
+export const testRoots = ['app', 'collectors', 'core', 'features', 'tooling', 'ops'];
 /** Every other test file: the api job runs these, so nothing runs twice in a full run. */
-export function allTests(directory = 'tests') {
-  return fs
-    .readdirSync(directory, { recursive: true, encoding: 'utf8' })
-    .filter((name) => name.endsWith('.test.ts'))
-    .sort()
-    .map((name) => `${directory}/${name}`);
+export function allTests(roots = testRoots) {
+  return roots
+    .flatMap((root) =>
+      fs.readdirSync(root, { recursive: true, encoding: 'utf8' }).map((name) => `${root}/${name}`),
+    )
+    .filter((file) => file.endsWith('.test.ts') && /(^|\/)tests\//.test(file))
+    .sort();
 }
 
 export function coreTests() {

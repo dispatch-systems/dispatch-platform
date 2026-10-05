@@ -1,0 +1,77 @@
+//! {{label}}'s storage: its `{{table}}` table, in {{databaseLabel}}.
+//! Only this crate writes SQL against it.
+{{#ownDatabase}}
+use dispatch_core::collection::registry::AddedStorage;
+use dispatch_core::db::{Db, Kind};
+{{/ownDatabase}}
+use dispatch_core::{
+    Result,
+    db::{FromRow, Row, Store, iso},
+    foundation::crypto,
+};
+use rusqlite::params;
+use serde::Serialize;
+
+{{#ownDatabase}}
+/// Its database beside {{siteLabel}}'s: `{{name}}/{{name}}.sqlite` in each DSP's data.
+pub(crate) const DATABASE: Kind = Kind::new("{{name}}", 1);
+pub(crate) static STORAGE: AddedStorage = AddedStorage {
+    id: "{{name}}",
+    kind: DATABASE,
+    marker: "storage.{{name}}",
+    source: "{{name}}-v1",
+    verify,
+};
+/// Fails closed when the initialized storage lost its table.
+fn verify(db: &Db) -> Result<()> {
+    db.one("SELECT count(*) FROM {{table}} WHERE 0", [])?;
+    Ok(())
+}
+
+{{/ownDatabase}}
+/// One row of `{{table}}`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct {{pascal}}Item {
+    pub id: String,
+    pub name: String,
+    pub created_at: String,
+}
+impl FromRow for {{pascal}}Item {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            id: row.get("id")?,
+            name: row.get("name")?,
+            created_at: row.get("created_at")?,
+        })
+    }
+}
+
+/// What {{label}} reads and writes for one DSP.
+pub trait {{pascal}}Store {
+    fn {{name}}_items(&self, dsp: &str) -> Result<Vec<{{pascal}}Item>>;
+    fn add_{{name}}_item(&self, dsp: &str, name: &str) -> Result<{{pascal}}Item>;
+}
+impl {{pascal}}Store for Store {
+    fn {{name}}_items(&self, dsp: &str) -> Result<Vec<{{pascal}}Item>> {
+        let db = {{open}};
+        db.query_as("SELECT * FROM {{table}} ORDER BY created_at,id", [])
+    }
+    fn add_{{name}}_item(&self, dsp: &str, name: &str) -> Result<{{pascal}}Item> {
+        let item = {{pascal}}Item {
+            id: crypto::token()?,
+            name: name.to_owned(),
+            created_at: iso(),
+        };
+        let db = {{open}};
+        db.exec(
+            "INSERT INTO {{table}} (id,name,created_at) VALUES (?,?,?)",
+            params![item.id, item.name, item.created_at],
+        )?;
+        Ok(item)
+    }
+}
+
+#[cfg(test)]
+#[path = "../tests/backend/storage.rs"]
+mod tests;

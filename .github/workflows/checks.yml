@@ -382,7 +382,7 @@ jobs:
         with:
           name: ${{ needs.build.outputs.candidate }}
       - name: Verify the build's source commit and inventory
-        run: python3 tooling/ci-verify.py dispatch-dev.tar.gz
+        run: python3 tooling/ci/ci-verify.py dispatch-dev.tar.gz
       - name: Publish the verified build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:

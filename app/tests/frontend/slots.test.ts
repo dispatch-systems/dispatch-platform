@@ -1,0 +1,117 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import '../support/manifests.js';
+import { featureCatalog } from '../../../core/shell/frontend/runtime/features.js';
+import { features } from '../../frontend/features.js';
+import { jobSchema } from '../../../core/collection/api/runtime.js';
+import { collections } from '../../../core/collection/api/generated/collections.js';
+import { readToggleGroups } from '../../../core/mcp/api/generated/read-toggles.js';
+import { errorLabel } from '../../../core/shell/frontend/runtime/api.js';
+import {
+  cacheRules,
+  connectionCard,
+  connectionCards,
+  loadPlatformSlots,
+  switchIcon,
+} from '../../../core/shell/frontend/runtime/slots.js';
+
+const once = (ids: readonly string[], what: string) =>
+  assert.deepEqual(
+    ids.filter((id, index) => ids.indexOf(id) !== index),
+    [],
+    `${what} declared more than once`,
+  );
+
+test('each kind of data agents may read is declared once, and each group has its own place', () => {
+  once(
+    readToggleGroups.flatMap((group) => group.toggles.map((toggle) => toggle.id)),
+    'read toggles',
+  );
+  once(
+    readToggleGroups.map((group) => group.label),
+    'read toggle groups',
+  );
+});
+
+test("each page's switch has its icon, declared once", async () => {
+  const modules = await Promise.all(features.map((feature) => feature.platformSlots?.()));
+  once(
+    modules.flatMap((module) => (module?.slots.switch ? [module.slots.switch.id] : [])),
+    'switches',
+  );
+  await loadPlatformSlots();
+  for (const page of featureCatalog.filter((entry) => entry.kind === 'page'))
+    assert(switchIcon(page.id), `${page.id} has no icon`);
+});
+
+test('each connection has one card', () => {
+  once(
+    connectionCards().map((card) => card.provider),
+    'connection cards',
+  );
+  for (const connection of featureCatalog.filter((entry) => entry.kind === 'connection'))
+    assert(connectionCard(connection.id), `${connection.id} has no card`);
+});
+
+test('each job kind and schedule collection is named once, by a connection', () => {
+  once(
+    collections.map((collection) => collection.kind),
+    'job kinds',
+  );
+  once(
+    collections.map((collection) => collection.schedule),
+    'schedule collections',
+  );
+  for (const kind of jobSchema.shape.kind.options)
+    assert(
+      collections.some((collection) => collection.kind === kind),
+      `${kind} has no collection`,
+    );
+  for (const { provider } of collections)
+    assert(
+      featureCatalog.some((entry) => entry.kind === 'connection' && entry.id === provider),
+      `${provider} is no connection`,
+    );
+});
+
+test('a read of collected data belongs to one owner', () => {
+  const owners = cacheRules().map((rules) => rules.collected ?? []);
+  owners.forEach((prefixes, owner) =>
+    owners.forEach((others, other) => {
+      if (other !== owner)
+        for (const prefix of prefixes)
+          for (const otherPrefix of others)
+            assert(
+              !prefix.startsWith(otherPrefix) && !otherPrefix.startsWith(prefix),
+              `${prefix} and ${otherPrefix} overlap`,
+            );
+    }),
+  );
+});
+
+test("each error code is worded once, and core's own wording doesn't hide an owner's", () => {
+  const worded = features.flatMap((feature) =>
+    Object.entries({ ...feature.errors, ...feature.scheduleIssues }),
+  );
+  once(
+    worded.map(([code]) => code),
+    'error codes',
+  );
+  for (const [code, label] of worded) assert.equal(errorLabel(code), label, code);
+});
+
+test("each page's tabs from other features have their own addresses on it", () => {
+  const tabs = features.flatMap((feature) => feature.pageTabs ?? []);
+  for (const page of new Set(tabs.map((tab) => tab.page)))
+    once(
+      tabs.filter((tab) => tab.page === page).map((tab) => tab.id),
+      `${page}'s tabs`,
+    );
+});
+
+test("one page at most is where a DSP lands, one draws the settings tabs, and one owner saves a DSP's setup", () => {
+  const pages = features.flatMap((feature) => feature.routes ?? []);
+  assert(pages.filter((page) => page.scope === 'dsp' && page.landing).length <= 1);
+  assert(pages.filter((page) => page.scope === 'dsp' && page.hostsSettings).length <= 1);
+  assert(features.filter((feature) => feature.dspSetup).length <= 1);
+});

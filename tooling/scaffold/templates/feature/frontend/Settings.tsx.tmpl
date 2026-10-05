@@ -1,0 +1,11 @@
+import type { DspView } from '{{toRoot}}{{dspView}}';
+
+/** {{label}}'s tab on a DSP's Settings page. */
+export function {{pascal}}Settings({ view }: { view: DspView }) {
+  return (
+    <section aria-labelledby="{{slug}}-settings-heading">
+      <h2 id="{{slug}}-settings-heading">{{label}}</h2>
+      <p>Settings for {{label}} at {view.dsp.name} go here.</p>
+    </section>
+  );
+}

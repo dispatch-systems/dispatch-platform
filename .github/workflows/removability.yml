@@ -1,0 +1,56 @@
+name: Removability
+# The proof that each feature can be removed. Each job leaves one feature out of the app,
+# with every feature that declares it, and the rest must still build, pass the app's tests,
+# write its TypeScript, and typecheck and bundle its frontend. A failed job is named for the
+# feature it left out, and says what reached into it. Weekly rather than in the queue, since
+# it takes a build per feature; `npm run check:removability -- --feature <name>` runs one
+# job's steps locally.
+on:
+  schedule:
+    - cron: '37 6 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: removability-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+jobs:
+  # Every feature, as the feature map the app's export writes lists them.
+  features:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      features: ${{ steps.list.outputs.features }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: List the features
+        id: list
+        run: echo "features=$(jq -c 'keys' app/generated/features.json)" >> "$GITHUB_OUTPUT"
+  remove:
+    needs: features
+    name: without ${{ matrix.feature }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        feature: ${{ fromJSON(needs.features.outputs.features) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-tools
+      - uses: ./.github/actions/setup-build
+        with:
+          profile: debug
+          save: 'false'
+      - name: Leave out ${{ matrix.feature }}
+        env:
+          FEATURE: ${{ matrix.feature }}
+        run: npm run check:removability -- --feature "$FEATURE"

@@ -1,0 +1,29 @@
+//! {{label}}'s endpoints, each registered with its path and access. The server checks the
+//! session and the permission before a handler runs.
+use super::types::{{pascal}}Summary;
+{{#tables}}
+use crate::{{pascal}}Store;
+{{/tables}}
+use dispatch_core::{
+    Result,
+    db::Store,
+    server::http::{
+        input::{Input, Reply},
+        route::{Dsp, Member, Route, read},
+    },
+};
+
+const VIEW: Dsp = Dsp("{{name}}.view");
+
+pub fn routes() -> Vec<Route> {
+    vec![read("{{apiPath}}", VIEW, summary)]
+}
+
+fn summary({{summaryParameters}}) -> Result<Reply> {
+    Reply::of(&{{pascal}}Summary {
+        dsp_id: c.dsp_id().to_owned(),
+{{#tables}}
+        items: db.{{name}}_items(c.dsp_id())?.len(),
+{{/tables}}
+    })
+}

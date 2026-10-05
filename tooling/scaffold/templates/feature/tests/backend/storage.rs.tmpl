@@ -1,0 +1,12 @@
+//! {{label}}'s storage, against a real store in a temporary directory.
+use super::*;
+use dispatch_core::testing;
+
+#[test]
+fn keeps_what_it_adds_for_each_dsp() {
+    testing::install(&[{{testCollectors}}], &[&crate::FEATURE]);
+    let (_root, store, dsp) = testing::bootstrapped();
+    assert!(store.{{name}}_items(&dsp).unwrap().is_empty());
+    let added = store.add_{{name}}_item(&dsp, "First").unwrap();
+    assert_eq!(store.{{name}}_items(&dsp).unwrap(), vec![added]);
+}

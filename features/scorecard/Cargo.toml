@@ -1,0 +1,36 @@
+[package]
+name = "dispatch-scorecard"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+autotests = false
+
+[lib]
+path = "feature.rs"
+doctest = false
+
+[features]
+# TypeScript definitions of its API types, for the app's export test; never in a build.
+ts = ["dep:ts-rs"]
+
+# Core, and the Cortex collector whose scorecard it keeps.
+[dependencies]
+dispatch-core = { path = "../../core" }
+dispatch-cortex = { path = "../../collectors/cortex" }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+# Its answers keep the order their fields are written in.
+serde_json = { workspace = true, features = ["preserve_order"] }
+ts-rs = { workspace = true, optional = true }
+
+[dev-dependencies]
+dispatch-core = { path = "../../core", features = ["testing"] }
+tempfile = { workspace = true }
+
+[[test]]
+name = "scorecard"
+path = "tests/backend/integration/scorecard.rs"

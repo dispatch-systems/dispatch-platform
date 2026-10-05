@@ -1,0 +1,70 @@
+import {
+  test,
+  expect,
+  login,
+{{#screens}}
+  openDsp,
+{{/screens}}
+} from '{{toRoot}}core/shell/tests/support/fixtures.js';
+
+// The seeded DSP has every feature switched on, and its owner holds every permission.
+{{^screens}}
+
+test('{{label}} has its switch on the DSPs page, on for the seeded DSP', async ({ page }) => {
+  await login(page);
+  await page
+    .getByRole('region', { name: 'DSPs', exact: true })
+    .getByRole('button', { name: /Northline Logistics/ })
+    .click();
+  const pane = page.getByRole('region', { name: 'Northline Logistics', exact: true });
+  await pane.getByRole('tab', { name: 'Features', exact: true }).click();
+  await pane
+    .getByRole('navigation', { name: 'Feature areas' })
+    .getByRole('button', { name: /^{{labelPattern}}/ })
+    .click();
+  await expect(pane.getByRole('switch', { name: '{{label}} page', exact: true })).toBeChecked();
+});
+{{/screens}}
+{{#mcp}}
+
+test('a new key reads {{label}}, under {{label}}', async ({ page }) => {
+  await login(page);
+  await page.getByRole('link', { name: 'Agents', exact: true }).click();
+  await page.getByRole('tab', { name: 'Keys', exact: true }).click();
+  await page.getByRole('button', { name: 'New key', exact: true }).click();
+  const group = page
+    .getByRole('dialog', { name: 'New key' })
+    .getByRole('group', { name: '{{label}}', exact: true });
+  await expect(group.getByRole('switch', { name: '{{label}}', exact: true })).toBeChecked();
+});
+{{/mcp}}
+{{#page}}
+
+test('{{label}} opens from the sidebar of a DSP that has it', async ({ page }) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: '{{label}}', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '{{label}}', level: 1 })).toBeVisible();
+  await expect(page.getByText('Nothing here yet', { exact: true })).toBeVisible();
+});
+{{/page}}
+{{#tab}}
+
+test('{{label}} opens as a tab of {{hostLabel}}', async ({ page }) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: '{{hostLabel}}', exact: true }).click();
+  await page.getByRole('tab', { name: '{{label}}', exact: true }).click();
+  await expect(page.getByRole('region', { name: '{{label}}', exact: true })).toBeVisible();
+});
+{{/tab}}
+{{#settings}}
+
+test('{{label}} has a tab on the Settings page', async ({ page }) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: '{{label}}', exact: true }).click();
+  await expect(page.getByRole('region', { name: '{{label}}', exact: true })).toBeVisible();
+});
+{{/settings}}

@@ -1,0 +1,56 @@
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import type {
+  MealComparison,
+  MealSource,
+  LateRule,
+  EmployeeTimecard,
+  Timecard,
+} from '../../api/index.js';
+
+export type MealComparisonSource = Omit<MealComparison, 'rows' | 'date'> & {
+  date: string | null;
+  rows: MealSource[];
+};
+let executable: string | undefined;
+function assess(input: {
+  date: string;
+  late?: LateRule;
+  rows?: MealSource[];
+  timecards?: Timecard[];
+}): { rows: MealComparison['rows']; timecards: EmployeeTimecard[] } {
+  if (!executable && process.env.DISPATCH_ASSESSMENT_FIXTURE) {
+    // test:ui names the copy it restored or built before starting browser workers.
+    executable = process.env.DISPATCH_ASSESSMENT_FIXTURE;
+  }
+  if (!executable) {
+    // Otherwise the test-only companion is the debug example built in this checkout.
+    const metadata = JSON.parse(
+      execFileSync('cargo', ['metadata', '--no-deps', '--format-version=1', '--locked'], {
+        encoding: 'utf8',
+      }),
+    );
+    executable = path.join(metadata.target_directory, 'debug/examples/assessment-fixture');
+  }
+  return JSON.parse(
+    execFileSync(executable!, {
+      input: JSON.stringify([input]),
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+    }),
+  )[0];
+}
+export function assessMealResponse(
+  source: MealComparisonSource,
+  late: LateRule = { time: '10:01', departments: [] },
+): MealComparison {
+  if (!source.date) throw new Error('Meal fixtures need a date');
+  return {
+    ...source,
+    date: source.date,
+    rows: assess({ date: source.date, late, rows: source.rows }).rows,
+  };
+}
+export function assessTimecards(cards: Timecard[]): EmployeeTimecard[] {
+  return assess({ date: '2026-09-15', timecards: cards }).timecards;
+}
