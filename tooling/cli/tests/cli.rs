@@ -19,7 +19,9 @@ fn dispatchdev_names_its_commands_and_refuses_the_rest() {
     assert!(error.contains("Usage: dispatchdev <command>"), "{error}");
     let (ok, help, _) = run(&["help"]);
     assert!(ok);
-    for command in ["build", "check", "ship"] {
+    for command in [
+        "start", "preview", "api", "check", "pr", "ship", "finish", "status", "build",
+    ] {
         assert!(help.contains(&format!("\n  {command} ")), "{help}");
     }
     // The old names, and the planner, receipts and gate before them, are gone.

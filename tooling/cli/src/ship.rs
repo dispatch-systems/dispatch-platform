@@ -295,6 +295,39 @@ fn short(head: &Value) -> &str {
     head.as_str().map_or("", |head| &head[..head.len().min(7)])
 }
 
+/// The comment that asks CodeRabbit for its review.
+const ASK: &str = "@coderabbitai review";
+/// `dispatchdev ship <number> --review`: CodeRabbit's review, asked for once. The `ai-review`
+/// label makes shipping wait for it; the comment starts it, and a second would start another.
+/// Answers whether it asked now.
+pub fn request_review(number: u64, runner: &dyn Runner) -> Result<bool> {
+    let number = number.to_string();
+    let gh = |args: &[&str]| runner.command(&[&["gh", "pr"][..], args].concat(), None, 60);
+    gh(&[
+        "edit",
+        &number,
+        "--repo",
+        REPOSITORY,
+        "--add-label",
+        REVIEW_LABEL,
+    ])?;
+    let pr: Value = serde_json::from_slice(&gh(&[
+        "view", &number, "--repo", REPOSITORY, "--json", "comments",
+    ])?)?;
+    let asked = pr["comments"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|comment| {
+            comment["body"]
+                .as_str()
+                .is_some_and(|body| body.trim() == ASK)
+        });
+    if !asked {
+        gh(&["comment", &number, "--repo", REPOSITORY, "--body", ASK])?;
+    }
+    Ok(!asked)
+}
 /// Queue `number` and wait for the merge; returns the squash commit. `pause` waits between
 /// looks and `say` reports each change of progress once.
 pub fn run(
@@ -589,6 +622,40 @@ pub fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_review_is_asked_for_once_and_the_label_holds_the_pr_for_it() {
+        struct Fake {
+            comments: &'static str,
+            calls: std::cell::RefCell<Vec<String>>,
+        }
+        impl Runner for Fake {
+            fn command(
+                &self,
+                args: &[&str],
+                _: Option<&std::path::Path>,
+                _: u64,
+            ) -> Result<Vec<u8>> {
+                self.calls.borrow_mut().push(args[2].to_owned());
+                Ok(if args[2] == "view" {
+                    self.comments.as_bytes().to_vec()
+                } else {
+                    vec![]
+                })
+            }
+        }
+        let fresh = Fake {
+            comments: r#"{"comments":[{"body":"Looks fine"}]}"#,
+            calls: Default::default(),
+        };
+        assert!(request_review(7, &fresh).unwrap());
+        assert_eq!(*fresh.calls.borrow(), ["edit", "view", "comment"]);
+        let asked = Fake {
+            comments: r#"{"comments":[{"body":"@coderabbitai review\n"}]}"#,
+            calls: Default::default(),
+        };
+        assert!(!request_review(7, &asked).unwrap());
+        assert_eq!(*asked.calls.borrow(), ["edit", "view"]);
+    }
     use serde_json::json;
     use std::{cell::RefCell, collections::BTreeMap, collections::VecDeque, path::Path};
 
