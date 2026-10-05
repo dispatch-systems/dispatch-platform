@@ -181,6 +181,26 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
   await check('/api/v1/meal-breaks', 'meal_breaks', { date: world.to, issues: true });
   await check('/api/v1/dvic', 'dvic_inspections', { date: world.to, limit: 1 });
   await check('/api/v1/dvic', 'dvic_inspections', { date: world.to, detail: 'full', limit: 1 });
+  const allInspections = await check('/api/v1/dvic', 'dvic_inspections', {
+    from: world.from,
+    to: world.to,
+    detail: 'full',
+    limit: 1000,
+  });
+  const driverInspections = await check('/api/v1/dvic', 'dvic_inspections', {
+    driver: code,
+    from: world.from,
+    to: world.to,
+    detail: 'full',
+    limit: 1000,
+  });
+  assert.ok(driverInspections.inspections > 0);
+  assert.deepEqual(
+    driverInspections.list.rows,
+    allInspections.list.rows.filter((row: any[]) => row[1] === driverInspections.understood.driver),
+  );
+  assert.equal(driverInspections.inspections, driverInspections.list.rows.length);
+  assert.deepEqual(driverInspections.coverage, allInspections.coverage);
   for (const [path, tool] of [
     ['/api/v1/feedback', 'customer_feedback'],
     ['/api/v1/safety', 'safety_events'],

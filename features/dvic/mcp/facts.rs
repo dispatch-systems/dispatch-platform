@@ -51,15 +51,27 @@ pub fn inspections(
             day.as_str() >= s(&report, "min_date") && day.as_str() <= s(&report, "max_date")
         }));
     }
-    let rows = data.all(
+    let coverage = Coverage::of(true, held, period);
+    if drivers.is_some_and(|ids| ids.is_empty()) {
+        return Ok((vec![], coverage));
+    }
+    let mut sql = String::from(
         "SELECT start_date,transporter_id,transporter_name,fleet_type,inspection_type,start_time,\
          duration_seconds,minimum_seconds,short FROM dvic_inspections \
-         WHERE station=? AND scope_verified=1 AND start_date BETWEEN ? AND ? ORDER BY start_date,start_time",
-        [&station, &period.first(), &period.last()],
-    )?;
+         WHERE station=? AND scope_verified=1 AND start_date BETWEEN ? AND ?",
+    );
+    let mut params = vec![station, period.first(), period.last()];
+    if let Some(ids) = drivers {
+        sql.push_str(&format!(
+            " AND transporter_id IN ({})",
+            vec!["?"; ids.len()].join(",")
+        ));
+        params.extend_from_slice(ids);
+    }
+    sql.push_str(" ORDER BY start_date,start_time");
+    let rows = data.all(&sql, rusqlite::params_from_iter(&params))?;
     let found = rows
         .iter()
-        .filter(|r| drivers.is_none_or(|ids| ids.iter().any(|id| id == s(r, "transporter_id"))))
         .map(|r| Inspection {
             date: s(r, "start_date").into(),
             transporter_id: s(r, "transporter_id").into(),
@@ -72,8 +84,12 @@ pub fn inspections(
             short: n(r, "short") == 1,
         })
         .collect();
-    Ok((found, Coverage::of(true, held, period)))
+    Ok((found, coverage))
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/mcp/facts.rs"]
+mod tests;
 
 /// The latest day DVIC's reports cover.
 pub fn fresh(db: &Store, dsp: &Dsp, station: &str) -> Result<Option<Value>> {
