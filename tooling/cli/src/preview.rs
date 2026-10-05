@@ -255,12 +255,12 @@ mod tests {
     }
     #[test]
     fn the_runs_log_gives_its_link_and_the_demo_password() {
-        let log = "Worktree: audit\nDevelopment fixtures: http://100.64.0.1:4101/__preview/old\n\
-            Development fixtures: http://100.64.0.1:4101/__preview/new\n\
-            Manual sign-in: http://100.64.0.1:4101 (owner@dispatch.test / Demo-pass!)\n";
+        let log = "Worktree: audit\nDevelopment fixtures: http://preview.test:4101/__preview/old\n\
+            Development fixtures: http://preview.test:4101/__preview/new\n\
+            Manual sign-in: http://preview.test:4101 (owner@dispatch.test / Demo-pass!)\n";
         assert_eq!(
             link(log).as_deref(),
-            Some("http://100.64.0.1:4101/__preview/new")
+            Some("http://preview.test:4101/__preview/new")
         );
         assert_eq!(password(log).as_deref(), Some("Demo-pass!"));
         assert_eq!(link("starting"), None);

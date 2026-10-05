@@ -457,6 +457,7 @@ pub fn failure(log: &str) -> Vec<String> {
         "Expected",
         "Received",
         "Failed rules",
+        "check failed",
         "[warn]",
     ];
     let lines: Vec<String> = log.lines().map(plain).collect();
@@ -464,7 +465,7 @@ pub fn failure(log: &str) -> Vec<String> {
     for line in &lines {
         let trimmed = line.trim();
         if !trimmed.is_empty()
-            && SIGNS.iter().any(|sign| line.contains(sign))
+            && (SIGNS.iter().any(|sign| line.contains(sign)) || located(trimmed))
             && found.last().is_none_or(|last| last != trimmed)
         {
             found.push(trimmed.to_owned());
@@ -479,6 +480,23 @@ pub fn failure(log: &str) -> Vec<String> {
     }
     found.truncate(30);
     found
+}
+/// Whether a line names a finding by its place, as linters and scanners print one:
+/// `path/to/file.rs:12: rule` or `file.ts:3:9: message`.
+fn located(line: &str) -> bool {
+    let Some((place, said)) = line.split_once(": ") else {
+        return false;
+    };
+    let mut parts = place.split(':');
+    let file = parts.next().unwrap_or("");
+    let numbers: Vec<&str> = parts.collect();
+    file.contains('.')
+        && !file.contains(' ')
+        && !said.trim().is_empty()
+        && matches!(numbers.len(), 1 | 2)
+        && numbers
+            .iter()
+            .all(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
 }
 /// A line without its terminal colour codes.
 fn plain(line: &str) -> String {
@@ -883,6 +901,15 @@ mod tests {
             [
                 "\u{2716} the audit log refuses nothing",
                 "AssertionError [ERR_ASSERTION]: Got unwanted exception"
+            ]
+        );
+        let scan = "Scanning 812 files\ntooling/cli/src/pr.rs:259: fixed-network-address\n\
+            Privacy check failed; matching values are withheld.\nsee: the docs\n";
+        assert_eq!(
+            failure(scan),
+            [
+                "tooling/cli/src/pr.rs:259: fixed-network-address",
+                "Privacy check failed; matching values are withheld."
             ]
         );
         let quiet: String = (1..=40).map(|n| format!("line {n}\n")).collect();

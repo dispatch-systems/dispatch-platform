@@ -256,7 +256,7 @@ mod tests {
         assert!(check_body("fix: x", &swapped).is_err());
         assert!(check_body("chore: x", fix).is_err());
         for added in [
-            "http://100.64.0.1:4101/__preview/abc",
+            "http://preview.test:4101/__preview/abc",
             "<!-- note -->",
             "- [ ] screenshots",
             "Co-Authored-By: someone",
