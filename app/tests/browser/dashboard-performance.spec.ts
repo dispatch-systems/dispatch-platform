@@ -1,5 +1,6 @@
 import { test, expect, login, openDsp } from '../../../core/shell/tests/support/fixtures.js';
 import type { Request } from '@playwright/test';
+import { addDays } from '../../../core/shell/frontend/lib/calendar.js';
 
 const enter = async (page: Parameters<typeof login>[0]) => {
   await login(page);
@@ -39,11 +40,18 @@ test('timecards paint while connection status waits and sorting makes no data re
       );
     const baseline = await hours();
     expect(new Set(baseline).size).toBeGreaterThan(1);
-    // Drain delayed adjacent-day warmups before distinguishing them from sorting.
-    for (let step = 0; step < 2; step++) {
-      await page.clock.fastForward(1000);
-      await expect.poll(() => pending.size).toBe(0);
-    }
+    // Once the selected day loads, its neighbours are warmed, behind any other warmups the
+    // queue holds; nothing being in flight doesn't mean they've been read. The selected day is
+    // today, so only the previous day is: wait until it has been, before telling sorting's
+    // requests apart.
+    const date = (url: string) => new URL(url).searchParams.get('date');
+    const previous = addDays(date(requests[0]!)!, -1);
+    await expect
+      .poll(async () => {
+        await page.clock.fastForward(250);
+        return requests.some((url) => date(url) === previous) && pending.size === 0;
+      })
+      .toBe(true);
     const before = requests.length;
     expect(before).toBeGreaterThan(0);
     const sort = page.getByRole('button', { name: 'Hours', exact: true }).first();

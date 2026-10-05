@@ -1,5 +1,9 @@
 import { test, expect } from '../../../core/shell/tests/support/fixtures.js';
-import { clockVisible, loginWithClock } from '../../../core/server/tests/support/update.js';
+import {
+  clockVisible,
+  loginWithClock,
+  runAnswered,
+} from '../../../core/server/tests/support/update.js';
 import { expectDate, setDate } from '../../../features/timecard/tests/support/page.js';
 
 // An automatic update reloads the page in place: a test of Timecard's state across core's reload.
@@ -31,7 +35,7 @@ test('reload preserves DSP, meal tab, selected date and search on mobile', async
   await page.clock.pauseAt(new Date(Date.now() + 1000));
   const before = loads;
   ready = true;
-  await page.clock.runFor(35000);
+  await runAnswered(page, 35000);
   await page.clock.runFor(500);
   await expect
     .poll(async () => {

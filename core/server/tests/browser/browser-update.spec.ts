@@ -1,5 +1,5 @@
 import { test, expect, demo } from '../../../shell/tests/support/fixtures.js';
-import { clockVisible, loginWithClock } from '../support/update.js';
+import { clockVisible, loginWithClock, runAnswered } from '../support/update.js';
 
 // Keep the loaded HTML deliberately old after refresh to exercise the loop guard too.
 test('completed update waits for two idle seconds, restores filters, and reloads once', async ({
@@ -19,7 +19,7 @@ test('completed update waits for two idle seconds, restores filters, and reloads
   await page.clock.pauseAt(new Date(Date.now() + 1000));
   await page.getByLabel('Search DSPs').fill('Summit');
   const initialLoads = loads;
-  await page.clock.runFor(35000);
+  await runAnswered(page, 35000);
   expect(loads).toBe(initialLoads);
   ready = true;
   const before = checks;
@@ -46,7 +46,7 @@ test('completed update waits for two idle seconds, restores filters, and reloads
   await clockVisible(page, page.getByLabel('Search DSPs'));
   await expect(page.getByLabel('Search DSPs')).toHaveValue('Summit');
   await expect(page.locator('.dsp-row')).toHaveCount(1);
-  await page.clock.runFor(12000);
+  await runAnswered(page, 12000);
   expect(loads).toBe(initialLoads + 1);
   expect(errors).toEqual([]);
 });
@@ -68,7 +68,7 @@ test('the audit log keeps its filters through an automatic update', async ({ pag
   await expect(page.getByRole('listitem').filter({ hasText: 'created Northline' })).toBeVisible();
   const initialLoads = loads;
   ready = true;
-  await page.clock.runFor(30000);
+  await runAnswered(page, 30000);
   await expect
     .poll(async () => {
       await page.clock.runFor(1000);
@@ -97,7 +97,7 @@ test('open editing dialog protects input until it closes', async ({ page }) => {
   await page.clock.pauseAt(new Date(Date.now() + 1000));
   const before = loads;
   ready = true;
-  await page.clock.runFor(35000);
+  await runAnswered(page, 35000);
   expect(loads).toBe(before);
   await expect(dialog.locator('input[type="email"]')).toHaveValue('unsaved@example.test');
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -125,13 +125,13 @@ test('unavailable update check does not refresh or interrupt sign in', async ({ 
   await page.goto('/');
   await clockVisible(page, page.getByLabel('Email address'));
   await page.getByLabel('Email address').fill(demo.email);
-  await page.clock.runFor(35000);
+  await runAnswered(page, 35000);
   expect(loads).toBe(1);
   await expect(page.getByLabel('Email address')).toHaveValue(demo.email);
   await page.getByLabel('Password', { exact: true }).fill(demo.password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await clockVisible(page, page.getByRole('heading', { name: 'DSPs', exact: true }));
   await expect(page.getByRole('heading', { name: 'DSPs', exact: true })).toBeVisible();
-  await page.clock.runFor(35000);
+  await runAnswered(page, 35000);
   expect(loads).toBe(1);
 });

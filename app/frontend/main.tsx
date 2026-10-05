@@ -291,6 +291,10 @@ function App() {
       const next = await openView(session, dspId, current);
       if (!current()) return;
       credentials(session.csrf, next.token);
+      // The view is admitted from here, before React commits it. An address change in
+      // between, a link followed as the DSP opens, must find it, rather than take the
+      // moment for a workspace boundary and drop the view with nothing to reopen it.
+      navigationState.current = { ...navigationState.current, view: next };
       void prepareRoute(
         'dsp',
         parseHash(window.location.hash).page,
