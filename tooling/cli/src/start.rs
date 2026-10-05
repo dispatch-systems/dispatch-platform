@@ -41,7 +41,12 @@ pub fn run(ws: &Workspace, name: &str, from: &str, runner: &dyn Runner) -> Resul
     ])?;
     let scratch = workspace::scratch_dir(name)?;
     let log = scratch.join("npm-ci.log");
-    let (installed, took) = workspace::logged("npm ci --silent", &path, &log, &scratch)?;
+    let (installed, took) = workspace::logged(
+        "npm ci --silent",
+        &path,
+        &log,
+        &[("TMPDIR", scratch.as_os_str())],
+    )?;
     require(installed, &format!("npm ci failed; see {}", log.display()))?;
     println!(
         "Started {name}: worktrees/{name} on branch {name} from {from} at {base}; packages installed in {}.",

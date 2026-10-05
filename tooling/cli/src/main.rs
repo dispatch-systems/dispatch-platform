@@ -1,5 +1,5 @@
 use dispatchdev_cli::{
-    Native, Result, Runner, api, build, check, finish, pr, preview, ship, start, status,
+    Native, Result, Runner, api, build, check, finish, pr, preview, ship, start, status, test,
     workspace::Workspace,
 };
 use std::{collections::BTreeMap, path::PathBuf};
@@ -15,9 +15,13 @@ A change, from start to finish:
   api <name> <method> <path>       One signed-in call to its preview: as the owner, or
       [--dsp <dsp>] [--as <email>] --as a demo account; --dsp opens a DSP by its name or id.
       [--data <json>]
-  check [--plan]                   The rule checks and every test the branch's diff touches,
-        [--allow-concurrent]       one line each, stopping at the first failure; --plan
-                                   only names them.
+  test [--all] [--keep]            The tests the diff touches, or --all of them, one line
+                                   each, stopping at the first failure. Each run builds in a
+                                   folder of its own, deleted when it ends unless --keep, so
+                                   several worktrees can test at once.
+  check [--plan] [--keep]          Before a push: what stops the branch, the rule checks,
+        [--allow-concurrent]       clippy and the tests, as test runs them; --plan only names
+                                   them.
   pr <name> --title <title>        Check the title and body, push the branch, and open the
      --body <file>                 PR or update it.
   ship <PR number> [--review]      Queue the PR as soon as GitHub admits it and wait until it
@@ -29,7 +33,8 @@ A change, from start to finish:
   build [--release] [--cache-key]  Build the backend, reusing a build of identical inputs.
   help                             Show this.
 
-check and build work on the checkout the current directory is in, or on --root <directory>.";
+test, check and build work on the checkout the current directory is in, or on --root
+<directory>.";
 
 /// Options that take a value.
 const VALUED: &[&str] = &[
@@ -159,15 +164,28 @@ fn run() -> Result<()> {
                 false => Err("The call failed.".into()),
             }
         }
+        "test" => {
+            line.only(&["--all", "--keep"], 0)?;
+            let passed = test::run(
+                &line.root()?,
+                line.flag("--all"),
+                line.flag("--keep"),
+                &Native,
+            )?;
+            match passed {
+                true => Ok(()),
+                false => Err("A test failed.".into()),
+            }
+        }
         "check" => {
-            line.only(&["--plan", "--allow-concurrent"], 0)?;
+            line.only(&["--plan", "--keep", "--allow-concurrent"], 0)?;
             let root = line.root()?;
             let plan = check::plan(&root, line.flag("--allow-concurrent"), &Native)?;
             if line.flag("--plan") {
                 check::print(&plan);
                 return Ok(());
             }
-            match check::execute(&root, &plan)? {
+            match check::execute(&root, &plan, line.flag("--keep"))? {
                 true => Ok(()),
                 false => Err("A check failed.".into()),
             }

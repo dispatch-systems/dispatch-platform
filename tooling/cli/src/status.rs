@@ -34,6 +34,9 @@ pub fn run(ws: &Workspace, runner: &dyn Runner) -> Result<()> {
         if let Some(bytes) = workspace::size(runner, &path.join("target")) {
             notes.push(format!("build {}", workspace::human(bytes)));
         }
+        if let Some(bytes) = workspace::size(runner, &path.join(".test-build")) {
+            notes.push(format!("test build {}", workspace::human(bytes)));
+        }
         if previews.contains(name) {
             let port = crate::preview::port(name).ok().flatten().unwrap_or(0);
             notes.push(format!("preview running on {port}"));

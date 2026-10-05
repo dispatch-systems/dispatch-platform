@@ -393,19 +393,15 @@ pub fn print(plan: &Plan) {
     }
     println!("{}", next_step(plan));
 }
-/// `dispatchdev check`: the rule checks, then each command the plan names, a line each. Every
-/// command's whole output is in the change's scratch folder.
-pub fn execute(root: &Path, plan: &Plan) -> Result<bool> {
-    let name = root
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or("A checkout without a folder name")?;
-    let scratch = crate::workspace::scratch_dir(name)?;
+/// `dispatchdev check`: the rule checks, then each command the plan names, a line each, built
+/// in a folder of the run's own and deleted when it ends (`crate::test`). Every command's whole
+/// output is in the change's scratch folder.
+pub fn execute(root: &Path, plan: &Plan, keep: bool) -> Result<bool> {
     let commands: Vec<String> = ["npm run check:rules".to_owned()]
         .into_iter()
         .chain(plan.commands.iter().cloned())
         .collect();
-    let passed = run_all(root, &commands, &scratch)?;
+    let passed = crate::test::run_commands(root, &commands, keep)?;
     if passed {
         println!(
             "All {} passed against {}. {}",
@@ -415,28 +411,6 @@ pub fn execute(root: &Path, plan: &Plan) -> Result<bool> {
         );
     }
     Ok(passed)
-}
-/// Runs `commands` in `root` one at a time, so builds never run side by side, logging each to
-/// `scratch/check/`. It stops at the first that fails, with the lines saying why.
-pub fn run_all(root: &Path, commands: &[String], scratch: &Path) -> Result<bool> {
-    let logs = scratch.join("check");
-    std::fs::create_dir_all(&logs)?;
-    for (index, command) in commands.iter().enumerate() {
-        let log = logs.join(format!("{}.log", index + 1));
-        let (passed, took) = crate::workspace::logged(command, root, &log, scratch)?;
-        let took = crate::workspace::duration(took);
-        if passed {
-            println!("ok    {took:>7}  {command}");
-            continue;
-        }
-        println!("FAIL  {took:>7}  {command}");
-        for line in failure(&std::fs::read_to_string(&log).unwrap_or_default()) {
-            println!("      {line}");
-        }
-        println!("      Whole output: {}", log.display());
-        return Ok(false);
-    }
-    Ok(true)
 }
 /// The lines of a failed command's output that say what failed: failing tests, panics,
 /// compiler errors and assertions; or else its last lines.
@@ -849,35 +823,6 @@ mod tests {
         );
         assert_eq!(dependents("dispatch-parking"), ["dispatch-backend"]);
         assert!(dependents("dispatch-backend").is_empty());
-    }
-    #[test]
-    fn commands_run_in_turn_until_one_fails_and_each_keeps_its_output() {
-        let root = tempfile::tempdir().unwrap();
-        let scratch = tempfile::tempdir().unwrap();
-        let commands = |list: &[&str]| list.iter().map(|c| (*c).to_owned()).collect::<Vec<_>>();
-        let marker = root.path().join("ran");
-        assert!(
-            run_all(
-                root.path(),
-                &commands(&["true", "echo here > ran"]),
-                scratch.path()
-            )
-            .unwrap()
-        );
-        assert!(marker.is_file(), "commands run in the checkout");
-        fs::remove_file(&marker).unwrap();
-        let failed = run_all(
-            root.path(),
-            &commands(&["echo 'error: it broke'; exit 1", "echo here > ran"]),
-            scratch.path(),
-        )
-        .unwrap();
-        assert!(!failed);
-        assert!(!marker.exists(), "nothing runs after a failure");
-        assert_eq!(
-            fs::read_to_string(scratch.path().join("check/1.log")).unwrap(),
-            "error: it broke\n"
-        );
     }
     #[test]
     fn a_failure_shows_the_lines_that_say_what_failed() {
