@@ -185,14 +185,24 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
     from: world.from,
     to: world.to,
     detail: 'full',
-    limit: 1000,
+    limit: 500,
   });
+  const inspectionPeople = await check('/api/v1/drivers', 'find_drivers', {
+    include_ids: true,
+    limit: 500,
+  });
+  const inspectionDriver = inspectionPeople.drivers.rows.find((person: any[]) =>
+    allInspections.list.rows.some(
+      (row: any[]) => row[1] === person[1] || row[1] === `${person[1]} (${person[0]})`,
+    ),
+  );
+  assert.ok(inspectionDriver, 'The fixture must contain a matched driver with inspections');
   const driverInspections = await check('/api/v1/dvic', 'dvic_inspections', {
-    driver: code,
+    driver: inspectionDriver[0],
     from: world.from,
     to: world.to,
     detail: 'full',
-    limit: 1000,
+    limit: 500,
   });
   assert.ok(driverInspections.inspections > 0);
   assert.deepEqual(
