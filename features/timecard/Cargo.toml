@@ -37,24 +37,8 @@ dispatch-core = { path = "../../core", features = ["testing"] }
 tempfile = { workspace = true }
 
 [[test]]
-name = "meal_comparison"
-path = "tests/backend/integration/meal_comparison.rs"
-
-[[test]]
-name = "meal_sync"
-path = "tests/backend/integration/meal_sync.rs"
-
-[[test]]
-name = "meals"
-path = "tests/backend/integration/meals.rs"
-
-[[test]]
-name = "punches"
-path = "tests/backend/integration/punches.rs"
-
-[[test]]
-name = "range_reads"
-path = "tests/backend/integration/range_reads.rs"
+name = "integration"
+path = "tests/backend/integration/main.rs"
 
 [[example]]
 name = "assessment-fixture"

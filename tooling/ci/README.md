@@ -108,7 +108,7 @@ them. Then it builds the app, writes the TypeScript for that build (so the gener
 `app/frontend/features.ts` omits them), runs the app's tests, typechecks the frontend and
 builds it with Vite. The typecheck (`removability.tsconfig.json`) leaves out the app's
 cross-owner tests and the tooling, which name every feature. The app's Rust tests say which
-features they need with `cfg(feature = …)` and `required-features`; those about the whole
+features they need with `cfg(feature = …)` on their modules; those about the whole
 product ask for `default`. A build that leaves features out runs its tests with core's
 stand-in for what they would bring, as each owner's own tests do. A failure names the step
 and the files or tests that reached into what was left out. `npm run check:removability -- --feature <name>` runs one

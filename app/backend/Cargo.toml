@@ -15,6 +15,8 @@ doctest = false
 [[bin]]
 name = "dispatch-backend"
 path = "main.rs"
+# It holds no tests; a test build of it would link the whole product for nothing.
+test = false
 
 [features]
 # The product is every feature. A build may leave one out, with every feature that declares
@@ -87,24 +89,8 @@ url = { workspace = true }
 ts-rs = { workspace = true }
 
 [[test]]
-name = "agent_activity"
-path = "../../app/tests/backend/integration/agent_activity.rs"
-required-features = ["timecard", "routes", "dvic", "scorecard"]
-
-[[test]]
-name = "agent_api"
-path = "../../app/tests/backend/integration/agent_api.rs"
-required-features = ["default"]
-
-[[test]]
-name = "agent_data"
-path = "../../app/tests/backend/integration/agent_data.rs"
-required-features = ["timecard", "routes", "dvic", "scorecard"]
-
-[[test]]
-name = "agent_tools"
-path = "../../app/tests/backend/integration/agent_tools.rs"
-required-features = ["timecard", "routes", "dvic", "scorecard"]
+name = "integration"
+path = "../../app/tests/backend/integration/main.rs"
 
 [[test]]
 name = "browseros_host"
@@ -114,37 +100,3 @@ path = "../../app/tests/backend/integration/browseros_host.rs"
 name = "browseros_worker"
 path = "../../app/tests/backend/integration/browseros_worker.rs"
 
-[[test]]
-name = "collection_jobs"
-path = "../../app/tests/backend/integration/collection_jobs.rs"
-
-[[test]]
-name = "contracts"
-path = "../../app/tests/backend/integration/contracts.rs"
-
-[[test]]
-name = "driver_match"
-path = "../../app/tests/backend/integration/driver_match.rs"
-required-features = ["timecard"]
-
-[[test]]
-name = "http_requests"
-path = "../../app/tests/backend/integration/http_requests.rs"
-
-[[test]]
-name = "http_routes"
-path = "../../app/tests/backend/integration/http_routes.rs"
-
-[[test]]
-name = "meal_cache"
-path = "../../app/tests/backend/integration/meal_cache.rs"
-required-features = ["timecard"]
-
-[[test]]
-name = "network_policy"
-path = "../../app/tests/backend/integration/network_policy.rs"
-
-[[test]]
-name = "oauth"
-path = "../../app/tests/backend/integration/oauth.rs"
-required-features = ["timecard", "routes", "dvic", "scorecard"]
