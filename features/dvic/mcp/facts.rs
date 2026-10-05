@@ -39,52 +39,97 @@ pub fn inspections(
     period: &Period,
     drivers: Option<&[String]>,
 ) -> Result<(Vec<Inspection>, Coverage)> {
-    let station = db.profile(&dsp.id)?.station_code;
-    let data = db.dvic_db(&dsp.id)?;
-    // A report covers every day from its first to its last row.
-    let mut held = BTreeSet::new();
-    for report in data.all(
-        "SELECT min_date,max_date FROM dvic_reports WHERE station=? AND scope_verified=1 AND min_date IS NOT NULL",
-        [&station],
-    )? {
-        held.extend(period.days().into_iter().filter(|day| {
-            day.as_str() >= s(&report, "min_date") && day.as_str() <= s(&report, "max_date")
-        }));
-    }
-    let coverage = Coverage::of(true, held, period);
-    if drivers.is_some_and(|ids| ids.is_empty()) {
-        return Ok((vec![], coverage));
-    }
-    let mut sql = String::from(
-        "SELECT start_date,transporter_id,transporter_name,fleet_type,inspection_type,start_time,\
-         duration_seconds,minimum_seconds,short FROM dvic_inspections \
-         WHERE station=? AND scope_verified=1 AND start_date BETWEEN ? AND ?",
-    );
-    let mut params = vec![station, period.first(), period.last()];
-    if let Some(ids) = drivers {
-        sql.push_str(&format!(
-            " AND transporter_id IN ({})",
-            vec!["?"; ids.len()].join(",")
-        ));
-        params.extend_from_slice(ids);
-    }
-    sql.push_str(" ORDER BY start_date,start_time");
-    let rows = data.all(&sql, rusqlite::params_from_iter(&params))?;
-    let found = rows
-        .iter()
-        .map(|r| Inspection {
-            date: s(r, "start_date").into(),
-            transporter_id: s(r, "transporter_id").into(),
-            driver_name: s(r, "transporter_name").into(),
-            vehicle_type: s(r, "fleet_type").into(),
-            inspection_type: s(r, "inspection_type").into(),
-            started: s(r, "start_time").into(),
-            seconds: r["duration_seconds"].as_f64().unwrap_or(0.0).round() as i64,
-            minimum_seconds: n(r, "minimum_seconds"),
-            short: n(r, "short") == 1,
+    let scope = InspectionQuery::new(db, dsp, period, drivers)?;
+    Ok((scope.list(0, None)?, scope.coverage))
+}
+
+/// A short-inspection scope shared by counts, summaries and bounded detail reads.
+pub struct InspectionQuery<'a> {
+    data: dispatch_core::db::DspLease<'a>,
+    sql: String,
+    params: Vec<String>,
+    pub coverage: Coverage,
+}
+impl<'a> InspectionQuery<'a> {
+    pub fn new(
+        db: &'a Store,
+        dsp: &Dsp,
+        period: &Period,
+        drivers: Option<&[String]>,
+    ) -> Result<Self> {
+        let station = db.profile(&dsp.id)?.station_code;
+        let data = db.dvic_db(&dsp.id)?;
+        let mut held = BTreeSet::new();
+        for report in data.all(
+            "SELECT min_date,max_date FROM dvic_reports WHERE station=? AND scope_verified=1 AND min_date IS NOT NULL",
+            [&station],
+        )? {
+            held.extend(period.days().into_iter().filter(|day| {
+                day.as_str() >= s(&report, "min_date") && day.as_str() <= s(&report, "max_date")
+            }));
+        }
+        let mut sql = String::from(
+            " FROM dvic_inspections WHERE station=? AND scope_verified=1 AND short=1 AND start_date BETWEEN ? AND ?",
+        );
+        let mut params = vec![station, period.first(), period.last()];
+        if let Some(ids) = drivers {
+            if ids.is_empty() {
+                sql.push_str(" AND 0");
+            } else {
+                sql.push_str(&format!(
+                    " AND transporter_id IN ({})",
+                    vec!["?"; ids.len()].join(",")
+                ));
+                params.extend_from_slice(ids);
+            }
+        }
+        Ok(Self {
+            data,
+            sql,
+            params,
+            coverage: Coverage::of(true, held, period),
         })
-        .collect();
-    Ok((found, coverage))
+    }
+    pub fn count(&self) -> Result<usize> {
+        Ok(self.data.count(
+            &format!("SELECT COUNT(*){}", self.sql),
+            rusqlite::params_from_iter(&self.params),
+        )? as usize)
+    }
+    pub fn groups(&self) -> Result<Vec<Value>> {
+        self.data.all(&format!(
+            "SELECT transporter_id,transporter_name,COUNT(*) inspections,MIN(CAST(ROUND(duration_seconds) AS INTEGER)) \
+             shortest{} GROUP BY transporter_id,transporter_name", self.sql
+        ), rusqlite::params_from_iter(&self.params))
+    }
+    pub fn list(&self, offset: usize, limit: Option<usize>) -> Result<Vec<Inspection>> {
+        let mut sql = format!(
+            "SELECT start_date,transporter_id,transporter_name,fleet_type,inspection_type,start_time,duration_seconds,\
+             minimum_seconds,short{} ORDER BY start_date,start_time,company_id,inspection_key",
+            self.sql
+        );
+        let mut params = self.params.clone();
+        if let Some(limit) = limit {
+            sql.push_str(" LIMIT ? OFFSET ?");
+            params.extend([limit.to_string(), offset.min(i64::MAX as usize).to_string()]);
+        }
+        Ok(self
+            .data
+            .all(&sql, rusqlite::params_from_iter(&params))?
+            .iter()
+            .map(|r| Inspection {
+                date: s(r, "start_date").into(),
+                transporter_id: s(r, "transporter_id").into(),
+                driver_name: s(r, "transporter_name").into(),
+                vehicle_type: s(r, "fleet_type").into(),
+                inspection_type: s(r, "inspection_type").into(),
+                started: s(r, "start_time").into(),
+                seconds: r["duration_seconds"].as_f64().unwrap_or(0.0).round() as i64,
+                minimum_seconds: n(r, "minimum_seconds"),
+                short: true,
+            })
+            .collect())
+    }
 }
 
 #[cfg(test)]

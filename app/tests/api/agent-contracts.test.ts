@@ -124,6 +124,18 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
     { from: world.from, to: world.to, limit: 1 },
     { driver: code },
   );
+  const selected = await check(
+    '/api/v1/drivers/{driver}',
+    'driver_report',
+    {
+      from: world.from,
+      to: world.to,
+      metrics: 'short_inspections,packages_delivered',
+      limit: 1,
+    },
+    { driver: code },
+  );
+  assert.deepEqual(Object.keys(selected.coverage).sort(), ['dvic', 'routes']);
   await check('/api/v1/team', 'team_table', {
     from: world.from,
     to: world.to,
@@ -163,6 +175,12 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
   const tracking = packages.list.rows[0][packages.list.columns.indexOf('tracking')];
   await check('/api/v1/packages/{tracking}', 'find_package', {}, { tracking });
   const routes = await check('/api/v1/routes', 'route_day', { date: world.to, limit: 1 });
+  await check('/api/v1/routes', 'route_day', {
+    from: world.from,
+    to: world.to,
+    driver: code,
+    limit: 1,
+  });
   const route = routes.routes.rows[0][routes.routes.columns.indexOf('route')];
   await check('/api/v1/routes/{route}', 'route_stops', { date: world.to }, { route });
   await check(
@@ -172,6 +190,7 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
     { route },
   );
   await check('/api/v1/timecards', 'timecards', { date: world.to, limit: 1 });
+  await check('/api/v1/timecards', 'timecards', { from: world.from, to: world.to, limit: 1 });
   await check('/api/v1/timecards', 'timecards', {
     driver: code,
     from: world.from,
@@ -179,6 +198,12 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
     limit: 1,
   });
   await check('/api/v1/meal-breaks', 'meal_breaks', { date: world.to, issues: true });
+  await check('/api/v1/meal-breaks', 'meal_breaks', {
+    from: world.from,
+    to: world.to,
+    driver: code,
+    limit: 1,
+  });
   await check('/api/v1/dvic', 'dvic_inspections', { date: world.to, limit: 1 });
   await check('/api/v1/dvic', 'dvic_inspections', { date: world.to, detail: 'full', limit: 1 });
   const allInspections = await check('/api/v1/dvic', 'dvic_inspections', {
@@ -187,6 +212,8 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
     detail: 'full',
     limit: 500,
   });
+  assert.equal(allInspections.inspections, allInspections.short);
+  assert.ok(allInspections.list.rows.every((row: any[]) => row[6] === true));
   const inspectionPeople = await check('/api/v1/drivers', 'find_drivers', {
     include_ids: true,
     limit: 500,
@@ -216,15 +243,44 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
     ['/api/v1/safety', 'safety_events'],
     ['/api/v1/returns', 'returns'],
   ]) {
-    await check(path!, tool!, {
+    const both = await check(path!, tool!, {
       from: world.from,
       to: world.to,
       group_by: 'driver,week',
       list: true,
       limit: 1,
     });
+    assert.ok(both.list.page.next_cursor);
+    const next = await check(path!, tool!, {
+      from: world.from,
+      to: world.to,
+      group_by: 'driver,week',
+      list: true,
+      limit: 1,
+      cursor: both.list.page.next_cursor,
+      groups_cursor: both.groups.page.next_cursor,
+    });
+    assert.notDeepEqual(next.list.rows, both.list.rows);
+    assert.notDeepEqual(next.groups.rows, both.groups.rows);
     await check(path!, tool!, { from: world.from, to: world.to, list: true, limit: 1 });
   }
+  const disputed = await check('/api/v1/safety', 'safety_events', {
+    from: world.from,
+    to: world.to,
+    counting: false,
+    list: true,
+  });
+  assert.equal(disputed.counting, 0);
+  const businessClosed = await check('/api/v1/returns', 'returns', {
+    from: world.from,
+    to: world.to,
+    reason: 'business_closed',
+    impacting: true,
+    list: true,
+  });
+  assert.ok(
+    businessClosed.list.rows.every((row: any[]) => row[3] === 'business_closed' && row[5] === true),
+  );
   await check('/api/v1/scorecard', 'scorecard', { limit: 1 });
   await check('/api/v1/scorecard', 'scorecard', { week: '2099-W01' });
   // Uncollected days still have a valid, explicit response contract.

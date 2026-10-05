@@ -167,20 +167,33 @@ pub fn check_budget(answer: &Value) -> Result<(), Refusal> {
 pub fn paged(
     answer: &mut Value,
     key: &str,
-    mut table: Table,
+    table: Table,
     query: &Value,
     default_limit: usize,
 ) -> Result<(), Refusal> {
-    let start = offset(query)?;
+    paged_named(answer, key, table, query, default_limit, "cursor")
+}
+
+/// In-memory groups with an independent cursor beside a detail page.
+pub fn paged_named(
+    answer: &mut Value,
+    key: &str,
+    mut table: Table,
+    query: &Value,
+    default_limit: usize,
+    cursor: &str,
+) -> Result<(), Refusal> {
+    let start = offset_named(query, cursor)?;
     let total = table.rows.len();
     table.rows.drain(..start.min(total));
-    page(
+    page_named(
         answer,
         key,
         table,
         start,
         total,
         limit(query, default_limit),
+        cursor,
     )
 }
 

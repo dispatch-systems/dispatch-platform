@@ -37,6 +37,257 @@ mod data {
 
 const DAY: &str = "2026-09-12";
 
+/// Collect each page independently without changing the question's scope. Comparing
+/// small pages with a large page catches gaps, repeats, alias splits and page-only totals.
+async fn collect_pages(
+    state: &Arc<State>,
+    me: &Caller,
+    endpoint: &'static str,
+    mut query: Value,
+    key: &str,
+    cursor: &str,
+) -> Vec<Value> {
+    query["limit"] = json!("3");
+    let mut collected = vec![];
+    for _ in 0..1_000 {
+        let who = me.clone();
+        let request = query.clone();
+        let (status, answer) = ask(state, move |db, state| {
+            data::ask(
+                data::catalog::endpoint(endpoint),
+                db,
+                state,
+                &who,
+                "",
+                &request,
+            )
+        })
+        .await;
+        assert_eq!(status, 200, "{endpoint}: {answer}");
+        assert!(answer.to_string().len() <= data::BUDGET);
+        collected.extend(rows(&answer[key]).iter().cloned());
+        let Some(next) = answer[key]["page"]["next_cursor"].as_str() else {
+            return collected;
+        };
+        assert_ne!(
+            query[cursor].as_str(),
+            Some(next),
+            "Cursor must advance: {answer}"
+        );
+        query[cursor] = json!(next);
+    }
+    panic!("{endpoint} did not finish paging");
+}
+
+#[tokio::test]
+async fn fleet_ranges_and_independent_group_pages_retrieve_every_matching_record() {
+    dispatch_backend::install();
+    let (_root, db) = common::seeded();
+    let world = synthetic::seed(&db).unwrap();
+    let me = caller(&db, &[s(&world, "dsp")], false);
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+    let period = json!({"from":world["from"],"to":world["to"]});
+    for (endpoint, key, count) in [
+        ("dvic", "list", "inspections"),
+        ("routes", "routes", ""),
+        ("timecards", "timecards", ""),
+        ("meal_breaks", "drivers", ""),
+        ("feedback", "list", "feedback"),
+        ("safety", "list", "events"),
+        ("returns", "list", "returns"),
+    ] {
+        let mut query = period.clone();
+        query["limit"] = json!("500");
+        query["detail"] = json!("full");
+        if endpoint != "dvic" {
+            query.as_object_mut().unwrap().remove("detail");
+        }
+        if ["feedback", "safety", "returns"].contains(&endpoint) {
+            query["list"] = json!("true");
+            query["group_by"] = json!("driver,day");
+        }
+        let who = me.clone();
+        let request = query.clone();
+        let (status, all) = ask(&state, move |db, state| {
+            data::ask(
+                data::catalog::endpoint(endpoint),
+                db,
+                state,
+                &who,
+                "",
+                &request,
+            )
+        })
+        .await;
+        assert_eq!(status, 200, "{endpoint}: {all}");
+        assert!(
+            all[key]["page"].is_null(),
+            "Synthetic records fit one large page: {all}"
+        );
+        assert!(!rows(&all[key]).is_empty(), "{endpoint}");
+        let paged = collect_pages(&state, &me, endpoint, query.clone(), key, "cursor").await;
+        assert_eq!(&paged, rows(&all[key]), "{endpoint}");
+        if !count.is_empty() {
+            assert_eq!(all[count].as_u64().unwrap() as usize, paged.len());
+        }
+        if ["routes", "timecards", "meal_breaks"].contains(&endpoint) {
+            assert!(
+                all[key]["columns"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("date"))
+            );
+        }
+        if all.get("groups").is_some() {
+            let grouped = collect_pages(
+                &state,
+                &me,
+                endpoint,
+                query.clone(),
+                "groups",
+                "groups_cursor",
+            )
+            .await;
+            assert_eq!(&grouped, rows(&all["groups"]), "{endpoint}");
+        }
+        // Exact driver selection preserves coverage and isolates details over the range.
+        let name = rows(&all[key])[0][col(&all[key], "driver")]
+            .as_str()
+            .unwrap();
+        query["driver"] = json!(name);
+        let who = me.clone();
+        let (status, one) = ask(&state, move |db, state| {
+            data::ask(
+                data::catalog::endpoint(endpoint),
+                db,
+                state,
+                &who,
+                "",
+                &query,
+            )
+        })
+        .await;
+        assert_eq!(status, 200, "{one}");
+        assert_eq!(one["coverage"], all["coverage"], "{endpoint}");
+        let expected: Vec<Value> = rows(&all[key])
+            .iter()
+            .filter(|r| r[col(&all[key], "driver")] == name)
+            .cloned()
+            .collect();
+        // Timecards for a selected driver use the existing date-first shape.
+        if endpoint == "timecards" {
+            assert_eq!(rows(&one[key]).len(), expected.len());
+        } else {
+            assert_eq!(rows(&one[key]), &expected, "{endpoint}");
+        }
+    }
+    for filter in [
+        json!({"reason":"business_closed","impacting":"true"}),
+        json!({"contact":"missed"}),
+        json!({"contact":"compliant"}),
+    ] {
+        let mut query = period.clone();
+        query
+            .as_object_mut()
+            .unwrap()
+            .extend(filter.as_object().unwrap().clone());
+        query["list"] = json!("true");
+        query["group_by"] = json!("driver");
+        let details = collect_pages(&state, &me, "returns", query.clone(), "list", "cursor").await;
+        assert!(!details.is_empty(), "{query}");
+        if filter.get("impacting").is_some() {
+            assert!(
+                details
+                    .iter()
+                    .all(|r| r[3] == "business_closed" && r[5] == true)
+            );
+        }
+        if filter["contact"] == "compliant" {
+            assert!(details.iter().all(|r| r[6] == "Contact Compliant"));
+        }
+    }
+    for counting in [true, false] {
+        let mut query = period.clone();
+        query["counting"] = json!(counting.to_string());
+        query["list"] = json!("true");
+        query["group_by"] = json!("driver");
+        let events = collect_pages(&state, &me, "safety", query, "list", "cursor").await;
+        assert!(!events.is_empty());
+        assert!(
+            events
+                .iter()
+                .all(|r| (r[6] != "dispute_approved") == counting)
+        );
+    }
+}
+
+#[tokio::test]
+async fn selected_driver_metrics_read_only_requested_sources_and_preserve_unknown_days() {
+    dispatch_backend::install();
+    let (_root, db, id) = ready();
+    let me = caller(&db, &[&id], false);
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+    let who = me.clone();
+    let (status, report) = ask(&state, move |db, state| {
+        data::driver(db, state, &who, "Fixture Driver", &json!({"from":"2026-09-11","to":DAY,"metrics":"short_inspections,packages_delivered,short_inspections"}))
+    }).await;
+    assert_eq!(status, 200, "{report}");
+    assert_eq!(
+        report["days"]["columns"],
+        json!(["date", "short_inspections", "packages_delivered"])
+    );
+    assert_eq!(report["totals"]["short_inspections"], 1);
+    assert_eq!(report["coverage"].as_object().unwrap().len(), 2);
+    assert!(report["coverage"].get("timecards").is_none());
+    assert!(rows(&report["days"])[0][1].is_null());
+    let who = me.clone();
+    let (status, known_empty) = ask(&state, move |db, state| {
+        data::driver(
+            db,
+            state,
+            &who,
+            "E001",
+            &json!({"date":DAY,"metrics":"short_inspections"}),
+        )
+    })
+    .await;
+    assert_eq!(status, 200, "{known_empty}");
+    assert_eq!(known_empty["totals"]["short_inspections"], 0);
+    assert_eq!(rows(&known_empty["days"])[0][1], 0);
+    let who = me.clone();
+    let (status, longer) = ask(&state, move |db, state| {
+        data::driver(
+            db,
+            state,
+            &who,
+            "Fixture Driver",
+            &json!({"from":"2026-01-01","to":DAY,"metrics":"short_inspections","limit":"500"}),
+        )
+    })
+    .await;
+    assert_eq!(status, 200, "{longer}");
+    assert_eq!(longer["totals"]["short_inspections"], 1);
+    let who = me;
+    let refusal = ask(&state, move |db, state| {
+        data::driver(
+            db,
+            state,
+            &who,
+            "Fixture Driver",
+            &json!({"from":"2026-01-01","to":DAY,"metrics":"hours_worked"}),
+        )
+    })
+    .await;
+    assert_eq!(
+        (refusal.0, s(&refusal.1, "error")),
+        (400, "period_too_long")
+    );
+}
+
 fn day() -> chrono::NaiveDate {
     chrono::NaiveDate::parse_from_str(DAY, "%Y-%m-%d").unwrap()
 }
@@ -265,7 +516,7 @@ async fn coverage_distinguishes_missing_partial_and_collected_zero() {
     assert_eq!(partial["coverage"]["status"], "partial");
     assert_eq!(partial["coverage"]["collected"], 1);
     assert_eq!(partial["coverage"]["of"], 2);
-    assert_eq!(partial["inspections"], 2);
+    assert_eq!(partial["inspections"], 1);
 
     // Paycom knows the preceding day; DVIC doesn't. Joining them must not invent zero DVICs.
     let who = me.clone();
@@ -293,7 +544,7 @@ async fn coverage_distinguishes_missing_partial_and_collected_zero() {
         previous[col(&joined["days"], "short")].is_null(),
         "{joined}"
     );
-    assert_eq!(joined["totals"]["inspections"], 2);
+    assert_eq!(joined["totals"]["inspections"], 1);
 }
 
 #[tokio::test]
@@ -323,7 +574,7 @@ async fn one_driver_is_one_person_across_every_source() {
     let line = row(days, "date", DAY);
     assert_eq!(line[col(days, "route")], "CX101");
     assert!(line[col(days, "hours")].as_f64().unwrap() > 0.0);
-    assert_eq!(line[col(days, "inspections")], 2);
+    assert_eq!(line[col(days, "inspections")], 1);
     assert_eq!(line[col(days, "short")], 1);
     assert_eq!(report["totals"]["routes"], 1);
     assert_eq!(report["totals"]["short_inspections"], 1);
@@ -349,8 +600,8 @@ async fn one_driver_is_one_person_across_every_source() {
     let joined = row(table, "driver", "Fixture Driver");
     assert!(joined[col(table, "stops_completed")].is_number());
     assert!(joined[col(table, "hours_worked")].as_f64().unwrap() > 0.0);
-    assert_eq!(joined[col(table, "inspections")], 2);
-    assert_eq!(team["totals"]["inspections"], 2);
+    assert_eq!(joined[col(table, "inspections")], 1);
+    assert_eq!(team["totals"]["inspections"], 1);
     // Someone Paycom lists who drove no route has hours and no stops, not zero stops.
     let (stops, worked) = (col(table, "stops_completed"), col(table, "hours_worked"));
     assert!(
@@ -488,11 +739,11 @@ async fn one_driver_is_one_person_across_every_source() {
     .await;
     assert_eq!(
         (dvic["inspections"].clone(), dvic["short"].clone()),
-        (json!(2), json!(1))
+        (json!(1), json!(1))
     );
     assert_eq!(
         rows(&dvic["drivers"]),
-        &vec![json!(["Fixture Driver", 2, 1, 41])]
+        &vec![json!(["Fixture Driver", 1, 1, 41])]
     );
 
     let who = me.clone();
@@ -645,7 +896,7 @@ async fn agents_never_see_legacy_unverified_provider_rows() {
     .await;
     assert_eq!(
         (dvic["inspections"].clone(), dvic["short"].clone()),
-        (json!(2), json!(1))
+        (json!(1), json!(1))
     );
     assert!(!dvic.to_string().contains("Foreign Driver"), "{dvic}");
 
@@ -895,14 +1146,14 @@ async fn unclear_requests_are_refused_with_what_to_fix() {
         data::routes(db, state, &who, &json!({"period": "last week"}))
     })
     .await;
-    assert_eq!(refused(answer), (400, "unknown_parameter".to_owned()));
-    // Everyone's timecards come a day at a time; a period needs a driver.
+    assert_eq!(answer.0, 200, "{}", answer.1);
+    // Everyone's timecards also accept periods.
     let who = one.clone();
     let answer = ask(&state, move |db, state| {
         data::timecards(db, state, &who, &json!({"period": "last week"}))
     })
     .await;
-    assert_eq!(refused(answer), (400, "one_day_only".to_owned()));
+    assert_eq!(answer.0, 200, "{}", answer.1);
     let who = one.clone();
     let answer = ask(&state, move |db, state| {
         data::route(db, state, &who, "CX999", &json!({"date": DAY}))
@@ -1689,7 +1940,7 @@ async fn scorecard_questions_come_back_small() {
     assert_eq!(praise["understood"]["feedback"], "positive");
     assert!(praise["feedback"].as_u64().unwrap() > 0, "{praise}");
 
-    // A list beside groups is its first page only: the cursor pages the groups.
+    // A list beside groups has its own cursor.
     let who = me.clone();
     let (status, both) = ask(&state, move |db, state| {
         data::returns(
@@ -1703,7 +1954,7 @@ async fn scorecard_questions_come_back_small() {
     assert_eq!(status, 200, "{both}");
     assert!(both["returns"].as_u64().unwrap() > 10, "{both}");
     assert_eq!(rows(&both["list"]).len(), 10);
-    assert!(both["list"]["page"].get("next_cursor").is_none(), "{both}");
+    assert_eq!(both["list"]["page"]["next_cursor"], "10", "{both}");
 
     // Approved disputes stay events but leave every count of what counts.
     let who = me.clone();
@@ -2037,12 +2288,12 @@ async fn a_kind_of_data_reads_as_allowed_switched_on_or_bypassed() {
                     );
                 }
                 (true, true, _) => {
-                    assert_eq!((status, &own["inspections"]), (200, &json!(2)), "{case}");
+                    assert_eq!((status, &own["inspections"]), (200, &json!(1)), "{case}");
                     assert!(own.get("bypassed").is_none(), "{case}: {own}");
-                    assert_eq!(report["totals"]["inspections"], 2, "{case}");
+                    assert_eq!(report["totals"]["inspections"], 1, "{case}");
                     assert_eq!(lists(&report), [Value::Null, Value::Null, Value::Null]);
                     assert_eq!(team_status, 200, "{case}: {team}");
-                    assert_eq!(team["totals"]["inspections"], 2, "{case}");
+                    assert_eq!(team["totals"]["inspections"], 1, "{case}");
                     assert!(team.get("bypassed").is_none(), "{case}: {team}");
                 }
                 (true, false, false) => {
@@ -2065,16 +2316,16 @@ async fn a_kind_of_data_reads_as_allowed_switched_on_or_bypassed() {
                 }
                 (true, false, true) => {
                     // The data a switched-off feature collected, until it was switched off.
-                    assert_eq!((status, &own["inspections"]), (200, &json!(2)), "{case}");
+                    assert_eq!((status, &own["inspections"]), (200, &json!(1)), "{case}");
                     assert_eq!(own["bypassed"], json!(["DVIC"]), "{case}");
-                    assert_eq!(report["totals"]["inspections"], 2, "{case}");
+                    assert_eq!(report["totals"]["inspections"], 1, "{case}");
                     assert_eq!(
                         lists(&report),
                         [Value::Null, Value::Null, json!(["DVIC"])],
                         "{case}"
                     );
                     assert_eq!(team_status, 200, "{case}: {team}");
-                    assert_eq!(team["totals"]["inspections"], 2, "{case}");
+                    assert_eq!(team["totals"]["inspections"], 1, "{case}");
                     assert_eq!(team["bypassed"], json!(["DVIC"]), "{case}");
                 }
             }
@@ -2129,7 +2380,7 @@ async fn drivers_known_only_by_bypassing_a_feature_say_so() {
     // A driver found by that ID, in an answer read from a feature still on.
     let (status, found) = asked("dvic", json!({"driver":"E002","date":DAY})).await;
     assert_eq!(status, 200, "{found}");
-    assert_eq!(found["inspections"], 2, "{found}");
+    assert_eq!(found["inspections"], 1, "{found}");
     assert_eq!(found["bypassed"], paycom, "{found}");
     let (status, fresh) = asked("status", json!({})).await;
     assert_eq!(status, 200, "{fresh}");

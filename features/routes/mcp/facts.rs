@@ -54,60 +54,115 @@ pub fn routes(
     period: &Period,
     drivers: Option<&[String]>,
 ) -> Result<(Vec<RouteDay>, Coverage)> {
-    let station = db.profile(&dsp.id)?.station_code;
-    let data = db.routes_db(&dsp.id)?;
-    let published = data.all(
+    let scope = RouteQuery::new(db, dsp, period, drivers)?;
+    Ok((scope.list(dsp, 0, None)?, scope.coverage))
+}
+
+/// Routes selected before decoding, with counts and detail pages from the same scope.
+pub struct RouteQuery<'a> {
+    data: dispatch_core::db::DspLease<'a>,
+    sql: String,
+    params: Vec<String>,
+    pub coverage: Coverage,
+}
+impl<'a> RouteQuery<'a> {
+    pub fn new(
+        db: &'a Store,
+        dsp: &Dsp,
+        period: &Period,
+        drivers: Option<&[String]>,
+    ) -> Result<Self> {
+        let station = db.profile(&dsp.id)?.station_code;
+        let data = db.routes_db(&dsp.id)?;
+        let published = data.all(
         "SELECT day,mode FROM route_publications WHERE station=? AND active=1 AND day BETWEEN ? AND ?",
         [&station, &period.first(), &period.last()],
     )?;
-    let mut coverage = Coverage::of(
-        true,
-        published.iter().map(|r| s(r, "day").to_owned()).collect(),
-        period,
-    );
-    coverage.snapshots = published
-        .iter()
-        .filter(|r| s(r, "mode") == "snapshot")
-        .map(|r| s(r, "day").to_owned())
-        .collect();
-    let rows = data.all(
-        "SELECT i.day,i.itinerary_id,i.transporter_id,i.driver_name,i.route_code,i.progress_status,\
-         i.total_packages,i.delivered,i.remaining,i.undeliverable,i.total_locations,\
-         i.completed_locations,i.breaks_secs,i.overtime_secs,d.departed_at,d.first_stop_at,\
-         d.last_stop_at,d.session_end_at,d.stops_total,d.stops_completed,i.departed_at i_departed \
-         FROM itineraries i JOIN route_publications p ON p.id=i.publication_id AND p.active=1 \
-         LEFT JOIN driver_days d ON d.publication_id=i.publication_id AND d.itinerary_id=i.itinerary_id \
-         WHERE p.station=? AND p.day BETWEEN ? AND ? ORDER BY i.day,i.route_code,i.driver_name",
-        [&station, &period.first(), &period.last()],
-    )?;
-    let zone = zone(dsp);
-    let number = |r: &Value, a: &str, b: &str| r[a].as_i64().or_else(|| r[b].as_i64()).unwrap_or(0);
-    let found = rows
-        .iter()
-        .filter(|r| drivers.is_none_or(|ids| ids.iter().any(|id| id == s(r, "transporter_id"))))
-        .map(|r| RouteDay {
-            date: s(r, "day").into(),
-            route: r["route_code"].as_str().map(str::to_owned),
-            itinerary: s(r, "itinerary_id").into(),
-            transporter_id: s(r, "transporter_id").into(),
-            driver_name: s(r, "driver_name").into(),
-            status: r["progress_status"].as_str().map(str::to_owned),
-            packages_total: r["total_packages"].as_i64().unwrap_or(0),
-            packages_delivered: r["delivered"].as_i64().unwrap_or(0),
-            packages_remaining: r["remaining"].as_i64().unwrap_or(0),
-            packages_undeliverable: r["undeliverable"].as_i64().unwrap_or(0),
-            // Amazon's own stop counts; the station pickup is not a stop.
-            stops_total: number(r, "total_locations", "stops_total"),
-            stops_completed: number(r, "completed_locations", "stops_completed"),
-            departed: clock(r["departed_at"].as_i64().or(r["i_departed"].as_i64()), zone),
-            first_stop: clock(r["first_stop_at"].as_i64(), zone),
-            last_stop: clock(r["last_stop_at"].as_i64(), zone),
-            ended: clock(r["session_end_at"].as_i64(), zone),
-            break_minutes: minutes(r["breaks_secs"].as_i64()),
-            overtime_minutes: minutes(r["overtime_secs"].as_i64()),
+        let mut coverage = Coverage::of(
+            true,
+            published.iter().map(|r| s(r, "day").to_owned()).collect(),
+            period,
+        );
+        coverage.snapshots = published
+            .iter()
+            .filter(|r| s(r, "mode") == "snapshot")
+            .map(|r| s(r, "day").to_owned())
+            .collect();
+        let mut sql = String::from(
+            " FROM itineraries i JOIN route_publications p ON p.id=i.publication_id AND p.active=1 \
+             LEFT JOIN driver_days d ON d.publication_id=i.publication_id AND d.itinerary_id=i.itinerary_id \
+             WHERE p.station=? AND p.day BETWEEN ? AND ?",
+        );
+        let mut params = vec![station, period.first(), period.last()];
+        if let Some(ids) = drivers {
+            if ids.is_empty() {
+                sql.push_str(" AND 0");
+            } else {
+                sql.push_str(&format!(
+                    " AND i.transporter_id IN ({})",
+                    vec!["?"; ids.len()].join(",")
+                ));
+                params.extend_from_slice(ids);
+            }
+        }
+        Ok(Self {
+            data,
+            sql,
+            params,
+            coverage,
         })
-        .collect();
-    Ok((found, coverage))
+    }
+    pub fn totals(&self) -> Result<Value> {
+        Ok(self.data.one(&format!(
+            "SELECT COUNT(*) routes,COALESCE(SUM(i.total_packages),0) packages,COALESCE(SUM(i.delivered),0) \
+             delivered,COALESCE(SUM(i.undeliverable),0) \
+             undeliverable,COALESCE(SUM(COALESCE(i.completed_locations,d.stops_completed,0)),0) stops_completed{}", self.sql
+        ), rusqlite::params_from_iter(&self.params))?.unwrap_or_default())
+    }
+    pub fn list(&self, dsp: &Dsp, offset: usize, limit: Option<usize>) -> Result<Vec<RouteDay>> {
+        let mut sql = format!(
+            "SELECT i.day,i.itinerary_id,i.transporter_id,i.driver_name,i.route_code,i.progress_status,\
+             i.total_packages,i.delivered,i.remaining,i.undeliverable,i.total_locations,\
+             i.completed_locations,i.breaks_secs,i.overtime_secs,d.departed_at,d.first_stop_at,\
+             d.last_stop_at,d.session_end_at,d.stops_total,d.stops_completed,i.departed_at i_departed{} \
+             ORDER BY i.day,i.route_code,i.driver_name,i.itinerary_id",
+            self.sql
+        );
+        let mut params = self.params.clone();
+        if let Some(limit) = limit {
+            sql.push_str(" LIMIT ? OFFSET ?");
+            params.extend([limit.to_string(), offset.min(i64::MAX as usize).to_string()]);
+        }
+        let rows = self.data.all(&sql, rusqlite::params_from_iter(&params))?;
+        let zone = zone(dsp);
+        let number =
+            |r: &Value, a: &str, b: &str| r[a].as_i64().or_else(|| r[b].as_i64()).unwrap_or(0);
+        let found = rows
+            .iter()
+            .map(|r| RouteDay {
+                date: s(r, "day").into(),
+                route: r["route_code"].as_str().map(str::to_owned),
+                itinerary: s(r, "itinerary_id").into(),
+                transporter_id: s(r, "transporter_id").into(),
+                driver_name: s(r, "driver_name").into(),
+                status: r["progress_status"].as_str().map(str::to_owned),
+                packages_total: r["total_packages"].as_i64().unwrap_or(0),
+                packages_delivered: r["delivered"].as_i64().unwrap_or(0),
+                packages_remaining: r["remaining"].as_i64().unwrap_or(0),
+                packages_undeliverable: r["undeliverable"].as_i64().unwrap_or(0),
+                // Amazon's own stop counts; the station pickup is not a stop.
+                stops_total: number(r, "total_locations", "stops_total"),
+                stops_completed: number(r, "completed_locations", "stops_completed"),
+                departed: clock(r["departed_at"].as_i64().or(r["i_departed"].as_i64()), zone),
+                first_stop: clock(r["first_stop_at"].as_i64(), zone),
+                last_stop: clock(r["last_stop_at"].as_i64(), zone),
+                ended: clock(r["session_end_at"].as_i64(), zone),
+                break_minutes: minutes(r["breaks_secs"].as_i64()),
+                overtime_minutes: minutes(r["overtime_secs"].as_i64()),
+            })
+            .collect();
+        Ok(found)
+    }
 }
 
 /// What happened to a package on a route day, from Amazon's record of its drop-off.

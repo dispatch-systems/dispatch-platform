@@ -15,10 +15,9 @@ pub const ENDPOINTS: &[Endpoint] = &[Endpoint {
     tool: "dvic_inspections",
     area: Some(DVIC),
     path: "/api/v1/dvic",
-    summary: "Vehicle inspections",
-    description: "Use for DVIC questions, as which drivers were short: each driver's \
-            inspections, how many were shorter than the minimum, and the shortest. detail \
-            full lists the inspections.",
+    summary: "Short vehicle inspections",
+    description: "Recorded short DVIC exceptions, by driver and period. detail full pages \
+        individual durations. No exception does not prove an inspection was completed.",
     path_params: &[],
     params: &[
         DSP,
@@ -30,7 +29,7 @@ pub const ENDPOINTS: &[Endpoint] = &[Endpoint {
         Param {
             name: "short",
             kind: Kind::Boolean,
-            description: "Only drivers, or inspections, short of the minimum.",
+            description: "Compatibility option; DVIC always returns short inspections.",
         },
         DETAIL,
         LIMIT,
@@ -66,7 +65,7 @@ pub const METRICS: &[Metric] = &[
         area: DVIC,
         unit: "inspections",
         total: "sum",
-        description: "DVIC inspections done.",
+        description: "Recorded short DVIC exceptions; alias of short_inspections.",
     },
     Metric {
         name: "short_inspections",

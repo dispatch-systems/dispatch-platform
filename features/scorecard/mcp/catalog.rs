@@ -2,7 +2,9 @@
 use super::{FEEDBACK, RETURNS, SAFETY, SCORECARD, scorecard};
 use dispatch_core::mcp::data::schema;
 use dispatch_core::mcp::{
-    data::catalog::{CURSOR, DATE, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, PERIOD, Param, TO},
+    data::catalog::{
+        CURSOR, DATE, DRIVER, DSP, Endpoint, FROM, GROUPS_CURSOR, Kind, LIMIT, PERIOD, Param, TO,
+    },
     skill::Example,
 };
 
@@ -58,6 +60,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
             },
             LIMIT,
             CURSOR,
+            GROUPS_CURSOR,
         ],
         order: 140,
         output: || {
@@ -122,8 +125,14 @@ pub const ENDPOINTS: &[Endpoint] = &[
                 kind: Kind::Boolean,
                 description: "List the events, a page at a time.",
             },
+            Param {
+                name: "counting",
+                kind: Kind::Boolean,
+                description: "true: still counts against the scorecard; false: approved disputes only. Omit for all.",
+            },
             LIMIT,
             CURSOR,
+            GROUPS_CURSOR,
         ],
         order: 150,
         output: || {
@@ -205,6 +214,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
             },
             LIMIT,
             CURSOR,
+            GROUPS_CURSOR,
         ],
         order: 160,
         output: || {

@@ -87,7 +87,7 @@ pub fn totals() -> Value {
 }
 
 /// Column names appear once; each row follows that order. A page is present only when
-/// more rows exist. Some grouped answers require removing group_by to page their list.
+/// more rows exist. Grouped results and details have independent next_cursor values.
 pub fn table(columns: &[&str]) -> Value {
     let mut column = text();
     if !columns.is_empty() {

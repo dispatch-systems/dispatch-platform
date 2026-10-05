@@ -97,7 +97,16 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   assert.equal(hello.body.result.protocolVersion, '2025-06-18');
   assert.equal(hello.body.result.serverInfo.name, 'dispatch');
   assert.match(hello.body.result.instructions, /Period tools default to the last 30 days/);
-  assert.match(hello.body.result.instructions, /day tools to yesterday/);
+  assert.match(hello.body.result.instructions, /routes and meal breaks to yesterday/);
+  assert.match(
+    hello.body.result.instructions,
+    /groups_cursor pages groups and cursor pages the list independently/,
+  );
+  assert.match(
+    hello.body.result.instructions,
+    /split longer requests into nonoverlapping date ranges/,
+  );
+  assert.match(hello.body.result.instructions, /DVIC contains short exceptions only/);
   assert.ok(hello.body.result.capabilities.tools && hello.body.result.capabilities.prompts);
   assert.equal((await rpc(full, 'notifications/initialized')).status, 202);
 

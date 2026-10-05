@@ -117,7 +117,7 @@
       "source": "dvic",
       "unit": "inspections",
       "total": "sum",
-      "description": "DVIC inspections done."
+      "description": "Recorded short DVIC exceptions; alias of short_inspections."
     },
     {
       "name": "short_inspections",

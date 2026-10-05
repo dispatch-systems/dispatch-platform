@@ -68,6 +68,41 @@ try {
       args: { ...period, group_by: 'driver,week' },
     },
     { name: 'scorecard-page', path: '/api/v1/scorecard', tool: 'scorecard', args: { limit: 100 } },
+    {
+      name: 'route-range',
+      path: '/api/v1/routes',
+      tool: 'route_day',
+      args: { ...period, limit: 100 },
+    },
+    {
+      name: 'meal-range',
+      path: '/api/v1/meal-breaks',
+      tool: 'meal_breaks',
+      args: { ...period, limit: 100 },
+    },
+    {
+      name: 'safety-page',
+      path: '/api/v1/safety',
+      tool: 'safety_events',
+      args: { ...period, list: true, limit: 100 },
+    },
+    {
+      name: 'returns-groups',
+      path: '/api/v1/returns',
+      tool: 'returns',
+      args: { ...period, contact: 'missed', group_by: 'driver', list: true, limit: 100 },
+    },
+    {
+      name: 'driver-metrics',
+      path: '/api/v1/drivers/Taylor%20Brooks',
+      tool: 'driver_report',
+      args: {
+        ...period,
+        driver: 'Taylor Brooks',
+        metrics: 'short_inspections,packages_delivered',
+        limit: 100,
+      },
+    },
   ];
   const key = async (name: string) => {
     const made = await owner.post('/api/platform/agents/keys', {
@@ -75,7 +110,19 @@ try {
       allDsps: false,
       dsps: [world.dsp],
       access: 'read',
-      reads: { areas: ['routes', 'timecards', 'dvic', 'feedback', 'scorecard'], bypass: false },
+      reads: {
+        areas: [
+          'routes',
+          'timecards',
+          'meal_breaks',
+          'dvic',
+          'feedback',
+          'safety',
+          'returns',
+          'scorecard',
+        ],
+        bypass: false,
+      },
       dspReads: [],
       expiresAt: null,
     });
@@ -90,7 +137,11 @@ try {
     if (transport === 'rest') {
       url +=
         '?' +
-        new URLSearchParams(Object.entries(work.args).map(([key, value]) => [key, String(value)]));
+        new URLSearchParams(
+          Object.entries(work.args)
+            .filter(([key]) => key !== 'driver' || work.tool !== 'driver_report')
+            .map(([key, value]) => [key, String(value)]),
+        );
     } else {
       const version = transport.slice(4);
       const modern = version === '2026-07-28';
@@ -176,9 +227,9 @@ try {
   const measurements = [];
   for (const transport of ['rest', 'mcp-2025-06-18', 'mcp-2026-07-28'] as const) {
     for (const concurrency of [1, 4, 8]) {
-      const token = await key(`Benchmark ${transport} c${concurrency}`);
-      // 48 requests per pass, 96 per key: below the ordinary 120/minute quota.
+      // Each pass has its own key so additional workloads stay below 120/minute.
       for (const pass of ['first', 'repeat']) {
+        const token = await key(`Benchmark ${transport} c${concurrency} ${pass}`);
         const samples: { workload: number; ms: number; bytes: number }[] = [];
         let next = 0;
         const count = workloads.length * 6;

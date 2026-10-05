@@ -2,7 +2,7 @@
 //! packages counted, grouped and listed.
 use super::{
     LOCATIONS,
-    facts::{self, Packages, RouteDay, outcome_of, reason_of},
+    facts::{self, Packages, outcome_of, reason_of},
 };
 use crate::{api::types::RouteAddress, backend::RoutesStore};
 use dispatch_core::{
@@ -44,11 +44,18 @@ pub fn routes(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
     let access = Access::of(db, caller, query)?;
     let dsp = access.dsp;
     let period = period(query, today(dsp), "yesterday")?;
-    one_day(&period)?;
     let people = People::load(db, state, &access)?;
-    let (found, coverage) = facts::routes(db, dsp, &period, None)?;
-    let collected = !coverage.days.is_empty();
-    let sum = |f: fn(&RouteDay) -> i64| found.iter().map(f).sum::<i64>();
+    let person = match param(query, "driver") {
+        "" => None,
+        named => Some(people.find(named)?),
+    };
+    let scope = facts::RouteQuery::new(db, dsp, &period, person.map(|p| p.amazon.as_slice()))?;
+    let coverage = &scope.coverage;
+    let collected = coverage.known();
+    let totals = scope.totals()?;
+    let start = shape::offset(query)?;
+    let take = shape::limit(query, 100);
+    let multiple = period.from != period.to;
     let mut table = Table::new(&[
         "route",
         "driver",
@@ -60,8 +67,11 @@ pub fn routes(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
         "departed",
         "ended",
     ]);
-    for route in &found {
-        table.push(vec![
+    if multiple {
+        table.columns.insert(0, "date");
+    }
+    for route in &scope.list(dsp, start, Some(take))? {
+        let mut row = vec![
             json!(route.route),
             json!(who(
                 &people,
@@ -76,20 +86,21 @@ pub fn routes(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
             json!(route.stops_completed),
             json!(route.departed),
             json!(route.ended),
-        ]);
+        ];
+        if multiple {
+            row.insert(0, json!(route.date));
+        }
+        table.push(row);
+    }
+    let mut head = understood(dsp, Some(&period));
+    if let Some(person) = person {
+        head.insert("driver".into(), json!(label(&people, person)));
     }
     let mut answer = json!({
-        "understood": understood(dsp, Some(&period)),
+        "understood": head,
         "final": coverage.snapshots.is_empty() && collected,
         "coverage": coverage,
-        // A day not collected has no totals: nothing is known, which is not zero.
-        "totals": collected.then(|| json!({
-            "routes": found.len(),
-            "packages": sum(|r| r.packages_total),
-            "delivered": sum(|r| r.packages_delivered),
-            "undeliverable": sum(|r| r.packages_undeliverable),
-            "stops_completed": sum(|r| r.stops_completed),
-        })),
+        "totals": collected.then_some(&totals),
     });
     people.mark(&mut answer);
     if !collected {
@@ -99,7 +110,14 @@ pub fn routes(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
         ));
         return Ok(answer);
     }
-    paged(&mut answer, "routes", table, query, 100)?;
+    page(
+        &mut answer,
+        "routes",
+        table,
+        start,
+        totals["routes"].as_u64().unwrap_or(0) as usize,
+        take,
+    )?;
     Ok(answer)
 }
 

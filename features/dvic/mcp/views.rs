@@ -1,17 +1,17 @@
 //! DVIC's answer to agents: each driver's inspections in a period, the short ones counted.
-use super::facts::{Inspection, inspections};
+use super::facts::{Inspection, InspectionQuery};
 use dispatch_core::{
     State,
-    db::Store,
+    db::{Store, n, s},
     mcp::{
         Caller,
         api::types::DriverSource,
         data::{
             Answer,
             access::Access,
-            catalog::{self, flag},
+            catalog::{self},
             scope::{DEFAULT_PERIOD, People, label, param, period, today, who},
-            shape::{Table, paged, understood},
+            shape::{Table, limit, offset, page, paged, understood},
         },
     },
 };
@@ -31,16 +31,17 @@ pub fn dvic(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
         Some(people.find(named)?)
     };
     let period = period(query, today(dsp), DEFAULT_PERIOD)?;
-    let (found, coverage) = inspections(db, dsp, &period, person.map(|p| p.amazon.as_slice()))?;
-    let short = flag(query, "short");
+    let scope = InspectionQuery::new(db, dsp, &period, person.map(|p| p.amazon.as_slice()))?;
+    let count = scope.count()?;
+    let coverage = &scope.coverage;
     let mut head = understood(dsp, Some(&period));
     if let Some(person) = person {
         head.insert("driver".into(), json!(label(&people, person)));
     }
     let mut answer = json!({
         "understood": head,
-        "inspections": coverage.known().then_some(found.len()),
-        "short": coverage.known().then(|| found.iter().filter(|i| i.short).count()),
+        "inspections": coverage.known().then_some(count),
+        "short": coverage.known().then_some(count),
         "coverage": coverage,
     });
     people.mark(&mut answer);
@@ -56,7 +57,9 @@ pub fn dvic(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
         let mut table = Table::new(&[
             "date", "driver", "type", "started", "seconds", "minimum", "short",
         ]);
-        for i in found.iter().filter(|i| !short || i.short) {
+        let start = offset(query)?;
+        let take = limit(query, 200);
+        for i in &scope.list(start, Some(take))? {
             table.push(vec![
                 json!(i.date),
                 json!(whom(i)),
@@ -67,19 +70,24 @@ pub fn dvic(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer
                 json!(i.short),
             ]);
         }
-        paged(&mut answer, "list", table, query, 200)?;
+        page(&mut answer, "list", table, start, count, take)?;
         return Ok(answer);
     }
     // driver → (inspections, short, shortest seconds)
     let mut per: BTreeMap<String, (i64, i64, i64)> = BTreeMap::new();
-    for i in &found {
-        let entry = per.entry(whom(i)).or_insert((0, 0, i64::MAX));
-        entry.0 += 1;
-        entry.1 += i64::from(i.short);
-        entry.2 = entry.2.min(i.seconds);
+    for row in scope.groups()? {
+        let driver = who(
+            &people,
+            DriverSource::Amazon,
+            s(&row, "transporter_id"),
+            s(&row, "transporter_name"),
+        );
+        let entry = per.entry(driver).or_insert((0, 0, i64::MAX));
+        entry.0 += n(&row, "inspections");
+        entry.1 += n(&row, "inspections");
+        entry.2 = entry.2.min(n(&row, "shortest"));
     }
-    let mut rows: Vec<(String, (i64, i64, i64))> =
-        per.into_iter().filter(|(_, t)| !short || t.1 > 0).collect();
+    let mut rows: Vec<(String, (i64, i64, i64))> = per.into_iter().collect();
     rows.sort_by(|a, b| b.1.1.cmp(&a.1.1).then_with(|| a.0.cmp(&b.0)));
     let mut table = Table::new(&["driver", "inspections", "short", "shortest_seconds"]);
     for (driver, (count, shorts, shortest)) in rows {

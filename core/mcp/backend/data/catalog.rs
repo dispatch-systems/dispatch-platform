@@ -101,6 +101,15 @@ pub const CURSOR: Param = Param {
     kind: Kind::Text,
     description: "The next_cursor an earlier answer gave, for its next page.",
 };
+pub const GROUPS_CURSOR: Param = Param {
+    name: "groups_cursor",
+    kind: Kind::Text,
+    description: "The groups table's next_cursor; cursor separately pages the detail list.",
+};
+pub const RECENT_PERIOD: Param = Param {
+    description: "Days in the DSP's time: last week, last 14 days or 2026-W39. Defaults to yesterday.",
+    ..PERIOD
+};
 pub const DETAIL: Param = Param {
     name: "detail",
     kind: Kind::Choice(&["summary", "full"]),
@@ -203,7 +212,21 @@ pub(crate) const CORE: &[Endpoint] = &[
             line per day with their route, stops, packages delivered and undeliverable, hours, \
             clock in and out, meal break and inspections, plus totals.",
         path_params: &[DRIVER_PATH],
-        params: &[DSP, PERIOD, DATE, FROM, TO, DETAIL, LIMIT, CURSOR],
+        params: &[
+            DSP,
+            PERIOD,
+            DATE,
+            FROM,
+            TO,
+            Param {
+                name: "metrics",
+                kind: Kind::Text,
+                description: "Optional comma-separated list_metrics names; reads only those sources. Omit for all daily facts.",
+            },
+            DETAIL,
+            LIMIT,
+            CURSOR,
+        ],
         order: 60,
         output: super::schema::driver,
         answer: |db, state, caller, named, query| super::driver(db, state, caller, named, query),

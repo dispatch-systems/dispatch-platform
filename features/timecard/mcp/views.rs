@@ -11,9 +11,7 @@ use dispatch_core::{
             Answer,
             access::Access,
             catalog::{self, flag},
-            scope::{
-                DEFAULT_PERIOD, People, daily_limit, label, one_day, param, period, today, who,
-            },
+            scope::{DEFAULT_PERIOD, People, daily_limit, label, param, period, today, who},
             shape::{Table, hours, paged, understood},
         },
     },
@@ -41,16 +39,17 @@ pub fn timecards(db: &Store, state: &State, caller: &Caller, query: &Value) -> A
             "yesterday"
         },
     )?;
-    if person.is_none() {
-        one_day(&period)?;
-    }
     daily_limit(&period)?;
     let (cards, coverage) =
         facts::timecards(db, dsp, &period, person.map(|p| p.paycom.as_slice()))?;
     let first = if person.is_some() { "date" } else { "driver" };
     let mut table = Table::new(&[first, "hours", "in", "out", "lunch_minutes", "needs_review"]);
+    let multiple = person.is_none() && period.from != period.to;
+    if multiple {
+        table.columns.insert(0, "date");
+    }
     for card in &cards {
-        table.push(vec![
+        let mut row = vec![
             if person.is_some() {
                 json!(card.date)
             } else {
@@ -66,7 +65,11 @@ pub fn timecards(db: &Store, state: &State, caller: &Caller, query: &Value) -> A
             json!(card.clock_out),
             json!(card.lunch_minutes),
             json!(card.needs_review),
-        ]);
+        ];
+        if multiple {
+            row.insert(0, json!(card.date));
+        }
+        table.push(row);
     }
     let mut head = understood(dsp, Some(&period));
     if let Some(person) = person {
@@ -88,9 +91,20 @@ pub fn meal_breaks(db: &Store, state: &State, caller: &Caller, query: &Value) ->
     let access = Access::of(db, caller, query)?;
     let dsp = access.dsp;
     let period = period(query, today(dsp), "yesterday")?;
-    one_day(&period)?;
+    daily_limit(&period)?;
     let people = People::load(db, state, &access)?;
-    let (mut rows, coverage) = facts::meal_breaks(db, dsp, &period)?;
+    let person = match param(query, "driver") {
+        "" => None,
+        named => Some(people.find(named)?),
+    };
+    let sources = person.map(|p| {
+        p.paycom
+            .iter()
+            .map(|code| format!("paycom:{code}"))
+            .chain(p.amazon.iter().map(|id| format!("cortex:{id}")))
+            .collect::<Vec<_>>()
+    });
+    let (mut rows, coverage) = facts::meal_breaks_for(db, dsp, &period, sources.as_deref())?;
     mark_routes(db, dsp, &period, &people, &mut rows)?;
     let issues = flag(query, "issues");
     let whom = |row: &MealDay| {
@@ -110,24 +124,36 @@ pub fn meal_breaks(db: &Store, state: &State, caller: &Caller, query: &Value) ->
         "late_clock_in",
         "long_gap",
     ]);
+    let multiple = period.from != period.to;
+    if multiple {
+        table.columns.insert(0, "date");
+    }
     for row in rows
         .iter()
         .filter(|r| r.cortex_route && (!issues || meal_issue(r)))
     {
         let (span, minutes) = meal_span(row);
-        table.push(vec![
+        let mut values = vec![
             json!(whom(row)),
             json!(row.status),
             span,
             minutes,
             json!(row.late_clock_in),
             json!(row.long_gap),
-        ]);
+        ];
+        if multiple {
+            values.insert(0, json!(row.date));
+        }
+        table.push(values);
     }
     // Only those Cortex had a route for: office staff with lunch punches are no meal
     // question, and listing them apart read to models as missed meals.
+    let mut head = understood(dsp, Some(&period));
+    if let Some(person) = person {
+        head.insert("driver".into(), json!(label(&people, person)));
+    }
     let mut answer = json!({
-        "understood": understood(dsp, Some(&period)),
+        "understood": head,
         "collected": !coverage.days.is_empty(),
         "coverage": coverage,
     });

@@ -2,11 +2,12 @@
 //! events, returns to station with their contact-compliance notes, and each driver's tiers.
 //! Each reads the week's active publication and answers a count or a short table, as the
 //! route questions do.
+use super::query::{self, Dataset};
 use crate::backend::ScorecardStore;
 use dispatch_core::{
     State,
     accounts::api::types::Dsp,
-    db::{Store, s},
+    db::{Store, n, s},
     foundation::weeks,
     mcp::{
         Caller,
@@ -17,7 +18,7 @@ use dispatch_core::{
             catalog::{self, flag},
             facts,
             scope::{DEFAULT_PERIOD, People, Period, Person, param, period, today},
-            shape::{Table, limit, page, paged, understood},
+            shape::{BUDGET, Table, limit, offset, page, paged_named, understood},
         },
     },
 };
@@ -58,7 +59,7 @@ pub const FEEDBACK_NAMES: &[&str] = &[
     "thank_my_driver",
 ];
 /// Amazon's tiers, best first, old names beside the new.
-fn tier_rank(tier: &str) -> Option<u8> {
+pub(super) fn tier_rank(tier: &str) -> Option<u8> {
     Some(match tier.to_lowercase().as_str() {
         "platinum" | "fantastic plus" | "fantastic" => 4,
         "gold" | "great" => 3,
@@ -83,7 +84,7 @@ fn who(people: &People, id: &str, name: &str) -> String {
 }
 /// How a code Amazon writes in capitals reads in an answer: "BUSINESS CLOSED" is
 /// business_closed.
-fn snake(text: &str) -> String {
+pub(super) fn snake(text: &str) -> String {
     text.trim()
         .to_lowercase()
         .replace(['-', ' ', '/'], "_")
@@ -94,53 +95,10 @@ fn snake(text: &str) -> String {
 }
 
 /// One row of a scorecard dataset, from the week's active publication.
-struct Row {
-    week: String,
-    transporter_id: String,
-    tracking_id: String,
-    data: Value,
-}
-/// A dataset's rows whose own date falls in the period: `date` is the JSON field that
-/// holds it, as "2026-09-14" or a time beginning with the date.
-fn rows(
-    db: &Store,
-    dsp: &Dsp,
-    table: &str,
-    date: &str,
-    period: &Period,
-    drivers: Option<&[String]>,
-) -> dispatch_core::Result<Vec<Row>> {
-    let station = db.profile(&dsp.id)?.station_code;
-    let data = db.scorecard_db(&dsp.id)?;
-    let mut sql = format!(
-        "SELECT x.week,COALESCE(x.transporter_id,'') transporter_id,COALESCE(x.tracking_id,'') tracking_id,x.row \
-         FROM {table} x JOIN scorecard_publications p ON p.id=x.publication_id AND p.active=1 AND p.scope_verified=1 \
-         WHERE p.station=? AND substr(json_extract(x.row,'$.{date}'),1,10) BETWEEN ? AND ?"
-    );
-    let mut params = vec![station, period.first(), period.last()];
-    if let Some(ids) = drivers {
-        sql.push_str(&format!(
-            " AND x.transporter_id IN ({})",
-            vec!["?"; ids.len().max(1)].join(",")
-        ));
-        params.extend(ids.iter().cloned());
-        if ids.is_empty() {
-            params.push(String::new());
-        }
-    }
-    sql.push_str(" ORDER BY json_extract(x.row,'$.");
-    sql.push_str(date);
-    sql.push_str("') DESC, x.row_index");
-    Ok(data
-        .all(&sql, rusqlite::params_from_iter(&params))?
-        .iter()
-        .map(|r| Row {
-            week: s(r, "week").into(),
-            transporter_id: s(r, "transporter_id").into(),
-            tracking_id: s(r, "tracking_id").into(),
-            data: serde_json::from_str(s(r, "row")).unwrap_or_default(),
-        })
-        .collect())
+pub(super) struct Row {
+    pub transporter_id: String,
+    pub tracking_id: String,
+    pub data: Value,
 }
 /// The Amazon weeks a period touches, and which of them have been posted.
 fn weeks(db: &Store, dsp: &Dsp, period: &Period) -> dispatch_core::Result<Value> {
@@ -222,8 +180,11 @@ fn unknown(period: &Period, coverage: &Value, elsewhere: &str) -> Option<Refusal
         )
     })
 }
-fn text(row: &Value, field: &str) -> String {
-    match &row[field] {
+pub(super) fn text(row: &Value, field: &str) -> String {
+    scalar_text(&row[field])
+}
+pub(super) fn scalar_text(value: &Value) -> String {
+    match value {
         Value::String(s) => s.trim().to_owned(),
         Value::Null => String::new(),
         other => other.to_string(),
@@ -266,20 +227,65 @@ fn groups_of(query: &Value, allowed: &[&'static str]) -> Result<Vec<&'static str
     }
     Ok(out)
 }
-/// A list beside groups shows only its first page, since the request's cursor pages the
-/// groups: the rest are read by asking again without them.
-fn first_page(answer: &mut Value, table: Table, query: &Value) -> Result<(), Refusal> {
-    let total = table.rows.len();
-    page(answer, "list", table, 0, total, limit(query, 100))?;
-    let list = &mut answer["list"];
-    if let Some(page) = list.get_mut("page").and_then(Value::as_object_mut) {
-        page.remove("next_cursor");
-        let shown = page["returned"].clone();
-        list["note"] = json!(format!(
-            "The first {shown} of {total}. Ask again without group_by to page through them all."
-        ));
+/// Group pages and detail pages can advance independently. Summary-only requests keep
+/// their original cursor; when details are present groups use groups_cursor.
+fn group_page(
+    answer: &mut Value,
+    table: Table,
+    query: &Value,
+    listed: bool,
+) -> Result<(), Refusal> {
+    let table = if listed {
+        table.with_budget(BUDGET.saturating_sub(answer.to_string().len()) / 2)
+    } else {
+        table
+    };
+    let cursor = if listed { "groups_cursor" } else { "cursor" };
+    paged_named(answer, "groups", table, query, 100, cursor)
+}
+fn group_expression(group: &str, date: &str) -> String {
+    match group {
+        "driver" => format!(
+            "json_array(COALESCE(x.transporter_id,''),{})",
+            query::field("da_name")
+        ),
+        "week" => "x.week".into(),
+        "type" => query::normalized("type"),
+        "reason" => query::normalized("rts_reason_code"),
+        "coaching" => {
+            let field = query::field("weekly_coaching");
+            format!("CASE WHEN {field}='' THEN 'none' ELSE {field} END")
+        }
+        "address" => "COALESCE(x.tracking_id,'')".into(),
+        _ if date == "delivery_time" => format!("substr({},1,10)", query::field(date)),
+        _ => query::field(date),
     }
-    Ok(())
+}
+fn group_keys(people: &People, groups: &[&str], row: &Value) -> Vec<String> {
+    groups
+        .iter()
+        .enumerate()
+        .map(|(i, group)| {
+            let key = format!("k{i}");
+            if *group == "driver" {
+                let pair: Value = serde_json::from_str(s(row, &key)).unwrap_or_default();
+                who(
+                    people,
+                    pair[0].as_str().unwrap_or(""),
+                    pair[1].as_str().unwrap_or(""),
+                )
+            } else {
+                text(row, &key)
+            }
+        })
+        .collect()
+}
+fn feedback_kinds(row: &Row) -> Vec<&'static str> {
+    FEEDBACK
+        .iter()
+        .filter(|(_, field, _)| yes(&row.data, field))
+        .map(|(name, _, _)| *name)
+        .collect()
 }
 /// Every value a field takes in a dataset's collected weeks, as answers name it.
 fn ever(
@@ -377,7 +383,7 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
     if let Some(refusal) = unknown(&period, &coverage, "") {
         return Err(refusal.into());
     }
-    let found = rows(
+    let mut selected = Dataset::new(
         db,
         dsp,
         "customer_feedback",
@@ -385,30 +391,38 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         &period,
         person.map(|p| p.amazon.as_slice()),
     )?;
-    // Keep the rows the question is about, with the kinds each flags.
-    let mut kept: Vec<(Row, Vec<&'static str>)> = vec![];
-    for row in found {
-        let negative = yes(&row.data, "negative_feedback_flag");
-        let matches_kind = match kind {
-            "negative" => negative,
-            "positive" => !negative,
-            _ => true,
-        };
-        let kinds: Vec<&'static str> = FEEDBACK
-            .iter()
-            .filter(|(_, field, _)| yes(&row.data, field))
-            .map(|(name, _, _)| *name)
-            .collect();
-        if !matches_kind
-            || (impacting && !yes(&row.data, "cdf_impact_flag"))
-            || (!wanted_type.is_empty() && !kinds.contains(&wanted_type))
-        {
-            continue;
-        }
-        kept.push((row, kinds));
+    match kind {
+        "negative" => selected.and(&query::yes("negative_feedback_flag"), None),
+        "positive" => selected.and(
+            &format!("NOT {}", query::yes("negative_feedback_flag")),
+            None,
+        ),
+        _ => (),
     }
-    let tracking: Vec<String> = kept.iter().map(|(r, _)| r.tracking_id.clone()).collect();
-    let looked_up = placed && (groups.contains(&"address") || flag(query, "list"));
+    if impacting {
+        selected.and(&query::yes("cdf_impact_flag"), None);
+    }
+    if let Some((_, field, _)) = FEEDBACK.iter().find(|(name, _, _)| *name == wanted_type) {
+        selected.and(&query::yes(field), None);
+    }
+    let totals = selected.totals(&[])?;
+    let total = n(&totals, "total") as usize;
+    let listed = flag(query, "list");
+    let start = offset(query)?;
+    let take = limit(query, 100);
+    let kept = if listed {
+        selected.list(start, take)?
+    } else {
+        vec![]
+    };
+    let mut tracking: Vec<String> = kept.iter().map(|r| r.tracking_id.clone()).collect();
+    let mut address_counts = vec![];
+    if groups.contains(&"address") {
+        address_counts =
+            selected.groups(&[group_expression("address", "delivery_time")], &[], "")?;
+        tracking.extend(address_counts.iter().map(|r| s(r, "k0").to_owned()));
+    }
+    let looked_up = placed && (groups.contains(&"address") || listed);
     let addresses = match places {
         Some(places) if looked_up => (places.of)(db, dsp, &tracking)?,
         _ => HashMap::new(),
@@ -423,7 +437,7 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
     }
     let mut answer = json!({
         "understood": head,
-        "feedback": kept.len(),
+        "feedback": total,
         "coverage": coverage,
     });
     people.mark(&mut answer);
@@ -435,43 +449,46 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
     }
     if !groups.is_empty() {
         let mut counted: HashMap<Vec<String>, i64> = HashMap::new();
-        let mut unplaced = 0;
-        for (row, kinds) in &kept {
-            let date = text(&row.data, "delivery_time")
-                .chars()
-                .take(10)
-                .collect::<String>();
-            let place = addresses.get(&row.tracking_id).cloned();
-            if groups.contains(&"address") && place.is_none() {
-                unplaced += 1;
-                continue;
+        let mut keys: Vec<String> = groups
+            .iter()
+            .map(|g| group_expression(g, "delivery_time"))
+            .collect();
+        let mut expansion = String::new();
+        if let Some(index) = groups.iter().position(|g| *g == "type") {
+            let flags: Vec<String> = FEEDBACK
+                .iter()
+                .map(|(name, field, _)| {
+                    format!("CASE WHEN {} THEN '{name}' END", query::yes(field))
+                })
+                .collect();
+            let none = FEEDBACK
+                .iter()
+                .map(|(_, field, _)| query::yes(field))
+                .collect::<Vec<_>>()
+                .join("+");
+            expansion = format!(
+                "JOIN json_each(json_array({},CASE WHEN ({none})=0 THEN 'unspecified' END)) kinds ON kinds.value IS NOT NULL",
+                flags.join(",")
+            );
+            keys[index] = "kinds.value".into();
+        }
+        for row in selected.groups(&keys, &[], &expansion)? {
+            let mut keys = group_keys(&people, &groups, &row);
+            if let Some(index) = groups.iter().position(|g| *g == "address") {
+                let Some(address) = addresses.get(&keys[index]) else {
+                    continue;
+                };
+                keys[index] = address.clone();
             }
-            // A row flagging several kinds counts once under each when grouped by kind.
-            let kind_keys: Vec<String> = if groups.contains(&"type") {
-                if kinds.is_empty() {
-                    vec!["unspecified".into()]
-                } else {
-                    kinds.iter().map(|k| k.to_string()).collect()
-                }
-            } else {
-                vec![String::new()]
-            };
-            for kind_key in kind_keys {
-                let keys: Vec<String> = groups
-                    .iter()
-                    .map(|g| match *g {
-                        "driver" => who(&people, &row.transporter_id, &text(&row.data, "da_name")),
-                        "address" => place.clone().unwrap_or_default(),
-                        "type" => kind_key.clone(),
-                        "week" => row.week.clone(),
-                        _ => date.clone(),
-                    })
-                    .collect();
-                *counted.entry(keys).or_default() += 1;
-            }
+            *counted.entry(keys).or_default() += n(&row, "total");
         }
         counted.retain(|_, count| *count >= min);
         if groups.contains(&"address") {
+            let unplaced: i64 = address_counts
+                .iter()
+                .filter(|r| !addresses.contains_key(s(r, "k0")))
+                .map(|r| n(r, "total"))
+                .sum();
             answer["unplaced"] = json!(unplaced);
             if unplaced > 0 {
                 answer["note"] = json!(format!(
@@ -479,12 +496,11 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
                 ));
             }
         }
-        paged(
+        group_page(
             &mut answer,
-            "groups",
             count_table(&groups, counted, "feedback"),
             query,
-            100,
+            listed,
         )?;
     }
     if flag(query, "list") {
@@ -493,7 +509,8 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
             columns.push("address");
         }
         let mut table = Table::new(&columns);
-        for (row, kinds) in &kept {
+        for row in &kept {
+            let kinds = feedback_kinds(row);
             let mut values = vec![
                 json!(
                     text(&row.data, "delivery_time")
@@ -515,11 +532,7 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
             }
             table.push(values);
         }
-        if groups.is_empty() {
-            paged(&mut answer, "list", table, query, 100)?;
-        } else {
-            first_page(&mut answer, table, query)?;
-        }
+        page(&mut answer, "list", table, start, total, take)?;
     }
     Ok(answer)
 }
@@ -550,7 +563,7 @@ pub fn safety(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
             .into());
         }
     }
-    let found = rows(
+    let mut selected = Dataset::new(
         db,
         dsp,
         "safety_events",
@@ -558,21 +571,51 @@ pub fn safety(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
         &period,
         person.map(|p| p.amazon.as_slice()),
     )?;
-    let kind = |row: &Row| snake(&text(&row.data, "type"));
-    let kept: Vec<&Row> = found
-        .iter()
-        .filter(|r| wanted_type.is_empty() || kind(r).contains(&wanted_type))
-        .collect();
-    // A dispute Amazon approved takes the event off the scorecard.
-    let counts = |r: &Row| !snake(&text(&r.data, "final_resolution")).eq("dispute_approved");
-    let mut by_type: BTreeMap<Vec<String>, (i64, i64)> = BTreeMap::new();
-    for r in &kept {
-        let entry = by_type.entry(vec![kind(r)]).or_default();
-        entry.0 += 1;
-        entry.1 += i64::from(counts(r));
+    if !wanted_type.is_empty() {
+        selected.and(
+            &format!("instr({},?)>0", query::normalized("type")),
+            Some(&wanted_type),
+        );
     }
-    let types = event_table(&["type"], by_type.into_iter().collect());
+    let counting = format!(
+        "{} <> 'dispute_approved'",
+        query::normalized("final_resolution")
+    );
+    if !param(query, "counting").is_empty() {
+        selected.and(
+            &format!("({counting})=CAST(? AS INTEGER)"),
+            Some(if flag(query, "counting") { "1" } else { "0" }),
+        );
+    }
+    let totals = selected.totals(&[("counting", counting.clone())])?;
+    let total = n(&totals, "total") as usize;
+    let by_type = selected.groups(
+        &[query::normalized("type")],
+        &[("counting", counting.clone())],
+        "",
+    )?;
+    let types = event_table(
+        &["type"],
+        by_type
+            .iter()
+            .map(|r| {
+                (
+                    vec![s(r, "k0").to_owned()],
+                    (n(r, "total"), n(r, "counting")),
+                )
+            })
+            .collect(),
+    );
     let types = json!({"columns": types.columns, "rows": types.rows});
+    let listed = person.is_some() || flag(query, "list");
+    let start = offset(query)?;
+    let take = limit(query, 100);
+    let kept = if listed {
+        selected.list(start, take)?
+    } else {
+        vec![]
+    };
+    let kind = |row: &Row| snake(&text(&row.data, "type"));
     let mut head = understood(dsp, Some(&period));
     if let Some(p) = person {
         head.insert("driver".into(), json!(p.name));
@@ -582,34 +625,30 @@ pub fn safety(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
     }
     let mut answer = json!({
         "understood": head,
-        "events": kept.len(),
-        "counting": kept.iter().filter(|r| counts(r)).count(),
+        "events": total,
+        "counting": totals["counting"],
         "by_type": types,
         "coverage": coverage,
     });
     people.mark(&mut answer);
     if !groups.is_empty() {
+        let keys: Vec<String> = groups
+            .iter()
+            .map(|g| group_expression(g, "data_date"))
+            .collect();
         let mut counted: HashMap<Vec<String>, (i64, i64)> = HashMap::new();
-        for r in &kept {
-            let keys = groups
-                .iter()
-                .map(|g| match *g {
-                    "driver" => who(&people, &r.transporter_id, &text(&r.data, "da_name")),
-                    "type" => kind(r),
-                    "week" => r.week.clone(),
-                    _ => text(&r.data, "data_date"),
-                })
-                .collect();
-            let entry = counted.entry(keys).or_default();
-            entry.0 += 1;
-            entry.1 += i64::from(counts(r));
+        for row in selected.groups(&keys, &[("counting", counting)], "")? {
+            let entry = counted
+                .entry(group_keys(&people, &groups, &row))
+                .or_default();
+            entry.0 += n(&row, "total");
+            entry.1 += n(&row, "counting");
         }
-        paged(
+        group_page(
             &mut answer,
-            "groups",
             event_table(&groups, counted.into_iter().collect()),
             query,
-            100,
+            listed,
         )?;
     }
     // One driver's events are few; anyone's are listed when asked.
@@ -638,21 +677,9 @@ pub fn safety(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
                 }),
             ]);
         }
-        if groups.is_empty() {
-            paged(&mut answer, "list", table, query, 100)?;
-        } else {
-            first_page(&mut answer, table, query)?;
-        }
+        page(&mut answer, "list", table, start, total, take)?;
     }
     Ok(answer)
-}
-
-/// The notes Amazon leaves on a return when the driver did not contact the customer as
-/// required: contact compliance, missed.
-fn missed_contact(coaching: &str) -> bool {
-    let lower = coaching.to_lowercase();
-    !lower.is_empty()
-        && (lower.contains("contact") || lower.contains("call") || lower.contains("text"))
 }
 
 /// `GET /api/v1/returns`: Amazon's returns to station (RTS), with contact compliance.
@@ -687,7 +714,7 @@ pub fn returns(db: &Store, state: &State, caller: &Caller, query: &Value) -> Ans
             .into());
         }
     }
-    let found = rows(
+    let mut selected = Dataset::new(
         db,
         dsp,
         "returns_to_station",
@@ -695,19 +722,39 @@ pub fn returns(db: &Store, state: &State, caller: &Caller, query: &Value) -> Ans
         &period,
         person.map(|p| p.amazon.as_slice()),
     )?;
-    let kept: Vec<&Row> = found
-        .iter()
-        .filter(|r| {
-            let coaching = text(&r.data, "weekly_coaching");
-            (reason.is_empty() || snake(&text(&r.data, "rts_reason_code")) == reason)
-                && (!impacting || yes(&r.data, "impacting_dcr"))
-                && match contact {
-                    "missed" => missed_contact(&coaching),
-                    "compliant" => text(&r.data, "weekly_exemption_reason") == "Contact Compliant",
-                    _ => true,
-                }
-        })
-        .collect();
+    if !reason.is_empty() {
+        selected.and(
+            &format!("{}=?", query::normalized("rts_reason_code")),
+            Some(&reason),
+        );
+    }
+    if impacting {
+        selected.and(&query::yes("impacting_dcr"), None);
+    }
+    match contact {
+        "missed" => selected.and(&query::missed(), None),
+        "compliant" => selected.and(
+            &format!(
+                "{}='Contact Compliant'",
+                query::field("weekly_exemption_reason")
+            ),
+            None,
+        ),
+        _ => (),
+    }
+    let totals = selected.totals(&[
+        ("hurting_dcr", query::yes("impacting_dcr")),
+        ("contact_missed", query::missed()),
+    ])?;
+    let total = n(&totals, "total") as usize;
+    let listed = flag(query, "list");
+    let start = offset(query)?;
+    let take = limit(query, 100);
+    let kept = if listed {
+        selected.list(start, take)?
+    } else {
+        vec![]
+    };
     let mut head = understood(dsp, Some(&period));
     if let Some(p) = person {
         head.insert("driver".into(), json!(p.name));
@@ -719,36 +766,28 @@ pub fn returns(db: &Store, state: &State, caller: &Caller, query: &Value) -> Ans
     }
     let mut answer = json!({
         "understood": head,
-        "returns": kept.len(),
-        "hurting_dcr": kept.iter().filter(|r| yes(&r.data, "impacting_dcr")).count(),
-        "contact_missed": kept.iter().filter(|r| missed_contact(&text(&r.data, "weekly_coaching"))).count(),
+        "returns": total,
+        "hurting_dcr": totals["hurting_dcr"],
+        "contact_missed": totals["contact_missed"],
         "coverage": coverage,
     });
     people.mark(&mut answer);
     if !groups.is_empty() {
+        let keys: Vec<String> = groups
+            .iter()
+            .map(|g| group_expression(g, "delivery_planned_date"))
+            .collect();
         let mut counted: HashMap<Vec<String>, i64> = HashMap::new();
-        for r in &kept {
-            let keys = groups
-                .iter()
-                .map(|g| match *g {
-                    "driver" => who(&people, &r.transporter_id, &text(&r.data, "da_name")),
-                    "reason" => snake(&text(&r.data, "rts_reason_code")),
-                    "coaching" => match text(&r.data, "weekly_coaching") {
-                        c if c.is_empty() => "none".to_owned(),
-                        c => c,
-                    },
-                    "week" => r.week.clone(),
-                    _ => text(&r.data, "delivery_planned_date"),
-                })
-                .collect();
-            *counted.entry(keys).or_default() += 1;
+        for row in selected.groups(&keys, &[], "")? {
+            *counted
+                .entry(group_keys(&people, &groups, &row))
+                .or_default() += n(&row, "total");
         }
-        paged(
+        group_page(
             &mut answer,
-            "groups",
             count_table(&groups, counted, "returns"),
             query,
-            100,
+            listed,
         )?;
     }
     if flag(query, "list") {
@@ -772,11 +811,7 @@ pub fn returns(db: &Store, state: &State, caller: &Caller, query: &Value) -> Ans
                 json!(text(&r.data, "weekly_exemption_reason")),
             ]);
         }
-        if groups.is_empty() {
-            paged(&mut answer, "list", table, query, 100)?;
-        } else {
-            first_page(&mut answer, table, query)?;
-        }
+        page(&mut answer, "list", table, start, total, take)?;
     }
     Ok(answer)
 }
@@ -801,7 +836,7 @@ pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
     let access = Access::of(db, caller, query)?;
     let dsp = access.dsp;
     let station = db.profile(&dsp.id)?.station_code;
-    let data = db.scorecard_db(&dsp.id)?;
+    let data = query::database(db, dsp)?;
     let posted: Vec<String> = data
         .all(
             "SELECT week FROM scorecard_publications WHERE station=? AND active=1 AND scope_verified=1 ORDER BY week DESC",
@@ -901,30 +936,64 @@ pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
         )
         .into());
     }
-    let drivers = data.all(
-        "SELECT COALESCE(x.transporter_id,'') transporter_id,x.row FROM driver_scorecards x \
-         JOIN scorecard_publications p ON p.id=x.publication_id AND p.active=1 AND p.scope_verified=1 \
-         WHERE p.station=? AND p.week=? ORDER BY x.row_index",
-        [&station, &week],
-    )?;
+    let mut scope = String::from(
+        " FROM driver_scorecards x JOIN scorecard_publications p ON p.id=x.publication_id \
+         AND p.active=1 AND p.scope_verified=1 WHERE p.station=? AND p.week=?",
+    );
+    let mut params = vec![station, week];
+    if let Some(person) = person {
+        if person.amazon.is_empty() {
+            scope.push_str(" AND 0");
+        } else {
+            scope.push_str(&format!(
+                " AND x.transporter_id IN ({})",
+                vec!["?"; person.amazon.len()].join(",")
+            ));
+            params.extend_from_slice(&person.amazon);
+        }
+        head.insert("driver".into(), json!(person.name));
+    }
+    let overall = query::field("da_overall_tier");
     let mut tiers: BTreeMap<String, i64> = BTreeMap::new();
-    let mut lines: Vec<(f64, Vec<Value>)> = vec![];
-    for r in &drivers {
-        let id = s(r, "transporter_id");
-        if person.is_some_and(|p| !p.amazon.iter().any(|a| a == id)) {
-            continue;
-        }
-        let row: Value = serde_json::from_str(s(r, "row")).unwrap_or_default();
-        let overall = text(&row, "da_overall_tier");
-        *tiers.entry(overall.clone()).or_default() += 1;
-        if let Some(rank) = below_rank
-            && tier_rank(&overall).is_none_or(|own| own >= rank)
-        {
-            continue;
-        }
-        let score = row["da_overall_score"].as_f64().unwrap_or(f64::MAX);
-        let mut values = vec![json!(who(&people, id, &text(&row, "da_name")))];
-        values.push(row["da_overall_score"].clone());
+    for row in data.all(
+        &format!("SELECT {overall} tier,COUNT(*) drivers{scope} GROUP BY tier"),
+        rusqlite::params_from_iter(&params),
+    )? {
+        tiers.insert(s(&row, "tier").to_owned(), n(&row, "drivers"));
+    }
+    if let Some(rank) = below_rank {
+        scope.push_str(&format!(
+            " AND agent_scorecard_rank({overall}) < CAST(? AS INTEGER)"
+        ));
+        params.push(rank.to_string());
+    }
+    let total = data.count(
+        &format!("SELECT COUNT(*){scope}"),
+        rusqlite::params_from_iter(&params),
+    )? as usize;
+    let start = offset(query)?;
+    let take = limit(query, 100);
+    let sql = format!(
+        "SELECT COALESCE(x.transporter_id,'') transporter_id,x.row{scope} ORDER BY CASE WHEN \
+         json_type(x.row,'$.da_overall_score') IN ('integer','real') THEN json_extract(x.row,'$.da_overall_score') ELSE \
+         1.7976931348623157e308 END,x.row_index,x.publication_id LIMIT ? OFFSET ?"
+    );
+    params.extend([take.to_string(), start.min(i64::MAX as usize).to_string()]);
+    let drivers = data.all(&sql, rusqlite::params_from_iter(&params))?;
+    let mut columns = vec!["driver", "score"];
+    columns.extend(TIERS.iter().map(|(name, _)| *name));
+    columns.push("delivered");
+    let mut table = Table::new(&columns);
+    for source in drivers {
+        let row: Value = serde_json::from_str(s(&source, "row")).unwrap_or_default();
+        let mut values = vec![
+            json!(who(
+                &people,
+                s(&source, "transporter_id"),
+                &text(&row, "da_name")
+            )),
+            row["da_overall_score"].clone(),
+        ];
         for (_, field) in TIERS {
             values.push(match text(&row, field).as_str() {
                 "" | "None" => Value::Null,
@@ -932,15 +1001,6 @@ pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
             });
         }
         values.push(row["delivered"].clone());
-        lines.push((score, values));
-    }
-    // Lowest scores first: the drivers to coach lead the table.
-    lines.sort_by(|a, b| a.0.total_cmp(&b.0));
-    let mut columns = vec!["driver", "score"];
-    columns.extend(TIERS.iter().map(|(name, _)| *name));
-    columns.push("delivered");
-    let mut table = Table::new(&columns);
-    for (_, values) in lines {
         table.push(values);
     }
     let mut answer = json!({
@@ -950,6 +1010,6 @@ pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
         "drivers_by_tier": tiers,
     });
     people.mark(&mut answer);
-    paged(&mut answer, "drivers", table, query, 100)?;
+    page(&mut answer, "drivers", table, start, total, take)?;
     Ok(answer)
 }

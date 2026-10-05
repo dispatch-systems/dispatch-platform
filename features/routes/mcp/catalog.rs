@@ -4,17 +4,12 @@ use super::{ROUTES, facts, views};
 use dispatch_core::mcp::data::schema;
 use dispatch_core::mcp::{
     data::catalog::{
-        CURSOR, DATE, DAY, DETAIL, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param,
-        TO, Term,
+        CURSOR, DATE, DAY, DETAIL, DRIVER, DSP, Endpoint, FROM, GROUPS_CURSOR, Kind, LIMIT, Metric,
+        PERIOD, Param, RECENT_PERIOD, TO, Term,
     },
     skill::Example,
 };
 
-const GROUPS_CURSOR: Param = Param {
-    name: "groups_cursor",
-    kind: Kind::Text,
-    description: "The groups table's next_cursor; cursor separately pages the package list.",
-};
 const ROUTE_PATH: Param = Param {
     name: "route",
     kind: Kind::Text,
@@ -104,11 +99,10 @@ pub const ENDPOINTS: &[Endpoint] = &[
         tool: "route_day",
         area: Some(ROUTES),
         path: "/api/v1/routes",
-        summary: "A day's routes",
-        description: "Use for one day's routes: each route's driver, packages delivered and \
-            undeliverable, stops, departure and end, and whether the day is final.",
+        summary: "Routes over a period",
+        description: "Routes for one driver or everyone over a period, with package and stop totals, departure and end.",
         path_params: &[],
-        params: &[DSP, DAY, LIMIT, CURSOR],
+        params: &[DSP, RECENT_PERIOD, DATE, FROM, TO, DRIVER, LIMIT, CURSOR],
         order: 80,
         output: || {
             schema::answer(
@@ -119,6 +113,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
                     (
                         "routes",
                         schema::table(&[
+                            "date",
                             "route",
                             "driver",
                             "packages",

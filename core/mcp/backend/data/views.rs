@@ -27,7 +27,7 @@ use std::{
     sync::LazyLock,
 };
 
-fn driver_json(person: &Person) -> Value {
+pub(super) fn driver_json(person: &Person) -> Value {
     json!({"code": person.code, "name": person.name})
 }
 /// `GET /api/v1/status`: which sources are on, which the key or app reads, and how fresh
@@ -98,7 +98,7 @@ pub fn drivers(db: &Store, state: &State, caller: &Caller, query: &Value) -> Ans
 
 /// Every kind of facts a driver's days and the team's table are made of, in the order of
 /// the kinds of data they are read as.
-fn daily() -> &'static [&'static dyn Daily] {
+pub(super) fn daily() -> &'static [&'static dyn Daily] {
     static DAILY: LazyLock<Vec<&'static dyn Daily>> = LazyLock::new(|| {
         let mut all: Vec<&'static dyn Daily> = registry()
             .features
@@ -148,6 +148,9 @@ pub fn driver(db: &Store, state: &State, caller: &Caller, wanted: &str, query: &
     let people = People::load(db, state, &access)?;
     let person = people.find(wanted)?;
     let period = period(query, today(dsp), DEFAULT_PERIOD)?;
+    if !param(query, "metrics").is_empty() {
+        return super::selected::driver(db, &access, query, &people, person, &period);
+    }
     daily_limit(&period)?;
     let kinds = daily();
     let read: Vec<AgentArea> = kinds

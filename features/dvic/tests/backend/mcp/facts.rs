@@ -34,7 +34,7 @@ fn fixture() -> (tempfile::TempDir, Store, Dsp, Period) {
             1,
             "2026-09-22",
             "06:00",
-            100.0,
+            50.0,
         ),
         ("station", "A", "OTHER", 1, "2026-09-22", "09:00", 10.0),
         ("unverified", "A", "TST1", 0, "2026-09-22", "09:00", 20.0),
@@ -74,7 +74,7 @@ fn fixture() -> (tempfile::TempDir, Store, Dsp, Period) {
 fn selected_driver_aliases_preserve_scoping_order_and_inspection_values() {
     let (_root, db, dsp, period) = fixture();
     let (all, all_coverage) = inspections(&db, &dsp, &period, None).unwrap();
-    assert_eq!(all.len(), 5);
+    assert_eq!(all.len(), 2);
     let ids = vec!["A".into(), "A-old".into()];
     let (selected, coverage) = inspections(&db, &dsp, &period, Some(&ids)).unwrap();
     let expected: Vec<_> = all
@@ -86,10 +86,16 @@ fn selected_driver_aliases_preserve_scoping_order_and_inspection_values() {
     assert_eq!(coverage.status(), "complete");
     assert_eq!(
         selected.iter().map(|row| row.seconds).collect::<Vec<_>>(),
-        vec![75, 90, 91]
+        vec![75]
     );
     assert!(selected[0].short);
-    assert!(!selected[1].short);
+    assert!(all.iter().all(|inspection| inspection.short));
+    let scope = InspectionQuery::new(&db, &dsp, &period, Some(&ids)).unwrap();
+    assert_eq!(scope.count().unwrap(), 1);
+    assert_eq!(scope.groups().unwrap()[0]["shortest"], 75);
+    assert_eq!(scope.list(0, Some(1)).unwrap().len(), 1);
+    assert!(scope.list(1, Some(1)).unwrap().is_empty());
+    drop(scope);
 
     let (literal, _) = inspections(&db, &dsp, &period, Some(&["A' OR 1=1 --".into()])).unwrap();
     assert_eq!(literal.len(), 1);

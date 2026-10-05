@@ -123,9 +123,6 @@ pub struct MealTaken {
     pub minutes: Option<i64>,
 }
 /// Every day's meal-break comparison in a period.
-pub fn meal_breaks(db: &Store, dsp: &Dsp, period: &Period) -> Result<(Vec<MealDay>, Coverage)> {
-    meal_breaks_for(db, dsp, period, None)
-}
 pub fn meal_breaks_for(
     db: &Store,
     dsp: &Dsp,

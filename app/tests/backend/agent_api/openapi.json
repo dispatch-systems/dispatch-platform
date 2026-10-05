@@ -1699,7 +1699,7 @@
             "name": "groups_cursor",
             "in": "query",
             "required": false,
-            "description": "The groups table's next_cursor; cursor separately pages the package list.",
+            "description": "The groups table's next_cursor; cursor separately pages the detail list.",
             "schema": {
               "type": "string",
               "maxLength": 200
@@ -2264,6 +2264,16 @@
             "in": "query",
             "required": false,
             "description": "The last day, as 2026-09-30, with `from`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "metrics",
+            "in": "query",
+            "required": false,
+            "description": "Optional comma-separated list_metrics names; reads only those sources. Omit for all daily facts.",
             "schema": {
               "type": "string",
               "maxLength": 200
@@ -3313,8 +3323,8 @@
     "/api/v1/routes": {
       "get": {
         "operationId": "routes",
-        "summary": "A day's routes",
-        "description": "Use for one day's routes: each route's driver, packages delivered and undeliverable, stops, departure and end, and whether the day is final.",
+        "summary": "Routes over a period",
+        "description": "Routes for one driver or everyone over a period, with package and stop totals, departure and end.",
         "parameters": [
           {
             "name": "dsp",
@@ -3327,10 +3337,50 @@
             }
           },
           {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "description": "Days in the DSP's time: last week, last 14 days or 2026-W39. Defaults to yesterday.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
             "name": "date",
             "in": "query",
             "required": false,
-            "description": "The day: yesterday, last night, today or 2026-09-28. Leave out for yesterday.",
+            "description": "One day: today, yesterday, last night or 2026-09-28.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "The first day, as 2026-09-01, with `to`; instead of `period`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "The last day, as 2026-09-30, with `from`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "driver",
+            "in": "query",
+            "required": false,
+            "description": "A driver as the user named them: a name or part of one, a Driver Match code, a Paycom employee code or an Amazon transporter ID.",
             "schema": {
               "type": "string",
               "maxLength": 200
@@ -3443,6 +3493,7 @@
                           "items": {
                             "type": "string",
                             "enum": [
+                              "date",
                               "route",
                               "driver",
                               "packages",
@@ -4785,7 +4836,7 @@
       "get": {
         "operationId": "timecards",
         "summary": "Timecards",
-        "description": "Use for Paycom hours and punches: everyone's for one day, or one driver's over a period with driver. Hours, clock in and out, lunch minutes.",
+        "description": "Paycom hours and punches for one driver or everyone over a period, up to 92 days.",
         "parameters": [
           {
             "name": "dsp",
@@ -5315,7 +5366,7 @@
       "get": {
         "operationId": "meal_breaks",
         "summary": "Meal breaks",
-        "description": "Use for one day's meal breaks: Cortex's meal break beside Paycom's lunch punches and the comparison's verdict, for each driver Cortex had a route for.",
+        "description": "Compare Cortex meals with Paycom lunches for drivers with routes, over up to 92 days.",
         "parameters": [
           {
             "name": "dsp",
@@ -5328,10 +5379,50 @@
             }
           },
           {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "description": "Days in the DSP's time: last week, last 14 days or 2026-W39. Defaults to yesterday.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
             "name": "date",
             "in": "query",
             "required": false,
-            "description": "The day: yesterday, last night, today or 2026-09-28. Leave out for yesterday.",
+            "description": "One day: today, yesterday, last night or 2026-09-28.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "The first day, as 2026-09-01, with `to`; instead of `period`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "The last day, as 2026-09-30, with `from`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "driver",
+            "in": "query",
+            "required": false,
+            "description": "A driver as the user named them: a name or part of one, a Driver Match code, a Paycom employee code or an Amazon transporter ID.",
             "schema": {
               "type": "string",
               "maxLength": 200
@@ -5433,6 +5524,7 @@
                           "items": {
                             "type": "string",
                             "enum": [
+                              "date",
                               "driver",
                               "status",
                               "meal",
@@ -5805,8 +5897,8 @@
     "/api/v1/dvic": {
       "get": {
         "operationId": "dvic",
-        "summary": "Vehicle inspections",
-        "description": "Use for DVIC questions, as which drivers were short: each driver's inspections, how many were shorter than the minimum, and the shortest. detail full lists the inspections.",
+        "summary": "Short vehicle inspections",
+        "description": "Recorded short DVIC exceptions, by driver and period. detail full pages individual durations. No exception does not prove an inspection was completed.",
         "parameters": [
           {
             "name": "dsp",
@@ -5872,7 +5964,7 @@
             "name": "short",
             "in": "query",
             "required": false,
-            "description": "Only drivers, or inspections, short of the minimum.",
+            "description": "Compatibility option; DVIC always returns short inspections.",
             "schema": {
               "type": "boolean"
             }
@@ -6579,6 +6671,16 @@
               "type": "string",
               "maxLength": 200
             }
+          },
+          {
+            "name": "groups_cursor",
+            "in": "query",
+            "required": false,
+            "description": "The groups table's next_cursor; cursor separately pages the detail list.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
           }
         ],
         "responses": {
@@ -7176,6 +7278,15 @@
             }
           },
           {
+            "name": "counting",
+            "in": "query",
+            "required": false,
+            "description": "true: still counts against the scorecard; false: approved disputes only. Omit for all.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -7191,6 +7302,16 @@
             "in": "query",
             "required": false,
             "description": "The next_cursor an earlier answer gave, for its next page.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "groups_cursor",
+            "in": "query",
+            "required": false,
+            "description": "The groups table's next_cursor; cursor separately pages the detail list.",
             "schema": {
               "type": "string",
               "maxLength": 200
@@ -7882,6 +8003,16 @@
             "in": "query",
             "required": false,
             "description": "The next_cursor an earlier answer gave, for its next page.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "groups_cursor",
+            "in": "query",
+            "required": false,
+            "description": "The groups table's next_cursor; cursor separately pages the detail list.",
             "schema": {
               "type": "string",
               "maxLength": 200

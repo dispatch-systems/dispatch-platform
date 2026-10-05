@@ -2,7 +2,8 @@
 //! the words its answers use.
 use super::{MEAL_BREAKS, TIMECARDS, views};
 use dispatch_core::mcp::data::catalog::{
-    CURSOR, DATE, DAY, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param, TO, Term,
+    CURSOR, DATE, DRIVER, DSP, Endpoint, FROM, Kind, LIMIT, Metric, PERIOD, Param, RECENT_PERIOD,
+    TO, Term,
 };
 use dispatch_core::mcp::data::schema;
 
@@ -13,8 +14,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         area: Some(TIMECARDS),
         path: "/api/v1/timecards",
         summary: "Timecards",
-        description: "Use for Paycom hours and punches: everyone's for one day, or one \
-            driver's over a period with driver. Hours, clock in and out, lunch minutes.",
+        description: "Paycom hours and punches for one driver or everyone over a period, up to 92 days.",
         path_params: &[],
         params: &[
             DSP,
@@ -61,13 +61,15 @@ pub const ENDPOINTS: &[Endpoint] = &[
         area: Some(MEAL_BREAKS),
         path: "/api/v1/meal-breaks",
         summary: "Meal breaks",
-        description: "Use for one day's meal breaks: Cortex's meal break beside Paycom's \
-            lunch punches and the comparison's verdict, for each driver Cortex had a route \
-            for.",
+        description: "Compare Cortex meals with Paycom lunches for drivers with routes, over up to 92 days.",
         path_params: &[],
         params: &[
             DSP,
-            DAY,
+            RECENT_PERIOD,
+            DATE,
+            FROM,
+            TO,
+            DRIVER,
             Param {
                 name: "issues",
                 kind: Kind::Boolean,
@@ -85,6 +87,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
                     (
                         "drivers",
                         schema::table(&[
+                            "date",
                             "driver",
                             "status",
                             "meal",
