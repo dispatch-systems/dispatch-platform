@@ -43,7 +43,7 @@ class PipelineTests(unittest.TestCase):
             "collectors/paycom/tests/native/paycom-worker.test.ts", "collectors/paycom/tests/native/native-browser.test.ts",
             "collectors/paycom/tests/native/native-browser-recovery.test.ts",
             "collectors/cortex/tests/native/cortex-worker.test.ts", "collectors/cortex/tests/native/cortex-meals-worker.test.ts",
-            "collectors/cortex/tests/native/cortex-scorecard-worker.test.ts",
+            "collectors/cortex/tests/native/cortex-weekly-scorecard-worker.test.ts",
             "collectors/cortex/tests/native/cortex-routes-worker.test.ts",
             "features/timecard/tests/native/meal-sync-worker.test.ts",
             "app/tests/native/multi-dsp-browser.test.ts", "app/tests/native/collection-throughput.test.ts",

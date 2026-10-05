@@ -29,10 +29,14 @@
       "default": false
     },
     {
-      "id": "scorecard",
-      "label": "Scorecard",
-      "permissions": ["scorecard.view", "scorecard.collect", "scorecard.manage"],
-      "requires": ["scorecard"],
+      "id": "weekly_scorecard",
+      "label": "Weekly Scorecard",
+      "permissions": [
+        "weekly_scorecard.view",
+        "weekly_scorecard.collect",
+        "weekly_scorecard.manage"
+      ],
+      "requires": ["weekly_scorecard"],
       "default": false
     },
     {
@@ -55,7 +59,7 @@
     "uniforms",
     "routes",
     "dvic",
-    "scorecard",
+    "weekly_scorecard",
     "driver_match",
     "timecard.daily",
     "timecard.meal_breaks",

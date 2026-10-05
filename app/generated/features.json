@@ -354,117 +354,6 @@
     },
     "tabs": []
   },
-  "scorecard": {
-    "collectors": [
-      "cortex"
-    ],
-    "depends_on": [],
-    "frontend": true,
-    "keeps": [
-      "cortex.scorecard.collect"
-    ],
-    "migrations": {
-      "scorecard": [
-        {
-          "id": 1,
-          "name": "baseline"
-        },
-        {
-          "id": 2,
-          "name": "sources"
-        },
-        {
-          "id": 3,
-          "name": "verified_scope"
-        }
-      ]
-    },
-    "permissions": [
-      "scorecard.view",
-      "scorecard.collect",
-      "scorecard.manage"
-    ],
-    "slots": {
-      "after_collection": false,
-      "audit": {
-        "areas": [],
-        "names": false,
-        "subjects": []
-      },
-      "cached": [],
-      "commands": null,
-      "demo": false,
-      "domains": [
-        "scorecard"
-      ],
-      "live": [],
-      "maintenance": [],
-      "mcp": {
-        "daily": [],
-        "examples": 4,
-        "endpoints": [
-          "customer_feedback",
-          "safety_events",
-          "returns",
-          "scorecard"
-        ],
-        "identity": false,
-        "metrics": [],
-        "places": false,
-        "reads": [
-          "feedback",
-          "safety",
-          "returns",
-          "scorecard"
-        ],
-        "sources": [
-          "scorecard"
-        ],
-        "synthetic": 1,
-        "terms": []
-      },
-      "people": [
-        "scorecard"
-      ],
-      "routes": [
-        "GET /api/dsp/scorecard/weeks",
-        "GET /api/dsp/scorecard/jobs",
-        "POST /api/dsp/scorecard/collect",
-        "POST /api/dsp/scorecard/jobs/{id}/cancel",
-        "GET /api/dsp/scorecard/schedules",
-        "POST /api/dsp/scorecard/schedules",
-        "POST /api/dsp/scorecard/schedules/preview",
-        "POST /api/dsp/scorecard/schedules/{key}",
-        "POST /api/dsp/scorecard/schedules/{key}/enabled",
-        "POST /api/dsp/scorecard/schedules/{key}/remove"
-      ],
-      "schedules": false
-    },
-    "switch": "scorecard",
-    "tables": {
-      "scorecard": [
-        "customer_feedback",
-        "delivery_concessions",
-        "driver_safety",
-        "driver_scorecards",
-        "dsp_compliance",
-        "dsp_feedback",
-        "dsp_pickups",
-        "dsp_quality",
-        "dsp_safety",
-        "dsp_team",
-        "dsp_working_device",
-        "pickup_failures",
-        "returns_to_station",
-        "safety_events",
-        "scorecard_publications",
-        "scorecard_schema",
-        "scorecard_sources",
-        "scorecard_weeks"
-      ]
-    },
-    "tabs": []
-  },
   "settings": {
     "collectors": [],
     "depends_on": [],
@@ -793,6 +682,127 @@
         "uniform_inventory",
         "uniform_variants",
         "uniforms"
+      ]
+    },
+    "tabs": []
+  },
+  "weekly_scorecard": {
+    "collectors": [
+      "cortex"
+    ],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [
+      "cortex.weekly_scorecard.collect"
+    ],
+    "migrations": {
+      "scorecard": [
+        {
+          "id": 1,
+          "name": "baseline"
+        },
+        {
+          "id": 2,
+          "name": "sources"
+        },
+        {
+          "id": 3,
+          "name": "verified_scope"
+        }
+      ]
+    },
+    "permissions": [
+      "weekly_scorecard.view",
+      "weekly_scorecard.collect",
+      "weekly_scorecard.manage"
+    ],
+    "slots": {
+      "after_collection": false,
+      "audit": {
+        "areas": [],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [
+        "weekly_scorecard"
+      ],
+      "live": [],
+      "maintenance": [],
+      "mcp": {
+        "daily": [],
+        "examples": 4,
+        "endpoints": [
+          "customer_feedback",
+          "safety_events",
+          "returns",
+          "weekly_scorecard"
+        ],
+        "identity": false,
+        "metrics": [],
+        "places": false,
+        "reads": [
+          "feedback",
+          "safety",
+          "returns",
+          "weekly_scorecard"
+        ],
+        "sources": [
+          "weekly_scorecard"
+        ],
+        "synthetic": 1,
+        "terms": []
+      },
+      "people": [
+        "weekly_scorecard"
+      ],
+      "routes": [
+        "GET /api/dsp/weekly-scorecard/weeks",
+        "GET /api/dsp/weekly-scorecard/jobs",
+        "POST /api/dsp/weekly-scorecard/collect",
+        "POST /api/dsp/weekly-scorecard/jobs/{id}/cancel",
+        "GET /api/dsp/weekly-scorecard/schedules",
+        "POST /api/dsp/weekly-scorecard/schedules",
+        "POST /api/dsp/weekly-scorecard/schedules/preview",
+        "POST /api/dsp/weekly-scorecard/schedules/{key}",
+        "POST /api/dsp/weekly-scorecard/schedules/{key}/enabled",
+        "POST /api/dsp/weekly-scorecard/schedules/{key}/remove",
+        "GET /api/dsp/scorecard/weeks",
+        "GET /api/dsp/scorecard/jobs",
+        "POST /api/dsp/scorecard/collect",
+        "POST /api/dsp/scorecard/jobs/{id}/cancel",
+        "GET /api/dsp/scorecard/schedules",
+        "POST /api/dsp/scorecard/schedules",
+        "POST /api/dsp/scorecard/schedules/preview",
+        "POST /api/dsp/scorecard/schedules/{key}",
+        "POST /api/dsp/scorecard/schedules/{key}/enabled",
+        "POST /api/dsp/scorecard/schedules/{key}/remove"
+      ],
+      "schedules": false
+    },
+    "switch": "weekly_scorecard",
+    "tables": {
+      "scorecard": [
+        "customer_feedback",
+        "delivery_concessions",
+        "driver_safety",
+        "driver_scorecards",
+        "dsp_compliance",
+        "dsp_feedback",
+        "dsp_pickups",
+        "dsp_quality",
+        "dsp_safety",
+        "dsp_team",
+        "dsp_working_device",
+        "pickup_failures",
+        "returns_to_station",
+        "safety_events",
+        "scorecard_publications",
+        "scorecard_schema",
+        "scorecard_sources",
+        "scorecard_weeks"
       ]
     },
     "tabs": []

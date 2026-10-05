@@ -39,7 +39,11 @@ const AREAS: &[(&str, &str, &str)] = &[
     ("dsp.feature_disabled", "dsps", "dsps"),
     ("dsp.support_visibility_changed", "settings", "settings"),
     ("routes.collection_requested", "settings", "settings"),
-    ("scorecard.collection_requested", "settings", "settings"),
+    (
+        "weekly_scorecard.collection_requested",
+        "settings",
+        "settings",
+    ),
     ("driver_match.merged", "settings", "settings"),
     ("driver_match.failed", "settings", "settings"),
     ("uniform.adjusted", "settings", "settings"),

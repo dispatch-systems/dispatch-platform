@@ -7,7 +7,7 @@ description: Answers questions about a delivery service partner's drivers from D
 
 Dispatch answers questions about a delivery service partner's drivers from what it collected from Amazon (routes and packages, meal breaks, DVIC short-inspection exceptions, weekly scorecards, feedback, returns and safety events) and Paycom (timecards). Ask for the figure the question needs: a count or a short table comes back; rows of detail only when asked for.
 
-- Pass the user's own words for days (yesterday, last night, last week, 2026-W39) and for drivers (a name or part of one). Period tools default to the last 30 days; routes and meal breaks to yesterday, and scorecard to the latest week. Timecards defaults to yesterday for everyone or the last 30 days for one driver. You need not look up today's date or a driver's ID first. Days are the DSP's own and can differ from your clock: say yesterday, not a date you worked out.
+- Pass the user's own words for days (yesterday, last night, last week, 2026-W39) and for drivers (a name or part of one). Period tools default to the last 30 days; routes and meal breaks to yesterday, and weekly_scorecard to the latest week. Timecards defaults to yesterday for everyone or the last 30 days for one driver. You need not look up today's date or a driver's ID first. Days are the DSP's own and can differ from your clock: say yesterday, not a date you worked out.
 - Each answer says what it understood. Coverage status is complete, partial, missing or unavailable. Totals with partial coverage cover only the collected days. Days a source did not collect are unknown, never zero: say so.
 - A feature the DSP has switched off is refused as source_off, or listed under switched_off with null figures: tell the user it is switched off, and don't work the answer out from other tools.
 - Data this key may not read at a DSP is refused as not_allowed, or listed under not_allowed with null figures: tell the user, who can allow it on the Agents page in Dispatch.
@@ -37,7 +37,7 @@ MCP: `https://dispatch.example.com/api/v1/mcp`. OpenAPI: `https://dispatch.examp
 | Which addresses have given us repeated negative feedback? | `customer_feedback(group_by: "address", min_count: 2)` | `GET /api/v1/feedback?group_by=address&min_count=2` |
 | Which drivers didn't do contact compliance last week? | `returns(contact: "missed", period: "last week", group_by: "driver")` | `GET /api/v1/returns?contact=missed&period=last%20week&group_by=driver` |
 | Did Daniel get any Netradyne infractions last week? | `safety_events(driver: "Daniel", period: "last week")` | `GET /api/v1/safety?driver=Daniel&period=last%20week` |
-| Who scored lowest on last week's scorecard? | `scorecard(week: "last week")` | `GET /api/v1/scorecard?week=last%20week` |
+| Who scored lowest on last week's scorecard? | `weekly_scorecard(week: "last week")` | `GET /api/v1/weekly-scorecard?week=last%20week` |
 | Who had the most stops yesterday? | `team_table(metrics: "stops_completed", date: "yesterday")` | `GET /api/v1/team?metrics=stops_completed&date=yesterday` |
 | How did Daniel do last week? | `driver_report(driver: "Daniel", period: "last week")` | `GET /api/v1/drivers/Daniel?period=last%20week` |
 
@@ -51,7 +51,7 @@ Use when you need the DSPs this key reaches, each DSP's date today or what the k
 
 ### `data_status` · `GET /api/v1/status`
 
-Use when asked how current the data is: which sources the DSP has on (Paycom timecards, Cortex meal breaks, routes, DVIC, the scorecard), which this key reads there, and when each last collected.
+Use when asked how current the data is: which sources the DSP has on (Paycom timecards, Cortex meal breaks, routes, DVIC, weekly scorecards), which this key reads there, and when each last collected.
 
 - `dsp`: The DSP, by name. Leave it out when the key reaches one DSP.
 
@@ -234,7 +234,7 @@ Use for Netradyne safety infractions from Amazon's scorecard: speeding, distract
 
 ### `returns` · `GET /api/v1/returns`
 
-Use for contact compliance: which drivers didn't do it, that is returned packages without the required call or text (contact missed, group_by driver). Also Amazon's returns to station from the weekly scorecard, their reasons, and which returns hurt the completion rate (DCR). Amazon posts a week's scorecard after it ends: for packages returned last night or this week, use packages.
+Use for contact compliance: which drivers didn't do it, that is returned packages without the required call or text (contact missed, group_by driver). Also Amazon's returns to station from the weekly weekly_scorecard, their reasons, and which returns hurt the completion rate (DCR). Amazon posts a week's scorecard after it ends: for packages returned last night or this week, use packages.
 
 - `dsp`: The DSP, by name. Leave it out when the key reaches one DSP.
 - `period`: The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.
@@ -251,7 +251,7 @@ Use for contact compliance: which drivers didn't do it, that is returned package
 - `cursor`: The next_cursor an earlier answer gave, for its next page.
 - `groups_cursor`: The groups table's next_cursor; cursor separately pages the detail list.
 
-### `scorecard` · `GET /api/v1/scorecard`
+### `weekly_scorecard` · `GET /api/v1/weekly-scorecard`
 
 Use for Amazon's weekly scorecard: the DSP's tier and focus areas, and each driver's overall tier, score and tiers for CDF, DSB, POD, RTS and safety, lowest scores first. Which drivers missed contact compliance is in returns; feedback, safety events and returns themselves have their own tools.
 
@@ -286,7 +286,7 @@ Use for Amazon's weekly scorecard: the DSP's tier and focus areas, and each driv
 ## Terms
 
 - **Driver Match code**: A six-character code for one person, the same across every source. Use it to name a driver exactly.
-- **transporter ID**: Amazon's ID for a driver, in routes, meal breaks, DVIC and the scorecard.
+- **transporter ID**: Amazon's ID for a driver, in routes, meal breaks, DVIC and weekly scorecards.
 - **employee code**: Paycom's ID for an employee.
 - **Amazon week**: Sunday to Saturday, named by the ISO week of its Saturday, as 2026-W39.
 - **departed**: When the driver left the station to start the route, in the DSP's time.

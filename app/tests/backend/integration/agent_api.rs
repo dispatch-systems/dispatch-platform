@@ -179,7 +179,7 @@ async fn the_mcp_server_offers_the_same_tools_and_prompts() {
         "feedback",
         "safety",
         "returns",
-        "scorecard",
+        "weekly_scorecard",
     ];
     let full = key(&db, &dsp, "Every kind", &every);
     let few = key(&db, &dsp, "Routes and DVIC", &["routes", "dvic"]);

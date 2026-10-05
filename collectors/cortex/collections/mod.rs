@@ -2,4 +2,4 @@
 pub mod dvic;
 pub mod meals;
 pub mod routes;
-pub mod scorecard;
+pub mod weekly_scorecard;

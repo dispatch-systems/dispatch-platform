@@ -79,6 +79,6 @@ test('IDs, initials and amounts are short and plain', () => {
   assert.equal(shortId(antonio.ids[0]!), 'R4KD');
   assert.equal(initials('Ana Sofía Morales'), 'AS');
   assert.equal(dataAmount('dvic', 1), '1 inspection');
-  assert.equal(dataAmount('scorecard', 28), '28 weeks');
+  assert.equal(dataAmount('weekly_scorecard', 28), '28 weeks');
   assert.equal(dataAmount('routes', 131), '131 days');
 });

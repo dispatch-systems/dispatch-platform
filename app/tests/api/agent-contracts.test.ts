@@ -24,7 +24,7 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
         'feedback',
         'safety',
         'returns',
-        'scorecard',
+        'weekly_scorecard',
       ],
       bypass: false,
     },
@@ -281,8 +281,8 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
   assert.ok(
     businessClosed.list.rows.every((row: any[]) => row[3] === 'business_closed' && row[5] === true),
   );
-  await check('/api/v1/scorecard', 'scorecard', { limit: 1 });
-  await check('/api/v1/scorecard', 'scorecard', { week: '2099-W01' });
+  await check('/api/v1/weekly-scorecard', 'weekly_scorecard', { limit: 1 });
+  await check('/api/v1/weekly-scorecard', 'weekly_scorecard', { week: '2099-W01' });
   // Uncollected days still have a valid, explicit response contract.
   for (const [path, tool] of [
     ['/api/v1/routes', 'route_day'],

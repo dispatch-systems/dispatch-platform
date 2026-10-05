@@ -87,12 +87,12 @@ export const readToggleGroups = [
     ]
   },
   {
-    "label": "Scorecard",
-    "missing": "scorecard data",
+    "label": "Weekly Scorecard",
+    "missing": "weekly scorecard data",
     "sources": [
       {
-        "id": "scorecard",
-        "label": "Scorecard"
+        "id": "weekly_scorecard",
+        "label": "Weekly Scorecard"
       }
     ],
     "toggles": [
@@ -101,7 +101,7 @@ export const readToggleGroups = [
         "label": "Customer feedback",
         "hint": null,
         "missing": "customer feedback",
-        "source": "scorecard",
+        "source": "weekly_scorecard",
         "with": null,
         "optIn": false
       },
@@ -110,7 +110,7 @@ export const readToggleGroups = [
         "label": "Safety events",
         "hint": null,
         "missing": "safety events",
-        "source": "scorecard",
+        "source": "weekly_scorecard",
         "with": null,
         "optIn": false
       },
@@ -119,16 +119,16 @@ export const readToggleGroups = [
         "label": "Returns & contact compliance",
         "hint": null,
         "missing": "returns",
-        "source": "scorecard",
+        "source": "weekly_scorecard",
         "with": null,
         "optIn": false
       },
       {
-        "id": "scorecard",
-        "label": "Weekly scorecard",
+        "id": "weekly_scorecard",
+        "label": "Weekly Scorecard",
         "hint": null,
         "missing": "weekly scorecard",
-        "source": "scorecard",
+        "source": "weekly_scorecard",
         "with": null,
         "optIn": false
       }

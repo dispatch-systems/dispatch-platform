@@ -39,7 +39,7 @@ test('any MCP client reaches the agent API with a key, on every protocol version
     'feedback',
     'safety',
     'returns',
-    'scorecard',
+    'weekly_scorecard',
   ]);
   const routes = await key('Home server – Hermes', ['routes', 'dvic']);
   let id = 0;

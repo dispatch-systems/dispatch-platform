@@ -2,13 +2,13 @@
   "automation": [
     ["paycom.collect", "timecard"],
     ["cortex.meal_breaks.collect", "timecard"],
-    ["cortex.scorecard.collect", "scorecard"],
+    ["cortex.weekly_scorecard.collect", "weekly_scorecard"],
     ["cortex.routes.collect", "routes"],
     ["cortex.dvic.collect", "dvic"],
     ["paycom", "timecard"],
     ["meal_break", "timecard"],
     ["both", "timecard"],
-    ["scorecard", "scorecard"],
+    ["weekly_scorecard", "weekly_scorecard"],
     ["routes", "routes"],
     ["dvic", "dvic"],
     ["schedules", "timecard"],
@@ -18,9 +18,9 @@
   "permissions": [
     ["paycom.collect", "collections.run"],
     ["cortex.meal_breaks.collect", "collections.run"],
-    ["cortex.scorecard.collect", "scorecard.collect"],
+    ["cortex.weekly_scorecard.collect", "weekly_scorecard.collect"],
     ["cortex.routes.collect", "routes.collect"],
     ["cortex.dvic.collect", "dvic.collect"]
   ],
-  "automates": ["timecard", "routes", "dvic", "scorecard"]
+  "automates": ["timecard", "routes", "dvic", "weekly_scorecard"]
 }

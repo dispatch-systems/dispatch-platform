@@ -3,7 +3,7 @@
   "info": {
     "title": "Dispatch agent API",
     "version": "1",
-    "description": "Read a DSP's drivers, routes, timecards, meal breaks, DVIC and scorecard, as far as the key may read them there. Every answer names the DSP, the days and the driver it understood, and which days each source has. An answer read from a feature the DSP has switched off, by a key that bypasses features, names it under `bypassed`. Times are the DSP's own."
+    "description": "Read a DSP's drivers, routes, timecards, meal breaks, DVIC and weekly scorecards, as far as the key may read them there. Every answer names the DSP, the days and the driver it understood, and which days each source has. An answer read from a feature the DSP has switched off, by a key that bypasses features, names it under `bypassed`. Times are the DSP's own."
   },
   "servers": [
     {
@@ -379,7 +379,7 @@
       "get": {
         "operationId": "status",
         "summary": "How fresh each source is",
-        "description": "Use when asked how current the data is: which sources the DSP has on (Paycom timecards, Cortex meal breaks, routes, DVIC, the scorecard), which this key reads there, and when each last collected.",
+        "description": "Use when asked how current the data is: which sources the DSP has on (Paycom timecards, Cortex meal breaks, routes, DVIC, weekly scorecards), which this key reads there, and when each last collected.",
         "parameters": [
           {
             "name": "dsp",
@@ -7874,7 +7874,7 @@
       "get": {
         "operationId": "returns",
         "summary": "Contact compliance and returns to station (RTS)",
-        "description": "Use for contact compliance: which drivers didn't do it, that is returned packages without the required call or text (contact missed, group_by driver). Also Amazon's returns to station from the weekly scorecard, their reasons, and which returns hurt the completion rate (DCR). Amazon posts a week's scorecard after it ends: for packages returned last night or this week, use packages.",
+        "description": "Use for contact compliance: which drivers didn't do it, that is returned packages without the required call or text (contact missed, group_by driver). Also Amazon's returns to station from the weekly weekly_scorecard, their reasons, and which returns hurt the completion rate (DCR). Amazon posts a week's scorecard after it ends: for packages returned last night or this week, use packages.",
         "parameters": [
           {
             "name": "dsp",
@@ -8525,9 +8525,9 @@
         }
       }
     },
-    "/api/v1/scorecard": {
+    "/api/v1/weekly-scorecard": {
       "get": {
-        "operationId": "scorecard",
+        "operationId": "weekly_scorecard",
         "summary": "A week's scorecard",
         "description": "Use for Amazon's weekly scorecard: the DSP's tier and focus areas, and each driver's overall tier, score and tiers for CDF, DSB, POD, RTS and safety, lowest scores first. Which drivers missed contact compliance is in returns; feedback, safety events and returns themselves have their own tools.",
         "parameters": [

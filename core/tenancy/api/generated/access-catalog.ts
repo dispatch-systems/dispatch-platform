@@ -5,7 +5,7 @@ export const pages = [
   "uniforms",
   "routes",
   "dvic",
-  "scorecard",
+  "weekly_scorecard",
   "driver_match"
 ] as const;
 export const pageTabs = [
@@ -24,7 +24,7 @@ export const features = [
   "uniforms",
   "routes",
   "dvic",
-  "scorecard",
+  "weekly_scorecard",
   "driver_match",
   "timecard.daily",
   "timecard.meal_breaks",
@@ -87,15 +87,15 @@ export const featureCatalog = [
     "kind": "page"
   },
   {
-    "id": "scorecard",
-    "label": "Scorecard",
+    "id": "weekly_scorecard",
+    "label": "Weekly Scorecard",
     "permissions": [
-      "scorecard.view",
-      "scorecard.collect",
-      "scorecard.manage"
+      "weekly_scorecard.view",
+      "weekly_scorecard.collect",
+      "weekly_scorecard.manage"
     ],
     "requires": [
-      "scorecard"
+      "weekly_scorecard"
     ],
     "kind": "page"
   },
@@ -171,7 +171,7 @@ export const featureCatalog = [
       "meal_breaks",
       "routes",
       "dvic",
-      "scorecard"
+      "weekly_scorecard"
     ]
   }
 ] as const;
@@ -189,9 +189,9 @@ export const permissions = [
   "dvic.view",
   "dvic.collect",
   "dvic.manage",
-  "scorecard.view",
-  "scorecard.collect",
-  "scorecard.manage",
+  "weekly_scorecard.view",
+  "weekly_scorecard.collect",
+  "weekly_scorecard.manage",
   "driver_match.manage",
   "connections.manage",
   "members.invite",
@@ -212,15 +212,15 @@ export const permissionLabels = {
   "routes.collect": "Collect Routes",
   "routes.manage": "Manage Routes",
   "routes.view": "View Routes",
-  "scorecard.collect": "Collect Scorecard",
-  "scorecard.manage": "Manage Scorecard",
-  "scorecard.view": "View Scorecard",
   "settings.manage": "Manage DSP Settings",
   "timecard.manage": "Manage Timecard",
   "timecard.view": "View Timecard",
   "uniforms.adjust": "Adjust Uniform Inventory",
   "uniforms.manage": "Manage Uniform Inventory",
-  "uniforms.view": "View Uniform Inventory"
+  "uniforms.view": "View Uniform Inventory",
+  "weekly_scorecard.collect": "Collect Weekly Scorecard",
+  "weekly_scorecard.manage": "Manage Weekly Scorecard",
+  "weekly_scorecard.view": "View Weekly Scorecard"
 } as const;
 export const permissionGroups = [
   [
@@ -256,11 +256,11 @@ export const permissionGroups = [
     ]
   ],
   [
-    "Scorecard",
+    "Weekly Scorecard",
     [
-      "scorecard.view",
-      "scorecard.collect",
-      "scorecard.manage"
+      "weekly_scorecard.view",
+      "weekly_scorecard.collect",
+      "weekly_scorecard.manage"
     ]
   ],
   [
@@ -295,9 +295,9 @@ export const impliedPermissions = {
   "dvic.manage": "dvic.view",
   "routes.collect": "routes.view",
   "routes.manage": "routes.view",
-  "scorecard.collect": "scorecard.view",
-  "scorecard.manage": "scorecard.view",
   "timecard.manage": "timecard.view",
   "uniforms.adjust": "uniforms.view",
-  "uniforms.manage": "uniforms.view"
+  "uniforms.manage": "uniforms.view",
+  "weekly_scorecard.collect": "weekly_scorecard.view",
+  "weekly_scorecard.manage": "weekly_scorecard.view"
 } as const;

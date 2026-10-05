@@ -10,7 +10,7 @@ Collection queries accept a driver or everyone, a date, `from`/`to`, or periods 
 `past 14 days`. Routes and meal breaks default to yesterday; timecards default to yesterday
 for everyone or 30 days for one driver. Other period tools default to 30 days. Periods span
 up to 366 days, with a 92-day limit for payroll and meal assessments; longer requests use
-nonoverlapping ranges. Weekly scorecards select a posted week, defaulting to the latest.
+nonoverlapping ranges. Weekly Scorecards select a posted week, defaulting to the latest.
 DVIC holds short-inspection exceptions, including their durations; an empty exception list
 does not establish that an inspection was completed.
 

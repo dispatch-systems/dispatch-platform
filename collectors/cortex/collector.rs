@@ -1,4 +1,4 @@
-//! Cortex: meal evidence, the scorecard, daily routes, and short DVIC inspections from Amazon Logistics.
+//! Cortex: meal evidence, the weekly_scorecard, daily routes, and short DVIC inspections from Amazon Logistics.
 //! Its storage was added to DSPs that already existed, which is the path every later
 //! provider takes.
 mod collections;
@@ -7,7 +7,7 @@ pub mod discovery;
 #[cfg(feature = "operator-probes")]
 mod probes;
 
-pub use collections::{dvic, meals, routes, scorecard};
+pub use collections::{dvic, meals, routes, weekly_scorecard};
 /// Measures a day's routes read by a method, with the rows the feature keeping them shapes
 /// them into, which only the app's registry holds: the app's tests run it.
 #[cfg(feature = "operator-probes")]
@@ -108,9 +108,9 @@ static COLLECTIONS: [Collection; 4] = [
         unconnected: "schedule_meals_required",
     },
     Collection {
-        job_kind: scorecard::JOB_KIND,
-        schedule: "scorecard",
-        label: "Scorecard",
+        job_kind: weekly_scorecard::JOB_KIND,
+        schedule: "weekly_scorecard",
+        label: "Weekly Scorecard",
         unit: "row",
         counted: Counted::Rows,
         unconnected: "schedule_scorecard_required",
@@ -156,8 +156,8 @@ impl Collector for Cortex {
                 label: "a DVIC source",
             },
             Capability {
-                id: "scorecard",
-                label: "a scorecard source",
+                id: "weekly_scorecard",
+                label: "a weekly scorecard source",
             },
         ]
     }
@@ -167,8 +167,8 @@ impl Collector for Cortex {
     fn job_kind_for(&self, request: &Value) -> &'static str {
         if dvic::Request::is(request) {
             dvic::JOB_KIND
-        } else if scorecard::Request::is(request) {
-            scorecard::JOB_KIND
+        } else if weekly_scorecard::Request::is(request) {
+            weekly_scorecard::JOB_KIND
         } else if routes::Request::is(request) {
             routes::JOB_KIND
         } else {
@@ -235,7 +235,7 @@ impl Collector for Cortex {
                 scope: Some(serde_json::to_value(scope)?),
             });
         }
-        if let Some(request) = scorecard::Request::parse(request)? {
+        if let Some(request) = weekly_scorecard::Request::parse(request)? {
             let scope = match request.scope_request() {
                 CollectionRequest::Discover(discovery) => {
                     discovery.scope("area-fixture", "company-fixture")?
@@ -243,7 +243,7 @@ impl Collector for Cortex {
                 CollectionRequest::Scoped(scope) => scope,
             };
             return Ok(Collected {
-                data: serde_json::to_value(scorecard::fixture(&request)?)?,
+                data: serde_json::to_value(weekly_scorecard::fixture(&request)?)?,
                 scope: Some(serde_json::to_value(scope)?),
             });
         }
@@ -269,8 +269,8 @@ impl Collector for Cortex {
     fn progress(&self, request: &Value) -> &'static str {
         if dvic::Request::is(request) {
             "Collecting DVIC"
-        } else if scorecard::Request::is(request) {
-            "Collecting scorecard"
+        } else if weekly_scorecard::Request::is(request) {
+            "Collecting weekly scorecard"
         } else if routes::Request::is(request) {
             "Collecting routes"
         } else {
@@ -321,7 +321,7 @@ pub(crate) mod codes {
     pub const CORTEX_INVALID_IDENTITY: Code = Code::new("cortex_invalid_identity");
     pub const INVALID_CORTEX_SCOPE: Code = Code::new("invalid_cortex_scope");
     pub const DVIC_SOURCE_CHANGED: Code = Code::new("dvic_source_changed");
-    pub const SCORECARD_API_UNREADABLE: Code = Code::new("scorecard_api_unreadable");
+    pub const WEEKLY_SCORECARD_API_UNREADABLE: Code = Code::new("scorecard_api_unreadable");
 
     /// Every code above.
     pub const ALL: &[Code] = &[
@@ -337,13 +337,13 @@ pub(crate) mod codes {
         CORTEX_INVALID_IDENTITY,
         INVALID_CORTEX_SCOPE,
         DVIC_SOURCE_CHANGED,
-        SCORECARD_API_UNREADABLE,
+        WEEKLY_SCORECARD_API_UNREADABLE,
     ];
     /// A failed attempt with one of these is queued again while attempts remain.
     pub const RETRYABLE: &[Code] = &[
         CORTEX_SOURCE_CHANGED,
         DVIC_SOURCE_CHANGED,
         CORTEX_CONTENT_INCOMPLETE,
-        SCORECARD_API_UNREADABLE,
+        WEEKLY_SCORECARD_API_UNREADABLE,
     ];
 }

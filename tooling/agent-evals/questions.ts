@@ -4,7 +4,7 @@ import type { Question, World } from '../../core/mcp/tests/support/questions.js'
 import { joinedQuestions } from '../../app/tests/mcp/questions.js';
 import { dvicQuestions } from '../../features/dvic/tests/mcp/questions.js';
 import { routesQuestions } from '../../features/routes/tests/mcp/questions.js';
-import { scorecardQuestions } from '../../features/scorecard/tests/mcp/questions.js';
+import { weeklyScorecardQuestions } from '../../features/weekly_scorecard/tests/mcp/questions.js';
 import { timecardQuestions } from '../../features/timecard/tests/mcp/questions.js';
 
 export type { Question } from '../../core/mcp/tests/support/questions.js';
@@ -52,13 +52,13 @@ export function questions(world: World): Question[] {
   const routes = routesQuestions(world);
   const timecard = timecardQuestions(world);
   const dvic = dvicQuestions(world);
-  const scorecard = scorecardQuestions(world);
+  const weeklyScorecard = weeklyScorecardQuestions(world);
   const all = [
     ...routes.questions,
     ...timecard.questions,
     ...dvic.questions,
-    ...scorecard.questions,
-    ...joinedQuestions(world, { routes, timecard, dvic, scorecard }),
+    ...weeklyScorecard.questions,
+    ...joinedQuestions(world, { routes, timecard, dvic, weeklyScorecard }),
   ];
   const ids = all.map((question) => question.id);
   if (ids.length !== order.length || !order.every((id) => ids.includes(id)))

@@ -721,8 +721,8 @@ mod tests {
                     &["core", "collectors/cortex"],
                 ),
                 (
-                    "features/scorecard",
-                    "dispatch-scorecard",
+                    "features/weekly_scorecard",
+                    "dispatch-weekly-scorecard",
                     &["core", "collectors/cortex"],
                 ),
                 (
@@ -746,7 +746,7 @@ mod tests {
                         "features/driver_match",
                         "features/dvic",
                         "features/routes",
-                        "features/scorecard",
+                        "features/weekly_scorecard",
                         "features/timecard",
                         "features/uniforms",
                         "ops/host-manager",
@@ -759,7 +759,7 @@ mod tests {
         let tested = |file: &str| affected(&[file.to_owned()], &Value::Null, &workspace)[1].clone();
         assert_eq!(
             tested("collectors/cortex/collections/routes/mod.rs"),
-            "cargo test --locked -p dispatch-backend -p dispatch-cortex -p dispatch-dvic -p dispatch-routes -p dispatch-scorecard -p dispatch-timecard"
+            "cargo test --locked -p dispatch-backend -p dispatch-cortex -p dispatch-dvic -p dispatch-routes -p dispatch-weekly-scorecard -p dispatch-timecard"
         );
         assert_eq!(
             tested("features/driver_match/backend/matching.rs"),
@@ -768,7 +768,7 @@ mod tests {
         // Every owner's crate depends on core.
         assert_eq!(
             tested("core/db/backend/mod.rs"),
-            "cargo test --locked -p dispatch-backend -p dispatch-core -p dispatch-cortex -p dispatch-driver-match -p dispatch-dvic -p dispatch-paycom -p dispatch-routes -p dispatch-scorecard -p dispatch-timecard -p dispatch-uniforms"
+            "cargo test --locked -p dispatch-backend -p dispatch-core -p dispatch-cortex -p dispatch-driver-match -p dispatch-dvic -p dispatch-paycom -p dispatch-routes -p dispatch-weekly-scorecard -p dispatch-timecard -p dispatch-uniforms"
         );
         // A crate nothing else depends on runs its own tests, and the app's.
         assert_eq!(

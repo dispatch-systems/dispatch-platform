@@ -4,4 +4,4 @@
  * A kind of data a key or app may read. `locations` is the delivery addresses and GPS
  * that route answers carry, and only matters with `routes`.
  */
-export type AgentArea = "routes" | "locations" | "timecards" | "meal_breaks" | "dvic" | "feedback" | "safety" | "returns" | "scorecard";
+export type AgentArea = "routes" | "locations" | "timecards" | "meal_breaks" | "dvic" | "feedback" | "safety" | "returns" | "weekly_scorecard";

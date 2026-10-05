@@ -46,7 +46,7 @@ const DATA: [DriverData; 5] = [
     DriverData::Routes,
     DriverData::MealBreaks,
     DriverData::Dvic,
-    DriverData::Scorecard,
+    DriverData::WeeklyScorecard,
 ];
 
 pub fn valid_code(code: &str) -> bool {

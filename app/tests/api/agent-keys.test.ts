@@ -22,7 +22,7 @@ const body = (dsps: string[]): AgentKeyRequest => ({
       'feedback',
       'safety',
       'returns',
-      'scorecard',
+      'weekly_scorecard',
     ],
     bypass: false,
   },

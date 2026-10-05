@@ -28,7 +28,7 @@ const READS: &[&str] = &[
     "feedback",
     "safety",
     "returns",
-    "scorecard",
+    "weekly_scorecard",
 ];
 fn reach(dsps: &[&str]) -> Value {
     json!({"name":"Laptop – Claude Code","allDsps":dsps.is_empty(),"dsps":dsps,
@@ -893,7 +893,13 @@ fn reads_are_kept_in_order_and_dsps_own_settings_only_where_the_key_reaches() {
             ("Dev DSP".to_owned(), json!(["dvic"])),
             (
                 "Harbor Route Co".to_owned(),
-                json!(["routes", "timecards", "meal_breaks", "dvic", "scorecard"])
+                json!([
+                    "routes",
+                    "timecards",
+                    "meal_breaks",
+                    "dvic",
+                    "weekly_scorecard"
+                ])
             ),
         ]
     );
@@ -1042,7 +1048,7 @@ fn edits_are_audited_kind_by_kind_with_each_dsps_own_settings_in_a_line() {
         .unwrap()
         .push(json!("locations"));
     body["dspReads"] = json!([
-        {"dsp":first,"areas":["routes","timecards","meal_breaks","dvic","feedback","returns","scorecard"],"bypass":true},
+        {"dsp":first,"areas":["routes","timecards","meal_breaks","dvic","feedback","returns","weekly_scorecard"],"bypass":true},
         {"dsp":second,"areas":READS.iter().chain(&["locations"]).collect::<Vec<_>>(),"bypass":false},
     ]);
     db.update_agent_key(&user, &made.key.id, &request(body.clone()))
@@ -1066,7 +1072,7 @@ fn edits_are_audited_kind_by_kind_with_each_dsps_own_settings_in_a_line() {
         "dvic",
         "feedback",
         "safety",
-        "scorecard"
+        "weekly_scorecard"
     ]);
     db.update_agent_key(&user, &made.key.id, &request(body.clone()))
         .unwrap();

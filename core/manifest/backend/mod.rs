@@ -71,6 +71,39 @@ pub fn installed() -> Option<&'static Registry> {
 }
 
 impl Registry {
+    /// A renamed identifier, accepted under either spelling while its owner is installed.
+    pub fn canonical_id<'a>(&self, id: &'a str) -> &'a str {
+        self.features
+            .iter()
+            .flat_map(|feature| feature.identifiers)
+            .find(|(legacy, _)| *legacy == id)
+            .map_or(id, |(_, canonical)| *canonical)
+    }
+
+    /// The spelling the previous release reads. Keep durable writes rollback-compatible
+    /// until a later release can retire the owner's transition mapping.
+    pub fn stored_id<'a>(&self, id: &'a str) -> &'a str {
+        self.features
+            .iter()
+            .flat_map(|feature| feature.identifiers)
+            .find(|(_, canonical)| *canonical == id)
+            .map_or(id, |(legacy, _)| *legacy)
+    }
+
+    /// Both spellings for bounded SQL scopes; public catalogs list only the canonical one.
+    pub fn accepted_ids<'a>(&self, ids: impl IntoIterator<Item = &'a str>) -> Vec<&'a str> {
+        let mut accepted = Vec::new();
+        for id in ids {
+            let canonical = self.canonical_id(id);
+            for spelling in [canonical, self.stored_id(canonical)] {
+                if !accepted.contains(&spelling) {
+                    accepted.push(spelling);
+                }
+            }
+        }
+        accepted
+    }
+
     /// Every feature's keepers, in the registry's order.
     pub fn keepers(&self) -> impl Iterator<Item = &'static dyn Keeper> {
         self.features
@@ -79,6 +112,7 @@ impl Registry {
     }
     /// The feature that keeps the collection a job of `kind` collects.
     pub fn keeping(&self, kind: &str) -> Option<&'static Feature> {
+        let kind = self.canonical_id(kind);
         self.features
             .iter()
             .copied()
@@ -86,6 +120,7 @@ impl Registry {
     }
     /// The keeper of the collection a job of `kind` collects.
     pub fn keeper(&self, kind: &str) -> &'static dyn Keeper {
+        let kind = self.canonical_id(kind);
         self.keepers()
             .find(|keeper| keeper.keeps() == kind)
             .unwrap_or_else(|| panic!("no feature keeps {kind}"))
@@ -121,6 +156,7 @@ impl Registry {
         &'a self,
         collection: &'a str,
     ) -> impl Iterator<Item = (&'static dyn Collector, &'static Collection)> + 'a {
+        let collection = self.canonical_id(collection);
         let alias = self
             .schedule_aliases()
             .find(|alias| alias.schedule == collection);
@@ -224,6 +260,25 @@ impl Registry {
     /// area other than settings, each kind of data that names people has a place of its
     /// own, and what agents may read is declared as `mcp::pieces::check` asks.
     pub fn check(&self) {
+        let mut spellings = std::collections::BTreeSet::new();
+        for feature in self.features {
+            for (legacy, canonical) in feature.identifiers {
+                assert!(
+                    legacy != canonical && spellings.insert(legacy) && spellings.insert(canonical),
+                    "{} repeats an identifier transition spelling",
+                    feature.name
+                );
+                assert!(
+                    feature.switch.is_some_and(|s| s.id == *canonical)
+                        || feature.permissions.iter().any(|p| p.id == *canonical)
+                        || feature.keeps.iter().any(|k| k.keeps() == *canonical)
+                        || feature.mcp.reads.iter().any(|a| a.as_str() == *canonical)
+                        || feature.mcp.sources.iter().any(|s| s.as_str() == *canonical),
+                    "{} transitions an identifier it does not own: {canonical}",
+                    feature.name
+                );
+            }
+        }
         let kinds: Vec<&str> = self
             .collectors
             .iter()
@@ -390,6 +445,9 @@ impl Registry {
 pub struct Feature {
     /// Its directory's name.
     pub name: &'static str,
+    /// (Legacy, canonical) identifiers this owner is transitioning. Readers accept both;
+    /// public answers use the canonical spelling and durable writes retain the legacy one.
+    pub identifiers: &'static [(&'static str, &'static str)],
     /// The features and collectors it uses, by name, beyond the collectors whose
     /// collections it keeps.
     pub depends_on: &'static [&'static str],
@@ -442,6 +500,7 @@ pub struct Feature {
 pub const fn feature(name: &'static str) -> Feature {
     Feature {
         name,
+        identifiers: &[],
         depends_on: &[],
         switch: None,
         tabs: &[],

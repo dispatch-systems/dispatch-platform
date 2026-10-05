@@ -344,7 +344,10 @@ test('the kinds of data come in one order, grouped under the feature that collec
   assert.deepEqual(withArea(['routes', 'locations', 'dvic'], 'routes', false), ['dvic']);
   assert.deepEqual(withArea(['dvic'], 'locations', true), ['dvic']);
   assert.deepEqual(withArea(['routes'], 'locations', true), ['routes', 'locations']);
-  assert.deepEqual(canonicalAreas(['scorecard', 'scorecard', 'routes']), ['routes', 'scorecard']);
+  assert.deepEqual(canonicalAreas(['weekly_scorecard', 'weekly_scorecard', 'routes']), [
+    'routes',
+    'weekly_scorecard',
+  ]);
 });
 
 test('a row says how much a key or app reads, and what to know about it', () => {
@@ -369,11 +372,14 @@ test('a row says how much a key or app reads, and what to know about it', () => 
     note: 'No delivery addresses',
     bypass: false,
   });
-  assert.deepEqual(accessText(reads(without('feedback', 'safety', 'returns', 'scorecard')), dsps), {
-    count: of(every - 4),
-    note: 'No scorecard data',
-    bypass: false,
-  });
+  assert.deepEqual(
+    accessText(reads(without('feedback', 'safety', 'returns', 'weekly_scorecard')), dsps),
+    {
+      count: of(every - 4),
+      note: 'No weekly scorecard data',
+      bypass: false,
+    },
+  );
   assert.equal(
     accessText(reads(without('routes', 'locations', 'meal_breaks')), dsps).note,
     'No route data or meal breaks',
@@ -414,7 +420,7 @@ test('a row says how much a key or app reads, and what to know about it', () => 
 
 test('a DSP’s settings name the features it has switched off, and what bypassing them reads', () => {
   const dsp = (
-    ...switchedOff: ('routes' | 'timecards' | 'meal_breaks' | 'dvic' | 'scorecard')[]
+    ...switchedOff: ('routes' | 'timecards' | 'meal_breaks' | 'dvic' | 'weekly_scorecard')[]
   ) => ({
     name: 'Summit Delivery',
     switchedOff,
@@ -423,15 +429,15 @@ test('a DSP’s settings name the features it has switched off, and what bypassi
   assert.equal(switchedOffText(dsp('dvic')), 'DVIC is switched off at Summit Delivery.');
   // A page switched off takes its tab with it, and is named once.
   assert.equal(
-    switchedOffText(dsp('routes', 'timecards', 'meal_breaks', 'scorecard')),
-    'Routes, Timecard and Scorecard are switched off at Summit Delivery.',
+    switchedOffText(dsp('routes', 'timecards', 'meal_breaks', 'weekly_scorecard')),
+    'Routes, Timecard and Weekly Scorecard are switched off at Summit Delivery.',
   );
   assert.equal(
     switchedOffText(dsp('meal_breaks', 'dvic')),
     'Meal Breaks and DVIC are switched off at Summit Delivery.',
   );
   assert.equal(
-    bypassHere('ChatGPT', dsp('routes', 'timecards', 'meal_breaks', 'scorecard')),
+    bypassHere('ChatGPT', dsp('routes', 'timecards', 'meal_breaks', 'weekly_scorecard')),
     'ChatGPT reads every feature’s data here, including the three switched off. Their ' +
       'collection stays off, so that data ends on the day each was switched off. It only ever reads.',
   );

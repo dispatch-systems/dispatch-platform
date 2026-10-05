@@ -5,12 +5,12 @@
     {"id": "timecards", "label": "Timecards", "source": "timecards"},
     {"id": "meal_breaks", "label": "Meal breaks", "source": "meal_breaks"},
     {"id": "dvic", "label": "DVIC inspections", "source": "dvic"},
-    {"id": "feedback", "label": "Customer feedback", "source": "scorecard"},
-    {"id": "safety", "label": "Safety events", "source": "scorecard"},
-    {"id": "returns", "label": "Returns & contact compliance", "source": "scorecard"},
-    {"id": "scorecard", "label": "Weekly scorecard", "source": "scorecard"}
+    {"id": "feedback", "label": "Customer feedback", "source": "weekly_scorecard"},
+    {"id": "safety", "label": "Safety events", "source": "weekly_scorecard"},
+    {"id": "returns", "label": "Returns & contact compliance", "source": "weekly_scorecard"},
+    {"id": "weekly_scorecard", "label": "Weekly Scorecard", "source": "weekly_scorecard"}
   ],
-  "groups": ["Routes", "Timecard", "DVIC", "Scorecard"],
+  "groups": ["Routes", "Timecard", "DVIC", "Weekly Scorecard"],
   "newKey": [
     "routes",
     "timecards",
@@ -19,6 +19,6 @@
     "feedback",
     "safety",
     "returns",
-    "scorecard"
+    "weekly_scorecard"
   ]
 }

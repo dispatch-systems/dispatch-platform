@@ -392,7 +392,7 @@ const EVERY: &[&str] = &[
     "feedback",
     "safety",
     "returns",
-    "scorecard",
+    "weekly_scorecard",
 ];
 fn everything(name: &str) -> Value {
     json!({"name":name,"allDsps":true,"dsps":[],"reads":{"areas":EVERY,"bypass":false}})
@@ -2684,7 +2684,7 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
             text.contains(
                 "Access: Reads Routes & packages, Timecards, Meal breaks, DVIC inspections, \
                  Customer feedback, Safety events, Returns & contact compliance, Weekly \
-                 scorecard\n"
+                 Scorecard\n"
             ),
             "{text}"
         );

@@ -17,7 +17,7 @@ const EVICTS: &[(&str, [bool; 3])] = &[
     ("meals", [false, true, true]),
     ("live", [false, true, false]),
     ("routes", [false, false, true]),
-    ("scorecard", [false, false, true]),
+    ("weekly_scorecard", [false, false, true]),
     ("dvic", [false, false, true]),
     ("drivers", [false, true, true]),
     ("tenant", [true, true, true]),

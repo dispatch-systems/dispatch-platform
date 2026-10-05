@@ -320,10 +320,7 @@ impl Store {
             ],
         )?;
         let name = v::name(value, "name", 60)?;
-        let choices: Vec<_> = ScheduleCollection::all()
-            .map(ScheduleCollection::as_str)
-            .collect();
-        let collection = v::choice(value, "collection", &choices)?;
+        let collection = v::text(value, "collection", 1, 32)?;
         let collection = ScheduleCollection::parse(collection)
             .ok_or_else(|| Error::new("invalid_input", 400))?;
         let requested = timing(value)?;
@@ -442,7 +439,9 @@ impl Store {
         for collection in ScheduleCollection::all() {
             let needs = Self::scheduled_collections(collection).any(|(other, _)| other == provider);
             if needs {
-                self.dsp(id)?.exec(PAUSE, [collection.as_str()])?;
+                for spelling in registry().accepted_ids([collection.as_str()]) {
+                    self.dsp(id)?.exec(PAUSE, [spelling])?;
+                }
             }
         }
         Ok(())

@@ -90,7 +90,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
       await expect(kinds.nth(index)).toBeChecked({ checked: on });
     await expect(approval.getByRole('switch', { name: 'Bypass features' })).not.toBeChecked();
     await reads.getByRole('switch', { name: 'Delivery addresses & GPS', exact: true }).click();
-    await reads.getByRole('switch', { name: 'Weekly scorecard', exact: true }).click();
+    await reads.getByRole('switch', { name: 'Weekly Scorecard', exact: true }).click();
     const approved = page.waitForRequest(
       (sent) => sent.method() === 'POST' && sent.url().endsWith('/approve'),
     );

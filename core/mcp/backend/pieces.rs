@@ -26,6 +26,8 @@ pub struct Mcp {
     pub sources: &'static [AgentSource],
     /// Its endpoints, each also an MCP tool.
     pub endpoints: &'static [Endpoint],
+    /// Previous paths served through the canonical endpoint, omitted from discovery.
+    pub legacy_paths: &'static [(&'static str, &'static str)],
     /// What `team_table` can rank by from its data.
     pub metrics: &'static [Metric],
     /// The words its answers use, for the glossary.
@@ -49,6 +51,7 @@ impl Mcp {
         missing: "",
         sources: &[],
         endpoints: &[],
+        legacy_paths: &[],
         metrics: &[],
         terms: &[],
         examples: &[],
@@ -104,6 +107,20 @@ pub fn check(features: &[&Feature]) {
         .iter()
         .chain(mcp().flat_map(|mcp| mcp.endpoints))
         .collect();
+    let mut legacy_paths = std::collections::BTreeSet::new();
+    for feature in features {
+        for (path, id) in feature.mcp.legacy_paths {
+            assert!(
+                legacy_paths.insert(path) && endpoints.iter().all(|e| e.path != *path),
+                "{path} repeats an agent route"
+            );
+            assert!(
+                feature.mcp.endpoints.iter().any(|e| e.id == *id),
+                "{} aliases an endpoint it does not own: {id}",
+                feature.name
+            );
+        }
+    }
     for (index, endpoint) in endpoints.iter().enumerate() {
         assert!(
             endpoints[..index]

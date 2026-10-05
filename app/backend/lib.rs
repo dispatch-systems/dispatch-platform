@@ -22,8 +22,8 @@ pub static REGISTRY: Registry = Registry {
         &dispatch_routes::FEATURE,
         #[cfg(feature = "dvic")]
         &dispatch_dvic::FEATURE,
-        #[cfg(feature = "scorecard")]
-        &dispatch_scorecard::FEATURE,
+        #[cfg(feature = "weekly_scorecard")]
+        &dispatch_weekly_scorecard::FEATURE,
         #[cfg(feature = "driver_match")]
         &dispatch_driver_match::FEATURE,
         #[cfg(feature = "team")]
@@ -47,7 +47,7 @@ pub const FRONTEND: &[&str] = &[
     "features/settings",
     "features/driver_match",
     "features/routes",
-    "features/scorecard",
+    "features/weekly_scorecard",
     "collectors/paycom",
     "collectors/cortex",
     "core/accounts",
@@ -93,7 +93,7 @@ mod audit_areas;
     feature = "timecard",
     feature = "routes",
     feature = "dvic",
-    feature = "scorecard"
+    feature = "weekly_scorecard"
 ))]
 #[path = "../tests/backend/cache.rs"]
 mod cache;

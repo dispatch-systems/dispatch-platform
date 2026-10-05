@@ -3,4 +3,4 @@
 /**
  * The collected data a person can appear in.
  */
-export type DriverData = "timecards" | "routes" | "meal_breaks" | "dvic" | "scorecard";
+export type DriverData = "timecards" | "routes" | "meal_breaks" | "dvic" | "weekly_scorecard";

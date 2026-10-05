@@ -7,7 +7,7 @@
     feature = "timecard",
     feature = "routes",
     feature = "dvic",
-    feature = "scorecard"
+    feature = "weekly_scorecard"
 ))]
 mod agent_activity;
 #[cfg(feature = "default")]
@@ -16,14 +16,14 @@ mod agent_api;
     feature = "timecard",
     feature = "routes",
     feature = "dvic",
-    feature = "scorecard"
+    feature = "weekly_scorecard"
 ))]
 mod agent_data;
 #[cfg(all(
     feature = "timecard",
     feature = "routes",
     feature = "dvic",
-    feature = "scorecard"
+    feature = "weekly_scorecard"
 ))]
 mod agent_tools;
 mod collection_jobs;
@@ -39,6 +39,8 @@ mod network_policy;
     feature = "timecard",
     feature = "routes",
     feature = "dvic",
-    feature = "scorecard"
+    feature = "weekly_scorecard"
 ))]
 mod oauth;
+#[cfg(feature = "weekly_scorecard")]
+mod weekly_scorecard_transition;

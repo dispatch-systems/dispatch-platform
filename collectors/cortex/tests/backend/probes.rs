@@ -731,7 +731,7 @@ async fn probe_scorecard_api() -> Result<()> {
             }
         };
         eprintln!(
-            "SCORECARD_API {}",
+            "WEEKLY_SCORECARD_API {}",
             json!({"ms":started.elapsed().as_millis(),"error":probe.get("error"),"probe":probe.get("out").or(probe.get("partial"))})
         );
         // The same request from this process: the browser's cookies and user agent, nothing else.
@@ -801,7 +801,7 @@ async fn probe_scorecard_api() -> Result<()> {
             Err(error) => json!({"error":error.to_string().split(':').next().unwrap_or("request_failed")}),
         };
         eprintln!(
-            "SCORECARD_API {}",
+            "WEEKLY_SCORECARD_API {}",
             json!({"http":summary,"cookiesKept":kept,"ms":started.elapsed().as_millis()})
         );
         Ok(())

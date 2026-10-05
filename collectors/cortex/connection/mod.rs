@@ -195,8 +195,8 @@ impl Drives for Driver {
                     scope: Some(serde_json::to_value(scope)?),
                 });
             }
-            if let Some(request) = crate::scorecard::Request::parse(run.request)? {
-                let (capture, scope) = self.collect_scorecard(&request, run).await?;
+            if let Some(request) = crate::weekly_scorecard::Request::parse(run.request)? {
+                let (capture, scope) = self.collect_weekly_scorecard(&request, run).await?;
                 return Ok(Collected {
                     data: serde_json::to_value(capture)?,
                     scope: Some(serde_json::to_value(scope)?),

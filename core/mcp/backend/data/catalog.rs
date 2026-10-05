@@ -150,7 +150,7 @@ pub(crate) const CORE: &[Endpoint] = &[
         path: "/api/v1/status",
         summary: "How fresh each source is",
         description: "Use when asked how current the data is: which sources the DSP has on \
-            (Paycom timecards, Cortex meal breaks, routes, DVIC, the scorecard), which this key \
+            (Paycom timecards, Cortex meal breaks, routes, DVIC, weekly scorecards), which this key \
             reads there, and when each last collected.",
         path_params: &[],
         params: &[DSP],
@@ -289,7 +289,7 @@ pub fn endpoint(id: &str) -> &'static Endpoint {
     ENDPOINTS
         .iter()
         .copied()
-        .find(|e| e.id == id)
+        .find(|e| e.id == registry().canonical_id(id))
         .expect("a listed endpoint")
 }
 
@@ -374,7 +374,7 @@ pub struct Term {
 pub(crate) const CORE_TERMS: &[Term] = &[
     Term {
         term: "transporter ID",
-        meaning: "Amazon's ID for a driver, in routes, meal breaks, DVIC and the scorecard.",
+        meaning: "Amazon's ID for a driver, in routes, meal breaks, DVIC and weekly scorecards.",
         order: 20,
     },
     Term {
@@ -419,7 +419,10 @@ fn schema(kind: Kind) -> Value {
 
 /// The endpoint an MCP tool asks.
 pub fn tool(name: &str) -> Option<&'static Endpoint> {
-    ENDPOINTS.iter().copied().find(|e| e.tool == name)
+    ENDPOINTS
+        .iter()
+        .copied()
+        .find(|e| e.tool == registry().canonical_id(name))
 }
 
 /// An MCP tool's input: one flat object of strings, numbers, yes-or-no and fixed choices,
@@ -492,7 +495,7 @@ pub fn openapi(origin: &str) -> Value {
             "title": "Dispatch agent API",
             "version": "1",
             "description": "Read a DSP's drivers, routes, timecards, meal breaks, DVIC and \
-                scorecard, as far as the key may read them there. Every answer names the DSP, \
+                weekly scorecards, as far as the key may read them there. Every answer names the DSP, \
                 the days and the driver it understood, and which days each source has. An \
                 answer read from a feature the DSP has switched off, by a key that bypasses \
                 features, names it under `bypassed`. Times are the DSP's own."

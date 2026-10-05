@@ -41,7 +41,7 @@ short table comes back; rows of detail only when asked for.
 
 - Pass the user's own words for days (yesterday, last night, last week, 2026-W39) and for \
 drivers (a name or part of one). Period tools default to the last 30 days; routes and meal breaks to yesterday, \
-and scorecard to the latest week. Timecards defaults to yesterday for everyone \
+and weekly_scorecard to the latest week. Timecards defaults to yesterday for everyone \
 or the last 30 days for one driver. You need not look up today's \
 date or a driver's ID first. Days are the DSP's own and can differ from your clock: say \
 yesterday, not a date you worked out.

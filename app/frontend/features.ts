@@ -8,7 +8,7 @@ import { feature as team } from '../../features/team/frontend/feature.js';
 import { feature as settings } from '../../features/settings/frontend/feature.js';
 import { feature as driverMatch } from '../../features/driver_match/frontend/feature.js';
 import { feature as routes } from '../../features/routes/frontend/feature.js';
-import { feature as scorecard } from '../../features/scorecard/frontend/feature.js';
+import { feature as weeklyScorecard } from '../../features/weekly_scorecard/frontend/feature.js';
 import { feature as paycom } from '../../collectors/paycom/frontend/feature.js';
 import { feature as cortex } from '../../collectors/cortex/frontend/feature.js';
 import { feature as accounts } from '../../core/accounts/frontend/feature.js';
@@ -26,7 +26,7 @@ export const features: readonly FrontendFeature[] = [
   settings,
   driverMatch,
   routes,
-  scorecard,
+  weeklyScorecard,
   paycom,
   cortex,
   accounts,

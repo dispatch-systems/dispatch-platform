@@ -101,7 +101,7 @@ fn stored(system: bool, permissions: &str) -> Vec<String> {
     let saved: Vec<String> = serde_json::from_str(permissions).unwrap_or_default();
     PERMISSIONS
         .iter()
-        .filter(|p| saved.iter().any(|v| v == *p))
+        .filter(|p| saved.iter().any(|v| registry().canonical_id(v) == **p))
         .map(|p| (*p).to_owned())
         .collect()
 }
@@ -220,7 +220,20 @@ pub fn default_role(db: &Db, dsp: &str, role: &str) -> Result<String> {
     let id = crypto::id("role")?;
     db.exec(
         "INSERT INTO roles(id,dsp_id,name,permissions,system,created_at) VALUES (?,?,?,?,?,?)",
-        params![id, dsp, name, json!(permissions).to_string(), system, iso()],
+        params![
+            id,
+            dsp,
+            name,
+            json!(
+                permissions
+                    .iter()
+                    .map(|p| registry().stored_id(p))
+                    .collect::<Vec<_>>()
+            )
+            .to_string(),
+            system,
+            iso()
+        ],
     )?;
     Ok(id)
 }
@@ -304,11 +317,16 @@ impl Store {
             400,
         )?;
         ensure(
-            requested.iter().all(|p| PERMISSIONS.contains(&p.as_str())),
+            requested
+                .iter()
+                .all(|p| PERMISSIONS.contains(&registry().canonical_id(p))),
             "invalid_input",
             400,
         )?;
-        let mut wanted = requested.to_vec();
+        let mut wanted: Vec<_> = requested
+            .iter()
+            .map(|p| registry().canonical_id(p).to_owned())
+            .collect();
         for (permission, implied) in IMPLIED.iter() {
             if wanted.iter().any(|p| p == permission) && !wanted.iter().any(|p| p == implied) {
                 wanted.push((*implied).to_owned());
@@ -350,7 +368,19 @@ impl Store {
             let id = crypto::id("role")?;
             self.platform.exec(
                 "INSERT INTO roles(id,dsp_id,name,permissions,created_at) VALUES (?,?,?,?,?)",
-                params![id, dsp, name, json!(permissions).to_string(), iso()],
+                params![
+                    id,
+                    dsp,
+                    name,
+                    json!(
+                        permissions
+                            .iter()
+                            .map(|p| registry().stored_id(p))
+                            .collect::<Vec<_>>()
+                    )
+                    .to_string(),
+                    iso()
+                ],
             )?;
             self.audit_ref(
                 Some(c.actor()),
@@ -392,7 +422,17 @@ impl Store {
                 .collect();
             self.platform.exec(
                 "UPDATE roles SET name=?,permissions=? WHERE id=?",
-                params![name, json!(permissions).to_string(), id],
+                params![
+                    name,
+                    json!(
+                        permissions
+                            .iter()
+                            .map(|p| registry().stored_id(p))
+                            .collect::<Vec<_>>()
+                    )
+                    .to_string(),
+                    id
+                ],
             )?;
             let mirror = legacy(false, &permissions);
             self.platform.exec(

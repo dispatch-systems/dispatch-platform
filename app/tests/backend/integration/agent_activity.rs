@@ -125,7 +125,7 @@ impl Server {
     /// A key made the way the Agents page makes one, reaching `dsps` (every DSP when empty).
     async fn key(&self, name: &str, dsps: Vec<String>) -> (String, String) {
         let reads = json!({"areas":["routes","timecards","meal_breaks","dvic","feedback",
-            "safety","returns","scorecard"],"bypass":false});
+            "safety","returns","weekly_scorecard"],"bypass":false});
         self.key_reading(name, dsps, reads).await
     }
     /// The same, reading as `reads` says at every DSP.

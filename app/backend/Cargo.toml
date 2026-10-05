@@ -27,7 +27,7 @@ default = [
     "uniforms",
     "routes",
     "dvic",
-    "scorecard",
+    "weekly_scorecard",
     "driver_match",
     "team",
     "settings",
@@ -38,7 +38,7 @@ timecard = ["dep:dispatch-timecard", "driver_match"]
 uniforms = ["dep:dispatch-uniforms"]
 routes = ["dep:dispatch-routes"]
 dvic = ["dep:dispatch-dvic"]
-scorecard = ["dep:dispatch-scorecard"]
+weekly_scorecard = ["dep:dispatch-weekly-scorecard"]
 driver_match = ["dep:dispatch-driver-match"]
 team = ["dep:dispatch-team"]
 settings = ["dep:dispatch-settings"]
@@ -55,7 +55,7 @@ dispatch-home = { path = "../../features/home", optional = true }
 dispatch-host = { path = "../../ops/host-manager" }
 dispatch-paycom = { path = "../../collectors/paycom" }
 dispatch-routes = { path = "../../features/routes", optional = true }
-dispatch-scorecard = { path = "../../features/scorecard", optional = true }
+dispatch-weekly-scorecard = { path = "../../features/weekly_scorecard", optional = true }
 dispatch-settings = { path = "../../features/settings", optional = true }
 dispatch-team = { path = "../../features/team", optional = true }
 dispatch-timecard = { path = "../../features/timecard", optional = true }
@@ -74,7 +74,7 @@ dispatch-driver-match = { path = "../../features/driver_match", features = ["ts"
 dispatch-dvic = { path = "../../features/dvic", features = ["ts"] }
 dispatch-paycom = { path = "../../collectors/paycom", features = ["ts"] }
 dispatch-routes = { path = "../../features/routes", features = ["ts"] }
-dispatch-scorecard = { path = "../../features/scorecard", features = ["ts"] }
+dispatch-weekly-scorecard = { path = "../../features/weekly_scorecard", features = ["ts"] }
 dispatch-timecard = { path = "../../features/timecard", features = ["ts"] }
 dispatch-uniforms = { path = "../../features/uniforms", features = ["ts"] }
 base64 = { workspace = true }

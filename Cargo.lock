@@ -609,7 +609,7 @@ dependencies = [
  "dispatch-host",
  "dispatch-paycom",
  "dispatch-routes",
- "dispatch-scorecard",
+ "dispatch-weekly-scorecard",
  "dispatch-settings",
  "dispatch-team",
  "dispatch-timecard",
@@ -772,7 +772,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "dispatch-scorecard"
+name = "dispatch-weekly-scorecard"
 version = "0.0.0"
 dependencies = [
  "chrono",
