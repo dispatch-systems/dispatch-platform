@@ -39,11 +39,11 @@ which the owner's `api/` narrows and checks. Normal Rust tests verify them witho
 files. Generated types, schema snapshots and approved artwork remain with their owners.
 
 Installed hosts run their installed copies of `ops/launchers/` and the built artifact, never
-repository paths. The build cache, PR preflight and ship command delegate to the small
-`dispatch-ci` executable (`tooling/ci/dispatch-ci/`), and artifact verification, releases, fresh
-setup and the updaters to the Rust host manager (`ops/host-manager/`). See
-[tooling/ci/README.md](tooling/ci/README.md) for the pipeline. The development, host and release
-guides live outside Git at the workspace’s `docs/` directory.
+repository paths. Building the backend, checking a branch before a push and shipping a PR run
+through `dispatchdev` (`tooling/cli/`), and artifact verification, releases, fresh setup and
+the updaters through the Rust host manager (`ops/host-manager/`); what both use is in
+`tooling/shared/`. See [tooling/ci/README.md](tooling/ci/README.md) for the pipeline. The
+development workflow lives outside Git, in the workspace’s `dispatch-development` skill.
 
 ## License
 

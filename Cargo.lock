@@ -625,19 +625,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dispatch-ci"
-version = "0.0.0"
-dependencies = [
- "fs2",
- "libc",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "toml",
-]
-
-[[package]]
 name = "dispatch-core"
 version = "0.0.0"
 dependencies = [
@@ -731,7 +718,7 @@ name = "dispatch-host"
 version = "0.0.0"
 dependencies = [
  "chrono",
- "dispatch-ci",
+ "dispatch-shared",
  "flate2",
  "fs2",
  "libc",
@@ -807,6 +794,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dispatch-shared"
+version = "0.0.0"
+dependencies = [
+ "libc",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "dispatch-team"
 version = "0.0.0"
 dependencies = [
@@ -843,6 +839,20 @@ dependencies = [
  "tempfile",
  "tokio",
  "ts-rs",
+]
+
+[[package]]
+name = "dispatchdev-cli"
+version = "0.0.0"
+dependencies = [
+ "dispatch-shared",
+ "fs2",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "toml",
 ]
 
 [[package]]

@@ -64,7 +64,7 @@ test("a feature's list names its Rust, API, frontend and browser tests, each whe
   assert(browser.includes('features/dvic/tests/browser/dvic.spec.ts'));
   assert.deepEqual(commands, [
     'cargo test --locked -p dispatch-dvic',
-    'python3 tooling/build/cargo-build.py',
+    'tooling/cli/dispatchdev build',
     `node node_modules/tsx/dist/cli.mjs --test ${node.join(' ')}`,
     'npm run build',
     `npm run test:ui -- ${browser.join(' ')}`,
@@ -90,7 +90,7 @@ test("a collector's list runs its sharded native suites through their shards and
   assert(commands.includes(`node node_modules/tsx/dist/cli.mjs --test ${unsharded.join(' ')}`));
   assert(commands.includes('npm run test:ui -- collectors/cortex/tests/browser/cortex.spec.ts'));
   assert(
-    !commands.some((command) => /cargo-build|npm run build/.test(command)),
+    !commands.some((command) => /dispatchdev build|npm run build/.test(command)),
     '--no-build builds nothing',
   );
 });

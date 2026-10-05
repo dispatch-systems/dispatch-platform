@@ -68,7 +68,7 @@ fn native_build_shares_verified_copies_across_worktrees_and_rebuilds_changed_inp
     let builds = temp.path().join("build-count");
     let run = |root: &Path| {
         checked(
-            Command::new(env!("CARGO_BIN_EXE_dispatch-ci"))
+            Command::new(env!("CARGO_BIN_EXE_dispatchdev"))
                 .args(["build", "--release", "--root", root.to_str().unwrap()])
                 .env_clear()
                 .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
@@ -89,7 +89,7 @@ fn native_build_shares_verified_copies_across_worktrees_and_rebuilds_changed_inp
     assert_eq!(fs::read(&builds).unwrap(), b"xx");
 }
 #[test]
-fn native_preflight_fetches_actual_base_and_refuses_dirty_or_stale_work() {
+fn native_check_fetches_actual_base_and_refuses_dirty_or_stale_work() {
     let temp = tempfile::tempdir().unwrap();
     let remote = temp.path().join("remote");
     let checkout = temp.path().join("checkout");
@@ -122,8 +122,8 @@ fn native_preflight_fetches_actual_base_and_refuses_dirty_or_stale_work() {
     git(&checkout, &["checkout", "-qb", "feature/test"]);
     executable(&bin.join("gh"), "#!/bin/sh\nprintf '[]'\n");
     let run = || {
-        Command::new(env!("CARGO_BIN_EXE_dispatch-ci"))
-            .args(["preflight", "--root", checkout.to_str().unwrap()])
+        Command::new(env!("CARGO_BIN_EXE_dispatchdev"))
+            .args(["check", "--root", checkout.to_str().unwrap()])
             .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
             .output()
             .unwrap()

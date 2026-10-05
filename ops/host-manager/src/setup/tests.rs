@@ -381,7 +381,7 @@ fn setup_lock_excludes_concurrent_initialization() {
 #[test]
 fn private_bootstrap_stdin_and_environment_never_leak_through_errors() {
     let temp = tempfile::tempdir().unwrap();
-    let error = dispatch_ci::process::isolated(
+    let error = dispatch_shared::process::isolated(
         &["/bin/sh", "-c", "/bin/cat >&2; exit 1"],
         temp.path(),
         2,
@@ -392,7 +392,7 @@ fn private_bootstrap_stdin_and_environment_never_leak_through_errors() {
     .to_string();
     assert!(!error.contains("secret-initial-password"));
     assert!(error.contains("Bootstrap command failed"));
-    dispatch_ci::process::isolated(
+    dispatch_shared::process::isolated(
         &[
             "/bin/sh",
             "-c",

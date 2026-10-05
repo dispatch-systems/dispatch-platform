@@ -56,7 +56,8 @@ before(() => {
     'collectors',
     'features',
     'ops/host-manager',
-    'tooling/ci/dispatch-ci',
+    'tooling/cli',
+    'tooling/shared',
     'tooling/ci/test-plan.json',
     '.github/workflows/checks.yml',
   ])

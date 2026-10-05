@@ -10,7 +10,7 @@
   ],
   "exceptions": [
     {
-      "path": "tooling/ci/dispatch-ci/src/lib.rs",
+      "path": "tooling/shared/src/lib.rs",
       "rule": "known-private-identity",
       "lineSha256": "acd8dd2f910848bfe7a4e564c6ee700302052de555cc9987fe38101175ed0e0a",
       "reason": "Legacy repository identity required to verify existing updater receipts and provenance."

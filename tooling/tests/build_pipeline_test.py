@@ -1,4 +1,4 @@
-"""Rust owns cache/preflight policy; test compatibility entry points here."""
+"""The host setup launchers, the collector shards and what the ship command knows of the gate."""
 import importlib.util
 import io
 from pathlib import Path
@@ -20,24 +20,10 @@ def module(name, path):
     return value
 
 
-cache = module("cargo_build", "tooling/build/cargo-build.py")
-prepare = module("pr_prepare", "tooling/ci/pr-prepare.py")
-ship = module("pr_ship", "tooling/ci/pr-ship.py")
 collectors = module("browseros_check", "tooling/ci/browseros-check.py")
 
 
 class PipelineTests(unittest.TestCase):
-    def test_build_and_preflight_launchers_preserve_arguments(self):
-        for launcher, command, args in [
-            (cache, "build", []),
-            (cache, "build", ["--release", "--cache-key"]),
-            (prepare, "preflight", ["--allow-concurrent"]),
-            (ship, "ship", ["235"]),
-        ]:
-            with self.subTest(command=command, args=args), patch.object(launcher, "launch") as launch:
-                launcher.main(args)
-                launch.assert_called_once_with(command, *args)
-
     def test_setup_launchers_use_trusted_host_and_preserve_paths_and_owner_names(self):
         args = ["--root", "/private path/dev", "--first-name", "Two Names"]
         for environment in ["dev", "production"]:
@@ -95,13 +81,13 @@ class PipelineTests(unittest.TestCase):
                 self.assertNotIn("--test-reporter=junit", command)
 
     def test_ship_knows_every_job_the_gate_lets_fail(self):
-        # pr:ship stops at a queue run's first failed job unless the gate lets that job fail.
+        # dispatchdev ship stops at a queue run's first failed job unless the gate lets that job fail.
         workflow = (ROOT / ".github/workflows/checks.yml").read_text()
         jobs = mapping_fields(mapping_fields(workflow)["jobs"][1])
         advisory = {job for job, (_, body) in jobs.items()
                     if mapping_fields(body).get("continue-on-error", ("false", ""))[0] == "true"}
         listed = re.search(r"\bconst\s+ADVISORY\b[^=]*=\s*&\s*\[([^\]]*)\]",
-                           (ROOT / "tooling/ci/dispatch-ci/src/ship.rs").read_text())
+                           (ROOT / "tooling/cli/src/ship.rs").read_text())
         self.assertIsNotNone(listed)
         self.assertEqual(set(re.findall(r'"([a-z-]+)"', listed.group(1))), advisory)
         self.assertTrue(advisory)

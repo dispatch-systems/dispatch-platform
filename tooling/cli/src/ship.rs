@@ -1,4 +1,4 @@
-//! `npm run pr:ship -- <number>`: add a PR to the merge queue as soon as GitHub admits it and
+//! `dispatchdev ship <number>`: add a PR to the merge queue as soon as GitHub admits it and
 //! wait until GitHub merges it. The queue runs the checks on the exact squash commit it will
 //! push, so nothing but the admission check runs on the PR itself. Everything is read from
 //! GitHub's API, never from a command's text: a newer push is queued in its turn, and the wait

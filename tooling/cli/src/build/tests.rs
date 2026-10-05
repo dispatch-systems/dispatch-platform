@@ -126,11 +126,11 @@ fn custom_build_inputs_and_untracked_external_sources_disable_reuse() {
         fs::remove_file(path).unwrap();
     }
     fs::create_dir_all(f.root.join("ops/host-manager")).unwrap();
-    fs::create_dir_all(f.root.join("tooling/ci/dispatch-ci")).unwrap();
+    fs::create_dir_all(f.root.join("tooling/shared")).unwrap();
     fs::create_dir_all(f.root.join("features/one")).unwrap();
     fs::write(
         f.root.join("Cargo.toml"),
-        "[workspace]\nmembers = [\"app/backend\", \"ops/host-manager\", \"tooling/ci/dispatch-ci\", \"features/*\"]\n",
+        "[workspace]\nmembers = [\"app/backend\", \"ops/host-manager\", \"tooling/shared\", \"features/*\"]\n",
     )
     .unwrap();
     fs::write(
@@ -141,7 +141,7 @@ fn custom_build_inputs_and_untracked_external_sources_disable_reuse() {
     let manifest = f.root.join("ops/host-manager/Cargo.toml");
     fs::write(
         &manifest,
-        "[dependencies]\nci = { path = \"../../tooling/ci/dispatch-ci\" }\n",
+        "[dependencies]\nshared = { path = \"../../tooling/shared\" }\n",
     )
     .unwrap();
     assert!(eligible(&f.root, &f.env, false).unwrap());
@@ -160,7 +160,7 @@ fn custom_build_inputs_and_untracked_external_sources_disable_reuse() {
     }
     fs::write(
         f.root.join("Cargo.toml"),
-        "[workspace]\nmembers = [\"app/backend\", \"ops/host-manager\", \"tooling/ci/dispatch-ci\"]\n",
+        "[workspace]\nmembers = [\"app/backend\", \"ops/host-manager\", \"tooling/shared\"]\n",
     )
     .unwrap();
     assert!(eligible(&f.root, &f.env, false).unwrap());
@@ -216,13 +216,13 @@ fn every_rust_and_embedded_launcher_input_is_fingerprinted_but_dashboard_is_not(
         "app/backend/provider.js",
         "core/db/migrations/schema.sql",
         "ops/host-manager/src/management.rs",
-        "tooling/ci/dispatch-ci/src/cache.rs",
+        "tooling/cli/src/build/key.rs",
+        "tooling/cli/dispatchdev",
+        "tooling/shared/src/process.rs",
         "core/foundation/backend/error.rs",
         "collectors/cortex/scripts/meal.js",
         "features/dvic/migrations/dvic/0001_baseline.sql",
-        "tooling/build/cargo-build.py",
         "tooling/build/rustc-remap.py",
-        "tooling/ci/ci_tool.py",
         "ops/launchers/runtime_artifact.py",
         "ops/launchers/update-dev.py",
         "ops/launchers/update-production.py",

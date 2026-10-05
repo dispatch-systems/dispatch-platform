@@ -235,7 +235,7 @@ test('npm test forwards filter options as arguments while retaining recursive di
   assert(!commands[0]!.args.includes('--list'));
 });
 
-test('pr:prepare watches only sources and tests that exist', () => {
+test('dispatchdev check watches only sources and tests that exist', () => {
   assert(watchedTests.length > 0);
   for (const { sources, tests } of watchedTests) {
     assert(sources.length > 0 && tests.length > 0);

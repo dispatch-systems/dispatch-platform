@@ -1,10 +1,7 @@
-//! Local CI tooling: the Rust build cache, the PR preflight and the ship command, with the
-//! GitHub helpers the host manager shares.
-pub mod cache;
-pub mod preflight;
+//! What `dispatchdev` and the host manager share: bounded subprocesses, this repository's
+//! names on GitHub and its workflow runs, and hex digests.
 pub mod process;
 pub mod runs;
-pub mod ship;
 use std::path::Path;
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 /// Where API calls and provenance name this repository.

@@ -12,7 +12,7 @@ use std::{
     path::Path,
 };
 
-pub use dispatch_ci::runs::{latest_run, passed};
+pub use dispatch_shared::runs::{latest_run, passed};
 pub fn download_run(
     system: &dyn System,
     record: &Value,
