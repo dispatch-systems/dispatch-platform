@@ -21,6 +21,10 @@ struct Answer {
     body: String,
 }
 fn curl(runner: &dyn Runner, jar: &Path, args: &[&str]) -> Result<Answer> {
+    // The jar holds a session: only this user may read it. curl keeps the mode it finds.
+    if !jar.exists() {
+        workspace::write_private(jar, "")?;
+    }
     let jar = jar.to_str().ok_or("Non-UTF8 path")?;
     let base = ["curl", "-sS", "-b", jar, "-c", jar, "-w", "\n%{http_code}"];
     let bytes = runner.command(&[&base[..], args].concat(), None, 120)?;
