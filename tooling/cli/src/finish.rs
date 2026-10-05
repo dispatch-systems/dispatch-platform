@@ -83,11 +83,18 @@ pub fn run(ws: &Workspace, name: &str, abandon: bool, runner: &dyn Runner) -> Re
         done.push("its port released".to_owned());
     }
     if path.exists() {
+        let build = workspace::size(runner, &path.join("target"));
         git(
             &["worktree", "remove", path.to_str().ok_or("Non-UTF8 path")?],
             &dev,
         )?;
-        done.push(format!("worktrees/{name} and its build removed"));
+        done.push(match build {
+            Some(bytes) => format!(
+                "worktrees/{name} removed with its {} build",
+                workspace::human(bytes)
+            ),
+            None => format!("worktrees/{name} removed"),
+        });
     }
     if git(
         &[
