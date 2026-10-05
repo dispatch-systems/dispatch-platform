@@ -101,8 +101,8 @@ export function ReadChoices({
         {hint}
       </p>
       <div className={`agents-reads${set ? '' : ' following'}`}>
-        {areaGroups.map((group) => {
-          const groupId = `${id}-${group.label}`;
+        {areaGroups.map((group, index) => {
+          const groupId = `${id}-read-group-${index}`;
           const allOff = group.areas.every(isOff);
           return (
             <div

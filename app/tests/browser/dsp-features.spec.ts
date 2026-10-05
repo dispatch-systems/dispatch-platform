@@ -26,7 +26,7 @@ test('the platform switches a DSPâ€™s pages, tabs and connections, and the teamâ
     'Timecardneeds a meal-break source',
     'Routesneeds a route source',
     'DVICneeds a DVIC source',
-    'Scorecardneeds a weekly scorecard source',
+    'Weekly Scorecardneeds a weekly scorecard source',
     'Driver Matchneeds a route source',
   ]);
   await off.getByRole('button', { name: 'Switch off', exact: true }).click();
