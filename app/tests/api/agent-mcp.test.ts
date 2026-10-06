@@ -96,8 +96,18 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   assert.equal(hello.headers.get('mcp-session-id'), null);
   assert.equal(hello.body.result.protocolVersion, '2025-06-18');
   assert.equal(hello.body.result.serverInfo.name, 'dispatch');
-  assert.match(hello.body.result.instructions, /Period tools default to the last 30 days/);
-  assert.match(hello.body.result.instructions, /routes and meal breaks to yesterday/);
+  assert.match(
+    hello.body.result.instructions,
+    /Timecards default to yesterday for everyone or the last 30 days for one driver/,
+  );
+  assert.match(hello.body.result.instructions, /Routes default to yesterday/);
+  assert.match(hello.body.result.instructions, /Meal breaks default to yesterday/);
+  assert.match(hello.body.result.instructions, /weekly_scorecard defaults to the latest week/);
+  assert.match(
+    hello.body.result.instructions,
+    /Focused feedback, returns and safety tools default to this weekly source, with the last 30 days as their default period/,
+  );
+  assert.match(hello.body.result.instructions, /Daily Performance defaults to yesterday/);
   assert.match(
     hello.body.result.instructions,
     /groups_cursor pages groups and cursor pages the list independently/,
