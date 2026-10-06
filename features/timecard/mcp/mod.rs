@@ -55,6 +55,8 @@ pub const MEAL_BREAKS: AgentArea = AgentArea::new(&ReadToggle {
 });
 
 pub const MCP: Mcp = Mcp {
+    instructions: "- Timecards default to yesterday for everyone or the last 30 days for one driver. \
+        Meal breaks default to yesterday. Timecards and meal comparisons allow up to 92 days.",
     reads: &[TIMECARDS, MEAL_BREAKS],
     missing: "timecard data",
     sources: &[TIMECARDS_SOURCE, MEAL_BREAKS_SOURCE],

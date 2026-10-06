@@ -16,6 +16,8 @@ use crate::{
 };
 
 pub struct Mcp {
+    /// Source-specific guidance included only while this feature is installed.
+    pub instructions: &'static str,
     /// The kinds of data it holds that a key or app may be allowed to read. The Agents page
     /// lists their switches under the feature's name.
     pub reads: &'static [AgentArea],
@@ -47,6 +49,7 @@ pub struct Mcp {
 }
 impl Mcp {
     pub const NONE: Self = Self {
+        instructions: "",
         reads: &[],
         missing: "",
         sources: &[],

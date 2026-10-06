@@ -223,7 +223,7 @@ fn schedules_and_pending_jobs_keep_ids_timing_status_and_idempotency() {
     retired["collection"] = json!("scorecard");
     assert!(db.save_schedule(&dsp, None, &retired).is_err());
 }
-fn make_prior_database(db: Store, dsp: &str) -> Store {
+fn prior_storage_config(db: Store, dsp: &str) -> dispatch_core::foundation::config::Config {
     let directory = db.area(dsp, "data").unwrap();
     let config = db.config.clone();
     db.dsp(dsp)
@@ -261,7 +261,98 @@ fn make_prior_database(db: Store, dsp: &str) -> Store {
         .execute("UPDATE storage_identity SET source='scorecard-v1'", [])
         .unwrap();
     drop(connection);
-    Store::initialize(config).unwrap()
+    config
+}
+fn make_prior_database(db: Store, dsp: &str) -> Store {
+    Store::initialize(prior_storage_config(db, dsp)).unwrap()
+}
+#[test]
+fn a_matching_existing_archive_finishes_the_transition_without_losing_history() {
+    let (_root, db, dsp) = ready();
+    let config = prior_storage_config(db, &dsp);
+    let tenant = config.root.join("dsps").join(&dsp);
+    let old = tenant.join("data/scorecard/scorecard.sqlite");
+    let archive =
+        dispatch_core::db::private_dir(&tenant.join("state/weekly_scorecard_migration_backup"))
+            .unwrap();
+    std::fs::copy(&old, archive.join("scorecard.sqlite")).unwrap();
+    let db = Store::initialize(config).unwrap();
+    assert!(!old.exists());
+    assert!(archive.join("scorecard.sqlite").is_file());
+    assert_eq!(
+        db.dsp(&dsp)
+            .unwrap()
+            .setting("storage.weekly_scorecard", Value::Null)
+            .unwrap(),
+        json!(1)
+    );
+    assert!(
+        db.dsp(&dsp)
+            .unwrap()
+            .setting("storage.scorecard", Value::Null)
+            .unwrap()
+            .is_null()
+    );
+    assert_eq!(
+        restart(db)
+            .weekly_scorecard_db(&dsp)
+            .unwrap()
+            .count("SELECT count(*) FROM weekly_scorecard_transition", [])
+            .unwrap(),
+        1
+    );
+}
+#[test]
+fn a_conflicting_archive_stops_before_the_marker_and_can_retry_after_recovery() {
+    let (_root, db, dsp) = ready();
+    let config = prior_storage_config(db, &dsp);
+    let tenant = config.root.join("dsps").join(&dsp);
+    let old = tenant.join("data/scorecard/scorecard.sqlite");
+    let archive =
+        dispatch_core::db::private_dir(&tenant.join("state/weekly_scorecard_migration_backup"))
+            .unwrap();
+    std::fs::copy(&old, archive.join("scorecard.sqlite")).unwrap();
+    let conflicting = rusqlite::Connection::open(archive.join("scorecard.sqlite")).unwrap();
+    conflicting
+        .execute(
+            "INSERT INTO settings(key,value) VALUES ('unrelated_archive','true')",
+            [],
+        )
+        .unwrap();
+    drop(conflicting);
+    assert!(Store::initialize(config.clone()).is_err());
+    assert!(old.is_file());
+    assert!(archive.join("scorecard.sqlite").is_file());
+    let core = rusqlite::Connection::open(tenant.join("data/dispatch.sqlite")).unwrap();
+    assert_eq!(
+        core.query_row(
+            "SELECT count(*) FROM settings WHERE key='storage.weekly_scorecard'",
+            [],
+            |row| row.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        core.query_row(
+            "SELECT count(*) FROM settings WHERE key='storage.scorecard'",
+            [],
+            |row| row.get::<_, i64>(0)
+        )
+        .unwrap(),
+        1
+    );
+    drop(core);
+    std::fs::remove_dir_all(&archive).unwrap();
+    let db = Store::initialize(config).unwrap();
+    assert!(!old.exists());
+    assert_eq!(
+        db.weekly_scorecard_db(&dsp)
+            .unwrap()
+            .count("SELECT count(*) FROM weekly_scorecard_transition", [])
+            .unwrap(),
+        1
+    );
 }
 #[test]
 fn old_storage_history_is_imported_verified_archived_and_not_duplicated_on_restart() {

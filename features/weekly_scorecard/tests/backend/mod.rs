@@ -1,5 +1,6 @@
 use super::*;
 use dispatch_cortex::weekly_scorecard::{dataset, fixture};
+mod archive;
 #[test]
 fn requests_are_recognized_by_their_collection() {
     assert!(

@@ -1,5 +1,5 @@
 //! Import the retired database once; the prior file becomes an inactive recovery archive.
-use super::{DATABASE, STORAGE};
+use super::{DATABASE, STORAGE, archive};
 use dispatch_core::{
     Result,
     collection::registry::{AddedStorage, added_identity, identity_seed},
@@ -52,13 +52,18 @@ pub(crate) fn upgrade(store: &Store, id: &str) -> Result<()> {
             (STORAGE.verify)(&target)?;
             drop(target);
             if old_file.is_file() {
-                archive_old(&old_dir, &archive)?;
+                drop(prior(&old_file, id)?);
+                archive::finish(&old_dir, &archive)?;
             } else {
                 ensure(
                     archive.join("scorecard.sqlite").is_file(),
                     "weekly_scorecard_migration_source_missing",
                     503,
                 )?;
+                drop(prior(&archive.join("scorecard.sqlite"), id)?);
+                if old_dir.exists() {
+                    archive::finish(&old_dir, &archive)?;
+                }
             }
         }
         core.exec("DELETE FROM settings WHERE key='storage.scorecard'", [])?;
@@ -78,13 +83,7 @@ pub(crate) fn upgrade(store: &Store, id: &str) -> Result<()> {
         "weekly_scorecard_migration_source_missing",
         503,
     )?;
-    let source = Db::open(&old_file, Kind::new("scorecard", 1))?;
-    added_identity(&source, id, dispatch_cortex::PROVIDER, &LEGACY_STORAGE)?;
-    ensure(
-        source.all("SELECT version FROM scorecard_schema", [])? == vec![json!({"version":1})],
-        "unsupported_weekly_scorecard_schema",
-        503,
-    )?;
+    let source = prior(&old_file, id)?;
     let directory = private_dir(&data.join(STORAGE.id))?;
     let target = Db::create(
         &directory.join("weekly_scorecard.sqlite"),
@@ -169,18 +168,21 @@ pub(crate) fn upgrade(store: &Store, id: &str) -> Result<()> {
     (STORAGE.verify)(&target)?;
     drop(source);
     drop(target);
-    // The marker commits after the entire publication history and import receipt.
+    // Reject an unrelated archive before committing the marker. The import receipt then
+    // permits retries after an interrupted move, copy or removal of the old directory.
+    archive::check(&old_dir, &archive)?;
     core.set(STORAGE.marker, &json!(1))?;
-    archive_old(&old_dir, &archive)?;
+    archive::finish(&old_dir, &archive)?;
     core.exec("DELETE FROM settings WHERE key='storage.scorecard'", [])?;
     Ok(())
 }
-fn archive_old(source: &std::path::Path, target: &std::path::Path) -> Result<()> {
+fn prior(path: &std::path::Path, id: &str) -> Result<Db> {
+    let source = Db::open(path, Kind::new("scorecard", 1))?;
+    added_identity(&source, id, dispatch_cortex::PROVIDER, &LEGACY_STORAGE)?;
     ensure(
-        !target.exists(),
-        "weekly_scorecard_migration_backup_exists",
+        source.all("SELECT version FROM scorecard_schema", [])? == vec![json!({"version":1})],
+        "unsupported_weekly_scorecard_schema",
         503,
     )?;
-    std::fs::rename(source, target)?;
-    Ok(())
+    Ok(source)
 }

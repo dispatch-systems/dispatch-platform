@@ -75,6 +75,8 @@ pub(crate) const DAILY_SAFETY: AgentArea = AgentArea::new(&ReadToggle {
     names: &[DriverSource::Amazon],
 });
 pub(crate) const MCP: Mcp = Mcp {
+    instructions: "- Daily Performance defaults to yesterday. When a tool offers source: daily_performance, \
+        select it for daily questions; its default period is yesterday.",
     reads: &[
         DAILY_PERFORMANCE,
         DAILY_FEEDBACK,

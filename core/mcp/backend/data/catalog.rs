@@ -295,7 +295,7 @@ fn declared() -> impl Iterator<Item = &'static Endpoint> {
     )
 }
 // Resolve alternate source metadata once. Removing the endpoint owner also removes its
-// focused tools; the daily feature's own generic tool remains independently available.
+// focused tools; alternate owners' generic tools remain independently available.
 static SOURCES: LazyLock<Vec<Endpoint>> = LazyLock::new(|| {
     registry()
         .features
@@ -336,11 +336,12 @@ pub static ENDPOINTS: LazyLock<Vec<&'static Endpoint>> = LazyLock::new(|| {
                 .iter()
                 .filter_map(|source| source.area.map(|area| area.source().as_str()))
                 .collect();
+            let hint = choices.join(" or ");
             params.push(Param {name:"source",kind:Kind::Choice(Box::leak(choices.into_boxed_slice())),
                 description:"Choose the data source explicitly. Omit for the first listed source; sources never mix or fall back."});
             let description = Box::leak(
                 format!(
-                    "{} Select source for daily or weekly data. \
+                    "{} Select source: {hint}. \
                 Source-specific parameters are checked after selection.",
                     endpoint.description
                 )
@@ -539,7 +540,7 @@ pub struct Term {
 pub(crate) const CORE_TERMS: &[Term] = &[
     Term {
         term: "transporter ID",
-        meaning: "Amazon's ID for a driver, in routes, meal breaks, DVIC, weekly scorecards and daily performance.",
+        meaning: "Amazon's ID for a driver across its data sources.",
         order: 20,
     },
     Term {

@@ -2,7 +2,7 @@
 //! Code, Codex, Hermes and others load. It is written from the catalog, as the tools and the
 //! OpenAPI document are, so it always describes the API this server answers.
 use super::data::catalog::{ENDPOINTS, Endpoint, GLOSSARY, METRICS};
-use crate::{manifest::registry, mcp::server::INSTRUCTIONS};
+use crate::{manifest::registry, mcp::server::instructions};
 use std::sync::LazyLock;
 
 /// A question people ask, with the call and the REST request that answer it.
@@ -52,7 +52,7 @@ pub fn skill(origin: &str) -> String {
          name: dispatch\n\
          description: Answers questions about a delivery service partner's drivers from \
          Dispatch: routes, stops and packages, hours and timecards, meal breaks and DVIC \
-         vehicle inspections, customer feedback, returns, safety events, weekly scorecards and daily performance, \
+         vehicle inspections, customer feedback, returns, safety events and performance, \
          for one driver or the whole team, on any day or period. Use \
          when asked how a driver did, who led or trailed on a number, what happened on a \
          route or to a package, or about hours, lunches, inspections, feedback, safety, returns \
@@ -60,7 +60,7 @@ pub fn skill(origin: &str) -> String {
          ---\n\n\
          # Dispatch\n\n",
     );
-    out.push_str(INSTRUCTIONS);
+    out.push_str(instructions());
     out.push_str(&format!(
         "\n\n## Connecting\n\n\
          Use the Dispatch MCP tools when they are connected. Otherwise call the REST API \

@@ -6513,7 +6513,7 @@
       "get": {
         "operationId": "feedback",
         "summary": "Customer feedback (CDF)",
-        "description": "Use for customer delivery feedback (CDF) from Amazon's weekly scorecard: how much negative feedback, of which kinds, for which drivers, and repeated feedback at the same address (group_by address, min_count 2; needs a key allowed addresses). CDF means negative feedback; ask for positive only when the user asks for praise. Select source for daily or weekly data. Source-specific parameters are checked after selection.",
+        "description": "Use for customer delivery feedback (CDF) from Amazon's weekly scorecard: how much negative feedback, of which kinds, for which drivers, and repeated feedback at the same address (group_by address, min_count 2; needs a key allowed addresses). CDF means negative feedback; ask for positive only when the user asks for praise. Select source: weekly_scorecard or daily_performance. Source-specific parameters are checked after selection.",
         "parameters": [
           {
             "name": "dsp",
@@ -7455,7 +7455,7 @@
       "get": {
         "operationId": "safety",
         "summary": "Netradyne safety events",
-        "description": "Use for Netradyne safety infractions from Amazon's scorecard: speeding, distraction, sign violations, following distance, seatbelt. Gives counts by type; for one driver also each event with its severity and dispute outcome. Select source for daily or weekly data. Source-specific parameters are checked after selection.",
+        "description": "Use for Netradyne safety infractions from Amazon's scorecard: speeding, distraction, sign violations, following distance, seatbelt. Gives counts by type; for one driver also each event with its severity and dispute outcome. Select source: weekly_scorecard or daily_performance. Source-specific parameters are checked after selection.",
         "parameters": [
           {
             "name": "dsp",
@@ -8434,7 +8434,7 @@
       "get": {
         "operationId": "returns",
         "summary": "Contact compliance and returns to station (RTS)",
-        "description": "Use for contact compliance: which drivers didn't do it, that is returned packages without the required call or text (contact missed, group_by driver). Also Amazon's returns to station from the weekly scorecard, their reasons, and which returns hurt the completion rate (DCR). Use source daily_performance for daily returns; weekly_scorecard for posted weekly outcomes. Select source for daily or weekly data. Source-specific parameters are checked after selection.",
+        "description": "Use for contact compliance: which drivers didn't do it, that is returned packages without the required call or text (contact missed, group_by driver). Also Amazon's returns to station from the weekly scorecard, their reasons, and which returns hurt the completion rate (DCR). Use source daily_performance for daily returns; weekly_scorecard for posted weekly outcomes. Select source: weekly_scorecard or daily_performance. Source-specific parameters are checked after selection.",
         "parameters": [
           {
             "name": "dsp",
@@ -9910,7 +9910,7 @@
             "name": "period",
             "in": "query",
             "required": false,
-            "description": "The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.",
+            "description": "Daily days as the user said them, such as yesterday or last 14 days; defaults to yesterday.",
             "schema": {
               "type": "string",
               "maxLength": 200

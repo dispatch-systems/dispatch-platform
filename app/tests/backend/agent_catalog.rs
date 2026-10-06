@@ -3,6 +3,36 @@ use dispatch_core::mcp::data::catalog::*;
 use serde_json::json;
 
 #[test]
+fn source_guidance_is_owned_by_installed_features() {
+    crate::install();
+    let instructions = dispatch_core::mcp::server::instructions();
+    assert_eq!(
+        instructions.contains("Daily Performance defaults to yesterday"),
+        cfg!(feature = "daily_performance")
+    );
+    assert_eq!(
+        instructions.contains("weekly_scorecard defaults to the latest week"),
+        cfg!(feature = "weekly_scorecard")
+    );
+    for (guidance, installed) in [
+        ("Routes default to yesterday", cfg!(feature = "routes")),
+        (
+            "Timecards default to yesterday for everyone",
+            cfg!(feature = "timecard"),
+        ),
+        (
+            "DVIC contains short exceptions only",
+            cfg!(feature = "dvic"),
+        ),
+    ] {
+        assert_eq!(instructions.contains(guidance), installed);
+        assert!(!dispatch_core::mcp::server::INSTRUCTIONS.contains(guidance));
+    }
+    assert!(!dispatch_core::mcp::server::INSTRUCTIONS.contains("daily_performance"));
+    assert!(!dispatch_core::mcp::server::INSTRUCTIONS.contains("weekly_scorecard"));
+}
+
+#[test]
 fn every_endpoint_and_metric_is_listed_once() {
     crate::install();
     let mut ids: Vec<&str> = ENDPOINTS.iter().map(|e| e.id).collect();
@@ -106,6 +136,11 @@ fn focused_tools_have_one_public_identity_and_select_source_before_parameter_che
             1
         );
         let primary = select(endpoint(id), &json!({})).unwrap();
+        assert!(
+            endpoint(id)
+                .description
+                .contains("Select source: weekly_scorecard or daily_performance.")
+        );
         assert_eq!(primary.area.unwrap().source().as_str(), "weekly_scorecard");
         let daily = select(endpoint(id), &json!({"source":"daily_performance"})).unwrap();
         assert_eq!(daily.area.unwrap().source().as_str(), "daily_performance");

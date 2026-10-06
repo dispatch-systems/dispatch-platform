@@ -25,11 +25,11 @@ rusqlite = { workspace = true }
 serde = { workspace = true }
 # Its answers keep the order their fields are written in.
 serde_json = { workspace = true, features = ["preserve_order"] }
+tempfile = { workspace = true }
 ts-rs = { workspace = true, optional = true }
 
 [dev-dependencies]
 dispatch-core = { path = "../../core", features = ["testing"] }
-tempfile = { workspace = true }
 
 [[test]]
 name = "weekly_scorecard"

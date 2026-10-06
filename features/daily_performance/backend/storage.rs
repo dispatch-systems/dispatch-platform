@@ -273,11 +273,12 @@ impl DailyPerformanceStore for Store {
         let mut days = Vec::new();
         for row in rows {
             let datasets = data.all("SELECT dataset,row_count,coverage FROM daily_datasets WHERE publication_id=? ORDER BY dataset",
-                [s(&row,"id")])?.iter().map(|source| DailyPerformanceDataset {
-                    id: dispatch_cortex::daily_performance::dataset(s(source,"dataset")).expect("stored dataset").id.into(),
+                [s(&row,"id")])?.iter().map(|source| Ok(DailyPerformanceDataset {
+                    id: dispatch_cortex::daily_performance::dataset(s(source,"dataset"))
+                        .ok_or_else(|| Error::new("daily_performance_unknown_stored_dataset",503))?.id.into(),
                     dataset: s(source,"dataset").into(), rows: source["row_count"].as_u64().unwrap_or(0) as usize,
                     coverage: s(source,"coverage").into(),
-                }).collect();
+                })).collect::<Result<Vec<_>>>()?;
             days.push(DailyPerformanceDay {
                 date: s(&row, "date").into(),
                 collected_at: s(&row, "collected_at").into(),

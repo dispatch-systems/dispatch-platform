@@ -64,6 +64,22 @@ fn caller(store: &Store, dsp: &str, areas: &[&str]) -> dispatch_core::mcp::Calle
     store.authenticate_agent(&key.token, "test").unwrap()
 }
 #[test]
+fn unknown_stored_dataset_returns_an_error_without_panicking() {
+    let (_root, store, dsp) = ready();
+    publish(&store, &dsp, "2026-10-03", "unknown-dataset");
+    store
+        .daily_performance_db(&dsp)
+        .unwrap()
+        .exec(
+            "UPDATE daily_datasets SET dataset='retired_dataset' WHERE dataset='driver_quality'",
+            [],
+        )
+        .unwrap();
+    let error = store.daily_performance_days(&dsp).unwrap_err();
+    assert_eq!(error.code, "daily_performance_unknown_stored_dataset");
+    assert_eq!(error.status, 503);
+}
+#[test]
 fn daily_publications_supersede_without_losing_history_and_empty_datasets_are_unconfirmed() {
     let (_root, store, dsp) = ready();
     let first = publish(&store, &dsp, "2026-10-03", "first");

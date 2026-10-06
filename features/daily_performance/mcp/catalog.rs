@@ -83,7 +83,10 @@ pub(super) const FEEDBACK: Param = Param {
 };
 pub(super) const PARAMS: &[Param] = &[
     DSP,
-    PERIOD,
+    Param {
+        description: "Daily days as the user said them, such as yesterday or last 14 days; defaults to yesterday.",
+        ..PERIOD
+    },
     DATE,
     FROM,
     TO,
