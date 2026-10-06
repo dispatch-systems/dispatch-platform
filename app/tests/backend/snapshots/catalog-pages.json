@@ -29,10 +29,14 @@
       "default": false
     },
     {
-      "id": "scorecard",
-      "label": "Scorecard",
-      "permissions": ["scorecard.view", "scorecard.collect", "scorecard.manage"],
-      "requires": ["scorecard"],
+      "id": "weekly_scorecard",
+      "label": "Weekly Scorecard",
+      "permissions": [
+        "weekly_scorecard.view",
+        "weekly_scorecard.collect",
+        "weekly_scorecard.manage"
+      ],
+      "requires": ["weekly_scorecard"],
       "default": false
     },
     {
@@ -40,6 +44,17 @@
       "label": "Driver Match",
       "permissions": ["driver_match.manage"],
       "requires": ["timecards", "routes"],
+      "default": false
+    },
+    {
+      "id": "daily_performance",
+      "label": "Daily Performance",
+      "permissions": [
+        "daily_performance.view",
+        "daily_performance.collect",
+        "daily_performance.manage"
+      ],
+      "requires": ["daily_performance"],
       "default": false
     }
   ],
@@ -55,8 +70,9 @@
     "uniforms",
     "routes",
     "dvic",
-    "scorecard",
+    "weekly_scorecard",
     "driver_match",
+    "daily_performance",
     "timecard.daily",
     "timecard.meal_breaks",
     "timecard.employees",

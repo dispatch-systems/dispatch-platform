@@ -1,7 +1,8 @@
 [
   ["paycom.collect", "paycom"],
   ["cortex.meal_breaks.collect", "meals"],
-  ["cortex.scorecard.collect", "scorecard"],
+  ["cortex.weekly_scorecard.collect", "weekly_scorecard"],
+  ["cortex.daily_performance.collect", "daily_performance"],
   ["cortex.routes.collect", "routes"],
   ["cortex.dvic.collect", "dvic"]
 ]

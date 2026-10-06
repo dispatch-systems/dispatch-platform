@@ -67,7 +67,12 @@ try {
       tool: 'customer_feedback',
       args: { ...period, group_by: 'driver,week' },
     },
-    { name: 'scorecard-page', path: '/api/v1/scorecard', tool: 'scorecard', args: { limit: 100 } },
+    {
+      name: 'scorecard-page',
+      path: '/api/v1/weekly-scorecard',
+      tool: 'weekly_scorecard',
+      args: { limit: 100 },
+    },
     {
       name: 'route-range',
       path: '/api/v1/routes',
@@ -119,7 +124,7 @@ try {
           'feedback',
           'safety',
           'returns',
-          'scorecard',
+          'weekly_scorecard',
         ],
         bypass: false,
       },

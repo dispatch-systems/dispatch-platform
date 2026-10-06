@@ -3,4 +3,4 @@
 /**
  * What a schedule collects: one provider's data, or every scheduled provider's.
  */
-export type ScheduleCollection = "paycom" | "meal_break" | "both" | "scorecard" | "routes" | "dvic";
+export type ScheduleCollection = "paycom" | "meal_break" | "both" | "weekly_scorecard" | "daily_performance" | "routes" | "dvic";

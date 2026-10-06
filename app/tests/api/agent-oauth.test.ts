@@ -69,7 +69,7 @@ const everything = (name: string): OAuthApproval => ({
       'feedback',
       'safety',
       'returns',
-      'scorecard',
+      'weekly_scorecard',
     ],
     bypass: false,
   },

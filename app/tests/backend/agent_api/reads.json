@@ -28,22 +28,42 @@
     {
       "id": "feedback",
       "label": "Customer feedback",
-      "source": "scorecard"
+      "source": "weekly_scorecard"
     },
     {
       "id": "safety",
       "label": "Safety events",
-      "source": "scorecard"
+      "source": "weekly_scorecard"
     },
     {
       "id": "returns",
       "label": "Returns & contact compliance",
-      "source": "scorecard"
+      "source": "weekly_scorecard"
     },
     {
-      "id": "scorecard",
-      "label": "Weekly scorecard",
-      "source": "scorecard"
+      "id": "weekly_scorecard",
+      "label": "Weekly Scorecard",
+      "source": "weekly_scorecard"
+    },
+    {
+      "id": "daily_performance",
+      "label": "Daily Performance",
+      "source": "daily_performance"
+    },
+    {
+      "id": "daily_feedback",
+      "label": "Daily customer feedback",
+      "source": "daily_performance"
+    },
+    {
+      "id": "daily_returns",
+      "label": "Daily returns & contact compliance",
+      "source": "daily_performance"
+    },
+    {
+      "id": "daily_safety",
+      "label": "Daily safety events",
+      "source": "daily_performance"
     }
   ],
   "sources": [
@@ -64,8 +84,12 @@
       "switch": "DVIC"
     },
     {
-      "id": "scorecard",
-      "switch": "Scorecard"
+      "id": "weekly_scorecard",
+      "switch": "Weekly Scorecard"
+    },
+    {
+      "id": "daily_performance",
+      "switch": "Daily Performance"
     }
   ],
   "switches": [
@@ -76,7 +100,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -86,7 +111,8 @@
       "on": [
         "routes",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -97,7 +123,8 @@
       "on": [
         "routes",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -107,7 +134,8 @@
       ],
       "on": [
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -117,17 +145,19 @@
       ],
       "on": [
         "routes",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
       "off": [
         "timecard",
-        "scorecard"
+        "weekly_scorecard"
       ],
       "on": [
         "routes",
-        "dvic"
+        "dvic",
+        "daily_performance"
       ]
     },
     {
@@ -138,7 +168,19 @@
       "on": [
         "routes",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "timecard",
+        "daily_performance"
+      ],
+      "on": [
+        "routes",
+        "dvic",
+        "weekly_scorecard"
       ]
     },
     {
@@ -149,7 +191,8 @@
       "on": [
         "routes",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -160,7 +203,8 @@
       "on": [
         "routes",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -171,7 +215,8 @@
       "on": [
         "routes",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -182,7 +227,8 @@
       "on": [
         "routes",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -193,7 +239,8 @@
       "on": [
         "routes",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -204,7 +251,8 @@
       "on": [
         "routes",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -215,7 +263,8 @@
       "on": [
         "routes",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -227,7 +276,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -239,7 +289,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -251,19 +302,21 @@
         "routes",
         "timecards",
         "meal_breaks",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
       "off": [
         "uniforms",
-        "scorecard"
+        "weekly_scorecard"
       ],
       "on": [
         "routes",
         "timecards",
         "meal_breaks",
-        "dvic"
+        "dvic",
+        "daily_performance"
       ]
     },
     {
@@ -276,7 +329,21 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "uniforms",
+        "daily_performance"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard"
       ]
     },
     {
@@ -289,7 +356,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -301,7 +369,8 @@
         "routes",
         "timecards",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -314,7 +383,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -327,7 +397,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -340,7 +411,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -353,7 +425,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -366,7 +439,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -377,7 +451,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -388,18 +463,20 @@
       "on": [
         "timecards",
         "meal_breaks",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
       "off": [
         "routes",
-        "scorecard"
+        "weekly_scorecard"
       ],
       "on": [
         "timecards",
         "meal_breaks",
-        "dvic"
+        "dvic",
+        "daily_performance"
       ]
     },
     {
@@ -411,7 +488,20 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "routes",
+        "daily_performance"
+      ],
+      "on": [
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard"
       ]
     },
     {
@@ -423,7 +513,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -434,7 +525,8 @@
       "on": [
         "timecards",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -446,7 +538,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -458,7 +551,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -470,7 +564,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -482,7 +577,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -494,7 +590,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -505,18 +602,20 @@
         "routes",
         "timecards",
         "meal_breaks",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
       "off": [
         "dvic",
-        "scorecard"
+        "weekly_scorecard"
       ],
       "on": [
         "routes",
         "timecards",
-        "meal_breaks"
+        "meal_breaks",
+        "daily_performance"
       ]
     },
     {
@@ -528,7 +627,20 @@
         "routes",
         "timecards",
         "meal_breaks",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "dvic",
+        "daily_performance"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "weekly_scorecard"
       ]
     },
     {
@@ -540,7 +652,8 @@
         "routes",
         "timecards",
         "meal_breaks",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -551,7 +664,8 @@
       "on": [
         "routes",
         "timecards",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -563,7 +677,8 @@
         "routes",
         "timecards",
         "meal_breaks",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -575,7 +690,8 @@
         "routes",
         "timecards",
         "meal_breaks",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -587,7 +703,8 @@
         "routes",
         "timecards",
         "meal_breaks",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -599,7 +716,8 @@
         "routes",
         "timecards",
         "meal_breaks",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -611,117 +729,25 @@
         "routes",
         "timecards",
         "meal_breaks",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
       "off": [
-        "scorecard"
+        "weekly_scorecard"
       ],
       "on": [
         "routes",
         "timecards",
         "meal_breaks",
-        "dvic"
+        "dvic",
+        "daily_performance"
       ]
     },
     {
       "off": [
-        "scorecard",
-        "driver_match"
-      ],
-      "on": [
-        "routes",
-        "timecards",
-        "meal_breaks",
-        "dvic"
-      ]
-    },
-    {
-      "off": [
-        "scorecard",
-        "timecard.daily"
-      ],
-      "on": [
-        "routes",
-        "timecards",
-        "meal_breaks",
-        "dvic"
-      ]
-    },
-    {
-      "off": [
-        "scorecard",
-        "timecard.meal_breaks"
-      ],
-      "on": [
-        "routes",
-        "timecards",
-        "dvic"
-      ]
-    },
-    {
-      "off": [
-        "scorecard",
-        "timecard.employees"
-      ],
-      "on": [
-        "routes",
-        "timecards",
-        "meal_breaks",
-        "dvic"
-      ]
-    },
-    {
-      "off": [
-        "scorecard",
-        "dvic.day"
-      ],
-      "on": [
-        "routes",
-        "timecards",
-        "meal_breaks",
-        "dvic"
-      ]
-    },
-    {
-      "off": [
-        "scorecard",
-        "dvic.week"
-      ],
-      "on": [
-        "routes",
-        "timecards",
-        "meal_breaks",
-        "dvic"
-      ]
-    },
-    {
-      "off": [
-        "scorecard",
-        "paycom"
-      ],
-      "on": [
-        "routes",
-        "timecards",
-        "meal_breaks",
-        "dvic"
-      ]
-    },
-    {
-      "off": [
-        "scorecard",
-        "cortex"
-      ],
-      "on": [
-        "routes",
-        "timecards",
-        "meal_breaks",
-        "dvic"
-      ]
-    },
-    {
-      "off": [
+        "weekly_scorecard",
         "driver_match"
       ],
       "on": [
@@ -729,7 +755,135 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "weekly_scorecard",
+        "daily_performance"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic"
+      ]
+    },
+    {
+      "off": [
+        "weekly_scorecard",
+        "timecard.daily"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "weekly_scorecard",
+        "timecard.meal_breaks"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "dvic",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "weekly_scorecard",
+        "timecard.employees"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "weekly_scorecard",
+        "dvic.day"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "weekly_scorecard",
+        "dvic.week"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "weekly_scorecard",
+        "paycom"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "weekly_scorecard",
+        "cortex"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "driver_match"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "driver_match",
+        "daily_performance"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard"
       ]
     },
     {
@@ -742,7 +896,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -754,7 +909,8 @@
         "routes",
         "timecards",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -767,7 +923,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -780,7 +937,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -793,7 +951,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -806,7 +965,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -819,7 +979,110 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "daily_performance"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard"
+      ]
+    },
+    {
+      "off": [
+        "daily_performance",
+        "timecard.daily"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard"
+      ]
+    },
+    {
+      "off": [
+        "daily_performance",
+        "timecard.meal_breaks"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "dvic",
+        "weekly_scorecard"
+      ]
+    },
+    {
+      "off": [
+        "daily_performance",
+        "timecard.employees"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard"
+      ]
+    },
+    {
+      "off": [
+        "daily_performance",
+        "dvic.day"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard"
+      ]
+    },
+    {
+      "off": [
+        "daily_performance",
+        "dvic.week"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard"
+      ]
+    },
+    {
+      "off": [
+        "daily_performance",
+        "paycom"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard"
+      ]
+    },
+    {
+      "off": [
+        "daily_performance",
+        "cortex"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard"
       ]
     },
     {
@@ -831,7 +1094,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -843,7 +1107,8 @@
         "routes",
         "timecards",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -855,7 +1120,8 @@
         "routes",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -868,7 +1134,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -881,7 +1148,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -894,7 +1162,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -907,7 +1176,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -918,7 +1188,8 @@
         "routes",
         "timecards",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -930,7 +1201,8 @@
         "routes",
         "timecards",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -942,7 +1214,8 @@
         "routes",
         "timecards",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -954,7 +1227,8 @@
         "routes",
         "timecards",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -966,7 +1240,8 @@
         "routes",
         "timecards",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -978,7 +1253,8 @@
         "routes",
         "timecards",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -990,7 +1266,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -1003,7 +1280,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -1016,7 +1294,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -1029,7 +1308,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -1042,7 +1322,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -1054,7 +1335,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -1067,7 +1349,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -1080,7 +1363,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -1093,7 +1377,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -1105,7 +1390,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -1118,7 +1404,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -1131,7 +1418,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -1143,7 +1431,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -1156,7 +1445,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {
@@ -1168,7 +1458,8 @@
         "timecards",
         "meal_breaks",
         "dvic",
-        "scorecard"
+        "weekly_scorecard",
+        "daily_performance"
       ]
     }
   ]

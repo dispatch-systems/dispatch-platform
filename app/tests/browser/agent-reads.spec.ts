@@ -98,7 +98,7 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   await expect(row).toContainText('Read only');
   await expect(row).toContainText('Northline Logistics');
   // A new key reads everything but delivery addresses and GPS.
-  await expect(row).toContainText('8 of 9 kinds');
+  await expect(row).toContainText('12 of 13 kinds');
   await expect(row).toContainText('No delivery addresses');
   // The page never shows the key again.
   await expect(page.getByText(token!)).toHaveCount(0);
@@ -282,10 +282,10 @@ test('the owner changes what a connected app reads, and gives a DSP settings of 
   const pairing = await owner.post('/api/platform/oauth/pairing');
   expect(pairing.status, pairing.body).toBe(200);
   await connectApp(page, baseURL!, 'Laptop – Claude Code');
-  // Summit Delivery has Routes, Timecard and Scorecard switched off.
+  // Summit Delivery has Routes, Timecard and Weekly Scorecard switched off.
   const agents = async () => (await owner.get('/api/platform/agents')).value as AgentKeys;
   const summit = (await agents()).dsps.find((dsp) => dsp.name === 'Summit Delivery')!;
-  for (const feature of ['routes', 'timecard', 'scorecard']) {
+  for (const feature of ['routes', 'timecard', 'weekly_scorecard']) {
     const off = await owner.post(`/api/platform/dsps/${summit.id}/features`, {
       feature,
       enabled: false,
@@ -303,7 +303,7 @@ test('the owner changes what a connected app reads, and gives a DSP settings of 
 
   await page.goto(`/${platformHash('agents')}`);
   const row = page.getByRole('row').filter({ hasText: 'Laptop – Claude Code' });
-  await expect(row).toContainText('8 of 9 kinds');
+  await expect(row).toContainText('12 of 13 kinds');
   await expect(row).toContainText('No delivery addresses');
   await row.getByRole('button', { name: 'Edit Laptop – Claude Code', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Laptop – Claude Code' });
@@ -338,9 +338,9 @@ test('the owner changes what a connected app reads, and gives a DSP settings of 
   const follow = switchIn(here, 'Use app settings');
   await expect(follow).toBeChecked();
   await expect(here).toContainText(
-    'Routes, Timecard and Scorecard are switched off at Summit Delivery.',
+    'Routes, Timecard and Weekly Scorecard are switched off at Summit Delivery.',
   );
-  for (const group of ['Routes', 'Timecard', 'Scorecard'])
+  for (const group of ['Routes', 'Timecard', 'Weekly Scorecard'])
     await expect(here.getByRole('group', { name: group, exact: true })).toHaveAccessibleDescription(
       'Switched off here',
     );
@@ -396,7 +396,7 @@ test('the owner changes what a connected app reads, and gives a DSP settings of 
   await expect(page.getByText('App updated', { exact: true })).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Confirm it’s you' })).toHaveCount(0);
   await expect(sheet).toHaveCount(0);
-  await expect(row).toContainText('8 of 9 kinds');
+  await expect(row).toContainText('12 of 13 kinds');
   await expect(row).toContainText('Summit Delivery: own settings, bypass on');
   const saved = (await agents()).keys.find((key) => key.name === 'Laptop – Claude Code')!;
   expect(saved.reads).toEqual({
@@ -408,14 +408,30 @@ test('the owner changes what a connected app reads, and gives a DSP settings of 
       'dvic',
       'safety',
       'returns',
-      'scorecard',
+      'weekly_scorecard',
+      'daily_performance',
+      'daily_feedback',
+      'daily_returns',
+      'daily_safety',
     ],
     bypass: false,
   });
   expect(saved.dspReads).toEqual([
     {
       dsp: summit.id,
-      areas: ['routes', 'timecards', 'meal_breaks', 'dvic', 'safety', 'returns', 'scorecard'],
+      areas: [
+        'routes',
+        'timecards',
+        'meal_breaks',
+        'dvic',
+        'safety',
+        'returns',
+        'weekly_scorecard',
+        'daily_performance',
+        'daily_feedback',
+        'daily_returns',
+        'daily_safety',
+      ],
       bypass: true,
     },
   ]);

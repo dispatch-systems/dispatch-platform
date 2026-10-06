@@ -18,10 +18,18 @@ export const collections = [
     "counted": "itineraries"
   },
   {
-    "kind": "cortex.scorecard.collect",
+    "kind": "cortex.weekly_scorecard.collect",
     "provider": "cortex",
-    "schedule": "scorecard",
-    "label": "Scorecard",
+    "schedule": "weekly_scorecard",
+    "label": "Weekly Scorecard",
+    "unit": "row",
+    "counted": "rows"
+  },
+  {
+    "kind": "cortex.daily_performance.collect",
+    "provider": "cortex",
+    "schedule": "daily_performance",
+    "label": "Daily Performance",
     "unit": "row",
     "counted": "rows"
   },

@@ -46,12 +46,15 @@ test("a page's switch shows the icon its feature declares, once loaded", async (
   installFeatures([
     { name: 'alpha', platformSlots: loads({ switch: { id: switchId('uniforms'), icon: Shirt } }) },
     { name: 'beta' },
-    { name: 'gamma', platformSlots: loads({ switch: { id: switchId('scorecard'), icon: Award } }) },
+    {
+      name: 'gamma',
+      platformSlots: loads({ switch: { id: switchId('weekly_scorecard'), icon: Award } }),
+    },
   ]);
   assert.equal(switchIcon('uniforms'), undefined);
   await loadPlatformSlots();
   assert.equal(switchIcon('uniforms'), Shirt);
-  assert.equal(switchIcon('scorecard'), Award);
+  assert.equal(switchIcon('weekly_scorecard'), Award);
   assert.equal(switchIcon('timecard'), undefined);
 });
 

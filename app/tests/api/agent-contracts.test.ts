@@ -24,7 +24,11 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
         'feedback',
         'safety',
         'returns',
-        'scorecard',
+        'weekly_scorecard',
+        'daily_performance',
+        'daily_feedback',
+        'daily_returns',
+        'daily_safety',
       ],
       bypass: false,
     },
@@ -62,10 +66,24 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
   };
   const document = (await get('/api/v1/openapi.json')).value;
   const tools = (await rpc('tools/list')).tools;
+  // Compact source alternatives hoist common fields to the root; each effective branch
+  // must still expose the same names and requirements as its complete REST contract.
+  const shapes = (schema: any) =>
+    (schema.anyOf ?? [{}]).map((branch: any) => ({
+      properties: Object.keys({ ...schema.properties, ...branch.properties }).sort(),
+      required: [...new Set([...(schema.required ?? []), ...(branch.required ?? [])])].sort(),
+    }));
   const schemas = new Map<string, z.ZodType>();
   for (const [path, item] of Object.entries(document.paths) as [string, any][]) {
     const schema = item.get.responses['200'].content['application/json'].schema;
-    assert.ok(Object.keys(schema.properties).length > 0, path);
+    assert.equal(schema.type, 'object', path);
+    assert.ok(
+      (schema.anyOf ?? [schema]).every(
+        (branch: any) =>
+          branch.type === 'object' && Object.keys(branch.properties ?? {}).length > 0,
+      ),
+      path,
+    );
     schemas.set(path, z.fromJSONSchema(schema));
     for (const status of ['400', '401', '403', '404', '422', '429', '500', '503'])
       assert.ok(
@@ -84,12 +102,7 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
     const listed = tools.find((candidate: any) => candidate.name === tool);
     const fullSchema = document.paths[path].get.responses['200'].content['application/json'].schema;
     assert.equal(listed.outputSchema.type, fullSchema.type, tool);
-    assert.deepEqual(
-      Object.keys(listed.outputSchema.properties).sort(),
-      Object.keys(fullSchema.properties).sort(),
-      tool,
-    );
-    assert.deepEqual(listed.outputSchema.required, fullSchema.required, tool);
+    assert.deepEqual(shapes(listed.outputSchema), shapes(fullSchema), tool);
     const url = Object.entries(named).reduce(
       (url, [key, value]) => url.replace(`{${key}}`, encodeURIComponent(value)),
       path,
@@ -281,8 +294,40 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
   assert.ok(
     businessClosed.list.rows.every((row: any[]) => row[3] === 'business_closed' && row[5] === true),
   );
-  await check('/api/v1/scorecard', 'scorecard', { limit: 1 });
-  await check('/api/v1/scorecard', 'scorecard', { week: '2099-W01' });
+  await check('/api/v1/weekly-scorecard', 'weekly_scorecard', { limit: 1 });
+  await check('/api/v1/weekly-scorecard', 'weekly_scorecard', { week: '2099-W01' });
+  await check('/api/v1/daily-performance', 'daily_performance', {
+    from: world.from,
+    to: world.to,
+    detail: 'full',
+    group_by: 'driver,day',
+    limit: 1,
+  });
+  for (const [path, tool] of [
+    ['/api/v1/feedback', 'customer_feedback'],
+    ['/api/v1/safety', 'safety_events'],
+    ['/api/v1/returns', 'returns'],
+  ]) {
+    const query = {
+      source: 'daily_performance',
+      from: world.from,
+      to: world.to,
+      group_by: 'driver,day',
+      list: true,
+      limit: 1,
+    };
+    const first = await check(path!, tool!, query);
+    assert.equal(first.source, 'daily_performance');
+    assert.ok(first.list.page.next_cursor);
+    assert.ok(first.groups.page.next_cursor);
+    const next = await check(path!, tool!, {
+      ...query,
+      cursor: first.list.page.next_cursor,
+      groups_cursor: first.groups.page.next_cursor,
+    });
+    assert.notDeepEqual(next.list.rows, first.list.rows);
+    assert.notDeepEqual(next.groups.rows, first.groups.rows);
+  }
   // Uncollected days still have a valid, explicit response contract.
   for (const [path, tool] of [
     ['/api/v1/routes', 'route_day'],

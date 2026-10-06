@@ -30,10 +30,6 @@ use dispatch_routes::{
     RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteRetention, RouteStop,
     RouteTask, RouteUnknownStop,
 };
-#[cfg(feature = "scorecard")]
-use dispatch_scorecard::{
-    ScorecardDatasetCount, ScorecardPublication, ScorecardWeek, ScorecardWeeks,
-};
 #[cfg(feature = "timecard")]
 use dispatch_timecard::{
     AssessedClock, CortexMeal, CortexPublication, DailyTimecard, DailyTimecards, DeliveryGap,
@@ -47,6 +43,11 @@ use dispatch_timecard::{
 use dispatch_uniforms::{
     Uniform, UniformAdjustment, UniformEvent, UniformEventKind, UniformFit, UniformHistory,
     UniformInventory, UniformUpdates, UniformVariant,
+};
+#[cfg(feature = "weekly_scorecard")]
+use dispatch_weekly_scorecard::{
+    WeeklyScorecardDatasetCount, WeeklyScorecardPolicy, WeeklyScorecardPublication,
+    WeeklyScorecardWeek, WeeklyScorecardWeeks,
 };
 use std::{
     collections::BTreeMap,
@@ -256,13 +257,14 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         DvicInspection,
         DvicInspections,
     ));
-    #[cfg(feature = "scorecard")]
+    #[cfg(feature = "weekly_scorecard")]
     bindings.extend(exported!(
         &cfg,
-        ScorecardDatasetCount,
-        ScorecardPublication,
-        ScorecardWeek,
-        ScorecardWeeks,
+        WeeklyScorecardDatasetCount,
+        WeeklyScorecardPublication,
+        WeeklyScorecardWeek,
+        WeeklyScorecardWeeks,
+        WeeklyScorecardPolicy,
     ));
     #[cfg(feature = "driver_match")]
     bindings.extend(exported!(
@@ -281,6 +283,14 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         DriverDay,
         DriverEvent,
         DriverDetails,
+    ));
+    #[cfg(feature = "daily_performance")]
+    bindings.extend(exported!(
+        &cfg,
+        dispatch_daily_performance::DailyPerformanceSummary,
+        dispatch_daily_performance::DailyPerformanceDay,
+        dispatch_daily_performance::DailyPerformanceDataset,
+        dispatch_daily_performance::DailyPerformancePolicy,
     ));
     bindings.insert(ACCESS_CATALOG.into(), access_catalog());
     bindings.insert(CAPABILITIES.into(), capabilities());

@@ -392,7 +392,15 @@ const EVERY: &[&str] = &[
     "feedback",
     "safety",
     "returns",
-    "scorecard",
+    "weekly_scorecard",
+    #[cfg(feature = "daily_performance")]
+    "daily_performance",
+    #[cfg(feature = "daily_performance")]
+    "daily_feedback",
+    #[cfg(feature = "daily_performance")]
+    "daily_returns",
+    #[cfg(feature = "daily_performance")]
+    "daily_safety",
 ];
 fn everything(name: &str) -> Value {
     json!({"name":name,"allDsps":true,"dsps":[],"reads":{"areas":EVERY,"bypass":false}})
@@ -2682,9 +2690,11 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
         assert!(text.contains("Sent access to: chatgpt.com"), "{text}");
         assert!(
             text.contains(
-                "Access: Reads Routes & packages, Timecards, Meal breaks, DVIC inspections, \
-                 Customer feedback, Safety events, Returns & contact compliance, Weekly \
-                 scorecard\n"
+                &format!("Access: Reads Routes & packages, Timecards, Meal breaks, DVIC inspections, \
+                 Customer feedback, Safety events, Returns & contact compliance, Weekly Scorecard{}\n",
+                    if cfg!(feature = "daily_performance") {
+                        ", Daily Performance, Daily customer feedback, Daily returns & contact compliance, Daily safety events"
+                    } else { "" })
             ),
             "{text}"
         );

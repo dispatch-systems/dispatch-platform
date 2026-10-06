@@ -25,7 +25,7 @@ test('an agent reads a DSP by asking in its own words, and is told what to fix',
           'feedback',
           'safety',
           'returns',
-          'scorecard',
+          'weekly_scorecard',
         ],
         bypass: false,
       },
@@ -57,7 +57,7 @@ test('an agent reads a DSP by asking in its own words, and is told what to fix',
     '/api/v1/feedback',
     '/api/v1/safety',
     '/api/v1/returns',
-    '/api/v1/scorecard',
+    '/api/v1/weekly-scorecard',
   ])
     assert.ok(paths.includes(path), path);
   for (const operation of Object.values(spec.value.paths) as { get: { operationId: string } }[])

@@ -22,8 +22,8 @@ pub static REGISTRY: Registry = Registry {
         &dispatch_routes::FEATURE,
         #[cfg(feature = "dvic")]
         &dispatch_dvic::FEATURE,
-        #[cfg(feature = "scorecard")]
-        &dispatch_scorecard::FEATURE,
+        #[cfg(feature = "weekly_scorecard")]
+        &dispatch_weekly_scorecard::FEATURE,
         #[cfg(feature = "driver_match")]
         &dispatch_driver_match::FEATURE,
         #[cfg(feature = "team")]
@@ -32,6 +32,8 @@ pub static REGISTRY: Registry = Registry {
         &dispatch_settings::FEATURE,
         #[cfg(feature = "home")]
         &dispatch_home::FEATURE,
+        #[cfg(feature = "daily_performance")]
+        &dispatch_daily_performance::FEATURE,
     ],
 };
 /// The owners with a frontend manifest, in the order the frontend installs them: the
@@ -47,9 +49,10 @@ pub const FRONTEND: &[&str] = &[
     "features/settings",
     "features/driver_match",
     "features/routes",
-    "features/scorecard",
+    "features/weekly_scorecard",
     "collectors/paycom",
     "collectors/cortex",
+    "features/daily_performance",
     "core/accounts",
     "core/collection",
     "core/platform_owner",
@@ -93,7 +96,7 @@ mod audit_areas;
     feature = "timecard",
     feature = "routes",
     feature = "dvic",
-    feature = "scorecard"
+    feature = "weekly_scorecard"
 ))]
 #[path = "../tests/backend/cache.rs"]
 mod cache;

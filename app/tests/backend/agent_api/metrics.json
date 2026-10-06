@@ -134,7 +134,7 @@
     },
     {
       "term": "transporter ID",
-      "meaning": "Amazon's ID for a driver, in routes, meal breaks, DVIC and the scorecard."
+      "meaning": "Amazon's ID for a driver across its data sources."
     },
     {
       "term": "employee code",

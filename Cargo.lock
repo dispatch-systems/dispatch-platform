@@ -603,17 +603,18 @@ dependencies = [
  "chrono-tz",
  "dispatch-core",
  "dispatch-cortex",
+ "dispatch-daily-performance",
  "dispatch-driver-match",
  "dispatch-dvic",
  "dispatch-home",
  "dispatch-host",
  "dispatch-paycom",
  "dispatch-routes",
- "dispatch-scorecard",
  "dispatch-settings",
  "dispatch-team",
  "dispatch-timecard",
  "dispatch-uniforms",
+ "dispatch-weekly-scorecard",
  "libc",
  "reqwest",
  "rusqlite",
@@ -676,6 +677,21 @@ dependencies = [
  "tokio",
  "url",
  "zip",
+]
+
+[[package]]
+name = "dispatch-daily-performance"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "dispatch-core",
+ "dispatch-cortex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "ts-rs",
 ]
 
 [[package]]
@@ -772,21 +788,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dispatch-scorecard"
-version = "0.0.0"
-dependencies = [
- "chrono",
- "chrono-tz",
- "dispatch-core",
- "dispatch-cortex",
- "rusqlite",
- "serde",
- "serde_json",
- "tempfile",
- "ts-rs",
-]
-
-[[package]]
 name = "dispatch-settings"
 version = "0.0.0"
 dependencies = [
@@ -838,6 +839,21 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "ts-rs",
+]
+
+[[package]]
+name = "dispatch-weekly-scorecard"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "dispatch-core",
+ "dispatch-cortex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
  "ts-rs",
 ]
 

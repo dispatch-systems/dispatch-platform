@@ -546,7 +546,7 @@ test('--page, --tab-of and --settings write frontend/feature.ts, the screen and 
 
   await refused(/choose one/, 'notes', '--page', '--tab-of', 'timecard');
   await refused(/--tab-of names a feature/, 'notes', '--tab-of', 'nowhere');
-  await refused(/scorecard has no page/, 'notes', '--tab-of', 'scorecard');
+  await refused(/scorecard has no page/, 'notes', '--tab-of', 'weekly_scorecard');
 });
 
 test('--no-backend writes a frontend-only feature, and refuses the pieces that need Rust logic', async () => {

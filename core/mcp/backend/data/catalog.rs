@@ -49,6 +49,15 @@ pub struct Endpoint {
     /// The successful response, declared by the endpoint's owner for both surfaces.
     pub output: fn() -> Value,
 }
+/// Another feature's source for an existing public endpoint. Identity stays with its owner.
+#[derive(Clone, Copy, Debug)]
+pub struct Variant {
+    pub endpoint: &'static str,
+    pub area: AgentArea,
+    pub params: &'static [Param],
+    pub answer: Answerer,
+    pub output: fn() -> Value,
+}
 /// Answers one endpoint, given what fills its path parameter (empty when it has none) and
 /// its query, once the key or app is known to read what it reads.
 pub type Answerer = fn(&Store, &State, &Caller, &str, &Value) -> Answer;
@@ -149,9 +158,8 @@ pub(crate) const CORE: &[Endpoint] = &[
         area: None,
         path: "/api/v1/status",
         summary: "How fresh each source is",
-        description: "Use when asked how current the data is: which sources the DSP has on \
-            (Paycom timecards, Cortex meal breaks, routes, DVIC, the scorecard), which this key \
-            reads there, and when each last collected.",
+        description: "Use when asked how current the data is: which collected sources the DSP has on, \
+            which this key reads there, and when each last collected.",
         path_params: &[],
         params: &[DSP],
         order: 20,
@@ -278,12 +286,166 @@ pub(crate) const CORE: &[Endpoint] = &[
 ];
 
 /// Every endpoint, core's and each feature's, in their order.
+fn declared() -> impl Iterator<Item = &'static Endpoint> {
+    CORE.iter().chain(
+        registry()
+            .features
+            .iter()
+            .flat_map(|feature| feature.mcp.endpoints),
+    )
+}
+// Resolve alternate source metadata once. Removing the endpoint owner also removes its
+// focused tools; alternate owners' generic tools remain independently available.
+static SOURCES: LazyLock<Vec<Endpoint>> = LazyLock::new(|| {
+    registry()
+        .features
+        .iter()
+        .flat_map(|feature| feature.mcp.variants)
+        .filter_map(|variant| {
+            declared()
+                .find(|endpoint| endpoint.id == variant.endpoint)
+                .map(|endpoint| Endpoint {
+                    area: Some(variant.area),
+                    params: variant.params,
+                    answer: variant.answer,
+                    output: variant.output,
+                    ..*endpoint
+                })
+        })
+        .collect()
+});
 pub static ENDPOINTS: LazyLock<Vec<&'static Endpoint>> = LazyLock::new(|| {
-    let features = registry().features.iter().flat_map(|f| f.mcp.endpoints);
-    let mut all: Vec<&'static Endpoint> = CORE.iter().chain(features).collect();
+    let mut all: Vec<&'static Endpoint> = declared().collect();
+    for endpoint in &mut all {
+        let sources = alternatives(endpoint.id);
+        if has_variants(endpoint.id) {
+            let mut params = endpoint.params.to_vec();
+            for alternative in &sources {
+                for param in alternative.params {
+                    if let Some(existing) = params
+                        .iter_mut()
+                        .find(|existing| existing.name == param.name)
+                    {
+                        existing.kind = union_kind(existing.kind, param.kind);
+                    } else {
+                        params.push(*param);
+                    }
+                }
+            }
+            let choices: Vec<&'static str> = sources
+                .iter()
+                .filter_map(|source| source.area.map(|area| area.source().as_str()))
+                .collect();
+            let hint = choices.join(" or ");
+            params.push(Param {name:"source",kind:Kind::Choice(Box::leak(choices.into_boxed_slice())),
+                description:"Choose the data source explicitly. Omit for the first listed source; sources never mix or fall back."});
+            let description = Box::leak(
+                format!(
+                    "{} Select source: {hint}. \
+                Source-specific parameters are checked after selection.",
+                    endpoint.description
+                )
+                .into_boxed_str(),
+            );
+            *endpoint = Box::leak(Box::new(Endpoint {
+                params: Box::leak(params.into_boxed_slice()),
+                description,
+                ..**endpoint
+            }));
+        }
+    }
     all.sort_by_key(|endpoint| endpoint.order);
     all
 });
+fn union_kind(first: Kind, second: Kind) -> Kind {
+    match (first, second) {
+        (Kind::Choice(a), Kind::Choice(b)) => {
+            let mut choices = a.to_vec();
+            for choice in b {
+                if !choices.contains(choice) {
+                    choices.push(choice);
+                }
+            }
+            Kind::Choice(Box::leak(choices.into_boxed_slice()))
+        }
+        (Kind::Text, _) | (_, Kind::Text) => Kind::Text,
+        _ => first,
+    }
+}
+/// Actual owner declarations; merged discovery entries never decide access.
+pub fn alternatives(id: &str) -> Vec<&'static Endpoint> {
+    declared()
+        .chain(SOURCES.iter())
+        .filter(|endpoint| endpoint.id == id)
+        .collect()
+}
+pub fn has_variants(id: &str) -> bool {
+    SOURCES.iter().any(|source| source.id == id)
+}
+pub fn select(endpoint: &Endpoint, query: &Value) -> Result<&'static Endpoint, Refusal> {
+    let sources = alternatives(endpoint.id);
+    if query
+        .get("source")
+        .is_some_and(|source| source.as_str().is_none_or(|value| value.trim().is_empty()))
+    {
+        return Err(Refusal::new(
+            400,
+            "invalid_parameter",
+            "source must name a declared source.",
+        ));
+    }
+    let wanted = super::scope::param(query, "source");
+    if wanted.is_empty() {
+        return Ok(*sources.first().expect("declared endpoint"));
+    }
+    sources
+        .iter()
+        .copied()
+        .find(|source| {
+            source
+                .area
+                .is_some_and(|area| area.source().as_str() == wanted)
+        })
+        .ok_or_else(|| {
+            Refusal::new(
+                400,
+                "unknown_source",
+                "Choose a declared source for this tool.",
+            )
+            .choices(
+                sources
+                    .iter()
+                    .filter_map(|source| source.area.map(|area| area.source().as_str().into()))
+                    .collect(),
+            )
+        })
+}
+pub fn output(endpoint: &Endpoint) -> Value {
+    let sources = alternatives(endpoint.id);
+    let schemas: Vec<Value> = sources
+        .iter()
+        .map(|source| {
+            let mut schema = (source.output)();
+            if has_variants(endpoint.id)
+                && let Some(area) = source.area
+            {
+                schema["properties"]["source"] =
+                    json!({"type":"string","const":area.source().as_str()});
+                if let Some(required) = schema["required"].as_array_mut()
+                    && !required.iter().any(|field| field == "source")
+                {
+                    required.push(json!("source"));
+                }
+            }
+            schema
+        })
+        .collect();
+    if schemas.len() == 1 {
+        schemas.into_iter().next().expect("schema")
+    } else {
+        json!({"type":"object","anyOf":schemas})
+    }
+}
 
 pub fn endpoint(id: &str) -> &'static Endpoint {
     ENDPOINTS
@@ -295,9 +457,13 @@ pub fn endpoint(id: &str) -> &'static Endpoint {
 
 /// Refuses a parameter the endpoint does not take, or a value of the wrong kind.
 pub fn check(id: &str, query: &Value) -> Result<(), Refusal> {
-    let endpoint = endpoint(id);
+    let discovery = endpoint(id);
+    let endpoint = select(discovery, query)?;
     let names = || endpoint.params.iter().map(|p| p.name.to_owned()).collect();
     for (name, value) in query.as_object().into_iter().flatten() {
+        if name == "source" && discovery.params.iter().any(|param| param.name == "source") {
+            continue;
+        }
         let Some(param) = endpoint.params.iter().find(|p| p.name == name) else {
             return Err(Refusal::new(
                 400,
@@ -374,7 +540,7 @@ pub struct Term {
 pub(crate) const CORE_TERMS: &[Term] = &[
     Term {
         term: "transporter ID",
-        meaning: "Amazon's ID for a driver, in routes, meal breaks, DVIC and the scorecard.",
+        meaning: "Amazon's ID for a driver across its data sources.",
         order: 20,
     },
     Term {
@@ -472,7 +638,7 @@ pub fn openapi(origin: &str) -> Value {
                 "description": endpoint.description,
                 "parameters": parameters,
                 "responses": {
-                    "200": response("The answer.", (endpoint.output)()),
+                    "200": response("The answer.", output(endpoint)),
                     "400": response("Something unclear; message says what and choices what it could mean.", super::schema::error()),
                     "401": response("No key, or a key that is revoked, expired or not for this Dispatch.", super::schema::error()),
                     "403": response("Not for this key here: not_allowed when the key may not read it at the DSP, \

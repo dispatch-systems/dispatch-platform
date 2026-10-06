@@ -45,6 +45,7 @@ pub const LOCATIONS: AgentArea = AgentArea::new(&ReadToggle {
 });
 
 pub const MCP: Mcp = Mcp {
+    instructions: "- Routes default to yesterday.",
     reads: &[ROUTES, LOCATIONS],
     missing: "route data",
     sources: &[SOURCE],

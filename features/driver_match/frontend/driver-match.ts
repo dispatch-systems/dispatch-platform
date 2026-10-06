@@ -61,12 +61,20 @@ export const dataLabels: Record<DriverData, string> = {
   routes: 'Routes',
   meal_breaks: 'Meal breaks',
   dvic: 'DVIC',
-  scorecard: 'Scorecard',
+  daily_performance: 'Daily Performance',
+  weekly_scorecard: 'Weekly Scorecard',
 };
-export const dataOrder: DriverData[] = ['timecards', 'routes', 'meal_breaks', 'dvic', 'scorecard'];
+export const dataOrder: DriverData[] = [
+  'timecards',
+  'routes',
+  'meal_breaks',
+  'dvic',
+  'weekly_scorecard',
+  'daily_performance',
+];
 /** How much of one kind of data a person has, in its own unit. */
 export function dataAmount(data: DriverData, count: number) {
-  const unit = data === 'dvic' ? 'inspection' : data === 'scorecard' ? 'week' : 'day';
+  const unit = data === 'dvic' ? 'inspection' : data === 'weekly_scorecard' ? 'week' : 'day';
   return `${count.toLocaleString('en-US')} ${unit}${count === 1 ? '' : 's'}`;
 }
 

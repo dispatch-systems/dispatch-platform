@@ -12,7 +12,7 @@ fn dependencies_cover_every_source_without_evicting_other_tenants() {
         (DataDomain::LIVE, [true, false, true, true, true]),
         (DataDomain::new("routes"), [true, true, false, true, true]),
         (
-            DataDomain::new("scorecard"),
+            DataDomain::new("weekly_scorecard"),
             [true, true, false, true, true],
         ),
         (DataDomain::new("dvic"), [true, true, false, true, true]),

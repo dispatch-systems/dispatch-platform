@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS storage_identity(dsp_id TEXT NOT NULL,provider TEXT NOT NULL,source TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL CHECK(json_valid(value)));
+CREATE TABLE IF NOT EXISTS daily_publications(
+ id TEXT PRIMARY KEY,job_id TEXT NOT NULL UNIQUE,date TEXT NOT NULL,station TEXT NOT NULL,
+ company_id TEXT NOT NULL,dsp_code TEXT NOT NULL,started_at TEXT NOT NULL,collected_at TEXT NOT NULL,
+ active INTEGER NOT NULL CHECK(active IN (0,1)),row_count INTEGER NOT NULL CHECK(row_count>=0));
+CREATE UNIQUE INDEX IF NOT EXISTS daily_active ON daily_publications(station,date) WHERE active=1;
+CREATE INDEX IF NOT EXISTS daily_history ON daily_publications(station,collected_at);
+CREATE TABLE IF NOT EXISTS daily_datasets(
+ publication_id TEXT NOT NULL REFERENCES daily_publications(id),dataset TEXT NOT NULL,
+ source_url TEXT NOT NULL,row_count INTEGER NOT NULL CHECK(row_count>=0),
+ coverage TEXT NOT NULL CHECK(coverage IN ('observed','unconfirmed')),
+ PRIMARY KEY(publication_id,dataset));
+CREATE TABLE IF NOT EXISTS daily_rows(
+ publication_id TEXT NOT NULL REFERENCES daily_publications(id),dataset TEXT NOT NULL,
+ row_index INTEGER NOT NULL,date TEXT NOT NULL,transporter_id TEXT,tracking_id TEXT,event_id TEXT,
+ impact INTEGER CHECK(impact IN (0,1)),row TEXT NOT NULL CHECK(json_valid(row)),
+ PRIMARY KEY(publication_id,dataset,row_index));
+CREATE INDEX IF NOT EXISTS daily_driver_rows ON daily_rows(dataset,transporter_id,date,publication_id);
+CREATE INDEX IF NOT EXISTS daily_date_rows ON daily_rows(dataset,date,publication_id,row_index);
+CREATE INDEX IF NOT EXISTS daily_event_rows ON daily_rows(dataset,event_id,date);

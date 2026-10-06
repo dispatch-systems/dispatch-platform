@@ -21,8 +21,8 @@ use dispatch_driver_match::DriverMatchStore;
 use dispatch_dvic::DvicStore;
 use dispatch_paycom::{self as paycom, fixtures};
 use dispatch_routes::RoutesStore;
-use dispatch_scorecard::ScorecardStore;
 use dispatch_timecard::TimecardStore;
+use dispatch_weekly_scorecard::WeeklyScorecardStore;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -31,8 +31,8 @@ mod data {
     pub use dispatch_core::mcp::data::*;
     pub use dispatch_dvic::dvic;
     pub use dispatch_routes::{package, packages, route, routes};
-    pub use dispatch_scorecard::{feedback, returns, safety, weekly};
     pub use dispatch_timecard::{meal_breaks, timecards};
+    pub use dispatch_weekly_scorecard::{feedback, returns, safety, weekly};
 }
 
 const DAY: &str = "2026-09-12";
@@ -861,21 +861,21 @@ async fn agents_never_see_legacy_unverified_provider_rows() {
         [DAY, DAY],
     ).unwrap();
     drop(dvic);
-    let scorecard = db.scorecard_db(&id).unwrap();
-    scorecard.exec(
-        "INSERT INTO scorecard_publications(id,job_id,week,station,company_id,dsp_code,started_at,\
+    let weekly_scorecard = db.weekly_scorecard_db(&id).unwrap();
+    weekly_scorecard.exec(
+        "INSERT INTO weekly_scorecard_publications(id,job_id,week,station,company_id,dsp_code,started_at,\
          collected_at,active,row_count,adapter_version) VALUES ('foreign-publication','foreign-job',\
          '2026-W37','TST1','company-foreign','FOREIGN',?1,?1,1,1,1)",
         [DAY],
     ).unwrap();
-    scorecard
+    weekly_scorecard
         .exec(
             "INSERT INTO dsp_quality(publication_id,row_index,week,row) VALUES \
          ('foreign-publication',0,'2026-W37','{\"dsp_final_tier\":\"FOREIGN\"}')",
             [],
         )
         .unwrap();
-    drop(scorecard);
+    drop(weekly_scorecard);
     db.match_drivers(&id).unwrap();
     let me = caller(&db, &[&id], false);
     let config = db.config.clone();
@@ -901,21 +901,21 @@ async fn agents_never_see_legacy_unverified_provider_rows() {
     assert!(!dvic.to_string().contains("Foreign Driver"), "{dvic}");
 
     let who = me.clone();
-    let (_, scorecard) = ask(&state, move |db, state| {
+    let (_, weekly_scorecard) = ask(&state, move |db, state| {
         data::weekly(db, state, &who, &json!({"week":"latest"}))
     })
     .await;
     assert!(
-        scorecard["note"]
+        weekly_scorecard["note"]
             .as_str()
             .unwrap()
             .contains("No scorecard week"),
-        "{scorecard}"
+        "{weekly_scorecard}"
     );
 
     let (_, status) = ask(&state, move |db, _| data::status(db, &me, &json!({}))).await;
     assert_eq!(status["sources"]["dvic"]["latestDay"], DAY);
-    assert!(status["sources"]["scorecard"]["latestWeek"].is_null());
+    assert!(status["sources"]["weekly_scorecard"]["latestWeek"].is_null());
 }
 
 #[tokio::test]
@@ -994,7 +994,13 @@ async fn driver_identities_follow_live_sources_even_with_a_warm_cache() {
     db.set_feature(&id, "timecard", true, &actor).unwrap();
     db.set_feature(&id, "timecard.meal_breaks", false, &actor)
         .unwrap();
-    for feature in ["routes", "dvic", "scorecard"] {
+    for feature in [
+        "routes",
+        "dvic",
+        "weekly_scorecard",
+        #[cfg(feature = "daily_performance")]
+        "daily_performance",
+    ] {
         db.set_feature(&id, feature, false, &actor).unwrap();
     }
     let who = me.clone();
@@ -1038,7 +1044,14 @@ async fn driver_identities_follow_live_sources_even_with_a_warm_cache() {
         if visible {
             db.enable_all_features(&id).unwrap();
         } else {
-            for feature in ["timecard", "routes", "dvic", "scorecard"] {
+            for feature in [
+                "timecard",
+                "routes",
+                "dvic",
+                "weekly_scorecard",
+                #[cfg(feature = "daily_performance")]
+                "daily_performance",
+            ] {
                 db.set_feature(&id, feature, false, &actor).unwrap();
             }
         }
@@ -1831,7 +1844,10 @@ async fn scorecard_questions_come_back_small() {
     dispatch_backend::install();
     let (_root, db) = common::seeded();
     let world = synthetic::seed(&db).unwrap();
-    assert!(world["scorecard_weeks"].as_u64().unwrap() >= 1, "{world}");
+    assert!(
+        world["weekly_scorecard_weeks"].as_u64().unwrap() >= 1,
+        "{world}"
+    );
     let dsp = s(&world, "dsp").to_owned();
     let me = caller(&db, &[&dsp], true);
     let no_places = caller(&db, &[&dsp], false);
@@ -1913,7 +1929,7 @@ async fn scorecard_questions_come_back_small() {
         rows(&safety["list"]).len()
     );
 
-    // The latest week's scorecard, lowest scores first.
+    // The latest week's weekly_scorecard, lowest scores first.
     let who = me.clone();
     let (status, week) = ask(&state, move |db, state| {
         data::weekly(db, state, &who, &json!({}))
@@ -2021,9 +2037,9 @@ async fn scorecard_questions_come_back_small() {
     // The status names the latest week collected.
     let who = me.clone();
     let (_, status) = ask(&state, move |db, _| data::status(db, &who, &json!({}))).await;
-    assert_eq!(status["sources"]["scorecard"]["enabled"], true);
+    assert_eq!(status["sources"]["weekly_scorecard"]["enabled"], true);
     assert_eq!(
-        status["sources"]["scorecard"]["latestWeek"],
+        status["sources"]["weekly_scorecard"]["latestWeek"],
         week["understood"]["week"]
     );
 
@@ -2061,7 +2077,7 @@ async fn scorecard_questions_come_back_small() {
     );
 
     // The scorecard is its own feature: the Timecard switched off leaves it answering, and
-    // the Scorecard switched off refuses every scorecard tool by name.
+    // the Weekly Scorecard switched off refuses every scorecard tool by name.
     let off = dsp.clone();
     let switcher = actor.clone();
     state
@@ -2071,7 +2087,7 @@ async fn scorecard_questions_come_back_small() {
         })
         .await
         .unwrap();
-    let scorecard_tools = ["feedback", "safety", "returns", "scorecard"];
+    let scorecard_tools = ["feedback", "safety", "returns", "weekly_scorecard"];
     for id in scorecard_tools {
         let who = me.clone();
         let (status, body) = ask(&state, move |db, state| {
@@ -2082,7 +2098,10 @@ async fn scorecard_questions_come_back_small() {
     }
     let off = dsp.clone();
     state
-        .run(move |db| db.set_feature(&off, "scorecard", false, &actor).map(|_| ()))
+        .run(move |db| {
+            db.set_feature(&off, "weekly_scorecard", false, &actor)
+                .map(|_| ())
+        })
         .await
         .unwrap();
     for id in scorecard_tools {
@@ -2100,13 +2119,13 @@ async fn scorecard_questions_come_back_small() {
             body["message"]
                 .as_str()
                 .unwrap()
-                .starts_with("Northline Logistics has Scorecard switched off"),
+                .starts_with("Northline Logistics has Weekly Scorecard switched off"),
             "{body}"
         );
     }
     let (_, status) = ask(&state, move |db, _| data::status(db, &me, &json!({}))).await;
     assert_eq!(
-        status["sources"]["scorecard"],
+        status["sources"]["weekly_scorecard"],
         json!({"enabled": false, "reads": false})
     );
 }
@@ -2134,7 +2153,14 @@ async fn every_tool_says_when_its_feature_is_switched_off() {
     .await;
     assert_eq!(status, 200, "{visible}");
     // Every page an agent reads; their tabs and Driver Match go with them.
-    for feature in ["timecard", "routes", "dvic", "scorecard"] {
+    for feature in [
+        "timecard",
+        "routes",
+        "dvic",
+        "weekly_scorecard",
+        #[cfg(feature = "daily_performance")]
+        "daily_performance",
+    ] {
         db.set_feature(&dsp, feature, false, &actor).unwrap();
     }
     drop(db);
@@ -2174,7 +2200,15 @@ async fn every_tool_says_when_its_feature_is_switched_off() {
                 assert!(rows(&body["drivers"]).is_empty(), "{body}");
             }
             (None, "status") => {
-                for key in ["timecards", "mealBreaks", "routes", "dvic", "scorecard"] {
+                for key in [
+                    "timecards",
+                    "mealBreaks",
+                    "routes",
+                    "dvic",
+                    "weekly_scorecard",
+                    #[cfg(feature = "daily_performance")]
+                    "daily_performance",
+                ] {
                     assert_eq!(
                         body["sources"][key],
                         json!({"enabled": false, "reads": false}),
@@ -2389,18 +2423,29 @@ async fn drivers_known_only_by_bypassing_a_feature_say_so() {
 
     // Back on, and every source of Amazon's IDs off instead: those are named.
     db.enable_all_features(&id).unwrap();
-    for feature in ["timecard.meal_breaks", "routes", "dvic", "scorecard"] {
+    for feature in [
+        "timecard.meal_breaks",
+        "routes",
+        "dvic",
+        "weekly_scorecard",
+        #[cfg(feature = "daily_performance")]
+        "daily_performance",
+    ] {
         db.set_feature(&id, feature, false, &actor).unwrap();
     }
     let (status, listed) = asked("drivers", json!({"q":"driver-1","include_ids":"true"})).await;
     assert_eq!(status, 200, "{listed}");
     let person = &rows(&listed["drivers"])[0];
     assert_eq!(person[col(&listed["drivers"], "amazon")], "driver-1");
-    assert_eq!(
-        listed["bypassed"],
-        json!(["Routes", "Timecard · Meal Breaks", "DVIC", "Scorecard"]),
-        "{listed}"
-    );
+    let expected: &[&str] = &[
+        "Routes",
+        "Timecard · Meal Breaks",
+        "DVIC",
+        "Weekly Scorecard",
+        #[cfg(feature = "daily_performance")]
+        "Daily Performance",
+    ];
+    assert_eq!(listed["bypassed"], json!(expected), "{listed}");
     // A key that doesn't bypass features reads none of those IDs, so names nothing.
     let plain = caller(&db, &[&id], false);
     let (_, listed) = ask(&state, move |db, state| {

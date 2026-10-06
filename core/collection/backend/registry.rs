@@ -203,6 +203,7 @@ impl Store {
         for provider in Provider::all().filter(|p| p.marker().is_some()) {
             self.initialize_added(id, provider)?;
         }
+        crate::manifest::retirement::dsp(self, id)?;
         self.initialize_added_storages(id)?;
         self.reset_live(id)
     }
@@ -264,6 +265,7 @@ impl Store {
                 db::migrate(&*self.collector(id, provider)?, provider.database())?;
             }
         }
+        crate::manifest::retirement::dsp(self, id)?;
         self.initialize_added_storages(id)?;
         self.reset_live(id)?;
         for provider in Provider::all() {

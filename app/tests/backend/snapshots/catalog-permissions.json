@@ -12,15 +12,18 @@
     ["dvic.view", "View DVIC"],
     ["dvic.collect", "Collect DVIC"],
     ["dvic.manage", "Manage DVIC"],
-    ["scorecard.view", "View Scorecard"],
-    ["scorecard.collect", "Collect Scorecard"],
-    ["scorecard.manage", "Manage Scorecard"],
+    ["weekly_scorecard.view", "View Weekly Scorecard"],
+    ["weekly_scorecard.collect", "Collect Weekly Scorecard"],
+    ["weekly_scorecard.manage", "Manage Weekly Scorecard"],
     ["driver_match.manage", "Manage Driver Match"],
     ["connections.manage", "Manage Connections"],
     ["members.invite", "Invite Members"],
     ["members.manage", "Manage Members"],
     ["roles.manage", "Manage Roles"],
-    ["settings.manage", "Manage DSP Settings"]
+    ["settings.manage", "Manage DSP Settings"],
+    ["daily_performance.view", "View Daily Performance"],
+    ["daily_performance.collect", "Collect Daily Performance"],
+    ["daily_performance.manage", "Manage Daily Performance"]
   ],
   "implied": [
     ["timecard.manage", "timecard.view"],
@@ -30,8 +33,10 @@
     ["routes.manage", "routes.view"],
     ["dvic.collect", "dvic.view"],
     ["dvic.manage", "dvic.view"],
-    ["scorecard.collect", "scorecard.view"],
-    ["scorecard.manage", "scorecard.view"]
+    ["weekly_scorecard.collect", "weekly_scorecard.view"],
+    ["weekly_scorecard.manage", "weekly_scorecard.view"],
+    ["daily_performance.collect", "daily_performance.view"],
+    ["daily_performance.manage", "daily_performance.view"]
   ],
   "groups": [
     ["Connections", ["connections.manage"]],

@@ -85,12 +85,26 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
         'in Agents → Apps.',
     );
     const kinds = reads.getByRole('switch');
-    await expect(kinds).toHaveCount(9);
-    for (const [index, on] of [true, false, true, true, true, true, true, true, true].entries())
+    await expect(kinds).toHaveCount(13);
+    for (const [index, on] of [
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ].entries())
       await expect(kinds.nth(index)).toBeChecked({ checked: on });
     await expect(approval.getByRole('switch', { name: 'Bypass features' })).not.toBeChecked();
     await reads.getByRole('switch', { name: 'Delivery addresses & GPS', exact: true }).click();
-    await reads.getByRole('switch', { name: 'Weekly scorecard', exact: true }).click();
+    await reads.getByRole('switch', { name: 'Weekly Scorecard', exact: true }).click();
     const approved = page.waitForRequest(
       (sent) => sent.method() === 'POST' && sent.url().endsWith('/approve'),
     );
@@ -108,6 +122,10 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
           'feedback',
           'safety',
           'returns',
+          'daily_performance',
+          'daily_feedback',
+          'daily_returns',
+          'daily_safety',
         ],
         bypass: false,
       },
@@ -141,7 +159,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     const connected = connecting.getByRole('status').filter({ hasText: 'is connected' });
     await expect(connected.getByRole('heading')).toHaveText('Claude Code is connected');
     await expect(connected).toContainText('Start a new Claude Code session to use Dispatch.');
-    await expect(connected.locator('.agents-tag')).toHaveText(['1 DSP', '8 of 9 kinds']);
+    await expect(connected.locator('.agents-tag')).toHaveText(['1 DSP', '12 of 13 kinds']);
     await connecting.getByRole('button', { name: 'Done', exact: true }).click();
     await expect(connecting).toHaveCount(0);
 
@@ -178,7 +196,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     await expect(row).toContainText('Claude Code');
     await expect(row).toContainText('Known metadata');
     await expect(row).toContainText('Northline Logistics');
-    await expect(row).toContainText('8 of 9 kinds');
+    await expect(row).toContainText('12 of 13 kinds');
     await expect(row).toContainText('No weekly scorecard');
     // An app with recognized metadata shows its own logo.
     await expect(row.locator('img')).toHaveAttribute('src', /claude-[\w-]+\.png$/);

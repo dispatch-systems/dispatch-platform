@@ -1,0 +1,35 @@
+[package]
+name = "dispatch-daily-performance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+autotests = false
+
+[lib]
+path = "feature.rs"
+doctest = false
+
+[features]
+# TypeScript definitions of its API types, for the app's export test; never in a build.
+ts = ["dep:ts-rs"]
+
+# Core, the collectors it uses and the features it declares: nothing else compiles.
+[dependencies]
+dispatch-core = { path = "../../core" }
+dispatch-cortex = { path = "../../collectors/cortex" }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true, features = ["preserve_order"] }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+ts-rs = { workspace = true, optional = true }
+
+[dev-dependencies]
+dispatch-core = { path = "../../core", features = ["testing"] }
+tempfile = { workspace = true }
+
+[[test]]
+name = "daily_performance"
+path = "tests/backend/integration/daily_performance.rs"

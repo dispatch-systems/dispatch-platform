@@ -12,7 +12,7 @@ const everyKind: AgentArea[] = [
   'feedback',
   'safety',
   'returns',
-  'scorecard',
+  'weekly_scorecard',
 ];
 
 /**

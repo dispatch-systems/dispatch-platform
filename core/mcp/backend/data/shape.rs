@@ -14,7 +14,13 @@ use serde_json::{Map, Value, json};
 pub const BUDGET: usize = 24_000;
 /// Room a page leaves within the budget for `bypassed`, which the gate adds to an answer
 /// read by bypassing its feature once the answer is made: every switch's name fits.
-const BYPASSED_ROOM: usize = 100;
+fn bypassed_room() -> usize {
+    let switches: Vec<&str> = crate::mcp::api::types::AgentSource::all()
+        .map(|source| source.switch())
+        .collect();
+    // Include the key, quotes, colon and comma that the gate adds after paging.
+    json!({"bypassed": switches}).to_string().len()
+}
 
 /// A table: the column names once, then one array of values per row.
 pub struct Table {
@@ -124,7 +130,7 @@ pub fn page_named(
     };
     answer[key] = value(shown);
     // Count the final page, including its metadata and every other table in the answer.
-    let room = BUDGET - BYPASSED_ROOM;
+    let room = BUDGET.saturating_sub(bypassed_room());
     if answer.to_string().len() > room || answer[key].to_string().len() > table.budget {
         let (mut low, mut high) = (0, shown);
         while low < high {

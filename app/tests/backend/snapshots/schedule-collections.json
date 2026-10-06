@@ -2,7 +2,8 @@
   "paycom",
   "meal_break",
   "both",
-  "scorecard",
+  "weekly_scorecard",
+  "daily_performance",
   "routes",
   "dvic"
 ]

@@ -41,12 +41,13 @@ const CODE_LENGTH: usize = 6;
 /// they count as having left: days before the newest day anything was collected for.
 const FORMER_AFTER_DAYS: i64 = 21;
 /// The data a person can appear in, in the order the tab shows it.
-const DATA: [DriverData; 5] = [
+const DATA: [DriverData; 6] = [
     DriverData::Timecards,
     DriverData::Routes,
     DriverData::MealBreaks,
     DriverData::Dvic,
-    DriverData::Scorecard,
+    DriverData::WeeklyScorecard,
+    DriverData::DailyPerformance,
 ];
 
 pub fn valid_code(code: &str) -> bool {

@@ -70,7 +70,7 @@ pub struct ReadSource {
     pub fresh: fn(&Store, &Dsp, &str) -> Result<Option<Value>>,
 }
 /// A feature switched per DSP that agents read data from: Routes, Timecard, its Meal
-/// Breaks tab, DVIC and Scorecard.
+/// Breaks tab, DVIC and Weekly Scorecard.
 #[derive(Clone, Copy)]
 pub struct AgentSource(&'static ReadSource);
 /// What a key or app may read: the kinds of data, and whether it bypasses features, reading
@@ -279,7 +279,7 @@ declared!(
     "source",
     SOURCES,
     "/**\n * A feature switched per DSP that agents read data from: Routes, Timecard, its \
-     Meal\n * Breaks tab, DVIC and Scorecard.\n */\n"
+     Meal\n * Breaks tab, DVIC and Weekly Scorecard.\n */\n"
 );
 /// The kind of data the `locations` field of a key's row and of an approval stands for,
 /// which an older release reads and writes beside `areas`.
@@ -771,7 +771,8 @@ text_enum! {
         Routes => "routes",
         MealBreaks => "meal_breaks",
         Dvic => "dvic",
-        Scorecard => "scorecard",
+        WeeklyScorecard => "weekly_scorecard",
+        DailyPerformance => "daily_performance",
     }
 }
 text_enum! {
