@@ -820,6 +820,10 @@ pub trait Collector: Sync {
 /// it runs, how what it brings is stored, and what a schedule of it queues. The engine
 /// finds it by the collection's job kind.
 pub trait Keeper: Sync {
+    /// Bounded queued backlog for this collection, independent of browser worker capacity.
+    fn queue_capacity(&self) -> i64 {
+        5
+    }
     /// The job kind of the collection it keeps.
     fn keeps(&self) -> &'static str;
     /// The permission its collection runs under: what a member needs to queue or cancel

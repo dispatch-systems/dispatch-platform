@@ -240,7 +240,11 @@ fn group_page(
     } else {
         table
     };
-    let cursor = if listed { "groups_cursor" } else { "cursor" };
+    let cursor = if listed || query.get("groups_cursor").is_some() {
+        "groups_cursor"
+    } else {
+        "cursor"
+    };
     paged_named(answer, "groups", table, query, 100, cursor)
 }
 fn group_expression(group: &str, date: &str) -> String {
@@ -348,6 +352,18 @@ fn count_table(groups: &[&'static str], counted: HashMap<Vec<String>, i64>, extr
 
 /// `GET /api/v1/feedback`: customer delivery feedback (CDF), counted and grouped.
 pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
+    feedback_impl(db, state, caller, query, false)
+}
+pub(super) fn posted_feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
+    feedback_impl(db, state, caller, query, true)
+}
+fn feedback_impl(
+    db: &Store,
+    state: &State,
+    caller: &Caller,
+    query: &Value,
+    posted: bool,
+) -> Answer {
     catalog::check("feedback", query)?;
     let access = Access::of(db, caller, query)?;
     let dsp = access.dsp;
@@ -399,8 +415,11 @@ pub fn feedback(db: &Store, state: &State, caller: &Caller, query: &Value) -> An
         ),
         _ => (),
     }
-    if impacting {
-        selected.and(&query::yes("cdf_impact_flag"), None);
+    if impacting || posted && query.get("impacting").is_some() {
+        selected.and(
+            &format!("{}=CAST(? AS INTEGER)", query::yes("cdf_impact_flag")),
+            Some(if impacting { "1" } else { "0" }),
+        );
     }
     if let Some((_, field, _)) = FEEDBACK.iter().find(|(name, _, _)| *name == wanted_type) {
         selected.and(&query::yes(field), None);
@@ -684,6 +703,12 @@ pub fn safety(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
 
 /// `GET /api/v1/returns`: Amazon's returns to station (RTS), with contact compliance.
 pub fn returns(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
+    returns_impl(db, state, caller, query, false)
+}
+pub(super) fn posted_returns(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
+    returns_impl(db, state, caller, query, true)
+}
+fn returns_impl(db: &Store, state: &State, caller: &Caller, query: &Value, posted: bool) -> Answer {
     catalog::check("returns", query)?;
     let access = Access::of(db, caller, query)?;
     let dsp = access.dsp;
@@ -728,8 +753,11 @@ pub fn returns(db: &Store, state: &State, caller: &Caller, query: &Value) -> Ans
             Some(&reason),
         );
     }
-    if impacting {
-        selected.and(&query::yes("impacting_dcr"), None);
+    if impacting || posted && query.get("impacting").is_some() {
+        selected.and(
+            &format!("{}=CAST(? AS INTEGER)", query::yes("impacting_dcr")),
+            Some(if impacting { "1" } else { "0" }),
+        );
     }
     match contact {
         "missed" => selected.and(&query::missed(), None),

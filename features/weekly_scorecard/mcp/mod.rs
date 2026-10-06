@@ -1,6 +1,7 @@
 //! What agents can ask of Weekly Scorecard: Amazon's weekly scorecard, its customer feedback,
 //! Netradyne safety events and returns to station.
 mod catalog;
+mod performance;
 mod query;
 mod synthetic;
 pub mod weekly_scorecard;
@@ -71,6 +72,7 @@ pub const MCP: Mcp = Mcp {
     missing: "weekly scorecard data",
     sources: &[SOURCE],
     endpoints: catalog::ENDPOINTS,
+    performance: performance::ADAPTERS,
     examples: catalog::EXAMPLES,
     synthetic: synthetic::SYNTHETIC,
     ..Mcp::NONE

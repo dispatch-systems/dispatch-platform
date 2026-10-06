@@ -35,6 +35,18 @@ pub(super) fn daily_performance(
     read(db, state, caller, query)
 }
 pub(super) fn read(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
+    read_impl(db, state, caller, query, false)
+}
+pub(super) fn operational(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
+    read_impl(db, state, caller, query, true)
+}
+fn read_impl(
+    db: &Store,
+    state: &State,
+    caller: &Caller,
+    query: &Value,
+    operational: bool,
+) -> Answer {
     let access = Access::of(db, caller, query)?;
     let dsp = access.dsp;
     let period = period(query, today(dsp), "yesterday")?;
@@ -119,6 +131,43 @@ pub(super) fn read(db: &Store, state: &State, caller: &Caller, query: &Value) ->
         period.first(),
         period.last(),
     ];
+    if operational && dataset == "returns_to_station" {
+        // Rank before annotation filters: corrected later snapshots replace earlier ones.
+        // Later active captures can improve historical detail; history stays untouched.
+        scope = String::from(
+            " FROM (SELECT r.*,p.date snapshot_date,p.collected_at snapshot_collected_at,row_number() OVER (PARTITION BY \
+            CASE WHEN COALESCE(r.tracking_id,'')<>'' AND COALESCE(r.transporter_id,'')<>'' \
+                AND length(json_extract(r.row,'$.delivery_planned_date'))>=10 \
+            THEN json_array(r.tracking_id,substr(json_extract(r.row,'$.delivery_planned_date'),1,10),r.transporter_id) \
+            ELSE json_array(r.publication_id,r.row_index) END \
+            ORDER BY p.date DESC,p.collected_at DESC,p.id DESC,r.row_index DESC) chosen \
+            FROM daily_rows r JOIN daily_publications p ON p.id=r.publication_id \
+            WHERE p.active=1 AND p.station=? AND r.dataset=? AND r.date>=? \
+                AND substr(json_extract(r.row,'$.delivery_planned_date'),1,10) BETWEEN ? AND ?) x WHERE x.chosen=1",
+        );
+        args = vec![
+            station.clone(),
+            dataset.into(),
+            period.first(),
+            period.first(),
+            period.last(),
+        ];
+    } else if operational && dataset == "safety_events" {
+        scope = String::from(
+            " FROM (SELECT r.*,row_number() OVER (PARTITION BY \
+            CASE WHEN COALESCE(r.event_id,'')<>'' THEN r.event_id ELSE json_array(r.publication_id,r.dataset,r.row_index) END \
+            ORDER BY CASE r.dataset WHEN 'safety_events' THEN 0 ELSE 1 END,p.date DESC,p.collected_at DESC,p.id DESC,r.row_index DESC) chosen \
+            FROM daily_rows r JOIN daily_publications p ON p.id=r.publication_id \
+            WHERE p.active=1 AND p.station=? AND r.dataset IN ('safety_events','live_safety_events') \
+                AND r.date BETWEEN ? AND ?) x WHERE x.chosen=1",
+        );
+        args = vec![station.clone(), period.first(), period.last()];
+    }
+    let date_expression = if operational && dataset == "returns_to_station" {
+        "substr(json_extract(x.row,'$.delivery_planned_date'),1,10)"
+    } else {
+        "x.date"
+    };
     if !param(query, "driver").is_empty() {
         let wanted = param(query, "driver");
         let (name, ids) = match people.find(wanted) {
@@ -143,7 +192,15 @@ pub(super) fn read(db: &Store, state: &State, caller: &Caller, query: &Value) ->
             }
         };
         understood.insert("driver".into(), json!(name));
-        scope.push_str(" AND x.transporter_id IN (SELECT value FROM json_each(?))");
+        if operational && dataset == "returns_to_station" {
+            scope = scope.replacen(
+                ") x WHERE x.chosen=1",
+                " AND r.transporter_id IN (SELECT value FROM json_each(?))) x WHERE x.chosen=1",
+                1,
+            );
+        } else {
+            scope.push_str(" AND x.transporter_id IN (SELECT value FROM json_each(?))");
+        }
         args.push(serde_json::to_string(&ids).map_err(dispatch_core::Error::from)?);
     }
     for (name, field, allowed) in [
@@ -175,7 +232,14 @@ pub(super) fn read(db: &Store, state: &State, caller: &Caller, query: &Value) ->
             } else {
                 normalized(field)
             };
-            scope.push_str(&format!(" AND instr({field},?)>0"));
+            scope.push_str(&format!(
+                " AND {}",
+                if operational && name == "reason" {
+                    format!("{field}=?")
+                } else {
+                    format!("instr({field},?)>0")
+                }
+            ));
             args.push(wanted.trim().to_lowercase().replace([' ', '-'], "_"));
         }
     }
@@ -241,6 +305,9 @@ pub(super) fn read(db: &Store, state: &State, caller: &Caller, query: &Value) ->
             )
             .into());
         }
+        if operational {
+            scope.push_str(" AND x.dataset='safety_events'");
+        }
         scope.push_str(" AND trim(COALESCE(json_extract(x.row,'$.final_resolution'),''))<>''");
         scope.push_str(&format!(
             " AND {} {} 'dispute_approved'",
@@ -274,15 +341,17 @@ pub(super) fn read(db: &Store, state: &State, caller: &Caller, query: &Value) ->
         &("SELECT count(*)".to_owned() + &scope),
         rusqlite::params_from_iter(&args),
     )? as usize;
-    let coverage = data.all("SELECT p.date,d.coverage FROM daily_publications p JOIN daily_datasets d ON d.publication_id=p.id \
-        WHERE p.active=1 AND p.station=? AND d.dataset=? AND p.date BETWEEN ? AND ? ORDER BY p.date",
+    let coverage = data.all(&format!("SELECT p.date,CASE WHEN max(d.coverage='observed') THEN 'observed' ELSE 'unconfirmed' END coverage \
+        FROM daily_publications p JOIN daily_datasets d ON d.publication_id=p.id \
+        WHERE p.active=1 AND p.station=? AND {} AND p.date BETWEEN ? AND ? GROUP BY p.date ORDER BY p.date",
+        if operational && dataset == "safety_events" { "(?='safety_events' AND d.dataset IN ('safety_events','live_safety_events'))" } else { "d.dataset=?" }),
         [&station,dataset,&period.first(),&period.last()])?;
     let observed = coverage
         .iter()
         .filter(|row| row["coverage"] == "observed")
         .count();
     let days = (period.to - period.from).num_days() + 1;
-    if observed == 0 {
+    if observed == 0 && (!operational || recorded == 0) {
         return Err(Refusal::new(
             404,
             "data_unavailable",
@@ -306,8 +375,8 @@ pub(super) fn read(db: &Store, state: &State, caller: &Caller, query: &Value) ->
     if feedback {
         let totals = data.one(
             &format!(
-                "SELECT SUM(json_extract(x.row,'$.positive_response_cnt')) positive,\
-            SUM(json_extract(x.row,'$.negative_response_cnt')) negative{scope}"
+                "SELECT COALESCE(SUM(json_extract(x.row,'$.positive_response_cnt')),0) positive,\
+            COALESCE(SUM(json_extract(x.row,'$.negative_response_cnt')),0) negative{scope}"
             ),
             rusqlite::params_from_iter(&args),
         )?;
@@ -316,6 +385,93 @@ pub(super) fn read(db: &Store, state: &State, caller: &Caller, query: &Value) ->
             answer["feedback_counts"]["selected_type"] = json!({"field":field,
                 "count":data.one(&format!("SELECT SUM(json_extract(x.row,'$.{field}')) total{scope}"),
                     rusqlite::params_from_iter(&args))?.map(|row| row["total"].clone())});
+        }
+    }
+    if operational {
+        answer["coverage"]["collected"] = json!(observed);
+        answer["coverage"]["requested"] = json!(days);
+        answer["coverage"]["unit"] = json!("days");
+        answer["counts"] = json!({"records":recorded,"unit":match dataset {
+            "returns_to_station" => "return_attempts", "safety_events" => "safety_events", _ => "driver_day_feedback_counts"
+        }});
+        answer
+            .as_object_mut()
+            .expect("answer")
+            .remove("recorded_rows");
+        if dataset == "returns_to_station" {
+            let totals = data.one(&format!("SELECT COALESCE(sum(x.impact=1),0) hurting_dcr,\
+                COALESCE(sum(instr(lower(COALESCE(json_extract(x.row,'$.daily_coaching'),'')),'contact')>0 \
+                    OR instr(lower(COALESCE(json_extract(x.row,'$.daily_coaching'),'')),'call')>0 \
+                    OR instr(lower(COALESCE(json_extract(x.row,'$.daily_coaching'),'')),'text')>0),0) contact_missed,\
+                COALESCE(sum(COALESCE(x.tracking_id,'')='' OR COALESCE(x.transporter_id,'')=''),0) unidentified,\
+                max(x.snapshot_date) latest_snapshot_date,max(x.snapshot_collected_at) collected_at{scope}"),rusqlite::params_from_iter(&args))?.unwrap_or_default();
+            answer["counts"]["hurting_dcr"] = totals["hurting_dcr"].clone();
+            answer["counts"]["contact_missed"] = totals["contact_missed"].clone();
+            answer["counts"]["unidentified"] = totals["unidentified"].clone();
+            answer["coverage"]["latest_snapshot_date"] = totals["latest_snapshot_date"].clone();
+            answer["coverage"]["collected_at"] = totals["collected_at"].clone();
+            answer["coverage"]["note"] = json!(
+                "Latest active snapshots by tracking ID, delivery date and transporter ID. Delivery dates select attempts; missing identities remain separate. Daily annotations do not establish posted scorecard impact."
+            );
+            // Official aggregates are separate evidence, never invented detail rows.
+            if ["reason", "impacting", "contact"]
+                .iter()
+                .all(|k| param(query, k).is_empty() || *k == "contact" && param(query, k) == "all")
+            {
+                let mut aggregate_scope = String::from(
+                    " FROM daily_rows x JOIN daily_publications p ON p.id=x.publication_id \
+                    WHERE p.active=1 AND p.station=? AND x.dataset='driver_returns' AND x.date BETWEEN ? AND ?",
+                );
+                let mut aggregate_args = vec![station.clone(), period.first(), period.last()];
+                if !param(query, "driver").is_empty() {
+                    aggregate_scope
+                        .push_str(" AND x.transporter_id IN (SELECT value FROM json_each(?))");
+                    aggregate_args.push(args.last().expect("driver filter").clone());
+                }
+                let reported = data.one(&format!("SELECT count(DISTINCT CASE WHEN json_extract(x.row,'$.rts_all') IS NOT NULL THEN x.date END) days,\
+                    SUM(json_extract(x.row,'$.rts_all')) returns{aggregate_scope}"),rusqlite::params_from_iter(&aggregate_args))?.unwrap_or_default();
+                if reported["returns"].is_number() {
+                    answer["counts"]["reported_returns"] = reported["returns"].clone();
+                    answer["coverage"]["reported_returns"] = json!({"observed_days":reported["days"],"requested_days":days,
+                        "status":if reported["days"].as_i64()==Some(days) {"complete"} else {"partial"}});
+                    answer["reconciliation"] = json!({"status":if reported["returns"].as_u64()==Some(recorded as u64) {"matched"} else {"mismatch"},
+                        "note":"reported_returns sums collected driver_returns aggregates; records counts reconciled detail. Missing aggregate days remain unknown."});
+                }
+            }
+        } else if dataset == "safety_events" {
+            let totals = data
+                .one(
+                    &format!(
+                        "SELECT COALESCE(sum(x.dataset='safety_events'),0) assessed,\
+                COALESCE(sum(x.dataset='live_safety_events'),0) live_only{scope}"
+                    ),
+                    rusqlite::params_from_iter(&args),
+                )?
+                .unwrap_or_default();
+            answer["counts"]["assessed"] = totals["assessed"].clone();
+            answer["counts"]["live_only"] = totals["live_only"].clone();
+            answer["coverage"]["note"] = json!(
+                "Unique event IDs; assessed records replace live copies. Live-only events are pending assessment. Posted counting belongs to the weekly view. Empty datasets remain unconfirmed."
+            );
+        } else {
+            let selected = match param(query, "feedback") {
+                "positive" => answer["feedback_counts"]["positive"].clone(),
+                "all" => {
+                    json!({"positive":answer["feedback_counts"]["positive"],"negative":answer["feedback_counts"]["negative"]})
+                }
+                _ => answer["feedback_counts"]["negative"].clone(),
+            };
+            answer["counts"]["responses"] = selected;
+            answer["counts"]["response_unit"] = json!("feedback_responses");
+            answer["counts"]["selected_category"] =
+                answer["feedback_counts"]["selected_type"].clone();
+            answer
+                .as_object_mut()
+                .expect("answer")
+                .remove("feedback_counts");
+            answer["coverage"]["note"] = json!(
+                "Daily response counts, not individual package reviews. Rows cover only matching driver-days."
+            );
         }
     }
     people.mark(&mut answer);
@@ -354,7 +510,7 @@ pub(super) fn read(db: &Store, state: &State, caller: &Caller, query: &Value) ->
             .iter()
             .map(|group| match *group {
                 "driver" => "COALESCE(x.transporter_id,'')".into(),
-                "day" => "x.date".into(),
+                "day" => date_expression.into(),
                 "reason" => normalized("rts_reason_code"),
                 _ => event_type(),
             })
@@ -389,11 +545,18 @@ pub(super) fn read(db: &Store, state: &State, caller: &Caller, query: &Value) ->
             rusqlite::params_from_iter(&paging),
         )?;
         let mut columns = groups.clone();
-        columns.push("recorded_rows");
+        columns.push(if operational {
+            "records"
+        } else {
+            "recorded_rows"
+        });
         if feedback {
             columns.extend(["positive_responses", "negative_responses"]);
         }
         let mut table = Table::new(&columns);
+        if operational && catalog::flag(query, "list") {
+            table = table.with_budget(dispatch_core::mcp::data::BUDGET / 2);
+        }
         for row in rows {
             let mut values: Vec<Value> = groups
                 .iter()
@@ -440,12 +603,15 @@ pub(super) fn read(db: &Store, state: &State, caller: &Caller, query: &Value) ->
         paging.extend([take.to_string(), start.min(i64::MAX as usize).to_string()]);
         let rows = data.all(
             &format!(
-                "SELECT x.date,x.transporter_id,json_extract(x.row,'$.da_name') da_name{projection}{scope} \
-            ORDER BY x.date DESC,x.publication_id,x.row_index LIMIT ? OFFSET ?"
+                "SELECT {date_expression} date,x.dataset,x.transporter_id,json_extract(x.row,'$.da_name') da_name{projection}{scope} \
+            ORDER BY {date_expression} DESC,x.publication_id,x.row_index LIMIT ? OFFSET ?"
             ),
             rusqlite::params_from_iter(&paging),
         )?;
         let mut columns = vec!["date", "driver"];
+        if operational && dataset == "safety_events" {
+            columns.push("assessment");
+        }
         columns.extend(&fields);
         let mut table = Table::new(&columns);
         for row in rows {
@@ -462,6 +628,13 @@ pub(super) fn read(db: &Store, state: &State, caller: &Caller, query: &Value) ->
                     |person| person.name.clone(),
                 );
             let mut values = vec![row["date"].clone(), json!(driver)];
+            if operational && dataset == "safety_events" {
+                values.push(json!(if row["dataset"] == "safety_events" {
+                    "assessed"
+                } else {
+                    "pending"
+                }));
+            }
             values.extend(fields.iter().map(|field| row[*field].clone()));
             table.push(values);
         }

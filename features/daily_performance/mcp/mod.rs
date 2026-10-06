@@ -3,6 +3,7 @@
 //! toggles are built from it.
 mod catalog;
 mod fields;
+mod performance;
 mod synthetic;
 mod variants;
 mod views;
@@ -87,6 +88,7 @@ pub(crate) const MCP: Mcp = Mcp {
     sources: &[SOURCE],
     endpoints: catalog::ENDPOINTS,
     variants: variants::ENDPOINTS,
+    performance: performance::ADAPTERS,
     synthetic: synthetic::SYNTHETIC,
     ..Mcp::NONE
 };

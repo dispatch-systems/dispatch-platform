@@ -17,6 +17,13 @@ dispute outcomes can change. `/policy` defaults to one recent week and a 20-hour
 configurable from 1–8 weeks and 1–168 hours. Schedule times and cadence are independent of
 daily schedules. Manual recollection can target older weeks.
 
+Agent-only focused tools offer `view: posted_scorecard` for this publication's returns,
+feedback and safety outcomes, and `view: compare` alongside independent operational daily
+results. Each source needs its own grant. View answers use contract version 2 with named
+count units; explicit source-only calls keep their existing contracts. No frontend API or
+stored data is combined. Weekly scoring annotations remain authoritative for questions about
+the posted scorecard, even when daily detail has overlapping delivery attempts or events.
+
 Startup retires old Dispatch identifiers: saved switches (including disabled states), role
 permissions, agent allowances and OAuth grants, collection schedules, job kinds/requests and
 audit action prefixes migrate to their weekly names. IDs, restrictions and schedule timing

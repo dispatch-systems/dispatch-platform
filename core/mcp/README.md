@@ -22,3 +22,30 @@ original behavior. `driver_report(metrics: "short_inspections,packages_delivered
 only the selected daily sources, reports unknown days as null and leaves day-only metrics'
 period totals null. Source counts and detail pages use SQL where possible; payroll and
 meal comparisons still assess bounded batches before paging their derived results.
+
+Focused `returns`, `safety_events` and `customer_feedback` offer an opt-in `view` contract:
+`operational` reads Daily Performance (default yesterday), `posted_scorecard` reads Weekly
+Scorecard (default last week), and `compare` reads both for the same days (default last week).
+These are agent API/MCP queries only; frontend APIs, databases, collection jobs, history,
+policies and schedules remain independent. Neither view falls back to another source.
+Each requested source needs its own read grant and enabled feature; compare checks both
+before reading either. Feature-owned adapters declare their views in the manifest.
+
+View answers carry `contract_version: 2`, source, count units and coverage. Summaries are
+the default; `detail: full` or `list: true` adds bounded pages. `groups_cursor` and `cursor`
+always page separate tables in v2. Compare nests answers under `sources.operational` and
+`sources.posted_scorecard`, with independent `operational_cursor`, `posted_cursor`,
+`operational_groups_cursor` and `posted_groups_cursor`. Counts cover the complete filtered
+range; page limits do not truncate totals. Comparison counts are never additive.
+Omitting `view` preserves the existing source-specific contract and weekly default.
+
+Operational returns reconcile active cumulative snapshots by tracking ID, planned delivery
+date and transporter ID, keeping the latest annotation before filtering impact or contact.
+The date filter applies to delivery attempts, while later snapshots can improve past detail.
+Missing identity fields remain separate and are counted under `unidentified`.
+Where available, `reported_returns` gives the independent daily aggregate; `reconciliation`
+reports detail/aggregate mismatches explicitly. Daily annotations do not establish weekly
+scorecard impact. Operational safety merges live and assessed copies by event ID, prefers
+assessed outcomes and labels live-only events pending. Posted safety retains weekly dispute
+outcomes. Daily feedback response counts and weekly package feedback records keep different
+units. Empty daily responses remain unconfirmed, never assumed zero.

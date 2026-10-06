@@ -340,6 +340,17 @@ impl Store {
             })
             .collect::<Result<Vec<_>>>()?;
         let known = JobKind::known()?;
+        let capacity = requests
+            .iter()
+            .map(|(_, provider, request)| {
+                crate::manifest::registry()
+                    .keepers()
+                    .find(|keeper| keeper.keeps() == provider.collector().job_kind_for(request))
+                    .map_or(5, |keeper| keeper.queue_capacity())
+                    .clamp(5, 31)
+            })
+            .min()
+            .unwrap_or(5);
         self.jobs.transaction(|| {
             let existing = requests
                 .iter()
@@ -378,7 +389,7 @@ impl Store {
                         return self.public_job(row);
                     }
                     ensure(
-                        self.jobs.count(ACTIVE_COUNT, [id, &known])? < 5,
+                        self.jobs.count(ACTIVE_COUNT, [id, &known])? < capacity,
                         "queue_full",
                         429,
                     )?;

@@ -48,6 +48,9 @@ driver also accepts Driver Match codes, Paycom codes and Amazon transporter IDs.
 summary; full includes detail rows. limit bounds each page within the tool's declared range.
 - Tools with a source argument list its choices; omission selects the first listed source. \
 Choose explicitly when the question names a source; sources never mix or fall back.
+- Focused tools offering view return contract_version 2: operational for daily activity, \
+posted_scorecard for published scoring, compare for both. Compare requires both grants and \
+keeps units and coverage separate; never add its counts. Omit view for the legacy source contract.
 - Each answer says what it understood. Coverage status is complete, partial, missing or \
 unavailable. Totals with partial coverage cover only the collected days. Days a source did not collect are \
 unknown, never zero: say so.
@@ -294,10 +297,25 @@ fn compact_output(mut schema: Value) -> Value {
             }
         }
         if !common.is_empty() {
-            schema["properties"] = json!(common);
+            let properties = schema
+                .as_object_mut()
+                .unwrap()
+                .entry("properties")
+                .or_insert_with(|| json!({}));
+            properties.as_object_mut().unwrap().extend(common);
         }
         if !required.is_empty() {
-            schema["required"] = json!(required);
+            let names = schema
+                .as_object_mut()
+                .unwrap()
+                .entry("required")
+                .or_insert_with(|| json!([]));
+            let names = names.as_array_mut().unwrap();
+            for name in required {
+                if !names.contains(&name) {
+                    names.push(name);
+                }
+            }
         }
     }
     fn gather(schema: &Value, tables: &mut Vec<(Value, usize)>) {
@@ -401,9 +419,21 @@ fn compact_input(endpoint: &catalog::Endpoint) -> Map<String, Value> {
         "cursor",
         "groups_cursor",
         "detail",
+        "source",
+        "operational_cursor",
+        "posted_cursor",
+        "operational_groups_cursor",
+        "posted_groups_cursor",
     ] {
         if let Some(property) = properties.get_mut(name).and_then(Value::as_object_mut) {
             property.remove("description");
+        }
+    }
+    if data::performance::available(endpoint.id) {
+        for name in ["period", "date", "driver"] {
+            if let Some(property) = properties.get_mut(name).and_then(Value::as_object_mut) {
+                property.remove("description");
+            }
         }
     }
     schema

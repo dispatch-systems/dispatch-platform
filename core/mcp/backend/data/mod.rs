@@ -5,6 +5,7 @@
 pub mod access;
 pub mod catalog;
 pub mod facts;
+pub mod performance;
 pub mod schema;
 pub mod scope;
 mod selected;
@@ -111,6 +112,9 @@ pub fn ask(
     named: &str,
     query: &Value,
 ) -> Answer {
+    if query.get("view").is_some() && performance::available(endpoint.id) {
+        return performance::ask(endpoint, db, state, caller, named, query);
+    }
     // A tool that reads one kind of data answers only where the key or app is allowed it and
     // the DSP has its feature on, or it bypasses features: the one place every such tool is
     // gated, so none can forget. Those that read several gate each in their answer.

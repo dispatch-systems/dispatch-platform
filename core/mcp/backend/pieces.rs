@@ -5,6 +5,7 @@ use super::{
     data::{
         catalog::{self, Endpoint, Metric, Term, Variant},
         facts::{Daily, Places},
+        performance::Adapter,
         scope::Identify,
     },
     skill::{self, Example},
@@ -30,6 +31,8 @@ pub struct Mcp {
     pub endpoints: &'static [Endpoint],
     /// Alternate source declarations; the public endpoint identity has one owner.
     pub variants: &'static [Variant],
+    /// Agent-only operational and posted views. Storage and frontend reads stay separate.
+    pub performance: &'static [Adapter],
     /// What `team_table` can rank by from its data.
     pub metrics: &'static [Metric],
     /// The words its answers use, for the glossary.
@@ -55,6 +58,7 @@ impl Mcp {
         sources: &[],
         endpoints: &[],
         variants: &[],
+        performance: &[],
         metrics: &[],
         terms: &[],
         examples: &[],
@@ -125,6 +129,20 @@ pub fn check(features: &[&Feature]) {
         );
     }
     let variants: Vec<&Variant> = mcp().flat_map(|mcp| mcp.variants).collect();
+    let adapters: Vec<&Adapter> = mcp().flat_map(|mcp| mcp.performance).collect();
+    for (index, adapter) in adapters.iter().enumerate() {
+        assert!(areas.contains(&adapter.area), "undeclared view area");
+        assert!(
+            ["operational", "posted_scorecard"].contains(&adapter.view),
+            "unknown agent view"
+        );
+        assert!(
+            adapters[..index]
+                .iter()
+                .all(|other| other.endpoint != adapter.endpoint || other.view != adapter.view),
+            "duplicate agent view"
+        );
+    }
     for (index, variant) in variants.iter().enumerate() {
         assert!(areas.contains(&variant.area), "undeclared variant area");
         assert!(
