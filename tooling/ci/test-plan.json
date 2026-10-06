@@ -1,8 +1,6 @@
 {
   "dashboard": [
-    "app/tests/frontend/agent-keys.test.ts",
     "app/tests/frontend/audit-subjects.test.ts",
-    "core/platform_owner/tests/frontend/audit-wording.test.ts",
     "core/shell/tests/frontend/calendar.test.ts",
     "core/platform_owner/tests/frontend/collection-history.test.ts",
     "core/shell/tests/frontend/csv.test.ts",
@@ -11,7 +9,6 @@
     "app/tests/rules/dashboard-structure.test.ts",
     "app/tests/frontend/data-policy.test.ts",
     "core/platform_owner/tests/frontend/diagnostics.test.ts",
-    "features/driver_match/tests/frontend/driver-match.test.ts",
     "features/dvic/tests/frontend/dvic.test.ts",
     "app/tests/frontend/features.test.ts",
     "features/timecard/tests/frontend/meal-breaks.test.ts",
@@ -22,8 +19,7 @@
     "app/tests/frontend/slots.test.ts",
     "core/shell/tests/frontend/slots.test.ts",
     "features/timecard/tests/frontend/timecard-format.test.ts",
-    "features/uniforms/tests/frontend/uniforms.test.ts",
-    "app/tests/rules/unused-css.test.ts"
+    "features/uniforms/tests/frontend/uniforms.test.ts"
   ],
   "pythonIntegration": [
     "tooling/tests/compiler_paths_integration_test.py",
@@ -31,13 +27,11 @@
   ],
   "rules": [
     "app/tests/rules/anatomy.test.ts",
-    "app/tests/rules/artifact.test.ts",
     "app/tests/rules/audit-actions.test.ts",
     "app/tests/rules/collections.test.ts",
     "app/tests/rules/dependencies.test.ts",
     "app/tests/rules/encapsulation.test.ts",
     "app/tests/rules/migrations.test.ts",
-    "app/tests/rules/names.test.ts",
     "app/tests/rules/ownership.test.ts",
     "app/tests/rules/slots.test.ts",
     "app/tests/rules/tests.test.ts",

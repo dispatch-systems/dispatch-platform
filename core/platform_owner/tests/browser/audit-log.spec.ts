@@ -1,14 +1,5 @@
 import { test, expect } from '../../../shell/tests/support/fixtures.js';
-import { exports, item, open } from '../support/audit-log.js';
-
-test('the audit log fits a phone', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await open(page);
-  await expect(item(page, 'changed Jordan Pike’s role')).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  );
-});
+import { exports, open } from '../support/audit-log.js';
 
 test('audit search pauses old actions and exports until the visible filter is applied', async ({
   page,

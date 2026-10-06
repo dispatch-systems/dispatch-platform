@@ -14,4 +14,3 @@ Cargo.lock
 app/tests/backend/agent_api/
 # What the app's tests hold the whole product to, as `npm run snapshots:update` writes it.
 app/tests/backend/snapshots/
-app/tests/frontend/snapshots/

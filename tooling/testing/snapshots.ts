@@ -19,7 +19,6 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const snapshotDirs = [
   'app/tests/backend/snapshots',
   'app/tests/backend/agent_api',
-  'app/tests/frontend/snapshots',
   'core/db/tests/backend/schema',
 ];
 const frontend = fs

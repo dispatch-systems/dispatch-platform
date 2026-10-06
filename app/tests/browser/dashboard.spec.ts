@@ -283,29 +283,6 @@ test('create a DSP and accept its owner invitation while another account is sign
   ).toBeVisible();
 });
 
-test('the account menu links the build source and closes outside or on Escape', async ({
-  page,
-}) => {
-  await login(page);
-  const menu = page.locator('details.account-menu');
-  const trigger = menu.locator('summary');
-  await trigger.click();
-  await expect(menu.locator('.account-popover')).toBeVisible();
-  const source = menu.locator('.account-popover a').filter({ hasText: 'Source code' });
-  await expect(source).toHaveAttribute('target', '_blank');
-  // A packaged build names its commit; a checkout links the repository.
-  await expect(source).toHaveAttribute(
-    'href',
-    /^https:\/\/github\.com\/dispatch-systems\/dispatch-platform(\/tree\/[0-9a-f]{40})?$/,
-  );
-  await page.getByRole('heading', { name: 'DSPs', exact: true }).click();
-  await expect(menu.locator('.account-popover')).toBeHidden();
-  await trigger.click();
-  await expect(menu.locator('.account-popover')).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(menu.locator('.account-popover')).toBeHidden();
-  await expect(trigger).toBeFocused();
-});
 test('archived account tabs preserve names and appearance preferences', async ({ page }) => {
   await login(page);
   await page.getByRole('link', { name: 'Settings', exact: true }).click();

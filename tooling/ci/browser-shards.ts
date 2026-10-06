@@ -8,12 +8,7 @@ type Suite = {
   suites?: Suite[];
 };
 
-/**
- * The tag of browser tests that time the page's paint. Each shard runs them alone after the
- * rest, so another worker's load cannot land inside a measurement.
- */
-export const PAINT_BUDGET = '@paint-budget';
-/** The workers a shard runs the rest of its tests on. */
+/** The workers a shard runs its tests on. */
 export const WORKERS = 3;
 
 /** Median seconds per browser test in the merge queue, by `file › title`. */
@@ -45,15 +40,13 @@ export function browserTests(): string[] {
 /**
  * Splits `tests` into `count` shards that take about as long as each other: longest first,
  * each to the shard with the least time so far. A test without a recorded time counts as the
- * median of the rest, and one that runs alone as long as all the workers it keeps idle. Every
- * test lands in exactly one shard, and the split depends only on the tests and their times,
- * so each shard's runner computes the same one.
+ * median of the rest. Every test lands in exactly one shard, and the split depends only on the
+ * tests and their times, so each shard's runner computes the same one.
  */
 export function shards(tests: string[], count: number, times = durations): string[][] {
   const known = Object.values(times).sort((a, b) => a - b);
   const fallback = known.length ? known[Math.floor(known.length / 2)]! : 1;
-  const time = (test: string) =>
-    (times[test] ?? fallback) * (test.includes(PAINT_BUDGET) ? WORKERS : 1);
+  const time = (test: string) => times[test] ?? fallback;
   const order = [...tests].sort((a, b) => time(b) - time(a) || (a < b ? -1 : a > b ? 1 : 0));
   const result = Array.from({ length: count }, () => ({ tests: [] as string[], total: 0 }));
   for (const test of order) {
