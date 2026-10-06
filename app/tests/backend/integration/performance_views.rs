@@ -359,11 +359,10 @@ fn large_comparisons_fit_the_budget_and_preserve_independent_group_and_detail_to
         for table in ["list", "groups"] {
             assert_eq!(answer["sources"][view][table]["page"]["total"], 400);
             assert!(
-                answer["sources"][view][table]["rows"]
+                !answer["sources"][view][table]["rows"]
                     .as_array()
                     .unwrap()
-                    .len()
-                    > 0
+                    .is_empty()
             );
             assert!(answer["sources"][view][table]["page"]["next_cursor"].is_string());
         }
