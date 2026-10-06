@@ -50,7 +50,8 @@ fn read(db: &Store, state: &State, caller: &Caller, query: &Value, id: &str) -> 
     };
     answer["counts"] = match id {
         "returns" => {
-            json!({"records":answer["returns"],"unit":"return_attempts", "hurting_dcr":answer["hurting_dcr"],"contact_missed":answer["contact_missed"]})
+            json!({"records":answer["returns"],"unit":"return_attempts",
+                "hurting_dcr":answer["hurting_dcr"],"contact_missed":answer["contact_missed"]})
         }
         "safety" => {
             json!({"records":answer["events"],"unit":"assessed_safety_events","counting":answer["counting"]})
@@ -87,7 +88,8 @@ fn read(db: &Store, state: &State, caller: &Caller, query: &Value, id: &str) -> 
                 [station,format!("{}-W{:02}",first.year(),first.week()),format!("{}-W{:02}",last.year(),last.week())])?.unwrap_or_default();
             if totals["negative"].is_number() || totals["positive"].is_number() {
                 answer["counts"]["reported_feedback"] = json!({"positive":totals["positive"],"negative":totals["negative"],
-                    "unit":"dsp_week_feedback_responses","collected_weeks":totals["weeks"],"requested_weeks":(dates.to-dates.from).num_days()/7+1});
+                    "unit":"dsp_week_feedback_responses","collected_weeks":totals["weeks"],
+                    "requested_weeks":(dates.to-dates.from).num_days()/7+1});
                 answer["note"] = json!(
                     "Weekly DSP response counters and package feedback records are separate measures and may differ."
                 );

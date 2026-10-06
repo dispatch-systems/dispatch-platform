@@ -47,3 +47,6 @@ mod weekly_scorecard_transition;
 
 #[cfg(all(feature = "daily_performance", feature = "weekly_scorecard"))]
 mod daily_performance;
+
+#[cfg(all(feature = "daily_performance", feature = "weekly_scorecard"))]
+mod performance_views;

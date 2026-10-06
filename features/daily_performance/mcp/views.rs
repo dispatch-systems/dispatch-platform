@@ -156,7 +156,8 @@ fn read_impl(
         scope = String::from(
             " FROM (SELECT r.*,row_number() OVER (PARTITION BY \
             CASE WHEN COALESCE(r.event_id,'')<>'' THEN r.event_id ELSE json_array(r.publication_id,r.dataset,r.row_index) END \
-            ORDER BY CASE r.dataset WHEN 'safety_events' THEN 0 ELSE 1 END,p.date DESC,p.collected_at DESC,p.id DESC,r.row_index DESC) chosen \
+            ORDER BY CASE r.dataset WHEN 'safety_events' THEN 0 ELSE 1 END,\
+                p.date DESC,p.collected_at DESC,p.id DESC,r.row_index DESC) chosen \
             FROM daily_rows r JOIN daily_publications p ON p.id=r.publication_id \
             WHERE p.active=1 AND p.station=? AND r.dataset IN ('safety_events','live_safety_events') \
                 AND r.date BETWEEN ? AND ?) x WHERE x.chosen=1",
@@ -344,7 +345,9 @@ fn read_impl(
     let coverage = data.all(&format!("SELECT p.date,CASE WHEN max(d.coverage='observed') THEN 'observed' ELSE 'unconfirmed' END coverage \
         FROM daily_publications p JOIN daily_datasets d ON d.publication_id=p.id \
         WHERE p.active=1 AND p.station=? AND {} AND p.date BETWEEN ? AND ? GROUP BY p.date ORDER BY p.date",
-        if operational && dataset == "safety_events" { "(?='safety_events' AND d.dataset IN ('safety_events','live_safety_events'))" } else { "d.dataset=?" }),
+        if operational && dataset == "safety_events" {
+            "(?='safety_events' AND d.dataset IN ('safety_events','live_safety_events'))"
+        } else { "d.dataset=?" }),
         [&station,dataset,&period.first(),&period.last()])?;
     let observed = coverage
         .iter()
@@ -404,14 +407,17 @@ fn read_impl(
                     OR instr(lower(COALESCE(json_extract(x.row,'$.daily_coaching'),'')),'call')>0 \
                     OR instr(lower(COALESCE(json_extract(x.row,'$.daily_coaching'),'')),'text')>0),0) contact_missed,\
                 COALESCE(sum(COALESCE(x.tracking_id,'')='' OR COALESCE(x.transporter_id,'')=''),0) unidentified,\
-                max(x.snapshot_date) latest_snapshot_date,max(x.snapshot_collected_at) collected_at{scope}"),rusqlite::params_from_iter(&args))?.unwrap_or_default();
+                max(x.snapshot_date) latest_snapshot_date,max(x.snapshot_collected_at) collected_at{scope}"),
+                rusqlite::params_from_iter(&args))?.unwrap_or_default();
             answer["counts"]["hurting_dcr"] = totals["hurting_dcr"].clone();
             answer["counts"]["contact_missed"] = totals["contact_missed"].clone();
             answer["counts"]["unidentified"] = totals["unidentified"].clone();
             answer["coverage"]["latest_snapshot_date"] = totals["latest_snapshot_date"].clone();
             answer["coverage"]["collected_at"] = totals["collected_at"].clone();
             answer["coverage"]["note"] = json!(
-                "Latest active snapshots by tracking ID, delivery date and transporter ID. Delivery dates select attempts; missing identities remain separate. Daily annotations do not establish posted scorecard impact."
+                "Latest active snapshots by tracking ID, delivery date and transporter ID. \
+                Delivery dates select attempts; missing identities remain separate. \
+                Daily annotations do not establish posted scorecard impact."
             );
             // Official aggregates are separate evidence, never invented detail rows.
             if ["reason", "impacting", "contact"]
@@ -428,14 +434,24 @@ fn read_impl(
                         .push_str(" AND x.transporter_id IN (SELECT value FROM json_each(?))");
                     aggregate_args.push(args.last().expect("driver filter").clone());
                 }
-                let reported = data.one(&format!("SELECT count(DISTINCT CASE WHEN json_extract(x.row,'$.rts_all') IS NOT NULL THEN x.date END) days,\
-                    SUM(json_extract(x.row,'$.rts_all')) returns{aggregate_scope}"),rusqlite::params_from_iter(&aggregate_args))?.unwrap_or_default();
+                let reported = data
+                    .one(
+                        &format!(
+                            "SELECT count(DISTINCT CASE \
+                    WHEN json_extract(x.row,'$.rts_all') IS NOT NULL THEN x.date END) days,\
+                    SUM(json_extract(x.row,'$.rts_all')) returns{aggregate_scope}"
+                        ),
+                        rusqlite::params_from_iter(&aggregate_args),
+                    )?
+                    .unwrap_or_default();
                 if reported["returns"].is_number() {
                     answer["counts"]["reported_returns"] = reported["returns"].clone();
                     answer["coverage"]["reported_returns"] = json!({"observed_days":reported["days"],"requested_days":days,
                         "status":if reported["days"].as_i64()==Some(days) {"complete"} else {"partial"}});
-                    answer["reconciliation"] = json!({"status":if reported["returns"].as_u64()==Some(recorded as u64) {"matched"} else {"mismatch"},
-                        "note":"reported_returns sums collected driver_returns aggregates; records counts reconciled detail. Missing aggregate days remain unknown."});
+                    let matched = reported["returns"].as_u64() == Some(recorded as u64);
+                    answer["reconciliation"] = json!({"status":if matched {"matched"} else {"mismatch"},
+                        "note":"reported_returns sums collected driver_returns aggregates; records counts reconciled detail. \
+                            Missing aggregate days remain unknown."});
                 }
             }
         } else if dataset == "safety_events" {
@@ -451,7 +467,8 @@ fn read_impl(
             answer["counts"]["assessed"] = totals["assessed"].clone();
             answer["counts"]["live_only"] = totals["live_only"].clone();
             answer["coverage"]["note"] = json!(
-                "Unique event IDs; assessed records replace live copies. Live-only events are pending assessment. Posted counting belongs to the weekly view. Empty datasets remain unconfirmed."
+                "Unique event IDs; assessed records replace live copies. Live-only events are pending assessment. \
+                Posted counting belongs to the weekly view. Empty datasets remain unconfirmed."
             );
         } else {
             let selected = match param(query, "feedback") {

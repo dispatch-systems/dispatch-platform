@@ -216,7 +216,8 @@ pub fn ask(
         answers.insert(a.view.into(), answer);
     }
     let mut answer = json!({"contract_version":2,"view":"compare","sources":answers,
-        "note":"Sources are independent and are not additive. Scorecard impact belongs to posted_scorecard. Units and coverage may differ."});
+        "note":"Sources are independent and are not additive. Scorecard impact belongs to posted_scorecard. \
+            Units and coverage may differ."});
     // Both sources keep their own cursors; trim only pageable tables, preserving full totals.
     for key in ["operational", "posted_scorecard"] {
         for table in ["groups", "list"] {

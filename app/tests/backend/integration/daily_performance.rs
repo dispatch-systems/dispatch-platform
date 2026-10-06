@@ -15,7 +15,7 @@ use dispatch_cortex::{
 };
 use dispatch_daily_performance::DailyPerformanceStore;
 use serde_json::{Value, json};
-fn ready() -> (tempfile::TempDir, Store, String) {
+pub(super) fn ready() -> (tempfile::TempDir, Store, String) {
     dispatch_backend::install();
     let (root, store, dsp) = testing::bootstrapped();
     testing::set_dsp(&store, &dsp, "Fixture Delivery", "America/Los_Angeles").unwrap();
@@ -29,10 +29,15 @@ fn ready() -> (tempfile::TempDir, Store, String) {
     store.enable_all_features(&dsp).unwrap();
     (root, store, dsp)
 }
-fn publish(store: &Store, dsp: &str, date: &str, key: &str) -> daily_performance::Capture {
+pub(super) fn publish(
+    store: &Store,
+    dsp: &str,
+    date: &str,
+    key: &str,
+) -> daily_performance::Capture {
     publish_with(store, dsp, date, key, |_| {})
 }
-fn publish_with(
+pub(super) fn publish_with(
     store: &Store,
     dsp: &str,
     date: &str,
@@ -60,9 +65,7 @@ fn publish_with(
     capture
 }
 
-#[path = "performance_views.rs"]
-mod performance_views;
-fn caller(store: &Store, dsp: &str, areas: &[&str]) -> dispatch_core::mcp::Caller {
+pub(super) fn caller(store: &Store, dsp: &str, areas: &[&str]) -> dispatch_core::mcp::Caller {
     let input = AgentKeyRequest::parse(
         &json!({"name":format!("daily {}",areas.join("+")),"allDsps":false,"dsps":[dsp],"access":"read",
         "reads":{"areas":areas,"bypass":false},"dspReads":[],"expiresAt":null}),
