@@ -24,26 +24,23 @@ const RELEASE_PACKAGE: &str = "npm run build";
 /// a checkout whose own copy predates `--fixture` still gets it.
 const FIXTURE: &str = "dispatchdev build --fixture";
 
-/// One command of a run, in the run's build folder: a test, or a step that `prepares` the browser
-/// tests, which a run repeating its tests runs once.
+/// One command of a run, in the run's build folder.
 #[derive(Debug, PartialEq)]
 pub struct Step {
     pub command: String,
-    pub prepares: bool,
 }
 /// The steps of `commands`: packaging the browser tests' runtime, then their fixture, before the
 /// tests themselves.
 pub fn steps(commands: &[String]) -> Vec<Step> {
-    let step = |command: &str, prepares| Step {
+    let step = |command: &str| Step {
         command: command.into(),
-        prepares,
     };
     commands
         .iter()
         .flat_map(
             |command| match command.strip_prefix(&format!("{PACKAGE} && ")) {
-                Some(rest) => vec![step(PACKAGE, true), step(FIXTURE, true), step(rest, false)],
-                None => vec![step(command, false)],
+                Some(rest) => vec![step(PACKAGE), step(FIXTURE), step(rest)],
+                None => vec![step(command)],
             },
         )
         .collect()
@@ -315,20 +312,16 @@ mod tests {
             steps(&commands),
             [
                 Step {
-                    command: "cargo test --locked -p dispatch-core".into(),
-                    prepares: false
+                    command: "cargo test --locked -p dispatch-core".into()
                 },
                 Step {
-                    command: "npm run build -- --debug".into(),
-                    prepares: true
+                    command: "npm run build -- --debug".into()
                 },
                 Step {
-                    command: "dispatchdev build --fixture".into(),
-                    prepares: true
+                    command: "dispatchdev build --fixture".into()
                 },
                 Step {
-                    command: "npm run test:ui -- app/tests/browser/a.spec.ts".into(),
-                    prepares: false
+                    command: "npm run test:ui -- app/tests/browser/a.spec.ts".into()
                 },
             ]
         );

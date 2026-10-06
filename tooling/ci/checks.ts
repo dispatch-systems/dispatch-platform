@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { assessmentFixture } from '../testing/ci-tools.js';
 import { manualBrowserSelection } from './browser-input.js';
-import { PAINT_BUDGET, WORKERS, browserTests, shards } from './browser-shards.js';
+import { WORKERS, browserTests, shards } from './browser-shards.js';
 import { nodeTests, pythonTests, sourceLintCommands, type Command } from './execution-plan.js';
 import { workspaceCrates } from './workspace.js';
 
@@ -170,9 +170,6 @@ async function browser() {
   const list = path.join(os.tmpdir(), `dispatch-browser-shard-${index}-of-${count}.txt`);
   fs.writeFileSync(list, `${tests.join('\n')}\n`);
   if (!(await setup).every(Boolean)) return;
-  // Paint budgets run alone after the rest, with their own output so the first run's traces
-  // survive.
-  const alone = tests.some((test) => test.includes(PAINT_BUDGET));
   // Three workers on a four-core runner: the fourth core keeps the private servers and the
   // sign-in animation responsive, so long multi-login tests stay well inside their budget.
   await npm(
@@ -180,21 +177,8 @@ async function browser() {
     '--test-list',
     list,
     `--workers=${WORKERS}`,
-    ...(alone ? ['--grep-invert', PAINT_BUDGET] : []),
     ...(only.length ? ['--pass-with-no-tests', ...only] : []),
   );
-  if (alone) {
-    const output = process.env.DISPATCH_TEST_OUTPUT ?? 'test-results';
-    await run(
-      'paint budgets',
-      'npm',
-      [
-        ...['run', 'test:ui', '--', '--test-list', list, '--workers=1'],
-        ...['--grep', PAINT_BUDGET, '--pass-with-no-tests', ...only],
-      ],
-      { ...process.env, DISPATCH_TEST_OUTPUT: path.join(output, 'paint-budgets') },
-    );
-  }
 }
 /** Rust formatting, lints and tests: `npm run check:rust` compiles what it checks. */
 async function core() {

@@ -285,8 +285,9 @@ pub fn affected(changed: &[String], plan: &Value, workspace: &Workspace) -> Vec<
     }
     commands
 }
-/// What a branch needs before it is pushed: the commands its diff touches, and the state of
-/// `main` and of its PR.
+/// What a branch needs before it is pushed: the lints its diff touches, and the state of `main`
+/// and of its PR. The tests run in the merge queue, in parallel on its runners, faster than
+/// here; `dispatchdev test` runs them here while fixing one.
 pub struct Plan {
     pub commands: Vec<String>,
     pub base: String,
@@ -346,7 +347,10 @@ pub fn plan(root: &Path, concurrent: bool, runner: &dyn Runner) -> Result<Plan> 
         .unwrap_or(Value::Null);
     // Without a readable workspace, as in a checkout with no Rust, no crate is named.
     let workspace = Workspace::read(root).unwrap_or_default();
-    let commands = affected(&changed, &plan, &workspace);
+    let commands = affected(&changed, &plan, &workspace)
+        .into_iter()
+        .filter(|command| command.starts_with("cargo clippy"))
+        .collect();
     let running = pulls
         .iter()
         .find(|pr| pr["headRefName"] == branch)
@@ -376,16 +380,13 @@ fn next_step(plan: &Plan) -> &'static str {
 }
 /// `dispatchdev check --plan`: what to run, without running it.
 pub fn print(plan: &Plan) {
-    if plan.commands.is_empty() {
-        println!(
-            "Nothing in the diff has tests beyond npm run check:rules. The merge queue runs the full suite on the squash commit; nothing runs on the PR itself."
-        );
-    } else {
-        println!(
-            "Run what the diff touches before pushing. The merge queue runs the full suite on the squash commit; nothing runs on the PR itself.\n- {}",
-            plan.commands.join("\n- ")
-        );
-    }
+    println!(
+        "Run npm run check:rules{} before pushing. The merge queue runs the tests on the squash commit; nothing runs on the PR itself.",
+        plan.commands
+            .iter()
+            .map(|command| format!(" and {command}"))
+            .collect::<String>()
+    );
     println!("Ready for final validation against {}.", plan.base);
     if plan.queued {
         println!(
@@ -394,9 +395,9 @@ pub fn print(plan: &Plan) {
     }
     println!("{}", next_step(plan));
 }
-/// `dispatchdev check`: the rule checks, then each command the plan names, a line each, built
-/// in a folder of the run's own and deleted when it ends (`crate::test`). Every command's whole
-/// output is in the change's scratch folder.
+/// `dispatchdev check`: the rule checks, then the lints the plan names, a line each, built in a
+/// folder of the run's own and deleted when it ends (`crate::test`). Every command's whole output
+/// is in the change's scratch folder.
 pub fn execute(root: &Path, plan: &Plan, keep: bool) -> Result<bool> {
     let commands: Vec<String> = ["npm run check:rules".to_owned()]
         .into_iter()

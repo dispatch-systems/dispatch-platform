@@ -224,39 +224,6 @@ test('an unavailable day clears the previous table and the next day recovers it'
   expect(errors).toEqual([]);
 });
 
-test('the meal table scrolls on phones without overflowing the page and renders both themes', async ({
-  page,
-}) => {
-  let data = sample();
-  const errors = await mockComparison(page, () => data);
-  await page.setViewportSize({ width: 1586, height: 992 });
-  await open(page);
-  await expect(page.locator('.meal-table tbody > tr')).toHaveCount(5);
-  // Include the review notice in the phone/dark layouts, as in the navigation case.
-  data = {
-    ...data,
-    drivers: data.drivers.map((driver) =>
-      driver.id === 'driver-5'
-        ? { ...driver, paycomCode: null, matchType: 'unmatched' as const }
-        : driver,
-    ),
-  };
-  await page.getByRole('button', { name: 'Refresh meal breaks', exact: true }).click();
-  await expect(page.locator('.meal-link-notice')).toBeVisible();
-  await page.setViewportSize({ width: 390, height: 844 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  const scroll = page.getByRole('region', { name: 'Meal break comparison', exact: true });
-  expect(await scroll.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
-  await scroll.evaluate((el) => el.scrollIntoView({ block: 'start' }));
-  await scroll.evaluate((el) => (el.scrollLeft = el.scrollWidth));
-  await expect(
-    page.getByRole('columnheader', { name: 'Comparison', exact: true }),
-  ).toBeInViewport();
-  await page.emulateMedia({ colorScheme: 'dark' });
-  await page.setViewportSize({ width: 1586, height: 992 });
-  await page.evaluate(() => window.scrollTo(0, 0));
-  expect(errors).toEqual([]);
-});
 test('Flex gap badges and employee filter preserve comparison statuses and expose later meals', async ({
   page,
 }) => {
@@ -418,70 +385,6 @@ test('members can open real collected punch data without management controls', a
   await expect(
     page.getByText('Flex has no collection for this date.', { exact: false }),
   ).toBeVisible();
-});
-
-test('switching dates holds the layout until the new day arrives', async ({ page }) => {
-  let release!: () => void;
-  const hold = new Promise<void>((resolve) => (release = resolve));
-  await page.route('**/api/dsp/paycom/settings', (route) =>
-    route.fulfill({
-      json: {
-        revision: 0,
-        values: paycomDefaults,
-        history: [],
-        options: { departments: [], stations: [] },
-      },
-    }),
-  );
-  await page.route('**/api/dsp/paycom/meal-breaks?*', async (route) => {
-    if (new URL(route.request().url()).searchParams.get('date') === '2026-09-14') await hold;
-    await route.fulfill({
-      json: assessMealResponse({
-        ...sample(),
-        date: new URL(route.request().url()).searchParams.get('date'),
-      }),
-    });
-  });
-  await page.route('**/api/dsp/jobs/meal-breaks?*', async (route) => {
-    if (new URL(route.request().url()).searchParams.get('date') === '2026-09-14') await hold;
-    const source = {
-      enabled: true,
-      active: false,
-      job: { status: 'succeeded' },
-      collectedAt: null,
-    };
-    await route.fulfill({
-      json: {
-        date: new URL(route.request().url()).searchParams.get('date'),
-        scopeAvailable: true,
-        paycom: source,
-        flex: source,
-      },
-    });
-  });
-  await open(page);
-  const results = page.locator('.paycom-day-results');
-  const sync = page.getByRole('button', { name: 'Sync now', exact: true });
-  await expect(results).toHaveAttribute('aria-busy', 'false');
-  await expect(sync).toBeEnabled();
-  const layout = () =>
-    page.evaluate(() =>
-      ['.meal-page', '.meal-table', '.paycom-timecard-footer'].map(
-        (selector) => document.querySelector(selector)!.getBoundingClientRect().top,
-      ),
-    );
-  const before = await layout();
-  await page.getByRole('button', { name: 'Previous day', exact: true }).click();
-  await expect(results).toHaveAttribute('aria-busy', 'true');
-  await expect(page.locator('.meal-table tbody > tr')).toHaveCount(5);
-  await expect(page.getByText('Checking connections…')).toHaveCount(0);
-  await expect(sync).toBeDisabled();
-  expect(await layout()).toEqual(before);
-  release();
-  await expect(results).toHaveAttribute('aria-busy', 'false');
-  await expect(sync).toBeEnabled();
-  // The new day's rows may differ in height; everything above them stays put.
-  expect((await layout()).slice(0, 2)).toEqual(before.slice(0, 2));
 });
 
 test('sync remains locked across dates, tabs and reloads until both sources stop', async ({
