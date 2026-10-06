@@ -39,7 +39,8 @@ A change, from start to finish:
                                    branches and scratch folder go; then wait for Dev.
   status                           Worktrees, previews, open PRs, what Dev runs, free disk.
 
-  build [--release] [--cache-key]  Build the backend, reusing a build of identical inputs.
+  build [--release | --fixture]    Build the backend, or the browser tests' assessment
+        [--cache-key]              fixture, reusing a build of identical inputs.
   help                             Show this.
 
 test, prove, check and build work on the checkout the current directory is in, or on
@@ -313,7 +314,7 @@ fn run() -> Result<()> {
             status::run(&line.workspace()?, &Native)
         }
         "build" => {
-            line.only(&["--release", "--cache-key"], 0)?;
+            line.only(&["--release", "--fixture", "--cache-key"], 0)?;
             let root = line.root()?;
             let env = std::env::vars().collect();
             if line.flag("--cache-key") {
@@ -325,7 +326,13 @@ fn run() -> Result<()> {
                 println!("key={key}");
                 return Ok(());
             }
-            build::build(&root, line.flag("--release"), &env, &Native)
+            let artifact = match (line.flag("--release"), line.flag("--fixture")) {
+                (true, true) => return Err("Choose --release or --fixture.".into()),
+                (true, false) => &build::RELEASE,
+                (false, true) => &build::FIXTURE,
+                (false, false) => &build::DEBUG,
+            };
+            build::build(&root, artifact, &env, &Native)
         }
         "help" | "--help" | "-h" => {
             println!("{HELP}");

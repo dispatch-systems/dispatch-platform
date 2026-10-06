@@ -14,7 +14,20 @@ export function assessmentFixture(
   const tools = env.DISPATCH_CI_TOOLS;
   if (env.CI !== 'true' || !tools || path.resolve(tools) !== path.resolve(root, '.ci-tools'))
     return undefined;
-  const binary = path.join(root, '.ci-tools/fixture/assessment-fixture');
+  return executable(path.join(root, '.ci-tools/fixture/assessment-fixture'));
+}
+
+/**
+ * Off CI, the assessment fixture DISPATCH_ASSESSMENT_FIXTURE names: `dispatchdev test` names the
+ * one it built or reused for this checkout's Rust inputs. Undefined when it must be built here.
+ */
+export function namedFixture(env: Record<string, string | undefined>): string | undefined {
+  const binary = env.DISPATCH_ASSESSMENT_FIXTURE;
+  return env.CI === 'true' || !binary ? undefined : executable(binary);
+}
+
+/** `binary` when it is an executable regular file, not a link to one. */
+function executable(binary: string): string | undefined {
   let info: fs.Stats;
   try {
     info = fs.lstatSync(binary);

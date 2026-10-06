@@ -46,7 +46,7 @@ impl Fixture {
         }
     }
     fn build(&self) {
-        build_with_limit(&self.root, false, &self.env, self, 2).unwrap();
+        build_with_limit(&self.root, &DEBUG, &self.env, self, 2).unwrap();
     }
     fn source(&self, text: &str) {
         fs::write(self.root.join("app/backend/main.rs"), text).unwrap();
@@ -67,15 +67,18 @@ impl Runner for Fixture {
                     .root
                     .join("target")
                     .join(if args.contains(&"--release") {
-                        "release"
+                        "release/dispatch-backend"
+                    } else if args.contains(&"--example") {
+                        "debug/examples/assessment-fixture"
                     } else {
-                        "debug"
+                        "debug/dispatch-backend"
                     });
-                fs::create_dir_all(&target)?;
-                fs::write(
-                    target.join("dispatch-backend"),
-                    fs::read(self.root.join("app/backend/main.rs"))?,
-                )?;
+                fs::create_dir_all(target.parent().unwrap())?;
+                let mut built = fs::read(self.root.join("app/backend/main.rs"))?;
+                if args.contains(&"--example") {
+                    built.extend(b" fixture");
+                }
+                fs::write(&target, built)?;
                 if self.change_during_build.get() {
                     self.source("changed mid-build");
                 }
@@ -350,10 +353,67 @@ fn cache_reuses_intact_binaries_refreshes_recency_and_rebuilds_corruption() {
     );
 }
 #[test]
+fn the_assessment_fixture_keeps_its_own_entry_beside_the_backend() {
+    let f = Fixture::new();
+    f.build();
+    let fixture = || build_with_limit(&f.root, &FIXTURE, &f.env, &f, 4).unwrap();
+    fixture();
+    assert_eq!(
+        f.builds.get(),
+        2,
+        "the backend's entry is not the fixture's"
+    );
+    assert_eq!(
+        fs::read(built(&f.root.join("target"), &FIXTURE)).unwrap(),
+        b"one fixture"
+    );
+    fs::remove_dir_all(f.root.join("target")).unwrap();
+    fixture();
+    f.build();
+    assert_eq!(f.builds.get(), 2, "each is reused for the same inputs");
+    assert_eq!(
+        fs::read(built(&f.root.join("target"), &FIXTURE)).unwrap(),
+        b"one fixture"
+    );
+    assert_eq!(
+        fs::read(built(&f.root.join("target"), &DEBUG)).unwrap(),
+        b"one"
+    );
+    f.source("two");
+    fixture();
+    assert_eq!(f.builds.get(), 3);
+    assert_eq!(
+        fs::read(built(&f.root.join("target"), &FIXTURE)).unwrap(),
+        b"two fixture"
+    );
+}
+#[test]
+fn a_test_runs_build_folder_in_the_checkout_shares_debug_entries_but_not_release() {
+    let f = Fixture::new();
+    f.build();
+    let mut run = f.env.clone();
+    run.insert("CARGO_TARGET_DIR".into(), ".test-build/42".into());
+    run.insert("CARGO_INCREMENTAL".into(), "0".into());
+    let (folder, keyed) = located(&f.root, &run);
+    assert_eq!(folder, f.root.join(".test-build/42"));
+    assert_eq!(keyed, f.env, "where it builds is not what it builds");
+    let mut outside = f.env.clone();
+    outside.insert("CARGO_TARGET_DIR".into(), "/elsewhere".into());
+    assert_eq!(
+        located(&f.root, &outside).1,
+        outside,
+        "outside the checkout it stays keyed"
+    );
+    outside.insert("CARGO_TARGET_DIR".into(), "../elsewhere".into());
+    assert_eq!(located(&f.root, &outside).1, outside);
+    // Release builds keep a test run's folder out of the cache, as before.
+    assert!(!eligible(&f.root, &run, false).unwrap());
+}
+#[test]
 fn changing_inputs_during_build_cannot_publish_cache_entry() {
     let f = Fixture::new();
     f.change_during_build.set(true);
-    assert!(build(&f.root, false, &f.env, &f).is_err());
+    assert!(build(&f.root, &DEBUG, &f.env, &f).is_err());
     assert!(
         !fs::read_dir(f.store())
             .unwrap()
@@ -423,11 +483,11 @@ fn ci_cache_needs_explicit_location_and_current_receipt_key() {
         f.root.join(".ci-rust-cache").to_str().unwrap().into(),
     );
     assert!(ci_enabled(&f.root, &f.env));
-    build(&f.root, true, &f.env, &f).unwrap();
-    build(&f.root, true, &f.env, &f).unwrap();
+    build(&f.root, &RELEASE, &f.env, &f).unwrap();
+    build(&f.root, &RELEASE, &f.env, &f).unwrap();
     assert_eq!(f.builds.get(), 1);
     f.env.insert("DISPATCH_CI_RUST_KEY".into(), "wrong".into());
-    assert!(build(&f.root, true, &f.env, &f).is_err());
+    assert!(build(&f.root, &RELEASE, &f.env, &f).is_err());
     assert_eq!(f.builds.get(), 1);
 }
 #[test]

@@ -13,34 +13,39 @@ use std::{
 /// covers it, ignored by Git.
 const BUILDS: &str = ".test-build";
 
-/// One command of a run: in the run's build folder, or, to package the runtime for the browser
-/// tests, through the release build cache in the checkout.
+/// Packages the runtime for the browser tests with the debug backend, which the run's own Rust
+/// builds share or the build cache holds, where a release build takes minutes. The merge queue
+/// tests the release build.
+pub const PACKAGE: &str = "npm run build -- --debug";
+/// What a checkout from before the debug package runs instead: the release build, through the
+/// build cache in the checkout.
+const RELEASE_PACKAGE: &str = "npm run build";
+/// Builds or reuses the browser tests' assessment fixture. It runs as the running dispatchdev, so
+/// a checkout whose own copy predates `--fixture` still gets it.
+const FIXTURE: &str = "dispatchdev build --fixture";
+
+/// One command of a run, in the run's build folder: a test, or a step that `prepares` the browser
+/// tests, which a run repeating its tests runs once.
 #[derive(Debug, PartialEq)]
 pub struct Step {
     pub command: String,
-    pub isolated: bool,
+    pub prepares: bool,
 }
-/// The steps of `commands`. Packaging stays in the checkout: a release build anywhere else can't
-/// use the build cache, and would compile from scratch on every run.
+/// The steps of `commands`: packaging the browser tests' runtime, then their fixture, before the
+/// tests themselves.
 pub fn steps(commands: &[String]) -> Vec<Step> {
+    let step = |command: &str, prepares| Step {
+        command: command.into(),
+        prepares,
+    };
     commands
         .iter()
-        .flat_map(|command| match command.strip_prefix("npm run build && ") {
-            Some(rest) => vec![
-                Step {
-                    command: "npm run build".into(),
-                    isolated: false,
-                },
-                Step {
-                    command: rest.into(),
-                    isolated: true,
-                },
-            ],
-            None => vec![Step {
-                command: command.clone(),
-                isolated: true,
-            }],
-        })
+        .flat_map(
+            |command| match command.strip_prefix(&format!("{PACKAGE} && ")) {
+                Some(rest) => vec![step(PACKAGE, true), step(FIXTURE, true), step(rest, false)],
+                None => vec![step(command, false)],
+            },
+        )
         .collect()
 }
 /// Every file the checkout changed from where it left `origin/main`, committed or not, deleted
@@ -149,6 +154,10 @@ pub struct Run {
     made: Vec<PathBuf>,
     binary: PathBuf,
     tmp: PathBuf,
+    /// The checkout's package build can take the debug backend.
+    debug_package: bool,
+    /// The assessment fixture, once this run has built or reused it for the checkout's inputs.
+    fixture: std::cell::Cell<bool>,
 }
 impl Run {
     /// A run in `root`, its temporary files in `tmp`.
@@ -169,6 +178,9 @@ impl Run {
             builds,
             build,
             tmp: tmp.to_owned(),
+            debug_package: fs::read_to_string(root.join("tooling/build/build.ts"))
+                .is_ok_and(|build| build.contains("'--debug'")),
+            fixture: std::cell::Cell::new(false),
         })
     }
     /// Runs `step` with `env` added, its output going to `log`: whether it passed, and how long
@@ -179,18 +191,37 @@ impl Run {
         log: &Path,
         env: &[(&str, &OsStr)],
     ) -> Result<(bool, std::time::Duration)> {
-        let isolated: [(&str, &OsStr); 4] = [
-            ("CARGO_TARGET_DIR", self.build.as_os_str()),
-            ("CARGO_INCREMENTAL", OsStr::new("0")),
-            ("DISPATCH_TEST_BINARY", self.binary.as_os_str()),
-            ("TMPDIR", self.tmp.as_os_str()),
-        ];
-        let own = if step.isolated {
-            &isolated[..]
-        } else {
-            &isolated[3..]
+        let fixture = crate::build::built(&self.build, &crate::build::FIXTURE);
+        // A checkout from before the debug package packages the release build in the checkout
+        // itself, where the build cache serves it.
+        let (command, isolated) = match step.command.as_str() {
+            PACKAGE if !self.debug_package => (RELEASE_PACKAGE, false),
+            command => (command, true),
         };
-        workspace::logged(&step.command, &self.root, log, &[own, env].concat())
+        let mut own: Vec<(&str, &OsStr)> = vec![("TMPDIR", self.tmp.as_os_str())];
+        if isolated {
+            own.extend([
+                ("CARGO_TARGET_DIR", self.build.as_os_str()),
+                ("CARGO_INCREMENTAL", OsStr::new("0")),
+                ("DISPATCH_TEST_BINARY", self.binary.as_os_str()),
+            ]);
+            if self.fixture.get() {
+                own.push(("DISPATCH_ASSESSMENT_FIXTURE", fixture.as_os_str()));
+            }
+        }
+        let command = match command.strip_prefix("dispatchdev ") {
+            Some(rest) => {
+                let exe = std::env::current_exe()?;
+                let exe = exe.to_str().ok_or("Non-UTF8 path")?;
+                format!("'{}' {rest}", exe.replace('\'', r"'\''"))
+            }
+            None => command.to_owned(),
+        };
+        let (ok, took) = workspace::logged(&command, &self.root, log, &[&own[..], env].concat())?;
+        if ok && step.command == FIXTURE {
+            self.fixture.set(true);
+        }
+        Ok((ok, took))
     }
     /// Deletes everything the run made, and answers how much that was.
     pub fn end(self) -> Result<u64> {
@@ -276,7 +307,7 @@ mod tests {
     fn only_packaging_the_runtime_builds_in_the_checkout() {
         let commands: Vec<String> = [
             "cargo test --locked -p dispatch-core",
-            "npm run build && npm run test:ui -- app/tests/browser/a.spec.ts",
+            "npm run build -- --debug && npm run test:ui -- app/tests/browser/a.spec.ts",
         ]
         .map(str::to_owned)
         .to_vec();
@@ -285,15 +316,19 @@ mod tests {
             [
                 Step {
                     command: "cargo test --locked -p dispatch-core".into(),
-                    isolated: true
+                    prepares: false
                 },
                 Step {
-                    command: "npm run build".into(),
-                    isolated: false
+                    command: "npm run build -- --debug".into(),
+                    prepares: true
+                },
+                Step {
+                    command: "dispatchdev build --fixture".into(),
+                    prepares: true
                 },
                 Step {
                     command: "npm run test:ui -- app/tests/browser/a.spec.ts".into(),
-                    isolated: true
+                    prepares: false
                 },
             ]
         );
