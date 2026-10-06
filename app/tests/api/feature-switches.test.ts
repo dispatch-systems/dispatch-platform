@@ -17,6 +17,7 @@ const all = [
   'dvic',
   'weekly_scorecard',
   'driver_match',
+  'daily_performance',
   ...tabs,
   'paycom',
   'cortex',
@@ -62,6 +63,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       'dvic',
       'weekly_scorecard',
       'driver_match',
+      'daily_performance',
       'paycom',
       'cortex',
     ),
@@ -72,7 +74,16 @@ test('a feature switched off for a DSP stops existing there until it is switched
   view = await member.select(north.id);
   assert.deepEqual(
     view.features,
-    having('timecard', 'routes', 'dvic', 'weekly_scorecard', 'driver_match', 'paycom', 'cortex'),
+    having(
+      'timecard',
+      'routes',
+      'dvic',
+      'weekly_scorecard',
+      'driver_match',
+      'daily_performance',
+      'paycom',
+      'cortex',
+    ),
   );
   assert.deepEqual(view.permissions, ['timecard.view']);
   assert.equal((await member.get('/api/dsp/uniforms')).status, 403);
@@ -80,7 +91,16 @@ test('a feature switched off for a DSP stops existing there until it is switched
   const owner = await platform.select(north.id);
   assert.deepEqual(
     owner.features,
-    having('timecard', 'routes', 'dvic', 'weekly_scorecard', 'driver_match', 'paycom', 'cortex'),
+    having(
+      'timecard',
+      'routes',
+      'dvic',
+      'weekly_scorecard',
+      'driver_match',
+      'daily_performance',
+      'paycom',
+      'cortex',
+    ),
   );
   assert.ok(!owner.permissions.includes('uniforms.view'));
   assert.equal((await platform.get('/api/dsp/uniforms')).status, 403);
@@ -89,7 +109,16 @@ test('a feature switched off for a DSP stops existing there until it is switched
   );
   assert.deepEqual(
     listed.features,
-    having('timecard', 'routes', 'dvic', 'weekly_scorecard', 'driver_match', 'paycom', 'cortex'),
+    having(
+      'timecard',
+      'routes',
+      'dvic',
+      'weekly_scorecard',
+      'driver_match',
+      'daily_performance',
+      'paycom',
+      'cortex',
+    ),
   );
 
   // A role keeps the grant it cannot show, through a save from the role sheet too.
@@ -127,6 +156,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       { feature: 'dvic', enabled: false },
       { feature: 'weekly_scorecard', enabled: false },
       { feature: 'driver_match', enabled: false },
+      { feature: 'daily_performance', enabled: false },
     ],
   });
   view = await member.select(north.id);
@@ -228,7 +258,16 @@ test('a tab switched off has no routes, and a page goes and comes back with its 
   view = await member.select(north.id);
   assert.deepEqual(
     view.features,
-    having('uniforms', 'routes', 'dvic', 'weekly_scorecard', 'driver_match', 'paycom', 'cortex'),
+    having(
+      'uniforms',
+      'routes',
+      'dvic',
+      'weekly_scorecard',
+      'driver_match',
+      'daily_performance',
+      'paycom',
+      'cortex',
+    ),
   );
   assert.deepEqual(view.permissions, ['uniforms.view']);
   const report: { feature: string; enabled: boolean }[] = (await platform.get(url)).value.features;
