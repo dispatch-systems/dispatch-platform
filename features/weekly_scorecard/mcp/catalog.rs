@@ -175,9 +175,9 @@ pub const ENDPOINTS: &[Endpoint] = &[
         summary: "Contact compliance and returns to station (RTS)",
         description: "Use for contact compliance: which drivers didn't do it, that is returned \
             packages without the required call or text (contact missed, group_by driver). \
-            Also Amazon's returns to station from the weekly weekly_scorecard, their reasons, and \
-            which returns hurt the completion rate (DCR). Amazon posts a week's scorecard after \
-            it ends: for packages returned last night or this week, use packages.",
+            Also Amazon's returns to station from the weekly scorecard, their reasons, and \
+            which returns hurt the completion rate (DCR). Use source daily_performance for daily returns; \
+            weekly_scorecard for posted weekly outcomes.",
         path_params: &[],
         params: &[
             DSP,

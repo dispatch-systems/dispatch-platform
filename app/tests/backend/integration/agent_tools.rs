@@ -29,6 +29,14 @@ const READS: &[&str] = &[
     "safety",
     "returns",
     "weekly_scorecard",
+    #[cfg(feature = "daily_performance")]
+    "daily_performance",
+    #[cfg(feature = "daily_performance")]
+    "daily_feedback",
+    #[cfg(feature = "daily_performance")]
+    "daily_returns",
+    #[cfg(feature = "daily_performance")]
+    "daily_safety",
 ];
 fn reach(dsps: &[&str]) -> Value {
     json!({"name":"Laptop – Claude Code","allDsps":dsps.is_empty(),"dsps":dsps,
@@ -887,20 +895,20 @@ fn reads_are_kept_in_order_and_dsps_own_settings_only_where_the_key_reaches() {
             )
         })
         .collect();
+    let switched_off: &[&str] = &[
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard",
+        #[cfg(feature = "daily_performance")]
+        "daily_performance",
+    ];
     assert_eq!(
         dsps,
         [
             ("Dev DSP".to_owned(), json!(["dvic"])),
-            (
-                "Harbor Route Co".to_owned(),
-                json!([
-                    "routes",
-                    "timecards",
-                    "meal_breaks",
-                    "dvic",
-                    "weekly_scorecard"
-                ])
-            ),
+            ("Harbor Route Co".to_owned(), json!(switched_off)),
         ]
     );
 }
@@ -1054,6 +1062,8 @@ fn edits_are_audited_kind_by_kind_with_each_dsps_own_settings_in_a_line() {
     db.update_agent_key(&user, &made.key.id, &request(body.clone()))
         .unwrap();
     let changes = |db: &Store| audits(db, None).unwrap().as_array().unwrap()[0]["changes"].clone();
+    let count = READS.len() + 1;
+    let line = format!("Dev DSP: 7 of {count}, bypass on; Harbor Route Co: {count} of {count}");
     assert_eq!(
         changes(&db),
         json!([
@@ -1061,7 +1071,7 @@ fn edits_are_audited_kind_by_kind_with_each_dsps_own_settings_in_a_line() {
             {"field":"reads.safety","from":"true","to":"false"},
             {"field":"bypass","from":"false","to":"true"},
             {"field":"dsp_reads","from":"none",
-                "to":"Dev DSP: 7 of 9, bypass on; Harbor Route Co: 9 of 9"},
+                "to":line},
         ])
     );
     // A DSP's own settings changed under the same count are noted all the same.
@@ -1076,7 +1086,6 @@ fn edits_are_audited_kind_by_kind_with_each_dsps_own_settings_in_a_line() {
     ]);
     db.update_agent_key(&user, &made.key.id, &request(body.clone()))
         .unwrap();
-    let line = "Dev DSP: 7 of 9, bypass on; Harbor Route Co: 9 of 9";
     assert_eq!(
         changes(&db),
         json!([{"field":"dsp_reads","from":line,"to":line}])
@@ -1274,4 +1283,29 @@ fn delivery_addresses_are_never_claimed_without_the_routes() {
             {"field":"reads.locations","from":"true","to":"false"},
         ])
     );
+}
+
+#[cfg(feature = "daily_performance")]
+#[tokio::test]
+async fn daily_only_allowances_offer_focused_tools_once_and_keep_object_output_contracts() {
+    dispatch_backend::install();
+    let (_root, db, dsp) = bootstrapped();
+    let mut input = reach(&[&dsp]);
+    input["reads"]["areas"] = json!(["daily_feedback", "daily_returns", "daily_safety"]);
+    let key = db.create_agent_key(&owner(&db), &request(input)).unwrap();
+    let caller = db.authenticate_agent(&key.token, "test").unwrap();
+    let state = dispatch_core::State::new(db.config.clone()).unwrap();
+    let listed = admitted_mcp_version(&state, &caller, "tools/list", json!({}), "2025-06-18").await;
+    let tools = listed["result"]["tools"].as_array().unwrap();
+    for name in ["customer_feedback", "returns", "safety_events"] {
+        let offered: Vec<_> = tools.iter().filter(|tool| tool["name"] == name).collect();
+        assert_eq!(offered.len(), 1, "{listed}");
+        assert_eq!(offered[0]["outputSchema"]["type"], "object");
+        assert_eq!(
+            offered[0]["inputSchema"]["properties"]["source"]["enum"],
+            json!(["weekly_scorecard", "daily_performance"])
+        );
+    }
+    assert!(!tools.iter().any(|tool| tool["name"] == "daily_performance"));
+    assert!(!tools.iter().any(|tool| tool["name"] == "weekly_scorecard"));
 }

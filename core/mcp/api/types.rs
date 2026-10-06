@@ -125,7 +125,7 @@ impl AgentArea {
         AREAS.iter().copied()
     }
     pub fn parse(text: &str) -> Option<Self> {
-        Self::all().find(|area| area.0.id == registry().canonical_id(text))
+        Self::all().find(|area| area.0.id == text)
     }
     pub const fn as_str(self) -> &'static str {
         self.0.id
@@ -233,7 +233,7 @@ macro_rules! declared {
                 let id = String::deserialize(deserializer)?;
                 $all.iter()
                     .copied()
-                    .find(|named| named.0.id == registry().canonical_id(&id))
+                    .find(|named| named.0.id == id)
                     .ok_or_else(|| serde::de::Error::custom(concat!("unknown ", $what)))
             }
         }
@@ -279,7 +279,7 @@ declared!(
     "source",
     SOURCES,
     "/**\n * A feature switched per DSP that agents read data from: Routes, Timecard, its \
-     Meal\n * Breaks tab, DVIC and WeeklyScorecard.\n */\n"
+     Meal\n * Breaks tab, DVIC and Weekly Scorecard.\n */\n"
 );
 /// The kind of data the `locations` field of a key's row and of an approval stands for,
 /// which an older release reads and writes beside `areas`.
@@ -316,7 +316,7 @@ impl AgentReads {
     pub fn areas_text(&self) -> String {
         canonical(&self.areas)
             .iter()
-            .map(|area| registry().stored_id(area.as_str()))
+            .map(|area| area.as_str())
             .collect::<Vec<_>>()
             .join(",")
     }
@@ -771,7 +771,8 @@ text_enum! {
         Routes => "routes",
         MealBreaks => "meal_breaks",
         Dvic => "dvic",
-        WeeklyScorecard => "weekly_scorecard" | "scorecard",
+        WeeklyScorecard => "weekly_scorecard",
+        DailyPerformance => "daily_performance",
     }
 }
 text_enum! {

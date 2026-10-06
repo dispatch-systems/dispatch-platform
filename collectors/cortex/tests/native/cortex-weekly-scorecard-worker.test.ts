@@ -9,6 +9,7 @@ import { fileContainsAny } from '../../../../core/shell/tests/support/files.js';
 
 // What only the collected rows carry, so any copy of them outside the databases shows.
 const MARKERS = ['TBA-SCORECARD-MARKER-1', 'WeeklyScorecard Marker Driver', 'QUALITY-MARKER-NOTE'];
+const DAILY_MARKERS = ['TBA-DAILY-MARKER-1', 'DailyPerformance Marker Driver', 'DAILY-MARKER-NOTE'];
 // The Saturday that ends each week, as daily datasets name the week they ask for.
 const SATURDAYS: Record<string, string> = {
   '2026-08-29': '2026-W35',
@@ -27,7 +28,7 @@ test(
   async (t) => {
     let version = 'v1';
     const requests: URL[] = [];
-    const seen = { discovery: 0, overview: 0, foreignApi: 0 };
+    const seen = { discovery: 0, overview: 0, foreignApi: 0, dailyActive: 0, dailyPeak: 0 };
     // Weeks 38 and 36 are posted, 37 is not, and 35's returns are refused.
     const rows = (dataSetId: string, week: string): object[] => {
       if (week === '2026-W37') return [];
@@ -161,6 +162,45 @@ test(
         const dataSetId = url.searchParams.get('dataSetId')!;
         const to = url.searchParams.get('to')!;
         const week = url.searchParams.get('timeFrame') === 'Weekly' ? to : (SATURDAYS[to] ?? '');
+        const daily =
+          url.searchParams.get('timeFrame') === 'Daily' && url.searchParams.get('from') === to;
+        if (daily) {
+          assert.match(to, /^2026-10-0[34]$/);
+          assert.equal(url.searchParams.get('dsp'), 'NLOG');
+          if (dataSetId.endsWith('_thresholds')) {
+            assert.equal(url.searchParams.get('station'), null);
+            assert.equal(url.searchParams.get('program'), 'AMZL');
+          } else assert.equal(url.searchParams.get('station'), 'TST1');
+          seen.dailyActive++;
+          seen.dailyPeak = Math.max(seen.dailyPeak, seen.dailyActive);
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          seen.dailyActive--;
+          res.setHeader('content-type', 'application/json;charset=UTF-8');
+          const empty = dataSetId.includes('lmcx') || dataSetId.endsWith('_thresholds');
+          return res.end(
+            JSON.stringify({
+              tableData: {
+                [dataSetId]: {
+                  rows: empty
+                    ? []
+                    : [
+                        JSON.stringify({
+                          data_date: to,
+                          company_id: 'company-1',
+                          dsp_code: 'NLOG',
+                          station_code: 'TST1',
+                          transporter_id: dataSetId.startsWith('da_') ? 'driver-daily' : undefined,
+                          da_name: dataSetId.startsWith('da_') ? DAILY_MARKERS[1] : undefined,
+                          delivered: 123,
+                          tracking_id: DAILY_MARKERS[0],
+                          note: DAILY_MARKERS[2],
+                        }),
+                      ],
+                },
+              },
+            }),
+          );
+        }
         // Refused in a way no page can answer either: the attempt fails for a retry.
         if (week === '2026-W35' && dataSetId === 'da_dsp_weekly_rts_deep_dive') {
           res.writeHead(404);
@@ -226,16 +266,16 @@ test(
       return queued.value.id;
     };
     const stored = () =>
-      f.database(`dsps/${dsp.id}/data/scorecard/scorecard.sqlite`, (db) => ({
+      f.database(`dsps/${dsp.id}/data/weekly_scorecard/weekly_scorecard.sqlite`, (db) => ({
         publications: db
           .prepare(
-            'SELECT job_id,week,company_id,active FROM scorecard_publications ORDER BY rowid',
+            'SELECT job_id,week,company_id,active FROM weekly_scorecard_publications ORDER BY rowid',
           )
           .all()
           .map((r) => ({ ...r })),
         urls: db
           .prepare(
-            "SELECT p.week,s.url FROM scorecard_sources s JOIN scorecard_publications p ON p.id=s.publication_id WHERE s.dataset='dsp_station_weekly_quality' ORDER BY p.rowid",
+            "SELECT p.week,s.url FROM weekly_scorecard_sources s JOIN weekly_scorecard_publications p ON p.id=s.publication_id WHERE s.dataset='dsp_station_weekly_quality' ORDER BY p.rowid",
           )
           .all()
           .map((r) => ({ ...r }) as { week: string; url: string }),
@@ -291,7 +331,7 @@ test(
     const w36 = after.find((w: any) => w.week === '2026-W36');
     assert.equal(w36.posted, true);
     assert.equal(
-      w36.publication.datasets.find((d: any) => d.table === 'driver_scorecards').rows,
+      w36.publication.datasets.find((d: any) => d.table === 'driver_weekly_scorecards').rows,
       1,
     );
     assert.deepEqual(
@@ -314,7 +354,7 @@ test(
     });
     await until(async () => {
       const current = await job(refused.value.id);
-      return current.error === 'scorecard_api_unreadable';
+      return current.error === 'performance_api_unreadable';
     }, 120000);
     const retried = await job(refused.value.id);
     assert.equal(retried.status, 'queued');
@@ -327,19 +367,72 @@ test(
       false,
     );
 
+    // The same connection and HTTP reader collect each date independently of weekly storage.
+    for (const date of ['2026-10-03', '2026-10-04']) {
+      const daily = await owner.post('/api/dsp/daily-performance/collect', {
+        requestId: `daily-${date}`,
+        date,
+      });
+      assert.equal(daily.status, 202, daily.body);
+      const id = daily.value[0].id;
+      await until(async () => {
+        const current = (await owner.read('/api/dsp/daily-performance/jobs')).find(
+          (job: any) => job.id === id,
+        );
+        assert.notEqual(current.status, 'failed', JSON.stringify(current));
+        return current.status === 'succeeded';
+      }, 120000);
+      const captured = requests.filter(
+        (url) => url.searchParams.get('from') === date && url.searchParams.get('to') === date,
+      );
+      assert.equal(captured.length, 22);
+      assert.ok(captured.every((url) => url.searchParams.get('timeFrame') === 'Daily'));
+      assert.equal(new Set(captured.map((url) => url.searchParams.get('dataSetId'))).size, 22);
+    }
+    assert.ok(
+      seen.dailyPeak > 1 && seen.dailyPeak <= 6,
+      `Daily request concurrency: ${seen.dailyPeak}`,
+    );
+    assert.equal(stored().publications.length, 3);
+    const dailyDays = (await owner.read('/api/dsp/daily-performance')).days;
+    assert.deepEqual(
+      dailyDays.map((day: any) => day.date),
+      ['2026-10-04', '2026-10-03'],
+    );
+    assert.ok(dailyDays.every((day: any) => day.datasets.length === 22));
+
     // Everything collected lives in the scorecard database alone: no browser run is
     // left, and no other file holds any of it, in any encoding a browser stores text.
     const runs = path.join(f.root, 'data/preview/browser-runs');
     await until(async () => !fs.existsSync(runs) || fs.readdirSync(runs).length === 0, 30000);
-    const database = path.join(f.root, `dsps/${dsp.id}/data/scorecard/scorecard.sqlite`);
-    const needles = MARKERS.flatMap((m) => [Buffer.from(m, 'utf8'), Buffer.from(m, 'utf16le')]);
+    const database = path.join(
+      f.root,
+      `dsps/${dsp.id}/data/weekly_scorecard/weekly_scorecard.sqlite`,
+    );
+    const dailyDatabase = path.join(
+      f.root,
+      `dsps/${dsp.id}/data/daily_performance/daily_performance.sqlite`,
+    );
+    const held = [
+      {
+        database,
+        needles: MARKERS.flatMap((m) => [Buffer.from(m, 'utf8'), Buffer.from(m, 'utf16le')]),
+      },
+      {
+        database: dailyDatabase,
+        needles: DAILY_MARKERS.flatMap((m) => [Buffer.from(m, 'utf8'), Buffer.from(m, 'utf16le')]),
+      },
+    ];
     const holding: string[] = [];
     const walk = (dir: string) => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         const file = path.join(dir, entry.name);
         if (entry.isDirectory()) walk(file);
-        else if (entry.isFile() && !file.startsWith(database)) {
-          if (fileContainsAny(file, needles)) holding.push(path.relative(f.root, file));
+        else if (entry.isFile()) {
+          for (const source of held) {
+            if (!file.startsWith(source.database) && fileContainsAny(file, source.needles))
+              holding.push(path.relative(f.root, file));
+          }
         }
       }
     };

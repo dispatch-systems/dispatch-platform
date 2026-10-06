@@ -52,7 +52,7 @@ pub fn skill(origin: &str) -> String {
          name: dispatch\n\
          description: Answers questions about a delivery service partner's drivers from \
          Dispatch: routes, stops and packages, hours and timecards, meal breaks and DVIC \
-         vehicle inspections, customer feedback, returns, safety events and weekly scorecards, \
+         vehicle inspections, customer feedback, returns, safety events, weekly scorecards and daily performance, \
          for one driver or the whole team, on any day or period. Use \
          when asked how a driver did, who led or trailed on a number, what happened on a \
          route or to a package, or about hours, lunches, inspections, feedback, safety, returns \

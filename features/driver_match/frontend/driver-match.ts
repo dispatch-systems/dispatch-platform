@@ -61,6 +61,7 @@ export const dataLabels: Record<DriverData, string> = {
   routes: 'Routes',
   meal_breaks: 'Meal breaks',
   dvic: 'DVIC',
+  daily_performance: 'Daily Performance',
   weekly_scorecard: 'Weekly Scorecard',
 };
 export const dataOrder: DriverData[] = [
@@ -69,6 +70,7 @@ export const dataOrder: DriverData[] = [
   'meal_breaks',
   'dvic',
   'weekly_scorecard',
+  'daily_performance',
 ];
 /** How much of one kind of data a person has, in its own unit. */
 export function dataAmount(data: DriverData, count: number) {

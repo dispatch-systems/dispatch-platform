@@ -57,16 +57,8 @@ pub fn routes() -> Vec<Route> {
         agent_protocol(Method::GET, "/api/v1/mcp", Agent::READ, mcp),
     ];
     // Every endpoint of the catalog, answered exactly as its MCP tool answers.
-    let canonical = data::catalog::ENDPOINTS
-        .iter()
-        .map(|endpoint| (endpoint.path, *endpoint));
-    let legacy = crate::manifest::registry()
-        .features
-        .iter()
-        .flat_map(|feature| feature.mcp.legacy_paths)
-        .map(|(path, id)| (*path, data::catalog::endpoint(id)));
-    routes.extend(canonical.chain(legacy).map(|(path, endpoint)| {
-        read(path, Agent::READ, move |db, agent, input| {
+    routes.extend(data::catalog::ENDPOINTS.iter().copied().map(|endpoint| {
+        read(endpoint.path, Agent::READ, move |db, agent, input| {
             let named = endpoint
                 .path_params
                 .first()

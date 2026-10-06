@@ -44,3 +44,6 @@ mod network_policy;
 mod oauth;
 #[cfg(feature = "weekly_scorecard")]
 mod weekly_scorecard_transition;
+
+#[cfg(all(feature = "daily_performance", feature = "weekly_scorecard"))]
+mod daily_performance;

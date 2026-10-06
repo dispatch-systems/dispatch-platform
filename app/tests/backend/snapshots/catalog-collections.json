@@ -3,12 +3,14 @@
     ["paycom.collect", "timecard"],
     ["cortex.meal_breaks.collect", "timecard"],
     ["cortex.weekly_scorecard.collect", "weekly_scorecard"],
+    ["cortex.daily_performance.collect", "daily_performance"],
     ["cortex.routes.collect", "routes"],
     ["cortex.dvic.collect", "dvic"],
     ["paycom", "timecard"],
     ["meal_break", "timecard"],
     ["both", "timecard"],
     ["weekly_scorecard", "weekly_scorecard"],
+    ["daily_performance", "daily_performance"],
     ["routes", "routes"],
     ["dvic", "dvic"],
     ["schedules", "timecard"],
@@ -19,8 +21,9 @@
     ["paycom.collect", "collections.run"],
     ["cortex.meal_breaks.collect", "collections.run"],
     ["cortex.weekly_scorecard.collect", "weekly_scorecard.collect"],
+    ["cortex.daily_performance.collect", "daily_performance.collect"],
     ["cortex.routes.collect", "routes.collect"],
     ["cortex.dvic.collect", "dvic.collect"]
   ],
-  "automates": ["timecard", "routes", "dvic", "weekly_scorecard"]
+  "automates": ["timecard", "routes", "dvic", "weekly_scorecard", "daily_performance"]
 }

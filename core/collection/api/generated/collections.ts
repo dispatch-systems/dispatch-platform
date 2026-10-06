@@ -26,6 +26,14 @@ export const collections = [
     "counted": "rows"
   },
   {
+    "kind": "cortex.daily_performance.collect",
+    "provider": "cortex",
+    "schedule": "daily_performance",
+    "label": "Daily Performance",
+    "unit": "row",
+    "counted": "rows"
+  },
+  {
     "kind": "cortex.routes.collect",
     "provider": "cortex",
     "schedule": "routes",

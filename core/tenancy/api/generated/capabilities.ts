@@ -5,5 +5,6 @@ export const capabilityLabels = {
   "meal_breaks": "a meal-break source",
   "routes": "a route source",
   "dvic": "a DVIC source",
+  "daily_performance": "a daily performance source",
   "weekly_scorecard": "a weekly scorecard source"
 } as const;

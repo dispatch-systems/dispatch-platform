@@ -1,13 +1,15 @@
 ---
 name: dispatch
-description: Answers questions about a delivery service partner's drivers from Dispatch: routes, stops and packages, hours and timecards, meal breaks and DVIC vehicle inspections, customer feedback, returns, safety events and weekly scorecards, for one driver or the whole team, on any day or period. Use when asked how a driver did, who led or trailed on a number, what happened on a route or to a package, or about hours, lunches, inspections, feedback, safety, returns or scorecard performance.
+description: Answers questions about a delivery service partner's drivers from Dispatch: routes, stops and packages, hours and timecards, meal breaks and DVIC vehicle inspections, customer feedback, returns, safety events, weekly scorecards and daily performance, for one driver or the whole team, on any day or period. Use when asked how a driver did, who led or trailed on a number, what happened on a route or to a package, or about hours, lunches, inspections, feedback, safety, returns or scorecard performance.
 ---
 
 # Dispatch
 
-Dispatch answers questions about a delivery service partner's drivers from what it collected from Amazon (routes and packages, meal breaks, DVIC short-inspection exceptions, weekly scorecards, feedback, returns and safety events) and Paycom (timecards). Ask for the figure the question needs: a count or a short table comes back; rows of detail only when asked for.
+Dispatch answers questions about a delivery service partner's drivers from what it collected from Amazon (routes and packages, meal breaks, DVIC short-inspection exceptions, posted weekly scorecards, daily performance, feedback, returns and safety events) and Paycom (timecards). Ask for the figure the question needs: a count or a short table comes back; rows of detail only when asked for.
 
-- Pass the user's own words for days (yesterday, last night, last week, 2026-W39) and for drivers (a name or part of one). Period tools default to the last 30 days; routes and meal breaks to yesterday, and weekly_scorecard to the latest week. Timecards defaults to yesterday for everyone or the last 30 days for one driver. You need not look up today's date or a driver's ID first. Days are the DSP's own and can differ from your clock: say yesterday, not a date you worked out.
+- Pass the user's own words for days (yesterday, last night, last week, 2026-W39) and for drivers (a name or part of one). Period tools default to the last 30 days; routes and meal breaks to yesterday, and weekly_scorecard to the latest week. Daily Performance defaults to yesterday. Timecards defaults to yesterday for everyone or the last 30 days for one driver. You need not look up today's date or a driver's ID first. Days are the DSP's own and can differ from your clock: say yesterday, not a date you worked out. Weeks run Sunday to Saturday. DSP names may be omitted when the key reaches one DSP; from/to date ranges are inclusive.
+- Shared arguments: date selects one day; from and to select an inclusive range instead of period. driver also accepts Driver Match codes, Paycom codes and Amazon transporter IDs. detail defaults to summary; full includes detail rows. limit bounds each page within the tool's declared range.
+- Focused feedback, returns and safety tools accept source: weekly_scorecard (default) or daily_performance. Choose it explicitly for daily questions; these sources never mix.
 - Each answer says what it understood. Coverage status is complete, partial, missing or unavailable. Totals with partial coverage cover only the collected days. Days a source did not collect are unknown, never zero: say so.
 - A feature the DSP has switched off is refused as source_off, or listed under switched_off with null figures: tell the user it is switched off, and don't work the answer out from other tools.
 - Data this key may not read at a DSP is refused as not_allowed, or listed under not_allowed with null figures: tell the user, who can allow it on the Agents page in Dispatch.
@@ -51,7 +53,7 @@ Use when you need the DSPs this key reaches, each DSP's date today or what the k
 
 ### `data_status` · `GET /api/v1/status`
 
-Use when asked how current the data is: which sources the DSP has on (Paycom timecards, Cortex meal breaks, routes, DVIC, weekly scorecards), which this key reads there, and when each last collected.
+Use when asked how current the data is: which collected sources the DSP has on, which this key reads there, and when each last collected.
 
 - `dsp`: The DSP, by name. Leave it out when the key reaches one DSP.
 
@@ -196,7 +198,7 @@ Recorded short DVIC exceptions, by driver and period. detail full pages individu
 
 ### `customer_feedback` · `GET /api/v1/feedback`
 
-Use for customer delivery feedback (CDF) from Amazon's weekly scorecard: how much negative feedback, of which kinds, for which drivers, and repeated feedback at the same address (group_by address, min_count 2; needs a key allowed addresses). CDF means negative feedback; ask for positive only when the user asks for praise.
+Use for customer delivery feedback (CDF) from Amazon's weekly scorecard: how much negative feedback, of which kinds, for which drivers, and repeated feedback at the same address (group_by address, min_count 2; needs a key allowed addresses). CDF means negative feedback; ask for positive only when the user asks for praise. Select source for daily or weekly data. Source-specific parameters are checked after selection.
 
 - `dsp`: The DSP, by name. Leave it out when the key reaches one DSP.
 - `period`: The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.
@@ -213,10 +215,13 @@ Use for customer delivery feedback (CDF) from Amazon's weekly scorecard: how muc
 - `limit`: The most rows to return, 1 to 500.
 - `cursor`: The next_cursor an earlier answer gave, for its next page.
 - `groups_cursor`: The groups table's next_cursor; cursor separately pages the detail list.
+- `fields`: Comma-separated source fields for detail, or omit for the dataset's safe fields.
+- `detail`: summary (the default) or full, only when the user wants every row.
+- `source`: Choose the data source explicitly. Omit for the first listed source; sources never mix or fall back.
 
 ### `safety_events` · `GET /api/v1/safety`
 
-Use for Netradyne safety infractions from Amazon's scorecard: speeding, distraction, sign violations, following distance, seatbelt. Gives counts by type; for one driver also each event with its severity and dispute outcome.
+Use for Netradyne safety infractions from Amazon's scorecard: speeding, distraction, sign violations, following distance, seatbelt. Gives counts by type; for one driver also each event with its severity and dispute outcome. Select source for daily or weekly data. Source-specific parameters are checked after selection.
 
 - `dsp`: The DSP, by name. Leave it out when the key reaches one DSP.
 - `period`: The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.
@@ -231,10 +236,14 @@ Use for Netradyne safety infractions from Amazon's scorecard: speeding, distract
 - `limit`: The most rows to return, 1 to 500.
 - `cursor`: The next_cursor an earlier answer gave, for its next page.
 - `groups_cursor`: The groups table's next_cursor; cursor separately pages the detail list.
+- `fields`: Comma-separated source fields for detail, or omit for the dataset's safe fields.
+- `impacting`: Source impact flag, where known; weekly impact is not inferred.
+- `detail`: summary (the default) or full, only when the user wants every row.
+- `source`: Choose the data source explicitly. Omit for the first listed source; sources never mix or fall back.
 
 ### `returns` · `GET /api/v1/returns`
 
-Use for contact compliance: which drivers didn't do it, that is returned packages without the required call or text (contact missed, group_by driver). Also Amazon's returns to station from the weekly weekly_scorecard, their reasons, and which returns hurt the completion rate (DCR). Amazon posts a week's scorecard after it ends: for packages returned last night or this week, use packages.
+Use for contact compliance: which drivers didn't do it, that is returned packages without the required call or text (contact missed, group_by driver). Also Amazon's returns to station from the weekly scorecard, their reasons, and which returns hurt the completion rate (DCR). Use source daily_performance for daily returns; weekly_scorecard for posted weekly outcomes. Select source for daily or weekly data. Source-specific parameters are checked after selection.
 
 - `dsp`: The DSP, by name. Leave it out when the key reaches one DSP.
 - `period`: The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.
@@ -250,6 +259,9 @@ Use for contact compliance: which drivers didn't do it, that is returned package
 - `limit`: The most rows to return, 1 to 500.
 - `cursor`: The next_cursor an earlier answer gave, for its next page.
 - `groups_cursor`: The groups table's next_cursor; cursor separately pages the detail list.
+- `fields`: Comma-separated source fields for detail, or omit for the dataset's safe fields.
+- `detail`: summary (the default) or full, only when the user wants every row.
+- `source`: Choose the data source explicitly. Omit for the first listed source; sources never mix or fall back.
 
 ### `weekly_scorecard` · `GET /api/v1/weekly-scorecard`
 
@@ -261,6 +273,31 @@ Use for Amazon's weekly scorecard: the DSP's tier and focus areas, and each driv
 - `below`: Only drivers whose overall tier is below this one.
 - `limit`: The most rows to return, 1 to 500.
 - `cursor`: The next_cursor an earlier answer gave, for its next page.
+
+### `daily_performance` · `GET /api/v1/daily-performance`
+
+Daily source rows, by driver and date or range. Defaults to yesterday. summary counts recorded rows; full returns selected metrics or events. Coverage distinguishes absent data. Feedback is daily counts, not package reviews.
+
+- `dsp`: The DSP, by name. Leave it out when the key reaches one DSP.
+- `period`: The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.
+- `date`: One day: today, yesterday, last night or 2026-09-28.
+- `from`: The first day, as 2026-09-01, with `to`; instead of `period`.
+- `to`: The last day, as 2026-09-30, with `from`.
+- `driver`: A driver as the user named them: a name or part of one, a Driver Match code, a Paycom employee code or an Amazon transporter ID.
+- `dataset`: Daily dataset; defaults to driver_quality. Live safety stays separate.
+- `fields`: Comma-separated source fields for detail, or omit for the dataset's safe fields.
+- `group_by`: Count recorded rows by driver, day, reason or type; comma-separated.
+- `reason`: Return reason, such as business_closed; only returns_to_station.
+- `type`: Safety event type or daily feedback category, such as mishandled.
+- `impacting`: Source impact flag, where known; weekly impact is not inferred.
+- `contact`: Daily return coaching mentions missed call, text or contact.
+- `list`: Include a page of source rows; equivalent to detail full.
+- `counting`: Assessed event dispute filter; true excludes approved disputes.
+- `feedback`: Daily feedback counts; choose negative, positive or all.
+- `detail`: summary (the default) or full, only when the user wants every row.
+- `limit`: The most rows to return, 1 to 500.
+- `cursor`: The next_cursor an earlier answer gave, for its next page.
+- `groups_cursor`: The groups table's next_cursor; cursor separately pages the detail list.
 
 ## Metrics for `team_table`
 
@@ -286,7 +323,7 @@ Use for Amazon's weekly scorecard: the DSP's tier and focus areas, and each driv
 ## Terms
 
 - **Driver Match code**: A six-character code for one person, the same across every source. Use it to name a driver exactly.
-- **transporter ID**: Amazon's ID for a driver, in routes, meal breaks, DVIC and weekly scorecards.
+- **transporter ID**: Amazon's ID for a driver, in routes, meal breaks, DVIC, weekly scorecards and daily performance.
 - **employee code**: Paycom's ID for an employee.
 - **Amazon week**: Sunday to Saturday, named by the ISO week of its Saturday, as 2026-W39.
 - **departed**: When the driver left the station to start the route, in the DSP's time.

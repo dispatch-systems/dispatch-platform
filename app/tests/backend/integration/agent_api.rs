@@ -180,6 +180,14 @@ async fn the_mcp_server_offers_the_same_tools_and_prompts() {
         "safety",
         "returns",
         "weekly_scorecard",
+        #[cfg(feature = "daily_performance")]
+        "daily_performance",
+        #[cfg(feature = "daily_performance")]
+        "daily_feedback",
+        #[cfg(feature = "daily_performance")]
+        "daily_returns",
+        #[cfg(feature = "daily_performance")]
+        "daily_safety",
     ];
     let full = key(&db, &dsp, "Every kind", &every);
     let few = key(&db, &dsp, "Routes and DVIC", &["routes", "dvic"]);
@@ -199,7 +207,19 @@ async fn the_mcp_server_offers_the_same_tools_and_prompts() {
             if method == "tools/list" {
                 assert!(
                     serde_json::to_vec(&answer).unwrap().len() <= 45_000,
-                    "MCP tool discovery exceeds 45 KB; keep response contracts compact"
+                    "MCP {protocol} tool discovery is {} bytes, above 45 KB; keep response contracts compact: {:?}",
+                    serde_json::to_vec(&answer).unwrap().len(),
+                    answer["result"]["tools"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|tool| {
+                            (
+                                tool["name"].as_str().unwrap(),
+                                serde_json::to_vec(tool).unwrap().len(),
+                            )
+                        })
+                        .collect::<Vec<_>>()
                 );
             }
             answers.insert(format!("{method} {protocol}"), answer);

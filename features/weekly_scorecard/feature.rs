@@ -5,8 +5,8 @@ mod mcp;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
-    WeeklyScorecardDatasetCount, WeeklyScorecardPublication, WeeklyScorecardWeek,
-    WeeklyScorecardWeeks,
+    WeeklyScorecardDatasetCount, WeeklyScorecardPolicy, WeeklyScorecardPublication,
+    WeeklyScorecardWeek, WeeklyScorecardWeeks,
 };
 /// What the app uses: its storage and its database.
 pub use backend::{DATABASE, WeeklyScorecardStore};
@@ -15,14 +15,15 @@ pub use mcp::weekly_scorecard::{feedback, returns, safety, weekly};
 
 use dispatch_core::{
     db::{
-        Migration, Migrations,
+        Kind, Migration, Migrations,
         migrations::Apply::{Code, Sql},
     },
-    manifest::{Feature, Switch, feature, perm},
+    manifest::{Audit, Feature, Switch, feature, perm},
+    tenancy::api::audit::AuditArea::Collections,
 };
 
 pub const FEATURE: Feature = Feature {
-    identifiers: &[
+    retired_identifiers: &[
         ("scorecard", "weekly_scorecard"),
         ("scorecard.view", "weekly_scorecard.view"),
         ("scorecard.collect", "weekly_scorecard.collect"),
@@ -47,15 +48,18 @@ pub const FEATURE: Feature = Feature {
             .implies(&["weekly_scorecard.view"]),
     ],
     routes: api::routes::routes,
+    upgrade_storage: Some(backend::retirement::upgrade),
     keeps: &[&backend::keeper::WeeklyScorecard],
     tables: &[(
-        "scorecard",
+        "weekly_scorecard",
         &[
-            "scorecard_schema",
-            "scorecard_publications",
-            "scorecard_sources",
-            "scorecard_weeks",
-            "driver_scorecards",
+            "weekly_scorecard_schema",
+            "settings",
+            "weekly_scorecard_transition",
+            "weekly_scorecard_publications",
+            "weekly_scorecard_sources",
+            "weekly_scorecard_weeks",
+            "driver_weekly_scorecards",
             "driver_safety",
             "returns_to_station",
             "customer_feedback",
@@ -77,6 +81,23 @@ pub const FEATURE: Feature = Feature {
             Migration {
                 id: 1,
                 name: "baseline",
+                apply: Sql(include_str!(
+                    "migrations/weekly_scorecard/0001_baseline.sql"
+                )),
+            },
+            Migration {
+                id: 2,
+                name: "verified_scope",
+                apply: Code(backend::add_weekly_verified_scope),
+            },
+        ],
+    }],
+    retired_migrations: &[Migrations {
+        kind: Kind::new("scorecard", 1),
+        list: &[
+            Migration {
+                id: 1,
+                name: "baseline",
                 apply: Sql(include_str!("migrations/scorecard/0001_baseline.sql")),
             },
             Migration {
@@ -92,6 +113,10 @@ pub const FEATURE: Feature = Feature {
         ],
     }],
     domains: &[backend::DOMAIN],
+    audit: Audit {
+        areas: &[("weekly_scorecard.", Collections)],
+        ..Audit::NONE
+    },
     mcp: mcp::MCP,
     people: &[&backend::people::Drivers],
     ..feature("weekly_scorecard")

@@ -2,6 +2,6 @@
 
 /**
  * A feature switched per DSP that agents read data from: Routes, Timecard, its Meal
- * Breaks tab, DVIC and WeeklyScorecard.
+ * Breaks tab, DVIC and Weekly Scorecard.
  */
-export type AgentSource = "routes" | "timecards" | "meal_breaks" | "dvic" | "weekly_scorecard";
+export type AgentSource = "routes" | "timecards" | "meal_breaks" | "dvic" | "weekly_scorecard" | "daily_performance";

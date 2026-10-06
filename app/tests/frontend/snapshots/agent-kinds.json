@@ -8,9 +8,17 @@
     {"id": "feedback", "label": "Customer feedback", "source": "weekly_scorecard"},
     {"id": "safety", "label": "Safety events", "source": "weekly_scorecard"},
     {"id": "returns", "label": "Returns & contact compliance", "source": "weekly_scorecard"},
-    {"id": "weekly_scorecard", "label": "Weekly Scorecard", "source": "weekly_scorecard"}
+    {"id": "weekly_scorecard", "label": "Weekly Scorecard", "source": "weekly_scorecard"},
+    {"id": "daily_performance", "label": "Daily Performance", "source": "daily_performance"},
+    {"id": "daily_feedback", "label": "Daily customer feedback", "source": "daily_performance"},
+    {
+      "id": "daily_returns",
+      "label": "Daily returns & contact compliance",
+      "source": "daily_performance"
+    },
+    {"id": "daily_safety", "label": "Daily safety events", "source": "daily_performance"}
   ],
-  "groups": ["Routes", "Timecard", "DVIC", "Weekly Scorecard"],
+  "groups": ["Routes", "Timecard", "DVIC", "Weekly Scorecard", "Daily Performance"],
   "newKey": [
     "routes",
     "timecards",
@@ -19,6 +27,10 @@
     "feedback",
     "safety",
     "returns",
-    "weekly_scorecard"
+    "weekly_scorecard",
+    "daily_performance",
+    "daily_feedback",
+    "daily_returns",
+    "daily_safety"
   ]
 }

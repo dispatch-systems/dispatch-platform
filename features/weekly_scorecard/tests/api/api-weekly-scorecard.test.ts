@@ -40,9 +40,8 @@ test('a scorecard week is collected on request, stored per dataset and listed, a
   assert.equal(queued.status, 202, queued.body);
   assert.equal(queued.value.kind, 'cortex.weekly_scorecard.collect');
   assert.equal(
-    (await owner.post('/api/dsp/scorecard/collect', { requestId: 'week-38', week: '2026-W38' }))
-      .value.id,
-    queued.value.id,
+    (await owner.post('/api/dsp/scorecard/collect', { requestId: 'old', week: '2026-W38' })).status,
+    404,
   );
   assert.equal(
     (
@@ -65,11 +64,8 @@ test('a scorecard week is collected on request, stored per dataset and listed, a
   const job = await jobOf(queued.value.id);
   assert.equal(job.metrics.at(-1).rows, 19);
   const weeks = (await owner.get('/api/dsp/weekly-scorecard/weeks')).value;
-  assert.deepEqual((await owner.get('/api/dsp/scorecard/weeks')).value, weeks);
-  assert.deepEqual(
-    (await owner.read('/api/dsp/scorecard/jobs')).map((j: any) => j.id),
-    (await owner.read('/api/dsp/weekly-scorecard/jobs')).map((j: any) => j.id),
-  );
+  for (const retired of ['weeks', 'jobs', 'schedules'])
+    assert.equal((await owner.get(`/api/dsp/scorecard/${retired}`)).status, 404);
   assert.equal(weeks.weeks.length, 1);
   const week = weeks.weeks[0];
   assert.equal(week.week, '2026-W38');
@@ -88,7 +84,7 @@ test('a scorecard week is collected on request, stored per dataset and listed, a
   const canonical = await f.request('/api/v1/weekly-scorecard?week=2026-W38', undefined, headers);
   const legacy = await f.request('/api/v1/scorecard?week=2026-W38', undefined, headers);
   assert.equal(canonical.status, 200, canonical.body);
-  assert.deepEqual(legacy.value, canonical.value);
+  assert.equal(legacy.status, 404);
   const rpc = async (method: string, params: object) => {
     // MCP keys are native-client credentials; the browser fixture adds an Origin header.
     const response = await fetch(`http://127.0.0.1:${f.env.PORT}/api/v1/mcp`, {
@@ -114,7 +110,8 @@ test('a scorecard week is collected on request, stored per dataset and listed, a
   });
   const old = await rpc('tools/call', { name: 'scorecard', arguments: { week: '2026-W38' } });
   assert.equal(weekly.isError, false);
-  assert.deepEqual(old.structuredContent, weekly.structuredContent);
+  assert.equal(old.isError, true);
+  assert.match(old.content[0].text, /^unknown_tool\b/);
   assert.deepEqual(weekly.structuredContent, canonical.value);
   assert.equal(week.publication.rowCount, 19);
   assert.equal(
@@ -122,19 +119,22 @@ test('a scorecard week is collected on request, stored per dataset and listed, a
     2,
   );
   assert.equal(week.publication.datasets.find((d: any) => d.table === 'pickup_failures').rows, 0);
-  const stored = f.database(`dsps/${dsp.id}/data/scorecard/scorecard.sqlite`, (db) => ({
-    identity: db
-      .prepare('SELECT provider,source FROM storage_identity')
-      .all()
-      .map((r) => ({ ...r })),
-    returns: db
-      .prepare(
-        "SELECT tracking_id,impact,json_extract(row,'$.rts_reason_code') reason FROM returns_to_station ORDER BY row_index",
-      )
-      .all()
-      .map((r) => ({ ...r })),
-  }));
-  assert.deepEqual(stored.identity, [{ provider: 'cortex', source: 'scorecard-v1' }]);
+  const stored = f.database(
+    `dsps/${dsp.id}/data/weekly_scorecard/weekly_scorecard.sqlite`,
+    (db) => ({
+      identity: db
+        .prepare('SELECT provider,source FROM storage_identity')
+        .all()
+        .map((r) => ({ ...r })),
+      returns: db
+        .prepare(
+          "SELECT tracking_id,impact,json_extract(row,'$.rts_reason_code') reason FROM returns_to_station ORDER BY row_index",
+        )
+        .all()
+        .map((r) => ({ ...r })),
+    }),
+  );
+  assert.deepEqual(stored.identity, [{ provider: 'cortex', source: 'weekly-scorecard-v1' }]);
   assert.deepEqual(stored.returns, [
     { tracking_id: 'TBA000000000001', impact: 1, reason: 'BUSINESS CLOSED' },
     { tracking_id: 'TBA000000000002', impact: 0, reason: 'CUSTOMER UNAVAILABLE' },
@@ -143,7 +143,7 @@ test('a scorecard week is collected on request, stored per dataset and listed, a
   const member = await f.client('member@dispatch.test');
   await member.select(dsp.id);
   assert.equal((await member.get('/api/dsp/weekly-scorecard/weeks')).status, 403);
-  assert.equal((await member.get('/api/dsp/scorecard/weeks')).status, 403);
+  assert.equal((await member.get('/api/dsp/scorecard/weeks')).status, 404);
   const roles = (await owner.get('/api/dsp/roles')).value;
   const memberRole = roles.find((role: any) => role.name === 'Member');
   assert.equal(
@@ -176,10 +176,7 @@ test('a scorecard week is collected on request, stored per dataset and listed, a
   const schedule = await owner.post('/api/dsp/weekly-scorecard/schedules', body);
   assert.equal(schedule.status, 201, schedule.body);
   assert.equal(schedule.value.collection, 'weekly_scorecard');
-  assert.deepEqual(
-    (await owner.get('/api/dsp/scorecard/schedules')).value,
-    (await owner.get('/api/dsp/weekly-scorecard/schedules')).value,
-  );
+  assert.equal((await owner.get('/api/dsp/scorecard/schedules')).status, 404);
   assert.equal(
     (await owner.post('/api/dsp/weekly-scorecard/schedules', { ...body, collection: 'paycom' }))
       .status,
@@ -228,9 +225,6 @@ test('a scorecard week is collected on request, stored per dataset and listed, a
   assert.deepEqual(off.value.changed, [{ feature: 'weekly_scorecard', enabled: false }]);
   await owner.select(dsp.id);
   for (const url of [
-    '/api/dsp/scorecard/weeks',
-    '/api/dsp/scorecard/jobs',
-    '/api/dsp/scorecard/schedules',
     '/api/dsp/weekly-scorecard/weeks',
     '/api/dsp/weekly-scorecard/jobs',
     '/api/dsp/weekly-scorecard/schedules',

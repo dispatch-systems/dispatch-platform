@@ -11,6 +11,7 @@ import { feature as routes } from '../../features/routes/frontend/feature.js';
 import { feature as weeklyScorecard } from '../../features/weekly_scorecard/frontend/feature.js';
 import { feature as paycom } from '../../collectors/paycom/frontend/feature.js';
 import { feature as cortex } from '../../collectors/cortex/frontend/feature.js';
+import { feature as dailyPerformance } from '../../features/daily_performance/frontend/feature.js';
 import { feature as accounts } from '../../core/accounts/frontend/feature.js';
 import { feature as collection } from '../../core/collection/frontend/feature.js';
 import { feature as platformOwner } from '../../core/platform_owner/frontend/feature.js';
@@ -29,6 +30,7 @@ export const features: readonly FrontendFeature[] = [
   weeklyScorecard,
   paycom,
   cortex,
+  dailyPerformance,
   accounts,
   collection,
   platformOwner,

@@ -1,4 +1,5 @@
-//! Cortex authentication, meal evidence, the scorecard and daily routes from Amazon Logistics.
+//! Cortex authentication and performance transport from Amazon Logistics.
+pub mod performance;
 use crate::collections::meals::collect as collection;
 use dispatch_core::collection::browser::{
     Collected, Driver as Drives, Pending, Run,
@@ -197,6 +198,13 @@ impl Drives for Driver {
             }
             if let Some(request) = crate::weekly_scorecard::Request::parse(run.request)? {
                 let (capture, scope) = self.collect_weekly_scorecard(&request, run).await?;
+                return Ok(Collected {
+                    data: serde_json::to_value(capture)?,
+                    scope: Some(serde_json::to_value(scope)?),
+                });
+            }
+            if let Some(request) = crate::daily_performance::Request::parse(run.request)? {
+                let (capture, scope) = self.collect_daily_performance(&request, run).await?;
                 return Ok(Collected {
                     data: serde_json::to_value(capture)?,
                     scope: Some(serde_json::to_value(scope)?),

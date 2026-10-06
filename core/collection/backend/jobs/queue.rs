@@ -10,7 +10,6 @@ use crate::{
     ensure,
     foundation::crypto,
     job_statuses,
-    manifest::registry,
 };
 use rusqlite::params;
 use serde_json::Value;
@@ -22,8 +21,8 @@ const RECENT: &str = "SELECT * FROM jobs WHERE kind IN (SELECT value FROM json_e
     ORDER BY created_at DESC LIMIT 200";
 const RECENT_FOR_DSP: &str = "SELECT * FROM jobs WHERE dsp_id=? \
     AND kind IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC LIMIT 200";
-const RECENT_OF_KIND: &str = "SELECT * FROM jobs WHERE dsp_id=? \
-    AND kind IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC LIMIT 200";
+const RECENT_OF_KIND: &str =
+    "SELECT * FROM jobs WHERE dsp_id=? AND kind=? ORDER BY created_at DESC LIMIT 200";
 const RECENT_IN: &str = "SELECT * FROM jobs WHERE dsp_id=? \
     AND kind IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC LIMIT 200";
 const DSP_NAMES: &str = "SELECT id,name FROM dsps WHERE id IN (SELECT value FROM json_each(?))";
@@ -32,7 +31,7 @@ const METRICS: &str = "SELECT job_id,metrics FROM job_metrics \
 const JOB: &str = "SELECT * FROM jobs WHERE id=? AND (? IS NULL OR dsp_id=?) \
     AND kind IN (SELECT value FROM json_each(?))";
 const ACTIVE_OF_KIND: &str = concat!(
-    "SELECT * FROM jobs WHERE dsp_id=? AND kind IN (SELECT value FROM json_each(?)) AND status IN ",
+    "SELECT * FROM jobs WHERE dsp_id=? AND kind=? AND status IN ",
     job_statuses!(active),
     " ORDER BY created_at DESC LIMIT 1"
 );
@@ -156,21 +155,6 @@ impl<'a> From<&'a JobRow> for JobFacts<'a> {
         }
     }
 }
-fn kinds_text<'a>(kinds: impl IntoIterator<Item = &'a str>) -> Result<String> {
-    Ok(serde_json::to_string(&registry().accepted_ids(kinds))?)
-}
-
-/// Renamed collections keep their previous spelling in queued requests as well as kinds.
-fn stored_request(request: &Value) -> Value {
-    let mut request = request.clone();
-    if let Some(collection) = request.get_mut("collection")
-        && let Some(id) = collection.as_str()
-    {
-        *collection = Value::String(registry().stored_id(registry().canonical_id(id)).to_owned());
-    }
-    request
-}
-
 impl Store {
     pub(crate) fn connection_lease(
         &self,
@@ -197,35 +181,31 @@ impl Store {
     }
     /// A DSP's recent jobs of one kind, however many of other kinds came since.
     pub fn recent_jobs_of(&self, id: &str, kind: &str) -> Result<Vec<PublicJob>> {
-        self.public_jobs(
-            self.jobs
-                .query_as(RECENT_OF_KIND, [id, &kinds_text([kind])?])?,
-        )
+        self.public_jobs(self.jobs.query_as(RECENT_OF_KIND, [id, kind])?)
     }
     /// A DSP's recent jobs of these kinds, however many of others came since.
     pub fn recent_jobs_in(&self, id: &str, kinds: &[&str]) -> Result<Vec<PublicJob>> {
-        let kinds = kinds_text(kinds.iter().copied())?;
+        let kinds = serde_json::to_string(kinds)?;
         self.public_jobs(self.jobs.query_as(RECENT_IN, [id, kinds.as_str()])?)
     }
     /// A DSP's latest unfinished job of a kind.
     pub fn active_job_of(&self, id: &str, kind: &str) -> Result<Option<JobRow>> {
-        self.jobs
-            .one_as(ACTIVE_OF_KIND, params![id, kinds_text([kind])?])
+        self.jobs.one_as(ACTIVE_OF_KIND, params![id, kind])
     }
     /// The ids of a DSP's unfinished jobs of a kind.
     pub fn active_job_ids(&self, id: &str, kind: &str) -> Result<Vec<String>> {
         let jobs: Vec<(String,)> = self.jobs.query_as(
             concat!(
-                "SELECT id FROM jobs WHERE dsp_id=? AND kind IN (SELECT value FROM json_each(?)) AND status IN ",
+                "SELECT id FROM jobs WHERE dsp_id=? AND kind=? AND status IN ",
                 job_statuses!(active)
             ),
-            params![id, kinds_text([kind])?],
+            params![id, kind],
         )?;
         Ok(jobs.into_iter().map(|(job,)| job).collect())
     }
     /// Whether a DSP has an unfinished job of any of these kinds.
     pub fn any_active_job(&self, id: &str, kinds: &[&str]) -> Result<bool> {
-        let kinds = kinds_text(kinds.iter().copied())?;
+        let kinds = serde_json::to_string(kinds)?;
         Ok(self
             .jobs
             .one(
@@ -242,9 +222,9 @@ impl Store {
     /// A DSP's latest job of a kind that collects `date`, or that names no date at all.
     pub fn latest_job_for_date(&self, id: &str, kind: &str, date: &str) -> Result<Option<JobRow>> {
         self.jobs.one_as(
-            "SELECT * FROM jobs WHERE dsp_id=? AND kind IN (SELECT value FROM json_each(?)) \
+            "SELECT * FROM jobs WHERE dsp_id=? AND kind=? \
             AND (json_extract(request,'$.date')=? OR request='{}') ORDER BY created_at DESC LIMIT 1",
-            params![id, kinds_text([kind])?, date],
+            params![id, kind, date],
         )
     }
     /// A DSP's latest job of a kind whose request holds each of these fields' values.
@@ -254,9 +234,7 @@ impl Store {
         kind: &str,
         fields: &[(&'static str, &str)],
     ) -> Result<Option<JobRow>> {
-        let mut sql =
-            "SELECT * FROM jobs WHERE dsp_id=? AND kind IN (SELECT value FROM json_each(?))"
-                .to_owned();
+        let mut sql = "SELECT * FROM jobs WHERE dsp_id=? AND kind=?".to_owned();
         for (field, _) in fields {
             // Field names are the code's own, never a caller's input.
             debug_assert!(
@@ -267,8 +245,7 @@ impl Store {
             sql.push_str(&format!(" AND json_extract(request,'$.{field}')=?"));
         }
         sql.push_str(" ORDER BY created_at DESC,rowid DESC LIMIT 1");
-        let kinds = kinds_text([kind])?;
-        let values = [id, &kinds]
+        let values = [id, kind]
             .into_iter()
             .chain(fields.iter().map(|(_, value)| *value));
         self.jobs.one_as(&sql, rusqlite::params_from_iter(values))
@@ -279,13 +256,13 @@ impl Store {
         self.jobs.query_as(
             "SELECT * FROM jobs WHERE dsp_id=? AND substr(idempotency_key,1,?)=? \
             AND kind IN (SELECT value FROM json_each(?)) \
-            ORDER BY CASE WHEN kind IN (SELECT value FROM json_each(?)) THEN 0 ELSE 1 END,idempotency_key",
+            ORDER BY CASE kind WHEN ? THEN 0 ELSE 1 END,idempotency_key",
             params![
                 id,
                 prefix.chars().count() as i64,
                 prefix,
                 JobKind::known()?,
-                kinds_text([first])?
+                first
             ],
         )
     }
@@ -293,15 +270,10 @@ impl Store {
     /// failed, or else was cancelled.
     pub fn stopped_job_keyed(&self, id: &str, kind: &str, prefix: &str) -> Result<Option<JobRow>> {
         self.jobs.one_as(
-            "SELECT * FROM jobs WHERE dsp_id=? AND kind IN (SELECT value FROM json_each(?)) \
+            "SELECT * FROM jobs WHERE dsp_id=? AND kind=? \
             AND substr(idempotency_key,1,?)=? AND status IN ('failed','cancelled') \
             ORDER BY CASE status WHEN 'failed' THEN 0 ELSE 1 END,created_at DESC LIMIT 1",
-            params![
-                id,
-                kinds_text([kind])?,
-                prefix.chars().count() as i64,
-                prefix
-            ],
+            params![id, kind, prefix.chars().count() as i64, prefix],
         )
     }
     fn public_jobs(&self, rows: Vec<JobRow>) -> Result<Vec<PublicJob>> {
@@ -379,8 +351,7 @@ impl Store {
                     if let Some(row) = &row {
                         ensure(
                             row.kind.as_str() == provider.collector().job_kind_for(request)
-                                && stored_request(&serde_json::from_str::<Value>(&row.request)?)
-                                    == stored_request(request),
+                                && serde_json::from_str::<Value>(&row.request)? == *request,
                             "idempotency_conflict",
                             409,
                         )?;
@@ -448,14 +419,14 @@ impl Store {
                 job,
                 id,
                 self.config.environment,
-                registry().stored_id(registry().canonical_id(kind)),
+                kind,
                 now(),
                 iso(),
                 self.config.release,
                 actor,
                 revision,
                 key,
-                serde_json::to_string(&stored_request(request))?
+                serde_json::to_string(request)?
             ],
         )?;
         Ok(job)
@@ -466,19 +437,13 @@ impl Store {
         let (scope, values): (&str, Vec<&dyn rusqlite::ToSql>) = match &filter {
             CancelJobs::Job { id, dsp } => (" AND id=? AND dsp_id=?", vec![id, dsp]),
             CancelJobs::Provider { dsp, provider } => {
-                kind = kinds_text(provider.job_kinds())?;
+                kind = serde_json::to_string(&provider.job_kinds().collect::<Vec<_>>())?;
                 (
                     " AND dsp_id=? AND kind IN (SELECT value FROM json_each(?))",
                     vec![dsp, &kind],
                 )
             }
-            CancelJobs::Kind { dsp, kind: wanted } => {
-                kind = kinds_text([*wanted])?;
-                (
-                    " AND dsp_id=? AND kind IN (SELECT value FROM json_each(?))",
-                    vec![dsp, &kind],
-                )
-            }
+            CancelJobs::Kind { dsp, kind } => (" AND dsp_id=? AND kind=?", vec![dsp, kind]),
             CancelJobs::Dsp(dsp) => (" AND dsp_id=?", vec![dsp]),
         };
         at = iso();

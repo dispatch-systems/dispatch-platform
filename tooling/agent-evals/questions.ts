@@ -5,6 +5,7 @@ import { joinedQuestions } from '../../app/tests/mcp/questions.js';
 import { dvicQuestions } from '../../features/dvic/tests/mcp/questions.js';
 import { routesQuestions } from '../../features/routes/tests/mcp/questions.js';
 import { weeklyScorecardQuestions } from '../../features/weekly_scorecard/tests/mcp/questions.js';
+import { dailyPerformanceQuestions } from '../../features/daily_performance/tests/mcp/questions.js';
 import { timecardQuestions } from '../../features/timecard/tests/mcp/questions.js';
 
 export type { Question } from '../../core/mcp/tests/support/questions.js';
@@ -22,6 +23,9 @@ const order = [
   'returns_hurting_dcr',
   'injected_return_note',
   'lowest_scorecard',
+  'daily_safety_records',
+  'daily_feedback_mishandled',
+  'daily_business_closed',
   'top_stops_yesterday',
   'top_packages_fortnight',
   'fewest_packages_week',
@@ -58,6 +62,7 @@ export function questions(world: World): Question[] {
     ...timecard.questions,
     ...dvic.questions,
     ...weeklyScorecard.questions,
+    ...dailyPerformanceQuestions(world),
     ...joinedQuestions(world, { routes, timecard, dvic, weeklyScorecard }),
   ];
   const ids = all.map((question) => question.id);

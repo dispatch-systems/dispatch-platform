@@ -117,7 +117,7 @@ fn weeks(db: &Store, dsp: &Dsp, period: &Period) -> dispatch_core::Result<Value>
     let posted: BTreeSet<String> = db
         .weekly_scorecard_db(&dsp.id)?
         .all(
-            "SELECT week FROM scorecard_publications WHERE station=? AND active=1 AND scope_verified=1",
+            "SELECT week FROM weekly_scorecard_publications WHERE station=? AND active=1 AND scope_verified=1",
             [&station],
         )?
         .iter()
@@ -144,7 +144,7 @@ fn weeks(db: &Store, dsp: &Dsp, period: &Period) -> dispatch_core::Result<Value>
 /// The latest scorecard week collected.
 pub fn fresh(db: &Store, dsp: &Dsp, station: &str) -> dispatch_core::Result<Option<Value>> {
     let weekly_scorecard = db.weekly_scorecard_db(&dsp.id)?.one(
-        "SELECT max(week) week,max(collected_at) collected_at FROM scorecard_publications \
+        "SELECT max(week) week,max(collected_at) collected_at FROM weekly_scorecard_publications \
          WHERE station=? AND active=1 AND scope_verified=1",
         [station],
     )?;
@@ -300,7 +300,7 @@ fn ever(
         .all(
             &format!(
                 "SELECT DISTINCT json_extract(x.row,'$.{field}') v FROM {table} x \
-                 JOIN scorecard_publications p ON p.id=x.publication_id AND p.active=1 AND p.scope_verified=1 \
+                 JOIN weekly_scorecard_publications p ON p.id=x.publication_id AND p.active=1 AND p.scope_verified=1 \
                  WHERE p.station=?"
             ),
             [&station],
@@ -839,7 +839,7 @@ pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
     let data = query::database(db, dsp)?;
     let posted: Vec<String> = data
         .all(
-            "SELECT week FROM scorecard_publications WHERE station=? AND active=1 AND scope_verified=1 ORDER BY week DESC",
+            "SELECT week FROM weekly_scorecard_publications WHERE station=? AND active=1 AND scope_verified=1 ORDER BY week DESC",
             [&station],
         )?
         .iter()
@@ -885,7 +885,7 @@ pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
     }
     let dsp_row = data
         .one(
-            "SELECT x.row FROM dsp_quality x JOIN scorecard_publications p ON p.id=x.publication_id \
+            "SELECT x.row FROM dsp_quality x JOIN weekly_scorecard_publications p ON p.id=x.publication_id \
              AND p.active=1 AND p.scope_verified=1 WHERE p.station=? AND p.week=? LIMIT 1",
             [&station, &week],
         )?
@@ -937,7 +937,7 @@ pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
         .into());
     }
     let mut scope = String::from(
-        " FROM driver_scorecards x JOIN scorecard_publications p ON p.id=x.publication_id \
+        " FROM driver_weekly_scorecards x JOIN weekly_scorecard_publications p ON p.id=x.publication_id \
          AND p.active=1 AND p.scope_verified=1 WHERE p.station=? AND p.week=?",
     );
     let mut params = vec![station, week];
@@ -963,7 +963,7 @@ pub fn weekly(db: &Store, state: &State, caller: &Caller, query: &Value) -> Answ
     }
     if let Some(rank) = below_rank {
         scope.push_str(&format!(
-            " AND agent_scorecard_rank({overall}) < CAST(? AS INTEGER)"
+            " AND agent_weekly_scorecard_rank({overall}) < CAST(? AS INTEGER)"
         ));
         params.push(rank.to_string());
     }

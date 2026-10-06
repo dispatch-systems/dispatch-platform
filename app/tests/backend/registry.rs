@@ -35,6 +35,17 @@ fn a_feature_that_depends_on_one_not_registered_is_refused() {
 }
 
 #[test]
+#[should_panic(expected = "foreign retires an identifier into one it does not own")]
+fn a_retirement_cannot_rewrite_another_features_identifiers() {
+    static FOREIGN: Feature = Feature {
+        retired_identifiers: &[("prior.view", "timecard.view")],
+        ..feature("foreign")
+    };
+    crate::install();
+    with(&FOREIGN).check();
+}
+
+#[test]
 #[should_panic(
     expected = "greedy's everything schedule runs cortex.dvic.collect, which it does not keep"
 )]
@@ -82,4 +93,20 @@ fn a_kind_of_data_that_names_people_twice_is_refused() {
     };
     crate::install();
     with(&TWICE).check();
+}
+
+#[cfg(all(feature = "daily_performance", feature = "weekly_scorecard"))]
+#[test]
+#[should_panic(expected = "feedback repeats a source variant")]
+fn a_tool_source_variant_declared_twice_is_refused() {
+    use dispatch_core::mcp::pieces::Mcp;
+    static AGAIN: Feature = Feature {
+        mcp: Mcp {
+            variants: &[dispatch_daily_performance::FEATURE.mcp.variants[0]],
+            ..Mcp::NONE
+        },
+        ..feature("again")
+    };
+    crate::install();
+    with(&AGAIN).check();
 }

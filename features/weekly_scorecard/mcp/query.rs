@@ -16,7 +16,7 @@ pub fn database<'a>(db: &'a Store, dsp: &Dsp) -> Result<DspLease<'a>> {
     let data = db.weekly_scorecard_db(&dsp.id)?;
     let flags = FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC;
     data.0
-        .create_scalar_function("agent_scorecard_text", 1, flags, |ctx| {
+        .create_scalar_function("agent_weekly_scorecard_text", 1, flags, |ctx| {
             let raw = ctx.get::<Option<String>>(0)?;
             let value: Value = raw
                 .and_then(|raw| serde_json::from_str(&raw).ok())
@@ -24,30 +24,30 @@ pub fn database<'a>(db: &'a Store, dsp: &Dsp) -> Result<DspLease<'a>> {
             Ok(scalar_text(&value))
         })?;
     data.0
-        .create_scalar_function("agent_scorecard_yes", 1, flags, |ctx| {
+        .create_scalar_function("agent_weekly_scorecard_yes", 1, flags, |ctx| {
             Ok(matches!(
                 ctx.get::<String>(0)?.to_lowercase().as_str(),
                 "1" | "y" | "yes" | "true"
             ))
         })?;
     data.0
-        .create_scalar_function("agent_scorecard_snake", 1, flags, |ctx| {
+        .create_scalar_function("agent_weekly_scorecard_snake", 1, flags, |ctx| {
             Ok(snake(&ctx.get::<String>(0)?))
         })?;
     data.0
-        .create_scalar_function("agent_scorecard_rank", 1, flags, |ctx| {
+        .create_scalar_function("agent_weekly_scorecard_rank", 1, flags, |ctx| {
             Ok(tier_rank(&ctx.get::<String>(0)?))
         })?;
     Ok(data)
 }
 pub fn field(name: &str) -> String {
-    format!("agent_scorecard_text(x.row -> '$.{name}')")
+    format!("agent_weekly_scorecard_text(x.row -> '$.{name}')")
 }
 pub fn yes(name: &str) -> String {
-    format!("agent_scorecard_yes({})", field(name))
+    format!("agent_weekly_scorecard_yes({})", field(name))
 }
 pub fn normalized(name: &str) -> String {
-    format!("agent_scorecard_snake({})", field(name))
+    format!("agent_weekly_scorecard_snake({})", field(name))
 }
 pub fn missed() -> String {
     let coaching = format!("dispatch_lower({})", field("weekly_coaching"));
@@ -74,7 +74,7 @@ impl<'a> Dataset<'a> {
         let station = db.profile(&dsp.id)?.station_code;
         let data = database(db, dsp)?;
         let scope = format!(
-            " FROM {table} x JOIN scorecard_publications p ON p.id=x.publication_id AND p.active=1 AND p.scope_verified=1 \
+            " FROM {table} x JOIN weekly_scorecard_publications p ON p.id=x.publication_id AND p.active=1 AND p.scope_verified=1 \
              WHERE p.station=? AND substr(json_extract(x.row,'$.{date}'),1,10) BETWEEN ? AND ?"
         );
         let mut selected = Self {

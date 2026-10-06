@@ -65,3 +65,22 @@ fn addresses_follow_the_pages_parameter_order() {
         )
     );
 }
+
+#[test]
+fn daily_thresholds_omit_station_while_day_rows_keep_their_exact_date() {
+    let api = Api {
+        base: "https://logistics.amazon.com/performance/api/v1".into(),
+        dsp: "NLOG".into(),
+        company_id: "company".into(),
+    };
+    let threshold = crate::daily_performance::dataset("driver_thresholds").unwrap();
+    let url = api.address(threshold, "TST1", "2026-10-03", "2026-10-03");
+    assert!(!url.contains("station="));
+    assert!(url.contains("program=AMZL"));
+    assert!(url.contains("timeFrame=Daily"));
+    let daily = crate::daily_performance::dataset("driver_quality").unwrap();
+    let url = api.address(daily, "TST1", "2026-10-03", "2026-10-03");
+    assert!(url.contains("from=2026-10-03"));
+    assert!(url.contains("to=2026-10-03"));
+    assert!(url.contains("station=TST1"));
+}

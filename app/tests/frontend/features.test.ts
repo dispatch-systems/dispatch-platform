@@ -61,6 +61,7 @@ test('a switch brings its dependencies along, as the backend does', () => {
     { feature: 'dvic', enabled: false },
     { feature: 'weekly_scorecard', enabled: false },
     { feature: 'driver_match', enabled: false },
+    { feature: 'daily_performance', enabled: false },
   ]);
   // Driver Match needs both sides: losing Paycom takes it too.
   assert.deepEqual(previewSwitch(all, 'paycom', false), [

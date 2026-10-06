@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// How many rows one dataset of a publication holds.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -56,4 +56,25 @@ pub struct WeeklyScorecardWeeks {
     /// The most recent completed week, which a collection targets by default.
     pub latest_week: String,
     pub weeks: Vec<WeeklyScorecardWeek>,
+}
+
+/// Which completed weeks a scheduled run refreshes, independently of its wall-clock times.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/weekly_scorecard/api/generated/")
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WeeklyScorecardPolicy {
+    pub lookback_weeks: u32,
+    pub refresh_hours: u32,
+}
+impl Default for WeeklyScorecardPolicy {
+    fn default() -> Self {
+        Self {
+            lookback_weeks: 1,
+            refresh_hours: 20,
+        }
+    }
 }

@@ -69,13 +69,20 @@
     ]
   },
   {
-    "name": "scorecard",
+    "name": "weekly_scorecard",
     "user_version": 1,
     "cache_size": -512,
     "migrations": [
-      [1, "baseline", "3e392d1896de8f02"],
-      [2, "sources", "8be86f869c2b0ebf"],
-      [3, "verified_scope", "code"]
+      [1, "baseline", "e0b6659e86763fb6"],
+      [2, "verified_scope", "code"]
+    ]
+  },
+  {
+    "name": "daily_performance",
+    "user_version": 1,
+    "cache_size": -512,
+    "migrations": [
+      [1, "baseline", "990d189e7b8dc866"]
     ]
   },
   {

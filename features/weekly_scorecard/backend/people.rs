@@ -31,8 +31,8 @@ impl People for Drivers {
     fn named(&self, store: &Store, dsp: &str) -> Result<Vec<Named>> {
         let rows = store.weekly_scorecard_db(dsp)?.all(
             "SELECT d.transporter_id id,json_extract(d.row,'$.da_name') name,\
-             min(p.week) first,max(p.week) last FROM driver_scorecards d \
-             JOIN scorecard_publications p ON p.id=d.publication_id \
+             min(p.week) first,max(p.week) last FROM driver_weekly_scorecards d \
+             JOIN weekly_scorecard_publications p ON p.id=d.publication_id \
              WHERE p.scope_verified=1 AND COALESCE(d.transporter_id,'')<>'' GROUP BY 1,2 ORDER BY last DESC",
             [],
         )?;
@@ -49,8 +49,8 @@ impl People for Drivers {
     fn name(&self, store: &Store, dsp: &str, id: &str) -> Result<Option<String>> {
         people::first_name(
             &*store.weekly_scorecard_db(dsp)?,
-            "SELECT json_extract(d.row,'$.da_name') FROM driver_scorecards d \
-             JOIN scorecard_publications p ON p.id=d.publication_id \
+            "SELECT json_extract(d.row,'$.da_name') FROM driver_weekly_scorecards d \
+             JOIN weekly_scorecard_publications p ON p.id=d.publication_id \
              WHERE d.transporter_id=? AND p.scope_verified=1 ORDER BY p.week DESC",
             id,
         )
@@ -59,7 +59,7 @@ impl People for Drivers {
     fn appearances(&self, store: &Store, dsp: &str) -> Result<Vec<Appearances>> {
         let rows = store.weekly_scorecard_db(dsp)?.all(
             "SELECT d.transporter_id id,count(DISTINCT p.week) count,max(p.week) last \
-             FROM driver_scorecards d JOIN scorecard_publications p \
+             FROM driver_weekly_scorecards d JOIN weekly_scorecard_publications p \
              ON p.id=d.publication_id AND p.active=1 AND p.scope_verified=1 \
              WHERE COALESCE(d.transporter_id,'')<>'' GROUP BY d.transporter_id",
             [],

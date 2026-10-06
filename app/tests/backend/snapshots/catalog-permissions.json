@@ -20,7 +20,10 @@
     ["members.invite", "Invite Members"],
     ["members.manage", "Manage Members"],
     ["roles.manage", "Manage Roles"],
-    ["settings.manage", "Manage DSP Settings"]
+    ["settings.manage", "Manage DSP Settings"],
+    ["daily_performance.view", "View Daily Performance"],
+    ["daily_performance.collect", "Collect Daily Performance"],
+    ["daily_performance.manage", "Manage Daily Performance"]
   ],
   "implied": [
     ["timecard.manage", "timecard.view"],
@@ -31,7 +34,9 @@
     ["dvic.collect", "dvic.view"],
     ["dvic.manage", "dvic.view"],
     ["weekly_scorecard.collect", "weekly_scorecard.view"],
-    ["weekly_scorecard.manage", "weekly_scorecard.view"]
+    ["weekly_scorecard.manage", "weekly_scorecard.view"],
+    ["daily_performance.collect", "daily_performance.view"],
+    ["daily_performance.manage", "daily_performance.view"]
   ],
   "groups": [
     ["Connections", ["connections.manage"]],

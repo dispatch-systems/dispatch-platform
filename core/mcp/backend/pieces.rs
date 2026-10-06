@@ -3,7 +3,7 @@
 //! every feature's, so each is listed once.
 use super::{
     data::{
-        catalog::{self, Endpoint, Metric, Term},
+        catalog::{self, Endpoint, Metric, Term, Variant},
         facts::{Daily, Places},
         scope::Identify,
     },
@@ -26,8 +26,8 @@ pub struct Mcp {
     pub sources: &'static [AgentSource],
     /// Its endpoints, each also an MCP tool.
     pub endpoints: &'static [Endpoint],
-    /// Previous paths served through the canonical endpoint, omitted from discovery.
-    pub legacy_paths: &'static [(&'static str, &'static str)],
+    /// Alternate source declarations; the public endpoint identity has one owner.
+    pub variants: &'static [Variant],
     /// What `team_table` can rank by from its data.
     pub metrics: &'static [Metric],
     /// The words its answers use, for the glossary.
@@ -51,7 +51,7 @@ impl Mcp {
         missing: "",
         sources: &[],
         endpoints: &[],
-        legacy_paths: &[],
+        variants: &[],
         metrics: &[],
         terms: &[],
         examples: &[],
@@ -107,20 +107,6 @@ pub fn check(features: &[&Feature]) {
         .iter()
         .chain(mcp().flat_map(|mcp| mcp.endpoints))
         .collect();
-    let mut legacy_paths = std::collections::BTreeSet::new();
-    for feature in features {
-        for (path, id) in feature.mcp.legacy_paths {
-            assert!(
-                legacy_paths.insert(path) && endpoints.iter().all(|e| e.path != *path),
-                "{path} repeats an agent route"
-            );
-            assert!(
-                feature.mcp.endpoints.iter().any(|e| e.id == *id),
-                "{} aliases an endpoint it does not own: {id}",
-                feature.name
-            );
-        }
-    }
     for (index, endpoint) in endpoints.iter().enumerate() {
         assert!(
             endpoints[..index]
@@ -134,6 +120,31 @@ pub fn check(features: &[&Feature]) {
             "{} reads a kind of data that is not declared",
             endpoint.id
         );
+    }
+    let variants: Vec<&Variant> = mcp().flat_map(|mcp| mcp.variants).collect();
+    for (index, variant) in variants.iter().enumerate() {
+        assert!(areas.contains(&variant.area), "undeclared variant area");
+        assert!(
+            variants[..index]
+                .iter()
+                .all(|other| other.endpoint != variant.endpoint
+                    || other.area.source() != variant.area.source()),
+            "{} repeats a source variant",
+            variant.endpoint
+        );
+        // An absent owner leaves this declaration inactive, preserving removability.
+        if let Some(primary) = endpoints
+            .iter()
+            .find(|endpoint| endpoint.id == variant.endpoint)
+        {
+            assert!(
+                primary
+                    .area
+                    .is_some_and(|area| area.source() != variant.area.source()),
+                "{} repeats its primary source",
+                variant.endpoint
+            );
+        }
     }
     for metric in mcp().flat_map(|mcp| mcp.metrics) {
         assert!(

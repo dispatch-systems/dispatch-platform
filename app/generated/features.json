@@ -1,4 +1,97 @@
 {
+  "daily_performance": {
+    "collectors": [
+      "cortex"
+    ],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [
+      "cortex.daily_performance.collect"
+    ],
+    "migrations": {
+      "daily_performance": [
+        {
+          "id": 1,
+          "name": "baseline"
+        }
+      ]
+    },
+    "permissions": [
+      "daily_performance.view",
+      "daily_performance.collect",
+      "daily_performance.manage"
+    ],
+    "slots": {
+      "after_collection": false,
+      "audit": {
+        "areas": [
+          [
+            "daily_performance.",
+            "collections"
+          ]
+        ],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [
+        "daily_performance"
+      ],
+      "live": [],
+      "maintenance": [],
+      "mcp": {
+        "daily": [],
+        "examples": 0,
+        "endpoints": [
+          "daily_performance"
+        ],
+        "identity": false,
+        "metrics": [],
+        "places": false,
+        "reads": [
+          "daily_performance",
+          "daily_feedback",
+          "daily_returns",
+          "daily_safety"
+        ],
+        "sources": [
+          "daily_performance"
+        ],
+        "synthetic": 1,
+        "terms": []
+      },
+      "people": [
+        "daily_performance"
+      ],
+      "routes": [
+        "GET /api/dsp/daily-performance",
+        "POST /api/dsp/daily-performance/collect",
+        "GET /api/dsp/daily-performance/jobs",
+        "POST /api/dsp/daily-performance/jobs/{id}/cancel",
+        "GET /api/dsp/daily-performance/policy",
+        "POST /api/dsp/daily-performance/policy",
+        "GET /api/dsp/daily-performance/schedules",
+        "POST /api/dsp/daily-performance/schedules",
+        "POST /api/dsp/daily-performance/schedules/preview",
+        "POST /api/dsp/daily-performance/schedules/{key}",
+        "POST /api/dsp/daily-performance/schedules/{key}/enabled",
+        "POST /api/dsp/daily-performance/schedules/{key}/remove"
+      ],
+      "schedules": false
+    },
+    "switch": "daily_performance",
+    "tables": {
+      "daily_performance": [
+        "daily_datasets",
+        "daily_publications",
+        "daily_rows",
+        "settings"
+      ]
+    },
+    "tabs": []
+  },
   "driver_match": {
     "collectors": [],
     "depends_on": [],
@@ -696,17 +789,13 @@
       "cortex.weekly_scorecard.collect"
     ],
     "migrations": {
-      "scorecard": [
+      "weekly_scorecard": [
         {
           "id": 1,
           "name": "baseline"
         },
         {
           "id": 2,
-          "name": "sources"
-        },
-        {
-          "id": 3,
           "name": "verified_scope"
         }
       ]
@@ -719,7 +808,12 @@
     "slots": {
       "after_collection": false,
       "audit": {
-        "areas": [],
+        "areas": [
+          [
+            "weekly_scorecard.",
+            "collections"
+          ]
+        ],
         "names": false,
         "subjects": []
       },
@@ -759,6 +853,8 @@
         "weekly_scorecard"
       ],
       "routes": [
+        "GET /api/dsp/weekly-scorecard/policy",
+        "POST /api/dsp/weekly-scorecard/policy",
         "GET /api/dsp/weekly-scorecard/weeks",
         "GET /api/dsp/weekly-scorecard/jobs",
         "POST /api/dsp/weekly-scorecard/collect",
@@ -768,27 +864,17 @@
         "POST /api/dsp/weekly-scorecard/schedules/preview",
         "POST /api/dsp/weekly-scorecard/schedules/{key}",
         "POST /api/dsp/weekly-scorecard/schedules/{key}/enabled",
-        "POST /api/dsp/weekly-scorecard/schedules/{key}/remove",
-        "GET /api/dsp/scorecard/weeks",
-        "GET /api/dsp/scorecard/jobs",
-        "POST /api/dsp/scorecard/collect",
-        "POST /api/dsp/scorecard/jobs/{id}/cancel",
-        "GET /api/dsp/scorecard/schedules",
-        "POST /api/dsp/scorecard/schedules",
-        "POST /api/dsp/scorecard/schedules/preview",
-        "POST /api/dsp/scorecard/schedules/{key}",
-        "POST /api/dsp/scorecard/schedules/{key}/enabled",
-        "POST /api/dsp/scorecard/schedules/{key}/remove"
+        "POST /api/dsp/weekly-scorecard/schedules/{key}/remove"
       ],
       "schedules": false
     },
     "switch": "weekly_scorecard",
     "tables": {
-      "scorecard": [
+      "weekly_scorecard": [
         "customer_feedback",
         "delivery_concessions",
         "driver_safety",
-        "driver_scorecards",
+        "driver_weekly_scorecards",
         "dsp_compliance",
         "dsp_feedback",
         "dsp_pickups",
@@ -799,10 +885,12 @@
         "pickup_failures",
         "returns_to_station",
         "safety_events",
-        "scorecard_publications",
-        "scorecard_schema",
-        "scorecard_sources",
-        "scorecard_weeks"
+        "settings",
+        "weekly_scorecard_publications",
+        "weekly_scorecard_schema",
+        "weekly_scorecard_sources",
+        "weekly_scorecard_transition",
+        "weekly_scorecard_weeks"
       ]
     },
     "tabs": []

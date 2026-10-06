@@ -79,9 +79,7 @@ impl JobKind {
     /// and keeps them for the release that knows them.
     pub fn known() -> Result<String> {
         let kinds: Vec<_> = Provider::all().flat_map(Provider::job_kinds).collect();
-        Ok(serde_json::to_string(
-            &crate::manifest::registry().accepted_ids(kinds),
-        )?)
+        Ok(serde_json::to_string(&kinds)?)
     }
     pub fn as_str(self) -> &'static str {
         self.kind

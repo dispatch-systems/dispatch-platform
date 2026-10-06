@@ -1,8 +1,7 @@
-//! Existing identifiers survive the weekly rename without granting new access or
-//! leaving settings and jobs unreadable by the previous release.
+//! Startup retires old names while preserving data and restrictions; current readers reject them.
+use dispatch_core::manifest::Collector;
 use dispatch_core::{
     accounts::Auth,
-    collection::jobs::CancelJobs,
     db::{Store, s},
     mcp::{api::types::AgentKeyRequest, data::catalog},
     testing as common,
@@ -10,7 +9,6 @@ use dispatch_core::{
 use dispatch_cortex::{self as cortex, weekly_scorecard};
 use dispatch_weekly_scorecard::WeeklyScorecardStore;
 use serde_json::{Value, json};
-
 fn ready() -> (tempfile::TempDir, Store, String) {
     dispatch_backend::install();
     let (root, db, dsp) = common::bootstrapped();
@@ -24,7 +22,11 @@ fn ready() -> (tempfile::TempDir, Store, String) {
     common::ready_connection(&db, &dsp, cortex::PROVIDER).unwrap();
     (root, db, dsp)
 }
-
+fn restart(db: Store) -> Store {
+    let config = db.config.clone();
+    drop(db);
+    Store::initialize(config).unwrap()
+}
 fn owner(db: &Store, dsp: &str) -> dispatch_core::accounts::Context {
     let actor = common::platform_owner(db);
     let auth = Auth {
@@ -40,218 +42,328 @@ fn owner(db: &Store, dsp: &str) -> dispatch_core::accounts::Context {
     };
     db.context(&auth, dsp, "access").unwrap()
 }
-
 #[test]
-fn a_saved_disabled_switch_is_preserved_and_both_inputs_write_the_rollback_spelling() {
+fn a_disabled_switch_is_migrated_once_and_old_input_is_rejected() {
     let (_root, db, dsp) = ready();
-    db.platform.exec("UPDATE dsp_features SET enabled=0,changed_at='2026-01-01' WHERE dsp_id=? AND feature='scorecard'", [&dsp]).unwrap();
+    db.platform.exec("UPDATE dsp_features SET feature='scorecard',enabled=0,changed_at='2026-01-01' WHERE dsp_id=? AND feature='weekly_scorecard'",[&dsp]).unwrap();
+    let db = restart(db);
     assert!(!db.feature_enabled(&dsp, "weekly_scorecard").unwrap());
     let report = db.feature_report(&dsp).unwrap();
     let state = report
         .features
         .iter()
-        .find(|f| f.feature == "weekly_scorecard")
+        .find(|feature| feature.feature == "weekly_scorecard")
         .unwrap();
-    assert!(!state.enabled);
     assert_eq!(state.changed_at.as_deref(), Some("2026-01-01"));
-    let actor = common::platform_owner(&db);
-    db.set_feature(&dsp, "weekly_scorecard", true, &actor)
-        .unwrap();
-    db.set_feature(&dsp, "scorecard", false, &actor).unwrap();
-    let raw = db.platform.all("SELECT feature,enabled FROM dsp_features WHERE dsp_id=? AND feature IN ('scorecard','weekly_scorecard')", [&dsp]).unwrap();
-    assert_eq!(raw, vec![json!({"feature":"scorecard","enabled":0})]);
+    assert!(
+        db.set_feature(&dsp, "scorecard", true, &common::platform_owner(&db))
+            .is_err()
+    );
+    assert_eq!(
+        db.platform
+            .count(
+                "SELECT count(*) FROM dsp_features WHERE feature='scorecard'",
+                []
+            )
+            .unwrap(),
+        0
+    );
+    assert!(
+        !restart(db)
+            .feature_enabled(&dsp, "weekly_scorecard")
+            .unwrap()
+    );
 }
-
 #[test]
-fn restricted_roles_read_old_permissions_and_save_only_compatible_grants() {
+fn restricted_permissions_migrate_without_granting_collection_or_daily_access() {
     let (_root, db, dsp) = ready();
-    let context = owner(&db, &dsp);
-    db.platform.exec("INSERT INTO roles(id,dsp_id,name,permissions,system,created_at) VALUES ('legacy-weekly',?,'Weekly reader','[\"scorecard.view\"]',0,'2026-01-01')", [&dsp]).unwrap();
-    let role = db.role(&dsp, "legacy-weekly").unwrap();
+    db.platform.exec("INSERT INTO roles(id,dsp_id,name,permissions,system,created_at) VALUES ('old-role',?,'Weekly reader','[\"scorecard.view\"]',0,'2026-01-01')",[&dsp]).unwrap();
+    let db = restart(db);
+    let role = db.role(&dsp, "old-role").unwrap();
     assert_eq!(role.permissions, ["weekly_scorecard.view"]);
+    let context = owner(&db, &dsp);
     let mut auth = context.auth.clone();
     auth.preview = Some(role.id.clone());
     let limited = db.context(&auth, &dsp, "weekly_scorecard.view").unwrap();
-    assert!(!limited.can("weekly_scorecard.collect"));
-    assert!(!limited.can("weekly_scorecard.manage"));
+    for permission in [
+        "weekly_scorecard.collect",
+        "weekly_scorecard.manage",
+        "daily_performance.view",
+    ] {
+        assert!(!limited.can(permission));
+    }
     assert!(
-        db.create_role(
-            &limited,
-            "Cannot grant collection",
-            &["weekly_scorecard.collect".into()]
-        )
-        .is_err()
+        db.create_role(&context, "Old input", &["scorecard.collect".into()])
+            .is_err()
     );
-    db.update_role(
-        &context,
-        &role.id,
-        "Weekly reader",
-        &["weekly_scorecard.view".into()],
-    )
-    .unwrap();
     let saved = db
         .platform
-        .one("SELECT permissions FROM roles WHERE id=?", [&role.id])
+        .one("SELECT permissions FROM roles WHERE id='old-role'", [])
         .unwrap()
         .unwrap();
     assert_eq!(
         serde_json::from_str::<Value>(s(&saved, "permissions")).unwrap(),
-        json!(["scorecard.view"])
-    );
-    let role = db
-        .create_role(&context, "Weekly collector", &["scorecard.collect".into()])
-        .unwrap();
-    assert_eq!(
-        role.permissions,
-        ["weekly_scorecard.view", "weekly_scorecard.collect"]
-    );
-    let saved = db
-        .platform
-        .one("SELECT permissions FROM roles WHERE id=?", [&role.id])
-        .unwrap()
-        .unwrap();
-    assert_eq!(
-        serde_json::from_str::<Value>(s(&saved, "permissions")).unwrap(),
-        json!(["scorecard.view", "scorecard.collect"])
+        json!(["weekly_scorecard.view"])
     );
 }
-
 #[test]
-fn global_and_per_dsp_agent_reads_preserve_their_restrictions_and_rollback_spelling() {
+fn key_and_per_dsp_allowances_migrate_and_keep_their_exact_scope() {
     let (_root, db, dsp) = ready();
-    let actor = common::platform_owner(&db);
-    let input = |area| {
-        AgentKeyRequest::parse(&json!({
-            "name":"Weekly reader","allDsps":false,"dsps":[dsp],"access":"read",
-            "reads":{"areas":["feedback",area],"bypass":false},
-            "dspReads":[{"dsp":dsp,"areas":[area],"bypass":false}],"expiresAt":null
-        }))
-        .unwrap()
-    };
-    let created = db.create_agent_key(&actor, &input("scorecard")).unwrap();
+    let input = AgentKeyRequest::parse(
+        &json!({"name":"Weekly reader","allDsps":false,"dsps":[dsp],"access":"read",
+        "reads":{"areas":["feedback","weekly_scorecard"],"bypass":false},
+        "dspReads":[{"dsp":dsp,"areas":["weekly_scorecard"],"bypass":false}],"expiresAt":null}),
+    )
+    .unwrap();
+    let created = db
+        .create_agent_key(&common::platform_owner(&db), &input)
+        .unwrap();
+    db.platform
+        .exec(
+            "UPDATE agent_keys SET areas='feedback,scorecard' WHERE id=?",
+            [&created.key.id],
+        )
+        .unwrap();
+    db.platform
+        .exec(
+            "UPDATE agent_key_dsp_reads SET areas='scorecard' WHERE key_id=?",
+            [&created.key.id],
+        )
+        .unwrap();
+    let db = restart(db);
     let saved = db
-        .update_agent_key(&actor, &created.key.id, &input("weekly_scorecard"))
+        .agent_keys(&std::collections::HashMap::new())
+        .unwrap()
+        .keys
+        .into_iter()
+        .find(|key| key.id == created.key.id)
         .unwrap();
     assert_eq!(
         serde_json::to_value(&saved.reads).unwrap(),
         json!({"areas":["feedback","weekly_scorecard"],"bypass":false})
     );
-    assert_eq!(saved.dsp_reads[0].areas.len(), 1);
     assert_eq!(saved.dsp_reads[0].areas[0].as_str(), "weekly_scorecard");
-    let raw = db
-        .platform
-        .one(
-            "SELECT areas,bypass FROM agent_keys WHERE id=?",
-            [&saved.id],
-        )
-        .unwrap()
+    let caller = db
+        .authenticate_agent(&created.token, "migration-test")
         .unwrap();
-    assert_eq!(raw, json!({"areas":"feedback,scorecard","bypass":0}));
-    let raw = db
-        .platform
-        .one(
-            "SELECT areas,bypass FROM agent_key_dsp_reads WHERE key_id=? AND dsp_id=?",
-            [&saved.id, &dsp],
+    assert_eq!(caller.reads_at(&dsp).areas.len(), 1);
+    assert_eq!(caller.reads_at(&dsp).areas[0].as_str(), "weekly_scorecard");
+    assert_eq!(
+        db.platform
+            .one(
+                "SELECT areas,bypass FROM agent_keys WHERE id=?",
+                [&saved.id]
+            )
+            .unwrap()
+            .unwrap(),
+        json!({"areas":"feedback,weekly_scorecard","bypass":0})
+    );
+    assert!(
+        AgentKeyRequest::parse(
+            &json!({"name":"Retired","allDsps":false,"dsps":[dsp],"access":"read",
+        "reads":{"areas":["scorecard"],"bypass":false},"dspReads":[],"expiresAt":null})
         )
-        .unwrap()
-        .unwrap();
-    assert_eq!(raw, json!({"areas":"scorecard","bypass":0}));
-    db.authenticate_agent(&created.token, "test").unwrap();
+        .is_err()
+    );
 }
-
 #[test]
-fn saved_schedules_keep_ids_names_enabled_states_and_deadlines() {
+fn schedules_and_pending_jobs_keep_ids_timing_status_and_idempotency() {
     let (_root, db, dsp) = ready();
-    let mut input = json!({"name":"Check for Amazon publication","collection":"scorecard","cadence":"daily","intervalMinutes":null,"localTime":"07:00","enabled":true});
-    let before = db.save_schedule(&dsp, None, &input).unwrap();
-    input["collection"] = json!("weekly_scorecard");
-    input["revision"] = json!(before.revision);
-    let after = db.save_schedule(&dsp, Some(&before.id), &input).unwrap();
-    assert_eq!(after.id, before.id);
-    assert_eq!(after.name, before.name);
-    assert_eq!(after.enabled, before.enabled);
-    assert!(before.next_run.is_some());
-    assert_eq!(after.next_run, before.next_run);
-    assert_eq!(after.collection.as_str(), "weekly_scorecard");
-    let raw = db
+    let input = json!({"name":"Check weekly publication","collection":"weekly_scorecard","cadence":"daily",
+        "intervalMinutes":null,"localTime":"07:00","enabled":true});
+    let schedule = db.save_schedule(&dsp, None, &input).unwrap();
+    let before = db
         .dsp(&dsp)
         .unwrap()
         .one(
-            "SELECT collection FROM collection_schedules WHERE id=?",
-            [&after.id],
+            "SELECT * FROM collection_schedules WHERE id=?",
+            [&schedule.id],
         )
         .unwrap()
         .unwrap();
-    assert_eq!(raw["collection"], "scorecard");
-    assert_eq!(db.collection_schedules(&dsp).unwrap().schedules.len(), 1);
-}
-
-#[test]
-fn legacy_jobs_are_claimed_once_and_both_kind_scopes_find_and_cancel_them() {
-    let (_root, db, dsp) = ready();
-    let first = db
+    db.dsp(&dsp)
+        .unwrap()
+        .exec(
+            "UPDATE collection_schedules SET collection='scorecard' WHERE id=?",
+            [&schedule.id],
+        )
+        .unwrap();
+    let queued = db
         .enqueue_weekly_scorecard(&dsp, None, "existing-week", Some("2026-W38"))
         .unwrap();
-    let id = s(&first, "id");
-    let canonical = json!({"collection":"weekly_scorecard","week":"2026-W38","station":"TST1"});
-    let retry = db
-        .enqueue_for(&dsp, None, "existing-week", cortex::PROVIDER, &canonical)
-        .unwrap();
-    assert_eq!(retry["id"], first["id"]);
-    let raw = db
-        .jobs
-        .one("SELECT kind,request FROM jobs WHERE id=?", [id])
-        .unwrap()
-        .unwrap();
-    assert_eq!(raw["kind"], "cortex.scorecard.collect");
+    let job = s(&queued, "id").to_owned();
+    db.jobs.exec("UPDATE jobs SET kind='cortex.scorecard.collect',request=json_set(request,'$.collection','scorecard') WHERE id=?",[&job]).unwrap();
+    let db = restart(db);
     assert_eq!(
-        serde_json::from_str::<Value>(s(&raw, "request")).unwrap()["collection"],
-        "scorecard"
-    );
-    for spelling in ["cortex.scorecard.collect", weekly_scorecard::JOB_KIND] {
-        assert_eq!(db.recent_jobs_of(&dsp, spelling).unwrap().len(), 1);
-        assert!(db.any_active_job(&dsp, &[spelling]).unwrap());
-    }
-    let claimed = db.claim_job("weekly-worker", |_, _| true).unwrap().unwrap();
-    assert_eq!(claimed.id, id);
-    assert_eq!(claimed.kind.as_str(), weekly_scorecard::JOB_KIND);
-    db.guard(id, "weekly-worker").unwrap();
-    assert!(
-        db.claim_job("second-worker", |_, _| true)
+        db.dsp(&dsp)
             .unwrap()
-            .is_none()
+            .one(
+                "SELECT * FROM collection_schedules WHERE id=?",
+                [&schedule.id]
+            )
+            .unwrap()
+            .unwrap(),
+        before
     );
-    let keeper = dispatch_core::manifest::registry().keeper("cortex.scorecard.collect");
-    let bound = keeper
-        .bind(&db, &dsp, &serde_json::from_str(&claimed.request).unwrap())
+    let row = db.job_row(&job, Some(&dsp)).unwrap();
+    assert_eq!(row.kind.as_str(), weekly_scorecard::JOB_KIND);
+    assert_eq!(
+        serde_json::from_str::<Value>(&row.request).unwrap()["collection"],
+        "weekly_scorecard"
+    );
+    assert_eq!(
+        s(
+            &db.enqueue_weekly_scorecard(&dsp, None, "existing-week", Some("2026-W38"))
+                .unwrap(),
+            "id"
+        ),
+        job
+    );
+    let mut retired = input.clone();
+    retired["collection"] = json!("scorecard");
+    assert!(db.save_schedule(&dsp, None, &retired).is_err());
+}
+fn make_prior_database(db: Store, dsp: &str) -> Store {
+    let directory = db.area(dsp, "data").unwrap();
+    let config = db.config.clone();
+    db.dsp(dsp)
+        .unwrap()
+        .exec(
+            "DELETE FROM settings WHERE key='storage.weekly_scorecard'",
+            [],
+        )
         .unwrap();
-    assert!(weekly_scorecard::Request::parse(&bound).unwrap().is_some());
-    db.cancel_jobs(CancelJobs::Kind {
-        dsp: &dsp,
-        kind: weekly_scorecard::JOB_KIND,
-    })
+    db.dsp(dsp)
+        .unwrap()
+        .set("storage.scorecard", &json!(1))
+        .unwrap();
+    drop(db);
+    std::fs::rename(
+        directory.join("weekly_scorecard"),
+        directory.join("scorecard"),
+    )
     .unwrap();
-    assert!(
-        !db.any_active_job(&dsp, &["cortex.scorecard.collect"])
+    let old = directory.join("scorecard/scorecard.sqlite");
+    std::fs::rename(directory.join("scorecard/weekly_scorecard.sqlite"), &old).unwrap();
+    let connection = rusqlite::Connection::open(&old).unwrap();
+    for (new, prior) in [
+        ("weekly_scorecard_schema", "scorecard_schema"),
+        ("weekly_scorecard_publications", "scorecard_publications"),
+        ("weekly_scorecard_sources", "scorecard_sources"),
+        ("weekly_scorecard_weeks", "scorecard_weeks"),
+        ("driver_weekly_scorecards", "driver_scorecards"),
+    ] {
+        connection
+            .execute_batch(&format!("ALTER TABLE {new} RENAME TO {prior};"))
+            .unwrap();
+    }
+    connection
+        .execute("UPDATE storage_identity SET source='scorecard-v1'", [])
+        .unwrap();
+    drop(connection);
+    Store::initialize(config).unwrap()
+}
+#[test]
+fn old_storage_history_is_imported_verified_archived_and_not_duplicated_on_restart() {
+    let (_root, db, dsp) = ready();
+    let keeper = dispatch_core::manifest::registry().keeper(weekly_scorecard::JOB_KIND);
+    for key in ["first", "again"] {
+        let queued = db
+            .enqueue_weekly_scorecard(&dsp, None, key, Some("2026-W38"))
+            .unwrap();
+        let request: Value =
+            serde_json::from_str(&db.job_row(s(&queued, "id"), Some(&dsp)).unwrap().request)
+                .unwrap();
+        let request = weekly_scorecard::Request::parse(&keeper.bind(&db, &dsp, &request).unwrap())
             .unwrap()
+            .unwrap();
+        let collected = cortex::COLLECTOR
+            .fixture(
+                "America/Los_Angeles",
+                &serde_json::to_value(request).unwrap(),
+            )
+            .unwrap();
+        keeper
+            .publish(&db, &dsp, s(&queued, "id"), collected)
+            .unwrap();
+    }
+    let counts=db.weekly_scorecard_db(&dsp).unwrap().all("SELECT job_id,active,row_count,scope_verified FROM weekly_scorecard_publications ORDER BY job_id",[]).unwrap();
+    let db = make_prior_database(db, &dsp);
+    assert_eq!(db.weekly_scorecard_db(&dsp).unwrap().all("SELECT job_id,active,row_count,scope_verified FROM weekly_scorecard_publications ORDER BY job_id",[]).unwrap(),counts);
+    assert!(!db.area(&dsp, "data").unwrap().join("scorecard").exists());
+    assert!(
+        db.area(&dsp, "state")
+            .unwrap()
+            .join("weekly_scorecard_migration_backup/scorecard.sqlite")
+            .is_file()
+    );
+    assert!(
+        db.dsp(&dsp)
+            .unwrap()
+            .setting("storage.scorecard", Value::Null)
+            .unwrap()
+            .is_null()
+    );
+    assert_eq!(
+        restart(db)
+            .weekly_scorecard_db(&dsp)
+            .unwrap()
+            .count("SELECT count(*) FROM weekly_scorecard_publications", [])
+            .unwrap(),
+        2
+    );
+}
+#[test]
+fn missing_marked_prior_storage_fails_closed_and_catalog_lists_only_current_names() {
+    let (_root, db, dsp) = ready();
+    db.dsp(&dsp)
+        .unwrap()
+        .exec(
+            "DELETE FROM settings WHERE key='storage.weekly_scorecard'",
+            [],
+        )
+        .unwrap();
+    db.dsp(&dsp)
+        .unwrap()
+        .set("storage.scorecard", &json!(1))
+        .unwrap();
+    let config = db.config.clone();
+    drop(db);
+    assert!(Store::initialize(config).is_err());
+    assert!(catalog::tool("scorecard").is_none());
+    assert_eq!(
+        catalog::tool("weekly_scorecard").unwrap().path,
+        "/api/v1/weekly-scorecard"
+    );
+    assert!(
+        catalog::openapi("https://example.test")["paths"]
+            .get("/api/v1/scorecard")
+            .is_none()
     );
 }
 
 #[test]
-fn discovery_lists_only_the_weekly_name_but_accepts_the_legacy_tool() {
-    dispatch_backend::install();
-    let canonical = catalog::tool("weekly_scorecard").unwrap();
-    assert!(std::ptr::eq(canonical, catalog::tool("scorecard").unwrap()));
-    assert_eq!(canonical.path, "/api/v1/weekly-scorecard");
-    let openapi = catalog::openapi("https://dispatch.example.com");
-    assert!(openapi["paths"].get("/api/v1/weekly-scorecard").is_some());
-    assert!(openapi["paths"].get("/api/v1/scorecard").is_none());
-    assert_eq!(
-        catalog::ENDPOINTS
-            .iter()
-            .filter(|e| e.tool == "weekly_scorecard")
-            .count(),
-        1
+fn conflicting_current_and_prior_storage_is_preserved_for_recovery() {
+    let (_root, db, dsp) = ready();
+    let data = db.area(&dsp, "data").unwrap();
+    db.dsp(&dsp)
+        .unwrap()
+        .set("storage.scorecard", &json!(1))
+        .unwrap();
+    let config = db.config.clone();
+    drop(db);
+    let old = data.join("scorecard");
+    std::fs::create_dir(&old).unwrap();
+    std::fs::copy(
+        data.join("weekly_scorecard/weekly_scorecard.sqlite"),
+        old.join("scorecard.sqlite"),
+    )
+    .unwrap();
+    // A current marker without an import receipt must never archive the old data.
+    assert!(Store::initialize(config).is_err());
+    assert!(old.join("scorecard.sqlite").is_file());
+    assert!(
+        data.join("weekly_scorecard/weekly_scorecard.sqlite")
+            .is_file()
     );
-    assert!(catalog::ENDPOINTS.iter().all(|e| e.tool != "scorecard"));
 }

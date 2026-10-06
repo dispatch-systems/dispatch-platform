@@ -30,7 +30,11 @@ impl Keeper for WeeklyScorecard {
             .as_str()
             .ok_or_else(|| Error::new("invalid_input", 400))?;
         let bound = super::bind_weekly_scorecard_request(store, dsp, week)?;
-        ensure(bound["station"] == station, "scorecard_scope_mismatch", 409)?;
+        ensure(
+            bound["station"] == station,
+            "weekly_scorecard_scope_mismatch",
+            409,
+        )?;
         Ok(bound)
     }
     /// Where the last publication of `station` read the API, with the company it named.

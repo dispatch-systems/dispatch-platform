@@ -40,11 +40,11 @@ pub fn area_permission(path: &str, post: bool) -> &'static str {
         #[cfg(feature = "routes")]
         ("routes", ..) => "routes.view",
         #[cfg(feature = "weekly_scorecard")]
-        ("weekly-scorecard" | "scorecard", Some("schedules"), _) => "weekly_scorecard.manage",
+        ("weekly-scorecard", Some("schedules"), _) => "weekly_scorecard.manage",
         #[cfg(feature = "weekly_scorecard")]
-        ("weekly-scorecard" | "scorecard", _, true) => "weekly_scorecard.collect",
+        ("weekly-scorecard", _, true) => "weekly_scorecard.collect",
         #[cfg(feature = "weekly_scorecard")]
-        ("weekly-scorecard" | "scorecard", ..) => "weekly_scorecard.view",
+        ("weekly-scorecard", ..) => "weekly_scorecard.view",
         #[cfg(feature = "driver_match")]
         ("driver-match", ..) => "driver_match.manage",
         _ => "timecard.view",

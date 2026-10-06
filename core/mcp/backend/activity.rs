@@ -233,18 +233,7 @@ fn surface(path: &str) -> Option<String> {
     let id = match path {
         "/api/v1/openapi.json" => "openapi",
         "/api/v1/skill" => "skill",
-        _ => catalog::ENDPOINTS
-            .iter()
-            .find(|e| e.path == path)
-            .map(|e| e.id)
-            .or_else(|| {
-                crate::manifest::registry()
-                    .features
-                    .iter()
-                    .flat_map(|f| f.mcp.legacy_paths)
-                    .find(|(legacy, _)| *legacy == path)
-                    .map(|(_, id)| *id)
-            })?,
+        _ => catalog::ENDPOINTS.iter().find(|e| e.path == path)?.id,
     };
     Some(format!("rest:{id}"))
 }

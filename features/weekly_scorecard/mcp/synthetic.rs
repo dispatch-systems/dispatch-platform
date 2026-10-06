@@ -183,5 +183,5 @@ fn scorecards(db: &Store, world: &mut World) -> Result<Made> {
         db.publish_weekly_scorecard(id, &job, &capture, &scope)?;
         world.collected(db, &job)?;
     }
-    Ok(Some(("scorecard_weeks", json!(weeks.len()))))
+    Ok(Some(("weekly_scorecard_weeks", json!(weeks.len()))))
 }

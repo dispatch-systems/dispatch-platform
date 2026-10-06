@@ -20,19 +20,19 @@ pub fn invalid_record() -> Error {
 /// text, `FromSql`/`ToSql`, and serde, so no caller compares the text.
 #[macro_export]
 macro_rules! text_enum {
-    ($(#[$meta:meta])* $vis:vis enum $name:ident { $($variant:ident => $text:literal $(| $alias:literal)*,)* }) => {
+    ($(#[$meta:meta])* $vis:vis enum $name:ident { $($variant:ident => $text:literal,)* }) => {
         #[derive(
             Clone, Copy, Debug, PartialEq, Eq, Hash,
             $crate::foundation::wire::serde::Serialize, $crate::foundation::wire::serde::Deserialize,
         )]
         $(#[$meta])*
-        $vis enum $name { $(#[serde(rename = $text)] $(#[serde(alias = $alias)])* $variant,)* }
+        $vis enum $name { $(#[serde(rename = $text)] $variant,)* }
         impl $name {
             pub const fn as_str(self) -> &'static str {
                 match self { $(Self::$variant => $text,)* }
             }
             pub fn parse(text: &str) -> Option<Self> {
-                match text { $($text $(| $alias)* => Some(Self::$variant),)* _ => None }
+                match text { $($text => Some(Self::$variant),)* _ => None }
             }
         }
         impl $crate::foundation::wire::rusqlite::types::FromSql for $name {

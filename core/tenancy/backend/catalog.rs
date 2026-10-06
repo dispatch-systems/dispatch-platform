@@ -114,7 +114,6 @@ pub fn schedules() -> &'static str {
 /// is the schedules' page's.
 pub fn automation(kind_or_collection: &str) -> &'static str {
     let registry = registry();
-    let kind_or_collection = registry.canonical_id(kind_or_collection);
     let aliasing = || {
         registry.features.iter().copied().find(|feature| {
             feature
@@ -179,9 +178,7 @@ pub fn catalog() -> &'static [Feature] {
     &CATALOG
 }
 pub fn find(id: &str) -> Option<&'static Feature> {
-    catalog()
-        .iter()
-        .find(|f| f.id == registry().canonical_id(id))
+    catalog().iter().find(|f| f.id == id)
 }
 /// Whether `permission` exists in a DSP with `enabled` features: its owning page
 /// is on, or for the connections permission any connection is on. A permission
@@ -229,9 +226,7 @@ fn satisfied(feature: &Feature, enabled: &[String]) -> bool {
 impl FromRow for FeatureState {
     fn from_row(row: &Row<'_>) -> Result<Self> {
         Ok(Self {
-            feature: registry()
-                .canonical_id(&row.get::<String>("feature")?)
-                .to_owned(),
+            feature: row.get("feature")?,
             enabled: row.get("enabled")?,
             changed_at: row.get("changed_at")?,
             changed_by: row.get("changed_by")?,
@@ -250,11 +245,10 @@ impl Store {
         let stored: BTreeMap<String, bool> = self
             .platform
             .query_as(
-                "SELECT feature,enabled FROM dsp_features WHERE dsp_id=? ORDER BY changed_at,feature",
+                "SELECT feature,enabled FROM dsp_features WHERE dsp_id=?",
                 [dsp],
             )?
             .into_iter()
-            .map(|(id, enabled): (String, bool)| (registry().canonical_id(&id).to_owned(), enabled))
             .collect();
         Ok(catalog()
             .iter()
@@ -307,10 +301,7 @@ impl Store {
         })
     }
     pub fn feature_enabled(&self, dsp: &str, id: &str) -> Result<bool> {
-        Ok(self
-            .features(dsp)?
-            .iter()
-            .any(|f| f == registry().canonical_id(id)))
+        Ok(self.features(dsp)?.iter().any(|f| f == id))
     }
     /// Switches every feature on for a development or preview DSP, so its demo shows every
     /// page. Real DSPs start with none and get theirs from the platform owner.
@@ -330,10 +321,8 @@ impl Store {
             "INSERT OR IGNORE INTO dsp_features(dsp_id,feature,enabled,changed_at) VALUES (?,?,?,?)"
         };
         for feature in catalog() {
-            self.platform.exec(
-                sql,
-                params![dsp, registry().stored_id(feature.id), on(feature), iso()],
-            )?;
+            self.platform
+                .exec(sql, params![dsp, feature.id, on(feature), iso()])?;
         }
         Ok(())
     }
@@ -350,7 +339,6 @@ impl Store {
         enabled: bool,
         actor: &str,
     ) -> Result<DspFeatures> {
-        let id = registry().canonical_id(id);
         let all = catalog();
         let feature = find(id).ok_or_else(|| crate::Error::new("feature_not_found", 404))?;
         self.platform.transaction(|| {
@@ -415,7 +403,7 @@ impl Store {
                     "INSERT INTO dsp_features(dsp_id,feature,enabled,changed_by,changed_at) \
                      VALUES (?1,?2,?3,?4,?5) ON CONFLICT(dsp_id,feature) DO UPDATE SET \
                      enabled=?3,changed_by=?4,changed_at=?5",
-                    params![dsp, registry().stored_id(f.id), on, actor, iso()],
+                    params![dsp, f.id, on, actor, iso()],
                 )?;
                 let cause: Vec<AuditChange> = if f.id == id {
                     vec![]

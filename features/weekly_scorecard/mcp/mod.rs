@@ -69,7 +69,6 @@ pub const MCP: Mcp = Mcp {
     missing: "weekly scorecard data",
     sources: &[SOURCE],
     endpoints: catalog::ENDPOINTS,
-    legacy_paths: &[("/api/v1/scorecard", "weekly_scorecard")],
     examples: catalog::EXAMPLES,
     synthetic: synthetic::SYNTHETIC,
     ..Mcp::NONE

@@ -18,7 +18,7 @@ fn the_retryable_codes_are_exactly_the_ones_jobs_always_retried() {
             "cortex_source_changed",
             "dvic_source_changed",
             "cortex_content_incomplete",
-            "scorecard_api_unreadable",
+            "performance_api_unreadable",
         ]
     );
     for code in Code::all() {

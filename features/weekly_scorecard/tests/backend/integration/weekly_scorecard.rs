@@ -75,7 +75,7 @@ fn a_posted_week_is_published_into_one_table_per_dataset_with_its_keys() {
     let storage = db.weekly_scorecard_db(&id).unwrap();
     let publication = storage
         .one(
-            "SELECT * FROM scorecard_publications WHERE job_id=?",
+            "SELECT * FROM weekly_scorecard_publications WHERE job_id=?",
             [&job],
         )
         .unwrap()
@@ -151,7 +151,7 @@ fn a_posted_week_is_published_into_one_table_per_dataset_with_its_keys() {
     assert_eq!(
         storage
             .count(
-                "SELECT count(*) FROM scorecard_sources WHERE source='api'",
+                "SELECT count(*) FROM weekly_scorecard_sources WHERE source='api'",
                 []
             )
             .unwrap() as usize,
@@ -195,7 +195,7 @@ fn collecting_a_week_again_supersedes_its_publication_and_keeps_the_history() {
     assert_eq!(
         storage
             .all(
-                "SELECT job_id,active FROM scorecard_publications ORDER BY collected_at",
+                "SELECT job_id,active FROM weekly_scorecard_publications ORDER BY collected_at",
                 []
             )
             .unwrap(),
@@ -217,7 +217,10 @@ fn collecting_a_week_again_supersedes_its_publication_and_keeps_the_history() {
         3
     );
     storage
-        .exec("DELETE FROM scorecard_publications WHERE active=0", [])
+        .exec(
+            "DELETE FROM weekly_scorecard_publications WHERE active=0",
+            [],
+        )
         .unwrap();
     assert_eq!(
         storage
@@ -245,14 +248,14 @@ fn week_counts_use_capture_metadata_and_recover_missing_legacy_dataset_counts() 
     // partially missing catalog also falls back only for its missing dataset.
     storage
         .exec(
-            "DELETE FROM scorecard_sources WHERE publication_id IN \
-             (SELECT id FROM scorecard_publications WHERE job_id=?)",
+            "DELETE FROM weekly_scorecard_sources WHERE publication_id IN \
+             (SELECT id FROM weekly_scorecard_publications WHERE job_id=?)",
             [&legacy_job],
         )
         .unwrap();
     storage
         .exec(
-            "DELETE FROM scorecard_sources WHERE dataset='pickup_failures'",
+            "DELETE FROM weekly_scorecard_sources WHERE dataset='pickup_failures'",
             [],
         )
         .unwrap();
@@ -300,7 +303,7 @@ fn a_week_not_posted_yet_is_noted_without_a_publication() {
     assert!(
         storage
             .one(
-                "SELECT id FROM scorecard_publications WHERE job_id=?",
+                "SELECT id FROM weekly_scorecard_publications WHERE job_id=?",
                 [&job]
             )
             .unwrap()
@@ -342,7 +345,7 @@ fn publication_rechecks_the_discovered_company_and_pinned_dsp_code() {
     assert_eq!(
         db.weekly_scorecard_db(&id)
             .unwrap()
-            .count("SELECT count(*) FROM scorecard_publications", [])
+            .count("SELECT count(*) FROM weekly_scorecard_publications", [])
             .unwrap(),
         0
     );
@@ -359,7 +362,7 @@ fn legacy_unverified_publications_are_quarantined_until_a_bound_recollection() {
     let storage = db.weekly_scorecard_db(&id).unwrap();
     storage
         .exec(
-            "INSERT INTO scorecard_publications(id,job_id,week,station,company_id,dsp_code,\
+            "INSERT INTO weekly_scorecard_publications(id,job_id,week,station,company_id,dsp_code,\
              started_at,collected_at,active,row_count,adapter_version) VALUES \
              ('legacy','legacy-job',?,'TST1','company-foreign','FOREIGN',\
              '2026-01-01T00:00:00Z','2026-01-01T00:01:00Z',1,1,1)",
@@ -368,7 +371,7 @@ fn legacy_unverified_publications_are_quarantined_until_a_bound_recollection() {
         .unwrap();
     storage
         .exec(
-            "INSERT INTO scorecard_sources(publication_id,dataset,source,url,row_count) VALUES \
+            "INSERT INTO weekly_scorecard_sources(publication_id,dataset,source,url,row_count) VALUES \
              ('legacy','dsp_station_weekly_quality','api','https://example.test/foreign',1)",
             [],
         )
@@ -382,7 +385,7 @@ fn legacy_unverified_publications_are_quarantined_until_a_bound_recollection() {
         .unwrap();
     storage
         .exec(
-            "INSERT INTO scorecard_weeks(week,station,checked_at,posted,publication_id) VALUES \
+            "INSERT INTO weekly_scorecard_weeks(week,station,checked_at,posted,publication_id) VALUES \
              (?,'TST1','2026-01-01T00:01:00Z',1,'legacy')",
             [&week],
         )
@@ -408,7 +411,7 @@ fn legacy_unverified_publications_are_quarantined_until_a_bound_recollection() {
     assert_eq!(
         storage
             .all(
-                "SELECT company_id,active,scope_verified FROM scorecard_publications \
+                "SELECT company_id,active,scope_verified FROM weekly_scorecard_publications \
                  ORDER BY company_id",
                 [],
             )
@@ -433,7 +436,7 @@ fn a_schedule_queues_the_latest_week_until_it_is_published() {
     let latest = db.weekly_scorecard_weeks(&id).unwrap().latest_week;
     let jobs = db.weekly_scorecard_jobs(&id).unwrap();
     assert_eq!(jobs.len(), 1);
-    assert_eq!(jobs[0].0, format!("scorecard:{latest}"));
+    assert_eq!(jobs[0].0, format!("weekly_scorecard:{latest}"));
     assert_eq!(
         jobs[0].1,
         json!({"collection":"weekly_scorecard","week":latest,"station":"TST1"})
@@ -449,12 +452,12 @@ fn a_schedule_queues_the_latest_week_until_it_is_published() {
     let storage = db.weekly_scorecard_db(&id).unwrap();
     storage
         .exec(
-            "UPDATE scorecard_weeks SET checked_at='2020-01-01T00:00:00.000Z' WHERE week=?",
+            "UPDATE weekly_scorecard_weeks SET checked_at='2020-01-01T00:00:00.000Z' WHERE week=?",
             [&latest],
         )
         .unwrap();
     assert_eq!(db.weekly_scorecard_jobs(&id).unwrap().len(), 1);
-    // Published: nothing more to ask for, and never an older week.
+    // A fresh publication waits until its refresh interval; the default examines only this week.
     publish(
         &db,
         &id,
@@ -465,21 +468,49 @@ fn a_schedule_queues_the_latest_week_until_it_is_published() {
     assert!(db.weekly_scorecard_jobs(&id).unwrap().is_empty());
     assert_eq!(
         storage
-            .all("SELECT DISTINCT week FROM scorecard_weeks", [])
+            .all("SELECT DISTINCT week FROM weekly_scorecard_weeks", [])
             .unwrap(),
         vec![json!({"week":latest})]
+    );
+    db.set_weekly_scorecard_policy(
+        &id,
+        &dispatch_weekly_scorecard::WeeklyScorecardPolicy {
+            lookback_weeks: 2,
+            refresh_hours: 12,
+        },
+    )
+    .unwrap();
+    let jobs = db.weekly_scorecard_jobs(&id).unwrap();
+    assert_eq!(jobs.len(), 1);
+    assert_ne!(jobs[0].1["week"], latest);
+    storage
+        .exec(
+            "UPDATE weekly_scorecard_weeks SET checked_at='2020-01-01T00:00:00.000Z' WHERE week=?",
+            [&latest],
+        )
+        .unwrap();
+    assert_eq!(db.weekly_scorecard_jobs(&id).unwrap().len(), 2);
+    assert!(
+        db.set_weekly_scorecard_policy(
+            &id,
+            &dispatch_weekly_scorecard::WeeklyScorecardPolicy {
+                lookback_weeks: 0,
+                refresh_hours: 12,
+            }
+        )
+        .is_err()
     );
     // Without a station there is nothing to ask for.
     db.set_profile(&id, json!({"stationCode":""})).unwrap();
     assert_eq!(
         db.weekly_scorecard_jobs(&id).unwrap_err().code,
-        "scorecard_station_required"
+        "weekly_scorecard_station_required"
     );
     assert_eq!(
         db.enqueue_weekly_scorecard(&id, None, "none", None)
             .unwrap_err()
             .code,
-        "scorecard_station_required"
+        "weekly_scorecard_station_required"
     );
 }
 

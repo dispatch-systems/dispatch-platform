@@ -229,5 +229,24 @@
       "name": "verified_scope",
       "sha256": "50d27af594c68e4e0d79b18596c0b8b8785a9f4b9b72452cd929f28418b20f25"
     }
+  ],
+  "weekly_scorecard": [
+    {
+      "id": 1,
+      "name": "baseline",
+      "sha256": "e0b6659e86763fb6f21d04fc9a4fffb2876be920b6b90db4c1f44728eb5353d0"
+    },
+    {
+      "id": 2,
+      "name": "verified_scope",
+      "sha256": "29f0466381e410b046685d9766511edd0a8fd74d9732d2ef420442f1fc2757b4"
+    }
+  ],
+  "daily_performance": [
+    {
+      "id": 1,
+      "name": "baseline",
+      "sha256": "990d189e7b8dc8662ef4131aea4ba3d102a75e683083dd71cc1791d74f64a040"
+    }
   ]
 }

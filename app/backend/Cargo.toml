@@ -32,6 +32,7 @@ default = [
     "team",
     "settings",
     "home",
+    "daily_performance",
 ]
 # Each feature's crate, with the features it declares.
 timecard = ["dep:dispatch-timecard", "driver_match"]
@@ -43,6 +44,7 @@ driver_match = ["dep:dispatch-driver-match"]
 team = ["dep:dispatch-team"]
 settings = ["dep:dispatch-settings"]
 home = ["dep:dispatch-home"]
+daily_performance = ["dep:dispatch-daily-performance"]
 # Private live-provider diagnostics are compiled only when an operator asks for them.
 operator-probes = ["dispatch-cortex/operator-probes", "dispatch-paycom/operator-probes"]
 
@@ -60,6 +62,7 @@ dispatch-settings = { path = "../../features/settings", optional = true }
 dispatch-team = { path = "../../features/team", optional = true }
 dispatch-timecard = { path = "../../features/timecard", optional = true }
 dispatch-uniforms = { path = "../../features/uniforms", optional = true }
+dispatch-daily-performance = { path = "../../features/daily_performance", optional = true }
 axum = { workspace = true }
 libc = { workspace = true }
 # What it prints, and the access catalog its export writes, keep the order their fields are
@@ -77,6 +80,7 @@ dispatch-routes = { path = "../../features/routes", features = ["ts"] }
 dispatch-weekly-scorecard = { path = "../../features/weekly_scorecard", features = ["ts"] }
 dispatch-timecard = { path = "../../features/timecard", features = ["ts"] }
 dispatch-uniforms = { path = "../../features/uniforms", features = ["ts"] }
+dispatch-daily-performance = { path = "../../features/daily_performance", features = ["ts"] }
 base64 = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }

@@ -18,6 +18,12 @@ fn every_endpoint_and_metric_is_listed_once() {
     tools.dedup();
     assert_eq!(tools.len(), ENDPOINTS.len());
     for endpoint in ENDPOINTS.iter() {
+        assert_eq!(
+            output(endpoint)["type"],
+            "object",
+            "{} must publish an MCP object output schema",
+            endpoint.id
+        );
         assert!(endpoint.path.starts_with("/api/v1/"), "{}", endpoint.path);
         // Names every model accepts: lower snake_case, well under 64 characters.
         assert!(
@@ -84,5 +90,64 @@ fn the_openapi_document_lists_every_endpoint() {
             .unwrap()
             .iter()
             .any(|p| p["name"] == "metrics")
+    );
+}
+
+#[cfg(all(feature = "daily_performance", feature = "weekly_scorecard"))]
+#[test]
+fn focused_tools_have_one_public_identity_and_select_source_before_parameter_checks() {
+    crate::install();
+    for id in ["feedback", "returns", "safety"] {
+        assert_eq!(
+            ENDPOINTS
+                .iter()
+                .filter(|endpoint| endpoint.id == id)
+                .count(),
+            1
+        );
+        let primary = select(endpoint(id), &json!({})).unwrap();
+        assert_eq!(primary.area.unwrap().source().as_str(), "weekly_scorecard");
+        let daily = select(endpoint(id), &json!({"source":"daily_performance"})).unwrap();
+        assert_eq!(daily.area.unwrap().source().as_str(), "daily_performance");
+        assert_eq!(primary.path, daily.path);
+        assert_eq!(primary.tool, daily.tool);
+        assert_eq!(output(endpoint(id))["anyOf"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            select(endpoint(id), &json!({"source":"scorecard"}))
+                .unwrap_err()
+                .code,
+            "unknown_source"
+        );
+        assert_eq!(
+            select(endpoint(id), &json!({"source":["daily_performance"]}))
+                .unwrap_err()
+                .code,
+            "invalid_parameter"
+        );
+    }
+    assert!(
+        check(
+            "feedback",
+            &json!({"source":"daily_performance","fields":"negative_response_cnt"})
+        )
+        .is_ok()
+    );
+    assert_eq!(
+        check(
+            "feedback",
+            &json!({"source":"weekly_scorecard","fields":"negative_response_cnt"})
+        )
+        .unwrap_err()
+        .code,
+        "unknown_parameter"
+    );
+    assert_eq!(
+        check(
+            "returns",
+            &json!({"source":"daily_performance","dataset":"driver_quality"})
+        )
+        .unwrap_err()
+        .code,
+        "unknown_parameter"
     );
 }

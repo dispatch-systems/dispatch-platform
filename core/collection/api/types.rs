@@ -127,7 +127,7 @@ impl ScheduleCollection {
         registry().schedule_collections().into_iter().map(Self)
     }
     pub fn parse(text: &str) -> Option<Self> {
-        Self::all().find(|collection| collection.0 == registry().canonical_id(text))
+        Self::all().find(|collection| collection.0 == text)
     }
     pub const fn as_str(self) -> &'static str {
         self.0
@@ -138,9 +138,7 @@ impl ScheduleCollection {
     /// and keeps them for the release that knows them.
     pub fn known() -> crate::Result<String> {
         let collections: Vec<_> = Self::all().map(Self::as_str).collect();
-        Ok(serde_json::to_string(
-            &registry().accepted_ids(collections),
-        )?)
+        Ok(serde_json::to_string(&collections)?)
     }
 }
 impl Serialize for ScheduleCollection {
@@ -160,7 +158,7 @@ impl rusqlite::types::FromSql for ScheduleCollection {
 }
 impl rusqlite::types::ToSql for ScheduleCollection {
     fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
-        Ok(registry().stored_id(self.0).into())
+        Ok(self.0.into())
     }
 }
 // Its TypeScript is the union of the registry's collections, in their order.

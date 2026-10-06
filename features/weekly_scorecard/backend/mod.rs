@@ -4,10 +4,11 @@
 //! data is untrusted input.
 pub(crate) mod keeper;
 pub(crate) mod people;
+pub(crate) mod retirement;
 
 use crate::api::types::{
-    WeeklyScorecardDatasetCount, WeeklyScorecardPublication, WeeklyScorecardWeek,
-    WeeklyScorecardWeeks,
+    WeeklyScorecardDatasetCount, WeeklyScorecardPolicy, WeeklyScorecardPublication,
+    WeeklyScorecardWeek, WeeklyScorecardWeeks,
 };
 use chrono::NaiveDate;
 use dispatch_core::{
@@ -32,28 +33,26 @@ pub const ADAPTER_VERSION: i64 = 1;
 /// The scorecard weeks it keeps.
 pub const DOMAIN: DataDomain = DataDomain::new("weekly_scorecard");
 /// The weekly scorecard database beside `cortex.sqlite`. Its durable identity stays
-/// `scorecard` so upgrades and a rollback open the same publications.
-pub const DATABASE: Kind = Kind::new("scorecard", 1);
+/// `weekly_scorecard`; the startup import preserves prior publications.
+pub const DATABASE: Kind = Kind::new("weekly_scorecard", 1);
 pub static STORAGE: AddedStorage = AddedStorage {
-    id: "scorecard",
+    id: "weekly_scorecard",
     kind: DATABASE,
-    marker: "storage.scorecard",
-    source: "scorecard-v1",
+    marker: "storage.weekly_scorecard",
+    source: "weekly-scorecard-v1",
     verify,
 };
-/// The latest week, found not posted yet, is asked for again this much later.
-pub const RECHECK_AFTER_MS: i64 = 20 * 60 * 60 * 1000;
 fn verify(db: &Db) -> Result<()> {
     ensure(
-        db.all("SELECT version FROM scorecard_schema", [])? == vec![json!({"version":1})],
-        "unsupported_scorecard_schema",
+        db.all("SELECT version FROM weekly_scorecard_schema", [])? == vec![json!({"version":1})],
+        "unsupported_weekly_scorecard_schema",
         503,
     )?;
     // Missing initialized tables fail closed, rather than recreating lost data.
     for table in [
-        "scorecard_publications",
-        "scorecard_weeks",
-        "scorecard_sources",
+        "weekly_scorecard_publications",
+        "weekly_scorecard_weeks",
+        "weekly_scorecard_sources",
     ]
     .into_iter()
     .chain(DATASETS.iter().map(|d| d.table))
@@ -63,7 +62,20 @@ fn verify(db: &Db) -> Result<()> {
     Ok(())
 }
 
-/// Migration 3: whether a publication's and a week's station scope was verified.
+/// Whether the current publication and week have verified station scope.
+pub(crate) fn add_weekly_verified_scope(db: &Db) -> Result<()> {
+    for table in ["weekly_scorecard_publications", "weekly_scorecard_weeks"] {
+        add_column(
+            db,
+            table,
+            "scope_verified",
+            "INTEGER NOT NULL DEFAULT 0 CHECK(scope_verified IN (0,1))",
+        )?;
+    }
+    Ok(())
+}
+
+/// Preserve the shipped migration's identity and behavior for retired databases.
 pub(crate) fn add_verified_scope(db: &Db) -> Result<()> {
     for table in ["scorecard_publications", "scorecard_weeks"] {
         add_column(
@@ -123,6 +135,8 @@ pub trait WeeklyScorecardStore {
         week: Option<&str>,
     ) -> Result<Value>;
     fn weekly_scorecard_jobs(&self, id: &str) -> Result<Vec<(String, Value)>>;
+    fn weekly_scorecard_policy(&self, id: &str) -> Result<WeeklyScorecardPolicy>;
+    fn set_weekly_scorecard_policy(&self, id: &str, policy: &WeeklyScorecardPolicy) -> Result<()>;
     fn weekly_scorecard_address(&self, id: &str, station: &str)
     -> Result<Option<(String, String)>>;
     fn publish_weekly_scorecard(
@@ -153,32 +167,42 @@ impl WeeklyScorecardStore for Store {
             .remove(0);
         Ok(serde_json::to_value(job)?)
     }
-    /// What a scheduled run collects: the latest completed week, until it is
-    /// published. A week not posted yet is asked for again after `RECHECK_AFTER_MS`.
+    fn weekly_scorecard_policy(&self, id: &str) -> Result<WeeklyScorecardPolicy> {
+        Ok(serde_json::from_value(
+            self.weekly_scorecard_db(id)?.setting(
+                "collection_policy",
+                serde_json::to_value(WeeklyScorecardPolicy::default())?,
+            )?,
+        )?)
+    }
+    fn set_weekly_scorecard_policy(&self, id: &str, policy: &WeeklyScorecardPolicy) -> Result<()> {
+        ensure(
+            (1..=8).contains(&policy.lookback_weeks) && (1..=168).contains(&policy.refresh_hours),
+            "invalid_input",
+            400,
+        )?;
+        self.weekly_scorecard_db(id)?
+            .set("collection_policy", &serde_json::to_value(policy)?)
+    }
+    /// Refresh recent completed weeks, including posted weeks whose outcomes can change.
     fn weekly_scorecard_jobs(&self, id: &str) -> Result<Vec<(String, Value)>> {
-        let week = last_completed_week(weekly_scorecard_today(self, id)?);
+        let policy = self.weekly_scorecard_policy(id)?;
+        let latest = last_completed_week(weekly_scorecard_today(self, id)?);
+        let (_, saturday) = dispatch_core::foundation::weeks::week_days(&latest)?;
         let station = weekly_scorecard_station(self, id)?;
-        let db = self.weekly_scorecard_db(id)?;
-        let published = db
-            .one(
-                "SELECT id FROM scorecard_publications WHERE week=? AND station=? AND active=1 AND scope_verified=1",
-                [&week, &station],
-            )?
-            .is_some();
-        let checked = db
-            .one(
-                "SELECT checked_at FROM scorecard_weeks WHERE week=? AND station=? AND scope_verified=1",
-                [&week, &station],
-            )?
-            .and_then(|row| chrono::DateTime::parse_from_rfc3339(s(&row, "checked_at")).ok())
-            .map(|at| now() - at.timestamp_millis());
-        if published || checked.is_some_and(|age| age < RECHECK_AFTER_MS) {
-            return Ok(Vec::new());
+        let data = self.weekly_scorecard_db(id)?;
+        let cutoff = at(now() - i64::from(policy.refresh_hours) * 3_600_000);
+        let mut jobs = Vec::new();
+        for offset in 0..policy.lookback_weeks {
+            let day = saturday - chrono::Duration::weeks(i64::from(offset));
+            let iso = chrono::Datelike::iso_week(&day);
+            let week = format!("{}-W{:02}", iso.year(), iso.week());
+            if data.one("SELECT week FROM weekly_scorecard_weeks WHERE week=? AND station=? AND scope_verified=1 AND checked_at>=?",
+                [&week,&station,&cutoff])?.is_none() {
+                jobs.push((format!("weekly_scorecard:{week}"),weekly_scorecard_request(self,id,&week)?));
+            }
         }
-        Ok(vec![(
-            format!("scorecard:{week}"),
-            weekly_scorecard_request(self, id, &week)?,
-        )])
+        Ok(jobs)
     }
     /// The API address the station's last publication read, with the company it
     /// named. A job reads there again without opening Cortex's page.
@@ -190,7 +214,7 @@ impl WeeklyScorecardStore for Store {
         Ok(self
             .weekly_scorecard_db(id)?
             .one(
-                "SELECT s.url,p.company_id FROM scorecard_publications p JOIN scorecard_sources s \
+                "SELECT s.url,p.company_id FROM weekly_scorecard_publications p JOIN weekly_scorecard_sources s \
                  ON s.publication_id=p.id WHERE p.station=? AND s.source='api' \
                  AND p.scope_verified=1 \
                  ORDER BY p.collected_at DESC,s.dataset LIMIT 1",
@@ -217,12 +241,12 @@ impl WeeklyScorecardStore for Store {
             if !capture.posted {
                 // A week published before stays published; only the check is noted.
                 db.exec(
-                    "INSERT INTO scorecard_weeks(week,station,checked_at,posted,publication_id,scope_verified) \
+                    "INSERT INTO weekly_scorecard_weeks(week,station,checked_at,posted,publication_id,scope_verified) \
                      VALUES (?,?,?,0,NULL,1) ON CONFLICT(week,station) DO UPDATE SET \
                      checked_at=excluded.checked_at,\
-                     posted=CASE WHEN scorecard_weeks.scope_verified=1 THEN scorecard_weeks.posted ELSE 0 END,\
-                     publication_id=CASE WHEN scorecard_weeks.scope_verified=1 \
-                         THEN scorecard_weeks.publication_id ELSE NULL END,\
+                     posted=CASE WHEN weekly_scorecard_weeks.scope_verified=1 THEN weekly_scorecard_weeks.posted ELSE 0 END,\
+                     publication_id=CASE WHEN weekly_scorecard_weeks.scope_verified=1 \
+                         THEN weekly_scorecard_weeks.publication_id ELSE NULL END,\
                      scope_verified=1",
                     params![capture.week, capture.station, checked_at],
                 )?;
@@ -230,7 +254,7 @@ impl WeeklyScorecardStore for Store {
             }
             let publication = dispatch_core::foundation::crypto::id("weekly_scorecard")?;
             db.exec(
-                "INSERT INTO scorecard_publications(id,job_id,week,station,company_id,dsp_code,started_at,\
+                "INSERT INTO weekly_scorecard_publications(id,job_id,week,station,company_id,dsp_code,started_at,\
                  collected_at,active,row_count,adapter_version,scope_verified) VALUES (?,?,?,?,?,?,?,?,0,?,?,1)",
                 params![
                     publication,
@@ -271,7 +295,7 @@ impl WeeklyScorecardStore for Store {
             }
             for captured in &capture.datasets {
                 db.exec(
-                    "INSERT INTO scorecard_sources(publication_id,dataset,source,url,row_count) \
+                    "INSERT INTO weekly_scorecard_sources(publication_id,dataset,source,url,row_count) \
                      VALUES (?,?,'api',?,?)",
                     params![
                         publication,
@@ -282,15 +306,15 @@ impl WeeklyScorecardStore for Store {
                 )?;
             }
             db.exec(
-                "UPDATE scorecard_publications SET active=0 WHERE week=? AND station=? AND active=1",
+                "UPDATE weekly_scorecard_publications SET active=0 WHERE week=? AND station=? AND active=1",
                 params![capture.week, capture.station],
             )?;
             db.exec(
-                "UPDATE scorecard_publications SET active=1 WHERE id=?",
+                "UPDATE weekly_scorecard_publications SET active=1 WHERE id=?",
                 [&publication],
             )?;
             db.exec(
-                "INSERT INTO scorecard_weeks(week,station,checked_at,posted,publication_id,scope_verified) \
+                "INSERT INTO weekly_scorecard_weeks(week,station,checked_at,posted,publication_id,scope_verified) \
                  VALUES (?,?,?,1,?,1) ON CONFLICT(week,station) DO UPDATE SET \
                  checked_at=excluded.checked_at,posted=1,publication_id=excluded.publication_id,scope_verified=1",
                 params![capture.week, capture.station, checked_at, publication],
@@ -306,7 +330,7 @@ impl WeeklyScorecardStore for Store {
         let db = self.weekly_scorecard_db(id)?;
         let states = db.all(
             "SELECT w.week,w.checked_at,w.posted,p.id,p.station,p.dsp_code,p.collected_at,p.row_count \
-             FROM scorecard_weeks w LEFT JOIN scorecard_publications p \
+             FROM weekly_scorecard_weeks w LEFT JOIN weekly_scorecard_publications p \
              ON p.week=w.week AND p.station=w.station AND p.active=1 AND p.scope_verified=1 \
              WHERE w.station=? AND w.scope_verified=1 ORDER BY w.week DESC",
             [&station],
@@ -319,7 +343,7 @@ impl WeeklyScorecardStore for Store {
         // publications adopted before source metadata existed need a bounded fallback.
         let mut counts: HashMap<(String, String), usize> = HashMap::new();
         for row in db.all(
-            "SELECT publication_id,dataset,row_count FROM scorecard_sources \
+            "SELECT publication_id,dataset,row_count FROM weekly_scorecard_sources \
              WHERE publication_id IN (SELECT value FROM json_each(?))",
             [serde_json::to_string(&publications)?],
         )? {
@@ -403,7 +427,11 @@ fn weekly_scorecard_today(store: &Store, id: &str) -> Result<NaiveDate> {
 /// The station the DSP's profile names, which every scorecard request carries.
 fn weekly_scorecard_station(store: &Store, id: &str) -> Result<String> {
     let station = store.profile(id)?.station_code;
-    ensure(!station.is_empty(), "scorecard_station_required", 409)?;
+    ensure(
+        !station.is_empty(),
+        "weekly_scorecard_station_required",
+        409,
+    )?;
     Ok(station)
 }
 pub(crate) fn bind_weekly_scorecard_request(store: &Store, id: &str, week: &str) -> Result<Value> {
@@ -411,7 +439,7 @@ pub(crate) fn bind_weekly_scorecard_request(store: &Store, id: &str, week: &str)
     let profile = store.profile(id)?;
     ensure(
         !profile.station_code.is_empty(),
-        "scorecard_station_required",
+        "weekly_scorecard_station_required",
         409,
     )?;
     let request = Request {
@@ -427,8 +455,7 @@ pub(crate) fn bind_weekly_scorecard_request(store: &Store, id: &str, week: &str)
 }
 pub(crate) fn weekly_scorecard_request(store: &Store, id: &str, week: &str) -> Result<Value> {
     let request = bind_weekly_scorecard_request(store, id, week)?;
-    // Keep the durable job payload readable by the previous binary. The worker
-    // binds live tenant context immediately before collection and publication.
+    // Bind live tenant context immediately before collection and publication.
     Ok(json!({"collection":"weekly_scorecard","week":request["week"],"station":request["station"]}))
 }
 pub(crate) fn weekly_scorecard_schedule_ready(store: &Store, id: &str) -> Result<()> {

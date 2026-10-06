@@ -12,12 +12,12 @@ export function weeklyScorecardQuestions(world: World) {
   const scorecard = open(world, 'weekly_scorecard');
   try {
     const { lastSunday, lastSaturday } = days(world);
-    // Amazon's weekly weekly_scorecard: rows of the week's active publication, dated by `date`.
+    // Amazon's weekly scorecard: rows of the week's active publication, dated by `date`.
     const scored = (table: string, date: string, from: string, to: string) =>
       scorecard
         .prepare(
           `SELECT x.tracking_id tracking, x.row FROM ${table} x
-           JOIN scorecard_publications p ON p.id=x.publication_id AND p.active=1
+           JOIN weekly_scorecard_publications p ON p.id=x.publication_id AND p.active=1
            WHERE substr(json_extract(x.row,'$.${date}'),1,10) BETWEEN ? AND ?`,
         )
         .all(from, to)
@@ -49,14 +49,14 @@ export function weeklyScorecardQuestions(world: World) {
         counted.set(row.da_name, (counted.get(row.da_name) ?? 0) + 1);
     const latestWeek = (
       scorecard
-        .prepare('SELECT MAX(week) week FROM scorecard_publications WHERE active=1')
+        .prepare('SELECT MAX(week) week FROM weekly_scorecard_publications WHERE active=1')
         .get() as { week: string }
     ).week;
     const cards = (
       scorecard
         .prepare(
-          `SELECT x.row FROM driver_scorecards x
-           JOIN scorecard_publications p ON p.id=x.publication_id AND p.active=1 WHERE p.week=?`,
+          `SELECT x.row FROM driver_weekly_scorecards x
+           JOIN weekly_scorecard_publications p ON p.id=x.publication_id AND p.active=1 WHERE p.week=?`,
         )
         .all(latestWeek) as { row: string }[]
     ).map((r) => JSON.parse(r.row));

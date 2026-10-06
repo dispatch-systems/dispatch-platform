@@ -45,6 +45,17 @@
       "permissions": ["driver_match.manage"],
       "requires": ["timecards", "routes"],
       "default": false
+    },
+    {
+      "id": "daily_performance",
+      "label": "Daily Performance",
+      "permissions": [
+        "daily_performance.view",
+        "daily_performance.collect",
+        "daily_performance.manage"
+      ],
+      "requires": ["daily_performance"],
+      "default": false
     }
   ],
   "tabs": [
@@ -61,6 +72,7 @@
     "dvic",
     "weekly_scorecard",
     "driver_match",
+    "daily_performance",
     "timecard.daily",
     "timecard.meal_breaks",
     "timecard.employees",

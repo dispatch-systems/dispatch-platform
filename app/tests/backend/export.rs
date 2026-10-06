@@ -46,8 +46,8 @@ use dispatch_uniforms::{
 };
 #[cfg(feature = "weekly_scorecard")]
 use dispatch_weekly_scorecard::{
-    WeeklyScorecardDatasetCount, WeeklyScorecardPublication, WeeklyScorecardWeek,
-    WeeklyScorecardWeeks,
+    WeeklyScorecardDatasetCount, WeeklyScorecardPolicy, WeeklyScorecardPublication,
+    WeeklyScorecardWeek, WeeklyScorecardWeeks,
 };
 use std::{
     collections::BTreeMap,
@@ -264,6 +264,7 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         WeeklyScorecardPublication,
         WeeklyScorecardWeek,
         WeeklyScorecardWeeks,
+        WeeklyScorecardPolicy,
     ));
     #[cfg(feature = "driver_match")]
     bindings.extend(exported!(
@@ -282,6 +283,14 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         DriverDay,
         DriverEvent,
         DriverDetails,
+    ));
+    #[cfg(feature = "daily_performance")]
+    bindings.extend(exported!(
+        &cfg,
+        dispatch_daily_performance::DailyPerformanceSummary,
+        dispatch_daily_performance::DailyPerformanceDay,
+        dispatch_daily_performance::DailyPerformanceDataset,
+        dispatch_daily_performance::DailyPerformancePolicy,
     ));
     bindings.insert(ACCESS_CATALOG.into(), access_catalog());
     bindings.insert(CAPABILITIES.into(), capabilities());

@@ -1,6 +1,7 @@
 //! What collectors and features declare, and the one registry the app builds from them.
 //! Core reaches collectors and features through `registry()`, never by name.
 pub mod people;
+pub(crate) mod retirement;
 
 use crate::{
     Code, Error, Result, State,
@@ -71,39 +72,6 @@ pub fn installed() -> Option<&'static Registry> {
 }
 
 impl Registry {
-    /// A renamed identifier, accepted under either spelling while its owner is installed.
-    pub fn canonical_id<'a>(&self, id: &'a str) -> &'a str {
-        self.features
-            .iter()
-            .flat_map(|feature| feature.identifiers)
-            .find(|(legacy, _)| *legacy == id)
-            .map_or(id, |(_, canonical)| *canonical)
-    }
-
-    /// The spelling the previous release reads. Keep durable writes rollback-compatible
-    /// until a later release can retire the owner's transition mapping.
-    pub fn stored_id<'a>(&self, id: &'a str) -> &'a str {
-        self.features
-            .iter()
-            .flat_map(|feature| feature.identifiers)
-            .find(|(_, canonical)| *canonical == id)
-            .map_or(id, |(legacy, _)| *legacy)
-    }
-
-    /// Both spellings for bounded SQL scopes; public catalogs list only the canonical one.
-    pub fn accepted_ids<'a>(&self, ids: impl IntoIterator<Item = &'a str>) -> Vec<&'a str> {
-        let mut accepted = Vec::new();
-        for id in ids {
-            let canonical = self.canonical_id(id);
-            for spelling in [canonical, self.stored_id(canonical)] {
-                if !accepted.contains(&spelling) {
-                    accepted.push(spelling);
-                }
-            }
-        }
-        accepted
-    }
-
     /// Every feature's keepers, in the registry's order.
     pub fn keepers(&self) -> impl Iterator<Item = &'static dyn Keeper> {
         self.features
@@ -112,7 +80,6 @@ impl Registry {
     }
     /// The feature that keeps the collection a job of `kind` collects.
     pub fn keeping(&self, kind: &str) -> Option<&'static Feature> {
-        let kind = self.canonical_id(kind);
         self.features
             .iter()
             .copied()
@@ -120,7 +87,6 @@ impl Registry {
     }
     /// The keeper of the collection a job of `kind` collects.
     pub fn keeper(&self, kind: &str) -> &'static dyn Keeper {
-        let kind = self.canonical_id(kind);
         self.keepers()
             .find(|keeper| keeper.keeps() == kind)
             .unwrap_or_else(|| panic!("no feature keeps {kind}"))
@@ -156,7 +122,6 @@ impl Registry {
         &'a self,
         collection: &'a str,
     ) -> impl Iterator<Item = (&'static dyn Collector, &'static Collection)> + 'a {
-        let collection = self.canonical_id(collection);
         let alias = self
             .schedule_aliases()
             .find(|alias| alias.schedule == collection);
@@ -190,7 +155,10 @@ impl Registry {
     /// What every owner adds to the databases: core's parts, each collector, each feature.
     fn migration_lists(&self) -> impl Iterator<Item = &'static Migrations> {
         let collectors = self.collectors.iter().flat_map(|c| c.migrations());
-        let features = self.features.iter().flat_map(|feature| feature.migrations);
+        let features = self
+            .features
+            .iter()
+            .flat_map(|feature| feature.migrations.iter().chain(feature.retired_migrations));
         db::CORE_MIGRATIONS.iter().chain(collectors).chain(features)
     }
     /// One kind of database's migrations, gathered from every owner, in order.
@@ -262,19 +230,33 @@ impl Registry {
     pub fn check(&self) {
         let mut spellings = std::collections::BTreeSet::new();
         for feature in self.features {
-            for (legacy, canonical) in feature.identifiers {
+            for (old, current) in feature.retired_identifiers {
                 assert!(
-                    legacy != canonical && spellings.insert(legacy) && spellings.insert(canonical),
-                    "{} repeats an identifier transition spelling",
+                    old != current && spellings.insert(old) && spellings.insert(current),
+                    "{} repeats an identifier retirement spelling",
                     feature.name
                 );
                 assert!(
-                    feature.switch.is_some_and(|s| s.id == *canonical)
-                        || feature.permissions.iter().any(|p| p.id == *canonical)
-                        || feature.keeps.iter().any(|k| k.keeps() == *canonical)
-                        || feature.mcp.reads.iter().any(|a| a.as_str() == *canonical)
-                        || feature.mcp.sources.iter().any(|s| s.as_str() == *canonical),
-                    "{} transitions an identifier it does not own: {canonical}",
+                    feature.switch.is_some_and(|switch| switch.id == *current)
+                        || feature
+                            .permissions
+                            .iter()
+                            .any(|permission| permission.id == *current)
+                        || feature
+                            .keeps
+                            .iter()
+                            .any(|keeper| keeper.keeps() == *current)
+                        || feature
+                            .mcp
+                            .reads
+                            .iter()
+                            .any(|area| area.as_str() == *current)
+                        || feature
+                            .mcp
+                            .sources
+                            .iter()
+                            .any(|source| source.as_str() == *current),
+                    "{} retires an identifier into one it does not own: {current}",
                     feature.name
                 );
             }
@@ -373,9 +355,26 @@ impl Registry {
             );
             self.migrations(*kind);
         }
+        let retired: Vec<Kind> = self
+            .features
+            .iter()
+            .flat_map(|feature| {
+                feature
+                    .retired_migrations
+                    .iter()
+                    .map(|migrations| migrations.kind)
+            })
+            .collect();
+        for (index, kind) in retired.iter().enumerate() {
+            assert!(
+                !databases.contains(kind) && !retired[..index].contains(kind),
+                "retired database is active or declared twice"
+            );
+            self.migrations(*kind);
+        }
         for owned in self.migration_lists() {
             assert!(
-                databases.contains(&owned.kind),
+                databases.contains(&owned.kind) || retired.contains(&owned.kind),
                 "migrations name a {} database that is not declared, or not as declared",
                 owned.kind.name()
             );
@@ -445,9 +444,10 @@ impl Registry {
 pub struct Feature {
     /// Its directory's name.
     pub name: &'static str,
-    /// (Legacy, canonical) identifiers this owner is transitioning. Readers accept both;
-    /// public answers use the canonical spelling and durable writes retain the legacy one.
-    pub identifiers: &'static [(&'static str, &'static str)],
+    /// Identifiers migrated at startup and rejected by current readers.
+    pub retired_identifiers: &'static [(&'static str, &'static str)],
+    /// Owner storage import, before collector storage is opened.
+    pub upgrade_storage: Option<fn(&Store, &str) -> Result<()>>,
     /// The features and collectors it uses, by name, beyond the collectors whose
     /// collections it keeps.
     pub depends_on: &'static [&'static str],
@@ -472,6 +472,9 @@ pub struct Feature {
     pub keeps: &'static [&'static dyn Keeper],
     /// What it adds to databases: its own, kept beside a collector's, or another owner's.
     pub migrations: &'static [Migrations],
+    /// Immutable ledgers needed to read retired storage during an owner-controlled import.
+    /// These databases are never created or opened as current storage.
+    pub retired_migrations: &'static [Migrations],
     /// The tables it keeps, wherever they are, and no other owner's code runs SQL on.
     pub tables: Tables,
     /// The kinds of data its reviewed writes change, for the read cache.
@@ -500,7 +503,8 @@ pub struct Feature {
 pub const fn feature(name: &'static str) -> Feature {
     Feature {
         name,
-        identifiers: &[],
+        retired_identifiers: &[],
+        upgrade_storage: None,
         depends_on: &[],
         switch: None,
         tabs: &[],
@@ -511,6 +515,7 @@ pub const fn feature(name: &'static str) -> Feature {
         live: &[],
         keeps: &[],
         migrations: &[],
+        retired_migrations: &[],
         tables: &[],
         domains: &[],
         cached: &[],

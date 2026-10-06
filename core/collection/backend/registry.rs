@@ -91,7 +91,6 @@ impl Provider {
     }
     /// The provider of a job kind, and the kind as it is spelled in the registry.
     pub fn from_job_kind(kind: &str) -> Result<(Self, &'static str)> {
-        let kind = registry().canonical_id(kind);
         Self::all()
             .find_map(|p| p.job_kinds().find(|k| *k == kind).map(|k| (p, k)))
             .ok_or_else(|| crate::Error::new("unsupported_collector", 409))
@@ -204,6 +203,7 @@ impl Store {
         for provider in Provider::all().filter(|p| p.marker().is_some()) {
             self.initialize_added(id, provider)?;
         }
+        crate::manifest::retirement::dsp(self, id)?;
         self.initialize_added_storages(id)?;
         self.reset_live(id)
     }
@@ -265,6 +265,7 @@ impl Store {
                 db::migrate(&*self.collector(id, provider)?, provider.database())?;
             }
         }
+        crate::manifest::retirement::dsp(self, id)?;
         self.initialize_added_storages(id)?;
         self.reset_live(id)?;
         for provider in Provider::all() {

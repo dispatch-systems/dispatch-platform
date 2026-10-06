@@ -6,7 +6,8 @@ export const pages = [
   "routes",
   "dvic",
   "weekly_scorecard",
-  "driver_match"
+  "driver_match",
+  "daily_performance"
 ] as const;
 export const pageTabs = [
   "timecard.daily",
@@ -26,6 +27,7 @@ export const features = [
   "dvic",
   "weekly_scorecard",
   "driver_match",
+  "daily_performance",
   "timecard.daily",
   "timecard.meal_breaks",
   "timecard.employees",
@@ -112,6 +114,19 @@ export const featureCatalog = [
     "kind": "page"
   },
   {
+    "id": "daily_performance",
+    "label": "Daily Performance",
+    "permissions": [
+      "daily_performance.view",
+      "daily_performance.collect",
+      "daily_performance.manage"
+    ],
+    "requires": [
+      "daily_performance"
+    ],
+    "kind": "page"
+  },
+  {
     "id": "timecard.daily",
     "label": "Timecard",
     "permissions": [],
@@ -171,6 +186,7 @@ export const featureCatalog = [
       "meal_breaks",
       "routes",
       "dvic",
+      "daily_performance",
       "weekly_scorecard"
     ]
   }
@@ -197,11 +213,17 @@ export const permissions = [
   "members.invite",
   "members.manage",
   "roles.manage",
-  "settings.manage"
+  "settings.manage",
+  "daily_performance.view",
+  "daily_performance.collect",
+  "daily_performance.manage"
 ] as const;
 export const permissionLabels = {
   "collections.run": "Run Collections",
   "connections.manage": "Manage Connections",
+  "daily_performance.collect": "Collect Daily Performance",
+  "daily_performance.manage": "Manage Daily Performance",
+  "daily_performance.view": "View Daily Performance",
   "driver_match.manage": "Manage Driver Match",
   "dvic.collect": "Collect DVIC",
   "dvic.manage": "Manage DVIC",
@@ -270,6 +292,14 @@ export const permissionGroups = [
     ]
   ],
   [
+    "Daily Performance",
+    [
+      "daily_performance.view",
+      "daily_performance.collect",
+      "daily_performance.manage"
+    ]
+  ],
+  [
     "Connections",
     [
       "connections.manage"
@@ -291,6 +321,8 @@ export const permissionGroups = [
   ]
 ] as const;
 export const impliedPermissions = {
+  "daily_performance.collect": "daily_performance.view",
+  "daily_performance.manage": "daily_performance.view",
   "dvic.collect": "dvic.view",
   "dvic.manage": "dvic.view",
   "routes.collect": "routes.view",

@@ -14,7 +14,7 @@ fn requests_are_recognized_by_their_collection() {
     .unwrap();
     let mut legacy = serde_json::to_value(&request).unwrap();
     legacy["collection"] = json!("scorecard");
-    assert_eq!(Request::parse(&legacy).unwrap().unwrap(), request);
+    assert!(Request::parse(&legacy).unwrap().is_none());
     assert_eq!(
         serde_json::to_value(&request).unwrap()["collection"],
         "weekly_scorecard"

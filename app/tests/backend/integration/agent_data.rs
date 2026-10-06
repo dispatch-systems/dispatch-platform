@@ -863,7 +863,7 @@ async fn agents_never_see_legacy_unverified_provider_rows() {
     drop(dvic);
     let weekly_scorecard = db.weekly_scorecard_db(&id).unwrap();
     weekly_scorecard.exec(
-        "INSERT INTO scorecard_publications(id,job_id,week,station,company_id,dsp_code,started_at,\
+        "INSERT INTO weekly_scorecard_publications(id,job_id,week,station,company_id,dsp_code,started_at,\
          collected_at,active,row_count,adapter_version) VALUES ('foreign-publication','foreign-job',\
          '2026-W37','TST1','company-foreign','FOREIGN',?1,?1,1,1,1)",
         [DAY],
@@ -994,7 +994,13 @@ async fn driver_identities_follow_live_sources_even_with_a_warm_cache() {
     db.set_feature(&id, "timecard", true, &actor).unwrap();
     db.set_feature(&id, "timecard.meal_breaks", false, &actor)
         .unwrap();
-    for feature in ["routes", "dvic", "weekly_scorecard"] {
+    for feature in [
+        "routes",
+        "dvic",
+        "weekly_scorecard",
+        #[cfg(feature = "daily_performance")]
+        "daily_performance",
+    ] {
         db.set_feature(&id, feature, false, &actor).unwrap();
     }
     let who = me.clone();
@@ -1038,7 +1044,14 @@ async fn driver_identities_follow_live_sources_even_with_a_warm_cache() {
         if visible {
             db.enable_all_features(&id).unwrap();
         } else {
-            for feature in ["timecard", "routes", "dvic", "weekly_scorecard"] {
+            for feature in [
+                "timecard",
+                "routes",
+                "dvic",
+                "weekly_scorecard",
+                #[cfg(feature = "daily_performance")]
+                "daily_performance",
+            ] {
                 db.set_feature(&id, feature, false, &actor).unwrap();
             }
         }
@@ -1831,7 +1844,10 @@ async fn scorecard_questions_come_back_small() {
     dispatch_backend::install();
     let (_root, db) = common::seeded();
     let world = synthetic::seed(&db).unwrap();
-    assert!(world["scorecard_weeks"].as_u64().unwrap() >= 1, "{world}");
+    assert!(
+        world["weekly_scorecard_weeks"].as_u64().unwrap() >= 1,
+        "{world}"
+    );
     let dsp = s(&world, "dsp").to_owned();
     let me = caller(&db, &[&dsp], true);
     let no_places = caller(&db, &[&dsp], false);
@@ -2137,7 +2153,14 @@ async fn every_tool_says_when_its_feature_is_switched_off() {
     .await;
     assert_eq!(status, 200, "{visible}");
     // Every page an agent reads; their tabs and Driver Match go with them.
-    for feature in ["timecard", "routes", "dvic", "weekly_scorecard"] {
+    for feature in [
+        "timecard",
+        "routes",
+        "dvic",
+        "weekly_scorecard",
+        #[cfg(feature = "daily_performance")]
+        "daily_performance",
+    ] {
         db.set_feature(&dsp, feature, false, &actor).unwrap();
     }
     drop(db);
@@ -2183,6 +2206,8 @@ async fn every_tool_says_when_its_feature_is_switched_off() {
                     "routes",
                     "dvic",
                     "weekly_scorecard",
+                    #[cfg(feature = "daily_performance")]
+                    "daily_performance",
                 ] {
                     assert_eq!(
                         body["sources"][key],
@@ -2398,23 +2423,29 @@ async fn drivers_known_only_by_bypassing_a_feature_say_so() {
 
     // Back on, and every source of Amazon's IDs off instead: those are named.
     db.enable_all_features(&id).unwrap();
-    for feature in ["timecard.meal_breaks", "routes", "dvic", "weekly_scorecard"] {
+    for feature in [
+        "timecard.meal_breaks",
+        "routes",
+        "dvic",
+        "weekly_scorecard",
+        #[cfg(feature = "daily_performance")]
+        "daily_performance",
+    ] {
         db.set_feature(&id, feature, false, &actor).unwrap();
     }
     let (status, listed) = asked("drivers", json!({"q":"driver-1","include_ids":"true"})).await;
     assert_eq!(status, 200, "{listed}");
     let person = &rows(&listed["drivers"])[0];
     assert_eq!(person[col(&listed["drivers"], "amazon")], "driver-1");
-    assert_eq!(
-        listed["bypassed"],
-        json!([
-            "Routes",
-            "Timecard · Meal Breaks",
-            "DVIC",
-            "Weekly Scorecard"
-        ]),
-        "{listed}"
-    );
+    let expected: &[&str] = &[
+        "Routes",
+        "Timecard · Meal Breaks",
+        "DVIC",
+        "Weekly Scorecard",
+        #[cfg(feature = "daily_performance")]
+        "Daily Performance",
+    ];
+    assert_eq!(listed["bypassed"], json!(expected), "{listed}");
     // A key that doesn't bypass features reads none of those IDs, so names nothing.
     let plain = caller(&db, &[&id], false);
     let (_, listed) = ask(&state, move |db, state| {

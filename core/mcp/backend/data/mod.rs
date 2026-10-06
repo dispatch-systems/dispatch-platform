@@ -114,11 +114,17 @@ pub fn ask(
     // A tool that reads one kind of data answers only where the key or app is allowed it and
     // the DSP has its feature on, or it bypasses features: the one place every such tool is
     // gated, so none can forget. Those that read several gate each in their answer.
+    let endpoint = catalog::select(endpoint, query)?;
     let read = match endpoint.area {
         Some(area) => Access::of(db, caller, query)?.check(area)?,
         None => Read::On,
     };
     let mut answer = (endpoint.answer)(db, state, caller, named, query)?;
+    if catalog::has_variants(endpoint.id)
+        && let Some(area) = endpoint.area
+    {
+        answer["source"] = json!(area.source().as_str());
+    }
     if let (Some(area), Read::Bypassed) = (endpoint.area, read) {
         access::bypassed(&mut answer, area.source());
     }

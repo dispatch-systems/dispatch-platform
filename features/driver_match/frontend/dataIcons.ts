@@ -14,4 +14,5 @@ export const dataIcons: Record<DriverData, LucideIcon> = {
   meal_breaks: Utensils,
   dvic: ClipboardCheck,
   weekly_scorecard: Award,
+  daily_performance: CalendarDays,
 };

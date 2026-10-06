@@ -133,5 +133,53 @@ export const readToggleGroups = [
         "optIn": false
       }
     ]
+  },
+  {
+    "label": "Daily Performance",
+    "missing": "daily performance data",
+    "sources": [
+      {
+        "id": "daily_performance",
+        "label": "Daily Performance"
+      }
+    ],
+    "toggles": [
+      {
+        "id": "daily_performance",
+        "label": "Daily Performance",
+        "hint": null,
+        "missing": "daily performance",
+        "source": "daily_performance",
+        "with": null,
+        "optIn": false
+      },
+      {
+        "id": "daily_feedback",
+        "label": "Daily customer feedback",
+        "hint": null,
+        "missing": "daily customer feedback",
+        "source": "daily_performance",
+        "with": null,
+        "optIn": false
+      },
+      {
+        "id": "daily_returns",
+        "label": "Daily returns & contact compliance",
+        "hint": null,
+        "missing": "daily returns & contact compliance",
+        "source": "daily_performance",
+        "with": null,
+        "optIn": false
+      },
+      {
+        "id": "daily_safety",
+        "label": "Daily safety events",
+        "hint": null,
+        "missing": "daily safety events",
+        "source": "daily_performance",
+        "with": null,
+        "optIn": false
+      }
+    ]
   }
 ] as const;

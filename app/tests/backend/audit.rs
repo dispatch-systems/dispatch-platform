@@ -41,8 +41,22 @@ const AREAS: &[(&str, &str, &str)] = &[
     ("routes.collection_requested", "settings", "settings"),
     (
         "weekly_scorecard.collection_requested",
-        "settings",
-        "settings",
+        if cfg!(feature = "weekly_scorecard") {
+            "collections"
+        } else {
+            "settings"
+        },
+        if cfg!(feature = "weekly_scorecard") {
+            "collections"
+        } else {
+            "settings"
+        },
+    ),
+    #[cfg(feature = "daily_performance")]
+    (
+        "daily_performance.collection_requested",
+        "collections",
+        "collections",
     ),
     ("driver_match.merged", "settings", "settings"),
     ("driver_match.failed", "settings", "settings"),

@@ -1,27 +1,34 @@
 # Weekly Scorecard
 
-Amazon's weekly scorecard from Cortex's performance API, one week per job, with every row
-Amazon sends kept as JSON beside the keys reads filter on. It has no page: agents read it, and
-its frontend fills the platform owner's slots.
+Amazon's posted weekly scorecards, one week per Cortex job. The same Cortex connection and
+performance reader serve Daily Performance; weekly publications remain a separate source,
+with their own permissions, schedules, read allowances and storage.
 
-`weekly_scorecard` owns this feature, its permissions, schedule collection, agent read
-area and source. Its collection jobs are `cortex.weekly_scorecard.collect`; agents call
-`weekly_scorecard` or read `/api/v1/weekly-scorecard`. Management routes live under
-`/api/dsp/weekly-scorecard`.
+The current names are `weekly_scorecard`, `cortex.weekly_scorecard.collect`,
+`weekly_scorecard.view/collect/manage`, `/api/dsp/weekly-scorecard` and the
+`weekly_scorecard` agent tool at `/api/v1/weekly-scorecard`. There is no dedicated page.
 
-Schedules check for the latest completed week's publication. They may check daily or at
-an interval; a published week is skipped, and an unpublished week is checked again after
-the existing cooldown. The provider's daily event datasets are details of that weekly
-publication, rather than a separate daily collection.
+Storage is `weekly_scorecard/weekly_scorecard.sqlite`. Historical publications and source
+rows are retained when a week is collected again. Provider daily datasets inside a weekly
+capture are details of that week's publication; they do not become Daily Performance data.
 
-During the transition, the old MCP tool and `/api/v1/scorecard` and `/api/dsp/scorecard`
-routes call the same handlers with the same permissions. Discovery advertises the new
-name once. The feature's identifier mappings read either spelling and keep durable
-switches, role permissions, agent reads, schedule collections, job kinds and requests in
-the spelling the previous release understands. Historical audit actions remain readable.
+Weekly schedules refresh recent completed weeks, including already posted weeks whose
+dispute outcomes can change. `/policy` defaults to one recent week and a 20-hour refresh,
+configurable from 1–8 weeks and 1–168 hours. Schedule times and cadence are independent of
+daily schedules. Manual recollection can target older weeks.
 
-The existing `scorecard/scorecard.sqlite` file, storage marker, storage identity, table
-names and migration ledger remain unchanged, preserving publications and rollback.
-Retiring the compatibility mappings and legacy routes requires a later release. A future
-daily feature must declare its own feature, collector job, permissions, schedules, agent
-source and storage; weekly permissions and agent access grant nothing to it automatically.
+Startup retires old Dispatch identifiers: saved switches (including disabled states), role
+permissions, agent allowances and OAuth grants, collection schedules, job kinds/requests and
+audit action prefixes migrate to their weekly names. IDs, restrictions and schedule timing
+are preserved. New requests reject old permissions, collection names, routes and tools.
+
+A marked prior `scorecard/scorecard.sqlite` is imported into the new database in a transaction.
+All publications, rows and source metadata keep their IDs and verified-scope flags. A durable
+receipt and count/foreign-key checks make retries safe. Unverified historical scope remains
+quarantined. Missing or conflicting marked state fails closed.
+
+After import the prior directory moves to the DSP's
+`state/weekly_scorecard_migration_backup`; it is an inactive recovery archive. Historical
+shipped SQL files remain unchanged for migration evidence. Automatic rollback to a binary
+that only understands retired identifiers is not supported after this transition; recovery
+requires restoring a consistent pre-transition snapshot of the platform, jobs and DSP data.

@@ -14,38 +14,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 pub const JOB_KIND: &str = "cortex.weekly_scorecard.collect";
-/// Rows one dataset may hold, well above any week seen.
-pub const MAX_ROWS: usize = 50_000;
+pub use crate::performance::{Dataset, DatasetCapture, MAX_ROWS, TimeFrame};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TimeFrame {
-    Weekly,
-    Daily,
-}
-impl TimeFrame {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Weekly => "Weekly",
-            Self::Daily => "Daily",
-        }
-    }
-}
-/// One dataset of the performance API and the table that holds its rows.
-pub struct Dataset {
-    pub id: &'static str,
-    pub table: &'static str,
-    pub time_frame: TimeFrame,
-    /// A `program` the page sends with the request.
-    pub program: Option<&'static str>,
-    /// The row field that says whether the row counts against the scorecard.
-    pub impact: Option<&'static str>,
-}
 /// Every dataset a week's collection reads. The first six are the scorecard pages'
 /// tables; the rest are the DSP's own weekly numbers.
 pub const DATASETS: &[Dataset] = &[
     Dataset {
         id: "da_dsp_station_weekly_performance",
-        table: "driver_scorecards",
+        table: "driver_weekly_scorecards",
+        station: true,
         time_frame: TimeFrame::Weekly,
         program: Some("AMZL"),
         impact: None,
@@ -53,6 +30,7 @@ pub const DATASETS: &[Dataset] = &[
     Dataset {
         id: "da_dsp_weekly_rts_deep_dive",
         table: "returns_to_station",
+        station: true,
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: Some("impacting_dcr"),
@@ -60,6 +38,7 @@ pub const DATASETS: &[Dataset] = &[
     Dataset {
         id: "da_dsp_station_daily_dsb_dnr_tba",
         table: "delivery_concessions",
+        station: true,
         time_frame: TimeFrame::Daily,
         program: None,
         impact: Some("dsb_flag"),
@@ -67,6 +46,7 @@ pub const DATASETS: &[Dataset] = &[
     Dataset {
         id: "da_dsp_weekly_cdf_deep_dive",
         table: "customer_feedback",
+        station: true,
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: Some("cdf_impact_flag"),
@@ -74,6 +54,7 @@ pub const DATASETS: &[Dataset] = &[
     Dataset {
         id: "da_dsp_daily_psb_stop",
         table: "pickup_failures",
+        station: true,
         time_frame: TimeFrame::Daily,
         program: None,
         impact: None,
@@ -81,6 +62,7 @@ pub const DATASETS: &[Dataset] = &[
     Dataset {
         id: "da_dsp_station_daily_safety_oss_events_intraday",
         table: "safety_events",
+        station: true,
         time_frame: TimeFrame::Daily,
         program: None,
         impact: Some("oss_impact_flag"),
@@ -88,6 +70,7 @@ pub const DATASETS: &[Dataset] = &[
     Dataset {
         id: "da_dsp_station_weekly_safety_oss_v2",
         table: "driver_safety",
+        station: true,
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
@@ -95,6 +78,7 @@ pub const DATASETS: &[Dataset] = &[
     Dataset {
         id: "dsp_station_weekly_quality",
         table: "dsp_quality",
+        station: true,
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
@@ -102,6 +86,7 @@ pub const DATASETS: &[Dataset] = &[
     Dataset {
         id: "dsp_station_weekly_team",
         table: "dsp_team",
+        station: true,
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
@@ -109,6 +94,7 @@ pub const DATASETS: &[Dataset] = &[
     Dataset {
         id: "dsp_station_weekly_compliance",
         table: "dsp_compliance",
+        station: true,
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
@@ -116,6 +102,7 @@ pub const DATASETS: &[Dataset] = &[
     Dataset {
         id: "dsp_station_weekly_safety_oss_v2",
         table: "dsp_safety",
+        station: true,
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
@@ -123,6 +110,7 @@ pub const DATASETS: &[Dataset] = &[
     Dataset {
         id: "dsp_station_weekly_working_device",
         table: "dsp_working_device",
+        station: true,
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
@@ -130,6 +118,7 @@ pub const DATASETS: &[Dataset] = &[
     Dataset {
         id: "dsp_weekly_cdf",
         table: "dsp_feedback",
+        station: true,
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
@@ -137,6 +126,7 @@ pub const DATASETS: &[Dataset] = &[
     Dataset {
         id: "dsp_weekly_psb",
         table: "dsp_pickups",
+        station: true,
         time_frame: TimeFrame::Weekly,
         program: None,
         impact: None,
@@ -150,7 +140,7 @@ pub fn dataset(id: &str) -> Option<&'static Dataset> {
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum Collection {
-    #[serde(rename = "weekly_scorecard", alias = "scorecard")]
+    #[serde(rename = "weekly_scorecard")]
     WeeklyScorecard,
 }
 /// One week of one station's weekly_scorecard, as a job asks for it.
@@ -169,7 +159,7 @@ impl Request {
     pub fn is(value: &Value) -> bool {
         matches!(
             value.get("collection").and_then(Value::as_str),
-            Some("weekly_scorecard" | "scorecard")
+            Some("weekly_scorecard")
         )
     }
     pub fn parse(value: &Value) -> Result<Option<Self>> {
@@ -225,16 +215,6 @@ impl Request {
     }
 }
 
-/// One dataset's rows for the week, as objects, with the address they came from.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct DatasetCapture {
-    pub id: String,
-    pub from: String,
-    pub to: String,
-    pub source_url: String,
-    pub rows: Vec<Value>,
-}
 /// A week's scorecard as collected, before publication.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -253,10 +233,10 @@ pub struct Capture {
 impl Capture {
     pub fn validate(&self, request: &Request) -> Result<()> {
         request.validate()?;
-        ensure(self.version == 1, "scorecard_capture_invalid", 502)?;
+        ensure(self.version == 1, "weekly_scorecard_capture_invalid", 502)?;
         ensure(
             self.week == request.week && self.station == request.station,
-            "scorecard_scope_mismatch",
+            "weekly_scorecard_scope_mismatch",
             502,
         )?;
         ensure(
@@ -265,40 +245,44 @@ impl Capture {
                 && self
                     .dsp_code
                     .eq_ignore_ascii_case(&request.dsp_abbreviation),
-            "scorecard_scope_mismatch",
+            "weekly_scorecard_scope_mismatch",
             502,
         )?;
         ensure(
             self.started_at > 0 && self.finished_at >= self.started_at,
-            "scorecard_capture_invalid",
+            "weekly_scorecard_capture_invalid",
             502,
         )?;
         ensure(
             self.datasets.len() == DATASETS.len(),
-            "scorecard_capture_invalid",
+            "weekly_scorecard_capture_invalid",
             502,
         )?;
         for (dataset, captured) in DATASETS.iter().zip(&self.datasets) {
-            ensure(captured.id == dataset.id, "scorecard_capture_invalid", 502)?;
+            ensure(
+                captured.id == dataset.id,
+                "weekly_scorecard_capture_invalid",
+                502,
+            )?;
             let (from, to) = request.interval(dataset)?;
             ensure(
                 captured.from == from && captured.to == to,
-                "scorecard_scope_mismatch",
+                "weekly_scorecard_scope_mismatch",
                 502,
             )?;
             ensure(
                 captured.rows.len() <= MAX_ROWS,
-                "scorecard_source_too_large",
+                "weekly_scorecard_source_too_large",
                 502,
             )?;
             ensure(
                 captured.source_url.len() <= 2048,
-                "scorecard_capture_invalid",
+                "weekly_scorecard_capture_invalid",
                 502,
             )?;
             ensure(
                 captured.rows.iter().all(Value::is_object),
-                "scorecard_row_invalid",
+                "weekly_scorecard_row_invalid",
                 502,
             )?;
         }
@@ -307,14 +291,18 @@ impl Capture {
             .iter()
             .find(|d| d.id == POSTED_SIGNAL)
             .is_some_and(|d| !d.rows.is_empty());
-        ensure(posted == self.posted, "scorecard_capture_invalid", 502)
+        ensure(
+            posted == self.posted,
+            "weekly_scorecard_capture_invalid",
+            502,
+        )
     }
     pub fn validate_scope(&self, request: &Request, scope: &Scope) -> Result<()> {
         self.validate(request)?;
         request.scope_request().validate_scope(scope)?;
         ensure(
             self.company_id == scope.provider,
-            "scorecard_scope_mismatch",
+            "weekly_scorecard_scope_mismatch",
             502,
         )
     }

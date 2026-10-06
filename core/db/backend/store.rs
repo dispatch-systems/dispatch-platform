@@ -58,6 +58,7 @@ impl Store {
             dsp_cache: std::cell::RefCell::new(Vec::new()),
             mail_queued: std::cell::Cell::new(false),
         };
+        crate::manifest::retirement::platform(&store)?;
         crate::tenancy::roles::backfill(&store.platform)?;
         for row in store.platform.all(
             "SELECT id FROM dsps WHERE status IN ('active','suspended')",
