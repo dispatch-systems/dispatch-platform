@@ -257,14 +257,26 @@ test('Flex gap badges and employee filter preserve comparison statuses and expos
     '6m after lunch',
   ]);
   await expect(jordan.locator('.meal-status')).toHaveText('Same times');
-  await expect(jordan.locator('.meal-gap').first()).toHaveAttribute(
-    'title',
-    /Last delivery → Flex OUT LUNCH/,
-  );
-  await expect(jordan.locator('.meal-gap').last()).toHaveAttribute(
-    'title',
-    /Flex IN LUNCH → first delivery/,
-  );
+  // A gap over 5 minutes opens the stop of its delivery, like the time above it, with no
+  // tooltip on hover.
+  const before = jordan.getByRole('link', {
+    name: 'Last delivery → Flex OUT LUNCH: 9m · over 5 minutes (open stop in Cortex)',
+    exact: true,
+  });
+  const after = jordan.getByRole('link', {
+    name: 'Flex IN LUNCH → first delivery: 6m · over 5 minutes (open stop in Cortex)',
+    exact: true,
+  });
+  await expect(before).toHaveAttribute('href', stopUrl('route-2', 4));
+  await expect(after).toHaveAttribute('href', stopUrl('route-2', 5));
+  for (const link of [before, after]) {
+    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(link).toHaveAttribute('rel', 'noreferrer');
+  }
+  const arrow = before.locator('.meal-link-arrow');
+  await expect(arrow).toHaveCSS('opacity', '0');
+  await before.hover();
+  await expect(arrow).toHaveCSS('opacity', '1');
   await expect(alex.locator('.meal-gap.over-limit')).toHaveCount(0);
   await expect(taylor.locator('.meal-gap.over-limit')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Gaps > 5 min 3', exact: true })).toBeVisible();
@@ -280,6 +292,8 @@ test('Flex gap badges and employee filter preserve comparison statuses and expos
     '8m before lunch',
     '7m after lunch',
   ]);
+  // Nothing on the tab, open details included, shows a tooltip on hover.
+  await expect(page.locator('.meal-page [title]')).toHaveCount(0);
   await page.getByLabel('Search meal break employees').fill('Jordan');
   await expect(page.locator('.meal-table tbody > tr')).toHaveCount(1);
   data.rows[1]!.cortex[0]!.firstDelivery = null;
@@ -356,13 +370,16 @@ test('each time opens the Paycom timecard, Cortex route or delivery stop it was 
   await expect(arrow).toHaveCSS('opacity', '1');
   await expect(links('Alex Morgan').first()).toHaveCSS('text-decoration-line', 'none');
   await page.getByRole('button', { name: 'Details for Alex Morgan', exact: true }).click();
-  // Its Paycom lunch is missing, so those two still open the timecard.
+  // Its Paycom lunch is missing, so those two still open the timecard. Both its gaps are
+  // over 5 minutes, so each also opens what its delivery time does.
   expect(await hrefs('', true)).toEqual([
     cortexUrl('route-1b'),
-    paycom,
     cortexUrl('route-1b'),
     paycom,
     cortexUrl('route-1b'),
+    paycom,
+    cortexUrl('route-1b'),
+    stopUrl('route-1b', 7),
     stopUrl('route-1b', 7),
   ]);
   // Taylor's Paycom day has no lunch punches: the missing times still open the timecard.

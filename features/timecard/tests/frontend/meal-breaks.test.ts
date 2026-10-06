@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { clockLabel, cortexClock, gapLabel, displayMeal } from '../../frontend/meal-breaks.js';
 import type { MealEmployee } from '../../api/index.js';
 
-test('meal clocks preserve local labels and distinguish repeated DST instants in details', () => {
+test('meal clocks preserve local labels, even for repeated DST instants', () => {
   assert.equal(clockLabel('10:01'), '10:01 AM');
   assert.equal(clockLabel('13:05'), '1:05 PM');
   assert.equal(clockLabel('invalid'), 'invalid');
@@ -11,7 +11,6 @@ test('meal clocks preserve local labels and distinguish repeated DST instants in
   const second = cortexClock('2026-11-01T09:30:00Z', '2026-11-01', 'America/Los_Angeles')!;
   assert.equal(first.minute, second.minute);
   assert.equal(first.label, '1:30 AM');
-  assert.notEqual(first.detail, second.detail);
 });
 
 test('gap labels round upwards to seconds without deciding whether the gap exceeds the limit', () => {
@@ -70,5 +69,5 @@ test('the dashboard formats server decisions without recalculating status, laten
     label: '5m 1s',
   });
   assert.equal(result.paycom.inDay!.label, '12:05 AM');
-  assert.equal(result.paycom.inDay!.detail, 'Paycom displayed time · day +1');
+  assert.equal(result.paycom.inDay!.day, 1);
 });
