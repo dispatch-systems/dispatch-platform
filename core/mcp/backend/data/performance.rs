@@ -210,7 +210,7 @@ pub fn ask(
             access::bypassed(&mut answer, a.area.source());
         }
         if view != "compare" {
-            shape::check_budget(&answer)?;
+            fit(&mut answer, query)?;
             return Ok(answer);
         }
         answers.insert(a.view.into(), answer);
@@ -275,6 +275,47 @@ pub fn ask(
     }
     shape::check_budget(&answer)?;
     Ok(answer)
+}
+/// Owner pages precede v2 metadata. Refit those pages without changing their totals.
+fn fit(answer: &mut Value, query: &Value) -> Result<(), Refusal> {
+    for (key, cursor) in [("list", "cursor"), ("groups", "groups_cursor")] {
+        if answer.to_string().len() <= shape::BUDGET {
+            break;
+        }
+        let Some(mut table) = answer.get(key).cloned() else {
+            continue;
+        };
+        let rows = table["rows"].as_array().cloned().unwrap_or_default();
+        if rows.len() <= 1 {
+            continue;
+        }
+        let start = shape::offset_named(query, cursor)?;
+        let total = table["page"]["total"]
+            .as_u64()
+            .map_or(start + rows.len(), |n| n as usize);
+        let (mut low, mut high) = (1, rows.len() - 1);
+        let page = |shown: usize, table: &mut Value| {
+            table["rows"] = json!(&rows[..shown]);
+            table["page"] = json!({"returned":shown,"total":total,
+                "next_cursor":(start+shown).to_string(),"cursor_parameter":cursor});
+            table["note"] = json!(format!(
+                "Follow next_cursor using {cursor} with the same filters."
+            ));
+        };
+        while low < high {
+            let middle = (low + high).div_ceil(2);
+            page(middle, &mut table);
+            answer[key] = table.clone();
+            if answer.to_string().len() <= shape::BUDGET {
+                low = middle;
+            } else {
+                high = middle - 1;
+            }
+        }
+        page(low, &mut table);
+        answer[key] = table;
+    }
+    shape::check_budget(answer)
 }
 pub fn output() -> Value {
     let mut output = schema::answer(

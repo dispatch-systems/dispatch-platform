@@ -393,6 +393,15 @@ fn weekly_dsp_feedback_counters_stay_distinct_from_package_reviews() {
             row["delivery_time"] = json!("2026-09-26");
             row["negative_feedback_flag"] = json!(1);
         }
+        let template = reviews.rows[0].clone();
+        reviews.rows = (0..400)
+            .map(|i| {
+                let mut row = template.clone();
+                row["tracking_id"] = json!(format!("package-{i}"));
+                row["da_name"] = json!("Driver with a long name ".repeat(8));
+                row
+            })
+            .collect();
         c.datasets
             .iter_mut()
             .find(|d| d.id == "dsp_weekly_cdf")
@@ -411,7 +420,7 @@ fn weekly_dsp_feedback_counters_stay_distinct_from_package_reviews() {
     assert_eq!(answer["sources"]["operational"]["counts"]["responses"], 3);
     assert_eq!(
         answer["sources"]["posted_scorecard"]["counts"]["records"],
-        2
+        400
     );
     assert_eq!(
         answer["sources"]["posted_scorecard"]["counts"]["reported_feedback"]["negative"],
@@ -424,6 +433,18 @@ fn weekly_dsp_feedback_counters_stay_distinct_from_package_reviews() {
         json!({"view":"posted_scorecard","date":"2026-09-26"}),
     );
     assert!(day["counts"].get("reported_feedback").is_none());
+    let query =
+        json!({"view":"posted_scorecard","period":"2026-W39","detail":"full","limit":"500"});
+    let (status, page) = ask(&store, &caller, "feedback", query.clone());
+    assert_eq!(status, 200, "{page}");
+    assert!(page.to_string().len() <= data::BUDGET);
+    assert_eq!(page["counts"]["records"], 400);
+    assert_eq!(page["list"]["page"]["total"], 400);
+    let mut next = query;
+    next["cursor"] = page["list"]["page"]["next_cursor"].clone();
+    let (status, more) = ask(&store, &caller, "feedback", next);
+    assert_eq!(status, 200, "{more}");
+    assert!(more["list"]["rows"][0] != page["list"]["rows"][0]);
 }
 #[test]
 fn absent_data_is_unknown_and_an_unavailable_comparison_never_becomes_zero() {
