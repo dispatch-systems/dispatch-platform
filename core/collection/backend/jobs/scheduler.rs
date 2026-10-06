@@ -48,14 +48,44 @@ fn failed(event: &str, error: &Error) {
     crate::foundation::observability::event("error", event, json!({"error":error.code}));
 }
 
+/// When the schedules' deadlines are read: at once when a schedule changes, else every
+/// minute. A failed read waits five seconds before the next try, as a failed schedule does,
+/// so a failure that lasts is logged every few seconds rather than every tick; the deadlines
+/// read before keep running meanwhile.
+struct Refresh {
+    revision: u64,
+    read_at: i64,
+    retry_at: i64,
+}
+impl Refresh {
+    const EVERY_MS: i64 = 60_000;
+    const RETRY_MS: i64 = 5_000;
+    fn new() -> Self {
+        Self {
+            revision: u64::MAX,
+            read_at: 0,
+            retry_at: 0,
+        }
+    }
+    fn due(&self, revision: u64, now: i64) -> bool {
+        now >= self.retry_at && (revision != self.revision || now - self.read_at >= Self::EVERY_MS)
+    }
+    fn read(&mut self, revision: u64, now: i64) {
+        self.revision = revision;
+        self.read_at = now;
+    }
+    fn failed(&mut self, now: i64) {
+        self.retry_at = now + Self::RETRY_MS;
+    }
+}
+
 struct Scheduler {
     state: Arc<State>,
     owner: String,
     tasks: tokio::task::JoinSet<String>,
     running_dsps: HashSet<String>,
     deadlines: HashMap<String, i64>,
-    schedule_revision: u64,
-    refreshed: i64,
+    refresh: Refresh,
     // A year's retention does not need checking every minute.
     audit_pruned: i64,
     // When each feature's upkeep was last due, in the registry's order.
@@ -158,14 +188,16 @@ impl Scheduler {
         let revision = state
             .schedule_revision
             .load(std::sync::atomic::Ordering::Acquire);
-        if revision != self.schedule_revision || now() - self.refreshed >= 60000 {
+        if self.refresh.due(revision, now()) {
             match state.read(|db| db.schedule_deadlines()).await {
                 Ok(values) => {
                     self.deadlines = values.into_iter().collect();
-                    self.schedule_revision = revision;
-                    self.refreshed = now();
+                    self.refresh.read(revision, now());
                 }
-                Err(error) => failed("scheduler_refresh_failed", &error),
+                Err(error) => {
+                    self.refresh.failed(now());
+                    failed("scheduler_refresh_failed", &error);
+                }
             }
         }
         let due: Vec<_> = self
@@ -279,8 +311,7 @@ pub async fn start(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<boo
         tasks: tokio::task::JoinSet::new(),
         running_dsps: HashSet::new(),
         deadlines: HashMap::new(),
-        schedule_revision: u64::MAX,
-        refreshed: 0,
+        refresh: Refresh::new(),
         audit_pruned: 0,
         upkept: vec![
             0;
@@ -322,3 +353,7 @@ pub async fn start(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<boo
     while scheduler.tasks.join_next().await.is_some() {}
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "../../tests/backend/jobs/scheduler/refresh_tests.rs"]
+mod tests;
