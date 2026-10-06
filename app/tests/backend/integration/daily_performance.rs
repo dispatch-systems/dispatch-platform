@@ -15,7 +15,7 @@ use dispatch_cortex::{
 };
 use dispatch_daily_performance::DailyPerformanceStore;
 use serde_json::{Value, json};
-fn ready() -> (tempfile::TempDir, Store, String) {
+pub(super) fn ready() -> (tempfile::TempDir, Store, String) {
     dispatch_backend::install();
     let (root, store, dsp) = testing::bootstrapped();
     testing::set_dsp(&store, &dsp, "Fixture Delivery", "America/Los_Angeles").unwrap();
@@ -29,7 +29,21 @@ fn ready() -> (tempfile::TempDir, Store, String) {
     store.enable_all_features(&dsp).unwrap();
     (root, store, dsp)
 }
-fn publish(store: &Store, dsp: &str, date: &str, key: &str) -> daily_performance::Capture {
+pub(super) fn publish(
+    store: &Store,
+    dsp: &str,
+    date: &str,
+    key: &str,
+) -> daily_performance::Capture {
+    publish_with(store, dsp, date, key, |_| {})
+}
+pub(super) fn publish_with(
+    store: &Store,
+    dsp: &str,
+    date: &str,
+    key: &str,
+    adjust: impl FnOnce(&mut daily_performance::Capture),
+) -> daily_performance::Capture {
     let queued = store
         .enqueue_daily_performance(dsp, None, key, date, date)
         .unwrap();
@@ -43,15 +57,17 @@ fn publish(store: &Store, dsp: &str, date: &str, key: &str) -> daily_performance
         panic!("discover")
     };
     let scope = discovery.scope("area-fixture", "company-fixture").unwrap();
-    let capture = daily_performance::fixture(&request).unwrap();
+    let mut capture = daily_performance::fixture(&request).unwrap();
+    adjust(&mut capture);
     store
         .publish_daily_performance(dsp, job, &capture, &scope)
         .unwrap();
     capture
 }
-fn caller(store: &Store, dsp: &str, areas: &[&str]) -> dispatch_core::mcp::Caller {
+
+pub(super) fn caller(store: &Store, dsp: &str, areas: &[&str]) -> dispatch_core::mcp::Caller {
     let input = AgentKeyRequest::parse(
-        &json!({"name":"daily test","allDsps":false,"dsps":[dsp],"access":"read",
+        &json!({"name":format!("daily {}",areas.join("+")),"allDsps":false,"dsps":[dsp],"access":"read",
         "reads":{"areas":areas,"bypass":false},"dspReads":[],"expiresAt":null}),
     )
     .unwrap();

@@ -5,6 +5,7 @@ use super::{
     data::{
         catalog::{self, Endpoint, Metric, Term, Variant},
         facts::{Daily, Places},
+        performance::Adapter,
         scope::Identify,
     },
     skill::{self, Example},
@@ -30,6 +31,8 @@ pub struct Mcp {
     pub endpoints: &'static [Endpoint],
     /// Alternate source declarations; the public endpoint identity has one owner.
     pub variants: &'static [Variant],
+    /// Agent-only operational and posted views. Storage and frontend reads stay separate.
+    pub performance: &'static [Adapter],
     /// What `team_table` can rank by from its data.
     pub metrics: &'static [Metric],
     /// The words its answers use, for the glossary.
@@ -55,6 +58,7 @@ impl Mcp {
         sources: &[],
         endpoints: &[],
         variants: &[],
+        performance: &[],
         metrics: &[],
         terms: &[],
         examples: &[],
@@ -125,6 +129,42 @@ pub fn check(features: &[&Feature]) {
         );
     }
     let variants: Vec<&Variant> = mcp().flat_map(|mcp| mcp.variants).collect();
+    let adapters: Vec<&Adapter> = mcp().flat_map(|mcp| mcp.performance).collect();
+    for (index, adapter) in adapters.iter().enumerate() {
+        assert!(areas.contains(&adapter.area), "undeclared view area");
+        assert!(
+            !adapter.view.is_empty() && adapter.view != "compare",
+            "invalid agent view name"
+        );
+        assert!(
+            !adapter.cursor_prefix.is_empty(),
+            "empty view cursor prefix"
+        );
+        assert!(
+            !adapter.default_period.is_empty(),
+            "empty view default period"
+        );
+        assert!(
+            adapters[..index]
+                .iter()
+                .all(|other| other.endpoint != adapter.endpoint || other.view != adapter.view),
+            "duplicate agent view"
+        );
+        assert!(
+            adapters[..index]
+                .iter()
+                .all(|other| other.endpoint != adapter.endpoint
+                    || other.cursor_prefix != adapter.cursor_prefix),
+            "duplicate view cursor prefix"
+        );
+        assert!(
+            !adapter.compare_default
+                || adapters[..index]
+                    .iter()
+                    .all(|other| other.endpoint != adapter.endpoint || !other.compare_default),
+            "multiple comparison defaults"
+        );
+    }
     for (index, variant) in variants.iter().enumerate() {
         assert!(areas.contains(&variant.area), "undeclared variant area");
         assert!(

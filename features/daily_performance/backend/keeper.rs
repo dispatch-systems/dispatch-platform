@@ -12,6 +12,9 @@ use dispatch_cortex::{daily_performance::JOB_KIND, discovery::Scope};
 use serde_json::Value;
 pub(crate) struct DailyPerformanceKeeper;
 impl Keeper for DailyPerformanceKeeper {
+    fn queue_capacity(&self) -> i64 {
+        31
+    }
     fn keeps(&self) -> &'static str {
         JOB_KIND
     }

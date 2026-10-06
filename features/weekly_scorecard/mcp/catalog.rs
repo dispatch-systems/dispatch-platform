@@ -15,11 +15,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
         area: Some(FEEDBACK),
         path: "/api/v1/feedback",
         summary: "Customer feedback (CDF)",
-        description: "Use for customer delivery feedback (CDF) from Amazon's weekly scorecard: \
-            how much negative feedback, of which kinds, for which drivers, and repeated \
-            feedback at the same address (group_by address, min_count 2; needs a key allowed \
-            addresses). CDF means negative feedback; ask for positive only when the user asks \
-            for praise.",
+        description: "Feedback by driver, date and category. Defaults to negative; positive for praise. \
+            Daily response counts and weekly package reviews use different units. Repeated address groups need address access.",
         path_params: &[],
         params: &[
             DSP,
@@ -99,9 +96,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
         area: Some(SAFETY),
         path: "/api/v1/safety",
         summary: "Netradyne safety events",
-        description: "Use for Netradyne safety infractions from Amazon's scorecard: speeding, \
-            distraction, sign violations, following distance, seatbelt. Gives counts by type; \
-            for one driver also each event with its severity and dispute outcome.",
+        description: "Safety by driver, date and type. Operational merges assessed/live IDs and labels pending events. \
+            Posted view reports weekly counting and disputes.",
         path_params: &[],
         params: &[
             DSP,
@@ -173,11 +169,8 @@ pub const ENDPOINTS: &[Endpoint] = &[
         area: Some(RETURNS),
         path: "/api/v1/returns",
         summary: "Contact compliance and returns to station (RTS)",
-        description: "Use for contact compliance: which drivers didn't do it, that is returned \
-            packages without the required call or text (contact missed, group_by driver). \
-            Also Amazon's returns to station from the weekly scorecard, their reasons, and \
-            which returns hurt the completion rate (DCR). Use source daily_performance for daily returns; \
-            weekly_scorecard for posted weekly outcomes.",
+        description: "Returns and contact compliance by driver, delivery date and reason. contact missed finds call/text coaching; \
+            posted view identifies weekly DCR impact.",
         path_params: &[],
         params: &[
             DSP,

@@ -336,20 +336,22 @@ pub static ENDPOINTS: LazyLock<Vec<&'static Endpoint>> = LazyLock::new(|| {
                 .iter()
                 .filter_map(|source| source.area.map(|area| area.source().as_str()))
                 .collect();
-            let hint = choices.join(" or ");
             params.push(Param {name:"source",kind:Kind::Choice(Box::leak(choices.into_boxed_slice())),
                 description:"Choose the data source explicitly. Omit for the first listed source; sources never mix or fall back."});
-            let description = Box::leak(
-                format!(
-                    "{} Select source: {hint}. \
-                Source-specific parameters are checked after selection.",
-                    endpoint.description
-                )
-                .into_boxed_str(),
-            );
             *endpoint = Box::leak(Box::new(Endpoint {
                 params: Box::leak(params.into_boxed_slice()),
-                description,
+                ..**endpoint
+            }));
+        }
+        if super::performance::available(endpoint.id) {
+            let mut params = endpoint.params.to_vec();
+            for param in super::performance::params(endpoint.id) {
+                if !params.iter().any(|existing| existing.name == param.name) {
+                    params.push(param);
+                }
+            }
+            *endpoint = Box::leak(Box::new(Endpoint {
+                params: Box::leak(params.into_boxed_slice()),
                 ..**endpoint
             }));
         }
@@ -422,7 +424,7 @@ pub fn select(endpoint: &Endpoint, query: &Value) -> Result<&'static Endpoint, R
 }
 pub fn output(endpoint: &Endpoint) -> Value {
     let sources = alternatives(endpoint.id);
-    let schemas: Vec<Value> = sources
+    let mut schemas: Vec<Value> = sources
         .iter()
         .map(|source| {
             let mut schema = (source.output)();
@@ -440,10 +442,34 @@ pub fn output(endpoint: &Endpoint) -> Value {
             schema
         })
         .collect();
+    if super::performance::available(endpoint.id) {
+        schemas.push(super::performance::output());
+    }
     if schemas.len() == 1 {
         schemas.into_iter().next().expect("schema")
     } else {
-        json!({"type":"object","anyOf":schemas})
+        // Share identical properties across source contracts instead of repeating them
+        // in every discovery branch. Branch requirements remain source-specific.
+        let mut shared = Map::new();
+        let candidates = schemas[0]["properties"]
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
+        for (name, value) in candidates {
+            if schemas
+                .iter()
+                .all(|schema| schema["properties"].get(&name) == Some(&value))
+            {
+                for schema in &mut schemas {
+                    schema["properties"]
+                        .as_object_mut()
+                        .expect("properties")
+                        .remove(&name);
+                }
+                shared.insert(name, value);
+            }
+        }
+        json!({"type":"object","properties":shared,"anyOf":schemas})
     }
 }
 
@@ -458,6 +484,9 @@ pub fn endpoint(id: &str) -> &'static Endpoint {
 /// Refuses a parameter the endpoint does not take, or a value of the wrong kind.
 pub fn check(id: &str, query: &Value) -> Result<(), Refusal> {
     let discovery = endpoint(id);
+    if query.get("view").is_some() && super::performance::available(id) {
+        return super::performance::check(discovery, query);
+    }
     let endpoint = select(discovery, query)?;
     let names = || endpoint.params.iter().map(|p| p.name.to_owned()).collect();
     for (name, value) in query.as_object().into_iter().flatten() {

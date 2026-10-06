@@ -136,17 +136,21 @@ fn focused_tools_have_one_public_identity_and_select_source_before_parameter_che
             1
         );
         let primary = select(endpoint(id), &json!({})).unwrap();
-        assert!(
+        assert!(matches!(
             endpoint(id)
-                .description
-                .contains("Select source: weekly_scorecard or daily_performance.")
-        );
+                .params
+                .iter()
+                .find(|p| p.name == "source")
+                .unwrap()
+                .kind,
+            Kind::Choice(["weekly_scorecard", "daily_performance"])
+        ));
         assert_eq!(primary.area.unwrap().source().as_str(), "weekly_scorecard");
         let daily = select(endpoint(id), &json!({"source":"daily_performance"})).unwrap();
         assert_eq!(daily.area.unwrap().source().as_str(), "daily_performance");
         assert_eq!(primary.path, daily.path);
         assert_eq!(primary.tool, daily.tool);
-        assert_eq!(output(endpoint(id))["anyOf"].as_array().unwrap().len(), 2);
+        assert_eq!(output(endpoint(id))["anyOf"].as_array().unwrap().len(), 3);
         assert_eq!(
             select(endpoint(id), &json!({"source":"scorecard"}))
                 .unwrap_err()

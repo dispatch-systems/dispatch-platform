@@ -10,6 +10,7 @@ Dispatch answers questions about a delivery service partner's drivers from its c
 - Pass the user's own words for days (yesterday, last night, last week, 2026-W39) and for drivers (a name or part of one). Follow each tool's declared default day or period. You need not look up today's date or a driver's ID first. Days are the DSP's own and can differ from your clock: say yesterday, not a date you worked out. Weeks run Sunday to Saturday. DSP names may be omitted when the key reaches one DSP; from/to date ranges are inclusive.
 - Shared arguments: date selects one day; from and to select an inclusive range instead of period. driver also accepts Driver Match codes, Paycom codes and Amazon transporter IDs. detail defaults to summary; full includes detail rows. limit bounds each page within the tool's declared range.
 - Tools with a source argument list its choices; omission selects the first listed source. Choose explicitly when the question names a source; sources never mix or fall back.
+- Tools offering view return contract_version 2. Compare reads all registered views and requires each grant, keeping units and coverage separate; never add its counts. Omit view for the legacy source contract.
 - Each answer says what it understood. Coverage status is complete, partial, missing or unavailable. Totals with partial coverage cover only the collected days. Days a source did not collect are unknown, never zero: say so.
 - A feature the DSP has switched off is refused as source_off, or listed under switched_off with null figures: tell the user it is switched off, and don't work the answer out from other tools.
 - Data this key may not read at a DSP is refused as not_allowed, or listed under not_allowed with null figures: tell the user, who can allow it on the Agents page in Dispatch.
@@ -20,8 +21,8 @@ Dispatch answers questions about a delivery service partner's drivers from its c
 - Timecards default to yesterday for everyone or the last 30 days for one driver. Meal breaks default to yesterday. Timecards and meal comparisons allow up to 92 days.
 - Routes default to yesterday.
 - DVIC contains short exceptions only: no exception does not prove an inspection was completed.
-- weekly_scorecard defaults to the latest week. Focused feedback, returns and safety tools default to this weekly source, with the last 30 days as their default period.
-- Daily Performance defaults to yesterday. When a tool offers source: daily_performance, select it for daily questions; its default period is yesterday.
+- weekly_scorecard defaults to the latest week. Focused feedback, returns and safety tools default to this weekly source, with the last 30 days as their default period. View posted_scorecard and compare default to last week. Posted scoring and disputes are authoritative; weekly package feedback and DSP response counters are distinct measures.
+- Daily Performance defaults to yesterday. Choose source daily_performance or view operational for daily questions. Operational reconciles return attempts and assessed/live safety; live-only events are pending. Feedback is daily response counts, not package reviews. Daily annotations do not establish posted scoring.
 
 ## Connecting
 
@@ -203,7 +204,7 @@ Recorded short DVIC exceptions, by driver and period. detail full pages individu
 
 ### `customer_feedback` · `GET /api/v1/feedback`
 
-Use for customer delivery feedback (CDF) from Amazon's weekly scorecard: how much negative feedback, of which kinds, for which drivers, and repeated feedback at the same address (group_by address, min_count 2; needs a key allowed addresses). CDF means negative feedback; ask for positive only when the user asks for praise. Select source: weekly_scorecard or daily_performance. Source-specific parameters are checked after selection.
+Feedback by driver, date and category. Defaults to negative; positive for praise. Daily response counts and weekly package reviews use different units. Repeated address groups need address access.
 
 - `dsp`: The DSP, by name. Leave it out when the key reaches one DSP.
 - `period`: The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.
@@ -223,10 +224,15 @@ Use for customer delivery feedback (CDF) from Amazon's weekly scorecard: how muc
 - `fields`: Comma-separated source fields for detail, or omit for the dataset's safe fields.
 - `detail`: summary (the default) or full, only when the user wants every row.
 - `source`: Choose the data source explicitly. Omit for the first listed source; sources never mix or fall back.
+- `view`: v2: choose a registered view or compare their independent answers.
+- `operational_cursor`: Compare: this view's next_cursor for the matching table.
+- `operational_groups_cursor`: Compare: this view's next_cursor for the matching table.
+- `posted_cursor`: Compare: this view's next_cursor for the matching table.
+- `posted_groups_cursor`: Compare: this view's next_cursor for the matching table.
 
 ### `safety_events` · `GET /api/v1/safety`
 
-Use for Netradyne safety infractions from Amazon's scorecard: speeding, distraction, sign violations, following distance, seatbelt. Gives counts by type; for one driver also each event with its severity and dispute outcome. Select source: weekly_scorecard or daily_performance. Source-specific parameters are checked after selection.
+Safety by driver, date and type. Operational merges assessed/live IDs and labels pending events. Posted view reports weekly counting and disputes.
 
 - `dsp`: The DSP, by name. Leave it out when the key reaches one DSP.
 - `period`: The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.
@@ -245,10 +251,15 @@ Use for Netradyne safety infractions from Amazon's scorecard: speeding, distract
 - `impacting`: Source impact flag, where known; weekly impact is not inferred.
 - `detail`: summary (the default) or full, only when the user wants every row.
 - `source`: Choose the data source explicitly. Omit for the first listed source; sources never mix or fall back.
+- `view`: v2: choose a registered view or compare their independent answers.
+- `operational_cursor`: Compare: this view's next_cursor for the matching table.
+- `operational_groups_cursor`: Compare: this view's next_cursor for the matching table.
+- `posted_cursor`: Compare: this view's next_cursor for the matching table.
+- `posted_groups_cursor`: Compare: this view's next_cursor for the matching table.
 
 ### `returns` · `GET /api/v1/returns`
 
-Use for contact compliance: which drivers didn't do it, that is returned packages without the required call or text (contact missed, group_by driver). Also Amazon's returns to station from the weekly scorecard, their reasons, and which returns hurt the completion rate (DCR). Use source daily_performance for daily returns; weekly_scorecard for posted weekly outcomes. Select source: weekly_scorecard or daily_performance. Source-specific parameters are checked after selection.
+Returns and contact compliance by driver, delivery date and reason. contact missed finds call/text coaching; posted view identifies weekly DCR impact.
 
 - `dsp`: The DSP, by name. Leave it out when the key reaches one DSP.
 - `period`: The days as the user said them, read in the DSP's own time: yesterday, last night, last week, this month, last 14 days, 2026-09-28, 2026-09-01..2026-09-30 or 2026-W39. Weeks run Sunday to Saturday. Leave out for the last 30 days.
@@ -267,6 +278,11 @@ Use for contact compliance: which drivers didn't do it, that is returned package
 - `fields`: Comma-separated source fields for detail, or omit for the dataset's safe fields.
 - `detail`: summary (the default) or full, only when the user wants every row.
 - `source`: Choose the data source explicitly. Omit for the first listed source; sources never mix or fall back.
+- `view`: v2: choose a registered view or compare their independent answers.
+- `operational_cursor`: Compare: this view's next_cursor for the matching table.
+- `operational_groups_cursor`: Compare: this view's next_cursor for the matching table.
+- `posted_cursor`: Compare: this view's next_cursor for the matching table.
+- `posted_groups_cursor`: Compare: this view's next_cursor for the matching table.
 
 ### `weekly_scorecard` · `GET /api/v1/weekly-scorecard`
 

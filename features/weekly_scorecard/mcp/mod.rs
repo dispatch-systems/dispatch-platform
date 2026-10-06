@@ -1,6 +1,7 @@
 //! What agents can ask of Weekly Scorecard: Amazon's weekly scorecard, its customer feedback,
 //! Netradyne safety events and returns to station.
 mod catalog;
+mod performance;
 mod query;
 mod synthetic;
 pub mod weekly_scorecard;
@@ -66,11 +67,14 @@ pub const WEEKLY_SCORECARD: AgentArea = AgentArea::new(&ReadToggle {
 
 pub const MCP: Mcp = Mcp {
     instructions: "- weekly_scorecard defaults to the latest week. Focused feedback, returns and safety tools \
-        default to this weekly source, with the last 30 days as their default period.",
+        default to this weekly source, with the last 30 days as their default period. \
+        View posted_scorecard and compare default to last week. Posted scoring and disputes are authoritative; \
+        weekly package feedback and DSP response counters are distinct measures.",
     reads: &[FEEDBACK, SAFETY, RETURNS, WEEKLY_SCORECARD],
     missing: "weekly scorecard data",
     sources: &[SOURCE],
     endpoints: catalog::ENDPOINTS,
+    performance: performance::ADAPTERS,
     examples: catalog::EXAMPLES,
     synthetic: synthetic::SYNTHETIC,
     ..Mcp::NONE

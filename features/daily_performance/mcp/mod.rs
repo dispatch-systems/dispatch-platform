@@ -3,6 +3,7 @@
 //! toggles are built from it.
 mod catalog;
 mod fields;
+mod performance;
 mod synthetic;
 mod variants;
 mod views;
@@ -75,8 +76,9 @@ pub(crate) const DAILY_SAFETY: AgentArea = AgentArea::new(&ReadToggle {
     names: &[DriverSource::Amazon],
 });
 pub(crate) const MCP: Mcp = Mcp {
-    instructions: "- Daily Performance defaults to yesterday. When a tool offers source: daily_performance, \
-        select it for daily questions; its default period is yesterday.",
+    instructions: "- Daily Performance defaults to yesterday. Choose source daily_performance or view operational for daily questions. \
+        Operational reconciles return attempts and assessed/live safety; live-only events are pending. \
+        Feedback is daily response counts, not package reviews. Daily annotations do not establish posted scoring.",
     reads: &[
         DAILY_PERFORMANCE,
         DAILY_FEEDBACK,
@@ -87,6 +89,7 @@ pub(crate) const MCP: Mcp = Mcp {
     sources: &[SOURCE],
     endpoints: catalog::ENDPOINTS,
     variants: variants::ENDPOINTS,
+    performance: performance::ADAPTERS,
     synthetic: synthetic::SYNTHETIC,
     ..Mcp::NONE
 };

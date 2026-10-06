@@ -33,6 +33,31 @@ Nonempty datasets have observed coverage. Empty responses stay unconfirmed and d
 zero events or completed work. Availability is reported for the selected dataset and date
 range, independently of driver/event filters.
 
+The focused tools additionally offer `view: operational` through the shared agent-only view
+dispatcher. This opt-in v2 contract reconciles return snapshots by delivery attempt and
+delivery date, exposes aggregate/detail mismatches, combines assessed and live safety by
+event ID with pending status, and names feedback response units. The generic tool and
+explicit source-only calls keep their existing raw dataset contracts. Frontend reads do
+not use the view dispatcher. Operational defaults to yesterday. `view: compare` requires
+both weekly and daily read grants and defaults to last week. Its daily answer is under
+`sources.operational`, with `operational_cursor` and `operational_groups_cursor` for
+independent detail and group pages; single-view calls use `cursor` and `groups_cursor`.
+
+Operational returns reconcile active cumulative snapshots by tracking ID, planned delivery
+date and transporter ID, keeping the latest annotation before filtering impact or contact.
+The date filter applies to delivery attempts, while later snapshots can improve past detail.
+Missing identity fields remain separate and are counted under `unidentified`.
+Where available, `reported_returns` gives the independent daily aggregate; `reconciliation`
+reports detail/aggregate mismatches explicitly. Daily annotations do not establish weekly
+scorecard impact. Operational safety merges live and assessed copies by event ID, prefers
+assessed outcomes and labels live-only events pending. Empty daily responses remain
+unconfirmed, never assumed zero.
+
+Daily's keeper declares a bounded 31-job queue capacity so the supported 31-day backfill and
+default seven-day scheduled refresh can be admitted atomically. Worker/browser concurrency,
+idempotency and manual batch exclusivity remain enforced; other collections retain their
+existing capacities.
+
 Daily feedback contains response counts, not individual package reviews. RTS fields retain
 daily coaching and exemptions. Assessed and live safety datasets stay separate because
 Amazon can report the same event ID in both. Contacts were empty during source inspection;

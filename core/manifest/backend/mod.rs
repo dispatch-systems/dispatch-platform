@@ -816,10 +816,20 @@ pub trait Collector: Sync {
     }
 }
 
+/// Minimum backlog capacity a collection keeper may declare.
+pub const MIN_QUEUE_CAPACITY: i64 = 5;
+/// Maximum backlog capacity a collection keeper may declare.
+pub const MAX_QUEUE_CAPACITY: i64 = 31;
+
 /// How a feature keeps one collection: what a queued request needs from the DSP before
 /// it runs, how what it brings is stored, and what a schedule of it queues. The engine
 /// finds it by the collection's job kind.
 pub trait Keeper: Sync {
+    /// Bounded queued backlog for this collection, independent of browser worker capacity.
+    /// The engine clamps declarations to MIN_QUEUE_CAPACITY..=MAX_QUEUE_CAPACITY.
+    fn queue_capacity(&self) -> i64 {
+        MIN_QUEUE_CAPACITY
+    }
     /// The job kind of the collection it keeps.
     fn keeps(&self) -> &'static str;
     /// The permission its collection runs under: what a member needs to queue or cancel
