@@ -28,10 +28,18 @@ test('the platform switches a DSPâ€™s pages, tabs and connections, and the teamâ
     'DVICneeds a DVIC source',
     'Weekly Scorecardneeds a weekly scorecard source',
     'Driver Matchneeds a route source',
+    'Daily Performanceneeds a daily performance source',
   ]);
   await off.getByRole('button', { name: 'Switch off', exact: true }).click();
   await expect(cortex).not.toBeChecked();
-  for (const name of ['Timecard', 'Routes', 'DVIC', 'Weekly Scorecard', 'Driver Match'])
+  for (const name of [
+    'Timecard',
+    'Routes',
+    'DVIC',
+    'Weekly Scorecard',
+    'Driver Match',
+    'Daily Performance',
+  ])
     await expect(area(name)).toContainText('Off');
   await expect(area('Uniform Inventory')).toContainText('On');
   await area('Timecard').click();
