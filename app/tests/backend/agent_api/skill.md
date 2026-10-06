@@ -22,7 +22,7 @@ Dispatch answers questions about a delivery service partner's drivers from its c
 - Routes default to yesterday.
 - DVIC contains short exceptions only: no exception does not prove an inspection was completed.
 - weekly_scorecard defaults to the latest week. Focused feedback, returns and safety tools default to this weekly source, with the last 30 days as their default period. View posted_scorecard and compare default to last week. Posted scoring and disputes are authoritative; weekly package feedback and DSP response counters are distinct measures.
-- Daily Performance: source daily_performance or view operational defaults to yesterday. Operational reconciles return attempts and assessed/live safety; live-only events are pending. Feedback is daily response counts, not package reviews. Daily annotations do not establish posted scoring.
+- Daily Performance defaults to yesterday. Choose source daily_performance or view operational for daily questions. Operational reconciles return attempts and assessed/live safety; live-only events are pending. Feedback is daily response counts, not package reviews. Daily annotations do not establish posted scoring.
 
 ## Connecting
 
