@@ -25,6 +25,10 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
         'safety',
         'returns',
         'weekly_scorecard',
+        'daily_performance',
+        'daily_feedback',
+        'daily_returns',
+        'daily_safety',
       ],
       bypass: false,
     },
@@ -65,7 +69,14 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
   const schemas = new Map<string, z.ZodType>();
   for (const [path, item] of Object.entries(document.paths) as [string, any][]) {
     const schema = item.get.responses['200'].content['application/json'].schema;
-    assert.ok(Object.keys(schema.properties).length > 0, path);
+    assert.equal(schema.type, 'object', path);
+    assert.ok(
+      (schema.anyOf ?? [schema]).every(
+        (branch: any) =>
+          branch.type === 'object' && Object.keys(branch.properties ?? {}).length > 0,
+      ),
+      path,
+    );
     schemas.set(path, z.fromJSONSchema(schema));
     for (const status of ['400', '401', '403', '404', '422', '429', '500', '503'])
       assert.ok(
@@ -283,6 +294,38 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
   );
   await check('/api/v1/weekly-scorecard', 'weekly_scorecard', { limit: 1 });
   await check('/api/v1/weekly-scorecard', 'weekly_scorecard', { week: '2099-W01' });
+  await check('/api/v1/daily-performance', 'daily_performance', {
+    from: world.from,
+    to: world.to,
+    detail: 'full',
+    group_by: 'driver,day',
+    limit: 1,
+  });
+  for (const [path, tool] of [
+    ['/api/v1/feedback', 'customer_feedback'],
+    ['/api/v1/safety', 'safety_events'],
+    ['/api/v1/returns', 'returns'],
+  ]) {
+    const query = {
+      source: 'daily_performance',
+      from: world.from,
+      to: world.to,
+      group_by: 'driver,day',
+      list: true,
+      limit: 1,
+    };
+    const first = await check(path!, tool!, query);
+    assert.equal(first.source, 'daily_performance');
+    assert.ok(first.list.page.next_cursor);
+    assert.ok(first.groups.page.next_cursor);
+    const next = await check(path!, tool!, {
+      ...query,
+      cursor: first.list.page.next_cursor,
+      groups_cursor: first.groups.page.next_cursor,
+    });
+    assert.notDeepEqual(next.list.rows, first.list.rows);
+    assert.notDeepEqual(next.groups.rows, first.groups.rows);
+  }
   // Uncollected days still have a valid, explicit response contract.
   for (const [path, tool] of [
     ['/api/v1/routes', 'route_day'],
