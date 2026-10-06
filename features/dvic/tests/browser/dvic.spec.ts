@@ -58,6 +58,19 @@ test('the day digest and week grid read the same inspections, with details on de
   await expect(page.getByRole('button', { name: 'Latest' })).toBeDisabled();
   // The latest reported day opens first, with its headline numbers and repeat drivers.
   await expect(page.getByRole('heading', { name: 'Sat, Sep 26, 2026' })).toBeVisible();
+  // Today opens the DSP's current day, even before it has been collected; Latest returns.
+  const today = new Intl.DateTimeFormat('en-US', {
+    timeZone: dsp.timezone,
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date());
+  await page.getByRole('button', { name: 'Today', exact: true }).click();
+  await expect(page.getByRole('heading', { name: today })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Today', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Latest' }).click();
+  await expect(page.getByRole('heading', { name: 'Sat, Sep 26, 2026' })).toBeVisible();
   await expect(page.locator('.dvic-footer')).toContainText('3 records');
   await expect(page.locator('.dvic-kpi')).toHaveText('Short inspections3');
   await expect(page.getByRole('note')).toHaveText(
