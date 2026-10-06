@@ -155,12 +155,15 @@ export const mealColumns: TableColumn<MealLine>[] = [
     exports: [
       ['Last delivery', (line) => meals(line, (meal) => text(delivery(meal, 'lastDelivery')))],
     ],
-    cell: (line) => (
-      <>
-        <Clock value={delivery(line, 'lastDelivery')} link={cortexLink(line, 'lastDelivery')} />
-        {line.pair.cortex && <GapBadge gap={line.pair.gaps.before} side="before" />}
-      </>
-    ),
+    cell: (line) => {
+      const link = cortexLink(line, 'lastDelivery');
+      return (
+        <>
+          <Clock value={delivery(line, 'lastDelivery')} link={link} />
+          {line.pair.cortex && <GapBadge gap={line.pair.gaps.before} side="before" link={link} />}
+        </>
+      );
+    },
   },
   {
     id: 'outLunch',
@@ -220,12 +223,15 @@ export const mealColumns: TableColumn<MealLine>[] = [
     exports: [
       ['First delivery', (line) => meals(line, (meal) => text(delivery(meal, 'firstDelivery')))],
     ],
-    cell: (line) => (
-      <>
-        <Clock value={delivery(line, 'firstDelivery')} link={cortexLink(line, 'firstDelivery')} />
-        {line.pair.cortex && <GapBadge gap={line.pair.gaps.after} side="after" />}
-      </>
-    ),
+    cell: (line) => {
+      const link = cortexLink(line, 'firstDelivery');
+      return (
+        <>
+          <Clock value={delivery(line, 'firstDelivery')} link={link} />
+          {line.pair.cortex && <GapBadge gap={line.pair.gaps.after} side="after" link={link} />}
+        </>
+      );
+    },
   },
   {
     id: 'outDay',

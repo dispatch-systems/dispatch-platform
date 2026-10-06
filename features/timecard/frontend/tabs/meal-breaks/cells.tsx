@@ -29,7 +29,7 @@ export function Clock({
   link?: SourceLink | null;
 }) {
   const clock = (
-    <span className={`meal-clock${difference ? ' different' : ''}`} title={value?.detail}>
+    <span className={`meal-clock${difference ? ' different' : ''}`}>
       {value ? (
         <>
           {value.label}
@@ -91,16 +91,22 @@ export function LunchCell({
     </>
   );
 }
-export function GapBadge({ gap, side }: { gap: DeliveryGap | null; side: 'before' | 'after' }) {
+export function GapBadge({
+  gap,
+  side,
+  link,
+}: {
+  gap: DeliveryGap | null;
+  side: 'before' | 'after';
+  /** Makes a gap over the limit open the delivery it was measured from, like its time. */
+  link?: SourceLink | null;
+}) {
   const endpoints =
     side === 'before' ? 'Last delivery → Flex OUT LUNCH' : 'Flex IN LUNCH → first delivery';
   const detail = `${endpoints}: ${gap ? `${gap.label}${gap.overLimit ? ' · over 5 minutes' : ''}` : 'gap unavailable'}`;
-  return (
-    <span
-      className={`meal-gap${gap?.overLimit ? ' over-limit' : ''}`}
-      title={detail}
-      aria-label={detail}
-    >
+  const className = `meal-gap${gap?.overLimit ? ' over-limit' : ''}`;
+  const badge = (
+    <>
       {gap?.overLimit && <AlertTriangle size={14} aria-hidden="true" />}
       <span>
         {gap ? (
@@ -111,6 +117,22 @@ export function GapBadge({ gap, side }: { gap: DeliveryGap | null; side: 'before
           'Gap unavailable'
         )}
       </span>
+    </>
+  );
+  return gap?.overLimit && link ? (
+    <a
+      className={`${className} meal-gap-link`}
+      href={link.href}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={`${detail} (open ${opens(link)})`}
+    >
+      {badge}
+      <ArrowUpRight className="meal-link-arrow" size={13} aria-hidden="true" />
+    </a>
+  ) : (
+    <span className={className} aria-label={detail}>
+      {badge}
     </span>
   );
 }

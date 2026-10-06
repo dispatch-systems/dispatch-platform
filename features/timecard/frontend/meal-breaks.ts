@@ -13,7 +13,6 @@ export interface ClockTime {
   minute: number;
   label: string;
   day: number;
-  detail: string;
 }
 export interface Lunch {
   out: ClockTime | null;
@@ -79,15 +78,7 @@ export function cortexClock(value: string | null, date: string, zone: string): C
     day * 1440 +
     Number(parts.find((p) => p.type === 'hour')!.value) * 60 +
     Number(parts.find((p) => p.type === 'minute')!.value);
-  let detail: string | undefined;
-  return {
-    minute,
-    day,
-    label: label(minute),
-    get detail() {
-      return (detail ??= `${dateFormatter('en-US', { timeZone: zone, dateStyle: 'medium', timeStyle: 'long' }).format(d)} · ${zone}`);
-    },
-  };
+  return { minute, day, label: label(minute) };
 }
 const statusLabels = {
   flex_only: 'Flex only',
@@ -101,13 +92,7 @@ const statusLabels = {
 } satisfies Record<MealStatus, string>;
 
 function paycomClock(clock: AssessedClock | null): ClockTime | null {
-  return clock
-    ? {
-        ...clock,
-        label: label(clock.minute),
-        detail: `Paycom displayed time${clock.day ? ` · day +${clock.day}` : ''}`,
-      }
-    : null;
+  return clock ? { ...clock, label: label(clock.minute) } : null;
 }
 function displayDay(day: PaycomDay) {
   return {
@@ -134,14 +119,7 @@ export function displayMeal(row: MealEmployee) {
       const lunch = pair.lunchIndex === null ? undefined : paycom.lunches[pair.lunchIndex];
       const flexClock = (clock: AssessedClock | null, instant?: string | null) => {
         if (!clock || !cortex || !instant) return null;
-        let detail: string | undefined;
-        return {
-          ...clock,
-          label: label(clock.minute),
-          get detail() {
-            return (detail ??= `${dateFormatter('en-US', { timeZone: cortex.timezone, dateStyle: 'medium', timeStyle: 'long' }).format(new Date(instant))} · ${cortex.timezone}`);
-          },
-        };
+        return { ...clock, label: label(clock.minute) };
       };
       return {
         ...pair,
