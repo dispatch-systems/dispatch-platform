@@ -1,5 +1,6 @@
 //! Exact-input build cache for the backend and the browser tests' assessment fixture. Schema 4
-//! excludes binaries built before path remapping.
+//! excluded binaries built before path remapping; schema 6 keeps test code and the development
+//! CLI out of the backend's key.
 mod key;
 mod store;
 #[cfg(test)]

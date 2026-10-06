@@ -207,6 +207,12 @@ fn every_rust_and_embedded_launcher_input_is_fingerprinted_but_dashboard_is_not(
         "features/one/tests/browser/page.spec.ts",
         "features/one/tests/support/fixture.ts",
         "features/one/frontend/page.css",
+        // Test code and the development CLI's own files never reach the backend.
+        "features/one/tests/backend/one.rs",
+        "app/tests/backend/snapshots/agent-api.json",
+        "core/db/tests/support/common.rs",
+        "tooling/cli/src/build/key.rs",
+        "tooling/cli/dispatchdev",
     ] {
         let path = f.root.join(name);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -219,8 +225,7 @@ fn every_rust_and_embedded_launcher_input_is_fingerprinted_but_dashboard_is_not(
         "app/backend/provider.js",
         "core/db/migrations/schema.sql",
         "ops/host-manager/src/management.rs",
-        "tooling/cli/src/build/key.rs",
-        "tooling/cli/dispatchdev",
+        "tooling/cli/Cargo.toml",
         "tooling/shared/src/process.rs",
         "core/foundation/backend/error.rs",
         "collectors/cortex/scripts/meal.js",
@@ -236,6 +241,17 @@ fn every_rust_and_embedded_launcher_input_is_fingerprinted_but_dashboard_is_not(
         assert_ne!(original, key(&f), "{name}");
         fs::remove_file(path).unwrap();
     }
+    // The assessment fixture is test code: its key reads the tests the backend's leaves out.
+    let fixture =
+        |f: &Fixture| fingerprint(&f.root, "assessment-fixture", "compiler", &f.env).unwrap();
+    let before = fixture(&f);
+    let support = f
+        .root
+        .join("features/timecard/tests/support/assessment-fixture.rs");
+    fs::create_dir_all(support.parent().unwrap()).unwrap();
+    fs::write(&support, "fn main() {}").unwrap();
+    assert_ne!(before, fixture(&f));
+    assert_eq!(original, key(&f), "the backend's key leaves it out");
     assert_ne!(
         fingerprint(&f.root, "release", "compiler", &f.env).unwrap(),
         fingerprint(&f.root, "debug", "compiler", &f.env).unwrap()
