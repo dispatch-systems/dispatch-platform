@@ -66,6 +66,13 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
   };
   const document = (await get('/api/v1/openapi.json')).value;
   const tools = (await rpc('tools/list')).tools;
+  // Compact source alternatives hoist common fields to the root; each effective branch
+  // must still expose the same names and requirements as its complete REST contract.
+  const shapes = (schema: any) =>
+    (schema.anyOf ?? [{}]).map((branch: any) => ({
+      properties: Object.keys({ ...schema.properties, ...branch.properties }).sort(),
+      required: [...new Set([...(schema.required ?? []), ...(branch.required ?? [])])].sort(),
+    }));
   const schemas = new Map<string, z.ZodType>();
   for (const [path, item] of Object.entries(document.paths) as [string, any][]) {
     const schema = item.get.responses['200'].content['application/json'].schema;
@@ -95,12 +102,7 @@ test('REST and compact MCP contracts validate the same answers', async (t) => {
     const listed = tools.find((candidate: any) => candidate.name === tool);
     const fullSchema = document.paths[path].get.responses['200'].content['application/json'].schema;
     assert.equal(listed.outputSchema.type, fullSchema.type, tool);
-    assert.deepEqual(
-      Object.keys(listed.outputSchema.properties).sort(),
-      Object.keys(fullSchema.properties).sort(),
-      tool,
-    );
-    assert.deepEqual(listed.outputSchema.required, fullSchema.required, tool);
+    assert.deepEqual(shapes(listed.outputSchema), shapes(fullSchema), tool);
     const url = Object.entries(named).reduce(
       (url, [key, value]) => url.replace(`{${key}}`, encodeURIComponent(value)),
       path,
