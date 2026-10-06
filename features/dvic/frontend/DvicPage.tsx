@@ -178,10 +178,10 @@ export function DvicPage({ view }: { view: DspView }) {
     },
     { inline: true },
   );
-  const selectWeek = (date: string) => {
+  const selectWeek = (date: string, chosen?: string) => {
     if (date < '2000-01-02' || date > today) return;
     setChosenWeek(weekStart(date));
-    setChosenDay(undefined);
+    setChosenDay(chosen);
     setSelected(undefined);
     setPage(0);
   };
@@ -234,6 +234,15 @@ export function DvicPage({ view }: { view: DspView }) {
             title="The most recent week with reported inspections"
           >
             Latest
+          </button>
+          <button
+            disabled={
+              !status.data || (start === weekStart(today) && (tab === 'week' || day === today))
+            }
+            onClick={() => selectWeek(today, today)}
+            title="Today's inspections"
+          >
+            Today
           </button>
         </div>
         <span className="dvic-freshness">
