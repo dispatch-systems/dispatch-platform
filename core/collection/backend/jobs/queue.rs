@@ -10,6 +10,7 @@ use crate::{
     ensure,
     foundation::crypto,
     job_statuses,
+    manifest::{MAX_QUEUE_CAPACITY, MIN_QUEUE_CAPACITY},
 };
 use rusqlite::params;
 use serde_json::Value;
@@ -346,11 +347,11 @@ impl Store {
                 crate::manifest::registry()
                     .keepers()
                     .find(|keeper| keeper.keeps() == provider.collector().job_kind_for(request))
-                    .map_or(5, |keeper| keeper.queue_capacity())
-                    .clamp(5, 31)
+                    .map_or(MIN_QUEUE_CAPACITY, |keeper| keeper.queue_capacity())
+                    .clamp(MIN_QUEUE_CAPACITY, MAX_QUEUE_CAPACITY)
             })
             .min()
-            .unwrap_or(5);
+            .unwrap_or(MIN_QUEUE_CAPACITY);
         self.jobs.transaction(|| {
             let existing = requests
                 .iter()

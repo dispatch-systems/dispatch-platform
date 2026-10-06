@@ -23,6 +23,11 @@ results. Each source needs its own grant. View answers use contract version 2 wi
 count units; explicit source-only calls keep their existing contracts. No frontend API or
 stored data is combined. Weekly scoring annotations remain authoritative for questions about
 the posted scorecard, even when daily detail has overlapping delivery attempts or events.
+Posted and comparison views default to last week. Compare keeps the weekly answer under
+`sources.posted_scorecard`, with `posted_cursor` and `posted_groups_cursor` for independent
+detail and group pages; single-view calls use `cursor` and `groups_cursor`. Weekly safety
+retains the posted dispute outcomes. Weekly package feedback records and DSP response
+counters are distinct measures, and neither is additive with daily feedback response counts.
 
 Startup retires old Dispatch identifiers: saved switches (including disabled states), role
 permissions, agent allowances and OAuth grants, collection schedules, job kinds/requests and

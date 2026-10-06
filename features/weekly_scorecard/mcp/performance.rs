@@ -21,18 +21,34 @@ pub const ADAPTERS: &[Adapter] = &[
     Adapter {
         endpoint: "returns",
         view: "posted_scorecard",
+        cursor_prefix: "posted",
+        default_period: "last week",
+        compare_default: true,
+        normalize: |query| {
+            if param(query, "contact") == "all" {
+                query.as_object_mut().expect("query").remove("contact");
+            }
+        },
         area: RETURNS,
         answer: |db, state, caller, _, query| read(db, state, caller, query, "returns"),
     },
     Adapter {
         endpoint: "safety",
         view: "posted_scorecard",
+        cursor_prefix: "posted",
+        default_period: "last week",
+        compare_default: true,
+        normalize: |_| {},
         area: SAFETY,
         answer: |db, state, caller, _, query| read(db, state, caller, query, "safety"),
     },
     Adapter {
         endpoint: "feedback",
         view: "posted_scorecard",
+        cursor_prefix: "posted",
+        default_period: "last week",
+        compare_default: true,
+        normalize: |_| {},
         area: FEEDBACK,
         answer: |db, state, caller, _, query| read(db, state, caller, query, "feedback"),
     },

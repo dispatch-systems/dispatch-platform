@@ -18,37 +18,43 @@ use serde_json::{Value, json};
 pub struct Adapter {
     pub endpoint: &'static str,
     pub view: &'static str,
+    pub cursor_prefix: &'static str,
+    pub default_period: &'static str,
+    /// This adapter's default is the shared period when comparing all registered views.
+    pub compare_default: bool,
+    pub normalize: fn(&mut Value),
     pub area: AgentArea,
     pub answer: Answerer,
 }
-pub const PARAMS: &[Param] = &[
-    Param {
-        name: "view",
-        kind: Kind::Choice(&["operational", "posted_scorecard", "compare"]),
-        description: "v2: operational (yesterday); posted_scorecard or compare (last week).",
-    },
-    catalog::DETAIL,
-    Param {
-        name: "operational_cursor",
-        kind: Kind::Text,
-        description: "Compare: daily detail next_cursor.",
-    },
-    Param {
-        name: "posted_cursor",
-        kind: Kind::Text,
-        description: "Compare: weekly detail next_cursor.",
-    },
-    Param {
-        name: "operational_groups_cursor",
-        kind: Kind::Text,
-        description: "Compare: daily groups next_cursor.",
-    },
-    Param {
-        name: "posted_groups_cursor",
-        kind: Kind::Text,
-        description: "Compare: weekly groups next_cursor.",
-    },
-];
+/// Built once with catalog discovery; feature-owned names become public parameters.
+pub fn params(id: &str) -> Vec<Param> {
+    let mut registered: Vec<_> = adapters(id).collect();
+    registered.sort_by_key(|a| a.view);
+    let mut choices: Vec<_> = registered.iter().map(|a| a.view).collect();
+    if registered.len() > 1 {
+        choices.push("compare");
+    }
+    let mut params = vec![
+        Param {
+            name: "view",
+            kind: Kind::Choice(Box::leak(choices.into_boxed_slice())),
+            description: "v2: choose a registered view or compare their independent answers.",
+        },
+        catalog::DETAIL,
+    ];
+    if registered.len() > 1 {
+        for a in registered {
+            for suffix in ["cursor", "groups_cursor"] {
+                params.push(Param {
+                    name: Box::leak(format!("{}_{suffix}", a.cursor_prefix).into_boxed_str()),
+                    kind: Kind::Text,
+                    description: "Compare: this view's next_cursor for the matching table.",
+                });
+            }
+        }
+    }
+    params
+}
 pub fn adapters(id: &str) -> impl Iterator<Item = &'static Adapter> {
     registry()
         .features
@@ -59,18 +65,31 @@ pub fn adapters(id: &str) -> impl Iterator<Item = &'static Adapter> {
 pub fn available(id: &str) -> bool {
     adapters(id).next().is_some()
 }
-fn adapter(id: &str, view: &str) -> Result<&'static Adapter, Refusal> {
-    adapters(id).find(|a| a.view == view).ok_or_else(|| {
-        Refusal::new(
+pub fn is_cursor(id: &str, name: &str) -> bool {
+    adapters(id).any(|a| {
+        name.strip_prefix(a.cursor_prefix)
+            .is_some_and(|suffix| matches!(suffix, "_cursor" | "_groups_cursor"))
+    })
+}
+fn selected(id: &str, view: &str) -> Result<Vec<&'static Adapter>, Refusal> {
+    let registered: Vec<_> = adapters(id)
+        .filter(|a| view == "compare" || a.view == view)
+        .collect();
+    if registered.is_empty() || view == "compare" && registered.len() < 2 {
+        return Err(Refusal::new(
             400,
             "unsupported_view",
-            "This view's feature is not installed.",
-        )
-    })
+            "The requested view is unavailable in this build.",
+        ));
+    }
+    Ok(registered)
 }
 pub fn check(endpoint: &Endpoint, query: &Value) -> Result<(), Refusal> {
     for (key, value) in query.as_object().into_iter().flatten() {
-        if let Some(p) = PARAMS.iter().find(|p| p.name == key) {
+        if let Some(p) = endpoint.params.iter().find(|p| {
+            p.name == key
+                && (p.name == "view" || p.name == "detail" || is_cursor(endpoint.id, p.name))
+        }) {
             let text = value.as_str().unwrap_or("").trim();
             let valid = match p.kind {
                 Kind::Choice(choices) => choices.contains(&text),
@@ -86,12 +105,14 @@ pub fn check(endpoint: &Endpoint, query: &Value) -> Result<(), Refusal> {
         }
     }
     let view = param(query, "view");
-    let views: &[&str] = if view == "compare" {
-        &["operational", "posted_scorecard"]
-    } else {
-        &[view]
-    };
-    if view != "compare" && PARAMS[2..].iter().any(|p| query.get(p.name).is_some()) {
+    let selected = selected(endpoint.id, view)?;
+    if view != "compare"
+        && query
+            .as_object()
+            .into_iter()
+            .flatten()
+            .any(|(key, _)| is_cursor(endpoint.id, key))
+    {
         return Err(Refusal::new(
             400,
             "invalid_parameter",
@@ -109,8 +130,7 @@ pub fn check(endpoint: &Endpoint, query: &Value) -> Result<(), Refusal> {
             "Compare uses source-specific cursors and no source selector.",
         ));
     }
-    for view in views {
-        let selected = adapter(endpoint.id, view)?;
+    for selected in selected {
         if query
             .get("source")
             .is_some_and(|s| s.as_str() != Some(selected.area.source().as_str()))
@@ -121,34 +141,32 @@ pub fn check(endpoint: &Endpoint, query: &Value) -> Result<(), Refusal> {
                 "The source conflicts with the requested view.",
             ));
         }
-        catalog::check(endpoint.id, &source_query(query, selected))?;
+        catalog::check(endpoint.id, &source_query(endpoint, query, selected))?;
     }
     Ok(())
 }
-fn source_query(query: &Value, selected: &Adapter) -> Value {
+fn source_query(endpoint: &Endpoint, query: &Value, selected: &Adapter) -> Value {
     let full = param(query, "detail") == "full";
     let mut query = query.clone();
     let view = param(&query, "view").to_owned();
     let object = query.as_object_mut().expect("query object");
-    let prefix = if selected.view == "operational" {
-        "operational"
-    } else {
-        "posted"
-    };
     for (target, suffix) in [("cursor", "cursor"), ("groups_cursor", "groups_cursor")] {
-        if let Some(value) = object.get(&format!("{prefix}_{suffix}")).cloned() {
+        if let Some(value) = object
+            .get(&format!("{}_{suffix}", selected.cursor_prefix))
+            .cloned()
+        {
             object.insert(target.into(), value);
         }
     }
-    for p in PARAMS {
-        object.remove(p.name);
+    for p in endpoint.params {
+        if p.name == "view" || p.name == "detail" || is_cursor(endpoint.id, p.name) {
+            object.remove(p.name);
+        }
     }
     if full {
         query["list"] = json!("true");
     }
-    if param(&query, "contact") == "all" {
-        query.as_object_mut().expect("query").remove("contact");
-    }
+    (selected.normalize)(&mut query);
     if catalog::has_variants(selected.endpoint) {
         query["source"] = json!(selected.area.source().as_str());
     } else {
@@ -158,10 +176,14 @@ fn source_query(query: &Value, selected: &Adapter) -> Value {
         .iter()
         .all(|key| query.get(*key).is_none())
     {
-        query["period"] = json!(if view == "operational" {
-            "yesterday"
+        query["period"] = json!(if view == "compare" {
+            adapters(endpoint.id)
+                .find(|a| a.compare_default)
+                .or_else(|| adapters(endpoint.id).next())
+                .expect("registered comparison view")
+                .default_period
         } else {
-            "last week"
+            selected.default_period
         });
     }
     query
@@ -178,22 +200,14 @@ pub fn ask(
     check(endpoint, query)?;
     let view = param(query, "view");
     let access = Access::of(db, caller, query)?;
-    let views: &[&str] = if view == "compare" {
-        &["operational", "posted_scorecard"]
-    } else {
-        &[view]
-    };
     // Gate every requested source before reading any of them. Never silently fall back.
-    let selected = views
-        .iter()
-        .map(|view| {
-            let a = adapter(endpoint.id, view)?;
-            Ok((a, access.check(a.area)?))
-        })
+    let selected = selected(endpoint.id, view)?
+        .into_iter()
+        .map(|a| Ok((a, access.check(a.area)?)))
         .collect::<Result<Vec<_>, Refusal>>()?;
     let mut answers = serde_json::Map::new();
-    for (a, read) in selected {
-        let scoped = source_query(query, a);
+    for (a, read) in &selected {
+        let scoped = source_query(endpoint, query, a);
         let result = (a.answer)(db, state, caller, named, &scoped);
         let mut answer = match result {
             Ok(answer) => answer,
@@ -206,7 +220,7 @@ pub fn ask(
         answer["contract_version"] = json!(2);
         answer["view"] = json!(a.view);
         answer["source"] = json!(a.area.source().as_str());
-        if read == Read::Bypassed {
+        if *read == Read::Bypassed {
             access::bypassed(&mut answer, a.area.source());
         }
         if view != "compare" {
@@ -216,33 +230,28 @@ pub fn ask(
         answers.insert(a.view.into(), answer);
     }
     let mut answer = json!({"contract_version":2,"view":"compare","sources":answers,
-        "note":"Sources are independent and are not additive. Scorecard impact belongs to posted_scorecard. \
-            Units and coverage may differ."});
-    // Both sources keep their own cursors; trim only pageable tables, preserving full totals.
-    for key in ["operational", "posted_scorecard"] {
+        "note":"Sources are independent and are not additive. Units and coverage may differ."});
+    // Each source keeps its own cursors; trim only pageable tables, preserving full totals.
+    let table_budget = (shape::BUDGET / (selected.len() * 2)).saturating_sub(512);
+    for (a, _) in selected {
         for table in ["groups", "list"] {
-            let source = &mut answer["sources"][key];
+            let source = &mut answer["sources"][a.view];
             if let Some(value) = source.get(table).cloned() {
                 let rows = value["rows"].as_array().cloned().unwrap_or_default();
-                let cursor_name = if key == "operational" {
-                    if table == "list" {
-                        "operational_cursor"
-                    } else {
-                        "operational_groups_cursor"
-                    }
-                } else if table == "list" {
-                    "posted_cursor"
+                let suffix = if table == "list" {
+                    "cursor"
                 } else {
-                    "posted_groups_cursor"
+                    "groups_cursor"
                 };
-                let start = shape::offset_named(query, cursor_name)?;
+                let cursor_name = format!("{}_{suffix}", a.cursor_prefix);
+                let start = shape::offset_named(query, &cursor_name)?;
                 let total = value["page"]["total"]
                     .as_u64()
                     .map_or(start + rows.len(), |n| n as usize);
                 let columns = value["columns"].as_array().cloned().unwrap_or_default();
                 // Preserve owner-declared column names, without extending their lifetime.
                 let mut shown = rows.len();
-                while source[table].to_string().len() > shape::BUDGET / 4 - 512 && shown > 0 {
+                while source[table].to_string().len() > table_budget && shown > 0 {
                     shown -= 1;
                     source[table] = json!({"columns":columns,"rows":&rows[..shown],
                         "page":{"returned":shown,"total":total,"next_cursor":(start+shown).to_string()}});

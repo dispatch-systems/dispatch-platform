@@ -345,9 +345,9 @@ pub static ENDPOINTS: LazyLock<Vec<&'static Endpoint>> = LazyLock::new(|| {
         }
         if super::performance::available(endpoint.id) {
             let mut params = endpoint.params.to_vec();
-            for param in super::performance::PARAMS {
+            for param in super::performance::params(endpoint.id) {
                 if !params.iter().any(|existing| existing.name == param.name) {
-                    params.push(*param);
+                    params.push(param);
                 }
             }
             *endpoint = Box::leak(Box::new(Endpoint {

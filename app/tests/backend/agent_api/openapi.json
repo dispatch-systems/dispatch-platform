@@ -6709,7 +6709,7 @@
             "name": "view",
             "in": "query",
             "required": false,
-            "description": "v2: operational (yesterday); posted_scorecard or compare (last week).",
+            "description": "v2: choose a registered view or compare their independent answers.",
             "schema": {
               "type": "string",
               "enum": [
@@ -6723,17 +6723,7 @@
             "name": "operational_cursor",
             "in": "query",
             "required": false,
-            "description": "Compare: daily detail next_cursor.",
-            "schema": {
-              "type": "string",
-              "maxLength": 200
-            }
-          },
-          {
-            "name": "posted_cursor",
-            "in": "query",
-            "required": false,
-            "description": "Compare: weekly detail next_cursor.",
+            "description": "Compare: this view's next_cursor for the matching table.",
             "schema": {
               "type": "string",
               "maxLength": 200
@@ -6743,7 +6733,17 @@
             "name": "operational_groups_cursor",
             "in": "query",
             "required": false,
-            "description": "Compare: daily groups next_cursor.",
+            "description": "Compare: this view's next_cursor for the matching table.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "posted_cursor",
+            "in": "query",
+            "required": false,
+            "description": "Compare: this view's next_cursor for the matching table.",
             "schema": {
               "type": "string",
               "maxLength": 200
@@ -6753,7 +6753,7 @@
             "name": "posted_groups_cursor",
             "in": "query",
             "required": false,
-            "description": "Compare: weekly groups next_cursor.",
+            "description": "Compare: this view's next_cursor for the matching table.",
             "schema": {
               "type": "string",
               "maxLength": 200
@@ -7745,7 +7745,7 @@
             "name": "view",
             "in": "query",
             "required": false,
-            "description": "v2: operational (yesterday); posted_scorecard or compare (last week).",
+            "description": "v2: choose a registered view or compare their independent answers.",
             "schema": {
               "type": "string",
               "enum": [
@@ -7759,17 +7759,7 @@
             "name": "operational_cursor",
             "in": "query",
             "required": false,
-            "description": "Compare: daily detail next_cursor.",
-            "schema": {
-              "type": "string",
-              "maxLength": 200
-            }
-          },
-          {
-            "name": "posted_cursor",
-            "in": "query",
-            "required": false,
-            "description": "Compare: weekly detail next_cursor.",
+            "description": "Compare: this view's next_cursor for the matching table.",
             "schema": {
               "type": "string",
               "maxLength": 200
@@ -7779,7 +7769,17 @@
             "name": "operational_groups_cursor",
             "in": "query",
             "required": false,
-            "description": "Compare: daily groups next_cursor.",
+            "description": "Compare: this view's next_cursor for the matching table.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "posted_cursor",
+            "in": "query",
+            "required": false,
+            "description": "Compare: this view's next_cursor for the matching table.",
             "schema": {
               "type": "string",
               "maxLength": 200
@@ -7789,7 +7789,7 @@
             "name": "posted_groups_cursor",
             "in": "query",
             "required": false,
-            "description": "Compare: weekly groups next_cursor.",
+            "description": "Compare: this view's next_cursor for the matching table.",
             "schema": {
               "type": "string",
               "maxLength": 200
@@ -8839,7 +8839,7 @@
             "name": "view",
             "in": "query",
             "required": false,
-            "description": "v2: operational (yesterday); posted_scorecard or compare (last week).",
+            "description": "v2: choose a registered view or compare their independent answers.",
             "schema": {
               "type": "string",
               "enum": [
@@ -8853,17 +8853,7 @@
             "name": "operational_cursor",
             "in": "query",
             "required": false,
-            "description": "Compare: daily detail next_cursor.",
-            "schema": {
-              "type": "string",
-              "maxLength": 200
-            }
-          },
-          {
-            "name": "posted_cursor",
-            "in": "query",
-            "required": false,
-            "description": "Compare: weekly detail next_cursor.",
+            "description": "Compare: this view's next_cursor for the matching table.",
             "schema": {
               "type": "string",
               "maxLength": 200
@@ -8873,7 +8863,17 @@
             "name": "operational_groups_cursor",
             "in": "query",
             "required": false,
-            "description": "Compare: daily groups next_cursor.",
+            "description": "Compare: this view's next_cursor for the matching table.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "posted_cursor",
+            "in": "query",
+            "required": false,
+            "description": "Compare: this view's next_cursor for the matching table.",
             "schema": {
               "type": "string",
               "maxLength": 200
@@ -8883,7 +8883,7 @@
             "name": "posted_groups_cursor",
             "in": "query",
             "required": false,
-            "description": "Compare: weekly groups next_cursor.",
+            "description": "Compare: this view's next_cursor for the matching table.",
             "schema": {
               "type": "string",
               "maxLength": 200

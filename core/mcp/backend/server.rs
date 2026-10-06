@@ -48,9 +48,9 @@ driver also accepts Driver Match codes, Paycom codes and Amazon transporter IDs.
 summary; full includes detail rows. limit bounds each page within the tool's declared range.
 - Tools with a source argument list its choices; omission selects the first listed source. \
 Choose explicitly when the question names a source; sources never mix or fall back.
-- Focused tools offering view return contract_version 2: operational for daily activity, \
-posted_scorecard for published scoring, compare for both. Compare requires both grants and \
-keeps units and coverage separate; never add its counts. Omit view for the legacy source contract.
+- Tools offering view return contract_version 2. Compare reads all registered views and \
+requires each grant, keeping units and coverage separate; never add its counts. \
+Omit view for the legacy source contract.
 - Each answer says what it understood. Coverage status is complete, partial, missing or \
 unavailable. Totals with partial coverage cover only the collected days. Days a source did not collect are \
 unknown, never zero: say so.
@@ -420,12 +420,15 @@ fn compact_input(endpoint: &catalog::Endpoint) -> Map<String, Value> {
         "groups_cursor",
         "detail",
         "source",
-        "operational_cursor",
-        "posted_cursor",
-        "operational_groups_cursor",
-        "posted_groups_cursor",
     ] {
         if let Some(property) = properties.get_mut(name).and_then(Value::as_object_mut) {
+            property.remove("description");
+        }
+    }
+    for (name, property) in properties.iter_mut() {
+        if data::performance::is_cursor(endpoint.id, name)
+            && let Some(property) = property.as_object_mut()
+        {
             property.remove("description");
         }
     }

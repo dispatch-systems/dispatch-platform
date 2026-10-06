@@ -133,14 +133,36 @@ pub fn check(features: &[&Feature]) {
     for (index, adapter) in adapters.iter().enumerate() {
         assert!(areas.contains(&adapter.area), "undeclared view area");
         assert!(
-            ["operational", "posted_scorecard"].contains(&adapter.view),
-            "unknown agent view"
+            !adapter.view.is_empty() && adapter.view != "compare",
+            "invalid agent view name"
+        );
+        assert!(
+            !adapter.cursor_prefix.is_empty(),
+            "empty view cursor prefix"
+        );
+        assert!(
+            !adapter.default_period.is_empty(),
+            "empty view default period"
         );
         assert!(
             adapters[..index]
                 .iter()
                 .all(|other| other.endpoint != adapter.endpoint || other.view != adapter.view),
             "duplicate agent view"
+        );
+        assert!(
+            adapters[..index]
+                .iter()
+                .all(|other| other.endpoint != adapter.endpoint
+                    || other.cursor_prefix != adapter.cursor_prefix),
+            "duplicate view cursor prefix"
+        );
+        assert!(
+            !adapter.compare_default
+                || adapters[..index]
+                    .iter()
+                    .all(|other| other.endpoint != adapter.endpoint || !other.compare_default),
+            "multiple comparison defaults"
         );
     }
     for (index, variant) in variants.iter().enumerate() {
