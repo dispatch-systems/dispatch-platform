@@ -278,7 +278,8 @@ pub fn affected(changed: &[String], plan: &Value, workspace: &Workspace) -> Vec<
     }
     if !specs.is_empty() {
         commands.push(format!(
-            "npm run build && npm run test:ui -- {}",
+            "{} && npm run test:ui -- {}",
+            crate::test::PACKAGE,
             specs.join(" ")
         ));
     }
@@ -603,7 +604,7 @@ mod tests {
                 "cargo test --locked -p dispatch-backend -p dispatch-core -p dispatch-cortex -p dispatch-paycom",
                 "tooling/cli/dispatchdev build && npx tsx --test core/tenancy/tests/api/roles.test.ts",
                 "npm run test:browseros -- --shard cortex",
-                "npm run build && npm run test:ui -- app/tests/browser/dsp-features.spec.ts",
+                "npm run build -- --debug && npm run test:ui -- app/tests/browser/dsp-features.spec.ts",
             ]
         );
         // A workspace input touches every crate; rule tests are check:rules' own.

@@ -2,17 +2,20 @@ import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { built, demo, fixture } from './fixture-server.js';
-import { assessmentFixture } from './ci-tools.js';
+import { assessmentFixture, namedFixture } from './ci-tools.js';
 const args = process.argv.slice(2);
 const smokeOnly = args.length === 1 && args[0] === '--smoke-only';
 if (!smokeOnly) {
-  // A trusted branch's prebuilt copy for identical inputs, or the debug example built here.
-  const prebuilt = assessmentFixture(process.env, process.cwd());
+  // A trusted branch's prebuilt copy for identical inputs, the one dispatchdev names, or the
+  // debug example built here.
+  const prebuilt = assessmentFixture(process.env, process.cwd()) ?? namedFixture(process.env);
   if (prebuilt) process.env.DISPATCH_ASSESSMENT_FIXTURE = prebuilt;
-  else
+  else {
+    delete process.env.DISPATCH_ASSESSMENT_FIXTURE;
     execFileSync('cargo', ['build', '--locked', '--example', 'assessment-fixture'], {
       stdio: 'inherit',
     });
+  }
   // Each test owns its server and private state through Playwright fixtures.
   const child = spawn(process.execPath, ['node_modules/@playwright/test/cli.js', 'test', ...args], {
     stdio: 'inherit',

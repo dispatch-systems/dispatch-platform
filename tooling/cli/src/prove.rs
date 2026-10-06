@@ -122,7 +122,7 @@ fn side(
             first: None,
         };
         for step in test::steps(std::slice::from_ref(command)) {
-            if !step.isolated {
+            if step.prepares {
                 let log = logs.join(format!("{}-package.log", index + 1));
                 let (ok, _) = run.step(&step, &log, &[])?;
                 if !ok {
@@ -401,7 +401,7 @@ mod tests {
             commands(&tests, &plan, &check::Workspace::default(), None).unwrap(),
             [
                 "tooling/cli/dispatchdev build && npx tsx --test app/tests/api/c.test.ts",
-                "npm run build && npm run test:ui -- app/tests/browser/e.spec.ts",
+                "npm run build -- --debug && npm run test:ui -- app/tests/browser/e.spec.ts",
                 "npx tsx --test app/tests/frontend/a.test.ts",
             ]
         );
@@ -413,7 +413,9 @@ mod tests {
                 Some("pinned")
             )
             .unwrap(),
-            ["npm run build && npm run test:ui -- app/tests/browser/e.spec.ts --grep 'pinned'"]
+            [
+                "npm run build -- --debug && npm run test:ui -- app/tests/browser/e.spec.ts --grep 'pinned'"
+            ]
         );
     }
 }
