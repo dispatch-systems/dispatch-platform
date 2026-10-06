@@ -1,6 +1,6 @@
 use dispatchdev_cli::{
-    Native, Result, Runner, api, build, check, finish, pr, preview, ship, start, status, test,
-    workspace::Workspace,
+    Native, Result, Runner, api, build, check, finish, logs, pr, preview, prove, ship, start,
+    status, test, workspace::Workspace,
 };
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -15,10 +15,19 @@ A change, from start to finish:
   api <name> <method> <path>       One signed-in call to its preview: as the owner, or
       [--dsp <dsp>] [--as <email>] --as a demo account; --dsp opens a DSP by its name or id.
       [--data <json>]
+  logs <name | dev> [--errors]     What its preview, or Dev, logged in its current run, an
+       [--since <time>] [--follow] event a line and without the build's output; --since 10m
+                                   reads across runs, --errors keeps warnings and failures.
   test [--all] [--keep]            The tests the diff touches, or --all of them, one line
                                    each, stopping at the first failure. Each run builds in a
                                    folder of its own, deleted when it ends unless --keep, so
                                    several worktrees can test at once.
+  prove [<test file>...]           That the tests fail without the change and pass with it:
+        [--grep <pattern>]         they run in a throwaway checkout of where the branch
+        [--repeat <n>]             started, with the branch's tests unless it changes only
+        [--cpu <rate>]             tests, then in the branch. --repeat runs each n times;
+        [--late-frames <ms>]       --cpu and --late-frames run browser tests as on a busy
+                                   runner. Without test files, the ones the branch changes.
   check [--plan] [--keep]          Before a push: what stops the branch, the rule checks,
         [--allow-concurrent]       clippy and the tests, as test runs them; --plan only names
                                    them.
@@ -33,12 +42,24 @@ A change, from start to finish:
   build [--release] [--cache-key]  Build the backend, reusing a build of identical inputs.
   help                             Show this.
 
-test, check and build work on the checkout the current directory is in, or on --root
-<directory>.";
+test, prove, check and build work on the checkout the current directory is in, or on
+--root <directory>.";
 
 /// Options that take a value.
 const VALUED: &[&str] = &[
-    "--root", "--from", "--page", "--dsp", "--as", "--data", "--title", "--body",
+    "--root",
+    "--from",
+    "--page",
+    "--dsp",
+    "--as",
+    "--data",
+    "--title",
+    "--body",
+    "--since",
+    "--grep",
+    "--repeat",
+    "--cpu",
+    "--late-frames",
 ];
 
 /// The command line: the command, its flags and options, and its other arguments, in order.
@@ -163,6 +184,56 @@ fn run() -> Result<()> {
                 true => Ok(()),
                 false => Err("The call failed.".into()),
             }
+        }
+        "logs" => {
+            line.only(&["--errors", "--since", "--follow"], 1)?;
+            let name = line.name("logs <name | dev> [--errors] [--since <time>] [--follow]")?;
+            let options = logs::Options {
+                errors: line.flag("--errors"),
+                since: line.option("--since"),
+                follow: line.flag("--follow"),
+            };
+            logs::run(name, &options, &Native)
+        }
+        "prove" => {
+            line.only(
+                &["--grep", "--repeat", "--cpu", "--late-frames"],
+                usize::MAX,
+            )?;
+            let repeat = match line.option("--repeat") {
+                None => 1,
+                Some(text) => text
+                    .parse::<u32>()
+                    .ok()
+                    .filter(|runs| *runs > 0)
+                    .ok_or("--repeat takes a number of runs, 1 or more.")?,
+            };
+            let cpu = line
+                .option("--cpu")
+                .map(|text| {
+                    text.parse::<f64>()
+                        .ok()
+                        .filter(|rate| *rate >= 1.0)
+                        .ok_or("--cpu takes how many times slower, 1 or more, such as 4.")
+                })
+                .transpose()?;
+            let late_frames = line
+                .option("--late-frames")
+                .map(|text| {
+                    text.parse::<u32>()
+                        .ok()
+                        .filter(|ms| *ms > 0)
+                        .ok_or("--late-frames takes milliseconds, such as 100.")
+                })
+                .transpose()?;
+            let options = prove::Options {
+                tests: &line.arguments,
+                grep: line.option("--grep"),
+                repeat,
+                cpu,
+                late_frames,
+            };
+            prove::run(&line.root()?, &options, &Native)
         }
         "test" => {
             line.only(&["--all", "--keep"], 0)?;

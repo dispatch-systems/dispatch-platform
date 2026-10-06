@@ -1,4 +1,5 @@
 import { test as base, expect, type Page } from '@playwright/test';
+import { slowRunner } from './slow-runner.js';
 import { built, demo, fixture, type FixtureOptions } from './support.js';
 
 export type Dispatch = Awaited<ReturnType<typeof fixture>>;
@@ -25,6 +26,7 @@ export const test = base.extend<{
           body: 'export function startVan() {}\n',
         }),
       );
+    await slowRunner(page);
     await use(page);
   },
   dispatch: async ({ dispatchOptions }, use) => {

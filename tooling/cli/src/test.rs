@@ -140,6 +140,78 @@ fn sweep(builds: &Path) {
         }
     }
 }
+/// A run's build folder in a checkout, and what the browser tests' packaging makes there, all
+/// deleted when the run ends.
+pub struct Run {
+    root: PathBuf,
+    builds: PathBuf,
+    pub build: PathBuf,
+    made: Vec<PathBuf>,
+    binary: PathBuf,
+    tmp: PathBuf,
+}
+impl Run {
+    /// A run in `root`, its temporary files in `tmp`.
+    pub fn start(root: &Path, tmp: &Path) -> Result<Self> {
+        let builds = root.join(BUILDS);
+        sweep(&builds);
+        let build = builds.join(std::process::id().to_string());
+        fs::create_dir_all(&build)?;
+        Ok(Self {
+            root: root.to_owned(),
+            // What the browser tests' packaging makes in the checkout, if it isn't there already.
+            made: ["target/release", ".build"]
+                .iter()
+                .map(|path| root.join(path))
+                .filter(|path| !path.exists())
+                .collect(),
+            binary: build.join("debug/dispatch-backend"),
+            builds,
+            build,
+            tmp: tmp.to_owned(),
+        })
+    }
+    /// Runs `step` with `env` added, its output going to `log`: whether it passed, and how long
+    /// it took.
+    pub fn step(
+        &self,
+        step: &Step,
+        log: &Path,
+        env: &[(&str, &OsStr)],
+    ) -> Result<(bool, std::time::Duration)> {
+        let isolated: [(&str, &OsStr); 4] = [
+            ("CARGO_TARGET_DIR", self.build.as_os_str()),
+            ("CARGO_INCREMENTAL", OsStr::new("0")),
+            ("DISPATCH_TEST_BINARY", self.binary.as_os_str()),
+            ("TMPDIR", self.tmp.as_os_str()),
+        ];
+        let own = if step.isolated {
+            &isolated[..]
+        } else {
+            &isolated[3..]
+        };
+        workspace::logged(&step.command, &self.root, log, &[own, env].concat())
+    }
+    /// Deletes everything the run made, and answers how much that was.
+    pub fn end(self) -> Result<u64> {
+        let mut freed: u64 = 0;
+        for path in
+            std::iter::once(self.build).chain(self.made.into_iter().filter(|path| path.exists()))
+        {
+            freed += workspace::size(&crate::Native, &path).unwrap_or(0);
+            fs::remove_dir_all(&path)?;
+        }
+        let _ = fs::remove_dir(&self.builds);
+        Ok(freed)
+    }
+}
+/// Prints a failed command's lines that say why, and where its whole output is.
+pub fn explain(log: &Path) {
+    for line in check::failure(&fs::read_to_string(log).unwrap_or_default()) {
+        println!("      {line}");
+    }
+    println!("      Whole output: {}", log.display());
+}
 /// Runs `commands` in `root` one at a time, a line each, in a build folder of the run's own. It
 /// stops at the first that fails, with the lines saying why. Then everything the run made goes:
 /// its build folder, and the release build and package it made for the browser tests, unless
@@ -153,55 +225,26 @@ pub fn run_commands(root: &Path, commands: &[String], keep: bool) -> Result<bool
     // Each run's logs apart, so runs side by side never write over each other's.
     let logs = scratch.join("test").join(std::process::id().to_string());
     fs::create_dir_all(&logs)?;
-    let builds = root.join(BUILDS);
-    sweep(&builds);
-    let build = builds.join(std::process::id().to_string());
-    fs::create_dir_all(&build)?;
-    // What the browser tests' packaging makes in the checkout, if it isn't there already.
-    let made: Vec<PathBuf> = ["target/release", ".build"]
-        .iter()
-        .map(|path| root.join(path))
-        .filter(|path| !path.exists())
-        .collect();
-    let binary = build.join("debug/dispatch-backend");
-    let isolated: [(&str, &OsStr); 4] = [
-        ("CARGO_TARGET_DIR", build.as_os_str()),
-        ("CARGO_INCREMENTAL", OsStr::new("0")),
-        ("DISPATCH_TEST_BINARY", binary.as_os_str()),
-        ("TMPDIR", scratch.as_os_str()),
-    ];
+    let run = Run::start(root, &scratch)?;
     let mut passed = true;
     for (index, step) in steps(commands).iter().enumerate() {
         let log = logs.join(format!("{}.log", index + 1));
-        let env = if step.isolated {
-            &isolated[..]
-        } else {
-            &isolated[3..]
-        };
-        let (ok, took) = workspace::logged(&step.command, root, &log, env)?;
+        let (ok, took) = run.step(step, &log, &[])?;
         let took = workspace::duration(took);
         if ok {
             println!("ok    {took:>7}  {}", label(&step.command));
             continue;
         }
         println!("FAIL  {took:>7}  {}", label(&step.command));
-        for line in check::failure(&fs::read_to_string(&log).unwrap_or_default()) {
-            println!("      {line}");
-        }
-        println!("      Whole output: {}", log.display());
+        explain(&log);
         passed = false;
         break;
     }
     if keep {
-        println!("Kept the build in {}.", build.display());
+        println!("Kept the build in {}.", run.build.display());
         return Ok(passed);
     }
-    let mut freed: u64 = 0;
-    for path in std::iter::once(build).chain(made.into_iter().filter(|path| path.exists())) {
-        freed += workspace::size(&crate::Native, &path).unwrap_or(0);
-        fs::remove_dir_all(&path)?;
-    }
-    let _ = fs::remove_dir(&builds);
+    let freed = run.end()?;
     if passed {
         fs::remove_dir_all(&logs)?;
     }
