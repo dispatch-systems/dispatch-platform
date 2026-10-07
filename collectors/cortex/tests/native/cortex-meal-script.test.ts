@@ -125,6 +125,32 @@ test('delivery progress during a working day does not restart meal collection', 
   );
 });
 
+test('a meal punch the rules reject names its rule', () => {
+  const on = summary().breaks[0]!;
+  const off = { ...on, punchId: 'punch-2', state: 'OFF', timeStampOff: start + 1800000 };
+  const cases: [string, object[]][] = [
+    ['meal_break_id', [{ ...on, breakId: '' }]],
+    ['meal_punch_id', [{ ...on, punchId: null }]],
+    ['meal_start', [{ ...on, timeStampOn: 0 }]],
+    ['meal_state', [{ ...on, state: 'PAUSED' }]],
+    ['meal_off_without_end', [{ ...off, timeStampOff: null }]],
+    ['meal_end_before_start', [{ ...off, timeStampOff: start - 1000 }]],
+    ['meal_on_with_end', [{ ...on, timeStampOff: start + 1000 }]],
+    ['meal_repeat_sequence', [on, { ...off, sequenceNumber: 2 }]],
+    ['meal_repeat_conflict', [off, { ...off, timeStampOff: start + 900000 }]],
+    ['meal_repeat_outside', [{ ...on, timeStampOn: start + 3600000 }, off]],
+  ];
+  for (const [reason, breaks] of cases) {
+    const props = page();
+    props.allItinerarySummaries[0]!.breaks = breaks as never;
+    assert.deepEqual(
+      read(props, href()),
+      { error: 'cortex_invalid_meal_evidence', reason: `list_${reason}` },
+      reason,
+    );
+  }
+});
+
 // A finished route whose meal both deliveries bound, as the page renders it: each stop
 // has the id the page gives it, which the itinerary response does not send.
 const finished = () => {
