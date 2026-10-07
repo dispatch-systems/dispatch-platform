@@ -10,6 +10,8 @@
     typeof value === 'number' && Number.isFinite(value) && value > 0
       ? Math.round(value < 100000000000 ? value * 1000 : value)
       : null;
+  // A meal punch the rules reject, named by the rule for job metrics.
+  const invalid = (reason) => Object.assign(new Error('cortex_invalid_meal_evidence'), { reason });
   const meals = (values) => {
     if (!Array.isArray(values)) throw new Error('cortex_content_incomplete');
     const records = new Map();
@@ -17,23 +19,20 @@
       const start = stamp(b.timeStampOn),
         end = stamp(b.timeStampOff),
         id = b.breakId;
-      if (
-        !token(id) ||
-        !token(b.punchId) ||
-        !start ||
-        !['ON', 'OFF'].includes(b.state) ||
-        (b.state === 'OFF' && (!end || end < start)) ||
-        (b.state === 'ON' && end !== null)
-      )
-        throw new Error('cortex_invalid_meal_evidence');
+      if (!token(id)) throw invalid('meal_break_id');
+      if (!token(b.punchId)) throw invalid('meal_punch_id');
+      if (!start) throw invalid('meal_start');
+      if (!['ON', 'OFF'].includes(b.state)) throw invalid('meal_state');
+      if (b.state === 'OFF' && !end) throw invalid('meal_off_without_end');
+      if (b.state === 'OFF' && end < start) throw invalid('meal_end_before_start');
+      if (b.state === 'ON' && end !== null) throw invalid('meal_on_with_end');
       const current = { id, start, end, sequence: b.sequenceNumber };
       const prior = records.get(id);
       if (prior) {
         if (!Number.isInteger(current.sequence) || prior.sequence !== current.sequence)
-          throw new Error('cortex_invalid_meal_evidence');
+          throw invalid('meal_repeat_sequence');
         if ((prior.end === null) === (end === null)) {
-          if (prior.start !== start || prior.end !== end)
-            throw new Error('cortex_invalid_meal_evidence');
+          if (prior.start !== start || prior.end !== end) throw invalid('meal_repeat_conflict');
           continue;
         }
         // One logical break can retain its ON punch alongside the completed
@@ -42,7 +41,7 @@
         const completed = end === null ? prior : current;
         const opened = end === null ? current : prior;
         if (opened.start < completed.start || opened.start > completed.end)
-          throw new Error('cortex_invalid_meal_evidence');
+          throw invalid('meal_repeat_outside');
         records.set(id, completed);
       } else records.set(id, current);
     }

@@ -107,8 +107,9 @@
       'cortex_invalid_meal_evidence',
       'cortex_invalid_identity',
     ];
+    // A rejected meal punch names its rule and whether the list or the route showed it.
     return allowed.includes(error.message)
-      ? fail(error.message, 'evidence')
+      ? fail(error.message, error.reason ? `${input.kind}_${error.reason}` : 'evidence')
       : fail('cortex_content_incomplete', 'script_error');
   }
 };

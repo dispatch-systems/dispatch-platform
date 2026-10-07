@@ -21,7 +21,7 @@
     } catch (error) {
       const allowed = ['cortex_content_incomplete', 'cortex_invalid_meal_evidence'];
       return allowed.includes(error.message)
-        ? fail(error.message, 'evidence')
+        ? fail(error.message, error.reason ? `response_${error.reason}` : 'evidence')
         : fail('cortex_content_incomplete', 'script_error');
     }
   };
