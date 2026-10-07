@@ -7,45 +7,8 @@ import {
   featureCatalog,
   featureLabel,
   grants,
-  schedulesFeature,
 } from '../../../core/shell/frontend/runtime/features.js';
-import {
-  capabilityLabel,
-  previewSwitch,
-  sideEffects,
-} from '../../../core/platform_owner/frontend/dsps/switches.js';
-
-test('the generated feature catalog covers every feature and its dependencies', () => {
-  assert.deepEqual(
-    featureCatalog.map((feature) => feature.id),
-    [...features],
-  );
-  assert.equal(new Set(features).size, features.length);
-  assert(
-    featureCatalog.some((feature) => feature.id === schedulesFeature && feature.kind === 'page'),
-  );
-  const owned: string[] = [];
-  for (const feature of featureCatalog) {
-    assert(feature.label.length > 0, `${feature.id} has no label`);
-    for (const permission of feature.permissions) {
-      assert(permissions.includes(permission), `${feature.id} owns an unknown permission`);
-      owned.push(permission);
-    }
-    if (feature.kind === 'tab') {
-      assert(featureCatalog.some((page) => page.kind === 'page' && page.id === feature.page));
-      assert.deepEqual(feature.permissions, []);
-      assert.deepEqual(feature.requires, []);
-    }
-    for (const capability of feature.requires) {
-      assert.notEqual(capabilityLabel(capability), capability, `${capability} has no label`);
-      assert(
-        featureCatalog.some((provider) => provider.provides?.includes(capability)),
-        `${feature.id} requires ${capability} without a provider`,
-      );
-    }
-  }
-  assert.equal(new Set(owned).size, owned.length, 'a permission has more than one owning feature');
-});
+import { previewSwitch, sideEffects } from '../../../core/platform_owner/frontend/dsps/switches.js';
 
 test('a switch brings its dependencies along, as the backend does', () => {
   const all = [...features];

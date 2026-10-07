@@ -82,16 +82,14 @@ test('templates fill values and keep or drop sections, and refuse a name without
   assert.throws(() => render('{{#on}}x{{/off}}', { on: true, off: true }), /closes on/);
 });
 
-test('with no flags, a feature is a backend crate with a switch, a view permission and its first test', async () => {
+test('with no flags, a feature is a crate with a switch, a view permission and a browser test', async () => {
   const plan = await feature('parking');
   assert.deepEqual(writes(plan, 'features/parking'), [
     'Cargo.toml',
     'README.md',
-    'backend/mod.rs',
     'feature.rs',
     'frontend/feature.ts',
     'frontend/platform-slots.ts',
-    'tests/backend/feature.rs',
     'tests/browser/parking.spec.ts',
   ]);
   const cargo = file(plan, 'features/parking/Cargo.toml');
@@ -105,7 +103,7 @@ test('with no flags, a feature is a backend crate with a switch, a view permissi
   assert.doesNotMatch(cargo, /dev-dependencies|\[features\]/);
 
   const manifest = file(plan, 'features/parking/feature.rs');
-  assert.match(manifest, /^mod backend;$/m);
+  assert.doesNotMatch(manifest, /mod backend|mod tests/);
   assert.match(manifest, /use dispatch_core::manifest::\{Feature, Switch, feature, perm\};/);
   assert.match(
     manifest,
@@ -121,8 +119,6 @@ test('with no flags, a feature is a backend crate with a switch, a view permissi
     .map((match) => Number(match[1]));
   assert(order % 10 === 0 && used.every((other) => other < order), `${order} follows ${used}`);
   assert.match(manifest, /\.\.feature\("parking"\)\n\};/);
-  assert.match(manifest, /#\[cfg\(test\)\]\n#\[path = "tests\/backend\/feature.rs"\]\nmod tests;/);
-  assert.match(file(plan, 'features/parking/tests/backend/feature.rs'), /p\.id == "parking.view"/);
   // The DSPs page shows its switch with the icon its frontend gives, which a browser test sees.
   assert.match(
     file(plan, 'features/parking/frontend/feature.ts'),
@@ -173,6 +169,10 @@ test('--always-on leaves out the switch and, with nothing to gate, the permissio
   const manifest = file(plan, 'features/lobby/feature.rs');
   assert.match(manifest, /^pub const FEATURE: Feature = feature\("lobby"\);$/m);
   assert.doesNotMatch(manifest, /Switch|perm/);
+  // With no API or frontend either, it keeps an empty backend/ and its manifest's test: a
+  // feature has a backend, an API or a frontend.
+  assert(file(plan, 'features/lobby/backend/mod.rs'));
+  assert.match(manifest, /#\[cfg\(test\)\]\n#\[path = "tests\/backend\/feature.rs"\]\nmod tests;/);
   assert.match(
     file(plan, 'features/lobby/tests/backend/feature.rs'),
     /FEATURE\.switch\.is_none\(\)/,
@@ -462,10 +462,6 @@ test('--mcp writes one agent endpoint, its read toggle and an eval question', as
       assert(Number(toggle[1]) < order, `${other} has the place ${order}`);
   }
   assert.doesNotMatch(file(plan, 'features/parking/frontend/platform-slots.ts'), /readToggles/);
-  assert.match(
-    file(plan, 'features/parking/tests/browser/parking.spec.ts'),
-    /test\('a new key reads Parking, under Parking'/,
-  );
   assert.match(
     file(plan, 'features/parking/tests/mcp/questions.ts'),
     /export function questions\(_world: World\): Question\[\]/,

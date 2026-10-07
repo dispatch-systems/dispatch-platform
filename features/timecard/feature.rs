@@ -32,8 +32,6 @@ pub use backend::{
     meals::CACHED,
     punches::{DOMAIN, defaults},
 };
-/// What agents can ask of it, which the app's tests ask directly.
-pub use mcp::views::{meal_breaks, timecards};
 
 /// Core's test support, for this crate's module tests.
 #[cfg(test)]

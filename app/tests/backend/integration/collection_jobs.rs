@@ -144,13 +144,13 @@ fn schedule_deadlines_track_changes_and_due_ticks_are_idempotent() {
             .any(|(d, _)| d == id)
     );
     let schedule = db
-        .save_collection_schedule(
+        .save_schedule(
             id,
             None,
             &json!({"name":"Morning","collection":"paycom","cadence":"daily","intervalMinutes":null,"localTime":"06:00","enabled":true}),
         )
         .unwrap();
-    let key = s(&schedule, "id");
+    let key = schedule.id.as_str();
     assert!(
         db.schedule_deadlines()
             .unwrap()
@@ -167,10 +167,10 @@ fn schedule_deadlines_track_changes_and_due_ticks_are_idempotent() {
     assert!(db.schedule_due(id).unwrap().unwrap() > db::now());
     assert!(db.schedule_due(id).unwrap().unwrap() > db::now());
     assert_eq!(db.recent_jobs(Some(id)).unwrap().len(), 1);
-    db.enable_collection_schedule(
+    db.enable_schedule(
         id,
         key,
-        &json!({"revision":schedule["revision"],"enabled":false}),
+        &json!({"revision":schedule.revision,"enabled":false}),
     )
     .unwrap();
     assert_eq!(db.schedule_due(id).unwrap(), None);
@@ -180,6 +180,61 @@ fn schedule_deadlines_track_changes_and_due_ticks_are_idempotent() {
             .iter()
             .any(|(d, _)| d == id)
     );
+}
+
+/// A failed attempt is queued again only for a retryable code, a core one or a collector's,
+/// and only while attempts remain; any other failure, and the last attempt's, ends the job.
+#[cfg(feature = "timecard")]
+#[test]
+fn a_retryable_failure_is_queued_again_until_the_attempts_run_out() {
+    dispatch_backend::install();
+    let (_root, db) = seeded();
+    let tenant = db
+        .platform
+        .one("SELECT id FROM dsps WHERE name='Northline Logistics'", [])
+        .unwrap()
+        .unwrap();
+    let id = s(&tenant, "id");
+    let user = db
+        .platform
+        .one("SELECT id FROM users WHERE platform_owner=1", [])
+        .unwrap()
+        .unwrap();
+    let actor = s(&user, "id");
+    let fail = |key: &str, error: &str| {
+        db.enqueue_timecards(id, Some(actor), key).unwrap();
+        let job = db.claim_job("worker", |_, _| true).unwrap().unwrap();
+        db.finish(&job.id, "worker", Some(error)).unwrap();
+        db.job_row(&job.id, Some(id)).unwrap()
+    };
+    for (key, error) in [
+        ("core", "browser_lost"),
+        ("cortex", "cortex_source_changed"),
+    ] {
+        let job = fail(key, error);
+        assert_eq!(job.status.as_str(), "queued", "{error}");
+        assert_eq!((job.attempt, job.max_attempts), (1, 3), "{error}");
+        assert_eq!(job.error.as_deref(), Some(error));
+        assert!(job.completed_at.is_none() && job.available_at > db::now());
+        db.cancel_jobs(dispatch_core::collection::jobs::CancelJobs::Job {
+            id: &job.id,
+            dsp: id,
+        })
+        .unwrap();
+    }
+    assert_eq!(fail("other", "queue_full").status.as_str(), "failed");
+    // The last attempt fails whatever its code.
+    db.enqueue_timecards(id, Some(actor), "last").unwrap();
+    db.jobs
+        .exec(
+            "UPDATE jobs SET attempt=max_attempts-1 WHERE idempotency_key='last'",
+            [],
+        )
+        .unwrap();
+    let job = db.claim_job("worker", |_, _| true).unwrap().unwrap();
+    db.finish(&job.id, "worker", Some("browser_lost")).unwrap();
+    let job = db.job_row(&job.id, Some(id)).unwrap();
+    assert_eq!((job.status.as_str(), job.attempt), ("failed", 3));
 }
 
 #[cfg(feature = "timecard")]
@@ -203,7 +258,7 @@ fn nothing_collects_for_a_dsp_without_the_timecard() {
     let job = db.claim_job("worker", |_, _| true).unwrap().unwrap();
     let jid = job.id.as_str();
     db.guard(jid, "worker").unwrap();
-    db.save_collection_schedule(
+    db.save_schedule(
         id,
         None,
         &json!({"name":"Morning","collection":"paycom","cadence":"daily","intervalMinutes":null,"localTime":"06:00","enabled":true}),

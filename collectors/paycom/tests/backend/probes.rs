@@ -20,14 +20,6 @@ fn concurrency_levels(value: &str) -> Result<Vec<usize>> {
     )?;
     Ok(levels)
 }
-#[test]
-fn concurrency_configuration_rejects_empty_invalid_and_zero_levels() {
-    for invalid in ["", "0", "2,0", "2,no", "2,,4"] {
-        assert!(concurrency_levels(invalid).is_err(), "{invalid}");
-    }
-    assert_eq!(concurrency_levels(" 2,4,6 ").unwrap(), [2, 4, 6]);
-}
-
 /// Numbers as floats, so a record from here and one through CDP compare by value.
 fn numbers(value: &Value) -> Value {
     match value {

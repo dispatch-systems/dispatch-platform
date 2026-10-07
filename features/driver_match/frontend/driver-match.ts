@@ -29,9 +29,6 @@ const filterOf: Record<DriverStatus, DriverFilter> = {
   office: 'office',
   former: 'former',
 };
-export const inFilter = (driver: Driver, filter: DriverFilter) =>
-  filter === 'all' || filterOf[driver.status] === filter;
-
 export const driverFilter = (driver: Driver): DriverFilter => filterOf[driver.status];
 
 export const statusLabels: Record<DriverStatus, string> = {

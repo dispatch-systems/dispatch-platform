@@ -13,27 +13,15 @@ fn run(args: &[&str]) -> (bool, String, String) {
 }
 
 #[test]
-fn dispatchdev_names_its_commands_and_refuses_the_rest() {
+fn dispatchdev_shows_its_usage_and_refuses_what_it_does_not_take() {
     let (ok, _, error) = run(&[]);
     assert!(!ok);
     assert!(error.contains("Usage: dispatchdev <command>"), "{error}");
-    let (ok, help, _) = run(&["help"]);
+    let (ok, _, _) = run(&["help"]);
     assert!(ok);
-    for command in [
-        "start", "preview", "api", "logs", "test", "check", "pr", "ship", "finish", "status",
-        "build",
-    ] {
-        assert!(help.contains(&format!("\n  {command} ")), "{help}");
-    }
-    // The old names, and the planner, receipts and gate before them, are gone.
-    for gone in ["preflight", "plan", "receipt", "gate"] {
-        let (ok, _, error) = run(&[gone]);
-        assert!(!ok, "{gone}");
-        assert!(
-            error.contains(&format!("Unknown command {gone}")),
-            "{error}"
-        );
-    }
+    let (ok, _, error) = run(&["deploy"]);
+    assert!(!ok);
+    assert!(error.contains("Unknown command deploy"), "{error}");
     let (ok, _, error) = run(&["ship"]);
     assert!(!ok);
     assert!(

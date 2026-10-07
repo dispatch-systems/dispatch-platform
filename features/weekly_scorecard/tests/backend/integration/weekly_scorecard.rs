@@ -4,7 +4,7 @@ use dispatch_core::State;
 use dispatch_core::db::{Store, s};
 use dispatch_core::mcp::{
     api::types::{AgentArea, AgentKeyRequest},
-    data::settle,
+    data::{self, settle},
 };
 use dispatch_core::testing as common;
 use dispatch_cortex::{
@@ -533,8 +533,13 @@ fn feedback_answers_without_the_feature_that_holds_addresses() {
     let caller = db.authenticate_agent(&key.token, "test").unwrap();
     let state = State::new(db.config.clone()).unwrap();
     let ask = |query: Value| {
-        settle(dispatch_weekly_scorecard::feedback(
-            &db, &state, &caller, &query,
+        settle(data::ask(
+            data::catalog::endpoint("feedback"),
+            &db,
+            &state,
+            &caller,
+            "",
+            &query,
         ))
         .unwrap()
     };

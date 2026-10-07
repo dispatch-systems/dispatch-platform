@@ -132,9 +132,6 @@ mod export;
 #[path = "../tests/backend/feature_switches.rs"]
 mod feature_switches;
 #[cfg(test)]
-#[path = "../tests/backend/hooks.rs"]
-mod hooks;
-#[cfg(test)]
 #[path = "../tests/backend/job_queue.rs"]
 mod job_queue;
 #[cfg(test)]
@@ -169,10 +166,6 @@ mod snapshot;
 #[cfg(feature = "default")]
 #[path = "../tests/backend/tables.rs"]
 mod tables;
-#[cfg(test)]
-#[cfg(feature = "default")]
-#[path = "../tests/backend/lib.rs"]
-mod tests;
 #[cfg(test)]
 #[cfg(feature = "team")]
 #[path = "../tests/backend/verification.rs"]

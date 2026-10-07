@@ -1832,6 +1832,7 @@ async fn revoking_any_token_ends_the_app_and_unknown_tokens_are_fine() {
 #[tokio::test]
 async fn token_ingress_rejects_cross_site_browsers_and_stops_before_database_saturation() {
     let server = Server::start().await;
+    let owner = server.owner().await;
     let resource = server.resource();
     let cross_site = server
         .send(
@@ -1868,9 +1869,11 @@ async fn token_ingress_rejects_cross_site_browsers_and_stops_before_database_sat
         (429, "rate_limited")
     );
     assert_eq!(limited.header("retry-after"), "60");
-    // The process remains responsive and ordinary database reads are not queued behind more
-    // invalid token work once the pre-database budget is spent.
-    assert_eq!(server.get("/api/health").await.status, 200);
+    // Once the pre-database budget is spent, a read that does reach the database still answers.
+    let agents = server
+        .as_owner(&owner, "GET", "/api/platform/agents", json!({}))
+        .await;
+    assert_eq!(agents.status, 200, "{}", agents.body);
 }
 
 #[tokio::test]

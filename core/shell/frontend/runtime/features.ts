@@ -1,7 +1,4 @@
-import {
-  featureCatalog as generatedFeatureCatalog,
-  schedulesFeature as generatedSchedulesFeature,
-} from '../../../tenancy/api/generated/access-catalog.js';
+import { featureCatalog as generatedFeatureCatalog } from '../../../tenancy/api/generated/access-catalog.js';
 import type {
   ConnectionFeature,
   Feature,
@@ -29,8 +26,6 @@ export type ConnectionEntry = Entry<'connection', ConnectionFeature> & {
 export type FeatureEntry = PageEntry | TabEntry | ConnectionEntry;
 /** The backend-owned catalog, generated alongside the wire contracts. */
 export const featureCatalog: readonly FeatureEntry[] = generatedFeatureCatalog;
-/** The page whose schedules, collections and jobs run. */
-export const schedulesFeature: PageFeature = generatedSchedulesFeature;
 /** The tabs of `page`, in catalog order. */
 export const tabsOf = (page: string) =>
   featureCatalog.filter((f): f is TabEntry => f.kind === 'tab' && f.page === page);

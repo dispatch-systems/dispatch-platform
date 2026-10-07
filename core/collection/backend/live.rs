@@ -32,12 +32,6 @@ impl Store {
             Ok(())
         })
     }
-    pub fn live_results(&self, dsp: &str, provider: Provider, date: &str) -> Result<LiveResults> {
-        Ok(self
-            .live_results_range(dsp, provider, date, date)?
-            .remove(date)
-            .unwrap_or_default())
-    }
     /// Reads each guarded live run once for a date range. Covered days retain
     /// their metadata even before their first item has been staged.
     pub fn live_results_range(

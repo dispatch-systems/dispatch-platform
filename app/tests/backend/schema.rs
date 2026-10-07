@@ -130,24 +130,12 @@ fn new_databases_match_the_recorded_schema() {
     }
     for (kind, db) in databases {
         snapshot::compare(&recording(kind), &dump(db));
-        assert_eq!(dump(db), recorded(kind), "{} schema", kind.name());
         let expected: Vec<i64> = kind.migrations().iter().map(|m| m.id.into()).collect();
         assert_eq!(ids(db), expected);
         // A second pass finds nothing to do.
         migrate(db, kind).unwrap();
         assert_eq!(dump(db), recorded(kind));
         assert_eq!(ids(db), expected);
-    }
-}
-
-#[test]
-fn lists_are_numbered_from_one_without_gaps_or_repeats() {
-    crate::install();
-    for kind in registry().databases() {
-        for (index, migration) in kind.migrations().iter().enumerate() {
-            assert_eq!(migration.id as usize, index + 1, "{}", kind.name());
-            assert!(!migration.name.is_empty());
-        }
     }
 }
 

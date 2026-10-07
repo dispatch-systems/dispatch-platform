@@ -12,7 +12,6 @@ import {
   inspectionShortfall,
   readInspectionWeek,
   repeatDrivers,
-  shortestFirst,
   shortestByDay,
   weekDays,
   weekStart,
@@ -63,7 +62,7 @@ test('inspection weeks use Sunday dates across year and DST boundaries; source c
   assert.equal(inspectionDuration(19.999999999999996), '20s');
   assert.equal(inspectionShortfall(0), '0s');
 });
-test('filters use driver identity, name or VIN and preserve distinct inspections', () => {
+test('filters use driver identity or name, not the VIN, and preserve distinct inspections', () => {
   const rows = [row('a'), row('b', 'SV')];
   assert.equal(filterInspections(rows, '  BROOKS ', '').length, 2);
   assert.equal(filterInspections(rows, 'brooks', 'dot')[0]?.id, 'b');
@@ -117,7 +116,7 @@ test('DVIC mutations refresh DVIC without invalidating timecard data', () => {
   assert.equal(mutationAffects('/api/dsp/dvic/collect', '/api/dsp/timecards'), false);
 });
 
-test('bands follow the share of the minimum with exact boundaries and a capped share', () => {
+test('bands follow the share of the minimum with exact boundaries', () => {
   const at = (durationSeconds: number, minimumSeconds: 90 | 300 = 90) => ({
     ...row('x'),
     durationSeconds,
@@ -131,10 +130,6 @@ test('bands follow the share of the minimum with exact boundaries and a capped s
   assert.equal(inspectionBand(at(0)), 'low');
   assert.equal(inspectionBand(at(225, 300)), 'high');
   assert.equal(inspectionBand(at(104, 300)), 'low');
-  assert.deepEqual(
-    shortestFirst([at(80), at(20, 300), at(20)]).map((item) => item.durationSeconds),
-    [20, 20, 80],
-  );
 });
 test('repeat drivers and driver grouping follow identity, not the displayed name', () => {
   const week: DvicInspection[] = [
@@ -164,14 +159,15 @@ test('repeat drivers and driver grouping follow identity, not the displayed name
     ],
   );
   const step = { ...row('s', 'SV'), minimumSeconds: 300 as const, shortBySeconds: 226 };
+  const shorter = { ...row('w'), durationSeconds: 30, shortBySeconds: 60 };
   assert.deepEqual(
-    groupByVehicleClass([step, row('v'), row('c', 'CDV')]).map((group) => [
+    groupByVehicleClass([step, row('v'), row('c', 'CDV'), shorter]).map((group) => [
       group.vehicles,
       group.minimum,
       group.rows.map((item) => item.id),
     ]),
     [
-      ['non-dot', 90, ['c', 'v']],
+      ['non-dot', 90, ['w', 'c', 'v']],
       ['dot', 300, ['s']],
     ],
   );
@@ -181,19 +177,27 @@ test('repeat drivers and driver grouping follow identity, not the displayed name
   );
 });
 
-test('day cells keep the same minimum share and deterministic ties as the full inspection ordering', () => {
+test('day cells keep the lowest share of the minimum, then the earliest start, then the first id', () => {
   const rows = [
-    { ...row('z'), startDate: '2026-09-25', durationSeconds: 20 },
-    { ...row('b'), durationSeconds: 30 },
-    { ...row('a'), durationSeconds: 30 },
-    { ...row('step', 'SV'), minimumSeconds: 300 as const, durationSeconds: 100 },
+    // A step van's 200s of 300 is less of its minimum than a cargo van's 80s of 90.
+    { ...row('cargo'), startDate: '2026-09-24', durationSeconds: 80 },
+    {
+      ...row('step', 'SV'),
+      startDate: '2026-09-24',
+      minimumSeconds: 300 as const,
+      durationSeconds: 200,
+    },
+    { ...row('b'), startDate: '2026-09-25', durationSeconds: 30 },
+    { ...row('a'), startDate: '2026-09-25', durationSeconds: 30 },
+    { ...row('after'), durationSeconds: 30 },
     { ...row('early'), durationSeconds: 30, startTime: '2026-09-26 08:00:00' },
   ];
   const before = rows.map((item) => item.id);
   const cells = shortestByDay(rows);
-  for (const day of ['2026-09-25', '2026-09-26'])
-    assert.equal(cells.get(day), shortestFirst(rows.filter((item) => item.startDate === day))[0]);
-  assert.equal(cells.get('2026-09-26')?.id, 'early');
+  assert.deepEqual(
+    ['2026-09-24', '2026-09-25', '2026-09-26'].map((day) => cells.get(day)?.id),
+    ['step', 'a', 'early'],
+  );
   assert.deepEqual(
     rows.map((item) => item.id),
     before,

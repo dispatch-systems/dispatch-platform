@@ -124,22 +124,6 @@ impl Store {
         )?;
         Ok(dsps.into_iter().map(|(id,)| id).collect())
     }
-    /// `find_dsp` as JSON, for the integration tests written against it.
-    pub fn get_dsp(&self, id: &str) -> Result<Value> {
-        Ok(serde_json::to_value(self.find_dsp(id)?)?)
-    }
-    /// `new_dsp` as JSON, for the integration tests written against it.
-    pub fn create_dsp(
-        &self,
-        name: &str,
-        timezone: &str,
-        actor: &str,
-        permanent: bool,
-    ) -> Result<Value> {
-        Ok(serde_json::to_value(
-            self.new_dsp(name, timezone, actor, permanent)?,
-        )?)
-    }
     pub fn new_dsp(&self, name: &str, timezone: &str, actor: &str, permanent: bool) -> Result<Dsp> {
         ensure(
             timezone.parse::<chrono_tz::Tz>().is_ok(),
@@ -313,9 +297,6 @@ impl Store {
             "",
         )?;
         self.find_dsp(id)
-    }
-    pub fn update_dsp(&self, c: &Context, name: &str, timezone: &str) -> Result<Dsp> {
-        self.update_dsp_details(&c.dsp.id, c.actor(), name, timezone)
     }
     fn update_dsp_details(&self, id: &str, actor: &str, name: &str, timezone: &str) -> Result<Dsp> {
         let before = self.find_dsp(id)?;

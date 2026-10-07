@@ -50,7 +50,7 @@ const area = z.enum([
   'settings',
 ]);
 const named = z.object({ id: text, name: text });
-export const auditPageSchema = z.object({
+const auditPageSchema = z.object({
   events: z.array(
     z.object({
       id: count,

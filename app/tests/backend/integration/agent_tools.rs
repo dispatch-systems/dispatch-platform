@@ -494,8 +494,14 @@ fn a_key_is_shown_once_kept_as_a_hash_and_reaches_only_its_dsps() {
 #[test]
 fn revoked_expired_or_orphaned_keys_stop_at_once() {
     dispatch_backend::install();
-    let (_root, db, dsp) = bootstrapped();
+    let (_root, mut db, dsp) = bootstrapped();
     let user = owner(&db);
+    // A key made where the platform runs as production, stored like any other. It reaches every
+    // DSP, since none of this platform's is production's to name.
+    let preview = std::mem::replace(&mut db.config.environment, "production".into());
+    let live = db.create_agent_key(&user, &request(reach(&[]))).unwrap();
+    db.config.environment = preview;
+    assert!(live.token.starts_with("dsk_live_"));
     let key = |name: &str| {
         let mut body = reach(&[&dsp]);
         body["name"] = json!(name);
@@ -510,9 +516,9 @@ fn revoked_expired_or_orphaned_keys_stop_at_once() {
         refused(&db, &String::from_utf8(typo).unwrap()),
         "agent_key_invalid"
     );
-    // A production key is never one here.
-    let live = revoked.token.replacen("dsk_dev_", "dsk_live_", 1);
-    assert_eq!(refused(&db, &live), "agent_key_invalid");
+    // A production key is never one here, though this database holds it.
+    assert_eq!(refused(&db, &live.token), "agent_key_invalid");
+    db.revoke_agent_key(&user, &live.key.id).unwrap();
     db.revoke_agent_key(&user, &revoked.key.id).unwrap();
     assert_eq!(refused(&db, &revoked.token), "agent_key_revoked");
 

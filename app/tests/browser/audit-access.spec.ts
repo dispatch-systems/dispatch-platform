@@ -23,12 +23,6 @@ test('audit access is only in the Platform Owner Dashboard, including old DSP li
   await expect(page.getByRole('tab', { name: 'Audit log', exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Audit log', exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Search activity')).toHaveCount(0);
-  for (const theme of ['light', 'dark']) {
-    await page.evaluate(
-      (value) => document.documentElement.setAttribute('data-theme', value),
-      theme,
-    );
-  }
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.setViewportSize({ width: 1440, height: 1000 });

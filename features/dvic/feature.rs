@@ -7,11 +7,6 @@ mod mcp;
 pub use api::types::{DvicInspection, DvicInspections, DvicReport, DvicStatus, DvicWeek};
 /// What the app uses: its storage and its database.
 pub use backend::{DATABASE, DvicStore};
-/// What its integration tests check beside the storage: the operator's commands, the drivers
-/// they hide, and the weeks a request names.
-pub use backend::{cli, hidden, weeks_ending};
-/// What agents can ask of it, which the app's tests ask directly.
-pub use mcp::views::dvic;
 
 use dispatch_core::{
     db::{
@@ -74,7 +69,7 @@ pub const FEATURE: Feature = Feature {
     },
     commands: Some(Commands {
         prefix: "dvic-",
-        run: cli::run,
+        run: backend::cli::run,
     }),
     mcp: mcp::MCP,
     people: &[&backend::people::Drivers],

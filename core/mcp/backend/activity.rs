@@ -412,29 +412,7 @@ impl Store {
 
     /// A page of the log, newest first, naming keys and DSPs as they are called now.
     pub fn agent_activity(&self, query: &ActivityQuery) -> Result<AgentActivityPage> {
-        // Each filter adds its own condition, so every page reads one index in order.
-        let mut sql = "SELECT a.id,a.at,a.key_id,COALESCE(k.name,a.key_name) key_name,\
-            a.key_kind,a.surface,a.dsp_id,COALESCE(d.name,a.dsp_name) dsp_name,a.outcome,\
-            a.bypassed,a.ms,a.bytes FROM agent_activity a LEFT JOIN agent_keys k ON k.id=a.key_id \
-            LEFT JOIN dsps d ON d.id=a.dsp_id WHERE 1"
-            .to_owned();
-        let mut values: Vec<rusqlite::types::Value> = vec![];
-        if let Some(key) = &query.key {
-            sql.push_str(" AND a.key_id=?");
-            values.push(key.clone().into());
-        }
-        match query.outcomes {
-            Outcomes::All => {}
-            Outcomes::Ok => sql.push_str(" AND a.outcome IN ('ok','capped')"),
-            Outcomes::Refused => sql.push_str(" AND a.outcome<>'ok'"),
-        }
-        if let Some((before, id)) = query.before {
-            sql.push_str(" AND (a.at,a.id)<(?,?)");
-            values.push(before.into());
-            values.push(id.into());
-        }
-        sql.push_str(" ORDER BY a.at DESC,a.id DESC LIMIT ?");
-        values.push((query.limit as i64 + 1).into());
+        let (sql, values) = page(query);
         let mut listed: Vec<Listed> = self
             .platform
             .query_as(&sql, rusqlite::params_from_iter(values))?;
@@ -449,6 +427,34 @@ impl Store {
             next,
         })
     }
+}
+
+/// The query for a page of the log, one more call than it shows, and its values. Each filter
+/// adds its own condition, so every page reads one index in order.
+fn page(query: &ActivityQuery) -> (String, Vec<rusqlite::types::Value>) {
+    let mut sql = "SELECT a.id,a.at,a.key_id,COALESCE(k.name,a.key_name) key_name,\
+        a.key_kind,a.surface,a.dsp_id,COALESCE(d.name,a.dsp_name) dsp_name,a.outcome,\
+        a.bypassed,a.ms,a.bytes FROM agent_activity a LEFT JOIN agent_keys k ON k.id=a.key_id \
+        LEFT JOIN dsps d ON d.id=a.dsp_id WHERE 1"
+        .to_owned();
+    let mut values: Vec<rusqlite::types::Value> = vec![];
+    if let Some(key) = &query.key {
+        sql.push_str(" AND a.key_id=?");
+        values.push(key.clone().into());
+    }
+    match query.outcomes {
+        Outcomes::All => {}
+        Outcomes::Ok => sql.push_str(" AND a.outcome IN ('ok','capped')"),
+        Outcomes::Refused => sql.push_str(" AND a.outcome<>'ok'"),
+    }
+    if let Some((before, id)) = query.before {
+        sql.push_str(" AND (a.at,a.id)<(?,?)");
+        values.push(before.into());
+        values.push(id.into());
+    }
+    sql.push_str(" ORDER BY a.at DESC,a.id DESC LIMIT ?");
+    values.push((query.limit as i64 + 1).into());
+    (sql, values)
 }
 
 #[cfg(test)]

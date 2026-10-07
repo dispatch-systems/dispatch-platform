@@ -34,23 +34,10 @@ class PipelineTests(unittest.TestCase):
                 execute.assert_called_once_with("/trusted path/dispatch-host", [
                     "/trusted path/dispatch-host", "host", "setup", environment, *args])
 
-    def test_collector_shards_preserve_coverage_and_isolate_capacity(self):
-        files = [file for shard in collectors.SHARDS.values() for file in shard]
-        self.assertEqual(len(files), len(set(files)))
-        # Every suite in a shard exists; a new collector adds a shard of its own.
-        self.assertEqual([file for file in files if not (ROOT / file).is_file()], [])
-        self.assertLessEqual({
-            "collectors/paycom/tests/native/paycom-worker.test.ts", "collectors/paycom/tests/native/native-browser.test.ts",
-            "collectors/paycom/tests/native/native-browser-recovery.test.ts",
-            "collectors/cortex/tests/native/cortex-worker.test.ts", "collectors/cortex/tests/native/cortex-meals-worker.test.ts",
-            "collectors/cortex/tests/native/cortex-weekly-scorecard-worker.test.ts",
-            "collectors/cortex/tests/native/cortex-routes-worker.test.ts",
-            "features/timecard/tests/native/meal-sync-worker.test.ts",
-            "app/tests/native/multi-dsp-browser.test.ts", "app/tests/native/collection-throughput.test.ts",
-        }, set(files))
-        self.assertEqual(set(collectors.SHARDS["capacity"]), {
-            "app/tests/native/multi-dsp-browser.test.ts", "app/tests/native/collection-throughput.test.ts",
-        })
+    def test_collector_shards_isolate_capacity_and_require_the_real_timeout(self):
+        # The app's multi-DSP suites run on the capacity runner, and nothing else does.
+        self.assertEqual(set(collectors.SHARDS["capacity"]),
+                         {path.relative_to(ROOT).as_posix() for path in (ROOT / "app/tests/native").glob("*.test.ts")})
         title = collectors.REAL_TIMEOUT["title"]
         passed = f'<testsuites><testcase name="{title}" /></testsuites>'
         collectors.require_real_timeout(passed)

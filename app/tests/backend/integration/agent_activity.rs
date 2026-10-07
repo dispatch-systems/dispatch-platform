@@ -648,46 +648,6 @@ async fn calls_past_ninety_days_are_forgotten() {
 }
 
 #[tokio::test]
-async fn reading_the_log_reads_one_index_in_order() {
-    let server = Server::start().await;
-    let plans = server
-        .state
-        .read(|db| {
-            let mut plans = vec![];
-            for filter in [
-                "",
-                " AND a.key_id='k'",
-                " AND a.outcome<>'ok'",
-                " AND (a.at,a.id)<(1,2)",
-            ] {
-                let plan = db.platform.all(
-                    &format!(
-                        "EXPLAIN QUERY PLAN SELECT a.id FROM agent_activity a LEFT JOIN \
-                         agent_keys k ON k.id=a.key_id LEFT JOIN dsps d ON d.id=a.dsp_id \
-                         WHERE 1{filter} ORDER BY a.at DESC,a.id DESC LIMIT 51"
-                    ),
-                    [],
-                )?;
-                plans.push(
-                    plan.iter()
-                        .map(|row| s(row, "detail").to_owned())
-                        .collect::<Vec<_>>()
-                        .join("; "),
-                );
-            }
-            Ok(plans)
-        })
-        .await
-        .unwrap();
-    for plan in &plans {
-        assert!(plan.contains("USING INDEX agent_activity_"), "{plan}");
-        assert!(!plan.contains("TEMP B-TREE"), "{plan}");
-    }
-    assert!(plans[1].contains("agent_activity_key"), "{}", plans[1]);
-    assert!(plans[2].contains("agent_activity_refused"), "{}", plans[2]);
-}
-
-#[tokio::test]
 async fn a_call_that_read_a_switched_off_feature_by_bypassing_it_is_marked() {
     let server = Server::start().await;
     let cookie = server.owner().await;

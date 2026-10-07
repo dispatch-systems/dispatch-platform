@@ -4,7 +4,7 @@ pub mod people;
 pub(crate) mod retirement;
 
 use crate::{
-    Code, Error, Result, State,
+    Code, Result, State,
     collection::{
         browser::{Collected, Driver, Pending, browseros},
         metrics::{Counted, Counts},
@@ -788,10 +788,6 @@ pub trait Collector: Sync {
     fn roster(&self) -> bool {
         false
     }
-    /// Every error code its collections raise and branch on.
-    fn codes(&self) -> &'static [Code] {
-        &[]
-    }
     /// Those of its codes a failed attempt is queued again after, while attempts remain.
     fn retryable(&self) -> &'static [Code] {
         &[]
@@ -898,31 +894,12 @@ pub trait Keeper: Sync {
     }
 }
 
-/// Core's error codes, joined by the ones each registered collector declares.
+/// Core's retryable error codes, joined by the ones each registered collector declares.
 impl Code {
-    /// Every code the backend branches on: core's own, then each collector's.
-    pub fn all() -> impl Iterator<Item = Code> {
-        let collectors = registry().collectors.iter().flat_map(|c| c.codes());
-        Code::ALL.iter().chain(collectors).copied()
-    }
     /// A failed attempt with one of these is queued again while attempts remain: core's
     /// own, then each collector's.
     pub fn retryable() -> impl Iterator<Item = Code> {
         let collectors = registry().collectors.iter().flat_map(|c| c.retryable());
         Code::RETRYABLE.iter().chain(collectors).copied()
-    }
-    pub fn parse(text: &str) -> Option<Self> {
-        Self::all().find(|code| code.as_str() == text)
-    }
-    pub fn is_retryable(self) -> bool {
-        Self::retryable().any(|code| code == self)
-    }
-}
-impl Error {
-    pub fn known(&self) -> Option<Code> {
-        Code::parse(&self.code)
-    }
-    pub fn is_retryable(&self) -> bool {
-        Code::retryable().any(|code| self.is(code))
     }
 }

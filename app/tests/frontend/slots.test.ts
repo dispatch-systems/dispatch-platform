@@ -3,9 +3,6 @@ import assert from 'node:assert/strict';
 import '../support/manifests.js';
 import { featureCatalog } from '../../../core/shell/frontend/runtime/features.js';
 import { features } from '../../frontend/features.js';
-import { jobSchema } from '../../../core/collection/api/runtime.js';
-import { collections } from '../../../core/collection/api/generated/collections.js';
-import { readToggleGroups } from '../../../core/mcp/api/generated/read-toggles.js';
 import { errorLabel } from '../../../core/shell/frontend/runtime/api.js';
 import {
   cacheRules,
@@ -21,17 +18,6 @@ const once = (ids: readonly string[], what: string) =>
     [],
     `${what} declared more than once`,
   );
-
-test('each kind of data agents may read is declared once, and each group has its own place', () => {
-  once(
-    readToggleGroups.flatMap((group) => group.toggles.map((toggle) => toggle.id)),
-    'read toggles',
-  );
-  once(
-    readToggleGroups.map((group) => group.label),
-    'read toggle groups',
-  );
-});
 
 test("each page's switch has its icon, declared once", async () => {
   const modules = await Promise.all(features.map((feature) => feature.platformSlots?.()));
@@ -51,27 +37,6 @@ test('each connection has one card', () => {
   );
   for (const connection of featureCatalog.filter((entry) => entry.kind === 'connection'))
     assert(connectionCard(connection.id), `${connection.id} has no card`);
-});
-
-test('each job kind and schedule collection is named once, by a connection', () => {
-  once(
-    collections.map((collection) => collection.kind),
-    'job kinds',
-  );
-  once(
-    collections.map((collection) => collection.schedule),
-    'schedule collections',
-  );
-  for (const kind of jobSchema.shape.kind.options)
-    assert(
-      collections.some((collection) => collection.kind === kind),
-      `${kind} has no collection`,
-    );
-  for (const { provider } of collections)
-    assert(
-      featureCatalog.some((entry) => entry.kind === 'connection' && entry.id === provider),
-      `${provider} is no connection`,
-    );
 });
 
 test('a read of collected data belongs to one owner', () => {

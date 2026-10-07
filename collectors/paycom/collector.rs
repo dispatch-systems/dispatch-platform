@@ -13,7 +13,7 @@ pub use probes::measure_live_collection;
 
 use dispatch_core::collection::registry::Provider;
 use dispatch_core::{
-    Code, Error, Result,
+    Error, Result,
     collection::{
         browser::{
             Collected, Driver, Pending,
@@ -238,9 +238,6 @@ impl Collector for Paycom {
     fn roster(&self) -> bool {
         true
     }
-    fn codes(&self) -> &'static [Code] {
-        codes::ALL
-    }
     fn discard(&self, store: &Store, dsp: &str, job: Option<&str>) -> Result<()> {
         store.clear_paycom_checkpoints(dsp, job)
     }
@@ -264,7 +261,4 @@ pub(crate) mod codes {
 
     pub const TIMECARD_EXTRACTION_FAILED: Code = Code::new("timecard_extraction_failed");
     pub const INVALID_TIMECARD_HOURS: Code = Code::new("invalid_timecard_hours");
-
-    /// Every code above.
-    pub const ALL: &[Code] = &[TIMECARD_EXTRACTION_FAILED, INVALID_TIMECARD_HOURS];
 }

@@ -60,7 +60,3 @@ pub const FEATURE: Feature = Feature {
     people: &[&backend::people::Drivers],
     ..feature("daily_performance")
 };
-
-#[cfg(test)]
-#[path = "tests/backend/feature.rs"]
-mod tests;

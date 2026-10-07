@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture } from '../../../core/shell/tests/support/support.js';
 import type { AgentKeyCreated, AgentKeys } from '../../../core/platform_owner/api/index.js';
+import { everyKind } from '../support/agent-keys.js';
 
 test('an agent reads a DSP by asking in its own words, and is told what to fix', async (t) => {
   const f = await fixture();
@@ -15,20 +16,7 @@ test('an agent reads a DSP by asking in its own words, and is told what to fix',
       allDsps: reach.length === 0,
       dsps: reach,
       access: 'read',
-      // Every kind of data but delivery addresses, as a new key starts.
-      reads: {
-        areas: [
-          'routes',
-          'timecards',
-          'meal_breaks',
-          'dvic',
-          'feedback',
-          'safety',
-          'returns',
-          'weekly_scorecard',
-        ],
-        bypass: false,
-      },
+      reads: { areas: everyKind, bypass: false },
       dspReads: [],
       expiresAt: null,
     });

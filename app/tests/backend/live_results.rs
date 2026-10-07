@@ -99,8 +99,10 @@ async fn driver_results_overlay_both_views_without_publishing_and_revert_on_fail
             let range =
                 db.live_results_range(&tenant, paycom::PROVIDER, "2026-01-18", "2026-01-20")?;
             assert_eq!(range.len(), 2);
+            // Read a day at a time, each day holds what the wider read did.
             for day in ["2026-01-18", "2026-01-19"] {
-                assert_eq!(range[day], db.live_results(&tenant, paycom::PROVIDER, day)?);
+                let alone = db.live_results_range(&tenant, paycom::PROVIDER, day, day)?;
+                assert_eq!(range[day], alone[day]);
                 assert_eq!(range[day][0].1.len(), 1);
             }
             let comparison = db
@@ -124,7 +126,9 @@ async fn driver_results_overlay_both_views_without_publishing_and_revert_on_fail
             db.collector(&tenant, paycom::PROVIDER)?
                 .exec("UPDATE connections SET revision=revision+1", [])?;
             assert!(
-                db.live_results(&tenant, paycom::PROVIDER, "2026-01-19")?
+                db.live_results_range(&tenant, paycom::PROVIDER, "2026-01-19", "2026-01-19")?
+                    .remove("2026-01-19")
+                    .unwrap_or_default()
                     .is_empty()
             );
             db.collector(&tenant, paycom::PROVIDER)?

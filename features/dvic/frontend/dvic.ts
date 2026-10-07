@@ -97,13 +97,12 @@ export const bandLabel: Record<Band, string> = {
   mid: '35–75% of minimum',
   low: 'Under 35% of minimum',
 };
-export const bandRank: Record<Band, number> = { low: 0, mid: 1, high: 2 };
 
 const shortestOrder = (a: DvicInspection, b: DvicInspection) =>
   inspectionShare(a) - inspectionShare(b) ||
   a.startTime.localeCompare(b.startTime) ||
   a.id.localeCompare(b.id);
-export const shortestFirst = (rows: DvicInspection[]) => [...rows].sort(shortestOrder);
+const shortestFirst = (rows: DvicInspection[]) => [...rows].sort(shortestOrder);
 
 /** Each driver's day cell keeps its shortest share without filtering or sorting the week again. */
 export function shortestByDay(rows: DvicInspection[]) {

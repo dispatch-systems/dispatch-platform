@@ -63,7 +63,7 @@ fn first_sync_discovers_from_tenant_profile_and_replays_after_publication() {
     let request: Value = serde_json::from_str(&row.request).unwrap();
     assert_eq!(request["station"], "TST1");
     assert_eq!(request["dspAbbreviation"], "NLOG");
-    assert_eq!(request["dspName"], db.get_dsp(&id).unwrap()["name"]);
+    assert_eq!(request["dspName"], db.find_dsp(&id).unwrap().name);
     assert!(request.get("serviceAreaId").is_none());
     db.cancel_dsp(&id).unwrap();
     seed(&db, &id, "2026-01-11", 1);

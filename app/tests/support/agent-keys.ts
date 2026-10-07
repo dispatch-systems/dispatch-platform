@@ -1,19 +1,14 @@
 import type { AgentArea, AgentKeyRequest } from '../../../core/platform_owner/api/index.js';
+import { readToggleGroups } from '../../../core/mcp/api/generated/read-toggles.js';
 import type { fixture } from '../../../core/shell/tests/support/support.js';
 
 type App = Awaited<ReturnType<typeof fixture>>;
 
-/** Every kind of data but delivery addresses, as a new key starts. */
-const everyKind: AgentArea[] = [
-  'routes',
-  'timecards',
-  'meal_breaks',
-  'dvic',
-  'feedback',
-  'safety',
-  'returns',
-  'weekly_scorecard',
-];
+/** Every kind of data but those a key must opt in to, such as delivery addresses, as a new
+ * key starts. */
+export const everyKind: AgentArea[] = readToggleGroups.flatMap((group) =>
+  group.toggles.filter((toggle) => !toggle.optIn).map((toggle) => toggle.id),
+);
 
 /**
  * Four keys as the Agents page would hold them: read-only and operator keys, one reading a

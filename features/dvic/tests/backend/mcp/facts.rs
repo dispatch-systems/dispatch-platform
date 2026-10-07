@@ -23,9 +23,10 @@ fn fixture() -> (tempfile::TempDir, Store, Dsp, Period) {
     )
     .unwrap();
     for (key, driver, station, verified, date, time, seconds) in [
-        ("late", "A", "TST1", 1, "2026-09-22", "09:00", 91.0),
+        ("late", "A", "TST1", 1, "2026-09-22", "09:00", 89.0),
         ("alias", "A-old", "TST1", 1, "2026-09-21", "09:00", 75.4),
-        ("early", "A", "TST1", 1, "2026-09-22", "08:00", 90.0),
+        ("early", "A", "TST1", 1, "2026-09-22", "08:00", 60.0),
+        ("long", "A", "TST1", 1, "2026-09-22", "10:00", 90.0),
         ("other", "B", "TST1", 1, "2026-09-22", "07:00", 300.0),
         (
             "literal",
@@ -74,7 +75,8 @@ fn fixture() -> (tempfile::TempDir, Store, Dsp, Period) {
 fn selected_driver_aliases_preserve_scoping_order_and_inspection_values() {
     let (_root, db, dsp, period) = fixture();
     let (all, all_coverage) = inspections(&db, &dsp, &period, None).unwrap();
-    assert_eq!(all.len(), 2);
+    // Only short inspections: not A's 90 seconds, nor B's 300.
+    assert_eq!(all.len(), 4);
     let ids = vec!["A".into(), "A-old".into()];
     let (selected, coverage) = inspections(&db, &dsp, &period, Some(&ids)).unwrap();
     let expected: Vec<_> = all
@@ -84,17 +86,34 @@ fn selected_driver_aliases_preserve_scoping_order_and_inspection_values() {
     assert_eq!(json!(selected), json!(expected));
     assert_eq!(json!(coverage), json!(all_coverage));
     assert_eq!(coverage.status(), "complete");
+    // Both of A's IDs, in the order the inspections started.
     assert_eq!(
-        selected.iter().map(|row| row.seconds).collect::<Vec<_>>(),
-        vec![75]
+        selected
+            .iter()
+            .map(|row| (row.transporter_id.as_str(), row.seconds))
+            .collect::<Vec<_>>(),
+        [("A-old", 75), ("A", 60), ("A", 89)]
     );
-    assert!(selected[0].short);
-    assert!(all.iter().all(|inspection| inspection.short));
     let scope = InspectionQuery::new(&db, &dsp, &period, Some(&ids)).unwrap();
-    assert_eq!(scope.count().unwrap(), 1);
-    assert_eq!(scope.groups().unwrap()[0]["shortest"], 75);
-    assert_eq!(scope.list(0, Some(1)).unwrap().len(), 1);
-    assert!(scope.list(1, Some(1)).unwrap().is_empty());
+    assert_eq!(scope.count().unwrap(), 3);
+    let mut shortest: Vec<_> = scope
+        .groups()
+        .unwrap()
+        .iter()
+        .map(|group| {
+            (
+                s(group, "transporter_id").to_owned(),
+                group["shortest"].as_i64(),
+            )
+        })
+        .collect();
+    shortest.sort();
+    assert_eq!(
+        shortest,
+        [("A".to_owned(), Some(60)), ("A-old".to_owned(), Some(75))]
+    );
+    assert_eq!(scope.list(2, Some(1)).unwrap()[0].seconds, 89);
+    assert!(scope.list(3, Some(1)).unwrap().is_empty());
     drop(scope);
 
     let (literal, _) = inspections(&db, &dsp, &period, Some(&["A' OR 1=1 --".into()])).unwrap();

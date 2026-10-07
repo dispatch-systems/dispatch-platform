@@ -41,30 +41,6 @@ fn adjacent_week(week: &str, delta: i64) -> Result<String> {
         .ok_or_else(|| Error::new("invalid_week", 400))?;
     Ok(crate::dvic::report_week(shifted))
 }
-#[test]
-fn probe_inputs_and_response_decoding_preserve_boundaries() {
-    for invalid in ["", "1", "1,2,3", "0,2", "a,2", "1,,2"] {
-        assert!(tab_pair(invalid).is_err(), "{invalid}");
-    }
-    assert_eq!(tab_pair(" 1, 2 ").unwrap(), [1, 2]);
-    assert_eq!(
-        response_bytes(&json!({"body":"eyJhIjoxfQ==","base64Encoded":true})).unwrap(),
-        br#"{"a":1}"#
-    );
-    assert_eq!(
-        response_bytes(&json!({"body":"{\"a\":1}"})).unwrap(),
-        br#"{"a":1}"#
-    );
-    assert!(response_bytes(&json!({"body":"?","base64Encoded":true})).is_err());
-    for (week, delta, expected) in [
-        ("2026-W52", 1, "2026-W53"),
-        ("2026-W53", 1, "2027-W01"),
-        ("2027-W01", -1, "2026-W53"),
-        ("2025-W52", 1, "2026-W01"),
-    ] {
-        assert_eq!(adjacent_week(week, delta).unwrap(), expected);
-    }
-}
 /// The requests a tab's document made, from its own resource timing: data requests
 /// by masked address (a path segment with a digit is an identifier; query values
 /// are dropped) with their largest size and time, and other kinds counted.

@@ -40,8 +40,9 @@ import {
 } from './scaffold.js';
 
 // `npm run new:feature -- <name> [flags]`: a feature that works as written. It is a crate of its
-// own, listed in app/, with a switch that starts off for every DSP and a view permission on the
-// role sheet, and its first test. Each flag adds a piece with its starter code and its test.
+// own, listed in app/, with a switch that starts off for every DSP, which a browser test finds on
+// the DSPs page, and a view permission on the role sheet. Each flag adds a piece with its starter
+// code and its test.
 
 export const usage = `Usage: npm run new:feature -- <name> [options]
 
@@ -95,8 +96,7 @@ export function featureValues(root: string, argv: string[]) {
     throw new UsageError(
       'Agents read a feature through its switch: --mcp needs a feature with one',
     );
-  const backend = !args.flags.has('no-backend');
-  if (!backend) {
+  if (args.flags.has('no-backend')) {
     if (!page && !host && !settings)
       throw new UsageError(
         '--no-backend leaves only a frontend: add --page, --tab-of or --settings',
@@ -222,9 +222,16 @@ export function featureValues(root: string, argv: string[]) {
     list.map(([parameter, type]) => `${read ? parameter : `_${parameter}`}: ${type}`).join(', ');
 
   const screens = page || Boolean(host) || settings;
+  // A switch shows on the DSPs page with its icon, which the frontend's platform slots give.
+  const frontend = screens || switched;
+  // backend/ holds its storage and keeper. A feature with neither, no API and no frontend, as
+  // --always-on alone, keeps an empty one and its manifest's test: the anatomy rule wants a
+  // backend, an API or a frontend.
+  const manifestOnly = !api && !frontend && !database && !keeps;
   const values: Values = {
     ...names,
-    backend,
+    backend: Boolean(database) || keeps || manifestOnly,
+    manifestTest: manifestOnly,
     switch: switched,
     permission,
     viewOrder: order,
@@ -268,8 +275,7 @@ export function featureValues(root: string, argv: string[]) {
     agentOrder: mcp ? nextAgentOrder(root) : 0,
     // How a key's row on the Agents page names its data when the key doesn't read it.
     missing: names.label.toLowerCase(),
-    // A switch shows on the DSPs page with its icon, which the frontend's platform slots give.
-    frontend: screens || switched,
+    frontend,
     screens,
     platformSlots: switched,
     canImport: permission && (page || settings),
@@ -295,7 +301,7 @@ function pieces(values: Values): [boolean, string, string][] {
     [true, 'feature.rs', 'feature.rs'],
     [true, 'README.md', 'README.md'],
     [values.backend as boolean, 'backend/mod.rs', 'backend/mod.rs'],
-    [values.backend as boolean, 'tests/backend/feature.rs', 'tests/backend/feature.rs'],
+    [values.manifestTest as boolean, 'tests/backend/feature.rs', 'tests/backend/feature.rs'],
     [values.api as boolean, 'api/mod.rs', 'api/mod.rs'],
     [values.api as boolean, 'api/routes.rs', 'api/routes.rs'],
     [values.api as boolean, 'api/types.rs', 'api/types.rs'],

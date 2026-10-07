@@ -16,6 +16,7 @@ import type {
   OAuthRedirect,
   OAuthRequest,
 } from '../../../core/platform_owner/api/index.js';
+import { everyKind } from '../support/agent-keys.js';
 
 // Sign in with Dispatch, driven over HTTP the way an MCP client drives it: a 401 that says
 // where to sign in, the discovery documents, the browser's trip through /oauth/authorize, the
@@ -59,20 +60,7 @@ const everything = (name: string): OAuthApproval => ({
   name,
   allDsps: true,
   dsps: [],
-  reads: {
-    areas: [
-      'routes',
-      'locations',
-      'timecards',
-      'meal_breaks',
-      'dvic',
-      'feedback',
-      'safety',
-      'returns',
-      'weekly_scorecard',
-    ],
-    bypass: false,
-  },
+  reads: { areas: ['locations', ...everyKind], bypass: false },
 });
 
 /** A PKCE pair as a client makes one: a random verifier and its S256 challenge. */

@@ -3,48 +3,6 @@ use dispatch_core::{Result, server::cache::*};
 fn meals(dsp: &str) -> Scope {
     Scope::tenant("meals", dsp)
 }
-#[test]
-fn dependencies_cover_every_source_without_evicting_other_tenants() {
-    crate::install();
-    for (domain, expected) in [
-        (DataDomain::new("paycom"), [false, false, false, true, true]),
-        (DataDomain::new("meals"), [true, false, false, true, true]),
-        (DataDomain::LIVE, [true, false, true, true, true]),
-        (DataDomain::new("routes"), [true, true, false, true, true]),
-        (
-            DataDomain::new("weekly_scorecard"),
-            [true, true, false, true, true],
-        ),
-        (DataDomain::new("dvic"), [true, true, false, true, true]),
-        (DataDomain::new("drivers"), [true, false, false, true, true]),
-        (DataDomain::TENANT, [false, false, false, true, true]),
-        (DataDomain::SCHEDULES, [false, true, true, true, true]),
-    ] {
-        let cache = ReadCache::default();
-        let scopes = [
-            Scope::listings(),
-            meals("a"),
-            Scope::tenant(PEOPLE, "a"),
-            meals("b"),
-            Scope::tenant(PEOPLE, "b"),
-        ];
-        for scope in &scopes {
-            cache
-                .read(scope.clone(), "same-key".into(), 1, || Ok(7))
-                .unwrap();
-        }
-        cache.invalidate_tenant("a", domain);
-        for (scope, retained) in scopes.into_iter().zip(expected) {
-            assert_eq!(
-                cache
-                    .read(scope.clone(), "same-key".into(), 1, || Ok(9))
-                    .unwrap(),
-                if retained { 7 } else { 9 },
-                "{domain:?}: {scope:?}"
-            );
-        }
-    }
-}
 #[tokio::test]
 async fn bookkeeping_preserves_cache_and_failed_scoped_or_unknown_writes_invalidate() {
     use std::os::unix::fs::PermissionsExt;

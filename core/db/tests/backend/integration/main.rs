@@ -9,8 +9,6 @@ mod audit;
 mod browser_update;
 #[path = "../../../../collection/tests/backend/integration/egress.rs"]
 mod egress;
-#[path = "../../../../collection/tests/backend/integration/jobs.rs"]
-mod jobs;
 #[path = "../../../../server/tests/backend/integration/mail.rs"]
 mod mail;
 mod storage;

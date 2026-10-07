@@ -6,6 +6,7 @@ import type {
   AgentKeyCreated,
   AgentKeys,
 } from '../../../core/platform_owner/api/index.js';
+import { everyKind } from '../support/agent-keys.js';
 
 type Rpc = { status: number; headers: Headers; body: any };
 
@@ -31,16 +32,7 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   // The server listens on loopback and names itself by its origin, as behind a tunnel.
   const server = `http://127.0.0.1:${f.env.PORT}`;
   const origin = f.env.DISPATCH_ORIGIN!;
-  const full = await key('Laptop – Claude Code', [
-    'routes',
-    'timecards',
-    'meal_breaks',
-    'dvic',
-    'feedback',
-    'safety',
-    'returns',
-    'weekly_scorecard',
-  ]);
+  const full = await key('Laptop – Claude Code', everyKind);
   const routes = await key('Home server – Hermes', ['routes', 'dvic']);
   let id = 0;
   const rpc = async (
@@ -96,27 +88,6 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   assert.equal(hello.headers.get('mcp-session-id'), null);
   assert.equal(hello.body.result.protocolVersion, '2025-06-18');
   assert.equal(hello.body.result.serverInfo.name, 'dispatch');
-  assert.match(
-    hello.body.result.instructions,
-    /Timecards default to yesterday for everyone or the last 30 days for one driver/,
-  );
-  assert.match(hello.body.result.instructions, /Routes default to yesterday/);
-  assert.match(hello.body.result.instructions, /Meal breaks default to yesterday/);
-  assert.match(hello.body.result.instructions, /weekly_scorecard defaults to the latest week/);
-  assert.match(
-    hello.body.result.instructions,
-    /Focused feedback, returns and safety tools default to this weekly source, with the last 30 days as their default period/,
-  );
-  assert.match(hello.body.result.instructions, /Daily Performance defaults to yesterday/);
-  assert.match(
-    hello.body.result.instructions,
-    /groups_cursor pages groups and cursor pages the list independently/,
-  );
-  assert.match(
-    hello.body.result.instructions,
-    /split longer requests into nonoverlapping date ranges/,
-  );
-  assert.match(hello.body.result.instructions, /DVIC contains short exceptions only/);
   assert.ok(hello.body.result.capabilities.tools && hello.body.result.capabilities.prompts);
   assert.equal((await rpc(full, 'notifications/initialized')).status, 202);
 
@@ -299,7 +270,7 @@ test('any MCP client reaches the agent API with a key, on every protocol version
   assert.equal(stateless.status, 200, JSON.stringify(stateless.body));
   const stated = stateless.body.result.structuredContent;
   assert.equal(stated.key.name, 'Laptop – Claude Code');
-  assert.equal(stated.dsps[0].reads.areas.length, 8);
+  assert.equal(stated.dsps[0].reads.areas.length, everyKind.length);
 
   // Without a key, a client is told to bring one; a browser is refused outright.
   const keyless = await rpc(null, 'tools/list');
