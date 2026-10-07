@@ -1,26 +1,7 @@
 import { test, expect, login } from '../../../../core/shell/tests/support/fixtures.js';
 
-// Weekly Scorecard has no page of its own: what its frontend draws is its kinds of data on the
-// Agents page and its events in the audit log.
-
-test('a new key reads every kind of Weekly Scorecard data, under Weekly Scorecard', async ({
-  page,
-}) => {
-  await login(page);
-  await page.getByRole('link', { name: 'Agents', exact: true }).click();
-  await page.getByRole('tab', { name: 'Keys', exact: true }).click();
-  await page.getByRole('button', { name: 'New key', exact: true }).click();
-  const scorecard = page
-    .getByRole('dialog', { name: 'New key' })
-    .getByRole('group', { name: 'Weekly Scorecard', exact: true });
-  for (const name of [
-    'Customer feedback',
-    'Safety events',
-    'Returns & contact compliance',
-    'Weekly Scorecard',
-  ])
-    await expect(scorecard.getByRole('switch', { name, exact: true })).toBeChecked();
-});
+// Weekly Scorecard has no page of its own: what its frontend draws is its events in the audit
+// log, and its kinds of data on the Agents page, from the generated read toggles.
 
 test('a week collected from the fixture reads in the audit log in Weekly Scorecard’s words', async ({
   page,

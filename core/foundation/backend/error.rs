@@ -17,8 +17,6 @@ macro_rules! codes {
         #[allow(non_upper_case_globals)]
         impl Code {
             $(pub const $name: Code = Code($text);)*
-            /// Core's own codes. `Code::all` adds each registered collector's.
-            pub const ALL: &'static [Code] = &[$(Code::$name,)*];
         }
     };
 }

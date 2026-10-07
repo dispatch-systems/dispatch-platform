@@ -10,8 +10,6 @@ pub use api::types::{
 };
 /// What the app uses: its storage and its database.
 pub use backend::{DATABASE, WeeklyScorecardStore};
-/// What agents can ask of it, which the app's tests ask directly.
-pub use mcp::weekly_scorecard::{feedback, returns, safety, weekly};
 
 use dispatch_core::{
     db::{

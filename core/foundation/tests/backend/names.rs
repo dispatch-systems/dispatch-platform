@@ -10,6 +10,8 @@ fn keys_ignore_order_case_punctuation_and_accents() {
         name_key("Taylor MolinaReed")
     );
     assert_ne!(name_key("Alex Reed"), name_key("Alexander Reed"));
+    assert_ne!(name_key("Taylor Reed Jr"), name_key("Taylor Reed"));
+    assert_eq!(name_key(" , -- "), "");
 }
 #[test]
 fn short_forms_come_from_the_list_or_the_start_of_a_name() {

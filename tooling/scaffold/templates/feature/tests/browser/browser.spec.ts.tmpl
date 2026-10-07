@@ -25,19 +25,6 @@ test('{{label}} has its switch on the DSPs page, on for the seeded DSP', async (
   await expect(pane.getByRole('switch', { name: '{{label}} page', exact: true })).toBeChecked();
 });
 {{/screens}}
-{{#mcp}}
-
-test('a new key reads {{label}}, under {{label}}', async ({ page }) => {
-  await login(page);
-  await page.getByRole('link', { name: 'Agents', exact: true }).click();
-  await page.getByRole('tab', { name: 'Keys', exact: true }).click();
-  await page.getByRole('button', { name: 'New key', exact: true }).click();
-  const group = page
-    .getByRole('dialog', { name: 'New key' })
-    .getByRole('group', { name: '{{label}}', exact: true });
-  await expect(group.getByRole('switch', { name: '{{label}}', exact: true })).toBeChecked();
-});
-{{/mcp}}
 {{#page}}
 
 test('{{label}} opens from the sidebar of a DSP that has it', async ({ page }) => {

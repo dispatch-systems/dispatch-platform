@@ -220,9 +220,11 @@ class PrScreenshotsTests(unittest.TestCase):
         self.assertEqual(self.uploaded, [])
 
     def test_publishing_from_main_is_refused(self):
+        self.capture("after", "team")
         self.tree.branch = "main"
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit) as stop:
             shots.publish(self.tree, True, self.review, None, SETTINGS, self.uploader, lambda *a: {})
+        self.assertIn("not main", str(stop.exception))
 
 
 if __name__ == "__main__":

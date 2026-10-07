@@ -326,9 +326,6 @@ impl Collector for Cortex {
             ..Counts::default()
         }
     }
-    fn codes(&self) -> &'static [Code] {
-        codes::ALL
-    }
     fn retryable(&self) -> &'static [Code] {
         codes::RETRYABLE
     }
@@ -352,22 +349,6 @@ pub(crate) mod codes {
     pub const DVIC_SOURCE_CHANGED: Code = Code::new("dvic_source_changed");
     pub const PERFORMANCE_API_UNREADABLE: Code = Code::new("performance_api_unreadable");
 
-    /// Every code above.
-    pub const ALL: &[Code] = &[
-        CORTEX_SOURCE_CHANGED,
-        ROUTES_MOVE_UNANSWERED,
-        CORTEX_CONTENT_INCOMPLETE,
-        CORTEX_SCOPE_MISMATCH,
-        CORTEX_TIMEZONE_MISMATCH,
-        CORTEX_SOURCE_TOO_LARGE,
-        CORTEX_STATION_UNAVAILABLE,
-        CORTEX_PROVIDER_AMBIGUOUS,
-        CORTEX_INVALID_MEAL_EVIDENCE,
-        CORTEX_INVALID_IDENTITY,
-        INVALID_CORTEX_SCOPE,
-        DVIC_SOURCE_CHANGED,
-        PERFORMANCE_API_UNREADABLE,
-    ];
     /// A failed attempt with one of these is queued again while attempts remain.
     pub const RETRYABLE: &[Code] = &[
         CORTEX_SOURCE_CHANGED,

@@ -17,6 +17,11 @@ use dispatch_paycom::{
 use rusqlite::params;
 use serde_json::{Value, json};
 
+/// An employee's latest pay period, found through the employees' code index.
+const LATEST: &str = "SELECT p.period_from,p.period_to FROM publications p \
+    JOIN employees e ON e.publication_id=p.id WHERE e.code=? \
+    ORDER BY p.period_to DESC,p.period_from DESC LIMIT 1";
+
 const EARLIEST_DATE: &str = "2000-01-01";
 
 pub(crate) fn paycom_employee(store: &Store, id: &str, code: &str) -> Result<Value> {
@@ -43,12 +48,7 @@ pub(crate) fn employee_timecard(
     let mut employee = paycom_employee(store, id, code)?;
     let db = store.collector(id, paycom::PROVIDER)?;
     let latest = db
-        .one_as::<EmployeeTimecardPeriod>(
-            "SELECT p.period_from,p.period_to FROM publications p \
-         JOIN employees e ON e.publication_id=p.id WHERE e.code=? \
-         ORDER BY p.period_to DESC,p.period_from DESC LIMIT 1",
-            [code],
-        )?
+        .one_as::<EmployeeTimecardPeriod>(LATEST, [code])?
         .ok_or_else(|| Error::new("employee_not_found", 404))?;
     let period = requested.unwrap_or(&latest);
     let offset = (latest.start()? - period.start()?).num_days();

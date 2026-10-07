@@ -1,11 +1,12 @@
 use dispatch_core::db::{Store, s};
+use dispatch_core::foundation::weeks::weeks_before;
 use dispatch_core::testing as common;
 use dispatch_cortex::{
     self as cortex,
     discovery::{CollectionRequest, Scope},
     dvic::{self, Capture, Request},
 };
-use dispatch_dvic::{DvicStore, hidden, weeks_ending};
+use dispatch_dvic::DvicStore;
 use serde_json::json;
 
 /// DVIC, and the Cortex collector whose inspections it keeps.
@@ -14,14 +15,18 @@ fn install() {
 }
 
 fn request(weeks: &[&str]) -> Request {
+    request_for(weeks, "TST1", "FXTR")
+}
+/// The request a station and DSP's collection of `weeks` would carry.
+fn request_for(weeks: &[&str], station: &str, dsp: &str) -> Request {
     // Publication binds the DSP's current local date, so the expected scope must too.
     let date = chrono::Utc::now()
         .with_timezone(&chrono_tz::America::Los_Angeles)
         .date_naive()
         .to_string();
-    Request::parse(&json!({"collection":"dvic","station":"TST1","weeks":weeks,
+    Request::parse(&json!({"collection":"dvic","station":station,"weeks":weeks,
         "date":date,"timezone":"America/Los_Angeles",
-        "dspName":"Fixture Delivery","dspAbbreviation":"FXTR"}))
+        "dspName":"Fixture Delivery","dspAbbreviation":dsp}))
     .unwrap()
     .unwrap()
 }
@@ -161,12 +166,9 @@ fn empty_reports_keep_history_and_missing_weeks_are_rechecked_without_inventing_
     publish(&db, &id, "unposted", &capture);
     assert_eq!(db.dvic_status(&id).unwrap().weeks[0].report_count, 0);
     assert_eq!(count(&db, &id, "dvic_reports"), 1);
+    // The job keeps the three fields a release before it reads.
     let jobs = db.dvic_jobs(&id).unwrap();
-    assert_eq!(jobs.len(), 1);
     assert_eq!(jobs[0].1.as_object().unwrap().len(), 3);
-    let weeks = jobs[0].1["weeks"].as_array().unwrap();
-    assert_eq!(weeks.len(), 4);
-    assert_eq!(weeks[0], dvic::report_week(chrono::Utc::now().date_naive()));
 }
 
 #[test]
@@ -177,16 +179,25 @@ fn publication_rejects_wrong_scope_and_reads_are_paginated_and_isolated() {
     let job = db
         .enqueue_dvic(&id, None, "scope", Some("2026-W39"), 2)
         .unwrap();
+    let refused = |capture: &Capture| {
+        publish_capture(&db, &id, s(&job, "id"), capture)
+            .unwrap_err()
+            .code
+    };
     capture.reports[1].rows.as_mut().unwrap()[0].station = "OTHER".into();
-    assert!(publish_capture(&db, &id, s(&job, "id"), &capture).is_err());
+    assert_eq!(refused(&capture), "dvic_scope_mismatch");
     assert_eq!(count(&db, &id, "dvic_reports"), 0);
     capture.reports[1].rows.as_mut().unwrap()[0].station = "TST1".into();
     capture.company_id = "company-foreign".into();
-    assert!(publish_capture(&db, &id, s(&job, "id"), &capture).is_err());
+    assert_eq!(refused(&capture), "dvic_scope_mismatch");
     capture.company_id = "company-fixture".into();
-    capture.dsp_code = "FOREIGN".into();
-    assert!(publish_capture(&db, &id, s(&job, "id"), &capture).is_err());
-    capture.dsp_code = "FXTR".into();
+    // Another station's or DSP's capture, theirs throughout, is refused by the check that
+    // binds a capture to its job, and by nothing before it.
+    for (station, dsp) in [("TST2", "FXTR"), ("TST1", "FOREIGN")] {
+        let theirs = dvic::fixture(&request_for(&["2026-W39", "2026-W38"], station, dsp)).unwrap();
+        assert_eq!(refused(&theirs), "dvic_capture_invalid", "{station} {dsp}");
+    }
+    assert_eq!(count(&db, &id, "dvic_reports"), 0);
     publish_capture(&db, &id, s(&job, "id"), &capture).unwrap();
     let first = db
         .dvic_inspections(&id, "2026-09-01", "2026-09-30", None, "", 1)
@@ -358,7 +369,7 @@ fn thresholds_are_strict_and_publication_weeks_follow_iso_including_year_rollove
         );
     }
     assert_eq!(
-        weeks_ending("2027-W01", 2).unwrap(),
+        weeks_before("2027-W01", 1).unwrap(),
         ["2027-W01", "2026-W53"]
     );
 }
@@ -368,7 +379,7 @@ fn catch_up_prioritizes_unseen_weeks_before_refreshing_older_observations() {
     install();
     let (_root, db, id) = ready();
     let latest = dvic::report_week(chrono::Utc::now().date_naive());
-    let weeks = weeks_ending(&latest, dvic::MAX_WEEKS).unwrap();
+    let weeks = weeks_before(&latest, dvic::MAX_WEEKS - 1).unwrap();
     let storage = db.dvic_db(&id).unwrap();
     for week in weeks.iter().skip(2).take(22) {
         storage.exec(
@@ -381,6 +392,37 @@ fn catch_up_prioritizes_unseen_weeks_before_refreshing_older_observations() {
     let requested = jobs[0].1["weeks"].as_array().unwrap();
     assert_eq!(requested[..2], weeks[..2]);
     assert_eq!(requested[2..], weeks[24..]);
+}
+
+#[test]
+fn older_weeks_checked_this_week_wait_but_the_newest_and_unverified_do_not() {
+    install();
+    let (_root, db, id) = ready();
+    let latest = dvic::report_week(chrono::Utc::now().date_naive());
+    let weeks = weeks_before(&latest, dvic::MAX_WEEKS - 1).unwrap();
+    let (last, checked) = weeks.split_last().unwrap();
+    let storage = db.dvic_db(&id).unwrap();
+    let check = |week: &str, at: &str, verified: i64| {
+        storage
+            .exec(
+                "INSERT INTO dvic_weeks(station,company_id,week,checked_at,report_count,scope_verified) \
+                 VALUES ('TST1','company-fixture',?,?,0,?)",
+                rusqlite::params![week, at, verified],
+            )
+            .unwrap();
+    };
+    // Every week but the oldest was checked just now; the oldest only by an unverified scope.
+    let now = chrono::Utc::now().to_rfc3339();
+    for week in checked {
+        check(week, &now, 1);
+    }
+    check(last, "2099-01-01T00:00:00Z", 0);
+    let jobs = db.dvic_jobs(&id).unwrap();
+    let requested = jobs[0].1["weeks"].as_array().unwrap();
+    assert_eq!(
+        requested[..],
+        [&weeks[0], &weeks[1], last].map(|week| json!(week))
+    );
 }
 
 #[test]
@@ -408,14 +450,13 @@ fn a_hidden_driver_is_never_stored_and_hiding_removes_what_was() {
             .unwrap()
     };
 
+    // The operator's commands, as the backend binary runs them.
+    let run = |args: &[&str]| {
+        let args: Vec<String> = args.iter().map(|a| (*a).to_owned()).collect();
+        (dispatch_dvic::FEATURE.commands.as_ref().unwrap().run)(&db.config, &args)
+    };
     // Hiding removes their inspection and their row from the report copy, then recounts it.
-    let summary = hidden::hide(
-        &db.dvic_db(&id).unwrap(),
-        "A2HIDDEN00001",
-        " Platform test ",
-        "2026-10-01T00:00:00.000Z",
-    )
-    .unwrap();
+    let summary = run(&["dvic-hide", &id, "A2HIDDEN00001", " Platform test "]).unwrap();
     assert_eq!(
         summary,
         json!({"driver":"A2HIDDEN00001","inspectionsDeleted":1,"reportCopiesCleaned":1})
@@ -430,31 +471,36 @@ fn a_hidden_driver_is_never_stored_and_hiding_removes_what_was() {
     publish(&db, &id, "again", &capture);
     assert_eq!((stored(theirs), stored(copies)), (0, 0));
     assert_eq!(counts(), vec![json!({"row_count":1,"short_count":1})]);
+    let listed = run(&["dvic-hidden", &id]).unwrap();
     assert_eq!(
-        hidden::list(&db.dvic_db(&id).unwrap()).unwrap(),
-        json!([{"driver":"A2HIDDEN00001","note":"Platform test","hiddenAt":"2026-10-01T00:00:00.000Z"}])
+        (&listed[0]["driver"], &listed[0]["note"]),
+        (&json!("A2HIDDEN00001"), &json!("Platform test"))
+    );
+    assert!(
+        listed[0]["hiddenAt"]
+            .as_str()
+            .is_some_and(|at| at.ends_with('Z'))
     );
 
     // Shown again, their later reports are stored; nothing earlier comes back by itself.
-    hidden::unhide(&db.dvic_db(&id).unwrap(), "A2HIDDEN00001").unwrap();
+    run(&["dvic-unhide", &id, "A2HIDDEN00001"]).unwrap();
     assert_eq!(stored(theirs), 0);
     capture.reports[0].sha256 = dvic::hash(b"newest bytes");
     capture.reports[0].modified_at += 1000;
     publish(&db, &id, "shown", &capture);
     assert_eq!(stored(theirs), 1);
 
-    let dvic = db.dvic_db(&id).unwrap();
-    let code = |result: dispatch_core::Result<serde_json::Value>| result.unwrap_err().code;
+    let code = |args: &[&str]| run(args).unwrap_err().code;
     assert_eq!(
-        code(hidden::unhide(&dvic, "A2HIDDEN00001")),
+        code(&["dvic-unhide", &id, "A2HIDDEN00001"]),
         "driver_not_hidden"
     );
     assert_eq!(
-        code(hidden::hide(&dvic, "a2hidden", "x", "t")),
+        code(&["dvic-hide", &id, "a2hidden", "x"]),
         "invalid_driver_id"
     );
     assert_eq!(
-        code(hidden::hide(&dvic, "A2HIDDEN00001", " ", "t")),
+        code(&["dvic-hide", &id, "A2HIDDEN00001", " "]),
         "invalid_note"
     );
 }
@@ -465,7 +511,7 @@ fn the_operator_commands_hide_list_and_unhide_without_stopping_the_server() {
     let (_root, db, id) = ready();
     let run = |args: &[&str]| {
         let args: Vec<String> = args.iter().map(|a| (*a).to_owned()).collect();
-        dispatch_dvic::cli::run(&db.config, &args)
+        (dispatch_dvic::FEATURE.commands.as_ref().unwrap().run)(&db.config, &args)
     };
     // The server's own connection stays open throughout, as it would on a live host.
     let server = db.dvic_db(&id).unwrap();

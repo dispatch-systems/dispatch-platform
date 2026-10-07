@@ -138,3 +138,43 @@ fn calls_are_named_by_endpoint_or_tool_and_never_by_what_they_ask() {
     assert_eq!(cursor("42"), None);
     assert_eq!(cursor("a.b"), None);
 }
+
+#[test]
+fn every_page_of_the_log_reads_one_index_in_order() {
+    crate::testing::install(&[], &[]);
+    let (_root, db) = crate::testing::store();
+    let query = |key: Option<&str>, outcomes, before| ActivityQuery {
+        key: key.map(Into::into),
+        outcomes,
+        before,
+        limit: 50,
+    };
+    let plans: Vec<String> = [
+        query(None, Outcomes::All, None),
+        query(Some("k"), Outcomes::All, None),
+        query(None, Outcomes::Ok, None),
+        query(None, Outcomes::Refused, None),
+        query(None, Outcomes::All, Some((1, 2))),
+    ]
+    .iter()
+    .map(|query| {
+        let (sql, values) = page(query);
+        db.platform
+            .all(
+                &format!("EXPLAIN QUERY PLAN {sql}"),
+                rusqlite::params_from_iter(values),
+            )
+            .unwrap()
+            .iter()
+            .map(|row| row["detail"].as_str().unwrap_or_default().to_owned())
+            .collect::<Vec<_>>()
+            .join("; ")
+    })
+    .collect();
+    for plan in &plans {
+        assert!(plan.contains("USING INDEX agent_activity_"), "{plan}");
+        assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+    }
+    assert!(plans[1].contains("agent_activity_key"), "{}", plans[1]);
+    assert!(plans[3].contains("agent_activity_refused"), "{}", plans[3]);
+}

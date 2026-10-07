@@ -29,7 +29,9 @@ fn an_itinerary_is_owned_by_its_driver_without_reading_the_rest() {
 #[test]
 fn a_tab_pauses_only_its_data_responses() {
     let value = patterns(&[ITINERARY]);
-    let patterns = value["patterns"].as_array().unwrap();
-    assert_eq!(patterns.len(), 2);
-    assert!(patterns.iter().all(|p| p["requestStage"] == "Response"));
+    let pattern = |kind: &str| {
+        json!({"urlPattern": format!("*{ITINERARY}*"), "resourceType": kind,
+            "requestStage": "Response"})
+    };
+    assert_eq!(value["patterns"], json!([pattern("XHR"), pattern("Fetch")]));
 }

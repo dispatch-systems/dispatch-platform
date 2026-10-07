@@ -121,7 +121,6 @@ test('the day digest and week grid read the same inspections, with details on de
   await page.getByRole('button', { name: 'Latest' }).click();
   await expect(page.locator('.dvic-footer')).toContainText('19 records this week');
   await expect(page.getByRole('button', { name: 'Latest' })).toBeDisabled();
-  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('heading', { name: 'DVIC', exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

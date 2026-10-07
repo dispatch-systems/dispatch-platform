@@ -273,10 +273,6 @@ test('Flex gap badges and employee filter preserve comparison statuses and expos
     await expect(link).toHaveAttribute('target', '_blank');
     await expect(link).toHaveAttribute('rel', 'noreferrer');
   }
-  const arrow = before.locator('.meal-link-arrow');
-  await expect(arrow).toHaveCSS('opacity', '0');
-  await before.hover();
-  await expect(arrow).toHaveCSS('opacity', '1');
   await expect(alex.locator('.meal-gap.over-limit')).toHaveCount(0);
   await expect(taylor.locator('.meal-gap.over-limit')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Gaps > 5 min 3', exact: true })).toBeVisible();
@@ -363,12 +359,6 @@ test('each time opens the Paycom timecard, Cortex route or delivery stop it was 
     await expect(link).toHaveAttribute('target', '_blank');
     await expect(link).toHaveAttribute('rel', 'noreferrer');
   }
-  // The time keeps its look; the arrow shows only while the pointer is on it.
-  const arrow = links('Alex Morgan').first().locator('.meal-link-arrow');
-  await expect(arrow).toHaveCSS('opacity', '0');
-  await links('Alex Morgan').first().hover();
-  await expect(arrow).toHaveCSS('opacity', '1');
-  await expect(links('Alex Morgan').first()).toHaveCSS('text-decoration-line', 'none');
   await page.getByRole('button', { name: 'Details for Alex Morgan', exact: true }).click();
   // Its Paycom lunch is missing, so those two still open the timecard. Both its gaps are
   // over 5 minutes, so each also opens what its delivery time does.

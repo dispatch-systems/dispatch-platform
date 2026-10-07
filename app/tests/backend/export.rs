@@ -493,7 +493,6 @@ fn access_catalog() -> String {
             json!(catalog.iter().map(|feature| feature.id).collect::<Vec<_>>()),
         ),
         ("featureCatalog", json!(entries)),
-        ("schedulesFeature", json!(catalog::schedules())),
         ("permissions", json!(*roles::PERMISSIONS)),
         ("permissionLabels", json!(labels)),
         ("permissionGroups", json!(groups)),
@@ -642,20 +641,6 @@ fn a_capability_is_named_by_the_first_collector_listed_that_supplies_it() {
     assert_eq!(
         capability_labels(&[&beta, &alpha])["photos"],
         "another photo source"
-    );
-}
-#[test]
-fn the_job_kinds_written_for_typescript_are_the_registered_ones() {
-    crate::install();
-    let kinds: Vec<_> = Provider::all()
-        .flat_map(|p| p.job_kinds())
-        .map(|kind| format!("{kind:?}"))
-        .collect();
-    let cfg = ts_rs::Config::new();
-    assert!(
-        PublicJob::export_to_string(&cfg)
-            .unwrap()
-            .contains(&kinds.join(" | "))
     );
 }
 

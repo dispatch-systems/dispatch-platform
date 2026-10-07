@@ -44,8 +44,8 @@ export function pythonRuleTests() {
   return allPythonTests().filter((file) => !pythonIntegrationTests.includes(file));
 }
 /**
- * Sources whose changes break tests elsewhere, which `dispatchdev check` names with the
- * tests the diff changes. Each group comes from queue runs such changes failed.
+ * Sources whose changes break tests elsewhere, which `dispatchdev test` runs with the tests
+ * the diff changes. Each group comes from queue runs such changes failed.
  */
 export const watchedTests = plan.watch;
 /** Where tests live: each owner's `tests/<kind>/`, the tooling's `tooling/tests/` and ops' `ops/tests/`. */

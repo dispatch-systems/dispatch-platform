@@ -65,8 +65,6 @@ test('the audit log reads as sentences, shows what changed and folds repeated vi
   await expect(item(page, 'completed the DSP profile')).toContainText(
     'StationTST2·AbbreviationNLOG',
   );
-  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
-  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
 
   await expect(page.getByText('Showing 14 of 24')).toBeVisible();
   await page.getByRole('button', { name: 'Load more', exact: true }).click();

@@ -20,14 +20,3 @@ test('Daily Performance has its switch on the DSPs page, on for the seeded DSP',
     pane.getByRole('switch', { name: 'Daily Performance page', exact: true }),
   ).toBeChecked();
 });
-
-test('a new key reads Daily Performance, under Daily Performance', async ({ page }) => {
-  await login(page);
-  await page.getByRole('link', { name: 'Agents', exact: true }).click();
-  await page.getByRole('tab', { name: 'Keys', exact: true }).click();
-  await page.getByRole('button', { name: 'New key', exact: true }).click();
-  const group = page
-    .getByRole('dialog', { name: 'New key' })
-    .getByRole('group', { name: 'Daily Performance', exact: true });
-  await expect(group.getByRole('switch', { name: 'Daily Performance', exact: true })).toBeChecked();
-});

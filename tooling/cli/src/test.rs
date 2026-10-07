@@ -59,7 +59,7 @@ pub fn changed(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
     files.dedup();
     Ok(files)
 }
-/// The tests the change touches, as `dispatchdev check --plan` names them, without the lints.
+/// The tests the change touches: those it changes and those watching a source it changes.
 pub fn affected(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
     let plan = fs::read_to_string(root.join("tooling/ci/test-plan.json"))
         .ok()

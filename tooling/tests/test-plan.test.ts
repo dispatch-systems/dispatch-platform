@@ -72,7 +72,7 @@ test('every test file is run by exactly one check of full validation and none is
     files.filter(
       (file) =>
         /\/tests\/frontend\//.test(file) ||
-        /^app\/tests\/rules\/(dashboard-structure|unused-css)\.test\.ts$/.test(file),
+        /^app\/tests\/rules\/dashboard-structure\.test\.ts$/.test(file),
     ),
   );
   for (const file of dashboardTests) assert(fs.existsSync(file), `${file} does not exist`);
@@ -242,7 +242,7 @@ test('npm test forwards filter options as arguments while retaining recursive di
   assert(!commands[0]!.args.includes('--list'));
 });
 
-test('dispatchdev check watches only sources and tests that exist', () => {
+test('dispatchdev test watches only sources and tests that exist', () => {
   assert(watchedTests.length > 0);
   for (const { sources, tests } of watchedTests) {
     assert(sources.length > 0 && tests.length > 0);

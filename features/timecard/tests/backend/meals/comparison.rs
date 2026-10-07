@@ -1,19 +1,6 @@
 use super::*;
 
 #[test]
-fn full_names_ignore_formatting_but_preserve_name_components() {
-    assert_eq!(
-        name_key("MOLINA REED, TAYLOR"),
-        name_key("Taylor MolinaReed")
-    );
-    assert_eq!(name_key("O’Neill, Jamie"), name_key("JAMIE O'NEILL"));
-    assert_eq!(name_key("Sánchez, René"), name_key("RENÉ SÁNCHEZ"));
-    assert_ne!(name_key("Alex Reed"), name_key("Alexander Reed"));
-    assert_ne!(name_key("Taylor Reed Jr"), name_key("Taylor Reed"));
-    assert_eq!(name_key(" , -- "), "");
-}
-
-#[test]
 fn manual_links_reserve_targets_and_unrecognized_names_are_not_guessed() {
     let mut drivers: BTreeMap<_, _> = [
         ("one".to_owned(), json!({"name":"Jamie Reed"})),

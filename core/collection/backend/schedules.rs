@@ -290,17 +290,6 @@ impl Store {
             next_run: next(&row, tz, now())?,
         })
     }
-    /// `save_schedule` as JSON, for the integration tests written against it.
-    pub fn save_collection_schedule(
-        &self,
-        id: &str,
-        schedule: Option<&str>,
-        value: &Value,
-    ) -> Result<Value> {
-        Ok(serde_json::to_value(
-            self.save_schedule(id, schedule, value)?,
-        )?)
-    }
     pub fn save_schedule(
         &self,
         id: &str,
@@ -388,17 +377,6 @@ impl Store {
             ],
         )?;
         self.collection_schedule(id, &key)
-    }
-    /// `enable_schedule` as JSON, for the integration tests written against it.
-    pub fn enable_collection_schedule(
-        &self,
-        id: &str,
-        schedule: &str,
-        value: &Value,
-    ) -> Result<Value> {
-        Ok(serde_json::to_value(
-            self.enable_schedule(id, schedule, value)?,
-        )?)
     }
     pub fn enable_schedule(
         &self,

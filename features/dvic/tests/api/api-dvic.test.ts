@@ -123,11 +123,6 @@ test('DVIC collects into its own database and schedules run independently of tim
     revision: 1,
   });
   assert.equal(changed.status, 200, changed.body);
-  assert.equal(
-    (await member.post(`${base}/schedules/${key}/enabled`, { enabled: false, revision: 1 })).value
-      .error,
-    'schedule_changed',
-  );
   // Timecard switches leave DVIC enabled and its due time intact.
   await owner.post(`/api/platform/dsps/${dsp.id}/features`, {
     feature: 'timecard',

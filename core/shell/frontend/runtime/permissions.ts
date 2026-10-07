@@ -19,7 +19,7 @@ export const visiblePermissions = (view: DspView, stored: readonly Permission[])
 
 export const permissionLabels: Record<Permission, string> = generatedPermissionLabels;
 /** The backend catalog owns the sections and each permission belongs to exactly one. */
-export const permissionGroups: readonly (readonly [string, readonly Permission[]])[] =
+const permissionGroups: readonly (readonly [string, readonly Permission[]])[] =
   generatedPermissionGroups;
 /** The sections the role sheet shows a DSP: those whose permissions exist in it. */
 export const visiblePermissionGroups = (view: DspView) =>

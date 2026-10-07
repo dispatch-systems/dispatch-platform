@@ -26,13 +26,28 @@ use dispatch_weekly_scorecard::WeeklyScorecardStore;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-/// The agent API's answers: core's, and those of each feature that answers for its own.
+/// The agent API's answers, asked as its REST routes and MCP tools ask them: through `ask`,
+/// which gates each kind of data and holds every answer to its budget.
 mod data {
     pub use dispatch_core::mcp::data::*;
-    pub use dispatch_dvic::dvic;
-    pub use dispatch_routes::{package, packages, route, routes};
-    pub use dispatch_timecard::{meal_breaks, timecards};
-    pub use dispatch_weekly_scorecard::{feedback, returns, safety, weekly};
+    use dispatch_core::{State, db::Store, mcp::Caller};
+    use serde_json::Value;
+
+    /// What endpoint `id` answers to `query`.
+    pub fn view(id: &str, db: &Store, state: &State, caller: &Caller, query: &Value) -> Answer {
+        ask(catalog::endpoint(id), db, state, caller, "", query)
+    }
+    /// What endpoint `id` answers about the one thing its path names.
+    pub fn named(
+        id: &str,
+        db: &Store,
+        state: &State,
+        caller: &Caller,
+        name: &str,
+        query: &Value,
+    ) -> Answer {
+        ask(catalog::endpoint(id), db, state, caller, name, query)
+    }
 }
 
 const DAY: &str = "2026-09-12";
@@ -499,7 +514,13 @@ async fn coverage_distinguishes_missing_partial_and_collected_zero() {
     // The publication is present, but this filter matches no package: a genuine zero.
     let who = me.clone();
     let (status, zero) = ask(&state, move |db, state| {
-        data::packages(db, state, &who, &json!({"date": DAY, "route": "CX99999"}))
+        data::view(
+            "packages",
+            db,
+            state,
+            &who,
+            &json!({"date": DAY, "route": "CX99999"}),
+        )
     })
     .await;
     assert_eq!(status, 200, "{zero}");
@@ -509,7 +530,13 @@ async fn coverage_distinguishes_missing_partial_and_collected_zero() {
     // A partial period keeps the collected figures and identifies the missing day.
     let who = me.clone();
     let (status, partial) = ask(&state, move |db, state| {
-        data::dvic(db, state, &who, &json!({"from": DAY, "to": "2026-09-13"}))
+        data::view(
+            "dvic",
+            db,
+            state,
+            &who,
+            &json!({"from": DAY, "to": "2026-09-13"}),
+        )
     })
     .await;
     assert_eq!(status, 200, "{partial}");
@@ -638,14 +665,14 @@ async fn one_driver_is_one_person_across_every_source() {
     // The day's routes, then one route's problems, with no addresses for this key.
     let who = me.clone();
     let (_, routes) = ask(&state, move |db, state| {
-        data::routes(db, state, &who, &json!({"date": DAY}))
+        data::view("routes", db, state, &who, &json!({"date": DAY}))
     })
     .await;
     assert_eq!(routes["final"], true);
     assert_eq!(routes["totals"]["routes"], 2);
     let who = me.clone();
     let (status, second) = ask(&state, move |db, state| {
-        data::route(db, state, &who, "cx102", &json!({"date": DAY}))
+        data::named("route", db, state, &who, "cx102", &json!({"date": DAY}))
     })
     .await;
     assert_eq!(status, 200, "{second}");
@@ -663,7 +690,8 @@ async fn one_driver_is_one_person_across_every_source() {
     // Packages: a count, grouped as asked, listed only when asked.
     let who = me.clone();
     let (status, counted) = ask(&state, move |db, state| {
-        data::packages(
+        data::view(
+            "packages",
             db,
             state,
             &who,
@@ -683,7 +711,7 @@ async fn one_driver_is_one_person_across_every_source() {
     assert_eq!(returned[col(groups, "packages")], 1);
     let who = me.clone();
     let (_, mine) = ask(&state, move |db, state| {
-        data::packages(
+        data::view("packages", 
             db,
             state,
             &who,
@@ -695,7 +723,8 @@ async fn one_driver_is_one_person_across_every_source() {
     // Nothing with both an outcome and a reason: the answer says what that reason came with.
     let who = me.clone();
     let (_, none) = ask(&state, move |db, state| {
-        data::packages(
+        data::view(
+            "packages",
             db,
             state,
             &who,
@@ -712,7 +741,7 @@ async fn one_driver_is_one_person_across_every_source() {
     // A package is found however its tracking ID is written.
     let who = me.clone();
     let (status, package) = ask(&state, move |db, state| {
-        data::package(db, state, &who, "tba000000000002", &json!({}))
+        data::named("package", db, state, &who, "tba000000000002", &json!({}))
     })
     .await;
     assert_eq!(status, 200, "{package}");
@@ -722,7 +751,7 @@ async fn one_driver_is_one_person_across_every_source() {
     // Meal breaks only for drivers Cortex had a route for; nobody else is listed.
     let who = me.clone();
     let (_, meals) = ask(&state, move |db, state| {
-        data::meal_breaks(db, state, &who, &json!({"date": DAY}))
+        data::view("meal_breaks", db, state, &who, &json!({"date": DAY}))
     })
     .await;
     assert_eq!(meals["collected"], true);
@@ -734,7 +763,13 @@ async fn one_driver_is_one_person_across_every_source() {
     // DVIC per driver, the short ones counted.
     let who = me.clone();
     let (_, dvic) = ask(&state, move |db, state| {
-        data::dvic(db, state, &who, &json!({"date": DAY, "short": "true"}))
+        data::view(
+            "dvic",
+            db,
+            state,
+            &who,
+            &json!({"date": DAY, "short": "true"}),
+        )
     })
     .await;
     assert_eq!(
@@ -752,7 +787,7 @@ async fn one_driver_is_one_person_across_every_source() {
     // A day nothing was collected for has no totals at all, never zeros.
     let who = me;
     let (_, nothing) = ask(&state, move |db, state| {
-        data::routes(db, state, &who, &json!({"date": "2026-09-13"}))
+        data::view("routes", db, state, &who, &json!({"date": "2026-09-13"}))
     })
     .await;
     assert_eq!(nothing["totals"], Value::Null);
@@ -779,7 +814,7 @@ async fn default_answers_never_expose_unmatched_provider_ids() {
 
     let who = me.clone();
     let (status, routes) = ask(&state, move |db, state| {
-        data::routes(db, state, &who, &json!({"date": DAY}))
+        data::view("routes", db, state, &who, &json!({"date": DAY}))
     })
     .await;
     assert_eq!(status, 200, "{routes}");
@@ -891,7 +926,7 @@ async fn agents_never_see_legacy_unverified_provider_rows() {
 
     let who = me.clone();
     let (_, dvic) = ask(&state, move |db, state| {
-        data::dvic(db, state, &who, &json!({"date":DAY,"short":"true"}))
+        data::view("dvic", db, state, &who, &json!({"date":DAY,"short":"true"}))
     })
     .await;
     assert_eq!(
@@ -902,7 +937,13 @@ async fn agents_never_see_legacy_unverified_provider_rows() {
 
     let who = me.clone();
     let (_, weekly_scorecard) = ask(&state, move |db, state| {
-        data::weekly(db, state, &who, &json!({"week":"latest"}))
+        data::view(
+            "weekly_scorecard",
+            db,
+            state,
+            &who,
+            &json!({"week":"latest"}),
+        )
     })
     .await;
     assert!(
@@ -1143,7 +1184,7 @@ async fn unclear_requests_are_refused_with_what_to_fix() {
     ] {
         let who = one.clone();
         let answer = ask(&state, move |db, state| {
-            data::packages(db, state, &who, &query)
+            data::view("packages", db, state, &who, &query)
         })
         .await;
         assert_eq!(refused(answer), (status, code.to_owned()), "{code}");
@@ -1156,20 +1197,26 @@ async fn unclear_requests_are_refused_with_what_to_fix() {
     assert_eq!(refused(answer), (400, "driver_ambiguous".to_owned()));
     let who = one.clone();
     let answer = ask(&state, move |db, state| {
-        data::routes(db, state, &who, &json!({"period": "last week"}))
+        data::view("routes", db, state, &who, &json!({"period": "last week"}))
     })
     .await;
     assert_eq!(answer.0, 200, "{}", answer.1);
     // Everyone's timecards also accept periods.
     let who = one.clone();
     let answer = ask(&state, move |db, state| {
-        data::timecards(db, state, &who, &json!({"period": "last week"}))
+        data::view(
+            "timecards",
+            db,
+            state,
+            &who,
+            &json!({"period": "last week"}),
+        )
     })
     .await;
     assert_eq!(answer.0, 200, "{}", answer.1);
     let who = one.clone();
     let answer = ask(&state, move |db, state| {
-        data::route(db, state, &who, "CX999", &json!({"date": DAY}))
+        data::named("route", db, state, &who, "CX999", &json!({"date": DAY}))
     })
     .await;
     assert_eq!(refused(answer.clone()), (404, "route_not_found".to_owned()));
@@ -1178,7 +1225,8 @@ async fn unclear_requests_are_refused_with_what_to_fix() {
     // A key allowed addresses sees where each package went, and may group by address.
     let who = one.clone();
     let (_, all) = ask(&state, move |db, state| {
-        data::route(
+        data::named(
+            "route",
             db,
             state,
             &who,
@@ -1192,7 +1240,8 @@ async fn unclear_requests_are_refused_with_what_to_fix() {
     assert!(rows(list).iter().any(|r| r[address].is_string()));
     let who = one;
     let (status, places) = ask(&state, move |db, state| {
-        data::packages(
+        data::view(
+            "packages",
             db,
             state,
             &who,
@@ -1203,7 +1252,8 @@ async fn unclear_requests_are_refused_with_what_to_fix() {
     assert_eq!(status, 200, "{places}");
     let who = everywhere;
     let answer = ask(&state, move |db, state| {
-        data::packages(
+        data::view(
+            "packages",
             db,
             state,
             &who,
@@ -1272,7 +1322,8 @@ async fn package_group_and_list_cursors_advance_independently_within_the_final_b
     let state = State::new(config).unwrap();
     let who = me.clone();
     let (status, first) = ask(&state, move |db, state| {
-        data::packages(
+        data::view(
+            "packages",
             db,
             state,
             &who,
@@ -1291,7 +1342,7 @@ async fn package_group_and_list_cursors_advance_independently_within_the_final_b
         .unwrap()
         .to_owned();
     let who = me.clone();
-    let (status, second) = ask(&state, move |db, state| data::packages(db, state, &who,
+    let (status, second) = ask(&state, move |db, state| data::view("packages", db, state, &who,
         &json!({"date":DAY,"group_by":"day,route","list":"true","limit":"1", "groups_cursor":groups_cursor}))).await;
     assert_eq!(status, 200, "{second}");
     assert!(second.to_string().len() <= data::BUDGET);
@@ -1300,7 +1351,7 @@ async fn package_group_and_list_cursors_advance_independently_within_the_final_b
     assert!(second["groups"]["page"].is_null(), "{second}");
     let who = me.clone();
     let (status, third) = ask(&state, move |db, state| {
-        data::packages(
+        data::view("packages", 
             db,
             state,
             &who,
@@ -1312,7 +1363,8 @@ async fn package_group_and_list_cursors_advance_independently_within_the_final_b
     assert_eq!(third["groups"], first["groups"]);
     assert_ne!(third["list"]["rows"], first["list"]["rows"]);
     let (status, invalid) = ask(&state, move |db, state| {
-        data::packages(
+        data::view(
+            "packages",
             db,
             state,
             &me,
@@ -1348,7 +1400,8 @@ async fn package_grouping_bounds_scan_work_and_raw_cardinality() {
         let who = me.clone();
         burst.spawn(async move {
             ask(&shared, move |db, state| {
-                data::packages(
+                data::view(
+                    "packages",
                     db,
                     state,
                     &who,
@@ -1395,7 +1448,13 @@ async fn package_grouping_bounds_scan_work_and_raw_cardinality() {
         .unwrap();
     let who = me.clone();
     let (status, first) = ask(&state, move |db, state| {
-        data::packages(db, state, &who, &json!({"date":DAY,"group_by":"address"}))
+        data::view(
+            "packages",
+            db,
+            state,
+            &who,
+            &json!({"date":DAY,"group_by":"address"}),
+        )
     })
     .await;
     assert_eq!(status, 200, "{first}");
@@ -1404,7 +1463,8 @@ async fn package_grouping_bounds_scan_work_and_raw_cardinality() {
     assert!(first["groups"]["page"]["next_cursor"].is_string());
     let who = me.clone();
     let (status, last) = ask(&state, move |db, state| {
-        data::packages(
+        data::view(
+            "packages",
             db,
             state,
             &who,
@@ -1440,7 +1500,13 @@ async fn package_grouping_bounds_scan_work_and_raw_cardinality() {
         .unwrap();
     let who = me.clone();
     let (status, known_reason) = ask(&state, move |db, state| {
-        data::packages(db, state, &who, &json!({"date":DAY,"reason":"reason_9999"}))
+        data::view(
+            "packages",
+            db,
+            state,
+            &who,
+            &json!({"date":DAY,"reason":"reason_9999"}),
+        )
     })
     .await;
     assert_eq!(status, 200, "{known_reason}");
@@ -1448,7 +1514,8 @@ async fn package_grouping_bounds_scan_work_and_raw_cardinality() {
     let who = me.clone();
     let started = std::time::Instant::now();
     let (status, stale_reason) = ask(&state, move |db, state| {
-        data::packages(
+        data::view(
+            "packages",
             db,
             state,
             &who,
@@ -1484,7 +1551,13 @@ async fn package_grouping_bounds_scan_work_and_raw_cardinality() {
         .unwrap();
     let started = std::time::Instant::now();
     let (status, refused) = ask(&state, move |db, state| {
-        data::packages(db, state, &me, &json!({"date":DAY,"group_by":"address"}))
+        data::view(
+            "packages",
+            db,
+            state,
+            &me,
+            &json!({"date":DAY,"group_by":"address"}),
+        )
     })
     .await;
     assert_eq!(
@@ -1516,7 +1589,8 @@ async fn answers_stay_within_their_budgets() {
         (
             "packages delivered by a driver last 30 days",
             Box::new(|db, state, who: &Caller| {
-                data::packages(
+                data::view(
+                    "packages",
                     db,
                     state,
                     who,
@@ -1528,7 +1602,8 @@ async fn answers_stay_within_their_budgets() {
         (
             "returns by reason last night",
             Box::new(|db, state, who: &Caller| {
-                data::packages(
+                data::view(
+                    "packages",
                     db,
                     state,
                     who,
@@ -1540,7 +1615,7 @@ async fn answers_stay_within_their_budgets() {
         (
             "short DVIC drivers",
             Box::new(|db, state, who: &Caller| {
-                data::dvic(db, state, who, &json!({"short": "true"}))
+                data::view("dvic", db, state, who, &json!({"short": "true"}))
             }),
             2_000,
         ),
@@ -1558,17 +1633,19 @@ async fn answers_stay_within_their_budgets() {
         ),
         (
             "a day's routes",
-            Box::new(|db, state, who: &Caller| data::routes(db, state, who, &json!({}))),
+            Box::new(|db, state, who: &Caller| data::view("routes", db, state, who, &json!({}))),
             3_000,
         ),
         (
             "everyone's timecards for a day",
-            Box::new(|db, state, who: &Caller| data::timecards(db, state, who, &json!({}))),
+            Box::new(|db, state, who: &Caller| data::view("timecards", db, state, who, &json!({}))),
             3_000,
         ),
         (
             "a day's meal breaks",
-            Box::new(|db, state, who: &Caller| data::meal_breaks(db, state, who, &json!({}))),
+            Box::new(|db, state, who: &Caller| {
+                data::view("meal_breaks", db, state, who, &json!({}))
+            }),
             3_000,
         ),
         (
@@ -1586,7 +1663,13 @@ async fn answers_stay_within_their_budgets() {
         (
             "every package of a month",
             Box::new(|db, state, who: &Caller| {
-                data::packages(db, state, who, &json!({"list": "true", "limit": "500"}))
+                data::view(
+                    "packages",
+                    db,
+                    state,
+                    who,
+                    &json!({"list": "true", "limit": "500"}),
+                )
             }),
             data::BUDGET,
         ),
@@ -1606,19 +1689,20 @@ async fn answers_stay_within_their_budgets() {
     let who = me.clone();
     let day = last.clone();
     let (_, routes) = ask(&state, move |db, state| {
-        data::routes(db, state, &who, &json!({"date": day}))
+        data::view("routes", db, state, &who, &json!({"date": day}))
     })
     .await;
     let code = rows(&routes["routes"])[0][0].as_str().unwrap().to_owned();
     let (who, day, wanted) = (me.clone(), last.clone(), code.clone());
     let (_, problems) = ask(&state, move |db, state| {
-        data::route(db, state, &who, &wanted, &json!({"date": day}))
+        data::named("route", db, state, &who, &wanted, &json!({"date": day}))
     })
     .await;
     assert!(problems.to_string().len() <= 2_000, "{problems}");
     let (who, day) = (me, last);
     let (_, everything) = ask(&state, move |db, state| {
-        data::route(
+        data::named(
+            "route",
             db,
             state,
             &who,
@@ -1697,7 +1781,8 @@ async fn meal_duration_answers_preserve_unknown_totals_and_overnight_clocks() {
         }).await.unwrap();
         let who = me.clone();
         let (status, cards) = ask(&state, move |db, state| {
-            data::timecards(
+            data::view(
+                "timecards",
                 db,
                 state,
                 &who,
@@ -1718,7 +1803,7 @@ async fn meal_duration_answers_preserve_unknown_totals_and_overnight_clocks() {
         }
         let who = me.clone();
         let (status, meals) = ask(&state, move |db, state| {
-            data::meal_breaks(db, state, &who, &json!({"date":DAY}))
+            data::view("meal_breaks", db, state, &who, &json!({"date":DAY}))
         })
         .await;
         assert_eq!(status, 200, "{case}: {meals}");
@@ -1825,7 +1910,8 @@ async fn driver_periods_keep_historical_sync_and_meal_context_across_batches() {
     assert_eq!(report["coverage"]["mealBreaks"]["collected"], 3);
     let who = me.clone();
     let (status, cards) = ask(&state, move |db, state| {
-        data::timecards(
+        data::view(
+            "timecards",
             db,
             state,
             &who,
@@ -1864,7 +1950,8 @@ async fn scorecard_questions_come_back_small() {
     // Houses that complained more than once, from feedback joined to the routes' addresses.
     let who = me.clone();
     let (status, houses) = ask(&state, move |db, state| {
-        data::feedback(
+        data::view(
+            "feedback",
             db,
             state,
             &who,
@@ -1894,7 +1981,8 @@ async fn scorecard_questions_come_back_small() {
     // Contact compliance: the drivers whose returns say they did not call or text.
     let who = me.clone();
     let (status, missed) = ask(&state, move |db, state| {
-        data::returns(
+        data::view(
+            "returns",
             db,
             state,
             &who,
@@ -1914,7 +2002,8 @@ async fn scorecard_questions_come_back_small() {
     // One driver's Netradyne events come back one by one.
     let who = me.clone();
     let (status, safety) = ask(&state, move |db, state| {
-        data::safety(
+        data::view(
+            "safety",
             db,
             state,
             &who,
@@ -1932,7 +2021,7 @@ async fn scorecard_questions_come_back_small() {
     // The latest week's weekly_scorecard, lowest scores first.
     let who = me.clone();
     let (status, week) = ask(&state, move |db, state| {
-        data::weekly(db, state, &who, &json!({}))
+        data::view("weekly_scorecard", db, state, &who, &json!({}))
     })
     .await;
     assert_eq!(status, 200, "{week}");
@@ -1949,7 +2038,13 @@ async fn scorecard_questions_come_back_small() {
     // Praise is counted only when asked for, as by naming a kind of it.
     let who = me.clone();
     let (status, praise) = ask(&state, move |db, state| {
-        data::feedback(db, state, &who, &json!({"type": "delivered_with_care"}))
+        data::view(
+            "feedback",
+            db,
+            state,
+            &who,
+            &json!({"type": "delivered_with_care"}),
+        )
     })
     .await;
     assert_eq!(status, 200, "{praise}");
@@ -1959,7 +2054,8 @@ async fn scorecard_questions_come_back_small() {
     // A list beside groups has its own cursor.
     let who = me.clone();
     let (status, both) = ask(&state, move |db, state| {
-        data::returns(
+        data::view(
+            "returns",
             db,
             state,
             &who,
@@ -1975,7 +2071,7 @@ async fn scorecard_questions_come_back_small() {
     // Approved disputes stay events but leave every count of what counts.
     let who = me.clone();
     let (status, events) = ask(&state, move |db, state| {
-        data::safety(db, state, &who, &json!({"group_by": "driver"}))
+        data::view("safety", db, state, &who, &json!({"group_by": "driver"}))
     })
     .await;
     assert_eq!(status, 200, "{events}");
@@ -1999,7 +2095,7 @@ async fn scorecard_questions_come_back_small() {
     // A type Amazon never recorded is refused; one it did, matched in part, is answered.
     let who = me.clone();
     let (status, body) = ask(&state, move |db, state| {
-        data::safety(db, state, &who, &json!({"type": "juggling"}))
+        data::view("safety", db, state, &who, &json!({"type": "juggling"}))
     })
     .await;
     assert_eq!(
@@ -2008,7 +2104,8 @@ async fn scorecard_questions_come_back_small() {
     );
     let who = me.clone();
     let (status, body) = ask(&state, move |db, state| {
-        data::safety(
+        data::view(
+            "safety",
             db,
             state,
             &who,
@@ -2021,7 +2118,7 @@ async fn scorecard_questions_come_back_small() {
     // This week's scorecard is not posted yet: refused as unknown, never answered as zero.
     let who = me.clone();
     let (status, recent) = ask(&state, move |db, state| {
-        data::returns(db, state, &who, &json!({"period": "today"}))
+        data::view("returns", db, state, &who, &json!({"period": "today"}))
     })
     .await;
     assert_eq!(
@@ -2045,7 +2142,13 @@ async fn scorecard_questions_come_back_small() {
 
     // Feedback by address needs a key allowed addresses.
     let (status, body) = ask(&state, move |db, state| {
-        data::feedback(db, state, &no_places, &json!({"group_by": "address"}))
+        data::view(
+            "feedback",
+            db,
+            state,
+            &no_places,
+            &json!({"group_by": "address"}),
+        )
     })
     .await;
     assert_eq!((status, body["error"].as_str()), (403, Some("not_allowed")));
@@ -2059,13 +2162,13 @@ async fn scorecard_questions_come_back_small() {
         .unwrap();
     let who = me.clone();
     let (status, body) = ask(&state, move |db, state| {
-        data::feedback(db, state, &who, &json!({"group_by": "address"}))
+        data::view("feedback", db, state, &who, &json!({"group_by": "address"}))
     })
     .await;
     assert_eq!((status, body["error"].as_str()), (403, Some("source_off")));
     let who = me.clone();
     let (status, body) = ask(&state, move |db, state| {
-        data::feedback(db, state, &who, &json!({"list": "true"}))
+        data::view("feedback", db, state, &who, &json!({"list": "true"}))
     })
     .await;
     assert_eq!(status, 200, "{body}");

@@ -191,7 +191,6 @@ export const featureCatalog = [
     ]
   }
 ] as const;
-export const schedulesFeature = "timecard" as const;
 export const permissions = [
   "uniforms.view",
   "uniforms.adjust",

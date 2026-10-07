@@ -14,8 +14,9 @@ fn daily_time_respects_timezone_and_runs_once_across_dst() {
         next_daily("02:30", "America/New_York", ms("2026-03-08T05:00:00Z")).unwrap(),
         "2026-03-09T06:30:00.000Z"
     );
+    // From the first 01:30 itself, the repeated one is not run again.
     assert_eq!(
-        next_daily("01:30", "America/New_York", ms("2026-11-01T05:31:00Z")).unwrap(),
+        next_daily("01:30", "America/New_York", ms("2026-11-01T05:30:00Z")).unwrap(),
         "2026-11-02T06:30:00.000Z"
     );
     assert!(next_daily("24:00", "UTC", 0).is_err());

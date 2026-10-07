@@ -194,7 +194,7 @@ fn startup_opens_suspended_dsps_from_a_restored_backup() {
         .one("SELECT count(*) FROM timecard_sources", [])
         .unwrap();
     assert_eq!(snapshot(&provider), before);
-    assert_eq!(reopened.get_dsp(&id).unwrap()["status"], "suspended");
+    assert_eq!(reopened.find_dsp(&id).unwrap().status.as_str(), "suspended");
 }
 #[test]
 fn cortex_storage_opens_without_the_emptied_delivery_history_tables() {

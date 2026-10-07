@@ -1,3 +1,4 @@
+use super::LATEST;
 use dispatch_core::db::Db;
 use std::os::unix::fs::PermissionsExt;
 
@@ -17,12 +18,7 @@ fn employee_history_uses_the_code_index() {
     let file = root.path().join("paycom.sqlite");
     let db = Db::create(&file, dispatch_paycom::DATABASE, "").unwrap();
     let plan = db
-        .all(
-            "EXPLAIN QUERY PLAN SELECT p.id FROM publications p \
-        JOIN employees e ON e.publication_id=p.id WHERE e.code='E001' \
-        ORDER BY p.period_to DESC LIMIT 1",
-            [],
-        )
+        .all(&format!("EXPLAIN QUERY PLAN {LATEST}"), ["E001"])
         .unwrap();
     assert!(
         plan.iter().any(|row| row["detail"]
