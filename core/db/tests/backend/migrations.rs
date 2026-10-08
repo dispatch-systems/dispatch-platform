@@ -601,7 +601,7 @@ fn a_failing_migration_changes_nothing() {
         },
     ];
     assert_eq!(
-        run(&db, "test", &list).unwrap_err().code,
+        run(&db, "test", &list, &[]).unwrap_err().code,
         "migration_failed"
     );
     assert_eq!(dump(&db), before);
@@ -636,7 +636,7 @@ fn connections_racing_to_open_first_apply_each_migration_once() {
                         "INSERT INTO settings VALUES ('seeded','1');",
                     )
                     .unwrap();
-                    run(&db, "test", list).unwrap();
+                    run(&db, "test", list, &[]).unwrap();
                 });
             }
         });
@@ -657,4 +657,84 @@ fn connections_racing_to_open_first_apply_each_migration_once() {
             vec![json!({"key":"seeded"})]
         );
     }
+}
+
+// Two features built at once each number their own from 1: neither takes the other's
+// number, and each is recorded under its name, apart from the database's own list, which a
+// release that knows none of them still finds complete.
+#[test]
+fn features_number_their_own_migrations_and_each_is_recorded_under_its_name() {
+    crate::testing::install(&[], &[]);
+    let root = private();
+    let db = Db::create(&root.path().join("owned.sqlite"), Kind::DSP, "").unwrap();
+    let shared = ids(&db);
+    let owned = [
+        (
+            "alpha",
+            Migration {
+                id: 1,
+                name: "alpha_notes",
+                apply: Apply::Sql("CREATE TABLE alpha_notes (id TEXT);"),
+            },
+        ),
+        (
+            "beta",
+            Migration {
+                id: 1,
+                name: "beta_notes",
+                apply: Apply::Sql("CREATE TABLE beta_notes (id TEXT);"),
+            },
+        ),
+    ];
+    run(&db, "dsp", &Kind::DSP.migrations(), &owned).unwrap();
+    let recorded = |db: &Db| -> Vec<(String, i64, String)> {
+        db.0.prepare("SELECT owner,id,name FROM owner_migrations ORDER BY owner")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap()
+    };
+    assert_eq!(
+        recorded(&db),
+        [
+            ("alpha".to_owned(), 1, "alpha_notes".to_owned()),
+            ("beta".to_owned(), 1, "beta_notes".to_owned()),
+        ]
+    );
+    assert_eq!(ids(&db), shared);
+    // Running again applies nothing, and a feature this binary doesn't know is a rollback.
+    db.0.execute(
+        "INSERT INTO owner_migrations(owner,id,name,applied_at) VALUES ('gamma',1,'later',0)",
+        [],
+    )
+    .unwrap();
+    run(&db, "dsp", &Kind::DSP.migrations(), &owned).unwrap();
+    assert_eq!(recorded(&db).len(), 3);
+}
+
+#[test]
+#[should_panic(expected = "dsp migration 2 of alpha is missing")]
+fn a_feature_whose_own_migrations_skip_a_number_is_refused() {
+    static LIST: &[Migration] = &[Migration {
+        id: 3,
+        name: "late",
+        apply: Apply::Sql(""),
+    }];
+    static FIRST: &[Migration] = &[Migration {
+        id: 1,
+        name: "first",
+        apply: Apply::Sql(""),
+    }];
+    let owned = [
+        OwnMigrations {
+            kind: Kind::DSP,
+            list: FIRST,
+        },
+        OwnMigrations {
+            kind: Kind::DSP,
+            list: LIST,
+        },
+    ];
+    owned_ledger(Kind::DSP, owned.iter().map(|each| ("alpha", each)));
 }

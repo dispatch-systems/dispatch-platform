@@ -177,6 +177,21 @@
       "id": 8,
       "name": "open_collections",
       "sha256": "a28a44cb4df03634daf12cbac784975ce7f2d6b13e6120dd52f9361b5468d098"
+    },
+    {
+      "id": 9,
+      "name": "documents",
+      "sha256": "4fe5e7971cf0e6fb5b9c1d24935e3ea74f5f1e420afd6b4ae732363b15eb28ba"
+    },
+    {
+      "id": 10,
+      "name": "documents_files",
+      "sha256": "9a5cddc24f08a790eb45cf999c7d7f881ed7e0d9df4a932b47b59c64363990d0"
+    },
+    {
+      "id": 11,
+      "name": "documents_people",
+      "sha256": "fb130ca99f140d80c61ff5efad8350cb2b3e8ea4385196136d124adeeb70a10e"
     }
   ],
   "dvic": [

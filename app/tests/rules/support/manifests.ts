@@ -297,9 +297,12 @@ export function keepers(): Keeper[] {
     }));
 }
 
-/** One migration, as an owner's `Migrations` list declares it. */
+/** One migration, as an owner's `Migrations` list declares it, or a feature's `OwnMigrations`. */
 export type Migration = {
   owner: Owner;
+  /** Numbered by its feature from 1 and recorded under its name, rather than in the
+   * database's one list. */
+  owned: boolean;
   database?: string;
   id: number;
   name?: string;
@@ -312,8 +315,8 @@ export type Migration = {
   file: string;
   offset: number;
 };
-export function migrations(): Migration[] {
-  return literals('Migrations').flatMap(({ file, fields }) => {
+export function migrations(type: 'Migrations' | 'OwnMigrations' = 'Migrations'): Migration[] {
+  return literals(type).flatMap(({ file, fields }) => {
     const owner = ownerOf(file)!;
     const kind = fields.get('kind');
     const database = kind && firstString(kind);
@@ -331,6 +334,7 @@ export function migrations(): Migration[] {
         const applied = apply ? textOf(apply) : '';
         const result: Migration = {
           owner,
+          owned: type === 'OwnMigrations',
           ...(database ? { database } : {}),
           id,
           ...(name ? { name } : {}),

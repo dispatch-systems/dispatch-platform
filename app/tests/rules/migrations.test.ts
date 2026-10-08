@@ -11,7 +11,8 @@ import { files, ownerOf, read, root, unitOf } from './support/repo.js';
 // its SQL, or the name of the function a `Code` migration runs with the SQL files that
 // function includes. A database's record of the migrations it ran is keyed by number for
 // good, so a shipped one never changes. New ones are appended: record them with
-// `DISPATCH_RECORD_MIGRATIONS=1 npx tsx --test app/tests/rules/migrations.test.ts`.
+// `DISPATCH_RECORD_MIGRATIONS=1 npx tsx --test app/tests/rules/migrations.test.ts`. What a
+// feature numbers itself is recorded the same way, under `<database>@<feature's folder>`.
 const historyFile = path.join(import.meta.dirname, 'migrations-history.json');
 type Entry = { id: number; name: string; sha256: string };
 type History = Record<string, Entry[]>;
@@ -27,8 +28,12 @@ function entry(migration: Migration): Entry {
 }
 
 const gathered = migrations();
+const owned = migrations('OwnMigrations');
 const where = (migration: Migration) =>
-  `${migration.owner.dir}'s ${migration.database} migration ${migration.id}`;
+  `${migration.owner.dir}'s ${migration.owned ? 'own ' : ''}${migration.database} migration ${migration.id}`;
+/** Where a migration is recorded: its database's one list, or its feature's own. */
+const ledgerOf = (migration: Migration) =>
+  migration.owned ? `${migration.database}@${unitOf(migration.owner)}` : migration.database!;
 
 test("each database's gathered migrations run from 1 without a gap or a repeat", () => {
   const wrong: string[] = [];
@@ -42,6 +47,16 @@ test("each database's gathered migrations run from 1 without a gap or a repeat",
       ...(databases.get(migration.database ?? '') ?? []),
       migration,
     ]);
+  }
+  // A feature numbers its own from 1, apart from every other owner's.
+  for (const migration of owned) {
+    if (!migration.database) wrong.push(`${where(migration)} names no database`);
+    if (!migration.name) wrong.push(`${where(migration)} has no name`);
+    if (!migration.sql && !migration.code)
+      wrong.push(`${where(migration)} applies nothing it names`);
+    if (migration.owner.layer !== 'feature')
+      wrong.push(`${where(migration)}: only a feature numbers its own migrations`);
+    databases.set(ledgerOf(migration), [...(databases.get(ledgerOf(migration)) ?? []), migration]);
   }
   for (const [database, list] of databases) {
     const ids = list.map(({ id }) => id).sort((a, b) => a - b);
@@ -62,7 +77,7 @@ test("each database's gathered migrations run from 1 without a gap or a repeat",
 test('each migration file lives with its owner and is applied by exactly the migration it names', () => {
   const wrong: string[] = [];
   const applied = new Map<string, Migration[]>();
-  for (const migration of gathered) {
+  for (const migration of [...gathered, ...owned]) {
     const sql = migration.sql?.file ? [migration.sql.file] : [];
     for (const file of [...sql, ...migration.includes]) {
       applied.set(file, [...(applied.get(file) ?? []), migration]);
@@ -85,7 +100,10 @@ test('a shipped migration keeps its number, name and contents, and new ones are 
   const history: History = JSON.parse(fs.readFileSync(historyFile, 'utf8'));
   const changed: string[] = [];
   const current = new Map(
-    gathered.map((migration) => [`${migration.database}:${migration.id}`, migration]),
+    [...gathered, ...owned].map((migration) => [
+      `${ledgerOf(migration)}:${migration.id}`,
+      migration,
+    ]),
   );
   for (const [database, entries] of Object.entries(history)) {
     entries.forEach((recorded, index) => {
@@ -95,18 +113,18 @@ test('a shipped migration keeps its number, name and contents, and new ones are 
       assert.deepEqual(entry(migration), recorded, `${database} migration ${recorded.id} changed`);
     });
   }
-  const recordedIds = (database: string) => (history[database] ?? []).map(({ id }) => id);
-  const added = gathered
-    .filter((migration) => !recordedIds(migration.database!).includes(migration.id))
+  const recordedIds = (ledger: string) => (history[ledger] ?? []).map(({ id }) => id);
+  const added = [...gathered, ...owned]
+    .filter((migration) => !recordedIds(ledgerOf(migration)).includes(migration.id))
     .sort((a, b) => a.id - b.id);
   for (const migration of added) {
-    const last = Math.max(0, ...recordedIds(migration.database!));
+    const last = Math.max(0, ...recordedIds(ledgerOf(migration)));
     if (migration.id <= last)
       changed.push(`${where(migration)} sits among shipped migrations instead of after them`);
   }
   assert.deepEqual(changed, []);
   if (process.env.DISPATCH_RECORD_MIGRATIONS === '1' && added.length) {
-    for (const migration of added) (history[migration.database!] ??= []).push(entry(migration));
+    for (const migration of added) (history[ledgerOf(migration)] ??= []).push(entry(migration));
     fs.writeFileSync(historyFile, `${JSON.stringify(history, null, 2)}\n`);
     process.stdout.write(
       `Recorded ${added.length} migrations in ${path.relative(root, historyFile)}.\n`,
@@ -116,7 +134,35 @@ test('a shipped migration keeps its number, name and contents, and new ones are 
 
 test('the history records every database the migrations name', () => {
   const history: History = JSON.parse(fs.readFileSync(historyFile, 'utf8'));
-  const databases = new Set(gathered.map((migration) => migration.database));
+  const databases = new Set([...gathered, ...owned].map(ledgerOf));
   for (const database of Object.keys(history))
     assert(databases.has(database), `the history records ${database}, which no migration names`);
+});
+
+// A database many owners add to keeps one list, so two features built at once would take
+// the same number. A feature adds to one only with `own_migrations`, numbered by itself;
+// what features declared in such a list before stays there as it shipped.
+test('a feature adds to a database other owners keep only with its own migrations', () => {
+  const history: History = JSON.parse(fs.readFileSync(historyFile, 'utf8'));
+  const declaredBy = new Map<string, string>();
+  for (const file of files.filter((file) => file.endsWith('.rs'))) {
+    for (const match of read(file).matchAll(/\b(?:Kind|Self)::new\(\s*"([a-z_]+)"/g))
+      declaredBy.set(match[1]!, unitOf(ownerOf(file)!));
+  }
+  const wrong: string[] = [];
+  for (const migration of gathered) {
+    if (migration.owner.layer !== 'feature') continue;
+    const keeper = declaredBy.get(migration.database!);
+    if (keeper === unitOf(migration.owner)) continue;
+    const shipped = (history[migration.database!] ?? []).some(({ id }) => id === migration.id);
+    if (!shipped)
+      wrong.push(
+        `${where(migration)} adds to ${keeper ?? 'another owner'}'s database: use own_migrations`,
+      );
+  }
+  for (const migration of owned) {
+    if (declaredBy.get(migration.database!) === unitOf(migration.owner))
+      wrong.push(`${where(migration)} is its own feature's database: use migrations`);
+  }
+  holds('migrations', 'owned', wrong);
 });

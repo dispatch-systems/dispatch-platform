@@ -47,7 +47,12 @@ pub const FEATURE: Feature = Feature {
 {{/keeps}}
 {{#tables}}
     tables: &[("{{database}}", &["{{table}}"])],
+{{#ownDatabase}}
     migrations: &[Migrations {
+{{/ownDatabase}}
+{{^ownDatabase}}
+    own_migrations: &[OwnMigrations {
+{{/ownDatabase}}
         kind: {{kind}},
         list: &[Migration {
             id: {{migrationId}},
