@@ -27,3 +27,27 @@ pub const FEATURES: &[&Feature] = &[
     #[cfg(feature = "weekly_scorecard")]
     &dispatch_weekly_scorecard::FEATURE,
 ];
+
+/// Every feature's API types in TypeScript, as each lists them, for the app's export test.
+#[cfg(test)]
+pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
+    #[allow(unused_mut)]
+    let mut all = dispatch_core::Typescript::new();
+    #[cfg(feature = "daily_performance")]
+    all.extend(dispatch_daily_performance::typescript(cfg));
+    #[cfg(feature = "documents")]
+    all.extend(dispatch_documents::typescript(cfg));
+    #[cfg(feature = "driver_match")]
+    all.extend(dispatch_driver_match::typescript(cfg));
+    #[cfg(feature = "dvic")]
+    all.extend(dispatch_dvic::typescript(cfg));
+    #[cfg(feature = "routes")]
+    all.extend(dispatch_routes::typescript(cfg));
+    #[cfg(feature = "timecard")]
+    all.extend(dispatch_timecard::typescript(cfg));
+    #[cfg(feature = "uniforms")]
+    all.extend(dispatch_uniforms::typescript(cfg));
+    #[cfg(feature = "weekly_scorecard")]
+    all.extend(dispatch_weekly_scorecard::typescript(cfg));
+    all
+}

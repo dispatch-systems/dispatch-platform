@@ -15,45 +15,11 @@ use dispatch_core::mcp::api::types::*;
 use dispatch_core::platform_owner::api::types::*;
 use dispatch_core::server::api::types::*;
 use dispatch_core::tenancy::api::{audit::*, types::*};
-#[cfg(feature = "driver_match")]
-use dispatch_driver_match::{
-    Driver, DriverActivity, DriverCounts, DriverDay, DriverDetails, DriverEvent, DriverEventKind,
-    DriverEvidence, DriverEvidenceKind, DriverId, DriverLink, DriverMatch, DriverPair,
-    DriverStrength,
-};
-#[cfg(feature = "dvic")]
-use dispatch_dvic::{DvicInspection, DvicInspections, DvicReport, DvicStatus, DvicWeek};
 use dispatch_paycom::timecards::EmployeeTimecardPeriod;
-#[cfg(feature = "routes")]
-use dispatch_routes::{
-    RouteAddress, RouteBreak, RouteDayView, RouteDays, RouteItinerary, RouteItineraryDetail,
-    RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteRetention, RouteStop,
-    RouteTask, RouteUnknownStop,
-};
-#[cfg(feature = "timecard")]
-use dispatch_timecard::{
-    AssessedClock, CortexMeal, CortexPublication, DailyTimecard, DailyTimecards, DeliveryGap,
-    DeliveryGaps, DepartmentOption, Employee, EmployeeTimecard, EmployeeTimecardResponse,
-    EmployeesResponse, InPunchKind, LateRule, Lunch, MatchType, MealAssessment, MealComparison,
-    MealDriver, MealEmployee, MealPair, MealPaycom, MealSource, MealStatus, NameOrder,
-    OutPunchKind, PaycomColumn, PaycomDay, PaycomOptions, PaycomPage, PaycomPreferences,
-    PaycomSettings, PaycomSort, PreferenceRevision, Punch, PunchEvent, Timecard,
-};
-#[cfg(feature = "uniforms")]
-use dispatch_uniforms::{
-    Uniform, UniformAdjustment, UniformEvent, UniformEventKind, UniformFit, UniformHistory,
-    UniformInventory, UniformUpdates, UniformVariant,
-};
-#[cfg(feature = "weekly_scorecard")]
-use dispatch_weekly_scorecard::{
-    WeeklyScorecardDatasetCount, WeeklyScorecardPolicy, WeeklyScorecardPublication,
-    WeeklyScorecardWeek, WeeklyScorecardWeeks,
-};
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
-use ts_rs::TS;
 
 /// The access catalog's file: its types are tenancy's.
 const ACCESS_CATALOG: &str = "core/tenancy/api/generated/access-catalog.ts";
@@ -68,20 +34,9 @@ const COLLECTIONS: &str = "core/collection/api/generated/collections.ts";
 /// log's reply check accepts.
 const AUDIT_SUBJECTS: &str = "core/tenancy/api/generated/audit-subjects.ts";
 
-/// Each binding by its file's path from the repository root, which its type's `export_to`
-/// names, so ts-rs writes the imports between owners' folders from there.
-macro_rules! exported {
-    ($cfg:expr, $($ty:ty),* $(,)?) => {
-        BTreeMap::from([$((
-            <$ty>::output_path().expect("named type"),
-            <$ty>::export_to_string($cfg).expect("exportable type")
-                .lines().map(|line| format!("{}\n", line.trim_end())).collect::<String>(),
-        )),*])
-    };
-}
 fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
     let cfg = ts_rs::Config::new().with_out_dir(root);
-    let mut bindings = exported!(
+    let mut bindings = dispatch_core::typescript!(
         &cfg,
         AgentAccess,
         AgentArea,
@@ -175,132 +130,8 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         AuthenticatorSetup,
         AccountSession,
     );
-    // Each feature's, when the build has it.
-    #[cfg(feature = "timecard")]
-    bindings.extend(exported!(
-        &cfg,
-        PaycomPreferences,
-        PaycomPage,
-        PaycomSort,
-        PaycomColumn,
-        NameOrder,
-        PreferenceRevision,
-        DepartmentOption,
-        PaycomOptions,
-        PaycomSettings,
-        Employee,
-        Punch,
-        InPunchKind,
-        OutPunchKind,
-        Timecard,
-        EmployeeTimecard,
-        DailyTimecard,
-        DailyTimecards,
-        EmployeesResponse,
-        AssessedClock,
-        Lunch,
-        PunchEvent,
-        PaycomDay,
-        DeliveryGap,
-        DeliveryGaps,
-        MealPair,
-        MealAssessment,
-        MealStatus,
-        LateRule,
-        CortexMeal,
-        MealPaycom,
-        MealSource,
-        MealEmployee,
-        MatchType,
-        MealDriver,
-        CortexPublication,
-        MealComparison,
-        EmployeeTimecardResponse,
-    ));
-    #[cfg(feature = "uniforms")]
-    bindings.extend(exported!(
-        &cfg,
-        UniformFit,
-        UniformEventKind,
-        UniformVariant,
-        Uniform,
-        UniformInventory,
-        UniformAdjustment,
-        UniformUpdates,
-        UniformEvent,
-        UniformHistory,
-    ));
-    #[cfg(feature = "routes")]
-    bindings.extend(exported!(
-        &cfg,
-        RouteAddress,
-        RouteBreak,
-        RouteDayView,
-        RouteDays,
-        RouteItinerary,
-        RouteItineraryDetail,
-        RoutePackage,
-        RoutePackageEvent,
-        RoutePublication,
-        RouteReprocess,
-        RouteRetention,
-        RouteStop,
-        RouteTask,
-        RouteUnknownStop,
-    ));
-    #[cfg(feature = "dvic")]
-    bindings.extend(exported!(
-        &cfg,
-        DvicReport,
-        DvicWeek,
-        DvicStatus,
-        DvicInspection,
-        DvicInspections,
-    ));
-    #[cfg(feature = "weekly_scorecard")]
-    bindings.extend(exported!(
-        &cfg,
-        WeeklyScorecardDatasetCount,
-        WeeklyScorecardPublication,
-        WeeklyScorecardWeek,
-        WeeklyScorecardWeeks,
-        WeeklyScorecardPolicy,
-    ));
-    #[cfg(feature = "driver_match")]
-    bindings.extend(exported!(
-        &cfg,
-        DriverLink,
-        DriverStrength,
-        DriverEvidenceKind,
-        DriverEventKind,
-        DriverId,
-        Driver,
-        DriverCounts,
-        DriverEvidence,
-        DriverPair,
-        DriverMatch,
-        DriverActivity,
-        DriverDay,
-        DriverEvent,
-        DriverDetails,
-    ));
-    #[cfg(feature = "daily_performance")]
-    bindings.extend(exported!(
-        &cfg,
-        dispatch_daily_performance::DailyPerformanceSummary,
-        dispatch_daily_performance::DailyPerformanceDay,
-        dispatch_daily_performance::DailyPerformanceDataset,
-        dispatch_daily_performance::DailyPerformancePolicy,
-    ));
-    #[cfg(feature = "documents")]
-    bindings.extend(exported!(
-        &cfg,
-        dispatch_documents::DocumentsOverview,
-        dispatch_documents::DocumentsConnection,
-        dispatch_documents::ConnectionStatus,
-        dispatch_documents::AccountKind,
-        dispatch_documents::GoogleSignIn,
-    ));
+    // Each feature's, as it lists them, when the build has it.
+    bindings.extend(crate::features::typescript(&cfg));
     bindings.insert(ACCESS_CATALOG.into(), access_catalog());
     bindings.insert(CAPABILITIES.into(), capabilities());
     bindings.insert(READ_TOGGLES.into(), read_toggles());

@@ -1,0 +1,16 @@
+# Every route daily_performance registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /api/dsp/daily-performance Dsp("daily_performance.view") Read
+GET /api/dsp/daily-performance/jobs Dsp("daily_performance.view") Read
+GET /api/dsp/daily-performance/policy Dsp("daily_performance.manage") Read
+GET /api/dsp/daily-performance/schedules Dsp("daily_performance.manage") Read
+GET /api/v1/daily-performance Agent("read") Read
+POST /api/dsp/daily-performance/collect Dsp("daily_performance.collect") Write
+POST /api/dsp/daily-performance/jobs/{id}/cancel Dsp("daily_performance.collect") Async
+POST /api/dsp/daily-performance/policy Dsp("daily_performance.manage") Write
+POST /api/dsp/daily-performance/schedules Dsp("daily_performance.manage") Write wakes-scheduler
+POST /api/dsp/daily-performance/schedules/preview Dsp("daily_performance.manage") Write
+POST /api/dsp/daily-performance/schedules/{key} Dsp("daily_performance.manage") Write wakes-scheduler
+POST /api/dsp/daily-performance/schedules/{key}/enabled Dsp("daily_performance.manage") Write wakes-scheduler
+POST /api/dsp/daily-performance/schedules/{key}/remove Dsp("daily_performance.manage") Write wakes-scheduler

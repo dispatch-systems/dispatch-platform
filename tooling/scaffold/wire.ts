@@ -103,16 +103,31 @@ export function wiredManifest(manifest: string, features: Crate[]) {
 
 /** The registry's list of features, each while the app's Cargo feature of its name is on. */
 export function wiredList(features: Crate[]) {
+  const ident = (crate: string) => crate.replaceAll('-', '_');
   const entries = features.map(
-    ({ name, crate }) =>
-      `    #[cfg(feature = "${name}")]\n    &${crate.replaceAll('-', '_')}::FEATURE,\n`,
+    ({ name, crate }) => `    #[cfg(feature = "${name}")]\n    &${ident(crate)}::FEATURE,\n`,
   );
+  // Each feature that writes its API types to TypeScript lists them itself.
+  const typescript = features
+    .filter(({ ts }) => ts)
+    .map(
+      ({ name, crate }) =>
+        `    #[cfg(feature = "${name}")]\n    all.extend(${ident(crate)}::typescript(cfg));\n`,
+    );
   return (
     "//! Every feature in features/, written by `npm run contracts:generate`: the registry's,\n" +
     "//! each while the app's Cargo feature of its name is on. The registry puts them in their\n" +
     '//! places.\n' +
     'use dispatch_core::manifest::Feature;\n\n' +
-    `pub const FEATURES: &[&Feature] = &[\n${entries.join('')}];\n`
+    `pub const FEATURES: &[&Feature] = &[\n${entries.join('')}];\n\n` +
+    "/// Every feature's API types in TypeScript, as each lists them, for the app's export test.\n" +
+    '#[cfg(test)]\n' +
+    'pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {\n' +
+    '    #[allow(unused_mut)]\n' +
+    '    let mut all = dispatch_core::Typescript::new();\n' +
+    typescript.join('') +
+    '    all\n' +
+    '}\n'
   );
 }
 

@@ -17,7 +17,6 @@ fn table() -> Vec<Route> {
     dispatch_core::server::http::table()
 }
 
-const TEAM: &str = "members.invite|members.manage|roles.manage";
 const LIVE: &str = "timecard.view|collections.run";
 const WAKES_SCHEDULER: bool = true;
 
@@ -36,27 +35,15 @@ const OUTSIDE_THE_API: &[&str] = &[
     "/oauth/revoke",
 ];
 
-// Every endpoint: who may call it, which database access its work runs under,
-// and whether it wakes the scheduler. The list was written from the dispatcher
-// this table replaced, so it is the proof that no route changed its permission.
+// Every endpoint of core and the collectors: who may call it, which database access its
+// work runs under, and whether it wakes the scheduler. The list was written from the
+// dispatcher this table replaced, so it is the proof that no route changed its permission.
+// Each feature lists its own the same way, in its `tests/api/routes.txt`.
 //
-// Adding an endpoint? Add its row here too. A reviewer then sees, in one line,
-// who can reach it, and a permission changed by accident fails this test.
+// Adding an endpoint? Add its row here, or its line to its feature's list. A reviewer then
+// sees, in one line, who can reach it, and a permission changed by accident fails a test.
 #[rustfmt::skip]
 const INVENTORY: &[Row] = &[
-("GET","/api/dsp/daily-performance/policy",Dsp("daily_performance.manage"),Read,false),
-("POST","/api/dsp/daily-performance/policy",Dsp("daily_performance.manage"),Write,false),
-("POST","/api/dsp/daily-performance/collect",Dsp("daily_performance.collect"),Write,false),
-("GET","/api/dsp/daily-performance/jobs",Dsp("daily_performance.view"),Read,false),
-("POST","/api/dsp/daily-performance/jobs/{id}/cancel",Dsp("daily_performance.collect"),Async,false),
-("GET","/api/dsp/daily-performance/schedules",Dsp("daily_performance.manage"),Read,false),
-("POST","/api/dsp/daily-performance/schedules",Dsp("daily_performance.manage"),Write,WAKES_SCHEDULER),
-("POST","/api/dsp/daily-performance/schedules/preview",Dsp("daily_performance.manage"),Write,false),
-("POST","/api/dsp/daily-performance/schedules/{key}",Dsp("daily_performance.manage"),Write,WAKES_SCHEDULER),
-("POST","/api/dsp/daily-performance/schedules/{key}/enabled",Dsp("daily_performance.manage"),Write,WAKES_SCHEDULER),
-("POST","/api/dsp/daily-performance/schedules/{key}/remove",Dsp("daily_performance.manage"),Write,WAKES_SCHEDULER),
-("GET","/api/dsp/weekly-scorecard/policy",Dsp("weekly_scorecard.manage"),Read,false),
-("POST","/api/dsp/weekly-scorecard/policy",Dsp("weekly_scorecard.manage"),Write,false),
     ("GET", "/api/health", Public, Memory, false),
     ("GET", "/api/browser-update", Public, Memory, false),
     ("POST", "/api/auth/login", Public, Async, false),
@@ -64,8 +51,6 @@ const INVENTORY: &[Row] = &[
     ("POST", "/api/auth/password", Session, Async, false),
     ("POST", "/api/auth/forgot-password", Public, Async, false),
     ("POST", "/api/auth/reset-password", Public, Async, false),
-    ("GET", "/api/invitations/{token}", Public, Write, false),
-    ("POST", "/api/invitations/{token}/accept", Public, Async, false),
     ("GET", "/api/auth/security/status", Session, Read, false),
     ("GET", "/api/auth/security/passkeys", Session, Read, false),
     ("POST", "/api/auth/security/passkeys/register/start", Session, Write, false),
@@ -120,22 +105,10 @@ const INVENTORY: &[Row] = &[
     ("GET", "/api/v1/drivers", Agent("read"), Read, false),
     ("GET", "/api/v1/drivers/{driver}", Agent("read"), Read, false),
     ("GET", "/api/v1/team", Agent("read"), Read, false),
-    ("GET", "/api/v1/routes", Agent("read"), Read, false),
-    ("GET", "/api/v1/routes/{route}", Agent("read"), Read, false),
-    ("GET", "/api/v1/packages", Agent("read"), Read, false),
-    ("GET", "/api/v1/feedback", Agent("read"), Read, false),
-    ("GET", "/api/v1/safety", Agent("read"), Read, false),
-    ("GET", "/api/v1/returns", Agent("read"), Read, false),
-    ("GET", "/api/v1/weekly-scorecard", Agent("read"), Read, false),
-    ("GET", "/api/v1/packages/{tracking}", Agent("read"), Read, false),
-    ("GET", "/api/v1/timecards", Agent("read"), Read, false),
-    ("GET", "/api/v1/meal-breaks", Agent("read"), Read, false),
-    ("GET", "/api/v1/dvic", Agent("read"), Read, false),
 
     ("GET", "/api/platform/dsps", PlatformOwner, Read, false),
     ("POST", "/api/platform/dsps", PlatformOwner, Write, WAKES_SCHEDULER),
     ("POST", "/api/platform/dsps/{id}/retry", PlatformOwner, Write, WAKES_SCHEDULER),
-    ("POST", "/api/platform/dsps/{id}/routes/reprocess", PlatformOwner, Write, false),
     ("POST", "/api/platform/dsps/{id}/status", PlatformOwner, Async, false),
     ("POST", "/api/platform/dsps/{id}/support-visibility", PlatformOwner, Async, false),
     ("GET", "/api/platform/dsps/{id}/features", PlatformOwner, Read, false),
@@ -152,88 +125,8 @@ const INVENTORY: &[Row] = &[
     ("GET", "/api/platform/diagnostics", PlatformOwner, Read, false),
     ("POST", "/api/platform/diagnostics", PlatformOwner, Write, false),
 
-    ("GET", "/api/dsp/uniforms", Dsp("uniforms.view"), Read, false),
-    ("GET", "/api/dsp/uniforms/updates", Dsp("uniforms.view"), Async, false),
-    ("GET", "/api/dsp/uniforms/history", Dsp("uniforms.view"), Read, false),
-    ("POST", "/api/dsp/uniforms/initialize", Dsp("uniforms.manage"), Write, false),
-    ("POST", "/api/dsp/uniforms", Dsp("uniforms.manage"), Write, false),
-    ("POST", "/api/dsp/uniforms/{id}", Dsp("uniforms.manage"), Write, false),
-    ("POST", "/api/dsp/uniforms/{id}/archive", Dsp("uniforms.manage"), Write, false),
-    ("POST", "/api/dsp/uniforms/stock/{id}", Dsp("uniforms.adjust"), Write, false),
     ("GET", "/api/dsp/collection-updates", Dsp(LIVE), Async, false),
     ("POST", "/api/dsp/presence", Dsp("access"), Async, false),
-    ("GET", "/api/dsp/employees", Dsp("timecard.view"), Read, false),
-    ("GET", "/api/dsp/employees/{code}", Dsp("timecard.view"), Read, false),
-    ("POST", "/api/dsp/employees/{code}/sync", Dsp("collections.run"), Write, false),
-    ("GET", "/api/dsp/timecards", Dsp("timecard.view"), Read, false),
-    ("GET", "/api/dsp/paycom/status", Dsp("timecard.view"), Read, false),
-    ("GET", "/api/dsp/paycom/settings", Dsp("timecard.view"), Read, false),
-    ("POST", "/api/dsp/paycom/settings", Dsp("timecard.manage"), Write, false),
-    ("GET", "/api/dsp/paycom/meal-breaks", Dsp("timecard.view"), Read, false),
-    ("GET", "/api/dsp/cortex/meal-breaks", Dsp("timecard.view"), Read, false),
-    ("POST", "/api/dsp/cortex/meal-breaks/collect", Dsp("collections.run"), Write, false),
-    ("GET", "/api/dsp/jobs", Dsp("collections.run"), Read, false),
-    ("POST", "/api/dsp/jobs", Dsp("collections.run"), Write, false),
-    ("POST", "/api/dsp/jobs/{id}/cancel", Dsp("collections.run"), Async, false),
-    ("GET", "/api/dsp/jobs/meal-breaks", Dsp("timecard.view"), Read, false),
-    ("POST", "/api/dsp/jobs/meal-breaks", Dsp("collections.run"), Write, false),
-    ("GET", "/api/dsp/weekly-scorecard/weeks", Dsp("weekly_scorecard.view"), Read, false),
-    ("GET", "/api/dsp/weekly-scorecard/jobs", Dsp("weekly_scorecard.view"), Read, false),
-    ("POST", "/api/dsp/weekly-scorecard/collect", Dsp("weekly_scorecard.collect"), Write, false),
-    ("POST", "/api/dsp/weekly-scorecard/jobs/{id}/cancel", Dsp("weekly_scorecard.collect"), Async, false),
-    ("GET", "/api/dsp/weekly-scorecard/schedules", Dsp("weekly_scorecard.manage"), Read, false),
-    ("POST", "/api/dsp/weekly-scorecard/schedules", Dsp("weekly_scorecard.manage"), Write, WAKES_SCHEDULER),
-    ("POST", "/api/dsp/weekly-scorecard/schedules/preview", Dsp("weekly_scorecard.manage"), Write, false),
-    ("POST", "/api/dsp/weekly-scorecard/schedules/{key}", Dsp("weekly_scorecard.manage"), Write, WAKES_SCHEDULER),
-    ("POST", "/api/dsp/weekly-scorecard/schedules/{key}/enabled", Dsp("weekly_scorecard.manage"), Write, WAKES_SCHEDULER),
-    ("POST", "/api/dsp/weekly-scorecard/schedules/{key}/remove", Dsp("weekly_scorecard.manage"), Write, WAKES_SCHEDULER),
-    ("GET", "/api/dsp/dvic/status", Dsp("dvic.view"), Read, false),
-    ("GET", "/api/dsp/dvic/inspections", Dsp("dvic.view"), Read, false),
-    ("POST", "/api/dsp/dvic/collect", Dsp("dvic.collect"), Write, false),
-    ("POST", "/api/dsp/dvic/jobs/{id}/cancel", Dsp("dvic.collect"), Async, false),
-    ("GET", "/api/dsp/dvic/schedules", Dsp("dvic.manage"), Read, false),
-    ("POST", "/api/dsp/dvic/schedules", Dsp("dvic.manage"), Write, WAKES_SCHEDULER),
-    ("POST", "/api/dsp/dvic/schedules/preview", Dsp("dvic.manage"), Write, false),
-    ("POST", "/api/dsp/dvic/schedules/{key}", Dsp("dvic.manage"), Write, WAKES_SCHEDULER),
-    ("POST", "/api/dsp/dvic/schedules/{key}/enabled", Dsp("dvic.manage"), Write, WAKES_SCHEDULER),
-    ("POST", "/api/dsp/dvic/schedules/{key}/remove", Dsp("dvic.manage"), Write, WAKES_SCHEDULER),
-    ("GET", "/api/dsp/driver-match", Dsp("driver_match.manage"), Read, false),
-    ("GET", "/api/dsp/driver-match/counts", Dsp("driver_match.manage"), Read, false),
-    ("GET", "/api/dsp/driver-match/drivers/{code}", Dsp("driver_match.manage"), Read, false),
-    ("POST", "/api/dsp/driver-match/merge", Dsp("driver_match.manage"), Write, false),
-    ("POST", "/api/dsp/driver-match/split", Dsp("driver_match.manage"), Write, false),
-    ("POST", "/api/dsp/driver-match/apart", Dsp("driver_match.manage"), Write, false),
-    ("GET", "/api/dsp/routes/days", Dsp("routes.view"), Read, false),
-    ("GET", "/api/dsp/routes/days/{day}", Dsp("routes.view"), Read, false),
-    ("GET", "/api/dsp/routes/days/{day}/itineraries/{id}", Dsp("routes.view"), Read, false),
-    ("GET", "/api/dsp/routes/packages/{tracking}", Dsp("routes.view"), Read, false),
-    ("POST", "/api/dsp/routes/collect", Dsp("routes.collect"), Write, false),
-    ("GET", "/api/dsp/routes/jobs", Dsp("routes.view"), Read, false),
-    ("POST", "/api/dsp/routes/jobs/{id}/cancel", Dsp("routes.collect"), Async, false),
-    ("GET", "/api/dsp/routes/retention", Dsp("routes.manage"), Read, false),
-    ("POST", "/api/dsp/routes/retention", Dsp("routes.manage"), Write, false),
-    ("GET", "/api/dsp/routes/schedules", Dsp("routes.manage"), Read, false),
-    ("POST", "/api/dsp/routes/schedules", Dsp("routes.manage"), Write, WAKES_SCHEDULER),
-    ("POST", "/api/dsp/routes/schedules/preview", Dsp("routes.manage"), Write, false),
-    ("POST", "/api/dsp/routes/schedules/{key}", Dsp("routes.manage"), Write, WAKES_SCHEDULER),
-    ("POST", "/api/dsp/routes/schedules/{key}/enabled", Dsp("routes.manage"), Write, WAKES_SCHEDULER),
-    ("POST", "/api/dsp/routes/schedules/{key}/remove", Dsp("routes.manage"), Write, WAKES_SCHEDULER),
-    ("GET", "/api/dsp/schedules", Dsp("timecard.manage"), Read, false),
-    ("POST", "/api/dsp/schedules", Dsp("timecard.manage"), Write, WAKES_SCHEDULER),
-    ("POST", "/api/dsp/schedules/preview", Dsp("timecard.manage"), Write, false),
-    ("POST", "/api/dsp/schedules/{key}", Dsp("timecard.manage"), Write, WAKES_SCHEDULER),
-    ("POST", "/api/dsp/schedules/{key}/enabled", Dsp("timecard.manage"), Write, WAKES_SCHEDULER),
-    ("POST", "/api/dsp/schedules/{key}/remove", Dsp("timecard.manage"), Write, WAKES_SCHEDULER),
-    ("POST", "/api/dsp/profile", Dsp("settings.manage"), Write, WAKES_SCHEDULER),
-    ("GET", "/api/dsp/members", Dsp(TEAM), Read, false),
-    ("POST", "/api/dsp/members/invite", Dsp("members.invite"), Write, false),
-    ("POST", "/api/dsp/members/{id}", Dsp("members.manage"), Write, false),
-    ("GET", "/api/dsp/invitations", Dsp("members.invite"), Read, false),
-    ("POST", "/api/dsp/invitations/revoke", Dsp("members.invite"), Write, false),
-    ("GET", "/api/dsp/roles", Dsp(TEAM), Read, false),
-    ("POST", "/api/dsp/roles", Dsp("roles.manage"), Write, false),
-    ("POST", "/api/dsp/roles/{id}", Dsp("roles.manage"), Write, false),
-    ("POST", "/api/dsp/roles/{id}/remove", Dsp("roles.manage"), Write, false),
     ("GET", "/api/dsp/connections", Dsp("connections.manage"), Read, false),
     ("GET", "/api/dsp/connections/{provider}", Dsp("connections.manage"), Async, false),
     ("POST", "/api/dsp/connections/{provider}", Dsp("connections.manage"), Async, false),
@@ -244,13 +137,6 @@ const INVENTORY: &[Row] = &[
     ("GET", "/api/dsp/connections/{provider}/screenshot", Dsp("connections.manage"), Async, false),
     ("POST", "/api/dsp/connections/{provider}/assist", Dsp("connections.manage"), Async, false),
     ("POST", "/api/dsp/connections/{provider}/submit", Dsp("connections.manage"), Async, false),
-    ("GET", "/api/dsp/daily-performance", Dsp("daily_performance.view"), Read, false),
-    ("GET", "/api/v1/daily-performance", Agent("read"), Read, false),
-    ("GET", "/api/dsp/documents", Dsp("documents.use"), Read, false),
-    ("POST", "/api/dsp/documents/connect", Dsp("documents.manage"), Write, false),
-    ("POST", "/api/dsp/documents/connect/finish", Dsp("documents.manage"), Async, false),
-    ("POST", "/api/dsp/documents/disconnect", Dsp("documents.manage"), Async, false),
-    ("GET", "/api/documents/google/return", Public, Async, false),
 ];
 
 fn describe(rows: impl IntoIterator<Item = Row>) -> BTreeSet<String> {
@@ -262,15 +148,69 @@ fn describe(rows: impl IntoIterator<Item = Row>) -> BTreeSet<String> {
         .collect()
 }
 
-#[cfg(feature = "default")]
-#[test]
-fn the_route_table_is_exactly_the_inventory() {
-    let registered = describe(table().iter().map(|route| {
+/// Routes as `describe` writes them.
+fn described<'a>(routes: impl IntoIterator<Item = &'a Route>) -> BTreeSet<String> {
+    describe(routes.into_iter().map(|route| {
         let method = if route.method == "GET" { "GET" } else { "POST" };
         let wakes = route.invalidates_schedules;
         (method, route.path, route.access, route.work, wakes)
-    }));
-    let expected = describe(INVENTORY.iter().copied());
+    }))
+}
+/// Where each feature lists its own routes, a line each as `describe` writes it, so who can
+/// reach them is reviewed with the feature.
+fn listing(feature: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .find(|dir| dir.join("Cargo.lock").is_file())
+        .expect("repository root")
+        .join("features")
+        .join(feature)
+        .join("tests/api/routes.txt")
+}
+/// The routes a feature lists, without its comments.
+fn listed(feature: &str) -> BTreeSet<String> {
+    std::fs::read_to_string(listing(feature))
+        .unwrap_or_default()
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn each_feature_lists_exactly_the_routes_it_registers() {
+    let table = table();
+    for feature in dispatch_core::manifest::registry().features {
+        // Its own routes, and its agent endpoints, which core serves from what it declares.
+        let agents: BTreeSet<_> = feature.mcp.endpoints.iter().map(|e| e.path).collect();
+        let registered = described(
+            (feature.routes)()
+                .iter()
+                .chain(table.iter().filter(|route| agents.contains(route.path))),
+        );
+        let expected = listed(feature.name);
+        let missing: Vec<_> = expected.difference(&registered).collect();
+        let unlisted: Vec<_> = registered.difference(&expected).collect();
+        assert!(
+            missing.is_empty() && unlisted.is_empty(),
+            "{}: in features/{}/tests/api/routes.txt but not registered: {missing:#?}\n\
+             registered but not listed there: {unlisted:#?}",
+            feature.name,
+            feature.name
+        );
+    }
+}
+
+#[cfg(feature = "default")]
+#[test]
+fn the_route_table_is_exactly_the_inventory() {
+    let registered = described(&table());
+    // Core's routes, and the collectors', here; each feature's in its own folder.
+    let mut expected = describe(INVENTORY.iter().copied());
+    for feature in dispatch_core::manifest::registry().features {
+        expected.extend(listed(feature.name));
+    }
     let missing: Vec<_> = expected.difference(&registered).collect();
     let unlisted: Vec<_> = registered.difference(&expected).collect();
     assert!(

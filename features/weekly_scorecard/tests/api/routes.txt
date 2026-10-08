@@ -1,0 +1,19 @@
+# Every route weekly_scorecard registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /api/dsp/weekly-scorecard/jobs Dsp("weekly_scorecard.view") Read
+GET /api/dsp/weekly-scorecard/policy Dsp("weekly_scorecard.manage") Read
+GET /api/dsp/weekly-scorecard/schedules Dsp("weekly_scorecard.manage") Read
+GET /api/dsp/weekly-scorecard/weeks Dsp("weekly_scorecard.view") Read
+GET /api/v1/feedback Agent("read") Read
+GET /api/v1/returns Agent("read") Read
+GET /api/v1/safety Agent("read") Read
+GET /api/v1/weekly-scorecard Agent("read") Read
+POST /api/dsp/weekly-scorecard/collect Dsp("weekly_scorecard.collect") Write
+POST /api/dsp/weekly-scorecard/jobs/{id}/cancel Dsp("weekly_scorecard.collect") Async
+POST /api/dsp/weekly-scorecard/policy Dsp("weekly_scorecard.manage") Write
+POST /api/dsp/weekly-scorecard/schedules Dsp("weekly_scorecard.manage") Write wakes-scheduler
+POST /api/dsp/weekly-scorecard/schedules/preview Dsp("weekly_scorecard.manage") Write
+POST /api/dsp/weekly-scorecard/schedules/{key} Dsp("weekly_scorecard.manage") Write wakes-scheduler
+POST /api/dsp/weekly-scorecard/schedules/{key}/enabled Dsp("weekly_scorecard.manage") Write wakes-scheduler
+POST /api/dsp/weekly-scorecard/schedules/{key}/remove Dsp("weekly_scorecard.manage") Write wakes-scheduler

@@ -169,3 +169,48 @@ pub const FEATURE: Feature = Feature {
     people: &[&punches::people::Employees, &meals::people::MealDrivers],
     ..feature("timecard")
 };
+
+/// Its API types, which the app's export writes to TypeScript in its `api/generated/`.
+#[cfg(feature = "ts")]
+pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
+    dispatch_core::typescript!(
+        cfg,
+        PaycomPreferences,
+        PaycomPage,
+        PaycomSort,
+        PaycomColumn,
+        NameOrder,
+        PreferenceRevision,
+        DepartmentOption,
+        PaycomOptions,
+        PaycomSettings,
+        Employee,
+        Punch,
+        InPunchKind,
+        OutPunchKind,
+        Timecard,
+        EmployeeTimecard,
+        DailyTimecard,
+        DailyTimecards,
+        EmployeesResponse,
+        AssessedClock,
+        Lunch,
+        PunchEvent,
+        PaycomDay,
+        DeliveryGap,
+        DeliveryGaps,
+        MealPair,
+        MealAssessment,
+        MealStatus,
+        LateRule,
+        CortexMeal,
+        MealPaycom,
+        MealSource,
+        MealEmployee,
+        MatchType,
+        MealDriver,
+        CortexPublication,
+        MealComparison,
+        EmployeeTimecardResponse,
+    )
+}
