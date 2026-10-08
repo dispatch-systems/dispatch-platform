@@ -35,6 +35,11 @@ const phrases: AuditPhrases = {
   ],
   'documents.created': (e, { strong }) => ['added ', strong(e.detail), ' to Documents'],
   'documents.uploaded': (e, { strong }) => ['uploaded ', strong(e.detail), ' to Documents'],
+  'documents.added': (e, { strong }) => [
+    'added ',
+    strong(e.detail),
+    ' to Documents from Google Drive',
+  ],
   'documents.renamed': (e, { strong }) => ['renamed ', strong(e.detail), ' in Documents'],
   'documents.trashed': (e, { strong }) => [
     'moved ',
@@ -53,6 +58,7 @@ export const wording: AuditWording = {
     'documents.unshared',
     'documents.created',
     'documents.uploaded',
+    'documents.added',
     'documents.renamed',
     'documents.trashed',
   ],

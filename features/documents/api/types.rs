@@ -28,6 +28,45 @@ pub struct DocumentsOverview {
     pub me: Option<MySharing>,
     /// How many on the team can edit in Google.
     pub editors: u32,
+    /// For those who manage Documents, while Google is connected: how to add files someone
+    /// made directly in Drive. None when this server has no keys for Google's file picker.
+    pub picker: Option<PickerSetup>,
+}
+
+/// What adding files made directly in Google Drive needs.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct PickerSetup {
+    /// The Google account to pick them as: the one that holds the DSP's Documents.
+    pub account: String,
+    /// Google's keys for its file picker, which a browser uses as they are. None in fixture
+    /// mode, which lists the files instead.
+    pub google: Option<PickerKeys>,
+    /// In fixture mode, the files made directly in its Drive.
+    pub made_in_drive: Vec<DriveFile>,
+}
+/// The keys Google's file picker opens with, none of them secret: they name the platform's
+/// Google project to Google.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct PickerKeys {
+    pub client_id: String,
+    pub api_key: String,
+    pub app_id: String,
+}
+/// A file in the account's Drive that Documents can't reach yet.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct DriveFile {
+    pub id: String,
+    pub name: String,
+    pub kind: ItemKind,
 }
 
 /// The Google account that holds the DSP's Documents, and its main folder there.

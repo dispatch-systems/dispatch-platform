@@ -4,6 +4,7 @@
 use super::{
     files,
     google::{self, Google},
+    picker,
     storage::{Connection, DocumentsStore},
     team,
 };
@@ -24,7 +25,12 @@ use std::sync::Arc;
 
 /// The DSP's connection, as its members see it.
 pub fn overview(db: &Store, c: &Context) -> Result<DocumentsOverview> {
-    let connection = match db.documents_connection(&c.dsp.id)? {
+    let found = db.documents_connection(&c.dsp.id)?;
+    let picker = match (&found, Google::of(&db.config)) {
+        (Some(found), Ok(google)) => picker::setup(c, &google, found)?,
+        _ => None,
+    };
+    let connection = match found {
         Some(found) => Some(DocumentsConnection {
             status: if found.broken {
                 ConnectionStatus::Broken
@@ -49,6 +55,7 @@ pub fn overview(db: &Store, c: &Context) -> Result<DocumentsOverview> {
         available: Google::available(&db.config),
         me: team::mine(db, c)?,
         editors: team::editors(db, &c.dsp.id)?,
+        picker,
     })
 }
 

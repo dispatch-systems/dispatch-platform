@@ -17,6 +17,7 @@ export type { NewKind } from './generated/NewKind.js';
 export type { DocumentsTeam } from './generated/DocumentsTeam.js';
 export type { TeamPerson } from './generated/TeamPerson.js';
 export type { MySharing } from './generated/MySharing.js';
+export type { PickerSetup } from './generated/PickerSetup.js';
 
 // Documents's endpoints, as its screens call them.
 
@@ -43,6 +44,8 @@ const wording: Record<string, string> = {
   documents_person_not_found:
     'They have a Google account now, or left your team. Refresh the list.',
   documents_share_not_found: 'That share is gone already. Refresh the list.',
+  documents_picked_elsewhere:
+    'Those files were picked as another Google account. Pick them again, signed in to Google as the account that holds Documents.',
   upload_too_large: 'Files can be up to 100 MB.',
   uploads_busy: 'Dispatch is busy with other uploads. Try again in a minute.',
   upload_incomplete: "The file didn't finish uploading. Try again.",
@@ -106,6 +109,9 @@ export const uploadFile = (
     upload<DocumentsItem>(`/api/dsp/documents/upload?${params}`, file, progress, signal),
   );
 };
+/** Adds files picked with Google's picker to `folder`, or the top. */
+export const addFiles = (files: string[], folder: string | undefined) =>
+  call<DocumentsItem[]>('/api/dsp/documents/add', { files, folder: folder ?? null });
 /** Saves the file `id`: Google's own Docs, Sheets and Slides as Word, Excel and PowerPoint. */
 export const downloadItem = (id: string) =>
   moving(download(`/api/dsp/documents/items/${encodeURIComponent(id)}/download`));

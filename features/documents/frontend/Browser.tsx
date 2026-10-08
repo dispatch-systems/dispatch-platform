@@ -5,6 +5,7 @@ import {
   Ellipsis,
   ExternalLink,
   FolderUp,
+  HardDriveDownload,
   LayoutGrid,
   List,
   LoaderCircle,
@@ -42,6 +43,7 @@ import { Initials, Thumb, Tile, edited, editedInline, kindLabel, typeOf } from '
 import { TeamPanel } from './TeamPanel.js';
 import { ReadyDialog } from './ReadyDialog.js';
 import { UploadsPanel, dropped, picked, useUploads } from './Uploads.js';
+import { useFromDrive } from './FromDrive.js';
 
 // The DSP's Documents, once Google is connected: a folder at a time, as a list or a grid,
 // with what Documents makes and what anyone uploads, by picking files or dropping them on
@@ -137,6 +139,10 @@ export function Browser({
   const [team, showTeam] = useState(false);
   const [ready, setReady] = useState(connected);
   const uploads = useUploads(folder, listing.refresh);
+  const fromDrive = useFromDrive(overview.picker, folder, () => {
+    listing.refresh();
+    overviewChanged();
+  });
   const files = useRef<HTMLInputElement>(null);
   const folders = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -216,6 +222,20 @@ export function Browser({
               </span>
               Upload a folder
             </button>
+            {overview.picker && (
+              <>
+                <span className="documents-menu-rule" role="separator" />
+                <button className="documents-from-drive" onClick={fromDrive.open}>
+                  <span className="documents-menu-icon">
+                    <HardDriveDownload size={16} />
+                  </span>
+                  <span>
+                    Add from Google Drive
+                    <small>Files someone made directly in Drive</small>
+                  </span>
+                </button>
+              </>
+            )}
           </Popover>
           <input
             ref={files}
@@ -333,6 +353,7 @@ export function Browser({
         </DataState>
       </div>
       <UploadsPanel uploads={uploads.uploads} clear={uploads.clear} />
+      {fromDrive.dialog}
       {asked?.to === 'make' && (
         <Naming
           title={`New ${NEW.find(([kind]) => kind === asked.kind)![1]}`}

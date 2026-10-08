@@ -10,7 +10,7 @@ use futures_util::TryStreamExt;
 use serde::Deserialize;
 use serde_json::json;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     sync::{LazyLock, Mutex},
     time::Duration,
 };
@@ -494,6 +494,56 @@ impl Google {
             body: Body::from_stream(response.bytes_stream()),
         })
     }
+    /// The file `id`, if Dispatch can reach it: Google's picker grants Dispatch the files
+    /// someone picks with the account.
+    pub async fn get(&self, access: &str, id: &str) -> Result<Item> {
+        if let Self::Fixture = self {
+            return fixture(access, |drive| {
+                (!drive.hidden.contains(id))
+                    .then(|| drive.files.get(id).cloned())
+                    .flatten()
+                    .ok_or_else(missing)
+            });
+        }
+        send(
+            HTTP.get(format!("{FILES}/{id}"))
+                .bearer_auth(access)
+                .query(&[("fields", FIELDS)]),
+        )
+        .await
+    }
+    /// Moves the file `item` into the folder `folder`, out of the folders it was in.
+    pub async fn move_into(&self, access: &str, item: &Item, folder: &str) -> Result<Item> {
+        if let Self::Fixture = self {
+            return fixture(access, |drive| {
+                let file = drive.files.get_mut(&item.id).ok_or_else(missing)?;
+                file.parents = vec![folder.to_owned()];
+                Ok(file.clone())
+            });
+        }
+        send(
+            HTTP.patch(format!("{FILES}/{}", item.id))
+                .bearer_auth(access)
+                .query(&[
+                    ("addParents", folder),
+                    ("removeParents", &item.parents.join(",")),
+                    ("fields", FIELDS),
+                ])
+                .json(&json!({})),
+        )
+        .await
+    }
+    /// In fixture mode, grants Dispatch the files `ids`, as picking them in Google's picker
+    /// does. Google's own grant happens in the browser, so live there is nothing to do.
+    pub fn grant(&self, access: &str, ids: &[String]) -> Result<()> {
+        if let Self::Fixture = self {
+            fixture(access, |drive| {
+                drive.hidden.retain(|id| !ids.contains(id));
+                Ok(())
+            })?;
+        }
+        Ok(())
+    }
     /// Moves a file to the account's trash, where Drive keeps it for 30 days.
     pub async fn trash(&self, access: &str, id: &str) -> Result<()> {
         if let Self::Fixture = self {
@@ -537,10 +587,16 @@ struct Drive {
     uploads: BTreeMap<String, (String, String, String)>,
     /// What was uploaded, by file.
     contents: BTreeMap<String, Vec<u8>>,
+    /// The files someone made directly in Drive, which Dispatch can't reach until someone
+    /// picks them.
+    hidden: BTreeSet<String>,
 }
 impl Drive {
+    /// The files Dispatch can reach.
     fn values(&self) -> impl Iterator<Item = &Item> {
-        self.files.values()
+        self.files
+            .values()
+            .filter(|item| !self.hidden.contains(&item.id))
     }
 }
 static DRIVES: LazyLock<Mutex<BTreeMap<String, Drive>>> = LazyLock::new(Default::default);
@@ -558,8 +614,48 @@ fn fixture<T>(access: &str, work: impl FnOnce(&mut Drive) -> Result<T>) -> Resul
         shares: BTreeMap::new(),
         uploads: BTreeMap::new(),
         contents: BTreeMap::new(),
+        hidden: BTreeSet::new(),
     });
     work(drive)
+}
+/// Puts files in fixture mode's Drive as someone making them directly in Drive would: two in
+/// `folder`, one elsewhere in the account's Drive, all out of Dispatch's reach.
+pub fn fixture_made_in_drive(access: &str, folder: &str) -> Result<()> {
+    fixture(access, |drive| {
+        for (name, mime, size, inside) in [
+            ("Weekly safety huddle", DOC, None, true),
+            ("Fuel receipts.pdf", "application/pdf", Some("48213"), true),
+            ("Route map 2025.png", "image/png", Some("231004"), false),
+        ] {
+            let id = format!("fixture-{}", crypto::hex(&crypto::random::<8>()?));
+            let item = Item {
+                web_view_link: link(mime, &id),
+                id: id.clone(),
+                name: name.to_owned(),
+                mime_type: mime.to_owned(),
+                parents: inside.then(|| folder.to_owned()).into_iter().collect(),
+                modified_time: iso(),
+                last_modifying_user: Some(Person {
+                    display_name: Some("Keisha Brown".to_owned()),
+                    email_address: Some("keisha.brown@example.com".to_owned()),
+                }),
+                size: size.map(str::to_owned),
+            };
+            drive.files.insert(id.clone(), item);
+            drive.hidden.insert(id);
+        }
+        Ok(())
+    })
+}
+/// The files fixture mode's Drive holds that Dispatch can't reach yet.
+pub fn fixture_hidden(access: &str) -> Result<Vec<Item>> {
+    fixture(access, |drive| {
+        Ok(drive
+            .hidden
+            .iter()
+            .filter_map(|id| drive.files.get(id).cloned())
+            .collect())
+    })
 }
 /// Whether fixture mode's Drive has the file, out of the trash.
 pub fn fixture_has(access: &str, id: &str) -> Result<bool> {
