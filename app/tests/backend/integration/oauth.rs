@@ -383,27 +383,13 @@ impl Server {
     }
 }
 /// Every kind of data there is, delivery addresses included.
-const EVERY: &[&str] = &[
-    "routes",
-    "locations",
-    "timecards",
-    "meal_breaks",
-    "dvic",
-    "feedback",
-    "safety",
-    "returns",
-    "weekly_scorecard",
-    #[cfg(feature = "daily_performance")]
-    "daily_performance",
-    #[cfg(feature = "daily_performance")]
-    "daily_feedback",
-    #[cfg(feature = "daily_performance")]
-    "daily_returns",
-    #[cfg(feature = "daily_performance")]
-    "daily_safety",
-];
+/// Every kind of data an agent may read, as the features declare them, in their order.
+fn every() -> Vec<&'static str> {
+    dispatch_backend::install();
+    AgentArea::all().map(AgentArea::as_str).collect()
+}
 fn everything(name: &str) -> Value {
-    json!({"name":name,"allDsps":true,"dsps":[],"reads":{"areas":EVERY,"bypass":false}})
+    json!({"name":name,"allDsps":true,"dsps":[],"reads":{"areas":every(),"bypass":false}})
 }
 
 #[tokio::test]
@@ -1504,7 +1490,7 @@ async fn expired_or_revoked_access_ends_with_invalid_token() {
             "POST",
             &format!("/api/platform/agents/keys/{id}"),
             json!({"name":"Claude Code","allDsps":true,"dsps":[],"access":"operator",
-                "reads":{"areas":EVERY,"bypass":false},"dspReads":[],"expiresAt":null}),
+                "reads":{"areas":every(),"bypass":false},"dspReads":[],"expiresAt":null}),
         )
         .await;
     // An app is edited like a key, but only ever reads.
@@ -3068,11 +3054,14 @@ async fn an_approval_keeps_what_it_reads_and_one_from_before_reads_everything() 
     // A code approved before this release, with tools and addresses, reads every kind of
     // data, addresses as they were chosen, and bypasses nothing.
     for (name, locations, areas) in [
-        ("Desk", true, EVERY.to_vec()),
+        ("Desk", true, every()),
         (
             "Tablet",
             false,
-            EVERY[..1].iter().chain(&EVERY[2..]).copied().collect(),
+            every()
+                .into_iter()
+                .filter(|area| *area != "locations")
+                .collect(),
         ),
     ] {
         let request = server.requested(CHATGPT, CHATGPT_REDIRECT).await;
