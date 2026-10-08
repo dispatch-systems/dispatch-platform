@@ -217,7 +217,7 @@ fn email(db: &Store, dsp: &str, user: &str, name: &str, origin: &str, dev: bool)
         .to_owned(),
     ];
     let paragraphs: Vec<&str> = lines.iter().map(String::as_str).collect();
-    let subject = format!("Link a Google account to edit {name}'s Documents");
+    let subject = format!("Link a Google account to edit Documents at {name}");
     let mail = templates::notice(&templates::Notice {
         origin,
         dev,

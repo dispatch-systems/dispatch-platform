@@ -226,7 +226,7 @@ test('the folder is shared with the team, and those without Google are emailed t
   await until(async () => link().length === 1);
   assert.equal(
     link()[0]!.subject,
-    "[Dispatch Dev] Link a Google account to edit Northline Logistics's Documents",
+    '[Dispatch Dev] Link a Google account to edit Documents at Northline Logistics',
   );
   assert.match(link()[0]!.html, />Open Documents<\/a>/);
   // Opening the team again shares nothing new, and emails no one twice.

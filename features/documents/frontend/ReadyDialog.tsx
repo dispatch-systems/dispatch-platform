@@ -60,21 +60,23 @@ export function ReadyDialog({
         Dispatch made <strong>{connection.folderName}</strong> in {connection.accountEmail}'s Google
         Drive.
       </p>
-      {team.data && (
+      {editing.length + waiting.length > 0 && (
         <div className="documents-ready-team">
-          <p>
-            <Check size={16} />
-            <span>
-              <strong>
-                {editing.length === 1 ? '1 person can' : `${editing.length} people can`} edit now
-              </strong>
-              <small>
-                Their Dispatch email is a Google account, so there was nothing for them to do.
-              </small>
-            </span>
-          </p>
-          {waiting.length > 0 && (
+          {editing.length > 0 && (
             <p>
+              <Check size={16} />
+              <span>
+                <strong>
+                  {editing.length === 1 ? '1 person can' : `${editing.length} people can`} edit now
+                </strong>
+                <small>
+                  Their Dispatch email is a Google account, so there was nothing for them to do.
+                </small>
+              </span>
+            </p>
+          )}
+          {waiting.length > 0 && (
+            <p className="documents-ready-waiting">
               <Mail size={16} />
               <span>
                 <strong>

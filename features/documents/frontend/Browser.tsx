@@ -156,7 +156,11 @@ export function Browser({
           {canManage && (
             <button className="documents-account-button" onClick={() => showTeam(true)}>
               <Users size={16} />
-              {overview.editors === 1 ? '1 person' : `${overview.editors} people`}
+              {overview.editors === 0
+                ? 'Team access'
+                : overview.editors === 1
+                  ? '1 person'
+                  : `${overview.editors} people`}
             </button>
           )}
           <a

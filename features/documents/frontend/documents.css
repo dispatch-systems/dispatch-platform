@@ -189,6 +189,7 @@
 }
 .documents-disconnect {
   color: var(--destructive);
+  white-space: nowrap;
 }
 
 @media (width <= 600px) {
@@ -658,6 +659,18 @@
 .documents-account-card strong {
   overflow-wrap: anywhere;
 }
+/* On a phone, the account's address keeps the card's width and Reconnect goes under it. */
+@media (width <= 600px) {
+  .documents-account-card {
+    flex-wrap: wrap;
+  }
+  .documents-account-card > div {
+    flex-basis: calc(100% - 36px);
+  }
+  .documents-account-card button {
+    width: 100%;
+  }
+}
 .documents-account-card small {
   color: var(--muted-foreground);
   font-size: 13px;
@@ -879,7 +892,7 @@
   margin-top: 3px;
   color: var(--success);
 }
-.documents-ready-team p + p svg {
+.documents-ready-team .documents-ready-waiting svg {
   color: var(--warning);
 }
 .documents-ready-team span {
