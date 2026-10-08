@@ -84,7 +84,11 @@ impl Tree {
             .filter(|item| {
                 let name = item.name.to_lowercase();
                 words.iter().all(|word| name.contains(word.as_str()))
-                    && (id == self.root || self.path(&item.id).iter().any(|up| up.id == id && up.id != item.id))
+                    && (id == self.root
+                        || self
+                            .path(&item.id)
+                            .iter()
+                            .any(|up| up.id == id && up.id != item.id))
             })
             .collect();
         sort(&mut found);

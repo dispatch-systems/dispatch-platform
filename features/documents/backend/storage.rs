@@ -203,7 +203,15 @@ impl DocumentsStore for Store {
         )?;
         Ok(rows
             .into_iter()
-            .map(|(file, added_by, changed_by)| (file, Record { added_by, changed_by }))
+            .map(|(file, added_by, changed_by)| {
+                (
+                    file,
+                    Record {
+                        added_by,
+                        changed_by,
+                    },
+                )
+            })
             .collect())
     }
     fn record_documents_change(&self, dsp: &str, file: &str, user: &str) -> Result<()> {

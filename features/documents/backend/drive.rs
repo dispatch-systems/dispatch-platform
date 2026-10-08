@@ -4,11 +4,7 @@
 //! with the same account, which the tree leaves out. Fixture mode keeps a Drive of its own in
 //! memory for each account, as Google keeps an account's files for every DSP that connects it.
 use super::google::{FILES, FOLDER, Google, HTTP, send};
-use dispatch_core::{
-    Error, Result,
-    db::iso,
-    foundation::crypto,
-};
+use dispatch_core::{Error, Result, db::iso, foundation::crypto};
 use serde::Deserialize;
 use serde_json::json;
 use std::{
@@ -20,8 +16,7 @@ pub const DOC: &str = "application/vnd.google-apps.document";
 pub const SHEET: &str = "application/vnd.google-apps.spreadsheet";
 pub const SLIDES: &str = "application/vnd.google-apps.presentation";
 /// What Documents asks of each file.
-const FIELDS: &str =
-    "id,name,mimeType,parents,modifiedTime,lastModifyingUser(displayName,emailAddress),size,webViewLink";
+const FIELDS: &str = "id,name,mimeType,parents,modifiedTime,lastModifyingUser(displayName,emailAddress),size,webViewLink";
 /// Enough pages for 50,000 files; a Drive that keeps answering past them is not listed whole.
 const PAGES: usize = 50;
 
@@ -190,7 +185,9 @@ fn fixture<T>(access: &str, work: impl FnOnce(&mut Drive) -> Result<T>) -> Resul
     let account = access
         .strip_prefix("fixture:")
         .ok_or_else(|| Error::new("google_connection_broken", 409))?;
-    let mut drives = DRIVES.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut drives = DRIVES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let drive = drives.entry(account.to_owned()).or_insert_with(|| Drive {
         account: account.to_owned(),
         files: BTreeMap::new(),

@@ -25,14 +25,26 @@ fn the_tree_is_the_main_folder_and_only_what_it_holds() {
     let tree = Tree::new(
         "main",
         vec![
-            item("main", "Northline Logistics Documents", None, true, "2026-10-01"),
+            item(
+                "main",
+                "Northline Logistics Documents",
+                None,
+                true,
+                "2026-10-01",
+            ),
             item("safety", "Safety", Some("main"), true, "2026-10-02"),
             item("fleet", "fleet", Some("main"), true, "2026-10-03"),
             item("old", "Old plan", Some("safety"), false, "2026-10-04"),
             item("new", "New plan", Some("safety"), false, "2026-10-05"),
             item("top", "Plan for the top", Some("main"), false, "2026-10-06"),
             // Another DSP's folder in the same account, and a file of it.
-            item("other", "Summit Delivery Documents", None, true, "2026-10-01"),
+            item(
+                "other",
+                "Summit Delivery Documents",
+                None,
+                true,
+                "2026-10-01",
+            ),
             item("theirs", "Their plan", Some("other"), false, "2026-10-07"),
             // Files whose parents loop, reaching no main folder.
             item("a", "Loop plan", Some("b"), false, "2026-10-08"),

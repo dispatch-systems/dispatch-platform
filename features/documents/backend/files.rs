@@ -22,7 +22,9 @@ use std::{
 static ACCESS: LazyLock<Mutex<BTreeMap<String, (String, Instant)>>> =
     LazyLock::new(Default::default);
 fn kept(dsp: &str) -> Option<String> {
-    let tokens = ACCESS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let tokens = ACCESS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     tokens
         .get(dsp)
         .filter(|(_, until)| Instant::now() < *until)
@@ -218,8 +220,8 @@ pub async fn rename(
     let dsp = c.dsp.id.clone();
     let (_, tree) = tree(state, &dsp).await?;
     let before = tree.get(&id).ok_or_else(not_found)?.name.clone();
-    let (connection, renamed) =
-        on_drive!(state, &dsp, |google, token| google.rename(token, &id, &name))?;
+    let (connection, renamed) = on_drive!(state, &dsp, |google, token| google
+        .rename(token, &id, &name))?;
     let after = renamed.name.clone();
     let (records, names) = state
         .run(move |db| {

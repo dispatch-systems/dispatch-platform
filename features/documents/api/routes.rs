@@ -11,12 +11,13 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use dispatch_core::{
-    Result, State, ensure,
+    Result, State,
     db::{Store, identifier},
+    ensure,
     foundation::validate as v,
     server::http::{
-        input::{Input, Reply},
         input::optional,
+        input::{Input, Reply},
         route::{Dsp, Grant, Member, Route, async_get, async_post, protocol, read, write},
     },
 };
@@ -84,8 +85,12 @@ async fn folder(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
     let c = state.run(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.query, &["id", "q"])?;
-    let id = optional(&input.query, "id", |q, key| file_id(v::text(q, key, 1, 128)?))?;
-    let query = optional(&input.query, "q", |q, key| Ok(v::text(q, key, 0, 100)?.to_owned()))?;
+    let id = optional(&input.query, "id", |q, key| {
+        file_id(v::text(q, key, 1, 128)?)
+    })?;
+    let query = optional(&input.query, "q", |q, key| {
+        Ok(v::text(q, key, 0, 100)?.to_owned())
+    })?;
     Reply::of(&files::folder(&state, &c, id, query).await?)
 }
 async fn create(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
