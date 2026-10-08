@@ -727,6 +727,7 @@
   .documents-heading .heading-actions {
     flex-wrap: wrap;
     justify-content: flex-start;
+    width: 100%;
   }
   .documents-toolbar > div {
     width: 100%;
@@ -1013,4 +1014,17 @@
 .documents-uploads .documents-meter {
   display: block;
   height: 4px;
+}
+/* The heading's buttons, a little apart. Wide enough, they stay on one line and its words
+   wrap instead. */
+.documents-heading .heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+@media (width > 760px) {
+  .documents-heading .heading-actions {
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+  }
 }
