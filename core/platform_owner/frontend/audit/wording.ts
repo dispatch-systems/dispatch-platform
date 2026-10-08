@@ -158,6 +158,7 @@ const outcomes: Record<string, string> = {
 // Outcomes and joins carry facts rather than edits; their sentences spell them out.
 export const facts = new Set([
   'provider',
+  'collection',
   'date',
   'duration',
   'attempt',
@@ -170,8 +171,14 @@ export const facts = new Set([
 ]);
 const fact = (event: AuditEvent, field: string) =>
   event.changes.find((change) => change.field === field)?.to ?? '';
-const collected = (provider: string) =>
-  owners.find((owner) => owner.collected?.[provider])?.collected?.[provider];
+// A collection's outcome is named by its collection; one written before events named it, by
+// its provider, as the provider words it.
+const collected = (event: AuditEvent) => {
+  const collection = collections.find((each) => each.kind === fact(event, 'collection'));
+  if (collection) return collection.label;
+  const provider = fact(event, 'provider');
+  return owners.find((owner) => owner.collected?.[provider])?.collected?.[provider];
+};
 // Why Dispatch itself ended a connected app.
 const appEndings: Record<string, string> = {
   replaced: 'Replaced by a new connection',
@@ -186,10 +193,10 @@ function outcome(event: AuditEvent): Part[] {
     ? ` attempt ${attempt} ${outcomes[event.action]}`
     : ` ${outcomes[event.action]}`;
   if (event.target) return ['Scheduled collection ', strong(event.target), result];
-  const provider = collected(fact(event, 'provider'));
+  const name = collected(event);
   const date = fact(event, 'date');
   return [
-    provider ? `${provider} collection` : 'Collection',
+    name ? `${name} collection` : 'Collection',
     ...(date ? [' for ', strong(day(date))] : []),
     result,
   ];

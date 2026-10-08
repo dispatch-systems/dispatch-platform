@@ -92,13 +92,14 @@ fn queue_limits_and_authority_are_checked_again_before_publication() {
 }
 
 #[test]
-fn collection_outcomes_record_their_schedule_provider_date_and_duration() {
+fn collection_outcomes_record_their_schedule_provider_collection_date_and_duration() {
     dispatch_backend::install();
     let (_root, db) = store();
     let started = db::at(db::now() - 108_000);
     let job = JobFacts {
         idempotency_key: "manual",
         provider: Some(paycom::PROVIDER),
+        kind: "paycom.collect",
         attempt: 1,
         max_attempts: 1,
         request: "{\"date\":\"2026-09-18\"}",
@@ -110,6 +111,7 @@ fn collection_outcomes_record_their_schedule_provider_date_and_duration() {
         facts,
         [
             ("provider", None, Some("paycom".to_owned())),
+            ("collection", None, Some("paycom.collect".to_owned())),
             ("date", None, Some("2026-09-18".to_owned())),
             ("duration", None, Some("108".to_owned())),
         ]
@@ -117,13 +119,21 @@ fn collection_outcomes_record_their_schedule_provider_date_and_duration() {
     let job = JobFacts {
         idempotency_key: "schedule:gone:2026:flex:0",
         provider: Some(cortex::PROVIDER),
+        kind: "cortex.dvic.collect",
         request: "{}",
         started_at: None,
         ..job
     };
     let (schedule, facts) = db.job_facts("missing", &job);
     assert!(schedule.is_none());
-    assert_eq!(facts, [("provider", None, Some("cortex".to_owned()))]);
+    // Each of Cortex's collections is named for itself, not for the provider.
+    assert_eq!(
+        facts,
+        [
+            ("provider", None, Some("cortex".to_owned())),
+            ("collection", None, Some("cortex.dvic.collect".to_owned())),
+        ]
+    );
 }
 
 #[cfg(feature = "timecard")]

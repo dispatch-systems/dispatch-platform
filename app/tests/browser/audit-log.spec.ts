@@ -82,7 +82,7 @@ test('the audit log reads as sentences, shows what changed and folds repeated vi
   await expect(paycom).toContainText('Automatic syncOnOff');
   await expect(paycom).toContainText('Late DA time10:01 AM9:45 AM');
   await expect(paycom).toContainText('DepartmentAllDrivers');
-  await expect(item(page, 'Meal break collection attempt 1 of 3 failed')).toContainText(
+  await expect(item(page, 'DVIC collection attempt 1 of 3 failed')).toContainText(
     'Cortex took too long to respond·Northline Logistics·Retrying',
   );
   await expect(item(page, /^Meal break collection failed/)).toContainText('After 3 attempts');
