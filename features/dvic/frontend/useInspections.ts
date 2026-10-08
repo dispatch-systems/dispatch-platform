@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react';
-import type { DvicInspections } from '../api/index.js';
-import { api, useCachedData } from '../../../core/shell/frontend/runtime/api.js';
+import { useCachedData } from '../../../core/shell/frontend/runtime/api.js';
+import { inspectionPage } from '../api/client.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { readInspectionWeek } from './dvic.js';
 import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
@@ -27,11 +27,7 @@ export function useInspections(from: string, to: string, publication: string, en
     (signal: AbortSignal) =>
       readInspectionWeek(
         (after) =>
-          api<DvicInspections>(
-            url + (after ? '&after=' + encodeURIComponent(after) : ''),
-            undefined,
-            signal,
-          ),
+          inspectionPage(url + (after ? '&after=' + encodeURIComponent(after) : ''), signal),
         signal,
       ),
     [url],

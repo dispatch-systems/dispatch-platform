@@ -42,7 +42,6 @@ export const feature: FrontendFeature = {
   errors: {
     dvic_station_required:
       'Set your station code in the DSP profile before collecting DVIC reports.',
-    dvic_week_not_available: 'That report week is not available yet.',
   },
   cache: {
     connections: ['/api/dsp/dvic/'],

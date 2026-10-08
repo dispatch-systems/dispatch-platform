@@ -25,9 +25,9 @@ All endpoints use the existing authenticated DSP context and CSRF rules.
 | `POST /api/dsp/dvic/collect`                                  | `dvic.collect` | Manual sync with `requestId`; optional ending publication `week` and number of `weeks` (1–26) |
 | `POST /api/dsp/dvic/jobs/{id}/cancel`                         | `dvic.collect` | Cancel this DSP's DVIC job                                                                    |
 | `GET/POST /api/dsp/dvic/schedules`                            | `dvic.manage`  | List/create DVIC schedules                                                                    |
-| `POST /api/dsp/dvic/schedules/{id}`                           | `dvic.manage`  | Edit a schedule with its current `revision`                                                   |
-| `POST /api/dsp/dvic/schedules/{id}/enabled`                   | `dvic.manage`  | Pause/resume with `enabled` and `revision`                                                    |
-| `POST /api/dsp/dvic/schedules/{id}/remove`                    | `dvic.manage`  | Delete with `revision`                                                                        |
+| `POST /api/dsp/dvic/schedules/{key}`                          | `dvic.manage`  | Edit a schedule with its current `revision`                                                   |
+| `POST /api/dsp/dvic/schedules/{key}/enabled`                  | `dvic.manage`  | Pause/resume with `enabled` and `revision`                                                    |
+| `POST /api/dsp/dvic/schedules/{key}/remove`                   | `dvic.manage`  | Delete with `revision`                                                                        |
 | `POST /api/dsp/dvic/schedules/preview`                        | `dvic.manage`  | Preview cadence in the DSP's timezone                                                         |
 
 Manual sync defaults to the current and previous publication week; an explicit week
@@ -52,8 +52,11 @@ No schedule is created automatically. A scheduled run checks current/previous
 publication weeks and at most two older weeks in a rolling 26-week lookback. It
 prioritizes never-checked weeks, then least recently checked weeks older than seven
 days. Missing/empty reports stay eligible for later checks. Manual sync can target
-older publication weeks explicitly. DVIC schedules are listed under their own API
-until the dashboard supports them; they remain independent of timecard switches.
+older publication weeks explicitly. DVIC's schedules are its own, under its own routes and
+behind `dvic.manage`, and the DVIC page's collection settings manage them; they run only
+while DVIC is on. Agents read the exceptions at `GET /api/v1/dvic`, with the `dvic` toggle.
+Its errors are worded in its API client, but for a missing station (`dvic_station_required`),
+which a schedule meets too, worded in its manifest.
 
 ## Dates, storage, and efficiency
 

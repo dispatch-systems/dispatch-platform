@@ -25,7 +25,8 @@ use dispatch_core::{
         Migration, Migrations,
         migrations::Apply::{Code, Sql},
     },
-    manifest::{Feature, feature, optional, perm},
+    manifest::{Audit, Feature, feature, optional, perm},
+    tenancy::api::audit::AuditArea::Collections,
 };
 
 pub const FEATURE: Feature = Feature {
@@ -80,6 +81,11 @@ pub const FEATURE: Feature = Feature {
     maintenance: &[backend::maintenance::MAINTENANCE],
     mcp: mcp::MCP,
     people: &[&backend::people::Drivers],
+    // Its events are its collections' and their data's, which its settings keep.
+    audit: Audit {
+        areas: &[("routes.", Collections)],
+        ..Audit::NONE
+    },
     ..feature("routes")
 };
 
