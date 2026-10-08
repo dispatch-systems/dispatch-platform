@@ -86,7 +86,8 @@ const PAGE: &str = r#"<!doctype html>
 <title>Add from Google Drive · Dispatch</title>
 <style>
   body { margin: 0; min-height: 100vh; display: grid; place-items: center;
-    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: #f6f7f9; color: #1f2430; }
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #f6f7f9; color: #1f2430; }
   main { max-width: 440px; padding: 32px; text-align: center; }
   h1 { margin: 0 0 8px; font-size: 22px; }
   p { margin: 0 0 20px; color: #5b6472; }
