@@ -147,7 +147,7 @@
         "POST /api/dsp/documents/connect",
         "POST /api/dsp/documents/connect/finish",
         "POST /api/dsp/documents/disconnect",
-        "GET /documents/google/return"
+        "GET /api/documents/google/return"
       ],
       "schedules": false
     },

@@ -21,7 +21,7 @@ const DRIVE_FILE: &str = "https://www.googleapis.com/auth/drive.file";
 const SCOPES: &str = "openid email https://www.googleapis.com/auth/drive.file";
 const FOLDER: &str = "application/vnd.google-apps.folder";
 /// Where Google sends the browser back, on this server's own origin.
-pub const RETURN_PATH: &str = "/documents/google/return";
+pub const RETURN_PATH: &str = "/api/documents/google/return";
 /// The account a preview's fixture Google signs in as.
 const FIXTURE_ACCOUNT: &str = "documents@example.com";
 

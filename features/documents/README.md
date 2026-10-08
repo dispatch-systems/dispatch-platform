@@ -11,7 +11,7 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   `…/connect/finish` and `…/disconnect` behind `documents.manage`.
 - **Google sign-in:** the platform's Google client, `DISPATCH_DEV_GOOGLE_CLIENT_ID` and
   `…_SECRET` on Dev (`DISPATCH_PRODUCTION_…` on Production), returning to
-  `/documents/google/return`. That route has no session (its cookie stays on Dispatch's own
+  `/api/documents/google/return`. That route has no session (its cookie stays on Dispatch's own
   site), so it only passes what Google sent on to the DSP's Documents page, which finishes
   the sign-in as the member who started it. Each sign-in is used once, by its starter, within
   ten minutes, and its code is bound to a PKCE verifier only the server holds.

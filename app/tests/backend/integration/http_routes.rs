@@ -24,8 +24,7 @@ const WAKES_SCHEDULER: bool = true;
 type Row = (&'static str, &'static str, Access, Work, bool);
 
 // The only paths outside `/api/`: OAuth's discovery documents and endpoints, which MCP clients
-// find at fixed places and which must answer form posts from anywhere, and the address Google
-// sends a browser back to after signing in for Documents. All are public.
+// find at fixed places and which must answer form posts from anywhere. All are public.
 const OUTSIDE_THE_API: &[&str] = &[
     "/.well-known/oauth-protected-resource",
     "/.well-known/oauth-protected-resource/api/v1/mcp",
@@ -35,7 +34,6 @@ const OUTSIDE_THE_API: &[&str] = &[
     "/oauth/token",
     "/oauth/register",
     "/oauth/revoke",
-    "/documents/google/return",
 ];
 
 // Every endpoint: who may call it, which database access its work runs under,
@@ -252,7 +250,7 @@ const INVENTORY: &[Row] = &[
     ("POST", "/api/dsp/documents/connect", Dsp("documents.manage"), Write, false),
     ("POST", "/api/dsp/documents/connect/finish", Dsp("documents.manage"), Async, false),
     ("POST", "/api/dsp/documents/disconnect", Dsp("documents.manage"), Async, false),
-    ("GET", "/documents/google/return", Public, Async, false),
+    ("GET", "/api/documents/google/return", Public, Async, false),
 ];
 
 fn describe(rows: impl IntoIterator<Item = Row>) -> BTreeSet<String> {

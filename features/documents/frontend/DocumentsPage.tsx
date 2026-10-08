@@ -40,8 +40,8 @@ const cancelled = (error: string) =>
     ? 'Google sign-in was cancelled, so nothing changed.'
     : "Google didn't finish signing in. Try connecting again.";
 
-/** The owners, as someone asks them: "Maria Flores" or "an owner". */
-const askOf = (owners: string[]) => (owners.length === 1 ? owners[0] : 'an owner of your DSP');
+/** Whom to ask, at the start of a sentence: "Maria Flores", or any owner when there are more. */
+const askOf = (owners: string[]) => (owners.length === 1 ? owners[0] : 'An owner of your DSP');
 
 export function DocumentsPage({ view }: { view: DspView }) {
   const overview = useDocumentsOverview();

@@ -4,6 +4,7 @@ import { feature as home } from '../../features/home/frontend/feature.js';
 import { feature as timecard } from '../../features/timecard/frontend/feature.js';
 import { feature as uniforms } from '../../features/uniforms/frontend/feature.js';
 import { feature as dvic } from '../../features/dvic/frontend/feature.js';
+import { feature as documents } from '../../features/documents/frontend/feature.js';
 import { feature as team } from '../../features/team/frontend/feature.js';
 import { feature as settings } from '../../features/settings/frontend/feature.js';
 import { feature as driverMatch } from '../../features/driver_match/frontend/feature.js';
@@ -12,7 +13,6 @@ import { feature as weeklyScorecard } from '../../features/weekly_scorecard/fron
 import { feature as paycom } from '../../collectors/paycom/frontend/feature.js';
 import { feature as cortex } from '../../collectors/cortex/frontend/feature.js';
 import { feature as dailyPerformance } from '../../features/daily_performance/frontend/feature.js';
-import { feature as documents } from '../../features/documents/frontend/feature.js';
 import { feature as accounts } from '../../core/accounts/frontend/feature.js';
 import { feature as collection } from '../../core/collection/frontend/feature.js';
 import { feature as platformOwner } from '../../core/platform_owner/frontend/feature.js';
@@ -24,6 +24,7 @@ export const features: readonly FrontendFeature[] = [
   timecard,
   uniforms,
   dvic,
+  documents,
   team,
   settings,
   driverMatch,
@@ -32,7 +33,6 @@ export const features: readonly FrontendFeature[] = [
   paycom,
   cortex,
   dailyPerformance,
-  documents,
   accounts,
   collection,
   platformOwner,
