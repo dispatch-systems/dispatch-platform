@@ -23,17 +23,24 @@ import { Browser } from './Browser.js';
 import { GoogleLogo } from './GoogleLogo.js';
 import { useSignIn } from './signIn.js';
 
+type GoogleReturn = { state: string; code: string; error: string };
+/** What Google sent back, until the page that took it starts finishing it. */
+let pending: GoogleReturn | undefined;
 /**
- * What Google sent the browser back with, read once and taken out of the address, so the
- * code is neither used twice nor left in the browser's history.
+ * What Google sent the browser back with, taken out of the address so the code is neither
+ * used twice nor left in the browser's history. It is kept until the page starts finishing
+ * it: React may set aside a page's first render and render it again, and that render finds
+ * the address already clean.
  */
 function takeGoogleReturn() {
   const query = hashQuery();
   const state = query.get('googleState');
-  if (!state) return undefined;
-  const page = location.hash.split('?')[0];
-  history.replaceState(history.state, '', `${location.pathname}${location.search}${page}`);
-  return { state, code: query.get('googleCode') ?? '', error: query.get('googleError') ?? '' };
+  if (state) {
+    const page = location.hash.split('?')[0];
+    history.replaceState(history.state, '', `${location.pathname}${location.search}${page}`);
+    pending = { state, code: query.get('googleCode') ?? '', error: query.get('googleError') ?? '' };
+  }
+  return pending;
 }
 const cancelled = (error: string) =>
   error === 'access_denied'
@@ -61,6 +68,8 @@ export function DocumentsPage({ view }: { view: DspView }) {
   );
   const finished = useRef(false);
   useEffect(() => {
+    // The page shown took it: a later visit to Documents doesn't find it again.
+    if (returned === pending) pending = undefined;
     if (!returned?.code || finished.current) return;
     finished.current = true;
     void finishing.run(returned.state, returned.code);

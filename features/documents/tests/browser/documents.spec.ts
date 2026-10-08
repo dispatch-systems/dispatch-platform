@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
 
 // The seeded DSP has every feature switched on, and its owner holds every permission. Fixture
@@ -35,4 +36,53 @@ test('an owner connects Google, starts with folders and makes a Doc that opens i
   await page.getByRole('button', { name: 'Create' }).click();
   await expect(await opened).toHaveURL(/^https:\/\/docs\.google\.com\/document\/d\/[\w-]+\/edit$/);
   await expect(page.getByRole('link', { name: /Rescue plan/ })).toHaveAttribute('target', '_blank');
+});
+
+test('a member uploads files and a folder, drops one on the page, and downloads one', async ({
+  page,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Documents', exact: true }).click();
+  await page.getByRole('button', { name: 'Connect Google' }).click();
+  await page
+    .getByRole('dialog', { name: 'Documents is ready' })
+    .getByRole('button', { name: 'Skip' })
+    .click();
+
+  await page.getByLabel('Files to upload').setInputFiles([
+    { name: 'Uniform policy.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') },
+    { name: 'Route notes.txt', mimeType: 'text/plain', buffer: Buffer.from('Route notes') },
+  ]);
+  const uploads = page.getByRole('region', { name: 'Uploads' });
+  await expect(uploads).toContainText('2 uploaded');
+  await expect(page.getByRole('link', { name: /Uniform policy\.pdf/ })).toBeVisible();
+  await expect(page.getByRole('row', { name: /Route notes\.txt/ })).toContainText('11 B');
+
+  // Too large a file never leaves the browser. The file is sparse: its size, not its bytes.
+  const large = test.info().outputPath('Dashcam.mp4');
+  fs.writeFileSync(large, '');
+  fs.truncateSync(large, 100 * 1024 * 1024 + 1);
+  await page.getByLabel('Files to upload').setInputFiles(large);
+  await expect(uploads).toContainText('Files can be up to 100 MB.');
+  await uploads.getByRole('button', { name: 'Close uploads' }).click();
+
+  // Dropped on the page, a file goes up to the folder open.
+  await page.evaluate(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(['Checklist'], 'Checklist.txt', { type: 'text/plain' }));
+    const zone = document.querySelector('.documents-drop')!;
+    for (const type of ['dragover', 'drop'])
+      zone.dispatchEvent(
+        new DragEvent(type, { dataTransfer: transfer, bubbles: true, cancelable: true }),
+      );
+  });
+  await expect(uploads).toContainText('1 uploaded');
+  await expect(page.getByRole('link', { name: /Checklist\.txt/ })).toBeVisible();
+
+  const saving = page.waitForEvent('download');
+  await page.getByLabel('Actions for Route notes.txt').click();
+  await page.getByRole('button', { name: 'Download' }).click();
+  const saved = await saving;
+  expect(saved.suggestedFilename()).toBe('Route notes.txt');
 });
