@@ -241,9 +241,7 @@ export function Browser({
           return (
             <>
               {layout === 'list' ? <Table {...props} /> : <Grid {...props} />}
-              <p className="documents-count">
-                {count(folders, 'folder')} and {count(items.length - folders, 'file')}
-              </p>
+              <p className="documents-count">{counted(folders, items.length - folders)}</p>
             </>
           );
         }}
@@ -309,6 +307,11 @@ export function Browser({
 }
 
 const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+/** "7 folders and 8 files", or only the part there is. */
+const counted = (folders: number, files: number) =>
+  [folders && count(folders, 'folder'), files && count(files, 'file')]
+    .filter(Boolean)
+    .join(' and ');
 
 /** The way from the top of Documents to the folder open now. */
 function Path({ view, at }: { view: DspView; at: DocumentsFolder }) {
@@ -441,7 +444,6 @@ function Grid({ view, items, searching, ask }: ViewProps) {
   const zone = view.dsp.timezone;
   const folders = items.filter((item) => item.kind === 'folder');
   const files = items.filter((item) => item.kind !== 'folder');
-  const first = (name: string | null) => name?.split(/\s+/)[0];
   return (
     <div className="documents-cards">
       {folders.length > 0 && (
@@ -478,7 +480,7 @@ function Grid({ view, items, searching, ask }: ViewProps) {
                       <small>
                         {searching
                           ? `in ${item.location ?? 'Documents'}`
-                          : `Edited ${editedInline(item.modifiedAt, zone)}${item.modifiedBy ? ` by ${first(item.modifiedBy)}` : ''}`}
+                          : `Edited ${editedInline(item.modifiedAt, zone)}${item.modifiedBy ? ` by ${item.modifiedBy}` : ''}`}
                       </small>
                     </span>
                   </span>

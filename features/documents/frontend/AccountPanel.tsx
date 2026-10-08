@@ -34,7 +34,7 @@ export function AccountPanel({
     connection.accountKind === 'workspace' ? 'Google Workspace account' : 'Google account';
   return (
     <Modal variant="sheet" title="Google account" onClose={close}>
-      <div className="panel-body documents-account">
+      <div className="documents-account">
         <p className="muted">
           Everyone at {view.dsp.name} works in this account's {connection.folderName} folder through
           Dispatch.
