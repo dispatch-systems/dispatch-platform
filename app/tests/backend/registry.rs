@@ -7,7 +7,7 @@ use dispatch_core::{
         people::{Appearances, Named, People},
         perm, sub,
     },
-    mcp::api::types::{DriverData, DriverSource},
+    mcp::api::types::{DriverData, DriverSource, PeopleData},
 };
 
 /// The app's registry with one more feature, as `install` would check it.
@@ -89,9 +89,13 @@ fn a_schedule_alias_of_a_collection_its_feature_does_not_keep_is_refused() {
 
 /// Routes' drivers, named a second time.
 struct Again;
+const AGAIN: PeopleData = PeopleData {
+    id: "routes",
+    order: 99,
+};
 impl People for Again {
     fn data(&self) -> DriverData {
-        DriverData::Routes
+        DriverData::new(&AGAIN)
     }
     fn source(&self) -> DriverSource {
         DriverSource::Amazon

@@ -31,6 +31,8 @@ pub const DVIC: AgentArea = AgentArea::new(&ReadToggle {
 });
 
 pub const MCP: Mcp = Mcp {
+    about: "DVIC vehicle inspections",
+    asked: "about inspections",
     instructions: "- DVIC contains short exceptions only: no exception does not prove an inspection was completed.",
     reads: &[DVIC],
     missing: "DVIC inspections",

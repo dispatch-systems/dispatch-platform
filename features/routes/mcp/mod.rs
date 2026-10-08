@@ -45,6 +45,8 @@ pub const LOCATIONS: AgentArea = AgentArea::new(&ReadToggle {
 });
 
 pub const MCP: Mcp = Mcp {
+    about: "routes, stops and packages",
+    asked: "what happened on a route or to a package",
     instructions: "- Routes default to yesterday.",
     reads: &[ROUTES, LOCATIONS],
     missing: "route data",

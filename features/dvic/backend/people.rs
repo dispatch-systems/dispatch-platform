@@ -4,13 +4,18 @@ use dispatch_core::{
     Result,
     db::{Store, n, s},
     manifest::people::{self, Appearances, Named, People, Workdays},
-    mcp::api::types::{DriverData, DriverSource},
+    mcp::api::types::{DriverData, DriverSource, PeopleData},
 };
 
+/// What it names people in, as Driver Match lists it.
+const DATA: PeopleData = PeopleData {
+    id: "dvic",
+    order: 40,
+};
 pub struct Drivers;
 impl People for Drivers {
     fn data(&self) -> DriverData {
-        DriverData::Dvic
+        DriverData::new(&DATA)
     }
     fn source(&self) -> DriverSource {
         DriverSource::Amazon

@@ -1435,7 +1435,7 @@
         {
           "name": "daily_summary",
           "title": "Daily summary",
-          "description": "A day's operations: routes, the busiest and quietest drivers, meal breaks and inspections.",
+          "description": "A day's operations across everything Dispatch collected: the busiest and quietest drivers, and what stands out.",
           "arguments": [
             {
               "name": "date",
@@ -1452,7 +1452,7 @@
         {
           "name": "driver_review",
           "title": "Driver review",
-          "description": "One driver's period: routes, hours, meal breaks and inspections, with what stands out.",
+          "description": "One driver's period across everything Dispatch collected, with what stands out.",
           "arguments": [
             {
               "name": "driver",
@@ -5106,7 +5106,7 @@
         {
           "name": "daily_summary",
           "title": "Daily summary",
-          "description": "A day's operations: routes, the busiest and quietest drivers, meal breaks and inspections.",
+          "description": "A day's operations across everything Dispatch collected: the busiest and quietest drivers, and what stands out.",
           "arguments": [
             {
               "name": "date",
@@ -5123,7 +5123,7 @@
         {
           "name": "driver_review",
           "title": "Driver review",
-          "description": "One driver's period: routes, hours, meal breaks and inspections, with what stands out.",
+          "description": "One driver's period across everything Dispatch collected, with what stands out.",
           "arguments": [
             {
               "name": "driver",
@@ -8783,7 +8783,7 @@
         {
           "name": "daily_summary",
           "title": "Daily summary",
-          "description": "A day's operations: routes, the busiest and quietest drivers, meal breaks and inspections.",
+          "description": "A day's operations across everything Dispatch collected: the busiest and quietest drivers, and what stands out.",
           "arguments": [
             {
               "name": "date",
@@ -8800,7 +8800,7 @@
         {
           "name": "driver_review",
           "title": "Driver review",
-          "description": "One driver's period: routes, hours, meal breaks and inspections, with what stands out.",
+          "description": "One driver's period across everything Dispatch collected, with what stands out.",
           "arguments": [
             {
               "name": "driver",

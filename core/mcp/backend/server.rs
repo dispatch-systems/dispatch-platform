@@ -5,7 +5,7 @@
 //! server's state ride in the request's extensions.
 use super::{
     Caller, activity,
-    data::{self, Failure, catalog},
+    data::{self, Failure, catalog, scope::identify},
     oauth,
 };
 use crate::{
@@ -32,7 +32,8 @@ use rmcp::{
 use serde_json::{Map, Value, json};
 use std::sync::{Arc, LazyLock};
 
-/// What every agent is told when it connects, before it calls anything.
+/// What every agent is told when it connects, before it calls anything. `{ids}` is the IDs a
+/// driver may be named by, as `instructions` words them.
 pub const INSTRUCTIONS: &str = "Dispatch answers questions about a delivery service \
 partner's drivers from its collected data. \
 Ask for the figure the question needs: a count or a \
@@ -44,7 +45,7 @@ date or a driver's ID first. Days are the DSP's own and can differ from your clo
 yesterday, not a date you worked out. Weeks run Sunday to Saturday. DSP names may be omitted \
 when the key reaches one DSP; from/to date ranges are inclusive.
 - Shared arguments: date selects one day; from and to select an inclusive range instead of period. \
-driver also accepts Driver Match codes, Paycom codes and Amazon transporter IDs. detail defaults to \
+driver also accepts {ids}. detail defaults to \
 summary; full includes detail rows. limit bounds each page within the tool's declared range.
 - Tools with a source argument list its choices; omission selects the first listed source. \
 Choose explicitly when the question names a source; sources never mix or fall back.
@@ -76,7 +77,17 @@ const PROFILE: &str = "get_profile";
 /// Core's common guidance followed by each installed feature's own source rules.
 pub fn instructions() -> &'static str {
     static ALL: LazyLock<String> = LazyLock::new(|| {
-        let mut text = INSTRUCTIONS.to_owned();
+        // A driver's IDs, and the codes of what tells people apart, if a feature does.
+        let ids = match identify() {
+            Some(identify) => {
+                format!(
+                    "{} codes, Paycom codes and Amazon transporter IDs",
+                    identify.name
+                )
+            }
+            None => "Paycom codes and Amazon transporter IDs".to_owned(),
+        };
+        let mut text = INSTRUCTIONS.replace("{ids}", &ids);
         for feature in crate::manifest::registry().features {
             if !feature.mcp.instructions.is_empty() {
                 text.push('\n');
@@ -393,6 +404,13 @@ fn compact_input(endpoint: &catalog::Endpoint) -> Map<String, Value> {
         .get_mut("properties")
         .and_then(Value::as_object_mut)
         .expect("flat input");
+    let driver = match identify() {
+        Some(identify) => format!(
+            "Name, partial name or {}, Paycom or Amazon ID.",
+            identify.name
+        ),
+        None => "Name, partial name, or Paycom or Amazon ID.".to_owned(),
+    };
     for (name, description) in [
         (
             "period",
@@ -402,10 +420,7 @@ fn compact_input(endpoint: &catalog::Endpoint) -> Map<String, Value> {
             "date",
             "One day in DSP time: today, yesterday or YYYY-MM-DD.",
         ),
-        (
-            "driver",
-            "Name, partial name or Driver Match, Paycom or Amazon ID.",
-        ),
+        ("driver", driver.as_str()),
     ] {
         if let Some(property) = properties.get_mut(name) {
             property["description"] = json!(description);
@@ -730,7 +745,7 @@ fn prompts() -> Vec<Prompt> {
     vec![
         Prompt::new(
             "daily_summary",
-            Some("A day's operations: routes, the busiest and quietest drivers, meal breaks and inspections."),
+            Some("A day's operations across everything Dispatch collected: the busiest and quietest drivers, and what stands out."),
             Some(vec![
                 PromptArgument::new("date")
                     .with_description("The day; yesterday when left out.")
@@ -743,10 +758,16 @@ fn prompts() -> Vec<Prompt> {
         .with_title("Daily summary"),
         Prompt::new(
             "driver_review",
-            Some("One driver's period: routes, hours, meal breaks and inspections, with what stands out."),
+            Some("One driver's period across everything Dispatch collected, with what stands out."),
             Some(vec![
                 PromptArgument::new("driver")
-                    .with_description("A name, Driver Match code, Paycom code or transporter ID.")
+                    .with_description(match identify() {
+                        Some(identify) => format!(
+                            "A name, {} code, Paycom code or transporter ID.",
+                            identify.name
+                        ),
+                        None => "A name, Paycom code or transporter ID.".to_owned(),
+                    })
                     .with_required(true),
                 PromptArgument::new("period")
                     .with_description("The days to cover; last week when left out.")

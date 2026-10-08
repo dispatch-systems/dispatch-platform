@@ -66,6 +66,8 @@ pub const WEEKLY_SCORECARD: AgentArea = AgentArea::new(&ReadToggle {
 });
 
 pub const MCP: Mcp = Mcp {
+    about: "customer feedback, returns, safety events and scorecard performance",
+    asked: "about feedback, safety, returns or scorecard performance",
     instructions: "- weekly_scorecard defaults to the latest week. Focused feedback, returns and safety tools \
         default to this weekly source, with the last 30 days as their default period. \
         View posted_scorecard and compare default to last week. Posted scoring and disputes are authoritative; \

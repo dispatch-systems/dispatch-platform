@@ -1,6 +1,6 @@
 ---
 name: dispatch
-description: Answers questions about a delivery service partner's drivers from Dispatch: routes, stops and packages, hours and timecards, meal breaks and DVIC vehicle inspections, customer feedback, returns, safety events and performance, for one driver or the whole team, on any day or period. Use when asked how a driver did, who led or trailed on a number, what happened on a route or to a package, or about hours, lunches, inspections, feedback, safety, returns or scorecard performance.
+description: Answers questions about a delivery service partner's drivers from Dispatch: hours, timecards and meal breaks, routes, stops and packages, DVIC vehicle inspections, customer feedback, returns, safety events and scorecard performance, each day's delivery quality and safety, for one driver or the whole team, on any day or period. Use when asked how a driver did, who led or trailed on a number, about hours or lunches, what happened on a route or to a package, about inspections, about feedback, safety, returns or scorecard performance, or about a day's quality or safety.
 ---
 
 # Dispatch

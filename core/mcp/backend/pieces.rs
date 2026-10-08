@@ -19,6 +19,12 @@ use crate::{
 pub struct Mcp {
     /// Source-specific guidance included only while this feature is installed.
     pub instructions: &'static str,
+    /// What its data tells of drivers, for the Agent Skill's description, in the features'
+    /// order: `routes, stops and packages`. Empty when agents read nothing of it.
+    pub about: &'static str,
+    /// What someone asks that its data answers, for when the skill is used, as a clause:
+    /// `what happened on a route or to a package`, `about inspections`.
+    pub asked: &'static str,
     /// The kinds of data it holds that a key or app may be allowed to read. The Agents page
     /// lists their switches under the feature's name.
     pub reads: &'static [AgentArea],
@@ -53,6 +59,8 @@ pub struct Mcp {
 impl Mcp {
     pub const NONE: Self = Self {
         instructions: "",
+        about: "",
+        asked: "",
         reads: &[],
         missing: "",
         sources: &[],

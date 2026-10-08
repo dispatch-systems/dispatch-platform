@@ -413,6 +413,8 @@ test('--mcp writes one agent endpoint, its read toggle and an eval question', as
   // every other owner's: the groups follow their kinds' order.
   assert.match(mcp, /missing: "parking",\s*order: \d+,/);
   assert.match(mcp, /reads: &\[PARKING\],\s*missing: "parking data",/);
+  // The skill's description says what its data is about.
+  assert.match(mcp, /about: "parking",\s*asked: "about parking",/);
   const order = Number(/ReadToggle \{[^}]*order: (\d+),/.exec(mcp)?.[1]);
   for (const owner of fs.readdirSync('features')) {
     const other = `features/${owner}/mcp/mod.rs`;

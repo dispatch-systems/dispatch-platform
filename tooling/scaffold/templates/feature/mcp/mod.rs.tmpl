@@ -39,6 +39,9 @@ pub(crate) const {{constant}}: AgentArea = AgentArea::new(&ReadToggle {
 });
 
 pub(crate) const MCP: Mcp = Mcp {
+    // What its data tells of drivers and what it answers, for the Agent Skill: say them well.
+    about: "{{missing}}",
+    asked: "about {{missing}}",
     reads: &[{{constant}}],
     missing: "{{missing}} data",
     sources: &[SOURCE],

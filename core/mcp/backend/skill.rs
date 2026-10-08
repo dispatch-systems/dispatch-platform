@@ -45,20 +45,51 @@ fn endpoint(out: &mut String, endpoint: &Endpoint) {
     out.push('\n');
 }
 
+/// `a, b and c`, with `last` joining the last of several.
+fn listed(items: &[&str], last: &str) -> String {
+    match items {
+        [] => String::new(),
+        [one] => (*one).to_owned(),
+        [two, three] => format!("{two} {last} {three}"),
+        [rest @ .., end] => format!("{}, {last} {end}", rest.join(", ")),
+    }
+}
+
+/// What the skill is for, as the features' data says: what it tells of drivers, and what it
+/// answers.
+fn description() -> String {
+    let features = registry()
+        .features
+        .iter()
+        .filter(|f| !f.mcp.about.is_empty());
+    let about: Vec<&str> = features.clone().map(|f| f.mcp.about).collect();
+    let mut asked = vec!["how a driver did", "who led or trailed on a number"];
+    asked.extend(
+        features
+            .map(|f| f.mcp.asked)
+            .filter(|asked| !asked.is_empty()),
+    );
+    let about = if about.is_empty() {
+        String::new()
+    } else {
+        format!(": {}", about.join(", "))
+    };
+    format!(
+        "Answers questions about a delivery service partner's drivers from Dispatch{about}, \
+         for one driver or the whole team, on any day or period. Use when asked {}.",
+        listed(&asked, "or")
+    )
+}
+
 /// The skill, naming this server's address.
 pub fn skill(origin: &str) -> String {
-    let mut out = String::from(
+    let mut out = format!(
         "---\n\
          name: dispatch\n\
-         description: Answers questions about a delivery service partner's drivers from \
-         Dispatch: routes, stops and packages, hours and timecards, meal breaks and DVIC \
-         vehicle inspections, customer feedback, returns, safety events and performance, \
-         for one driver or the whole team, on any day or period. Use \
-         when asked how a driver did, who led or trailed on a number, what happened on a \
-         route or to a package, or about hours, lunches, inspections, feedback, safety, returns \
-         or scorecard performance.\n\
+         description: {}\n\
          ---\n\n\
          # Dispatch\n\n",
+        description()
     );
     out.push_str(instructions());
     out.push_str(&format!(

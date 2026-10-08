@@ -9,13 +9,16 @@ use dispatch_core::{
     db::Store,
     mcp::{
         Mcp,
-        data::scope::{Identity, Known},
+        data::scope::{Identify, Identity, Known},
     },
 };
 
 pub const MCP: Mcp = Mcp {
     terms: catalog::TERMS,
-    identity: Some(identities),
+    identity: Some(Identify {
+        name: "Driver Match",
+        people: identities,
+    }),
     synthetic: synthetic::SYNTHETIC,
     ..Mcp::NONE
 };
