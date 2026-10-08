@@ -14,6 +14,7 @@ import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { DataState, ErrorBox } from '../../../core/shell/frontend/ui/index.js';
 import {
   finishGoogle,
+  finishLink,
   useDocumentsOverview,
   type DocumentsConnection,
   type DocumentsOverview,
@@ -45,13 +46,18 @@ export function DocumentsPage({ view }: { view: DspView }) {
   const [returned] = useState(takeGoogleReturn);
   // Whether Google was connected on this visit, so Documents offers folders to start with.
   const [connected, setConnected] = useState(false);
+  // A member linking their own Google account comes back here too: its sign-in says so.
+  const linking = Boolean(returned?.state.includes('.link.'));
   const finishing = useAction(
     async (state: string, code: string) => {
-      await finishGoogle(state, code);
-      setConnected(true);
+      if (linking) await finishLink(state, code);
+      else {
+        await finishGoogle(state, code);
+        setConnected(true);
+      }
       overview.refresh();
     },
-    { success: 'Google connected', inline: true },
+    { success: linking ? 'Google account linked' : 'Google connected', inline: true },
   );
   const finished = useRef(false);
   useEffect(() => {
@@ -67,6 +73,7 @@ export function DocumentsPage({ view }: { view: DspView }) {
         <ErrorBox message={notice} />
         <Browser
           view={view}
+          overview={overview.data!}
           connection={connection}
           canManage={canManage}
           connected={connected}

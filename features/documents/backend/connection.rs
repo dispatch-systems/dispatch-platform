@@ -5,6 +5,7 @@ use super::{
     files,
     google::{self, Google},
     storage::{Connection, DocumentsStore},
+    team,
 };
 use crate::api::types::{
     AccountKind, ConnectionStatus, DocumentsConnection, DocumentsOverview, GoogleSignIn,
@@ -13,9 +14,12 @@ use dispatch_core::{
     Error, Result, State,
     accounts::Context,
     db::{Store, iso},
+    ensure,
     foundation::crypto,
+    foundation::observability,
     server::http::route::Dsp,
 };
+use serde_json::json;
 use std::sync::Arc;
 
 /// The DSP's connection, as its members see it.
@@ -43,6 +47,8 @@ pub fn overview(db: &Store, c: &Context) -> Result<DocumentsOverview> {
     Ok(DocumentsOverview {
         connection,
         available: Google::available(&db.config),
+        me: team::mine(db, c)?,
+        editors: team::editors(db, &c.dsp.id)?,
     })
 }
 
@@ -71,6 +77,7 @@ pub async fn finish(
     sign_in: String,
     code: String,
 ) -> Result<DocumentsOverview> {
+    ensure(!team::is_link(&sign_in), "documents_connect_expired", 409)?;
     let (dsp, actor) = (c.dsp.id.clone(), c.actor().to_owned());
     let (verifier, existing) = state
         .run(move |db| {
@@ -115,7 +122,8 @@ pub async fn finish(
     };
     let refresh = granted.refresh;
     files::forget(&c.dsp.id);
-    state
+    let shared = c.dsp.id.clone();
+    let answer = state
         .run(move |db| {
             let c = access.revalidate(db, &c)?;
             db.save_documents_connection(&c.dsp.id, &connection, &refresh)?;
@@ -127,7 +135,19 @@ pub async fn finish(
             c.audit(db, action, &connection.account.email)?;
             overview(db, &c)
         })
-        .await
+        .await?;
+    // The team gets the folder shared with them while the owner looks around.
+    let sharing = Arc::clone(state);
+    tokio::spawn(async move {
+        if let Err(error) = team::sync(&sharing, &shared).await {
+            observability::event(
+                "warn",
+                "documents_share_failed",
+                json!({"error": error.code}),
+            );
+        }
+    });
+    Ok(answer)
 }
 
 /// Lets the account go: Google takes back Dispatch's access and Dispatch forgets the token.

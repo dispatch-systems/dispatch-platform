@@ -12,7 +12,9 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   `…/connect/finish` and `…/disconnect` behind `documents.manage`. Behind `documents.use` too:
   `GET /api/dsp/documents/folder` (a folder and what it holds, or with `q`, what a search inside
   it found), `POST …/new` (a folder, Doc, Sheet or Slides), and `POST …/items/{id}/rename` and
-  `…/trash`.
+  `…/trash`. Behind `documents.use` as well, for a member's own Google account:
+  `POST /api/dsp/documents/link` and `…/link/finish`. Behind `documents.manage`, the team's
+  access: `GET /api/dsp/documents/team`, `POST …/team/email` and `…/team/remove`.
 - **Browsing:** with `drive.file`, Dispatch reaches only the files it made or was given, so it
   lists them all and keeps the ones inside the DSP's main folder: another DSP's folder made
   with the same account is never listed, found or changed. A file opens in Google, in a tab
@@ -25,11 +27,29 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   site), so it only passes what Google sent on to the DSP's Documents page, which finishes
   the sign-in as the member who started it. Each sign-in is used once, by its starter, within
   ten minutes, and its code is bound to a PKCE verifier only the server holds.
+- **Team access:** everyone who holds `documents.use` gets the main folder shared with them
+  as an editor, and through it everything inside: at the Google account they linked, or else
+  their Dispatch email. Google gives no notification of its own. Google refuses an address
+  that is no Google account, so Dispatch emails that member, once, how to link one (kind
+  `documents.google_account`); until then they see the team's files in Dispatch but can't
+  edit in Google. Linking signs them in with Google for only `openid email`, keeps the
+  address Google proved, and revokes the token at once. Members who leave, or lose
+  `documents.use`, lose the share Dispatch gave them. Anyone else the folder is shared with
+  in Google Drive is listed for those who manage Documents to remove. Sharing follows the
+  team within a minute, and is brought up to date when Google is connected, when a member
+  links and when the team panel opens. The main folder and everything Dispatch makes in it
+  can't be shared on by its editors (`writersCanShare` off), so the team decides who it's
+  shared with. The panel also shows how full the account's storage is.
 - **Reconnecting** takes the same Google account only: `drive.file` reaches the files
   Dispatch made through that account and no other.
-- **Data:** `documents_connection`, `documents_connect_requests` and `documents_files`, in
+- **Data:** `documents_connection`, `documents_connect_requests`, `documents_files` and
+  `documents_people` (who the folder is shared with, and at what address), in
   each DSP's own database; the account's refresh token, encrypted in the DSP's secrets as `google.enc`.
-- **Upkeep:** hourly, a connection Google stopped accepting is marked broken.
+- **Upkeep:** every minute, the folder is shared anew for each connected DSP whose team
+  changed, read from Dispatch alone. Hourly, a connection Google stopped accepting is marked
+  broken, and each connected DSP's sharing is checked against Google's own list.
 - **Fixture mode** never calls Google: its sign-in comes straight back with
-  `fixture:<email>` as the code, and each account's Drive is kept in memory.
+  `fixture:<email>` as the code, and each account's Drive is kept in memory. A member who
+  links signs in as `teammate@example.com`, and an address at `example.net` is no Google
+  account.
 - **Page:** Documents, in a DSP's sidebar.

@@ -48,6 +48,45 @@ pub struct Record {
     pub changed_by: String,
 }
 
+/// How sharing the main folder with a member went.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Sharing {
+    Shared,
+    /// Their address is no Google account; they link one to edit.
+    NeedsAccount,
+    /// Google refused for another reason, by its code.
+    Refused(String),
+}
+/// A member Documents shares the main folder with, as stored.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Person {
+    pub user: String,
+    /// The Google account they linked, if they did.
+    pub linked: Option<String>,
+    /// The address the folder is shared with now, and Drive's ID for that share.
+    pub shared: Option<(String, String)>,
+    pub sharing: Sharing,
+    /// When Dispatch last emailed them how to link a Google account.
+    pub emailed_at: Option<String>,
+}
+impl FromRow for Person {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        let shared_email: Option<String> = row.get("shared_email")?;
+        let share_id: Option<String> = row.get("share_id")?;
+        Ok(Self {
+            user: row.get("user_id")?,
+            linked: row.get("linked_email")?,
+            shared: shared_email.zip(share_id),
+            sharing: match row.get::<String>("state")?.as_str() {
+                "shared" => Sharing::Shared,
+                "needs_account" => Sharing::NeedsAccount,
+                _ => Sharing::Refused(row.get::<Option<String>>("refusal")?.unwrap_or_default()),
+            },
+            emailed_at: row.get("emailed_at")?,
+        })
+    }
+}
+
 /// What Documents reads and writes for one DSP.
 pub trait DocumentsStore {
     fn documents_connection(&self, dsp: &str) -> Result<Option<Connection>>;
@@ -79,6 +118,14 @@ pub trait DocumentsStore {
     fn documents_records(&self, dsp: &str) -> Result<BTreeMap<String, Record>>;
     /// Records that `user` added the file, or changed it if it was added before.
     fn record_documents_change(&self, dsp: &str, file: &str, user: &str) -> Result<()>;
+    /// Every member Documents shares with, or tried to.
+    fn documents_people(&self, dsp: &str) -> Result<Vec<Person>>;
+    /// Keeps how sharing with a member went.
+    fn save_documents_person(&self, dsp: &str, person: &Person) -> Result<()>;
+    /// Forgets a member who left, or no longer uses Documents.
+    fn remove_documents_person(&self, dsp: &str, user: &str) -> Result<()>;
+    /// Keeps the Google account a member linked, to share the folder with it next.
+    fn link_documents_google(&self, dsp: &str, user: &str, email: &str) -> Result<()>;
 }
 impl DocumentsStore for Store {
     fn documents_connection(&self, dsp: &str) -> Result<Option<Connection>> {
@@ -193,6 +240,8 @@ impl DocumentsStore for Store {
         }
         let db = self.dsp(dsp)?;
         db.exec("DELETE FROM documents_connection", [])?;
+        // Whom it shared with, which a new connection finds again.
+        db.exec("DELETE FROM documents_people", [])?;
         Ok(())
     }
     fn documents_records(&self, dsp: &str) -> Result<BTreeMap<String, Record>> {
@@ -213,6 +262,46 @@ impl DocumentsStore for Store {
                 )
             })
             .collect())
+    }
+    fn documents_people(&self, dsp: &str) -> Result<Vec<Person>> {
+        self.dsp(dsp)?
+            .query_as("SELECT * FROM documents_people ORDER BY user_id", [])
+    }
+    fn save_documents_person(&self, dsp: &str, person: &Person) -> Result<()> {
+        let (state, refusal) = match &person.sharing {
+            Sharing::Shared => ("shared", None),
+            Sharing::NeedsAccount => ("needs_account", None),
+            Sharing::Refused(code) => ("refused", Some(code.as_str())),
+        };
+        self.dsp(dsp)?.exec(
+            "INSERT OR REPLACE INTO documents_people (user_id,linked_email,shared_email,share_id,\
+             state,refusal,emailed_at,updated_at) VALUES (?,?,?,?,?,?,?,?)",
+            params![
+                person.user,
+                person.linked,
+                person.shared.as_ref().map(|(email, _)| email),
+                person.shared.as_ref().map(|(_, id)| id),
+                state,
+                refusal,
+                person.emailed_at,
+                iso(),
+            ],
+        )?;
+        Ok(())
+    }
+    fn remove_documents_person(&self, dsp: &str, user: &str) -> Result<()> {
+        self.dsp(dsp)?
+            .exec("DELETE FROM documents_people WHERE user_id=?", [user])?;
+        Ok(())
+    }
+    fn link_documents_google(&self, dsp: &str, user: &str, email: &str) -> Result<()> {
+        self.dsp(dsp)?.exec(
+            "INSERT INTO documents_people (user_id,linked_email,state,updated_at) \
+             VALUES (?1,?2,'needs_account',?3) ON CONFLICT(user_id) DO UPDATE SET \
+             linked_email=excluded.linked_email,updated_at=excluded.updated_at",
+            params![user, email, iso()],
+        )?;
+        Ok(())
     }
     fn record_documents_change(&self, dsp: &str, file: &str, user: &str) -> Result<()> {
         let db = self.dsp(dsp)?;

@@ -7,6 +7,7 @@ import {
   List,
   LoaderCircle,
   Plus,
+  Users,
 } from 'lucide-react';
 import type { DspView } from '../../../core/accounts/api/index.js';
 import { dspHash, hashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
@@ -25,14 +26,16 @@ import {
   renameItem,
   trashItem,
   useDocumentsFolder,
+  linkGoogle,
   type DocumentsConnection,
   type DocumentsFolder,
+  type DocumentsOverview,
   type DocumentsItem,
   type NewKind,
 } from '../api/client.js';
 import { GoogleLogo } from './GoogleLogo.js';
 import { Initials, Thumb, Tile, edited, editedInline, kindLabel, typeOf } from './items.js';
-import { AccountPanel } from './AccountPanel.js';
+import { TeamPanel } from './TeamPanel.js';
 import { ReadyDialog } from './ReadyDialog.js';
 
 // The DSP's Documents, once Google is connected: a folder at a time, as a list or a grid,
@@ -102,12 +105,14 @@ type Asked =
 
 export function Browser({
   view,
+  overview,
   connection,
   canManage,
   connected,
   overviewChanged,
 }: {
   view: DspView;
+  overview: DocumentsOverview;
   connection: DocumentsConnection;
   canManage: boolean;
   /** Whether Google was connected just now, so the page offers some folders to start with. */
@@ -123,7 +128,7 @@ export function Browser({
   );
   const listing = useDocumentsFolder(folder, query);
   const [asked, ask] = useState<Asked>();
-  const [account, showAccount] = useState(false);
+  const [team, showTeam] = useState(false);
   const [ready, setReady] = useState(connected);
   // A listing Google refused may mean the connection broke: the overview says.
   useEffect(() => {
@@ -149,9 +154,13 @@ export function Browser({
         </div>
         <div className="heading-actions">
           {canManage && (
-            <button className="documents-account-button" onClick={() => showAccount(true)}>
-              <GoogleLogo size={16} />
-              Google account
+            <button className="documents-account-button" onClick={() => showTeam(true)}>
+              <Users size={16} />
+              {overview.editors === 0
+                ? 'Team access'
+                : overview.editors === 1
+                  ? '1 person'
+                  : `${overview.editors} people`}
             </button>
           )}
           <a
@@ -183,6 +192,7 @@ export function Browser({
           </Popover>
         </div>
       </div>
+      <Linking overview={overview} />
       <div className="documents-toolbar">
         {at && at.path.length > 0 ? (
           <Path view={view} at={at} />
@@ -284,11 +294,14 @@ export function Browser({
       {asked?.to === 'trash' && (
         <Trash item={asked.item} done={() => ask(undefined)} trashed={listing.refresh} />
       )}
-      {account && (
-        <AccountPanel
+      {team && (
+        <TeamPanel
           view={view}
           connection={connection}
-          close={() => showAccount(false)}
+          close={() => {
+            showTeam(false);
+            overviewChanged();
+          }}
           disconnected={overviewChanged}
         />
       )}
@@ -303,6 +316,40 @@ export function Browser({
         />
       )}
     </>
+  );
+}
+
+/** What the member asking needs to do to edit in Google, if anything. */
+function Linking({ overview }: { overview: DocumentsOverview }) {
+  const linking = useAction(async () => {
+    const { url } = await linkGoogle();
+    window.location.assign(url);
+  });
+  const me = overview.me;
+  if (!me || me.state === 'shared') return null;
+  return (
+    <section className="documents-banner">
+      <GoogleLogo size={20} />
+      <div>
+        {me.state === 'needs_account' ? (
+          <>
+            <strong>Link a Google account to edit Docs and Sheets</strong>
+            <span>
+              {me.email} isn't a Google account, so you can see your team's files here but can't
+              edit them in Google yet. Any Gmail address works.
+            </span>
+          </>
+        ) : (
+          <>
+            <strong>Google won't share your team's folder with {me.email}</strong>
+            <span>Link another Google account, or ask your DSP owner.</span>
+          </>
+        )}
+      </div>
+      <button disabled={linking.busy} onClick={() => void linking.run()}>
+        Link Google account
+      </button>
+    </section>
   );
 }
 

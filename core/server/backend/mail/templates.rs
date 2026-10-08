@@ -205,6 +205,53 @@ pub fn reset(origin: &str, dev: bool, to: &str, url: &str) -> Message {
     }
 }
 
+/// An email a feature writes, in Dispatch's own layout: a heading, its paragraphs, a button
+/// where the reader goes next, and a footer. Everything it holds is plain text, escaped here.
+pub struct Notice<'a> {
+    pub origin: &'a str,
+    pub dev: bool,
+    pub subject: &'a str,
+    /// What the inbox shows beside the subject.
+    pub preheader: &'a str,
+    pub heading: &'a str,
+    pub paragraphs: &'a [&'a str],
+    /// The button: its label and where it goes.
+    pub action: Option<(&'a str, &'a str)>,
+    /// A line below the button.
+    pub note: &'a str,
+    pub footer: &'a str,
+}
+pub fn notice(n: &Notice) -> Message {
+    let paragraph = |text: &str| {
+        format!(
+            r#"<p style="margin:0 0 18px;font:400 15px/1.6 {FONT};color:{MUTED}">{}</p>"#,
+            escape(text)
+        )
+    };
+    let paragraphs: String = n.paragraphs.iter().map(|text| paragraph(text)).collect();
+    let body = format!(
+        "{}{paragraphs}{}",
+        heading(n.heading),
+        n.action
+            .map(|(label, url)| action(&escape(label), url, &escape(n.note)))
+            .unwrap_or_default()
+    );
+    let footer = format!("{} {NO_REPLY}", n.footer).trim().to_owned();
+    let mut text = format!("{}\n\n{}", n.heading, n.paragraphs.join("\n\n"));
+    if let Some((label, url)) = n.action {
+        text += &format!("\n\n{label}: {url}");
+    }
+    if !n.note.is_empty() {
+        text += &format!("\n\n{}", n.note);
+    }
+    text += &format!("\n\n{footer}");
+    Message {
+        subject: n.subject.to_owned(),
+        text,
+        html: shell(n.origin, n.dev, n.preheader, &body, &footer),
+    }
+}
+
 /// A connected app, as the notices to platform owners about it describe it.
 pub struct ConnectedApp<'a> {
     pub origin: &'a str,

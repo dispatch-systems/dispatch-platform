@@ -196,6 +196,8 @@ export type PlatformSlots = {
   auditWording?: AuditWording;
   /** How Diagnostics words every collection's runs; the first owner listed with it does. */
   runWording?: RunWording;
+  /** How the mail log names the kinds of email it sends a member, by kind. */
+  mailKinds?: Record<string, string>;
 };
 
 /** An owner's frontend: what it puts in each slot. */
@@ -325,6 +327,9 @@ export function loadPlatformSlots() {
   return slotsLoad;
 }
 
+/** How the mail log names an owner's kind of email, once the slots have loaded. */
+export const mailKindLabel = (kind: string) =>
+  loadedSlots.find((slots) => slots.mailKinds?.[kind])?.mailKinds?.[kind];
 /** The icon of a page's switch. */
 export const switchIcon = (id: string) =>
   loadedSlots.find((slots) => slots.switch?.id === id)?.switch?.icon;

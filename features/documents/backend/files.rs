@@ -39,14 +39,14 @@ pub fn forget(dsp: &str) {
 }
 
 /// What a call to the DSP's Drive works with.
-struct Drive {
-    google: Google,
-    connection: Connection,
-    access: String,
+pub(crate) struct Drive {
+    pub google: Google,
+    pub connection: Connection,
+    pub access: String,
 }
 /// The DSP's connection, and an access token for it: the one kept unless `fresh`. A
 /// connection Google stopped accepting is marked broken, as the hourly check marks it.
-async fn open(state: &Arc<State>, dsp: &str, fresh: bool) -> Result<Drive> {
+pub(crate) async fn open(state: &Arc<State>, dsp: &str, fresh: bool) -> Result<Drive> {
     let google = Google::of(&state.config)?;
     let at = dsp.to_owned();
     let (connection, refresh) = state

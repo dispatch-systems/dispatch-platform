@@ -149,3 +149,53 @@ async fn removing_a_member_deletes_their_account_and_keeps_their_name_in_the_log
     assert_eq!(s(&joined, "first_name"), "Riley");
     assert_ne!(joined["id"], member["id"]);
 }
+
+#[test]
+fn a_feature_emails_an_active_member_under_a_kind_of_its_own() {
+    common::install(&[], &[]);
+    use dispatch_core::server::mail::templates::Message;
+    let (_root, db) = seeded();
+    let member = db
+        .platform
+        .one(
+            "SELECT id FROM users WHERE email='member@dispatch.test'",
+            [],
+        )
+        .unwrap()
+        .unwrap();
+    let member = s(&member, "id");
+    let mail = Message {
+        subject: "Link a Google account".into(),
+        text: "Open Documents.".into(),
+        html: "<p>Open Documents.</p>".into(),
+    };
+    // A kind names the feature, then what it sends.
+    for kind in [
+        "documents",
+        "Documents.link",
+        "documents.",
+        ".link",
+        "documents.link-it",
+    ] {
+        let refused = db.email_member(member, kind, &mail).unwrap_err();
+        assert_eq!(refused.code, "invalid_mail_kind", "{kind}");
+    }
+    db.email_member(member, "documents.google_account", &mail)
+        .unwrap();
+    let queued = db
+        .platform
+        .one(
+            "SELECT user_id FROM outbox WHERE kind='documents.google_account'",
+            [],
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(s(&queued, "user_id"), member);
+    db.platform
+        .exec("UPDATE users SET status='disabled' WHERE id=?", [member])
+        .unwrap();
+    let refused = db
+        .email_member(member, "documents.google_account", &mail)
+        .unwrap_err();
+    assert_eq!(refused.code, "user_not_found");
+}

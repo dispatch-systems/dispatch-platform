@@ -4,6 +4,8 @@ import type { GoogleSignIn } from './generated/GoogleSignIn.js';
 import type { DocumentsFolder } from './generated/DocumentsFolder.js';
 import type { DocumentsItem } from './generated/DocumentsItem.js';
 import type { NewKind } from './generated/NewKind.js';
+import type { DocumentsTeam } from './generated/DocumentsTeam.js';
+import type { MySharing } from './generated/MySharing.js';
 
 export type { DocumentsOverview } from './generated/DocumentsOverview.js';
 export type { DocumentsConnection } from './generated/DocumentsConnection.js';
@@ -11,6 +13,9 @@ export type { DocumentsFolder } from './generated/DocumentsFolder.js';
 export type { DocumentsItem } from './generated/DocumentsItem.js';
 export type { ItemKind } from './generated/ItemKind.js';
 export type { NewKind } from './generated/NewKind.js';
+export type { DocumentsTeam } from './generated/DocumentsTeam.js';
+export type { TeamPerson } from './generated/TeamPerson.js';
+export type { MySharing } from './generated/MySharing.js';
 
 // Documents's endpoints, as its screens call them.
 
@@ -34,6 +39,9 @@ const call = wordedApi({
   documents_storage_full:
     'The Google account that holds Documents is out of storage. Free up space in it, or add storage with Google One.',
   documents_too_many_files: 'Documents holds more files than Dispatch can list at once.',
+  documents_person_not_found:
+    'They have a Google account now, or left your team. Refresh the list.',
+  documents_share_not_found: 'That share is gone already. Refresh the list.',
 });
 
 /** The DSP's Google connection, and whether it can make one. */
@@ -70,3 +78,21 @@ export const renameItem = (id: string, name: string) =>
 /** Moves a file or folder, with whatever it holds, to the Google account's trash. */
 export const trashItem = (id: string) =>
   call<unknown>(`/api/dsp/documents/items/${encodeURIComponent(id)}/trash`, {});
+
+/** Who on the team edits in Google, who can't yet, and how full the account is. */
+export const documentsTeamUrl = '/api/dsp/documents/team';
+export const useDocumentsTeam = () =>
+  useData<DocumentsTeam>(documentsTeamUrl, 0, undefined, undefined, false, (signal) =>
+    call<DocumentsTeam>(documentsTeamUrl, undefined, signal),
+  );
+/** Emails a member again how to link a Google account. */
+export const emailAgain = (user: string) =>
+  call<DocumentsTeam>('/api/dsp/documents/team/email', { user });
+/** Takes back a share someone made in Google Drive for someone not on the team. */
+export const removeShare = (share: string) =>
+  call<DocumentsTeam>('/api/dsp/documents/team/remove', { share });
+/** Starts the sign-in that links the member's own Google account: where the browser goes. */
+export const linkGoogle = () => call<GoogleSignIn>('/api/dsp/documents/link', {});
+/** Finishes it, once Google sent the browser back. */
+export const finishLink = (state: string, code: string) =>
+  call<MySharing | null>('/api/dsp/documents/link/finish', { state, code });

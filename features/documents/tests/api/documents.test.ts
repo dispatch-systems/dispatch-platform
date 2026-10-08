@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { demo, fixture } from '../../../../core/shell/tests/support/support.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { demo, fixture, until } from '../../../../core/shell/tests/support/support.js';
+import { capturedMail } from '../../../../core/shell/tests/support/mail-support.js';
+
+type Client = Awaited<ReturnType<Awaited<ReturnType<typeof fixture>>['client']>>;
 
 // Fixture mode stands in for Google: its sign-in sends the browser straight back with a
 // code naming the account, `fixture:<email>`.
@@ -76,7 +81,7 @@ test('a role given Documents sees it, and only those who manage it connect Googl
 });
 
 /** Connects the DSP open in `client` to fixture mode's Google account. */
-async function connect(client: Awaited<ReturnType<Awaited<ReturnType<typeof fixture>>['client']>>) {
+async function connect(client: Client) {
   const { state, code } = signIn((await client.post('/api/dsp/documents/connect')).value.url);
   const finished = await client.post('/api/dsp/documents/connect/finish', { state, code });
   assert.equal(finished.status, 200, finished.body);
@@ -161,5 +166,194 @@ test('a team makes, finds, renames and trashes files, and never reaches another 
       (item: { name: string }) => item.name,
     ),
     ['Fuel cards'],
+  );
+});
+
+type Person = { name: string; email: string; state: string; emailedAt: string | null };
+
+/** Gives or takes Use Documents from the Member role of the DSP `dsp`, open in `owner`. */
+async function useDocuments(owner: Client, dsp: string, on: boolean) {
+  const roles: { id: string; name: string; permissions: string[] }[] = (
+    await owner.get('/api/dsp/roles')
+  ).value;
+  const role = roles.find((each) => each.name === 'Member')!;
+  const permissions = role.permissions.filter((p) => p !== 'documents.use');
+  const saved = await owner.post(`/api/dsp/roles/${role.id}`, {
+    name: role.name,
+    permissions: on ? [...permissions, 'documents.use'] : permissions,
+  });
+  assert.equal(saved.status, 200, saved.body);
+  // A role change expires the DSP view open on it.
+  await owner.select(dsp);
+}
+
+/** The emails Dispatch sent, as fixture mode captures them. */
+function sent(root: string): { to: string; subject: string; html: string }[] {
+  const folder = path.join(root, 'data/platform/development-mail');
+  if (!fs.existsSync(folder)) return [];
+  return fs
+    .readdirSync(folder)
+    .filter((name) => name.endsWith('.json'))
+    .map((name) => JSON.parse(fs.readFileSync(path.join(folder, name), 'utf8')));
+}
+
+test('the folder is shared with the team, and those without Google are emailed to link it', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await owner.select(north.id);
+  await useDocuments(owner, north.id, true);
+  // Riley joins the team at an address fixture mode's Google knows no account at.
+  const roles: { id: string; name: string }[] = (await owner.get('/api/dsp/roles')).value;
+  const invited = await owner.post('/api/dsp/members/invite', {
+    email: 'riley@example.net',
+    role: roles.find((role) => role.name === 'Member')!.id,
+  });
+  assert.equal(invited.status, 200, invited.body);
+  const token = /token=([A-Za-z0-9_-]{43})/.exec(
+    (await capturedMail(f.root, 'riley@example.net')).text,
+  )![1];
+  const accepted = await f.request(`/api/invitations/${token}/accept`, {
+    firstName: 'Riley',
+    lastName: 'Park',
+    password: demo.password,
+  });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.value));
+  const member = await f.client('riley@example.net');
+  await member.select(north.id);
+  await connect(owner);
+
+  const team = async () => {
+    const answer = await owner.get('/api/dsp/documents/team');
+    assert.equal(answer.status, 200, answer.body);
+    return answer.value as { people: Person[]; outsiders: unknown[]; storageUsed: number };
+  };
+  const people = (await team()).people;
+  assert.deepEqual(
+    people.map((person) => [person.name, person.email, person.state]),
+    [
+      ['Jordan Ellis', 'member@dispatch.test', 'shared'],
+      ['Riley Park', 'riley@example.net', 'needs_account'],
+    ],
+  );
+  assert.equal(people[0]!.emailedAt, null);
+  assert.ok(people[1]!.emailedAt);
+  const link = () =>
+    sent(f.root).filter(
+      (mail) => mail.to === 'riley@example.net' && mail.subject.includes('Link a Google account'),
+    );
+  await until(async () => link().length === 1);
+  assert.equal(
+    link()[0]!.subject,
+    '[Dispatch Dev] Link a Google account to edit Documents at Northline Logistics',
+  );
+  assert.match(link()[0]!.html, />Open Documents<\/a>/);
+  // Opening the team again shares nothing new, and emails no one twice.
+  await team();
+  assert.equal(link().length, 1);
+  assert.equal((await owner.read('/api/dsp/documents')).editors, 1);
+
+  // Those who manage Documents can email again; members see only their own sharing.
+  const again = await owner.post('/api/dsp/documents/team/email', {
+    user: member.session.user.id,
+  });
+  assert.equal(again.status, 200, again.body);
+  await until(async () => link().length === 2);
+  // Only someone waiting on a Google account is emailed.
+  assert.equal(
+    (await owner.post('/api/dsp/documents/team/email', { user: owner.session.user.id })).value
+      .error,
+    'documents_person_not_found',
+  );
+  assert.equal((await member.get('/api/dsp/documents/team')).status, 403);
+  assert.equal(
+    (await member.post('/api/dsp/documents/team/email', { user: member.session.user.id })).status,
+    403,
+  );
+  assert.equal((await member.post('/api/dsp/documents/team/remove', { share: 'any' })).status, 403);
+
+  // The member links a Google account, and the folder is shared with it.
+  const mine = (await member.read('/api/dsp/documents')).me;
+  assert.deepEqual(mine, { state: 'needs_account', email: 'riley@example.net', linked: false });
+  const started = await member.post('/api/dsp/documents/link');
+  assert.equal(started.status, 200, started.body);
+  const { state, code } = signIn(started.value.url);
+  assert.match(state, /\.link\./);
+  // A link sign-in can't connect the DSP, nor a connect sign-in link an account.
+  assert.equal(
+    (await owner.post('/api/dsp/documents/connect/finish', { state, code })).value.error,
+    'documents_connect_expired',
+  );
+  const connecting = signIn((await owner.post('/api/dsp/documents/connect')).value.url);
+  assert.equal(
+    (await member.post('/api/dsp/documents/link/finish', connecting)).value.error,
+    'documents_connect_expired',
+  );
+  const linked = await member.post('/api/dsp/documents/link/finish', { state, code });
+  assert.equal(linked.status, 200, linked.body);
+  assert.deepEqual(linked.value, {
+    state: 'shared',
+    email: 'teammate@example.com',
+    linked: true,
+  });
+  assert.deepEqual(
+    (await team()).people.map((person) => [person.name, person.email, person.state]),
+    [
+      ['Jordan Ellis', 'member@dispatch.test', 'shared'],
+      ['Riley Park', 'teammate@example.com', 'shared'],
+    ],
+  );
+  assert.equal((await owner.read('/api/dsp/documents')).editors, 2);
+  const events = (await owner.get('/api/platform/audit')).value;
+  assert.ok(JSON.stringify(events).includes('documents.linked'));
+});
+
+test('members who stop using Documents lose the folder, and others shared in Google are listed', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const member = await f.client(demo.member);
+  const north = member.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await owner.select(north.id);
+  await useDocuments(owner, north.id, true);
+  await connect(owner);
+  const team = async () =>
+    (await owner.get('/api/dsp/documents/team')).value as {
+      people: Person[];
+      outsiders: { shareId: string; email: string }[];
+    };
+  assert.deepEqual(
+    (await team()).people.map((person) => [person.email, person.state]),
+    [['member@dispatch.test', 'shared']],
+  );
+
+  // Their share goes with the permission.
+  await useDocuments(owner, north.id, false);
+  const after = await team();
+  assert.deepEqual(after.people, []);
+  assert.deepEqual(after.outsiders, []);
+
+  // A share Dispatch didn't make, as someone sharing the folder in Google Drive leaves.
+  await useDocuments(owner, north.id, true);
+  await team();
+  f.database(`dsps/${north.id}/data/dispatch.sqlite`, (db) =>
+    db.prepare("DELETE FROM documents_people WHERE shared_email='member@dispatch.test'").run(),
+  );
+  await useDocuments(owner, north.id, false);
+  const outsiders = (await team()).outsiders;
+  assert.deepEqual(
+    outsiders.map((outsider) => outsider.email),
+    ['member@dispatch.test'],
+  );
+  const removed = await owner.post('/api/dsp/documents/team/remove', {
+    share: outsiders[0]!.shareId,
+  });
+  assert.equal(removed.status, 200, removed.body);
+  assert.deepEqual(removed.value.outsiders, []);
+  assert.equal(
+    (await owner.post('/api/dsp/documents/team/remove', { share: outsiders[0]!.shareId })).value
+      .error,
+    'documents_share_not_found',
   );
 });
