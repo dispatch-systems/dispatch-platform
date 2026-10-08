@@ -50,8 +50,8 @@
     [
       "manager",
       "Manager",
-      ["uniforms.view", "uniforms.adjust", "timecard.view", "collections.run", "documents.use"]
+      ["uniforms.view", "uniforms.adjust", "timecard.view", "collections.run"]
     ],
-    ["member", "Member", ["uniforms.view", "timecard.view", "documents.use"]]
+    ["member", "Member", ["uniforms.view", "timecard.view"]]
   ]
 }

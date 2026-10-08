@@ -10,11 +10,7 @@ pub use api::types::{
 
 use dispatch_core::{
     db::{Kind, Migration, Migrations, migrations::Apply::Sql},
-    manifest::{
-        Audit,
-        DefaultRole::{Manager, Member},
-        Feature, Switch, feature, perm,
-    },
+    manifest::{Audit, Feature, Switch, feature, perm},
     tenancy::api::audit::AuditArea::Connections,
 };
 
@@ -25,7 +21,7 @@ pub const FEATURE: Feature = Feature {
         requires: &[],
     }),
     permissions: &[
-        perm("documents.use", "Use Documents", 110).defaults(&[Manager, Member]),
+        perm("documents.use", "Use Documents", 110),
         perm("documents.manage", "Manage Documents", 111).implies(&["documents.use"]),
     ],
     routes: api::routes::routes,

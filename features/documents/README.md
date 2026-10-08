@@ -5,8 +5,9 @@ Workspace account or anyone's own Google account. Dispatch makes one main folder
 works only with what it makes or is given (`drive.file`), so Google asks for no review.
 
 - **Switch:** `documents`, off for every DSP until the platform owner switches it on.
-- **Permissions:** `documents.use`, which every default role holds, and `documents.manage`,
-  owners only, to connect and disconnect Google.
+- **Permissions:** `documents.use`, to see and work in the DSP's Documents, and
+  `documents.manage`, which includes it, to connect and disconnect Google. Like every
+  permission, both start off for every role; the DSP's owner turns them on.
 - **API:** `GET /api/dsp/documents` behind `documents.use`; `POST /api/dsp/documents/connect`,
   `…/connect/finish` and `…/disconnect` behind `documents.manage`.
 - **Google sign-in:** the platform's Google client, which this feature reads from the server's

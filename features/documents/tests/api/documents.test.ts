@@ -51,11 +51,23 @@ test('an owner connects Google, reconnects only the same account, and disconnect
   assert.equal(disconnected.value.connection, null);
 });
 
-test('everyone on the team sees Documents, and only those who manage it connect Google', async (t) => {
+test('a role given Documents sees it, and only those who manage it connect Google', async (t) => {
   const f = await fixture();
   t.after(f.close);
+  const owner = await f.client();
   const member = await f.client(demo.member);
   const north = member.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await owner.select(north.id);
+  // Every permission starts off, so the owner turns Documents on for the member's role.
+  const roles: { id: string; name: string; permissions: string[] }[] = (
+    await owner.get('/api/dsp/roles')
+  ).value;
+  const role = roles.find((each) => each.name === 'Member')!;
+  const saved = await owner.post(`/api/dsp/roles/${role.id}`, {
+    name: role.name,
+    permissions: [...role.permissions, 'documents.use'],
+  });
+  assert.equal(saved.status, 200, saved.body);
   await member.select(north.id);
   const overview = await member.read('/api/dsp/documents');
   assert.equal(overview.connection, null);
