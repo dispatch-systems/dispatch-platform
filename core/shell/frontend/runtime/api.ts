@@ -85,6 +85,21 @@ const recoveryCodeResponses = new Set([
 export function errorLabel(code: string): string | undefined {
   return labels[code] ?? errorLabelOf(code);
 }
+/**
+ * `api`, with the failures `errors` names worded as it words them: for an owner whose error codes
+ * only its own screens raise, so their wording loads with those screens rather than with the
+ * manifest every page loads.
+ */
+export const wordedApi =
+  (errors: Readonly<Record<string, string>>) =>
+  async <T>(...call: Parameters<typeof api>) => {
+    try {
+      return await api<T>(...call);
+    } catch (error) {
+      const worded = error instanceof ApiError && errors[error.code];
+      throw worded ? new ApiError(error.code, worded, error.status, error.requestId) : error;
+    }
+  };
 export async function api<T>(
   url: string,
   body?: unknown,
