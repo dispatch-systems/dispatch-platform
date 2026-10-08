@@ -9,8 +9,9 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   owners only, to connect and disconnect Google.
 - **API:** `GET /api/dsp/documents` behind `documents.use`; `POST /api/dsp/documents/connect`,
   `…/connect/finish` and `…/disconnect` behind `documents.manage`.
-- **Google sign-in:** the platform's Google client, `DISPATCH_DEV_GOOGLE_CLIENT_ID` and
-  `…_SECRET` on Dev (`DISPATCH_PRODUCTION_…` on Production), returning to
+- **Google sign-in:** the platform's Google client, which this feature reads from the server's
+  own settings: `DISPATCH_DEV_GOOGLE_CLIENT_ID` and `…_SECRET` on Dev and its previews
+  (`DISPATCH_PRODUCTION_…` on Production). Without both, no DSP can connect Google. It returns to
   `/api/documents/google/return`. That route has no session (its cookie stays on Dispatch's own
   site), so it only passes what Google sent on to the DSP's Documents page, which finishes
   the sign-in as the member who started it. Each sign-in is used once, by its starter, within

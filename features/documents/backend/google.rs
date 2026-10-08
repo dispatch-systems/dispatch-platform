@@ -2,14 +2,14 @@
 //! with that account. Fixture mode answers in-process, so previews and tests never reach Google.
 use dispatch_core::{
     Error, Result,
-    foundation::{
-        config::{Config, GoogleClient},
-        crypto,
-    },
+    foundation::{config::Config, crypto, observability},
 };
 use serde::Deserialize;
 use serde_json::json;
-use std::{sync::LazyLock, time::Duration};
+use std::{
+    sync::{LazyLock, OnceLock},
+    time::Duration,
+};
 
 const AUTHORIZE: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN: &str = "https://oauth2.googleapis.com/token";
@@ -46,25 +46,57 @@ pub struct Granted {
     pub access: String,
 }
 
+/// The platform's Google sign-in client: its ID, and the secret only the server holds.
+pub struct Client {
+    id: String,
+    secret: String,
+}
+static CLIENT: OnceLock<Option<Client>> = OnceLock::new();
+/// This server's Google sign-in client, read once from its own settings, as the platform's
+/// mail settings are: `DISPATCH_DEV_GOOGLE_CLIENT_ID` and `…_SECRET` on Dev and its previews,
+/// `DISPATCH_PRODUCTION_…` on Production. Half of one is none, and is logged.
+fn client(config: &Config) -> Option<&'static Client> {
+    CLIENT
+        .get_or_init(|| {
+            let prefix = if config.environment == "preview" {
+                "DISPATCH_DEV"
+            } else {
+                "DISPATCH_PRODUCTION"
+            };
+            let setting = |name: &str| {
+                std::env::var(format!("{prefix}_{name}"))
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+            };
+            match (setting("GOOGLE_CLIENT_ID"), setting("GOOGLE_CLIENT_SECRET")) {
+                (Some(id), Some(secret)) => Some(Client { id, secret }),
+                (None, None) => None,
+                _ => {
+                    observability::event("error", "documents_google_half_configured", json!({}));
+                    None
+                }
+            }
+        })
+        .as_ref()
+}
+
 /// Real Google, or fixture mode's stand-in.
-pub enum Google<'a> {
-    Live(&'a GoogleClient),
+pub enum Google {
+    Live(&'static Client),
     Fixture,
 }
-impl<'a> Google<'a> {
+impl Google {
     /// The Google this server talks to. Without a sign-in client, there's none to connect.
-    pub fn of(config: &'a Config) -> Result<Self> {
+    pub fn of(config: &Config) -> Result<Self> {
         if config.fixture {
             return Ok(Self::Fixture);
         }
-        config
-            .google
-            .as_ref()
+        client(config)
             .map(Self::Live)
             .ok_or_else(|| Error::new("google_unavailable", 503))
     }
     pub fn available(config: &Config) -> bool {
-        config.fixture || config.google.is_some()
+        Self::of(config).is_ok()
     }
     /// Where the browser goes to sign in. `hint` picks the account when reconnecting.
     pub fn sign_in_url(
