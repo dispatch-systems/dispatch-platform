@@ -3,7 +3,7 @@
 //! outside the database and check again before they write.
 use crate::{
     api::types::NewKind,
-    backend::{connection, files, google::RETURN_PATH, team},
+    backend::{connection, files, google::RETURN_PATH, picker, team},
 };
 use axum::{
     extract::Request,
@@ -37,6 +37,7 @@ pub fn routes() -> Vec<Route> {
         async_post("/api/dsp/documents/new", USE, create),
         upload("/api/dsp/documents/upload", USE, UPLOAD_LIMIT, upload_file),
         async_get("/api/dsp/documents/items/{id}/download", USE, download),
+        async_post("/api/dsp/documents/add", MANAGE, add_files),
         async_post("/api/dsp/documents/items/{id}/rename", USE, rename),
         async_post("/api/dsp/documents/items/{id}/trash", USE, trash),
         write("/api/dsp/documents/link", USE, link),
@@ -46,6 +47,9 @@ pub fn routes() -> Vec<Route> {
         async_post("/api/dsp/documents/team/remove", MANAGE, remove_share),
         protocol(Method::GET, RETURN_PATH, |state, request| {
             Box::pin(returned(state, request))
+        }),
+        protocol(Method::GET, picker::PICKER_PATH, |_, _| {
+            Box::pin(async { picker::page() })
         }),
     ]
 }
@@ -155,6 +159,25 @@ async fn upload_file(
     let name = file_name(&input.query)?;
     let kind = file_type(&input.query)?;
     Reply::of(&files::upload(&state, c, access, folder, name, kind, upload).await?)
+}
+/// The most files one pick adds.
+const PICKED: usize = 50;
+async fn add_files(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &["files", "folder"])?;
+    let folder = match &input.body["folder"] {
+        serde_json::Value::Null => None,
+        _ => Some(file_id(v::text(&input.body, "folder", 1, 128)?)?),
+    };
+    let files = input.body["files"]
+        .as_array()
+        .filter(|files| (1..=PICKED).contains(&files.len()))
+        .ok_or_else(|| dispatch_core::Error::new("invalid_input", 400))?
+        .iter()
+        .map(|file| file_id(file.as_str().unwrap_or("")))
+        .collect::<Result<Vec<_>>>()?;
+    Reply::of(&files::add(&state, c, access, files, folder).await?)
 }
 async fn download(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();

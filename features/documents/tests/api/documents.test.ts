@@ -472,3 +472,102 @@ test('a team uploads files into its folders, and downloads them and Google’s o
   );
   assert.equal((await (await download(file.id)).json()).error, 'documents_item_not_found');
 });
+
+test('those who manage Documents add files made directly in Drive, picked as its account', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const member = await f.client(demo.member);
+  const north = member.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await owner.select(north.id);
+  await useDocuments(owner, north.id, true);
+  await member.select(north.id);
+  await connect(owner);
+  type Picked = { id: string; name: string; kind: string };
+  const setup = async () => (await owner.read('/api/dsp/documents')).picker;
+  // Fixture mode has no picker of Google's: it names what its Drive holds out of reach.
+  const picker = await setup();
+  assert.equal(picker.account, 'documents@example.com');
+  assert.equal(picker.google, null);
+  const made = (name: string) => picker.madeInDrive.find((file: Picked) => file.name === name)!;
+  assert.deepEqual(picker.madeInDrive.map((file: Picked) => [file.name, file.kind]).sort(), [
+    ['Fuel receipts.pdf', 'pdf'],
+    ['Route map 2025.png', 'image'],
+    ['Weekly safety huddle', 'doc'],
+  ]);
+  const top = async () =>
+    (await owner.read('/api/dsp/documents/folder')).items.map(
+      (item: { name: string }) => item.name,
+    );
+  assert.deepEqual(await top(), []);
+
+  // One inside the folder only becomes reachable; one elsewhere in the Drive moves in.
+  const fleet = (
+    await owner.post('/api/dsp/documents/new', { folder: null, kind: 'folder', name: 'Fleet' })
+  ).value;
+  const added = await owner.post('/api/dsp/documents/add', {
+    files: [made('Fuel receipts.pdf').id, made('Route map 2025.png').id],
+    folder: fleet.id,
+  });
+  assert.equal(added.status, 200, added.body);
+  assert.deepEqual(
+    added.value.map((item: { name: string; addedBy: string }) => [item.name, item.addedBy]),
+    [
+      ['Fuel receipts.pdf', 'Platform support'],
+      ['Route map 2025.png', 'Platform support'],
+    ],
+  );
+  assert.deepEqual(await top(), ['Fleet', 'Fuel receipts.pdf']);
+  assert.deepEqual(
+    (await owner.read(`/api/dsp/documents/folder?id=${fleet.id}`)).items.map(
+      (item: { name: string }) => item.name,
+    ),
+    ['Route map 2025.png'],
+  );
+  assert.deepEqual(
+    (await setup()).madeInDrive.map((file: Picked) => file.name),
+    ['Weekly safety huddle'],
+  );
+  // A file the account wasn't given was picked as another account.
+  assert.equal(
+    (await owner.post('/api/dsp/documents/add', { files: ['someone-elses-file'], folder: null }))
+      .value.error,
+    'documents_picked_elsewhere',
+  );
+  assert.equal(
+    (await owner.post('/api/dsp/documents/add', { files: [], folder: null })).value.error,
+    'invalid_input',
+  );
+
+  // Members who don't manage Documents don't add from Drive.
+  assert.equal((await member.read('/api/dsp/documents')).picker, null);
+  assert.equal(
+    (
+      await member.post('/api/dsp/documents/add', {
+        files: [made('Weekly safety huddle').id],
+        folder: null,
+      })
+    ).status,
+    403,
+  );
+});
+
+test("Google's picker runs in a window of its own, and the dashboard loads none of Google", async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const window = await f.raw('/api/documents/google/picker');
+  assert.equal(window.status, 200);
+  assert.match(window.headers.get('content-type')!, /^text\/html/);
+  const policy = window.headers.get('content-security-policy')!;
+  assert.match(
+    policy,
+    /script-src 'nonce-[\w-]+' https:\/\/accounts\.google\.com https:\/\/apis\.google\.com;/,
+  );
+  assert.match(policy, /frame-ancestors 'none'/);
+  assert.equal(window.headers.get('cross-origin-opener-policy'), 'same-origin-allow-popups');
+  const nonce = /'nonce-([\w-]+)'/.exec(policy)![1];
+  assert.ok((await window.text()).includes(`<script nonce="${nonce}">`));
+  const dashboard = await f.raw('/');
+  assert.doesNotMatch(dashboard.headers.get('content-security-policy')!, /google/);
+  assert.equal(dashboard.headers.get('cross-origin-opener-policy'), 'same-origin');
+});

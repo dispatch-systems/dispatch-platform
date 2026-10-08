@@ -5,6 +5,7 @@ pub(crate) mod drive;
 pub(crate) mod files;
 pub(crate) mod google;
 pub(crate) mod maintenance;
+pub(crate) mod picker;
 pub(crate) mod storage;
 pub(crate) mod team;
 pub(crate) mod tree;

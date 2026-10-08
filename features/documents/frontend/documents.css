@@ -1028,3 +1028,20 @@
     flex-wrap: nowrap;
   }
 }
+/* Adding files made directly in Drive. */
+.documents-new .account-popover .documents-from-drive {
+  align-items: flex-start;
+}
+.documents-from-drive small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.documents-picked {
+  grid-template-columns: 1fr;
+}
+.documents-picked .documents-tile {
+  width: 24px;
+  height: 24px;
+}

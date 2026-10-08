@@ -109,7 +109,6 @@ pub async fn pipeline(
         ("x-content-type-options", "nosniff"),
         ("referrer-policy", "same-origin"),
         ("x-frame-options", "DENY"),
-        ("cross-origin-opener-policy", "same-origin"),
         ("cross-origin-resource-policy", "same-origin"),
         (
             "permissions-policy",
@@ -125,6 +124,11 @@ pub async fn pipeline(
     headers
         .entry(header::CACHE_CONTROL)
         .or_insert("no-store".parse().unwrap());
+    // A page that runs an outside service's scripts, as a window of its own, sets its own
+    // rules for them; every other response gets the dashboard's.
+    headers
+        .entry("cross-origin-opener-policy")
+        .or_insert("same-origin".parse().unwrap());
     let development = state.config.development;
     let csp = format!(
         "default-src 'self'; script-src 'self'{}; style-src 'self' 'unsafe-inline'; \
@@ -133,7 +137,9 @@ pub async fn pipeline(
         if development { " 'unsafe-inline'" } else { "" },
         if development { " ws:" } else { "" }
     );
-    headers.insert("content-security-policy", csp.parse().unwrap());
+    headers
+        .entry("content-security-policy")
+        .or_insert(csp.parse().unwrap());
     response
 }
 

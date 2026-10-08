@@ -255,6 +255,72 @@ pub async fn upload(
     .item(&made, false))
 }
 
+/// Adds the files `ids`, picked with Google's picker, to the folder `parent`, or the main one.
+/// One already inside Documents only becomes reachable; one elsewhere in the account's Drive
+/// moves in.
+pub async fn add(
+    state: &Arc<State>,
+    c: Context,
+    access: Dsp,
+    ids: Vec<String>,
+    parent: Option<String>,
+) -> Result<Vec<DocumentsItem>> {
+    let dsp = c.dsp.id.clone();
+    let (_, tree) = tree(state, &dsp).await?;
+    let parent = parent.unwrap_or_else(|| tree.root().to_owned());
+    ensure(tree.is_folder(&parent), "documents_item_not_found", 404)?;
+    let drive = open(state, &dsp, false).await?;
+    drive.google.grant(&drive.access, &ids)?;
+    let mut added = Vec::new();
+    for id in &ids {
+        // Picked as another Google account, the file was given to that account instead.
+        let item = match drive.google.get(&drive.access, id).await {
+            Err(error) if error.code == "documents_item_not_found" => {
+                return Err(Error::new("documents_picked_elsewhere", 409));
+            }
+            found => found?,
+        };
+        ensure(!item.folder(), "invalid_input", 400)?;
+        let inside = item.parents.iter().any(|folder| tree.is_folder(folder));
+        added.push(if inside {
+            item
+        } else {
+            drive
+                .google
+                .move_into(&drive.access, &item, &parent)
+                .await?
+        });
+    }
+    let named: Vec<(String, String)> = added
+        .iter()
+        .map(|item| (item.id.clone(), item.name.clone()))
+        .collect();
+    let at = dsp.clone();
+    state
+        .run(move |db| {
+            let c = access.revalidate(db, &c)?;
+            for (id, name) in &named {
+                db.record_documents_change(&at, id, c.actor())?;
+                c.audit(db, "documents.added", name)?;
+            }
+            Ok(())
+        })
+        .await?;
+    let (connection, tree) = self::tree(state, &dsp).await?;
+    let ids: Vec<String> = added.iter().map(|item| item.id.clone()).collect();
+    let (records, names) = state.read(move |db| known(db, &dsp, &ids)).await?;
+    let described = Described {
+        tree: &tree,
+        records: &records,
+        names: &names,
+        account: &connection.account.email,
+    };
+    Ok(added
+        .iter()
+        .map(|item| described.item(item, false))
+        .collect())
+}
+
 /// The file `id`, to save, as Google sends it.
 pub async fn download(state: &Arc<State>, c: &Context, id: String) -> Result<Download> {
     let (_, tree) = tree(state, &c.dsp.id).await?;
@@ -385,7 +451,7 @@ impl Described<'_> {
     }
 }
 
-fn kind(mime: &str) -> ItemKind {
+pub(crate) fn kind(mime: &str) -> ItemKind {
     match mime {
         FOLDER => ItemKind::Folder,
         drive::DOC => ItemKind::Doc,

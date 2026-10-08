@@ -1,5 +1,6 @@
 //! Google, as Documents talks to it: signing a DSP's account in, and the Drive calls it makes
 //! with that account. Fixture mode answers in-process, so previews and tests never reach Google.
+use crate::api::types::PickerKeys;
 use dispatch_core::{
     Error, Result,
     foundation::{config::Config, crypto, observability},
@@ -55,15 +56,18 @@ pub struct Access {
     pub lasts: Duration,
 }
 
-/// The platform's Google sign-in client: its ID, and the secret only the server holds.
+/// The platform's Google sign-in client: its ID, and the secret only the server holds; with
+/// the keys for Google's file picker, when the server has them.
 pub struct Client {
     id: String,
     secret: String,
+    picker: Option<(String, String)>,
 }
 static CLIENT: OnceLock<Option<Client>> = OnceLock::new();
 /// This server's Google sign-in client, read once from its own settings, as the platform's
 /// mail settings are: `DISPATCH_DEV_GOOGLE_CLIENT_ID` and `…_SECRET` on Dev and its previews,
-/// `DISPATCH_PRODUCTION_…` on Production. Half of one is none, and is logged.
+/// `DISPATCH_PRODUCTION_…` on Production; and its file picker's `…_GOOGLE_API_KEY` and
+/// `…_GOOGLE_APP_ID`, the Google project's number. Half of either is none, and is logged.
 fn client(config: &Config) -> Option<&'static Client> {
     CLIENT
         .get_or_init(|| {
@@ -77,8 +81,16 @@ fn client(config: &Config) -> Option<&'static Client> {
                     .ok()
                     .filter(|value| !value.trim().is_empty())
             };
+            let picker = match (setting("GOOGLE_API_KEY"), setting("GOOGLE_APP_ID")) {
+                (Some(key), Some(app)) => Some((key, app)),
+                (None, None) => None,
+                _ => {
+                    observability::event("error", "documents_picker_half_configured", json!({}));
+                    None
+                }
+            };
             match (setting("GOOGLE_CLIENT_ID"), setting("GOOGLE_CLIENT_SECRET")) {
-                (Some(id), Some(secret)) => Some(Client { id, secret }),
+                (Some(id), Some(secret)) => Some(Client { id, secret, picker }),
                 (None, None) => None,
                 _ => {
                     observability::event("error", "documents_google_half_configured", json!({}));
@@ -106,6 +118,18 @@ impl Google {
     }
     pub fn available(config: &Config) -> bool {
         Self::of(config).is_ok()
+    }
+    /// The keys for Google's file picker: none in fixture mode, which has no picker of
+    /// Google's, nor on a server without them.
+    pub fn picker_keys(&self) -> Option<PickerKeys> {
+        match self {
+            Self::Fixture => None,
+            Self::Live(client) => client.picker.as_ref().map(|(key, app)| PickerKeys {
+                client_id: client.id.clone(),
+                api_key: key.clone(),
+                app_id: app.clone(),
+            }),
+        }
     }
     /// Where the browser goes to sign in. `hint` picks the account when reconnecting.
     pub fn sign_in_url(
@@ -290,9 +314,14 @@ impl Google {
             lasts: Duration::from_secs(tokens.expires_in.unwrap_or(3600)),
         })
     }
-    /// Makes a folder at the top of the account's Drive and answers its ID.
+    /// Makes a folder at the top of the account's Drive and answers its ID. Fixture mode's
+    /// holds two files someone made directly in Drive, as a team's does in time.
     pub async fn create_folder(&self, access: &str, name: &str) -> Result<String> {
-        Ok(self.create(access, name, FOLDER, None).await?.id)
+        let id = self.create(access, name, FOLDER, None).await?.id;
+        if let Self::Fixture = self {
+            super::drive::fixture_made_in_drive(access, &id)?;
+        }
+        Ok(id)
     }
     /// Whether the folder is still there and out of the trash.
     pub async fn folder_usable(&self, access: &str, id: &str) -> Result<bool> {
