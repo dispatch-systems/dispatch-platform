@@ -14,6 +14,7 @@ use dispatch_core::manifest::{Audit, Feature, Switch, feature, perm};
 use dispatch_core::tenancy::api::audit::AuditArea::Collections;
 
 pub const FEATURE: Feature = Feature {
+    place: 80,
     switch: Some(Switch {
         id: "daily_performance",
         label: "Daily Performance",

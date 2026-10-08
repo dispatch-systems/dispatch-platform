@@ -18,6 +18,7 @@ use dispatch_core::{
 };
 
 pub const FEATURE: Feature = Feature {
+    place: 50,
     switch: Some(Switch {
         id: "dvic",
         label: "DVIC",

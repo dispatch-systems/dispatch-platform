@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { holds } from './support/holds.js';
 import { declared, inTest } from './support/manifests.js';
-import { isTestFile, ownerOf } from './support/repo.js';
+import { isTestFile, ownerOf, read, root } from './support/repo.js';
 import { lexFile, rust } from './support/rust.js';
 import { imports, scriptFiles } from './support/typescript.js';
+import { wiring } from '../../../tooling/scaffold/wire.js';
 
 // Each owner's TypeScript reaches only itself, core, and for a feature the features and
 // collectors its manifest declares; core reaches only core. Only the app imports features
@@ -93,6 +94,14 @@ test('only the app lists the features and collectors', () => {
       .filter(([file, found]) => listsOthers(file, found))
       .map(([file, { all }]) => `${file} lists ${[...all].sort().join(', ')}`),
   );
+});
+
+// Adding a feature is adding its folder: the app's list of them is written from features/.
+test('the app lists every feature in features/, as `npm run contracts:generate` writes it', () => {
+  const stale = [...wiring(root)]
+    .filter(([file, text]) => read(file) !== text)
+    .map(([file]) => file);
+  assert.deepEqual(stale, [], `${stale.join(' and ')} need \`npm run contracts:generate\``);
 });
 
 test("a feature's or collector's tests list only itself and what it may use", () => {

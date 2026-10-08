@@ -21,6 +21,7 @@ use dispatch_core::{
 };
 
 pub const FEATURE: Feature = Feature {
+    place: 60,
     retired_identifiers: &[
         ("scorecard", "weekly_scorecard"),
         ("scorecard.view", "weekly_scorecard.view"),

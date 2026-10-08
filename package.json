@@ -36,7 +36,7 @@
     "agents:eval": "tsx tooling/agent-evals/eval.ts",
     "agents:signin": "tsx tooling/agent-evals/signin.ts",
     "mail:types": "node services/cloudflare-mail/generate-types.mjs",
-    "contracts:generate": "DISPATCH_UPDATE_CONTRACTS=1 cargo test --locked -p dispatch-backend --lib export::",
+    "contracts:generate": "tsx tooling/scaffold/wire.ts && DISPATCH_UPDATE_CONTRACTS=1 cargo test --locked -p dispatch-backend --lib export::",
     "snapshots:update": "tsx tooling/testing/snapshots.ts",
     "check:privacy": "python3 tooling/security/scan.py",
     "check:exports": "python3 tooling/security/exports.py",

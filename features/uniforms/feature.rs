@@ -21,6 +21,7 @@ use dispatch_core::{
 use dispatch_core::testing;
 
 pub const FEATURE: Feature = Feature {
+    place: 30,
     switch: Some(Switch {
         id: "uniforms",
         label: "Uniform Inventory",

@@ -53,6 +53,7 @@ use dispatch_driver_match as driver_match;
 use dispatch_paycom as paycom;
 
 pub const FEATURE: Feature = Feature {
+    place: 20,
     // Its meal-break comparison joins drivers to employees by Driver Match's codes.
     depends_on: &["driver_match"],
     switch: Some(Switch {
