@@ -122,6 +122,8 @@ export function wiredList(features: Crate[]) {
     `pub const FEATURES: &[&Feature] = &[\n${entries.join('')}];\n\n` +
     "/// Every feature's API types in TypeScript, as each lists them, for the app's export test.\n" +
     '#[cfg(test)]\n' +
+    '// A build with no feature has none to ask, and uses neither.\n' +
+    '#[allow(unused_variables)]\n' +
     'pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {\n' +
     '    #[allow(unused_mut)]\n' +
     '    let mut all = dispatch_core::Typescript::new();\n' +

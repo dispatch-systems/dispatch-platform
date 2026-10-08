@@ -248,12 +248,17 @@ macro_rules! declared {
             fn name(_: &ts_rs::Config) -> String {
                 stringify!($name).to_owned()
             }
+            // With nothing declared, as in a build without features, nothing is one.
             fn inline(_: &ts_rs::Config) -> String {
                 let ids: Vec<_> = $all
                     .iter()
                     .map(|named| format!("{:?}", named.0.id))
                     .collect();
-                ids.join(" | ")
+                if ids.is_empty() {
+                    "never".to_owned()
+                } else {
+                    ids.join(" | ")
+                }
             }
             fn decl(cfg: &ts_rs::Config) -> String {
                 format!("type {} = {};", stringify!($name), Self::inline(cfg))

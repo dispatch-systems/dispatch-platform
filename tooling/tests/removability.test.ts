@@ -53,6 +53,19 @@ test('the build keeps every other feature, and each step runs with that set', ()
   );
 });
 
+test('leaving every feature out builds core and the collectors alone', () => {
+  const features = map({ uniforms: [], timecard: ['driver_match'], driver_match: [], home: [] });
+  const removal = plan(features, undefined, '/tmp/bundle');
+  assert.deepEqual(removal.leftOut, ['driver_match', 'home', 'timecard', 'uniforms']);
+  assert.deepEqual(removal.kept, []);
+  assert.equal(removal.aside.length, 4);
+  // With no feature to name, the app builds with none.
+  assert.equal(
+    commandLine(removal.steps[0]!),
+    'cargo build -p dispatch-backend --no-default-features',
+  );
+});
+
 test("the feature map names the app's Cargo features, each with what it declares", () => {
   const features = readFeatures(root);
   const cargo = fs.readFileSync(path.join(root, 'app/backend/Cargo.toml'), 'utf8');
@@ -211,6 +224,9 @@ test('the weekly workflow runs the script once per feature of the map, the same 
     /matrix:\s*\n\s*feature: \$\{\{ fromJSON\(needs\.features\.outputs\.features\) \}\}/,
   );
   assert.match(remove, /npm run check:removability -- --feature "\$FEATURE"/);
+  // And once without any feature: core alone.
+  const every = workflowField(workflow, 'jobs', 'every').body;
+  assert.match(every, /npm run check:removability -- --every$/m);
   const scripts = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).scripts;
   assert.equal(scripts['check:removability'], 'tsx tooling/ci/removability.ts');
 });

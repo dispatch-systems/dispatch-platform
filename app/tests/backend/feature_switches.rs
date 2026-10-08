@@ -38,19 +38,23 @@ fn a_new_dsp_starts_with_only_what_every_dsp_has_and_a_demo_dsp_with_all() {
         .unwrap();
     let dsp = db.new_dsp("New DSP", "UTC", &owner.id, false).unwrap();
     assert_eq!(db.features(&dsp.id).unwrap(), mandatory());
+    #[cfg(all(feature = "home", feature = "team", feature = "settings"))]
     assert!(
         ["home", "team", "settings"]
             .iter()
             .all(|id| mandatory().contains(&(*id).to_owned()))
     );
     // Nobody switches what every DSP has.
-    let refused = db
-        .set_feature(&dsp.id, "home", false, &owner.id)
-        .unwrap_err();
-    assert_eq!(
-        (refused.code.as_str(), refused.status),
-        ("feature_mandatory", 409)
-    );
+    for fixed in mandatory() {
+        let refused = db
+            .set_feature(&dsp.id, &fixed, false, &owner.id)
+            .unwrap_err();
+        assert_eq!(
+            (refused.code.as_str(), refused.status),
+            ("feature_mandatory", 409),
+            "{fixed}"
+        );
+    }
     // Every role but the owner's starts with no permission: the DSP's owner turns them on.
     let roles = db.roles(&dsp.id).unwrap();
     assert_eq!(
