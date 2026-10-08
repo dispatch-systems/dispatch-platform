@@ -18,7 +18,8 @@ use dispatch_core::{
     server::http::{
         input::optional,
         input::{Input, Reply},
-        route::{Dsp, Grant, Member, Route, async_get, async_post, protocol, read, write},
+        route::{Dsp, Grant, Member, Route, async_get, async_post, protocol, read, upload, write},
+        upload::{UPLOAD_LIMIT, Upload},
     },
 };
 use std::sync::Arc;
@@ -34,6 +35,8 @@ pub fn routes() -> Vec<Route> {
         async_post("/api/dsp/documents/disconnect", MANAGE, disconnect),
         async_get("/api/dsp/documents/folder", USE, folder),
         async_post("/api/dsp/documents/new", USE, create),
+        upload("/api/dsp/documents/upload", USE, UPLOAD_LIMIT, upload_file),
+        async_get("/api/dsp/documents/items/{id}/download", USE, download),
         async_post("/api/dsp/documents/items/{id}/rename", USE, rename),
         async_post("/api/dsp/documents/items/{id}/trash", USE, trash),
         write("/api/dsp/documents/link", USE, link),
@@ -114,6 +117,57 @@ async fn create(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     .ok_or_else(|| dispatch_core::Error::new("invalid_input", 400))?;
     let name = file_name(&input.body)?;
     Reply::of(&files::create(&state, c, access, folder, kind, name).await?)
+}
+/// A file's type as the browser named it, or bytes of no type it knows. Never one of
+/// Google's own, which Google would try to make of the bytes.
+fn file_type(query: &serde_json::Value) -> Result<String> {
+    let Some(kind) = optional(query, "type", |q, key| v::text(q, key, 0, 120))? else {
+        return Ok("application/octet-stream".to_owned());
+    };
+    let named = kind.split_once('/').is_some_and(|(kind, sub)| {
+        [kind, sub].iter().all(|part| {
+            !part.is_empty()
+                && part
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"+-.".contains(&b))
+        })
+    });
+    Ok(
+        if named && !kind.starts_with("application/vnd.google-apps.") {
+            kind.to_ascii_lowercase()
+        } else {
+            "application/octet-stream".to_owned()
+        },
+    )
+}
+async fn upload_file(
+    state: Arc<State>,
+    input: Input,
+    access: Dsp,
+    upload: Upload,
+) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.query, &["folder", "name", "type"])?;
+    let folder = optional(&input.query, "folder", |q, key| {
+        file_id(v::text(q, key, 1, 128)?)
+    })?;
+    let name = file_name(&input.query)?;
+    let kind = file_type(&input.query)?;
+    Reply::of(&files::upload(&state, c, access, folder, name, kind, upload).await?)
+}
+async fn download(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.query, &[])?;
+    let id = file_id(input.param("id"))?;
+    let file = files::download(&state, &c, id).await?;
+    Ok(Reply::download(
+        &file.kind,
+        &file.name,
+        file.length,
+        file.body,
+    ))
 }
 async fn rename(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();

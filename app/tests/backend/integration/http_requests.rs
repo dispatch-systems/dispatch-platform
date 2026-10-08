@@ -519,6 +519,10 @@ async fn the_request_pipeline_checks_host_origin_content_type_and_size() {
     server.expect(call, 403, "invalid_origin").await;
     let call = Call::post("/api/auth/login", json!({})).header("content-type", "text/plain");
     server.expect(call, 415, "json_required").await;
+    // A file goes only to a route that takes uploads.
+    let call =
+        Call::post("/api/auth/login", json!({})).header("content-type", "application/octet-stream");
+    server.expect(call, 415, "json_required").await;
     let call = Call::new("POST", "/api/auth/login").raw("{".into());
     server.expect(call, 400, "invalid_input").await;
     // Malformed requests are refused before the path is looked at.

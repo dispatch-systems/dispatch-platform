@@ -1,4 +1,5 @@
-import { useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { ApiError, useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { download, upload } from '../../../core/shell/frontend/runtime/transfer.js';
 import type { DocumentsOverview } from './generated/DocumentsOverview.js';
 import type { GoogleSignIn } from './generated/GoogleSignIn.js';
 import type { DocumentsFolder } from './generated/DocumentsFolder.js';
@@ -20,7 +21,7 @@ export type { MySharing } from './generated/MySharing.js';
 // Documents's endpoints, as its screens call them.
 
 /** What its error codes say. Only its page makes the calls that raise them, so they load with it. */
-const call = wordedApi({
+const wording: Record<string, string> = {
   google_unavailable: "Google isn't set up for Dispatch yet. Ask Dispatch support to finish it.",
   google_unreachable: "Google didn't answer. Try again in a minute.",
   google_sign_in_failed: "Google didn't finish signing in. Try connecting again.",
@@ -42,7 +43,23 @@ const call = wordedApi({
   documents_person_not_found:
     'They have a Google account now, or left your team. Refresh the list.',
   documents_share_not_found: 'That share is gone already. Refresh the list.',
-});
+  upload_too_large: 'Files can be up to 100 MB.',
+  uploads_busy: 'Dispatch is busy with other uploads. Try again in a minute.',
+  upload_incomplete: "The file didn't finish uploading. Try again.",
+  documents_not_downloadable: "Google doesn't let this kind of file be downloaded.",
+  documents_export_too_large:
+    'Google downloads Docs, Sheets and Slides as Office files only up to 10 MB. Open it in Google instead.',
+};
+const call = wordedApi(wording);
+/** A file's move to or from the server, its failure worded as the calls' are. */
+async function moving<T>(work: Promise<T>) {
+  try {
+    return await work;
+  } catch (error) {
+    const worded = error instanceof ApiError && wording[error.code];
+    throw worded ? new ApiError(error.code, worded, error.status, error.requestId) : error;
+  }
+}
 
 /** The DSP's Google connection, and whether it can make one. */
 export const useDocumentsOverview = () => useData<DocumentsOverview>('/api/dsp/documents');
@@ -73,6 +90,25 @@ export const useDocumentsFolder = (folder?: string, query?: string) =>
 /** Makes a folder, Doc, Sheet or Slides in `folder`, or at the top. */
 export const createItem = (folder: string | undefined, kind: NewKind, name: string) =>
   call<DocumentsItem>('/api/dsp/documents/new', { folder: folder ?? null, kind, name });
+/** The most one upload takes: 100 MB. */
+export const UPLOAD_LIMIT = 100 * 1024 * 1024;
+/** Uploads `file` named `name` into `folder`, or the top, telling `progress` how much went. */
+export const uploadFile = (
+  file: File,
+  folder: string | undefined,
+  progress?: (sent: number) => void,
+  signal?: AbortSignal,
+) => {
+  const params = new URLSearchParams({ name: file.name });
+  if (folder) params.set('folder', folder);
+  if (file.type) params.set('type', file.type);
+  return moving(
+    upload<DocumentsItem>(`/api/dsp/documents/upload?${params}`, file, progress, signal),
+  );
+};
+/** Saves the file `id`: Google's own Docs, Sheets and Slides as Word, Excel and PowerPoint. */
+export const downloadItem = (id: string) =>
+  moving(download(`/api/dsp/documents/items/${encodeURIComponent(id)}/download`));
 export const renameItem = (id: string, name: string) =>
   call<DocumentsItem>(`/api/dsp/documents/items/${encodeURIComponent(id)}/rename`, { name });
 /** Moves a file or folder, with whatever it holds, to the Google account's trash. */

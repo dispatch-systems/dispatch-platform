@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 import { demo, fixture, until } from '../../../../core/shell/tests/support/support.js';
 import { capturedMail } from '../../../../core/shell/tests/support/mail-support.js';
@@ -356,4 +357,118 @@ test('members who stop using Documents lose the folder, and others shared in Goo
       .error,
     'documents_share_not_found',
   );
+});
+
+test('a team uploads files into its folders, and downloads them and Google’s own as Office files', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const dsps = owner.session.dsps as { id: string; name: string }[];
+  const north = dsps.find((d) => d.name === 'Northline Logistics')!;
+  const summit = dsps.find((d) => d.name === 'Summit Delivery')!;
+  await owner.select(north.id);
+  await connect(owner);
+  const safety = (
+    await owner.post('/api/dsp/documents/new', {
+      folder: null,
+      kind: 'folder',
+      name: 'Safety',
+    })
+  ).value;
+  const origin = f.env.DISPATCH_ORIGIN!;
+  // The browser sends a file as its own body, its name and type in the address.
+  const send = (path: string, body: BodyInit, headers: Record<string, string> = {}) =>
+    fetch(origin + path, {
+      method: 'POST',
+      headers: {
+        ...owner.headers,
+        origin,
+        'content-type': 'application/octet-stream',
+        ...headers,
+      },
+      body,
+    });
+  const into = (folder: string | null, name: string, type?: string) =>
+    `/api/dsp/documents/upload?${new URLSearchParams({
+      ...(folder ? { folder } : {}),
+      name,
+      ...(type ? { type } : {}),
+    })}`;
+  const pdf = '%PDF-1.4 fixture rescue plan';
+  const uploaded = await send(into(safety.id, 'Rescue plan.pdf', 'application/pdf'), pdf);
+  assert.equal(uploaded.status, 200, await uploaded.clone().text());
+  const file = await uploaded.json();
+  assert.deepEqual(
+    [file.name, file.kind, file.size, file.addedBy],
+    ['Rescue plan.pdf', 'pdf', pdf.length, 'Platform support'],
+  );
+  const inside = (await owner.get(`/api/dsp/documents/folder?id=${safety.id}`)).value.items;
+  assert.deepEqual(
+    inside.map((item: { name: string; size: number | null }) => [item.name, item.size]),
+    [['Rescue plan.pdf', pdf.length]],
+  );
+
+  const download = (id: string) =>
+    fetch(`${origin}/api/dsp/documents/items/${id}/download`, { headers: owner.headers });
+  const saved = await download(file.id);
+  assert.equal(saved.status, 200);
+  assert.equal(saved.headers.get('content-type'), 'application/pdf');
+  assert.match(saved.headers.get('content-disposition')!, /filename="Rescue plan\.pdf"/);
+  assert.equal(await saved.text(), pdf);
+  // Google's own come down as the Office files they export as.
+  const doc = (
+    await owner.post('/api/dsp/documents/new', { folder: null, kind: 'doc', name: 'Plan' })
+  ).value;
+  const exported = await download(doc.id);
+  assert.equal(
+    exported.headers.get('content-type'),
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  );
+  assert.match(exported.headers.get('content-disposition')!, /filename="Plan\.docx"/);
+  assert.equal((await (await download(safety.id)).json()).error, 'documents_item_not_found');
+
+  // A type naming one of Google's own is only bytes, and a name is checked as any is.
+  const typed = await (
+    await send(into(null, 'notes', 'application/vnd.google-apps.document'), 'hi')
+  ).json();
+  assert.equal(typed.kind, 'file');
+  assert.equal((await (await send(into(null, ' '), 'hi')).json()).error, 'documents_name_invalid');
+  // A JSON body is no upload, and one too large is refused before a byte is read.
+  assert.equal(
+    (await (await send(into(null, 'notes'), '{}', { 'content-type': 'application/json' })).json())
+      .error,
+    'upload_required',
+  );
+  const tooLarge = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+    const request = http.request(origin + into(null, 'huge.bin'), {
+      method: 'POST',
+      headers: {
+        ...owner.headers,
+        origin,
+        'content-type': 'application/octet-stream',
+        'content-length': String(101 * 1024 * 1024),
+      },
+    });
+    request.on('response', (response) => {
+      let body = '';
+      response.on('data', (chunk) => (body += chunk));
+      response.on('end', () => {
+        request.destroy();
+        resolve({ status: response.statusCode!, body });
+      });
+    });
+    request.on('error', reject);
+    request.write('a');
+  });
+  assert.equal(tooLarge.status, 413);
+  assert.equal(JSON.parse(tooLarge.body).error, 'upload_too_large');
+
+  // Another DSP connecting the same account reaches none of it.
+  await owner.select(summit.id);
+  await connect(owner);
+  assert.equal(
+    (await (await send(into(safety.id, 'Mine.pdf'), pdf)).json()).error,
+    'documents_item_not_found',
+  );
+  assert.equal((await (await download(file.id)).json()).error, 'documents_item_not_found');
 });

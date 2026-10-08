@@ -11,8 +11,8 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
 - **API:** `GET /api/dsp/documents` behind `documents.use`; `POST /api/dsp/documents/connect`,
   `…/connect/finish` and `…/disconnect` behind `documents.manage`. Behind `documents.use` too:
   `GET /api/dsp/documents/folder` (a folder and what it holds, or with `q`, what a search inside
-  it found), `POST …/new` (a folder, Doc, Sheet or Slides), and `POST …/items/{id}/rename` and
-  `…/trash`. Behind `documents.use` as well, for a member's own Google account:
+  it found), `POST …/new` (a folder, Doc, Sheet or Slides), `POST …/upload` (a file, up to
+  100 MB), `GET …/items/{id}/download`, and `POST …/items/{id}/rename` and `…/trash`. Behind `documents.use` as well, for a member's own Google account:
   `POST /api/dsp/documents/link` and `…/link/finish`. Behind `documents.manage`, the team's
   access: `GET /api/dsp/documents/team`, `POST …/team/email` and `…/team/remove`.
 - **Browsing:** with `drive.file`, Dispatch reaches only the files it made or was given, so it
@@ -27,6 +27,13 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   site), so it only passes what Google sent on to the DSP's Documents page, which finishes
   the sign-in as the member who started it. Each sign-in is used once, by its starter, within
   ten minutes, and its code is bound to a PKCE verifier only the server holds.
+- **Uploads and downloads:** a file streams through Dispatch to Google as it arrives, into
+  the folder open, never held whole. Its type is the browser's, but never one of Google's own,
+  which Google would convert the bytes into. Like what Dispatch makes, its editors can't share
+  it on. A folder uploaded or dropped on the page keeps its folders: Dispatch makes them first.
+  A download streams back as Google sends it: an uploaded file as it was, Google's own Docs,
+  Sheets and Slides as Word, Excel and PowerPoint files (Google exports those up to 10 MB), so
+  someone with no Google account has them too.
 - **Team access:** everyone who holds `documents.use` gets the main folder shared with them
   as an editor, and through it everything inside: at the Google account they linked, or else
   their Dispatch email. Google gives no notification of its own. Google refuses an address

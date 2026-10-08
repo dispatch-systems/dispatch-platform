@@ -203,10 +203,29 @@ fn admit(state: &State, request: &Request) -> Result<()> {
             "invalid_origin",
             403,
         )?;
+        // JSON, or a file for a route that takes uploads, which checks it is one.
         let kind = header(header::CONTENT_TYPE).and_then(|v| v.split(';').next());
-        ensure(kind == Some("application/json"), "json_required", 415)?;
+        ensure(
+            matches!(kind, Some("application/json" | "application/octet-stream")),
+            "json_required",
+            415,
+        )?;
     }
     Ok(())
+}
+/// Refuses a body that isn't JSON: every route's but an upload's.
+pub(super) fn json_only(parts: &Parts) -> Result<()> {
+    let kind = parts
+        .headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(';').next());
+    let reads = [Method::GET, Method::HEAD, Method::OPTIONS];
+    ensure(
+        reads.contains(&parts.method) || kind != Some("application/octet-stream"),
+        "json_required",
+        415,
+    )
 }
 
 /// Parses a request the way every route and the unmatched answer expect it:
@@ -215,6 +234,7 @@ fn admit(state: &State, request: &Request) -> Result<()> {
 pub async fn input(state: &State, request: Request, pattern: &'static str) -> Result<Input> {
     let (parts, body) = request.into_parts();
     let mut input = head(state, &parts, pattern)?;
+    json_only(&parts)?;
     let body = bytes(body).await?;
     if input.method == Method::POST {
         input.body = serde_json::from_slice(&body)?;

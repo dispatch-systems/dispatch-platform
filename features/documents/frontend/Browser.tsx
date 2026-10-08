@@ -1,12 +1,15 @@
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import {
   ChevronRight,
+  Download,
   Ellipsis,
   ExternalLink,
+  FolderUp,
   LayoutGrid,
   List,
   LoaderCircle,
   Plus,
+  Upload,
   Users,
 } from 'lucide-react';
 import type { DspView } from '../../../core/accounts/api/index.js';
@@ -23,6 +26,7 @@ import {
 } from '../../../core/shell/frontend/ui/index.js';
 import {
   createItem,
+  downloadItem,
   renameItem,
   trashItem,
   useDocumentsFolder,
@@ -37,9 +41,11 @@ import { GoogleLogo } from './GoogleLogo.js';
 import { Initials, Thumb, Tile, edited, editedInline, kindLabel, typeOf } from './items.js';
 import { TeamPanel } from './TeamPanel.js';
 import { ReadyDialog } from './ReadyDialog.js';
+import { UploadsPanel, dropped, picked, useUploads } from './Uploads.js';
 
 // The DSP's Documents, once Google is connected: a folder at a time, as a list or a grid,
-// with what Documents makes. A file opens in Google, in a tab of its own.
+// with what Documents makes and what anyone uploads, by picking files or dropping them on
+// the page. A file opens in Google, in a tab of its own, or downloads.
 
 type Filter = 'all' | 'folders' | 'docs' | 'sheets' | 'slides' | 'uploads';
 const FILTERS: [Filter, string][] = [
@@ -130,6 +136,10 @@ export function Browser({
   const [asked, ask] = useState<Asked>();
   const [team, showTeam] = useState(false);
   const [ready, setReady] = useState(connected);
+  const uploads = useUploads(folder, listing.refresh);
+  const files = useRef<HTMLInputElement>(null);
+  const folders = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
   // A listing Google refused may mean the connection broke: the overview says.
   useEffect(() => {
     if (listing.error) overviewChanged();
@@ -172,6 +182,10 @@ export function Browser({
             <ExternalLink size={16} />
             Open in Drive
           </a>
+          <button className="documents-link-button" onClick={() => files.current?.click()}>
+            <Upload size={16} />
+            Upload
+          </button>
           <Popover
             className="row-menu documents-new"
             label="New"
@@ -189,7 +203,44 @@ export function Browser({
                 {label}
               </button>
             ))}
+            <span className="documents-menu-rule" role="separator" />
+            <button onClick={() => files.current?.click()}>
+              <span className="documents-menu-icon">
+                <Upload size={16} />
+              </span>
+              Upload files
+            </button>
+            <button onClick={() => folders.current?.click()}>
+              <span className="documents-menu-icon">
+                <FolderUp size={16} />
+              </span>
+              Upload a folder
+            </button>
           </Popover>
+          <input
+            ref={files}
+            type="file"
+            multiple
+            hidden
+            aria-label="Files to upload"
+            onChange={(event) => {
+              void uploads.start(picked(event.target.files));
+              event.target.value = '';
+            }}
+          />
+          <input
+            ref={(input) => {
+              folders.current = input;
+              if (input) input.webkitdirectory = true;
+            }}
+            type="file"
+            hidden
+            aria-label="Folder to upload"
+            onChange={(event) => {
+              void uploads.start(picked(event.target.files));
+              event.target.value = '';
+            }}
+          />
         </div>
       </div>
       <Linking overview={overview} />
@@ -231,31 +282,57 @@ export function Browser({
           </div>
         </div>
       </div>
-      <DataState data={listing.data} error={listing.error} retry={listing.refresh}>
-        {(at) => {
-          const items = at.items.filter(shown(filter));
-          if (!items.length)
-            return searching ? (
-              <Empty title="Nothing found">
-                No file or folder {top ? 'in Documents' : `in ${at.name}`} has that in its name.
-              </Empty>
-            ) : at.items.length ? (
-              <Empty title={`No ${FILTERS.find(([value]) => value === filter)![1]} here`} />
-            ) : (
-              <Empty title={top ? 'Nothing here yet' : `${at.name} is empty`}>
-                Use New to add a folder, a Google Doc, a Sheet or Slides.
-              </Empty>
-            );
-          const props = { view, items, searching, ask };
-          const folders = items.filter((item) => item.kind === 'folder').length;
-          return (
-            <>
-              {layout === 'list' ? <Table {...props} /> : <Grid {...props} />}
-              <p className="documents-count">{counted(folders, items.length - folders)}</p>
-            </>
-          );
+      <div
+        className={`documents-drop${dragging ? ' dragging' : ''}`}
+        onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes('Files')) return;
+          event.preventDefault();
+          setDragging(true);
         }}
-      </DataState>
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+        }}
+        onDrop={(event) => {
+          if (!event.dataTransfer.types.includes('Files')) return;
+          event.preventDefault();
+          setDragging(false);
+          void dropped(event.dataTransfer).then(uploads.start);
+        }}
+      >
+        {dragging && (
+          <div className="documents-drop-hint" aria-hidden>
+            <Upload size={22} />
+            Drop to upload to {at && at.path.length ? at.name : 'Documents'}
+          </div>
+        )}
+        <DataState data={listing.data} error={listing.error} retry={listing.refresh}>
+          {(at) => {
+            const items = at.items.filter(shown(filter));
+            if (!items.length)
+              return searching ? (
+                <Empty title="Nothing found">
+                  No file or folder {top ? 'in Documents' : `in ${at.name}`} has that in its name.
+                </Empty>
+              ) : at.items.length ? (
+                <Empty title={`No ${FILTERS.find(([value]) => value === filter)![1]} here`} />
+              ) : (
+                <Empty title={top ? 'Nothing here yet' : `${at.name} is empty`}>
+                  Use New to add a folder, a Google Doc, a Sheet or Slides, or drop files here to
+                  upload them.
+                </Empty>
+              );
+            const props = { view, items, searching, ask };
+            const folders = items.filter((item) => item.kind === 'folder').length;
+            return (
+              <>
+                {layout === 'list' ? <Table {...props} /> : <Grid {...props} />}
+                <p className="documents-count">{counted(folders, items.length - folders)}</p>
+              </>
+            );
+          }}
+        </DataState>
+      </div>
+      <UploadsPanel uploads={uploads.uploads} clear={uploads.clear} />
       {asked?.to === 'make' && (
         <Naming
           title={`New ${NEW.find(([kind]) => kind === asked.kind)![1]}`}
@@ -410,6 +487,7 @@ function Opens({
 }
 
 function Actions({ item, ask }: { item: DocumentsItem; ask: (asked: Asked) => void }) {
+  const saving = useAction(() => downloadItem(item.id));
   return (
     <Popover
       className="row-menu"
@@ -423,6 +501,12 @@ function Actions({ item, ask }: { item: DocumentsItem; ask: (asked: Asked) => vo
           Open in Google
         </a>
       )}
+      {item.kind !== 'folder' && (
+        <button disabled={saving.busy} onClick={() => void saving.run()}>
+          <Download size={14} />
+          {downloadLabel(item)}
+        </button>
+      )}
       <button onClick={() => ask({ to: 'rename', item })}>Rename</button>
       <button className="danger" onClick={() => ask({ to: 'trash', item })}>
         Move to trash
@@ -430,6 +514,12 @@ function Actions({ item, ask }: { item: DocumentsItem; ask: (asked: Asked) => vo
     </Popover>
   );
 }
+
+/** What a file downloads as: Google's own as the Office files they export as. */
+const downloadLabel = (item: DocumentsItem) =>
+  ({ doc: 'Download as Word', sheet: 'Download as Excel', slides: 'Download as PowerPoint' })[
+    item.kind as 'doc' | 'sheet' | 'slides'
+  ] ?? 'Download';
 
 function Table({ view, items, searching, ask }: ViewProps) {
   const zone = view.dsp.timezone;

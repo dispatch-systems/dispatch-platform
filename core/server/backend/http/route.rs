@@ -4,6 +4,7 @@
 use super::{
     input::{Input, Reply},
     middleware,
+    upload::{UPLOAD_LIMIT, Upload},
 };
 use crate::{
     Result, State,
@@ -268,6 +269,8 @@ pub enum Work {
     Write,
     /// An async handler that makes its own `State::read` and `State::run` calls.
     Async,
+    /// An async handler, as `Async`, given a file as it arrives rather than a JSON body.
+    Upload,
     /// Answered from memory, before the query and body are even parsed.
     Memory,
 }
@@ -275,9 +278,12 @@ pub enum Work {
 type Blocking = Arc<dyn Fn(&Store, &State, &Input) -> Result<Reply> + Send + Sync>;
 type Pending = Pin<Box<dyn Future<Output = Result<Reply>> + Send>>;
 pub type Served = Pin<Box<dyn Future<Output = Response> + Send>>;
+type Uploaded = Box<dyn Fn(Arc<State>, Input, Upload) -> Pending + Send + Sync>;
 enum Handler {
     Blocking(Blocking),
     Async(Box<dyn Fn(Arc<State>, Input) -> Pending + Send + Sync>),
+    /// Its most bytes, and the handler.
+    Upload(u64, Uploaded),
     Memory(fn(&State) -> Reply),
     Protocol(Agent, fn(Request) -> Served),
     Open(fn(Arc<State>, Request) -> Served),
@@ -391,6 +397,32 @@ where
     F: Future<Output = Result<Reply>> + Send + 'static,
 {
     asynchronous(Method::POST, path, access, handler)
+}
+/// `POST path` taking a file as it arrives, of at most `limit` bytes, which may not exceed
+/// [`UPLOAD_LIMIT`]: `application/octet-stream` of a stated length, its name and the like in
+/// the query. As with [`async_get`], the handler calls `access.authorize(db, &input)` itself,
+/// before it reads the upload.
+pub fn upload<A: Grant, F>(
+    path: &'static str,
+    access: A,
+    limit: u64,
+    handler: impl Fn(Arc<State>, Input, A, Upload) -> F + Send + Sync + 'static,
+) -> Route
+where
+    F: Future<Output = Result<Reply>> + Send + 'static,
+{
+    assert!(limit <= UPLOAD_LIMIT, "{path}: an upload of at most 100 MB");
+    let handler =
+        move |state, input, upload| Box::pin(handler(state, input, access, upload)) as Pending;
+    Route {
+        method: Method::POST,
+        path,
+        access: access.access(),
+        work: Work::Upload,
+        invalidates_schedules: false,
+        logged: false,
+        handler: Handler::Upload(limit, Box::new(handler)),
+    }
 }
 /// `method path` for a protocol an agent speaks whose requests the handler reads itself,
 /// such as MCP. The key is checked and counted first, under the shared lock; the handler
@@ -534,6 +566,12 @@ impl Route {
                 return Ok(handler(request).await);
             }
             Handler::Open(handler) => return Ok(handler(state, request).await),
+            Handler::Upload(limit, handler) => {
+                let (parts, body) = request.into_parts();
+                let input = middleware::head(&state, &parts, self.path)?;
+                let upload = Upload::begin(&parts, body, *limit)?;
+                return Ok(handler(state, input, upload).await?.into_response());
+            }
             Handler::Blocking(handler) => handler.clone(),
         };
         let input = middleware::input(&state, request, self.path).await?;
@@ -556,6 +594,7 @@ impl Route {
     async fn signed(&self, access: Agent, state: Arc<State>, request: Request) -> Result<Request> {
         let (mut parts, body) = request.into_parts();
         let input = middleware::head(&state, &parts, self.path)?;
+        middleware::json_only(&parts)?;
         let body = middleware::bytes(body).await?;
         // The tool an MCP message calls, if any, for the Activity log, before the key is
         // even counted: a call refused for its rate is still that tool's.
