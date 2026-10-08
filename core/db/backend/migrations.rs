@@ -5,7 +5,8 @@
 //! collector's) numbers its own instead, from 1 (`OwnMigrations`): they run after the
 //! database's own list and are recorded under the feature's name, in `owner_migrations`, so
 //! features built at once never take each other's numbers. The shared list keeps every
-//! migration features declared there before, recorded as it always was.
+//! migration features declared there before, recorded as it always was. Both records are
+//! made whenever migrations apply; an older release ignores the second.
 //!
 //! Contract for migration authors: additive only. New tables, new nullable or
 //! defaulted columns, and new indexes. The previous release must keep working on
@@ -259,7 +260,9 @@ pub(super) fn apply(
 ) -> Result<()> {
     db.0.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (id INTEGER PRIMARY \
-        KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL)",
+        KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL); \
+        CREATE TABLE IF NOT EXISTS owner_migrations (owner TEXT NOT NULL, id INTEGER NOT \
+        NULL, name TEXT NOT NULL, applied_at INTEGER NOT NULL, PRIMARY KEY(owner, id))",
     )?;
     // Read again under the write lock: another connection may have just finished.
     for migration in pending(&applied(db)?, list) {
@@ -269,13 +272,6 @@ pub(super) fn apply(
             rusqlite::params![migration.id, migration.name, now()],
         )?;
     }
-    if owned.is_empty() {
-        return Ok(());
-    }
-    db.0.execute_batch(
-        "CREATE TABLE IF NOT EXISTS owner_migrations (owner TEXT NOT NULL, id INTEGER NOT \
-        NULL, name TEXT NOT NULL, applied_at INTEGER NOT NULL, PRIMARY KEY(owner, id))",
-    )?;
     for (owner, migration) in pending_owned(&applied_owned(db)?, owned) {
         step(db, kind, Some(owner), migration)?;
         db.0.execute(

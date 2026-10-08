@@ -1,6 +1,7 @@
 CREATE TABLE daily_datasets( publication_id TEXT NOT NULL REFERENCES daily_publications(id),dataset TEXT NOT NULL, source_url TEXT NOT NULL,row_count INTEGER NOT NULL CHECK(row_count>=0), coverage TEXT NOT NULL CHECK(coverage IN ('observed','unconfirmed')), PRIMARY KEY(publication_id,dataset));
 CREATE TABLE daily_publications( id TEXT PRIMARY KEY,job_id TEXT NOT NULL UNIQUE,date TEXT NOT NULL,station TEXT NOT NULL, company_id TEXT NOT NULL,dsp_code TEXT NOT NULL,started_at TEXT NOT NULL,collected_at TEXT NOT NULL, active INTEGER NOT NULL CHECK(active IN (0,1)),row_count INTEGER NOT NULL CHECK(row_count>=0));
 CREATE TABLE daily_rows( publication_id TEXT NOT NULL REFERENCES daily_publications(id),dataset TEXT NOT NULL, row_index INTEGER NOT NULL,date TEXT NOT NULL,transporter_id TEXT,tracking_id TEXT,event_id TEXT, impact INTEGER CHECK(impact IN (0,1)),row TEXT NOT NULL CHECK(json_valid(row)), PRIMARY KEY(publication_id,dataset,row_index));
+CREATE TABLE owner_migrations (owner TEXT NOT NULL, id INTEGER NOT NULL, name TEXT NOT NULL, applied_at INTEGER NOT NULL, PRIMARY KEY(owner, id));
 CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL);
 CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL CHECK(json_valid(value)));
 CREATE TABLE storage_identity(dsp_id TEXT NOT NULL,provider TEXT NOT NULL,source TEXT NOT NULL);

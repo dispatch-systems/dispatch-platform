@@ -10,6 +10,7 @@ CREATE TABLE meal_records ( publication_id TEXT NOT NULL, itinerary_id TEXT NOT 
 CREATE TABLE meal_schema (version INTEGER PRIMARY KEY CHECK(version=1));
 CREATE TABLE meal_sources (publication_id TEXT NOT NULL, itinerary_id TEXT NOT NULL, url TEXT NOT NULL, PRIMARY KEY(publication_id,itinerary_id), FOREIGN KEY(publication_id,itinerary_id) REFERENCES meal_itineraries(publication_id,itinerary_id) ON DELETE CASCADE);
 CREATE TABLE meal_stops ( publication_id TEXT NOT NULL, itinerary_id TEXT NOT NULL, meal_id TEXT NOT NULL, last_delivery_stop INTEGER CHECK(last_delivery_stop BETWEEN 0 AND 1999), first_delivery_stop INTEGER CHECK(first_delivery_stop BETWEEN 0 AND 1999), PRIMARY KEY(publication_id,itinerary_id,meal_id), FOREIGN KEY(publication_id,itinerary_id,meal_id) REFERENCES meal_records(publication_id,itinerary_id,meal_id) ON DELETE CASCADE );
+CREATE TABLE owner_migrations (owner TEXT NOT NULL, id INTEGER NOT NULL, name TEXT NOT NULL, applied_at INTEGER NOT NULL, PRIMARY KEY(owner, id));
 CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL);
 CREATE TABLE storage_identity (dsp_id TEXT NOT NULL, provider TEXT NOT NULL, source TEXT NOT NULL);
 CREATE UNIQUE INDEX active_meal_scope ON meal_publications(report_date,station,service_area_id,provider) WHERE active=1;
