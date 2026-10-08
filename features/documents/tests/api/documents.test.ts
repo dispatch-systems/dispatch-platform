@@ -30,7 +30,7 @@ test('an owner connects Google, reconnects only the same account, and disconnect
   const finished = await owner.post('/api/dsp/documents/connect/finish', { state, code });
   assert.equal(finished.status, 200, finished.body);
   assert.equal(finished.value.connection.status, 'connected');
-  assert.equal(finished.value.connection.accountEmail, 'documents.fixture@gmail.com');
+  assert.equal(finished.value.connection.accountEmail, 'documents@example.com');
   assert.equal(finished.value.connection.accountKind, 'personal');
   assert.equal(finished.value.connection.folderName, 'Northline Logistics Documents');
 
@@ -38,12 +38,12 @@ test('an owner connects Google, reconnects only the same account, and disconnect
   const again = signIn((await owner.post('/api/dsp/documents/connect')).value.url);
   const other = await owner.post('/api/dsp/documents/connect/finish', {
     state: again.state,
-    code: 'fixture:someone.else@gmail.com',
+    code: 'fixture:someone.else@example.com',
   });
   assert.equal(other.value.error, 'documents_account_mismatch');
   assert.equal(
     (await owner.read('/api/dsp/documents')).connection.accountEmail,
-    'documents.fixture@gmail.com',
+    'documents@example.com',
   );
 
   const disconnected = await owner.post('/api/dsp/documents/disconnect');

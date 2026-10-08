@@ -23,7 +23,7 @@ const FOLDER: &str = "application/vnd.google-apps.folder";
 /// Where Google sends the browser back, on this server's own origin.
 pub const RETURN_PATH: &str = "/documents/google/return";
 /// The account a preview's fixture Google signs in as.
-const FIXTURE_ACCOUNT: &str = "documents.fixture@gmail.com";
+const FIXTURE_ACCOUNT: &str = "documents@example.com";
 
 static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
@@ -223,7 +223,8 @@ pub fn folder_url(id: &str) -> String {
     format!("https://drive.google.com/drive/folders/{id}")
 }
 
-/// Fixture mode's code names the account it signs in as: `fixture:<email>`.
+/// Fixture mode's code names the account it signs in as, `fixture:<email>`: anyone's own
+/// Google account, never a Workspace's.
 fn fixture_grant(code: &str) -> Result<Granted> {
     let email = code
         .strip_prefix("fixture:")
@@ -232,8 +233,8 @@ fn fixture_grant(code: &str) -> Result<Granted> {
         .to_lowercase();
     Ok(Granted {
         account: Account {
-            workspace: !email.ends_with("@gmail.com"),
             email,
+            workspace: false,
         },
         refresh: format!("fixture.{}", crypto::token()?),
         access: "fixture-access".into(),
