@@ -13,9 +13,9 @@
     ["daily_performance", "daily_performance"],
     ["routes", "routes"],
     ["dvic", "dvic"],
-    ["schedules", "timecard"],
-    ["unknown", "timecard"],
-    ["", "timecard"]
+    ["schedules", null],
+    ["unknown", null],
+    ["", null]
   ],
   "permissions": [
     ["paycom.collect", "collections.run"],

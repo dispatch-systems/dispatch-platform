@@ -196,7 +196,7 @@ export type CacheRules = {
   collected?: readonly string[];
   /** Whether a finished collection's changes reach one of its `collected` reads; omitted, any do. */
   collection?: (url: string, changes: readonly CollectionChange[]) => boolean;
-  /** Its reads that change as a job starts, runs or ends. */
+  /** Its reads that change as a job starts, runs or ends; a write under one starts or ends one. */
   jobs?: readonly string[];
   /** Its reads that change with the DSP's connections. */
   connections?: readonly string[];

@@ -63,7 +63,6 @@ pub const FEATURE: Feature = Feature {
         tab("timecard.meal_breaks", "Meal Breaks").requires(&["meal_breaks"]),
         tab("timecard.employees", "Employee Search"),
     ],
-    schedules: true,
     // A schedule of `both` runs its two collections at once.
     schedule_aliases: &[ScheduleAlias {
         schedule: "both",

@@ -1,7 +1,7 @@
 //! Collection schedules. Each feature offers the schedules of the collections it keeps
-//! under routes of its own, behind its own permission, built here; the timecard page's are
-//! the generic ones, and never touch another feature's schedules. Every change here wakes
-//! the scheduler; a preview changes nothing.
+//! under routes of its own, behind its own permission, built here, and never touches
+//! another feature's schedules. Every change here wakes the scheduler; a preview changes
+//! nothing.
 use crate::{
     Result,
     collection::schedules::schedule_changes,
@@ -87,7 +87,7 @@ fn schedules(db: &Store, c: &Member, owner: Owner) -> Result<Reply> {
     let mut result = db.collection_schedules(c.dsp_id())?;
     result.schedules.retain(|s| {
         let page = crate::tenancy::catalog::automation(s.collection.as_str());
-        page == owner.page && c.can(owner.access.0)
+        page == Some(owner.page) && c.can(owner.access.0)
     });
     Reply::of(&result)
 }
@@ -192,7 +192,7 @@ fn remove(db: &Store, c: &Member, input: &Input, owner: Owner) -> Result<Reply> 
 /// keep.
 fn scope(owner: Owner, collection: &str) -> Result<()> {
     crate::ensure(
-        crate::tenancy::catalog::automation(collection) == owner.page,
+        crate::tenancy::catalog::automation(collection) == Some(owner.page),
         "permission_denied",
         403,
     )

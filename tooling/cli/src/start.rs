@@ -5,7 +5,7 @@ use crate::{
     workspace::{self, Workspace},
 };
 
-/// Below this, a new worktree's build could fill the disk: each takes 3–7 GB.
+/// Below this, a new worktree's build could fill the disk: each takes 13–17 GB.
 pub const LOW_DISK: u64 = 20_000_000_000;
 
 pub fn run(ws: &Workspace, name: &str, from: &str, runner: &dyn Runner) -> Result<()> {
@@ -29,7 +29,6 @@ pub fn run(ws: &Workspace, name: &str, from: &str, runner: &dyn Runner) -> Resul
         git(&["ls-remote", "--heads", "origin", name])?.is_empty(),
         &format!("origin has a branch {name} already."),
     )?;
-    crate::idle::evict(ws, name, runner);
     let base = git(&["rev-parse", "--short", from])?;
     git(&[
         "worktree",
@@ -64,7 +63,7 @@ pub fn disk(ws: &Workspace, runner: &dyn Runner) -> Result<()> {
         return Ok(());
     }
     println!(
-        "Disk: only {} free. Builds take 3–7 GB each; an idle one goes before the next start or preview, a merged change's with dispatchdev finish:",
+        "Disk: only {} free. Builds can take 13–17 GB each; a merged change's go with dispatchdev finish:",
         workspace::human(free)
     );
     for name in ws.worktrees()? {

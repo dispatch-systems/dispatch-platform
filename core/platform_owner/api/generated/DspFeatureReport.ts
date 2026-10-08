@@ -2,6 +2,6 @@
 import type { FeatureState } from "./FeatureState";
 
 /**
- * A DSP's features, with what switching its schedules' page off would stop.
+ * A DSP's features, with its schedules switched on and its jobs under way.
  */
 export type DspFeatureReport = { features: Array<FeatureState>, schedules: number, activeJobs: number, };

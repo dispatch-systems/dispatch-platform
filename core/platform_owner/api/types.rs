@@ -71,7 +71,7 @@ pub struct FeatureState {
     pub changed_at: Option<String>,
     pub changed_by: Option<String>,
 }
-/// A DSP's features, with what switching its schedules' page off would stop.
+/// A DSP's features, with its schedules switched on and its jobs under way.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/platform_owner/api/generated/"))]

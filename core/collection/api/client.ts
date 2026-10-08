@@ -9,6 +9,7 @@ import type {
 } from './index.js';
 
 // Collection's endpoints, as the frontend calls them: live updates, schedules and connections.
+// A feature serves its schedules under a prefix of its own, which it names to each call.
 
 export const getCollectionUpdates = (after: string, signal: AbortSignal) =>
   api<CollectionUpdates>(
@@ -17,18 +18,22 @@ export const getCollectionUpdates = (after: string, signal: AbortSignal) =>
     signal,
   );
 
-const schedules = '/api/dsp/schedules';
-export const useSchedules = (dspId: string) =>
+export const useSchedules = (schedules: string, dspId: string) =>
   useCachedData<CollectionSchedules>(schedules, performancePolicy.recoveryPollMs, dspId);
-export const getSchedules = () => api<CollectionSchedules>(schedules);
+export const getSchedules = (schedules: string) => api<CollectionSchedules>(schedules);
 /** Saving an existing schedule names the revision it was read at. */
 export const saveSchedule = (
+  schedules: string,
   id: string | undefined,
   schedule: ScheduleInput & { revision?: number },
 ) => api<CollectionSchedule>(id ? `${schedules}/${id}` : schedules, schedule);
-export const setScheduleEnabled = (id: string, enabled: boolean, revision: number) =>
-  api<CollectionSchedule>(`${schedules}/${id}/enabled`, { enabled, revision });
-export const removeSchedule = (id: string, revision: number) =>
+export const setScheduleEnabled = (
+  schedules: string,
+  id: string,
+  enabled: boolean,
+  revision: number,
+) => api<CollectionSchedule>(`${schedules}/${id}/enabled`, { enabled, revision });
+export const removeSchedule = (schedules: string, id: string, revision: number) =>
   api(`${schedules}/${id}/remove`, { revision });
 
 export const connectionUrl = (provider: Connection['provider']) =>

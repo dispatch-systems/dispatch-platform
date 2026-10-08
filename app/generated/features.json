@@ -79,7 +79,6 @@
         "POST /api/dsp/daily-performance/schedules/{key}/enabled",
         "POST /api/dsp/daily-performance/schedules/{key}/remove"
       ],
-      "schedules": false,
       "settings": []
     },
     "switch": "daily_performance",
@@ -173,7 +172,6 @@
         "GET /api/documents/google/return",
         "GET /api/documents/google/picker"
       ],
-      "schedules": false,
       "settings": [
         [
           "GOOGLE_CLIENT_ID",
@@ -261,7 +259,6 @@
         "POST /api/dsp/driver-match/split",
         "POST /api/dsp/driver-match/apart"
       ],
-      "schedules": false,
       "settings": []
     },
     "switch": "driver_match",
@@ -368,7 +365,6 @@
         "POST /api/dsp/dvic/schedules/{key}/enabled",
         "POST /api/dsp/dvic/schedules/{key}/remove"
       ],
-      "schedules": false,
       "settings": []
     },
     "switch": "dvic",
@@ -422,7 +418,6 @@
       },
       "people": [],
       "routes": [],
-      "schedules": false,
       "settings": []
     },
     "switch": "home",
@@ -536,7 +531,6 @@
         "POST /api/dsp/routes/schedules/{key}/enabled",
         "POST /api/dsp/routes/schedules/{key}/remove"
       ],
-      "schedules": false,
       "settings": []
     },
     "switch": "routes",
@@ -598,7 +592,6 @@
       "routes": [
         "POST /api/dsp/profile"
       ],
-      "schedules": false,
       "settings": []
     },
     "switch": "settings",
@@ -656,7 +649,6 @@
         "GET /api/invitations/{token}",
         "POST /api/invitations/{token}/accept"
       ],
-      "schedules": false,
       "settings": []
     },
     "switch": "team",
@@ -799,7 +791,6 @@
         "POST /api/dsp/schedules/{key}/enabled",
         "POST /api/dsp/schedules/{key}/remove"
       ],
-      "schedules": true,
       "settings": []
     },
     "switch": "timecard",
@@ -885,7 +876,6 @@
         "POST /api/dsp/uniforms/{id}/archive",
         "POST /api/dsp/uniforms/stock/{id}"
       ],
-      "schedules": false,
       "settings": []
     },
     "switch": "uniforms",
@@ -987,7 +977,6 @@
         "POST /api/dsp/weekly-scorecard/schedules/{key}/enabled",
         "POST /api/dsp/weekly-scorecard/schedules/{key}/remove"
       ],
-      "schedules": false,
       "settings": []
     },
     "switch": "weekly_scorecard",

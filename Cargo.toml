@@ -70,10 +70,3 @@ opt-level = 3
 
 [profile.dev.package.blake2]
 opt-level = 3
-
-# Test builds keep no incremental data. Cargo kept it for every test program and each crate's
-# test build, growing with every edit: a worktree's preview and test builds took 6.0 GB with
-# it and 4.0 GB without, for about 10 seconds more on each retest after an edit. Previews and
-# every other build keep theirs; CI builds none.
-[profile.test]
-incremental = false

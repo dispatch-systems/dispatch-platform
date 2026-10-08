@@ -149,8 +149,9 @@ test('cache rules keep each owner’s reads current, a read changing when any ow
           write.startsWith('/api/dsp/alpha/') ? url.startsWith('/api/dsp/gamma/rows') : undefined,
       },
     },
+    { name: 'epsilon', cache: { jobs: ['/api/dsp/epsilon/jobs'] } },
   ]);
-  assert.equal(cacheRules().length, 2);
+  assert.equal(cacheRules().length, 3);
   const change = { provider: 'fixture', dates: [], employeeCode: null, roster: false };
   assert.equal(collectionData('/api/dsp/alpha/days?date=2026-09-22'), true);
   assert.equal(collectionData('/api/dsp/delta'), false);
@@ -158,12 +159,16 @@ test('cache rules keep each owner’s reads current, a read changing when any ow
   assert.equal(collectionAffects('/api/dsp/alpha/days', [{ ...change, roster: true }]), true);
   assert.equal(collectionAffects('/api/dsp/alpha/status', []), true);
   assert.equal(collectionAffects('/api/dsp/gamma/rows', [change]), true);
-  assert.equal(collectionAffects('/api/dsp/jobs', []), true);
+  // Core keeps no jobs of its own to read.
+  assert.equal(collectionAffects('/api/dsp/jobs', []), false);
   assert.equal(mutationAffects('/api/dsp/alpha/edit', '/api/dsp/alpha/days'), true);
   assert.equal(mutationAffects('/api/dsp/alpha/edit', '/api/dsp/gamma/rows'), true);
   assert.equal(mutationAffects('/api/dsp/alpha/edit', '/api/dsp/gamma/other'), false);
   // A write an owner knows changes nothing else, the jobs included.
-  assert.equal(mutationAffects('/api/dsp/alpha/collect', '/api/dsp/jobs'), false);
+  assert.equal(mutationAffects('/api/dsp/alpha/collect', '/api/dsp/epsilon/jobs'), false);
+  // A write under an owner's job read starts or cancels a job, which every job read follows.
+  assert.equal(mutationAffects('/api/dsp/epsilon/jobs/1/cancel', '/api/dsp/alpha/status'), true);
+  assert.equal(mutationAffects('/api/dsp/epsilon/jobs', '/api/dsp/gamma/rows'), false);
   assert.equal(mutationAffects('/api/dsp/delta/collect', '/api/dsp/alpha/status'), true);
   assert.equal(mutationAffects('/api/dsp/delta/collect', '/api/dsp/gamma/rows'), false);
   assert.equal(mutationAffects('/api/dsp/connections/fixture', '/api/dsp/gamma/rows'), true);

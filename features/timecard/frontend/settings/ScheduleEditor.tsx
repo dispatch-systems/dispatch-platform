@@ -6,6 +6,7 @@ import type { CollectionSchedule, ScheduleInput } from '../../../../core/collect
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { nextCollection } from './nextCollection.js';
 import { saveSchedule, removeSchedule } from '../../../../core/collection/api/client.js';
+import { schedules } from '../../api/client.js';
 
 const newSchedule = (): ScheduleInput => ({
   name: '',
@@ -74,7 +75,7 @@ export function ScheduleEditor({
     }
     const timer = setTimeout(() => {
       void api<{ nextRun: string }>(
-        '/api/dsp/schedules/preview',
+        `${schedules}/preview`,
         {
           cadence,
           intervalMinutes,
@@ -103,9 +104,9 @@ export function ScheduleEditor({
     setBusy(true);
     setError('');
     try {
-      if (remove && schedule) await removeSchedule(schedule.id, schedule.revision);
+      if (remove && schedule) await removeSchedule(schedules, schedule.id, schedule.revision);
       else
-        await saveSchedule(schedule?.id, {
+        await saveSchedule(schedules, schedule?.id, {
           ...draft,
           name: draft.name.trim(),
           collection: paycom && meal ? 'both' : paycom ? 'paycom' : 'meal_break',

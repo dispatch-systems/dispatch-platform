@@ -5,7 +5,6 @@ pub mod api;
 pub mod build;
 pub mod check;
 pub mod finish;
-pub mod idle;
 pub mod logs;
 pub mod pr;
 pub mod preview;

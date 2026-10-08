@@ -127,7 +127,7 @@ pub fn label(command: &str) -> String {
     format!("{} ({tests} test files)", kept.join(" "))
 }
 /// Removes the build folders of runs that ended without cleaning up, killed or interrupted.
-pub(crate) fn sweep(builds: &Path) {
+fn sweep(builds: &Path) {
     let Ok(entries) = fs::read_dir(builds) else {
         return;
     };

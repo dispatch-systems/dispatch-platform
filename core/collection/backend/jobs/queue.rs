@@ -496,11 +496,12 @@ impl Store {
             409,
         )?;
         let dsp = self.ensure_dsp_active(&row.dsp_id)?;
+        let page = crate::tenancy::catalog::automation(row.kind.as_str());
         ensure(
-            self.feature_enabled(
-                &row.dsp_id,
-                crate::tenancy::catalog::automation(row.kind.as_str()),
-            )?,
+            match page {
+                Some(page) => self.feature_enabled(&row.dsp_id, page)?,
+                None => false,
+            },
             "feature_disabled",
             409,
         )?;

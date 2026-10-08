@@ -21,6 +21,7 @@ import {
   getSchedules,
   setScheduleEnabled,
 } from '../../../../core/collection/api/client.js';
+import { schedules as served } from '../../api/client.js';
 
 function clock(value: string) {
   const [hour, minute] = value.split(':').map(Number);
@@ -44,7 +45,7 @@ function CollectionLabels({ collection }: Pick<ScheduleInput, 'collection'>) {
   );
 }
 export function PaycomSettingsPage({ dspId }: { dspId: string }) {
-  const query = useSchedules(dspId);
+  const query = useSchedules(served, dspId);
   const [editing, setEditing] = useState<CollectionSchedule | null | undefined>();
   const [busyId, setBusyId] = useState<string>();
   const [updated, setUpdated] = useState<CollectionSchedule>();
@@ -68,7 +69,12 @@ export function PaycomSettingsPage({ dspId }: { dspId: string }) {
       revision: schedule.revision + 1,
     });
     try {
-      const result = await setScheduleEnabled(schedule.id, !schedule.enabled, schedule.revision);
+      const result = await setScheduleEnabled(
+        served,
+        schedule.id,
+        !schedule.enabled,
+        schedule.revision,
+      );
       setUpdated(result);
       setMessage(schedule.enabled ? 'Schedule paused' : 'Schedule enabled');
     } catch (cause) {
@@ -221,7 +227,7 @@ export function PaycomSettingsPage({ dspId }: { dspId: string }) {
                   query.refresh();
                 }}
                 onReload={async () => {
-                  const fresh = await getSchedules();
+                  const fresh = await getSchedules(served);
                   const schedule = fresh.schedules.find((value) => value.id === editing?.id);
                   setEditing(schedule);
                   query.refresh();

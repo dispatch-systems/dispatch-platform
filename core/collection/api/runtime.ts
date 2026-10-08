@@ -107,12 +107,10 @@ const collectionUpdatesSchema = z.object({
 /** A list of jobs, as the DSP's and the platform owner's job lists answer. */
 export const jobsSchema = z.array(jobSchema);
 
-/** The replies of live collection updates and of the job lists and the job a collect starts. */
+/** The replies of live collection updates and of the platform owner's job list. */
 export const replies: Replies = (route, method) => {
-  if (method === 'GET') {
-    if (route === '/api/dsp/collection-updates') return collectionUpdatesSchema;
-    if (route === '/api/platform/jobs' || route === '/api/dsp/jobs') return jobsSchema;
-    return undefined;
-  }
-  return route === '/api/dsp/jobs' ? jobSchema : undefined;
+  if (method !== 'GET') return undefined;
+  if (route === '/api/dsp/collection-updates') return collectionUpdatesSchema;
+  if (route === '/api/platform/jobs') return jobsSchema;
+  return undefined;
 };

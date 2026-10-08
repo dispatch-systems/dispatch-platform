@@ -16,6 +16,9 @@ import type { Job } from '../../../core/collection/api/index.js';
 
 // Timecard's endpoints, as its pages call them.
 
+/** Where its schedules are served, as core's schedule calls take it. */
+export const schedules = '/api/dsp/schedules';
+
 export const employeeTimecardUrl = (code: string, period?: EmployeeTimecardPeriod | null) =>
   `/api/dsp/employees/${encodeURIComponent(code)}${period ? `?from=${period.from}&to=${period.to}` : ''}`;
 export const syncEmployeeTimecard = (
