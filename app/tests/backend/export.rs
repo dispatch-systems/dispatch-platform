@@ -658,17 +658,6 @@ const FEATURE_MAP: &str = "app/generated/features.json";
 /// The frontend's list of every owner's manifest.
 const FRONTEND_LIST: &str = "app/frontend/features.ts";
 
-/// Whether this build has the owner at `dir`, such as `features/timecard`: core's parts are
-/// in every build, and so are the collectors it registers.
-fn in_build(dir: &str) -> bool {
-    match dir.split_once('/') {
-        Some(("core", _)) => true,
-        Some(("collectors", id)) => crate::REGISTRY.collectors.iter().any(|c| c.id() == id),
-        Some(("features", name)) => crate::REGISTRY.features.iter().any(|f| f.name == name),
-        _ => panic!("{dir} is no owner's directory"),
-    }
-}
-
 /// Each feature this build has, by name, with what it declares: its ids, the features and
 /// collectors it uses, the collections it keeps and their collectors, its tables, its
 /// migrations, and what it adds to each slot. Sorted, so it changes only with them.
