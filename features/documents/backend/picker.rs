@@ -102,7 +102,8 @@ const PAGE: &str = r#"<!doctype html>
 <body>
 <main>
   <h1>Add from Google Drive</h1>
-  <p id="note">Sign in to Google as <strong id="account"></strong>, the account that holds your team's Documents, then choose the files to add.</p>
+  <p id="note">Sign in to Google as <strong id="account"></strong>, the account that holds your
+    team's Documents, then choose the files to add.</p>
   <button id="choose" disabled>Choose files</button>
 </main>
 <script nonce="{nonce}" src="https://accounts.google.com/gsi/client"></script>
