@@ -143,7 +143,8 @@ test('a scorecard week is collected on request, stored per dataset and listed, a
   const member = await f.client('member@dispatch.test');
   await member.select(dsp.id);
   assert.equal((await member.get('/api/dsp/weekly-scorecard/weeks')).status, 403);
-  assert.equal((await member.get('/api/dsp/scorecard/weeks')).status, 404);
+  // Its old address is in no part of the DSP area, which a member is denied.
+  assert.equal((await member.get('/api/dsp/scorecard/weeks')).status, 403);
   const roles = (await owner.get('/api/dsp/roles')).value;
   const memberRole = roles.find((role: any) => role.name === 'Member');
   assert.equal(
