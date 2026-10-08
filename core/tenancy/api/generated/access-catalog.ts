@@ -416,4 +416,7 @@ export const impliedPermissions = {
     "weekly_scorecard.view"
   ]
 } as const;
-export const permissionParents = {} as const;
+export const permissionParents = {
+  "uniforms.adjust": "uniforms.view",
+  "uniforms.manage": "uniforms.view"
+} as const;

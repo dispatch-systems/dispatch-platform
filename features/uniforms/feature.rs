@@ -25,10 +25,12 @@ pub const FEATURE: Feature = Feature {
     switch: optional("uniforms", "Uniform Inventory", &[]),
     permissions: &[
         perm("uniforms.view", "View Uniform Inventory", 10).demo(&[Manager, Member]),
+        // Finer parts of viewing, apart from each other: counting stock, and shaping the
+        // catalog.
         perm("uniforms.adjust", "Adjust Uniform Inventory", 11)
-            .implies(&["uniforms.view"])
+            .under("uniforms.view")
             .demo(&[Manager]),
-        perm("uniforms.manage", "Manage Uniform Inventory", 12).implies(&["uniforms.view"]),
+        perm("uniforms.manage", "Manage Uniform Inventory", 12).under("uniforms.view"),
     ],
     routes: api::routes::routes,
     tables: &[(
