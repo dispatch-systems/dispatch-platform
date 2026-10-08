@@ -20,7 +20,6 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
-use ts_rs::TS;
 
 /// The access catalog's file: its types are tenancy's.
 const ACCESS_CATALOG: &str = "core/tenancy/api/generated/access-catalog.ts";
