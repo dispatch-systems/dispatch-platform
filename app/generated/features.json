@@ -158,6 +158,8 @@
         "POST /api/dsp/documents/disconnect",
         "GET /api/dsp/documents/folder",
         "POST /api/dsp/documents/new",
+        "POST /api/dsp/documents/upload",
+        "GET /api/dsp/documents/items/{id}/download",
         "POST /api/dsp/documents/items/{id}/rename",
         "POST /api/dsp/documents/items/{id}/trash",
         "POST /api/dsp/documents/link",

@@ -67,6 +67,9 @@ enum Payload {
     File(&'static str, &'static str, String),
     /// Where the browser goes instead: a URL the server built, never one a request named.
     Redirect(String),
+    /// A file streamed as it comes, with its content type, the name it's saved as and, when
+    /// known, its length.
+    Download(String, String, Option<u64>, axum::body::Body),
 }
 
 pub struct Reply {
@@ -111,6 +114,20 @@ impl Reply {
     pub fn file(content_type: &'static str, name: &'static str, body: String) -> Self {
         Self {
             value: Payload::File(content_type, name, body),
+            status: 200,
+            cookie: None,
+        }
+    }
+    /// A file a client saves as `name`, streamed as `body` arrives: of `content_type`, and
+    /// `length` bytes when that is known.
+    pub fn download(
+        content_type: &str,
+        name: &str,
+        length: Option<u64>,
+        body: axum::body::Body,
+    ) -> Self {
+        Self {
+            value: Payload::Download(content_type.to_owned(), name.to_owned(), length, body),
             status: 200,
             cookie: None,
         }
@@ -178,6 +195,23 @@ impl IntoResponse for Reply {
             Payload::Redirect(location) => {
                 (status, [(axum::http::header::LOCATION, location)]).into_response()
             }
+            Payload::Download(kind, name, length, body) => {
+                let mut response = (
+                    status,
+                    [
+                        (axum::http::header::CONTENT_TYPE, kind),
+                        (axum::http::header::CONTENT_DISPOSITION, attachment(&name)),
+                    ],
+                    body,
+                )
+                    .into_response();
+                if let Some(length) = length {
+                    response
+                        .headers_mut()
+                        .insert(axum::http::header::CONTENT_LENGTH, length.into());
+                }
+                response
+            }
         };
         if let Some(cookie) = self.cookie
             && let Ok(value) = cookie.parse()
@@ -186,6 +220,26 @@ impl IntoResponse for Reply {
         }
         response
     }
+}
+
+/// `Content-Disposition` for saving a file as `name`: a plain ASCII name for any client, and
+/// the name as it is for those that read `filename*`.
+fn attachment(name: &str) -> String {
+    let plain: String = name
+        .chars()
+        .map(|c| match c {
+            ' '..='~' if !matches!(c, '"' | '\\' | '%') => c,
+            _ => '_',
+        })
+        .collect();
+    let exact: String = name
+        .bytes()
+        .map(|b| match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'.' | b'-' | b'_' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect();
+    format!("attachment; filename=\"{plain}\"; filename*=UTF-8''{exact}")
 }
 
 /// Reads a field only when it is present: `optional(b, "visible", v::boolean)?`.

@@ -423,6 +423,7 @@ fn refusal(status: u16, error: Option<&str>) -> Error {
         // The token endpoint's word for a refresh token or code it no longer honors.
         (_, Some("invalid_grant")) | (401, _) => Error::new("google_connection_broken", 409),
         (_, Some("storageQuotaExceeded")) => Error::new("documents_storage_full", 409),
+        (_, Some("exportSizeLimitExceeded")) => Error::new("documents_export_too_large", 409),
         (404, _) | (403, Some("insufficientFilePermissions" | "appNotAuthorizedToFile")) => {
             Error::new("documents_item_not_found", 404)
         }

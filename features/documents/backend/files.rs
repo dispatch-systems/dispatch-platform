@@ -1,16 +1,20 @@
-//! Browsing and changing a DSP's Documents: what a folder holds, and making, renaming and
-//! trashing files in it. Each asks Google outside the database, inside the DSP's own tree
+//! Browsing and changing a DSP's Documents: what a folder holds, and making, uploading,
+//! downloading, renaming and trashing files in it. Each asks Google outside the database, inside the DSP's own tree
 //! only, then checks the member's access again before it records anything.
 use super::{
     connection,
-    drive::{self, Item},
+    drive::{self, Download, Item},
     google::{FOLDER, Google, folder_url},
     storage::{Connection, DocumentsStore, Record},
     tree::Tree,
 };
 use crate::api::types::{DocumentsFolder, DocumentsItem, FolderStep, ItemKind, NewKind};
 use dispatch_core::{
-    Error, Result, State, accounts::Context, db::Store, ensure, server::http::route::Dsp,
+    Error, Result, State,
+    accounts::Context,
+    db::Store,
+    ensure,
+    server::http::{route::Dsp, upload::Upload},
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -207,6 +211,60 @@ pub async fn create(
         account: &connection.account.email,
     }
     .item(&made, false))
+}
+
+/// Uploads a file named `name`, of `mime`, into the folder `parent`, or the main one.
+pub async fn upload(
+    state: &Arc<State>,
+    c: Context,
+    access: Dsp,
+    parent: Option<String>,
+    name: String,
+    mime: String,
+    upload: Upload,
+) -> Result<DocumentsItem> {
+    let dsp = c.dsp.id.clone();
+    let (_, tree) = tree(state, &dsp).await?;
+    let parent = parent.unwrap_or_else(|| tree.root().to_owned());
+    ensure(tree.is_folder(&parent), "documents_item_not_found", 404)?;
+    let length = upload.length;
+    let (_, session) = on_drive!(state, &dsp, |google, token| google
+        .start_upload(token, &name, &mime, &parent, length))?;
+    // The bytes go once, with the token that just started the upload.
+    let drive = open(state, &dsp, false).await?;
+    let made = drive
+        .google
+        .finish_upload(&drive.access, &session, upload)
+        .await?;
+    let (id, title) = (made.id.clone(), made.name.clone());
+    let (records, names) = state
+        .run(move |db| {
+            let c = access.revalidate(db, &c)?;
+            db.record_documents_change(&dsp, &id, c.actor())?;
+            c.audit(db, "documents.uploaded", &title)?;
+            known(db, &dsp, &[id])
+        })
+        .await?;
+    let empty = Tree::new(&drive.connection.folder_id, Vec::new());
+    Ok(Described {
+        tree: &empty,
+        records: &records,
+        names: &names,
+        account: &drive.connection.account.email,
+    }
+    .item(&made, false))
+}
+
+/// The file `id`, to save, as Google sends it.
+pub async fn download(state: &Arc<State>, c: &Context, id: String) -> Result<Download> {
+    let (_, tree) = tree(state, &c.dsp.id).await?;
+    let item = tree
+        .get(&id)
+        .filter(|item| !item.folder())
+        .ok_or_else(not_found)?;
+    let (_, download) = on_drive!(state, &c.dsp.id, |google, token| google
+        .download(token, item))?;
+    Ok(download)
 }
 
 /// Gives the file or folder `id` the name `name`.

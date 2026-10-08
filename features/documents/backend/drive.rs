@@ -1,15 +1,18 @@
 //! Google Drive, as Documents uses it with the DSP's account: every file Dispatch can reach,
-//! and making, renaming and trashing them. `drive.file` lets Dispatch reach only the files it
+//! and making, uploading, downloading, renaming and trashing them. `drive.file` lets Dispatch reach only the files it
 //! made or was given, so listing them all is listing Documents, plus anything another DSP made
 //! with the same account, which the tree leaves out. Fixture mode keeps a Drive of its own in
 //! memory for each account, as Google keeps an account's files for every DSP that connects it.
-use super::google::{FILES, FOLDER, Google, HTTP, send};
-use dispatch_core::{Error, Result, db::iso, foundation::crypto};
+use super::google::{FILES, FOLDER, Google, HTTP, read, send, unreachable};
+use axum::body::Body;
+use dispatch_core::{Error, Result, db::iso, foundation::crypto, server::http::upload::Upload};
+use futures_util::TryStreamExt;
 use serde::Deserialize;
 use serde_json::json;
 use std::{
     collections::BTreeMap,
     sync::{LazyLock, Mutex},
+    time::Duration,
 };
 
 pub const DOC: &str = "application/vnd.google-apps.document";
@@ -19,6 +22,40 @@ pub const SLIDES: &str = "application/vnd.google-apps.presentation";
 const FIELDS: &str = "id,name,mimeType,parents,modifiedTime,lastModifyingUser(displayName,emailAddress),size,webViewLink";
 /// Enough pages for 50,000 files; a Drive that keeps answering past them is not listed whole.
 const PAGES: usize = 50;
+/// Where a file's bytes go up.
+const UPLOADS: &str = "https://www.googleapis.com/upload/drive/v3/files";
+/// The Office files Google's own Docs, Sheets and Slides download as, with their endings.
+const DOCX: (&str, &str) = (
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "docx",
+);
+const XLSX: (&str, &str) = (
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "xlsx",
+);
+const PPTX: (&str, &str) = (
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "pptx",
+);
+
+/// Moves a file's bytes, which takes as long as they do: it gives up only on a Google that
+/// stops answering for a minute.
+static TRANSFER: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .read_timeout(Duration::from_secs(60))
+        .build()
+        .expect("the TLS backend is built in")
+});
+
+/// A file to save: its content type, the name it's saved as, its length when Google says,
+/// and its bytes as they come.
+pub struct Download {
+    pub kind: String,
+    pub name: String,
+    pub length: Option<u64>,
+    pub body: Body,
+}
 
 /// A file or folder, as Drive describes it.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -305,6 +342,158 @@ impl Google {
             limit: number(about.storage_quota.limit),
         })
     }
+    /// Starts uploading `length` bytes of `mime` named `name` into the folder `parent`, and
+    /// answers where the bytes go. As with what Dispatch makes, its editors can't share it on.
+    pub async fn start_upload(
+        &self,
+        access: &str,
+        name: &str,
+        mime: &str,
+        parent: &str,
+        length: u64,
+    ) -> Result<String> {
+        if let Self::Fixture = self {
+            let session = format!("fixture-upload-{}", crypto::hex(&crypto::random::<8>()?));
+            return fixture(access, |drive| {
+                let started = (name.to_owned(), mime.to_owned(), parent.to_owned());
+                drive.uploads.insert(session.clone(), started);
+                Ok(session)
+            });
+        }
+        let response = HTTP
+            .post(UPLOADS)
+            .bearer_auth(access)
+            .query(&[("uploadType", "resumable")])
+            .header("X-Upload-Content-Type", mime)
+            .header("X-Upload-Content-Length", length)
+            .json(&json!({
+                "name": name,
+                "mimeType": mime,
+                "parents": [parent],
+                "writersCanShare": false,
+            }))
+            .send()
+            .await
+            .map_err(unreachable)?;
+        if !response.status().is_success() {
+            return Err(read::<serde_json::Value>(response)
+                .await
+                .err()
+                .unwrap_or_else(|| Error::new("google_unreachable", 502)));
+        }
+        response
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|location| location.to_str().ok())
+            .map(str::to_owned)
+            .ok_or_else(|| Error::new("google_unreachable", 502))
+    }
+    /// Sends the upload's bytes to where `session` said, and answers the file Drive made.
+    pub async fn finish_upload(&self, access: &str, session: &str, upload: Upload) -> Result<Item> {
+        let length = upload.length;
+        if let Self::Fixture = self {
+            let bytes: Vec<u8> = upload
+                .stream()
+                .map_ok(|chunk| chunk.to_vec())
+                .try_concat()
+                .await
+                .map_err(|_| Error::new("upload_incomplete", 400))?;
+            return fixture(access, |drive| {
+                let (name, mime, parent) = drive.uploads.remove(session).ok_or_else(missing)?;
+                let account = drive.account.clone();
+                let id = session.replace("fixture-upload-", "fixture-");
+                let item = Item {
+                    web_view_link: link(&mime, &id),
+                    id: id.clone(),
+                    name,
+                    mime_type: mime,
+                    parents: vec![parent],
+                    modified_time: iso(),
+                    last_modifying_user: Some(Person {
+                        display_name: Some(account.clone()),
+                        email_address: Some(account),
+                    }),
+                    size: Some(length.to_string()),
+                };
+                drive.files.insert(id.clone(), item.clone());
+                drive.contents.insert(id, bytes);
+                Ok(item)
+            });
+        }
+        let response = TRANSFER
+            .put(session)
+            .bearer_auth(access)
+            .query(&[("fields", FIELDS)])
+            .header(reqwest::header::CONTENT_LENGTH, length)
+            .body(reqwest::Body::wrap_stream(upload.stream()))
+            .send()
+            .await
+            .map_err(|error| {
+                // The member's bytes stopped coming, rather than Google answering.
+                if error.is_body() || error.is_request() {
+                    Error::new("upload_incomplete", 400)
+                } else {
+                    unreachable(error)
+                }
+            })?;
+        read(response).await
+    }
+    /// The file `item`, to save: Google's own Docs, Sheets and Slides as the Word, Excel and
+    /// PowerPoint files they export as, and an uploaded file as it was.
+    pub async fn download(&self, access: &str, item: &Item) -> Result<Download> {
+        let exported = match item.mime_type.as_str() {
+            DOC => Some(DOCX),
+            SHEET => Some(XLSX),
+            SLIDES => Some(PPTX),
+            google if google.starts_with("application/vnd.google-apps.") => {
+                return Err(Error::new("documents_not_downloadable", 409));
+            }
+            _ => None,
+        };
+        let (kind, name) = match exported {
+            Some((kind, ending)) => (kind.to_owned(), format!("{}.{ending}", item.name)),
+            None => (item.mime_type.clone(), item.name.clone()),
+        };
+        if let Self::Fixture = self {
+            let bytes = fixture(access, |drive| {
+                drive.files.get(&item.id).ok_or_else(missing)?;
+                Ok(drive.contents.get(&item.id).cloned().unwrap_or_else(|| {
+                    format!("Fixture mode's export of {}", item.name).into_bytes()
+                }))
+            })?;
+            return Ok(Download {
+                kind,
+                name,
+                length: Some(bytes.len() as u64),
+                body: Body::from(bytes),
+            });
+        }
+        let request = match exported {
+            Some((kind, _)) => TRANSFER
+                .get(format!("{FILES}/{}/export", item.id))
+                .query(&[("mimeType", kind)]),
+            None => TRANSFER
+                .get(format!("{FILES}/{}", item.id))
+                .query(&[("alt", "media")]),
+        };
+        let response = request
+            .bearer_auth(access)
+            .send()
+            .await
+            .map_err(unreachable)?;
+        if !response.status().is_success() {
+            return Err(read::<serde_json::Value>(response)
+                .await
+                .err()
+                .unwrap_or_else(|| Error::new("google_unreachable", 502)));
+        }
+        Ok(Download {
+            kind,
+            name,
+            length: response.content_length(),
+            body: Body::from_stream(response.bytes_stream()),
+        })
+    }
     /// Moves a file to the account's trash, where Drive keeps it for 30 days.
     pub async fn trash(&self, access: &str, id: &str) -> Result<()> {
         if let Self::Fixture = self {
@@ -344,6 +533,10 @@ struct Drive {
     files: BTreeMap<String, Item>,
     /// Who each folder is shared with, beside the account.
     shares: BTreeMap<String, Vec<Share>>,
+    /// Uploads started, by where their bytes go: the name, type and folder each was given.
+    uploads: BTreeMap<String, (String, String, String)>,
+    /// What was uploaded, by file.
+    contents: BTreeMap<String, Vec<u8>>,
 }
 impl Drive {
     fn values(&self) -> impl Iterator<Item = &Item> {
@@ -363,6 +556,8 @@ fn fixture<T>(access: &str, work: impl FnOnce(&mut Drive) -> Result<T>) -> Resul
         account: account.to_owned(),
         files: BTreeMap::new(),
         shares: BTreeMap::new(),
+        uploads: BTreeMap::new(),
+        contents: BTreeMap::new(),
     });
     work(drive)
 }
