@@ -202,3 +202,532 @@
     flex-wrap: wrap;
   }
 }
+
+/* File kinds, ink on surface as the DSP avatars are drawn. Docs, Sheets and Slides keep the
+   hue people know from Google; uploads take the app's own tones. */
+:root {
+  --documents-doc: #2463d1;
+  --documents-doc-surface: #e8f0fd;
+  --documents-sheet: #18804a;
+  --documents-sheet-surface: #e5f4ec;
+  --documents-slides: #a86d00;
+  --documents-slides-surface: #fdf3dc;
+  --documents-pdf: #b42332;
+  --documents-pdf-surface: #fbeaec;
+}
+[data-theme='dark'] {
+  --documents-doc: #8fb4ff;
+  --documents-doc-surface: #22314f;
+  --documents-sheet: #77d3a2;
+  --documents-sheet-surface: #1f3a2d;
+  --documents-slides: #eec36a;
+  --documents-slides-surface: #3a3020;
+  --documents-pdf: #f49aaa;
+  --documents-pdf-surface: #432630;
+}
+.documents-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+.documents-tile svg {
+  stroke-width: 1.8;
+}
+.documents-tile-folder,
+.documents-tile-file {
+  color: var(--slate);
+  background: var(--slate-surface);
+}
+.documents-tile-doc {
+  color: var(--documents-doc);
+  background: var(--documents-doc-surface);
+}
+.documents-tile-sheet {
+  color: var(--documents-sheet);
+  background: var(--documents-sheet-surface);
+}
+.documents-tile-slides {
+  color: var(--documents-slides);
+  background: var(--documents-slides-surface);
+}
+.documents-tile-pdf {
+  color: var(--documents-pdf);
+  background: var(--documents-pdf-surface);
+}
+.documents-tile-image {
+  color: var(--violet);
+  background: var(--violet-surface);
+}
+
+/* The heading's buttons. */
+.documents-account-button {
+  gap: 8px;
+}
+.documents-new {
+  position: relative;
+}
+.documents-new summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-height);
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 500;
+}
+.documents-new .account-popover {
+  width: 220px;
+}
+.documents-new .account-popover .documents-tile {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+
+/* Above the files: what to show, the way here, search and the view. */
+.documents-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  padding: 0 0 16px;
+}
+.documents-toolbar > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.documents-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.documents-pills button {
+  min-height: 32px;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.documents-pills button[aria-pressed='true'] {
+  background: var(--selection);
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  color: var(--primary);
+}
+.documents-path {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 40px;
+  font-size: 15px;
+}
+.documents-path span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.documents-path a,
+.documents-path svg {
+  color: var(--muted-foreground);
+}
+.documents-path strong {
+  font-weight: 600;
+}
+.documents-layout {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.documents-layout button {
+  width: 34px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted-foreground);
+}
+.documents-layout button[aria-pressed='true'] {
+  background: var(--selection);
+  color: var(--primary);
+}
+
+/* The list. */
+.documents-table th {
+  color: var(--muted-foreground);
+}
+.documents-table td {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+.documents-table td:first-child {
+  padding-left: 4px;
+}
+.documents-table .muted {
+  font-size: 13px;
+}
+.documents-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  color: var(--foreground);
+}
+.documents-name > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.documents-name strong {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.documents-name small,
+.documents-edited small {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.documents-name:hover strong {
+  color: var(--primary);
+}
+.documents-edited {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.documents-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+}
+.documents-initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 600;
+}
+.documents-tone-slate {
+  color: var(--slate);
+  background: var(--slate-surface);
+}
+.documents-tone-sage {
+  color: var(--sage);
+  background: var(--sage-surface);
+}
+.documents-tone-violet {
+  color: var(--violet);
+  background: var(--violet-surface);
+}
+.documents-tone-steel {
+  color: var(--steel);
+  background: var(--steel-surface);
+}
+.documents-count {
+  margin-top: 14px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+/* The grid. */
+.documents-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.documents-cards h2 {
+  margin-bottom: 14px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.documents-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 16px;
+}
+.documents-folder-card,
+.documents-file-card {
+  position: relative;
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+.documents-folder-card {
+  align-items: center;
+  padding: 14px 10px 14px 16px;
+}
+.documents-folder-card .documents-name {
+  flex: 1;
+}
+.documents-folder-card .documents-tile {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+}
+.documents-file-card {
+  flex-direction: column;
+  overflow: hidden;
+}
+.documents-file-open {
+  display: flex;
+  flex-direction: column;
+  color: var(--foreground);
+}
+.documents-file-open .documents-name {
+  padding: 12px 44px 14px 14px;
+}
+.documents-file-open .documents-tile {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+}
+.documents-file-card .row-menu {
+  position: absolute;
+  right: 6px;
+  bottom: 14px;
+}
+
+/* A drawing of a file's first page. */
+.documents-thumb {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 132px;
+  overflow: hidden;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.documents-page {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 66%;
+  height: 112px;
+  padding: 14px 14px 0;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+  background: var(--background);
+}
+.documents-page b {
+  display: block;
+  width: 55%;
+  height: 7px;
+  margin-bottom: 4px;
+  border-radius: 2px;
+  background: var(--documents-doc);
+  opacity: 0.75;
+}
+.documents-page i {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--muted);
+}
+.documents-page i.short {
+  width: 70%;
+}
+.documents-thumb-pdf .documents-page b {
+  background: var(--documents-pdf);
+}
+.documents-thumb-file .documents-page b {
+  background: var(--slate);
+}
+.documents-page.documents-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0;
+  padding: 0;
+}
+.documents-page.documents-grid i {
+  height: 13px;
+  border-radius: 0;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+}
+.documents-page.documents-grid i.head {
+  background: var(--documents-sheet-surface);
+}
+.documents-page.documents-grid i.key {
+  background: color-mix(in srgb, var(--documents-sheet) 10%, transparent);
+}
+.documents-thumb-slides {
+  align-items: center;
+}
+.documents-slide {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  width: 72%;
+  aspect-ratio: 16 / 9;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--background);
+}
+.documents-slide b {
+  display: block;
+  width: 60%;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--documents-slides);
+}
+.documents-slide i {
+  display: block;
+  width: 80%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--muted);
+}
+.documents-slide i.short {
+  width: 50%;
+}
+.documents-thumb-image {
+  align-items: stretch;
+  background:
+    linear-gradient(90deg, transparent 47%, var(--border) 47% 53%, transparent 53%),
+    linear-gradient(0deg, transparent 58%, var(--border) 58% 63%, transparent 63%),
+    var(--violet-surface);
+}
+.documents-thumb-image span {
+  position: absolute;
+  width: 26%;
+  height: 22%;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--violet) 22%, transparent);
+}
+.documents-thumb-image span:nth-child(1) {
+  left: 10%;
+  top: 14%;
+}
+.documents-thumb-image span:nth-child(2) {
+  left: 62%;
+  top: 20%;
+  height: 30%;
+}
+.documents-thumb-image span:nth-child(3) {
+  left: 14%;
+  top: 70%;
+  width: 30%;
+  height: 18%;
+}
+
+/* The Google account that holds Documents. */
+.documents-account {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.documents-account-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.documents-account-card > div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.documents-account-card strong {
+  overflow-wrap: anywhere;
+}
+.documents-account-card small {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.documents-account-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+
+/* Documents is ready: some folders to start with. */
+.documents-ready-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.documents-ready-title svg {
+  color: var(--success);
+}
+.documents-ready-heading {
+  margin-top: 20px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.documents-starters {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin: 14px 0 20px;
+}
+.documents-starters label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 14px;
+}
+.documents-starters label.chosen {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  background: var(--selection);
+}
+.documents-starters svg {
+  color: var(--slate);
+}
+
+@media (width <= 760px) {
+  .documents-heading .heading-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .documents-toolbar > div {
+    width: 100%;
+  }
+  .documents-toolbar .search {
+    flex: 1;
+  }
+  .documents-table th:nth-child(2),
+  .documents-table td:nth-child(2),
+  .documents-table th:nth-child(4),
+  .documents-table td:nth-child(4) {
+    display: none;
+  }
+  .documents-starters {
+    grid-template-columns: 1fr;
+  }
+}

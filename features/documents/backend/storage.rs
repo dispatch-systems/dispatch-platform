@@ -9,6 +9,7 @@ use dispatch_core::{
 };
 use rusqlite::params;
 use serde_json::json;
+use std::collections::BTreeMap;
 
 /// How long a sign-in started at Google may take to come back.
 const SIGN_IN_MS: i64 = 10 * 60 * 1000;
@@ -40,6 +41,13 @@ impl FromRow for Connection {
     }
 }
 
+/// Who added a file through Dispatch, and who last changed it there, by their user IDs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Record {
+    pub added_by: String,
+    pub changed_by: String,
+}
+
 /// What Documents reads and writes for one DSP.
 pub trait DocumentsStore {
     fn documents_connection(&self, dsp: &str) -> Result<Option<Connection>>;
@@ -67,6 +75,10 @@ pub trait DocumentsStore {
     fn break_documents_connection(&self, dsp: &str) -> Result<bool>;
     /// Forgets the connection and its token. The folder stays in Google Drive.
     fn remove_documents_connection(&self, dsp: &str) -> Result<()>;
+    /// What Dispatch recorded of each file it made or changed, by file.
+    fn documents_records(&self, dsp: &str) -> Result<BTreeMap<String, Record>>;
+    /// Records that `user` added the file, or changed it if it was added before.
+    fn record_documents_change(&self, dsp: &str, file: &str, user: &str) -> Result<()>;
 }
 impl DocumentsStore for Store {
     fn documents_connection(&self, dsp: &str) -> Result<Option<Connection>> {
@@ -181,6 +193,36 @@ impl DocumentsStore for Store {
         }
         let db = self.dsp(dsp)?;
         db.exec("DELETE FROM documents_connection", [])?;
+        Ok(())
+    }
+    fn documents_records(&self, dsp: &str) -> Result<BTreeMap<String, Record>> {
+        let db = self.dsp(dsp)?;
+        let rows: Vec<(String, String, String)> = db.query_as(
+            "SELECT file_id,added_by,changed_by FROM documents_files",
+            [],
+        )?;
+        Ok(rows
+            .into_iter()
+            .map(|(file, added_by, changed_by)| {
+                (
+                    file,
+                    Record {
+                        added_by,
+                        changed_by,
+                    },
+                )
+            })
+            .collect())
+    }
+    fn record_documents_change(&self, dsp: &str, file: &str, user: &str) -> Result<()> {
+        let db = self.dsp(dsp)?;
+        let at = iso();
+        db.exec(
+            "INSERT INTO documents_files (file_id,added_by,added_at,changed_by,changed_at) \
+             VALUES (?1,?2,?3,?2,?3) ON CONFLICT(file_id) DO UPDATE SET \
+             changed_by=excluded.changed_by,changed_at=excluded.changed_at",
+            params![file, user, at],
+        )?;
         Ok(())
     }
 }

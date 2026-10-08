@@ -102,6 +102,10 @@
         {
           "id": 9,
           "name": "documents"
+        },
+        {
+          "id": 10,
+          "name": "documents_files"
         }
       ]
     },
@@ -147,6 +151,10 @@
         "POST /api/dsp/documents/connect",
         "POST /api/dsp/documents/connect/finish",
         "POST /api/dsp/documents/disconnect",
+        "GET /api/dsp/documents/folder",
+        "POST /api/dsp/documents/new",
+        "POST /api/dsp/documents/items/{id}/rename",
+        "POST /api/dsp/documents/items/{id}/trash",
         "GET /api/documents/google/return"
       ],
       "schedules": false
@@ -155,7 +163,8 @@
     "tables": {
       "dsp": [
         "documents_connect_requests",
-        "documents_connection"
+        "documents_connection",
+        "documents_files"
       ]
     },
     "tabs": []

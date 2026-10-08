@@ -3,6 +3,10 @@
 # Each changes with this file, so a reviewer sees who can reach what.
 GET /api/documents/google/return Public Async
 GET /api/dsp/documents Dsp("documents.use") Read
+GET /api/dsp/documents/folder Dsp("documents.use") Async
 POST /api/dsp/documents/connect Dsp("documents.manage") Write
 POST /api/dsp/documents/connect/finish Dsp("documents.manage") Async
 POST /api/dsp/documents/disconnect Dsp("documents.manage") Async
+POST /api/dsp/documents/items/{id}/rename Dsp("documents.use") Async
+POST /api/dsp/documents/items/{id}/trash Dsp("documents.use") Async
+POST /api/dsp/documents/new Dsp("documents.use") Async
