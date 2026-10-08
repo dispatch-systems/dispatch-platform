@@ -57,7 +57,10 @@ pub const FEATURE: Feature = Feature {
             },
         ],
     }],
-    maintenance: &[backend::maintenance::MAINTENANCE],
+    maintenance: &[
+        backend::maintenance::MAINTENANCE,
+        backend::maintenance::TEAM,
+    ],
     audit: Audit {
         areas: &[("documents.", Connections)],
         ..Audit::NONE

@@ -72,6 +72,29 @@ macro_rules! on_drive {
     }};
 }
 
+/// Whether the team changed since the folder was last shared: someone joined or left, gained
+/// or lost Use Documents, or is shared at an address they moved on from. Asks nothing of
+/// Google, so it can be checked every minute.
+pub fn stale(db: &Store, dsp: &str) -> Result<bool> {
+    let wanted = members(db, dsp)?;
+    let people = db.documents_people(dsp)?;
+    if wanted.len() != people.len() {
+        return Ok(true);
+    }
+    Ok(wanted.iter().any(|member| {
+        people
+            .iter()
+            .find(|person| person.user == member.user)
+            .is_none_or(|person| {
+                let target = person.linked.as_deref().unwrap_or(&member.email);
+                person
+                    .shared
+                    .as_ref()
+                    .is_some_and(|(email, _)| !email.eq_ignore_ascii_case(target))
+            })
+    }))
+}
+
 /// A turn at sharing each DSP's folder, so two syncs never share or email at once.
 static TURNS: LazyLock<Mutex<BTreeMap<String, Arc<tokio::sync::Mutex<()>>>>> =
     LazyLock::new(Default::default);
@@ -444,3 +467,7 @@ pub async fn finish_link(
     sync(state, &c.dsp.id).await?;
     state.read(move |db| mine(db, &c)).await
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/team.rs"]
+mod tests;

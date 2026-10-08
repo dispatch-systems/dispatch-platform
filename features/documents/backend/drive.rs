@@ -109,7 +109,8 @@ impl Google {
         Err(Error::new("documents_too_many_files", 507))
     }
     /// Makes a file of `mime`, a folder or one of Google's own, in `parent`, or at the top of
-    /// the account's Drive.
+    /// the account's Drive. Its editors can't share it on: who the team's files are shared with
+    /// follows the team.
     pub async fn create(
         &self,
         access: &str,
@@ -143,7 +144,12 @@ impl Google {
             HTTP.post(FILES)
                 .bearer_auth(access)
                 .query(&[("fields", FIELDS)])
-                .json(&json!({"name": name, "mimeType": mime, "parents": parents})),
+                .json(&json!({
+                    "name": name,
+                    "mimeType": mime,
+                    "parents": parents,
+                    "writersCanShare": false,
+                })),
         )
         .await
     }

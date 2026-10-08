@@ -35,16 +35,19 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   edit in Google. Linking signs them in with Google for only `openid email`, keeps the
   address Google proved, and revokes the token at once. Members who leave, or lose
   `documents.use`, lose the share Dispatch gave them. Anyone else the folder is shared with
-  in Google Drive is listed for those who manage Documents to remove. Sharing is brought up
-  to date when Google is connected, when a member links, when the team panel opens, and
-  hourly. The panel also shows how full the account's storage is.
+  in Google Drive is listed for those who manage Documents to remove. Sharing follows the
+  team within a minute, and is brought up to date when Google is connected, when a member
+  links and when the team panel opens. The main folder and everything Dispatch makes in it
+  can't be shared on by its editors (`writersCanShare` off), so the team decides who it's
+  shared with. The panel also shows how full the account's storage is.
 - **Reconnecting** takes the same Google account only: `drive.file` reaches the files
   Dispatch made through that account and no other.
 - **Data:** `documents_connection`, `documents_connect_requests`, `documents_files` and
   `documents_people` (who the folder is shared with, and at what address), in
   each DSP's own database; the account's refresh token, encrypted in the DSP's secrets as `google.enc`.
-- **Upkeep:** hourly, a connection Google stopped accepting is marked broken, and each
-  connected DSP's sharing is brought up to date.
+- **Upkeep:** every minute, the folder is shared anew for each connected DSP whose team
+  changed, read from Dispatch alone. Hourly, a connection Google stopped accepting is marked
+  broken, and each connected DSP's sharing is checked against Google's own list.
 - **Fixture mode** never calls Google: its sign-in comes straight back with
   `fixture:<email>` as the code, and each account's Drive is kept in memory. A member who
   links signs in as `teammate@example.com`, and an address at `example.net` is no Google
