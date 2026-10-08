@@ -4,10 +4,14 @@ import { fixture, until } from '../../../../core/shell/tests/support/support.js'
 import { parseApiResponse } from '../../../../core/shell/frontend/runtime/replies.js';
 import { sessionSchema } from '../../../../core/accounts/api/runtime.js';
 import { jobSchema } from '../../../../core/collection/api/runtime.js';
+import { installFeatures } from '../../../../core/shell/frontend/runtime/slots.js';
+import { replies } from '../../api/runtime.js';
 
 test('authentication and job contracts reject malformed values and validate real responses', async (t) => {
   const f = await fixture();
   t.after(f.close);
+  // Timecard checks its jobs' replies, as the app installs it.
+  installFeatures([{ name: 'timecard', replies }]);
   for (const body of [
     { email: 'owner@dispatch.test' },
     { email: 'owner@dispatch.test', password: 12 },

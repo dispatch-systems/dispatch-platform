@@ -189,11 +189,9 @@ fn remove(db: &Store, c: &Member, input: &Input, owner: Owner) -> Result<Reply> 
 
 /// Each feature's routes change only the schedules of the collections it keeps, as the
 /// catalog says, so a feature added later is apart from the others' without a list to
-/// keep.
+/// keep. A collection no feature keeps is no schedule's.
 fn scope(owner: Owner, collection: &str) -> Result<()> {
-    crate::ensure(
-        crate::tenancy::catalog::automation(collection) == Some(owner.page),
-        "permission_denied",
-        403,
-    )
+    let page = crate::tenancy::catalog::automation(collection);
+    crate::ensure(page.is_some(), "invalid_input", 400)?;
+    crate::ensure(page == Some(owner.page), "permission_denied", 403)
 }
