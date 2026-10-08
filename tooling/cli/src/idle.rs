@@ -94,7 +94,7 @@ pub fn span(idle: Duration) -> String {
 /// Deletes the builds of the worktrees in `ws` that went unused, but `keep`'s and those whose
 /// preview runs, and answers each with how long it went unused and its size. Every build unused
 /// for `IDLE` goes; then, while `free` answers less than `LOW_DISK`, those unused for `PRESSED`,
-/// oldest first.
+/// oldest first. A build that can't go stays, and the rest are still tried.
 fn clear(
     ws: &Workspace,
     keep: &str,
@@ -115,7 +115,8 @@ fn clear(
     builds.sort_by(|a, b| b.1.cmp(&a.1));
     let mut gone = vec![];
     for (name, idle) in builds {
-        if idle < IDLE && (idle < PRESSED || free()? >= crate::start::LOW_DISK) {
+        let short = || free().is_ok_and(|free| free < crate::start::LOW_DISK);
+        if idle < IDLE && (idle < PRESSED || !short()) {
             continue;
         }
         let path = ws.worktree(&name);
@@ -128,7 +129,10 @@ fn clear(
             .iter()
             .filter_map(|dir| workspace::size(runner, dir))
             .sum();
-        fs::remove_dir_all(&target)?;
+        if let Err(error) = fs::remove_dir_all(&target) {
+            println!("Couldn't delete worktrees/{name}/target: {error}");
+            continue;
+        }
         crate::test::sweep(&path.join(".test-build"));
         gone.push((name, idle, bytes));
     }
