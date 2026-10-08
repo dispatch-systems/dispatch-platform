@@ -1,6 +1,6 @@
 use dispatchdev_cli::{
-    Native, Result, Runner, api, build, check, finish, logs, pr, preview, ship, start, status,
-    test, workspace::Workspace,
+    Native, Result, Runner, api, build, check, finish, logs, pr, preview, scaffold, ship, start,
+    status, test, workspace::Workspace,
 };
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -33,11 +33,16 @@ A change, from start to finish:
                                    branches and scratch folder go; then wait for Dev.
   status                           Worktrees, previews, open PRs, what Dev runs, free disk.
 
+  new feature <name> [options]     In a change's worktree, a feature or collector that works as
+  new collector <site> [options]   written, listed in app/, with its catalog, API types and
+                                   snapshots written. With no name it lists its options;
+                                   --dry-run prints what it would write.
+
   build [--release | --fixture]    Build the backend, or the browser tests' assessment
         [--cache-key]              fixture, reusing a build of identical inputs.
   help                             Show this.
 
-test, check and build work on the checkout the current directory is in, or on --root
+test, check, build and new work on the checkout the current directory is in, or on --root
 <directory>.";
 
 /// Options that take a value.
@@ -104,24 +109,51 @@ impl Line {
     }
     /// The checkout to work on: `--root`, or the one the current directory is in.
     fn root(&self) -> Result<PathBuf> {
-        if let Some(root) = self.option("--root") {
-            return Ok(PathBuf::from(root));
-        }
-        let here = std::env::current_dir()?;
-        Ok(Native
-            .command(&["git", "rev-parse", "--show-toplevel"], Some(&here), 30)
-            .ok()
-            .and_then(|bytes| String::from_utf8(bytes).ok())
-            .map(|top| PathBuf::from(top.trim()))
-            .filter(|top| top.is_dir())
-            .unwrap_or(here))
+        checkout(self.option("--root"))
     }
     fn workspace(&self) -> Result<Workspace> {
         Workspace::find(&std::env::current_dir()?, &Native)
     }
 }
+/// The checkout to work on: `root`, or the one the current directory is in.
+fn checkout(root: Option<&str>) -> Result<PathBuf> {
+    if let Some(root) = root {
+        return Ok(PathBuf::from(root));
+    }
+    let here = std::env::current_dir()?;
+    Ok(Native
+        .command(&["git", "rev-parse", "--show-toplevel"], Some(&here), 30)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .map(|top| PathBuf::from(top.trim()))
+        .filter(|top| top.is_dir())
+        .unwrap_or(here))
+}
+/// `new <kind> [options]`: every option but `--root` is the scaffolder's, which passes to it as
+/// given, so its own list is the only one.
+fn new(args: &[String]) -> Result<()> {
+    let (kind, rest) = args.split_first().ok_or(scaffold::USAGE)?;
+    let (mut root, mut passed) = (None, vec![]);
+    let mut rest = rest.iter();
+    while let Some(arg) = rest.next() {
+        if arg == "--root" {
+            root = Some(rest.next().ok_or("--root needs a value")?.as_str());
+        } else {
+            passed.push(arg.clone());
+        }
+    }
+    let root = checkout(root)?;
+    match scaffold::run(&root, kind, &passed)? {
+        true => Ok(()),
+        false => Err("It wasn't made, or a step after it failed.".into()),
+    }
+}
 fn run() -> Result<()> {
-    let line = parse(std::env::args().skip(1).collect())?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|command| command == "new") {
+        return new(&args[1..]);
+    }
+    let line = parse(args)?;
     match line.command.as_str() {
         "start" => {
             line.only(&["--from"], 1)?;

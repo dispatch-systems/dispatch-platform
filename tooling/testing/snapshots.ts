@@ -26,12 +26,12 @@ const frontend = fs
   .filter((name) => name.endsWith('.test.ts'))
   .map((name) => `app/tests/frontend/${name}`)
   .sort();
-const rust = ['test', '--locked', '-p', 'dispatch-backend', '--lib', '--test', 'agent_api'];
+const rust = ['test', '--locked', '-p', 'dispatch-backend', '--lib', '--test', 'integration'];
 /** The build of the Rust tests, whose output shows once. */
 const build: Command = { name: 'build', command: 'cargo', args: [...rust, '--no-run'] };
 /**
- * The app's tests that hold snapshots: its Rust module tests and the agent API's, each binary
- * run whether or not another fails, and its frontend's.
+ * The app's tests that hold snapshots: its Rust module tests and its integration program, which
+ * holds the agent API's, each binary run whether or not another fails, and its frontend's.
  */
 const commands: Command[] = [
   { name: 'Rust', command: 'cargo', args: [...rust, '--no-fail-fast'] },
