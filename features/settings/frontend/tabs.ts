@@ -2,16 +2,23 @@ import type { ComponentType } from 'react';
 import type { DspView } from '../../../core/accounts/api/index.js';
 import { hashQuery, parseHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { admitted, warm } from '../../../core/shell/frontend/runtime/route-prefetch.js';
-import { settingsTabs, type SettingsTab } from '../../../core/shell/frontend/runtime/slots.js';
+import {
+  settingsPieces,
+  settingsTabs,
+  type SettingsTab,
+} from '../../../core/shell/frontend/runtime/slots.js';
 
 // A DSP's Settings is made of the tabs its owners contribute: the account's own, and each
-// feature's settings panel.
+// feature's settings panel, with the pieces other owners add to them. A feature's go with it.
 
 /** The tabs this person sees, in order. */
 export const visibleTabs = (view?: DspView) =>
-  settingsTabs()
+  settingsTabs(view)
     .filter((tab) => !tab.visible || tab.visible(view))
     .sort((a, b) => a.order - b.order);
+/** Loads a tab's code and its pieces'. */
+export const loadTab = (tab: SettingsTab, view?: DspView) =>
+  Promise.all([tab.load(), ...settingsPieces(tab.id, view).map((piece) => piece.load())]);
 
 const badges = new Map<string, ComponentType<{ active: boolean }>>();
 /** A tab's badge, once loaded. */
@@ -29,14 +36,15 @@ export const loadBadge = (tab: SettingsTab) =>
 export function preloadSettingsTab(view?: DspView) {
   const tabs = visibleTabs(view);
   const id = hashQuery().get('tab') || tabs[0]?.id;
-  return Promise.all([...tabs.map(loadBadge), tabs.find((tab) => tab.id === id)?.load()]);
+  const tab = tabs.find((each) => each.id === id);
+  return Promise.all([...tabs.map(loadBadge), tab && loadTab(tab, view)]);
 }
 
 /** The reads a Settings tab opens on, warmed when the tab may open next. */
 export function prefetchSettingsTab(tab: string, view?: DspView, immediate = false) {
   if (!admitted(view)) return;
   warm(
-    settingsTabs().flatMap((contribution) => contribution.prefetch?.(tab, view) ?? []),
+    settingsTabs(view).flatMap((contribution) => contribution.prefetch?.(tab, view) ?? []),
     'route:settings',
     immediate,
   );

@@ -186,15 +186,19 @@ test('every HTTP route has a method and path of its own', () => {
   holds('slots', 'routes', collisions('route', routes));
 });
 
-// The frontend's manifests, as they load: each page's address and each Settings tab. Every
-// owner's frontend/feature.ts counts, listed in the app or not.
+// The frontend's manifests, as they load: each page's address, each Settings tab and piece,
+// and the owner's name. Every owner's frontend/feature.ts counts, listed in the app or not.
 type FrontendManifest = {
+  name: string;
   routes?: readonly { id: string; scope: string }[];
   settingsTabs?: readonly { id: string }[];
+  settingsPieces?: readonly { tab: string; id: string }[];
 };
 async function frontendContributions() {
   const addresses: Contribution[] = [];
   const settingsTabs: Contribution[] = [];
+  const settingsPieces: Contribution[] = [];
+  const names: { file: string; name: string }[] = [];
   const manifests = files.filter((file) =>
     /^(core|features|collectors)\/[^/]+\/frontend\/feature\.ts$/.test(file),
   );
@@ -206,12 +210,15 @@ async function frontendContributions() {
       addresses.push({ id: `${route.scope}/${route.id}`, at: ownerName(file) });
     for (const tab of feature.settingsTabs ?? [])
       settingsTabs.push({ id: tab.id, at: ownerName(file) });
+    for (const piece of feature.settingsPieces ?? [])
+      settingsPieces.push({ id: `${piece.tab}/${piece.id}`, at: ownerName(file) });
+    names.push({ file, name: feature.name });
   }
-  return { addresses, settingsTabs };
+  return { addresses, settingsTabs, settingsPieces, names };
 }
 
-test("every page's address and every Settings tab has an id of its own", async () => {
-  const { addresses, settingsTabs } = await frontendContributions();
+test("every page's address, Settings tab and piece of one has an id of its own", async () => {
+  const { addresses, settingsTabs, settingsPieces } = await frontendContributions();
   assert(
     addresses.length > 10 && settingsTabs.length > 3,
     'the frontend manifests declare pages and tabs',
@@ -225,7 +232,34 @@ test("every page's address and every Settings tab has an id of its own", async (
   holds('slots', 'addresses', [
     ...twice('address', addresses),
     ...twice('settings tab', settingsTabs),
+    ...twice('settings piece', settingsPieces),
   ]);
+});
+
+// What a feature or connection adds to another's page goes with it by its frontend's name, so
+// the name, the switch and the connection are each the owner's directory name.
+test('every feature and collector is known by its directory name', async () => {
+  const { names } = await frontendContributions();
+  const misnamed = [
+    ...featureManifests().flatMap((manifest) =>
+      manifest.switch && manifest.switch !== manifest.owner.name
+        ? [`${manifest.owner.dir} switches as ${manifest.switch}`]
+        : [],
+    ),
+    ...collectorManifests().flatMap((manifest) =>
+      manifest.id && manifest.id !== manifest.owner.name
+        ? [`${manifest.owner.dir} connects as ${manifest.id}`]
+        : [],
+    ),
+    ...names.flatMap(({ file, name }) => {
+      const owner = ownerOf(file)!;
+      return owner.layer !== 'core' && name !== owner.name
+        ? [`${owner.dir}'s frontend is named ${name}`]
+        : [];
+    }),
+  ];
+  assert(names.length > 10, `found only ${names.length} frontend manifests`);
+  holds('slots', 'owner names', misnamed);
 });
 
 test('every MCP endpoint, tool and read toggle has an id of its own', () => {

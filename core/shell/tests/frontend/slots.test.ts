@@ -21,6 +21,8 @@ import {
   isLongPoll,
   pageTabs,
   runWording,
+  settingsPieces,
+  settingsTabs,
   scheduleIssueOf,
   auditWording,
   loadPlatformSlots,
@@ -31,9 +33,12 @@ import {
   type PageTab,
   type PlatformSlots,
   type RunWording,
+  type SettingsPiece,
   type SettingsTab,
 } from '../../frontend/runtime/slots.js';
-import type { PageFeature } from '../../../tenancy/api/index.js';
+import { featureCatalog, type SubEntry } from '../../frontend/runtime/features.js';
+import type { DspView } from '../../../accounts/api/index.js';
+import type { Feature, PageFeature } from '../../../tenancy/api/index.js';
 
 // Synthetic owners, installed as the app installs its manifests. A platform-slots module's
 // loader resolves to the module. The pages and switches they declare are the test's own too,
@@ -255,9 +260,78 @@ test("a page's tabs from other features come in their order, ties in the order t
     { name: 'beta', pageTabs: [tab('team', 'beta', 10)] },
     { name: 'gamma', pageTabs: [tab('team', 'gamma', 30)] },
   ]);
+  const view = { features: [] } as unknown as DspView;
   assert.deepEqual(
-    pageTabs('team').map((each) => each.id),
+    pageTabs('team', view).map((each) => each.id),
     ['beta', 'alpha-late', 'gamma'],
   );
-  assert.deepEqual(pageTabs('uniforms'), []);
+  assert.deepEqual(pageTabs('uniforms', view), []);
+});
+
+// A feature's contributions to other pages go with it, whether switched off or hidden from the
+// DSP, and a part's with the part; core's stay. The owner is one this build has, with a part.
+test("what a feature adds to another's page goes with it, and a part's with the part", (t) => {
+  const part = featureCatalog.find((f): f is SubEntry => f.kind === 'sub');
+  if (!part) return t.skip('this build has no feature with parts');
+  const owner = part.page;
+  const view = (...features: Feature[]) => ({ features }) as unknown as DspView;
+  const tab = (id: string, extra: Partial<SettingsTab> = {}): SettingsTab => ({
+    id,
+    label: id,
+    order: 1,
+    load: () => Promise.resolve(),
+    render: () => id,
+    ...extra,
+  });
+  const piece = (id: string, order: number, extra: Partial<SettingsPiece> = {}): SettingsPiece => ({
+    tab: 'general',
+    id,
+    order,
+    load: () => Promise.resolve(),
+    render: () => id,
+    ...extra,
+  });
+  const pageTab = (id: string, extra: Partial<PageTab> = {}): PageTab => ({
+    page: pageId('team'),
+    id,
+    label: id,
+    order: 1,
+    load: () => Promise.resolve(),
+    render: () => id,
+    ...extra,
+  });
+  installFeatures([
+    { name: 'core-owner', settingsTabs: [tab('general')], settingsPieces: [piece('core', 50)] },
+    {
+      name: owner,
+      settingsTabs: [tab('own'), tab('of-part', { part: part.id })],
+      settingsPieces: [
+        piece('late', 30),
+        piece('early', 10),
+        piece('of-part', 20, { part: part.id }),
+        piece('elsewhere', 1, { tab: 'own' }),
+        piece('unseen', 1, { visible: () => false }),
+      ],
+      pageTabs: [pageTab('own'), pageTab('of-part', { part: part.id })],
+    },
+  ]);
+  const ids = (each: readonly { id: string }[]) => each.map(({ id }) => id);
+  // Every tab exists, so links to one keep working; a view lists only what it has.
+  assert.deepEqual(ids(settingsTabs()), ['general', 'own', 'of-part']);
+  assert.deepEqual(ids(settingsTabs(view(owner, part.id))), ['general', 'own', 'of-part']);
+  assert.deepEqual(ids(settingsPieces('general', view(owner, part.id))), [
+    'early',
+    'of-part',
+    'late',
+    'core',
+  ]);
+  assert.deepEqual(ids(pageTabs('team', view(owner, part.id))), ['own', 'of-part']);
+  // Without the part, its own go; without the feature, all of the feature's.
+  assert.deepEqual(ids(settingsTabs(view(owner))), ['general', 'own']);
+  assert.deepEqual(ids(settingsPieces('general', view(owner))), ['early', 'late', 'core']);
+  assert.deepEqual(ids(pageTabs('team', view(owner))), ['own']);
+  assert.deepEqual(ids(settingsTabs(view(part.id))), ['general']);
+  assert.deepEqual(ids(settingsPieces('general', view(part.id))), ['core']);
+  assert.deepEqual(pageTabs('team', view()), []);
+  assert.deepEqual(ids(settingsPieces('general', undefined)), ['core']);
 });
