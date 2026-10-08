@@ -202,9 +202,19 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
 fn email(db: &Store, dsp: &str, user: &str, name: &str, origin: &str, dev: bool) {
     let url = format!("{origin}/#dsp/{dsp}/documents");
     let lines = [
-        format!("{name} keeps its team's folders, Docs and Sheets in Google Drive, through Dispatch."),
-        "Your Dispatch email isn't a Google account, so you can see your team's files in Dispatch but can't edit Docs and Sheets in Google yet.".to_owned(),
-        "To edit them, open Documents and link a Google account: any Gmail address works, or make a free Google account with the email you already use.".to_owned(),
+        format!(
+            "{name} keeps its team's folders, Docs and Sheets in Google Drive, through Dispatch."
+        ),
+        concat!(
+            "Your Dispatch email isn't a Google account, so you can see your team's files in ",
+            "Dispatch but can't edit Docs and Sheets in Google yet."
+        )
+        .to_owned(),
+        concat!(
+            "To edit them, open Documents and link a Google account: any Gmail address works, ",
+            "or make a free Google account with the email you already use."
+        )
+        .to_owned(),
     ];
     let paragraphs: Vec<&str> = lines.iter().map(String::as_str).collect();
     let subject = format!("Link a Google account to edit {name}'s Documents");
