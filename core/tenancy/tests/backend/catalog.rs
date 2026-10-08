@@ -49,5 +49,8 @@ fn a_mandatory_features_optional_part_starts_off_and_its_mandatory_part_on() {
     let parts: Vec<_> = page_subs(&HOST)
         .map(|part| (part.id, part.default, part.mandatory))
         .collect();
-    assert_eq!(parts, [("host.extra", false, false), ("host.main", true, true)]);
+    assert_eq!(
+        parts,
+        [("host.extra", false, false), ("host.main", true, true)]
+    );
 }

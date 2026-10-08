@@ -16,7 +16,7 @@
   "app/tests/browser/dashboard.spec.ts › owner dashboard, search, workforce, timecards, connection verification and collection": 9.5,
   "app/tests/browser/dashboard.spec.ts › platform owner looks through a DSP role until they leave the DSP": 3.4,
   "app/tests/browser/dashboard.spec.ts › the mobile drawer stays open while the DSP behind it finishes loading": 2.9,
-  "app/tests/browser/dsp-features.spec.ts › the platform switches a DSP’s pages, tabs and connections, and the team’s pages follow": 11.2,
+  "app/tests/browser/dsp-features.spec.ts › the platform switches a DSP’s features, their parts and connections, and the team’s pages follow": 26.2,
   "app/tests/browser/member-profile.spec.ts › a DSP member invite creates a profile in its own responsive map screen": 5.5,
   "app/tests/browser/member-profile.spec.ts › an accepted invitation says so and hands its email to sign-in": 3.0,
   "app/tests/browser/member-profile.spec.ts › member completion goes directly to sign-in with phone": 2.3,

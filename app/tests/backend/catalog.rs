@@ -46,13 +46,11 @@ fn the_catalog_keeps_its_pages_tabs_and_order() {
     let subs: Vec<_> = catalog::catalog()
         .iter()
         .filter(|feature| matches!(feature.kind, catalog::Kind::Sub(_)))
-        .map(|sub| {
-            match sub.kind {
-                catalog::Kind::Sub(page) => json!({"id": sub.id, "label": sub.label, "page": page,
+        .map(|sub| match sub.kind {
+            catalog::Kind::Sub(page) => json!({"id": sub.id, "label": sub.label, "page": page,
                     "tab": sub.tab, "permissions": sub.permissions, "requires": sub.requires,
                     "default": sub.default, "mandatory": sub.mandatory}),
-                kind => panic!("{} is a {kind:?}", sub.id),
-            }
+            kind => panic!("{} is a {kind:?}", sub.id),
         })
         .collect();
     let catalog: Vec<_> = catalog::catalog().iter().map(|f| f.id).collect();
