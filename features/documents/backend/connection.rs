@@ -39,16 +39,9 @@ pub fn overview(db: &Store, c: &Context) -> Result<DocumentsOverview> {
         }),
         None => None,
     };
-    let owners = db
-        .members(&c.dsp.id)?
-        .into_iter()
-        .filter(|member| member.owner)
-        .map(|member| member.name)
-        .collect();
     Ok(DocumentsOverview {
         connection,
         available: Google::available(&db.config),
-        owners,
     })
 }
 

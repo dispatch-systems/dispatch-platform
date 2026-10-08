@@ -2,14 +2,10 @@
 import type { DocumentsConnection } from "./DocumentsConnection";
 
 /**
- * `GET /api/dsp/documents`: the DSP's Google connection, and who can make one.
+ * `GET /api/dsp/documents`: the DSP's Google connection, and whether it can make one.
  */
 export type DocumentsOverview = { connection: DocumentsConnection | null,
 /**
  * Whether this server can connect Google at all: it has a Google sign-in client.
  */
-available: boolean,
-/**
- * The DSP's owners by name, whom anyone else asks to connect or reconnect it.
- */
-owners: Array<string>, };
+available: boolean, };

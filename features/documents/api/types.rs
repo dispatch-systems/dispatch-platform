@@ -15,7 +15,7 @@ text_enum! {
     pub enum AccountKind { Workspace => "workspace", Personal => "personal", }
 }
 
-/// `GET /api/dsp/documents`: the DSP's Google connection, and who can make one.
+/// `GET /api/dsp/documents`: the DSP's Google connection, and whether it can make one.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
@@ -24,8 +24,6 @@ pub struct DocumentsOverview {
     pub connection: Option<DocumentsConnection>,
     /// Whether this server can connect Google at all: it has a Google sign-in client.
     pub available: bool,
-    /// The DSP's owners by name, whom anyone else asks to connect or reconnect it.
-    pub owners: Vec<String>,
 }
 
 /// The Google account that holds the DSP's Documents, and its main folder there.

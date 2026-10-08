@@ -59,7 +59,6 @@ test('everyone on the team sees Documents, and only those who manage it connect 
   await member.select(north.id);
   const overview = await member.read('/api/dsp/documents');
   assert.equal(overview.connection, null);
-  assert.ok(overview.owners.length > 0);
   assert.equal((await member.post('/api/dsp/documents/connect')).status, 403);
   assert.equal((await member.post('/api/dsp/documents/disconnect')).status, 403);
 });

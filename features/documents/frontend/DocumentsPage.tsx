@@ -40,9 +40,6 @@ const cancelled = (error: string) =>
     ? 'Google sign-in was cancelled, so nothing changed.'
     : "Google didn't finish signing in. Try connecting again.";
 
-/** Whom to ask, at the start of a sentence: "Maria Flores", or any owner when there are more. */
-const askOf = (owners: string[]) => (owners.length === 1 ? owners[0] : 'An owner of your DSP');
-
 export function DocumentsPage({ view }: { view: DspView }) {
   const overview = useDocumentsOverview();
   const canManage = can(view, 'documents.manage');
@@ -115,14 +112,14 @@ function Body({
 }) {
   const connection = data.connection;
   if (!connection) {
-    if (!canManage) return <NotSetUp owners={data.owners} />;
+    if (!canManage) return <NotSetUp />;
     return data.available ? <Connect dspName={view.dsp.name} /> : <Unavailable />;
   }
   if (connection.status === 'broken')
     return canManage ? (
       <Broken connection={connection} />
     ) : (
-      <BrokenForMember connection={connection} owners={data.owners} />
+      <BrokenForMember connection={connection} />
     );
   return <Connected view={view} connection={connection} canManage={canManage} refresh={refresh} />;
 }
@@ -194,7 +191,7 @@ function Unavailable() {
   );
 }
 
-function NotSetUp({ owners }: { owners: string[] }) {
+function NotSetUp() {
   return (
     <section className="documents-card documents-waiting">
       <span className="documents-folder-tile">
@@ -202,8 +199,7 @@ function NotSetUp({ owners }: { owners: string[] }) {
       </span>
       <h2>Documents isn't set up yet</h2>
       <p>
-        {askOf(owners)} needs to connect your company's Google account. Your team's files will show
-        up here once that's done.
+        Your DSP owner needs to set it up. Your team's files will show up here once that's done.
       </p>
     </section>
   );
@@ -245,20 +241,14 @@ function Broken({ connection }: { connection: DocumentsConnection }) {
   );
 }
 
-function BrokenForMember({
-  connection,
-  owners,
-}: {
-  connection: DocumentsConnection;
-  owners: string[];
-}) {
+function BrokenForMember({ connection }: { connection: DocumentsConnection }) {
   return (
     <section className="documents-card documents-broken">
       <TriangleAlert size={22} />
       <div>
         <h2>Documents can't reach Google right now</h2>
         <p>
-          Your team's files are safe in {connection.accountEmail}'s Google Drive. {askOf(owners)}{' '}
+          Your team's files are safe in {connection.accountEmail}'s Google Drive. Your DSP owner
           needs to reconnect Google.
         </p>
       </div>
