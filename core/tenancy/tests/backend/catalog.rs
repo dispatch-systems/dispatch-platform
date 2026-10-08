@@ -12,6 +12,7 @@ fn feature(id: &'static str, kind: Kind, permissions: &'static [&'static str]) -
         requires: &[],
         default: true,
         tab: false,
+        mandatory: false,
     }
 }
 

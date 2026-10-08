@@ -4,17 +4,18 @@ use super::FEATURE;
 #[test]
 fn declares_its_switch_and_permissions() {
     assert_eq!(FEATURE.name, "{{name}}");
-{{#switch}}
-    let switch = FEATURE.switch.expect("a switch on the DSPs page");
+    let switch = FEATURE.switch;
     assert_eq!((switch.id, switch.label), ("{{name}}", "{{label}}"));
+{{#switch}}
+    assert!(!switch.mandatory, "the platform owner switches it per DSP");
 {{/switch}}
 {{^switch}}
-    assert!(FEATURE.switch.is_none(), "an always-on feature has no switch");
+    assert!(switch.mandatory, "every DSP has it, with no switch");
 {{/switch}}
 {{#permission}}
     let view = FEATURE.permissions.iter().find(|p| p.id == "{{name}}.view");
     // Only a DSP's owners hold it until a role grants it.
-    assert!(view.is_some_and(|p| p.defaults.is_empty()));
+    assert!(view.is_some_and(|p| p.demo.is_empty()));
 {{/permission}}
 {{^permission}}
     assert!(FEATURE.permissions.is_empty());

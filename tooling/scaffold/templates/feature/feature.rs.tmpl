@@ -25,11 +25,10 @@ use dispatch_core::manifest::{{manifestImports}};
 pub const FEATURE: Feature = Feature {
     place: {{place}},
 {{#switch}}
-    switch: Some(Switch {
-        id: "{{name}}",
-        label: "{{label}}",
-        requires: &[{{requires}}],
-    }),
+    switch: optional("{{name}}", "{{label}}", &[{{requires}}]),
+{{/switch}}
+{{^switch}}
+    switch: mandatory("{{name}}", "{{label}}"),
 {{/switch}}
 {{#permission}}
     permissions: &[

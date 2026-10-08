@@ -83,6 +83,7 @@
       "settings": []
     },
     "switch": "daily_performance",
+    "mandatory": false,
     "tables": {
       "daily_performance": [
         "daily_datasets",
@@ -185,6 +186,7 @@
       ]
     },
     "switch": "documents",
+    "mandatory": false,
     "tables": {
       "dsp": [
         "documents_connect_requests",
@@ -263,6 +265,7 @@
       "settings": []
     },
     "switch": "driver_match",
+    "mandatory": false,
     "tables": {
       "dsp": [
         "people",
@@ -369,6 +372,7 @@
       "settings": []
     },
     "switch": "dvic",
+    "mandatory": false,
     "tables": {
       "dvic": [
         "dvic_hidden_drivers",
@@ -421,7 +425,8 @@
       "schedules": false,
       "settings": []
     },
-    "switch": null,
+    "switch": "home",
+    "mandatory": true,
     "tables": {},
     "subfeatures": []
   },
@@ -535,6 +540,7 @@
       "settings": []
     },
     "switch": "routes",
+    "mandatory": false,
     "tables": {
       "routedata": [
         "addresses",
@@ -595,7 +601,8 @@
       "schedules": false,
       "settings": []
     },
-    "switch": null,
+    "switch": "settings",
+    "mandatory": true,
     "tables": {},
     "subfeatures": []
   },
@@ -652,7 +659,8 @@
       "schedules": false,
       "settings": []
     },
-    "switch": null,
+    "switch": "team",
+    "mandatory": true,
     "tables": {},
     "subfeatures": []
   },
@@ -795,6 +803,7 @@
       "settings": []
     },
     "switch": "timecard",
+    "mandatory": false,
     "tables": {
       "cortex": [
         "meal_breaks",
@@ -880,6 +889,7 @@
       "settings": []
     },
     "switch": "uniforms",
+    "mandatory": false,
     "tables": {
       "dsp": [
         "uniform_events",
@@ -981,6 +991,7 @@
       "settings": []
     },
     "switch": "weekly_scorecard",
+    "mandatory": false,
     "tables": {
       "weekly_scorecard": [
         "customer_feedback",

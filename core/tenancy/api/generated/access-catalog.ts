@@ -1,6 +1,7 @@
 // Generated from backend feature, collector and permission catalogs.
 // Run `npm run contracts:generate` after changing them.
 export const pages = [
+  "home",
   "timecard",
   "uniforms",
   "routes",
@@ -8,7 +9,9 @@ export const pages = [
   "weekly_scorecard",
   "driver_match",
   "daily_performance",
-  "documents"
+  "documents",
+  "team",
+  "settings"
 ] as const;
 export const subfeatures = [
   "timecard.daily",
@@ -22,6 +25,7 @@ export const connections = [
   "cortex"
 ] as const;
 export const features = [
+  "home",
   "timecard",
   "uniforms",
   "routes",
@@ -30,6 +34,8 @@ export const features = [
   "driver_match",
   "daily_performance",
   "documents",
+  "team",
+  "settings",
   "timecard.daily",
   "timecard.meal_breaks",
   "timecard.employees",
@@ -39,6 +45,14 @@ export const features = [
   "cortex"
 ] as const;
 export const featureCatalog = [
+  {
+    "id": "home",
+    "label": "Home Page",
+    "permissions": [],
+    "requires": [],
+    "kind": "page",
+    "mandatory": true
+  },
   {
     "id": "timecard",
     "label": "Timecard",
@@ -51,7 +65,8 @@ export const featureCatalog = [
       "timecards",
       "meal_breaks"
     ],
-    "kind": "page"
+    "kind": "page",
+    "mandatory": false
   },
   {
     "id": "uniforms",
@@ -62,7 +77,8 @@ export const featureCatalog = [
       "uniforms.manage"
     ],
     "requires": [],
-    "kind": "page"
+    "kind": "page",
+    "mandatory": false
   },
   {
     "id": "routes",
@@ -75,7 +91,8 @@ export const featureCatalog = [
     "requires": [
       "routes"
     ],
-    "kind": "page"
+    "kind": "page",
+    "mandatory": false
   },
   {
     "id": "dvic",
@@ -88,7 +105,8 @@ export const featureCatalog = [
     "requires": [
       "dvic"
     ],
-    "kind": "page"
+    "kind": "page",
+    "mandatory": false
   },
   {
     "id": "weekly_scorecard",
@@ -101,7 +119,8 @@ export const featureCatalog = [
     "requires": [
       "weekly_scorecard"
     ],
-    "kind": "page"
+    "kind": "page",
+    "mandatory": false
   },
   {
     "id": "driver_match",
@@ -113,7 +132,8 @@ export const featureCatalog = [
       "timecards",
       "routes"
     ],
-    "kind": "page"
+    "kind": "page",
+    "mandatory": false
   },
   {
     "id": "daily_performance",
@@ -126,7 +146,8 @@ export const featureCatalog = [
     "requires": [
       "daily_performance"
     ],
-    "kind": "page"
+    "kind": "page",
+    "mandatory": false
   },
   {
     "id": "documents",
@@ -136,7 +157,24 @@ export const featureCatalog = [
       "documents.manage"
     ],
     "requires": [],
-    "kind": "page"
+    "kind": "page",
+    "mandatory": false
+  },
+  {
+    "id": "team",
+    "label": "Team & Roles",
+    "permissions": [],
+    "requires": [],
+    "kind": "page",
+    "mandatory": true
+  },
+  {
+    "id": "settings",
+    "label": "Settings",
+    "permissions": [],
+    "requires": [],
+    "kind": "page",
+    "mandatory": true
   },
   {
     "id": "timecard.daily",
@@ -145,7 +183,8 @@ export const featureCatalog = [
     "requires": [],
     "kind": "sub",
     "page": "timecard",
-    "tab": true
+    "tab": true,
+    "mandatory": false
   },
   {
     "id": "timecard.meal_breaks",
@@ -154,7 +193,8 @@ export const featureCatalog = [
     "requires": [],
     "kind": "sub",
     "page": "timecard",
-    "tab": true
+    "tab": true,
+    "mandatory": false
   },
   {
     "id": "timecard.employees",
@@ -163,7 +203,8 @@ export const featureCatalog = [
     "requires": [],
     "kind": "sub",
     "page": "timecard",
-    "tab": true
+    "tab": true,
+    "mandatory": false
   },
   {
     "id": "dvic.day",
@@ -172,7 +213,8 @@ export const featureCatalog = [
     "requires": [],
     "kind": "sub",
     "page": "dvic",
-    "tab": true
+    "tab": true,
+    "mandatory": false
   },
   {
     "id": "dvic.week",
@@ -181,7 +223,8 @@ export const featureCatalog = [
     "requires": [],
     "kind": "sub",
     "page": "dvic",
-    "tab": true
+    "tab": true,
+    "mandatory": false
   },
   {
     "id": "paycom",

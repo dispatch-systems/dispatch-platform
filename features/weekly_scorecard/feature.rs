@@ -16,7 +16,7 @@ use dispatch_core::{
         Kind, Migration, Migrations,
         migrations::Apply::{Code, Sql},
     },
-    manifest::{Audit, Feature, Switch, feature, perm},
+    manifest::{Audit, Feature, feature, optional, perm},
     tenancy::api::audit::AuditArea::Collections,
 };
 
@@ -34,11 +34,11 @@ pub const FEATURE: Feature = Feature {
     ],
     // No page of its own yet, but its collection, its schedules and its weeks, apart from
     // the Timecard page.
-    switch: Some(Switch {
-        id: "weekly_scorecard",
-        label: "Weekly Scorecard",
-        requires: &["weekly_scorecard"],
-    }),
+    switch: optional(
+        "weekly_scorecard",
+        "Weekly Scorecard",
+        &["weekly_scorecard"],
+    ),
     permissions: &[
         perm("weekly_scorecard.view", "View Weekly Scorecard", 50),
         perm("weekly_scorecard.collect", "Collect Weekly Scorecard", 51)

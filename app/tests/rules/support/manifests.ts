@@ -154,6 +154,8 @@ export type FeatureManifest = {
   name?: string;
   fields: Map<string, Span>;
   switch?: string;
+  /** Whether every DSP has it, `switch: mandatory(..)`, rather than switching it. */
+  mandatory: boolean;
   /** Its page's tabs, among its sub-features. */
   tabs: string[];
   /** Its page's other sub-features. */
@@ -208,12 +210,16 @@ function readFeature(owner: Owner): FeatureManifest | undefined {
       .filter((id): id is string => !!id);
   };
   const permissions = value('permissions');
+  const mandatory =
+    !!switchSpan &&
+    /^\s*mandatory\s*\(/.test(sourceOf(switchSpan).masked.slice(switchSpan.start, switchSpan.end));
   return {
     owner,
     file,
     ...(name ? { name } : {}),
     fields,
     ...(switchId ? { switch: switchId } : {}),
+    mandatory,
     tabs: callsIn(value('subfeatures'), 'tab'),
     subs: callsIn(value('subfeatures'), 'sub'),
     permissions: [

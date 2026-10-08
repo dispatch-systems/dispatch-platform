@@ -3,7 +3,7 @@ use dispatch_core::{
     Result,
     db::Store,
     manifest::{
-        Feature, Registry, ScheduleAlias, Switch, feature,
+        Feature, Registry, ScheduleAlias, feature, optional,
         people::{Appearances, Named, People},
         perm, sub,
     },
@@ -29,11 +29,7 @@ fn with(extra: &'static Feature) -> Registry {
 fn a_permission_that_grants_itself_however_far_away_is_refused() {
     // Edit sits under view, a sub-feature's upload under edit, and view implies upload.
     static LOOP: Feature = Feature {
-        switch: Some(Switch {
-            id: "loop",
-            label: "Loop",
-            requires: &[],
-        }),
+        switch: optional("loop", "Loop", &[]),
         permissions: &[
             perm("loop.view", "View", 9000).implies(&["loop.upload"]),
             perm("loop.edit", "Edit", 9001).under("loop.view"),
@@ -54,6 +50,7 @@ fn a_permission_that_grants_itself_however_far_away_is_refused() {
 #[should_panic(expected = "lonely depends on elsewhere, which is not registered")]
 fn a_feature_that_depends_on_one_not_registered_is_refused() {
     static LONELY: Feature = Feature {
+        switch: optional("lonely", "Lonely", &[]),
         depends_on: &["elsewhere"],
         ..feature("lonely")
     };
@@ -65,6 +62,7 @@ fn a_feature_that_depends_on_one_not_registered_is_refused() {
 #[should_panic(expected = "foreign retires an identifier into one it does not own")]
 fn a_retirement_cannot_rewrite_another_features_identifiers() {
     static FOREIGN: Feature = Feature {
+        switch: optional("foreign", "Foreign", &[]),
         retired_identifiers: &[("prior.view", "timecard.view")],
         ..feature("foreign")
     };
@@ -78,6 +76,7 @@ fn a_retirement_cannot_rewrite_another_features_identifiers() {
 )]
 fn a_schedule_alias_of_a_collection_its_feature_does_not_keep_is_refused() {
     static GREEDY: Feature = Feature {
+        switch: optional("greedy", "Greedy", &[]),
         schedule_aliases: &[ScheduleAlias {
             schedule: "everything",
             runs: &["cortex.dvic.collect"],
@@ -115,6 +114,7 @@ impl People for Again {
 #[should_panic(expected = "routes names people twice, or in another's place")]
 fn a_kind_of_data_that_names_people_twice_is_refused() {
     static TWICE: Feature = Feature {
+        switch: optional("twice", "Twice", &[]),
         people: &[&Again],
         ..feature("twice")
     };
@@ -128,6 +128,7 @@ fn a_kind_of_data_that_names_people_twice_is_refused() {
 fn a_tool_source_variant_declared_twice_is_refused() {
     use dispatch_core::mcp::pieces::Mcp;
     static AGAIN: Feature = Feature {
+        switch: optional("again", "Again", &[]),
         mcp: Mcp {
             variants: &[dispatch_daily_performance::FEATURE.mcp.variants[0]],
             ..Mcp::NONE
@@ -136,4 +137,26 @@ fn a_tool_source_variant_declared_twice_is_refused() {
     };
     crate::install();
     with(&AGAIN).check();
+}
+
+#[test]
+#[should_panic(expected = "undecided says neither whether it is mandatory nor optional")]
+fn a_feature_that_says_neither_mandatory_nor_optional_is_refused() {
+    static UNDECIDED: Feature = feature("undecided");
+    crate::install();
+    with(&UNDECIDED).check();
+}
+
+#[test]
+#[should_panic(
+    expected = "halfway is optional, so its parts are too: halfway.always can't be mandatory"
+)]
+fn an_optional_feature_with_a_mandatory_part_is_refused() {
+    static HALFWAY: Feature = Feature {
+        switch: optional("halfway", "Halfway", &[]),
+        subfeatures: &[sub("halfway.always", "Always").mandatory()],
+        ..feature("halfway")
+    };
+    crate::install();
+    with(&HALFWAY).check();
 }

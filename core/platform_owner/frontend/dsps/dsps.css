@@ -172,75 +172,70 @@
   overflow-wrap: anywhere;
 }
 
-/* Features: every page, then the connections, on the left; the chosen one's switches on the right. */
+/* Features: a row for each, its parts under it once opened; then the connections. */
 .dsp-features {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 32px;
-  align-items: start;
+  gap: 24px;
+  max-width: 720px;
 }
-.dsp-features .error {
-  grid-column: 1 / -1;
-}
-.dsp-areas {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.dsp-areas button {
+.dsp-features .dsp-group {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 36px;
-  padding: 6px 12px;
+  gap: 8px;
+  padding: 0 0 6px;
+}
+.dsp-feature-list,
+.dsp-parts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dsp-feature-list > li + li {
+  border-top: 1px solid var(--border);
+}
+.dsp-feature-list > li > .dsp-feature-row,
+.dsp-feature-list > li.dsp-feature-row {
+  border-top: 0;
+}
+.dsp-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  padding: 0;
   border: 0;
-  border-radius: var(--radius);
   background: transparent;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+.dsp-expand svg {
+  transition: transform 120ms ease;
+}
+.dsp-expand[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+.dsp-feature-row > svg {
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+.dsp-feature-row small {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.dsp-parts {
+  margin: 0 0 8px 38px;
+  border-left: 1px solid var(--border);
+}
+.dsp-parts .dsp-feature-row {
+  padding: 8px 0 8px 16px;
+  border-top: 0;
+}
+.dsp-parts .dsp-feature-row strong {
   font-size: 13px;
-  font-weight: 450;
-  text-align: left;
-}
-.dsp-areas button svg {
-  color: var(--muted-foreground);
-}
-.dsp-areas button span {
-  flex: 1;
-}
-.dsp-areas button small {
-  font-size: 12px;
-  color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
-}
-.dsp-areas button.off span {
-  color: var(--muted-foreground);
-}
-.dsp-areas button[aria-current='true'] {
-  background: var(--selection);
-  color: var(--primary);
-  font-weight: 550;
-}
-.dsp-areas button[aria-current='true'] svg {
-  color: var(--primary);
-}
-.dsp-areas .dsp-group {
-  padding: 6px 12px;
-}
-.dsp-areas .dsp-group ~ .dsp-group {
-  padding-top: 16px;
-}
-.dsp-area h3 {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 4px;
-  font-size: 16px;
-  font-weight: 600;
-}
-.dsp-area h3 span {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
 }
 /* The switch leads its row, so the name is always right beside it. */
 .dsp-feature-row {
@@ -252,20 +247,6 @@
 }
 .dsp-feature-row .status-indicator {
   margin-left: auto;
-}
-.dsp-feature-row:first-of-type {
-  border-top: 0;
-}
-.dsp-tabs-label {
-  padding: 18px 0 2px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted-foreground);
-}
-.dsp-tabs-label + .dsp-feature-row {
-  border-top: 0;
 }
 .dsp-feature-row strong {
   font-size: 14px;
@@ -368,16 +349,8 @@
   .dsp-facts {
     grid-template-columns: 1fr 1fr;
   }
-  .dsp-features {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-  .dsp-areas {
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
-  .dsp-areas .dsp-group {
-    flex-basis: 100%;
+  .dsp-parts {
+    margin-left: 24px;
   }
   .dsp-counts {
     margin-bottom: 18px;

@@ -7,7 +7,9 @@ use crate::{
     collection::{browser::Collected, registry::Provider},
     db::{self, Migration, Migrations, Store, migrations::Apply, s},
     foundation::config::Config,
-    manifest::{self, Collector, Feature, Keeper, Permission, Registry, Switch, feature, perm},
+    manifest::{
+        self, Collector, Feature, Keeper, Permission, Registry, feature, mandatory, optional, perm,
+    },
     server::operations,
 };
 use serde_json::Value;
@@ -108,11 +110,12 @@ fn stand_in(
         }
     }
     leak(Feature {
-        switch: schedules.then_some(Switch {
-            id: "stand_in",
-            label: "Stand-in",
-            requires: &[],
-        }),
+        // Running the schedules, it is switched like any page; else every DSP has it.
+        switch: if schedules {
+            optional("stand_in", "Stand-in", &[])
+        } else {
+            mandatory("stand_in", "Stand-in")
+        },
         schedules,
         permissions: match (invites, schedules) {
             (false, _) => &[],

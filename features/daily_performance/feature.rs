@@ -10,16 +10,16 @@ pub use api::types::{
 pub use backend::storage::{DATABASE, DailyPerformanceStore};
 
 use dispatch_core::db::{Migration, Migrations, migrations::Apply::Sql};
-use dispatch_core::manifest::{Audit, Feature, Switch, feature, perm};
+use dispatch_core::manifest::{Audit, Feature, feature, optional, perm};
 use dispatch_core::tenancy::api::audit::AuditArea::Collections;
 
 pub const FEATURE: Feature = Feature {
     place: 80,
-    switch: Some(Switch {
-        id: "daily_performance",
-        label: "Daily Performance",
-        requires: &["daily_performance"],
-    }),
+    switch: optional(
+        "daily_performance",
+        "Daily Performance",
+        &["daily_performance"],
+    ),
     permissions: &[
         perm("daily_performance.view", "View Daily Performance", 100),
         perm(

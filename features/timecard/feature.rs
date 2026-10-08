@@ -43,7 +43,7 @@ use dispatch_core::{
     manifest::{
         Audit,
         DefaultRole::{Manager, Member},
-        Feature, ScheduleAlias, Switch, feature, perm, tab,
+        Feature, ScheduleAlias, feature, optional, perm, tab,
     },
     server::cache::{Cached, DataDomain, Evicted::By, LISTINGS},
     tenancy::api::audit::AuditArea::Collections,
@@ -56,11 +56,7 @@ pub const FEATURE: Feature = Feature {
     place: 20,
     // Its meal-break comparison joins drivers to employees by Driver Match's codes.
     depends_on: &["driver_match"],
-    switch: Some(Switch {
-        id: "timecard",
-        label: "Timecard",
-        requires: &["timecards", "meal_breaks"],
-    }),
+    switch: optional("timecard", "Timecard", &["timecards", "meal_breaks"]),
     subfeatures: &[
         tab("timecard.daily", "Timecard"),
         tab("timecard.meal_breaks", "Meal Breaks"),

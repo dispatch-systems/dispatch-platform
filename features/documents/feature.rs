@@ -12,17 +12,13 @@ pub use api::types::{
 
 use dispatch_core::{
     db::{Kind, Migration, Migrations, migrations::Apply::Sql},
-    manifest::{Audit, Feature, Switch, feature, perm},
+    manifest::{Audit, Feature, feature, optional, perm},
     tenancy::api::audit::AuditArea::Connections,
 };
 
 pub const FEATURE: Feature = Feature {
     place: 90,
-    switch: Some(Switch {
-        id: "documents",
-        label: "Documents",
-        requires: &[],
-    }),
+    switch: optional("documents", "Documents", &[]),
     permissions: &[
         perm("documents.use", "Use Documents", 110),
         perm("documents.manage", "Manage Documents", 111).implies(&["documents.use"]),
