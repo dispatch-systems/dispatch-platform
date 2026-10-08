@@ -1,7 +1,7 @@
 //! Feature switches over the catalog of every registered feature's pages and tabs.
 use dispatch_core::{db::Store, platform_owner::api::types::DspFeatures, tenancy::catalog::*};
 #[test]
-fn a_new_dsp_starts_with_no_features_and_a_demo_dsp_with_all() {
+fn a_new_dsp_starts_with_no_features_and_no_permissions_and_a_demo_dsp_with_all() {
     use std::os::unix::fs::PermissionsExt;
     crate::install();
     let root = tempfile::tempdir().unwrap();
@@ -20,6 +20,21 @@ fn a_new_dsp_starts_with_no_features_and_a_demo_dsp_with_all() {
         .unwrap();
     let dsp = db.new_dsp("New DSP", "UTC", &owner.id, false).unwrap();
     assert!(db.features(&dsp.id).unwrap().is_empty());
+    // Every role but the owner's starts with no permission: the DSP's owner turns them on.
+    let roles = db.roles(&dsp.id).unwrap();
+    assert_eq!(
+        roles
+            .iter()
+            .map(|role| role.name.as_str())
+            .collect::<Vec<_>>(),
+        ["Owner", "Manager", "Member"]
+    );
+    assert!(
+        roles
+            .iter()
+            .filter(|role| !role.owner)
+            .all(|role| role.permissions.is_empty())
+    );
     db.enable_all_features(&dsp.id).unwrap();
     let all: Vec<_> = catalog().iter().map(|f| f.id.to_owned()).collect();
     assert_eq!(db.features(&dsp.id).unwrap(), all);

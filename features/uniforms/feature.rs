@@ -28,10 +28,10 @@ pub const FEATURE: Feature = Feature {
         requires: &[],
     }),
     permissions: &[
-        perm("uniforms.view", "View Uniform Inventory", 10).defaults(&[Manager, Member]),
+        perm("uniforms.view", "View Uniform Inventory", 10).demo(&[Manager, Member]),
         perm("uniforms.adjust", "Adjust Uniform Inventory", 11)
             .implies(&["uniforms.view"])
-            .defaults(&[Manager]),
+            .demo(&[Manager]),
         perm("uniforms.manage", "Manage Uniform Inventory", 12).implies(&["uniforms.view"]),
     ],
     routes: api::routes::routes,
