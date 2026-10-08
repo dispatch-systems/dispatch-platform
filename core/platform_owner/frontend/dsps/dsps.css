@@ -226,6 +226,28 @@
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
 }
+/* The eye: whether the DSP's members see it. Hidden, it still runs. */
+.dsp-eye {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+button.dsp-eye:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.dsp-eye[aria-pressed='true'] {
+  color: var(--warning);
+}
 .dsp-parts {
   margin: 0 0 8px 38px;
   border-left: 1px solid var(--border);

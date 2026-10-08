@@ -178,6 +178,11 @@ const PLATFORM: &[Migration] = &[
             "../../tenancy/migrations/platform/0017_feature_availability.sql"
         )),
     },
+    Migration {
+        id: 18,
+        name: "feature_shown",
+        apply: Code(feature_shown),
+    },
 ];
 const JOBS: &[Migration] = &[
     Migration {
@@ -267,6 +272,16 @@ fn role_columns(db: &Db) -> Result<()> {
     Ok(())
 }
 // Names the actor once their account is deleted.
+/// Whether a DSP's members see a feature it has switched on: the platform owner may hide one
+/// from them while it keeps running. Shown unless hidden.
+fn feature_shown(db: &Db) -> Result<()> {
+    add_column(
+        db,
+        "dsp_features",
+        "shown",
+        "INTEGER NOT NULL DEFAULT 1 CHECK (shown IN (0, 1))",
+    )
+}
 fn audit_actor_name(db: &Db) -> Result<()> {
     add_column(db, "audit", "actor_name", "TEXT")
 }

@@ -57,7 +57,8 @@ pub struct FeatureChange {
     pub feature: String,
     pub enabled: bool,
 }
-/// One feature of a DSP: whether it has it, and who last switched it and when.
+/// One feature of a DSP: whether it has it, whether its members see it, and who last changed
+/// either and when.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/platform_owner/api/generated/"))]
@@ -65,6 +66,8 @@ pub struct FeatureChange {
 pub struct FeatureState {
     pub feature: String,
     pub enabled: bool,
+    /// Whether the DSP's members see it, while it is on: the platform owner may hide one.
+    pub shown: bool,
     pub changed_at: Option<String>,
     pub changed_by: Option<String>,
 }
@@ -79,6 +82,13 @@ pub struct DspFeatureReport {
     pub schedules: i64,
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub active_jobs: i64,
+}
+/// What a DSP's members don't see of its features, after one was hidden or shown.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/platform_owner/api/generated/"))]
+pub struct DspHidden {
+    pub hidden: Vec<String>,
 }
 /// A DSP's features after a switch: what it has now, and what the switch changed.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

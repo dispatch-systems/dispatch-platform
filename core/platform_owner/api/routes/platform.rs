@@ -43,6 +43,11 @@ pub fn routes() -> Vec<Route> {
             PlatformRoutine,
             set_feature,
         ),
+        write(
+            "/api/platform/dsps/{id}/features/shown",
+            PlatformRoutine,
+            show_feature,
+        ),
         async_post("/api/platform/dsps/{id}/remove", PlatformOwner, remove_dsp),
         async_post(
             "/api/platform/dsps/{id}/restore",
@@ -167,6 +172,15 @@ async fn set_support_visibility(
 
 fn dsp_features(db: &Store, _: &User, input: &Input) -> Result<Reply> {
     Reply::of(&db.feature_report(input.param("id"))?)
+}
+
+/// Hides a feature from the DSP's members, or shows it again; it keeps running either way.
+fn show_feature(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
+    let b = &input.body;
+    v::fields(b, &["feature", "shown"])?;
+    let feature = v::text(b, "feature", 1, 40)?;
+    let shown = v::boolean(b, "shown")?;
+    Reply::of(&db.show_feature(input.param("id"), feature, shown, owner.actor())?)
 }
 
 // Switching a feature off stops what it ran for the DSP: its jobs and live

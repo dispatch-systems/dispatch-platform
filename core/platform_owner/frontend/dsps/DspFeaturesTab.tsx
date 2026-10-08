@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { ChevronRight, Plug } from 'lucide-react';
+import { ChevronRight, Eye, EyeOff, Plug } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
-import { setDspFeature, useDspFeatures } from '../../api/client.js';
+import { setDspFeature, showDspFeature, useDspFeatures } from '../../api/client.js';
 import {
   featureCatalog,
   subsOf,
@@ -22,7 +22,9 @@ const connections = featureCatalog.filter((f): f is ConnectionEntry => f.kind ==
 // is opened; then the connections. A mandatory feature or part shows its switch on and greyed
 // out: every DSP has it. A part can't be switched while its feature is off, and shows off;
 // switching the feature back on brings each part back as it was. A switch acts at once; one
-// that takes other features with it asks first.
+// that takes other features with it asks first. The eye beside an optional one hides it from
+// the DSP's members while it keeps running, as the Platform Owner view still shows it; a
+// hidden feature hides its parts too.
 export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () => void }) {
   const { data, error, refresh } = useDspFeatures(dsp.id);
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
@@ -32,6 +34,8 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
     ? data.features.filter((state) => state.enabled).map((state) => state.feature)
     : dsp.features;
   const switched = (id: string) => enabled.includes(id);
+  const hidden = (feature: FeatureEntry) =>
+    data?.features.some((state) => state.feature === feature.id && !state.shown) ?? false;
   // What the DSP has: a part only while its feature is on too.
   const has = (feature: FeatureEntry) =>
     switched(feature.id) && (feature.kind !== 'sub' || switched(feature.page));
@@ -46,6 +50,38 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
     },
     { success: (feature, on) => `${switchLabel(feature)} switched ${on ? 'on' : 'off'}` },
   );
+  const seeing = useAction(
+    async (feature: FeatureEntry, shown: boolean) => {
+      await showDspFeature(dsp.id, feature.id, shown);
+      done();
+    },
+    {
+      success: (feature, shown) =>
+        `${switchLabel(feature)} ${shown ? 'shown to' : 'hidden from'} ${dsp.name}`,
+    },
+  );
+  // What every DSP has is always shown; an optional one can be hidden.
+  const eye = (feature: FeatureEntry) =>
+    feature.mandatory ? (
+      <span className="dsp-eye" aria-hidden="true" />
+    ) : (
+      <button
+        className="dsp-eye"
+        aria-pressed={hidden(feature)}
+        aria-label={`${hidden(feature) ? 'Show' : 'Hide'} ${switchLabel(feature)} ${
+          hidden(feature) ? 'to' : 'from'
+        } the DSP`}
+        title={hidden(feature) ? 'Hidden from the DSP: it keeps running' : 'Shown to the DSP'}
+        disabled={!data || seeing.busy}
+        onClick={() => void seeing.run(feature, hidden(feature))}
+      >
+        {hidden(feature) ? (
+          <EyeOff size={16} aria-hidden="true" />
+        ) : (
+          <Eye size={16} aria-hidden="true" />
+        )}
+      </button>
+    );
   const toggle = (feature: FeatureEntry, on: boolean) => {
     const preview = previewSwitch(enabled, feature.id, on);
     // Alone, or already as asked: no question to ask.
@@ -104,10 +140,13 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
                   <small>
                     {page.mandatory
                       ? 'Every DSP'
-                      : parts.length && has(page)
-                        ? `${parts.filter(has).length} of ${parts.length} parts`
-                        : ''}
+                      : hidden(page)
+                        ? 'Hidden from DSP'
+                        : parts.length && has(page)
+                          ? `${parts.filter(has).length} of ${parts.length} parts`
+                          : ''}
                   </small>
+                  {eye(page)}
                 </div>
                 {shown && (
                   <ul className="dsp-parts" aria-label={`${page.label}'s parts`}>
@@ -115,7 +154,16 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
                       <li key={part.id} className={`dsp-feature-row ${has(part) ? '' : 'off'}`}>
                         {control(part, !has(page))}
                         <strong>{part.label}</strong>
-                        <small>{part.mandatory ? 'Every DSP' : part.tab ? 'Tab' : ''}</small>
+                        <small>
+                          {part.mandatory
+                            ? 'Every DSP'
+                            : hidden(part)
+                              ? 'Hidden from DSP'
+                              : part.tab
+                                ? 'Tab'
+                                : ''}
+                        </small>
+                        {eye(part)}
                       </li>
                     ))}
                   </ul>

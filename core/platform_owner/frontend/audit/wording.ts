@@ -94,6 +94,18 @@ const phrases: AuditPhrases = {
     ' for ',
     strong(e.dspName ?? 'a DSP'),
   ],
+  'dsp.feature_hidden': (e) => [
+    'hid ',
+    strong(featureLabel(e.detail)),
+    ' from ',
+    strong(e.dspName ?? 'a DSP'),
+  ],
+  'dsp.feature_shown': (e) => [
+    'showed ',
+    strong(featureLabel(e.detail)),
+    ' to ',
+    strong(e.dspName ?? 'a DSP'),
+  ],
   'dsp.settings_updated': () => ['updated DSP settings'],
   'dsp.profile_completed': () => ['completed the DSP profile'],
   'mail.retried': (e) => ['retried an email', ...(e.target ? [' to ', strong(e.target)] : [])],
@@ -214,6 +226,8 @@ const spoken = new Set([
   'dsp.support_visibility_changed',
   'dsp.feature_enabled',
   'dsp.feature_disabled',
+  'dsp.feature_hidden',
+  'dsp.feature_shown',
 ]);
 export const isSpoken = (action: string) =>
   spoken.has(action) || owners.some((owner) => owner.spoken?.includes(action));

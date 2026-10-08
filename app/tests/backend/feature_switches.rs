@@ -174,6 +174,79 @@ fn a_part_needs_a_connection_of_its_own_beside_its_pages() {
     assert_eq!(changes(tab), [on("cortex"), on("timecard.meal_breaks")]);
 }
 
+#[cfg(feature = "timecard")]
+#[test]
+fn a_hidden_feature_keeps_running_out_of_its_members_sight() {
+    use std::os::unix::fs::PermissionsExt;
+    crate::install();
+    let root = tempfile::tempdir().unwrap();
+    std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    let mut config = dispatch_core::foundation::config::Config::load().unwrap();
+    config.root = root.path().into();
+    let db = Store::initialize(config).unwrap();
+    let owner = db
+        .create_user(
+            "owner@example.test",
+            "Platform",
+            "Owner",
+            "Hidden-test-2026!",
+            true,
+        )
+        .unwrap();
+    let dsp = db
+        .new_dsp("Hidden DSP", "UTC", &owner.id, false)
+        .unwrap()
+        .id;
+    db.set_feature(&dsp, "timecard", true, &owner.id).unwrap();
+    let shown = |db: &Store| -> Vec<String> {
+        db.shown_features(&dsp)
+            .unwrap()
+            .into_iter()
+            .filter(|id| !find(id).is_some_and(|f| f.mandatory))
+            .collect()
+    };
+    let everything = switched(&db, &dsp);
+    assert_eq!(shown(&db), everything);
+    // A hidden tab goes from sight alone; a hidden page takes its tabs.
+    let tab = db
+        .show_feature(&dsp, "timecard.employees", false, &owner.id)
+        .unwrap();
+    assert_eq!(tab.hidden, ["timecard.employees"]);
+    let page = db.show_feature(&dsp, "timecard", false, &owner.id).unwrap();
+    assert_eq!(page.hidden, ["timecard", "timecard.employees"]);
+    assert_eq!(shown(&db), ["paycom", "cortex"]);
+    // Everything stays as switched, for the work that runs in the background.
+    assert_eq!(switched(&db, &dsp), everything);
+    assert!(db.feature_enabled(&dsp, "timecard.employees").unwrap());
+    // Switched off and on again, it is still hidden; shown again, the tab hidden on its own
+    // stays hidden.
+    db.set_feature(&dsp, "timecard", false, &owner.id).unwrap();
+    db.set_feature(&dsp, "timecard", true, &owner.id).unwrap();
+    assert_eq!(shown(&db), ["paycom", "cortex"]);
+    let back = db.show_feature(&dsp, "timecard", true, &owner.id).unwrap();
+    assert_eq!(back.hidden, ["timecard.employees"]);
+    assert!(!shown(&db).contains(&"timecard.employees".to_owned()));
+    // What every DSP has, and a connection, are never hidden.
+    let refused = db.show_feature(&dsp, "team", false, &owner.id).unwrap_err();
+    assert_eq!(
+        (refused.code.as_str(), refused.status),
+        ("feature_mandatory", 409)
+    );
+    let refused = db
+        .show_feature(&dsp, "cortex", false, &owner.id)
+        .unwrap_err();
+    assert_eq!(
+        (refused.code.as_str(), refused.status),
+        ("invalid_input", 400)
+    );
+    // A part that isn't switched on can be hidden, and is no more on for it.
+    db.set_feature(&dsp, "timecard.daily", false, &owner.id)
+        .unwrap();
+    db.show_feature(&dsp, "timecard.daily", false, &owner.id)
+        .unwrap();
+    assert!(!db.feature_enabled(&dsp, "timecard.daily").unwrap());
+}
+
 #[test]
 fn a_feature_made_optional_stays_on_for_every_dsp_that_had_it() {
     use std::os::unix::fs::PermissionsExt;

@@ -113,6 +113,7 @@ const INVENTORY: &[Row] = &[
     ("POST", "/api/platform/dsps/{id}/support-visibility", PlatformOwner, Async, false),
     ("GET", "/api/platform/dsps/{id}/features", PlatformOwner, Read, false),
     ("POST", "/api/platform/dsps/{id}/features", PlatformOwner, Async, false),
+    ("POST", "/api/platform/dsps/{id}/features/shown", PlatformOwner, Write, false),
     ("POST", "/api/platform/dsps/{id}/remove", PlatformOwner, Async, false),
     ("POST", "/api/platform/dsps/{id}/restore", PlatformOwner, Async, false),
     ("GET", "/api/platform/jobs", PlatformOwner, Read, false),
