@@ -119,6 +119,16 @@ test('with no flags, a feature is a crate with a switch, a view permission and a
     .map((match) => Number(match[1]));
   assert(order % 10 === 0 && used.every((other) => other < order), `${order} follows ${used}`);
   assert.match(manifest, /\.\.feature\("parking"\)\n\};/);
+  // It takes the next free place, after every feature's: last in the sidebar and on the DSPs page.
+  const place = Number(/^ {4}place: (\d+),$/m.exec(manifest)?.[1]);
+  const places = fs
+    .readdirSync('features')
+    .filter((name) => fs.existsSync(`features/${name}/feature.rs`))
+    .flatMap((name) => [
+      ...fs.readFileSync(`features/${name}/feature.rs`, 'utf8').matchAll(/^\s*place: (\d+),/gm),
+    ])
+    .map((match) => Number(match[1]));
+  assert(place % 10 === 0 && places.every((other) => other < place), `${place} follows ${places}`);
   // The DSPs page shows its switch with the icon its frontend gives, which a browser test sees.
   assert.match(
     file(plan, 'features/parking/frontend/feature.ts'),
@@ -134,24 +144,25 @@ test('with no flags, a feature is a crate with a switch, a view permission and a
     /getByRole\('switch', \{ name: 'Parking page', exact: true \}\)\)\.toBeChecked\(\)/,
   );
 
-  // The workspace's members cover it already, so Cargo.toml is no change.
-  assert.deepEqual(
-    [...plan.changes.keys()].sort(),
-    ['app/backend/Cargo.toml', 'app/frontend/features.ts', registry].sort(),
-  );
-  // The registry's last feature, there while the app's Cargo feature of its name is on, as
-  // it is by default.
-  assert.match(
-    file(plan, registry),
-    /features: &\[\n(\s+#\[cfg\(feature = "\w+"\)\]\n\s+&\w+::FEATURE,\n)*\s+#\[cfg\(feature = "parking"\)\]\n\s+&dispatch_parking::FEATURE,\n\s*\],/,
-  );
+  // The workspace's members cover it already, so Cargo.toml is no change, and the frontend's
+  // list is the export's to write.
+  assert.deepEqual([...plan.changes.keys()].sort(), [
+    'app/backend/Cargo.toml',
+    'app/backend/features.rs',
+  ]);
+  // The registry's list has it by name, there while the app's Cargo feature of its name is on,
+  // as it is by default.
+  const list = file(plan, 'app/backend/features.rs');
+  assert.match(list, /\n {4}#\[cfg\(feature = "parking"\)\]\n {4}&dispatch_parking::FEATURE,\n/);
+  const listed = [...list.matchAll(/feature = "(\w+)"/g)].map((match) => match[1]!);
+  assert.deepEqual(listed, [...listed].sort());
   const app = file(plan, 'app/backend/Cargo.toml');
   assert.match(
     app,
     /^dispatch-parking = \{ path = "..\/..\/features\/parking", optional = true \}$/m,
   );
   assert.match(app, /^parking = \["dep:dispatch-parking"\]$/m);
-  assert.match(app, /^default = \[[^\]]*"parking",?\s*\]/m);
+  assert.match(app, /^default = \[[^\]]*"parking",[^\]]*\]/m);
   assert.match(
     plan.changes.get('Cargo.toml') ?? fs.readFileSync('Cargo.toml', 'utf8'),
     /members = \[[^\]]*("features\/\*"|"features\/parking")/,
@@ -167,7 +178,10 @@ test('with no flags, a feature is a crate with a switch, a view permission and a
 test('--always-on leaves out the switch and, with nothing to gate, the permission', async () => {
   const plan = await feature('lobby', '--always-on');
   const manifest = file(plan, 'features/lobby/feature.rs');
-  assert.match(manifest, /^pub const FEATURE: Feature = feature\("lobby"\);$/m);
+  assert.match(
+    manifest,
+    /^pub const FEATURE: Feature = Feature \{\n {4}place: \d+,\n {4}\.\.feature\("lobby"\)\n\};$/m,
+  );
   assert.doesNotMatch(manifest, /Switch|perm/);
   // With no API or frontend either, it keeps an empty backend/ and its manifest's test: a
   // feature has a backend, an API or a frontend.
@@ -236,8 +250,7 @@ test('--api writes one endpoint behind the view permission, its client function 
     [...plan.changes.keys()].sort(),
     [
       'app/backend/Cargo.toml',
-      'app/frontend/features.ts',
-      registry,
+      'app/backend/features.rs',
       'app/tests/backend/integration/http_routes.rs',
       'app/tests/backend/export.rs',
     ].sort(),
@@ -496,17 +509,8 @@ test('--page, --tab-of and --settings write frontend/feature.ts, the screen and 
     file(page, 'features/parking/tests/browser/parking.spec.ts'),
     /getByRole\('link', \{ name: 'Parking', exact: true \}\)/,
   );
-  const list = file(page, 'app/frontend/features.ts');
-  assert.match(
-    list,
-    /^import \{ feature as parking \} from '..\/..\/features\/parking\/frontend\/feature.js';$/m,
-  );
-  assert(
-    list.indexOf('  parking,') < list.indexOf('  accounts,'),
-    "features come before core's parts",
-  );
-  // The app's FRONTEND, which the list is generated from, has it in the same place.
-  assert.match(file(page, registry), /\n    "features\/parking",\n    "core\/accounts",\n/);
+  // The export writes the frontend's list from the registry, with the feature in its place.
+  assert.match(page.notes.join('\n'), /contracts:generate` writes [^\n]*the frontend's list/);
 
   const open = file(
     await feature('lobby', '--page', '--always-on'),
@@ -560,8 +564,7 @@ test('--no-backend writes a frontend-only feature, and refuses the pieces that n
   const manifest = file(plan, 'features/front/feature.rs');
   assert.doesNotMatch(manifest, /mod backend|mod tests/);
   assert.match(manifest, /switch: Some\(Switch \{/);
-  assert.match(file(plan, registry), /&dispatch_front::FEATURE,/);
-  assert.match(file(plan, 'app/frontend/features.ts'), /feature as front/);
+  assert.match(file(plan, 'app/backend/features.rs'), /&dispatch_front::FEATURE,/);
   assert(
     writes(await feature('front', '--settings', '--no-backend'), 'features/front').includes(
       'frontend/settings/FrontSettings.tsx',
@@ -724,11 +727,8 @@ test('new:collector writes its connection, one collection with a fixture, a card
     file(plan, registry),
     /collectors: &\[[^\]]*\n\s+&dispatch_fleet::COLLECTOR,\n\s*\],/,
   );
-  assert.match(
-    file(plan, 'app/frontend/features.ts'),
-    /feature as fleet \} from '..\/..\/collectors\/fleet\/frontend\/feature.js'/,
-  );
-  assert.match(file(plan, registry), /\n    "collectors\/fleet",\n    "core\/accounts",\n/);
+  // The export writes the frontend's list from the registry's collectors.
+  assert.match(plan.notes.join('\n'), /contracts:generate` writes [^\n]*the frontend's list/);
   assert.match(
     file(plan, 'app/backend/Cargo.toml'),
     /^dispatch-fleet = \{ path = "..\/..\/collectors\/fleet" \}$/m,
@@ -807,7 +807,10 @@ test('without --dry-run it writes into the root, and refuses to write over an ow
   const wrote = generate('new-feature', ['desk', '--settings', '--root', copy]);
   assert.equal(wrote.status, 0, wrote.stderr);
   assert(fs.existsSync(path.join(copy, 'features/desk/frontend/settings/DeskSettings.tsx')));
-  assert.match(fs.readFileSync(path.join(copy, registry), 'utf8'), /&dispatch_desk::FEATURE,/);
+  assert.match(
+    fs.readFileSync(path.join(copy, 'app/backend/features.rs'), 'utf8'),
+    /&dispatch_desk::FEATURE,/,
+  );
   // Builds run with --locked: Cargo.lock lists the new crate, and the app's use of it.
   if (spawnSync('cargo', ['--version'], { cwd: copy }).status === 0) {
     assert(listed(wrote.stdout, 'Changed').includes('Cargo.lock'), wrote.stdout);

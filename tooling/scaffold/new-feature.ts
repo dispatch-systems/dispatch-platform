@@ -1,12 +1,7 @@
 import path from 'node:path';
 import {
   UsageError,
-  addAppFeature,
-  addDependency,
-  addFrontendFeature,
-  addFrontendOwner,
   addWorkspaceMember,
-  appBackend,
   appendToList,
   capabilitiesOf,
   change,
@@ -20,13 +15,12 @@ import {
   finish,
   format,
   formatRust,
-  frontendList,
-  holding,
   keeperOf,
   names as namesOf,
   nextAgentOrder,
   nextMigration,
   nextPermissionOrder,
+  nextPlace,
   pageOf,
   parseArguments,
   repositoryRoot,
@@ -38,6 +32,7 @@ import {
   type Plan,
   type Values,
 } from './scaffold.js';
+import { appManifest, crateOf, crates, featureList, wiredList, wiredManifest } from './wire.js';
 
 // `npm run new:feature -- <name> [flags]`: a feature that works as written. It is a crate of its
 // own, listed in app/, with a switch that starts off for every DSP, which a browser test finds on
@@ -236,7 +231,7 @@ export function featureValues(root: string, argv: string[]) {
     permission,
     viewOrder: order,
     collectOrder: order + 1,
-    bare: !switched && !permission && !database && !keeps && !mcp,
+    place: nextPlace(root),
     manifestImports: `{${manifestImports.join(', ')}}`,
     requires: keeps && capabilitiesOf(root, site).includes(collection) ? `"${collection}"` : '',
     dependencies: dependencies.join('\n'),
@@ -333,7 +328,7 @@ function pieces(values: Values): [boolean, string, string][] {
 
 export async function planFeature(root: string, argv: string[]) {
   const { args, names, values, ident } = featureValues(root, argv);
-  const { name, slug, camel, pascal, crate } = names;
+  const { name, slug, pascal } = names;
   const dir = `features/${name}`;
   const plan: Plan = emptyPlan();
   for (const [wanted, source, target] of pieces(values)) {
@@ -345,37 +340,16 @@ export async function planFeature(root: string, argv: string[]) {
   }
   formatRust(plan);
 
-  // List it in app/: the workspace, the app's dependencies and its Cargo feature, the
-  // registry, the route table's inventory and the frontend's order and list. Its manifest
-  // brings its routes.
+  // List it in app/, as `npm run contracts:generate` does from its folder: its crate in the
+  // app's Cargo manifest and its manifest in the registry's list. Its manifest brings its
+  // routes. The route table's inventory lists them as well.
   const edit = (file: string, apply: (text: string) => string) => change(plan, root, file, apply);
   await edit('Cargo.toml', (text) => addWorkspaceMember(text, dir));
-  await edit('app/backend/Cargo.toml', (text) => {
-    const app = 'app/backend/Cargo.toml';
-    const listed = addAppFeature(
-      addDependency(text, crate, `../../${dir}`, app, { optional: true }),
-      name,
-      crate,
-      app,
-    );
-    // The app's export test writes its API types' TypeScript, as it does every feature's.
-    return values.api
-      ? addDependency(listed, crate, `../../${dir}`, app, {
-          section: 'dev-dependencies',
-          features: ['ts'],
-        })
-      : listed;
-  });
-  // The registry has it while the app's Cargo feature does.
-  const registry = holding(root, appBackend, /pub static REGISTRY\b/);
-  const featureList = /pub static REGISTRY\b[\s\S]*?features:\s*&\[/;
-  await edit(registry, (text) =>
-    [`#[cfg(feature = "${name}")]`, `&${ident}::FEATURE,`].reduce(
-      (listed, line) => appendToList(listed, featureList, line, registry),
-      text,
-    ),
+  const wired = [...crates(root), crateOf(name, plan.files.get(`${dir}/Cargo.toml`)!)].sort(
+    (a, b) => (a.name < b.name ? -1 : 1),
   );
-  if (values.frontend) await edit(registry, (text) => addFrontendOwner(text, dir, registry));
+  await edit(appManifest, (text) => wiredManifest(text, wired));
+  await edit(featureList, () => wiredList(wired));
   // The app's export test writes its API type to its api/generated/ while the build has it.
   if (values.api)
     await edit(typescriptExport, (text) => {
@@ -398,14 +372,11 @@ export async function planFeature(root: string, argv: string[]) {
     await edit(routeInventory, (text) =>
       appendToList(text, /const INVENTORY: &\[Row\] = &\[/, row, routeInventory),
     );
-  if (values.frontend)
-    await edit(frontendList, (text) =>
-      addFrontendFeature(text, camel, `../../${dir}/frontend/feature.js`),
-    );
 
   const declared = [values.switch && 'switch', values.permission && 'permissions'].filter(Boolean);
   const generated = [
     'the feature map',
+    ...(values.frontend ? ["the frontend's list"] : []),
     ...(declared.length ? [`the catalog with its ${declared.join(' and ')}`] : []),
     ...(values.api ? [`${dir}/api/generated/`] : []),
   ];

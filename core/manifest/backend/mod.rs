@@ -35,17 +35,27 @@ pub struct Registry {
     pub features: &'static [&'static Feature],
 }
 
-static INSTALLED: OnceLock<&'static Registry> = OnceLock::new();
+/// The registry installed, as given and with its features in their places.
+static INSTALLED: OnceLock<(&'static Registry, &'static Registry)> = OnceLock::new();
 
-/// Makes `registry` the one `registry()` answers, once it has checked it. Installing it
-/// again changes nothing; installing a different one panics.
+/// Makes `registry` the one `registry()` answers, its features in their places, once it has
+/// checked it. Installing it again changes nothing; installing a different one panics.
 pub fn install(registry: &'static Registry) {
-    registry.check();
-    let installed = *INSTALLED.get_or_init(|| registry);
+    let (given, placed) = *INSTALLED.get_or_init(|| (registry, placed(registry)));
+    placed.check();
     assert!(
-        std::ptr::eq(installed, registry),
+        std::ptr::eq(given, registry),
         "a different registry is already installed"
     );
+}
+/// `registry` with its features in their places: by `place`, then by name.
+fn placed(registry: &'static Registry) -> &'static Registry {
+    let mut features = registry.features.to_vec();
+    features.sort_by_key(|feature| (feature.place, feature.name));
+    Box::leak(Box::new(Registry {
+        collectors: registry.collectors,
+        features: Box::leak(features.into_boxed_slice()),
+    }))
 }
 
 /// Installs a registry that leaves out features the product has, as only the proof that
@@ -68,7 +78,7 @@ pub fn registry() -> &'static Registry {
 
 /// The installed registry, if there is one yet.
 pub fn installed() -> Option<&'static Registry> {
-    INSTALLED.get().copied()
+    INSTALLED.get().map(|(_, placed)| *placed)
 }
 
 impl Registry {
@@ -221,7 +231,7 @@ impl Registry {
     /// registered collection, one page runs the schedules, every schedule alias has a name
     /// of its own and runs only collections its feature keeps, only a page has tabs, every
     /// feature depends only on registered features and collectors, every permission has an
-    /// id and an order of its own and implies only permissions that exist, one lets
+    /// id of its own and implies only permissions that exist, one lets
     /// members invite, every database is declared once, with migrations numbered from 1
     /// without a gap or a repeat, every table is declared once, every domain is declared
     /// once and before it is named, every audit prefix is a dotted name listed under an
@@ -332,8 +342,8 @@ impl Registry {
             assert!(
                 permissions[..index]
                     .iter()
-                    .all(|other| other.id != permission.id && other.order != permission.order),
-                "{} repeats another permission's id or order",
+                    .all(|other| other.id != permission.id),
+                "{} repeats another permission's id",
                 permission.id
             );
             for implied in permission.implies {
@@ -444,6 +454,10 @@ impl Registry {
 pub struct Feature {
     /// Its directory's name.
     pub name: &'static str,
+    /// Where it sits among the features: its pages in the sidebar, its page on the DSPs page,
+    /// its permissions' section on the role sheet. Lowest first; two at one place go by name,
+    /// so a number need not be free.
+    pub place: u16,
     /// Identifiers migrated at startup and rejected by current readers.
     pub retired_identifiers: &'static [(&'static str, &'static str)],
     /// Owner storage import, before collector storage is opened.
@@ -503,6 +517,7 @@ pub struct Feature {
 pub const fn feature(name: &'static str) -> Feature {
     Feature {
         name,
+        place: u16::MAX,
         retired_identifiers: &[],
         upgrade_storage: None,
         depends_on: &[],
@@ -603,7 +618,7 @@ pub struct Permission {
     pub id: &'static str,
     pub label: &'static str,
     /// Its place in the one order every list of permissions follows: the role sheet, API
-    /// answers and audit entries.
+    /// answers and audit entries. Two at one place go by id, so a number need not be free.
     pub order: u16,
     /// What holding it grants as well.
     pub implies: &'static [&'static str],

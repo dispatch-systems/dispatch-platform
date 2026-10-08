@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as prettier from 'prettier';
+import { marker } from './wire.js';
 
 // What `new-feature.ts` and `new-collector.ts` share: their arguments, names, the templates,
 // what they read from the repository, the edits that list a new owner in `app/`, and writing
@@ -213,6 +214,14 @@ export const collectors = (root: string) =>
   directories(root, 'collectors').filter((name) => exists(root, `collectors/${name}/collector.rs`));
 export const coreParts = (root: string) => directories(root, 'core');
 
+/** The next free tens after every feature's place. */
+export function nextPlace(root: string) {
+  let highest = 0;
+  for (const name of features(root))
+    for (const match of read(root, `features/${name}/feature.rs`).matchAll(/^\s*place:\s*(\d+),/gm))
+      highest = Math.max(highest, Number(match[1]));
+  return (Math.floor(highest / 10) + 1) * 10;
+}
 /** The next free tens in the one order every list of permissions follows. */
 export function nextPermissionOrder(root: string) {
   let highest = 0;
@@ -412,7 +421,8 @@ export function appendToList(text: string, opener: RegExp, entry: string, file: 
 }
 /**
  * Adds a path dependency to a crate's `[dependencies]`, or the `section` named, after its other
- * `dispatch-` ones, with the `features` named enabled.
+ * `dispatch-` ones and above the features' list the wiring writes, with the `features` named
+ * enabled.
  */
 export function addDependency(
   text: string,
@@ -429,33 +439,16 @@ export function addDependency(
   const listed = lines.slice(header + 1, end);
   if (listed.some((line) => line.startsWith(`${crate} `)))
     throw new Error(`${file} already lists ${crate} in [${section}]`);
-  const last = listed.findLastIndex((line) => line.startsWith('dispatch-'));
+  const wired = listed.indexOf(marker);
+  const last = (wired < 0 ? listed : listed.slice(0, wired)).findLastIndex((line) =>
+    line.startsWith('dispatch-'),
+  );
   const enabled = features.length
     ? `, features = [${features.map((feature) => `"${feature}"`).join(', ')}]`
     : '';
   const kept = optional ? ', optional = true' : '';
   lines.splice(header + 1 + last + 1, 0, `${crate} = { path = "${location}"${enabled}${kept} }`);
   return lines.join('\n');
-}
-/**
- * Makes a feature's crate a Cargo feature of the app, as every feature is: one the product has
- * by default, and a build may leave out. Its line follows the other features'.
- */
-export function addAppFeature(text: string, name: string, crate: string, file: string) {
-  const defaults = /^default = \[([^\]]*)\]/m.exec(text);
-  if (!defaults) throw new Error(`${file} has no default features; add ${name} by hand`);
-  const listed = [...defaults[1]!.matchAll(/"([^"]+)"/g)].map((match) => match[1]!);
-  if (listed.includes(name)) throw new Error(`${file} already has the ${name} feature`);
-  const multiline = defaults[1]!.includes('\n');
-  const list = multiline
-    ? `default = [\n${[...listed, name].map((item) => `    "${item}",\n`).join('')}]`
-    : `default = [${[...listed, name].map((item) => `"${item}"`).join(', ')}]`;
-  const next = text.replace(defaults[0], list);
-  const crates = [...next.matchAll(/^[a-z0-9_]+ = \["dep:dispatch-[^\n]*$/gm)];
-  const after = crates.at(-1);
-  if (!after) throw new Error(`${file} lists no feature's crate; add ${name} by hand`);
-  const at = after.index + after[0].length;
-  return `${next.slice(0, at)}\n${name} = ["dep:${crate}"]${next.slice(at)}`;
 }
 /** Has the app's `feature` enable the one of that name on `crate` as well. */
 export function forwardFeature(text: string, feature: string, crate: string, file: string) {
@@ -491,21 +484,6 @@ export function holding(root: string, candidates: string[], pattern: RegExp) {
 }
 /** Where the app's backend lists every collector and feature. */
 export const appBackend = ['app/backend/features.rs', 'app/backend/lib.rs'];
-/**
- * Lists an owner's frontend in the app's `FRONTEND`, after the last feature's or collector's
- * and before core's parts, as the frontend's list, generated from it, has it.
- */
-export function addFrontendOwner(text: string, dir: string, file: string) {
-  const opener = /pub const FRONTEND: &\[&str\] = &\[\n/.exec(text);
-  if (!opener) throw new Error(`${file} has no FRONTEND; add "${dir}" by hand`);
-  const start = opener.index + opener[0].length;
-  const end = text.indexOf('\n];', start);
-  const body = text.slice(start, end + 1);
-  if (body.includes(`"${dir}",`)) throw new Error(`${file} already lists ${dir} in FRONTEND`);
-  const core = /^\s*"core\//m.exec(body);
-  const at = start + (core ? core.index : body.length);
-  return `${text.slice(0, at)}    "${dir}",\n${text.slice(at)}`;
-}
 export const routeInventory = 'app/tests/backend/integration/http_routes.rs';
 /**
  * The last step for a new owner: the app's tests hold the whole product to snapshots, which it
@@ -517,33 +495,6 @@ export const snapshotsNote =
   'changed: review them with the rest.';
 /** The app's test that writes every owner's API types to TypeScript, which lists each type. */
 export const typescriptExport = 'app/tests/backend/export.rs';
-export const frontendList = 'app/frontend/features.ts';
-
-/**
- * Adds an owner's frontend manifest to the app's list, after the last feature's or collector's
- * and before core's parts, whose order the sidebar follows.
- */
-export function addFrontendFeature(text: string, local: string, from: string) {
-  const imports = [...text.matchAll(/^import \{ feature as (\w+) \} from '([^']+)';$/gm)];
-  const owned = imports.filter((match) => /\/(features|collectors)\//.test(match[2]!));
-  const anchor = owned.at(-1) ?? imports.at(-1);
-  if (!anchor) throw new Error(`${frontendList} imports no feature`);
-  if (imports.some((match) => match[1] === local))
-    throw new Error(`${frontendList} already has ${local}`);
-  const line = `import { feature as ${local} } from '${from}';`;
-  const at = anchor.index! + anchor[0].length;
-  let next = `${text.slice(0, at)}\n${line}${text.slice(at)}`;
-  const last = anchor[1]!;
-  const list = /export const features[^=]*=\s*\[/.exec(next);
-  if (!list) throw new Error(`${frontendList} has no features list`);
-  const entry = new RegExp(`^(\\s*)${last},$`, 'm');
-  const body = next.slice(list.index);
-  const found = entry.exec(body);
-  if (!found) throw new Error(`${frontendList}: ${last} is not in the list`);
-  const position = list.index + found.index + found[0].length;
-  next = `${next.slice(0, position)}\n${found[1]}${local},${next.slice(position)}`;
-  return next;
-}
 
 // ---- Writing
 

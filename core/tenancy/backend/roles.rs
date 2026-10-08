@@ -21,7 +21,7 @@ const ROLES: &str = "SELECT r.*,\
 // owners without touching stored roles.
 static DECLARED: LazyLock<Vec<&'static Permission>> = LazyLock::new(|| {
     let mut all: Vec<_> = registry().permissions().collect();
-    all.sort_by_key(|permission| permission.order);
+    all.sort_by_key(|permission| (permission.order, permission.id));
     all
 });
 pub static PERMISSIONS: LazyLock<Vec<&'static str>> =

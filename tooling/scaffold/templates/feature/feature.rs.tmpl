@@ -22,11 +22,8 @@ use dispatch_core::db::{{dbImports}};
 {{/dbImports}}
 use dispatch_core::manifest::{{manifestImports}};
 
-{{#bare}}
-pub const FEATURE: Feature = feature("{{name}}");
-{{/bare}}
-{{^bare}}
 pub const FEATURE: Feature = Feature {
+    place: {{place}},
 {{#switch}}
     switch: Some(Switch {
         id: "{{name}}",
@@ -64,7 +61,6 @@ pub const FEATURE: Feature = Feature {
 {{/mcp}}
     ..feature("{{name}}")
 };
-{{/bare}}
 {{#manifestTest}}
 
 #[cfg(test)]

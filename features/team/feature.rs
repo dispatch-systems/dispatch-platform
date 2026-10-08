@@ -8,6 +8,7 @@ pub use api::routes::TEAM;
 use dispatch_core::manifest::{Feature, feature, perm};
 
 pub const FEATURE: Feature = Feature {
+    place: 100,
     permissions: &[
         perm("members.invite", "Invite Members", 80)
             .group("Team")

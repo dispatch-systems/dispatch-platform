@@ -2,6 +2,7 @@
 #![cfg_attr(all(test, not(feature = "default")), allow(dead_code, unused_imports))]
 
 pub mod cli;
+mod features;
 pub mod routes;
 
 use dispatch_core::{
@@ -13,53 +14,8 @@ use dispatch_core::{
 /// feature is a Cargo feature of the app, which a build may leave out.
 pub static REGISTRY: Registry = Registry {
     collectors: &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
-    features: &[
-        #[cfg(feature = "timecard")]
-        &dispatch_timecard::FEATURE,
-        #[cfg(feature = "uniforms")]
-        &dispatch_uniforms::FEATURE,
-        #[cfg(feature = "routes")]
-        &dispatch_routes::FEATURE,
-        #[cfg(feature = "dvic")]
-        &dispatch_dvic::FEATURE,
-        #[cfg(feature = "weekly_scorecard")]
-        &dispatch_weekly_scorecard::FEATURE,
-        #[cfg(feature = "driver_match")]
-        &dispatch_driver_match::FEATURE,
-        #[cfg(feature = "team")]
-        &dispatch_team::FEATURE,
-        #[cfg(feature = "settings")]
-        &dispatch_settings::FEATURE,
-        #[cfg(feature = "home")]
-        &dispatch_home::FEATURE,
-        #[cfg(feature = "daily_performance")]
-        &dispatch_daily_performance::FEATURE,
-        #[cfg(feature = "documents")]
-        &dispatch_documents::FEATURE,
-    ],
+    features: features::FEATURES,
 };
-/// The owners with a frontend manifest, in the order the frontend installs them: the
-/// features, the collectors, then core's parts with screens. It is the sidebar's order, and
-/// the order in which Settings tabs warm their reads. The export writes
-/// app/frontend/features.ts from it, with the owners this build has.
-pub const FRONTEND: &[&str] = &[
-    "features/home",
-    "features/timecard",
-    "features/uniforms",
-    "features/dvic",
-    "features/documents",
-    "features/team",
-    "features/settings",
-    "features/driver_match",
-    "features/routes",
-    "features/weekly_scorecard",
-    "collectors/paycom",
-    "collectors/cortex",
-    "features/daily_performance",
-    "core/accounts",
-    "core/collection",
-    "core/platform_owner",
-];
 /// Installs `REGISTRY`, and hands core what a DSP path no route matches asks for. Every
 /// entry point, and every one of the app's tests, calls this before anything reads the
 /// registry; calling it again changes nothing.

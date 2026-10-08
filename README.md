@@ -15,10 +15,12 @@ Run commands from the repository root.
 
 Dependencies point one way: `app → features → collectors → core`. Core, each collector, each
 feature and the app is its own crate, and each feature and collector declares what it
-contributes in its manifest (`feature.rs`, `collector.rs`). Only `app/` lists them. Rust owns
-punch interpretation and meal assessment; the dashboard formats typed assessment results. Each
-owner's frontend fills the shell's slots from `frontend/feature.ts`, which loads its `index.ts`
-lazily, and the platform owner's pages from `frontend/platform-slots.ts`; only
+contributes in its manifest (`feature.rs`, `collector.rs`). Only `app/` lists them: its list of
+features, and their place in its Cargo manifest, are written from the folders in `features/`, so
+adding a feature is adding its folder, and its `place` in its manifest sets where it is listed.
+Rust owns punch interpretation and meal assessment; the dashboard formats typed assessment
+results. Each owner's frontend fills the shell's slots from `frontend/feature.ts`, which loads
+its `index.ts` lazily, and the platform owner's pages from `frontend/platform-slots.ts`; only
 `app/frontend/features.ts` lists them. Styles live with their owner;
 `core/shell/frontend/styles.css` sets the global import order. API types and tooling never
 import frontend code.
@@ -31,10 +33,11 @@ tests in `tests/<kind>/`: `npm test` discovers the TypeScript tests, and
 `npm run test:feature -- <name>`, `test:collector -- <site>` and `test:core -- <part>` run one
 owner's tests of every kind. Python tests use
 `python3 -m unittest discover -s tooling/tests -p '*_test.py'` and `-s ops/tests`.
-`npm run new:feature -- <name>` and `npm run new:collector -- <site>` start a feature or a
+`dispatchdev new feature <name>` and `dispatchdev new collector <site>` start a feature or a
 collector that already builds and passes its checks.
 
-`npm run contracts:generate` writes each owner's API types from Rust into its `api/generated/`,
+`npm run contracts:generate` lists the features in `app/`, then writes each owner's API types
+from Rust into its `api/generated/`,
 which the owner's `api/` narrows and checks. Normal Rust tests verify them without rewriting
 files. Generated types, schema snapshots and approved artwork remain with their owners.
 

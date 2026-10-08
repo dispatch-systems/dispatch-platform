@@ -2,8 +2,6 @@ import path from 'node:path';
 import {
   UsageError,
   addDependency,
-  addFrontendFeature,
-  addFrontendOwner,
   addWorkspaceMember,
   appBackend,
   appendToList,
@@ -17,7 +15,6 @@ import {
   finish,
   format,
   formatRust,
-  frontendList,
   holding,
   names as namesOf,
   parseArguments,
@@ -121,7 +118,7 @@ function addWorkflowShard(text: string, shard: string) {
 
 export async function planCollector(root: string, argv: string[]) {
   const { args, names, values } = collectorValues(root, argv);
-  const { name, slug, camel, crate, ident } = names;
+  const { name, slug, crate, ident } = names;
   const dir = `collectors/${name}`;
   const plan: Plan = emptyPlan();
   for (const [source, target] of pieces(values)) {
@@ -151,10 +148,6 @@ export async function planCollector(root: string, argv: string[]) {
       registry,
     ),
   );
-  await edit(registry, (text) => addFrontendOwner(text, dir, registry));
-  await edit(frontendList, (text) =>
-    addFrontendFeature(text, camel, `../../${dir}/frontend/feature.js`),
-  );
   const native = `${dir}/tests/native/${slug}-worker.test.ts`;
   await edit(testPlan, (text) => addNativeShard(text, slug, [native]));
   if (exists(root, workflow)) await edit(workflow, (text) => addWorkflowShard(text, slug));
@@ -165,8 +158,8 @@ export async function planCollector(root: string, argv: string[]) {
       `without one: \`npm run new:feature -- <name> --keeps ${name}.${collection}\`.`,
   );
   plan.notes.push(
-    '`npm run contracts:generate` writes the catalog with its connection switch, and its job ' +
-      "kind, schedule collection and labels into core's generated files.",
+    '`npm run contracts:generate` writes the catalog with its connection switch, its job ' +
+      "kind, schedule collection and labels into core's generated files, and the frontend's list.",
   );
   plan.notes.push(snapshotsNote);
   plan.notes.push(

@@ -19,6 +19,7 @@ use dispatch_core::{
 };
 
 pub const FEATURE: Feature = Feature {
+    place: 70,
     // A tab of Settings, not a page of its own: it matches Paycom's employees to the
     // drivers Amazon's routes and other collections name.
     switch: Some(Switch {
