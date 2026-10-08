@@ -442,23 +442,14 @@ impl Store {
                         flip(&mut current, &mut changed, other, false);
                     }
                 }
-                flip(&mut current, &mut changed, feature, true);
-                let own: Vec<_> = tabs(feature.id).collect();
-                if !own.iter().any(|t| current.iter().any(|e| e == t.id)) {
-                    for tab in own {
-                        flip(&mut current, &mut changed, tab, true);
-                    }
-                }
-                // What came on, and a page's parts that come on with it, need their
-                // connections.
-                let needing: Vec<&'static Feature> = all
-                    .iter()
-                    .filter(|f| f.id == feature.id || f.kind == Kind::Sub(feature.id))
-                    .filter(|f| live(&current, f))
-                    .collect();
-                for f in needing {
+                // Each capability `f` requires that no connection on provides, from its one
+                // provider.
+                let connect = |current: &mut Vec<String>,
+                               changed: &mut Vec<(&'static Feature, bool)>,
+                               f: &Feature|
+                 -> Result<()> {
                     for capability in f.requires {
-                        if provided(capability, &current) {
+                        if provided(capability, current) {
                             continue;
                         }
                         let providers: Vec<_> = all
@@ -466,8 +457,25 @@ impl Store {
                             .filter(|f| f.provides.contains(capability))
                             .collect();
                         ensure(providers.len() == 1, "provider_required", 409)?;
-                        flip(&mut current, &mut changed, providers[0], true);
+                        flip(current, changed, providers[0], true);
                     }
+                    Ok(())
+                };
+                connect(&mut current, &mut changed, feature)?;
+                flip(&mut current, &mut changed, feature, true);
+                let own: Vec<_> = tabs(feature.id).collect();
+                if !own.iter().any(|t| current.iter().any(|e| e == t.id)) {
+                    for tab in own {
+                        flip(&mut current, &mut changed, tab, true);
+                    }
+                }
+                // A page's parts that come on with it need their connections too.
+                let parts: Vec<&'static Feature> = all
+                    .iter()
+                    .filter(|f| f.kind == Kind::Sub(feature.id) && live(&current, f))
+                    .collect();
+                for part in parts {
+                    connect(&mut current, &mut changed, part)?;
                 }
             } else {
                 flip(&mut current, &mut changed, feature, false);

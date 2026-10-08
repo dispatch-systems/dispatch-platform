@@ -2,6 +2,7 @@ import type { Feature } from '../../../tenancy/api/index.js';
 import { capabilityLabels } from '../../../tenancy/api/generated/capabilities.js';
 import {
   featureCatalog,
+  subsOf,
   tabsOf,
   type FeatureEntry,
 } from '../../../shell/frontend/runtime/features.js';
@@ -49,19 +50,22 @@ export function previewSwitch(enabled: readonly string[], id: Feature, on: boole
     for (const capability of feature.provides ?? [])
       for (const other of featureCatalog)
         if (provides(other, capability) && other.id !== feature.id) flip(other, false);
-    flip(feature, true);
-    const own = tabsOf(feature.id);
-    if (!own.some((t) => current.has(t.id))) for (const t of own) flip(t, true);
-    const needing = featureCatalog.filter(
-      (f) => (f.id === feature.id || (f.kind === 'sub' && f.page === feature.id)) && live(f),
-    );
-    for (const f of needing)
+    // Each capability `f` requires that no connection on provides, from its one provider.
+    const connect = (f: FeatureEntry) => {
       for (const capability of f.requires) {
         if (provided(capability)) continue;
         const providers = featureCatalog.filter((p) => provides(p, capability));
-        if (providers.length !== 1) return undefined;
+        if (providers.length !== 1) return false;
         flip(providers[0]!, true);
       }
+      return true;
+    };
+    if (!connect(feature)) return undefined;
+    flip(feature, true);
+    const own = tabsOf(feature.id);
+    if (!own.some((t) => current.has(t.id))) for (const t of own) flip(t, true);
+    // A page's parts that come on with it need their connections too.
+    for (const part of subsOf(feature.id)) if (live(part) && !connect(part)) return undefined;
   } else {
     flip(feature, false);
     // Then whatever is left short, until nothing more is.

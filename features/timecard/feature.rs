@@ -56,10 +56,11 @@ pub const FEATURE: Feature = Feature {
     place: 20,
     // Its meal-break comparison joins drivers to employees by Driver Match's codes.
     depends_on: &["driver_match"],
-    switch: optional("timecard", "Timecard", &["timecards", "meal_breaks"]),
+    switch: optional("timecard", "Timecard", &["timecards"]),
     subfeatures: &[
         tab("timecard.daily", "Timecard"),
-        tab("timecard.meal_breaks", "Meal Breaks"),
+        // Meal breaks come from Cortex: only this tab needs it.
+        tab("timecard.meal_breaks", "Meal Breaks").requires(&["meal_breaks"]),
         tab("timecard.employees", "Employee Search"),
     ],
     schedules: true,

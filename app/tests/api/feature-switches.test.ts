@@ -10,7 +10,10 @@ const tabs = [
   'dvic.day',
   'dvic.week',
 ];
+// Every DSP has these: nobody switches them.
+const mandatory = ['home', 'team', 'settings'];
 const all = [
+  'home',
   'timecard',
   'uniforms',
   'routes',
@@ -19,13 +22,23 @@ const all = [
   'driver_match',
   'daily_performance',
   'documents',
+  'team',
+  'settings',
   ...tabs,
   'paycom',
   'cortex',
 ];
-/** The DSP's features with these pages and connections on: every tab of a page that is. */
+/**
+ * The DSP's features with these pages and connections on: every tab of a page that is, and
+ * what every DSP has.
+ */
 const having = (...ids: string[]) =>
-  all.filter((f) => ids.includes(f) || (tabs.includes(f) && ids.includes(f.split('.')[0]!)));
+  all.filter(
+    (f) =>
+      mandatory.includes(f) ||
+      ids.includes(f) ||
+      (tabs.includes(f) && ids.includes(f.split('.')[0]!)),
+  );
 
 test('a feature switched off for a DSP stops existing there until it is switched back on', async (t) => {
   const f = await fixture();
@@ -55,6 +68,9 @@ test('a feature switched off for a DSP stops existing there until it is switched
   assert.equal((await member.post(url, { feature: 'uniforms', enabled: false })).status, 403);
   assert.equal((await platform.post(url, { feature: 'nothing', enabled: false })).status, 404);
   assert.equal((await platform.post(url, { feature: 'uniforms' })).status, 400);
+  // What every DSP has has no switch.
+  const fixed = await platform.post(url, { feature: 'team', enabled: false });
+  assert.deepEqual([fixed.status, fixed.value.error], [409, 'feature_mandatory']);
   let result = await platform.post(url, { feature: 'uniforms', enabled: false });
   assert.equal(result.status, 200);
   assert.deepEqual(result.value, {
@@ -150,34 +166,37 @@ test('a feature switched off for a DSP stops existing there until it is switched
   );
   assert.equal(restored.changedBy, 'Platform Owner');
 
-  // A connection is its own feature; the pages requiring what it provides go with it.
+  // A connection is its own feature; the pages and parts requiring what it provides go with
+  // it: Timecard stays, without its Meal Breaks tab, which alone needs Cortex.
   result = await platform.post(url, { feature: 'cortex', enabled: false });
   assert.deepEqual(result.value, {
-    features: having('uniforms', 'documents', 'paycom'),
+    features: having('timecard', 'uniforms', 'documents', 'paycom').filter(
+      (f) => f !== 'timecard.meal_breaks',
+    ),
     changed: [
       { feature: 'cortex', enabled: false },
-      { feature: 'timecard', enabled: false },
       { feature: 'routes', enabled: false },
       { feature: 'dvic', enabled: false },
       { feature: 'weekly_scorecard', enabled: false },
       { feature: 'driver_match', enabled: false },
       { feature: 'daily_performance', enabled: false },
+      { feature: 'timecard.meal_breaks', enabled: false },
     ],
   });
   view = await member.select(north.id);
-  assert.deepEqual(view.permissions, ['uniforms.view']);
-  assert.equal((await member.get('/api/dsp/employees')).status, 403);
+  assert.deepEqual(view.permissions, ['uniforms.view', 'timecard.view', 'timecard.manage']);
+  assert.equal((await member.get('/api/dsp/employees')).status, 200);
+  assert.equal((await member.get('/api/dsp/paycom/meal-breaks?date=2026-01-05')).status, 404);
   await platform.select(north.id);
   assert.equal((await platform.get('/api/dsp/connections/cortex')).status, 404);
   assert.equal((await platform.get('/api/dsp/connections/paycom')).status, 200);
-  assert.equal((await platform.get('/api/dsp/schedules')).status, 403);
-  // Enabling a page enables what it requires, and only that page.
-  result = await platform.post(url, { feature: 'timecard', enabled: true });
+  // Enabling a part enables what it requires, and only that part.
+  result = await platform.post(url, { feature: 'timecard.meal_breaks', enabled: true });
   assert.deepEqual(result.value, {
     features: having('timecard', 'uniforms', 'documents', 'paycom', 'cortex'),
     changed: [
       { feature: 'cortex', enabled: true },
-      { feature: 'timecard', enabled: true },
+      { feature: 'timecard.meal_breaks', enabled: true },
     ],
   });
   await platform.select(north.id);
@@ -192,7 +211,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
   // Without any connection, nobody manages connections: the permission is gone too.
   await platform.post(url, { feature: 'paycom', enabled: false });
   result = await platform.post(url, { feature: 'cortex', enabled: false });
-  assert.deepEqual(result.value.features, ['uniforms', 'documents']);
+  assert.deepEqual(result.value.features, having('uniforms', 'documents'));
   const alone = await platform.select(north.id);
   assert.ok(!alone.permissions.includes('connections.manage'));
   assert.equal((await platform.get('/api/dsp/connections')).status, 403);

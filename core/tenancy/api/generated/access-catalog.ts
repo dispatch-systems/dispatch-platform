@@ -62,8 +62,7 @@ export const featureCatalog = [
       "collections.run"
     ],
     "requires": [
-      "timecards",
-      "meal_breaks"
+      "timecards"
     ],
     "kind": "page",
     "mandatory": false
@@ -190,7 +189,9 @@ export const featureCatalog = [
     "id": "timecard.meal_breaks",
     "label": "Meal Breaks",
     "permissions": [],
-    "requires": [],
+    "requires": [
+      "meal_breaks"
+    ],
     "kind": "sub",
     "page": "timecard",
     "tab": true,

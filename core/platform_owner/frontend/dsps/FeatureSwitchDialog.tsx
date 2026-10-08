@@ -1,6 +1,11 @@
 import type { DspSummary } from '../../../accounts/api/index.js';
 import { setDspFeature } from '../../api/client.js';
-import { featureCatalog, type FeatureEntry } from '../../../shell/frontend/runtime/features.js';
+import {
+  featureCatalog,
+  featureLabel,
+  subsOf,
+  type FeatureEntry,
+} from '../../../shell/frontend/runtime/features.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { Modal } from '../../../shell/frontend/ui/index.js';
 import { capabilityLabel, previewSwitch, sideEffects, switchLabel } from './switches.js';
@@ -42,11 +47,18 @@ export function FeatureSwitchDialog({
     (a.provides ?? a.requires)[0] ??
     '';
   const why = (change: { feature: string; enabled: boolean }) => {
-    // A tab takes only its page along, when it was the page's last one on.
-    if (feature.kind === 'sub' && feature.tab) return 'has no other tab on';
     const other = entry(change.feature);
-    if (on && change.enabled)
-      return `${feature.label} needs ${capabilityLabel(shared(feature, other))}`;
+    // A tab takes its page along when it was the page's last one on.
+    if (feature.kind === 'sub' && feature.tab && other.kind === 'page')
+      return 'has no other tab on';
+    if (on && change.enabled) {
+      // The feature, or a part of a page on with it, that needs what comes on.
+      const parts = feature.kind === 'page' ? subsOf(feature.id) : [];
+      const needing =
+        [feature, ...parts].find((f) => f.requires.some((c) => other.provides?.includes(c))) ??
+        feature;
+      return `${featureLabel(needing.id)} needs ${capabilityLabel(shared(needing, other))}`;
+    }
     if (on) return `one ${capabilityLabel(shared(feature, other)).replace(/^an? /, '')} at a time`;
     return `needs ${capabilityLabel(shared(other, feature))}`;
   };
@@ -65,7 +77,7 @@ export function FeatureSwitchDialog({
           <ul className="dsp-switch-effects">
             {others.map((change) => (
               <li key={change.feature}>
-                <strong>{entry(change.feature).label}</strong>
+                <strong>{featureLabel(change.feature)}</strong>
                 <span>{why(change)}</span>
               </li>
             ))}

@@ -16,15 +16,18 @@ test('a switch brings its dependencies along, as the backend does', () => {
     { feature: 'uniforms', enabled: false },
   ]);
   assert.deepEqual(previewSwitch(all, 'uniforms', true), []);
-  // Disabling a provider disables the pages left without one.
+  // What every DSP has has no switch.
+  assert.deepEqual(previewSwitch(all, 'home', false), []);
+  // Disabling a provider disables the pages and parts left without one: Timecard keeps all
+  // but its Meal Breaks tab, which alone needs Cortex.
   assert.deepEqual(previewSwitch(all, 'cortex', false), [
     { feature: 'cortex', enabled: false },
-    { feature: 'timecard', enabled: false },
     { feature: 'routes', enabled: false },
     { feature: 'dvic', enabled: false },
     { feature: 'weekly_scorecard', enabled: false },
     { feature: 'driver_match', enabled: false },
     { feature: 'daily_performance', enabled: false },
+    { feature: 'timecard.meal_breaks', enabled: false },
   ]);
   // Driver Match needs both sides: losing Paycom takes it too.
   assert.deepEqual(previewSwitch(all, 'paycom', false), [
@@ -32,16 +35,23 @@ test('a switch brings its dependencies along, as the backend does', () => {
     { feature: 'timecard', enabled: false },
     { feature: 'driver_match', enabled: false },
   ]);
-  // Enabling a page enables the one provider of each capability it lacks. Tabs default on.
+  // Enabling a page enables the one provider of each capability it lacks, then what its parts
+  // on with it lack. Tabs default on.
   const tabs = features.filter((f) => f.startsWith('timecard.'));
   assert.deepEqual(previewSwitch(['uniforms', 'paycom', ...tabs], 'timecard', true), [
-    { feature: 'cortex', enabled: true },
     { feature: 'timecard', enabled: true },
+    { feature: 'cortex', enabled: true },
   ]);
   assert.deepEqual(previewSwitch(['uniforms', ...tabs], 'timecard', true), [
     { feature: 'paycom', enabled: true },
-    { feature: 'cortex', enabled: true },
     { feature: 'timecard', enabled: true },
+    { feature: 'cortex', enabled: true },
+  ]);
+  // A part brings its own.
+  const withoutMeals = all.filter((f) => f !== 'cortex' && f !== 'timecard.meal_breaks');
+  assert.deepEqual(previewSwitch(withoutMeals, 'timecard.meal_breaks', true), [
+    { feature: 'cortex', enabled: true },
+    { feature: 'timecard.meal_breaks', enabled: true },
   ]);
   assert.deepEqual(previewSwitch(['uniforms'], 'paycom', true), [
     { feature: 'paycom', enabled: true },
