@@ -3,7 +3,7 @@ import { useDeferredValue, useMemo, useState } from 'react';
 import { RefreshCw, Plus, Ellipsis } from 'lucide-react';
 import type { DspView, Membership, Role } from '../../../core/accounts/api/index.js';
 import { useUpdateState } from '../../../core/shell/frontend/runtime/browser-update.js';
-import { api, useCachedData } from '../../../core/shell/frontend/runtime/api.js';
+import { useCachedData } from '../../../core/shell/frontend/runtime/api.js';
 import {
   Badge,
   ConfirmDialog,
@@ -26,7 +26,14 @@ import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { RoleSheet } from './RoleSheet.js';
 import { RolesTab } from './RolesTab.js';
 import { assignable } from './assignable.js';
-import { useMembers, inviteMember, setMemberRole, useRoles, removeRole } from '../api/client.js';
+import {
+  useMembers,
+  inviteMember,
+  revokeInvitation,
+  setMemberRole,
+  useRoles,
+  removeRole,
+} from '../api/client.js';
 
 type Invitation = { email: string; role: string; expiresAt: number; accepted: boolean };
 const actions = <span className="sr-only">Actions</span>;
@@ -62,7 +69,7 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
   const [revoking, setRevoking] = useState<Invitation>();
   const revoke = useAction(
     async (invitation: Invitation) => {
-      await api('/api/dsp/invitations/revoke', { email: invitation.email });
+      await revokeInvitation(invitation.email);
       setRevoking(undefined);
       invitations.refresh();
     },

@@ -94,13 +94,7 @@ fn invitations(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
 fn revoke_invitation(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &["email"])?;
     let email = v::email(&input.body, "email")?;
-    db.revoke_invitation(c.dsp_id(), &email)?;
-    db.audit(
-        Some(c.actor()),
-        Some(c.dsp_id()),
-        "invitation.revoked",
-        &email,
-    )?;
+    db.revoke_invitation(c, &email)?;
     Ok(Reply::ok())
 }
 
