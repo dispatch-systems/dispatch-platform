@@ -905,3 +905,112 @@
   font-size: 13px;
   line-height: 1.5;
 }
+
+/* Uploading: the New menu's upload items, the hint over the page while files are dragged on
+   it, and how the uploads are going, in the corner. */
+.documents-menu-rule {
+  display: block;
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--border);
+}
+.documents-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--muted-foreground);
+}
+.documents-drop {
+  position: relative;
+  min-height: 240px;
+}
+.documents-drop-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 2px dashed var(--primary);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary) 8%, var(--background));
+  color: var(--primary);
+  font-weight: 550;
+  pointer-events: none;
+}
+.documents-uploads {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 40;
+  width: min(360px, calc(100vw - 32px));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.18);
+}
+.documents-uploads header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.documents-uploads header button {
+  min-height: 0;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+}
+.documents-uploads ul {
+  max-height: 260px;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.documents-uploads li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  font-size: 13px;
+}
+.documents-uploads li > svg {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+.documents-uploads li.done > svg {
+  color: var(--success);
+}
+.documents-uploads li.failed > svg {
+  color: var(--destructive);
+}
+.documents-uploads li > div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.documents-uploads li > div > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.documents-uploads small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.documents-uploads li.failed small {
+  color: var(--destructive);
+}
+.documents-uploads .documents-meter {
+  display: block;
+  height: 4px;
+}

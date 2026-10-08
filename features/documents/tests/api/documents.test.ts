@@ -377,7 +377,7 @@ test('a team uploads files into its folders, and downloads them and Google’s o
   ).value;
   const origin = f.env.DISPATCH_ORIGIN!;
   // The browser sends a file as its own body, its name and type in the address.
-  const send = (path: string, body: Uint8Array | string, headers: Record<string, string> = {}) =>
+  const send = (path: string, body: BodyInit, headers: Record<string, string> = {}) =>
     fetch(origin + path, {
       method: 'POST',
       headers: {
@@ -394,7 +394,7 @@ test('a team uploads files into its folders, and downloads them and Google’s o
       name,
       ...(type ? { type } : {}),
     })}`;
-  const pdf = new TextEncoder().encode('%PDF-1.4 fixture rescue plan');
+  const pdf = '%PDF-1.4 fixture rescue plan';
   const uploaded = await send(into(safety.id, 'Rescue plan.pdf', 'application/pdf'), pdf);
   assert.equal(uploaded.status, 200, await uploaded.clone().text());
   const file = await uploaded.json();
@@ -414,7 +414,7 @@ test('a team uploads files into its folders, and downloads them and Google’s o
   assert.equal(saved.status, 200);
   assert.equal(saved.headers.get('content-type'), 'application/pdf');
   assert.match(saved.headers.get('content-disposition')!, /filename="Rescue plan\.pdf"/);
-  assert.deepEqual(new Uint8Array(await saved.arrayBuffer()), pdf);
+  assert.equal(await saved.text(), pdf);
   // Google's own come down as the Office files they export as.
   const doc = (
     await owner.post('/api/dsp/documents/new', { folder: null, kind: 'doc', name: 'Plan' })
