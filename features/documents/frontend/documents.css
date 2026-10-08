@@ -711,6 +711,10 @@
 }
 
 @media (width <= 760px) {
+  .documents-heading .heading-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
   .documents-toolbar > div {
     width: 100%;
   }

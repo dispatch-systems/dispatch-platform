@@ -139,7 +139,7 @@ export function Browser({
   const top = !folder;
   return (
     <>
-      <div className="page-heading">
+      <div className="page-heading documents-heading">
         <div>
           <h1>Documents</h1>
           <p>
