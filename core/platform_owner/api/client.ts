@@ -10,6 +10,7 @@ import type {
   AuditPage,
   DspFeatureReport,
   DspFeatures,
+  DspHidden,
   MailMessage,
   OAuthAllowedApps,
   OAuthAppChoice,
@@ -38,6 +39,9 @@ export const useDspFeatures = (dspId: string) =>
 /** Switches one feature and whatever depends on it; the answer lists every switch. */
 export const setDspFeature = (dspId: string, feature: Feature, enabled: boolean) =>
   api<DspFeatures>(dspFeatures(dspId), { feature, enabled });
+/** Hides a feature from the DSP's members, or shows it again; it keeps running either way. */
+export const showDspFeature = (dspId: string, feature: Feature, shown: boolean) =>
+  api<DspHidden>(`${dspFeatures(dspId)}/shown`, { feature, shown });
 export const usePlatformMail = (poll = 0) =>
   useCachedData<MailMessage[]>('/api/platform/mail', poll);
 /** Gives a failed message a fresh set of attempts, or drops it. */

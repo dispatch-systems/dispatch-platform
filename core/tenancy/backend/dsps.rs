@@ -196,7 +196,12 @@ impl Store {
             } else {
                 OwnerStatus::Missing
             };
-            let features = self.features(&dsp.id)?;
+            // A member's list never names what is hidden from them.
+            let features = if platform {
+                self.features(&dsp.id)?
+            } else {
+                self.shown_features(&dsp.id)?
+            };
             let mut summary = DspSummary {
                 features,
                 members,

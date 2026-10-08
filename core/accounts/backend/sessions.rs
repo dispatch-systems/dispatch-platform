@@ -121,7 +121,13 @@ impl Store {
             };
             (dsp, grant)
         };
-        let features = self.features(&dsp.id)?;
+        // The platform owner's own view sees what is hidden from the DSP; everyone else,
+        // its owners and a role a platform owner looks through included, only what is shown.
+        let features = if a.user.platform_owner && a.preview.is_none() {
+            self.features(&dsp.id)?
+        } else {
+            self.shown_features(&dsp.id)?
+        };
         let c = Context {
             auth: a.clone(),
             dsp,

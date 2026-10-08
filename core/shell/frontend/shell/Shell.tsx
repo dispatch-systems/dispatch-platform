@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Menu, X, ChevronDown, LogOut, Eye, ArrowUpRight, type LucideIcon } from 'lucide-react';
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Menu, X, ChevronDown, LogOut, ArrowUpRight, type LucideIcon } from 'lucide-react';
 import type { DspView, SessionView } from '../../../accounts/api/index.js';
 import { Brand } from '../runtime/Brand.js';
 import { Popover } from '../ui/Popover.js';
@@ -7,7 +7,10 @@ import { useFocusTrap } from '../ui/useFocusTrap.js';
 import { dspHash, platformHash, settingsHash } from '../runtime/navigation.js';
 import { sourceLink } from '../lib/source.js';
 import type { DspRouteId, PlatformRouteId } from '../runtime/slots.js';
-import { ViewRoleMenu } from './ViewRoleMenu.js';
+// Only a platform owner viewing a DSP sees it, so it loads then.
+const DspViewBanner = lazy(() =>
+  import('./DspViewBanner.js').then((module) => ({ default: module.DspViewBanner })),
+);
 
 export function Shell({
   session,
@@ -152,25 +155,9 @@ export function Shell({
       </aside>
       <div className="main-area" inert={mobile}>
         {view && session.user.platformOwner && (
-          <div
-            className="dsp-view-banner"
-            data-sticky-banner
-            role="region"
-            aria-label="DSP viewing mode"
-          >
-            <Eye aria-hidden="true" />
-            <div>
-              <strong>
-                Viewing {view.dsp.name} as {view.role.owner ? 'DSP owner' : view.role.name}
-              </strong>
-              <span>
-                {view.role.owner ? 'Full owner' : view.role.name} access. Changes are saved to this
-                DSP.
-              </span>
-            </div>
-            <ViewRoleMenu view={view} viewAs={viewAs} />
-            <button onClick={exitView}>Exit view</button>
-          </div>
+          <Suspense fallback={null}>
+            <DspViewBanner view={view} viewAs={viewAs} exitView={exitView} />
+          </Suspense>
         )}
         <header className="topbar">
           <button

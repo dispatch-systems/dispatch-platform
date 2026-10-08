@@ -13,7 +13,9 @@ use crate::{
     db::{FromRow, Row, Store, iso},
     ensure, job_statuses,
     manifest::{self, registry},
-    platform_owner::api::types::{DspFeatureReport, DspFeatures, FeatureChange, FeatureState},
+    platform_owner::api::types::{
+        DspFeatureReport, DspFeatures, DspHidden, FeatureChange, FeatureState,
+    },
     tenancy::api::types::DspStatus,
 };
 use rusqlite::params;
@@ -247,6 +249,7 @@ impl FromRow for FeatureState {
         Ok(Self {
             feature: row.get("feature")?,
             enabled: row.get("enabled")?,
+            shown: row.get("shown")?,
             changed_at: row.get("changed_at")?,
             changed_by: row.get("changed_by")?,
         })
@@ -257,6 +260,76 @@ impl Store {
     /// page that is off.
     pub fn features(&self, dsp: &str) -> Result<Vec<String>> {
         Ok(effective(&self.switches(dsp)?))
+    }
+    /// What the DSP's members see of its features: what it has, less what the platform owner
+    /// hides from them, a hidden page's parts with it. A hidden feature keeps running.
+    pub fn shown_features(&self, dsp: &str) -> Result<Vec<String>> {
+        let hidden = self.hidden_features(dsp)?;
+        let shown = |id: &str| !hidden.iter().any(|h| h == id);
+        Ok(self
+            .features(dsp)?
+            .into_iter()
+            .filter(|id| {
+                shown(id)
+                    && match find(id).map(|f| f.kind) {
+                        Some(Kind::Sub(page)) => shown(page),
+                        _ => true,
+                    }
+            })
+            .collect())
+    }
+    /// The optional features and parts the platform owner hides from the DSP's members, in
+    /// catalog order.
+    fn hidden_features(&self, dsp: &str) -> Result<Vec<String>> {
+        let rows: Vec<(String,)> = self.platform.query_as(
+            "SELECT feature FROM dsp_features WHERE dsp_id=? AND shown=0",
+            [dsp],
+        )?;
+        Ok(catalog()
+            .iter()
+            .filter(|f| !f.mandatory && f.kind != Kind::Connection)
+            .filter(|f| rows.iter().any(|(id,)| id == f.id))
+            .map(|f| f.id.to_owned())
+            .collect())
+    }
+    /// Hides an optional feature or part from the DSP's members, or shows it to them again.
+    /// Whatever it runs keeps running, and whether it is on stays as it is; the platform
+    /// owner's own view still sees it. Audited; open views expire.
+    pub fn show_feature(&self, dsp: &str, id: &str, shown: bool, actor: &str) -> Result<DspHidden> {
+        let feature = find(id).ok_or_else(|| crate::Error::new("feature_not_found", 404))?;
+        ensure(!feature.mandatory, "feature_mandatory", 409)?;
+        ensure(feature.kind != Kind::Connection, "invalid_input", 400)?;
+        self.platform.transaction(|| {
+            self.find_dsp(dsp)?;
+            let was = !self.hidden_features(dsp)?.iter().any(|h| h == id);
+            if was != shown {
+                let on = self.switches(dsp)?.iter().any(|e| e == id);
+                self.platform.exec(
+                    "INSERT INTO dsp_features(dsp_id,feature,enabled,shown,changed_by,changed_at) \
+                     VALUES (?1,?2,?3,?4,?5,?6) ON CONFLICT(dsp_id,feature) DO UPDATE SET \
+                     shown=?4,changed_by=?5,changed_at=?6",
+                    params![dsp, id, on, shown, actor, iso()],
+                )?;
+                self.audit_with(
+                    Some(actor),
+                    Some(dsp),
+                    if shown {
+                        "dsp.feature_shown"
+                    } else {
+                        "dsp.feature_hidden"
+                    },
+                    id,
+                    Some(&feature.name()),
+                    &[],
+                )?;
+                // Open views sign the DSP revision, so members lose or regain it at once.
+                self.platform
+                    .exec("UPDATE dsps SET revision=revision+1 WHERE id=?", [dsp])?;
+            }
+            Ok(DspHidden {
+                hidden: self.hidden_features(dsp)?,
+            })
+        })
     }
     /// Every feature switched on, in catalog order: the mandatory ones whatever is stored. A
     /// feature without a row of its own is at its default, which is how a DSP made before the
@@ -318,7 +391,7 @@ impl Store {
     pub fn feature_report(&self, dsp: &str) -> Result<DspFeatureReport> {
         let row = self.find_dsp(dsp)?;
         let stored: Vec<FeatureState> = self.platform.query_as(
-            "SELECT f.feature,f.enabled,f.changed_at,u.first_name||' '||u.last_name changed_by \
+            "SELECT f.feature,f.enabled,f.shown,f.changed_at,u.first_name||' '||u.last_name changed_by \
              FROM dsp_features f LEFT JOIN users u ON u.id=f.changed_by WHERE f.dsp_id=?",
             [dsp],
         )?;
@@ -331,11 +404,13 @@ impl Store {
                     .cloned()
                     .map(|state| FeatureState {
                         enabled: state.enabled || f.mandatory,
+                        shown: state.shown || f.mandatory || f.kind == Kind::Connection,
                         ..state
                     })
                     .unwrap_or(FeatureState {
                         feature: f.id.to_owned(),
                         enabled: f.default,
+                        shown: true,
                         changed_at: None,
                         changed_by: None,
                     })

@@ -3,4 +3,8 @@
 /**
  * One feature of a DSP: whether it has it, and who last switched it and when.
  */
-export type FeatureState = { feature: string, enabled: boolean, changedAt: string | null, changedBy: string | null, };
+export type FeatureState = { feature: string, enabled: boolean,
+/**
+ * Whether the DSP's members see it, while it is on: the platform owner may hide one.
+ */
+shown: boolean, changedAt: string | null, changedBy: string | null, };

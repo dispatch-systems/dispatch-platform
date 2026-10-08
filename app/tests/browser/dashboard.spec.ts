@@ -207,16 +207,22 @@ test('platform owner looks through a DSP role until they leave the DSP', async (
   await page.goto(`/#dsp/${dsp.id}/team`);
   const banner = page.getByRole('region', { name: 'DSP viewing mode' });
   const menu = banner.getByLabel('View as role');
-  await expect(banner).toContainText('as DSP owner');
-  await expect(menu).toHaveText('Owner');
+  // A platform owner opens a DSP as themselves: its owner's access, and what it hides.
+  await expect(banner).toContainText('as Platform Owner');
+  await expect(menu).toHaveText('Platform Owner');
   await menu.click();
   await expect(banner.getByRole('button')).toHaveText([
+    'Platform Owner',
     'Owner',
     'Manager',
     'Member',
     'Auditor',
     'Exit view',
   ]);
+  await banner.getByRole('button', { name: 'Owner', exact: true }).click();
+  await expect(banner).toContainText('Viewing Northline Logistics as DSP owner');
+  await expect(menu).toHaveText('Owner');
+  await menu.click();
   await banner.getByRole('button', { name: 'Auditor', exact: true }).click();
   await expect(banner).toContainText('Viewing Northline Logistics as Auditor');
   await expect(menu).toHaveText('Auditor');
@@ -234,7 +240,7 @@ test('platform owner looks through a DSP role until they leave the DSP', async (
   await banner.getByRole('button', { name: 'Exit view', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'DSPs', exact: true })).toBeVisible();
   await page.goto(`/#dsp/${dsp.id}/team`);
-  await expect(banner).toContainText('as DSP owner');
+  await expect(banner).toContainText('as Platform Owner');
   await expect(page.getByRole('link', { name: 'Team & Roles', exact: true })).toBeVisible();
 });
 test('create a DSP and accept its owner invitation while another account is signed in', async ({

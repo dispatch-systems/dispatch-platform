@@ -105,6 +105,7 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         DspStatus,
         DspFeatureReport,
         DspFeatures,
+        DspHidden,
         DspSummary,
         DspView,
         FeatureChange,

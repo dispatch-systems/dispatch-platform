@@ -323,3 +323,114 @@ test('a tab switched off has no routes, and a page goes and comes back with its 
   );
   assert.deepEqual(page.changes, [{ field: 'cause', from: null, to: 'Timecard · Timecard' }]);
 });
+
+test('a feature hidden from a DSP keeps running, out of sight of all but the platform owner', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const platform = await f.client();
+  const member = await f.client('member@dispatch.test');
+  const north = member.session.dsps[0];
+  const features = `/api/platform/dsps/${north.id}/features`;
+  const url = `${features}/shown`;
+  // Whether the feature is on, and whether its members see it.
+  const state = async (id: string) => {
+    const report = await platform.read(features);
+    const found = report.features.find((s: { feature: string }) => s.feature === id);
+    return [found.enabled, found.shown];
+  };
+  assert.deepEqual(await state('uniforms'), [true, true]);
+  assert.equal((await member.post(url, { feature: 'uniforms', shown: false })).status, 403);
+  assert.equal((await platform.post(url, { feature: 'nothing', shown: false })).status, 404);
+  assert.equal((await platform.post(url, { feature: 'uniforms' })).status, 400);
+  // What every DSP has is always shown, and a connection has nothing to show.
+  const fixed = await platform.post(url, { feature: 'team', shown: false });
+  assert.deepEqual([fixed.status, fixed.value.error], [409, 'feature_mandatory']);
+  const connection = await platform.post(url, { feature: 'cortex', shown: false });
+  assert.deepEqual([connection.status, connection.value.error], [400, 'invalid_input']);
+
+  await member.select(north.id);
+  let result = await platform.post(url, { feature: 'uniforms', shown: false });
+  assert.deepEqual([result.status, result.value], [200, { hidden: ['uniforms'] }]);
+  // Members lose it at once; it stays switched on.
+  assert.equal((await member.get('/api/dsp/uniforms')).value.error, 'dsp_view_expired');
+  let view = await member.select(north.id);
+  assert.deepEqual(
+    view.features,
+    all.filter((feature) => feature !== 'uniforms'),
+  );
+  assert.deepEqual(view.permissions, ['timecard.view']);
+  assert.equal((await member.get('/api/dsp/uniforms')).status, 403);
+  assert.ok(
+    !(await member.read('/api/session')).dsps[0].features.includes('uniforms'),
+    'the DSP list hides it too',
+  );
+  assert.deepEqual(await state('uniforms'), [true, false]);
+  // The DSP's owners, as a platform owner previews them, don't see it either.
+  const opened = await platform.select(north.id);
+  const ownerRole = opened.roles.find((role: { owner: boolean }) => role.owner);
+  const preview = await platform.post('/api/session/dsp', {
+    dspId: north.id,
+    roleId: ownerRole.id,
+  });
+  platform.headers['x-dispatch-view'] = preview.value.token;
+  assert.ok(!preview.value.features.includes('uniforms'));
+  assert.ok(!preview.value.permissions.includes('uniforms.view'));
+  assert.equal((await platform.get('/api/dsp/uniforms')).status, 403);
+  // The platform owner's own view of the DSP does.
+  view = await platform.select(north.id);
+  assert.equal(view.role.id, 'platform_owner');
+  assert.deepEqual(view.features, all);
+  assert.ok(view.permissions.includes('uniforms.view'));
+  assert.equal((await platform.get('/api/dsp/uniforms')).status, 200);
+  const listed = (await platform.read('/api/platform/dsps')).find(
+    (dsp: { id: string }) => dsp.id === north.id,
+  );
+  assert.deepEqual(listed.features, all);
+
+  // A hidden tab takes its routes from sight; a hidden page takes its tabs.
+  const meals = '/api/dsp/paycom/meal-breaks?date=2026-01-05';
+  result = await platform.post(url, { feature: 'timecard.employees', shown: false });
+  assert.deepEqual(result.value.hidden, ['uniforms', 'timecard.employees']);
+  await member.select(north.id);
+  assert.equal((await member.get('/api/dsp/employees')).status, 404);
+  assert.equal((await member.get(meals)).status, 200);
+  await platform.post(url, { feature: 'timecard', shown: false });
+  view = await member.select(north.id);
+  assert.deepEqual(
+    view.features,
+    all.filter((feature) => feature !== 'uniforms' && !feature.startsWith('timecard')),
+  );
+  // With the page goes its permission, as when it is switched off.
+  assert.deepEqual(view.permissions, []);
+  assert.equal((await member.get(meals)).status, 403);
+  // Shown again, each comes back as it was, the tab hidden on its own still hidden.
+  result = await platform.post(url, { feature: 'timecard', shown: true });
+  result = await platform.post(url, { feature: 'uniforms', shown: true });
+  assert.deepEqual(result.value.hidden, ['timecard.employees']);
+  view = await member.select(north.id);
+  assert.deepEqual(
+    view.features,
+    all.filter((feature) => feature !== 'timecard.employees'),
+  );
+  assert.deepEqual(view.permissions, ['uniforms.view', 'timecard.view']);
+  // Asking for what already is changes nothing: open views stay open.
+  result = await platform.post(url, { feature: 'uniforms', shown: true });
+  assert.deepEqual(result.value.hidden, ['timecard.employees']);
+  assert.equal((await member.get('/api/dsp/uniforms')).status, 200);
+
+  // Each is the platform's own record, never the DSP's.
+  const events = (await platform.read('/api/platform/audit?limit=20')).events;
+  assert.deepEqual(
+    events
+      .filter((event: { action: string }) => /^dsp\.feature_(hidden|shown)$/.test(event.action))
+      .map((event: { action: string; detail: string }) => [event.action, event.detail])
+      .reverse(),
+    [
+      ['dsp.feature_hidden', 'uniforms'],
+      ['dsp.feature_hidden', 'timecard.employees'],
+      ['dsp.feature_hidden', 'timecard'],
+      ['dsp.feature_shown', 'timecard'],
+      ['dsp.feature_shown', 'uniforms'],
+    ],
+  );
+});
