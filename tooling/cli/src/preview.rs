@@ -210,8 +210,14 @@ pub fn run(
         }
     };
     match (action, active) {
-        (Action::Restart, _) => systemctl("restart")?,
-        (Action::Start, false) => systemctl("start")?,
+        (Action::Restart, _) => {
+            crate::idle::evict(ws, name, runner);
+            systemctl("restart")?
+        }
+        (Action::Start, false) => {
+            crate::idle::evict(ws, name, runner);
+            systemctl("start")?
+        }
         _ => {}
     }
     let started = Instant::now();

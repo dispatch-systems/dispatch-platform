@@ -41,7 +41,10 @@ invalid merge commit.
 `dispatchdev` (`tooling/cli/`) holds what runs on this machine, and `dispatchdev help` lists
 it. A change goes from `start` (its worktree, branch and scratch folder) through `preview`
 (its link), `api` (signed-in calls to the preview), `check`, `pr` and `ship` to `finish`, which
-removes what it made and waits for Dev; `status` shows the workspace. `dispatchdev build`
+removes what it made and waits for Dev; `status` shows the workspace. A worktree's build stays
+in its `target/` meanwhile, 3–7 GB, so `start` and `preview` first delete the builds of
+worktrees unused for 3 days, and with less than 20 GB free those unused for 12 hours, oldest
+first; a worktree whose preview runs or that Cargo is building keeps its own. `dispatchdev build`
 builds the backend through a cache keyed by its exact inputs and the compiler's fingerprint.
 `dispatchdev test` runs the tests a change touches, committed or not, or `--all` of the Rust and
 API tests, one at a time, a line each. Each run builds in a folder of its own under
