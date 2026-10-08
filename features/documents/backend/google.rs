@@ -3,10 +3,9 @@
 use crate::api::types::PickerKeys;
 use dispatch_core::{
     Error, Result,
-    foundation::{config::Config, crypto, observability},
+    foundation::{config::Config, crypto},
 };
 use serde::Deserialize;
-use serde_json::json;
 use std::{
     sync::{LazyLock, OnceLock},
     time::Duration,
@@ -64,39 +63,21 @@ pub struct Client {
     picker: Option<(String, String)>,
 }
 static CLIENT: OnceLock<Option<Client>> = OnceLock::new();
-/// This server's Google sign-in client, read once from its own settings, as the platform's
-/// mail settings are: `DISPATCH_DEV_GOOGLE_CLIENT_ID` and `…_SECRET` on Dev and its previews,
+/// This server's Google sign-in client, read once from the settings Documents declares:
+/// `DISPATCH_DEV_GOOGLE_CLIENT_ID` and `…_SECRET` on Dev and its previews,
 /// `DISPATCH_PRODUCTION_…` on Production; and its file picker's `…_GOOGLE_API_KEY` and
-/// `…_GOOGLE_APP_ID`, the Google project's number. Half of either is none, and is logged.
+/// `…_GOOGLE_APP_ID`, the Google project's number. A server with half of either won't start.
 fn client(config: &Config) -> Option<&'static Client> {
     CLIENT
         .get_or_init(|| {
-            let prefix = if config.environment == "preview" {
-                "DISPATCH_DEV"
-            } else {
-                "DISPATCH_PRODUCTION"
-            };
-            let setting = |name: &str| {
-                std::env::var(format!("{prefix}_{name}"))
-                    .ok()
-                    .filter(|value| !value.trim().is_empty())
-            };
-            let picker = match (setting("GOOGLE_API_KEY"), setting("GOOGLE_APP_ID")) {
-                (Some(key), Some(app)) => Some((key, app)),
-                (None, None) => None,
-                _ => {
-                    observability::event("error", "documents_picker_half_configured", json!({}));
-                    None
-                }
-            };
-            match (setting("GOOGLE_CLIENT_ID"), setting("GOOGLE_CLIENT_SECRET")) {
-                (Some(id), Some(secret)) => Some(Client { id, secret, picker }),
-                (None, None) => None,
-                _ => {
-                    observability::event("error", "documents_google_half_configured", json!({}));
-                    None
-                }
-            }
+            let picker = config
+                .setting("GOOGLE_API_KEY")
+                .zip(config.setting("GOOGLE_APP_ID"));
+            Some(Client {
+                id: config.setting("GOOGLE_CLIENT_ID")?,
+                secret: config.setting("GOOGLE_CLIENT_SECRET")?,
+                picker,
+            })
         })
         .as_ref()
 }

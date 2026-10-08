@@ -22,3 +22,23 @@ fn hints_are_scoped_and_lost_history_requires_a_full_refresh() {
         "all"
     );
 }
+
+#[test]
+fn a_topic_wakes_only_who_waits_on_it_in_that_dsp() {
+    let topics = Topics::default();
+    let stock = Topic("stock");
+    let mut north = topics.subscribe(stock, "north");
+    let summit = topics.subscribe(stock, "summit");
+    let other = topics.subscribe(Topic("other"), "north");
+    topics.notify(stock, "north");
+    assert!(north.has_changed().unwrap());
+    assert!(!summit.has_changed().unwrap());
+    assert!(!other.has_changed().unwrap());
+    north.mark_unchanged();
+    // Nobody waiting yet is nothing to wake.
+    topics.notify(Topic("unheard"), "north");
+    topics.notify(stock, "summit");
+    assert!(summit.has_changed().unwrap());
+    assert!(!north.has_changed().unwrap());
+    assert!(!other.has_changed().unwrap());
+}

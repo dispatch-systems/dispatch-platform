@@ -1,4 +1,5 @@
-//! In-memory wakeups and bounded invalidation hints; reads always recheck authority.
+//! In-memory wakeups and bounded invalidation hints; reads always recheck authority. Collection
+//! progress has its hub, `Updates`; every feature's own live channel is a `Topic` of `Topics`.
 use crate::{Result, collection::api::types::CollectionChange};
 use std::{
     collections::{HashMap, VecDeque},
@@ -81,6 +82,50 @@ impl Updates {
             .filter(|(n, _)| *n > after && *n <= through)
             .map(|(_, change)| change.clone())
             .collect()
+    }
+}
+
+/// A feature's own live channel, named by the feature: `const STOCK: Topic = Topic("uniforms")`.
+/// Core names none of them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Topic(pub &'static str);
+
+/// Wakeups for every feature's live channels. A request waiting on a topic in a DSP wakes when
+/// something there changes, then reads what changed from the feature's own storage.
+pub struct Topics {
+    senders: Mutex<HashMap<(Topic, String), watch::Sender<u64>>>,
+    /// The requests that may wait at once, across every topic.
+    pub slots: Arc<Semaphore>,
+}
+impl Default for Topics {
+    fn default() -> Self {
+        Self {
+            senders: Mutex::new(HashMap::new()),
+            slots: Arc::new(Semaphore::new(128)),
+        }
+    }
+}
+impl Topics {
+    /// Waits on `topic` in `dsp`. Subscribe before reading, so a change between the read and
+    /// the wait still wakes it.
+    pub fn subscribe(&self, topic: Topic, dsp: &str) -> watch::Receiver<u64> {
+        self.senders
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .entry((topic, dsp.to_owned()))
+            .or_insert_with(|| watch::channel(0).0)
+            .subscribe()
+    }
+    /// Wakes whatever waits on `topic` in `dsp`.
+    pub fn notify(&self, topic: Topic, dsp: &str) {
+        if let Some(sender) = self
+            .senders
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(&(topic, dsp.to_owned()))
+        {
+            sender.send_modify(|revision| *revision += 1);
+        }
     }
 }
 
