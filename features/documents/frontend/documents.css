@@ -731,3 +731,164 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* What a member does to edit in Google. */
+.documents-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+.documents-banner > div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.documents-banner strong {
+  font-weight: 550;
+}
+.documents-banner span {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+/* Who edits in Google. */
+.documents-team {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.documents-storage > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.documents-meter {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--muted);
+}
+.documents-meter span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--primary);
+}
+.documents-meter.full span {
+  background: var(--warning);
+}
+.documents-storage-warning {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius);
+  background: var(--warning-surface);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.documents-storage-warning svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--warning);
+}
+.documents-team-group h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.documents-team-group h3 svg {
+  color: var(--warning);
+}
+.documents-team-group.ok h3 svg {
+  color: var(--success);
+}
+.documents-team-group.alert h3 svg {
+  color: var(--destructive);
+}
+.documents-team-group h3 span {
+  color: var(--muted-foreground);
+  font-weight: 500;
+}
+.documents-team-group > p {
+  margin: 4px 0 6px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.documents-team-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.documents-team-row:last-child {
+  border-bottom: 0;
+}
+.documents-team-row > div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.documents-team-row small {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.documents-team .documents-initials {
+  width: 32px;
+  height: 32px;
+  font-size: 11px;
+}
+.documents-tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.documents-ready-team {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.documents-ready-team p {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+}
+.documents-ready-team p + p {
+  border-top: 1px solid var(--border);
+}
+.documents-ready-team svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--success);
+}
+.documents-ready-team p + p svg {
+  color: var(--warning);
+}
+.documents-ready-team span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.documents-ready-team small {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.5;
+}

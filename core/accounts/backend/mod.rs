@@ -64,6 +64,11 @@ enum MailContext<'a> {
     ConnectedApp {
         user: &'a str,
     },
+    /// What a feature writes to a member, of the feature's own kind.
+    Feature {
+        kind: &'a str,
+        user: &'a str,
+    },
 }
 
 /// A row of `users`, with the password hash: it never leaves the backend.
@@ -221,6 +226,7 @@ impl Store {
             MailContext::Invitation { hash } => ("invitation", Some(hash), None),
             MailContext::Reset { user } => ("reset", None, Some(user)),
             MailContext::ConnectedApp { user } => ("connected_app", None, Some(user)),
+            MailContext::Feature { kind, user } => (kind, None, Some(user)),
         };
         // Invitation traffic has its own ceiling; recovery keeps reserved capacity.
         ensure(
@@ -238,6 +244,28 @@ impl Store {
         )?;
         self.mail_queued();
         Ok(())
+    }
+
+    /// Emails a member what a feature wrote them, of its own `kind`, named
+    /// `<feature>.<what>` such as `documents.google_account`. It is queued as every email
+    /// is: retried, listed in the platform owner's mail log and caught in a preview. It goes
+    /// unsent once the member's account is gone.
+    pub fn email_member(&self, user: &str, kind: &str, mail: &email::Message) -> Result<()> {
+        let named = kind.split_once('.').is_some_and(|(feature, what)| {
+            [feature, what].iter().all(|part| {
+                !part.is_empty() && part.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+            })
+        });
+        ensure(named, "invalid_mail_kind", 500)?;
+        let to = self
+            .platform
+            .one(
+                "SELECT email FROM users WHERE id=? AND status='active'",
+                [user],
+            )?
+            .map(|row| s(&row, "email").to_owned())
+            .ok_or_else(|| Error::new("user_not_found", 404))?;
+        self.queue_mail(&to, mail, MailContext::Feature { kind, user })
     }
 
     /// Emails every active platform owner a notice about a connected app, `message` written

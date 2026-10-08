@@ -3,7 +3,7 @@
 //! outside the database and check again before they write.
 use crate::{
     api::types::NewKind,
-    backend::{connection, files, google::RETURN_PATH},
+    backend::{connection, files, google::RETURN_PATH, team},
 };
 use axum::{
     extract::Request,
@@ -36,6 +36,11 @@ pub fn routes() -> Vec<Route> {
         async_post("/api/dsp/documents/new", USE, create),
         async_post("/api/dsp/documents/items/{id}/rename", USE, rename),
         async_post("/api/dsp/documents/items/{id}/trash", USE, trash),
+        write("/api/dsp/documents/link", USE, link),
+        async_post("/api/dsp/documents/link/finish", USE, finish_link),
+        async_get("/api/dsp/documents/team", MANAGE, team_view),
+        async_post("/api/dsp/documents/team/email", MANAGE, email_again),
+        async_post("/api/dsp/documents/team/remove", MANAGE, remove_share),
         protocol(Method::GET, RETURN_PATH, |state, request| {
             Box::pin(returned(state, request))
         }),
@@ -123,6 +128,37 @@ async fn trash(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     v::fields(&input.body, &[])?;
     files::trash(&state, c, access, file_id(input.param("id"))?).await?;
     Ok(Reply::ok())
+}
+
+fn link(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &[])?;
+    Reply::of(&team::start_link(db, c)?)
+}
+async fn finish_link(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &["state", "code"])?;
+    let sign_in = v::text(&input.body, "state", 40, 200)?.to_owned();
+    let code = v::text(&input.body, "code", 1, 2048)?.to_owned();
+    Reply::of(&team::finish_link(&state, c, access, sign_in, code).await?)
+}
+async fn team_view(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let c = state.run(move |db| access.authorize(db, &input)).await?;
+    Reply::of(&team::team(&state, &c).await?)
+}
+async fn email_again(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &["user"])?;
+    let user = v::text(&input.body, "user", 1, 100)?.to_owned();
+    Reply::of(&team::email_again(&state, c, access, user).await?)
+}
+async fn remove_share(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &["share"])?;
+    let share = file_id(v::text(&input.body, "share", 1, 128)?)?;
+    Reply::of(&team::remove(&state, c, access, share).await?)
 }
 
 /// Google sends the browser back here, without the session: its cookie stays on Dispatch's

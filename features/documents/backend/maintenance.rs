@@ -1,6 +1,7 @@
-//! Documents's upkeep: noticing, hourly, a Google connection that stopped working, so the
-//! page says so and the owner can reconnect before someone finds out by trying.
-use super::{connection::broken, google::Google, storage::DocumentsStore};
+//! Documents's upkeep, hourly: noticing a Google connection that stopped working, so the page
+//! says so and the owner can reconnect before someone finds out by trying; and sharing the
+//! folder with who joined the team, and taking it back from who left.
+use super::{connection::broken, google::Google, storage::DocumentsStore, team};
 use dispatch_core::{
     Error, State,
     foundation::observability,
@@ -49,7 +50,12 @@ fn check(state: Arc<State>, due: bool) -> Upkeep {
                     }
                 }
                 Err(error) => failed(&error),
-                Ok(_) => {}
+                // The team's sharing follows who joined, left or changed roles this hour.
+                Ok(_) => {
+                    if let Err(error) = team::sync(&state, &dsp).await {
+                        failed(&error);
+                    }
+                }
             }
         }
     })

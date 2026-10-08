@@ -24,6 +24,10 @@ pub struct DocumentsOverview {
     pub connection: Option<DocumentsConnection>,
     /// Whether this server can connect Google at all: it has a Google sign-in client.
     pub available: bool,
+    /// How the folder is shared with the member asking, once Documents has tried.
+    pub me: Option<MySharing>,
+    /// How many on the team can edit in Google.
+    pub editors: u32,
 }
 
 /// The Google account that holds the DSP's Documents, and its main folder there.
@@ -118,4 +122,67 @@ pub struct DocumentsFolder {
     pub path: Vec<FolderStep>,
     /// Its folders by name, then its files, the newest first.
     pub items: Vec<DocumentsItem>,
+}
+
+text_enum! {
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+    /// How sharing the main folder with a member went: they edit in Google, they need a
+    /// Google account first, or Google refused for another reason.
+    pub enum SharingState { Shared => "shared", NeedsAccount => "needs_account", Refused => "refused", }
+}
+
+/// How Documents shares the main folder with the member asking.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct MySharing {
+    pub state: SharingState,
+    /// The address it is shared with, or would be.
+    pub email: String,
+    /// Whether that is a Google account they linked, rather than their Dispatch email.
+    pub linked: bool,
+}
+
+/// A member of the team, as the team access panel lists them.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct TeamPerson {
+    pub user_id: String,
+    pub name: String,
+    /// The address the folder is shared with, or would be.
+    pub email: String,
+    pub state: SharingState,
+    /// Google's reason, when it refused for one.
+    pub refusal: Option<String>,
+    /// When Dispatch last emailed them how to link a Google account.
+    pub emailed_at: Option<String>,
+    pub owner: bool,
+}
+/// Someone the folder is shared with in Google Drive who isn't on the team.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct TeamOutsider {
+    pub share_id: String,
+    pub email: String,
+}
+/// `GET /api/dsp/documents/team`: who can edit the DSP's Documents in Google, who can't yet,
+/// who else the folder is shared with, and how full the account is.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentsTeam {
+    pub people: Vec<TeamPerson>,
+    pub outsiders: Vec<TeamOutsider>,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub storage_used: u64,
+    /// None for storage Google sets no limit on, as a Workspace's pooled storage.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub storage_limit: Option<u64>,
 }

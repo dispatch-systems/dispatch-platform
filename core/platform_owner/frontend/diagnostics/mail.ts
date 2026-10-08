@@ -1,5 +1,6 @@
 import type { MailMessage } from '../../api/index.js';
 import { deviceTimezone, time } from '../../../shell/frontend/lib/format.js';
+import { mailKindLabel } from '../../../shell/frontend/runtime/slots.js';
 
 export function mailFailure(code: string | null): string {
   if (!code) return '';
@@ -28,4 +29,4 @@ export const kindLabel = (message: MailMessage) =>
       : `Team invitation${message.role ? ` · ${message.role}` : ''}`
     : message.kind === 'reset'
       ? 'Password reset'
-      : 'Email';
+      : ((message.kind && mailKindLabel(message.kind)) ?? 'Email');

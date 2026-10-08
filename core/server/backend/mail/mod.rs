@@ -14,7 +14,8 @@ pub mod templates;
 pub use delivery::mailer;
 
 /// Never send an expired, revoked or already consumed grant. Bound retained content. A
-/// notice about a connected app goes only to someone who is still an active platform owner.
+/// notice about a connected app goes only to someone who is still an active platform owner,
+/// and what a feature writes a member only while the member's account is active.
 pub fn discard_stale(db: &Store) -> Result<()> {
     db.platform.exec(
         "DELETE FROM outbox WHERE (status<>'pending' AND created_at<?1) OR \
@@ -25,7 +26,9 @@ pub fn discard_stale(db: &Store) -> Result<()> {
            WHERE r.user_id=outbox.user_id AND r.used_at IS NULL AND r.expires_at>?3 \
            AND u.status='active' AND r.user_version=u.version)) OR \
           (kind='connected_app' AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id=outbox.user_id \
-           AND u.status='active' AND u.platform_owner=1))))",
+           AND u.status='active' AND u.platform_owner=1)) OR \
+          (kind LIKE '%.%' AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id=outbox.user_id \
+           AND u.status='active'))))",
         params![db::now()-30*86400000, db::now()-7*86400000, db::now()],
     )?;
     Ok(())

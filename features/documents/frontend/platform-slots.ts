@@ -6,4 +6,5 @@ import { wording } from './audit-wording.js';
 export const slots: PlatformSlots = {
   switch: { id: 'documents', icon: FolderOpen },
   auditWording: wording,
+  mailKinds: { 'documents.google_account': 'Documents: link a Google account' },
 };

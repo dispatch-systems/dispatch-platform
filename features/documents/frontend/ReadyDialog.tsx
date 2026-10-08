@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { CircleCheck, Folder } from 'lucide-react';
+import { Check, CircleCheck, Folder, Mail } from 'lucide-react';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { ErrorBox, Modal } from '../../../core/shell/frontend/ui/index.js';
-import { createItem, type DocumentsConnection } from '../api/client.js';
+import { createItem, useDocumentsTeam, type DocumentsConnection } from '../api/client.js';
 
 /** Folders most DSPs keep, offered when Documents is new. */
 const STARTERS: [string, boolean][] = [
@@ -24,6 +24,10 @@ export function ReadyDialog({
   close: () => void;
   made: () => void;
 }) {
+  // Opening the team shares the folder with them, as it would within the hour.
+  const team = useDocumentsTeam();
+  const editing = team.data?.people.filter((person) => person.state === 'shared') ?? [];
+  const waiting = team.data?.people.filter((person) => person.state === 'needs_account') ?? [];
   const [chosen, setChosen] = useState(
     () => new Set(STARTERS.filter(([, on]) => on).map(([name]) => name)),
   );
@@ -56,6 +60,36 @@ export function ReadyDialog({
         Dispatch made <strong>{connection.folderName}</strong> in {connection.accountEmail}'s Google
         Drive.
       </p>
+      {team.data && (
+        <div className="documents-ready-team">
+          <p>
+            <Check size={16} />
+            <span>
+              <strong>
+                {editing.length === 1 ? '1 person can' : `${editing.length} people can`} edit now
+              </strong>
+              <small>
+                Their Dispatch email is a Google account, so there was nothing for them to do.
+              </small>
+            </span>
+          </p>
+          {waiting.length > 0 && (
+            <p>
+              <Mail size={16} />
+              <span>
+                <strong>
+                  {waiting.length === 1 ? '1 person needs' : `${waiting.length} people need`} to
+                  link a Google account
+                </strong>
+                <small>
+                  Dispatch emailed them how: {waiting.map((person) => person.name).join(', ')}. They
+                  can see your team's files here until then.
+                </small>
+              </span>
+            </p>
+          )}
+        </div>
+      )}
       <h3 className="documents-ready-heading">Start with some folders?</h3>
       <p className="muted">You can rename or delete them later.</p>
       <div className="documents-starters">

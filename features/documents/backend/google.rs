@@ -19,11 +19,15 @@ pub(super) const FILES: &str = "https://www.googleapis.com/drive/v3/files";
 /// Only the files Dispatch makes or is given: Google asks no review for it.
 const DRIVE_FILE: &str = "https://www.googleapis.com/auth/drive.file";
 const SCOPES: &str = "openid email https://www.googleapis.com/auth/drive.file";
+/// A member linking their own Google account: only which address it is.
+const LINK_SCOPES: &str = "openid email";
 pub(super) const FOLDER: &str = "application/vnd.google-apps.folder";
 /// Where Google sends the browser back, on this server's own origin.
 pub const RETURN_PATH: &str = "/api/documents/google/return";
 /// The account a preview's fixture Google signs in as.
 const FIXTURE_ACCOUNT: &str = "documents@example.com";
+/// The account a member links in a preview, as fixture Google signs them in.
+const FIXTURE_MEMBER: &str = "teammate@example.com";
 
 pub(super) static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
@@ -147,6 +151,75 @@ impl Google {
             .extend_pairs(query)
             .finish();
         format!("{base}?{query}")
+    }
+    /// Where a member goes to link their own Google account: Google asks them which, and for
+    /// their address only.
+    pub fn link_url(&self, origin: &str, state: &str, verifier: &str) -> String {
+        let back = format!("{origin}{RETURN_PATH}");
+        let (base, query) = match self {
+            Self::Fixture => (
+                back.as_str(),
+                vec![
+                    ("state", state.to_owned()),
+                    ("code", format!("fixture:{FIXTURE_MEMBER}")),
+                ],
+            ),
+            Self::Live(client) => (
+                AUTHORIZE,
+                vec![
+                    ("client_id", client.id.clone()),
+                    ("redirect_uri", back.clone()),
+                    ("response_type", "code".into()),
+                    ("scope", LINK_SCOPES.into()),
+                    ("prompt", "select_account".into()),
+                    ("state", state.to_owned()),
+                    ("code_challenge", crypto::s256(verifier)),
+                    ("code_challenge_method", "S256".into()),
+                ],
+            ),
+        };
+        let query = url::form_urlencoded::Serializer::new(String::new())
+            .extend_pairs(query)
+            .finish();
+        format!("{base}?{query}")
+    }
+    /// The Google address a member's sign-in proved, for linking it. Dispatch keeps no token
+    /// of it: the one Google gave is given back at once.
+    pub async fn linked_email(&self, origin: &str, code: &str, verifier: &str) -> Result<String> {
+        let client = match self {
+            Self::Fixture => return fixture_grant(code).map(|granted| granted.account.email),
+            Self::Live(client) => client,
+        };
+        let back = format!("{origin}{RETURN_PATH}");
+        let tokens: Tokens = form(
+            TOKEN,
+            &[
+                ("client_id", client.id.as_str()),
+                ("client_secret", client.secret.as_str()),
+                ("code", code),
+                ("code_verifier", verifier),
+                ("grant_type", "authorization_code"),
+                ("redirect_uri", back.as_str()),
+            ],
+        )
+        .await
+        .map_err(|error| match error.code.as_str() {
+            "google_connection_broken" => Error::new("documents_connect_expired", 409),
+            _ => error,
+        })?;
+        let profile: Result<Profile> =
+            send(HTTP.get(USERINFO).bearer_auth(&tokens.access_token)).await;
+        let _ = HTTP
+            .post(REVOKE)
+            .form(&[("token", tokens.access_token.as_str())])
+            .send()
+            .await;
+        let profile = profile?;
+        profile
+            .email
+            .filter(|_| profile.email_verified)
+            .map(|email| email.to_lowercase())
+            .ok_or_else(|| Error::new("google_email_unverified", 400))
     }
     /// Trades the code Google sent the browser back with for the account's tokens.
     pub async fn exchange(&self, origin: &str, code: &str, verifier: &str) -> Result<Granted> {

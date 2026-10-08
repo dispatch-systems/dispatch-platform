@@ -40,6 +40,35 @@ impl Item {
         self.mime_type == FOLDER
     }
 }
+/// Someone a folder is shared with, as Drive lists them.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Share {
+    pub id: String,
+    /// `owner`, `writer`, `commenter` or `reader`.
+    pub role: String,
+    /// `user`, `group`, `domain` or `anyone`.
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub email_address: Option<String>,
+}
+/// How full the account's Drive is, in bytes: none for a limit Google sets no number on, as a
+/// Workspace's pooled storage.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Storage {
+    pub used: u64,
+    pub limit: Option<u64>,
+}
+/// Why Drive would not share with an address.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Refused {
+    /// The address is no Google account, so the folder can't be shared with it.
+    NoGoogleAccount,
+    /// Drive refused for another reason, by its code: a Workspace that shares only inside
+    /// itself, say.
+    Other(String),
+}
+
 /// Whoever last changed a file, as Google names them.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -136,6 +165,140 @@ impl Google {
         )
         .await
     }
+    /// Who the folder `id` is shared with.
+    pub async fn shares(&self, access: &str, id: &str) -> Result<Vec<Share>> {
+        if let Self::Fixture = self {
+            return fixture(access, |drive| {
+                let mut shares = vec![Share {
+                    id: "owner".into(),
+                    role: "owner".into(),
+                    kind: "user".into(),
+                    email_address: Some(drive.account.clone()),
+                }];
+                shares.extend(drive.shares.get(id).cloned().unwrap_or_default());
+                Ok(shares)
+            });
+        }
+        #[derive(Deserialize)]
+        struct Shares {
+            permissions: Vec<Share>,
+        }
+        let listed: Shares = send(
+            HTTP.get(format!("{FILES}/{id}/permissions"))
+                .bearer_auth(access)
+                .query(&[("fields", "permissions(id,role,type,emailAddress)")]),
+        )
+        .await?;
+        Ok(listed.permissions)
+    }
+    /// Lets `email` edit the folder `id` and everything in it, without Google emailing them:
+    /// the share's ID, or why Drive refused.
+    pub async fn share(
+        &self,
+        access: &str,
+        id: &str,
+        email: &str,
+    ) -> Result<std::result::Result<String, Refused>> {
+        if let Self::Fixture = self {
+            return fixture(access, |drive| {
+                // Fixture mode's Google knows no account at example.net.
+                if email.ends_with("@example.net") {
+                    return Ok(Err(Refused::NoGoogleAccount));
+                }
+                let share = Share {
+                    id: format!("fixture-share-{}", crypto::hex(&crypto::random::<6>()?)),
+                    role: "writer".into(),
+                    kind: "user".into(),
+                    email_address: Some(email.to_owned()),
+                };
+                let shares = drive.shares.entry(id.to_owned()).or_default();
+                shares.push(share.clone());
+                Ok(Ok(share.id))
+            });
+        }
+        let response = HTTP
+            .post(format!("{FILES}/{id}/permissions"))
+            .bearer_auth(access)
+            .query(&[("sendNotificationEmail", "false"), ("fields", "id")])
+            .json(&json!({"type": "user", "role": "writer", "emailAddress": email}))
+            .send()
+            .await
+            .map_err(super::google::unreachable)?;
+        if response.status() == reqwest::StatusCode::BAD_REQUEST
+            || response.status() == reqwest::StatusCode::FORBIDDEN
+        {
+            let body: serde_json::Value = response.json().await.unwrap_or_default();
+            let reason = body
+                .pointer("/error/errors/0/reason")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            return Ok(Err(match reason {
+                "invalidSharingRequest" => Refused::NoGoogleAccount,
+                other => Refused::Other(other.to_owned()),
+            }));
+        }
+        #[derive(Deserialize)]
+        struct Made {
+            id: String,
+        }
+        let made: Made = super::google::read(response).await?;
+        Ok(Ok(made.id))
+    }
+    /// Takes back the share `share` of the folder `id`. One already gone is taken back.
+    pub async fn unshare(&self, access: &str, id: &str, share: &str) -> Result<()> {
+        if let Self::Fixture = self {
+            return fixture(access, |drive| {
+                if let Some(shares) = drive.shares.get_mut(id) {
+                    shares.retain(|each| each.id != share);
+                }
+                Ok(())
+            });
+        }
+        let response = HTTP
+            .delete(format!("{FILES}/{id}/permissions/{share}"))
+            .bearer_auth(access)
+            .send()
+            .await
+            .map_err(super::google::unreachable)?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND || response.status().is_success() {
+            return Ok(());
+        }
+        super::google::read::<serde_json::Value>(response)
+            .await
+            .map(drop)
+    }
+    /// How full the account's Drive is.
+    pub async fn storage(&self, access: &str) -> Result<Storage> {
+        if let Self::Fixture = self {
+            return fixture(access, |drive| {
+                Ok(Storage {
+                    used: drive.files.len() as u64 * 1_000_000,
+                    limit: Some(15_000_000_000),
+                })
+            });
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct About {
+            storage_quota: Quota,
+        }
+        #[derive(Deserialize)]
+        struct Quota {
+            limit: Option<String>,
+            usage: Option<String>,
+        }
+        let about: About = send(
+            HTTP.get("https://www.googleapis.com/drive/v3/about")
+                .bearer_auth(access)
+                .query(&[("fields", "storageQuota(limit,usage)")]),
+        )
+        .await?;
+        let number = |value: Option<String>| value.and_then(|v| v.parse::<u64>().ok());
+        Ok(Storage {
+            used: number(about.storage_quota.usage).unwrap_or(0),
+            limit: number(about.storage_quota.limit),
+        })
+    }
     /// Moves a file to the account's trash, where Drive keeps it for 30 days.
     pub async fn trash(&self, access: &str, id: &str) -> Result<()> {
         if let Self::Fixture = self {
@@ -173,6 +336,8 @@ fn link(mime: &str, id: &str) -> String {
 struct Drive {
     account: String,
     files: BTreeMap<String, Item>,
+    /// Who each folder is shared with, beside the account.
+    shares: BTreeMap<String, Vec<Share>>,
 }
 impl Drive {
     fn values(&self) -> impl Iterator<Item = &Item> {
@@ -191,6 +356,7 @@ fn fixture<T>(access: &str, work: impl FnOnce(&mut Drive) -> Result<T>) -> Resul
     let drive = drives.entry(account.to_owned()).or_insert_with(|| Drive {
         account: account.to_owned(),
         files: BTreeMap::new(),
+        shares: BTreeMap::new(),
     });
     work(drive)
 }
