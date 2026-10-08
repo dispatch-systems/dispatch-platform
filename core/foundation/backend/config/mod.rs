@@ -27,6 +27,15 @@ pub struct Config {
     pub mail_worker_token: Option<String>,
     pub smtp_url: Option<String>,
     pub mail_from: Option<String>,
+    /// The platform's Google sign-in client, which Documents connects a DSP's Google account
+    /// through. Without one, no DSP can connect Google; fixture mode never calls Google.
+    pub google: Option<GoogleClient>,
+}
+/// A Google sign-in client: its ID, and the secret only the server holds.
+#[derive(Clone)]
+pub struct GoogleClient {
+    pub id: String,
+    pub secret: String,
 }
 fn variable(name: &str, fallback: &str) -> String {
     env::var(name).unwrap_or_else(|_| fallback.into())
@@ -71,15 +80,22 @@ impl Config {
             "invalid_provider_mode",
             400,
         )?;
-        let mail_prefix = if environment == "preview" {
+        // Each environment's own settings: DISPATCH_DEV_… on Dev and its previews,
+        // DISPATCH_PRODUCTION_… on Production.
+        let prefix = if environment == "preview" {
             "DISPATCH_DEV"
         } else {
             "DISPATCH_PRODUCTION"
         };
-        let mail_variable = |suffix: &str| {
-            env::var(format!("{mail_prefix}_{suffix}"))
+        let hosted = |suffix: &str| {
+            env::var(format!("{prefix}_{suffix}"))
                 .ok()
                 .filter(|v| !v.trim().is_empty())
+        };
+        let google = match (hosted("GOOGLE_CLIENT_ID"), hosted("GOOGLE_CLIENT_SECRET")) {
+            (Some(id), Some(secret)) => Some(GoogleClient { id, secret }),
+            (None, None) => None,
+            _ => return Err(crate::Error::new("google_configuration_required", 400)),
         };
         let source = source(&bundle, environment == "production");
         let mut c = Self {
@@ -110,12 +126,13 @@ impl Config {
                 "/opt/dispatch-browseros/0.50.5/browseros",
             )),
             sandbox: PathBuf::from(variable("DISPATCH_BWRAP_EXECUTABLE", "/usr/bin/bwrap")),
-            mail_mode: mail_variable("MAIL_MODE")
+            mail_mode: hosted("MAIL_MODE")
                 .unwrap_or_else(|| if development { "capture" } else { "disabled" }.into()),
-            mail_worker_url: mail_variable("MAIL_WORKER_URL"),
-            mail_worker_token: mail_variable("MAIL_WORKER_TOKEN"),
-            smtp_url: mail_variable("SMTP_URL"),
-            mail_from: mail_variable("MAIL_FROM"),
+            mail_worker_url: hosted("MAIL_WORKER_URL"),
+            mail_worker_token: hosted("MAIL_WORKER_TOKEN"),
+            smtp_url: hosted("SMTP_URL"),
+            mail_from: hosted("MAIL_FROM"),
+            google,
         };
         if bundle.join("release.json").exists() {
             let manifest: serde_json::Value =

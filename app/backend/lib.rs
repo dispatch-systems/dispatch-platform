@@ -34,6 +34,8 @@ pub static REGISTRY: Registry = Registry {
         &dispatch_home::FEATURE,
         #[cfg(feature = "daily_performance")]
         &dispatch_daily_performance::FEATURE,
+        #[cfg(feature = "documents")]
+        &dispatch_documents::FEATURE,
     ],
 };
 /// The owners with a frontend manifest, in the order the frontend installs them: the
@@ -53,6 +55,7 @@ pub const FRONTEND: &[&str] = &[
     "collectors/paycom",
     "collectors/cortex",
     "features/daily_performance",
+    "features/documents",
     "core/accounts",
     "core/collection",
     "core/platform_owner",

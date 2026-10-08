@@ -7,7 +7,8 @@ export const pages = [
   "dvic",
   "weekly_scorecard",
   "driver_match",
-  "daily_performance"
+  "daily_performance",
+  "documents"
 ] as const;
 export const pageTabs = [
   "timecard.daily",
@@ -28,6 +29,7 @@ export const features = [
   "weekly_scorecard",
   "driver_match",
   "daily_performance",
+  "documents",
   "timecard.daily",
   "timecard.meal_breaks",
   "timecard.employees",
@@ -127,6 +129,16 @@ export const featureCatalog = [
     "kind": "page"
   },
   {
+    "id": "documents",
+    "label": "Documents",
+    "permissions": [
+      "documents.use",
+      "documents.manage"
+    ],
+    "requires": [],
+    "kind": "page"
+  },
+  {
     "id": "timecard.daily",
     "label": "Timecard",
     "permissions": [],
@@ -215,7 +227,9 @@ export const permissions = [
   "settings.manage",
   "daily_performance.view",
   "daily_performance.collect",
-  "daily_performance.manage"
+  "daily_performance.manage",
+  "documents.use",
+  "documents.manage"
 ] as const;
 export const permissionLabels = {
   "collections.run": "Run Collections",
@@ -223,6 +237,8 @@ export const permissionLabels = {
   "daily_performance.collect": "Collect Daily Performance",
   "daily_performance.manage": "Manage Daily Performance",
   "daily_performance.view": "View Daily Performance",
+  "documents.manage": "Manage Documents",
+  "documents.use": "Use Documents",
   "driver_match.manage": "Manage Driver Match",
   "dvic.collect": "Collect DVIC",
   "dvic.manage": "Manage DVIC",
@@ -299,6 +315,13 @@ export const permissionGroups = [
     ]
   ],
   [
+    "Documents",
+    [
+      "documents.use",
+      "documents.manage"
+    ]
+  ],
+  [
     "Connections",
     [
       "connections.manage"
@@ -322,6 +345,7 @@ export const permissionGroups = [
 export const impliedPermissions = {
   "daily_performance.collect": "daily_performance.view",
   "daily_performance.manage": "daily_performance.view",
+  "documents.manage": "documents.use",
   "dvic.collect": "dvic.view",
   "dvic.manage": "dvic.view",
   "routes.collect": "routes.view",

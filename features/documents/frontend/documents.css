@@ -1,0 +1,204 @@
+.documents-card {
+  max-width: 1120px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+.documents-card h2 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  line-height: 1.35;
+}
+.documents-card p {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.documents-card strong {
+  color: var(--foreground);
+  font-weight: 550;
+}
+/* A link that leaves for Google, drawn as the app's buttons are. */
+.documents-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--control-height);
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--foreground);
+  font: 500 14px/1.4 var(--font-family);
+  transition: background-color var(--motion-duration);
+}
+.documents-link-button:hover {
+  background: var(--accent);
+}
+.documents-google-button {
+  gap: 10px;
+  font-weight: 550;
+}
+.google-logo {
+  flex-shrink: 0;
+}
+.documents-folder-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  color: var(--slate);
+  background: var(--slate-surface);
+}
+.documents-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+/* Connecting, as the owner first sees it. */
+.documents-connect-copy {
+  padding: 34px 38px 36px;
+  max-width: 760px;
+}
+.documents-connect h2 {
+  font-size: 22px;
+  letter-spacing: -0.4px;
+}
+.documents-connect-copy > p {
+  margin-top: 10px;
+}
+.documents-connect .documents-google-button {
+  margin-top: 24px;
+  min-height: 44px;
+  padding: 10px 18px;
+}
+.documents-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 30px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+.documents-steps li {
+  position: relative;
+  padding-left: 36px;
+  font-size: 14px;
+  line-height: 1.5;
+  counter-increment: step;
+}
+.documents-steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: -1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.documents-steps small {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.documents-fine {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.documents-fine p {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.documents-fine svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* Waiting on an owner, or on Dispatch support. */
+.documents-waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 72px 24px;
+  text-align: center;
+}
+.documents-waiting h2 {
+  margin-top: 6px;
+}
+.documents-waiting p {
+  max-width: 440px;
+}
+
+/* The connection stopped working. */
+.documents-broken {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 30px 32px;
+  background: var(--warning-surface);
+  border-color: var(--warning-border);
+}
+.documents-broken > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--warning);
+}
+.documents-broken p {
+  margin-top: 6px;
+  max-width: 640px;
+}
+.documents-broken .documents-google-button {
+  background: var(--background);
+}
+
+/* Connected: the folder, and where it lives. */
+.documents-connected {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 22px 24px;
+}
+.documents-connected > div {
+  flex: 1;
+  min-width: 0;
+}
+.documents-connected p {
+  margin-top: 3px;
+  font-size: 13px;
+}
+.documents-disconnect {
+  color: var(--destructive);
+}
+
+@media (width <= 600px) {
+  .documents-connect-copy {
+    padding: 24px 20px 26px;
+  }
+  .documents-broken {
+    padding: 22px 20px;
+  }
+  .documents-connected {
+    flex-wrap: wrap;
+  }
+}

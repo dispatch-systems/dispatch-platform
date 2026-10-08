@@ -186,6 +186,18 @@
     {
       "off": [
         "timecard",
+        "documents"
+      ],
+      "on": [
+        "routes",
+        "dvic",
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "timecard",
         "timecard.daily"
       ],
       "on": [
@@ -349,6 +361,20 @@
     {
       "off": [
         "uniforms",
+        "documents"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "uniforms",
         "timecard.daily"
       ],
       "on": [
@@ -507,6 +533,19 @@
     {
       "off": [
         "routes",
+        "documents"
+      ],
+      "on": [
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "routes",
         "timecard.daily"
       ],
       "on": [
@@ -646,6 +685,19 @@
     {
       "off": [
         "dvic",
+        "documents"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "dvic",
         "timecard.daily"
       ],
       "on": [
@@ -773,6 +825,19 @@
     {
       "off": [
         "weekly_scorecard",
+        "documents"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "weekly_scorecard",
         "timecard.daily"
       ],
       "on": [
@@ -889,6 +954,20 @@
     {
       "off": [
         "driver_match",
+        "documents"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "driver_match",
         "timecard.daily"
       ],
       "on": [
@@ -998,6 +1077,19 @@
     {
       "off": [
         "daily_performance",
+        "documents"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard"
+      ]
+    },
+    {
+      "off": [
+        "daily_performance",
         "timecard.daily"
       ],
       "on": [
@@ -1083,6 +1175,116 @@
         "meal_breaks",
         "dvic",
         "weekly_scorecard"
+      ]
+    },
+    {
+      "off": [
+        "documents"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "documents",
+        "timecard.daily"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "documents",
+        "timecard.meal_breaks"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "dvic",
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "documents",
+        "timecard.employees"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "documents",
+        "dvic.day"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "documents",
+        "dvic.week"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "documents",
+        "paycom"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard",
+        "daily_performance"
+      ]
+    },
+    {
+      "off": [
+        "documents",
+        "cortex"
+      ],
+      "on": [
+        "routes",
+        "timecards",
+        "meal_breaks",
+        "dvic",
+        "weekly_scorecard",
+        "daily_performance"
       ]
     },
     {

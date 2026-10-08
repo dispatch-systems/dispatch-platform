@@ -23,7 +23,9 @@
     ["settings.manage", "Manage DSP Settings"],
     ["daily_performance.view", "View Daily Performance"],
     ["daily_performance.collect", "Collect Daily Performance"],
-    ["daily_performance.manage", "Manage Daily Performance"]
+    ["daily_performance.manage", "Manage Daily Performance"],
+    ["documents.use", "Use Documents"],
+    ["documents.manage", "Manage Documents"]
   ],
   "implied": [
     ["timecard.manage", "timecard.view"],
@@ -36,7 +38,8 @@
     ["weekly_scorecard.collect", "weekly_scorecard.view"],
     ["weekly_scorecard.manage", "weekly_scorecard.view"],
     ["daily_performance.collect", "daily_performance.view"],
-    ["daily_performance.manage", "daily_performance.view"]
+    ["daily_performance.manage", "daily_performance.view"],
+    ["documents.manage", "documents.use"]
   ],
   "groups": [
     ["Connections", ["connections.manage"]],
@@ -47,8 +50,8 @@
     [
       "manager",
       "Manager",
-      ["uniforms.view", "uniforms.adjust", "timecard.view", "collections.run"]
+      ["uniforms.view", "uniforms.adjust", "timecard.view", "collections.run", "documents.use"]
     ],
-    ["member", "Member", ["uniforms.view", "timecard.view"]]
+    ["member", "Member", ["uniforms.view", "timecard.view", "documents.use"]]
   ]
 }

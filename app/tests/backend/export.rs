@@ -292,6 +292,15 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         dispatch_daily_performance::DailyPerformanceDataset,
         dispatch_daily_performance::DailyPerformancePolicy,
     ));
+    #[cfg(feature = "documents")]
+    bindings.extend(exported!(
+        &cfg,
+        dispatch_documents::DocumentsOverview,
+        dispatch_documents::DocumentsConnection,
+        dispatch_documents::ConnectionStatus,
+        dispatch_documents::AccountKind,
+        dispatch_documents::GoogleSignIn,
+    ));
     bindings.insert(ACCESS_CATALOG.into(), access_catalog());
     bindings.insert(CAPABILITIES.into(), capabilities());
     bindings.insert(READ_TOGGLES.into(), read_toggles());

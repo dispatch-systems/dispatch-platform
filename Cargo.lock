@@ -604,6 +604,7 @@ dependencies = [
  "dispatch-core",
  "dispatch-cortex",
  "dispatch-daily-performance",
+ "dispatch-documents",
  "dispatch-driver-match",
  "dispatch-dvic",
  "dispatch-home",
@@ -692,6 +693,20 @@ dependencies = [
  "serde_json",
  "tempfile",
  "ts-rs",
+]
+
+[[package]]
+name = "dispatch-documents"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "dispatch-core",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "ts-rs",
+ "url",
 ]
 
 [[package]]

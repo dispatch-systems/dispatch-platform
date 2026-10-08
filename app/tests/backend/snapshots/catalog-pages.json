@@ -56,6 +56,13 @@
       ],
       "requires": ["daily_performance"],
       "default": false
+    },
+    {
+      "id": "documents",
+      "label": "Documents",
+      "permissions": ["documents.use", "documents.manage"],
+      "requires": [],
+      "default": false
     }
   ],
   "tabs": [
@@ -73,6 +80,7 @@
     "weekly_scorecard",
     "driver_match",
     "daily_performance",
+    "documents",
     "timecard.daily",
     "timecard.meal_breaks",
     "timecard.employees",

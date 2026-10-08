@@ -92,6 +92,74 @@
     },
     "tabs": []
   },
+  "documents": {
+    "collectors": [],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {
+      "dsp": [
+        {
+          "id": 9,
+          "name": "documents"
+        }
+      ]
+    },
+    "permissions": [
+      "documents.use",
+      "documents.manage"
+    ],
+    "slots": {
+      "after_collection": false,
+      "audit": {
+        "areas": [
+          [
+            "documents.",
+            "connections"
+          ]
+        ],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [],
+      "live": [],
+      "maintenance": [
+        3600
+      ],
+      "mcp": {
+        "daily": [],
+        "examples": 0,
+        "endpoints": [],
+        "identity": false,
+        "metrics": [],
+        "places": false,
+        "reads": [],
+        "sources": [],
+        "synthetic": 0,
+        "terms": []
+      },
+      "people": [],
+      "routes": [
+        "GET /api/dsp/documents",
+        "POST /api/dsp/documents/connect",
+        "POST /api/dsp/documents/connect/finish",
+        "POST /api/dsp/documents/disconnect",
+        "GET /documents/google/return"
+      ],
+      "schedules": false
+    },
+    "switch": "documents",
+    "tables": {
+      "dsp": [
+        "documents_connect_requests",
+        "documents_connection"
+      ]
+    },
+    "tabs": []
+  },
   "driver_match": {
     "collectors": [],
     "depends_on": [],
