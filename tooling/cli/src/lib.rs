@@ -8,6 +8,7 @@ pub mod finish;
 pub mod logs;
 pub mod pr;
 pub mod preview;
+pub mod scaffold;
 pub mod ship;
 pub mod start;
 pub mod status;
