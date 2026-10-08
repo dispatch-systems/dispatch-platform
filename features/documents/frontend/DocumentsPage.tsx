@@ -8,20 +8,19 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import type { DspView } from '../../../core/accounts/api/index.js';
-import { time } from '../../../core/shell/frontend/lib/format.js';
 import { hashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
-import { ConfirmDialog, DataState, ErrorBox } from '../../../core/shell/frontend/ui/index.js';
+import { DataState, ErrorBox } from '../../../core/shell/frontend/ui/index.js';
 import {
-  connectGoogle,
-  disconnectGoogle,
   finishGoogle,
   useDocumentsOverview,
   type DocumentsConnection,
   type DocumentsOverview,
 } from '../api/client.js';
+import { Browser } from './Browser.js';
 import { GoogleLogo } from './GoogleLogo.js';
+import { useSignIn } from './signIn.js';
 
 /**
  * What Google sent the browser back with, read once and taken out of the address, so the
@@ -44,9 +43,12 @@ export function DocumentsPage({ view }: { view: DspView }) {
   const overview = useDocumentsOverview();
   const canManage = can(view, 'documents.manage');
   const [returned] = useState(takeGoogleReturn);
+  // Whether Google was connected on this visit, so Documents offers folders to start with.
+  const [connected, setConnected] = useState(false);
   const finishing = useAction(
     async (state: string, code: string) => {
       await finishGoogle(state, code);
+      setConnected(true);
       overview.refresh();
     },
     { success: 'Google connected', inline: true },
@@ -58,41 +60,36 @@ export function DocumentsPage({ view }: { view: DspView }) {
     void finishing.run(returned.state, returned.code);
   }, [returned, finishing]);
   const connection = overview.data?.connection;
+  const notice = (returned?.error && cancelled(returned.error)) || finishing.error;
+  if (connection?.status === 'connected' && !finishing.busy)
+    return (
+      <>
+        <ErrorBox message={notice} />
+        <Browser
+          view={view}
+          connection={connection}
+          canManage={canManage}
+          connected={connected}
+          overviewChanged={overview.refresh}
+        />
+      </>
+    );
   return (
     <>
       <div className="page-heading">
         <div>
           <h1>Documents</h1>
-          <p>
-            {connection
-              ? `Shared with everyone at ${view.dsp.name}. Anything added here also shows up in Google Drive.`
-              : "Your team's folders, Docs and Sheets, kept in your Google Drive."}
-          </p>
+          <p>Your team's folders, Docs and Sheets, kept in your Google Drive.</p>
         </div>
-        {connection && (
-          <div className="heading-actions">
-            <a
-              className="documents-link-button"
-              href={connection.folderUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <ExternalLink size={16} />
-              Open in Drive
-            </a>
-          </div>
-        )}
       </div>
-      <ErrorBox message={(returned?.error && cancelled(returned.error)) || finishing.error} />
+      <ErrorBox message={notice} />
       {finishing.busy ? (
         <div className="loading" role="status">
           <LoaderCircle className="spin" size={20} /> Finishing with Google…
         </div>
       ) : (
         <DataState data={overview.data} error={overview.error} retry={overview.refresh}>
-          {(data) => (
-            <Body view={view} data={data} canManage={canManage} refresh={overview.refresh} />
-          )}
+          {(data) => <Body view={view} data={data} canManage={canManage} />}
         </DataState>
       )}
     </>
@@ -103,32 +100,21 @@ function Body({
   view,
   data,
   canManage,
-  refresh,
 }: {
   view: DspView;
   data: DocumentsOverview;
   canManage: boolean;
-  refresh: () => void;
 }) {
   const connection = data.connection;
   if (!connection) {
     if (!canManage) return <NotSetUp />;
     return data.available ? <Connect dspName={view.dsp.name} /> : <Unavailable />;
   }
-  if (connection.status === 'broken')
-    return canManage ? (
-      <Broken connection={connection} />
-    ) : (
-      <BrokenForMember connection={connection} />
-    );
-  return <Connected view={view} connection={connection} canManage={canManage} refresh={refresh} />;
-}
-
-function useSignIn() {
-  return useAction(async () => {
-    const { url } = await connectGoogle();
-    window.location.assign(url);
-  });
+  return canManage ? (
+    <Broken connection={connection} />
+  ) : (
+    <BrokenForMember connection={connection} />
+  );
 }
 
 function Connect({ dspName }: { dspName: string }) {
@@ -252,62 +238,6 @@ function BrokenForMember({ connection }: { connection: DocumentsConnection }) {
           needs to reconnect Google.
         </p>
       </div>
-    </section>
-  );
-}
-
-function Connected({
-  view,
-  connection,
-  canManage,
-  refresh,
-}: {
-  view: DspView;
-  connection: DocumentsConnection;
-  canManage: boolean;
-  refresh: () => void;
-}) {
-  const [confirming, setConfirming] = useState(false);
-  const disconnect = useAction(
-    async () => {
-      await disconnectGoogle();
-      setConfirming(false);
-      refresh();
-    },
-    { success: 'Google disconnected' },
-  );
-  return (
-    <section className="documents-card documents-connected">
-      <span className="documents-folder-tile">
-        <FolderOpen size={22} />
-      </span>
-      <div>
-        <h2>{connection.folderName}</h2>
-        <p>
-          In {connection.accountEmail}'s Google Drive. Connected{' '}
-          {connection.connectedBy ? `by ${connection.connectedBy} ` : ''}
-          on {time(connection.connectedAt, view.dsp.timezone)}.
-        </p>
-      </div>
-      {canManage && (
-        <button className="documents-disconnect" onClick={() => setConfirming(true)}>
-          Disconnect Google
-        </button>
-      )}
-      {confirming && (
-        <ConfirmDialog
-          title="Disconnect Google?"
-          confirm="Disconnect"
-          tone="danger"
-          busy={disconnect.busy}
-          onConfirm={() => void disconnect.run()}
-          onCancel={() => setConfirming(false)}
-        >
-          Your team stops seeing Documents here, and Dispatch's access to {connection.accountEmail}{' '}
-          is removed. {connection.folderName} and everything in it stay in that account's Google
-          Drive.
-        </ConfirmDialog>
-      )}
     </section>
   );
 }

@@ -74,3 +74,92 @@ test('a role given Documents sees it, and only those who manage it connect Googl
   assert.equal((await member.post('/api/dsp/documents/connect')).status, 403);
   assert.equal((await member.post('/api/dsp/documents/disconnect')).status, 403);
 });
+
+/** Connects the DSP open in `client` to fixture mode's Google account. */
+async function connect(client: Awaited<ReturnType<Awaited<ReturnType<typeof fixture>>['client']>>) {
+  const { state, code } = signIn((await client.post('/api/dsp/documents/connect')).value.url);
+  const finished = await client.post('/api/dsp/documents/connect/finish', { state, code });
+  assert.equal(finished.status, 200, finished.body);
+}
+
+test('a team makes, finds, renames and trashes files, and never reaches another DSP’s', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const dsps = owner.session.dsps as { id: string; name: string }[];
+  const north = dsps.find((d) => d.name === 'Northline Logistics')!;
+  const summit = dsps.find((d) => d.name === 'Summit Delivery')!;
+  await owner.select(north.id);
+  await connect(owner);
+  const make = async (kind: string, name: string, folder: string | null = null) => {
+    const made = await owner.post('/api/dsp/documents/new', { folder, kind, name });
+    assert.equal(made.status, 200, made.body);
+    return made.value as { id: string; name: string; kind: string; url: string };
+  };
+  const safety = await make('folder', 'Safety & Compliance');
+  const plan = await make('doc', '  Rescue plan  ', safety.id);
+  assert.equal(plan.name, 'Rescue plan');
+  assert.match(plan.url, /^https:\/\/docs\.google\.com\/document\/d\//);
+  await make('sheet', 'Fuel cards');
+
+  // The top holds the folder first, counting what it holds, then the files; each names who
+  // added it through Dispatch, not the account Google says made it.
+  const top = (await owner.get('/api/dsp/documents/folder')).value;
+  assert.deepEqual(
+    top.items.map((item: { name: string; kind: string; items: number | null }) => [
+      item.name,
+      item.kind,
+      item.items,
+    ]),
+    [
+      ['Safety & Compliance', 'folder', 1],
+      ['Fuel cards', 'sheet', null],
+    ],
+  );
+  assert.equal(top.items[1].addedBy, 'Platform support');
+  assert.equal(top.items[1].modifiedBy, 'Platform support');
+  const inside = (await owner.get(`/api/dsp/documents/folder?id=${safety.id}`)).value;
+  assert.deepEqual(inside.path, [{ id: safety.id, name: 'Safety & Compliance' }]);
+  assert.deepEqual(
+    inside.items.map((item: { name: string }) => item.name),
+    ['Rescue plan'],
+  );
+  // A search from the top finds what is inside a folder, and says where.
+  const found = (await owner.get('/api/dsp/documents/folder?q=rescue')).value.items;
+  assert.deepEqual(
+    found.map((item: { name: string; location: string }) => [item.name, item.location]),
+    [['Rescue plan', 'Safety & Compliance']],
+  );
+
+  const renamed = await owner.post(`/api/dsp/documents/items/${plan.id}/rename`, {
+    name: 'Rescue plan October',
+  });
+  assert.equal(renamed.value.name, 'Rescue plan October', renamed.body);
+  assert.equal(
+    (await owner.post(`/api/dsp/documents/items/${plan.id}/rename`, { name: ' ' })).value.error,
+    'documents_name_invalid',
+  );
+
+  // Summit connects the same Google account, and none of Northline's files are its to reach.
+  await owner.select(summit.id);
+  await connect(owner);
+  assert.deepEqual((await owner.get('/api/dsp/documents/folder')).value.items, []);
+  for (const [path, body] of [
+    [`/api/dsp/documents/folder?id=${safety.id}`, undefined],
+    [`/api/dsp/documents/items/${plan.id}/rename`, { name: 'Mine now' }],
+    [`/api/dsp/documents/items/${plan.id}/trash`, {}],
+    ['/api/dsp/documents/new', { folder: safety.id, kind: 'doc', name: 'Mine now' }],
+  ] as const) {
+    const refused = body ? await owner.post(path, body) : await owner.get(path);
+    assert.equal(refused.value.error, 'documents_item_not_found', path);
+  }
+
+  await owner.select(north.id);
+  assert.equal((await owner.post(`/api/dsp/documents/items/${safety.id}/trash`, {})).status, 200);
+  assert.deepEqual(
+    (await owner.get('/api/dsp/documents/folder')).value.items.map(
+      (item: { name: string }) => item.name,
+    ),
+    ['Fuel cards'],
+  );
+});

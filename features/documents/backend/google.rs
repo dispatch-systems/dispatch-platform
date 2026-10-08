@@ -15,17 +15,17 @@ const AUTHORIZE: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN: &str = "https://oauth2.googleapis.com/token";
 const REVOKE: &str = "https://oauth2.googleapis.com/revoke";
 const USERINFO: &str = "https://openidconnect.googleapis.com/v1/userinfo";
-const FILES: &str = "https://www.googleapis.com/drive/v3/files";
+pub(super) const FILES: &str = "https://www.googleapis.com/drive/v3/files";
 /// Only the files Dispatch makes or is given: Google asks no review for it.
 const DRIVE_FILE: &str = "https://www.googleapis.com/auth/drive.file";
 const SCOPES: &str = "openid email https://www.googleapis.com/auth/drive.file";
-const FOLDER: &str = "application/vnd.google-apps.folder";
+pub(super) const FOLDER: &str = "application/vnd.google-apps.folder";
 /// Where Google sends the browser back, on this server's own origin.
 pub const RETURN_PATH: &str = "/api/documents/google/return";
 /// The account a preview's fixture Google signs in as.
 const FIXTURE_ACCOUNT: &str = "documents@example.com";
 
-static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
+pub(super) static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
         .build()
@@ -44,6 +44,11 @@ pub struct Granted {
     pub account: Account,
     pub refresh: String,
     pub access: String,
+}
+/// An access token for the account's Drive, and how long Google honors it.
+pub struct Access {
+    pub token: String,
+    pub lasts: Duration,
 }
 
 /// The platform's Google sign-in client: its ID, and the secret only the server holds.
@@ -192,9 +197,9 @@ impl Google {
     }
     /// A fresh access token for the account. One Google won't renew means the owner removed
     /// Dispatch, or the account is gone: the connection is broken until someone reconnects.
-    pub async fn access(&self, refresh: &str) -> Result<String> {
+    pub async fn access(&self, refresh: &str) -> Result<Access> {
         let client = match self {
-            Self::Fixture => return Ok("fixture-access".into()),
+            Self::Fixture => return fixture_access(refresh),
             Self::Live(client) => client,
         };
         let tokens: Tokens = form(
@@ -207,26 +212,19 @@ impl Google {
             ],
         )
         .await?;
-        Ok(tokens.access_token)
+        Ok(Access {
+            token: tokens.access_token,
+            lasts: Duration::from_secs(tokens.expires_in.unwrap_or(3600)),
+        })
     }
     /// Makes a folder at the top of the account's Drive and answers its ID.
     pub async fn create_folder(&self, access: &str, name: &str) -> Result<String> {
-        if let Self::Fixture = self {
-            return Ok(format!("fixture-{}", crypto::hex(&crypto::random::<8>()?)));
-        }
-        let created: Created = send(
-            HTTP.post(FILES)
-                .bearer_auth(access)
-                .query(&[("fields", "id")])
-                .json(&json!({"name": name, "mimeType": FOLDER})),
-        )
-        .await?;
-        Ok(created.id)
+        Ok(self.create(access, name, FOLDER, None).await?.id)
     }
     /// Whether the folder is still there and out of the trash.
     pub async fn folder_usable(&self, access: &str, id: &str) -> Result<bool> {
         if let Self::Fixture = self {
-            return Ok(true);
+            return super::drive::fixture_has(access, id);
         }
         let response = HTTP
             .get(format!("{FILES}/{id}"))
@@ -256,20 +254,32 @@ pub fn folder_url(id: &str) -> String {
 }
 
 /// Fixture mode's code names the account it signs in as, `fixture:<email>`: anyone's own
-/// Google account, never a Workspace's.
+/// Google account, never a Workspace's. Its tokens name the account too, as Google's stand for
+/// it: the access token is `fixture:<email>`, which picks the account's Drive.
 fn fixture_grant(code: &str) -> Result<Granted> {
     let email = code
         .strip_prefix("fixture:")
-        .filter(|email| email.contains('@'))
+        .filter(|email| email.contains('@') && !email.contains(':'))
         .ok_or_else(|| Error::new("google_sign_in_failed", 502))?
         .to_lowercase();
     Ok(Granted {
         account: Account {
-            email,
+            email: email.clone(),
             workspace: false,
         },
-        refresh: format!("fixture.{}", crypto::token()?),
-        access: "fixture-access".into(),
+        refresh: format!("fixture:{}:{email}", crypto::token()?),
+        access: format!("fixture:{email}"),
+    })
+}
+fn fixture_access(refresh: &str) -> Result<Access> {
+    let email = refresh
+        .splitn(3, ':')
+        .nth(2)
+        .filter(|_| refresh.starts_with("fixture:"))
+        .ok_or_else(|| Error::new("google_connection_broken", 409))?;
+    Ok(Access {
+        token: format!("fixture:{email}"),
+        lasts: Duration::from_secs(3600),
     })
 }
 
@@ -279,6 +289,7 @@ struct Tokens {
     refresh_token: Option<String>,
     #[serde(default)]
     scope: String,
+    expires_in: Option<u64>,
 }
 #[derive(Deserialize)]
 struct Profile {
@@ -289,46 +300,59 @@ struct Profile {
     hd: Option<String>,
 }
 #[derive(Deserialize)]
-struct Created {
-    id: String,
-}
-#[derive(Deserialize)]
 struct Folder {
     #[serde(default)]
     trashed: bool,
 }
+/// Google's refusal: the token endpoint names its error, Drive names the reason of its first.
 #[derive(Deserialize)]
 struct Refusal {
-    error: Option<String>,
+    error: Option<serde_json::Value>,
+}
+impl Refusal {
+    fn reason(&self) -> Option<&str> {
+        let error = self.error.as_ref()?;
+        error
+            .as_str()
+            .or_else(|| error.pointer("/errors/0/reason")?.as_str())
+    }
 }
 
-fn unreachable(_: reqwest::Error) -> Error {
+pub(super) fn unreachable(_: reqwest::Error) -> Error {
     Error::new("google_unreachable", 502)
 }
 async fn form<T: for<'de> Deserialize<'de>>(url: &str, fields: &[(&str, &str)]) -> Result<T> {
     send(HTTP.post(url).form(fields)).await
 }
-async fn send<T: for<'de> Deserialize<'de>>(request: reqwest::RequestBuilder) -> Result<T> {
+pub(super) async fn send<T: for<'de> Deserialize<'de>>(
+    request: reqwest::RequestBuilder,
+) -> Result<T> {
     read(request.send().await.map_err(unreachable)?).await
 }
 /// Google's answer, or what its refusal means for the connection.
-async fn read<T: for<'de> Deserialize<'de>>(response: reqwest::Response) -> Result<T> {
+pub(super) async fn read<T: for<'de> Deserialize<'de>>(response: reqwest::Response) -> Result<T> {
     let status = response.status();
     let body = response.bytes().await.map_err(unreachable)?;
     if status.is_success() {
         return serde_json::from_slice(&body).map_err(|_| Error::new("google_sign_in_failed", 502));
     }
-    let error = serde_json::from_slice::<Refusal>(&body)
-        .ok()
-        .and_then(|r| r.error);
-    Err(refusal(status.as_u16(), error.as_deref()))
+    let refused = serde_json::from_slice::<Refusal>(&body).ok();
+    Err(refusal(
+        status.as_u16(),
+        refused.as_ref().and_then(Refusal::reason),
+    ))
 }
 /// What a refusal means: Google no longer honors the account's token, so only a reconnect
-/// helps; Google is busy or down, so trying later does; or the request itself failed.
+/// helps; the account's storage is full; the file is gone or was never Dispatch's to reach;
+/// Google is busy or down, so trying later does; or the request itself failed.
 fn refusal(status: u16, error: Option<&str>) -> Error {
     match (status, error) {
         // The token endpoint's word for a refresh token or code it no longer honors.
         (_, Some("invalid_grant")) | (401, _) => Error::new("google_connection_broken", 409),
+        (_, Some("storageQuotaExceeded")) => Error::new("documents_storage_full", 409),
+        (404, _) | (403, Some("insufficientFilePermissions" | "appNotAuthorizedToFile")) => {
+            Error::new("documents_item_not_found", 404)
+        }
         (403 | 429, _) | (500.., _) => Error::new("google_unreachable", 502),
         _ => Error::new("google_sign_in_failed", 502),
     }

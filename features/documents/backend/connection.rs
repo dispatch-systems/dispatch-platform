@@ -2,6 +2,7 @@
 //! browser back, and letting it go. Google is called outside the database, and the member's
 //! permission is checked again after every wait, before anything is written.
 use super::{
+    files,
     google::{self, Google},
     storage::{Connection, DocumentsStore},
 };
@@ -113,6 +114,7 @@ pub async fn finish(
         connected_at: iso(),
     };
     let refresh = granted.refresh;
+    files::forget(&c.dsp.id);
     state
         .run(move |db| {
             let c = access.revalidate(db, &c)?;
@@ -138,6 +140,7 @@ pub async fn disconnect(state: &Arc<State>, c: Context, access: Dsp) -> Result<D
     if let (Some(token), Ok(google)) = (token, Google::of(&state.config)) {
         google.revoke(&token).await;
     }
+    files::forget(&c.dsp.id);
     state
         .run(move |db| {
             let c = access.revalidate(db, &c)?;
@@ -148,4 +151,13 @@ pub async fn disconnect(state: &Arc<State>, c: Context, access: Dsp) -> Result<D
             overview(db, &c)
         })
         .await
+}
+
+/// Marks the DSP's connection broken, as Google refused its token: once, in the activity log
+/// too, whoever noticed.
+pub(crate) fn broken(db: &Store, dsp: &str) -> Result<()> {
+    if db.break_documents_connection(dsp)? {
+        db.audit(None, Some(dsp), "documents.connection_broken", "")?;
+    }
+    Ok(())
 }

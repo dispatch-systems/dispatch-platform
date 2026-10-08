@@ -1,8 +1,8 @@
 //! Documents's upkeep: noticing, hourly, a Google connection that stopped working, so the
 //! page says so and the owner can reconnect before someone finds out by trying.
-use super::{google::Google, storage::DocumentsStore};
+use super::{connection::broken, google::Google, storage::DocumentsStore};
 use dispatch_core::{
-    Error, Result, State,
+    Error, State,
     foundation::observability,
     manifest::{Maintenance, Upkeep},
 };
@@ -53,13 +53,6 @@ fn check(state: Arc<State>, due: bool) -> Upkeep {
             }
         }
     })
-}
-
-fn broken(db: &dispatch_core::db::Store, dsp: &str) -> Result<()> {
-    if db.break_documents_connection(dsp)? {
-        db.audit(None, Some(dsp), "documents.connection_broken", "")?;
-    }
-    Ok(())
 }
 
 fn failed(error: &Error) {

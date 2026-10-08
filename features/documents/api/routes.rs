@@ -1,19 +1,23 @@
 //! Documents's endpoints, each registered with its path and access. The server checks the
 //! session and the permission before a handler runs; the handlers that call Google wait
 //! outside the database and check again before they write.
-use crate::backend::{connection, google::RETURN_PATH};
+use crate::{
+    api::types::NewKind,
+    backend::{connection, files, google::RETURN_PATH},
+};
 use axum::{
     extract::Request,
     http::Method,
     response::{IntoResponse, Response},
 };
 use dispatch_core::{
-    Result, State,
+    Result, State, ensure,
     db::{Store, identifier},
     foundation::validate as v,
     server::http::{
         input::{Input, Reply},
-        route::{Dsp, Grant, Member, Route, async_post, protocol, read, write},
+        input::optional,
+        route::{Dsp, Grant, Member, Route, async_get, async_post, protocol, read, write},
     },
 };
 use std::sync::Arc;
@@ -27,6 +31,10 @@ pub fn routes() -> Vec<Route> {
         write("/api/dsp/documents/connect", MANAGE, connect),
         async_post("/api/dsp/documents/connect/finish", MANAGE, finish),
         async_post("/api/dsp/documents/disconnect", MANAGE, disconnect),
+        async_get("/api/dsp/documents/folder", USE, folder),
+        async_post("/api/dsp/documents/new", USE, create),
+        async_post("/api/dsp/documents/items/{id}/rename", USE, rename),
+        async_post("/api/dsp/documents/items/{id}/trash", USE, trash),
         protocol(Method::GET, RETURN_PATH, |state, request| {
             Box::pin(returned(state, request))
         }),
@@ -53,6 +61,63 @@ async fn disconnect(state: Arc<State>, input: Input, access: Dsp) -> Result<Repl
     let c = state.run(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.body, &[])?;
     Reply::of(&connection::disconnect(&state, c, access).await?)
+}
+
+/// A Drive file's ID, as Google writes them.
+fn file_id(id: &str) -> Result<String> {
+    let valid = (1..=128).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    ensure(valid, "invalid_input", 400)?;
+    Ok(id.to_owned())
+}
+/// A file's name: up to 200 characters, without control characters or space around it.
+fn file_name(body: &serde_json::Value) -> Result<String> {
+    let name = v::text(body, "name", 1, 400)?.trim();
+    let valid = (1..=200).contains(&name.chars().count()) && !name.chars().any(char::is_control);
+    ensure(valid, "documents_name_invalid", 400)?;
+    Ok(name.to_owned())
+}
+
+async fn folder(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.query, &["id", "q"])?;
+    let id = optional(&input.query, "id", |q, key| file_id(v::text(q, key, 1, 128)?))?;
+    let query = optional(&input.query, "q", |q, key| Ok(v::text(q, key, 0, 100)?.to_owned()))?;
+    Reply::of(&files::folder(&state, &c, id, query).await?)
+}
+async fn create(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &["folder", "kind", "name"])?;
+    let folder = match &input.body["folder"] {
+        serde_json::Value::Null => None,
+        _ => Some(file_id(v::text(&input.body, "folder", 1, 128)?)?),
+    };
+    let kind = NewKind::parse(v::choice(
+        &input.body,
+        "kind",
+        &["folder", "doc", "sheet", "slides"],
+    )?)
+    .ok_or_else(|| dispatch_core::Error::new("invalid_input", 400))?;
+    let name = file_name(&input.body)?;
+    Reply::of(&files::create(&state, c, access, folder, kind, name).await?)
+}
+async fn rename(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &["name"])?;
+    let (id, name) = (file_id(input.param("id"))?, file_name(&input.body)?);
+    Reply::of(&files::rename(&state, c, access, id, name).await?)
+}
+async fn trash(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &[])?;
+    files::trash(&state, c, access, file_id(input.param("id"))?).await?;
+    Ok(Reply::ok())
 }
 
 /// Google sends the browser back here, without the session: its cookie stays on Dispatch's

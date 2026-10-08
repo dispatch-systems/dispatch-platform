@@ -5,7 +5,8 @@ mod backend;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
-    AccountKind, ConnectionStatus, DocumentsConnection, DocumentsOverview, GoogleSignIn,
+    AccountKind, ConnectionStatus, DocumentsConnection, DocumentsFolder, DocumentsItem,
+    DocumentsOverview, FolderStep, GoogleSignIn, ItemKind, NewKind,
 };
 
 use dispatch_core::{
@@ -28,15 +29,26 @@ pub const FEATURE: Feature = Feature {
     routes: api::routes::routes,
     tables: &[(
         "dsp",
-        &["documents_connection", "documents_connect_requests"],
+        &[
+            "documents_connection",
+            "documents_connect_requests",
+            "documents_files",
+        ],
     )],
     migrations: &[Migrations {
         kind: Kind::DSP,
-        list: &[Migration {
-            id: 9,
-            name: "documents",
-            apply: Sql(include_str!("migrations/dsp/0009_documents.sql")),
-        }],
+        list: &[
+            Migration {
+                id: 9,
+                name: "documents",
+                apply: Sql(include_str!("migrations/dsp/0009_documents.sql")),
+            },
+            Migration {
+                id: 10,
+                name: "documents_files",
+                apply: Sql(include_str!("migrations/dsp/0010_documents_files.sql")),
+            },
+        ],
     }],
     maintenance: &[backend::maintenance::MAINTENANCE],
     audit: Audit {
@@ -56,5 +68,10 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         ConnectionStatus,
         AccountKind,
         GoogleSignIn,
+        ItemKind,
+        NewKind,
+        DocumentsItem,
+        FolderStep,
+        DocumentsFolder,
     )
 }
