@@ -42,8 +42,6 @@ A change, from start to finish:
         [--cache-key]              fixture, reusing a build of identical inputs.
   help                             Show this.
 
-start and preview first delete the builds of worktrees unused for 3 days, or for 12 hours when
-less than 20 GB is free; a worktree whose preview runs or that Cargo is building keeps its own.
 test, check, build and new work on the checkout the current directory is in, or on --root
 <directory>.";
 

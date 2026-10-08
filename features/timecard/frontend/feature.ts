@@ -79,6 +79,7 @@ export const feature: FrontendFeature = {
   },
   cache: {
     collected: [
+      '/api/dsp/jobs',
       '/api/dsp/timecards',
       '/api/dsp/employees',
       '/api/dsp/paycom/meal-breaks',
@@ -87,7 +88,7 @@ export const feature: FrontendFeature = {
     ],
     collection: (url, changes) => {
       const route = path(url);
-      if (begins(url, '/api/dsp/paycom/status')) return true;
+      if (begins(url, '/api/dsp/paycom/status', '/api/dsp/jobs')) return true;
       return changes.some((change) => {
         if (change.provider === 'all') return true;
         if (change.provider === 'cortex' && route !== '/api/dsp/paycom/meal-breaks') return false;
@@ -102,8 +103,10 @@ export const feature: FrontendFeature = {
         return !day || !change.dates?.length || change.dates.includes(day);
       });
     },
-    jobs: ['/api/dsp/paycom/status'],
+    jobs: ['/api/dsp/jobs', '/api/dsp/paycom/status'],
+    connections: ['/api/dsp/schedules'],
     write: (write, url) => {
+      if (write.startsWith('/api/dsp/schedules')) return begins(url, '/api/dsp/schedules');
       if (write === '/api/dsp/paycom/settings') return collectionData(url) || path(url) === write;
       // A Driver Match decision moves drivers between rows of the meal-break comparison.
       if (write.startsWith('/api/dsp/driver-match'))

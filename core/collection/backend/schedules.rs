@@ -441,7 +441,7 @@ impl Store {
             )?;
             for mut row in rows {
                 if feature.is_some_and(|f| {
-                    crate::tenancy::catalog::automation(row.schedule.collection.as_str()) != f
+                    crate::tenancy::catalog::automation(row.schedule.collection.as_str()) != Some(f)
                 }) {
                     continue;
                 }
@@ -474,8 +474,8 @@ impl Store {
             let next = rows
                 .into_iter()
                 .find(|(collection, _)| {
-                    let page = crate::tenancy::catalog::automation(collection);
-                    enabled.iter().any(|f| f == page)
+                    crate::tenancy::catalog::automation(collection)
+                        .is_some_and(|page| enabled.iter().any(|f| f == page))
                 })
                 .map(|(_, next_run)| next_run);
             if let Some(next_run) = next {
@@ -534,9 +534,9 @@ impl Store {
             [ScheduleCollection::known()?],
         )?;
         for mut row in rows {
-            // A schedule whose page is off waits, as every schedule does without the page.
+            // A schedule whose page is off waits, as one no feature keeps does.
             let page = crate::tenancy::catalog::automation(row.schedule.collection.as_str());
-            if !enabled.iter().any(|f| f == page) {
+            if !page.is_some_and(|page| enabled.iter().any(|f| f == page)) {
                 continue;
             }
             let pending = row.schedule.next_run.clone();

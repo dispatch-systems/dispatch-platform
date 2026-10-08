@@ -196,9 +196,10 @@ export const paycomSettingsSchema = z.object({
   }),
 }) satisfies z.ZodType<PaycomSettings>;
 
-/** The replies of Timecard's reads, its Paycom settings and its meal break collections. */
+/** The replies of Timecard's reads, its Paycom settings and its jobs and collections. */
 export const replies: Replies = (route, method) => {
   if (method === 'GET') {
+    if (route === '/api/dsp/jobs') return jobsSchema;
     if (route === '/api/dsp/paycom/settings') return paycomSettingsSchema;
     if (route === '/api/dsp/employees') return employeesSchema;
     if (/^\/api\/dsp\/employees\/[^/]+$/.test(route)) return employeeTimecardSchema;
@@ -206,6 +207,7 @@ export const replies: Replies = (route, method) => {
     if (route === '/api/dsp/paycom/meal-breaks') return mealComparisonSchema;
     return undefined;
   }
+  if (route === '/api/dsp/jobs') return jobSchema;
   if (route === '/api/dsp/paycom/settings') return paycomSettingsSchema;
   if (route === '/api/dsp/cortex/meal-breaks/collect') return jobSchema;
   if (route === '/api/dsp/jobs/meal-breaks') return z.object({ date: text, jobs: jobsSchema });

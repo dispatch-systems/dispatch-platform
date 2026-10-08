@@ -10,7 +10,7 @@ use dispatch_core::{
 };
 use serde_json::json;
 
-/// Names no collection or alias has: the schedules' page runs them.
+/// Names no collection or alias has: nothing runs them.
 const UNKNOWN: &[&str] = &["schedules", "unknown", ""];
 
 #[cfg(feature = "default")]
@@ -56,8 +56,7 @@ fn the_catalog_keeps_its_pages_tabs_and_order() {
     let catalog: Vec<_> = catalog::catalog().iter().map(|f| f.id).collect();
     snapshot::check(
         "catalog-pages.json",
-        &json!({"pages": pages, "subfeatures": subs, "catalog": catalog,
-            "schedules": catalog::schedules()}),
+        &json!({"pages": pages, "subfeatures": subs, "catalog": catalog}),
     );
 }
 

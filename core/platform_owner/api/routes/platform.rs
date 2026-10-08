@@ -184,8 +184,8 @@ fn show_feature(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
 }
 
 // Switching a feature off stops what it ran for the DSP: its jobs and live
-// collection in the database, then its browsers outside it. Switching the
-// schedules' page back on retimes them from now and wakes the scheduler.
+// collection in the database, then its browsers outside it. Switching a page that
+// runs collections back on retimes its schedules from now and wakes the scheduler.
 async fn set_feature(state: Arc<State>, input: Input, access: PlatformRoutine) -> Result<Reply> {
     let id = input.param("id").to_owned();
     let dsp = id.clone();
@@ -202,7 +202,8 @@ async fn set_feature(state: Arc<State>, input: Input, access: PlatformRoutine) -
             for provider in Provider::all() {
                 let collector = provider.collector();
                 for kind in provider.job_kinds() {
-                    if switched(&result, catalog::automation(kind), false) {
+                    if catalog::automation(kind).is_some_and(|page| switched(&result, page, false))
+                    {
                         let jobs = db.jobs.query_as::<crate::collection::api::jobs::JobRow>(
                             concat!(
                                 "SELECT * FROM jobs WHERE dsp_id=? AND kind=? AND status IN ",

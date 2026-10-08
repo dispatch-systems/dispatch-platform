@@ -330,7 +330,6 @@ fn the_catalog_is_consistent() {
         }
     }
     assert!(!owned.contains(&CONNECTIONS));
-    assert!(find(schedules()).is_some_and(|f| f.kind == Kind::Page));
 }
 #[cfg(feature = "uniforms")]
 #[test]

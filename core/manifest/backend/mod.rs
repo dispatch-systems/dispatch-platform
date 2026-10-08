@@ -265,7 +265,7 @@ impl Registry {
             .id
     }
     /// Panics unless every collection has exactly one keeper, every keeper keeps a
-    /// registered collection, one page runs the schedules, every schedule alias has a name
+    /// registered collection, every schedule alias has a name
     /// of its own and runs only collections its feature keeps, only a page has sub-features,
     /// every feature depends only on registered features and collectors, every permission
     /// has an id of its own and implies, or sits under, only permissions that exist and never
@@ -343,8 +343,6 @@ impl Registry {
                 keeper.keeps()
             );
         }
-        let schedules: Vec<_> = self.features.iter().filter(|f| f.schedules).collect();
-        assert!(schedules.len() == 1, "exactly one page runs the schedules");
         let mut schedule_names: Vec<&str> = self
             .collectors
             .iter()
@@ -573,9 +571,6 @@ pub struct Feature {
     /// The parts of its page switched on their own on the DSPs page, in the order the page
     /// shows them: its tabs, and any other part, each with the permissions it owns.
     pub subfeatures: &'static [Sub],
-    /// Whether its page is the one whose schedules, collections and jobs run: the
-    /// generic schedule and job routes'. One feature's is.
-    pub schedules: bool,
     /// The names a schedule may give to several of the collections it keeps, to run them
     /// at once, as Timecard's `both` runs Paycom's timecards and Cortex's meal breaks.
     pub schedule_aliases: &'static [ScheduleAlias],
@@ -636,7 +631,6 @@ pub const fn feature(name: &'static str) -> Feature {
         depends_on: &[],
         switch: UNDECLARED,
         subfeatures: &[],
-        schedules: false,
         schedule_aliases: &[],
         permissions: &[],
         routes: Vec::new,

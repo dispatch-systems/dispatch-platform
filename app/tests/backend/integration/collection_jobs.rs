@@ -274,7 +274,7 @@ fn nothing_collects_for_a_dsp_without_the_timecard() {
     let result = db
         .set_feature(
             id,
-            dispatch_core::tenancy::catalog::schedules(),
+            dispatch_core::tenancy::catalog::automation("paycom").unwrap(),
             false,
             actor,
         )
@@ -309,7 +309,7 @@ fn nothing_collects_for_a_dsp_without_the_timecard() {
         .unwrap();
     db.set_feature(
         id,
-        dispatch_core::tenancy::catalog::schedules(),
+        dispatch_core::tenancy::catalog::automation("paycom").unwrap(),
         true,
         actor,
     )

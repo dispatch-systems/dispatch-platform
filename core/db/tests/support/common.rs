@@ -59,7 +59,7 @@ pub fn whole(
 }
 
 /// What the parts a test names leave a registry without. A registry is whole: each of its
-/// collections kept once, one page that runs the schedules, one permission that invites,
+/// collections kept once, one permission that invites,
 /// and each database's migrations numbered from 1 without a gap, though other owners add
 /// some of them. A stand-in takes the place of each missing owner: it keeps nothing, owns
 /// no table, and its migrations change nothing.
@@ -77,7 +77,6 @@ fn stand_in(
         .filter(|collection| named.keeping(collection.job_kind).is_none())
         .map(|collection| leak::<Unkept>(Unkept(collection.job_kind)) as &'static dyn Keeper)
         .collect();
-    let schedules = !features.iter().any(|feature| feature.schedules);
     let invites = !named.permissions().any(|permission| permission.invites);
     let lists = db::CORE_MIGRATIONS
         .iter()
@@ -109,15 +108,15 @@ fn stand_in(
             });
         }
     }
+    // Running collections, it is switched like any page that does; else every DSP has it.
+    let runs = !keeps.is_empty();
     leak(Feature {
-        // Running the schedules, it is switched like any page; else every DSP has it.
-        switch: if schedules {
+        switch: if runs {
             optional("stand_in", "Stand-in", &[])
         } else {
             mandatory("stand_in", "Stand-in")
         },
-        schedules,
-        permissions: match (invites, schedules) {
+        permissions: match (invites, runs) {
             (false, _) => &[],
             (true, true) => INVITES,
             (true, false) => INVITES_ALONE,

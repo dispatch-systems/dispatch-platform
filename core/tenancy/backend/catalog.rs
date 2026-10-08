@@ -114,21 +114,10 @@ fn tabs(page: &str) -> impl Iterator<Item = &'static Feature> {
         .iter()
         .filter(move |t| t.tab && matches!(t.kind, Kind::Sub(p) if p == page))
 }
-/// The page whose schedules, collections and jobs run, as its feature's manifest says.
-/// Nothing collects without it, except the collections another feature keeps
-/// (`automation`).
-pub fn schedules() -> &'static str {
-    registry()
-        .features
-        .iter()
-        .find(|feature| feature.schedules)
-        .map(|feature| feature.switch.id)
-        .expect("a page runs the schedules")
-}
 /// The page that runs a job kind or a schedule collection: the page of the feature that
-/// keeps the collection, or declares the alias, as Timecard declares `both`. Anything else
-/// is the schedules' page's.
-pub fn automation(kind_or_collection: &str) -> &'static str {
+/// keeps the collection, or declares the alias, as Timecard declares `both`. None for what
+/// no feature keeps, which nothing runs.
+pub fn automation(kind_or_collection: &str) -> Option<&'static str> {
     let registry = registry();
     let aliasing = || {
         registry.features.iter().copied().find(|feature| {
@@ -145,17 +134,15 @@ pub fn automation(kind_or_collection: &str) -> &'static str {
         .find(|c| c.job_kind == kind_or_collection || c.schedule == kind_or_collection)
         .and_then(|collection| registry.keeping(collection.job_kind))
         .or_else(aliasing)
-        .map_or_else(schedules, |feature| feature.switch.id)
+        .map(|feature| feature.switch.id)
 }
-/// Whether a page that runs collections is on: the schedules' page, or one whose
-/// feature keeps a collection.
+/// Whether a page that runs collections is on: one whose feature keeps a collection.
 pub fn automates(enabled: &[String]) -> bool {
     let runs = |id: &str| {
-        id == schedules()
-            || registry()
-                .features
-                .iter()
-                .any(|feature| !feature.keeps.is_empty() && feature.switch.id == id)
+        registry()
+            .features
+            .iter()
+            .any(|feature| !feature.keeps.is_empty() && feature.switch.id == id)
     };
     enabled.iter().any(|f| runs(f))
 }
@@ -386,8 +373,8 @@ impl Store {
             Ok(())
         })
     }
-    /// Every feature of the catalog as the DSP has it, with what switching the
-    /// schedules' page off would stop, for the platform's DSP page.
+    /// Every feature of the catalog as the DSP has it, with its schedules switched on and its
+    /// jobs under way, for the platform's DSP page.
     pub fn feature_report(&self, dsp: &str) -> Result<DspFeatureReport> {
         let row = self.find_dsp(dsp)?;
         let stored: Vec<FeatureState> = self.platform.query_as(
