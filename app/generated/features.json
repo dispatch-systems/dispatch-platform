@@ -135,7 +135,8 @@
       "domains": [],
       "live": [],
       "maintenance": [
-        3600
+        3600,
+        60
       ],
       "mcp": {
         "daily": [],
