@@ -1,14 +1,13 @@
-import { Suspense, useEffect, useState, useTransition } from 'react';
+import { Fragment, Suspense, useEffect, useState, useTransition } from 'react';
 import type { DspView, SessionView } from '../../../core/accounts/api/index.js';
 import { Header, Loading, Tabs } from '../../../core/shell/frontend/ui/index.js';
 import { hashQuery, replaceHashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
-import type { SettingsTab } from '../../../core/shell/frontend/runtime/slots.js';
-import { loadBadge, loadedBadge, prefetchSettingsTab, visibleTabs } from './tabs.js';
-
-const load = (tab?: SettingsTab) => void tab?.load().catch(() => undefined);
+import { settingsPieces, type SettingsTab } from '../../../core/shell/frontend/runtime/slots.js';
+import { loadBadge, loadTab, loadedBadge, prefetchSettingsTab, visibleTabs } from './tabs.js';
 
 export function SettingsPage({ session, view }: { session: SessionView; view?: DspView }) {
   const tabs = visibleTabs(view);
+  const load = (tab?: SettingsTab) => void (tab && loadTab(tab, view).catch(() => undefined));
   const [requestedTab, setTab] = useState(hashQuery().get('tab') || tabs[0]!.id);
   const [pending, startTransition] = useTransition();
   const tabOf = (id: string) => tabs.find((tab) => tab.id === id);
@@ -49,7 +48,12 @@ export function SettingsPage({ session, view }: { session: SessionView; view?: D
         label="Settings"
       />
       <div aria-busy={pending || undefined} inert={pending}>
-        <Suspense fallback={<Loading />}>{tab.render({ session, view })}</Suspense>
+        <Suspense fallback={<Loading />}>
+          {tab.render({ session, view })}
+          {settingsPieces(tab.id, view).map((piece) => (
+            <Fragment key={piece.id}>{piece.render({ session, view })}</Fragment>
+          ))}
+        </Suspense>
       </div>
     </>
   );

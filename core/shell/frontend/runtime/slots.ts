@@ -5,10 +5,13 @@ import type { CollectionChange, JobMetrics, PageReads } from '../../../collectio
 import type { ConnectionFeature, Feature, PageFeature } from '../../../tenancy/api/index.js';
 import type { DspView, Permission, SessionView } from '../../../accounts/api/index.js';
 import type { Replies } from '../../../foundation/api/runtime.js';
+import { featureCatalog, hasFeature } from './features.js';
 
 // What an owner's `frontend/feature.ts` declares, and what the hosts read from it. Only
 // app/frontend lists the manifests; it installs them here before the first render, so no host
-// imports a feature.
+// imports a feature. What a feature or a connection adds to another's page, a Settings tab or
+// a piece of one, a tab of a page, is there only while the DSP has it: switched off, or hidden
+// from the DSP's members, it is gone, as are its pages.
 //
 // A manifest is loaded up front, and outside a browser by the route table's tests. It stays
 // small, imports no CSS, touches no browser API until it is called, and loads its pages lazily.
@@ -87,6 +90,8 @@ export type SettingsTab = {
   order: number;
   /** Who sees the tab; omitted means everyone. */
   visible?: (view?: DspView) => boolean;
+  /** The part of its owner's feature it belongs to, as `x.uploads`: it goes with the part. */
+  part?: Feature;
   /** Loads the panel's code. */
   load: () => Promise<unknown>;
   render: (context: SettingsContext) => ReactNode;
@@ -95,6 +100,22 @@ export type SettingsTab = {
    * badge's reads whichever tab that is.
    */
   prefetch?: (tab: string, view: DspView) => string[];
+};
+/** A piece one owner adds to a Settings tab, drawn under the tab's own panel. */
+export type SettingsPiece = {
+  /** The tab it is drawn on. */
+  tab: string;
+  /** Its own id among the tab's pieces. */
+  id: string;
+  /** Where it sits among the tab's pieces, lowest first. */
+  order: number;
+  /** Who sees it; omitted means everyone who sees the tab. */
+  visible?: (view?: DspView) => boolean;
+  /** The part of its owner's feature it belongs to: it goes with the part. */
+  part?: Feature;
+  /** Loads its code; the tab waits for it before it opens. */
+  load: () => Promise<unknown>;
+  render: (context: SettingsContext) => ReactNode;
 };
 
 /**
@@ -109,6 +130,8 @@ export type PageTab = {
   label: string;
   /** Where the tab sits among the page's tabs, lowest first. */
   order: number;
+  /** The part of its owner's feature it belongs to: it goes with the part. */
+  part?: Feature;
   /** Loads the tab's code. */
   load: () => Promise<unknown>;
   render: (context: DspPageContext) => ReactNode;
@@ -208,6 +231,8 @@ export type FrontendFeature = {
   routes?: readonly Route[];
   /** Its tabs on a DSP's Settings page. */
   settingsTabs?: readonly SettingsTab[];
+  /** Its pieces of other owners' tabs on a DSP's Settings page. */
+  settingsPieces?: readonly SettingsPiece[];
   /**
    * Who may save a DSP's profile, when the owner saves it: opening a DSP that has none asks
    * them for it. One owner at most says so; without one, nobody is asked.
@@ -265,13 +290,37 @@ export const settingsPage = () => dspPage((route) => route.hostsSettings);
 export const dspSetupPermission = () =>
   installed.find((feature) => feature.dspSetup)?.dspSetup?.permission;
 
-/** Every owner's tabs on a DSP's Settings page, in the order the owners are listed. */
-export const settingsTabs = () => installed.flatMap((feature) => feature.settingsTabs ?? []);
+/**
+ * What the owners put in a slot that the view has, in the order the owners are listed: all of
+ * core's, a feature's or a connection's while the DSP has it, and a part's while it has that.
+ */
+function present<T extends { part?: Feature }>(
+  view: DspView | undefined,
+  slot: (feature: FrontendFeature) => readonly T[] | undefined,
+) {
+  return installed.flatMap((feature) =>
+    featureCatalog.some((f) => f.id === feature.name) && !hasFeature(view, feature.name as Feature)
+      ? []
+      : (slot(feature) ?? []).filter((each) => !each.part || hasFeature(view, each.part)),
+  );
+}
+/**
+ * Every owner's tabs on a DSP's Settings page, in the order the owners are listed; with a view,
+ * those it has.
+ */
+export const settingsTabs = (view?: DspView) =>
+  view
+    ? present(view, (feature) => feature.settingsTabs)
+    : installed.flatMap((feature) => feature.settingsTabs ?? []);
+/** The pieces of a Settings tab the view has and sees, in their order. */
+export const settingsPieces = (tab: string, view: DspView | undefined) =>
+  present(view, (feature) => feature.settingsPieces)
+    .filter((piece) => piece.tab === tab && (!piece.visible || piece.visible(view)))
+    .sort((a, b) => a.order - b.order);
 
-/** The tabs other features add to `page`, in their order. */
-export const pageTabs = (page: string) =>
-  installed
-    .flatMap((feature) => feature.pageTabs ?? [])
+/** The tabs other owners add to `page` that the view has, in their order. */
+export const pageTabs = (page: string, view: DspView) =>
+  present(view, (feature) => feature.pageTabs)
     .filter((tab) => tab.page === page)
     .sort((a, b) => a.order - b.order);
 
