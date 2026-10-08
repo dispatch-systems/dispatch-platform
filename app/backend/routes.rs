@@ -3,9 +3,13 @@
 #[cfg(feature = "team")]
 use dispatch_team::TEAM;
 
+/// What nobody holds but an owner, who holds everything: what a path in no part of the DSP
+/// area asks for, so a member is refused it and an owner told it isn't there.
+const NOBODY: &str = "nobody";
+
 /// What each part of the DSP area asked for before routes carried their own access, for a
 /// path no route matches. New routes never come here; this only keeps old answers the same.
-/// A feature's answers go with it when a build leaves it out.
+/// A feature's answers go with it when a build leaves it out, and any other path is denied.
 pub fn area_permission(path: &str, post: bool) -> &'static str {
     let mut parts = path.split('/').skip(3);
     let (endpoint, detail) = (parts.next().unwrap_or(""), parts.next());
@@ -27,6 +31,8 @@ pub fn area_permission(path: &str, post: bool) -> &'static str {
         ("jobs", Some("meal-breaks"), false) => "timecard.view",
         #[cfg(feature = "timecard")]
         ("jobs", ..) | ("cortex", _, true) => "collections.run",
+        #[cfg(feature = "timecard")]
+        ("employees" | "timecards" | "paycom" | "cortex", ..) => "timecard.view",
         #[cfg(feature = "dvic")]
         ("dvic", Some("schedules"), _) => "dvic.manage",
         #[cfg(feature = "dvic")]
@@ -47,6 +53,6 @@ pub fn area_permission(path: &str, post: bool) -> &'static str {
         ("weekly-scorecard", ..) => "weekly_scorecard.view",
         #[cfg(feature = "driver_match")]
         ("driver-match", ..) => "driver_match.manage",
-        _ => "timecard.view",
+        _ => NOBODY,
     }
 }

@@ -18,13 +18,15 @@ test('only platform owners can read and export audit events, even with old DSP a
   );
   const view = await member.select(north.id);
   assert.deepEqual(view.permissions, ['timecard.view']);
-  const denied = async () => {
-    assert.equal((await member.get('/api/dsp/audit')).status, 404);
-    assert.equal((await member.post('/api/dsp/audit/export', {})).status, 404);
+  // A DSP has no log of its own: its old paths are denied to a member, and an owner, who
+  // holds everything, is told they aren't there.
+  const denied = async (dsp: number) => {
+    assert.equal((await member.get('/api/dsp/audit')).status, dsp);
+    assert.equal((await member.post('/api/dsp/audit/export', {})).status, dsp);
     assert.equal((await member.get('/api/platform/audit')).status, 403);
     assert.equal((await member.post('/api/platform/audit/export', {})).status, 403);
   };
-  await denied();
+  await denied(403);
 
   // Owning a DSP still does not grant platform access.
   const roles = (await owner.get('/api/dsp/roles')).value;
@@ -39,7 +41,7 @@ test('only platform owners can read and export audit events, even with old DSP a
   const ownerView = await member.select(north.id);
   assert.equal(ownerView.role.owner, true);
   assert(!ownerView.permissions.includes('audit.view'));
-  await denied();
+  await denied(404);
 
   // Even platform owners use the platform endpoints instead of a DSP log.
   await owner.select(north.id);

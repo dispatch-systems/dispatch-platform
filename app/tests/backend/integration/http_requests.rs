@@ -474,21 +474,23 @@ async fn unmatched_paths_and_methods_answer_as_they_always_have() {
             "dsp_view_required",
         )
         .await;
-    server
-        .expect(Call::get("/api/dsp/nope").who(&member), 404, "not_found")
-        .await;
+    // A path in no part of the DSP area asks for what only an owner holds.
+    let call = Call::get("/api/dsp/nope").who(&member);
+    server.expect(call, 403, "permission_denied").await;
+    let viewing = server.member("owner@dispatch.test").await;
+    let call = Call::get("/api/dsp/nope").who(&viewing);
+    server.expect(call, 404, "not_found").await;
+    let call = Call::get("/api/dsp/profile").who(&member);
+    server.expect(call, 403, "permission_denied").await;
+    // An unknown path still asks for the permission its area asked for.
     let call = Call::post("/api/dsp/employees", json!({})).who(&member);
     server.expect(call, 404, "not_found").await;
-    server
-        .expect(Call::get("/api/dsp/profile").who(&member), 404, "not_found")
-        .await;
-    // An unknown path still asks for the permission its area asked for.
     let call = Call::post("/api/dsp/members", json!({})).who(&member);
     server.expect(call, 403, "permission_denied").await;
     let call = Call::get("/api/dsp/connections/paycom/check").who(&member);
     server.expect(call, 403, "permission_denied").await;
     let call = Call::get("/api/dsp/audit/nope").who(&member);
-    server.expect(call, 404, "not_found").await;
+    server.expect(call, 403, "permission_denied").await;
     let call = Call::post("/api/dsp/nope", json!({}))
         .who(&member)
         .without_csrf();

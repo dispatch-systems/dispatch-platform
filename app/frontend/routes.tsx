@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import type { DspView } from '../../core/accounts/api/index.js';
+import { Empty } from '../../core/shell/frontend/ui/Empty.js';
 import { ErrorBox } from '../../core/shell/frontend/ui/ErrorBox.js';
 import { Loading } from '../../core/shell/frontend/ui/Loading.js';
 import { PageBoundary } from '../../core/shell/frontend/ui/PageBoundary.js';
@@ -65,6 +66,9 @@ function PageContent({
   const open = route && allowed(route, context) ? route : undefined;
   if (view) {
     if (open?.scope === 'dsp') return open.render({ ...context, view, reopen });
+    // A DSP with no page this person may open, as one without features, has nothing to show.
+    if (!page && !landing({ session, view }))
+      return <Empty title="Nothing here yet">This DSP has no pages you can open.</Empty>;
     // A page of a feature the DSP lacks does not exist for it.
     const missing = route?.scope === 'dsp' && route.feature && !hasFeature(view, route.feature);
     return (
