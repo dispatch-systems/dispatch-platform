@@ -86,3 +86,22 @@ test('a member uploads files and a folder, drops one on the page, and downloads 
   const saved = await saving;
   expect(saved.suggestedFilename()).toBe('Route notes.txt');
 });
+
+test('an owner adds a file someone made directly in Drive', async ({ page }) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Documents', exact: true }).click();
+  await page.getByRole('button', { name: 'Connect Google' }).click();
+  await page
+    .getByRole('dialog', { name: 'Documents is ready' })
+    .getByRole('button', { name: 'Skip' })
+    .click();
+  // Fixture mode lists its Drive's files out of reach, where Google's picker would open.
+  await page.getByLabel('New').click();
+  await page.getByRole('button', { name: /Add from Google Drive/ }).click();
+  const picker = page.getByRole('dialog', { name: 'Add from Google Drive' });
+  await picker.getByLabel('Fuel receipts.pdf').check();
+  await picker.getByRole('button', { name: 'Add 1 file' }).click();
+  await expect(picker).toBeHidden();
+  await expect(page.getByRole('link', { name: /Fuel receipts\.pdf/ })).toBeVisible();
+});
