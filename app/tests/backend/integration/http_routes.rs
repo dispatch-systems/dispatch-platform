@@ -246,6 +246,11 @@ const INVENTORY: &[Row] = &[
     ("POST", "/api/dsp/connections/{provider}/submit", Dsp("connections.manage"), Async, false),
     ("GET", "/api/dsp/daily-performance", Dsp("daily_performance.view"), Read, false),
     ("GET", "/api/v1/daily-performance", Agent("read"), Read, false),
+    ("GET", "/api/dsp/documents", Dsp("documents.use"), Read, false),
+    ("POST", "/api/dsp/documents/connect", Dsp("documents.manage"), Write, false),
+    ("POST", "/api/dsp/documents/connect/finish", Dsp("documents.manage"), Async, false),
+    ("POST", "/api/dsp/documents/disconnect", Dsp("documents.manage"), Async, false),
+    ("GET", "/api/documents/google/return", Public, Async, false),
 ];
 
 fn describe(rows: impl IntoIterator<Item = Row>) -> BTreeSet<String> {
