@@ -17,7 +17,7 @@ type Entry<Kind, Id> = {
   requires: readonly string[];
 };
 /** `mandatory`: every DSP has it, with no switch to turn it off. */
-export type PageEntry = Entry<'page', PageFeature> & { mandatory: boolean; provides?: undefined };
+export type PageEntry = Entry<'page', PageFeature> & { mandatory?: boolean; provides?: undefined };
 /**
  * A part of `page`, switched on its own: one of its tabs, or another part. It exists only
  * while its page is on too, with the permissions it owns.
@@ -25,7 +25,7 @@ export type PageEntry = Entry<'page', PageFeature> & { mandatory: boolean; provi
 export type SubEntry = Entry<'sub', SubFeature> & {
   page: PageFeature;
   tab: boolean;
-  mandatory: boolean;
+  mandatory?: boolean;
   provides?: undefined;
 };
 /** `provides` is what the connection supplies, one capability or several. */

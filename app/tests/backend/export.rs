@@ -282,20 +282,20 @@ fn access_catalog() -> String {
                 "requires": feature.requires,
             });
             match feature.kind {
-                catalog::Kind::Page => {
-                    entry["kind"] = json!("page");
-                    entry["mandatory"] = json!(feature.mandatory);
-                }
+                catalog::Kind::Page => entry["kind"] = json!("page"),
                 catalog::Kind::Sub(page) => {
                     entry["kind"] = json!("sub");
                     entry["page"] = json!(page);
                     entry["tab"] = json!(feature.tab);
-                    entry["mandatory"] = json!(feature.mandatory);
                 }
                 catalog::Kind::Connection => {
                     entry["kind"] = json!("connection");
                     entry["provides"] = json!(feature.provides);
                 }
+            }
+            // Only where it is: the dashboard's first load carries the catalog.
+            if feature.mandatory {
+                entry["mandatory"] = json!(true);
             }
             entry
         })

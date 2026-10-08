@@ -330,9 +330,10 @@ export function loadPlatformSlots() {
 /** How the mail log names an owner's kind of email, once the slots have loaded. */
 export const mailKindLabel = (kind: string) =>
   loadedSlots.find((slots) => slots.mailKinds?.[kind])?.mailKinds?.[kind];
-/** The icon of a page's switch. */
+/** The icon of a feature's switch: the one its platform slots name, else its page's. */
 export const switchIcon = (id: string) =>
-  loadedSlots.find((slots) => slots.switch?.id === id)?.switch?.icon;
+  loadedSlots.find((slots) => slots.switch?.id === id)?.switch?.icon ??
+  installed.find((feature) => feature.name === id)?.routes?.find((route) => route.icon)?.icon;
 
 /** Every owner's audit wording, in the order the owners are listed. */
 export const auditWording = () => loadedSlots.flatMap((slots) => slots.auditWording ?? []);

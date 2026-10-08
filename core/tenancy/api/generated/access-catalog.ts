@@ -64,8 +64,7 @@ export const featureCatalog = [
     "requires": [
       "timecards"
     ],
-    "kind": "page",
-    "mandatory": false
+    "kind": "page"
   },
   {
     "id": "uniforms",
@@ -76,8 +75,7 @@ export const featureCatalog = [
       "uniforms.manage"
     ],
     "requires": [],
-    "kind": "page",
-    "mandatory": false
+    "kind": "page"
   },
   {
     "id": "routes",
@@ -90,8 +88,7 @@ export const featureCatalog = [
     "requires": [
       "routes"
     ],
-    "kind": "page",
-    "mandatory": false
+    "kind": "page"
   },
   {
     "id": "dvic",
@@ -104,8 +101,7 @@ export const featureCatalog = [
     "requires": [
       "dvic"
     ],
-    "kind": "page",
-    "mandatory": false
+    "kind": "page"
   },
   {
     "id": "weekly_scorecard",
@@ -118,8 +114,7 @@ export const featureCatalog = [
     "requires": [
       "weekly_scorecard"
     ],
-    "kind": "page",
-    "mandatory": false
+    "kind": "page"
   },
   {
     "id": "driver_match",
@@ -131,8 +126,7 @@ export const featureCatalog = [
       "timecards",
       "routes"
     ],
-    "kind": "page",
-    "mandatory": false
+    "kind": "page"
   },
   {
     "id": "daily_performance",
@@ -145,8 +139,7 @@ export const featureCatalog = [
     "requires": [
       "daily_performance"
     ],
-    "kind": "page",
-    "mandatory": false
+    "kind": "page"
   },
   {
     "id": "documents",
@@ -156,8 +149,7 @@ export const featureCatalog = [
       "documents.manage"
     ],
     "requires": [],
-    "kind": "page",
-    "mandatory": false
+    "kind": "page"
   },
   {
     "id": "team",
@@ -182,8 +174,7 @@ export const featureCatalog = [
     "requires": [],
     "kind": "sub",
     "page": "timecard",
-    "tab": true,
-    "mandatory": false
+    "tab": true
   },
   {
     "id": "timecard.meal_breaks",
@@ -194,8 +185,7 @@ export const featureCatalog = [
     ],
     "kind": "sub",
     "page": "timecard",
-    "tab": true,
-    "mandatory": false
+    "tab": true
   },
   {
     "id": "timecard.employees",
@@ -204,8 +194,7 @@ export const featureCatalog = [
     "requires": [],
     "kind": "sub",
     "page": "timecard",
-    "tab": true,
-    "mandatory": false
+    "tab": true
   },
   {
     "id": "dvic.day",
@@ -214,8 +203,7 @@ export const featureCatalog = [
     "requires": [],
     "kind": "sub",
     "page": "dvic",
-    "tab": true,
-    "mandatory": false
+    "tab": true
   },
   {
     "id": "dvic.week",
@@ -224,8 +212,7 @@ export const featureCatalog = [
     "requires": [],
     "kind": "sub",
     "page": "dvic",
-    "tab": true,
-    "mandatory": false
+    "tab": true
   },
   {
     "id": "paycom",
