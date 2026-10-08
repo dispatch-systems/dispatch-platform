@@ -143,7 +143,7 @@ fn new(args: &[String]) -> Result<()> {
         }
     }
     let root = checkout(root)?;
-    match scaffold::run(&Workspace::find(&root, &Native)?, &root, kind, &passed)? {
+    match scaffold::run(&root, kind, &passed)? {
         true => Ok(()),
         false => Err("It wasn't made, or a step after it failed.".into()),
     }
