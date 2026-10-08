@@ -2256,14 +2256,12 @@ async fn every_tool_says_when_its_feature_is_switched_off() {
     .await;
     assert_eq!(status, 200, "{visible}");
     // Every page an agent reads; their tabs and Driver Match go with them.
-    for feature in [
-        "timecard",
-        "routes",
-        "dvic",
-        "weekly_scorecard",
-        #[cfg(feature = "daily_performance")]
-        "daily_performance",
-    ] {
+    let read = dispatch_core::manifest::registry()
+        .features
+        .iter()
+        .filter(|feature| !feature.mcp.reads.is_empty())
+        .filter_map(|feature| feature.switch);
+    for feature in read.map(|switch| switch.id) {
         db.set_feature(&dsp, feature, false, &actor).unwrap();
     }
     drop(db);

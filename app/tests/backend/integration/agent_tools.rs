@@ -6,7 +6,7 @@ use dispatch_core::testing as common;
 use dispatch_core::{
     db::{self, Store, s},
     foundation::crypto,
-    mcp::api::types::{AgentAccess, AgentArea, AgentKeyRequest, AgentReads},
+    mcp::api::types::{AgentAccess, AgentArea, AgentKeyRequest, AgentReads, AgentSource},
 };
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -19,28 +19,18 @@ fn request(value: Value) -> AgentKeyRequest {
 fn kind(id: &str) -> AgentArea {
     AgentArea::parse(id).unwrap()
 }
-/// Every kind of data but delivery addresses, as a new key starts.
-const READS: &[&str] = &[
-    "routes",
-    "timecards",
-    "meal_breaks",
-    "dvic",
-    "feedback",
-    "safety",
-    "returns",
-    "weekly_scorecard",
-    #[cfg(feature = "daily_performance")]
-    "daily_performance",
-    #[cfg(feature = "daily_performance")]
-    "daily_feedback",
-    #[cfg(feature = "daily_performance")]
-    "daily_returns",
-    #[cfg(feature = "daily_performance")]
-    "daily_safety",
-];
+/// Every kind of data but delivery addresses, as a new key starts: every kind the features
+/// declare, in their order.
+fn key_reads() -> Vec<&'static str> {
+    dispatch_backend::install();
+    AgentArea::all()
+        .map(AgentArea::as_str)
+        .filter(|area| *area != "locations")
+        .collect()
+}
 fn reach(dsps: &[&str]) -> Value {
     json!({"name":"Laptop – Claude Code","allDsps":dsps.is_empty(),"dsps":dsps,
-        "access":"read","reads":{"areas":READS,"bypass":false},"dspReads":[],"expiresAt":null})
+        "access":"read","reads":{"areas":key_reads(),"bypass":false},"dspReads":[],"expiresAt":null})
 }
 /// The kinds of data a request reads, without one.
 fn without(areas: &[&'static str], left_out: &str) -> Vec<&'static str> {
@@ -304,7 +294,7 @@ async fn mcp_uses_current_reads_and_dsp_reach_for_an_admitted_caller() {
     state
         .run(move |db| {
             let mut body = reach(&[&reached]);
-            body["reads"]["areas"] = json!(without(READS, "timecards"));
+            body["reads"]["areas"] = json!(without(&key_reads(), "timecards"));
             db.update_agent_key(&actor, &key, &request(body))?;
             Ok(())
         })
@@ -901,15 +891,8 @@ fn reads_are_kept_in_order_and_dsps_own_settings_only_where_the_key_reaches() {
             )
         })
         .collect();
-    let switched_off: &[&str] = &[
-        "routes",
-        "timecards",
-        "meal_breaks",
-        "dvic",
-        "weekly_scorecard",
-        #[cfg(feature = "daily_performance")]
-        "daily_performance",
-    ];
+    // Harbor Route Co has none: every source the features declare, in their order.
+    let switched_off: Vec<&str> = AgentSource::all().map(AgentSource::as_str).collect();
     assert_eq!(
         dsps,
         [
@@ -934,7 +917,7 @@ async fn a_dsps_own_settings_are_read_there_in_place_of_the_keys_own() {
     }
     // Timecards for every DSP but the second, whose own settings read them alone.
     let mut body = reach(&[]);
-    body["reads"]["areas"] = json!(without(READS, "timecards"));
+    body["reads"]["areas"] = json!(without(&key_reads(), "timecards"));
     body["dspReads"] = json!([{"dsp":second,"areas":["timecards"],"bypass":false}]);
     let made = db.create_agent_key(&user, &request(body)).unwrap();
     let caller = db.authenticate_agent(&made.token, "test").unwrap();
@@ -954,7 +937,10 @@ async fn a_dsps_own_settings_are_read_there_in_place_of_the_keys_own() {
         .collect();
     assert_eq!(
         reads,
-        [(first.as_str(), READS.len() - 1), (second.as_str(), 1)]
+        [
+            (first.as_str(), key_reads().len() - 1),
+            (second.as_str(), 1)
+        ]
     );
     let config = db.config.clone();
     drop(db);
@@ -1056,19 +1042,19 @@ fn edits_are_audited_kind_by_kind_with_each_dsps_own_settings_in_a_line() {
         .id;
     let made = db.create_agent_key(&user, &request(reach(&[]))).unwrap();
     let mut body = reach(&[]);
-    body["reads"] = json!({"areas":without(READS, "safety"),"bypass":true});
+    body["reads"] = json!({"areas":without(&key_reads(), "safety"),"bypass":true});
     body["reads"]["areas"]
         .as_array_mut()
         .unwrap()
         .push(json!("locations"));
     body["dspReads"] = json!([
         {"dsp":first,"areas":["routes","timecards","meal_breaks","dvic","feedback","returns","weekly_scorecard"],"bypass":true},
-        {"dsp":second,"areas":READS.iter().chain(&["locations"]).collect::<Vec<_>>(),"bypass":false},
+        {"dsp":second,"areas":key_reads().iter().chain(&["locations"]).collect::<Vec<_>>(),"bypass":false},
     ]);
     db.update_agent_key(&user, &made.key.id, &request(body.clone()))
         .unwrap();
     let changes = |db: &Store| audits(db, None).unwrap().as_array().unwrap()[0]["changes"].clone();
-    let count = READS.len() + 1;
+    let count = key_reads().len() + 1;
     let line = format!("Dev DSP: 7 of {count}, bypass on; Harbor Route Co: {count} of {count}");
     assert_eq!(
         changes(&db),
