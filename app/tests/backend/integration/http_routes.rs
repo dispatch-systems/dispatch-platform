@@ -51,6 +51,8 @@ const INVENTORY: &[Row] = &[
     ("POST", "/api/auth/password", Session, Async, false),
     ("POST", "/api/auth/forgot-password", Public, Async, false),
     ("POST", "/api/auth/reset-password", Public, Async, false),
+    ("GET", "/api/invitations/{token}", Public, Write, false),
+    ("POST", "/api/invitations/{token}/accept", Public, Async, false),
     ("GET", "/api/auth/security/status", Session, Read, false),
     ("GET", "/api/auth/security/passkeys", Session, Read, false),
     ("POST", "/api/auth/security/passkeys/register/start", Session, Write, false),

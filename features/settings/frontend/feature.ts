@@ -17,7 +17,7 @@ const SettingsPage = lazy(() => load().then((module) => ({ default: module.Setti
 export const feature: FrontendFeature = {
   name: 'settings',
   // Its route saves the profile a DSP's onboarding asks for.
-  dspSetup: { permission: 'settings.manage' },
+  dspSetup: { permission: 'settings.manage', save: '/api/dsp/profile' },
   routes: [
     {
       id: 'settings',

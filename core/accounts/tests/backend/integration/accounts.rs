@@ -199,3 +199,49 @@ fn a_feature_emails_an_active_member_under_a_kind_of_its_own() {
         .unwrap_err();
     assert_eq!(refused.code, "user_not_found");
 }
+
+#[test]
+fn without_a_feature_to_invite_through_only_the_platform_owner_invites() {
+    common::install(&[], &[]);
+    use dispatch_core::{accounts::Auth, manifest::registry};
+    assert_eq!(registry().inviting(), None);
+    let (_root, mut db) = seeded();
+    db.config.mail_mode = "capture".into();
+    let one = |db: &db::Store, sql: &str| db.platform.one(sql, []).unwrap().unwrap();
+    let dsp = s(
+        &one(&db, "SELECT id FROM dsps WHERE name='Northline Logistics'"),
+        "id",
+    )
+    .to_owned();
+    let role = s(
+        &one(&db, "SELECT role_id FROM memberships LIMIT 1"),
+        "role_id",
+    )
+    .to_owned();
+    let owner = one(&db, "SELECT id FROM users WHERE platform_owner=1");
+    let member = one(
+        &db,
+        "SELECT id FROM users WHERE email='member@dispatch.test'",
+    );
+    let auth = |user: &serde_json::Value, platform_owner: bool, preview: Option<&str>| Auth {
+        user: serde_json::from_value(json!({"id":user["id"],"email":"","firstName":"",
+            "lastName":"","platformOwner":platform_owner}))
+        .unwrap(),
+        hash: String::new(),
+        csrf: String::new(),
+        raw: String::new(),
+        preview: preview.map(str::to_owned),
+    };
+    let invite = |a: &Auth| db.invite(a, &dsp, "new@dispatch.test", &role);
+    // No member may, whatever their role, nor a platform owner looking through one.
+    assert_eq!(
+        invite(&auth(&member, false, None)).unwrap_err().code,
+        "permission_denied"
+    );
+    assert_eq!(
+        invite(&auth(&owner, true, Some(&role))).unwrap_err().code,
+        "permission_denied"
+    );
+    // The platform owner, as themselves, still invites a DSP's people.
+    assert!(invite(&auth(&owner, true, None)).is_ok());
+}
