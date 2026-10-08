@@ -31,11 +31,12 @@ const ownerName = (file: string) => ownerOf(file)?.dir ?? file;
 const place = (span: Span | { file: string; offset: number }) =>
   `${span.file}:${'offset' in span ? span.offset : span.start}`;
 
-test('every switch, tab and connection on the DSPs page has an id of its own', () => {
+test('every switch, sub-feature and connection on the DSPs page has an id of its own', () => {
   const ids: Contribution[] = [
     ...featureManifests().flatMap((manifest) => [
       ...(manifest.switch ? [{ id: manifest.switch, at: `${manifest.owner.dir} switch` }] : []),
       ...manifest.tabs.map((id) => ({ id, at: `${manifest.owner.dir} tab` })),
+      ...manifest.subs.map((id) => ({ id, at: `${manifest.owner.dir} sub-feature` })),
     ]),
     ...collectorManifests().flatMap((manifest) =>
       manifest.id ? [{ id: manifest.id, at: `${manifest.owner.dir} connection` }] : [],

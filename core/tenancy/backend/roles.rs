@@ -36,7 +36,8 @@ pub static LABELS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|
 });
 // Any membership satisfies this; it guards pages every member may open.
 pub const ACCESS: &str = "access";
-// What each permission grants as well, in the order the registry declares them.
+// What each permission grants as well, directly: what it implies and what it sits under, in
+// the order the registry declares them.
 pub static IMPLIED: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
     registry()
         .permissions()
@@ -44,10 +45,30 @@ pub static IMPLIED: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(
             permission
                 .implies
                 .iter()
+                .chain(&permission.under)
                 .map(|implied| (permission.id, *implied))
         })
         .collect()
 });
+/// `permissions` with everything they grant as well, however many steps away.
+pub fn granting(permissions: &[String]) -> Vec<String> {
+    granting_by(&IMPLIED, permissions)
+}
+/// `granting`, by the pairs of `implied`: what each grants directly.
+fn granting_by(implied: &[(&str, &str)], permissions: &[String]) -> Vec<String> {
+    let mut all = permissions.to_vec();
+    let mut grew = true;
+    while grew {
+        grew = false;
+        for (permission, implied) in implied {
+            if all.iter().any(|p| p == permission) && !all.iter().any(|p| p == implied) {
+                all.push((*implied).to_owned());
+                grew = true;
+            }
+        }
+    }
+    all
+}
 // Permissions outside a feature-owned page have these role-sheet sections, each where its
 // first permission falls in the order. Build-time metadata, as `LABELS` is.
 #[cfg(feature = "ts")]
@@ -324,12 +345,7 @@ impl Store {
             "invalid_input",
             400,
         )?;
-        let mut wanted = requested.to_vec();
-        for (permission, implied) in IMPLIED.iter() {
-            if wanted.iter().any(|p| p == permission) && !wanted.iter().any(|p| p == implied) {
-                wanted.push((*implied).to_owned());
-            }
-        }
+        let wanted = granting(requested);
         ensure(
             wanted.iter().all(|p| c.can(p)),
             "role_exceeds_permissions",
@@ -466,3 +482,7 @@ impl Store {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/roles.rs"]
+mod tests;

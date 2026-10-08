@@ -5,7 +5,7 @@ import type { PageFeature } from '../../../tenancy/api/index.js';
 import { setDspFeature, useDspFeatures } from '../../api/client.js';
 import {
   featureCatalog,
-  tabsOf,
+  subsOf,
   type ConnectionEntry,
   type FeatureEntry,
   type PageEntry,
@@ -20,7 +20,7 @@ const pages = featureCatalog.filter((f): f is PageEntry => f.kind === 'page');
 const connections = featureCatalog.filter((f): f is ConnectionEntry => f.kind === 'connection');
 
 // Every page on the left, then the connections; the chosen one's switches on the right.
-// A page shows its own switch and its tabs'. A switch acts at once; one that takes other
+// A page shows its own switch, its tabs' and its other parts'. A switch acts at once; one that takes other
 // features with it asks first.
 export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () => void }) {
   const { data, error, refresh } = useDspFeatures(dsp.id);
@@ -56,7 +56,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
       <input
         type="checkbox"
         role="switch"
-        aria-label={feature.kind === 'tab' ? switchLabel(feature) : label}
+        aria-label={feature.kind === 'sub' ? switchLabel(feature) : label}
         checked={has(feature)}
         disabled={!data || direct.busy || locked}
         onChange={(event) => toggle(feature, event.target.checked)}
@@ -69,7 +69,9 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
   );
   const count = (features: FeatureEntry[]) => features.filter(has).length;
   const page = pages.find((candidate) => candidate.id === area);
-  const tabs = page ? tabsOf(page.id) : [];
+  const subs = page ? subsOf(page.id) : [];
+  const tabs = subs.filter((sub) => sub.tab);
+  const parts = subs.filter((sub) => !sub.tab);
   const title = page?.label ?? 'Connections';
   return (
     <div className="dsp-features">
@@ -78,7 +80,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
         <h3 className="dsp-group">Pages</h3>
         {pages.map((candidate) => {
           const Icon = switchIcon(candidate.id);
-          const own = tabsOf(candidate.id);
+          const own = subsOf(candidate.id);
           return (
             <button
               key={candidate.id}
@@ -126,6 +128,8 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
             {row(page, `${page.label} page`)}
             {tabs.length > 0 && <h4 className="dsp-tabs-label">Tabs</h4>}
             {tabs.map((tab) => row(tab, tab.label, !has(page)))}
+            {parts.length > 0 && <h4 className="dsp-tabs-label">Sub-features</h4>}
+            {parts.map((part) => row(part, part.label, !has(page)))}
           </>
         ) : (
           connections.map((connection) => row(connection))

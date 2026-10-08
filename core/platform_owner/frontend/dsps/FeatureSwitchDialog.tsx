@@ -43,7 +43,7 @@ export function FeatureSwitchDialog({
     '';
   const why = (change: { feature: string; enabled: boolean }) => {
     // A tab takes only its page along, when it was the page's last one on.
-    if (feature.kind === 'tab') return 'has no other tab on';
+    if (feature.kind === 'sub' && feature.tab) return 'has no other tab on';
     const other = entry(change.feature);
     if (on && change.enabled)
       return `${feature.label} needs ${capabilityLabel(shared(feature, other))}`;

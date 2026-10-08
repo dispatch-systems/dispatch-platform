@@ -150,3 +150,7 @@
 .permission-row input[role='switch']:disabled {
   opacity: 0.5;
 }
+/* A finer permission sits under the one it is a part of. */
+.permission-row.nested {
+  padding-left: 22px;
+}

@@ -10,6 +10,7 @@ import {
   can,
   impliedPermissions as implied,
   permissionLabels,
+  permissionParents,
   visiblePermissionGroups,
   visiblePermissions,
 } from '../../../core/shell/frontend/runtime/permissions.js';
@@ -38,8 +39,10 @@ export function RoleSheet({
   const dirty = name !== (role?.name ?? '') || ordered(chosen).join() !== ordered(shown).join();
   // Edits leave only through Save or Discard; closing the tab drops them silently.
   const leave = () => (dirty ? setConfirming(true) : close());
-  const locked = (permission: Permission) =>
-    allPermissions.some((p) => implied[p] === permission && chosen.includes(p));
+  // What a chosen permission includes can't be taken away on its own.
+  const includer = (permission: Permission) =>
+    allPermissions.find((p) => chosen.includes(p) && implied[p]?.includes(permission));
+  const locked = (permission: Permission) => includer(permission) !== undefined;
   const save = useAction(
     async () => {
       await saveTeamRole(role?.id, {
@@ -55,8 +58,8 @@ export function RoleSheet({
     setChosen((current) => {
       const next = current.filter((p) => p !== permission);
       if (!on) return next;
-      const needs = implied[permission];
-      return [...next, permission, ...(needs && !next.includes(needs) ? [needs] : [])];
+      const needs = (implied[permission] ?? []).filter((p) => !next.includes(p));
+      return [...next, permission, ...needs];
     });
   }
   return (
@@ -83,20 +86,14 @@ export function RoleSheet({
             <legend>{group}</legend>
             <div className="permission-rows">
               {items.map((permission) => (
-                <label className="permission-row" key={permission}>
+                <label
+                  className={`permission-row${permissionParents[permission] ? ' nested' : ''}`}
+                  key={permission}
+                >
                   <span>
                     {permissionLabels[permission]}
                     {locked(permission) && (
-                      <small>
-                        Included with{' '}
-                        {
-                          permissionLabels[
-                            allPermissions.find(
-                              (p) => implied[p] === permission && chosen.includes(p),
-                            )!
-                          ]
-                        }
-                      </small>
+                      <small>Included with {permissionLabels[includer(permission)!]}</small>
                     )}
                   </span>
                   <input

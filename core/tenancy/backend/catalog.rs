@@ -1,5 +1,5 @@
-//! What a DSP may use. A feature is a page with the permissions it owns, a tab
-//! inside a page, or a connection to a provider. The platform owner switches
+//! What a DSP may use. A feature is a page with the permissions it owns, a part of
+//! a page with the permissions it owns, such as one of its tabs, or a connection to a provider. The platform owner switches
 //! features per DSP: a switched-off feature's pages, permissions and automation
 //! do not exist for that DSP, and nothing it stored is touched, so switching it
 //! back on restores everything. Pages and their tabs come from the features'
@@ -21,8 +21,8 @@ use std::{collections::BTreeMap, sync::LazyLock};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Kind {
     Page,
-    /// A tab of the page with this id.
-    Tab(&'static str),
+    /// A part of the page with this id, switched on its own: one of its tabs, or another.
+    Sub(&'static str),
     Connection,
 }
 #[derive(Clone, Copy, Debug)]
@@ -38,12 +38,14 @@ pub struct Feature {
     pub requires: &'static [&'static str],
     /// Whether a DSP gets it when created, or while it has no row of its own.
     pub default: bool,
+    /// For a part of a page, whether it is one of the page's tabs.
+    pub tab: bool,
 }
 impl Feature {
-    /// How the audit log names it: a tab with its page, as "Timecard · Meal Breaks".
+    /// How the audit log names it: a part with its page, as "Timecard · Meal Breaks".
     fn name(&self) -> String {
         match self.kind {
-            Kind::Tab(page) => format!("{} · {}", find(page).map_or(page, |p| p.label), self.label),
+            Kind::Sub(page) => format!("{} · {}", find(page).map_or(page, |p| p.label), self.label),
             _ => self.label.to_owned(),
         }
     }
@@ -67,23 +69,30 @@ fn page(feature: &manifest::Feature) -> Option<Feature> {
         provides: &[],
         requires: switch.requires,
         default: false,
+        tab: false,
     })
 }
-/// Tabs switched on their own, each inside its page. A tab owns no permissions and
-/// requires nothing: it exists while its page and its own switch are on, so the page's
-/// permissions gate it and its routes ask `Context::has`. Switching one never touches
-/// automation, which follows the page. It defaults on, so a page switched on shows every
-/// tab until one is switched off; a DSP still starts with none, as its pages are off.
-fn page_tabs(feature: &manifest::Feature) -> impl Iterator<Item = Feature> {
+/// The parts of each page switched on their own: its tabs, and any other part. A part
+/// requires nothing: it exists while its page and its own switch are on, with the
+/// permissions it owns, and its routes ask `Context::has` or one of its permissions.
+/// Switching one never touches automation, which follows the page. It defaults on, so a page
+/// switched on shows every part until one is switched off; a DSP still starts with none, as
+/// its pages are off.
+fn page_subs(feature: &manifest::Feature) -> impl Iterator<Item = Feature> {
     feature.switch.into_iter().flat_map(|switch| {
-        feature.tabs.iter().map(move |tab| Feature {
-            id: tab.id,
-            label: tab.label,
-            kind: Kind::Tab(switch.id),
-            permissions: &[],
-            provides: &[],
-            requires: &[],
-            default: true,
+        feature.subfeatures.iter().map(move |sub| {
+            let permissions: Vec<_> = sub.permissions.iter().map(|p| p.id).collect();
+            Feature {
+                id: sub.id,
+                label: sub.label,
+                kind: Kind::Sub(switch.id),
+                // Made once, with the catalog, which lasts as long as the process.
+                permissions: Box::leak(permissions.into_boxed_slice()),
+                provides: &[],
+                requires: &[],
+                default: true,
+                tab: sub.tab,
+            }
         })
     })
 }
@@ -95,7 +104,7 @@ pub fn pages() -> impl Iterator<Item = &'static Feature> {
 fn tabs(page: &str) -> impl Iterator<Item = &'static Feature> {
     catalog()
         .iter()
-        .filter(move |t| matches!(t.kind, Kind::Tab(p) if p == page))
+        .filter(move |t| t.tab && matches!(t.kind, Kind::Sub(p) if p == page))
 }
 /// The page whose schedules, collections and jobs run, as its feature's manifest says.
 /// Nothing collects without it, except the collections another feature keeps
@@ -162,15 +171,16 @@ fn connection(provider: Provider) -> Feature {
         provides: Box::leak(provides.into_boxed_slice()),
         requires: &[],
         default: false,
+        tab: false,
     }
 }
-/// The catalog: every feature's page, their tabs, then every registered connection.
+/// The catalog: every feature's page, their parts, then every registered connection.
 static CATALOG: LazyLock<Vec<Feature>> = LazyLock::new(|| {
     let features = registry().features;
     let pages = features.iter().filter_map(|feature| page(feature));
-    let tabs = features.iter().flat_map(|feature| page_tabs(feature));
+    let subs = features.iter().flat_map(|feature| page_subs(feature));
     pages
-        .chain(tabs)
+        .chain(subs)
         .chain(Provider::all().map(connection))
         .collect()
 });
@@ -180,17 +190,20 @@ pub fn catalog() -> &'static [Feature] {
 pub fn find(id: &str) -> Option<&'static Feature> {
     catalog().iter().find(|f| f.id == id)
 }
-/// Whether `permission` exists in a DSP with `enabled` features: its owning page
-/// is on, or for the connections permission any connection is on. A permission
+/// Whether `permission` exists in a DSP with `enabled` features: the page or part that
+/// owns it is on, or for the connections permission any connection is on. A permission
 /// no feature owns always exists.
 pub fn grants(enabled: &[String], permission: &str) -> bool {
+    grants_in(catalog(), enabled, permission)
+}
+/// `grants`, in `catalog`.
+fn grants_in(catalog: &[Feature], enabled: &[String], permission: &str) -> bool {
     let on = |f: &Feature| enabled.iter().any(|e| e == f.id);
     if permission == CONNECTIONS {
-        return catalog()
-            .iter()
-            .any(|f| f.kind == Kind::Connection && on(f));
+        return catalog.iter().any(|f| f.kind == Kind::Connection && on(f));
     }
-    pages()
+    catalog
+        .iter()
         .find(|f| f.permissions.contains(&permission))
         .is_none_or(on)
 }
@@ -201,12 +214,12 @@ pub fn visible<'a>(
 ) -> impl Iterator<Item = &'a String> {
     stored.iter().filter(move |p| grants(enabled, p))
 }
-/// The features of `switches` that exist: a tab only while its page is on too.
+/// The features of `switches` that exist: a part of a page only while its page is on too.
 pub fn effective(switches: &[String]) -> Vec<String> {
     switches
         .iter()
         .filter(|id| match find(id).map(|f| f.kind) {
-            Some(Kind::Tab(page)) => switches.iter().any(|s| s == page),
+            Some(Kind::Sub(page)) => switches.iter().any(|s| s == page),
             _ => true,
         })
         .cloned()
@@ -386,7 +399,8 @@ impl Store {
                 }
             } else {
                 flip(&mut current, feature, false);
-                if let Kind::Tab(page) = feature.kind
+                if let Kind::Sub(page) = feature.kind
+                    && feature.tab
                     && current.iter().any(|e| e == page)
                     && !tabs(page).any(|t| current.iter().any(|e| e == t.id))
                 {
@@ -441,3 +455,7 @@ impl Store {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/catalog.rs"]
+mod tests;

@@ -57,7 +57,8 @@ export function previewSwitch(enabled: readonly string[], id: Feature, on: boole
   } else {
     flip(feature, false);
     if (
-      feature.kind === 'tab' &&
+      feature.kind === 'sub' &&
+      feature.tab &&
       current.has(feature.page) &&
       !tabsOf(feature.page).some((t) => current.has(t.id))
     )
@@ -85,4 +86,4 @@ export const sideEffects = (
   );
 /** A switch's name in a question or a notice: a tab says it is one. */
 export const switchLabel = (feature: FeatureEntry) =>
-  feature.kind === 'tab' ? `${feature.label} tab` : feature.label;
+  feature.kind === 'sub' && feature.tab ? `${feature.label} tab` : feature.label;

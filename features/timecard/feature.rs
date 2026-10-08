@@ -61,7 +61,7 @@ pub const FEATURE: Feature = Feature {
         label: "Timecard",
         requires: &["timecards", "meal_breaks"],
     }),
-    tabs: &[
+    subfeatures: &[
         tab("timecard.daily", "Timecard"),
         tab("timecard.meal_breaks", "Meal Breaks"),
         tab("timecard.employees", "Employee Search"),

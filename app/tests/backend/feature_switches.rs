@@ -114,9 +114,9 @@ fn the_catalog_is_consistent() {
         }
         match feature.kind {
             Kind::Page => assert!(feature.provides.is_empty()),
-            Kind::Tab(page) => {
+            Kind::Sub(page) => {
                 assert!(find(page).is_some_and(|p| p.kind == Kind::Page));
-                assert!(feature.permissions.is_empty() && feature.provides.is_empty());
+                assert!(feature.provides.is_empty());
                 assert!(feature.requires.is_empty() && feature.default);
             }
             Kind::Connection => {

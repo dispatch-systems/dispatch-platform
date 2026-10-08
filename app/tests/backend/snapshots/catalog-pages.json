@@ -65,12 +65,30 @@
       "default": false
     }
   ],
-  "tabs": [
-    {"id": "timecard.daily", "label": "Timecard", "page": "timecard"},
-    {"id": "timecard.meal_breaks", "label": "Meal Breaks", "page": "timecard"},
-    {"id": "timecard.employees", "label": "Employee Search", "page": "timecard"},
-    {"id": "dvic.day", "label": "Day", "page": "dvic"},
-    {"id": "dvic.week", "label": "Week", "page": "dvic"}
+  "subfeatures": [
+    {
+      "id": "timecard.daily",
+      "label": "Timecard",
+      "page": "timecard",
+      "tab": true,
+      "permissions": []
+    },
+    {
+      "id": "timecard.meal_breaks",
+      "label": "Meal Breaks",
+      "page": "timecard",
+      "tab": true,
+      "permissions": []
+    },
+    {
+      "id": "timecard.employees",
+      "label": "Employee Search",
+      "page": "timecard",
+      "tab": true,
+      "permissions": []
+    },
+    {"id": "dvic.day", "label": "Day", "page": "dvic", "tab": true, "permissions": []},
+    {"id": "dvic.week", "label": "Week", "page": "dvic", "tab": true, "permissions": []}
   ],
   "catalog": [
     "timecard",

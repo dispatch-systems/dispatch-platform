@@ -3,8 +3,9 @@ use dispatch_core::{
     Result,
     db::Store,
     manifest::{
-        Feature, Registry, ScheduleAlias, feature,
+        Feature, Registry, ScheduleAlias, Switch, feature,
         people::{Appearances, Named, People},
+        perm, sub,
     },
     mcp::api::types::{DriverData, DriverSource},
 };
@@ -21,6 +22,32 @@ fn with(extra: &'static Feature) -> Registry {
         collectors: crate::REGISTRY.collectors,
         features: Box::leak(features.into_boxed_slice()),
     }
+}
+
+#[test]
+#[should_panic(expected = "loop.view grants itself through what it implies")]
+fn a_permission_that_grants_itself_however_far_away_is_refused() {
+    // Edit sits under view, a sub-feature's upload under edit, and view implies upload.
+    static LOOP: Feature = Feature {
+        switch: Some(Switch {
+            id: "loop",
+            label: "Loop",
+            requires: &[],
+        }),
+        permissions: &[
+            perm("loop.view", "View", 9000).implies(&["loop.upload"]),
+            perm("loop.edit", "Edit", 9001).under("loop.view"),
+        ],
+        subfeatures: &[sub("loop.uploads", "Uploads").permissions(&[perm(
+            "loop.upload",
+            "Upload",
+            9002,
+        )
+        .under("loop.edit")])],
+        ..feature("loop")
+    };
+    crate::install();
+    with(&LOOP).check();
 }
 
 #[test]

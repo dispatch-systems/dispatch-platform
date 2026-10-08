@@ -10,7 +10,7 @@ export const pages = [
   "daily_performance",
   "documents"
 ] as const;
-export const pageTabs = [
+export const subfeatures = [
   "timecard.daily",
   "timecard.meal_breaks",
   "timecard.employees",
@@ -143,40 +143,45 @@ export const featureCatalog = [
     "label": "Timecard",
     "permissions": [],
     "requires": [],
-    "kind": "tab",
-    "page": "timecard"
+    "kind": "sub",
+    "page": "timecard",
+    "tab": true
   },
   {
     "id": "timecard.meal_breaks",
     "label": "Meal Breaks",
     "permissions": [],
     "requires": [],
-    "kind": "tab",
-    "page": "timecard"
+    "kind": "sub",
+    "page": "timecard",
+    "tab": true
   },
   {
     "id": "timecard.employees",
     "label": "Employee Search",
     "permissions": [],
     "requires": [],
-    "kind": "tab",
-    "page": "timecard"
+    "kind": "sub",
+    "page": "timecard",
+    "tab": true
   },
   {
     "id": "dvic.day",
     "label": "Day",
     "permissions": [],
     "requires": [],
-    "kind": "tab",
-    "page": "dvic"
+    "kind": "sub",
+    "page": "dvic",
+    "tab": true
   },
   {
     "id": "dvic.week",
     "label": "Week",
     "permissions": [],
     "requires": [],
-    "kind": "tab",
-    "page": "dvic"
+    "kind": "sub",
+    "page": "dvic",
+    "tab": true
   },
   {
     "id": "paycom",
@@ -343,16 +348,41 @@ export const permissionGroups = [
   ]
 ] as const;
 export const impliedPermissions = {
-  "daily_performance.collect": "daily_performance.view",
-  "daily_performance.manage": "daily_performance.view",
-  "documents.manage": "documents.use",
-  "dvic.collect": "dvic.view",
-  "dvic.manage": "dvic.view",
-  "routes.collect": "routes.view",
-  "routes.manage": "routes.view",
-  "timecard.manage": "timecard.view",
-  "uniforms.adjust": "uniforms.view",
-  "uniforms.manage": "uniforms.view",
-  "weekly_scorecard.collect": "weekly_scorecard.view",
-  "weekly_scorecard.manage": "weekly_scorecard.view"
+  "daily_performance.collect": [
+    "daily_performance.view"
+  ],
+  "daily_performance.manage": [
+    "daily_performance.view"
+  ],
+  "documents.manage": [
+    "documents.use"
+  ],
+  "dvic.collect": [
+    "dvic.view"
+  ],
+  "dvic.manage": [
+    "dvic.view"
+  ],
+  "routes.collect": [
+    "routes.view"
+  ],
+  "routes.manage": [
+    "routes.view"
+  ],
+  "timecard.manage": [
+    "timecard.view"
+  ],
+  "uniforms.adjust": [
+    "uniforms.view"
+  ],
+  "uniforms.manage": [
+    "uniforms.view"
+  ],
+  "weekly_scorecard.collect": [
+    "weekly_scorecard.view"
+  ],
+  "weekly_scorecard.manage": [
+    "weekly_scorecard.view"
+  ]
 } as const;
+export const permissionParents = {} as const;

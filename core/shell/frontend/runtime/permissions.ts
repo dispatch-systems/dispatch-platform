@@ -2,6 +2,7 @@ import {
   permissionLabels as generatedPermissionLabels,
   permissionGroups as generatedPermissionGroups,
   impliedPermissions as generatedImpliedPermissions,
+  permissionParents as generatedPermissionParents,
 } from '../../../tenancy/api/generated/access-catalog.js';
 import type { DspView, Permission } from '../../../accounts/api/index.js';
 import { grants } from './features.js';
@@ -24,6 +25,9 @@ const permissionGroups: readonly (readonly [string, readonly Permission[]])[] =
 /** The sections the role sheet shows a DSP: those whose permissions exist in it. */
 export const visiblePermissionGroups = (view: DspView) =>
   permissionGroups.filter(([, items]) => items.some((p) => grants(view.features, p)));
-/** Granting the key includes its value, from the backend's implication rules. */
-export const impliedPermissions: Partial<Record<Permission, Permission>> =
+/** Granting the key includes each of its values, however many steps away, from the backend's rules. */
+export const impliedPermissions: Partial<Record<Permission, readonly Permission[]>> =
   generatedImpliedPermissions;
+/** The permission each finer one sits under on the role sheet, which it includes too. */
+export const permissionParents: Partial<Record<Permission, Permission>> =
+  generatedPermissionParents;
