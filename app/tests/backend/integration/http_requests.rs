@@ -7,7 +7,7 @@ use dispatch_core::{
     State,
     db::{self, Store, s},
     foundation::{config::Config, crypto},
-    server::operations,
+    server::{live::Topic, operations},
 };
 use dispatch_paycom as paycom;
 use serde_json::{Value, json};
@@ -795,12 +795,13 @@ async fn open_update_waits_reauthorize_after_the_session_expires() {
         let path = format!("{endpoint}?after={after}");
         let request = server.send(Call::get(&path).who(&who));
         tokio::pin!(request);
-        let updates = if uniforms {
-            &server.state.uniform_updates
+        // Uniforms waits on its own topic; collection progress on core's hub.
+        let slots = if uniforms {
+            &server.state.topics.slots
         } else {
-            &server.state.updates
+            &server.state.updates.slots
         };
-        let waiter_capacity = updates.slots.available_permits();
+        let waiter_capacity = slots.available_permits();
         let database_capacity = server.state.db_queue.available_permits();
         // The waiter permit is acquired only after successful authorization. On this
         // current-thread runtime, yielding with an empty DB queue lets the handler
@@ -812,7 +813,7 @@ async fn open_update_waits_reauthorize_after_the_session_expires() {
                     answer = &mut request => panic!("wait returned before revocation: {}", answer.body),
                     _ = tokio::task::yield_now() => {}
                 }
-                if updates.slots.available_permits() + 1 == waiter_capacity
+                if slots.available_permits() + 1 == waiter_capacity
                     && server.state.db_queue.available_permits() == database_capacity
                 {
                     tokio::select! {
@@ -836,12 +837,16 @@ async fn open_update_waits_reauthorize_after_the_session_expires() {
             })
             .await
             .unwrap();
-        updates.notify(&dsp);
+        if uniforms {
+            server.state.topics.notify(Topic("uniforms"), &dsp);
+        } else {
+            server.state.updates.notify(&dsp);
+        }
         let answer = tokio::time::timeout(std::time::Duration::from_secs(5), request)
             .await
             .expect("revoking the session and notifying updates must release the waiting request");
         assert_eq!((answer.status, answer.error()), (401, "sign_in_required"));
-        assert_eq!(updates.slots.available_permits(), waiter_capacity);
+        assert_eq!(slots.available_permits(), waiter_capacity);
     }
 }
 

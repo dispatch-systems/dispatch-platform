@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { demo, fixture, until } from '../../../../core/shell/tests/support/support.js';
+import { spawnSync } from 'node:child_process';
+import { demo, fixture, prepare, until } from '../../../../core/shell/tests/support/support.js';
 import { capturedMail } from '../../../../core/shell/tests/support/mail-support.js';
 
 type Client = Awaited<ReturnType<Awaited<ReturnType<typeof fixture>>['client']>>;
@@ -570,4 +571,20 @@ test("Google's picker runs in a window of its own, and the dashboard loads none 
   const dashboard = await f.raw('/');
   assert.doesNotMatch(dashboard.headers.get('content-security-policy')!, /google/);
   assert.equal(dashboard.headers.get('cross-origin-opener-policy'), 'same-origin');
+});
+
+test("a server with half of Google's settings refuses to start, naming what's missing", async (t) => {
+  const f = await prepare();
+  t.after(f.cleanup);
+  const secret = 'private-client-secret-value';
+  const result = spawnSync(f.binary, ['serve'], {
+    env: { ...f.env, DISPATCH_DEV_GOOGLE_CLIENT_SECRET: secret },
+    encoding: 'utf8',
+    timeout: 30000,
+  });
+  const output = `${result.stdout}${result.stderr}`;
+  assert.notEqual(result.status, 0, output);
+  assert.match(output, /feature_settings_incomplete/);
+  assert.match(output, /DISPATCH_DEV_GOOGLE_CLIENT_ID/);
+  assert.ok(!output.includes(secret));
 });

@@ -34,7 +34,8 @@ pub struct State {
     pub mail_wake: tokio::sync::Notify,
     pub browsers: browser::Manager,
     pub updates: live::Updates,
-    pub uniform_updates: live::Updates,
+    /// Every feature's own live channels.
+    pub topics: live::Topics,
     pub presence: presence::Presence,
     // How much each agent key is used, until the scheduler writes it down.
     pub agents: mcp::Usage,
@@ -48,6 +49,7 @@ pub struct State {
 impl State {
     /// Reads the registry, which the app installs before it builds one.
     pub fn new(config: config::Config) -> Result<Arc<Self>> {
+        crate::manifest::registry().check_settings(&config)?;
         let store = db::Store::initialize(config.clone())?;
         for dsp in store.platform.all(
             "SELECT id FROM dsps WHERE status IN ('active','suspended')",
@@ -76,7 +78,7 @@ impl State {
             mail_wake: tokio::sync::Notify::new(),
             browsers: browser::Manager::default(),
             updates: live::Updates::new()?,
-            uniform_updates: live::Updates::new()?,
+            topics: live::Topics::default(),
             presence: presence::Presence::default(),
             agents: mcp::Usage::default(),
             activity,

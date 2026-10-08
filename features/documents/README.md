@@ -24,7 +24,8 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   records who added each file and who last changed it, and names them instead.
 - **Google sign-in:** the platform's Google client, which this feature reads from the server's
   own settings: `DISPATCH_DEV_GOOGLE_CLIENT_ID` and `…_SECRET` on Dev and its previews
-  (`DISPATCH_PRODUCTION_…` on Production). Without both, no DSP can connect Google. It returns to
+  (`DISPATCH_PRODUCTION_…` on Production), declared as its settings. Without both, no DSP can
+  connect Google; with one, the server refuses to start. It returns to
   `/api/documents/google/return`. That route has no session (its cookie stays on Dispatch's own
   site), so it only passes what Google sent on to the DSP's Documents page, which finishes
   the sign-in as the member who started it. Each sign-in is used once, by its starter, within
@@ -46,7 +47,8 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   so a file picked as another account is refused. One already in Documents becomes visible;
   one elsewhere in the account's Drive moves into the folder open. The picker needs
   `DISPATCH_DEV_GOOGLE_API_KEY` and `…_GOOGLE_APP_ID` (the Google project's number), or
-  `DISPATCH_PRODUCTION_…`, beside the sign-in client; without them the menu doesn't offer it.
+  `DISPATCH_PRODUCTION_…`, beside the sign-in client; without them the menu doesn't offer it,
+  and with one alone the server refuses to start.
 - **Team access:** everyone who holds `documents.use` gets the main folder shared with them
   as an editor, and through it everything inside: at the Google account they linked, or else
   their Dispatch email. Google gives no notification of its own. Google refuses an address

@@ -225,6 +225,23 @@ impl Config {
     pub fn mail_available(&self) -> bool {
         self.mail_mode != "disabled"
     }
+    /// A feature's own setting, as its manifest declares it, for this environment:
+    /// `DISPATCH_DEV_<name>` on Dev and its previews, `DISPATCH_PRODUCTION_<name>` on
+    /// Production. A blank one is unset.
+    pub fn setting(&self, name: &str) -> Option<String> {
+        env::var(self.setting_variable(name))
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+    }
+    /// The variable a feature's setting `name` is read from in this environment.
+    pub fn setting_variable(&self, name: &str) -> String {
+        let prefix = if self.environment == "preview" {
+            "DISPATCH_DEV"
+        } else {
+            "DISPATCH_PRODUCTION"
+        };
+        format!("{prefix}_{name}")
+    }
 }
 
 text_enum! {

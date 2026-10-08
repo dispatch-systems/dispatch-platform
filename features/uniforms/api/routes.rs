@@ -3,13 +3,18 @@ use dispatch_core::{
     Error, Result, State,
     db::Store,
     foundation::validate as v,
-    server::http::{
-        input::{Input, Reply},
-        route::{Dsp, Grant, Member, Route, async_get, read, write},
+    server::{
+        http::{
+            input::{Input, Reply},
+            route::{Dsp, Grant, Member, Route, async_get, read, write},
+        },
+        live::Topic,
     },
 };
 use std::{sync::Arc, time::Duration};
 
+/// Uniforms's live channel: whoever waits on it wakes when a DSP's stock or catalog changes.
+const STOCK: Topic = Topic("uniforms");
 const VIEW: Dsp = Dsp("uniforms.view");
 const MANAGE: Dsp = Dsp("uniforms.manage");
 pub fn routes() -> Vec<Route> {
@@ -34,7 +39,7 @@ fn inventory(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
 fn initialize(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &["starter"])?;
     let result = db.initialize_uniforms(c, v::boolean(&input.body, "starter")?)?;
-    c.state.uniform_updates.notify(c.dsp_id());
+    c.state.topics.notify(STOCK, c.dsp_id());
     Reply::of(&result)
 }
 fn create(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -45,7 +50,7 @@ fn update(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 fn save(db: &Store, c: &Member, input: &Input, id: Option<&str>) -> Result<Reply> {
     let result = db.save_uniform(c, id, &UniformInput::parse(&input.body)?)?;
-    c.state.uniform_updates.notify(c.dsp_id());
+    c.state.topics.notify(STOCK, c.dsp_id());
     Reply::of_status(&result, if id.is_some() { 200 } else { 201 })
 }
 fn archive(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -55,7 +60,7 @@ fn archive(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         input.param("id"),
         v::integer(&input.body, "revision", 0, i64::MAX)?,
     )?;
-    c.state.uniform_updates.notify(c.dsp_id());
+    c.state.topics.notify(STOCK, c.dsp_id());
     Reply::of(&result)
 }
 fn adjust(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -66,7 +71,7 @@ fn adjust(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         v::integer(&input.body, "delta", -1, 1)? as i32,
         v::text(&input.body, "requestId", 16, 100)?,
     )?;
-    c.state.uniform_updates.notify(c.dsp_id());
+    c.state.topics.notify(STOCK, c.dsp_id());
     Reply::of(&result)
 }
 fn cursor(input: &Input, name: &str, default: i64) -> Result<i64> {
@@ -89,13 +94,13 @@ async fn updates(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> 
         .read(move |db| Ok(access.authorize(db, &auth)?.dsp.id))
         .await?;
     let _slot = state
-        .uniform_updates
+        .topics
         .slots
         .clone()
         .try_acquire_owned()
         .map_err(|_| Error::new("platform_busy", 503))?;
     // Subscribe before reading: a commit between the read and wait cannot be missed.
-    let mut listener = state.uniform_updates.subscribe(&dsp);
+    let mut listener = state.topics.subscribe(STOCK, &dsp);
     let auth = input.clone();
     let initial = state
         .read(move |db| {

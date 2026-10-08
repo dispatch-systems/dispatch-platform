@@ -82,6 +82,29 @@ pub fn installed() -> Option<&'static Registry> {
 }
 
 impl Registry {
+    /// Refuses a server with only part of a feature's group of settings set: a setup left
+    /// half done is a mistake to fix before the server starts, not one to find later. The
+    /// log names the variables missing, never a value.
+    pub fn check_settings(&self, config: &Config) -> Result<()> {
+        for feature in self.features {
+            for group in feature.settings {
+                let missing: Vec<String> = group
+                    .iter()
+                    .filter(|name| config.setting(name).is_none())
+                    .map(|name| config.setting_variable(name))
+                    .collect();
+                if !missing.is_empty() && missing.len() < group.len() {
+                    crate::foundation::observability::event(
+                        "error",
+                        "feature_settings_incomplete",
+                        serde_json::json!({"feature": feature.name, "missing": missing}),
+                    );
+                    return Err(crate::Error::new("feature_settings_incomplete", 400));
+                }
+            }
+        }
+        Ok(())
+    }
     /// Every feature's keepers, in the registry's order.
     pub fn keepers(&self) -> impl Iterator<Item = &'static dyn Keeper> {
         self.features
@@ -241,6 +264,24 @@ impl Registry {
     /// listed under an area other than settings, each kind of data that names people has a
     /// place of its own, and what agents may read is declared as `mcp::pieces::check` asks.
     pub fn check(&self) {
+        let mut named = std::collections::BTreeSet::new();
+        for feature in self.features {
+            for setting in feature.settings.iter().flat_map(|group| group.iter()) {
+                assert!(
+                    !setting.is_empty()
+                        && setting
+                            .bytes()
+                            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_'),
+                    "{} names a setting that isn't UPPER_CASE: {setting}",
+                    feature.name
+                );
+                assert!(
+                    named.insert(*setting),
+                    "{} names a setting another feature reads: {setting}",
+                    feature.name
+                );
+            }
+        }
         let mut spellings = std::collections::BTreeSet::new();
         for feature in self.features {
             for (old, current) in feature.retired_identifiers {
@@ -508,6 +549,10 @@ pub struct Feature {
     /// The permissions that may follow its collections' progress as it arrives, through
     /// the collection updates the dashboard waits on.
     pub live: &'static [&'static str],
+    /// The server's settings it reads with `config.setting`, in groups that go together:
+    /// `&[&["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]]`. A server with only part of a
+    /// group set refuses to start.
+    pub settings: &'static [&'static [&'static str]],
     /// The collections it keeps.
     pub keeps: &'static [&'static dyn Keeper],
     /// What it adds to databases: its own, kept beside a collector's, or another owner's.
@@ -554,6 +599,7 @@ pub const fn feature(name: &'static str) -> Feature {
         permissions: &[],
         routes: Vec::new,
         live: &[],
+        settings: &[],
         keeps: &[],
         migrations: &[],
         retired_migrations: &[],
