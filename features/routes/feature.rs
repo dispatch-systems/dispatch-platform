@@ -25,16 +25,12 @@ use dispatch_core::{
         Migration, Migrations,
         migrations::Apply::{Code, Sql},
     },
-    manifest::{Feature, Switch, feature, perm},
+    manifest::{Feature, feature, optional, perm},
 };
 
 pub const FEATURE: Feature = Feature {
     place: 40,
-    switch: Some(Switch {
-        id: "routes",
-        label: "Routes",
-        requires: &["routes"],
-    }),
+    switch: optional("routes", "Routes", &["routes"]),
     permissions: &[
         perm("routes.view", "View Routes", 30),
         perm("routes.collect", "Collect Routes", 31).implies(&["routes.view"]),

@@ -1,7 +1,7 @@
 //! Every table of every database has one owner, which declares it: core, a collector or a
 //! feature. Only that owner's code runs SQL on it.
 use crate::REGISTRY;
-use dispatch_core::manifest::{Feature, Registry, feature};
+use dispatch_core::manifest::{Feature, Registry, feature, optional};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::Path,
@@ -79,6 +79,7 @@ fn every_table_has_exactly_one_declared_owner() {
 #[should_panic(expected = "dsp/people is declared by driver_match and twice")]
 fn a_registry_where_two_owners_declare_one_table_is_refused() {
     static TWICE: Feature = Feature {
+        switch: optional("twice", "Twice", &[]),
         tables: &[("dsp", &["people"])],
         ..feature("twice")
     };

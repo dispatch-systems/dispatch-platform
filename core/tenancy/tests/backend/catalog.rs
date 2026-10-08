@@ -12,6 +12,7 @@ fn feature(id: &'static str, kind: Kind, permissions: &'static [&'static str]) -
         requires: &[],
         default: true,
         tab: false,
+        mandatory: false,
     }
 }
 
@@ -29,4 +30,27 @@ fn a_part_of_a_page_owns_its_permissions_apart_from_the_page() {
     assert!(grants_in(&catalog, &both, "notes.upload"));
     // A permission no feature owns exists everywhere.
     assert!(grants_in(&catalog, &on(&[]), "members.invite"));
+}
+
+// A mandatory feature is never switched on, so a part of it that started on would reach every
+// DSP the day it shipped: an optional one starts off, as a new feature does.
+#[test]
+fn a_mandatory_features_optional_part_starts_off_and_its_mandatory_part_on() {
+    static HOST: manifest::Feature = manifest::Feature {
+        switch: manifest::mandatory("host", "Host"),
+        subfeatures: &[
+            manifest::sub("host.extra", "Extra"),
+            manifest::tab("host.main", "Main").mandatory(),
+        ],
+        ..manifest::feature("host")
+    };
+    let page = page(&HOST);
+    assert!(page.mandatory && page.default);
+    let parts: Vec<_> = page_subs(&HOST)
+        .map(|part| (part.id, part.default, part.mandatory))
+        .collect();
+    assert_eq!(
+        parts,
+        [("host.extra", false, false), ("host.main", true, true)]
+    );
 }

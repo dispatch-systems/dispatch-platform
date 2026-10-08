@@ -93,11 +93,8 @@ test('with no flags, a feature is a crate with a switch, a view permission and a
 
   const manifest = file(plan, 'features/parking/feature.rs');
   assert.doesNotMatch(manifest, /mod backend|mod tests/);
-  assert.match(manifest, /use dispatch_core::manifest::\{Feature, Switch, feature, perm\};/);
-  assert.match(
-    manifest,
-    /switch: Some\(Switch \{\s*id: "parking",\s*label: "Parking",\s*requires: &\[\],/,
-  );
+  assert.match(manifest, /use dispatch_core::manifest::\{Feature, feature, optional, perm\};/);
+  assert.match(manifest, /switch: optional\("parking", "Parking", &\[\]\),/);
   const order = Number(/perm\("parking.view", "View Parking", (\d+)\)/.exec(manifest)?.[1]);
   const used = fs
     .readdirSync('.', { recursive: true, encoding: 'utf8' })
@@ -158,32 +155,29 @@ test('with no flags, a feature is a crate with a switch, a view permission and a
   );
   // With no switch, it has nothing to show in the frontend.
   assert(
-    !writes(await feature('lobby', '--always-on'), 'features/lobby').includes(
+    !writes(await feature('lobby', '--mandatory'), 'features/lobby').includes(
       'frontend/feature.ts',
     ),
   );
 });
 
-test('--always-on leaves out the switch and, with nothing to gate, the permission', async () => {
-  const plan = await feature('lobby', '--always-on');
+test('--mandatory makes a feature every DSP has and, with nothing to gate, no permission', async () => {
+  const plan = await feature('lobby', '--mandatory');
   const manifest = file(plan, 'features/lobby/feature.rs');
   assert.match(
     manifest,
-    /^pub const FEATURE: Feature = Feature \{\n {4}place: \d+,\n {4}\.\.feature\("lobby"\)\n\};$/m,
+    /^pub const FEATURE: Feature = Feature \{\n {4}place: \d+,\n {4}switch: mandatory\("lobby", "Lobby"\),\n {4}\.\.feature\("lobby"\)\n\};$/m,
   );
-  assert.doesNotMatch(manifest, /Switch|perm/);
+  assert.doesNotMatch(manifest, /optional|perm/);
   // With no API or frontend either, it keeps an empty backend/ and its manifest's test: a
   // feature has a backend, an API or a frontend.
   assert(file(plan, 'features/lobby/backend/mod.rs'));
   assert.match(manifest, /#\[cfg\(test\)\]\n#\[path = "tests\/backend\/feature.rs"\]\nmod tests;/);
-  assert.match(
-    file(plan, 'features/lobby/tests/backend/feature.rs'),
-    /FEATURE\.switch\.is_none\(\)/,
-  );
-  assert.match(file(plan, 'features/lobby/README.md'), /Always on/);
+  assert.match(file(plan, 'features/lobby/tests/backend/feature.rs'), /assert!\(switch\.mandatory/);
+  assert.match(file(plan, 'features/lobby/README.md'), /Mandatory/);
   // An endpoint still needs a permission to check.
-  const gated = file(await feature('lobby', '--always-on', '--api'), 'features/lobby/feature.rs');
-  assert.doesNotMatch(gated, /switch:/);
+  const gated = file(await feature('lobby', '--mandatory', '--api'), 'features/lobby/feature.rs');
+  assert.match(gated, /switch: mandatory\("lobby", "Lobby"\),/);
   assert.match(gated, /perm\("lobby.view", "View Lobby", \d+\)/);
 });
 
@@ -364,7 +358,7 @@ test("--keeps writes the keeper of a collector's collection, tested with its fix
     ],
   );
   const manifest = file(plan, 'features/fleet_log/feature.rs');
-  assert.match(manifest, /requires: &\["shifts"\],/);
+  assert.match(manifest, /switch: optional\("fleet_log", "Fleet Log", &\["shifts"\]\),/);
   assert.match(
     manifest,
     /perm\("fleet_log.collect", "Collect Fleet Log", \d+\)\.implies\(&\["fleet_log.view"\]\)/,
@@ -437,7 +431,7 @@ test('--mcp writes one agent endpoint, its read toggle and an eval question', as
     file(plan, 'features/parking/tests/api/routes.txt'),
     /^GET \/api\/v1\/parking Agent\("read"\) Read$/m,
   );
-  await refused(/--mcp needs a feature with one/, 'parking', '--mcp', '--always-on');
+  await refused(/--mcp needs an optional feature/, 'parking', '--mcp', '--mandatory');
 });
 
 test('--page, --tab-of and --settings write frontend/feature.ts, the screen and a browser test', async () => {
@@ -467,7 +461,7 @@ test('--page, --tab-of and --settings write frontend/feature.ts, the screen and 
   assert.match(page.notes.join('\n'), /contracts:generate` writes [^\n]*the frontend's list/);
 
   const open = file(
-    await feature('lobby', '--page', '--always-on'),
+    await feature('lobby', '--page', '--mandatory'),
     'features/lobby/frontend/feature.ts',
   );
   assert.doesNotMatch(open, /feature: 'lobby'|can\(/);
@@ -517,7 +511,7 @@ test('--no-backend writes a frontend-only feature, and refuses the pieces that n
   ]);
   const manifest = file(plan, 'features/front/feature.rs');
   assert.doesNotMatch(manifest, /mod backend|mod tests/);
-  assert.match(manifest, /switch: Some\(Switch \{/);
+  assert.match(manifest, /switch: optional\(/);
   assert.match(file(plan, 'app/backend/features.rs'), /&dispatch_front::FEATURE,/);
   assert(
     writes(await feature('front', '--settings', '--no-backend'), 'features/front').includes(
@@ -556,7 +550,7 @@ test('everything written is formatted as the repository formats it, with no plac
       '--label',
       'Parking Lot',
     ),
-    (await planFeature(copy, ['notes', '--tab-of', 'timecard', '--always-on'])).plan,
+    (await planFeature(copy, ['notes', '--tab-of', 'timecard', '--mandatory'])).plan,
     await feature('desk', '--mcp'),
     await collector('fleet'),
   ];

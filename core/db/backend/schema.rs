@@ -45,6 +45,7 @@ pub const TABLES: Tables = &[
             "security_challenges",
             "dsps",
             "dsp_features",
+            "feature_availability",
             "memberships",
             "roles",
             "invitations",
@@ -169,6 +170,13 @@ const PLATFORM: &[Migration] = &[
         id: 16,
         name: "agent_reads",
         apply: Code(agent_reads),
+    },
+    Migration {
+        id: 17,
+        name: "feature_availability",
+        apply: Sql(include_str!(
+            "../../tenancy/migrations/platform/0017_feature_availability.sql"
+        )),
     },
 ];
 const JOBS: &[Migration] = &[

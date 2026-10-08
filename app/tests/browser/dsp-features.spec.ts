@@ -1,6 +1,6 @@
 import { test, expect, login } from '../../../core/shell/tests/support/fixtures.js';
 
-test('the platform switches a DSP’s pages, tabs and connections, and the team’s pages follow', async ({
+test('the platform switches a DSP’s features, their parts and connections, and the team’s pages follow', async ({
   page,
   browser,
 }) => {
@@ -10,48 +10,67 @@ test('the platform switches a DSP’s pages, tabs and connections, and the team�
   await list.getByRole('button', { name: /Northline Logistics/ }).click();
   const pane = page.getByRole('region', { name: 'Northline Logistics', exact: true });
   await pane.getByRole('tab', { name: 'Features', exact: true }).click();
-  const areas = pane.getByRole('navigation', { name: 'Feature areas' });
-  const area = (name: string) => areas.getByRole('button', { name: new RegExp(`^${name}`) });
-  await expect(area('Timecard')).toHaveAttribute('aria-current', 'true');
-  await expect(area('Timecard')).toContainText('3/3');
-  const cortex = pane.getByRole('switch', { name: 'Cortex', exact: true });
-  const timecard = pane.getByRole('switch', { name: 'Timecard page', exact: true });
+  const features = pane.getByRole('region', { name: 'Features', exact: true });
+  const toggle = (name: string) => pane.getByRole('switch', { name, exact: true });
+  const tab = (name: string) => toggle(`${name} tab`);
+  const timecard = toggle('Timecard');
+  // A feature's row: the list item holding its own switch.
+  const row = (name: string) =>
+    features
+      .getByRole('listitem')
+      .filter({ has: page.getByRole('switch', { name, exact: true }) })
+      .first();
+  const cortex = toggle('Cortex');
+  // What every DSP has shows on, and nobody switches it.
+  for (const name of ['Home Page', 'Team & Roles', 'Settings']) {
+    await expect(toggle(name)).toBeChecked();
+    await expect(toggle(name)).toBeDisabled();
+  }
   await expect(timecard).toBeChecked();
-  await area('Connections').click();
-  await expect(cortex).toBeChecked();
+  await expect(row('Timecard')).toContainText('3 of 3 parts');
+  // A feature's parts show once it is opened.
+  await expect(tab('Meal Breaks')).toHaveCount(0);
+  await features.getByRole('button', { name: "Timecard's parts", exact: true }).click();
+  await expect(tab('Meal Breaks')).toBeChecked();
+
+  // A connection takes what needs it along: of Timecard, only its Meal Breaks tab.
   await cortex.click();
   const off = page.getByRole('dialog', { name: 'Switch off Cortex?' });
   await expect(off).toContainText('Also switches off:');
   await expect(off.getByRole('listitem')).toHaveText([
-    'Timecardneeds a meal-break source',
     'Routesneeds a route source',
     'DVICneeds a DVIC source',
     'Weekly Scorecardneeds a weekly scorecard source',
     'Driver Matchneeds a route source',
     'Daily Performanceneeds a daily performance source',
+    'Timecard · Meal Breaksneeds a meal-break source',
   ]);
   await off.getByRole('button', { name: 'Switch off', exact: true }).click();
   await expect(cortex).not.toBeChecked();
-  for (const name of [
-    'Timecard',
-    'Routes',
-    'DVIC',
-    'Weekly Scorecard',
-    'Driver Match',
-    'Daily Performance',
-  ])
-    await expect(area(name)).toContainText('Off');
-  await expect(area('Uniform Inventory')).toContainText('On');
-  await area('Timecard').click();
-  await expect(timecard).not.toBeChecked();
-  // A page switched off keeps its tabs' switches, which wait for it.
-  await expect(pane.getByRole('switch', { name: 'Meal Breaks tab', exact: true })).toBeChecked();
-  await expect(pane.getByRole('switch', { name: 'Meal Breaks tab', exact: true })).toBeDisabled();
+  for (const name of ['Routes', 'DVIC', 'Weekly Scorecard', 'Driver Match', 'Daily Performance'])
+    await expect(toggle(name)).not.toBeChecked();
+  await expect(timecard).toBeChecked();
+  await expect(tab('Meal Breaks')).not.toBeChecked();
+  await expect(toggle('Uniform Inventory')).toBeChecked();
 
   const context = await browser.newContext();
   const member = await context.newPage();
   await login(member, 'member@dispatch.test');
   await expect(member.getByRole('link', { name: 'Uniform Inventory', exact: true })).toBeVisible();
+  await member.getByRole('link', { name: 'Timecard', exact: true }).click();
+  await expect(member.getByRole('tablist', { name: 'Timecard' }).getByRole('tab')).toHaveText([
+    'Timecard',
+    'Employees',
+  ]);
+
+  // A feature switched off takes its parts along, which wait for it as they were.
+  await timecard.click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(timecard).not.toBeChecked();
+  await expect(tab('Timecard')).not.toBeChecked();
+  await expect(tab('Timecard')).toBeDisabled();
+  // The member's next request finds their view expired, and the page gone.
+  await member.getByRole('link', { name: 'Uniform Inventory', exact: true }).click();
   await expect(member.getByRole('link', { name: 'Timecard', exact: true })).toHaveCount(0);
 
   // The role sheet no longer offers the Timecard's permissions, and keeps its other ones.
@@ -67,35 +86,37 @@ test('the platform switches a DSP’s pages, tabs and connections, and the team�
   await sheet.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByRole('button', { name: 'Exit view', exact: true }).click();
 
-  // Switching the page back on brings the connection it needs.
+  // Switched back on, the feature brings its parts back as they were.
   await list.getByRole('button', { name: /Northline Logistics/ }).click();
   await pane.getByRole('tab', { name: 'Features', exact: true }).click();
   await timecard.click();
-  const on = page.getByRole('dialog', { name: 'Switch on Timecard?' });
-  await expect(on.getByRole('listitem')).toHaveText(['CortexTimecard needs a meal-break source']);
-  await on.getByRole('button', { name: 'Switch on', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(timecard).toBeChecked();
-  await area('Connections').click();
+  await features.getByRole('button', { name: "Timecard's parts", exact: true }).click();
+  await expect(tab('Timecard')).toBeChecked();
+  await expect(tab('Meal Breaks')).not.toBeChecked();
+  // A part brings the connection it needs, and says so first.
+  await tab('Meal Breaks').click();
+  const on = page.getByRole('dialog', { name: 'Switch on Meal Breaks tab?' });
+  await expect(on.getByRole('listitem')).toHaveText([
+    'CortexTimecard · Meal Breaks needs a meal-break source',
+  ]);
+  await on.getByRole('button', { name: 'Switch on', exact: true }).click();
+  await expect(tab('Meal Breaks')).toBeChecked();
   await expect(cortex).toBeChecked();
   // A switch that takes nothing with it asks nothing.
-  await area('Uniform Inventory').click();
-  const uniforms = pane.getByRole('switch', { name: 'Uniform Inventory page', exact: true });
+  const uniforms = toggle('Uniform Inventory');
   await uniforms.click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(uniforms).not.toBeChecked();
   await uniforms.click();
   await expect(uniforms).toBeChecked();
-  // A tab switches alone.
-  await area('Timecard').click();
-  const tab = (name: string) => pane.getByRole('switch', { name: `${name} tab`, exact: true });
+  // A tab switches alone; the last one on takes its page, and says so first.
   await tab('Employee Search').click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(tab('Employee Search')).not.toBeChecked();
-  await expect(area('Timecard')).toContainText('2/3');
-  await expect(pane.getByRole('region', { name: 'Timecard' })).toContainText('2 of 3 tabs');
-  // The last tab on takes its page, and says so first.
+  await expect(row('Timecard')).toContainText('2 of 3 parts');
   await tab('Timecard').click();
-  await expect(area('Timecard')).toContainText('1/3');
   await tab('Meal Breaks').click();
   const last = page.getByRole('dialog', { name: 'Switch off Meal Breaks tab?' });
   await expect(last.getByRole('listitem')).toHaveText(['Timecardhas no other tab on']);

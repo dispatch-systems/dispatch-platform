@@ -2260,7 +2260,7 @@ async fn every_tool_says_when_its_feature_is_switched_off() {
         .features
         .iter()
         .filter(|feature| !feature.mcp.reads.is_empty())
-        .filter_map(|feature| feature.switch);
+        .map(|feature| feature.switch);
     for feature in read.map(|switch| switch.id) {
         db.set_feature(&dsp, feature, false, &actor).unwrap();
     }

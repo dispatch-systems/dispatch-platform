@@ -13,10 +13,11 @@ type Entry<Kind, Id> = {
   kind: Kind;
   /** The permissions the feature owns; without it, nobody in the DSP holds them. */
   permissions: readonly Permission[];
-  /** What a page needs one enabled connection of. */
+  /** What a page or a part needs one enabled connection of. */
   requires: readonly string[];
 };
-export type PageEntry = Entry<'page', PageFeature> & { provides?: undefined };
+/** `mandatory`: every DSP has it, with no switch to turn it off. */
+export type PageEntry = Entry<'page', PageFeature> & { mandatory?: boolean; provides?: undefined };
 /**
  * A part of `page`, switched on its own: one of its tabs, or another part. It exists only
  * while its page is on too, with the permissions it owns.
@@ -24,11 +25,13 @@ export type PageEntry = Entry<'page', PageFeature> & { provides?: undefined };
 export type SubEntry = Entry<'sub', SubFeature> & {
   page: PageFeature;
   tab: boolean;
+  mandatory?: boolean;
   provides?: undefined;
 };
 /** `provides` is what the connection supplies, one capability or several. */
 export type ConnectionEntry = Entry<'connection', ConnectionFeature> & {
   provides: readonly string[];
+  mandatory?: undefined;
 };
 export type FeatureEntry = PageEntry | SubEntry | ConnectionEntry;
 /** The backend-owned catalog, generated alongside the wire contracts. */

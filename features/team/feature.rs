@@ -5,10 +5,11 @@ mod api;
 /// matches too.
 pub use api::routes::TEAM;
 
-use dispatch_core::manifest::{Feature, feature, perm};
+use dispatch_core::manifest::{Feature, feature, mandatory, perm};
 
 pub const FEATURE: Feature = Feature {
     place: 100,
+    switch: mandatory("team", "Team & Roles"),
     permissions: &[
         perm("members.invite", "Invite Members", 80)
             .group("Team")

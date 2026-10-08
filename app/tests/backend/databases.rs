@@ -7,7 +7,7 @@ use crate::snapshot;
 use dispatch_core::{
     db::{Db, Kind, Migration, Migrations, migrations::Apply},
     foundation::crypto,
-    manifest::{Feature, Registry, feature},
+    manifest::{Feature, Registry, feature, optional},
 };
 use serde_json::json;
 use std::{
@@ -108,6 +108,7 @@ fn a_registry_whose_migrations_skip_an_id_is_refused() {
     // The DSP database's next migration, whichever that is now, and one after it.
     let next = crate::REGISTRY.migrations(Kind::DSP).len() as u32 + 1;
     let gap: &'static Feature = Box::leak(Box::new(Feature {
+        switch: optional("gap", "Gap", &[]),
         migrations: Box::leak(Box::new([Migrations {
             kind: Kind::DSP,
             list: Box::leak(Box::new([Migration {
@@ -129,6 +130,7 @@ fn a_registry_whose_migrations_skip_an_id_is_refused() {
 #[should_panic(expected = "dsp migration 7 is declared twice")]
 fn a_registry_whose_migrations_repeat_an_id_is_refused() {
     static REPEAT: Feature = Feature {
+        switch: optional("repeat", "Repeat", &[]),
         migrations: &[Migrations {
             kind: Kind::DSP,
             list: &[Migration {

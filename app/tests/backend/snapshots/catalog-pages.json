@@ -1,32 +1,44 @@
 {
   "pages": [
     {
+      "id": "home",
+      "label": "Home Page",
+      "permissions": [],
+      "requires": [],
+      "default": true,
+      "mandatory": true
+    },
+    {
       "id": "timecard",
       "label": "Timecard",
       "permissions": ["timecard.view", "timecard.manage", "collections.run"],
-      "requires": ["timecards", "meal_breaks"],
-      "default": false
+      "requires": ["timecards"],
+      "default": false,
+      "mandatory": false
     },
     {
       "id": "uniforms",
       "label": "Uniform Inventory",
       "permissions": ["uniforms.view", "uniforms.adjust", "uniforms.manage"],
       "requires": [],
-      "default": false
+      "default": false,
+      "mandatory": false
     },
     {
       "id": "routes",
       "label": "Routes",
       "permissions": ["routes.view", "routes.collect", "routes.manage"],
       "requires": ["routes"],
-      "default": false
+      "default": false,
+      "mandatory": false
     },
     {
       "id": "dvic",
       "label": "DVIC",
       "permissions": ["dvic.view", "dvic.collect", "dvic.manage"],
       "requires": ["dvic"],
-      "default": false
+      "default": false,
+      "mandatory": false
     },
     {
       "id": "weekly_scorecard",
@@ -37,14 +49,16 @@
         "weekly_scorecard.manage"
       ],
       "requires": ["weekly_scorecard"],
-      "default": false
+      "default": false,
+      "mandatory": false
     },
     {
       "id": "driver_match",
       "label": "Driver Match",
       "permissions": ["driver_match.manage"],
       "requires": ["timecards", "routes"],
-      "default": false
+      "default": false,
+      "mandatory": false
     },
     {
       "id": "daily_performance",
@@ -55,14 +69,32 @@
         "daily_performance.manage"
       ],
       "requires": ["daily_performance"],
-      "default": false
+      "default": false,
+      "mandatory": false
     },
     {
       "id": "documents",
       "label": "Documents",
       "permissions": ["documents.use", "documents.manage"],
       "requires": [],
-      "default": false
+      "default": false,
+      "mandatory": false
+    },
+    {
+      "id": "team",
+      "label": "Team & Roles",
+      "permissions": [],
+      "requires": [],
+      "default": true,
+      "mandatory": true
+    },
+    {
+      "id": "settings",
+      "label": "Settings",
+      "permissions": [],
+      "requires": [],
+      "default": true,
+      "mandatory": true
     }
   ],
   "subfeatures": [
@@ -71,26 +103,54 @@
       "label": "Timecard",
       "page": "timecard",
       "tab": true,
-      "permissions": []
+      "permissions": [],
+      "requires": [],
+      "default": true,
+      "mandatory": false
     },
     {
       "id": "timecard.meal_breaks",
       "label": "Meal Breaks",
       "page": "timecard",
       "tab": true,
-      "permissions": []
+      "permissions": [],
+      "requires": ["meal_breaks"],
+      "default": true,
+      "mandatory": false
     },
     {
       "id": "timecard.employees",
       "label": "Employee Search",
       "page": "timecard",
       "tab": true,
-      "permissions": []
+      "permissions": [],
+      "requires": [],
+      "default": true,
+      "mandatory": false
     },
-    {"id": "dvic.day", "label": "Day", "page": "dvic", "tab": true, "permissions": []},
-    {"id": "dvic.week", "label": "Week", "page": "dvic", "tab": true, "permissions": []}
+    {
+      "id": "dvic.day",
+      "label": "Day",
+      "page": "dvic",
+      "tab": true,
+      "permissions": [],
+      "requires": [],
+      "default": true,
+      "mandatory": false
+    },
+    {
+      "id": "dvic.week",
+      "label": "Week",
+      "page": "dvic",
+      "tab": true,
+      "permissions": [],
+      "requires": [],
+      "default": true,
+      "mandatory": false
+    }
   ],
   "catalog": [
+    "home",
     "timecard",
     "uniforms",
     "routes",
@@ -99,6 +159,8 @@
     "driver_match",
     "daily_performance",
     "documents",
+    "team",
+    "settings",
     "timecard.daily",
     "timecard.meal_breaks",
     "timecard.employees",

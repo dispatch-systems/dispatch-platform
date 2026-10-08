@@ -302,7 +302,7 @@ impl Registry {
                     feature.name
                 );
                 assert!(
-                    feature.switch.is_some_and(|switch| switch.id == *current)
+                    feature.switch.id == *current
                         || feature
                             .permissions
                             .iter()
@@ -344,10 +344,7 @@ impl Registry {
             );
         }
         let schedules: Vec<_> = self.features.iter().filter(|f| f.schedules).collect();
-        assert!(
-            schedules.len() == 1 && schedules[0].switch.is_some(),
-            "exactly one page runs the schedules"
-        );
+        assert!(schedules.len() == 1, "exactly one page runs the schedules");
         let mut schedule_names: Vec<&str> = self
             .collectors
             .iter()
@@ -373,11 +370,27 @@ impl Registry {
             }
         }
         for feature in self.features {
+            let switch = feature.switch;
             assert!(
-                feature.switch.is_some() || feature.subfeatures.is_empty(),
-                "{} has sub-features but no page",
+                !switch.id.is_empty() && !switch.label.is_empty(),
+                "{} says neither whether it is mandatory nor optional: give it \
+                 `switch: optional(..)` or `switch: mandatory(..)`",
                 feature.name
             );
+            for sub in feature.subfeatures {
+                assert!(
+                    switch.mandatory || !sub.mandatory,
+                    "{} is optional, so its parts are too: {} can't be mandatory",
+                    feature.name,
+                    sub.id
+                );
+                assert!(
+                    !sub.mandatory || sub.requires.is_empty(),
+                    "{} is mandatory, so every DSP has it, connected or not: it can't require \
+                     a connection",
+                    sub.id
+                );
+            }
             for dependency in feature.depends_on {
                 assert!(
                     self.features.iter().any(|other| other.name == *dependency)
@@ -554,8 +567,9 @@ pub struct Feature {
     /// The features and collectors it uses, by name, beyond the collectors whose
     /// collections it keeps.
     pub depends_on: &'static [&'static str],
-    /// Its page's switch on the DSPs page. `None` for a feature that is always on.
-    pub switch: Option<Switch>,
+    /// Whether every DSP has it, or the platform owner switches it per DSP: `optional(..)`,
+    /// off for every DSP until switched on, or `mandatory(..)`. Every feature says which.
+    pub switch: Switch,
     /// The parts of its page switched on their own on the DSPs page, in the order the page
     /// shows them: its tabs, and any other part, each with the permissions it owns.
     pub subfeatures: &'static [Sub],
@@ -620,7 +634,7 @@ pub const fn feature(name: &'static str) -> Feature {
         retired_identifiers: &[],
         upgrade_storage: None,
         depends_on: &[],
-        switch: None,
+        switch: UNDECLARED,
         subfeatures: &[],
         schedules: false,
         schedule_aliases: &[],
@@ -690,8 +704,8 @@ pub struct Maintenance {
     pub run: fn(Arc<State>, bool) -> Upkeep,
 }
 
-/// A feature's page on the DSPs page: off for every DSP until the platform owner switches
-/// it on.
+/// A feature on the DSPs page: optional, off for every DSP until the platform owner switches
+/// it on, or mandatory, which every DSP has and nobody switches.
 #[derive(Clone, Copy)]
 pub struct Switch {
     /// Its catalog id. Permanent: each DSP's switch is stored under it.
@@ -699,10 +713,45 @@ pub struct Switch {
     pub label: &'static str,
     /// The capabilities an enabled connection must provide while the page is on.
     pub requires: &'static [&'static str],
+    /// Whether every DSP has it, with no switch to turn it off.
+    pub mandatory: bool,
 }
+/// A feature the platform owner switches on per DSP: `optional("dvic", "DVIC", &["dvic"])`.
+/// It needs a connection providing each capability it `requires`.
+pub const fn optional(
+    id: &'static str,
+    label: &'static str,
+    requires: &'static [&'static str],
+) -> Switch {
+    Switch {
+        id,
+        label,
+        requires,
+        mandatory: false,
+    }
+}
+/// A feature every DSP has, with no switch: `mandatory("home", "Home Page")`. It needs no
+/// connection, since a DSP without any has it too.
+pub const fn mandatory(id: &'static str, label: &'static str) -> Switch {
+    Switch {
+        id,
+        label,
+        requires: &[],
+        mandatory: true,
+    }
+}
+/// What a manifest that hasn't chosen has; the registry refuses it.
+const UNDECLARED: Switch = Switch {
+    id: "",
+    label: "",
+    requires: &[],
+    mandatory: false,
+};
 /// A part of a feature's page, switched on its own inside the page: one of its tabs, or any
 /// other part, such as uploading files. It exists while it and its page are on, and its
-/// permissions with it.
+/// permissions with it. A part is optional unless `.mandatory()`, which only a mandatory
+/// feature's parts may be. An optional part of an optional feature starts on, so switching
+/// the feature on shows all of it; one of a mandatory feature starts off, as a new feature does.
 pub struct Sub {
     /// Its catalog id. Permanent: each DSP's switch is stored under it.
     pub id: &'static str,
@@ -711,6 +760,10 @@ pub struct Sub {
     pub tab: bool,
     /// The permissions it owns, listed on the role sheet under its page's.
     pub permissions: &'static [Permission],
+    /// The capabilities an enabled connection must provide while it is on, beyond its page's.
+    pub requires: &'static [&'static str],
+    /// Whether every DSP with its page has it, with no switch to turn it off.
+    pub mandatory: bool,
 }
 /// A tab of a feature's page: `tab("dvic.week", "Week")`.
 pub const fn tab(id: &'static str, label: &'static str) -> Sub {
@@ -719,6 +772,8 @@ pub const fn tab(id: &'static str, label: &'static str) -> Sub {
         label,
         tab: true,
         permissions: &[],
+        requires: &[],
+        mandatory: false,
     }
 }
 /// A part of a feature's page that isn't a tab: `sub("documents.uploads", "Uploads")`.
@@ -732,6 +787,17 @@ impl Sub {
     pub const fn permissions(self, permissions: &'static [Permission]) -> Self {
         Self {
             permissions,
+            ..self
+        }
+    }
+    /// What it needs a connection to provide while it is on, as `optional` names a feature's.
+    pub const fn requires(self, requires: &'static [&'static str]) -> Self {
+        Self { requires, ..self }
+    }
+    /// Every DSP with its page has it: only a mandatory feature's part may be.
+    pub const fn mandatory(self) -> Self {
+        Self {
+            mandatory: true,
             ..self
         }
     }

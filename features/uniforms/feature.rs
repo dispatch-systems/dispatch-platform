@@ -12,7 +12,7 @@ use dispatch_core::{
     db::{Kind, Migration, Migrations, migrations::Apply::Sql},
     manifest::{
         DefaultRole::{Manager, Member},
-        Feature, Switch, feature, perm,
+        Feature, feature, optional, perm,
     },
 };
 
@@ -22,11 +22,7 @@ use dispatch_core::testing;
 
 pub const FEATURE: Feature = Feature {
     place: 30,
-    switch: Some(Switch {
-        id: "uniforms",
-        label: "Uniform Inventory",
-        requires: &[],
-    }),
+    switch: optional("uniforms", "Uniform Inventory", &[]),
     permissions: &[
         perm("uniforms.view", "View Uniform Inventory", 10).demo(&[Manager, Member]),
         perm("uniforms.adjust", "Adjust Uniform Inventory", 11)

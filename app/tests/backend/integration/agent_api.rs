@@ -79,7 +79,13 @@ fn the_kinds_of_data_and_their_switches_are_as_they_were() {
     let (_root, db, dsp) = common::bootstrapped();
     db.enable_all_features(&dsp).unwrap();
     let mut switches = vec![json!({"off": [], "on": switched_on(&db, &dsp)})];
-    let catalog: Vec<String> = db.features(&dsp).unwrap();
+    // What every DSP has has no switch to turn off.
+    let catalog: Vec<String> = db
+        .features(&dsp)
+        .unwrap()
+        .into_iter()
+        .filter(|id| !dispatch_core::tenancy::catalog::find(id).is_some_and(|f| f.mandatory))
+        .collect();
     // Each feature switched off, alone and beside each other, and what agents then read from.
     for (index, first) in catalog.iter().enumerate() {
         for second in std::iter::once(None).chain(catalog[index + 1..].iter().map(Some)) {

@@ -15,18 +15,14 @@ pub use backend::{DOMAIN, DriverMatchStore, DriverSources, LINKS, valid_code};
 
 use dispatch_core::{
     db::{Kind, Migration, Migrations, migrations::Apply::Sql},
-    manifest::{Audit, Feature, Switch, feature, perm},
+    manifest::{Audit, Feature, feature, optional, perm},
 };
 
 pub const FEATURE: Feature = Feature {
     place: 70,
     // A tab of Settings, not a page of its own: it matches Paycom's employees to the
     // drivers Amazon's routes and other collections name.
-    switch: Some(Switch {
-        id: "driver_match",
-        label: "Driver Match",
-        requires: &["timecards", "routes"],
-    }),
+    switch: optional("driver_match", "Driver Match", &["timecards", "routes"]),
     permissions: &[perm("driver_match.manage", "Manage Driver Match", 60)],
     routes: api::routes::routes,
     tables: &[

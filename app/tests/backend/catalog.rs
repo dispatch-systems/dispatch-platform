@@ -40,19 +40,17 @@ fn the_catalog_keeps_its_pages_tabs_and_order() {
             assert_eq!(page.kind, catalog::Kind::Page);
             assert!(page.provides.is_empty());
             json!({"id": page.id, "label": page.label, "permissions": page.permissions,
-                "requires": page.requires, "default": page.default})
+                "requires": page.requires, "default": page.default, "mandatory": page.mandatory})
         })
         .collect();
     let subs: Vec<_> = catalog::catalog()
         .iter()
         .filter(|feature| matches!(feature.kind, catalog::Kind::Sub(_)))
-        .map(|sub| {
-            assert!(sub.default && sub.requires.is_empty());
-            match sub.kind {
-                catalog::Kind::Sub(page) => json!({"id": sub.id, "label": sub.label, "page": page,
-                    "tab": sub.tab, "permissions": sub.permissions}),
-                kind => panic!("{} is a {kind:?}", sub.id),
-            }
+        .map(|sub| match sub.kind {
+            catalog::Kind::Sub(page) => json!({"id": sub.id, "label": sub.label, "page": page,
+                    "tab": sub.tab, "permissions": sub.permissions, "requires": sub.requires,
+                    "default": sub.default, "mandatory": sub.mandatory}),
+            kind => panic!("{} is a {kind:?}", sub.id),
         })
         .collect();
     let catalog: Vec<_> = catalog::catalog().iter().map(|f| f.id).collect();

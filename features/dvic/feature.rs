@@ -13,17 +13,13 @@ use dispatch_core::{
         Migration, Migrations,
         migrations::Apply::{Code, Sql},
     },
-    manifest::{Audit, Commands, Feature, Switch, feature, perm, tab},
+    manifest::{Audit, Commands, Feature, feature, optional, perm, tab},
     tenancy::api::audit::AuditArea::Collections,
 };
 
 pub const FEATURE: Feature = Feature {
     place: 50,
-    switch: Some(Switch {
-        id: "dvic",
-        label: "DVIC",
-        requires: &["dvic"],
-    }),
+    switch: optional("dvic", "DVIC", &["dvic"]),
     subfeatures: &[tab("dvic.day", "Day"), tab("dvic.week", "Week")],
     permissions: &[
         perm("dvic.view", "View DVIC", 40),

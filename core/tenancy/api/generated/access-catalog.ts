@@ -1,6 +1,7 @@
 // Generated from backend feature, collector and permission catalogs.
 // Run `npm run contracts:generate` after changing them.
 export const pages = [
+  "home",
   "timecard",
   "uniforms",
   "routes",
@@ -8,7 +9,9 @@ export const pages = [
   "weekly_scorecard",
   "driver_match",
   "daily_performance",
-  "documents"
+  "documents",
+  "team",
+  "settings"
 ] as const;
 export const subfeatures = [
   "timecard.daily",
@@ -22,6 +25,7 @@ export const connections = [
   "cortex"
 ] as const;
 export const features = [
+  "home",
   "timecard",
   "uniforms",
   "routes",
@@ -30,6 +34,8 @@ export const features = [
   "driver_match",
   "daily_performance",
   "documents",
+  "team",
+  "settings",
   "timecard.daily",
   "timecard.meal_breaks",
   "timecard.employees",
@@ -40,6 +46,14 @@ export const features = [
 ] as const;
 export const featureCatalog = [
   {
+    "id": "home",
+    "label": "Home Page",
+    "permissions": [],
+    "requires": [],
+    "kind": "page",
+    "mandatory": true
+  },
+  {
     "id": "timecard",
     "label": "Timecard",
     "permissions": [
@@ -48,8 +62,7 @@ export const featureCatalog = [
       "collections.run"
     ],
     "requires": [
-      "timecards",
-      "meal_breaks"
+      "timecards"
     ],
     "kind": "page"
   },
@@ -139,6 +152,22 @@ export const featureCatalog = [
     "kind": "page"
   },
   {
+    "id": "team",
+    "label": "Team & Roles",
+    "permissions": [],
+    "requires": [],
+    "kind": "page",
+    "mandatory": true
+  },
+  {
+    "id": "settings",
+    "label": "Settings",
+    "permissions": [],
+    "requires": [],
+    "kind": "page",
+    "mandatory": true
+  },
+  {
     "id": "timecard.daily",
     "label": "Timecard",
     "permissions": [],
@@ -151,7 +180,9 @@ export const featureCatalog = [
     "id": "timecard.meal_breaks",
     "label": "Meal Breaks",
     "permissions": [],
-    "requires": [],
+    "requires": [
+      "meal_breaks"
+    ],
     "kind": "sub",
     "page": "timecard",
     "tab": true

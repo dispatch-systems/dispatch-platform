@@ -196,9 +196,7 @@ fn read_toggles() -> String {
     let groups: Vec<_> = groups
         .iter()
         .map(|feature| {
-            let switch = feature
-                .switch
-                .expect("a feature whose data agents read has a switch");
+            let switch = feature.switch;
             json!({
                 "label": switch.label,
                 "missing": feature.mcp.missing,
@@ -295,6 +293,10 @@ fn access_catalog() -> String {
                     entry["provides"] = json!(feature.provides);
                 }
             }
+            // Only where it is: the dashboard's first load carries the catalog.
+            if feature.mandatory {
+                entry["mandatory"] = json!(true);
+            }
             entry
         })
         .collect();
@@ -315,7 +317,10 @@ fn access_catalog() -> String {
     // Each page's own section, then a section for each of its parts that owns permissions.
     let mut groups: Vec<(String, &[&str])> = Vec::new();
     for page in catalog::pages() {
-        groups.push((page.label.to_owned(), page.permissions));
+        // A page that owns none, as one every DSP has may, has no section of its own.
+        if !page.permissions.is_empty() {
+            groups.push((page.label.to_owned(), page.permissions));
+        }
         for sub in catalog
             .iter()
             .filter(|sub| sub.kind == catalog::Kind::Sub(page.id) && !sub.permissions.is_empty())
@@ -595,7 +600,8 @@ fn feature_map(root: &Path) -> String {
             "migrations": migrations,
             "permissions": feature.permissions.iter().map(|p| p.id).collect::<Vec<_>>(),
             "slots": slots,
-            "switch": feature.switch.map(|switch| switch.id),
+            "switch": feature.switch.id,
+            "mandatory": feature.switch.mandatory,
             "tables": tables,
             "subfeatures": feature.subfeatures.iter().map(|sub| sub.id).collect::<Vec<_>>(),
         });

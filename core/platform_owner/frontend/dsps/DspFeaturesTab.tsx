@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { Plug } from 'lucide-react';
+import { ChevronRight, Plug } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
-import type { PageFeature } from '../../../tenancy/api/index.js';
 import { setDspFeature, useDspFeatures } from '../../api/client.js';
 import {
   featureCatalog,
@@ -19,18 +18,23 @@ import { previewSwitch, sideEffects, switchLabel } from './switches.js';
 const pages = featureCatalog.filter((f): f is PageEntry => f.kind === 'page');
 const connections = featureCatalog.filter((f): f is ConnectionEntry => f.kind === 'connection');
 
-// Every page on the left, then the connections; the chosen one's switches on the right.
-// A page shows its own switch, its tabs' and its other parts'. A switch acts at once; one that takes other
-// features with it asks first.
+// Every feature, a row each with its switch, and the parts of one with any under it when it
+// is opened; then the connections. A mandatory feature or part shows its switch on and greyed
+// out: every DSP has it. A part can't be switched while its feature is off, and shows off;
+// switching the feature back on brings each part back as it was. A switch acts at once; one
+// that takes other features with it asks first.
 export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () => void }) {
   const { data, error, refresh } = useDspFeatures(dsp.id);
-  const [area, setArea] = useState<PageFeature | 'connections'>(pages[0]!.id);
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const [pending, setPending] = useState<{ feature: FeatureEntry; on: boolean }>();
-  // What is switched on, tabs of a page that is off included, so they show as they stay.
+  // What is switched on, parts of a feature that is off included, so they come back as they were.
   const enabled = data
     ? data.features.filter((state) => state.enabled).map((state) => state.feature)
     : dsp.features;
-  const has = (feature: FeatureEntry) => enabled.includes(feature.id);
+  const switched = (id: string) => enabled.includes(id);
+  // What the DSP has: a part only while its feature is on too.
+  const has = (feature: FeatureEntry) =>
+    switched(feature.id) && (feature.kind !== 'sub' || switched(feature.page));
   const done = () => {
     refresh();
     changed();
@@ -51,89 +55,93 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
     }
     setPending({ feature, on });
   };
-  const row = (feature: FeatureEntry, label = feature.label, locked = false) => (
-    <div className={`dsp-feature-row ${has(feature) && !locked ? '' : 'off'}`} key={feature.id}>
-      <input
-        type="checkbox"
-        role="switch"
-        aria-label={feature.kind === 'sub' ? switchLabel(feature) : label}
-        checked={has(feature)}
-        disabled={!data || direct.busy || locked}
-        onChange={(event) => toggle(feature, event.target.checked)}
-      />
-      <strong>{label}</strong>
-      {feature.kind === 'connection' && has(feature) && (
-        <Badge value={dsp.connections[feature.id] ?? 'not_connected'} />
-      )}
-    </div>
+  const expand = (page: PageEntry) =>
+    setOpen((shown) => {
+      const next = new Set(shown);
+      if (next.has(page.id)) next.delete(page.id);
+      else next.add(page.id);
+      return next;
+    });
+  const control = (feature: FeatureEntry, locked = false) => (
+    <input
+      type="checkbox"
+      role="switch"
+      aria-label={switchLabel(feature)}
+      title={feature.mandatory ? 'Every DSP has it' : undefined}
+      checked={has(feature)}
+      disabled={!data || direct.busy || locked || Boolean(feature.mandatory)}
+      onChange={(event) => toggle(feature, event.target.checked)}
+    />
   );
-  const count = (features: FeatureEntry[]) => features.filter(has).length;
-  const page = pages.find((candidate) => candidate.id === area);
-  const subs = page ? subsOf(page.id) : [];
-  const tabs = subs.filter((sub) => sub.tab);
-  const parts = subs.filter((sub) => !sub.tab);
-  const title = page?.label ?? 'Connections';
   return (
     <div className="dsp-features">
       <ErrorBox message={error} />
-      <nav className="dsp-areas" aria-label="Feature areas">
-        <h3 className="dsp-group">Pages</h3>
-        {pages.map((candidate) => {
-          const Icon = switchIcon(candidate.id);
-          const own = subsOf(candidate.id);
-          return (
-            <button
-              key={candidate.id}
-              className={has(candidate) ? undefined : 'off'}
-              aria-current={candidate.id === area ? 'true' : undefined}
-              onClick={() => setArea(candidate.id)}
-            >
-              {Icon && <Icon size={16} aria-hidden="true" />}
-              <span>{candidate.label}</span>
-              <small>
-                {!has(candidate) ? 'Off' : own.length ? `${count(own)}/${own.length}` : 'On'}
-              </small>
-            </button>
-          );
-        })}
-        <h3 className="dsp-group">Connections</h3>
-        <button
-          aria-current={area === 'connections' ? 'true' : undefined}
-          onClick={() => setArea('connections')}
-        >
-          <Plug size={16} aria-hidden="true" />
-          <span>Connections</span>
-          <small>
-            {count(connections)}/{connections.length}
-          </small>
-        </button>
-      </nav>
-      <section className="dsp-area" aria-label={title}>
-        <h3>
-          {title}
-          {page ? (
-            tabs.length > 0 && (
-              <span>
-                {count(tabs)} of {tabs.length} tabs
-              </span>
-            )
-          ) : (
-            <span>
-              {count(connections)} of {connections.length}
-            </span>
-          )}
+      <section aria-label="Features">
+        <h3 className="dsp-group">Features</h3>
+        <ul className="dsp-feature-list">
+          {pages.map((page) => {
+            const Icon = switchIcon(page.id);
+            const parts = subsOf(page.id);
+            const shown = open.has(page.id);
+            return (
+              <li key={page.id}>
+                <div className={`dsp-feature-row ${has(page) ? '' : 'off'}`}>
+                  {parts.length ? (
+                    <button
+                      className="dsp-expand"
+                      aria-expanded={shown}
+                      aria-label={`${page.label}'s parts`}
+                      onClick={() => expand(page)}
+                    >
+                      <ChevronRight size={16} aria-hidden="true" />
+                    </button>
+                  ) : (
+                    <span className="dsp-expand" aria-hidden="true" />
+                  )}
+                  {control(page)}
+                  {Icon && <Icon size={16} aria-hidden="true" />}
+                  <strong>{page.label}</strong>
+                  <small>
+                    {page.mandatory
+                      ? 'Every DSP'
+                      : parts.length && has(page)
+                        ? `${parts.filter(has).length} of ${parts.length} parts`
+                        : ''}
+                  </small>
+                </div>
+                {shown && (
+                  <ul className="dsp-parts" aria-label={`${page.label}'s parts`}>
+                    {parts.map((part) => (
+                      <li key={part.id} className={`dsp-feature-row ${has(part) ? '' : 'off'}`}>
+                        {control(part, !has(page))}
+                        <strong>{part.label}</strong>
+                        <small>{part.mandatory ? 'Every DSP' : part.tab ? 'Tab' : ''}</small>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+      <section aria-label="Connections">
+        <h3 className="dsp-group">
+          <Plug size={14} aria-hidden="true" />
+          Connections
         </h3>
-        {page ? (
-          <>
-            {row(page, `${page.label} page`)}
-            {tabs.length > 0 && <h4 className="dsp-tabs-label">Tabs</h4>}
-            {tabs.map((tab) => row(tab, tab.label, !has(page)))}
-            {parts.length > 0 && <h4 className="dsp-tabs-label">Sub-features</h4>}
-            {parts.map((part) => row(part, part.label, !has(page)))}
-          </>
-        ) : (
-          connections.map((connection) => row(connection))
-        )}
+        <ul className="dsp-feature-list">
+          {connections.map((connection) => (
+            <li key={connection.id} className={`dsp-feature-row ${has(connection) ? '' : 'off'}`}>
+              <span className="dsp-expand" aria-hidden="true" />
+              {control(connection)}
+              <strong>{connection.label}</strong>
+              {has(connection) && (
+                <Badge value={dsp.connections[connection.id] ?? 'not_connected'} />
+              )}
+            </li>
+          ))}
+        </ul>
       </section>
       {pending && data && (
         <FeatureSwitchDialog

@@ -1,10 +1,11 @@
-//! What a DSP may use. A feature is a page with the permissions it owns, a part of
-//! a page with the permissions it owns, such as one of its tabs, or a connection to a provider. The platform owner switches
-//! features per DSP: a switched-off feature's pages, permissions and automation
-//! do not exist for that DSP, and nothing it stored is touched, so switching it
-//! back on restores everything. Pages and their tabs come from the features'
-//! manifests, and connections from the collector registry, each providing a
-//! capability; a page requires capabilities, never a provider by name.
+//! What a DSP may use. A feature is a page with the permissions it owns, a part of a page
+//! with the permissions it owns, such as one of its tabs, or a connection to a provider. A
+//! mandatory feature or part is on for every DSP; the platform owner switches the optional
+//! ones per DSP: a switched-off feature's pages, permissions and automation do not exist for
+//! that DSP, and nothing it stored is touched, so switching it back on restores everything,
+//! its parts as they were. Pages and their parts come from the features' manifests, and
+//! connections from the collector registry, each providing a capability; a page or a part
+//! requires capabilities, never a provider by name.
 use super::audit::AuditChange;
 use crate::{
     Result,
@@ -34,12 +35,14 @@ pub struct Feature {
     pub permissions: &'static [&'static str],
     /// What a connection supplies, such as timecards.
     pub provides: &'static [&'static str],
-    /// What a page needs one enabled provider of.
+    /// What a page or a part needs one enabled provider of.
     pub requires: &'static [&'static str],
     /// Whether a DSP gets it when created, or while it has no row of its own.
     pub default: bool,
     /// For a part of a page, whether it is one of the page's tabs.
     pub tab: bool,
+    /// Whether every DSP has it, with no switch.
+    pub mandatory: bool,
 }
 impl Feature {
     /// How the audit log names it: a part with its page, as "Timecard · Meal Breaks".
@@ -52,15 +55,15 @@ impl Feature {
 }
 /// A feature's page, as its switch declares it, with the permissions the role sheet lists
 /// under it.
-fn page(feature: &manifest::Feature) -> Option<Feature> {
-    let switch = feature.switch?;
+fn page(feature: &manifest::Feature) -> Feature {
+    let switch = feature.switch;
     let permissions: Vec<_> = feature
         .permissions
         .iter()
         .filter(|permission| permission.group.is_none())
         .map(|permission| permission.id)
         .collect();
-    Some(Feature {
+    Feature {
         id: switch.id,
         label: switch.label,
         kind: Kind::Page,
@@ -68,32 +71,35 @@ fn page(feature: &manifest::Feature) -> Option<Feature> {
         permissions: Box::leak(permissions.into_boxed_slice()),
         provides: &[],
         requires: switch.requires,
-        default: false,
+        default: switch.mandatory,
         tab: false,
-    })
+        mandatory: switch.mandatory,
+    }
 }
 /// The parts of each page switched on their own: its tabs, and any other part. A part
-/// requires nothing: it exists while its page and its own switch are on, with the
-/// permissions it owns, and its routes ask `Context::has` or one of its permissions.
-/// Switching one never touches automation, which follows the page. It defaults on, so a page
-/// switched on shows every part until one is switched off; a DSP still starts with none, as
-/// its pages are off.
+/// exists while its page and its own switch are on, with the permissions it owns, and its
+/// routes ask `Context::has` or one of its permissions; it may need a connection of its own
+/// beyond its page's. Switching one never touches automation, which follows the page. An
+/// optional page's part defaults on, so switching the page on shows every part until one is
+/// switched off; a DSP still starts with none, as its pages are off. A mandatory page's
+/// optional part defaults off, as a new feature does: its page is never switched on to show
+/// it.
 fn page_subs(feature: &manifest::Feature) -> impl Iterator<Item = Feature> {
-    feature.switch.into_iter().flat_map(|switch| {
-        feature.subfeatures.iter().map(move |sub| {
-            let permissions: Vec<_> = sub.permissions.iter().map(|p| p.id).collect();
-            Feature {
-                id: sub.id,
-                label: sub.label,
-                kind: Kind::Sub(switch.id),
-                // Made once, with the catalog, which lasts as long as the process.
-                permissions: Box::leak(permissions.into_boxed_slice()),
-                provides: &[],
-                requires: &[],
-                default: true,
-                tab: sub.tab,
-            }
-        })
+    let switch = feature.switch;
+    feature.subfeatures.iter().map(move |sub| {
+        let permissions: Vec<_> = sub.permissions.iter().map(|p| p.id).collect();
+        Feature {
+            id: sub.id,
+            label: sub.label,
+            kind: Kind::Sub(switch.id),
+            // Made once, with the catalog, which lasts as long as the process.
+            permissions: Box::leak(permissions.into_boxed_slice()),
+            provides: &[],
+            requires: sub.requires,
+            default: sub.mandatory || !switch.mandatory,
+            tab: sub.tab,
+            mandatory: sub.mandatory,
+        }
     })
 }
 /// Every page, in catalog order.
@@ -114,8 +120,7 @@ pub fn schedules() -> &'static str {
         .features
         .iter()
         .find(|feature| feature.schedules)
-        .and_then(|feature| feature.switch)
-        .map(|switch| switch.id)
+        .map(|feature| feature.switch.id)
         .expect("a page runs the schedules")
 }
 /// The page that runs a job kind or a schedule collection: the page of the feature that
@@ -138,17 +143,17 @@ pub fn automation(kind_or_collection: &str) -> &'static str {
         .find(|c| c.job_kind == kind_or_collection || c.schedule == kind_or_collection)
         .and_then(|collection| registry.keeping(collection.job_kind))
         .or_else(aliasing)
-        .and_then(|feature| feature.switch)
-        .map_or_else(schedules, |switch| switch.id)
+        .map_or_else(schedules, |feature| feature.switch.id)
 }
 /// Whether a page that runs collections is on: the schedules' page, or one whose
 /// feature keeps a collection.
 pub fn automates(enabled: &[String]) -> bool {
     let runs = |id: &str| {
         id == schedules()
-            || registry().features.iter().any(|feature| {
-                !feature.keeps.is_empty() && feature.switch.is_some_and(|switch| switch.id == id)
-            })
+            || registry()
+                .features
+                .iter()
+                .any(|feature| !feature.keeps.is_empty() && feature.switch.id == id)
     };
     enabled.iter().any(|f| runs(f))
 }
@@ -172,12 +177,13 @@ fn connection(provider: Provider) -> Feature {
         requires: &[],
         default: false,
         tab: false,
+        mandatory: false,
     }
 }
 /// The catalog: every feature's page, their parts, then every registered connection.
 static CATALOG: LazyLock<Vec<Feature>> = LazyLock::new(|| {
     let features = registry().features;
-    let pages = features.iter().filter_map(|feature| page(feature));
+    let pages = features.iter().map(|feature| page(feature));
     let subs = features.iter().flat_map(|feature| page_subs(feature));
     pages
         .chain(subs)
@@ -252,8 +258,9 @@ impl Store {
     pub fn features(&self, dsp: &str) -> Result<Vec<String>> {
         Ok(effective(&self.switches(dsp)?))
     }
-    /// Every feature switched on, in catalog order. A feature without a row of its own
-    /// is at its default, which is how a DSP made before the feature existed reads.
+    /// Every feature switched on, in catalog order: the mandatory ones whatever is stored. A
+    /// feature without a row of its own is at its default, which is how a DSP made before the
+    /// feature existed reads.
     fn switches(&self, dsp: &str) -> Result<Vec<String>> {
         let stored: BTreeMap<String, bool> = self
             .platform
@@ -265,9 +272,46 @@ impl Store {
             .collect();
         Ok(catalog()
             .iter()
-            .filter(|f| stored.get(f.id).copied().unwrap_or(f.default))
+            .filter(|f| f.mandatory || stored.get(f.id).copied().unwrap_or(f.default))
             .map(|f| f.id.to_owned())
             .collect())
+    }
+    /// Keeps what every DSP had: a feature or part that was mandatory when the server last
+    /// started, and is optional now, is switched on, once, for every DSP there is, so making
+    /// it optional takes it from none of them; a DSP made later starts with it off, as with
+    /// any optional feature. Then records what is mandatory now.
+    pub fn keep_mandatory_features(&self) -> Result<()> {
+        self.platform.transaction(|| {
+            let recorded: BTreeMap<String, bool> = self
+                .platform
+                .query_as("SELECT feature,mandatory FROM feature_availability", [])?
+                .into_iter()
+                .collect();
+            let made_optional: Vec<&Feature> = catalog()
+                .iter()
+                .filter(|f| !f.mandatory && recorded.get(f.id) == Some(&true))
+                .collect();
+            if !made_optional.is_empty() {
+                for row in self.platform.all("SELECT id FROM dsps", [])? {
+                    for feature in &made_optional {
+                        self.platform.exec(
+                            "INSERT INTO dsp_features(dsp_id,feature,enabled,changed_at) \
+                             VALUES (?,?,1,?) ON CONFLICT(dsp_id,feature) DO UPDATE SET \
+                             enabled=1,changed_by=NULL,changed_at=excluded.changed_at",
+                            params![crate::db::s(&row, "id"), feature.id, iso()],
+                        )?;
+                    }
+                }
+            }
+            for feature in catalog().iter().filter(|f| f.kind != Kind::Connection) {
+                self.platform.exec(
+                    "INSERT INTO feature_availability(feature,mandatory) VALUES (?,?) \
+                     ON CONFLICT(feature) DO UPDATE SET mandatory=excluded.mandatory",
+                    params![feature.id, feature.mandatory],
+                )?;
+            }
+            Ok(())
+        })
     }
     /// Every feature of the catalog as the DSP has it, with what switching the
     /// schedules' page off would stop, for the platform's DSP page.
@@ -285,6 +329,10 @@ impl Store {
                     .iter()
                     .find(|s| s.feature == f.id)
                     .cloned()
+                    .map(|state| FeatureState {
+                        enabled: state.enabled || f.mandatory,
+                        ..state
+                    })
                     .unwrap_or(FeatureState {
                         feature: f.id.to_owned(),
                         enabled: f.default,
@@ -339,12 +387,13 @@ impl Store {
         }
         Ok(())
     }
-    /// Switches one feature, and with it whatever depends on it: enabling a page
-    /// enables a provider of each capability it lacks, and its tabs when none is on;
-    /// enabling a provider switches off another of the same capability; disabling a
-    /// provider disables the pages left without one; disabling a page's last tab
-    /// disables the page. A page switched off keeps its tabs' switches as they are.
-    /// Every switch is audited; the answer lists them.
+    /// Switches one optional feature, and with it whatever depends on it: enabling a page
+    /// or a part enables a provider of each capability it, or a page's parts on with it,
+    /// lacks, and a page's tabs when none is on; enabling a provider switches off another of
+    /// the same capability; disabling a provider disables the pages and parts left without
+    /// one; a page left with none of its tabs on is disabled. A page switched off keeps its
+    /// parts' switches as they are, so they come back as they were. A mandatory feature or
+    /// part has no switch. Every switch is audited; the answer lists them.
     pub fn set_feature(
         &self,
         dsp: &str,
@@ -354,61 +403,102 @@ impl Store {
     ) -> Result<DspFeatures> {
         let all = catalog();
         let feature = find(id).ok_or_else(|| crate::Error::new("feature_not_found", 404))?;
+        ensure(!feature.mandatory, "feature_mandatory", 409)?;
+        fn flip(
+            current: &mut Vec<String>,
+            changed: &mut Vec<(&'static Feature, bool)>,
+            f: &'static Feature,
+            on: bool,
+        ) {
+            if current.iter().any(|e| e == f.id) == on {
+                return;
+            }
+            if on {
+                current.push(f.id.to_owned());
+            } else {
+                current.retain(|e| e != f.id);
+            }
+            changed.push((f, on));
+        }
+        // On, and with its page on for a part: what exists.
+        let live = |current: &[String], f: &Feature| {
+            let on = |id: &str| current.iter().any(|e| e == id);
+            on(f.id)
+                && match f.kind {
+                    Kind::Sub(page) => on(page),
+                    _ => true,
+                }
+        };
         self.platform.transaction(|| {
             self.find_dsp(dsp)?;
             let mut current = self.switches(dsp)?;
-            let mut changed: Vec<(&Feature, bool)> = Vec::new();
-            let mut flip = |current: &mut Vec<String>, f: &'static Feature, on: bool| {
-                let is_on = current.iter().any(|e| e == f.id);
-                if is_on == on {
-                    return;
-                }
-                if on {
-                    current.push(f.id.to_owned());
-                } else {
-                    current.retain(|e| e != f.id);
-                }
-                changed.push((f, on));
-            };
+            let mut changed: Vec<(&'static Feature, bool)> = Vec::new();
             if enabled {
                 for capability in feature.provides {
                     for other in all
                         .iter()
                         .filter(|f| f.provides.contains(capability) && f.id != feature.id)
                     {
-                        flip(&mut current, other, false);
+                        flip(&mut current, &mut changed, other, false);
                     }
                 }
-                for capability in feature.requires {
-                    if provided(capability, &current) {
-                        continue;
+                // Each capability `f` requires that no connection on provides, from its one
+                // provider.
+                let connect = |current: &mut Vec<String>,
+                               changed: &mut Vec<(&'static Feature, bool)>,
+                               f: &Feature|
+                 -> Result<()> {
+                    for capability in f.requires {
+                        if provided(capability, current) {
+                            continue;
+                        }
+                        let providers: Vec<_> = all
+                            .iter()
+                            .filter(|f| f.provides.contains(capability))
+                            .collect();
+                        ensure(providers.len() == 1, "provider_required", 409)?;
+                        flip(current, changed, providers[0], true);
                     }
-                    let providers: Vec<_> = all
-                        .iter()
-                        .filter(|f| f.provides.contains(capability))
-                        .collect();
-                    ensure(providers.len() == 1, "provider_required", 409)?;
-                    flip(&mut current, providers[0], true);
-                }
-                flip(&mut current, feature, true);
+                    Ok(())
+                };
+                connect(&mut current, &mut changed, feature)?;
+                flip(&mut current, &mut changed, feature, true);
                 let own: Vec<_> = tabs(feature.id).collect();
                 if !own.iter().any(|t| current.iter().any(|e| e == t.id)) {
                     for tab in own {
-                        flip(&mut current, tab, true);
+                        flip(&mut current, &mut changed, tab, true);
                     }
                 }
-            } else {
-                flip(&mut current, feature, false);
-                if let Kind::Sub(page) = feature.kind
-                    && feature.tab
-                    && current.iter().any(|e| e == page)
-                    && !tabs(page).any(|t| current.iter().any(|e| e == t.id))
-                {
-                    flip(&mut current, find(page).expect("a tab's page"), false);
+                // A page's parts that come on with it need their connections too.
+                let parts: Vec<&'static Feature> = all
+                    .iter()
+                    .filter(|f| f.kind == Kind::Sub(feature.id) && live(&current, f))
+                    .collect();
+                for part in parts {
+                    connect(&mut current, &mut changed, part)?;
                 }
-                for page in all.iter().filter(|f| f.kind == Kind::Page) {
-                    if !satisfied(page, &current) {
-                        flip(&mut current, page, false);
+            } else {
+                flip(&mut current, &mut changed, feature, false);
+                // Then whatever is left short, until nothing more is: a page with none of
+                // its tabs on, and a page or a part without a provider of what it requires.
+                loop {
+                    let before = changed.len();
+                    for page in all.iter().filter(|f| f.kind == Kind::Page) {
+                        let mut own = tabs(page.id).peekable();
+                        if live(&current, page)
+                            && own.peek().is_some()
+                            && !own.any(|t| current.iter().any(|e| e == t.id))
+                        {
+                            flip(&mut current, &mut changed, page, false);
+                        }
+                    }
+                    for f in all.iter().filter(|f| f.kind != Kind::Connection) {
+                        if live(&current, f) && !satisfied(f, &current) {
+                            flip(&mut current, &mut changed, f, false);
+                        }
+                    }
+                    if changed.len() == before {
+                        break;
                     }
                 }
             }

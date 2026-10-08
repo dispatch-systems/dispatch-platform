@@ -2,6 +2,7 @@ import type { Feature } from '../../../tenancy/api/index.js';
 import { capabilityLabels } from '../../../tenancy/api/generated/capabilities.js';
 import {
   featureCatalog,
+  subsOf,
   tabsOf,
   type FeatureEntry,
 } from '../../../shell/frontend/runtime/features.js';
@@ -19,13 +20,14 @@ export const capabilityLabel = (capability: string): string =>
     : capability;
 
 /**
- * What switching `id` would change, mirroring `set_feature` in the backend: enabling a
- * page enables the one provider of each capability it lacks, and its tabs when none is on;
- * enabling a provider switches off another of the same capability; disabling a provider
- * disables the pages left without one; disabling a page's last tab disables the page.
- * `enabled` is what is switched on, tabs of a page that is off included. Undefined when a
- * page needs a capability with several providers and none is on: the backend refuses that
- * switch until one is chosen.
+ * What switching `id` would change, mirroring `set_feature` in the backend: enabling a page
+ * or a part enables the one provider of each capability it, or a page's parts on with it,
+ * lacks, and a page's tabs when none is on; enabling a provider switches off another of the
+ * same capability; disabling a provider disables the pages and parts left without one; a page
+ * left with none of its tabs on is disabled. A page switched off keeps its parts' switches.
+ * `enabled` is what is switched on, parts of a page that is off included. Undefined when a
+ * page or part needs a capability with several providers and none is on: the backend refuses
+ * that switch until one is chosen. A mandatory feature or part has no switch: nothing changes.
  */
 export function previewSwitch(enabled: readonly string[], id: Feature, on: boolean) {
   const current = new Set(enabled);
@@ -40,34 +42,44 @@ export function previewSwitch(enabled: readonly string[], id: Feature, on: boole
     f.provides?.includes(capability) ?? false;
   const provided = (capability: string) =>
     featureCatalog.some((f) => provides(f, capability) && current.has(f.id));
+  // On, and with its page on for a part: what exists.
+  const live = (f: FeatureEntry) => current.has(f.id) && (f.kind !== 'sub' || current.has(f.page));
   const feature = featureCatalog.find((f) => f.id === id)!;
+  if (feature.mandatory) return changed;
   if (on) {
     for (const capability of feature.provides ?? [])
       for (const other of featureCatalog)
         if (provides(other, capability) && other.id !== feature.id) flip(other, false);
-    for (const capability of feature.requires) {
-      if (provided(capability)) continue;
-      const providers = featureCatalog.filter((f) => provides(f, capability));
-      if (providers.length !== 1) return undefined;
-      flip(providers[0]!, true);
-    }
+    // Each capability `f` requires that no connection on provides, from its one provider.
+    const connect = (f: FeatureEntry) => {
+      for (const capability of f.requires) {
+        if (provided(capability)) continue;
+        const providers = featureCatalog.filter((p) => provides(p, capability));
+        if (providers.length !== 1) return false;
+        flip(providers[0]!, true);
+      }
+      return true;
+    };
+    if (!connect(feature)) return undefined;
     flip(feature, true);
     const own = tabsOf(feature.id);
     if (!own.some((t) => current.has(t.id))) for (const t of own) flip(t, true);
+    // A page's parts that come on with it need their connections too.
+    for (const part of subsOf(feature.id)) if (live(part) && !connect(part)) return undefined;
   } else {
     flip(feature, false);
-    if (
-      feature.kind === 'sub' &&
-      feature.tab &&
-      current.has(feature.page) &&
-      !tabsOf(feature.page).some((t) => current.has(t.id))
-    )
-      flip(
-        featureCatalog.find((f) => f.id === feature.page)!,
-        false,
-      );
-    for (const page of featureCatalog)
-      if (page.kind === 'page' && !page.requires.every(provided)) flip(page, false);
+    // Then whatever is left short, until nothing more is.
+    let before: number;
+    do {
+      before = changed.length;
+      for (const page of featureCatalog) {
+        if (page.kind !== 'page' || !live(page)) continue;
+        const own = tabsOf(page.id);
+        if (own.length && !own.some((t) => current.has(t.id))) flip(page, false);
+      }
+      for (const f of featureCatalog)
+        if (f.kind !== 'connection' && live(f) && !f.requires.every(provided)) flip(f, false);
+    } while (changed.length !== before);
   }
   return changed;
 }

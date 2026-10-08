@@ -31,13 +31,13 @@ import {
 import { appManifest, crateOf, crates, featureList, wiredList, wiredManifest } from './wire.js';
 
 // `npm run new:feature -- <name> [flags]`: a feature that works as written. It is a crate of its
-// own, listed in app/, with a switch that starts off for every DSP, which a browser test finds on
+// own, listed in app/, optional, with a switch that starts off for every DSP, which a browser test finds on
 // the DSPs page, and a view permission on the role sheet. Each flag adds a piece with its starter
 // code and its test.
 
 export const usage = `Usage: npm run new:feature -- <name> [options]
 
-  --always-on                       no switch: every DSP has it at once
+  --mandatory                       every DSP has it, with no switch to turn it off
   --api                             api/ with one endpoint behind the view permission
   --tables <database>               a first table: dsp, a collector's database, or the
                                     feature's own name with --keeps for a database of its own
@@ -53,7 +53,7 @@ export const usage = `Usage: npm run new:feature -- <name> [options]
   --out <dir>                       with --dry-run, write the files under <dir> instead
   --root <dir>                      the repository to write into (default: this one)`;
 
-const FLAGS = ['always-on', 'api', 'mcp', 'page', 'settings', 'no-backend', 'dry-run'];
+const FLAGS = ['mandatory', 'api', 'mcp', 'page', 'settings', 'no-backend', 'dry-run'];
 const OPTIONS = ['tables', 'keeps', 'tab-of', 'label', 'out', 'root'];
 /** Where the shell's frontend reads a DSP view's type from, relative to the root. */
 const DSP_VIEW = 'core/accounts/api/index.js';
@@ -75,7 +75,7 @@ export function featureValues(root: string, argv: string[]) {
       `${name} is taken: features, collectors and core's parts each own their name`,
     );
 
-  const alwaysOn = args.flags.has('always-on');
+  const mandatory = args.flags.has('mandatory');
   const api = args.flags.has('api');
   const mcp = args.flags.has('mcp');
   const page = args.flags.has('page');
@@ -83,9 +83,9 @@ export function featureValues(root: string, argv: string[]) {
   const host = args.options.get('tab-of');
   if (page && host)
     throw new UsageError('--page and --tab-of each give it its own screen: choose one');
-  if (mcp && alwaysOn)
+  if (mcp && mandatory)
     throw new UsageError(
-      'Agents read a feature through its switch: --mcp needs a feature with one',
+      'Agents read a feature through its switch: --mcp needs an optional feature',
     );
   if (args.flags.has('no-backend')) {
     if (!page && !host && !settings)
@@ -147,7 +147,7 @@ export function featureValues(root: string, argv: string[]) {
     hostPage = found;
   }
 
-  const switched = !alwaysOn;
+  const switched = !mandatory;
   // A switch needs a permission to gate its screens and routes; so does an endpoint or a keeper.
   const permission = switched || api || keeps;
   const order = nextPermissionOrder(root);
@@ -199,8 +199,8 @@ export function featureValues(root: string, argv: string[]) {
         : 'backend::storage::DATABASE';
   const manifestImports = [
     'Feature',
-    ...(switched ? ['Switch'] : []),
     'feature',
+    switched ? 'optional' : 'mandatory',
     ...(permission ? ['perm'] : []),
   ];
   const databaseLabel = !database
@@ -218,7 +218,7 @@ export function featureValues(root: string, argv: string[]) {
   // A switch shows on the DSPs page with its icon, which the frontend's platform slots give.
   const frontend = screens || switched;
   // backend/ holds its storage and keeper. A feature with neither, no API and no frontend, as
-  // --always-on alone, keeps an empty one and its manifest's test: the anatomy rule wants a
+  // --mandatory alone, keeps an empty one and its manifest's test: the anatomy rule wants a
   // backend, an API or a frontend.
   const manifestOnly = !api && !frontend && !database && !keeps;
   const values: Values = {
