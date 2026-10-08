@@ -1,8 +1,9 @@
 name: Removability
 # The proof that each feature can be removed. Each job leaves one feature out of the app,
 # with every feature that declares it, and the rest must still build, pass the app's tests,
-# write its TypeScript, and typecheck and bundle its frontend. A failed job is named for the
-# feature it left out, and says what reached into it. Weekly rather than in the queue, since
+# write its TypeScript, and typecheck and bundle its frontend; one more leaves every feature
+# out, proving core depends on none. A failed job is named for the feature it left out, and
+# says what reached into it. Weekly rather than in the queue, since
 # it takes a build per feature; `npm run check:removability -- --feature <name>` runs one
 # job's steps locally.
 on:
@@ -54,3 +55,18 @@ jobs:
         env:
           FEATURE: ${{ matrix.feature }}
         run: npm run check:removability -- --feature "$FEATURE"
+  every:
+    name: without every feature
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-tools
+      - uses: ./.github/actions/setup-build
+        with:
+          profile: debug
+          save: 'false'
+      - name: Leave out every feature
+        run: npm run check:removability -- --every

@@ -110,10 +110,13 @@ builds it with Vite. The typecheck (`removability.tsconfig.json`) leaves out the
 cross-owner tests and the tooling, which name every feature. The app's Rust tests say which
 features they need with `cfg(feature = …)` on their modules; those about the whole
 product ask for `default`. A build that leaves features out runs its tests with core's
-stand-in for what they would bring, as each owner's own tests do. A failure names the step
-and the files or tests that reached into what was left out. `npm run check:removability -- --feature <name>` runs one
-job's steps locally, and `--dry-run` prints them; it puts the checkout back as it was, the
-manifest and lock included.
+stand-in for what they would bring, as each owner's own tests do. One more job leaves every
+feature out, with the workspace's `features/*` member, proving core and the collectors stand
+alone: they build, the server starts, signs in and opens a DSP in the tests that remain, and
+the frontend bundles with no feature's pages. A failure names the step and the files or tests
+that reached into what was left out. `npm run check:removability -- --feature <name>`, or
+`--every`, runs one job's steps locally, and `--dry-run` prints them; it puts the checkout back
+as it was, the manifests and lock included.
 
 `npm run check:privacy` scans publishable working files, also through `check:rules` before
 pushes and the required `checks` job. It downloads the checksum-pinned Gitleaks release in

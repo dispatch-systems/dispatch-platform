@@ -5,10 +5,12 @@ import path from 'node:path';
 // The proof that each feature can be removed (plans/restructure/enforcement.md, section 4).
 // It leaves one feature out, with every feature that declares it, and the rest of the
 // product must still build, pass the app's tests, write its TypeScript, and typecheck and
-// bundle its frontend. .github/workflows/removability.yml runs it weekly for every feature;
-// locally it runs the same way:
+// bundle its frontend. Leaving every feature out proves core runs alone: it depends on none.
+// .github/workflows/removability.yml runs it weekly for every feature, and for all of them at
+// once; locally it runs the same way:
 //
 //   npm run check:removability -- --feature uniforms [--dry-run]
+//   npm run check:removability -- --every [--dry-run]
 //
 // Every step runs with the left-out features really gone: their directories are moved aside
 // and the app's manifest no longer names their crates, so nothing, product or test, can still
@@ -17,7 +19,7 @@ import path from 'node:path';
 // feature as the app's Rust tests do. Afterwards the checkout is as it was: the directories,
 // the manifest, the lock and the generated TypeScript all come back.
 
-const usage = 'Usage: npm run check:removability -- --feature <name> [--dry-run]';
+const usage = 'Usage: npm run check:removability -- --feature <name> | --every [--dry-run]';
 
 /** The feature map's part this reads: what each feature declares it uses. */
 export type FeatureMap = Record<string, { depends_on: string[] }>;
@@ -37,6 +39,8 @@ export const featureMap = 'app/generated/features.json';
 export const appManifest = 'app/backend/Cargo.toml';
 /** The workspace's lock, which the Cargo steps rewrite without their crates. */
 const lock = 'Cargo.lock';
+/** The workspace's manifest, whose `features/*` a run drops when it leaves out every feature. */
+const workspaceManifest = 'Cargo.toml';
 /** The frontend's program without the app's cross-owner tests and the tooling. */
 export const typesConfig = 'tooling/ci/removability.tsconfig.json';
 /**
@@ -116,15 +120,18 @@ export function withoutFeatures(manifest: string, out: readonly string[]): strin
   return lines.join('\n');
 }
 
-/** What leaving `feature` out runs, in order. `bundle` is where the frontend is built to. */
-export function plan(features: FeatureMap, feature: string, bundle: string): Plan {
-  const out = leftOut(features, feature);
+/**
+ * What leaving `feature` out runs, in order, or every feature without one. `bundle` is where
+ * the frontend is built to.
+ */
+export function plan(features: FeatureMap, feature: string | undefined, bundle: string): Plan {
+  const out = feature === undefined ? Object.keys(features).sort() : leftOut(features, feature);
   const kept = Object.keys(features)
     .filter((name) => !out.includes(name))
     .sort();
   // Unlocked: the lock loses the left-out crates.
   const app = ['-p', 'dispatch-backend', '--no-default-features'];
-  const cargo = [...app, '--features', kept.join(',')];
+  const cargo = kept.length ? [...app, '--features', kept.join(',')] : app;
   return {
     leftOut: out,
     kept,
@@ -219,7 +226,7 @@ function checkout(root: string, removal: Plan) {
     throw new Error(
       `${workspace} holds what an earlier run moved aside: put its features/ back and delete it`,
     );
-  const before = [...generated(root), appManifest, lock];
+  const before = [...generated(root), appManifest, lock, workspaceManifest];
   for (const file of before)
     fs.cpSync(path.join(root, file), path.join(store, 'kept', file), { recursive: true });
   const moved: string[] = [];
@@ -235,6 +242,19 @@ function checkout(root: string, removal: Plan) {
         manifest,
         withoutFeatures(fs.readFileSync(manifest, 'utf8'), removal.leftOut),
       );
+      // With every feature aside, the workspace's `features/*` names nothing, which Cargo
+      // refuses.
+      const features = path.join(root, 'features');
+      const left = fs
+        .readdirSync(features)
+        .some((name) => fs.existsSync(path.join(features, name, 'Cargo.toml')));
+      if (!left) {
+        const members = path.join(root, workspaceManifest);
+        fs.writeFileSync(
+          members,
+          fs.readFileSync(members, 'utf8').replace(/"features\/\*",\s*/, ''),
+        );
+      }
     },
     restore() {
       for (const dir of moved.splice(0)) fs.renameSync(path.join(store, dir), path.join(root, dir));
@@ -252,14 +272,17 @@ const seconds = (since: number) => `${Math.round((Date.now() - since) / 1000)}s`
 export async function main(argv: string[], root = repositoryRoot) {
   const at = argv.indexOf('--feature');
   const feature = at >= 0 ? argv[at + 1] : undefined;
+  const every = argv.includes('--every');
+  const flags = ['--dry-run', '--every'];
   if (
-    !feature ||
-    argv.some((arg, index) => arg.startsWith('--') && index !== at && arg !== '--dry-run')
+    every === Boolean(feature) ||
+    argv.some((arg, index) => arg.startsWith('--') && index !== at && !flags.includes(arg))
   )
     throw new Error(usage);
   const removal = plan(readFeatures(root), feature, path.join(root, workspace, 'dashboard'));
   const named = removal.leftOut.join(', ');
-  process.stdout.write(`Leaving out ${named}; keeping ${removal.kept.join(', ')}.\n`);
+  const keeping = removal.kept.join(', ') || 'only core and the collectors';
+  process.stdout.write(`Leaving out ${named}; keeping ${keeping}.\n`);
   if (argv.includes('--dry-run')) {
     process.stdout.write(`(moves ${removal.aside.join(', ')} aside)\n`);
     process.stdout.write(`(drops their crates from ${appManifest})\n`);
