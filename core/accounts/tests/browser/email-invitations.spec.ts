@@ -66,3 +66,45 @@ test('an existing account opens its newly invited DSP instead of another members
   });
   await expect(page).toHaveURL(new RegExp(`#dsp/${joined.id}/`));
 });
+
+// An owner who joined before onboarding asked for the DSP's details is asked on opening it,
+// and the details are saved where the owner that saves them says.
+test('an owner whose DSP has no details yet sets them up on opening it', async ({
+  page,
+  dispatch,
+}) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'DSPs', exact: true })).toBeVisible();
+  const origin = new URL(page.url()).origin;
+  const session = await (await page.request.get(`${origin}/api/session`)).json();
+  const created = await page.request.post(`${origin}/api/platform/dsps`, {
+    headers: { Origin: origin, 'X-CSRF-Token': session.csrf },
+    // Made without a name, it waits for its owner to set it up.
+    data: { ownerEmail: 'resumed-owner@dispatch.test' },
+  });
+  expect(created.status()).toBe(201);
+  const mail = await capturedMail(dispatch.root, 'resumed-owner@dispatch.test');
+  const raw = /token=([A-Za-z0-9_-]{43})/.exec(mail.text)![1];
+  // Accepted without the DSP's details, as an invitation was before onboarding asked for them.
+  const accepted = await page.request.post(`${origin}/api/invitations/${raw}/accept`, {
+    headers: { Origin: origin },
+    data: { firstName: 'Resumed', lastName: 'Owner', password: demo.password },
+  });
+  expect(accepted.status()).toBe(200);
+  await page.context().clearCookies();
+  await login(page, 'resumed-owner@dispatch.test');
+  await expect(page.getByRole('heading', { name: 'Set up your DSP', exact: true })).toBeVisible();
+  await page.getByLabel('DSP name', { exact: true }).fill('Resumed DSP');
+  await page.getByLabel('Abbreviation', { exact: true }).fill('RDSP');
+  await page.getByLabel('Station code', { exact: true }).fill('TST2');
+  await page.getByRole('button', { name: 'Save DSP details', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Currently under development', exact: true }),
+  ).toBeVisible();
+  const current = await (await page.request.get(`${origin}/api/session`)).json();
+  expect(current.dsps[0].profile).toMatchObject({
+    abbreviation: 'RDSP',
+    stationCode: 'TST2',
+    setupRequired: false,
+  });
+});

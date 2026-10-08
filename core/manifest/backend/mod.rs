@@ -257,19 +257,19 @@ impl Registry {
         people.sort_by_key(|people| people.order());
         people
     }
-    /// The permission that lets a member invite others.
-    pub fn inviting(&self) -> &'static str {
+    /// The permission that lets a member invite others, if a feature declares one; without
+    /// it, only the platform owner invites.
+    pub fn inviting(&self) -> Option<&'static str> {
         self.permissions()
             .find(|permission| permission.invites)
-            .expect("a permission lets members invite")
-            .id
+            .map(|permission| permission.id)
     }
     /// Panics unless every collection has exactly one keeper, every keeper keeps a
     /// registered collection, every schedule alias has a name
     /// of its own and runs only collections its feature keeps, only a page has sub-features,
     /// every feature depends only on registered features and collectors, every permission
     /// has an id of its own and implies, or sits under, only permissions that exist and never
-    /// itself, one lets members invite, every database is declared once, with migrations
+    /// itself, one at most lets members invite, every database is declared once, with migrations
     /// numbered from 1 without a gap or a repeat, every table is declared once, every
     /// domain is declared once and before it is named, every audit prefix is a dotted name
     /// listed under an area other than settings, each kind of data that names people has a
@@ -401,8 +401,8 @@ impl Registry {
         let permissions: Vec<_> = self.permissions().collect();
         let inviting = permissions.iter().filter(|p| p.invites).count();
         assert!(
-            inviting == 1,
-            "{inviting} permissions let members invite, not one"
+            inviting <= 1,
+            "{inviting} permissions let members invite; one at most may"
         );
         for (index, permission) in permissions.iter().enumerate() {
             assert!(
@@ -821,7 +821,7 @@ pub struct Permission {
     pub group: Option<&'static str>,
     /// Whether a write it allows asks its holder to have verified who they are recently.
     pub recently_verified: bool,
-    /// Whether it lets its holder invite members. One permission does, and a member's
+    /// Whether it lets its holder invite members. One permission at most does, and a member's
     /// invitations are good only while they hold it.
     pub invites: bool,
 }

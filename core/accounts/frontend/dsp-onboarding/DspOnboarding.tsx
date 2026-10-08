@@ -3,15 +3,20 @@ import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { DspSetupForm, type DspSetup } from './DspSetupForm.js';
 import { OnboardingLayout } from './OnboardingLayout.js';
 
-/** Resume setup for owners who already created their account before the new flow. */
+/**
+ * Resume setup for owners who already created their account before the new flow, saving the
+ * profile to the route the owner that saves it names.
+ */
 export function DspOnboarding({
+  saveTo,
   complete,
   signOut,
 }: {
+  saveTo: string;
   complete: () => Promise<void>;
   signOut: () => Promise<void>;
 }) {
-  const save = useAction((profile: DspSetup) => api('/api/dsp/profile', profile).then(complete), {
+  const save = useAction((profile: DspSetup) => api(saveTo, profile).then(complete), {
     inline: true,
   });
   const logout = useAction(signOut, { inline: true });

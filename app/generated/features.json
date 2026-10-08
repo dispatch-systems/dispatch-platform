@@ -645,9 +645,7 @@
         "GET /api/dsp/roles",
         "POST /api/dsp/roles",
         "POST /api/dsp/roles/{id}",
-        "POST /api/dsp/roles/{id}/remove",
-        "GET /api/invitations/{token}",
-        "POST /api/invitations/{token}/accept"
+        "POST /api/dsp/roles/{id}/remove"
       ],
       "settings": []
     },

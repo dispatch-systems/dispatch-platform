@@ -46,7 +46,7 @@ import {
 import { features } from './features.js';
 import { routeLabel } from './route-meta.js';
 import {
-  dspSetupPermission,
+  dspSetup,
   installFeatures,
   landingPage,
   type DspRouteId,
@@ -96,8 +96,10 @@ function App() {
     };
   }, []);
   const securityRequired = Boolean(session?.security.required && !session.security.verified);
-  const setup = dspSetupPermission();
-  const setupRequired = Boolean(view?.profile?.setupRequired && setup && can(view, setup));
+  const setup = dspSetup();
+  const setupRequired = Boolean(
+    view?.profile?.setupRequired && setup && can(view, setup.permission),
+  );
   const showAuth =
     session === null ||
     address.route === 'signin' ||
@@ -359,7 +361,8 @@ function App() {
     return (
       <SecurityPrompt security={session.security} complete={() => load(true)} signOut={logout} />
     );
-  if (setupRequired) return <DspOnboarding complete={() => load()} signOut={logout} />;
+  if (setupRequired && setup)
+    return <DspOnboarding saveTo={setup.save} complete={() => load()} signOut={logout} />;
   const scope = dspId ? 'dsp' : 'platform';
   async function logout() {
     await leavePresence();

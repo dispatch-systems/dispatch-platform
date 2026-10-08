@@ -2,6 +2,7 @@
 pub mod requests;
 pub mod types;
 pub(crate) mod routes {
+    pub mod invitations;
     pub mod security;
     pub mod sign_in;
 }

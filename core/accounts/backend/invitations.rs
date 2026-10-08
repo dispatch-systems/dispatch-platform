@@ -1,8 +1,21 @@
 use super::*;
 use crate::manifest::registry;
 impl Store {
+    /// Invites `email` to the DSP in `role`: the platform owner may, and a member holding the
+    /// permission a feature declares to invite with, as Team's Invite Members.
     pub fn invite(&self, a: &Auth, dsp: &str, email: &str, role: &str) -> Result<String> {
-        let c = self.context(a, dsp, registry().inviting())?;
+        let c = match registry().inviting() {
+            Some(inviting) => self.context(a, dsp, inviting)?,
+            // With no feature to invite through, only the platform owner, as themselves, does.
+            None => {
+                ensure(
+                    a.user.platform_owner && a.preview.is_none(),
+                    "permission_denied",
+                    403,
+                )?;
+                self.context(a, dsp, crate::tenancy::roles::ACCESS)?
+            }
+        };
         let role = self.role(dsp, role)?;
         self.ensure_assignable(&c, &role)?;
         ensure(self.config.mail_available(), "email_unavailable", 503)?;
@@ -153,7 +166,9 @@ impl Store {
         };
         Ok(grant.owner
             || (!role.system
-                && grant.permissions.iter().any(|p| p == registry().inviting())
+                && registry()
+                    .inviting()
+                    .is_some_and(|inviting| grant.permissions.iter().any(|p| p == inviting))
                 && role
                     .permissions
                     .iter()

@@ -35,6 +35,7 @@ pub fn table() -> Vec<Route> {
         server::api::routes::routes(),
         accounts::api::routes::sign_in::routes(),
         accounts::api::routes::security::routes(),
+        accounts::api::routes::invitations::routes(),
         tenancy::api::routes::routes(),
         platform_owner::api::routes::platform::routes(),
         mcp::api::routes::agent_api::routes(),

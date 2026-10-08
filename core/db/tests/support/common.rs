@@ -7,9 +7,7 @@ use crate::{
     collection::{browser::Collected, registry::Provider},
     db::{self, Migration, Migrations, Store, migrations::Apply, s},
     foundation::config::Config,
-    manifest::{
-        self, Collector, Feature, Keeper, Permission, Registry, feature, mandatory, optional, perm,
-    },
+    manifest::{self, Collector, Feature, Keeper, Registry, feature, mandatory, optional},
     server::operations,
 };
 use serde_json::Value;
@@ -59,8 +57,7 @@ pub fn whole(
 }
 
 /// What the parts a test names leave a registry without. A registry is whole: each of its
-/// collections kept once, one permission that invites,
-/// and each database's migrations numbered from 1 without a gap, though other owners add
+/// collections kept once, and each database's migrations numbered from 1 without a gap, though other owners add
 /// some of them. A stand-in takes the place of each missing owner: it keeps nothing, owns
 /// no table, and its migrations change nothing.
 fn stand_in(
@@ -77,7 +74,6 @@ fn stand_in(
         .filter(|collection| named.keeping(collection.job_kind).is_none())
         .map(|collection| leak::<Unkept>(Unkept(collection.job_kind)) as &'static dyn Keeper)
         .collect();
-    let invites = !named.permissions().any(|permission| permission.invites);
     let lists = db::CORE_MIGRATIONS
         .iter()
         .chain(
@@ -116,22 +112,11 @@ fn stand_in(
         } else {
             mandatory("stand_in", "Stand-in")
         },
-        permissions: match (invites, runs) {
-            (false, _) => &[],
-            (true, true) => INVITES,
-            (true, false) => INVITES_ALONE,
-        },
         keeps: leak(keeps),
         migrations: leak(missing),
         ..feature("stand_in")
     })
 }
-// Last, after every permission an owner declares.
-const INVITES: &[Permission] = &[perm("stand_in.invite", "Invite", u16::MAX).invites()];
-// The same, for a stand-in with no page to list it: the role sheet gives it a section.
-const INVITES_ALONE: &[Permission] = &[perm("stand_in.invite", "Invite", u16::MAX)
-    .group("Stand-in")
-    .invites()];
 /// Keeps a collection of a collector a test names whose own keeper it leaves out.
 struct Unkept(&'static str);
 impl Keeper for Unkept {

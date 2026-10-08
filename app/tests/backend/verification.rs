@@ -25,5 +25,5 @@ fn the_same_writes_ask_for_recent_verification() {
 #[test]
 fn inviting_takes_the_same_permission() {
     crate::install();
-    assert_eq!(registry().inviting(), "members.invite");
+    assert_eq!(registry().inviting(), Some("members.invite"));
 }
