@@ -79,7 +79,8 @@
         "POST /api/dsp/daily-performance/schedules/{key}/enabled",
         "POST /api/dsp/daily-performance/schedules/{key}/remove"
       ],
-      "schedules": false
+      "schedules": false,
+      "settings": []
     },
     "switch": "daily_performance",
     "tables": {
@@ -171,7 +172,17 @@
         "GET /api/documents/google/return",
         "GET /api/documents/google/picker"
       ],
-      "schedules": false
+      "schedules": false,
+      "settings": [
+        [
+          "GOOGLE_CLIENT_ID",
+          "GOOGLE_CLIENT_SECRET"
+        ],
+        [
+          "GOOGLE_API_KEY",
+          "GOOGLE_APP_ID"
+        ]
+      ]
     },
     "switch": "documents",
     "tables": {
@@ -248,7 +259,8 @@
         "POST /api/dsp/driver-match/split",
         "POST /api/dsp/driver-match/apart"
       ],
-      "schedules": false
+      "schedules": false,
+      "settings": []
     },
     "switch": "driver_match",
     "tables": {
@@ -353,7 +365,8 @@
         "POST /api/dsp/dvic/schedules/{key}/enabled",
         "POST /api/dsp/dvic/schedules/{key}/remove"
       ],
-      "schedules": false
+      "schedules": false,
+      "settings": []
     },
     "switch": "dvic",
     "tables": {
@@ -405,7 +418,8 @@
       },
       "people": [],
       "routes": [],
-      "schedules": false
+      "schedules": false,
+      "settings": []
     },
     "switch": null,
     "tables": {},
@@ -517,7 +531,8 @@
         "POST /api/dsp/routes/schedules/{key}/enabled",
         "POST /api/dsp/routes/schedules/{key}/remove"
       ],
-      "schedules": false
+      "schedules": false,
+      "settings": []
     },
     "switch": "routes",
     "tables": {
@@ -577,7 +592,8 @@
       "routes": [
         "POST /api/dsp/profile"
       ],
-      "schedules": false
+      "schedules": false,
+      "settings": []
     },
     "switch": null,
     "tables": {},
@@ -633,7 +649,8 @@
         "GET /api/invitations/{token}",
         "POST /api/invitations/{token}/accept"
       ],
-      "schedules": false
+      "schedules": false,
+      "settings": []
     },
     "switch": null,
     "tables": {},
@@ -774,7 +791,8 @@
         "POST /api/dsp/schedules/{key}/enabled",
         "POST /api/dsp/schedules/{key}/remove"
       ],
-      "schedules": true
+      "schedules": true,
+      "settings": []
     },
     "switch": "timecard",
     "tables": {
@@ -858,7 +876,8 @@
         "POST /api/dsp/uniforms/{id}/archive",
         "POST /api/dsp/uniforms/stock/{id}"
       ],
-      "schedules": false
+      "schedules": false,
+      "settings": []
     },
     "switch": "uniforms",
     "tables": {
@@ -958,7 +977,8 @@
         "POST /api/dsp/weekly-scorecard/schedules/{key}/enabled",
         "POST /api/dsp/weekly-scorecard/schedules/{key}/remove"
       ],
-      "schedules": false
+      "schedules": false,
+      "settings": []
     },
     "switch": "weekly_scorecard",
     "tables": {
