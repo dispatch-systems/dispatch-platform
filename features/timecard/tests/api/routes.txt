@@ -11,6 +11,8 @@ GET /api/dsp/paycom/settings Dsp("timecard.view") Read
 GET /api/dsp/paycom/status Dsp("timecard.view") Read
 GET /api/dsp/schedules Dsp("timecard.manage") Read
 GET /api/dsp/timecards Dsp("timecard.view") Read
+GET /api/v1/meal-breaks Agent("read") Read
+GET /api/v1/timecards Agent("read") Read
 POST /api/dsp/cortex/meal-breaks/collect Dsp("collections.run") Write
 POST /api/dsp/employees/{code}/sync Dsp("collections.run") Write
 POST /api/dsp/jobs Dsp("collections.run") Write

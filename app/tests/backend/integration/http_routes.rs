@@ -105,17 +105,6 @@ const INVENTORY: &[Row] = &[
     ("GET", "/api/v1/drivers", Agent("read"), Read, false),
     ("GET", "/api/v1/drivers/{driver}", Agent("read"), Read, false),
     ("GET", "/api/v1/team", Agent("read"), Read, false),
-    ("GET", "/api/v1/routes", Agent("read"), Read, false),
-    ("GET", "/api/v1/routes/{route}", Agent("read"), Read, false),
-    ("GET", "/api/v1/packages", Agent("read"), Read, false),
-    ("GET", "/api/v1/feedback", Agent("read"), Read, false),
-    ("GET", "/api/v1/safety", Agent("read"), Read, false),
-    ("GET", "/api/v1/returns", Agent("read"), Read, false),
-    ("GET", "/api/v1/weekly-scorecard", Agent("read"), Read, false),
-    ("GET", "/api/v1/packages/{tracking}", Agent("read"), Read, false),
-    ("GET", "/api/v1/timecards", Agent("read"), Read, false),
-    ("GET", "/api/v1/meal-breaks", Agent("read"), Read, false),
-    ("GET", "/api/v1/dvic", Agent("read"), Read, false),
 
     ("GET", "/api/platform/dsps", PlatformOwner, Read, false),
     ("POST", "/api/platform/dsps", PlatformOwner, Write, WAKES_SCHEDULER),
@@ -148,7 +137,6 @@ const INVENTORY: &[Row] = &[
     ("GET", "/api/dsp/connections/{provider}/screenshot", Dsp("connections.manage"), Async, false),
     ("POST", "/api/dsp/connections/{provider}/assist", Dsp("connections.manage"), Async, false),
     ("POST", "/api/dsp/connections/{provider}/submit", Dsp("connections.manage"), Async, false),
-    ("GET", "/api/v1/daily-performance", Agent("read"), Read, false),
 ];
 
 fn describe(rows: impl IntoIterator<Item = Row>) -> BTreeSet<String> {
@@ -192,10 +180,15 @@ fn listed(feature: &str) -> BTreeSet<String> {
 
 #[test]
 fn each_feature_lists_exactly_the_routes_it_registers() {
-    dispatch_backend::install();
+    let table = table();
     for feature in dispatch_core::manifest::registry().features {
-        let routes = (feature.routes)();
-        let registered = described(&routes);
+        // Its own routes, and its agent endpoints, which core serves from what it declares.
+        let agents: BTreeSet<_> = feature.mcp.endpoints.iter().map(|e| e.path).collect();
+        let registered = described(
+            (feature.routes)()
+                .iter()
+                .chain(table.iter().filter(|route| agents.contains(route.path))),
+        );
         let expected = listed(feature.name);
         let missing: Vec<_> = expected.difference(&registered).collect();
         let unlisted: Vec<_> = registered.difference(&expected).collect();

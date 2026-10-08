@@ -8,6 +8,10 @@ GET /api/dsp/routes/jobs Dsp("routes.view") Read
 GET /api/dsp/routes/packages/{tracking} Dsp("routes.view") Read
 GET /api/dsp/routes/retention Dsp("routes.manage") Read
 GET /api/dsp/routes/schedules Dsp("routes.manage") Read
+GET /api/v1/packages Agent("read") Read
+GET /api/v1/packages/{tracking} Agent("read") Read
+GET /api/v1/routes Agent("read") Read
+GET /api/v1/routes/{route} Agent("read") Read
 POST /api/dsp/routes/collect Dsp("routes.collect") Write
 POST /api/dsp/routes/jobs/{id}/cancel Dsp("routes.collect") Async
 POST /api/dsp/routes/retention Dsp("routes.manage") Write
