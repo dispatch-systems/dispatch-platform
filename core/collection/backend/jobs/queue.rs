@@ -139,6 +139,8 @@ impl FromRow for Claimable {
 pub struct JobFacts<'a> {
     pub idempotency_key: &'a str,
     pub provider: Option<Provider>,
+    /// The collection it runs, as its job kind.
+    pub kind: &'a str,
     pub attempt: i64,
     pub max_attempts: i64,
     pub request: &'a str,
@@ -149,6 +151,7 @@ impl<'a> From<&'a JobRow> for JobFacts<'a> {
         Self {
             idempotency_key: &job.idempotency_key,
             provider: Some(job.provider()),
+            kind: job.kind.as_str(),
             attempt: job.attempt,
             max_attempts: job.max_attempts,
             request: &job.request,
@@ -640,7 +643,11 @@ impl Store {
             .map(|row| row.name);
         // Only a registered kind is ever claimed, so a job always names its provider.
         let provider = job.provider.map_or("", Provider::id);
-        let mut facts = vec![("provider", None, Some(provider.to_owned()))];
+        // The collection names the outcome; the provider words one written before it did.
+        let mut facts = vec![
+            ("provider", None, Some(provider.to_owned())),
+            ("collection", None, Some(job.kind.to_owned())),
+        ];
         if job.attempt > 1 || job.max_attempts > 1 {
             facts.push((
                 "attempt",

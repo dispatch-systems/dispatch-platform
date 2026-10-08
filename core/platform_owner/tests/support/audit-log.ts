@@ -27,6 +27,7 @@ const events: AuditEvent[] = [
   event('2026-09-16T14:44:00Z', 'collection.completed', 'collections', {
     changes: [
       { field: 'provider', from: null, to: 'paycom' },
+      { field: 'collection', from: null, to: 'paycom.collect' },
       { field: 'date', from: null, to: '2026-09-15' },
       { field: 'duration', from: null, to: '108' },
     ],
@@ -109,16 +110,19 @@ const events: AuditEvent[] = [
       { field: 'paycom.department', from: 'All', to: 'Drivers' },
     ],
   }),
-  // A retried attempt is not the collection's outcome, so it is not a failure.
+  // A retried attempt is not the collection's outcome, so it is not a failure. It is named
+  // for its collection, whichever of the provider's it is.
   event('2026-09-15T13:34:00Z', 'collection.retrying', 'collections', {
     ...system,
     detail: 'provider_timeout',
     ref: { kind: 'job', id: 'job_1' },
     changes: [
       { field: 'provider', from: null, to: 'cortex' },
+      { field: 'collection', from: null, to: 'cortex.dvic.collect' },
       { field: 'attempt', from: null, to: '1 of 3' },
     ],
   }),
+  // Written before events named their collection, it is named as its provider words it.
   event('2026-09-15T13:32:00Z', 'collection.failed', 'collections', {
     ...system,
     detail: 'provider_timeout',
