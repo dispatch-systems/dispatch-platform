@@ -305,12 +305,24 @@ pub struct Known {
     pub id: String,
     pub name: String,
 }
-/// Who everyone a DSP's sources name is, given the DSP: Driver Match fills it with its codes.
-pub type Identify = fn(&Store, &str) -> Result<Vec<Identity>>;
+/// Who everyone a DSP's sources name is: the one feature that tells people apart fills it,
+/// as Driver Match does with its codes.
+#[derive(Clone, Copy)]
+pub struct Identify {
+    /// What agents call it, which its codes are named after: "Driver Match", for "Driver
+    /// Match codes".
+    pub name: &'static str,
+    /// Everyone a DSP's sources name, given the DSP.
+    pub people: fn(&Store, &str) -> Result<Vec<Identity>>,
+}
+/// What tells people apart, if a feature does.
+pub fn identify() -> Option<Identify> {
+    registry().features.iter().find_map(|f| f.mcp.identity)
+}
 /// Everyone a DSP's sources name, as the registered identity knows them; no one without one.
 fn identities(db: &Store, dsp: &str) -> Result<Vec<Identity>> {
-    match registry().features.iter().find_map(|f| f.mcp.identity) {
-        Some(identify) => identify(db, dsp),
+    match identify() {
+        Some(identify) => (identify.people)(db, dsp),
         None => Ok(vec![]),
     }
 }
@@ -470,10 +482,11 @@ impl People {
         }
         let key = name_key(wanted);
         if key.is_empty() {
+            let code = identify().map_or_else(String::new, |i| format!(", {} code", i.name));
             return Err(Refusal::new(
                 400,
                 "driver_required",
-                "Name a driver by name, Driver Match code or ID.",
+                format!("Name a driver by name{code} or ID."),
             ));
         }
         let exact: Vec<&Person> = self

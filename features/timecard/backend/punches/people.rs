@@ -5,15 +5,20 @@ use dispatch_core::{
     Result,
     db::{Store, n, s},
     manifest::people::{self, Appearances, Named, People, Workdays},
-    mcp::api::types::{DriverData, DriverSource},
+    mcp::api::types::{DriverData, DriverSource, PeopleData},
 };
 use dispatch_paycom as paycom;
 use std::collections::{BTreeMap, BTreeSet};
 
+/// What it names people in, as Driver Match lists it.
+const DATA: PeopleData = PeopleData {
+    id: "timecards",
+    order: 10,
+};
 pub struct Employees;
 impl People for Employees {
     fn data(&self) -> DriverData {
-        DriverData::Timecards
+        DriverData::new(&DATA)
     }
     fn source(&self) -> DriverSource {
         DriverSource::Paycom

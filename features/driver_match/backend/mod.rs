@@ -40,15 +40,6 @@ const CODE_LENGTH: usize = 6;
 /// How long someone only one source knows can go unseen, off Paycom's roster, before
 /// they count as having left: days before the newest day anything was collected for.
 const FORMER_AFTER_DAYS: i64 = 21;
-/// The data a person can appear in, in the order the tab shows it.
-const DATA: [DriverData; 6] = [
-    DriverData::Timecards,
-    DriverData::Routes,
-    DriverData::MealBreaks,
-    DriverData::Dvic,
-    DriverData::WeeklyScorecard,
-    DriverData::DailyPerformance,
-];
 
 pub fn valid_code(code: &str) -> bool {
     code.len() == CODE_LENGTH && code.bytes().all(|b| ALPHABET.contains(&b))
@@ -194,8 +185,7 @@ fn driver(
         name,
         status,
         ids: ids.iter().map(|i| i.public(found)).collect(),
-        appears: DATA
-            .into_iter()
+        appears: DriverData::all()
             .filter(|d| seen.iter().any(|data| data.contains_key(d)))
             .collect(),
         last_seen,
@@ -312,8 +302,7 @@ impl DriverMatchStore for Store {
             .cloned()
             .ok_or_else(|| Error::new("not_found", 404))?;
         let ids: Vec<&IdRow> = overview.rows.iter().filter(|r| r.code == code).collect();
-        let activity = DATA
-            .into_iter()
+        let activity = DriverData::all()
             .filter_map(|data| {
                 let count: usize = ids
                     .iter()

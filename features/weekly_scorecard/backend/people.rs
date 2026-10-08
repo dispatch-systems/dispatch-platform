@@ -5,7 +5,7 @@ use dispatch_core::{
     db::{Store, n, s},
     foundation::weeks,
     manifest::people::{self, Appearances, Named, People},
-    mcp::api::types::{DriverData, DriverSource},
+    mcp::api::types::{DriverData, DriverSource, PeopleData},
 };
 
 /// The Saturday a scorecard week ends, or the week as written when it does not parse.
@@ -16,10 +16,15 @@ fn week_start(week: &str) -> String {
     weeks::week_days(week).map_or_else(|_| week.to_owned(), |(start, _)| start.to_string())
 }
 
+/// What it names people in, as Driver Match lists it.
+const DATA: PeopleData = PeopleData {
+    id: "weekly_scorecard",
+    order: 50,
+};
 pub struct Drivers;
 impl People for Drivers {
     fn data(&self) -> DriverData {
-        DriverData::WeeklyScorecard
+        DriverData::new(&DATA)
     }
     fn source(&self) -> DriverSource {
         DriverSource::Amazon

@@ -3,8 +3,11 @@
 The MCP server and the agent API under `/api/v1/`, with its OpenAPI document and the Agent
 Skill, all built from one catalog so they can't drift apart; agent keys and connected apps,
 Sign in with Dispatch, usage limits and activity. Features bring their endpoints, facts, read
-toggles and the skill's example questions in their `mcp/`. Tool names, paths and answers are what agents rely on, and nothing an
-agent does appears in a DSP's activity log.
+toggles and the skill's example questions in their `mcp/`, with what their data tells of
+drivers and what it answers (`about`, `asked`), which the skill's description lists. The one
+feature that tells people apart names itself in `identity`, so agents hear of its codes; core
+names no feature in what it tells agents. Tool names, paths and answers are what agents rely
+on, and nothing an agent does appears in a DSP's activity log.
 
 Collection queries accept a driver or everyone, a date, `from`/`to`, or periods such as
 `past 14 days`. Routes and meal breaks default to yesterday; timecards default to yesterday

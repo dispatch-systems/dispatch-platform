@@ -761,20 +761,56 @@ text_enum! {
         Amazon => "amazon",
     }
 }
-text_enum! {
-    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-    #[cfg_attr(feature = "ts", ts(export_to = "core/mcp/api/generated/"))]
-    #[derive(PartialOrd, Ord)]
-    /// The collected data a person can appear in.
-    pub enum DriverData {
-        Timecards => "timecards",
-        Routes => "routes",
-        MealBreaks => "meal_breaks",
-        Dvic => "dvic",
-        WeeklyScorecard => "weekly_scorecard",
-        DailyPerformance => "daily_performance",
+/// A kind of collected data a person can appear in, as the feature whose data it is
+/// declares it in its `people`.
+pub struct PeopleData {
+    /// Permanent: Driver Match's answers name it.
+    pub id: &'static str,
+    /// Its place in the one order the kinds are listed in everywhere.
+    pub order: u16,
+}
+/// The collected data a person can appear in.
+#[derive(Clone, Copy)]
+pub struct DriverData(&'static PeopleData);
+/// Every kind the features' people declare, in their order.
+static DATA: LazyLock<Vec<DriverData>> = LazyLock::new(|| {
+    let mut all: Vec<DriverData> = registry()
+        .people()
+        .iter()
+        .map(|people| people.data())
+        .collect();
+    all.sort();
+    all.dedup();
+    all
+});
+impl DriverData {
+    pub const fn new(data: &'static PeopleData) -> Self {
+        Self(data)
+    }
+    /// Every kind, in the order they are listed everywhere.
+    pub fn all() -> impl Iterator<Item = Self> {
+        DATA.iter().copied()
+    }
+    pub const fn as_str(self) -> &'static str {
+        self.0.id
     }
 }
+impl PartialOrd for DriverData {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for DriverData {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.0.order, self.0.id).cmp(&(other.0.order, other.0.id))
+    }
+}
+declared!(
+    DriverData,
+    "kind of collected data",
+    DATA,
+    "/**\n * The collected data a person can appear in.\n */\n"
+);
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "core/mcp/api/generated/"))]

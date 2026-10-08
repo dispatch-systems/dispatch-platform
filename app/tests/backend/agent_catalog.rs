@@ -30,6 +30,13 @@ fn source_guidance_is_owned_by_installed_features() {
     }
     assert!(!dispatch_core::mcp::server::INSTRUCTIONS.contains("daily_performance"));
     assert!(!dispatch_core::mcp::server::INSTRUCTIONS.contains("weekly_scorecard"));
+    assert!(!dispatch_core::mcp::server::INSTRUCTIONS.contains("Driver Match"));
+    // The skill says what each installed feature's data tells of drivers.
+    let skill = dispatch_core::mcp::skill::skill("https://dispatch.example.com");
+    for feature in dispatch_core::manifest::registry().features {
+        assert!(skill.contains(feature.mcp.about), "{}", feature.name);
+        assert!(skill.contains(feature.mcp.asked), "{}", feature.name);
+    }
 }
 
 #[test]
