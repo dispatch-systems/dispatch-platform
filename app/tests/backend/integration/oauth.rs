@@ -2677,14 +2677,14 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
     for text in ended {
         assert!(text.contains("one-time code"), "{text}");
         assert!(text.contains("Sent access to: chatgpt.com"), "{text}");
+        // Every kind of data but delivery addresses, which this test took away from the app.
+        let reads: Vec<_> = every()
+            .into_iter()
+            .filter(|area| *area != "locations")
+            .map(|area| kind(area).label())
+            .collect();
         assert!(
-            text.contains(
-                &format!("Access: Reads Routes & packages, Timecards, Meal breaks, DVIC inspections, \
-                 Customer feedback, Safety events, Returns & contact compliance, Weekly Scorecard{}\n",
-                    if cfg!(feature = "daily_performance") {
-                        ", Daily Performance, Daily customer feedback, Daily returns & contact compliance, Daily safety events"
-                    } else { "" })
-            ),
+            text.contains(&format!("Access: Reads {}\n", reads.join(", "))),
             "{text}"
         );
     }

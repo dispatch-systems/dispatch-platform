@@ -937,7 +937,10 @@ async fn a_dsps_own_settings_are_read_there_in_place_of_the_keys_own() {
         .collect();
     assert_eq!(
         reads,
-        [(first.as_str(), key_reads().len() - 1), (second.as_str(), 1)]
+        [
+            (first.as_str(), key_reads().len() - 1),
+            (second.as_str(), 1)
+        ]
     );
     let config = db.config.clone();
     drop(db);
