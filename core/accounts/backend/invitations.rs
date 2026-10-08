@@ -101,12 +101,19 @@ impl Store {
         )
     }
     /// Withdraws a DSP's open invitation to an address; an accepted one stays.
-    pub fn revoke_invitation(&self, dsp: &str, email: &str) -> Result<()> {
+    /// Revokes what is outstanding of `email`'s invitations to the member's DSP, and logs it,
+    /// as every invitation's events are.
+    pub fn revoke_invitation(&self, c: &Context, email: &str) -> Result<()> {
         self.platform.exec(
             "DELETE FROM invitations WHERE dsp_id=? AND email=? COLLATE NOCASE AND used_at IS NULL",
-            [dsp, email],
+            [c.dsp.id.as_str(), email],
         )?;
-        Ok(())
+        self.audit(
+            Some(c.actor()),
+            Some(&c.dsp.id),
+            "invitation.revoked",
+            email,
+        )
     }
     pub fn invitation(&self, raw: &str) -> Result<Value> {
         ensure(raw.len() == 43, "invitation_expired", 404)?;
