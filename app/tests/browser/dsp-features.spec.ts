@@ -85,10 +85,48 @@ test('the platform switches a DSP’s features, their parts and connections, and
   await expect(sheet.getByRole('switch', { name: /Timecard|Collections/ })).toHaveCount(0);
   await sheet.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByRole('button', { name: 'Exit view', exact: true }).click();
+  await context.close();
+});
+
+test('a feature switched back on brings its parts as they were, and a part the connection it needs', async ({
+  page,
+  browser,
+  dispatch,
+}) => {
+  // As the test above leaves the DSP: Cortex off, and the Timecard with it.
+  const platform = await dispatch.client();
+  const north = platform.session.dsps.find(
+    (dsp: { name: string }) => dsp.name === 'Northline Logistics',
+  );
+  for (const feature of ['cortex', 'timecard']) {
+    const off = await platform.post(`/api/platform/dsps/${north.id}/features`, {
+      feature,
+      enabled: false,
+    });
+    expect(off.status).toBe(200);
+  }
+  await login(page);
+  const list = page.getByRole('region', { name: 'DSPs', exact: true });
+  await list.getByRole('button', { name: /Northline Logistics/ }).click();
+  const pane = page.getByRole('region', { name: 'Northline Logistics', exact: true });
+  await pane.getByRole('tab', { name: 'Features', exact: true }).click();
+  const features = pane.getByRole('region', { name: 'Features', exact: true });
+  const toggle = (name: string) => pane.getByRole('switch', { name, exact: true });
+  const tab = (name: string) => toggle(`${name} tab`);
+  const timecard = toggle('Timecard');
+  const cortex = toggle('Cortex');
+  // A feature's row: the list item holding its own switch.
+  const row = (name: string) =>
+    features
+      .getByRole('listitem')
+      .filter({ has: page.getByRole('switch', { name, exact: true }) })
+      .first();
+  const context = await browser.newContext();
+  const member = await context.newPage();
+  await login(member, 'member@dispatch.test');
+  await expect(member.getByRole('link', { name: 'Timecard', exact: true })).toHaveCount(0);
 
   // Switched back on, the feature brings its parts back as they were.
-  await list.getByRole('button', { name: /Northline Logistics/ }).click();
-  await pane.getByRole('tab', { name: 'Features', exact: true }).click();
   await timecard.click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(timecard).toBeChecked();
