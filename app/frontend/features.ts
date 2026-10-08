@@ -9,6 +9,7 @@ import { feature as dvic } from '../../features/dvic/frontend/feature.js';
 import { feature as weeklyScorecard } from '../../features/weekly_scorecard/frontend/feature.js';
 import { feature as driverMatch } from '../../features/driver_match/frontend/feature.js';
 import { feature as dailyPerformance } from '../../features/daily_performance/frontend/feature.js';
+import { feature as documents } from '../../features/documents/frontend/feature.js';
 import { feature as team } from '../../features/team/frontend/feature.js';
 import { feature as settings } from '../../features/settings/frontend/feature.js';
 import { feature as paycom } from '../../collectors/paycom/frontend/feature.js';
@@ -28,6 +29,7 @@ export const features: readonly FrontendFeature[] = [
   weeklyScorecard,
   driverMatch,
   dailyPerformance,
+  documents,
   team,
   settings,
   paycom,
