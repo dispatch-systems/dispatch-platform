@@ -46,7 +46,7 @@
     ["Team", ["members.invite", "members.manage", "roles.manage"]],
     ["DSP", ["settings.manage"]]
   ],
-  "defaults": [
+  "demo": [
     [
       "manager",
       "Manager",

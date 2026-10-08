@@ -183,12 +183,13 @@ pub fn seed(db: &Store) -> Result<()> {
         b"synthetic fixtures initialized\n",
     )
 }
-/// Fills a new DSP with every feature's demo data, given its timezone.
+/// Fills a new DSP with every feature's demo data, given its timezone, and gives its default
+/// roles what they hold in a demo.
 pub fn demo(db: &Store, dsp: &str, timezone: &str) -> Result<()> {
     for demo in registry().features.iter().filter_map(|f| f.demo) {
         demo(db, dsp, timezone)?;
     }
-    Ok(())
+    crate::tenancy::roles::demo(&db.platform, dsp)
 }
 pub fn backup(config: &Config, destination: &Path) -> Result<Value> {
     ensure(

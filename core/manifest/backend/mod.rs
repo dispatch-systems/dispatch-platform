@@ -622,8 +622,9 @@ pub struct Permission {
     pub order: u16,
     /// What holding it grants as well.
     pub implies: &'static [&'static str],
-    /// The default roles a DSP's roles start out holding it in.
-    pub defaults: &'static [DefaultRole],
+    /// The demo DSPs' roles that hold it, so previews and tests show what a manager or a
+    /// member sees. A real DSP's roles start with no permission; its owner turns them on.
+    pub demo: &'static [DefaultRole],
     /// The role sheet's section for a permission no page owns, such as `Team`. A page's own
     /// permissions are listed under the page.
     pub group: Option<&'static str>,
@@ -633,7 +634,7 @@ pub struct Permission {
     /// invitations are good only while they hold it.
     pub invites: bool,
 }
-/// A permission in its own place in the order, implying nothing, in no default role and
+/// A permission in its own place in the order, implying nothing, held by no demo role and
 /// owned by its feature's page: `perm("dvic.collect", "Collect DVIC", 41).implies(…)`.
 pub const fn perm(id: &'static str, label: &'static str, order: u16) -> Permission {
     Permission {
@@ -641,7 +642,7 @@ pub const fn perm(id: &'static str, label: &'static str, order: u16) -> Permissi
         label,
         order,
         implies: &[],
-        defaults: &[],
+        demo: &[],
         group: None,
         recently_verified: false,
         invites: false,
@@ -651,8 +652,8 @@ impl Permission {
     pub const fn implies(self, implies: &'static [&'static str]) -> Self {
         Self { implies, ..self }
     }
-    pub const fn defaults(self, defaults: &'static [DefaultRole]) -> Self {
-        Self { defaults, ..self }
+    pub const fn demo(self, demo: &'static [DefaultRole]) -> Self {
+        Self { demo, ..self }
     }
     pub const fn group(self, group: &'static str) -> Self {
         Self {
@@ -673,7 +674,7 @@ impl Permission {
         }
     }
 }
-/// The roles besides the owner's that every DSP starts with.
+/// The roles besides the owner's that every DSP starts with, holding no permission.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DefaultRole {
     Manager,

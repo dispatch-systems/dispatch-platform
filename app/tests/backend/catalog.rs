@@ -15,7 +15,7 @@ const UNKNOWN: &[&str] = &["schedules", "unknown", ""];
 
 #[cfg(feature = "default")]
 #[test]
-fn the_permissions_keep_their_order_labels_implications_groups_and_defaults() {
+fn the_permissions_keep_their_order_labels_implications_groups_and_demo_roles() {
     crate::install();
     let ids: Vec<_> = roles::LABELS.iter().map(|(id, _)| *id).collect();
     assert_eq!(roles::PERMISSIONS.to_vec(), ids);
@@ -26,7 +26,7 @@ fn the_permissions_keep_their_order_labels_implications_groups_and_defaults() {
             "permissions": *roles::LABELS,
             "implied": *roles::IMPLIED,
             "groups": *roles::GROUPS,
-            "defaults": *roles::DEFAULTS,
+            "demo": *roles::DEMO,
         }),
     );
 }

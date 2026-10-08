@@ -13,7 +13,8 @@ test('memberships written without a role id resolve through the legacy role afte
   });
   await f.start();
   const member = await f.client('member@dispatch.test');
-  assert.deepEqual((await member.select(north.id)).permissions, ['uniforms.view', 'timecard.view']);
+  // The Member role comes back as every role starts: with no permission.
+  assert.deepEqual((await member.select(north.id)).permissions, []);
   const rows = f.database('data/platform/accounts.sqlite', (db) =>
     db
       .prepare(

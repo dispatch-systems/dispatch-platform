@@ -64,21 +64,33 @@ pub static GROUPS: LazyLock<Vec<(&'static str, Vec<&'static str>)>> = LazyLock::
     }
     groups
 });
-// Each default role's key, name and permissions, in their order.
-pub static DEFAULTS: LazyLock<Vec<(&'static str, &'static str, Vec<&'static str>)>> =
+// Each default role's key, name and the permissions it holds in a demo DSP, in their order.
+// Everywhere else it starts with none.
+pub static DEMO: LazyLock<Vec<(&'static str, &'static str, Vec<&'static str>)>> =
     LazyLock::new(|| {
         DefaultRole::ALL
             .iter()
             .map(|role| {
                 let permissions = DECLARED
                     .iter()
-                    .filter(|permission| permission.defaults.contains(role))
+                    .filter(|permission| permission.demo.contains(role))
                     .map(|permission| permission.id)
                     .collect();
                 (role.key(), role.name(), permissions)
             })
             .collect()
     });
+/// Gives a demo DSP's default roles what each holds there, so its demo shows a manager's and a
+/// member's view.
+pub fn demo(db: &Db, dsp: &str) -> Result<()> {
+    for (_, name, permissions) in DEMO.iter() {
+        db.exec(
+            "UPDATE roles SET permissions=? WHERE dsp_id=? AND system=0 AND name=?",
+            params![json!(permissions).to_string(), dsp, name],
+        )?;
+    }
+    Ok(())
+}
 
 pub fn all() -> Vec<String> {
     PERMISSIONS.iter().map(|p| (*p).to_owned()).collect()
@@ -196,14 +208,15 @@ pub fn seed(db: &Db, dsp: &str) -> Result<()> {
     Ok(())
 }
 // Finds the role a legacy value maps to, restoring a deleted default when an
-// older runtime wrote a membership that still needs one.
+// older runtime wrote a membership that still needs one. A default role starts with no
+// permission, as every role does; the DSP's owner turns them on.
 pub fn default_role(db: &Db, dsp: &str, role: &str) -> Result<String> {
-    let (name, system, permissions): (&str, bool, &[&str]) = match role {
-        "owner" => ("Owner", true, &[]),
-        other => DEFAULTS
+    let (name, system) = match role {
+        "owner" => ("Owner", true),
+        other => DefaultRole::ALL
             .iter()
-            .find(|d| d.0 == other)
-            .map(|d| (d.1, false, d.2.as_slice()))
+            .find(|d| d.key() == other)
+            .map(|d| (d.name(), false))
             .ok_or_else(|| Error::new("invalid_role", 400))?,
     };
     let found = if system {
@@ -220,7 +233,7 @@ pub fn default_role(db: &Db, dsp: &str, role: &str) -> Result<String> {
     let id = crypto::id("role")?;
     db.exec(
         "INSERT INTO roles(id,dsp_id,name,permissions,system,created_at) VALUES (?,?,?,?,?,?)",
-        params![id, dsp, name, json!(permissions).to_string(), system, iso()],
+        params![id, dsp, name, "[]", system, iso()],
     )?;
     Ok(id)
 }
@@ -258,7 +271,10 @@ impl Store {
             self.platform
                 .one_as("SELECT * FROM roles WHERE dsp_id=? AND system=1", [dsp])?
         } else {
-            let name = DEFAULTS.iter().find(|d| d.0 == legacy).map_or("", |d| d.1);
+            let name = DefaultRole::ALL
+                .iter()
+                .find(|d| d.key() == legacy)
+                .map_or("", |d| d.name());
             self.platform.one_as(
                 "SELECT * FROM roles WHERE dsp_id=? AND system=0 AND name=?",
                 [dsp, name],

@@ -73,9 +73,9 @@ pub const FEATURE: Feature = Feature {
         runs: &[paycom::timecards::JOB_KIND, cortex::meals::JOB_KIND],
     }],
     permissions: &[
-        perm("timecard.view", "View Timecard", 20).defaults(&[Manager, Member]),
+        perm("timecard.view", "View Timecard", 20).demo(&[Manager, Member]),
         perm("timecard.manage", "Manage Timecard", 21).implies(&["timecard.view"]),
-        perm("collections.run", "Run Collections", 22).defaults(&[Manager]),
+        perm("collections.run", "Run Collections", 22).demo(&[Manager]),
     ],
     routes: api::routes::routes,
     // Collection progress refreshes both the timecard pages and the collections page.
