@@ -31,4 +31,6 @@ export const feature: FrontendFeature = {
       prefetch: ({ view, immediate }) => prefetchSettings(view, immediate),
     },
   ],
+  // Its icon on the DSPs page.
+  platformSlots: () => import('./platform-slots.js'),
 };

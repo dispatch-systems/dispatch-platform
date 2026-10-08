@@ -27,4 +27,6 @@ export const feature: FrontendFeature = {
       render: () => createElement(HomePage),
     },
   ],
+  // Its icon on the DSPs page.
+  platformSlots: () => import('./platform-slots.js'),
 };
