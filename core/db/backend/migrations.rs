@@ -1,6 +1,12 @@
 //! Every database kind has one ordered list of numbered migrations, gathered from the
 //! owners that declare them: core's in `schema`, each collector's and feature's in its
-//! manifest. Adding a table or a column is one new migration after the last.
+//! manifest. Adding a table or a column is one new migration after the last. A feature
+//! adding to a database other owners add to as well (each DSP's, the platform's, a
+//! collector's) numbers its own instead, from 1 (`OwnMigrations`): they run after the
+//! database's own list and are recorded under the feature's name, in `owner_migrations`, so
+//! features built at once never take each other's numbers. The shared list keeps every
+//! migration features declared there before, recorded as it always was. Both records are
+//! made whenever migrations apply; an older release ignores the second.
 //!
 //! Contract for migration authors: additive only. New tables, new nullable or
 //! defaulted columns, and new indexes. The previous release must keep working on
@@ -41,6 +47,12 @@ pub struct Migration {
 /// What one owner adds to one kind of database. A kind's migrations may come from
 /// several owners; their ids together run from 1 without a gap.
 pub struct Migrations {
+    pub kind: Kind,
+    pub list: &'static [Migration],
+}
+/// What a feature adds to a database other owners add to as well, numbered by the feature
+/// from 1 without a gap and recorded under its name.
+pub struct OwnMigrations {
     pub kind: Kind,
     pub list: &'static [Migration],
 }
@@ -86,6 +98,11 @@ impl Kind {
     pub fn migrations(self) -> Vec<Migration> {
         registry().migrations(self)
     }
+    /// The migrations features number for it themselves, with the feature each is recorded
+    /// under, in the registry's order.
+    pub fn owned_migrations(self) -> Vec<(&'static str, Migration)> {
+        registry().owned_migrations(self)
+    }
 }
 
 /// `kind`'s migrations, gathered from every owner's `Migrations` and ordered by id. Their
@@ -113,6 +130,44 @@ pub fn ledger<'a>(kind: Kind, owners: impl IntoIterator<Item = &'a Migrations>) 
         );
     }
     list
+}
+
+/// `kind`'s migrations each feature numbers itself, in the order the features come: each
+/// feature's must run from 1 without a gap or a repeat, or this panics.
+pub fn owned_ledger<'a>(
+    kind: Kind,
+    owners: impl IntoIterator<Item = (&'static str, &'a OwnMigrations)>,
+) -> Vec<(&'static str, Migration)> {
+    let mut gathered: Vec<(&'static str, Vec<Migration>)> = Vec::new();
+    for (owner, owned) in owners {
+        if owned.kind.name != kind.name {
+            continue;
+        }
+        match gathered.iter_mut().find(|(each, _)| *each == owner) {
+            Some((_, list)) => list.extend(owned.list.iter().copied()),
+            None => gathered.push((owner, owned.list.to_vec())),
+        }
+    }
+    let mut ledger = Vec::new();
+    for (owner, mut list) in gathered {
+        list.sort_by_key(|migration| migration.id);
+        for (index, migration) in list.iter().enumerate() {
+            let expected = index as u32 + 1;
+            assert!(
+                migration.id >= expected,
+                "{} migration {} of {owner} is declared twice",
+                kind.name,
+                migration.id
+            );
+            assert!(
+                migration.id == expected,
+                "{} migration {expected} of {owner} is missing",
+                kind.name
+            );
+        }
+        ledger.extend(list.into_iter().map(|migration| (owner, migration)));
+    }
+    ledger
 }
 
 /// Adds a column unless an older binary's startup already did.
@@ -146,40 +201,83 @@ fn applied(db: &Db) -> Result<BTreeSet<u32>> {
     Ok(ids)
 }
 
+/// The migrations features numbered themselves that the database records, by feature.
+fn applied_owned(db: &Db) -> Result<BTreeSet<(String, u32)>> {
+    let exists = db.0.query_row(
+        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='owner_migrations'",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if exists == 0 {
+        return Ok(BTreeSet::new());
+    }
+    let mut statement = db.0.prepare("SELECT owner,id FROM owner_migrations")?;
+    let ids = statement
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(ids)
+}
+
 fn pending<'a>(done: &BTreeSet<u32>, list: &'a [Migration]) -> Vec<&'a Migration> {
     list.iter().filter(|m| !done.contains(&m.id)).collect()
 }
+fn pending_owned<'a>(
+    done: &BTreeSet<(String, u32)>,
+    owned: &'a [(&'static str, Migration)],
+) -> Vec<&'a (&'static str, Migration)> {
+    owned
+        .iter()
+        .filter(|(owner, m)| !done.contains(&((*owner).to_owned(), m.id)))
+        .collect()
+}
 
-/// Applies what is pending. The caller holds the write transaction, so a failure
-/// leaves the database exactly as it was.
-pub(super) fn apply(db: &Db, kind: &str, list: &[Migration]) -> Result<()> {
+/// Runs one migration, or says which failed.
+fn step(db: &Db, kind: &str, owner: Option<&str>, migration: &Migration) -> Result<()> {
+    let result = match migration.apply {
+        Apply::Sql(sql) => db.0.execute_batch(sql).map_err(Error::from),
+        Apply::Code(code) => code(db),
+    };
+    let mut about = json!({"kind":kind,"id":migration.id,"name":migration.name});
+    if let Some(owner) = owner {
+        about["owner"] = json!(owner);
+    }
+    if result.is_err() {
+        observability::event("error", "storage.migration_failed", about);
+        return Err(Error::new("migration_failed", 503));
+    }
+    observability::event("info", "storage.migration_applied", about);
+    Ok(())
+}
+
+/// Applies what is pending: the kind's own list, then what features numbered themselves.
+/// The caller holds the write transaction, so a failure leaves the database exactly as it
+/// was.
+pub(super) fn apply(
+    db: &Db,
+    kind: &str,
+    list: &[Migration],
+    owned: &[(&'static str, Migration)],
+) -> Result<()> {
     db.0.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (id INTEGER PRIMARY \
-        KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL)",
+        KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL); \
+        CREATE TABLE IF NOT EXISTS owner_migrations (owner TEXT NOT NULL, id INTEGER NOT \
+        NULL, name TEXT NOT NULL, applied_at INTEGER NOT NULL, PRIMARY KEY(owner, id))",
     )?;
     // Read again under the write lock: another connection may have just finished.
     for migration in pending(&applied(db)?, list) {
-        let result = match migration.apply {
-            Apply::Sql(sql) => db.0.execute_batch(sql).map_err(Error::from),
-            Apply::Code(code) => code(db),
-        };
-        if result.is_err() {
-            observability::event(
-                "error",
-                "storage.migration_failed",
-                json!({"kind":kind,"id":migration.id,"name":migration.name}),
-            );
-            return Err(Error::new("migration_failed", 503));
-        }
+        step(db, kind, None, migration)?;
         db.0.execute(
             "INSERT INTO schema_migrations(id,name,applied_at) VALUES (?,?,?)",
             rusqlite::params![migration.id, migration.name, now()],
         )?;
-        observability::event(
-            "info",
-            "storage.migration_applied",
-            json!({"kind":kind,"id":migration.id,"name":migration.name}),
-        );
+    }
+    for (owner, migration) in pending_owned(&applied_owned(db)?, owned) {
+        step(db, kind, Some(owner), migration)?;
+        db.0.execute(
+            "INSERT INTO owner_migrations(owner,id,name,applied_at) VALUES (?,?,?,?)",
+            rusqlite::params![owner, migration.id, migration.name, now()],
+        )?;
     }
     Ok(())
 }
@@ -191,27 +289,38 @@ pub(super) fn immediate(db: &Db) -> Result<Transaction<'_>> {
     )?)
 }
 
-pub(super) fn run(db: &Db, kind: &str, list: &[Migration]) -> Result<()> {
+pub(super) fn run(
+    db: &Db,
+    kind: &str,
+    list: &[Migration],
+    owned: &[(&'static str, Migration)],
+) -> Result<()> {
     // Startup checks every database and nearly always finds nothing to do, so look
     // without taking the write lock first.
     let done = applied(db)?;
+    let done_owned = applied_owned(db)?;
     let newer: Vec<u32> = done
         .iter()
         .copied()
         .filter(|id| list.iter().all(|m| m.id != *id))
         .collect();
-    if !newer.is_empty() {
+    let newer_owned: Vec<String> = done_owned
+        .iter()
+        .filter(|(owner, id)| owned.iter().all(|(o, m)| o != owner || m.id != *id))
+        .map(|(owner, id)| format!("{owner}:{id}"))
+        .collect();
+    if !newer.is_empty() || !newer_owned.is_empty() {
         observability::event(
             "warn",
             "storage.migrations_newer",
-            json!({"kind":kind,"ids":newer}),
+            json!({"kind":kind,"ids":newer,"owned":newer_owned}),
         );
     }
-    if pending(&done, list).is_empty() {
+    if pending(&done, list).is_empty() && pending_owned(&done_owned, owned).is_empty() {
         return Ok(());
     }
     let tx = immediate(db)?;
-    apply(db, kind, list)?;
+    apply(db, kind, list, owned)?;
     tx.commit()?;
     Ok(())
 }
@@ -220,7 +329,12 @@ pub(super) fn run(db: &Db, kind: &str, list: &[Migration]) -> Result<()> {
 /// initialization always has: startup, the operator commands and provisioning.
 /// Requests open databases without it.
 pub fn migrate(db: &Db, kind: Kind) -> Result<()> {
-    run(db, kind.name(), &kind.migrations())
+    run(
+        db,
+        kind.name(),
+        &kind.migrations(),
+        &kind.owned_migrations(),
+    )
 }
 
 /// Verifies that core DSP storage belongs to the tenant whose path selected it.
@@ -255,10 +369,11 @@ pub(crate) fn migrate_dsp(db: &Db, id: &str) -> Result<()> {
 
 fn migrate_dsp_after_probe<F: FnOnce()>(db: &Db, id: &str, after_probe: F) -> Result<()> {
     let list = &Kind::DSP.migrations();
+    let owned = &Kind::DSP.owned_migrations();
     let done = applied(db)?;
     if done.contains(&5) {
         verify_dsp_identity(db, id)?;
-        return run(db, Kind::DSP.name(), list);
+        return run(db, Kind::DSP.name(), list, owned);
     }
     after_probe();
     let tx = immediate(db)?;
@@ -274,7 +389,7 @@ fn migrate_dsp_after_probe<F: FnOnce()>(db: &Db, id: &str, after_probe: F) -> Re
             503,
         )?;
     }
-    apply(db, Kind::DSP.name(), list)?;
+    apply(db, Kind::DSP.name(), list, owned)?;
     if bind {
         db.0.execute(
             "INSERT INTO storage_identity(dsp_id,provider,source) VALUES (?,'dispatch','dispatch-v1')",

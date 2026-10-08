@@ -64,12 +64,14 @@ pub const TABLES: Tables = &[
     ),
     ("jobs", &["jobs", "job_metrics"]),
     ("dsp", &["settings", "collection_schedules"]),
-    // Every database records the migrations it ran, and each of a DSP's whose it is. Each
-    // collector's holds its connection and its running collection's live results.
+    // Every database records the migrations it ran, the features' own by feature, and each
+    // of a DSP's whose it is. Each collector's holds its connection and its running
+    // collection's live results.
     (
         "*",
         &[
             "schema_migrations",
+            "owner_migrations",
             "storage_identity",
             "connections",
             "collection_live_runs",

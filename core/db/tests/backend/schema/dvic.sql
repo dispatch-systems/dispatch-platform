@@ -4,6 +4,7 @@ CREATE TABLE dvic_reports ( id TEXT PRIMARY KEY, company_id TEXT NOT NULL, dsp_c
 CREATE TABLE dvic_revisions ( id TEXT PRIMARY KEY, report_id TEXT NOT NULL REFERENCES dvic_reports(id), sha256 TEXT NOT NULL, modified_at INTEGER NOT NULL, collected_at TEXT NOT NULL, rows TEXT NOT NULL CHECK(json_valid(rows)), UNIQUE(report_id,sha256) );
 CREATE TABLE dvic_runs ( job_id TEXT PRIMARY KEY, station TEXT NOT NULL, company_id TEXT NOT NULL, started_at TEXT NOT NULL, collected_at TEXT NOT NULL, weeks TEXT NOT NULL CHECK(json_valid(weeks)), reports INTEGER NOT NULL, downloaded INTEGER NOT NULL, unchanged INTEGER NOT NULL, rows INTEGER NOT NULL , scope_verified INTEGER NOT NULL DEFAULT 0 CHECK(scope_verified IN (0,1)));
 CREATE TABLE dvic_weeks ( station TEXT NOT NULL, company_id TEXT NOT NULL, week TEXT NOT NULL, checked_at TEXT NOT NULL, report_count INTEGER NOT NULL, scope_verified INTEGER NOT NULL DEFAULT 0 CHECK(scope_verified IN (0,1)), PRIMARY KEY(station,company_id,week) );
+CREATE TABLE owner_migrations (owner TEXT NOT NULL, id INTEGER NOT NULL, name TEXT NOT NULL, applied_at INTEGER NOT NULL, PRIMARY KEY(owner, id));
 CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL);
 CREATE TABLE storage_identity (dsp_id TEXT NOT NULL, provider TEXT NOT NULL, source TEXT NOT NULL);
 CREATE INDEX dvic_inspections_day ON dvic_inspections(station,start_date,inspection_key) WHERE short=1;

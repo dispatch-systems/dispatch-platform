@@ -10,7 +10,7 @@ use crate::{
         metrics::{Counted, Counts},
         registry::AddedStorage,
     },
-    db::{self, Db, Kind, Migration, Migrations, Store},
+    db::{self, Db, Kind, Migration, Migrations, OwnMigrations, Store},
     foundation::config::Config,
     mcp::{self, Mcp},
     server::{
@@ -197,6 +197,17 @@ impl Registry {
     /// One kind of database's migrations, gathered from every owner, in order.
     pub fn migrations(&self, kind: Kind) -> Vec<Migration> {
         db::migrations::ledger(kind, self.migration_lists())
+    }
+    /// What each feature numbers itself for one kind of database, with the feature each is
+    /// recorded under, in the registry's order.
+    pub fn owned_migrations(&self, kind: Kind) -> Vec<(&'static str, Migration)> {
+        let owners = self.features.iter().flat_map(|feature| {
+            feature
+                .own_migrations
+                .iter()
+                .map(move |owned| (feature.name, owned))
+        });
+        db::owned_ledger(kind, owners)
     }
     /// Every table an owner declares, as its owner, database and name: core's, then each
     /// collector's, then each feature's. Core's owner is `core`; a database `*` is every
@@ -430,6 +441,7 @@ impl Registry {
                 kind.name()
             );
             self.migrations(*kind);
+            self.owned_migrations(*kind);
         }
         let retired: Vec<Kind> = self
             .features
@@ -454,6 +466,17 @@ impl Registry {
                 "migrations name a {} database that is not declared, or not as declared",
                 owned.kind.name()
             );
+        }
+        for feature in self.features {
+            for owned in feature.own_migrations {
+                assert!(
+                    databases.contains(&owned.kind),
+                    "{}'s own migrations name a {} database that is not declared, or not as \
+                     declared",
+                    feature.name,
+                    owned.kind.name()
+                );
+            }
         }
         let tables = self.tables();
         for (index, (owner, database, table)) in tables.iter().enumerate() {
@@ -556,7 +579,12 @@ pub struct Feature {
     /// The collections it keeps.
     pub keeps: &'static [&'static dyn Keeper],
     /// What it adds to databases: its own, kept beside a collector's, or another owner's.
+    /// To a database other owners add to as well, it adds only `own_migrations` now; what it
+    /// declared here before stays, recorded as it was.
     pub migrations: &'static [Migrations],
+    /// What it adds to a database other owners add to as well (each DSP's, the platform's,
+    /// a collector's), numbered by the feature itself from 1 and recorded under its name.
+    pub own_migrations: &'static [OwnMigrations],
     /// Immutable ledgers needed to read retired storage during an owner-controlled import.
     /// These databases are never created or opened as current storage.
     pub retired_migrations: &'static [Migrations],
@@ -602,6 +630,7 @@ pub const fn feature(name: &'static str) -> Feature {
         settings: &[],
         keeps: &[],
         migrations: &[],
+        own_migrations: &[],
         retired_migrations: &[],
         tables: &[],
         domains: &[],

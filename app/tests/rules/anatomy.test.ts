@@ -91,9 +91,10 @@ test('an optional piece arrives with its companions', () => {
       const span = manifest?.fields.get(field);
       return !!span && !/^&\s*\[\s*\]$/.test(textOf(span));
     };
-    if (declares('tables') && !(declares('migrations') && isDirectory(`${dir}/migrations`)))
+    const migrates = declares('migrations') || declares('own_migrations');
+    if (declares('tables') && !(migrates && isDirectory(`${dir}/migrations`)))
       out.push(`${dir} declares tables and no migrations`);
-    if (isDirectory(`${dir}/migrations`) && !declares('migrations'))
+    if (isDirectory(`${dir}/migrations`) && !migrates)
       out.push(`${dir} has migrations/ its manifest does not declare`);
     return out;
   });

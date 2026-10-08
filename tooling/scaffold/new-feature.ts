@@ -17,7 +17,6 @@ import {
   keeperOf,
   names as namesOf,
   nextAgentOrder,
-  nextMigration,
   nextPermissionOrder,
   nextPlace,
   pageOf,
@@ -159,7 +158,9 @@ export function featureValues(root: string, argv: string[]) {
   ].sort();
 
   const own = database?.owner === 'feature';
-  const migrationId = !database ? 0 : own ? 1 : nextMigration(root, database.name);
+  // Its own database's list, or what it numbers itself in one other owners add to: either
+  // way its first.
+  const migrationId = database ? 1 : 0;
   const migrationName = own ? 'baseline' : name;
   const dependencies = [
     'dispatch-core = { path = "../../core" }',
@@ -243,7 +244,7 @@ export function featureValues(root: string, argv: string[]) {
     databaseFile,
     dbImports: !database
       ? ''
-      : `{${database.owner === 'core' ? 'Kind, ' : ''}Migration, Migrations, migrations::Apply::Sql}`,
+      : `{${database.owner === 'core' ? 'Kind, ' : ''}Migration, ${own ? 'Migrations' : 'OwnMigrations'}, migrations::Apply::Sql}`,
     kind,
     open,
     table: `${name}_items`,
@@ -372,8 +373,8 @@ export async function planFeature(root: string, argv: string[]) {
   plan.notes.push(snapshotsNote);
   if (values.tables && !values.ownDatabase)
     plan.notes.push(
-      `It takes migration ${values.migrationId} of the ${values.database} database, after every ` +
-        'one declared or recorded in the migrations history.',
+      `Its migration to the ${values.database} database is its own number 1, recorded under its ` +
+        "name, apart from every other owner's.",
     );
   plan.notes.push(`\`npm run test:feature ${name}\` runs its tests of every kind.`);
   return { plan, args };

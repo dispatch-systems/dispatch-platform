@@ -38,7 +38,12 @@ impl Db {
             let tx = migrations::immediate(&db)?;
             // Another connection may have created it while this one waited.
             if db.version()? == 0 {
-                migrations::apply(&db, kind.name(), &kind.migrations())?;
+                migrations::apply(
+                    &db,
+                    kind.name(),
+                    &kind.migrations(),
+                    &kind.owned_migrations(),
+                )?;
                 tx.execute_batch(seed)?;
                 tx.pragma_update(None, "user_version", kind.version())?;
             }
@@ -55,7 +60,12 @@ impl Db {
         if db.version()? == 0 {
             let tx = migrations::immediate(&db)?;
             if db.version()? == 0 {
-                migrations::apply(&db, Kind::DSP.name(), &Kind::DSP.migrations())?;
+                migrations::apply(
+                    &db,
+                    Kind::DSP.name(),
+                    &Kind::DSP.migrations(),
+                    &Kind::DSP.owned_migrations(),
+                )?;
                 db.0.execute(
                     "INSERT INTO storage_identity(dsp_id,provider,source) \
                      VALUES (?,'dispatch','dispatch-v1')",

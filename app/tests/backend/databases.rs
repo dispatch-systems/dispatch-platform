@@ -15,6 +15,15 @@ use std::{
     panic::{AssertUnwindSafe, catch_unwind},
 };
 
+/// What a migration applies, as the snapshot names it: the first 16 hex digits of its SQL's
+/// SHA-256, or `code`.
+fn applied(migration: &dispatch_core::db::Migration) -> String {
+    match migration.apply {
+        Apply::Sql(sql) => crypto::sha(sql)[..16].to_owned(),
+        Apply::Code(_) => "code".to_owned(),
+    }
+}
+
 fn databases() -> Vec<Kind> {
     dispatch_core::manifest::registry().databases().collect()
 }
@@ -36,13 +45,7 @@ fn every_database_keeps_its_version_cache_and_migrations() {
         let migrations: Vec<_> = kind
             .migrations()
             .iter()
-            .map(|migration| {
-                let apply = match migration.apply {
-                    Apply::Sql(sql) => crypto::sha(sql)[..16].to_owned(),
-                    Apply::Code(_) => "code".to_owned(),
-                };
-                (migration.id, migration.name, apply)
-            })
+            .map(|migration| (migration.id, migration.name, applied(migration)))
             .collect();
         let recorded: Vec<(u32, String)> = db
             .query_as("SELECT id,name FROM schema_migrations ORDER BY id", [])
@@ -52,14 +55,35 @@ fn every_database_keeps_its_version_cache_and_migrations() {
             .map(|(id, name, _)| (*id, (*name).to_owned()))
             .collect();
         assert_eq!(recorded, listed, "{}", kind.name());
+        // What features number themselves, by feature, likewise.
+        let owned: Vec<_> = kind
+            .owned_migrations()
+            .iter()
+            .map(|(owner, migration)| (*owner, migration.id, migration.name, applied(migration)))
+            .collect();
+        if !owned.is_empty() {
+            let recorded: Vec<(String, u32, String)> = db
+                .query_as("SELECT owner,id,name FROM owner_migrations", [])
+                .unwrap();
+            let listed: Vec<_> = owned
+                .iter()
+                .map(|(owner, id, name, _)| ((*owner).to_owned(), *id, (*name).to_owned()))
+                .collect();
+            assert_eq!(recorded, listed, "{}", kind.name());
+        }
         // Each database: its name, `user_version`, `cache_size`, and each migration's id,
-        // name and the first 16 hex digits of its SQL's SHA-256, or `code`.
-        found.push(json!({
+        // name and the first 16 hex digits of its SQL's SHA-256, or `code`; then, when any
+        // feature numbers its own, each of those with its feature.
+        let mut database = json!({
             "name": kind.name(),
             "user_version": pragma("user_version"),
             "cache_size": pragma("cache_size"),
             "migrations": migrations,
-        }));
+        });
+        if !owned.is_empty() {
+            database["owned"] = json!(owned);
+        }
+        found.push(database);
     }
     snapshot::check("databases.json", &json!(found));
 }
