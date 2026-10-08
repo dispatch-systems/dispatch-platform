@@ -13,7 +13,7 @@ doctest = false
 
 [features]
 # TypeScript definitions of its API types, for the app's export test; never in a build.
-ts = ["dep:ts-rs"]
+ts = ["dep:ts-rs", "dispatch-core/ts"]
 
 # Core, the collectors it uses and the features it declares: nothing else compiles.
 [dependencies]

@@ -154,7 +154,7 @@ test('with no flags, a feature is a crate with a switch, a view permission and a
   // as it is by default.
   const list = file(plan, 'app/backend/features.rs');
   assert.match(list, /\n {4}#\[cfg\(feature = "parking"\)\]\n {4}&dispatch_parking::FEATURE,\n/);
-  const listed = [...list.matchAll(/feature = "(\w+)"/g)].map((match) => match[1]!);
+  const listed = [...list.matchAll(/feature = "(\w+)"\)\]\n {4}&/g)].map((match) => match[1]!);
   assert.deepEqual(listed, [...listed].sort());
   const app = file(plan, 'app/backend/Cargo.toml');
   assert.match(
@@ -202,7 +202,14 @@ test('--api writes one endpoint behind the view permission, its client function 
   const plan = await feature('parking', '--api');
   assert.deepEqual(
     writes(plan, 'features/parking').filter((name) => /^(api|tests\/api)\//.test(name)),
-    ['api/client.ts', 'api/mod.rs', 'api/routes.rs', 'api/types.rs', 'tests/api/parking.test.ts'],
+    [
+      'api/client.ts',
+      'api/mod.rs',
+      'api/routes.rs',
+      'api/types.rs',
+      'tests/api/parking.test.ts',
+      'tests/api/routes.txt',
+    ],
   );
   const routes = file(plan, 'features/parking/api/routes.rs');
   assert.match(routes, /const VIEW: Dsp = Dsp\("parking.view"\);/);
@@ -223,16 +230,20 @@ test('--api writes one endpoint behind the view permission, its client function 
   const manifest = file(plan, 'features/parking/feature.rs');
   assert.match(manifest, /^mod api;$/m);
   assert.match(manifest, /^    routes: api::routes::routes,$/m);
-  // The app's export test lists its API type, which its root re-exports, and writes it to
-  // features/parking/api/generated/.
+  // It lists its API type itself, which the app's export writes to
+  // features/parking/api/generated/, and its root re-exports it.
   assert.match(manifest, /^pub use api::types::ParkingSummary;$/m);
   assert.match(
-    file(plan, 'app/tests/backend/export.rs'),
-    /\n    #\[cfg\(feature = "parking"\)\]\n    bindings\.extend\(exported!\(&cfg, dispatch_parking::ParkingSummary\)\);\n    bindings\.insert\(ACCESS_CATALOG/,
+    manifest,
+    /#\[cfg\(feature = "ts"\)\]\npub fn typescript\(cfg: &ts_rs::Config\) -> dispatch_core::Typescript \{\n {4}dispatch_core::typescript!\(cfg, ParkingSummary\)\n\}/,
+  );
+  assert.match(
+    file(plan, 'app/backend/features.rs'),
+    /#\[cfg\(feature = "parking"\)\]\n {4}all\.extend\(dispatch_parking::typescript\(cfg\)\);/,
   );
   // Its API types' TypeScript comes behind its ts feature, which the app's tests enable.
   const cargo = file(plan, 'features/parking/Cargo.toml');
-  assert.match(cargo, /^\[features\]\n#[^\n]*\nts = \["dep:ts-rs"\]$/m);
+  assert.match(cargo, /^\[features\]\n#[^\n]*\nts = \["dep:ts-rs", "dispatch-core\/ts"\]$/m);
   assert.match(cargo, /^ts-rs = \{ workspace = true, optional = true \}$/m);
   assert.doesNotMatch(cargo, /dev-dependencies/);
   assert.match(
@@ -244,20 +255,15 @@ test('--api writes one endpoint behind the view permission, its client function 
     app.slice(app.indexOf('\n[dev-dependencies]\n')).split(/\n\[/)[1]!,
     /^dispatch-parking = \{ path = "..\/..\/features\/parking", features = \["ts"\] \}$/m,
   );
-  // Its manifest brings its routes: in app/, only its listing, the inventory and the export
-  // change.
-  assert.deepEqual(
-    [...plan.changes.keys()].sort(),
-    [
-      'app/backend/Cargo.toml',
-      'app/backend/features.rs',
-      'app/tests/backend/integration/http_routes.rs',
-      'app/tests/backend/export.rs',
-    ].sort(),
-  );
+  // Its manifest brings its routes, and its own list says who may call each: in app/, only its
+  // listing changes.
+  assert.deepEqual([...plan.changes.keys()].sort(), [
+    'app/backend/Cargo.toml',
+    'app/backend/features.rs',
+  ]);
   assert.match(
-    file(plan, 'app/tests/backend/integration/http_routes.rs'),
-    /\("GET", "\/api\/dsp\/parking", Dsp\("parking.view"\), Read, false\),\n\];/,
+    file(plan, 'features/parking/tests/api/routes.txt'),
+    /^GET \/api\/dsp\/parking Dsp\("parking.view"\) Read$/m,
   );
 });
 
@@ -480,8 +486,8 @@ test('--mcp writes one agent endpoint, its read toggle and an eval question', as
     /export function questions\(_world: World\): Question\[\]/,
   );
   assert.match(
-    file(plan, 'app/tests/backend/integration/http_routes.rs'),
-    /\("GET", "\/api\/v1\/parking", Agent\("read"\), Read, false\),/,
+    file(plan, 'features/parking/tests/api/routes.txt'),
+    /^GET \/api\/v1\/parking Agent\("read"\) Read$/m,
   );
   await refused(/--mcp needs a feature with one/, 'parking', '--mcp', '--always-on');
 });

@@ -54,3 +54,20 @@ pub const FEATURE: Feature = Feature {
     }],
     ..feature("uniforms")
 };
+
+/// Its API types, which the app's export writes to TypeScript in its `api/generated/`.
+#[cfg(feature = "ts")]
+pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
+    dispatch_core::typescript!(
+        cfg,
+        UniformFit,
+        UniformEventKind,
+        UniformVariant,
+        Uniform,
+        UniformInventory,
+        UniformAdjustment,
+        UniformUpdates,
+        UniformEvent,
+        UniformHistory,
+    )
+}

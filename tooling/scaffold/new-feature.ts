@@ -2,7 +2,6 @@ import path from 'node:path';
 import {
   UsageError,
   addWorkspaceMember,
-  appendToList,
   capabilitiesOf,
   change,
   collectionsOf,
@@ -24,11 +23,9 @@ import {
   pageOf,
   parseArguments,
   repositoryRoot,
-  routeInventory,
   run,
   snapshotsNote,
   template,
-  typescriptExport,
   type Plan,
   type Values,
 } from './scaffold.js';
@@ -72,7 +69,7 @@ export function featureValues(root: string, argv: string[]) {
   const args = parseArguments(argv, FLAGS, OPTIONS);
   if (args.positional.length !== 1) throw new UsageError('Name one feature');
   const names = namesOf(args.positional[0]!, args.options.get('label'));
-  const { name, slug, pascal, ident } = names;
+  const { name, slug, pascal } = names;
   const taken = [...features(root), ...collectors(root), ...coreParts(root)];
   if (taken.includes(name) || exists(root, `features/${name}`))
     throw new UsageError(
@@ -285,7 +282,7 @@ export function featureValues(root: string, argv: string[]) {
     hostLabel: hostPage.label,
     dspView: DSP_VIEW,
   };
-  return { args, names, values, ident };
+  return { args, names, values };
 }
 
 /** What is written where, given the feature's pieces: [piece, template, path in the feature]. */
@@ -327,8 +324,8 @@ function pieces(values: Values): [boolean, string, string][] {
 }
 
 export async function planFeature(root: string, argv: string[]) {
-  const { args, names, values, ident } = featureValues(root, argv);
-  const { name, slug, pascal } = names;
+  const { args, names, values } = featureValues(root, argv);
+  const { name, slug } = names;
   const dir = `features/${name}`;
   const plan: Plan = emptyPlan();
   for (const [wanted, source, target] of pieces(values)) {
@@ -342,7 +339,7 @@ export async function planFeature(root: string, argv: string[]) {
 
   // List it in app/, as `npm run contracts:generate` does from its folder: its crate in the
   // app's Cargo manifest and its manifest in the registry's list. Its manifest brings its
-  // routes. The route table's inventory lists them as well.
+  // routes, and lists its API types itself.
   const edit = (file: string, apply: (text: string) => string) => change(plan, root, file, apply);
   await edit('Cargo.toml', (text) => addWorkspaceMember(text, dir));
   const wired = [...crates(root), crateOf(name, plan.files.get(`${dir}/Cargo.toml`)!)].sort(
@@ -350,27 +347,18 @@ export async function planFeature(root: string, argv: string[]) {
   );
   await edit(appManifest, (text) => wiredManifest(text, wired));
   await edit(featureList, () => wiredList(wired));
-  // The app's export test writes its API type to its api/generated/ while the build has it.
-  if (values.api)
-    await edit(typescriptExport, (text) => {
-      const anchor = '    bindings.insert(ACCESS_CATALOG.into(), access_catalog());\n';
-      if (!text.includes(anchor))
-        throw new Error(
-          `${typescriptExport}: cannot find its last binding; list ${name}'s by hand`,
-        );
-      return text.replace(
-        anchor,
-        `    #[cfg(feature = "${name}")]\n` +
-          `    bindings.extend(exported!(&cfg, ${ident}::${pascal}Summary));\n${anchor}`,
-      );
-    });
-  const rows = [
-    ...(values.api ? [`("GET", "${values.apiPath}", Dsp("${name}.view"), Read, false),`] : []),
-    ...(values.mcp ? [`("GET", "/api/v1/${slug}", Agent("read"), Read, false),`] : []),
+  // Its routes, and who may call each, in its own list, which the app's route test holds it to.
+  const routes = [
+    ...(values.api ? [`GET ${values.apiPath} Dsp("${name}.view") Read`] : []),
+    ...(values.mcp ? [`GET /api/v1/${slug} Agent("read") Read`] : []),
   ];
-  for (const row of rows)
-    await edit(routeInventory, (text) =>
-      appendToList(text, /const INVENTORY: &\[Row\] = &\[/, row, routeInventory),
+  if (routes.length)
+    plan.files.set(
+      `${dir}/tests/api/routes.txt`,
+      `# Every route ${name} registers: its method and path, who may call it, the\n` +
+        '# database access its work runs under, and whether it wakes the scheduler.\n' +
+        '# Each changes with this file, so a reviewer sees who can reach what.\n' +
+        `${routes.sort().join('\n')}\n`,
     );
 
   const declared = [values.switch && 'switch', values.permission && 'permissions'].filter(Boolean);

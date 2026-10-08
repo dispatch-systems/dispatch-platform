@@ -27,3 +27,24 @@ pub mod testing;
 
 pub use foundation::error::{Code, Error, Result, ensure};
 pub use server::state::{State, cancelled, supervise};
+
+/// API types written to TypeScript, each by its file's path from the repository root, which
+/// its type's `export_to` names, so ts-rs writes the imports between owners' folders from
+/// there. The app's export test writes and checks them.
+#[cfg(feature = "ts")]
+pub type Typescript = std::collections::BTreeMap<std::path::PathBuf, String>;
+/// Each of the types named, in TypeScript: `typescript!(cfg, Uniform, UniformFit)`.
+#[cfg(feature = "ts")]
+#[macro_export]
+macro_rules! typescript {
+    ($cfg:expr, $($ty:ty),* $(,)?) => {
+        $crate::Typescript::from([$((
+            <$ty as ::ts_rs::TS>::output_path().expect("named type"),
+            <$ty as ::ts_rs::TS>::export_to_string($cfg)
+                .expect("exportable type")
+                .lines()
+                .map(|line| format!("{}\n", line.trim_end()))
+                .collect::<String>(),
+        )),*])
+    };
+}

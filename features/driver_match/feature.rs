@@ -63,3 +63,25 @@ pub const FEATURE: Feature = Feature {
     mcp: mcp::MCP,
     ..feature("driver_match")
 };
+
+/// Its API types, which the app's export writes to TypeScript in its `api/generated/`.
+#[cfg(feature = "ts")]
+pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
+    dispatch_core::typescript!(
+        cfg,
+        DriverLink,
+        DriverStrength,
+        DriverEvidenceKind,
+        DriverEventKind,
+        DriverId,
+        Driver,
+        DriverCounts,
+        DriverEvidence,
+        DriverPair,
+        DriverMatch,
+        DriverActivity,
+        DriverDay,
+        DriverEvent,
+        DriverDetails,
+    )
+}

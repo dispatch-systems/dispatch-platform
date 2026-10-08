@@ -120,3 +120,16 @@ pub const FEATURE: Feature = Feature {
     people: &[&backend::people::Drivers],
     ..feature("weekly_scorecard")
 };
+
+/// Its API types, which the app's export writes to TypeScript in its `api/generated/`.
+#[cfg(feature = "ts")]
+pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
+    dispatch_core::typescript!(
+        cfg,
+        WeeklyScorecardDatasetCount,
+        WeeklyScorecardPublication,
+        WeeklyScorecardWeek,
+        WeeklyScorecardWeeks,
+        WeeklyScorecardPolicy,
+    )
+}

@@ -86,3 +86,25 @@ pub const FEATURE: Feature = Feature {
     people: &[&backend::people::Drivers],
     ..feature("routes")
 };
+
+/// Its API types, which the app's export writes to TypeScript in its `api/generated/`.
+#[cfg(feature = "ts")]
+pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
+    dispatch_core::typescript!(
+        cfg,
+        RouteAddress,
+        RouteBreak,
+        RouteDayView,
+        RouteDays,
+        RouteItinerary,
+        RouteItineraryDetail,
+        RoutePackage,
+        RoutePackageEvent,
+        RoutePublication,
+        RouteReprocess,
+        RouteRetention,
+        RouteStop,
+        RouteTask,
+        RouteUnknownStop,
+    )
+}

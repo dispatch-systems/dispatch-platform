@@ -76,3 +76,16 @@ pub const FEATURE: Feature = Feature {
     people: &[&backend::people::Drivers],
     ..feature("dvic")
 };
+
+/// Its API types, which the app's export writes to TypeScript in its `api/generated/`.
+#[cfg(feature = "ts")]
+pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
+    dispatch_core::typescript!(
+        cfg,
+        DvicReport,
+        DvicWeek,
+        DvicStatus,
+        DvicInspection,
+        DvicInspections,
+    )
+}
