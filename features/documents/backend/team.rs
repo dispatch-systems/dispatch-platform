@@ -76,23 +76,22 @@ macro_rules! on_drive {
 /// or lost Use Documents, or is shared at an address they moved on from. Asks nothing of
 /// Google, so it can be checked every minute.
 pub fn stale(db: &Store, dsp: &str) -> Result<bool> {
-    let wanted = members(db, dsp)?;
-    let people = db.documents_people(dsp)?;
-    if wanted.len() != people.len() {
-        return Ok(true);
-    }
-    Ok(wanted.iter().any(|member| {
-        people
-            .iter()
-            .find(|person| person.user == member.user)
-            .is_none_or(|person| {
-                let target = person.linked.as_deref().unwrap_or(&member.email);
-                person
-                    .shared
-                    .as_ref()
-                    .is_some_and(|(email, _)| !email.eq_ignore_ascii_case(target))
-            })
-    }))
+    Ok(changed(&members(db, dsp)?, &db.documents_people(dsp)?))
+}
+fn changed(wanted: &[Member], people: &[Person]) -> bool {
+    wanted.len() != people.len()
+        || wanted.iter().any(|member| {
+            people
+                .iter()
+                .find(|person| person.user == member.user)
+                .is_none_or(|person| {
+                    let target = person.linked.as_deref().unwrap_or(&member.email);
+                    person
+                        .shared
+                        .as_ref()
+                        .is_some_and(|(email, _)| !email.eq_ignore_ascii_case(target))
+                })
+        })
 }
 
 /// A turn at sharing each DSP's folder, so two syncs never share or email at once.
