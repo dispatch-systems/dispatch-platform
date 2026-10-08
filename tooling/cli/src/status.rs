@@ -6,6 +6,9 @@ use crate::{
 };
 use serde_json::Value;
 
+/// A build unused this long says so, as it nears `idle::IDLE`.
+const DAY: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
 pub fn run(ws: &Workspace, runner: &dyn Runner) -> Result<()> {
     let previews = crate::preview::running(runner).unwrap_or_default();
     println!("Worktrees:");
@@ -32,7 +35,11 @@ pub fn run(ws: &Workspace, runner: &dyn Runner) -> Result<()> {
             notes.push(format!("{ahead} {commits} ahead of main"));
         }
         if let Some(bytes) = workspace::size(runner, &path.join("target")) {
-            notes.push(format!("build {}", workspace::human(bytes)));
+            let mut build = format!("build {}", workspace::human(bytes));
+            if let Some(idle) = crate::idle::unused(&path).filter(|idle| *idle >= DAY) {
+                build.push_str(&format!(", unused {}", crate::idle::span(idle)));
+            }
+            notes.push(build);
         }
         if let Some(bytes) = workspace::size(runner, &path.join(".test-build")) {
             notes.push(format!("test build {}", workspace::human(bytes)));
