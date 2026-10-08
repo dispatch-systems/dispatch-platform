@@ -1,0 +1,8 @@
+# Every route documents registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /api/documents/google/return Public Async
+GET /api/dsp/documents Dsp("documents.use") Read
+POST /api/dsp/documents/connect Dsp("documents.manage") Write
+POST /api/dsp/documents/connect/finish Dsp("documents.manage") Async
+POST /api/dsp/documents/disconnect Dsp("documents.manage") Async

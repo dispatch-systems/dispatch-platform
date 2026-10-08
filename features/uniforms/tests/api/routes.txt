@@ -1,0 +1,11 @@
+# Every route uniforms registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /api/dsp/uniforms Dsp("uniforms.view") Read
+GET /api/dsp/uniforms/history Dsp("uniforms.view") Read
+GET /api/dsp/uniforms/updates Dsp("uniforms.view") Async
+POST /api/dsp/uniforms Dsp("uniforms.manage") Write
+POST /api/dsp/uniforms/initialize Dsp("uniforms.manage") Write
+POST /api/dsp/uniforms/stock/{id} Dsp("uniforms.adjust") Write
+POST /api/dsp/uniforms/{id} Dsp("uniforms.manage") Write
+POST /api/dsp/uniforms/{id}/archive Dsp("uniforms.manage") Write

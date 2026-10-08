@@ -1,0 +1,9 @@
+# Every route driver_match registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /api/dsp/driver-match Dsp("driver_match.manage") Read
+GET /api/dsp/driver-match/counts Dsp("driver_match.manage") Read
+GET /api/dsp/driver-match/drivers/{code} Dsp("driver_match.manage") Read
+POST /api/dsp/driver-match/apart Dsp("driver_match.manage") Write
+POST /api/dsp/driver-match/merge Dsp("driver_match.manage") Write
+POST /api/dsp/driver-match/split Dsp("driver_match.manage") Write

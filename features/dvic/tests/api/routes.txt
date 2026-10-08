@@ -1,0 +1,13 @@
+# Every route dvic registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /api/dsp/dvic/inspections Dsp("dvic.view") Read
+GET /api/dsp/dvic/schedules Dsp("dvic.manage") Read
+GET /api/dsp/dvic/status Dsp("dvic.view") Read
+POST /api/dsp/dvic/collect Dsp("dvic.collect") Write
+POST /api/dsp/dvic/jobs/{id}/cancel Dsp("dvic.collect") Async
+POST /api/dsp/dvic/schedules Dsp("dvic.manage") Write wakes-scheduler
+POST /api/dsp/dvic/schedules/preview Dsp("dvic.manage") Write
+POST /api/dsp/dvic/schedules/{key} Dsp("dvic.manage") Write wakes-scheduler
+POST /api/dsp/dvic/schedules/{key}/enabled Dsp("dvic.manage") Write wakes-scheduler
+POST /api/dsp/dvic/schedules/{key}/remove Dsp("dvic.manage") Write wakes-scheduler

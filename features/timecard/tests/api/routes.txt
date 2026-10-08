@@ -1,0 +1,24 @@
+# Every route timecard registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /api/dsp/cortex/meal-breaks Dsp("timecard.view") Read
+GET /api/dsp/employees Dsp("timecard.view") Read
+GET /api/dsp/employees/{code} Dsp("timecard.view") Read
+GET /api/dsp/jobs Dsp("collections.run") Read
+GET /api/dsp/jobs/meal-breaks Dsp("timecard.view") Read
+GET /api/dsp/paycom/meal-breaks Dsp("timecard.view") Read
+GET /api/dsp/paycom/settings Dsp("timecard.view") Read
+GET /api/dsp/paycom/status Dsp("timecard.view") Read
+GET /api/dsp/schedules Dsp("timecard.manage") Read
+GET /api/dsp/timecards Dsp("timecard.view") Read
+POST /api/dsp/cortex/meal-breaks/collect Dsp("collections.run") Write
+POST /api/dsp/employees/{code}/sync Dsp("collections.run") Write
+POST /api/dsp/jobs Dsp("collections.run") Write
+POST /api/dsp/jobs/meal-breaks Dsp("collections.run") Write
+POST /api/dsp/jobs/{id}/cancel Dsp("collections.run") Async
+POST /api/dsp/paycom/settings Dsp("timecard.manage") Write
+POST /api/dsp/schedules Dsp("timecard.manage") Write wakes-scheduler
+POST /api/dsp/schedules/preview Dsp("timecard.manage") Write
+POST /api/dsp/schedules/{key} Dsp("timecard.manage") Write wakes-scheduler
+POST /api/dsp/schedules/{key}/enabled Dsp("timecard.manage") Write wakes-scheduler
+POST /api/dsp/schedules/{key}/remove Dsp("timecard.manage") Write wakes-scheduler

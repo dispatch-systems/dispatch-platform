@@ -1,0 +1,19 @@
+# Every route routes registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /api/dsp/routes/days Dsp("routes.view") Read
+GET /api/dsp/routes/days/{day} Dsp("routes.view") Read
+GET /api/dsp/routes/days/{day}/itineraries/{id} Dsp("routes.view") Read
+GET /api/dsp/routes/jobs Dsp("routes.view") Read
+GET /api/dsp/routes/packages/{tracking} Dsp("routes.view") Read
+GET /api/dsp/routes/retention Dsp("routes.manage") Read
+GET /api/dsp/routes/schedules Dsp("routes.manage") Read
+POST /api/dsp/routes/collect Dsp("routes.collect") Write
+POST /api/dsp/routes/jobs/{id}/cancel Dsp("routes.collect") Async
+POST /api/dsp/routes/retention Dsp("routes.manage") Write
+POST /api/dsp/routes/schedules Dsp("routes.manage") Write wakes-scheduler
+POST /api/dsp/routes/schedules/preview Dsp("routes.manage") Write
+POST /api/dsp/routes/schedules/{key} Dsp("routes.manage") Write wakes-scheduler
+POST /api/dsp/routes/schedules/{key}/enabled Dsp("routes.manage") Write wakes-scheduler
+POST /api/dsp/routes/schedules/{key}/remove Dsp("routes.manage") Write wakes-scheduler
+POST /api/platform/dsps/{id}/routes/reprocess PlatformOwner Write
