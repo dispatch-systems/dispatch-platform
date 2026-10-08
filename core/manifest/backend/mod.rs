@@ -207,7 +207,10 @@ impl Registry {
     /// Every permission as declared: core's own, then each feature's, in the registry's
     /// order. Lists of permissions follow their `order` instead.
     pub fn permissions(&self) -> impl Iterator<Item = &'static Permission> {
-        let features = self.features.iter().flat_map(|feature| feature.permissions);
+        let features = self.features.iter().flat_map(|feature| {
+            let subs = feature.subfeatures.iter().flat_map(|sub| sub.permissions);
+            feature.permissions.iter().chain(subs)
+        });
         CORE_PERMISSIONS.iter().copied().chain(features)
     }
     /// Every kind of data that names people, in the order their spellings are read.
@@ -229,14 +232,14 @@ impl Registry {
     }
     /// Panics unless every collection has exactly one keeper, every keeper keeps a
     /// registered collection, one page runs the schedules, every schedule alias has a name
-    /// of its own and runs only collections its feature keeps, only a page has tabs, every
-    /// feature depends only on registered features and collectors, every permission has an
-    /// id of its own and implies only permissions that exist, one lets
-    /// members invite, every database is declared once, with migrations numbered from 1
-    /// without a gap or a repeat, every table is declared once, every domain is declared
-    /// once and before it is named, every audit prefix is a dotted name listed under an
-    /// area other than settings, each kind of data that names people has a place of its
-    /// own, and what agents may read is declared as `mcp::pieces::check` asks.
+    /// of its own and runs only collections its feature keeps, only a page has sub-features,
+    /// every feature depends only on registered features and collectors, every permission
+    /// has an id of its own and implies, or sits under, only permissions that exist and never
+    /// itself, one lets members invite, every database is declared once, with migrations
+    /// numbered from 1 without a gap or a repeat, every table is declared once, every
+    /// domain is declared once and before it is named, every audit prefix is a dotted name
+    /// listed under an area other than settings, each kind of data that names people has a
+    /// place of its own, and what agents may read is declared as `mcp::pieces::check` asks.
     pub fn check(&self) {
         let mut spellings = std::collections::BTreeSet::new();
         for feature in self.features {
@@ -319,8 +322,8 @@ impl Registry {
         }
         for feature in self.features {
             assert!(
-                feature.switch.is_some() || feature.tabs.is_empty(),
-                "{} has tabs but no page",
+                feature.switch.is_some() || feature.subfeatures.is_empty(),
+                "{} has sub-features but no page",
                 feature.name
             );
             for dependency in feature.depends_on {
@@ -346,12 +349,34 @@ impl Registry {
                 "{} repeats another permission's id",
                 permission.id
             );
-            for implied in permission.implies {
+            for implied in permission.implies.iter().chain(&permission.under) {
                 assert!(
                     permissions.iter().any(|other| other.id == *implied),
                     "{} implies {implied}, which is not a permission",
                     permission.id
                 );
+            }
+        }
+        // What a permission grants as well never comes back to it, however many steps away.
+        let grants: std::collections::BTreeMap<&str, Vec<&str>> = permissions
+            .iter()
+            .map(|p| (p.id, p.implies.iter().chain(&p.under).copied().collect()))
+            .collect();
+        for permission in &permissions {
+            let mut reached: Vec<&str> = grants[permission.id].clone();
+            let mut at = 0;
+            while let Some(id) = reached.get(at).copied() {
+                assert!(
+                    id != permission.id,
+                    "{} grants itself through what it implies",
+                    permission.id
+                );
+                for next in grants.get(id).into_iter().flatten() {
+                    if !reached.contains(next) {
+                        reached.push(next);
+                    }
+                }
+                at += 1;
             }
         }
         let databases: Vec<Kind> = self.databases().collect();
@@ -467,8 +492,9 @@ pub struct Feature {
     pub depends_on: &'static [&'static str],
     /// Its page's switch on the DSPs page. `None` for a feature that is always on.
     pub switch: Option<Switch>,
-    /// Its page's tabs, each switched on its own, in the order the page shows them.
-    pub tabs: &'static [Tab],
+    /// The parts of its page switched on their own on the DSPs page, in the order the page
+    /// shows them: its tabs, and any other part, each with the permissions it owns.
+    pub subfeatures: &'static [Sub],
     /// Whether its page is the one whose schedules, collections and jobs run: the
     /// generic schedule and job routes'. One feature's is.
     pub schedules: bool,
@@ -522,7 +548,7 @@ pub const fn feature(name: &'static str) -> Feature {
         upgrade_storage: None,
         depends_on: &[],
         switch: None,
-        tabs: &[],
+        subfeatures: &[],
         schedules: false,
         schedule_aliases: &[],
         permissions: &[],
@@ -599,14 +625,41 @@ pub struct Switch {
     /// The capabilities an enabled connection must provide while the page is on.
     pub requires: &'static [&'static str],
 }
-/// A tab of a feature's page, switched on its own inside the page.
-pub struct Tab {
-    /// Its catalog id. Permanent.
+/// A part of a feature's page, switched on its own inside the page: one of its tabs, or any
+/// other part, such as uploading files. It exists while it and its page are on, and its
+/// permissions with it.
+pub struct Sub {
+    /// Its catalog id. Permanent: each DSP's switch is stored under it.
     pub id: &'static str,
     pub label: &'static str,
+    /// Whether it is one of the page's tabs. A page keeps one of its tabs on at least.
+    pub tab: bool,
+    /// The permissions it owns, listed on the role sheet under its page's.
+    pub permissions: &'static [Permission],
 }
-pub const fn tab(id: &'static str, label: &'static str) -> Tab {
-    Tab { id, label }
+/// A tab of a feature's page: `tab("dvic.week", "Week")`.
+pub const fn tab(id: &'static str, label: &'static str) -> Sub {
+    Sub {
+        id,
+        label,
+        tab: true,
+        permissions: &[],
+    }
+}
+/// A part of a feature's page that isn't a tab: `sub("documents.uploads", "Uploads")`.
+pub const fn sub(id: &'static str, label: &'static str) -> Sub {
+    Sub {
+        tab: false,
+        ..tab(id, label)
+    }
+}
+impl Sub {
+    pub const fn permissions(self, permissions: &'static [Permission]) -> Self {
+        Self {
+            permissions,
+            ..self
+        }
+    }
 }
 
 /// Core's own permissions, each declared by the core part that checks it.
@@ -622,6 +675,9 @@ pub struct Permission {
     pub order: u16,
     /// What holding it grants as well.
     pub implies: &'static [&'static str],
+    /// The permission it is a finer part of, which it grants as well and is listed under on
+    /// the role sheet.
+    pub under: Option<&'static str>,
     /// The demo DSPs' roles that hold it, so previews and tests show what a manager or a
     /// member sees. A real DSP's roles start with no permission; its owner turns them on.
     pub demo: &'static [DefaultRole],
@@ -642,6 +698,7 @@ pub const fn perm(id: &'static str, label: &'static str, order: u16) -> Permissi
         label,
         order,
         implies: &[],
+        under: None,
         demo: &[],
         group: None,
         recently_verified: false,
@@ -651,6 +708,13 @@ pub const fn perm(id: &'static str, label: &'static str, order: u16) -> Permissi
 impl Permission {
     pub const fn implies(self, implies: &'static [&'static str]) -> Self {
         Self { implies, ..self }
+    }
+    /// A finer part of `parent`: holding it grants `parent`, and the role sheet lists it under.
+    pub const fn under(self, parent: &'static str) -> Self {
+        Self {
+            under: Some(parent),
+            ..self
+        }
     }
     pub const fn demo(self, demo: &'static [DefaultRole]) -> Self {
         Self { demo, ..self }

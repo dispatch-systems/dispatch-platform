@@ -90,7 +90,7 @@
         "settings"
       ]
     },
-    "tabs": []
+    "subfeatures": []
   },
   "documents": {
     "collectors": [],
@@ -158,7 +158,7 @@
         "documents_connection"
       ]
     },
-    "tabs": []
+    "subfeatures": []
   },
   "driver_match": {
     "collectors": [],
@@ -237,7 +237,7 @@
         "driver_codes"
       ]
     },
-    "tabs": []
+    "subfeatures": []
   },
   "dvic": {
     "collectors": [
@@ -342,7 +342,7 @@
         "dvic_weeks"
       ]
     },
-    "tabs": [
+    "subfeatures": [
       "dvic.day",
       "dvic.week"
     ]
@@ -385,7 +385,7 @@
     },
     "switch": null,
     "tables": {},
-    "tabs": []
+    "subfeatures": []
   },
   "routes": {
     "collectors": [
@@ -513,7 +513,7 @@
         "unknown_stops"
       ]
     },
-    "tabs": []
+    "subfeatures": []
   },
   "settings": {
     "collectors": [],
@@ -557,7 +557,7 @@
     },
     "switch": null,
     "tables": {},
-    "tabs": []
+    "subfeatures": []
   },
   "team": {
     "collectors": [],
@@ -613,7 +613,7 @@
     },
     "switch": null,
     "tables": {},
-    "tabs": []
+    "subfeatures": []
   },
   "timecard": {
     "collectors": [
@@ -774,7 +774,7 @@
         "timecards"
       ]
     },
-    "tabs": [
+    "subfeatures": [
       "timecard.daily",
       "timecard.meal_breaks",
       "timecard.employees"
@@ -845,7 +845,7 @@
         "uniforms"
       ]
     },
-    "tabs": []
+    "subfeatures": []
   },
   "weekly_scorecard": {
     "collectors": [
@@ -961,6 +961,6 @@
         "weekly_scorecard_weeks"
       ]
     },
-    "tabs": []
+    "subfeatures": []
   }
 }

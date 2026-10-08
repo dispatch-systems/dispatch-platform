@@ -43,21 +43,22 @@ fn the_catalog_keeps_its_pages_tabs_and_order() {
                 "requires": page.requires, "default": page.default})
         })
         .collect();
-    let tabs: Vec<_> = catalog::catalog()
+    let subs: Vec<_> = catalog::catalog()
         .iter()
-        .filter(|feature| matches!(feature.kind, catalog::Kind::Tab(_)))
-        .map(|tab| {
-            assert!(tab.default && tab.permissions.is_empty() && tab.requires.is_empty());
-            match tab.kind {
-                catalog::Kind::Tab(page) => json!({"id": tab.id, "label": tab.label, "page": page}),
-                kind => panic!("{} is a {kind:?}", tab.id),
+        .filter(|feature| matches!(feature.kind, catalog::Kind::Sub(_)))
+        .map(|sub| {
+            assert!(sub.default && sub.requires.is_empty());
+            match sub.kind {
+                catalog::Kind::Sub(page) => json!({"id": sub.id, "label": sub.label, "page": page,
+                    "tab": sub.tab, "permissions": sub.permissions}),
+                kind => panic!("{} is a {kind:?}", sub.id),
             }
         })
         .collect();
     let catalog: Vec<_> = catalog::catalog().iter().map(|f| f.id).collect();
     snapshot::check(
         "catalog-pages.json",
-        &json!({"pages": pages, "tabs": tabs, "catalog": catalog,
+        &json!({"pages": pages, "subfeatures": subs, "catalog": catalog,
             "schedules": catalog::schedules()}),
     );
 }

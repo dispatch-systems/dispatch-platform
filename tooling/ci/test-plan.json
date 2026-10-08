@@ -13,7 +13,6 @@
     "features/dvic/tests/frontend/dvic.test.ts",
     "app/tests/frontend/features.test.ts",
     "features/timecard/tests/frontend/meal-breaks.test.ts",
-    "app/tests/frontend/permissions.test.ts",
     "core/shell/tests/frontend/response-cache.test.ts",
     "app/tests/frontend/role-assignability.test.ts",
     "app/tests/frontend/slots.test.ts",
@@ -85,8 +84,7 @@
         "app/tests/api/roles.test.ts",
         "core/tenancy/tests/api/roles.test.ts",
         "app/tests/browser/dsp-features.spec.ts",
-        "app/tests/frontend/features.test.ts",
-        "app/tests/frontend/permissions.test.ts"
+        "app/tests/frontend/features.test.ts"
       ]
     }
   ],

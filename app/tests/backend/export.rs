@@ -268,7 +268,7 @@ fn access_catalog() -> String {
         catalog
             .iter()
             .filter(|feature| match (feature.kind, kind) {
-                (catalog::Kind::Tab(_), catalog::Kind::Tab(_)) => true,
+                (catalog::Kind::Sub(_), catalog::Kind::Sub(_)) => true,
                 (actual, expected) => actual == expected,
             })
             .map(|feature| feature.id)
@@ -285,9 +285,10 @@ fn access_catalog() -> String {
             });
             match feature.kind {
                 catalog::Kind::Page => entry["kind"] = json!("page"),
-                catalog::Kind::Tab(page) => {
-                    entry["kind"] = json!("tab");
+                catalog::Kind::Sub(page) => {
+                    entry["kind"] = json!("sub");
                     entry["page"] = json!(page);
+                    entry["tab"] = json!(feature.tab);
                 }
                 catalog::Kind::Connection => {
                     entry["kind"] = json!("connection");
@@ -298,15 +299,35 @@ fn access_catalog() -> String {
         })
         .collect();
     let labels: BTreeMap<_, _> = roles::LABELS.iter().copied().collect();
-    let implied: BTreeMap<_, _> = roles::IMPLIED.iter().copied().collect();
-    let groups: Vec<_> = catalog::pages()
-        .map(|feature| (feature.label, feature.permissions))
-        .chain(
-            roles::GROUPS
-                .iter()
-                .map(|(group, permissions)| (*group, permissions.as_slice())),
-        )
+    // Everything each permission grants as well, however many steps away.
+    let implied: BTreeMap<_, _> = roles::PERMISSIONS
+        .iter()
+        .map(|permission| {
+            let granted = roles::granting(&[(*permission).to_owned()]);
+            (*permission, granted[1..].to_vec())
+        })
+        .filter(|(_, granted)| !granted.is_empty())
         .collect();
+    let parents: BTreeMap<_, _> = dispatch_core::manifest::registry()
+        .permissions()
+        .filter_map(|permission| Some((permission.id, permission.under?)))
+        .collect();
+    // Each page's own section, then a section for each of its parts that owns permissions.
+    let mut groups: Vec<(String, &[&str])> = Vec::new();
+    for page in catalog::pages() {
+        groups.push((page.label.to_owned(), page.permissions));
+        for sub in catalog
+            .iter()
+            .filter(|sub| sub.kind == catalog::Kind::Sub(page.id) && !sub.permissions.is_empty())
+        {
+            groups.push((format!("{} · {}", page.label, sub.label), sub.permissions));
+        }
+    }
+    groups.extend(
+        roles::GROUPS
+            .iter()
+            .map(|(group, permissions)| ((*group).to_owned(), permissions.as_slice())),
+    );
     let mut grouped: Vec<_> = groups
         .iter()
         .flat_map(|(_, permissions)| *permissions)
@@ -319,14 +340,12 @@ fn access_catalog() -> String {
         grouped, permissions,
         "every permission belongs to one role-sheet section"
     );
-    assert!(
-        implied
-            .iter()
-            .all(|(from, to)| labels.contains_key(from) && labels.contains_key(to))
-    );
+    assert!(implied.iter().all(|(from, to)| {
+        labels.contains_key(from) && to.iter().all(|to| labels.contains_key(to.as_str()))
+    }));
     let constants = [
         ("pages", json!(ids(catalog::Kind::Page))),
-        ("pageTabs", json!(ids(catalog::Kind::Tab("")))),
+        ("subfeatures", json!(ids(catalog::Kind::Sub("")))),
         ("connections", json!(ids(catalog::Kind::Connection))),
         (
             "features",
@@ -337,6 +356,7 @@ fn access_catalog() -> String {
         ("permissionLabels", json!(labels)),
         ("permissionGroups", json!(groups)),
         ("impliedPermissions", json!(implied)),
+        ("permissionParents", json!(parents)),
     ];
     generated(
         "backend feature, collector and permission catalogs",
@@ -576,7 +596,7 @@ fn feature_map(root: &Path) -> String {
             "slots": slots,
             "switch": feature.switch.map(|switch| switch.id),
             "tables": tables,
-            "tabs": feature.tabs.iter().map(|tab| tab.id).collect::<Vec<_>>(),
+            "subfeatures": feature.subfeatures.iter().map(|sub| sub.id).collect::<Vec<_>>(),
         });
         map.insert(feature.name, entry);
     }

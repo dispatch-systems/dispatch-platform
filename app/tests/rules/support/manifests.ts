@@ -154,7 +154,11 @@ export type FeatureManifest = {
   name?: string;
   fields: Map<string, Span>;
   switch?: string;
+  /** Its page's tabs, among its sub-features. */
   tabs: string[];
+  /** Its page's other sub-features. */
+  subs: string[];
+  /** Its own permissions and its sub-features'. */
   permissions: string[];
   /** The features and collectors it declares it depends on. */
   dependsOn: string[];
@@ -210,9 +214,11 @@ function readFeature(owner: Owner): FeatureManifest | undefined {
     ...(name ? { name } : {}),
     fields,
     ...(switchId ? { switch: switchId } : {}),
-    tabs: callsIn(value('tabs'), 'tab'),
+    tabs: callsIn(value('subfeatures'), 'tab'),
+    subs: callsIn(value('subfeatures'), 'sub'),
     permissions: [
       ...callsIn(permissions, 'perm'),
+      ...callsIn(value('subfeatures'), 'perm'),
       ...(permissions ? permissionLiterals(follow(permissions)) : []),
     ],
     dependsOn: value('depends_on') ? stringsIn(follow(value('depends_on')!)) : [],
