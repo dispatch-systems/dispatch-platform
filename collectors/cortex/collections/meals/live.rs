@@ -1,6 +1,6 @@
 //! Cortex's meal breaks as a collection finds them: each itinerary, validated against
 //! the run's scope, is shown beside the published day until the job ends.
-use super::Capture;
+use super::{Capture, JOB_KIND};
 use crate::{
     PROVIDER,
     discovery::{CollectionRequest, Scope},
@@ -63,6 +63,7 @@ impl Writer {
             .await?;
         self.state.updates.changed(
             &dsp,
+            JOB_KIND,
             dispatch_core::collection::api::types::CollectionChange::provider(PROVIDER.id()),
         );
         Ok(())
@@ -113,7 +114,7 @@ impl Writer {
                 Ok(dsp.id)
             })
             .await?;
-        self.state.updates.changed(&dsp, change);
+        self.state.updates.changed(&dsp, JOB_KIND, change);
         Ok(())
     }
 }

@@ -1,5 +1,8 @@
 //! Host-owned, unpublished Paycom progress. Workers never receive storage paths.
-use crate::{PROVIDER, timecards::validate_workforce};
+use crate::{
+    PROVIDER,
+    timecards::{JOB_KIND, validate_workforce},
+};
 use dispatch_core::{
     Result, State,
     collection::live,
@@ -171,6 +174,7 @@ impl Checkpoint {
         }).await?;
         self.state.updates.changed(
             &dsp,
+            JOB_KIND,
             dispatch_core::collection::api::types::CollectionChange::provider(PROVIDER.id()),
         );
         Ok(resume)
@@ -237,7 +241,7 @@ impl Checkpoint {
                 Ok(dsp.id)
             })
             .await?;
-        self.state.updates.changed(&dsp, change);
+        self.state.updates.changed(&dsp, JOB_KIND, change);
         Ok(())
     }
 }

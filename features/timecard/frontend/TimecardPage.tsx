@@ -22,7 +22,7 @@ import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
 import { syncEmployeeTimecard, syncMealBreaks, usePaycomSettings } from '../api/client.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { collectionData } from '../../../core/shell/frontend/runtime/data-policy.js';
-import { useCollectionUpdates } from './live-collection.js';
+import { useCollectionUpdates } from '../../../core/collection/frontend/live-collection.js';
 import { ErrorBox, Header, Loading, Tabs } from '../../../core/shell/frontend/ui/index.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { randomId } from '../../../core/shell/frontend/lib/random-id.js';

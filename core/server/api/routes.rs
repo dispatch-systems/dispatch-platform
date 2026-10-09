@@ -1,6 +1,7 @@
 //! What the dashboard polls: readiness, its own updates, collection progress and presence.
 use crate::{
     Error, Result, State,
+    accounts::Context,
     foundation::{crypto, validate as v},
     manifest::registry,
     server::http::{
@@ -80,12 +81,24 @@ async fn collection_updates(state: Arc<State>, input: Input, access: Dsp) -> Res
         let _ = tokio::time::timeout(Duration::from_secs(20), updates.changed()).await;
     }
     let revision = state.updates.token(&updates);
-    let changes = state.updates.changes(&dsp, &after, &revision);
     // Permission changes and expired sessions take effect during an open wait.
-    state
-        .read(move |db| access.authorize(db, &input).map(|_| ()))
+    let followed = state
+        .read(move |db| access.authorize(db, &input).map(|c| followed(&c)))
         .await?;
+    let changes = state
+        .updates
+        .changes(&dsp, &after, &revision, |kind| followed.contains(&kind));
     Reply::of(&crate::collection::api::types::CollectionUpdates { revision, changes })
+}
+
+/// The kinds of job whose results a member may hear of: those kept by the features whose `live`
+/// permissions it holds.
+fn followed(c: &Context) -> Vec<&'static str> {
+    let features = registry().features.iter();
+    let following = features.filter(|feature| feature.live.iter().any(|p| c.can(p)));
+    following
+        .flat_map(|feature| feature.keeps.iter().map(|keeper| keeper.keeps()))
+        .collect()
 }
 
 // Heartbeats only touch memory, so they stay off the platform write lock.

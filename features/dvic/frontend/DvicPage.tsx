@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, RefreshCw, Settings2 } from 'lucide-react';
 import type { DspView } from '../../../core/accounts/api/index.js';
 import type { Job } from '../../../core/collection/api/index.js';
+import { useCollectionUpdates } from '../../../core/collection/frontend/live-collection.js';
 import type { DvicStatus } from '../api/index.js';
 import {
   ApiError,
@@ -88,6 +89,9 @@ export function DvicPage({ view }: { view: DspView }) {
   useLayoutEffect(() => {
     committed = true;
   }, []);
+  // A DVIC run is announced as it ends, wherever it started; while one runs, its status is
+  // still read every few seconds, since its progress isn't announced.
+  useCollectionUpdates();
   const [collecting, setCollecting] = useState(false);
   const status = useCachedData<DvicStatus>(
     '/api/dsp/dvic/status',

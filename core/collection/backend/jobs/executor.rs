@@ -249,7 +249,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
             after(state.clone(), changed_dsp.clone()).await;
         }
     }
-    state.updates.changed(&changed_dsp, change);
+    state.updates.changed(&changed_dsp, keeper.keeps(), change);
     // A collection parses tens of megabytes; hand the freed pages back to the host
     // rather than keeping them resident until the next one.
     let _ = tokio::task::spawn_blocking(|| {
