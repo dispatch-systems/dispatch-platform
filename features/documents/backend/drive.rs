@@ -360,18 +360,7 @@ impl Google {
                 Ok(session)
             });
         }
-        let response = HTTP
-            .post(UPLOADS)
-            .bearer_auth(access)
-            .query(&[("uploadType", "resumable")])
-            .header("X-Upload-Content-Type", mime)
-            .header("X-Upload-Content-Length", length)
-            .json(&json!({
-                "name": name,
-                "mimeType": mime,
-                "parents": [parent],
-                "writersCanShare": false,
-            }))
+        let response = upload_start(access, name, mime, parent, length)
             .send()
             .await
             .map_err(unreachable)?;
@@ -388,7 +377,8 @@ impl Google {
             .map(str::to_owned)
             .ok_or_else(|| Error::new("google_unreachable", 502))
     }
-    /// Sends the upload's bytes to where `session` said, and answers the file Drive made.
+    /// Sends the upload's bytes to where `session` said, and answers the file Drive made, as
+    /// the upload's start asked for it.
     pub async fn finish_upload(&self, access: &str, session: &str, upload: Upload) -> Result<Item> {
         let length = upload.length;
         if let Self::Fixture = self {
@@ -423,7 +413,6 @@ impl Google {
         let response = TRANSFER
             .put(session)
             .bearer_auth(access)
-            .query(&[("fields", FIELDS)])
             .header(reqwest::header::CONTENT_LENGTH, length)
             .body(reqwest::Body::wrap_stream(upload.stream()))
             .send()
@@ -562,6 +551,28 @@ impl Google {
     }
 }
 
+/// The request that starts an upload. Google describes the file it makes with the fields
+/// this request asks for, and ignores those the request carrying the bytes asks for.
+fn upload_start(
+    access: &str,
+    name: &str,
+    mime: &str,
+    parent: &str,
+    length: u64,
+) -> reqwest::RequestBuilder {
+    HTTP.post(UPLOADS)
+        .bearer_auth(access)
+        .query(&[("uploadType", "resumable"), ("fields", FIELDS)])
+        .header("X-Upload-Content-Type", mime)
+        .header("X-Upload-Content-Length", length)
+        .json(&json!({
+            "name": name,
+            "mimeType": mime,
+            "parents": [parent],
+            "writersCanShare": false,
+        }))
+}
+
 fn missing() -> Error {
     Error::new("documents_item_not_found", 404)
 }
@@ -661,3 +672,7 @@ pub fn fixture_hidden(access: &str) -> Result<Vec<Item>> {
 pub fn fixture_has(access: &str, id: &str) -> Result<bool> {
     fixture(access, |drive| Ok(drive.files.contains_key(id)))
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/drive.rs"]
+mod tests;
