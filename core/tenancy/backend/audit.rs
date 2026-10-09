@@ -66,11 +66,65 @@ impl Store {
                 "changes":changes.iter().map(|(field,from,to)|json!({"field":field,"from":from,"to":to})).collect::<Vec<_>>()}).to_string()
         });
         let shown = self.shown(actor, dsp, action)?;
+        // A platform owner is known by their account; one of a DSP's people by an id only
+        // its directory has, with their name kept beside it.
+        let member = match (actor, dsp) {
+            (Some(actor), _) if self.platform_owner(actor)? => None,
+            (Some(actor), Some(dsp)) => Some((actor, self.member_name(dsp, actor)?)),
+            (Some(actor), None) => Some((actor, None)),
+            (None, _) => None,
+        };
+        let (actor_id, member_id, name) = match member {
+            Some((id, name)) => (None, Some(id), name),
+            None => (actor, None, None),
+        };
         self.platform.exec(
-            "INSERT INTO audit(at,actor_id,dsp_id,action,detail,data,shown) VALUES (?,?,?,?,?,?,?)",
-            rusqlite::params![iso(), actor, dsp, action, detail, data, shown.then_some(1)],
+            "INSERT INTO audit(at,actor_id,member_id,actor_name,dsp_id,action,detail,data,shown) \
+             VALUES (?,?,?,?,?,?,?,?,?)",
+            rusqlite::params![
+                iso(),
+                actor_id,
+                member_id,
+                name,
+                dsp,
+                action,
+                detail,
+                data,
+                shown.then_some(1)
+            ],
         )?;
         Ok(())
+    }
+    /// Records what someone did to their own account, outside any DSP's log: a platform
+    /// owner's under their account, one of a DSP's people's under their id and name.
+    pub fn audit_account(
+        &self,
+        user: &crate::accounts::api::types::PublicUser,
+        dsp: Option<&str>,
+        action: &str,
+        detail: &str,
+    ) -> Result<()> {
+        let (actor_id, member_id, name) = match dsp {
+            None => (Some(user.id.as_str()), None, None),
+            Some(_) => (None, Some(user.id.as_str()), Some(user.name())),
+        };
+        self.platform.exec(
+            "INSERT INTO audit(at,actor_id,member_id,actor_name,action,detail) \
+             VALUES (?,?,?,?,?,?)",
+            rusqlite::params![iso(), actor_id, member_id, name, action, detail],
+        )?;
+        Ok(())
+    }
+    /// The name of `dsp`'s person `id`, while their account lasts.
+    fn member_name(&self, dsp: &str, id: &str) -> Result<Option<String>> {
+        let Ok(people) = self.dsp(dsp) else {
+            return Ok(None);
+        };
+        let name: Option<(String,)> = people.one_as(
+            "SELECT first_name||' '||last_name FROM users WHERE id=?",
+            [id],
+        )?;
+        Ok(name.map(|(name,)| name))
     }
     // Decided as the event is written, so a visit made while hidden stays hidden.
     fn shown(&self, actor: Option<&str>, dsp: Option<&str>, action: &str) -> Result<bool> {
@@ -86,7 +140,8 @@ impl Store {
     pub fn audit_visit(&self, actor: &str, dsp: &str, action: &str, detail: &str) -> Result<()> {
         let shown = self.shown(Some(actor), Some(dsp), action)?;
         let recent = self.platform.one(
-            "SELECT 1 FROM audit WHERE actor_id=? AND dsp_id=? AND action=? AND detail=? AND at>=? AND COALESCE(shown,0)=? LIMIT 1",
+            "SELECT 1 FROM audit WHERE COALESCE(actor_id,member_id)=? AND dsp_id=? AND action=? \
+             AND detail=? AND at>=? AND COALESCE(shown,0)=? LIMIT 1",
             rusqlite::params![actor, dsp, action, detail, at(now() - VISIT_WINDOW), shown],
         )?;
         if recent.is_some() {
@@ -141,7 +196,7 @@ impl Store {
             "CASE WHEN {SUPPORT} THEN 'Platform support' ELSE COALESCE(u.first_name||' '||u.last_name,a.actor_name,'System') END"
         );
         let actor = format!(
-            "CASE WHEN {SUPPORT} THEN 'support' ELSE COALESCE(a.actor_id,CASE WHEN \
+            "CASE WHEN {SUPPORT} THEN 'support' ELSE COALESCE(a.actor_id,a.member_id,CASE WHEN \
                 a.actor_name IS NULL THEN 'system' ELSE 'name:'||a.actor_name END) END"
         );
         let areas = areas();
@@ -170,7 +225,7 @@ impl Store {
         let mut events = self.platform.all(
             &format!(
                 "SELECT a.id,a.at,CASE WHEN {SUPPORT} \
-            THEN NULL ELSE a.actor_id END actorId,{name} actorName,a.dsp_id dspId,d.name \
+            THEN NULL ELSE COALESCE(a.actor_id,a.member_id) END actorId,{name} actorName,a.dsp_id dspId,d.name \
             dspName,a.action,a.detail,a.data,{areas} area {filters} AND {area} AND (?9=0 OR \
             a.id<?9) ORDER BY a.id DESC LIMIT \
             ?10"

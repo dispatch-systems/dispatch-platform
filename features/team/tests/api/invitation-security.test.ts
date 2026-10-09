@@ -14,7 +14,12 @@ test('removal revokes legacy inbound and authored invitations without transferri
   const members = (await owner.get('/api/dsp/members')).value;
   const person = members.find((m: { email: string }) => m.email === 'member@dispatch.test');
   const tokens = ['a'.repeat(43), 'b'.repeat(43)];
+  const hashes = tokens.map((token) => createHash('sha256').update(token).digest('hex'));
   f.database('data/platform/accounts.sqlite', (db) => {
+    const route = db.prepare('INSERT INTO invitation_routes(hash,dsp_id) VALUES (?,?)');
+    for (const hash of hashes) route.run(hash, dsp);
+  });
+  f.people(dsp, (db) => {
     const insert = db.prepare(
       "INSERT INTO invitations(hash,dsp_id,email,role,role_id,expires_at,created_by) VALUES (?,?,?,'member',?,?,?)",
     );
@@ -80,7 +85,8 @@ test('invitation password checks share login limits; duplicates cool down and re
         "INSERT OR REPLACE INTO throttle(key,count,reset_at,namespace) VALUES (?,?,?,'login')",
       )
       .run(
-        createHash('sha256').update(`login:email:${body.email}`).digest('hex'),
+        // An account's attempts are counted in its DSP's directory.
+        createHash('sha256').update(`login:email:${dsp.id}:${body.email}`).digest('hex'),
         10,
         Date.now() + 900000,
       ),
@@ -104,7 +110,7 @@ test('invitation password checks share login limits; duplicates cool down and re
   );
   assert.equal((await owner.post('/api/dsp/members/invite', body)).status, 200);
   assert.equal((await f.request(`/api/invitations/${token}`, undefined, at)).status, 404);
-  const count = f.database('data/platform/accounts.sqlite', (db) =>
+  const count = f.people(dsp.id, (db) =>
     db
       .prepare('SELECT count(*) n FROM invitations WHERE email=? AND used_at IS NULL')
       .get(body.email),

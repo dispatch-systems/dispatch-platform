@@ -61,10 +61,29 @@ pub const TABLES: Tables = &[
             "oauth_pairing",
             "oauth_requests",
             "oauth_tokens",
+            "invitation_routes",
         ],
     ),
     ("jobs", &["jobs", "job_metrics"]),
-    ("dsp", &["settings", "collection_schedules"]),
+    (
+        "dsp",
+        &[
+            "settings",
+            "collection_schedules",
+            "users",
+            "memberships",
+            "roles",
+            "sessions",
+            "session_metadata",
+            "session_security",
+            "security_challenges",
+            "resets",
+            "recovery_codes",
+            "authenticator_apps",
+            "account_passkeys",
+            "invitations",
+        ],
+    ),
     // Every database records the migrations it ran, the features' own by feature, and each
     // of a DSP's whose it is. Each collector's holds its connection and its running
     // collection's live results.
@@ -188,6 +207,11 @@ const PLATFORM: &[Migration] = &[
         name: "dsp_codes",
         apply: Code(dsp_codes),
     },
+    Migration {
+        id: 20,
+        name: "dsp_directories",
+        apply: Code(dsp_directories),
+    },
 ];
 const JOBS: &[Migration] = &[
     Migration {
@@ -265,6 +289,13 @@ const DSP: &[Migration] = &[
             "../../collection/migrations/dsp/0008_open_collections.sql"
         )),
     },
+    Migration {
+        id: 12,
+        name: "accounts",
+        apply: Sql(include_str!(
+            "../../accounts/migrations/dsp/0012_accounts.sql"
+        )),
+    },
 ];
 fn role_columns(db: &Db) -> Result<()> {
     add_column(db, "memberships", "role_id", "TEXT REFERENCES roles(id)")?;
@@ -292,6 +323,18 @@ fn feature_shown(db: &Db) -> Result<()> {
 fn dsp_codes(db: &Db) -> Result<()> {
     add_column(db, "dsps", "code", "TEXT")?;
     db.0.execute_batch("CREATE UNIQUE INDEX IF NOT EXISTS dsps_code ON dsps(code)")?;
+    Ok(())
+}
+// What still refers to a DSP's people once their accounts are its own: who did what, by an
+// id no platform account has; whose DSP a queued message is for; and which DSP's directory
+// holds each invitation, as its link names only its token.
+fn dsp_directories(db: &Db) -> Result<()> {
+    add_column(db, "audit", "member_id", "TEXT")?;
+    add_column(db, "outbox", "dsp_id", "TEXT")?;
+    db.0.execute_batch(
+        "CREATE TABLE IF NOT EXISTS invitation_routes (hash TEXT PRIMARY KEY, \
+         dsp_id TEXT NOT NULL REFERENCES dsps(id))",
+    )?;
     Ok(())
 }
 fn audit_actor_name(db: &Db) -> Result<()> {

@@ -127,11 +127,6 @@ test('role edits need no fresh verification and invitations follow their sender 
   const north = member.session.dsps[0];
   // Northline's invitations open at its own address.
   const at = f.at(north.code);
-  const summit = owner.session.dsps.find((d: { name: string }) => d.name === 'Summit Delivery');
-  await owner.select(summit.id);
-  const summitMember = (await owner.get('/api/dsp/roles')).value.find(
-    (role: Role) => role.name === 'Member',
-  );
   const roles = async (): Promise<(Role & { invitations: number })[]> => {
     await owner.select(north.id);
     return (await owner.get('/api/dsp/roles')).value;
@@ -151,28 +146,22 @@ test('role edits need no fresh verification and invitations follow their sender 
   );
   assert.equal((await write(`/api/dsp/members/${sender.id}`, { role: lead.id })).status, 200);
 
-  // The sender also works for Summit, so leaving Northline keeps their account.
   const tokens = ['c'.repeat(43), 'd'.repeat(43), 'e'.repeat(43)];
-  f.database('data/platform/accounts.sqlite', (db) => {
-    db.prepare(
-      "INSERT INTO memberships(id,user_id,dsp_id,role,role_id) VALUES ('mem_summit',?,?,'member',?)",
-    ).run(sender.userId, summit.id, summitMember.id);
+  const hashes = tokens.map((token) => createHash('sha256').update(token).digest('hex'));
+  f.people(north.id, (db) => {
     const invite = db.prepare(
       "INSERT INTO invitations(hash,dsp_id,email,role,role_id,expires_at,created_by) VALUES (?,?,?,'member',?,?,?)",
     );
-    for (const [token, email, role, by] of [
-      [tokens[0], 'from-owner@dispatch.test', crew.id, owner.session.user.id],
-      [tokens[1], 'from-sender@dispatch.test', crew.id, sender.userId],
-      [tokens[2], 'temp@dispatch.test', temp.id, owner.session.user.id],
+    for (const [hash, email, role, by] of [
+      [hashes[0], 'from-owner@dispatch.test', crew.id, owner.session.user.id],
+      [hashes[1], 'from-sender@dispatch.test', crew.id, sender.userId],
+      [hashes[2], 'temp@dispatch.test', temp.id, owner.session.user.id],
     ])
-      invite.run(
-        createHash('sha256').update(token!).digest('hex'),
-        north.id,
-        email,
-        role,
-        Date.now() + 60000,
-        by,
-      );
+      invite.run(hash!, north.id, email!, role!, Date.now() + 60000, by!);
+  });
+  f.database('data/platform/accounts.sqlite', (db) => {
+    const route = db.prepare('INSERT INTO invitation_routes(hash,dsp_id) VALUES (?,?)');
+    for (const hash of hashes) route.run(hash, north.id);
     db.prepare('UPDATE sessions SET created_at=0 WHERE user_id=?').run(owner.session.user.id);
   });
 
@@ -195,8 +184,8 @@ test('role edits need no fresh verification and invitations follow their sender 
     200,
   );
 
-  // An invitation never outlives its sender's authority, even when their account stays because
-  // they belong to another DSP. Platform-owner invitations remain usable through role edits.
+  // An invitation never outlives its sender's authority. Platform-owner invitations remain
+  // usable through role edits.
   const memberRole = (await roles()).find((role) => role.name === 'Member')!;
   assert.equal((await write(`/api/dsp/members/${sender.id}`, { role: memberRole.id })).status, 200);
   const burst = await Promise.all(

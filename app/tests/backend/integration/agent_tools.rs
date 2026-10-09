@@ -798,7 +798,11 @@ async fn a_password_reset_ends_its_owners_keys() {
     drop(db);
     let state = State::new(config).unwrap();
     state
-        .reset_password(token, "replacement-password-long".into())
+        .reset_password(
+            token,
+            "replacement-password-long".into(),
+            dispatch_core::foundation::config::Site::Admin,
+        )
         .await
         .unwrap();
     let code = state

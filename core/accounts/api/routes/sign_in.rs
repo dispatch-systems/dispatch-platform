@@ -46,7 +46,7 @@ async fn login(state: Arc<State>, input: Input, _: Public) -> Result<Reply> {
 }
 
 fn logout(db: &Store, user: &User, _: &Input) -> Result<Reply> {
-    db.platform
+    db.people(user)?
         .exec("DELETE FROM sessions WHERE hash=?", [&user.hash])?;
     Ok(Reply::signed_out(user.state.config.development))
 }
@@ -103,7 +103,7 @@ async fn reset_password(state: Arc<State>, input: Input, _: Public) -> Result<Re
         .run(move |db| db.throttle_ip("reset-ip", &ip, 30, 3600000))
         .await?;
     state
-        .reset_password(request.token, request.password)
+        .reset_password(request.token, request.password, input.site)
         .await?;
     Ok(Reply::ok())
 }

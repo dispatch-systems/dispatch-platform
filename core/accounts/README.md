@@ -11,12 +11,27 @@ A DSP's onboarding asks for its details only when a feature fills the `dspSetup`
 who may save them and the route that does, as Settings does.
 `frontend/README.md` holds the signed-out screens' rules.
 
-A session belongs to the address it was made at, as its cookie does: a platform owner signs in
-at the admin's alone, where every DSP is theirs to open, a member at their DSP's alone, where
-that DSP is the only one, and nobody at the invite page. Anywhere else a right password reads
-as a wrong one, and a session reads as signed out. A password reset's link goes back to the
-address it was asked at, and a passkey belongs to the address it was made at. An invitation's
-link opens at its DSP's address, the one its email names, and at the invite page, which it
-names while the DSP has no short code, and nowhere else. There a DSP's first owner sets the DSP
-up, short code included, as they accept, unless the platform owner already gave it one, and is
-then sent to Sign In at the DSP's address.
+Every DSP keeps its own people in its own database, its directory: their accounts, roles and
+memberships, sign-ins, two-factor and passkeys, password resets and invitations, in tables that
+match the platform's. The platform's directory keeps its owners' alone. So one address may hold
+an account in several DSPs, each with its own password, and changing one never touches another.
+`Store::directory` opens the one an account lives in, and an `Auth`'s `scope` names its DSP.
+An invitation's token says nothing of its DSP, so the platform keeps which DSP each is for in
+`invitation_routes`. A DSP set up before its people were its own has them copied in once, at
+startup (`directories.rs`), where `dispatch-backend directories` reports, read-only, what that
+copies; the platform's copy stays for the release before. Should that release run again and
+change them there, the next start copies them again, unless the DSP's own changed meanwhile
+too; then it logs `accounts.diverged` and leaves both for an operator. A change written to a
+DSP's directory and the platform's, such as one and its audit event, runs in `Store::across`,
+so the two commit together.
+
+A session belongs to the address it was made at, as its cookie does, and is kept in that
+address's directory: a platform owner signs in at the admin's alone, where every DSP is theirs
+to open, one of a DSP's people at its address alone, where that DSP is the only one, and nobody
+at the invite page. Anywhere else a right password reads as a wrong one, and a session reads as
+signed out. Failed passwords count against the account in its own directory. A password reset's
+link goes back to the address it was asked at, and a passkey belongs to the address it was made
+at. An invitation's link opens at its DSP's address, the one its email names, and at the invite
+page, which it names while the DSP has no short code, and nowhere else. There a DSP's first
+owner sets the DSP up, short code included, as they accept, unless the platform owner already
+gave it one, and is then sent to Sign In at the DSP's address.

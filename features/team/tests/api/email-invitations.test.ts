@@ -52,9 +52,7 @@ test('Dev invitations and production use isolated configuration, state and accou
     (await dev.request(`/api/invitations/${raw}`, undefined, dev.at('invite'))).value.onboarding,
     true,
   );
-  dev.database('data/platform/accounts.sqlite', (db) =>
-    db.prepare('UPDATE invitations SET expires_at=0').run(),
-  );
+  dev.people(result.value.dsp.id, (db) => db.prepare('UPDATE invitations SET expires_at=0').run());
   assert.equal(
     (
       await dev.request(

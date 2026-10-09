@@ -21,49 +21,26 @@ use crate::{
 use rusqlite::params;
 use serde_json::{Value, json};
 
+/// Marks a DSP's database as holding its people: set when it is made, and once theirs move
+/// into it.
+pub(crate) const DIRECTORY: &str = "accounts.directory";
 const INSERT_DSP: &str = "INSERT INTO dsps(id,name,environment,status,timezone,permanent,created_at) \
     VALUES (?,?,?,'provisioning',?,?,?)";
-// The DSPs a user may open, each with who owns it: an active owner, else the platform
-// owner of the permanent DSP, else whoever holds the newest open owner invitation.
-const DSPS: &str = "SELECT d.*,\
-    COALESCE((SELECT r.name FROM roles r WHERE r.id=m.role_id),m.role) member_role,\
-    (SELECT MIN(u.email) FROM memberships o JOIN users u ON u.id=o.user_id \
-     WHERE o.dsp_id=d.id AND o.role='owner' AND u.status='active') owner_email,\
-    CASE WHEN d.permanent=1 THEN \
-     (SELECT MIN(email) FROM users WHERE platform_owner=1 AND status='active') END platform_email,\
-    (SELECT email FROM invitations WHERE dsp_id=d.id AND role='owner' AND used_at IS NULL \
-     AND expires_at>? ORDER BY expires_at DESC LIMIT 1) invite_email,\
-    (SELECT count(*) FROM memberships WHERE dsp_id=d.id) members \
-    FROM dsps d LEFT JOIN memberships m ON m.dsp_id=d.id AND m.user_id=? \
-    WHERE ? OR m.user_id IS NOT NULL ORDER BY d.permanent DESC,d.name";
+// Who owns a DSP, from its directory: an active owner, else whoever holds the newest open
+// owner invitation.
+const OWNER_EMAIL: &str = "SELECT MIN(u.email) FROM memberships o JOIN users u ON u.id=o.user_id \
+     WHERE o.dsp_id=? AND o.role='owner' AND u.status='active'";
+const INVITE_EMAIL: &str = "SELECT email FROM invitations WHERE dsp_id=? AND role='owner' \
+     AND used_at IS NULL AND expires_at>? ORDER BY expires_at DESC LIMIT 1";
 const MEMBERS: &str = "SELECT m.id,m.user_id,m.dsp_id,u.email,u.first_name||' '||u.last_name name,\
     COALESCE(r.name,m.role) role,r.id role_id,COALESCE(r.system,m.role='owner') owner \
     FROM memberships m JOIN users u ON u.id=m.user_id LEFT JOIN roles r ON r.id=m.role_id \
     WHERE m.dsp_id=? ORDER BY u.first_name,u.last_name";
 const OWNER_COUNT: &str = "SELECT count(*) FROM memberships WHERE dsp_id=? AND role='owner'";
-// Only an account with no membership left, and never a platform owner's.
-const REMOVABLE_ACCOUNT: &str = "SELECT first_name||' '||last_name FROM users u WHERE id=? \
-    AND platform_owner=0 AND NOT EXISTS (SELECT 1 FROM memberships WHERE user_id=u.id)";
+// Only an account with no membership left.
+const REMOVABLE_ACCOUNT: &str = "SELECT id FROM users u WHERE id=? \
+    AND NOT EXISTS (SELECT 1 FROM memberships WHERE user_id=u.id)";
 
-struct DspListing {
-    dsp: Dsp,
-    members: i64,
-    legacy: DspSummaryLegacy,
-}
-impl FromRow for DspListing {
-    fn from_row(row: &Row<'_>) -> Result<Self> {
-        Ok(Self {
-            dsp: Dsp::from_row(row)?,
-            members: row.get("members")?,
-            legacy: DspSummaryLegacy {
-                member_role: row.get("member_role")?,
-                owner_email: row.get("owner_email")?,
-                platform_email: row.get("platform_email")?,
-                invite_email: row.get("invite_email")?,
-            },
-        })
-    }
-}
 /// A member as stored; who is online is added by the route.
 pub struct MemberRow {
     pub id: String,
@@ -205,7 +182,6 @@ impl Store {
                 iso()
             ],
         )?;
-        super::roles::seed(&self.platform, &id)?;
         self.seed_features(&id)?;
         self.provision(&id)?;
         self.audit(Some(actor), Some(&id), "dsp.created", "")?;
@@ -219,7 +195,11 @@ impl Store {
             409,
         )?;
         let result = (|| {
-            self.initialize_dsp(id)?;
+            // Its directory begins with its default roles, and nobody else's to bring in.
+            let people = self.initialize_dsp(id)?;
+            super::roles::seed(&people, id)?;
+            people.set(DIRECTORY, &json!("own"))?;
+            drop(people);
             self.initialize_collectors(id)?;
             for provider in Provider::all() {
                 provider.collector().provision(self, id, &dsp.timezone)?;
@@ -235,22 +215,43 @@ impl Store {
         }
         result
     }
+    /// The DSPs a session lists: every one for a platform owner, and for one of a DSP's
+    /// people, the DSP whose directory holds their account.
     pub fn dsps(&self, a: &Auth) -> Result<Vec<DspSummary>> {
         let platform = a.user.platform_owner;
-        let mut rows: Vec<DspListing> = self
-            .platform
-            .query_as(DSPS, params![now(), a.user.id, platform])?;
-        // At a DSP's address, the session lists that DSP alone.
-        if let Some(scope) = &a.scope {
-            rows.retain(|row| &row.dsp.id == scope);
-        }
+        let rows: Vec<Dsp> = self.platform.query_as(
+            "SELECT * FROM dsps WHERE ?1 OR id=?2 ORDER BY permanent DESC,name",
+            params![platform, a.scope],
+        )?;
+        let platform_email: Option<(Option<String>,)> = self.platform.one_as(
+            "SELECT MIN(email) FROM users WHERE platform_owner=1 AND status='active'",
+            [],
+        )?;
+        let platform_email = platform_email.and_then(|(email,)| email);
         let mut result = Vec::new();
-        for DspListing {
-            dsp,
-            members,
-            legacy,
-        } in rows
-        {
+        for dsp in rows {
+            // A DSP still being provisioned, or that failed to be, has no directory yet.
+            let opened = [DspStatus::Active, DspStatus::Suspended].contains(&dsp.status);
+            let mut legacy = DspSummaryLegacy {
+                member_role: None,
+                owner_email: None,
+                platform_email: dsp.permanent.then(|| platform_email.clone()).flatten(),
+                invite_email: None,
+            };
+            let mut members = 0;
+            if opened {
+                let people = self.dsp(&dsp.id)?;
+                let owner: Option<(Option<String>,)> = people.one_as(OWNER_EMAIL, [&dsp.id])?;
+                legacy.owner_email = owner.and_then(|(email,)| email);
+                let invite: Option<(String,)> =
+                    people.one_as(INVITE_EMAIL, params![dsp.id, now()])?;
+                legacy.invite_email = invite.map(|(email,)| email);
+                members =
+                    people.count("SELECT count(*) FROM memberships WHERE dsp_id=?", [&dsp.id])?;
+                if !platform {
+                    legacy.member_role = self.grant(&a.user.id, &dsp.id)?.map(|grant| grant.name);
+                }
+            }
             let owner = legacy
                 .owner_email
                 .as_deref()
@@ -397,22 +398,31 @@ impl Store {
         )?;
         self.find_dsp(id)
     }
+    /// Whether `profile` can set `id` up: the abbreviation is the DSP's short code, which
+    /// names its address, chosen once, and free.
+    pub fn ensure_dsp_profile(&self, id: &str, profile: &DspSetupRequest) -> Result<()> {
+        match self.find_dsp(id)?.code {
+            Some(code) => ensure(
+                code.eq_ignore_ascii_case(&profile.abbreviation),
+                "short_code_locked",
+                409,
+            ),
+            None => {
+                let code = profile.abbreviation.to_ascii_lowercase();
+                ensure(short_code(&code), "invalid_short_code", 400)?;
+                ensure(self.code_available(&code)?, "short_code_taken", 409)
+            }
+        }
+    }
     pub fn complete_dsp_profile(
         &self,
         id: &str,
         actor: &str,
         profile: &DspSetupRequest,
     ) -> Result<()> {
-        // The abbreviation is the DSP's short code, and names its address: chosen once.
-        match self.find_dsp(id)?.code {
-            Some(code) => ensure(
-                code.eq_ignore_ascii_case(&profile.abbreviation),
-                "short_code_locked",
-                409,
-            )?,
-            None => {
-                self.set_code(id, &profile.abbreviation)?;
-            }
+        self.ensure_dsp_profile(id, profile)?;
+        if self.find_dsp(id)?.code.is_none() {
+            self.set_code(id, &profile.abbreviation)?;
         }
         self.update_dsp_details(id, actor, &profile.name, &profile.timezone)?;
         self.set_profile(
@@ -436,15 +446,15 @@ impl Store {
         )
     }
     pub fn members(&self, id: &str) -> Result<Vec<MemberRow>> {
-        self.platform.query_as(MEMBERS, [id])
+        self.dsp(id)?.query_as(MEMBERS, [id])
     }
     // The owner role is mirrored into the legacy column on every write, so it
     // stays the single count that protects a DSP from losing its last owner.
     pub fn set_role(&self, c: &Context, member: &str, role: Option<&str>) -> Result<()> {
         let dsp = c.dsp.id.as_str();
-        self.platform.transaction(|| {
-            let user: (String,) = self
-                .platform
+        let people = self.dsp(dsp)?;
+        self.across(&people, || {
+            let user: (String,) = people
                 .one_as(
                     "SELECT user_id FROM memberships WHERE id=? AND dsp_id=?",
                     [member, dsp],
@@ -461,38 +471,32 @@ impl Store {
             }
             if current.owner && !next.as_ref().is_some_and(|next| next.system) {
                 ensure(
-                    self.platform.count(OWNER_COUNT, [dsp])? > 1,
+                    people.count(OWNER_COUNT, [dsp])? > 1,
                     "last_owner_required",
                     409,
                 )?;
             }
-            if let Some(next) = &next {
-                self.platform.exec(
-                    "UPDATE memberships SET role=?,role_id=? WHERE id=?",
-                    [next.legacy(), &next.id, member],
-                )?;
-            } else {
-                self.platform
-                    .exec("DELETE FROM memberships WHERE id=?", [member])?;
-            }
-            // Invitations the member sent stay open. Removal invalidates links addressed
-            // to them, including legacy duplicates, so they cannot rejoin on their own.
-            if next.is_none() {
-                self.platform.exec(
-                    "DELETE FROM invitations WHERE dsp_id=? AND used_at IS NULL \
-                     AND email=(SELECT email FROM users WHERE id=?) COLLATE NOCASE",
-                    [dsp, user],
-                )?;
-            }
-            self.platform
-                .exec("UPDATE dsps SET revision=revision+1 WHERE id=?", [dsp])?;
-            let name: (String,) = self
-                .platform
+            let name: (String,) = people
                 .one_as(
                     "SELECT first_name||' '||last_name FROM users WHERE id=?",
                     [user],
                 )?
                 .ok_or_else(|| Error::new("member_not_found", 404))?;
+            if let Some(next) = &next {
+                people.exec(
+                    "UPDATE memberships SET role=?,role_id=? WHERE id=?",
+                    [next.legacy(), &next.id, member],
+                )?;
+            } else {
+                // Removal invalidates links addressed to them, including legacy duplicates,
+                // so they cannot rejoin on their own. Invitations they sent stay open.
+                people.exec(
+                    "DELETE FROM invitations WHERE dsp_id=? AND used_at IS NULL \
+                     AND email=(SELECT email FROM users WHERE id=?) COLLATE NOCASE",
+                    [dsp, user],
+                )?;
+                people.exec("DELETE FROM memberships WHERE id=?", [member])?;
+            }
             self.audit_ref(
                 Some(c.actor()),
                 Some(dsp),
@@ -511,30 +515,25 @@ impl Store {
                 Some(("member", user)),
             )?;
             if next.is_none() {
-                self.delete_account(user)?;
+                self.delete_account(dsp, user)?;
             }
+            self.platform
+                .exec("UPDATE dsps SET revision=revision+1 WHERE id=?", [dsp])?;
             Ok(())
         })
     }
-    // A removed member's account goes with their last membership, freeing the
-    // email for a fresh invitation. Their name stays on the activity they left.
-    fn delete_account(&self, user: &str) -> Result<()> {
-        let removable: Option<(String,)> = self.platform.one_as(REMOVABLE_ACCOUNT, [user])?;
-        let Some((name,)) = removable else {
+    // A removed member's account goes with their membership, freeing the email for a fresh
+    // invitation. Their name stays on the activity they left.
+    fn delete_account(&self, dsp: &str, user: &str) -> Result<()> {
+        let people = self.dsp(dsp)?;
+        if people.one(REMOVABLE_ACCOUNT, [user])?.is_none() {
             return Ok(());
-        };
-        self.platform
-            .exec("DELETE FROM sessions WHERE user_id=?", [user])?;
-        self.platform
-            .exec("DELETE FROM resets WHERE user_id=?", [user])?;
+        }
+        people.exec("DELETE FROM sessions WHERE user_id=?", [user])?;
+        people.exec("DELETE FROM resets WHERE user_id=?", [user])?;
         // Every invitation must name an existing sender, so the ones they sent go too.
-        self.platform
-            .exec("DELETE FROM invitations WHERE created_by=?", [user])?;
-        self.platform.exec(
-            "UPDATE audit SET actor_name=?,actor_id=NULL WHERE actor_id=?",
-            [name.as_str(), user],
-        )?;
-        self.platform.exec("DELETE FROM users WHERE id=?", [user])?;
+        people.exec("DELETE FROM invitations WHERE created_by=?", [user])?;
+        people.exec("DELETE FROM users WHERE id=?", [user])?;
         Ok(())
     }
 }

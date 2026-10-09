@@ -11,7 +11,7 @@ test('only platform owners can read and export audit events, even with old DSP a
   await owner.select(north.id);
 
   // An existing custom role may still have the retired permission in storage.
-  f.database('data/platform/accounts.sqlite', (db) =>
+  f.people(north.id, (db) =>
     db
       .prepare("UPDATE roles SET permissions=? WHERE dsp_id=? AND name='Member'")
       .run(JSON.stringify(['timecard.view', 'audit.view']), north.id),

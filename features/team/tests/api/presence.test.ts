@@ -8,14 +8,6 @@ test('members report presence to their team; platform owners never appear', asyn
   const owner = await f.client();
   const member = await f.client('member@dispatch.test');
   const north = member.session.dsps[0];
-  // A platform owner can also hold a real membership in a DSP they look after.
-  f.database('data/platform/accounts.sqlite', (db) =>
-    db
-      .prepare(
-        "INSERT INTO memberships(id,user_id,dsp_id,role,role_id) SELECT 'mem_platform_owner',?,dsp_id,'owner',id FROM roles WHERE dsp_id=? AND system=1",
-      )
-      .run(owner.session.user.id, north.id),
-  );
   await owner.select(north.id);
   await member.select(north.id);
   const statuses = async () =>
@@ -25,7 +17,8 @@ test('members report presence to their team; platform owners never appear', asyn
         row.status,
       ]),
     );
-  const everyoneOffline = { 'owner@dispatch.test': 'offline', 'member@dispatch.test': 'offline' };
+  // The platform owner's account is the platform's: never one of the DSP's people.
+  const everyoneOffline = { 'member@dispatch.test': 'offline' };
   assert.deepEqual(await statuses(), everyoneOffline);
 
   const beat = (tab: string, state: string) => member.post('/api/dsp/presence', { tab, state });

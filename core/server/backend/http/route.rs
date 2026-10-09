@@ -92,10 +92,7 @@ impl Grant for Session {
         Access::Session
     }
     fn authorize(self, db: &Store, input: &Input) -> Result<Auth> {
-        let auth = db.admit(
-            db.authenticate(input.session_token(db.config.development))?,
-            &input.site,
-        )?;
+        let auth = db.authenticate(input.session_token(db.config.development), &input.site)?;
         {
             let mut trace = input
                 .trace

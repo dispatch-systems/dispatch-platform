@@ -85,7 +85,7 @@ test('Rust provisioning, invitation acceptance, profile setup, removal and resto
   await user.select(id);
   assert.equal((await f.request(invite, undefined, at)).value.accepted, true);
   // After the invitation's own seven days, a used link reads as expired like any other.
-  f.database('data/platform/accounts.sqlite', (db) =>
+  f.people(id, (db) =>
     db.prepare("UPDATE invitations SET expires_at=0 WHERE email='new@dispatch.test'").run(),
   );
   assert.equal((await f.request(invite, undefined, at)).value.error, 'invitation_expired');
@@ -97,7 +97,7 @@ test('Rust provisioning, invitation acceptance, profile setup, removal and resto
   );
 });
 
-test('existing-account invitations require the account password and revocation respects tenant ownership', async (t) => {
+test('an address another DSP has an account for joins with an account of its own, and revocation respects tenant ownership', async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
@@ -125,10 +125,20 @@ test('existing-account invitations require the account password and revocation r
       { firstName: 'Fake', lastName: 'Owner', password: secret },
       at,
     );
-  assert.equal((await accept('wrong-password-long')).status, 403);
-  assert.equal((await accept(password)).status, 200);
-  const existing = await f.client('member@dispatch.test', password, dev.code);
-  assert.equal(existing.session.user.firstName, 'Jordan');
+  // Each DSP keeps its own login: Summit's is a new account, with a password of its own.
+  const separate = 'A-separate-password-1!';
+  assert.equal((await accept(separate)).status, 200);
+  assert.equal((await accept(separate)).status, 404);
+  const existing = await f.client('member@dispatch.test', separate, dev.code);
+  assert.equal(existing.session.user.firstName, 'Fake');
+  assert.notEqual(existing.session.user.id, member.session.user.id);
+  assert.equal((await f.client('member@dispatch.test')).session.user.firstName, 'Jordan');
+  const crossed = await f.request(
+    '/api/auth/login',
+    { email: 'member@dispatch.test', password },
+    at,
+  );
+  assert.deepEqual([crossed.status, crossed.value.error], [401, 'invalid_login']);
   await existing.select(dev.id);
   assert.equal(
     (await existing.post('/api/dsp/invitations/revoke', { email: 'new@dispatch.test' })).status,

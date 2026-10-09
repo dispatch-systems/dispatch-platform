@@ -21,7 +21,9 @@ that role's members see. Agent keys and connected apps are the platform owner's 
 read a hidden feature as well.
 A permission grants everything it implies, however many steps away; one declared `under`
 another grants it too and sits under it on the role sheet. Every permission starts off in
-every role: the DSP's owner turns them on, and owners hold them all.
+every role: the DSP's owner turns them on, and owners hold them all. A DSP's roles and
+memberships are its own, in its database beside its people's accounts; the platform owner opens
+any DSP without one.
 
 A DSP's short code names its address: 2 to 16 letters and digits, kept in lowercase in `dsps`
 and as its abbreviation in its profile, which collectors give Amazon as the DSP's code. No two

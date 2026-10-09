@@ -1,46 +1,55 @@
 use super::*;
 impl Store {
-    fn replace_password(&self, id: &str, encoded: &str, action: &str) -> Result<()> {
-        self.platform.transaction(|| {
-            self.platform.exec(
+    fn replace_password(
+        &self,
+        dsp: Option<&str>,
+        user: &PublicUser,
+        encoded: &str,
+        action: &str,
+    ) -> Result<()> {
+        let id = user.id.as_str();
+        let people = self.directory(dsp)?;
+        self.across(&people, || {
+            people.exec(
                 "UPDATE users SET password=?,version=version+1 WHERE id=?",
                 [encoded, id],
             )?;
-            self.platform
-                .exec("DELETE FROM sessions WHERE user_id=?", [id])?;
-            self.platform
-                .exec("DELETE FROM resets WHERE user_id=?", [id])?;
+            people.exec("DELETE FROM sessions WHERE user_id=?", [id])?;
+            people.exec("DELETE FROM resets WHERE user_id=?", [id])?;
             // A reset can follow a stolen password, so whatever it may have made stops too,
-            // in the same step as the password itself.
-            if action == "account.password_reset" {
+            // in the same step as the password itself. Agent keys are platform owners'.
+            if action == "account.password_reset" && dsp.is_none() {
                 self.revoke_agent_keys_within(Some(id), Some(id))?;
             }
-            self.audit(Some(id), None, action, "")
+            self.audit_account(user, dsp, action, "")
         })
     }
-    /// Mails a link to reset the password of the account `email` names, when it may sign in
-    /// at the address the request came to; the link goes back there.
+    /// Mails a link to reset the password of the account `email` names in the directory of
+    /// the address the request came to; the link goes back there.
     pub fn recovery(&self, email: &str, site: &Site) -> Result<()> {
         ensure(self.config.mail_available(), "email_unavailable", 503)?;
-        let found = UserRow::find(&self.platform, "email", &email.trim().to_lowercase())?;
+        let Some(scope) = self.site_directory(site)? else {
+            return Ok(());
+        };
+        let dsp = scope.as_deref();
+        let people = self.directory(dsp)?;
+        let found = UserRow::find(&people, "email", &email.trim().to_lowercase())?;
         let found = match found.filter(UserRow::active) {
-            Some(row) if !matches!(self.admission(&row.user, site)?, Admission::Refused) => {
-                Some(row)
-            }
+            Some(row) if super::sessions::admitted(&people, &row.user, dsp)? => Some(row),
             _ => None,
         };
         if let Some(UserRow { user, version, .. }) = found {
             let raw = crypto::token()?;
-            self.platform.transaction(|| {
+            self.across(&people, || {
                 self.platform.exec(
                     "DELETE FROM outbox WHERE user_id=? AND kind='reset' AND status IN ('pending','failed')",
                     [&user.id],
                 )?;
-                self.platform.exec(
+                people.exec(
                     "DELETE FROM resets WHERE user_id=? OR expires_at<?",
                     params![user.id, now()],
                 )?;
-                self.platform.exec(
+                people.exec(
                     "INSERT INTO resets(hash,user_id,user_version,expires_at) VALUES (?,?,?,?)",
                     params![crypto::sha(&raw), user.id, version, now() + 1800000],
                 )?;
@@ -50,15 +59,26 @@ impl Store {
                     &user.email,
                     &format!("{}/#reset?token={raw}", self.config.site_origin(site)),
                 );
-                self.queue_mail(&user.email, &mail, MailContext::Reset { user: &user.id })
+                self.queue_mail(
+                    dsp,
+                    &user.email,
+                    &mail,
+                    MailContext::Reset { user: &user.id },
+                )
             })?;
         }
         Ok(())
     }
-    fn reset_user(&self, raw: &str) -> Result<UserRow> {
-        self.platform
+    /// The account a reset link names, in the directory of the address it was opened at.
+    fn reset_user(&self, raw: &str, site: &Site) -> Result<(Option<String>, UserRow)> {
+        let scope = self
+            .site_directory(site)?
+            .ok_or_else(|| Error::new("reset_expired", 400))?;
+        let row = self
+            .directory(scope.as_deref())?
             .one_as(RESET_USER, params![crypto::sha(raw), now()])?
-            .ok_or_else(|| Error::new("reset_expired", 400))
+            .ok_or_else(|| Error::new("reset_expired", 400))?;
+        Ok((scope, row))
     }
 }
 impl crate::State {
@@ -71,9 +91,9 @@ impl crate::State {
         let a = auth.clone();
         let row = self
             .run(move |db| {
-                db.authenticate(&a.raw)?;
-                db.password_attempt(&a.user.email, &ip)?;
-                UserRow::find(&db.platform, "id", &a.user.id)?
+                db.authenticate(&a.raw, &a.site)?;
+                db.password_attempt(a.scope.as_deref(), &a.user.email, &ip)?;
+                UserRow::find(&*db.people(&a)?, "id", &a.user.id)?
                     .ok_or_else(|| Error::new("sign_in_required", 401))
             })
             .await?;
@@ -87,8 +107,8 @@ impl crate::State {
         })
         .await?;
         self.run(move |db| {
-            db.authenticate(&auth.raw)?;
-            let fresh = UserRow::find(&db.platform, "id", &auth.user.id)?;
+            db.authenticate(&auth.raw, &auth.site)?;
+            let fresh = UserRow::find(&*db.people(&auth)?, "id", &auth.user.id)?;
             ensure(
                 fresh
                     .as_ref()
@@ -96,7 +116,7 @@ impl crate::State {
                 "sign_in_required",
                 401,
             )?;
-            db.platform.exec(
+            db.people(&auth)?.exec(
                 "INSERT INTO session_security(session_hash,password_verified_at) VALUES (?,?) \
                  ON CONFLICT(session_hash) DO UPDATE SET password_verified_at=excluded.password_verified_at",
                 params![auth.hash, now()],
@@ -132,9 +152,9 @@ impl crate::State {
         let a = auth.clone();
         let row = self
             .run(move |db| {
-                let a = db.authenticate(&a.raw)?;
-                db.password_attempt(&a.user.email, &ip)?;
-                UserRow::find(&db.platform, "id", &a.user.id)?
+                let a = db.authenticate(&a.raw, &a.site)?;
+                db.password_attempt(a.scope.as_deref(), &a.user.email, &ip)?;
+                UserRow::find(&*db.people(&a)?, "id", &a.user.id)?
                     .ok_or_else(|| Error::new("sign_in_required", 401))
             })
             .await?;
@@ -150,8 +170,8 @@ impl crate::State {
             })
             .await?;
         self.run(move |db| {
-            db.authenticate(&auth.raw)?;
-            let fresh = UserRow::find(&db.platform, "id", &row.user.id)?;
+            let a = db.authenticate(&auth.raw, &auth.site)?;
+            let fresh = UserRow::find(&*db.people(&a)?, "id", &row.user.id)?;
             ensure(
                 fresh
                     .as_ref()
@@ -159,7 +179,12 @@ impl crate::State {
                 "sign_in_required",
                 401,
             )?;
-            db.replace_password(&row.user.id, &encoded, "account.password_changed")
+            db.replace_password(
+                a.scope.as_deref(),
+                &row.user,
+                &encoded,
+                "account.password_changed",
+            )
         })
         .await
     }
@@ -167,16 +192,22 @@ impl crate::State {
         self: &std::sync::Arc<Self>,
         raw: String,
         password: String,
+        site: Site,
     ) -> Result<()> {
-        let token = raw.clone();
-        let row = self.read(move |db| db.reset_user(&token)).await?;
+        let (token, at) = (raw.clone(), site.clone());
+        let (_, row) = self.read(move |db| db.reset_user(&token, &at)).await?;
         let encoded = self
             .password_work(move || crypto::hash_password(&password))
             .await?;
         self.run(move |db| {
-            let fresh = db.reset_user(&raw)?;
+            let (scope, fresh) = db.reset_user(&raw, &site)?;
             ensure(same_password_user(&fresh, &row), "reset_expired", 400)?;
-            db.replace_password(&row.user.id, &encoded, "account.password_reset")
+            db.replace_password(
+                scope.as_deref(),
+                &row.user,
+                &encoded,
+                "account.password_reset",
+            )
         })
         .await
     }

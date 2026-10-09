@@ -251,7 +251,7 @@ fn email(db: &Store, dsp: &str, user: &str, name: &str, origin: &str, dev: bool)
         note: "It takes a minute. You only do it once.",
         footer: "You're getting this because your DSP uses Documents in Dispatch.",
     });
-    if let Err(error) = db.email_member(user, GOOGLE_ACCOUNT_MAIL, &mail) {
+    if let Err(error) = db.email_member(dsp, user, GOOGLE_ACCOUNT_MAIL, &mail) {
         observability::event(
             "warn",
             "documents_mail_skipped",
