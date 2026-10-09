@@ -12,15 +12,13 @@ export type DocumentsOverview = { connection: DocumentsConnection | null,
  */
 available: boolean,
 /**
- * How the folder is shared with the member asking, once Documents has tried.
+ * How the folder is shared with the member asking; none for the platform owner, who
+ * isn't one of the DSP's members.
  */
 me: MySharing | null,
 /**
- * How many on the team can edit in Google.
- */
-editors: number,
-/**
- * For those who manage Documents, while Google is connected: how to add files someone
- * made directly in Drive. None when this server has no keys for Google's file picker.
+ * For those who manage the DSP's connections, while Google is connected: how to add
+ * files someone made directly in Drive, signed in as its account. None when this server
+ * has no keys for Google's file picker.
  */
 picker: PickerSetup | null, };

@@ -146,7 +146,9 @@ test('a feature switched off for a DSP stops existing there until it is switched
   });
   await platform.select(north.id);
   assert.equal((await platform.get('/api/dsp/connections/cortex')).status, 200);
-  // Without any connection, nobody manages connections: the permission is gone too.
+  // Without any connection, nobody manages connections: the permission is gone too, once
+  // Documents, whose Google account is one of the DSP's own, is off as well.
+  await platform.post(url, { feature: 'documents', enabled: false });
   await platform.post(url, { feature: 'paycom', enabled: false });
   result = await platform.post(url, { feature: 'cortex', enabled: false });
   assert.deepEqual(
@@ -161,6 +163,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       'weekly_scorecard',
       'driver_match',
       'daily_performance',
+      'documents',
     ),
   );
   const alone = await platform.select(north.id);

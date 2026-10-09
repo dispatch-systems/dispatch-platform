@@ -119,6 +119,28 @@ export type SettingsPiece = {
 };
 
 /**
+ * A card a feature adds to a DSP's Connections tab, beside the collectors' own: one of the DSP's
+ * accounts, which those with Manage DSP Connections manage, or the member's own account.
+ */
+export type ConnectionPiece = {
+  /** Its own id among the section's cards. */
+  id: string;
+  /** `dsp` for one of the DSP's accounts, `personal` for the member's own. */
+  section: 'dsp' | 'personal';
+  /** Where it sits among the section's cards, after the collectors', lowest first. */
+  order: number;
+  /** Who sees it; omitted means everyone who sees the section. */
+  visible?: (view?: DspView) => boolean;
+  /** The part of its owner's feature it belongs to: it goes with the part. */
+  part?: Feature;
+  /** The reads it shows, warmed while the Connections tab is about to open. */
+  reads: readonly string[];
+  /** Loads its code; the tab loads every card's before it opens. */
+  load: () => Promise<unknown>;
+  render: (context: SettingsContext) => ReactNode;
+};
+
+/**
  * A tab one feature adds to another's page. The page draws it among its own tabs, as Settings
  * draws its settings tabs.
  */
@@ -245,6 +267,8 @@ export type FrontendFeature = {
   platformSlots?: () => Promise<{ slots: PlatformSlots }>;
   /** Its connection's card. */
   connectionCard?: ConnectionCard;
+  /** Its cards on a DSP's Connections tab. */
+  connectionPieces?: readonly ConnectionPiece[];
   /** How the response cache treats its reads. */
   cache?: CacheRules;
   /** Its reads that wait for a change before they answer, by path prefix. */
@@ -327,6 +351,19 @@ export const pageTabs = (page: string, view: DspView) =>
 /** Every collector's connection card, in the order the collectors are listed. */
 export const connectionCards = () =>
   installed.flatMap((feature) => (feature.connectionCard ? [feature.connectionCard] : []));
+/**
+ * The cards features add to a section of the Connections tab: with a view, those it has and
+ * sees, in their order; without one, every one, for loading their code.
+ */
+export const connectionPieces = (section: ConnectionPiece['section'], view?: DspView) =>
+  (view
+    ? present(view, (feature) => feature.connectionPieces).filter(
+        (piece) => !piece.visible || piece.visible(view),
+      )
+    : installed.flatMap((feature) => feature.connectionPieces ?? [])
+  )
+    .filter((piece) => piece.section === section)
+    .sort((a, b) => a.order - b.order);
 /** The card of a connection. */
 export const connectionCard = (provider: string) =>
   connectionCards().find((card) => card.provider === provider);

@@ -4,9 +4,7 @@ use super::*;
 fn member(user: &str, email: &str) -> Member {
     Member {
         user: user.into(),
-        name: user.into(),
         email: email.into(),
-        owner: false,
     }
 }
 fn shared(user: &str, email: &str) -> Person {

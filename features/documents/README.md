@@ -5,16 +5,24 @@ Workspace account or anyone's own Google account. Dispatch makes one main folder
 works only with what it makes or is given (`drive.file`), so Google asks for no review.
 
 - **Switch:** `documents`, off for every DSP until the platform owner switches it on.
-- **Permissions:** `documents.use`, to see and work in the DSP's Documents, and
-  `documents.manage`, which includes it, to connect and disconnect Google. Like every
-  permission, both start off for every role; the DSP's owner turns them on.
-- **API:** `GET /api/dsp/documents` behind `documents.use`; `POST /api/dsp/documents/connect`,
-  `…/connect/finish` and `…/disconnect` behind `documents.manage`. Behind `documents.use` too:
+- **Permissions:** `documents.use`, to see and work in the DSP's Documents: everyone who holds
+  it works in it alike. Like every permission, it starts off for every role; the DSP's owner
+  turns it on. Documents once had `documents.manage` as well, which included it; it's retired
+  into `documents.use`, so a role kept from before uses Documents.
+- **Connections:** the DSP's Google account is one of its own accounts, so Documents declares
+  `dsp_connection` and its card sits under DSP Connections on Settings' Connections, beside
+  Paycom's and Cortex's: connecting, reconnecting, disconnecting, and how full the account is,
+  for those who hold `connections.manage` (Manage DSP Connections), which exists while
+  Documents is on. Each member's own Google account has its card under Personal Connections,
+  for everyone who holds `documents.use` (but the platform owner, who isn't one of the DSP's
+  members). The Documents page sends those who manage the connection there.
+- **API:** `GET /api/dsp/documents` behind `documents.use`. Behind `connections.manage`:
+  `GET /api/dsp/documents/account`, the account with its storage, and
+  `POST /api/dsp/documents/connect`, `…/connect/finish` and `…/disconnect`. Behind `documents.use` too:
   `GET /api/dsp/documents/folder` (a folder and what it holds, or with `q`, what a search inside
   it found), `POST …/new` (a folder, Doc, Sheet or Slides), `POST …/upload` (a file, up to
   100 MB), `GET …/items/{id}/download` and `…/items/{id}/thumbnail`, and `POST …/items/{id}/rename` and `…/trash`. Behind `documents.use` as well, for a member's own Google account:
-  `POST /api/dsp/documents/link` and `…/link/finish`. Behind `documents.manage`, the team's
-  access: `GET /api/dsp/documents/team`, `POST …/team/email` and `…/team/remove`; and
+  `POST /api/dsp/documents/link` and `…/link/finish`. Behind `connections.manage`,
   `POST /api/dsp/documents/add`, for files picked in Google Drive. Public, the picker's
   window: `GET /api/documents/google/picker`.
 - **Browsing:** with `drive.file`, Dispatch reaches only the files it made or was given, so it
@@ -27,8 +35,10 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   (`DISPATCH_PRODUCTION_…` on Production), declared as its settings. Without both, no DSP can
   connect Google; with one, the server refuses to start. It returns to
   `/api/documents/google/return`. That route has no session (its cookie stays on Dispatch's own
-  site), so it only passes what Google sent on to the DSP's Documents page, which finishes
-  the sign-in as the member who started it. Each sign-in is used once, by its starter, within
+  site), so it only passes what Google sent on to the page the sign-in started on, which
+  finishes it as the member who started it: Settings' Connections for the DSP's account and for
+  a member linking theirs there, and Documents for a member linking theirs from there. Its
+  state says which. Each sign-in is used once, by its starter, within
   ten minutes, and its code is bound to a PKCE verifier only the server holds.
 - **Uploads and downloads:** files picked or dropped on their own are named first, in a
   dialog that shows each name without its extension and keeps the extension; a folder's files
@@ -50,8 +60,8 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   2 MB; Google refusing one only leaves the drawing. Its address names the picture's version, so each browser keeps a
   picture until the file changes; eight are fetched from Google at once across the server.
 - **Adding from Google Drive:** a file someone made directly in Drive is out of `drive.file`'s
-  reach until Google's picker gives it. Those who manage Documents pick it in a window of its
-  own, signed in to Google as the account that holds Documents: the window has rules of its
+  reach until Google's picker gives it. Those who manage the DSP's connections, who hold its
+  Google account, pick it in a window of its own, signed in to Google as that account: the window has rules of its
   own that let only Google's sign-in and picker run, and the dashboard's stay as they are.
   The window gets its own short-lived token from Google, never the one Dispatch keeps, and
   tells the Documents page what was picked on a channel only Dispatch's own pages reach, with
@@ -65,15 +75,16 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   as an editor, and through it everything inside: at the Google account they linked, or else
   their Dispatch email. Google gives no notification of its own. Google refuses an address
   that is no Google account, so Dispatch emails that member, once, how to link one (kind
-  `documents.google_account`); until then they see the team's files in Dispatch but can't
-  edit in Google. Linking signs them in with Google for only `openid email`, keeps the
-  address Google proved, and revokes the token at once. Members who leave, or lose
-  `documents.use`, lose the share Dispatch gave them. Anyone else the folder is shared with
-  in Google Drive is listed for those who manage Documents to remove. Sharing follows the
-  team within a minute, and is brought up to date when Google is connected, when a member
-  links and when the team panel opens. The main folder and everything Dispatch makes in it
-  can't be shared on by its editors (`writersCanShare` off), so the team decides who it's
-  shared with. The panel also shows how full the account's storage is.
+  `documents.google_account`), and the Documents page asks them to instead of showing the
+  team's files: it opens once the folder is shared with them. Until Documents first asks
+  Google about a member, their sharing is `pending`, and opening Documents asks now rather
+  than within the minute. The gate is the page's: `documents.use` still decides what the API
+  allows. Linking signs them in with Google for only `openid email`, keeps the address Google
+  proved, and revokes the token at once. Members who leave, or lose `documents.use`, lose the
+  share Dispatch gave them. Sharing follows the team within a minute, and is brought up to date
+  when Google is connected and when a member links. The main folder and everything Dispatch
+  makes in it can't be shared on by its editors (`writersCanShare` off), so the team decides
+  who it's shared with.
 - **Renaming** a file keeps its extension, the letters and digits after its last dot (up to
   eight): the dialog shows the name without it, and `…/rename` refuses a name that changes it
   (`documents_extension_kept`). Folders and Google's own Docs, Sheets and Slides have none, so

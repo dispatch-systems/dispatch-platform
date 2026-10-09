@@ -1,6 +1,7 @@
-//! Connecting a DSP's Google account: starting a sign-in, finishing it once Google sends the
-//! browser back, and letting it go. Google is called outside the database, and the member's
-//! permission is checked again after every wait, before anything is written.
+//! Connecting a DSP's Google account, one of the DSP's own accounts on Settings' DSP
+//! Connections: starting a sign-in, finishing it once Google sends the browser back there, and
+//! letting it go. Google is called outside the database, and the member's permission is checked
+//! again after every wait, before anything is written.
 use super::{
     files,
     google::{self, Google},
@@ -9,7 +10,8 @@ use super::{
     team,
 };
 use crate::api::types::{
-    AccountKind, ConnectionStatus, DocumentsConnection, DocumentsOverview, GoogleSignIn,
+    AccountKind, ConnectionStatus, DocumentsAccount, DocumentsConnection, DocumentsOverview,
+    DriveStorage, GoogleConnected, GoogleSignIn,
 };
 use dispatch_core::{
     Error, Result, State,
@@ -30,7 +32,20 @@ pub fn overview(db: &Store, c: &Context) -> Result<DocumentsOverview> {
         (Some(found), Ok(google)) => picker::setup(c, &google, found)?,
         _ => None,
     };
-    let connection = match found {
+    Ok(DocumentsOverview {
+        connection: described(db, &c.dsp.id, found)?,
+        available: Google::available(&db.config),
+        me: team::mine(db, c)?,
+        picker,
+    })
+}
+/// The connection `found`, as the dashboard shows it.
+fn described(
+    db: &Store,
+    dsp: &str,
+    found: Option<Connection>,
+) -> Result<Option<DocumentsConnection>> {
+    Ok(match found {
         Some(found) => Some(DocumentsConnection {
             status: if found.broken {
                 ConnectionStatus::Broken
@@ -45,17 +60,34 @@ pub fn overview(db: &Store, c: &Context) -> Result<DocumentsOverview> {
             account_email: found.account.email,
             folder_url: google::folder_url(&found.folder_id),
             folder_name: found.folder_name,
-            connected_by: db.actor_name(&c.dsp.id, &found.connected_by)?,
+            connected_by: db.actor_name(dsp, &found.connected_by)?,
             connected_at: found.connected_at,
         }),
         None => None,
-    };
-    Ok(DocumentsOverview {
+    })
+}
+/// The DSP's Google account as those who manage its connections see it: with how full its
+/// storage is, while Google answers.
+pub async fn account(state: &Arc<State>, dsp: &str) -> Result<DocumentsAccount> {
+    let at = dsp.to_owned();
+    let found = state.read(move |db| db.documents_connection(&at)).await?;
+    let storage = match &found {
+        Some(found) if !found.broken => match files::open(state, dsp, false).await {
+            Ok(drive) => drive.google.storage(&drive.access).await.ok(),
+            Err(_) => None,
+        },
+        _ => None,
+    }
+    .map(|storage| DriveStorage {
+        used: storage.used,
+        limit: storage.limit,
+    });
+    let at = dsp.to_owned();
+    let connection = state.read(move |db| described(db, &at, found)).await?;
+    Ok(DocumentsAccount {
         connection,
-        available: Google::available(&db.config),
-        me: team::mine(db, c)?,
-        editors: team::editors(db, &c.dsp.id)?,
-        picker,
+        available: Google::available(&state.config),
+        storage,
     })
 }
 
@@ -66,8 +98,9 @@ pub fn start(db: &Store, c: &Context) -> Result<GoogleSignIn> {
     let hint = db
         .documents_connection(&c.dsp.id)?
         .map(|found| found.account.email);
-    // The state Google carries back names the DSP, so the browser comes back to its page.
-    let state = format!("{}.{}", c.dsp.id, crypto::token()?);
+    // The state Google carries back names the DSP, so the browser comes back to its
+    // Connections.
+    let state = format!("{}.connect.{}", c.dsp.id, crypto::token()?);
     let verifier = crypto::token()?;
     db.start_documents_sign_in(&c.dsp.id, c.actor(), &state, &verifier)?;
     Ok(GoogleSignIn {
@@ -83,7 +116,7 @@ pub async fn finish(
     access: Dsp,
     sign_in: String,
     code: String,
-) -> Result<DocumentsOverview> {
+) -> Result<GoogleConnected> {
     ensure(!team::is_link(&sign_in), "documents_connect_expired", 409)?;
     let (dsp, actor) = (c.dsp.id.clone(), c.actor().to_owned());
     let (verifier, existing) = state
@@ -112,6 +145,7 @@ pub async fn finish(
         }
         _ => None,
     };
+    let made_folder = kept.is_none();
     let (folder_id, folder_name) = match kept {
         Some(kept) => kept,
         None => {
@@ -130,7 +164,7 @@ pub async fn finish(
     let refresh = granted.refresh;
     files::forget(&c.dsp.id);
     let shared = c.dsp.id.clone();
-    let answer = state
+    state
         .run(move |db| {
             let c = access.revalidate(db, &c)?;
             db.save_documents_connection(&c.dsp.id, &connection, &refresh)?;
@@ -139,14 +173,14 @@ pub async fn finish(
             } else {
                 "documents.connected"
             };
-            c.audit(db, action, &connection.account.email)?;
-            overview(db, &c)
+            c.audit(db, action, &connection.account.email)
         })
         .await?;
     // The team gets the folder shared with them while the owner looks around.
     let sharing = Arc::clone(state);
+    let at = shared.clone();
     tokio::spawn(async move {
-        if let Err(error) = team::sync(&sharing, &shared).await {
+        if let Err(error) = team::sync(&sharing, &at).await {
             observability::event(
                 "warn",
                 "documents_share_failed",
@@ -154,13 +188,17 @@ pub async fn finish(
             );
         }
     });
-    Ok(answer)
+    Ok(GoogleConnected {
+        account: account(state, &shared).await?,
+        made_folder,
+    })
 }
 
 /// Lets the account go: Google takes back Dispatch's access and Dispatch forgets the token.
 /// The folder and everything in it stay in the account's Drive.
-pub async fn disconnect(state: &Arc<State>, c: Context, access: Dsp) -> Result<DocumentsOverview> {
-    let dsp = c.dsp.id.clone();
+pub async fn disconnect(state: &Arc<State>, c: Context, access: Dsp) -> Result<DocumentsAccount> {
+    let id = c.dsp.id.clone();
+    let dsp = id.clone();
     let token = state
         .read(move |db| db.documents_refresh_token(&dsp))
         .await?;
@@ -175,9 +213,10 @@ pub async fn disconnect(state: &Arc<State>, c: Context, access: Dsp) -> Result<D
                 db.remove_documents_connection(&c.dsp.id)?;
                 c.audit(db, "documents.disconnected", &found.account.email)?;
             }
-            overview(db, &c)
+            Ok(())
         })
-        .await
+        .await?;
+    account(state, &id).await
 }
 
 /// Marks the DSP's connection broken, as Google refused its token: once, in the activity log

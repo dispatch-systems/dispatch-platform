@@ -301,6 +301,9 @@ fn access_catalog() -> String {
             if feature.mandatory {
                 entry["mandatory"] = json!(true);
             }
+            if feature.connects {
+                entry["connects"] = json!(true);
+            }
             entry
         })
         .collect();

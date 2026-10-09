@@ -16,6 +16,7 @@ import {
   cacheRules,
   connectionCard,
   connectionCards,
+  connectionPieces,
   errorLabelOf,
   installFeatures,
   isLongPoll,
@@ -28,6 +29,7 @@ import {
   loadPlatformSlots,
   switchIcon,
   type ConnectionCard,
+  type ConnectionPiece,
   type DspRoute,
   type DspRouteId,
   type PageTab,
@@ -296,6 +298,20 @@ test("what a feature adds to another's page goes with it, and a part's with the 
     render: () => id,
     ...extra,
   });
+  const card = (
+    id: string,
+    section: ConnectionPiece['section'],
+    order: number,
+    extra: Partial<ConnectionPiece> = {},
+  ): ConnectionPiece => ({
+    id,
+    section,
+    order,
+    reads: [],
+    load: () => Promise.resolve(),
+    render: () => id,
+    ...extra,
+  });
   const pageTab = (id: string, extra: Partial<PageTab> = {}): PageTab => ({
     page: pageId('team'),
     id,
@@ -318,6 +334,12 @@ test("what a feature adds to another's page goes with it, and a part's with the 
         piece('unseen', 1, { visible: () => false }),
       ],
       pageTabs: [pageTab('own'), pageTab('of-part', { part: part.id })],
+      connectionPieces: [
+        card('account-late', 'dsp', 20),
+        card('account', 'dsp', 10),
+        card('mine', 'personal', 10),
+        card('unseen-mine', 'personal', 1, { visible: () => false }),
+      ],
     },
   ]);
   const ids = (each: readonly { id: string }[]) => each.map(({ id }) => id);
@@ -331,6 +353,10 @@ test("what a feature adds to another's page goes with it, and a part's with the 
     'core',
   ]);
   assert.deepEqual(ids(pageTabs('team', view(owner, part.id))), ['own', 'of-part']);
+  assert.deepEqual(ids(connectionPieces('dsp', view(owner))), ['account', 'account-late']);
+  assert.deepEqual(ids(connectionPieces('personal', view(owner))), ['mine']);
+  // Every card loads with the Connections tab, whoever sees it.
+  assert.deepEqual(ids(connectionPieces('personal')), ['unseen-mine', 'mine']);
   // Without the part, its own go; without the feature, all of the feature's.
   assert.deepEqual(ids(settingsTabs(view(owner))), ['general', 'own']);
   assert.deepEqual(ids(settingsPieces('general', view(owner))), ['early', 'late', 'core']);
@@ -338,5 +364,6 @@ test("what a feature adds to another's page goes with it, and a part's with the 
   assert.deepEqual(ids(settingsTabs(view(part.id))), ['general']);
   assert.deepEqual(ids(settingsPieces('general', view(part.id))), ['core']);
   assert.deepEqual(pageTabs('team', view()), []);
+  assert.deepEqual(connectionPieces('dsp', view(part.id)), []);
   assert.deepEqual(ids(settingsPieces('general', undefined)), ['core']);
 });

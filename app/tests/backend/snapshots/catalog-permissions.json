@@ -16,16 +16,15 @@
     ["weekly_scorecard.collect", "Collect Weekly Scorecard"],
     ["weekly_scorecard.manage", "Manage Weekly Scorecard"],
     ["driver_match.manage", "Manage Driver Match"],
-    ["connections.manage", "Manage Connections"],
     ["members.invite", "Invite Members"],
     ["members.manage", "Manage Members"],
     ["roles.manage", "Manage Roles"],
     ["settings.manage", "Manage DSP Settings"],
+    ["connections.manage", "Manage DSP Connections"],
     ["daily_performance.view", "View Daily Performance"],
     ["daily_performance.collect", "Collect Daily Performance"],
     ["daily_performance.manage", "Manage Daily Performance"],
-    ["documents.use", "Use Documents"],
-    ["documents.manage", "Manage Documents"]
+    ["documents.use", "Use Documents"]
   ],
   "implied": [
     ["timecard.manage", "timecard.view"],
@@ -38,13 +37,11 @@
     ["weekly_scorecard.collect", "weekly_scorecard.view"],
     ["weekly_scorecard.manage", "weekly_scorecard.view"],
     ["daily_performance.collect", "daily_performance.view"],
-    ["daily_performance.manage", "daily_performance.view"],
-    ["documents.manage", "documents.use"]
+    ["daily_performance.manage", "daily_performance.view"]
   ],
   "groups": [
-    ["Connections", ["connections.manage"]],
     ["Team", ["members.invite", "members.manage", "roles.manage"]],
-    ["DSP", ["settings.manage"]]
+    ["DSP Settings", ["settings.manage", "connections.manage"]]
   ],
   "demo": [
     [

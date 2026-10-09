@@ -27,6 +27,12 @@
   font-size: 18px;
   font-weight: 600;
 }
+.connections-view > header p {
+  margin-top: 6px;
+}
+.connections-view + .connections-view {
+  margin-top: 16px;
+}
 .connection-cards {
   display: grid;
   gap: 24px;

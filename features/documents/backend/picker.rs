@@ -15,10 +15,11 @@ use dispatch_core::{Result, accounts::Context, foundation::crypto};
 /// The picker's window, on this server's own origin.
 pub const PICKER_PATH: &str = "/api/documents/google/picker";
 
-/// What adding files from Drive needs, for those who manage Documents while Google is
-/// connected: none on a server without the picker's keys.
+/// What adding files from Drive needs, for those who manage the DSP's connections while
+/// Google is connected, since only they hold its account: none on a server without the
+/// picker's keys.
 pub fn setup(c: &Context, google: &Google, connection: &Connection) -> Result<Option<PickerSetup>> {
-    if !c.allows("documents.manage") || connection.broken {
+    if !c.allows("connections.manage") || connection.broken {
         return Ok(None);
     }
     let account = connection.account.email.clone();

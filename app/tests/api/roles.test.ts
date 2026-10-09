@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { demo, fixture } from '../../../core/shell/tests/support/support.js';
+import { permissions } from '../../../core/tenancy/api/generated/access-catalog.js';
 
 type Role = { id: string; name: string; owner: boolean; permissions: string[]; members: number };
 
@@ -18,7 +19,8 @@ test('custom roles gate tenant APIs and never grant more than the actor holds', 
   assert.deepEqual(
     (await roles()).map((role) => [role.name, role.owner, role.permissions.length]),
     [
-      ['Owner', true, 26],
+      // The owner holds every permission there is.
+      ['Owner', true, permissions.length],
       ['Manager', false, 4],
       ['Member', false, 2],
     ],

@@ -45,6 +45,9 @@ pub struct Feature {
     pub tab: bool,
     /// Whether every DSP has it, with no switch.
     pub mandatory: bool,
+    /// For a page, whether it adds one of the DSP's own accounts to its DSP Connections, as a
+    /// connection does.
+    pub connects: bool,
 }
 impl Feature {
     /// How the audit log names it: a part with its page, as "Timecard · Meal Breaks".
@@ -76,6 +79,7 @@ fn page(feature: &manifest::Feature) -> Feature {
         default: switch.mandatory,
         tab: false,
         mandatory: switch.mandatory,
+        connects: feature.dsp_connection,
     }
 }
 /// The parts of each page switched on their own: its tabs, and any other part. A part
@@ -101,6 +105,7 @@ fn page_subs(feature: &manifest::Feature) -> impl Iterator<Item = Feature> {
             default: sub.mandatory || !switch.mandatory,
             tab: sub.tab,
             mandatory: sub.mandatory,
+            connects: false,
         }
     })
 }
@@ -167,6 +172,7 @@ fn connection(provider: Provider) -> Feature {
         default: false,
         tab: false,
         mandatory: false,
+        connects: false,
     }
 }
 /// The catalog: every feature's page, their parts, then every registered connection.
@@ -194,8 +200,12 @@ pub fn grants(enabled: &[String], permission: &str) -> bool {
 /// `grants`, in `catalog`.
 fn grants_in(catalog: &[Feature], enabled: &[String], permission: &str) -> bool {
     let on = |f: &Feature| enabled.iter().any(|e| e == f.id);
+    // Manage DSP Connections manages the DSP's own accounts: a collector's connection, and
+    // any a page adds.
     if permission == CONNECTIONS {
-        return catalog.iter().any(|f| f.kind == Kind::Connection && on(f));
+        return catalog
+            .iter()
+            .any(|f| (f.kind == Kind::Connection || f.connects) && on(f));
     }
     catalog
         .iter()

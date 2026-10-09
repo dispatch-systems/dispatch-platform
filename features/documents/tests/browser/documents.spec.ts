@@ -1,23 +1,39 @@
 import fs from 'node:fs';
+import type { Page } from '@playwright/test';
 import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
 
 // The seeded DSP has every feature switched on, and its owner holds every permission. Fixture
 // mode's Google sends the browser straight back, as Google does once someone clicks Allow, and
 // keeps the account's Drive in memory.
 
+/**
+ * Connects Google as an owner does: from Documents to the Google Drive card on Settings'
+ * Connections, which Google sends the browser back to. Answers the dialog that follows.
+ */
+async function connect(page: Page) {
+  await page.getByRole('link', { name: 'Documents', exact: true }).click();
+  await page.getByRole('link', { name: /Go to Settings/ }).click();
+  await page.getByRole('button', { name: 'Connect Google' }).click();
+  return page.getByRole('dialog', { name: 'Documents is ready' });
+}
+
 test('an owner connects Google, starts with folders and makes a Doc that opens in Google', async ({
   page,
 }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  await page.getByRole('link', { name: 'Documents', exact: true }).click();
-  await page.getByRole('button', { name: 'Connect Google' }).click();
-  // The code Google sent back is used once and gone from the address.
-  const ready = page.getByRole('dialog', { name: 'Documents is ready' });
+  // The code Google sent back is used once and gone from the address; the tab stays.
+  const ready = await connect(page);
   await expect(ready).toContainText('Northline Logistics Documents');
   expect(page.url()).not.toContain('googleCode');
+  expect(page.url()).toContain('tab=connections');
   await ready.getByRole('checkbox', { name: 'Templates' }).check();
   await ready.getByRole('button', { name: 'Add 6 folders' }).click();
+  await expect(ready).toBeHidden();
+  await expect(
+    page.getByRole('article').filter({ hasText: 'Google Drive' }).getByRole('status'),
+  ).toHaveText('Connected');
+  await page.getByRole('link', { name: 'Documents', exact: true }).click();
   await expect(page.getByRole('link', { name: /Templates/ })).toBeVisible();
 
   // A Doc made in a folder opens in its own tab, at Google, which this browser only pretends
@@ -43,12 +59,8 @@ test('a member names files as they upload, drops one on the page, renames and do
 }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
+  await (await connect(page)).getByRole('button', { name: 'Skip' }).click();
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
-  await page.getByRole('button', { name: 'Connect Google' }).click();
-  await page
-    .getByRole('dialog', { name: 'Documents is ready' })
-    .getByRole('button', { name: 'Skip' })
-    .click();
 
   await page.getByLabel('Files to upload').setInputFiles([
     { name: 'Uniform policy.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') },
@@ -111,12 +123,8 @@ test('a member names files as they upload, drops one on the page, renames and do
 test('an owner adds a file someone made directly in Drive', async ({ page }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
+  await (await connect(page)).getByRole('button', { name: 'Skip' }).click();
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
-  await page.getByRole('button', { name: 'Connect Google' }).click();
-  await page
-    .getByRole('dialog', { name: 'Documents is ready' })
-    .getByRole('button', { name: 'Skip' })
-    .click();
   // Fixture mode lists its Drive's files out of reach, where Google's picker would open.
   await page.getByLabel('New').click();
   await page.getByRole('button', { name: /Add from Google Drive/ }).click();

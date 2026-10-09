@@ -57,7 +57,10 @@ export const hasFeature = (view: DspView | undefined, id: Feature) =>
 /** Whether a permission exists with these features, mirroring `grants` in the backend. */
 export function grants(features: readonly string[], permission: Permission) {
   if (permission === 'connections.manage')
-    return featureCatalog.some((f) => f.kind === 'connection' && features.includes(f.id));
+    return featureCatalog.some(
+      (f) =>
+        (f.kind === 'connection' || ('connects' in f && f.connects)) && features.includes(f.id),
+    );
   const owner = featureCatalog.find((f) => f.permissions.includes(permission));
   return !owner || features.includes(owner.id);
 }
