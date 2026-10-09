@@ -13,7 +13,7 @@ fn the_same_writes_ask_for_recent_verification() {
         .collect();
     assert_eq!(
         asking,
-        ["connections.manage", "members.invite", "members.manage"]
+        ["members.invite", "members.manage", "connections.manage"]
     );
     // A route open to any of several permissions asks for none.
     assert!(!needs_recent_verification(

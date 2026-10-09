@@ -348,6 +348,9 @@ fn permissions_follow_their_feature() {
         &on(&["timecard", "uniforms"]),
         "connections.manage"
     ));
+    // Documents' Google account is one of the DSP's own.
+    #[cfg(feature = "documents")]
+    assert!(grants(&on(&["documents"]), "connections.manage"));
     let stored = on(&["uniforms.view", "roles.manage", "timecard.view"]);
     let enabled = on(&["timecard"]);
     let seen: Vec<_> = visible(&enabled, &stored).collect();
