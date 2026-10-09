@@ -12,7 +12,7 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   `…/connect/finish` and `…/disconnect` behind `documents.manage`. Behind `documents.use` too:
   `GET /api/dsp/documents/folder` (a folder and what it holds, or with `q`, what a search inside
   it found), `POST …/new` (a folder, Doc, Sheet or Slides), `POST …/upload` (a file, up to
-  100 MB), `GET …/items/{id}/download`, and `POST …/items/{id}/rename` and `…/trash`. Behind `documents.use` as well, for a member's own Google account:
+  100 MB), `GET …/items/{id}/download` and `…/items/{id}/thumbnail`, and `POST …/items/{id}/rename` and `…/trash`. Behind `documents.use` as well, for a member's own Google account:
   `POST /api/dsp/documents/link` and `…/link/finish`. Behind `documents.manage`, the team's
   access: `GET /api/dsp/documents/team`, `POST …/team/email` and `…/team/remove`; and
   `POST /api/dsp/documents/add`, for files picked in Google Drive. Public, the picker's
@@ -37,6 +37,15 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   A download streams back as Google sends it: an uploaded file as it was, Google's own Docs,
   Sheets and Slides as Word, Excel and PowerPoint files (Google exports those up to 10 MB), so
   someone with no Google account has them too.
+- **Pictures:** in the grid, each file's card shows Google's picture of what it holds (a
+  Doc's first page, an image, a PDF's cover) once the card nears the screen, and a drawing of
+  its kind until then, or when Google made none. Google's link to a picture lasts hours and
+  opens only for the account, so Dispatch fetches it with the account's token and hands the
+  picture on: members needn't be signed in to Google, and the token never reaches a browser.
+  A listing keeps, for its DSP, the links of the files it showed, for an hour; a picture is
+  fetched only by a link kept for that DSP, never one a browser sent, and Google refusing one
+  only leaves the drawing. Its address names the picture's version, so each browser keeps a
+  picture until the file changes; eight are fetched from Google at once across the server.
 - **Adding from Google Drive:** a file someone made directly in Drive is out of `drive.file`'s
   reach until Google's picker gives it. Those who manage Documents pick it in a window of its
   own, signed in to Google as the account that holds Documents: the window has rules of its

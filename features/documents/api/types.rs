@@ -133,6 +133,8 @@ pub struct DocumentsItem {
     pub url: String,
     /// The folder it is in, for a search's results.
     pub location: Option<String>,
+    /// Where the page fetches Google's picture of what it holds, when Google made one.
+    pub thumbnail: Option<String>,
 }
 
 /// A step of the way to a folder.

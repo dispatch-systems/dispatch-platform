@@ -161,6 +161,7 @@
         "POST /api/dsp/documents/new",
         "POST /api/dsp/documents/upload",
         "GET /api/dsp/documents/items/{id}/download",
+        "GET /api/dsp/documents/items/{id}/thumbnail",
         "POST /api/dsp/documents/add",
         "POST /api/dsp/documents/items/{id}/rename",
         "POST /api/dsp/documents/items/{id}/trash",

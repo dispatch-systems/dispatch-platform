@@ -17,7 +17,7 @@ use dispatch_core::{
     server::http::{route::Dsp, upload::Upload},
 };
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     sync::{Arc, LazyLock, Mutex},
     time::{Duration, Instant},
 };
@@ -40,6 +40,26 @@ pub fn forget(dsp: &str) {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .remove(dsp);
+}
+
+/// Google's links to pictures of what each DSP's Documents showed, by DSP and file, with when
+/// each was shown. A picture is fetched only by a link kept here: so only for a file the DSP's
+/// own Documents showed, and never by a link a browser sent.
+static PICTURES: LazyLock<Mutex<HashMap<(String, String), (String, Instant)>>> =
+    LazyLock::new(Default::default);
+/// How long a link is used after Documents showed it, well inside the hours Google's last.
+const PICTURE_LINK_LASTS: Duration = Duration::from_secs(60 * 60);
+/// The most links kept across every DSP; past them, a card keeps its drawing.
+const PICTURE_LINKS: usize = 20_000;
+/// The link Google gave for a picture of the file `id`, when the DSP's Documents showed it
+/// within the hour.
+fn shown(dsp: &str, id: &str) -> Option<String> {
+    PICTURES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(&(dsp.to_owned(), id.to_owned()))
+        .filter(|(_, at)| at.elapsed() < PICTURE_LINK_LASTS)
+        .map(|(link, _)| link.clone())
 }
 
 /// What a call to the DSP's Drive works with.
@@ -149,6 +169,7 @@ pub async fn folder(
     let dsp = c.dsp.id.clone();
     let (records, names) = state.read(move |db| known(db, &dsp, &ids)).await?;
     let described = Described {
+        dsp: &c.dsp.id,
         tree: &tree,
         records: &records,
         names: &names,
@@ -194,17 +215,19 @@ pub async fn create(
         Some(&parent)
     ))?;
     let (id, title) = (made.id.clone(), made.name.clone());
+    let at = dsp.clone();
     let (records, names) = state
         .run(move |db| {
             let c = access.revalidate(db, &c)?;
-            db.record_documents_change(&dsp, &id, c.actor())?;
+            db.record_documents_change(&at, &id, c.actor())?;
             c.audit(db, "documents.created", &title)?;
-            known(db, &dsp, &[id])
+            known(db, &at, &[id])
         })
         .await?;
     // A file just made holds nothing, so an empty tree counts it right.
     let empty = Tree::new(&connection.folder_id, Vec::new());
     Ok(Described {
+        dsp: &dsp,
         tree: &empty,
         records: &records,
         names: &names,
@@ -237,16 +260,18 @@ pub async fn upload(
         .finish_upload(&drive.access, &session, upload)
         .await?;
     let (id, title) = (made.id.clone(), made.name.clone());
+    let at = dsp.clone();
     let (records, names) = state
         .run(move |db| {
             let c = access.revalidate(db, &c)?;
-            db.record_documents_change(&dsp, &id, c.actor())?;
+            db.record_documents_change(&at, &id, c.actor())?;
             c.audit(db, "documents.uploaded", &title)?;
-            known(db, &dsp, &[id])
+            known(db, &at, &[id])
         })
         .await?;
     let empty = Tree::new(&drive.connection.folder_id, Vec::new());
     Ok(Described {
+        dsp: &dsp,
         tree: &empty,
         records: &records,
         names: &names,
@@ -308,8 +333,10 @@ pub async fn add(
         .await?;
     let (connection, tree) = self::tree(state, &dsp).await?;
     let ids: Vec<String> = added.iter().map(|item| item.id.clone()).collect();
-    let (records, names) = state.read(move |db| known(db, &dsp, &ids)).await?;
+    let at = dsp.clone();
+    let (records, names) = state.read(move |db| known(db, &at, &ids)).await?;
     let described = Described {
+        dsp: &dsp,
         tree: &tree,
         records: &records,
         names: &names,
@@ -333,6 +360,14 @@ pub async fn download(state: &Arc<State>, c: &Context, id: String) -> Result<Dow
     Ok(download)
 }
 
+/// Google's picture of what the file `id` holds, by the link the DSP's Documents showed it
+/// with.
+pub async fn picture(state: &Arc<State>, c: &Context, id: String) -> Result<drive::Picture> {
+    let link = shown(&c.dsp.id, &id).ok_or_else(not_found)?;
+    let drive = open(state, &c.dsp.id, false).await?;
+    drive.google.picture(&drive.access, &link).await
+}
+
 /// Gives the file or folder `id` the name `name`.
 pub async fn rename(
     state: &Arc<State>,
@@ -347,22 +382,24 @@ pub async fn rename(
     let (connection, renamed) = on_drive!(state, &dsp, |google, token| google
         .rename(token, &id, &name))?;
     let after = renamed.name.clone();
+    let at = dsp.clone();
     let (records, names) = state
         .run(move |db| {
             let c = access.revalidate(db, &c)?;
-            db.record_documents_change(&dsp, &id, c.actor())?;
+            db.record_documents_change(&at, &id, c.actor())?;
             db.audit_with(
                 Some(c.actor()),
-                Some(&dsp),
+                Some(&at),
                 "documents.renamed",
                 &after,
                 None,
                 &[("name", Some(before), Some(after.clone()))],
             )?;
-            known(db, &dsp, &[id])
+            known(db, &at, &[id])
         })
         .await?;
     Ok(Described {
+        dsp: &dsp,
         tree: &tree,
         records: &records,
         names: &names,
@@ -408,6 +445,7 @@ fn known(
 
 /// Files as the page shows them.
 struct Described<'a> {
+    dsp: &'a str,
     tree: &'a Tree,
     records: &'a BTreeMap<String, Record>,
     names: &'a BTreeMap<String, String>,
@@ -447,7 +485,34 @@ impl Described<'_> {
                 .and_then(|parent| self.tree.get(parent))
                 .filter(|_| located)
                 .map(|parent| parent.name.clone()),
+            thumbnail: self.picture(item),
         }
+    }
+    /// Where the page fetches Google's picture of `item`, keeping its link for the DSP to
+    /// fetch it by: none when Google made none. The address names the picture's version, so
+    /// the browser keeps each until the file changes.
+    fn picture(&self, item: &Item) -> Option<String> {
+        let link = item.thumbnail_link.clone()?;
+        let mut links = PICTURES
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let key = (self.dsp.to_owned(), item.id.clone());
+        if links.len() >= PICTURE_LINKS && !links.contains_key(&key) {
+            links.retain(|_, (_, at)| at.elapsed() < PICTURE_LINK_LASTS);
+            if links.len() >= PICTURE_LINKS {
+                return None;
+            }
+        }
+        links.insert(key, (link, Instant::now()));
+        let version = item
+            .thumbnail_version
+            .as_deref()
+            .filter(|version| !version.is_empty() && version.bytes().all(|b| b.is_ascii_digit()))
+            .unwrap_or("0");
+        Some(format!(
+            "/api/dsp/documents/items/{}/thumbnail?v={version}",
+            item.id
+        ))
     }
 }
 

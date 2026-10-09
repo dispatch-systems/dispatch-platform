@@ -17,6 +17,8 @@ fn item(id: &str, name: &str, parent: Option<&str>, folder: bool, modified: &str
         }),
         size: None,
         web_view_link: String::new(),
+        thumbnail_link: None,
+        thumbnail_version: None,
     }
 }
 

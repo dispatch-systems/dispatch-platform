@@ -5,6 +5,7 @@
 //! memory for each account, as Google keeps an account's files for every DSP that connects it.
 use super::google::{FILES, FOLDER, Google, HTTP, read, send, unreachable};
 use axum::body::Body;
+use axum::body::Bytes;
 use dispatch_core::{Error, Result, db::iso, foundation::crypto, server::http::upload::Upload};
 use futures_util::TryStreamExt;
 use serde::Deserialize;
@@ -19,11 +20,17 @@ pub const DOC: &str = "application/vnd.google-apps.document";
 pub const SHEET: &str = "application/vnd.google-apps.spreadsheet";
 pub const SLIDES: &str = "application/vnd.google-apps.presentation";
 /// What Documents asks of each file.
-const FIELDS: &str = "id,name,mimeType,parents,modifiedTime,lastModifyingUser(displayName,emailAddress),size,webViewLink";
+const FIELDS: &str = "id,name,mimeType,parents,modifiedTime,lastModifyingUser(displayName,emailAddress),size,webViewLink,thumbnailLink,thumbnailVersion";
 /// Enough pages for 50,000 files; a Drive that keeps answering past them is not listed whole.
 const PAGES: usize = 50;
 /// Where a file's bytes go up.
 const UPLOADS: &str = "https://www.googleapis.com/upload/drive/v3/files";
+/// The longest side of a card's picture, in pixels: sharp on a high-density screen.
+const PICTURE_SIZE: u32 = 600;
+/// The largest picture Dispatch hands on; Google's are a small part of it.
+const PICTURE_LIMIT: usize = 2 * 1024 * 1024;
+/// How many pictures the server fetches from Google at once, across every DSP.
+static PICTURES: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(8);
 /// The Office files Google's own Docs, Sheets and Slides download as, with their endings.
 const DOCX: (&str, &str) = (
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -71,6 +78,11 @@ pub struct Item {
     /// Its bytes, which Drive writes as text; Google's own Docs, Sheets and Slides have none.
     pub size: Option<String>,
     pub web_view_link: String,
+    /// Google's picture of what it holds, when Google made one: a link that lasts hours and
+    /// opens only for the account.
+    pub thumbnail_link: Option<String>,
+    /// Which picture that is, a number that grows as the file changes.
+    pub thumbnail_version: Option<String>,
 }
 impl Item {
     pub fn folder(&self) -> bool {
@@ -171,6 +183,8 @@ impl Google {
                         email_address: Some(account),
                     }),
                     size: None,
+                    thumbnail_link: None,
+                    thumbnail_version: None,
                 };
                 drive.files.insert(id.clone(), item.clone());
                 Ok(item)
@@ -392,8 +406,12 @@ impl Google {
                 let (name, mime, parent) = drive.uploads.remove(session).ok_or_else(missing)?;
                 let account = drive.account.clone();
                 let id = session.replace("fixture-upload-", "fixture-");
+                // Google pictures an image as itself; fixture mode, only images.
+                let pictured = mime.starts_with("image/");
                 let item = Item {
                     web_view_link: link(&mime, &id),
+                    thumbnail_link: pictured.then(|| format!("fixture:{id}")),
+                    thumbnail_version: pictured.then(|| "1".to_owned()),
                     id: id.clone(),
                     name,
                     mime_type: mime,
@@ -426,6 +444,58 @@ impl Google {
                 }
             })?;
         read(response).await
+    }
+    /// Google's picture of what a file holds, by the `link` a listing gave, sized for a card.
+    /// Google refusing it only leaves the card its drawing, so it never counts against the
+    /// connection.
+    pub async fn picture(&self, access: &str, link: &str) -> Result<Picture> {
+        if let Self::Fixture = self {
+            let id = link.strip_prefix("fixture:").ok_or_else(missing)?;
+            return fixture(access, |drive| {
+                let item = drive.files.get(id).ok_or_else(missing)?;
+                let bytes = drive.contents.get(id).ok_or_else(missing)?;
+                Ok(Picture {
+                    kind: item.mime_type.clone(),
+                    bytes: Bytes::from(bytes.clone()),
+                })
+            });
+        }
+        let link = sized(link).ok_or_else(missing)?;
+        let _turn = PICTURES.acquire().await.map_err(|_| missing())?;
+        let response = HTTP
+            .get(link)
+            .bearer_auth(access)
+            .send()
+            .await
+            .map_err(unreachable)?;
+        let kind = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|kind| kind.to_str().ok())
+            .map(|kind| {
+                kind.split(';')
+                    .next()
+                    .unwrap_or(kind)
+                    .trim()
+                    .to_ascii_lowercase()
+            })
+            .filter(|kind| {
+                ["image/png", "image/jpeg", "image/gif", "image/webp"].contains(&kind.as_str())
+            });
+        let (true, Some(kind)) = (response.status().is_success(), kind) else {
+            return Err(missing());
+        };
+        if response
+            .content_length()
+            .is_some_and(|length| length > PICTURE_LIMIT as u64)
+        {
+            return Err(missing());
+        }
+        let bytes = response.bytes().await.map_err(unreachable)?;
+        if bytes.len() > PICTURE_LIMIT {
+            return Err(missing());
+        }
+        Ok(Picture { kind, bytes })
     }
     /// The file `item`, to save: Google's own Docs, Sheets and Slides as the Word, Excel and
     /// PowerPoint files they export as, and an uploaded file as it was.
@@ -573,6 +643,30 @@ fn upload_start(
         }))
 }
 
+/// A picture of what a file holds, as Google sent it.
+pub struct Picture {
+    pub kind: String,
+    pub bytes: Bytes,
+}
+/// Google's link to a picture, asking for it at a card's size: only a link to Google's own
+/// pictures, over HTTPS, since the account's token goes with it.
+fn sized(link: &str) -> Option<String> {
+    let url = url::Url::parse(link).ok()?;
+    let host = url.host_str()?;
+    let google = host.ends_with(".googleusercontent.com")
+        || ["docs.google.com", "drive.google.com"].contains(&host);
+    if url.scheme() != "https" || !google {
+        return None;
+    }
+    // Google names the size at the link's end, `=s220`.
+    Some(match link.rsplit_once("=s") {
+        Some((start, size)) if !size.is_empty() && size.bytes().all(|b| b.is_ascii_digit()) => {
+            format!("{start}=s{PICTURE_SIZE}")
+        }
+        _ => link.to_owned(),
+    })
+}
+
 fn missing() -> Error {
     Error::new("documents_item_not_found", 404)
 }
@@ -651,6 +745,8 @@ pub fn fixture_made_in_drive(access: &str, folder: &str) -> Result<()> {
                     email_address: Some("keisha.brown@example.com".to_owned()),
                 }),
                 size: size.map(str::to_owned),
+                thumbnail_link: None,
+                thumbnail_version: None,
             };
             drive.files.insert(id.clone(), item);
             drive.hidden.insert(id);

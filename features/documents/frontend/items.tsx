@@ -8,9 +8,11 @@ import {
   Sheet,
   type LucideIcon,
 } from 'lucide-react';
-import type { DocumentsItem, ItemKind } from '../api/client.js';
+import { useEffect, useRef, useState } from 'react';
+import { thumbnail, type DocumentsItem, type ItemKind } from '../api/client.js';
 
-// What every view of Documents draws a file with: its kind's name, tile and first page.
+// What every view of Documents draws a file with: its kind's name, tile and first page, or
+// Google's picture of it.
 
 const KINDS: Record<ItemKind, { label: string; icon: LucideIcon }> = {
   folder: { label: 'Folder', icon: Folder },
@@ -33,49 +35,102 @@ export function Tile({ kind, size = 16 }: { kind: ItemKind; size?: number }) {
   );
 }
 
-/** A drawing of a file's first page, for the grid's cards. */
-export function Thumb({ kind }: { kind: ItemKind }) {
+/**
+ * A file on a grid card: Google's picture of what it holds once the card nears the screen, and
+ * a drawing of its first page until then, or when Google has none.
+ */
+export function Thumb({ kind, picture }: { kind: ItemKind; picture?: string | null }) {
+  const [box, shown] = usePicture(picture);
+  if (shown)
+    return (
+      <div
+        ref={box}
+        className={`documents-thumb documents-thumb-picture${kind === 'image' ? ' documents-thumb-photo' : ''}`}
+        aria-hidden="true"
+      >
+        <img src={shown} alt="" />
+      </div>
+    );
+  return (
+    <div ref={box} className={`documents-thumb documents-thumb-${kind}`} aria-hidden="true">
+      <Drawing kind={kind} />
+    </div>
+  );
+}
+
+function Drawing({ kind }: { kind: ItemKind }) {
   if (kind === 'sheet')
     return (
-      <div className="documents-thumb documents-thumb-sheet" aria-hidden="true">
-        <div className="documents-page documents-grid">
-          {Array.from({ length: 40 }, (_, i) => (
-            <i key={i} className={i < 5 ? 'head' : i % 5 === 0 ? 'key' : undefined} />
-          ))}
-        </div>
+      <div className="documents-page documents-grid">
+        {Array.from({ length: 40 }, (_, i) => (
+          <i key={i} className={i < 5 ? 'head' : i % 5 === 0 ? 'key' : undefined} />
+        ))}
       </div>
     );
   if (kind === 'slides')
     return (
-      <div className="documents-thumb documents-thumb-slides" aria-hidden="true">
-        <div className="documents-slide">
-          <b />
-          <i />
-          <i className="short" />
-        </div>
+      <div className="documents-slide">
+        <b />
+        <i />
+        <i className="short" />
       </div>
     );
   if (kind === 'image')
     return (
-      <div className="documents-thumb documents-thumb-image" aria-hidden="true">
+      <>
         <span />
         <span />
         <span />
-      </div>
+      </>
     );
   return (
-    <div className={`documents-thumb documents-thumb-${kind}`} aria-hidden="true">
-      <div className="documents-page">
-        <b />
-        <i />
-        <i />
-        <i className="short" />
-        <i />
-        <i />
-        <i className="short" />
-      </div>
+    <div className="documents-page">
+      <b />
+      <i />
+      <i />
+      <i className="short" />
+      <i />
+      <i />
+      <i className="short" />
     </div>
   );
+}
+
+/**
+ * The picture at `url`, fetched once its box nears the screen, as an address the page shows;
+ * none until it comes, and none if it can't, so the card keeps its drawing.
+ */
+function usePicture(url: string | null | undefined) {
+  const box = useRef<HTMLDivElement>(null);
+  const [shown, setShown] = useState<{ url: string; src: string }>();
+  useEffect(() => {
+    const at = box.current;
+    if (!url || !at) return;
+    const stop = new AbortController();
+    let src: string | undefined;
+    const near = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        near.disconnect();
+        thumbnail(url, stop.signal).then(
+          (blob) => {
+            if (stop.signal.aborted) return;
+            src = URL.createObjectURL(blob);
+            setShown({ url, src });
+          },
+          () => {},
+        );
+      },
+      { rootMargin: '200px' },
+    );
+    near.observe(at);
+    return () => {
+      near.disconnect();
+      stop.abort();
+      if (src) URL.revokeObjectURL(src);
+    };
+  }, [url]);
+  return [box, shown && shown.url === url ? shown.src : undefined] as const;
 }
 
 /** A file's size, for one anyone uploaded. */

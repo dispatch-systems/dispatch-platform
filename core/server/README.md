@@ -12,7 +12,9 @@ A request's body is JSON of at most 64 KiB, read within 15 seconds, except at a 
 `upload`: there it is a file, `application/octet-stream` of a stated length up to the route's
 limit and never more than 100 MB, streamed on to wherever the route keeps it. A few uploads
 run at once across the server; one that stalls for a minute is given up. `Reply::download`
-streams a file back under the name it's saved as.
+streams a file back under the name it's saved as, and `Reply::picture` answers one the page
+shows, which the browser keeps for a week for that view of the DSP: its address names the
+version, so a changed picture comes at a new one.
 
 The server answers at three kinds of address, each its own origin: the platform owner's admin
 (`DISPATCH_ORIGIN`), the invite page where a new DSP's first owner sets it up

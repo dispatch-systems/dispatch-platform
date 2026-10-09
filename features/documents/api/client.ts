@@ -1,5 +1,5 @@
 import { ApiError, useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
-import { download, upload } from '../../../core/shell/frontend/runtime/transfer.js';
+import { download, picture, upload } from '../../../core/shell/frontend/runtime/transfer.js';
 import type { DocumentsOverview } from './generated/DocumentsOverview.js';
 import type { GoogleSignIn } from './generated/GoogleSignIn.js';
 import type { DocumentsFolder } from './generated/DocumentsFolder.js';
@@ -113,6 +113,8 @@ export const uploadFile = (
 export const addFiles = (files: string[], folder: string | undefined) =>
   call<DocumentsItem[]>('/api/dsp/documents/add', { files, folder: folder ?? null });
 /** Saves the file `id`: Google's own Docs, Sheets and Slides as Word, Excel and PowerPoint. */
+/** Google's picture of a file, at the address its item names. */
+export const thumbnail = (url: string, signal: AbortSignal) => picture(url, signal);
 export const downloadItem = (id: string) =>
   moving(download(`/api/dsp/documents/items/${encodeURIComponent(id)}/download`));
 export const renameItem = (id: string, name: string) =>
