@@ -20,7 +20,10 @@ pub const DOC: &str = "application/vnd.google-apps.document";
 pub const SHEET: &str = "application/vnd.google-apps.spreadsheet";
 pub const SLIDES: &str = "application/vnd.google-apps.presentation";
 /// What Documents asks of each file.
-const FIELDS: &str = "id,name,mimeType,parents,modifiedTime,lastModifyingUser(displayName,emailAddress),size,webViewLink,thumbnailLink,thumbnailVersion";
+const FIELDS: &str = concat!(
+    "id,name,mimeType,parents,modifiedTime,lastModifyingUser(displayName,emailAddress),size,",
+    "webViewLink,thumbnailLink,thumbnailVersion"
+);
 /// Enough pages for 50,000 files; a Drive that keeps answering past them is not listed whole.
 const PAGES: usize = 50;
 /// Where a file's bytes go up.
