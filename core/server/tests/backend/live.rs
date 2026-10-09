@@ -9,7 +9,10 @@ fn hints_are_scoped_and_lost_history_requires_a_full_refresh() {
     let next = updates.token(&a);
     let any = |_: &str| true;
     assert_eq!(updates.token(&b), start);
-    assert_eq!(updates.changes("a", &start, &next, any)[0].provider, "cortex");
+    assert_eq!(
+        updates.changes("a", &start, &next, any)[0].provider,
+        "cortex"
+    );
     assert!(updates.changes("a", &next, &next, any).is_empty());
     assert_eq!(
         updates.changes("a", "old-process:1", &next, any)[0].provider,
@@ -36,7 +39,10 @@ fn a_reader_hears_only_of_the_collections_it_follows() {
     updates.notify("a");
     let through = updates.token(&a);
     let heard = updates.changes("a", &start, &through, |kind| kind == "dvic");
-    let providers: Vec<_> = heard.iter().map(|change| change.provider.as_str()).collect();
+    let providers: Vec<_> = heard
+        .iter()
+        .map(|change| change.provider.as_str())
+        .collect();
     // Another feature's collection, and the employee it names, stay with its own readers.
     assert_eq!(providers, ["cortex", "all"]);
 }
