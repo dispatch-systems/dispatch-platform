@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { platformHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { test, expect, demo, signIn } from '../../../core/shell/tests/support/fixtures.js';
+import { newKinds } from '../support/agent-keys.js';
 
 // Sign in with Dispatch, approving what an app reads: the kinds of data the features declare.
 
@@ -159,7 +160,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     const connected = connecting.getByRole('status').filter({ hasText: 'is connected' });
     await expect(connected.getByRole('heading')).toHaveText('Claude Code is connected');
     await expect(connected).toContainText('Start a new Claude Code session to use Dispatch.');
-    await expect(connected.locator('.agents-tag')).toHaveText(['1 DSP', '12 of 13 kinds']);
+    await expect(connected.locator('.agents-tag')).toHaveText(['1 DSP', newKinds]);
     await connecting.getByRole('button', { name: 'Done', exact: true }).click();
     await expect(connecting).toHaveCount(0);
 
@@ -196,7 +197,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     await expect(row).toContainText('Claude Code');
     await expect(row).toContainText('Known metadata');
     await expect(row).toContainText('Northline Logistics');
-    await expect(row).toContainText('12 of 13 kinds');
+    await expect(row).toContainText(newKinds);
     await expect(row).toContainText('No weekly scorecard');
     // An app with recognized metadata shows its own logo.
     await expect(row.locator('img')).toHaveAttribute('src', /claude-[\w-]+\.png$/);

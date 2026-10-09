@@ -86,7 +86,8 @@ python3 -m unittest discover -s ops/tests -p '*_test.py'
 ```
 
 `check:rules` runs the source-only Python partition and every dashboard helper test without
-compiling Rust. The API job runs those Python modules and the separate real compiler and
+compiling Rust. The dashboard tests are every owner's `tests/frontend/`, found where they
+live, so a feature's own run without a list naming them. The API job runs those Python modules and the separate real compiler and
 installed-manager modules once each. Native collector files run only in their collector
 shards, so the API job does not launch them merely to skip their browser cases.
 `tooling/tests/test-plan.test.ts` checks complete, disjoint file coverage against the commands

@@ -5,6 +5,7 @@ import type { AgentKeys } from '../../../core/platform_owner/api/index.js';
 import { platformHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { utcDay } from '../../../core/shell/frontend/lib/format.js';
 import { test, expect, login } from '../../../core/shell/tests/support/fixtures.js';
+import { newKinds } from '../support/agent-keys.js';
 
 // The Agents page with what keys and apps read: the kinds of data the features declare, and
 // the features a DSP has switched on.
@@ -98,7 +99,7 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   await expect(row).toContainText('Read only');
   await expect(row).toContainText('Northline Logistics');
   // A new key reads everything but delivery addresses and GPS.
-  await expect(row).toContainText('12 of 13 kinds');
+  await expect(row).toContainText(newKinds);
   await expect(row).toContainText('No delivery addresses');
   // The page never shows the key again.
   await expect(page.getByText(token!)).toHaveCount(0);
@@ -303,7 +304,7 @@ test('the owner changes what a connected app reads, and gives a DSP settings of 
 
   await page.goto(`/${platformHash('agents')}`);
   const row = page.getByRole('row').filter({ hasText: 'Laptop – Claude Code' });
-  await expect(row).toContainText('12 of 13 kinds');
+  await expect(row).toContainText(newKinds);
   await expect(row).toContainText('No delivery addresses');
   await row.getByRole('button', { name: 'Edit Laptop – Claude Code', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Laptop – Claude Code' });
@@ -396,7 +397,7 @@ test('the owner changes what a connected app reads, and gives a DSP settings of 
   await expect(page.getByText('App updated', { exact: true })).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Confirm it’s you' })).toHaveCount(0);
   await expect(sheet).toHaveCount(0);
-  await expect(row).toContainText('12 of 13 kinds');
+  await expect(row).toContainText(newKinds);
   await expect(row).toContainText('Summit Delivery: own settings, bypass on');
   const saved = (await agents()).keys.find((key) => key.name === 'Laptop – Claude Code')!;
   expect(saved.reads).toEqual({

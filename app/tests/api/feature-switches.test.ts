@@ -1,44 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture } from '../../../core/shell/tests/support/support.js';
+import { featureCatalog } from '../../../core/tenancy/api/generated/access-catalog.js';
 
 type Role = { id: string; name: string; permissions: string[] };
-const tabs = [
-  'timecard.daily',
-  'timecard.meal_breaks',
-  'timecard.employees',
-  'dvic.day',
-  'dvic.week',
-];
-// Every DSP has these: nobody switches them.
-const mandatory = ['home', 'team', 'settings'];
-const all = [
-  'home',
-  'timecard',
-  'uniforms',
-  'routes',
-  'dvic',
-  'weekly_scorecard',
-  'driver_match',
-  'daily_performance',
-  'documents',
-  'team',
-  'settings',
-  ...tabs,
-  'paycom',
-  'cortex',
-];
-/**
- * The DSP's features with these pages and connections on: every tab of a page that is, and
- * what every DSP has.
- */
-const having = (...ids: string[]) =>
-  all.filter(
-    (f) =>
-      mandatory.includes(f) ||
-      ids.includes(f) ||
-      (tabs.includes(f) && ids.includes(f.split('.')[0]!)),
-  );
+// Every feature this build has, in the catalog's order: pages, their parts, the connections.
+const all: string[] = featureCatalog.map((feature) => feature.id);
+/** `features` without `gone`, and without the parts of a page among them. */
+const without = (features: readonly string[], ...gone: string[]) =>
+  features.filter((id) => {
+    const entry = featureCatalog.find((feature) => feature.id === id);
+    return !gone.includes(id) && !(entry?.kind === 'sub' && gone.includes(entry.page));
+  });
 
 test('a feature switched off for a DSP stops existing there until it is switched back on', async (t) => {
   const f = await fixture();
@@ -74,73 +47,24 @@ test('a feature switched off for a DSP stops existing there until it is switched
   let result = await platform.post(url, { feature: 'uniforms', enabled: false });
   assert.equal(result.status, 200);
   assert.deepEqual(result.value, {
-    features: having(
-      'timecard',
-      'routes',
-      'dvic',
-      'weekly_scorecard',
-      'driver_match',
-      'daily_performance',
-      'documents',
-      'paycom',
-      'cortex',
-    ),
+    features: without(all, 'uniforms'),
     changed: [{ feature: 'uniforms', enabled: false }],
   });
   // Every open view of the DSP expires; reopened, it has no uniform inventory.
   assert.equal((await member.get('/api/dsp/uniforms')).value.error, 'dsp_view_expired');
   view = await member.select(north.id);
-  assert.deepEqual(
-    view.features,
-    having(
-      'timecard',
-      'routes',
-      'dvic',
-      'weekly_scorecard',
-      'driver_match',
-      'daily_performance',
-      'documents',
-      'paycom',
-      'cortex',
-    ),
-  );
+  assert.deepEqual(view.features, without(all, 'uniforms'));
   assert.deepEqual(view.permissions, ['timecard.view']);
   assert.equal((await member.get('/api/dsp/uniforms')).status, 403);
   // Owners hold every permission, but only of the features the DSP has.
   const owner = await platform.select(north.id);
-  assert.deepEqual(
-    owner.features,
-    having(
-      'timecard',
-      'routes',
-      'dvic',
-      'weekly_scorecard',
-      'driver_match',
-      'daily_performance',
-      'documents',
-      'paycom',
-      'cortex',
-    ),
-  );
+  assert.deepEqual(owner.features, without(all, 'uniforms'));
   assert.ok(!owner.permissions.includes('uniforms.view'));
   assert.equal((await platform.get('/api/dsp/uniforms')).status, 403);
   const listed = (await platform.get('/api/platform/dsps')).value.find(
     (dsp: { id: string }) => dsp.id === north.id,
   );
-  assert.deepEqual(
-    listed.features,
-    having(
-      'timecard',
-      'routes',
-      'dvic',
-      'weekly_scorecard',
-      'driver_match',
-      'daily_performance',
-      'documents',
-      'paycom',
-      'cortex',
-    ),
-  );
+  assert.deepEqual(listed.features, without(all, 'uniforms'));
 
   // A role keeps the grant it cannot show, through a save from the role sheet too.
   const roles: Role[] = (await platform.get('/api/dsp/roles')).value;
@@ -170,8 +94,15 @@ test('a feature switched off for a DSP stops existing there until it is switched
   // it: Timecard stays, without its Meal Breaks tab, which alone needs Cortex.
   result = await platform.post(url, { feature: 'cortex', enabled: false });
   assert.deepEqual(result.value, {
-    features: having('timecard', 'uniforms', 'documents', 'paycom').filter(
-      (f) => f !== 'timecard.meal_breaks',
+    features: without(
+      all,
+      'cortex',
+      'routes',
+      'dvic',
+      'weekly_scorecard',
+      'driver_match',
+      'daily_performance',
+      'timecard.meal_breaks',
     ),
     changed: [
       { feature: 'cortex', enabled: false },
@@ -193,7 +124,14 @@ test('a feature switched off for a DSP stops existing there until it is switched
   // Enabling a part enables what it requires, and only that part.
   result = await platform.post(url, { feature: 'timecard.meal_breaks', enabled: true });
   assert.deepEqual(result.value, {
-    features: having('timecard', 'uniforms', 'documents', 'paycom', 'cortex'),
+    features: without(
+      all,
+      'routes',
+      'dvic',
+      'weekly_scorecard',
+      'driver_match',
+      'daily_performance',
+    ),
     changed: [
       { feature: 'cortex', enabled: true },
       { feature: 'timecard.meal_breaks', enabled: true },
@@ -203,7 +141,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
   assert.equal((await platform.get('/api/dsp/routes/days')).status, 403);
   result = await platform.post(url, { feature: 'routes', enabled: true });
   assert.deepEqual(result.value, {
-    features: having('timecard', 'uniforms', 'routes', 'documents', 'paycom', 'cortex'),
+    features: without(all, 'dvic', 'weekly_scorecard', 'driver_match', 'daily_performance'),
     changed: [{ feature: 'routes', enabled: true }],
   });
   await platform.select(north.id);
@@ -211,7 +149,20 @@ test('a feature switched off for a DSP stops existing there until it is switched
   // Without any connection, nobody manages connections: the permission is gone too.
   await platform.post(url, { feature: 'paycom', enabled: false });
   result = await platform.post(url, { feature: 'cortex', enabled: false });
-  assert.deepEqual(result.value.features, having('uniforms', 'documents'));
+  assert.deepEqual(
+    result.value.features,
+    without(
+      all,
+      'paycom',
+      'cortex',
+      'timecard',
+      'routes',
+      'dvic',
+      'weekly_scorecard',
+      'driver_match',
+      'daily_performance',
+    ),
+  );
   const alone = await platform.select(north.id);
   assert.ok(!alone.permissions.includes('connections.manage'));
   assert.equal((await platform.get('/api/dsp/connections')).status, 403);
@@ -280,20 +231,7 @@ test('a tab switched off has no routes, and a page goes and comes back with its 
     { feature: 'timecard', enabled: false },
   ]);
   view = await member.select(north.id);
-  assert.deepEqual(
-    view.features,
-    having(
-      'uniforms',
-      'routes',
-      'dvic',
-      'weekly_scorecard',
-      'driver_match',
-      'daily_performance',
-      'documents',
-      'paycom',
-      'cortex',
-    ),
-  );
+  assert.deepEqual(view.features, without(all, 'timecard'));
   assert.deepEqual(view.permissions, ['uniforms.view']);
   const report: { feature: string; enabled: boolean }[] = (await platform.get(url)).value.features;
   assert.deepEqual(
