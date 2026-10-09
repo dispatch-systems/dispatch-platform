@@ -87,6 +87,8 @@ fn context(db: &Store, id: &str) -> Context {
         csrf: String::new(),
         raw: String::new(),
         preview: None,
+        site: dispatch_core::foundation::config::Site::Admin,
+        scope: None,
     };
     db.context(&auth, id, "driver_match.manage").unwrap()
 }

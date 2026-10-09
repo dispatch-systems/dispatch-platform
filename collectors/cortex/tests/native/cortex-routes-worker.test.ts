@@ -333,7 +333,7 @@ test(
       (
         await owner.post('/api/dsp/profile', {
           name: 'Northline Logistics',
-          abbreviation: 'NLOG',
+          abbreviation: 'NLL',
           stationCode: 'TST1',
           timezone: 'America/Los_Angeles',
         })

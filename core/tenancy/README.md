@@ -22,3 +22,10 @@ read a hidden feature as well.
 A permission grants everything it implies, however many steps away; one declared `under`
 another grants it too and sits under it on the role sheet. Every permission starts off in
 every role: the DSP's owner turns them on, and owners hold them all.
+
+A DSP's short code names its address: 2 to 16 letters and digits, kept in lowercase in `dsps`
+and as its abbreviation in its profile, which collectors give Amazon as the DSP's code. No two
+DSPs share one, and none is a name kept for the platform's own addresses. Its first owner
+chooses it on the invite page; after that only the platform owner changes it, which moves the
+DSP to the new address. A DSP set up before short codes takes its abbreviation as its code at
+startup, when that is one and is free; any other waits for the platform owner to give it one.

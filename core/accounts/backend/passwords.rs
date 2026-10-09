@@ -18,10 +18,18 @@ impl Store {
             self.audit(Some(id), None, action, "")
         })
     }
-    pub fn recovery(&self, email: &str) -> Result<()> {
+    /// Mails a link to reset the password of the account `email` names, when it may sign in
+    /// at the address the request came to; the link goes back there.
+    pub fn recovery(&self, email: &str, site: &Site) -> Result<()> {
         ensure(self.config.mail_available(), "email_unavailable", 503)?;
         let found = UserRow::find(&self.platform, "email", &email.trim().to_lowercase())?;
-        if let Some(UserRow { user, version, .. }) = found.filter(UserRow::active) {
+        let found = match found.filter(UserRow::active) {
+            Some(row) if !matches!(self.admission(&row.user, site)?, Admission::Refused) => {
+                Some(row)
+            }
+            _ => None,
+        };
+        if let Some(UserRow { user, version, .. }) = found {
             let raw = crypto::token()?;
             self.platform.transaction(|| {
                 self.platform.exec(
@@ -40,7 +48,7 @@ impl Store {
                     &self.config.origin,
                     self.config.env().is_preview(),
                     &user.email,
-                    &format!("{}/#reset?token={raw}", self.config.origin),
+                    &format!("{}/#reset?token={raw}", self.config.site_origin(site)),
                 );
                 self.queue_mail(&user.email, &mail, MailContext::Reset { user: &user.id })
             })?;

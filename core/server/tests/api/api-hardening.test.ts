@@ -90,7 +90,9 @@ test('production rejects conflicting modes and unsafe defaults before opening st
     ...f.env,
     NODE_ENV: undefined,
     DISPATCH_ENVIRONMENT: 'production',
-    DISPATCH_ORIGIN: 'https://dispatch.example',
+    DISPATCH_ORIGIN: 'https://admin.dispatch.example',
+    DISPATCH_INVITE_ORIGIN: 'https://invite.dispatch.example',
+    DISPATCH_DSP_ORIGIN: 'https://{code}.dispatch.example',
     DISPATCH_PROVIDER_MODE: 'native',
     DISPATCH_PRODUCTION_MAIL_MODE: 'disabled',
   };
@@ -106,9 +108,16 @@ test('production rejects conflicting modes and unsafe defaults before opening st
     { NODE_ENV: 'test' },
     { DISPATCH_PROVIDER_MODE: 'fixture' },
     { DISPATCH_PRODUCTION_MAIL_MODE: 'capture' },
-    { DISPATCH_ORIGIN: 'http://dispatch.example' },
+    { DISPATCH_ORIGIN: 'http://admin.dispatch.example' },
     { DISPATCH_STATE_ROOT: undefined },
     { DISPATCH_ORIGIN: undefined },
+    // Every address is named, over HTTPS, and a DSP's names it by its short code.
+    { DISPATCH_INVITE_ORIGIN: undefined },
+    { DISPATCH_DSP_ORIGIN: undefined },
+    { DISPATCH_INVITE_ORIGIN: 'http://invite.dispatch.example' },
+    { DISPATCH_INVITE_ORIGIN: 'https://admin.dispatch.example' },
+    { DISPATCH_DSP_ORIGIN: 'https://dsp.dispatch.example' },
+    { DISPATCH_DSP_ORIGIN: 'https://dispatch.example/{code}' },
   ])
     assert.notEqual(status({ ...production, ...overrides }).status, 0, JSON.stringify(overrides));
   assert.match(status({ ...f.env, NODE_ENV: 'typo' }).stderr, /invalid_runtime_mode/);

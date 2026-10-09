@@ -51,6 +51,8 @@ pub struct Dsp {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub revision: i64,
     pub created_at: String,
+    /// Its short code, which names its address, in lowercase: none until it is set up.
+    pub code: Option<String>,
 }
 impl FromRow for Dsp {
     fn from_row(row: &Row<'_>) -> Result<Self> {
@@ -63,6 +65,7 @@ impl FromRow for Dsp {
             permanent: row.get("permanent")?,
             revision: row.get("revision")?,
             created_at: row.get("created_at")?,
+            code: row.get("code")?,
         })
     }
 }

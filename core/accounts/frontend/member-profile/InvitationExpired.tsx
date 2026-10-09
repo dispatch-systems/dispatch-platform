@@ -1,5 +1,6 @@
 import { ArrowRight, ClockAlert } from 'lucide-react';
 import { navigate, signInHash } from '../../../shell/frontend/runtime/navigation.js';
+import { site } from '../../../shell/frontend/runtime/site.js';
 import { MemberProfileLayout } from './MemberProfileLayout.js';
 
 /** An invitation link that can no longer be used: expired, revoked or never issued. */
@@ -10,12 +11,15 @@ export function InvitationExpired() {
         <ClockAlert size={19} aria-hidden="true" />
         <span>This invitation has expired or was revoked. Ask your DSP for a new one.</span>
       </p>
-      <div className="member-profile-actions">
-        <button className="primary" onClick={() => navigate(signInHash)}>
-          Go to sign in
-          <ArrowRight size={21} aria-hidden="true" />
-        </button>
-      </div>
+      {/* Nobody signs in at the invite page. */}
+      {site().kind !== 'invite' && (
+        <div className="member-profile-actions">
+          <button className="primary" onClick={() => navigate(signInHash)}>
+            Go to sign in
+            <ArrowRight size={21} aria-hidden="true" />
+          </button>
+        </div>
+      )}
     </MemberProfileLayout>
   );
 }

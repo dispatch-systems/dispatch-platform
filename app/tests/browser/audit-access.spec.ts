@@ -54,7 +54,10 @@ test('DSP members cannot open the platform audit page', async ({ page }) => {
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Audit log', exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Audit log', exact: true })).toHaveCount(0);
-  await page.goto(platformHash('audit'));
-  await expect(page.getByRole('heading', { name: 'Your DSPs', exact: true })).toBeVisible();
+  // At their DSP's address, every page is the DSP's: its activity, which their role can't open.
+  await page.goto(new URL(platformHash('audit'), page.url()).href);
+  await expect(
+    page.getByText('This page is not available for your role.', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByLabel('Search activity')).toHaveCount(0);
 });

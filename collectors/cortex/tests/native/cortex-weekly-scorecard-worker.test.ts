@@ -36,7 +36,7 @@ test(
         case 'dsp_station_weekly_quality':
           return [
             {
-              dsp_code: 'NLOG',
+              dsp_code: 'NLL',
               station_code: 'TST1',
               data_date: week,
               dsp_final_score: 91,
@@ -74,7 +74,7 @@ test(
         case 'da_dsp_daily_psb_stop':
           return [];
         default:
-          return [{ dsp_code: 'NLOG', data_date: week }];
+          return [{ dsp_code: 'NLL', data_date: week }];
       }
     };
     const server = http.createServer(async (req, res) => {
@@ -140,7 +140,7 @@ test(
           );
         }
         seen.overview++;
-        const code = company === 'company-1' ? 'NLOG' : 'FOREIGN';
+        const code = company === 'company-1' ? 'NLL' : 'FOREIGN';
         return html(
           // A sibling request still exercises draining paused events after discovery.
           `<main>Overview</main><script>for(let i=0;i<2;i++) fetch('/performance/api/${version}/getData?dataSetId=dsp_station_weekly_quality&dsp=${code}&from=2026-W38&station=${station}&timeFrame=Weekly&to=2026-W38',{credentials:'include'});</script>`,
@@ -166,7 +166,7 @@ test(
           url.searchParams.get('timeFrame') === 'Daily' && url.searchParams.get('from') === to;
         if (daily) {
           assert.match(to, /^2026-10-0[34]$/);
-          assert.equal(url.searchParams.get('dsp'), 'NLOG');
+          assert.equal(url.searchParams.get('dsp'), 'NLL');
           if (dataSetId.endsWith('_thresholds')) {
             assert.equal(url.searchParams.get('station'), null);
             assert.equal(url.searchParams.get('program'), 'AMZL');
@@ -187,7 +187,7 @@ test(
                         JSON.stringify({
                           data_date: to,
                           company_id: 'company-1',
-                          dsp_code: 'NLOG',
+                          dsp_code: 'NLL',
                           station_code: 'TST1',
                           transporter_id: dataSetId.startsWith('da_') ? 'driver-daily' : undefined,
                           da_name: dataSetId.startsWith('da_') ? DAILY_MARKERS[1] : undefined,
@@ -240,7 +240,7 @@ test(
       (
         await owner.post('/api/dsp/profile', {
           name: 'Northline Logistics',
-          abbreviation: 'NLOG',
+          abbreviation: 'NLL',
           stationCode: 'TST1',
           timezone: 'America/Los_Angeles',
         })
@@ -296,12 +296,12 @@ test(
     const weeks = (await owner.get('/api/dsp/weekly-scorecard/weeks')).value;
     const posted = weeks.weeks.find((w: any) => w.week === '2026-W38');
     assert.equal(posted.posted, true);
-    assert.equal(posted.publication.dspCode, 'NLOG');
+    assert.equal(posted.publication.dspCode, 'NLL');
     assert.equal(posted.publication.rowCount, 14);
     const read = new Map(requests.map((u) => [u.searchParams.get('dataSetId')!, u]));
     assert.equal(read.size, 14, [...read.keys()].join(','));
     for (const u of read.values()) {
-      assert.equal(u.searchParams.get('dsp'), 'NLOG');
+      assert.equal(u.searchParams.get('dsp'), 'NLL');
       assert.equal(u.searchParams.get('station'), 'TST1');
     }
     assert.equal(

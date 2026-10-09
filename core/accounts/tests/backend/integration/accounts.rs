@@ -87,6 +87,8 @@ async fn removing_a_member_deletes_their_account_and_keeps_their_name_in_the_log
         csrf: String::new(),
         raw: String::new(),
         preview: None,
+        site: dispatch_core::foundation::config::Site::Admin,
+        scope: None,
     };
     let context = db.context(&auth, dsp, "members.manage").unwrap();
     db.set_role(&context, s(&membership, "id"), None).unwrap();
@@ -120,6 +122,7 @@ async fn removing_a_member_deletes_their_account_and_keeps_their_name_in_the_log
     assert!(one("SELECT 1 FROM users WHERE platform_owner=1").is_some());
 
     let raw = invite("member@dispatch.test", s(&owner, "id"));
+    let site = db.invitation_site(dsp).unwrap();
     let config = db.config.clone();
     drop(db);
     let state = State::new(config).unwrap();
@@ -133,6 +136,7 @@ async fn removing_a_member_deletes_their_account_and_keeps_their_name_in_the_log
                 dsp_profile: None,
             },
             "127.0.0.1".into(),
+            site,
         )
         .await
         .unwrap();
@@ -231,6 +235,8 @@ fn without_a_feature_to_invite_through_only_the_platform_owner_invites() {
         csrf: String::new(),
         raw: String::new(),
         preview: preview.map(str::to_owned),
+        site: dispatch_core::foundation::config::Site::Admin,
+        scope: None,
     };
     let invite = |a: &Auth| db.invite(a, &dsp, "new@dispatch.test", &role);
     // No member may, whatever their role, nor a platform owner looking through one.

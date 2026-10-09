@@ -33,6 +33,7 @@ pub fn routes() -> Vec<Route> {
             PlatformOwner,
             set_support_visibility,
         ),
+        async_post("/api/platform/dsps/{id}/code", PlatformOwner, set_code),
         read(
             "/api/platform/dsps/{id}/features",
             PlatformOwner,
@@ -166,6 +167,30 @@ async fn set_support_visibility(
             detail,
         )?;
         Ok(json!({"ok":true}))
+    })
+    .await
+}
+
+// Gives a DSP a short code, or another one, which moves it to that address: its members
+// sign in there from then on.
+async fn set_code(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<Reply> {
+    change_dsp(state, input, access, false, |db, dsp, actor, b| {
+        v::fields(b, &["code"])?;
+        let code = v::text(b, "code", 1, 16)?.trim().to_ascii_lowercase();
+        let before = db.find_dsp(dsp)?.code;
+        // Recorded with the change, and kept only if the code is taken: its profile last.
+        db.platform.transaction(|| {
+            db.audit_with(
+                Some(actor),
+                Some(dsp),
+                "dsp.code_changed",
+                &code,
+                None,
+                &[("code", before, Some(code.clone()))],
+            )?;
+            db.set_code(dsp, &code)
+        })?;
+        Ok(json!(db.find_dsp(dsp)?))
     })
     .await
 }

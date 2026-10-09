@@ -72,6 +72,7 @@ import { restoreAppearance } from '../../core/shell/frontend/runtime/appearance.
 import { leavePresence, usePresence } from '../../core/shell/frontend/runtime/presence.js';
 import { openView, saveRole } from '../../core/shell/frontend/runtime/session.js';
 import { getSession } from '../../core/shell/frontend/runtime/endpoints.js';
+import { loadSite } from '../../core/shell/frontend/runtime/site.js';
 import { cancelPrefetches } from '../../core/shell/frontend/runtime/prefetch.js';
 function App() {
   const [pending, startTransition] = useTransition();
@@ -141,7 +142,7 @@ function App() {
         if (
           !next.user.platformOwner &&
           (afterLogin || !/^#(?:invite\?|reset\?|signin)/.test(window.location.hash)) &&
-          !window.location.hash.startsWith('#dsp/') &&
+          !parseHash(window.location.hash).dspId &&
           next.dsps.length === 1
         )
           navigate(dspHash(next.dsps[0]!.id));
@@ -362,7 +363,14 @@ function App() {
       <SecurityPrompt security={session.security} complete={() => load(true)} signOut={logout} />
     );
   if (setupRequired && setup)
-    return <DspOnboarding saveTo={setup.save} complete={() => load()} signOut={logout} />;
+    return (
+      <DspOnboarding
+        saveTo={setup.save}
+        code={view?.dsp.code}
+        complete={() => load()}
+        signOut={logout}
+      />
+    );
   const scope = dspId ? 'dsp' : 'platform';
   async function logout() {
     await leavePresence();
@@ -431,12 +439,22 @@ function App() {
   );
 }
 installFeatures(features);
-createRoot(document.getElementById('root')!).render(
-  <FeedbackProvider>
-    <PageBoundary>
-      <Suspense fallback={<Loading />}>
-        <App />
-      </Suspense>
-    </PageBoundary>
-  </FeedbackProvider>,
-);
+const root = createRoot(document.getElementById('root')!);
+// Which address this is decides what every link means here, so it is read first.
+function start() {
+  root.render(<Loading />);
+  loadSite().then(
+    () =>
+      root.render(
+        <FeedbackProvider>
+          <PageBoundary>
+            <Suspense fallback={<Loading />}>
+              <App />
+            </Suspense>
+          </PageBoundary>
+        </FeedbackProvider>,
+      ),
+    () => root.render(<button onClick={start}>Retry connection</button>),
+  );
+}
+start();

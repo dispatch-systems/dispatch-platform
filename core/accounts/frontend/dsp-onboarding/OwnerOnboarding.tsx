@@ -1,49 +1,59 @@
-import { useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { api } from '../../../shell/frontend/runtime/api.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
-import { dspHash, navigate, signInHash } from '../../../shell/frontend/runtime/navigation.js';
+import { navigate, signInHash } from '../../../shell/frontend/runtime/navigation.js';
+import { site } from '../../../shell/frontend/runtime/site.js';
 import { ErrorBox } from '../../../shell/frontend/ui/index.js';
+import { signInAt } from '../sign-in-handoff.js';
 import { DspSetupForm, type DspSetup } from './DspSetupForm.js';
 import { OnboardingLayout } from './OnboardingLayout.js';
 
+/**
+ * A new DSP's first owner sets it up and makes their profile in one go, then signs in at the
+ * address its short code gave it.
+ */
 export function OwnerOnboarding({
   token,
   email,
-  onLogin,
+  code,
 }: {
   token: string;
   email: string;
-  onLogin: () => Promise<void>;
+  /** The short code the platform owner already gave the DSP: then it stays. */
+  code: string | null;
 }) {
   const [profile, setProfile] = useState<DspSetup>();
   const [step, setStep] = useState<1 | 2>(1);
   const [passwordError, setPasswordError] = useState('');
-  // If sign-in fails after acceptance, retry sign-in without consuming the invitation again.
-  const accepted = useRef<{ email: string; dspId: string } | null>(null);
+  const invitation = `/api/invitations/${encodeURIComponent(token)}`;
+  const checkCode = useCallback(
+    (code: string) =>
+      api<{ available: boolean }>(`${invitation}/short-code?code=${encodeURIComponent(code)}`),
+    [invitation],
+  );
   const save = useAction(
     async (form: HTMLFormElement) => {
       const values = new FormData(form);
-      const password = String(values.get('password'));
-      if (!accepted.current) {
-        accepted.current = await api(`/api/invitations/${encodeURIComponent(token)}/accept`, {
-          firstName: String(values.get('firstName')).trim(),
-          lastName: String(values.get('lastName')).trim(),
-          password,
-          dspProfile: profile,
-        });
-      }
-      await api('/api/auth/login', { email: accepted.current!.email, password });
-      await onLogin();
-      navigate(dspHash(accepted.current!.dspId));
+      const accepted = await api<{ email: string; signIn: string | null }>(`${invitation}/accept`, {
+        firstName: String(values.get('firstName')).trim(),
+        lastName: String(values.get('lastName')).trim(),
+        password: String(values.get('password')),
+        dspProfile: profile,
+      });
+      signInAt(accepted.email, accepted.signIn);
     },
     { inline: true },
   );
-  const backToSignIn = () => navigate(signInHash);
+  // Nobody signs in at the invite page, so its setup has no way back to Sign In.
+  const backToSignIn = site().kind === 'invite' ? undefined : () => navigate(signInHash);
   return (
     <OnboardingLayout title={step === 1 ? 'Set up your DSP' : 'Create your profile'} step={step}>
       <DspSetupForm
         hidden={step !== 1}
+        checkCode={checkCode}
+        locked={Boolean(code)}
+        initial={code ? { abbreviation: code.toUpperCase() } : undefined}
         onSubmit={(next) => {
           setProfile(next);
           setStep(2);
@@ -77,7 +87,7 @@ export function OwnerOnboarding({
               required
               maxLength={100}
               pattern=".*\S.*"
-              disabled={save.busy || Boolean(accepted.current)}
+              disabled={save.busy}
             />
           </label>
           <label>
@@ -88,7 +98,7 @@ export function OwnerOnboarding({
               required
               maxLength={100}
               pattern=".*\S.*"
-              disabled={save.busy || Boolean(accepted.current)}
+              disabled={save.busy}
             />
           </label>
           <label className="onboarding-wide">
@@ -126,13 +136,10 @@ export function OwnerOnboarding({
             type="button"
             className="onboarding-back"
             disabled={save.busy}
-            onClick={() => {
-              if (accepted.current) backToSignIn();
-              else setStep(1);
-            }}
+            onClick={() => setStep(1)}
           >
-            {accepted.current ? null : <ArrowLeft size={15} aria-hidden="true" />}
-            {accepted.current ? 'Back to sign in' : 'Back to DSP setup'}
+            <ArrowLeft size={15} aria-hidden="true" />
+            Back to DSP setup
           </button>
         </div>
       </form>

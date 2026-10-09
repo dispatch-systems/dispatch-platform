@@ -10,7 +10,12 @@ pub struct Config {
     pub development: bool,
     pub trusted_proxy: crate::server::http::proxy::TrustedProxy,
     pub standalone: bool,
+    /// The platform owner's address: the dashboard's admin, the agent API and its sign-in.
     pub origin: String,
+    /// Where a new DSP's owner accepts their invitation and sets the DSP up.
+    pub invite_origin: String,
+    /// Each DSP's address, its short code in place of `{code}` in the first label.
+    pub dsp_origin: String,
     pub port: u16,
     pub release: String,
     /// The source this runtime was built from: its commit, and its version when it is a published
@@ -58,9 +63,14 @@ impl Config {
         )?;
         if environment == "production" {
             ensure(
-                ["DISPATCH_STATE_ROOT", "DISPATCH_ORIGIN"]
-                    .iter()
-                    .all(|key| env::var(key).is_ok_and(|v| !v.trim().is_empty())),
+                [
+                    "DISPATCH_STATE_ROOT",
+                    "DISPATCH_ORIGIN",
+                    "DISPATCH_INVITE_ORIGIN",
+                    "DISPATCH_DSP_ORIGIN",
+                ]
+                .iter()
+                .all(|key| env::var(key).is_ok_and(|v| !v.trim().is_empty())),
                 "production_configuration_required",
                 400,
             )?;
@@ -96,6 +106,8 @@ impl Config {
             ))?,
             standalone: variable("DISPATCH_STANDALONE", "1") == "1",
             origin: variable("DISPATCH_ORIGIN", "http://127.0.0.1:5173"),
+            invite_origin: String::new(),
+            dsp_origin: String::new(),
             port: variable("PORT", "5180")
                 .parse()
                 .map_err(|_| crate::Error::new("invalid_port", 400))?,
@@ -147,6 +159,12 @@ impl Config {
                     && (!c.fixture || (c.standalone && c.environment == "preview"))),
             "production_configuration_required",
             400,
+        )?;
+        (c.invite_origin, c.dsp_origin) = addresses(
+            &origin,
+            development,
+            env::var("DISPATCH_INVITE_ORIGIN").ok(),
+            env::var("DISPATCH_DSP_ORIGIN").ok(),
         )?;
         if let Some(url) = &c.fixture_url {
             let url =
@@ -212,6 +230,42 @@ impl Config {
         ensure(c.standalone, "independent_environment_required", 400)?;
         Ok(c)
     }
+    /// Which of this server's addresses a request's `Host` names, if any. This machine's own
+    /// address is the admin's, as the updater and health checks call it.
+    pub fn site(&self, host: &str) -> Option<Site> {
+        let host = host.to_ascii_lowercase();
+        if host == authority(&self.origin) || host == format!("127.0.0.1:{}", self.port) {
+            return Some(Site::Admin);
+        }
+        if host == authority(&self.invite_origin) {
+            return Some(Site::Invite);
+        }
+        let suffix = authority(&self.dsp_origin).strip_prefix(CODE)?;
+        let code = host.strip_suffix(suffix)?;
+        (short_code(code) && !self.reserved_code(code)).then(|| Site::Dsp(code.to_owned()))
+    }
+    /// The origin a site's pages are served from, which its requests must come from.
+    pub fn site_origin(&self, site: &Site) -> String {
+        match site {
+            Site::Admin => self.origin.clone(),
+            Site::Invite => self.invite_origin.clone(),
+            Site::Dsp(code) => self.dsp_url(code),
+        }
+    }
+    /// The address of the DSP with short code `code`.
+    pub fn dsp_url(&self, code: &str) -> String {
+        self.dsp_origin
+            .replacen(CODE, &code.to_ascii_lowercase(), 1)
+    }
+    /// A code no DSP may take: a name kept for the platform's own addresses, or one whose DSP
+    /// address would be the admin's or the invite page's.
+    pub fn reserved_code(&self, code: &str) -> bool {
+        let code = code.to_ascii_lowercase();
+        let address = self.dsp_url(&code);
+        RESERVED_CODES.contains(&code.as_str())
+            || address == self.origin
+            || address == self.invite_origin
+    }
     pub fn platform(&self) -> PathBuf {
         self.root.join("data/platform")
     }
@@ -242,6 +296,110 @@ impl Config {
         };
         format!("{prefix}_{name}")
     }
+}
+
+/// Which of the server's addresses a request came to: the platform owner's admin, the page
+/// a new DSP's owner sets it up on, or a DSP's own, by its short code in lowercase.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Site {
+    Admin,
+    Invite,
+    Dsp(String),
+}
+
+/// What stands for a DSP's short code in `DISPATCH_DSP_ORIGIN`.
+const CODE: &str = "{code}";
+/// Names kept for addresses the platform has or may have: never a DSP's short code.
+const RESERVED_CODES: &[&str] = &[
+    "admin",
+    "api",
+    "app",
+    "assets",
+    "auth",
+    "blog",
+    "cdn",
+    "dev",
+    "dispatch",
+    "dispatchbot",
+    "dispatchdev",
+    "docs",
+    "email",
+    "ftp",
+    "help",
+    "imap",
+    "invite",
+    "login",
+    "mail",
+    "pop",
+    "smtp",
+    "static",
+    "staging",
+    "status",
+    "support",
+    "test",
+    "www",
+];
+
+/// Whether `code` can be a DSP's short code: 2 to 16 letters and digits, as it appears in
+/// its address, in lowercase.
+pub fn short_code(code: &str) -> bool {
+    (2..=16).contains(&code.len())
+        && code
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+}
+
+/// What follows the scheme of an origin: its host, and its port when it names one.
+fn authority(origin: &str) -> &str {
+    origin.split_once("://").map_or(origin, |(_, rest)| rest)
+}
+
+/// The invite page's and the DSPs' addresses: as configured, or in development or beside a
+/// loopback origin, the same server under `localhost`'s names, since a browser sends every
+/// `*.localhost` to its own machine. A deployed server names both.
+fn addresses(
+    origin: &url::Url,
+    development: bool,
+    invite: Option<String>,
+    dsp: Option<String>,
+) -> Result<(String, String)> {
+    let blank = |value: Option<String>| value.filter(|v| !v.trim().is_empty());
+    let loopback = match origin.host() {
+        Some(url::Host::Domain(host)) => host == "localhost",
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    };
+    let local = |label: &str| {
+        let port = origin
+            .port()
+            .map_or(String::new(), |port| format!(":{port}"));
+        format!("{}://{label}.localhost{port}", origin.scheme())
+    };
+    let (invite, dsp) = match (blank(invite), blank(dsp)) {
+        (Some(invite), Some(dsp)) => (invite, dsp),
+        (None, None) if development || loopback => (local("invite"), local(CODE)),
+        _ => return Err(crate::Error::new("address_configuration_required", 400)),
+    };
+    let canonical = |address: &str| {
+        url::Url::parse(address).is_ok_and(|url| {
+            url.origin().ascii_serialization() == address
+                && url.scheme() == origin.scheme()
+                && url.username().is_empty()
+                && url.password().is_none()
+        })
+    };
+    let sample = dsp.replacen(CODE, "dsp", 1);
+    ensure(
+        canonical(&invite)
+            && invite != origin.origin().ascii_serialization()
+            && authority(&dsp).starts_with(&format!("{CODE}."))
+            && !sample.contains(['{', '}'])
+            && canonical(&sample),
+        "address_configuration_required",
+        400,
+    )?;
+    Ok((invite, dsp))
 }
 
 text_enum! {

@@ -2,4 +2,8 @@
 import type { Environment } from "../../../foundation/api/generated/Environment";
 import type { DspStatus } from "../../../tenancy/api/generated/DspStatus";
 
-export type Dsp = { id: string, name: string, environment: Environment, status: DspStatus, timezone: string, permanent: boolean, revision: number, createdAt: string, };
+export type Dsp = { id: string, name: string, environment: Environment, status: DspStatus, timezone: string, permanent: boolean, revision: number, createdAt: string,
+/**
+ * Its short code, which names its address, in lowercase: none until it is set up.
+ */
+code: string | null, };

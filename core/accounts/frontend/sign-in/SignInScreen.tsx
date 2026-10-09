@@ -8,6 +8,7 @@ import { messageOf } from '../../../shell/frontend/lib/errors.js';
 import {
   consumeHashToken,
   navigate,
+  parseHash,
   platformHash,
   signInHash,
 } from '../../../shell/frontend/runtime/navigation.js';
@@ -42,7 +43,9 @@ export function SignInScreen({ onLogin }: { onLogin: () => Promise<void> }) {
         });
         await onLogin();
         // A DSP's page, or an app waiting for approval, stays where it was asked for.
-        if (!/^#(?:dsp\/|authorize\?)/.test(window.location.hash)) navigate(platformHash());
+        const address = window.location.hash;
+        if (!parseHash(address).dspId && !address.startsWith('#authorize?'))
+          navigate(platformHash());
       }
       if (mode === 'forgot') {
         await api('/api/auth/forgot-password', { email });

@@ -7,7 +7,7 @@ CREATE TABLE audit (id INTEGER PRIMARY KEY, at TEXT NOT NULL, actor_id TEXT REFE
 CREATE TABLE authenticator_apps ( user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, secret TEXT NOT NULL, created_at INTEGER NOT NULL, last_counter INTEGER NOT NULL DEFAULT -1 );
 CREATE TABLE driver_codes ( code TEXT PRIMARY KEY, dsp_id TEXT NOT NULL, created_at TEXT NOT NULL );
 CREATE TABLE dsp_features ( dsp_id TEXT NOT NULL REFERENCES dsps(id), feature TEXT NOT NULL, enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), changed_by TEXT, changed_at TEXT NOT NULL, shown INTEGER NOT NULL DEFAULT 1 CHECK (shown IN (0, 1)), PRIMARY KEY(dsp_id,feature) );
-CREATE TABLE dsps (id TEXT PRIMARY KEY, name TEXT NOT NULL, environment TEXT NOT NULL CHECK(environment IN ('production','preview')), status TEXT NOT NULL CHECK(status IN ('provisioning','active','suspended','failed')), timezone TEXT NOT NULL, permanent INTEGER NOT NULL DEFAULT 0 CHECK(permanent IN (0,1)), revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL);
+CREATE TABLE dsps (id TEXT PRIMARY KEY, name TEXT NOT NULL, environment TEXT NOT NULL CHECK(environment IN ('production','preview')), status TEXT NOT NULL CHECK(status IN ('provisioning','active','suspended','failed')), timezone TEXT NOT NULL, permanent INTEGER NOT NULL DEFAULT 0 CHECK(permanent IN (0,1)), revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, code TEXT);
 CREATE TABLE feature_availability ( feature TEXT PRIMARY KEY, mandatory INTEGER NOT NULL CHECK (mandatory IN (0, 1)) );
 CREATE TABLE invitations (hash TEXT PRIMARY KEY, dsp_id TEXT NOT NULL REFERENCES dsps(id), email TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('owner','manager','member')), expires_at INTEGER NOT NULL, created_by TEXT NOT NULL REFERENCES users(id), used_at INTEGER, role_id TEXT);
 CREATE TABLE memberships (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), dsp_id TEXT NOT NULL REFERENCES dsps(id), role TEXT NOT NULL CHECK(role IN ('owner','manager','member')), role_id TEXT REFERENCES roles(id), UNIQUE(user_id,dsp_id));
@@ -35,6 +35,7 @@ CREATE INDEX agent_activity_key ON agent_activity(key_id, at);
 CREATE INDEX agent_activity_refused ON agent_activity(at) WHERE outcome<>'ok';
 CREATE INDEX agent_activity_time ON agent_activity(at);
 CREATE INDEX audit_dsp_time ON audit(dsp_id,id DESC);
+CREATE UNIQUE INDEX dsps_code ON dsps(code);
 CREATE INDEX invitations_dsp_owner ON invitations(dsp_id,role,expires_at DESC) WHERE used_at IS NULL;
 CREATE INDEX invitations_expiry ON invitations(expires_at);
 CREATE INDEX invitations_role ON invitations(role_id) WHERE used_at IS NULL;

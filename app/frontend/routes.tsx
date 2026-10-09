@@ -10,9 +10,11 @@ import { prefetchRouteData } from '../../core/shell/frontend/runtime/route-prefe
 import {
   landingPage,
   type Access,
+  type DspRouteId,
   type PageContext,
   type Route,
 } from '../../core/shell/frontend/runtime/slots.js';
+import { dspHash } from '../../core/shell/frontend/runtime/navigation.js';
 import { features } from './features.js';
 
 // Every owner's pages, each with its navigation, access and component, in sidebar order.
@@ -85,7 +87,9 @@ function PageContent({
 }
 
 export function Page(props: Parameters<typeof PageContent>[0]) {
-  const address = props.view ? `#dsp/${props.view.dsp.id}/${props.page}` : `#${props.page}`;
+  const address = props.view
+    ? dspHash(props.view.dsp.id, props.page as DspRouteId)
+    : `#${props.page}`;
   return (
     <PageBoundary resetKey={props.page}>
       <Suspense fallback={<Loading />}>

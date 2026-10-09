@@ -11,7 +11,7 @@ use crate::{
     accounts::api::types::{Dsp, PublicUser, UserStatus},
     db::{Db, FromRow, Row, Store, flag, iso, now, s},
     ensure,
-    foundation::{crypto, validate as v},
+    foundation::{config::Site, crypto, validate as v},
     server::mail::templates as email,
     tenancy::api::types::DspStatus,
 };
@@ -47,7 +47,8 @@ const INVITATION: &str = "SELECT i.email,i.dsp_id dspId,d.name dspName,d.timezon
     AND i.expires_at>? AND d.status='active' AND d.environment=?";
 /// A used invitation still names its DSP and role, so opening its link again can point to Sign In.
 /// It does so only until the invitation would have expired, the same window an open one has.
-const ACCEPTED_INVITATION: &str = "SELECT i.email,d.name dspName,COALESCE(r.name,i.role) role \
+const ACCEPTED_INVITATION: &str = "SELECT i.email,i.dsp_id dspId,d.name dspName,\
+    COALESCE(r.name,i.role) role \
     FROM invitations i JOIN dsps d ON d.id=i.dsp_id LEFT JOIN roles r ON r.id=i.role_id \
     AND r.dsp_id=i.dsp_id WHERE i.hash=? AND i.used_at IS NOT NULL AND i.expires_at>? \
     AND d.status='active' AND d.environment=?";
@@ -109,6 +110,18 @@ pub struct Auth {
     // The DSP role a platform owner chose to look through instead of their
     // own owner access. Members never carry one.
     pub preview: Option<String>,
+    /// The address the session is used at, where it was made.
+    pub site: Site,
+    /// The one DSP a session at a DSP's address may open: that DSP. None at the admin's.
+    pub scope: Option<String>,
+}
+/// Whether an account may be signed in at an address: a platform owner only at the admin's,
+/// where every DSP is theirs to open, a DSP's members only at that DSP's, and nobody at the
+/// invite page.
+pub(crate) enum Admission {
+    Refused,
+    Platform,
+    Dsp(String),
 }
 #[derive(Clone)]
 pub struct Context {

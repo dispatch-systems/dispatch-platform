@@ -20,4 +20,8 @@ nextCollection: string | null, role: string | null,
 /**
  * The features the DSP has (`features`).
  */
-features: Array<string>, members: number, id: string, name: string, environment: Environment, status: DspStatus, timezone: string, permanent: boolean, revision: number, createdAt: string, };
+features: Array<string>, members: number, id: string, name: string, environment: Environment, status: DspStatus, timezone: string, permanent: boolean, revision: number, createdAt: string,
+/**
+ * Its short code, which names its address, in lowercase: none until it is set up.
+ */
+code: string | null, };

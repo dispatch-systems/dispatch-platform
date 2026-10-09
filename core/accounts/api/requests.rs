@@ -80,7 +80,14 @@ impl DspSetupRequest {
     pub fn parse(value: &Value) -> Result<Self> {
         let mut input: Self = request(value)?;
         input.name = v::name(value, "name", 100)?;
-        input.abbreviation = v::name(value, "abbreviation", 16)?;
+        // The DSP's short code, which names its address: letters and digits.
+        let code = v::text(value, "abbreviation", 2, 16)?;
+        ensure(
+            code.bytes().all(|b| b.is_ascii_alphanumeric()),
+            "invalid_short_code",
+            400,
+        )?;
+        input.abbreviation = code.to_ascii_uppercase();
         input.timezone = v::timezone(value, "timezone")?;
         let station = v::text(value, "stationCode", 3, 8)?;
         ensure(

@@ -24,6 +24,8 @@ struct Who {
     cookie: String,
     csrf: String,
     view: Option<String>,
+    /// A member's DSP's own address, where their session was made: none for the platform owner.
+    host: Option<String>,
 }
 struct Answer {
     status: u16,
@@ -91,6 +93,8 @@ impl Server {
         config.dashboard = dashboard;
         config.port = port;
         config.origin = format!("http://127.0.0.1:{port}");
+        config.invite_origin = format!("http://invite.localhost:{port}");
+        config.dsp_origin = format!("http://{{code}}.localhost:{port}");
         operations::seed(&Store::initialize(config.clone()).unwrap()).unwrap();
         let state = State::new(config).unwrap();
         let app = dispatch_core::server::http::router(state.clone())
@@ -103,11 +107,13 @@ impl Server {
             client: reqwest::Client::builder().no_proxy().build().unwrap(),
         }
     }
-    // A session row written directly, so tests do not pay for password hashing.
+    // A session row written directly, so tests do not pay for password hashing, used at the
+    // address its account signs in at: the admin's, or its DSP's own.
     async fn session(&self, email: &'static str) -> Who {
         let raw = crypto::token().unwrap();
         let token = raw.clone();
-        self.state
+        let code = self
+            .state
             .run(move |db| {
                 let user = db
                     .platform
@@ -123,14 +129,21 @@ impl Server {
                         db::now()
                     ],
                 )?;
-                Ok(())
+                let code: Option<(Option<String>,)> = db.platform.one_as(
+                    "SELECT d.code FROM memberships m JOIN dsps d ON d.id=m.dsp_id \
+                     WHERE m.user_id=? LIMIT 1",
+                    [s(&user, "id")],
+                )?;
+                Ok(code.and_then(|(code,)| code))
             })
             .await
             .unwrap();
+        let port = self.origin.rsplit(':').next().unwrap();
         let mut who = Who {
             cookie: format!("dispatch_session={raw}"),
             csrf: String::new(),
             view: None,
+            host: code.map(|code| format!("{code}.localhost:{port}")),
         };
         let session = self.send(Call::get("/api/session").who(&who)).await;
         assert_eq!(session.status, 200, "{}", session.body);
@@ -165,8 +178,15 @@ impl Server {
             let name = reqwest::header::HeaderName::from_bytes(name.as_bytes()).unwrap();
             headers.insert(name, value.parse().unwrap());
         };
+        let host = call.who.and_then(|who| who.host.as_deref());
         if call.origin {
-            set("origin", &self.origin);
+            set(
+                "origin",
+                &host.map_or_else(|| self.origin.clone(), |host| format!("http://{host}")),
+            );
+        }
+        if let Some(host) = host {
+            set("host", host);
         }
         if let Some(who) = call.who {
             set("cookie", &who.cookie);

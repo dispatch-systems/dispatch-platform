@@ -70,6 +70,7 @@ impl Store {
             store.open_collectors(id)?;
             store.initialize_schedules(id)?;
         }
+        store.backfill_codes()?;
         Ok(store)
     }
     pub fn open(config: Config, key: Vec<u8>) -> Result<Self> {

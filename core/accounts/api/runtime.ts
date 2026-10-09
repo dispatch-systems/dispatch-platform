@@ -45,6 +45,7 @@ const dsp = z.object({
   permanent: z.boolean(),
   revision: count,
   createdAt: text,
+  code: text.nullable(),
 }) satisfies z.ZodType<Dsp>;
 const profile = z.object({
   abbreviation: text,

@@ -15,6 +15,8 @@ test('Dev invitations and production use isolated configuration, state and accou
       NODE_ENV: 'production',
       DISPATCH_PROVIDER_MODE: 'native',
       DISPATCH_ORIGIN: 'https://production.dispatch.test',
+      DISPATCH_INVITE_ORIGIN: 'https://invite.production.dispatch.test',
+      DISPATCH_DSP_ORIGIN: 'https://{code}.production.dispatch.test',
       DISPATCH_DEV_MAIL_MODE: 'disabled',
       DISPATCH_PRODUCTION_MAIL_MODE: 'disabled',
     },
@@ -40,22 +42,26 @@ test('Dev invitations and production use isolated configuration, state and accou
   assert.equal(result.status, 201);
   assert.equal(result.value.invitationUrl, undefined);
   const message = await capturedMail(dev.root, 'new-owner@dispatch.test');
-  assert(message.text.includes(dev.env.DISPATCH_ORIGIN));
+  // A new DSP's owner sets it up at the invite page.
+  assert(message.text.includes(`http://invite.localhost:${dev.env.PORT}/#invite?token=`));
   assert.equal(message.subject, '[Dispatch Dev] Set up your DSP on Dispatch');
   assert.match(message.html, />Start DSP onboarding<\/a>/);
   const raw = /token=([A-Za-z0-9_-]{43})/.exec(message.text)![1];
   assert.equal((await production.request(`/api/invitations/${raw}`)).status, 404);
-  assert.equal((await dev.request(`/api/invitations/${raw}`)).value.onboarding, true);
+  assert.equal(
+    (await dev.request(`/api/invitations/${raw}`, undefined, dev.at('invite'))).value.onboarding,
+    true,
+  );
   dev.database('data/platform/accounts.sqlite', (db) =>
     db.prepare('UPDATE invitations SET expires_at=0').run(),
   );
   assert.equal(
     (
-      await dev.request(`/api/invitations/${raw}/accept`, {
-        firstName: 'New',
-        lastName: 'Owner',
-        password: 'An-example-password!',
-      })
+      await dev.request(
+        `/api/invitations/${raw}/accept`,
+        { firstName: 'New', lastName: 'Owner', password: 'An-example-password!' },
+        dev.at('invite'),
+      )
     ).status,
     404,
   );

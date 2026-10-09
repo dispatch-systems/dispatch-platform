@@ -85,13 +85,15 @@ test('invitation password checks share login limits; duplicates cool down and re
         Date.now() + 900000,
       ),
   );
+  // An invitation to a DSP without a short code yet opens at the invite page.
+  const at = f.at(dsp.code ?? 'invite');
   assert.equal(
     (
-      await f.request(`/api/invitations/${token}/accept`, {
-        firstName: 'Existing',
-        lastName: 'Member',
-        password: demo.password,
-      })
+      await f.request(
+        `/api/invitations/${token}/accept`,
+        { firstName: 'Existing', lastName: 'Member', password: demo.password },
+        at,
+      )
     ).status,
     429,
   );
@@ -101,7 +103,7 @@ test('invitation password checks share login limits; duplicates cool down and re
       .run(createHash('sha256').update(`mail:cooldown:${body.email}`).digest('hex')),
   );
   assert.equal((await owner.post('/api/dsp/members/invite', body)).status, 200);
-  assert.equal((await f.request(`/api/invitations/${token}`)).status, 404);
+  assert.equal((await f.request(`/api/invitations/${token}`, undefined, at)).status, 404);
   const count = f.database('data/platform/accounts.sqlite', (db) =>
     db
       .prepare('SELECT count(*) n FROM invitations WHERE email=? AND used_at IS NULL')

@@ -1,4 +1,4 @@
-import { test, expect, login } from '../../../shell/tests/support/fixtures.js';
+import { test, expect, linkIn, login } from '../../../shell/tests/support/fixtures.js';
 import { capturedMail } from '../../../shell/tests/support/mail-support.js';
 
 async function ownerInvitation(page: import('@playwright/test').Page, root: string) {
@@ -11,8 +11,8 @@ async function ownerInvitation(page: import('@playwright/test').Page, root: stri
     data: { ownerEmail: 'responsive-owner@dispatch.test' },
   });
   expect(created.status()).toBe(201);
-  const mail = await capturedMail(root, 'responsive-owner@dispatch.test');
-  return `${origin}/#invite?token=${/token=([A-Za-z0-9_-]{43})/.exec(mail.text)![1]}`;
+  // The owner sets the DSP up at the invite page the email links to.
+  return linkIn((await capturedMail(root, 'responsive-owner@dispatch.test')).text);
 }
 
 async function fits(page: import('@playwright/test').Page) {

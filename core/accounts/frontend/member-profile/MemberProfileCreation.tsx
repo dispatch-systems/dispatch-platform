@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { api } from '../../../shell/frontend/runtime/api.js';
 import { navigate, signInHash } from '../../../shell/frontend/runtime/navigation.js';
-import { signInAfterProfile } from '../sign-in-handoff.js';
+import { signInAt } from '../sign-in-handoff.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { ErrorBox } from '../../../shell/frontend/ui/index.js';
 import { MemberProfileLayout } from './MemberProfileLayout.js';
@@ -33,9 +33,11 @@ export function MemberProfileCreation({
   const scene = useRef<HTMLDivElement>(null);
   const submitting = useRef(false);
   const { module, mounted } = useMemberCompletion();
+  // Where the new member signs in: their DSP's own address.
+  const signIn = useRef<string | null>(null);
   const finish = useCallback(
     (animate: boolean) => {
-      if (created) signInAfterProfile(created.email, animate);
+      if (created) signInAt(created.email, signIn.current, animate);
     },
     [created],
   );
@@ -45,7 +47,7 @@ export function MemberProfileCreation({
       const firstName = String(values.get('firstName')).trim();
       const lastName = String(values.get('lastName')).trim();
       try {
-        const accepted = await api<{ email: string }>(
+        const accepted = await api<{ email: string; signIn: string | null }>(
           `/api/invitations/${encodeURIComponent(token)}/accept`,
           {
             firstName,
@@ -54,8 +56,9 @@ export function MemberProfileCreation({
           },
         );
         if (!mounted.current) return;
+        signIn.current = accepted.signIn;
         if (!module.current || !matchMedia(MEMBER_COMPLETION_MEDIA).matches) {
-          signInAfterProfile(accepted.email);
+          signInAt(accepted.email, accepted.signIn);
           return;
         }
         setCreated({
