@@ -35,4 +35,5 @@ Timecard's collections. It names drivers through Driver Match.
   `meal_breaks` toggles. Its employees and its meal breaks' drivers are Driver Match's
   `timecards` and `meal_breaks` kinds of data.
 - **Storage:** in the collectors' own databases, which it migrates: Paycom's (`paycom`) and
-  Cortex's (`cortex`).
+  Cortex's (`cortex`). A Cortex meal collection asks it for the scope's active publication, so
+  finished routes are not read again.
