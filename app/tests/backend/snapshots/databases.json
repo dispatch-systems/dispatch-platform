@@ -73,7 +73,8 @@
     "cache_size": -512,
     "migrations": [
       [1, "baseline", "76af5a5dacd69f70"],
-      [2, "meal_stops", "fd745ffd2ec11469"]
+      [2, "meal_stops", "fd745ffd2ec11469"],
+      [3, "meal_unreadable", "adc83f12cac279e1"]
     ]
   },
   {

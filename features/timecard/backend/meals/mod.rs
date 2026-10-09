@@ -131,6 +131,9 @@ pub(crate) fn publish_meals(
             if let Some(url)=&route.source_url {
                 db.exec("INSERT INTO meal_sources VALUES (?,?,?)",params![id,route.id,url])?;
             }
+            if let Some(rule)=&route.unreadable {
+                db.exec("INSERT INTO meal_unreadable VALUES (?,?,?)",params![id,route.id,rule])?;
+            }
             for meal in &route.meals {
                 let b=boundaries(route,meal);
                 db.exec("INSERT INTO \
@@ -212,8 +215,9 @@ pub(crate) fn kept_routes(store: &Store, dsp: &str, scope: &Scope) -> Result<Vec
     }
     db.all(
         "SELECT i.itinerary_id,i.transporter_id,i.driver_name,i.route_code,i.observed_at,\
-         i.route_complete,i.delivery_coverage,u.url FROM meal_itineraries i \
+         i.route_complete,i.delivery_coverage,u.url,n.rule FROM meal_itineraries i \
          LEFT JOIN meal_sources u USING(publication_id,itinerary_id) \
+         LEFT JOIN meal_unreadable n USING(publication_id,itinerary_id) \
          WHERE i.publication_id=? ORDER BY i.itinerary_id",
         [id],
     )?
@@ -234,6 +238,7 @@ pub(crate) fn kept_routes(store: &Store, dsp: &str, scope: &Scope) -> Result<Vec
             },
             meals: meals.remove(s(row, "itinerary_id")).unwrap_or_default(),
             source_url: row["url"].as_str().map(Into::into),
+            unreadable: row["rule"].as_str().map(Into::into),
         })
     })
     .collect()

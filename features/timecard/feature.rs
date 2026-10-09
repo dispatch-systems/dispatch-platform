@@ -10,8 +10,8 @@ pub use api::{
         MealStatus, PaycomDay, PunchEvent,
     },
     meals::{
-        CortexMeal, CortexPublication, MatchType, MealComparison, MealDriver, MealEmployee,
-        MealPaycom, MealSource,
+        CortexMeal, CortexPublication, CortexUnreadable, MatchType, MealComparison, MealDriver,
+        MealEmployee, MealPaycom, MealSource,
     },
     settings::{
         DepartmentOption, NameOrder, PaycomColumn, PaycomOptions, PaycomPage, PaycomPreferences,
@@ -102,6 +102,7 @@ pub const FEATURE: Feature = Feature {
                 "meal_records",
                 "meal_sources",
                 "meal_stops",
+                "meal_unreadable",
             ],
         ),
     ],
@@ -127,11 +128,18 @@ pub const FEATURE: Feature = Feature {
         },
         Migrations {
             kind: cortex::DATABASE,
-            list: &[Migration {
-                id: 2,
-                name: "meal_stops",
-                apply: Sql(include_str!("migrations/cortex/0002_meal_stops.sql")),
-            }],
+            list: &[
+                Migration {
+                    id: 2,
+                    name: "meal_stops",
+                    apply: Sql(include_str!("migrations/cortex/0002_meal_stops.sql")),
+                },
+                Migration {
+                    id: 3,
+                    name: "meal_unreadable",
+                    apply: Sql(include_str!("migrations/cortex/0003_meal_unreadable.sql")),
+                },
+            ],
         },
     ],
     domains: &[punches::DOMAIN, meals::DOMAIN],
@@ -200,6 +208,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         MealStatus,
         LateRule,
         CortexMeal,
+        CortexUnreadable,
         MealPaycom,
         MealSource,
         MealEmployee,

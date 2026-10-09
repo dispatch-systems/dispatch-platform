@@ -163,9 +163,11 @@ pub(crate) fn meal_comparisons(
     }
     let mut itineraries: HashMap<String, Vec<Value>> = HashMap::new();
     for mut itinerary in cortex.all(
-        "SELECT i.publication_id,i.itinerary_id,i.transporter_id,i.driver_name,u.url sourceUrl \
-         FROM meal_itineraries i LEFT JOIN meal_sources u \
+        "SELECT i.publication_id,i.itinerary_id,i.transporter_id,i.driver_name,u.url sourceUrl,\
+         n.rule unreadable FROM meal_itineraries i LEFT JOIN meal_sources u \
          ON u.publication_id=i.publication_id AND u.itinerary_id=i.itinerary_id \
+         LEFT JOIN meal_unreadable n \
+         ON n.publication_id=i.publication_id AND n.itinerary_id=i.itinerary_id \
          WHERE i.publication_id IN (SELECT value FROM json_each(?)) \
          ORDER BY i.publication_id,i.itinerary_id",
         [&ids],
@@ -229,7 +231,7 @@ impl ComparisonContext<'_> {
             let key = format!("paycom:{}", s(&row, "employeeCode"));
             rows.insert(
                 key.clone(),
-                json!({"id":key,"name":row["name"],"paycom":row,"cortex":[]}),
+                json!({"id":key,"name":row["name"],"paycom":row,"cortex":[],"cortexUnreadable":[]}),
             );
         }
         // Broader and narrower provider scopes may observe the same itinerary.
@@ -251,7 +253,8 @@ impl ComparisonContext<'_> {
                         continue;
                     }
                     let itinerary = json!({"itinerary_id":route.id,"transporter_id":route.transporter_id,
-                        "driver_name":route.driver,"sourceUrl":route.source_url});
+                        "driver_name":route.driver,"sourceUrl":route.source_url,
+                        "unreadable":route.unreadable});
                     let meals = route
                         .meals
                         .iter()
@@ -331,7 +334,8 @@ impl ComparisonContext<'_> {
             .collect();
         let mut meal_drivers = HashSet::new();
         for (p, itinerary, meals) in observations {
-            if meals.is_empty() {
+            // A route whose punches can't be read still shows its driver, meals unknown.
+            if meals.is_empty() && itinerary["unreadable"].is_null() {
                 continue;
             }
             let transporter = s(&itinerary, "transporter_id");
@@ -344,9 +348,16 @@ impl ComparisonContext<'_> {
                 .and_then(|c| roster_by_code.get(c))
                 .map(|e| e["name"].clone())
                 .unwrap_or(itinerary["driver_name"].clone());
-            let row = rows
-                .entry(key.clone())
-                .or_insert(json!({"id":key,"name":name,"paycom":null,"cortex":[]}));
+            let row = rows.entry(key.clone()).or_insert(
+                json!({"id":key,"name":name,"paycom":null,"cortex":[],"cortexUnreadable":[]}),
+            );
+            if let Some(rule) = itinerary["unreadable"].as_str() {
+                row["cortexUnreadable"].as_array_mut().unwrap().push(json!({
+                    "itineraryId":itinerary["itinerary_id"],"cortexId":transporter,
+                    "driverName":itinerary["driver_name"],"station":p["station"],
+                    "timezone":p["timezone"],"collectedAt":p["collectedAt"],"rule":rule,
+                    "sourceUrl":itinerary["sourceUrl"]}));
+            }
             for mut meal in meals {
                 meal["cortexId"] = json!(transporter);
                 meal["driverName"] = itinerary["driver_name"].clone();

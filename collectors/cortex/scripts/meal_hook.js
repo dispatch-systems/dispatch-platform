@@ -11,7 +11,7 @@
 // four meal timestamps, their coverage and the places in the route of the bounding stops.
 (rules) => {
   if (window.__dispatchMeals) return;
-  const { fail, token, meals, detail } = rules;
+  const { fail, token, routeMeals, detail } = rules;
   const results = new Map();
   // The routes the collection is waiting for, by id.
   const waiting = new Map();
@@ -61,13 +61,15 @@
           const driver = names.get(s.transporterId);
           if (!token(s.itineraryId) || !token(s.transporterId) || !driver)
             throw new Error('cortex_invalid_identity');
+          const { meals, unreadable } = routeMeals(s.breaks);
           const item = {
             id: s.itineraryId,
             transporterId: s.transporterId,
             driver,
             route: s.routeCode || 'UNASSIGNED',
             routeComplete: s.executionStatus === 'COMPLETE',
-            meals: meals(s.breaks),
+            meals,
+            ...(unreadable ? { unreadable } : {}),
           };
           // As meal.js versions a route: by its published facts only.
           return { ...item, revision: JSON.stringify(item) };

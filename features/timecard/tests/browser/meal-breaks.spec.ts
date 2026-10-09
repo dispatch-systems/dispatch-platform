@@ -42,6 +42,7 @@ function sample(): MealComparisonSource {
           sourceUrl: paycomUrl(`E00${id}`),
         }
       : null,
+    cortexUnreadable: [],
     cortex: meal
       ? [
           {

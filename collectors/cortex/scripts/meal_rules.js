@@ -12,6 +12,8 @@
       : null;
   // A meal punch the rules reject, named by the rule for job metrics.
   const invalid = (reason) => Object.assign(new Error('cortex_invalid_meal_evidence'), { reason });
+  // How far apart two starts of one meal may be and still be one start pressed twice.
+  const DOUBLE_START = 5 * 60000;
   const meals = (values) => {
     if (!Array.isArray(values)) throw new Error('cortex_content_incomplete');
     const records = new Map();
@@ -32,8 +34,15 @@
         if (!Number.isInteger(current.sequence) || prior.sequence !== current.sequence)
           throw invalid('meal_repeat_sequence');
         if ((prior.end === null) === (end === null)) {
-          if (prior.start !== start || prior.end !== end) throw invalid('meal_repeat_conflict');
-          continue;
+          if (prior.start === start && prior.end === end) continue;
+          // A start pressed twice: Cortex keeps both starts open until the meal ends, then
+          // completes the first and keeps the second inside it. While the meal runs, it
+          // began at the first.
+          if (end === null && Math.abs(prior.start - start) <= DOUBLE_START) {
+            if (start < prior.start) records.set(id, current);
+            continue;
+          }
+          throw invalid('meal_repeat_conflict');
         }
         // One logical break can retain its ON punch alongside the completed
         // OFF record. The completed pair is authoritative only for that same
@@ -48,6 +57,16 @@
     return [...records.values()]
       .map(({ id, start, end }) => ({ id, start, end }))
       .sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
+  };
+  // A route's meals, or, when its punches break a rule, none and the rule's name: its
+  // meals are then unknown, not absent, and only that route goes without them.
+  const routeMeals = (values) => {
+    try {
+      return { meals: meals(values) };
+    } catch (error) {
+      if (error.message !== 'cortex_invalid_meal_evidence') throw error;
+      return { meals: [], unreadable: error.reason };
+    }
   };
   // Candidate `c`'s evidence from its itinerary details `d`, as the page `rendered` them
   // or as the itinerary response sent them. The page gives each stop an id; the response
@@ -66,7 +85,23 @@
     if (d.serviceAreaId !== scope.serviceAreaId)
       return fail('cortex_scope_mismatch', 'detail_area');
     if (localDate !== scope.date) return fail('cortex_scope_mismatch', 'detail_date');
-    const breaks = meals(d.breaks);
+    const read = routeMeals(d.breaks);
+    // Punches the rules can't read leave the route's meals unknown, whatever the list said.
+    if (read.unreadable)
+      return {
+        itinerary: {
+          id: c.id,
+          transporterId: c.transporterId,
+          driver: c.driver,
+          route: c.route,
+          observedAt: Date.now(),
+          routeComplete: c.routeComplete,
+          deliveryCoverage: 'unavailable',
+          meals: [],
+          unreadable: read.unreadable,
+        },
+      };
+    const breaks = read.meals;
     if (
       JSON.stringify(breaks.map((m) => [m.id, m.start, m.end])) !==
         JSON.stringify(c.meals.map((m) => [m.id, m.start, m.end])) ||
@@ -199,5 +234,5 @@
       },
     };
   };
-  return { fail, token, stamp, meals, detail };
+  return { fail, token, stamp, meals, routeMeals, detail };
 })();

@@ -118,6 +118,7 @@ fn meal_breaks(db: &Store, world: &mut World) -> Result<Made> {
                     .into_iter()
                     .collect(),
                 source_url: None,
+                unreadable: None,
             });
         }
         db.publish_meals(

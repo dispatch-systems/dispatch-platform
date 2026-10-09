@@ -359,3 +359,4 @@ Daily source rows, by driver and date or range. Defaults to yesterday. summary c
 - **meal status: review_punches**: Paycom's punches don't read as a whole day.
 - **meal status: review_pairing**: Meal breaks and lunches don't pair up one to one.
 - **meal status: missing_data**: A source has nothing for the driver yet.
+- **meal status: cortex_unreadable**: Cortex has the driver's route, but sent its meal punches in a shape Dispatch can't read, such as two starts far apart for one meal: its meal times are unknown until Cortex corrects them. Check the route in Cortex.

@@ -125,7 +125,7 @@ test('delivery progress during a working day does not restart meal collection', 
   );
 });
 
-test('a meal punch the rules reject names its rule', () => {
+test('a route whose meal punches the rules reject keeps its route, its meals unknown', () => {
   const on = summary().breaks[0]!;
   const off = { ...on, punchId: 'punch-2', state: 'OFF', timeStampOff: start + 1800000 };
   const cases: [string, object[]][] = [
@@ -143,12 +143,42 @@ test('a meal punch the rules reject names its rule', () => {
   for (const [reason, breaks] of cases) {
     const props = page();
     props.allItinerarySummaries[0]!.breaks = breaks as never;
-    assert.deepEqual(
-      read(props, href()),
-      { error: 'cortex_invalid_meal_evidence', reason: `list_${reason}` },
-      reason,
-    );
+    const [route] = read(props, href()).candidates;
+    // Only this route goes without meals, named for the rule; the day is still read.
+    assert.deepEqual([route.meals, route.unreadable], [[], reason], reason);
   }
+});
+
+test('a meal start pressed twice is one meal that began at the first press', () => {
+  const on = summary().breaks[0]!;
+  const again = (seconds: number) => ({
+    ...on,
+    punchId: 'punch-2',
+    timeStampOn: start + seconds * 1000,
+  });
+  // While the meal runs, Cortex holds both starts open.
+  for (const breaks of [
+    [on, again(4)],
+    [again(64), on],
+  ]) {
+    const props = page();
+    props.allItinerarySummaries[0]!.breaks = breaks as never;
+    const [route] = read(props, href()).candidates;
+    assert.deepEqual(route.meals, [{ id: 'meal-1', start, end: null }]);
+    assert.equal(route.unreadable, undefined);
+  }
+  // Once it ends, the first start is the completed meal and the second lies inside it.
+  const props = page();
+  props.allItinerarySummaries[0]!.breaks = [
+    { ...on, state: 'OFF', timeStampOff: start + 1800000 },
+    again(4),
+  ] as never;
+  assert.deepEqual(read(props, href()).candidates[0].meals, [
+    { id: 'meal-1', start, end: start + 1800000 },
+  ]);
+  // Starts further apart are not one press: which began the meal is unknown.
+  props.allItinerarySummaries[0]!.breaks = [on, again(301)] as never;
+  assert.equal(read(props, href()).candidates[0].unreadable, 'meal_repeat_conflict');
 });
 
 // A finished route whose meal both deliveries bound, as the page renders it: each stop
@@ -439,16 +469,35 @@ test("the hook reads the day's list from its response as meal.js reads it from t
   // A list for another day or service area is not the scope's.
   app.request(summaries('2026-09-14'));
   assert.deepEqual(app.list(), { error: 'cortex_scope_mismatch', reason: 'list_scope' });
-  // A meal punch the rules reject names its rule, as meal.js names it.
+  // A route whose punches the rules reject is kept without meals, as meal.js keeps it.
   const rejected = page();
   rejected.allItinerarySummaries[0]!.breaks[0]!.timeStampOn = 0;
   const strict = hooked({ list: { status: 200, body: listed(rejected) } });
   strict.request(summaries());
   assert.deepEqual(strict.list(), read(rejected, href()));
-  assert.deepEqual(strict.list(), {
-    error: 'cortex_invalid_meal_evidence',
-    reason: 'list_meal_start',
-  });
+  assert.equal(strict.list().candidates[0].unreadable, 'meal_start');
+});
+
+test("a route's response whose punches the rules reject reads as the route, its meals unknown", () => {
+  const props = finished();
+  const [candidate] = read(props, href()).candidates;
+  props.itineraryDetails.breaks = [{ ...props.itineraryDetails.breaks[0]!, timeStampOn: 0 }];
+  const unknown = {
+    id: 'itinerary-1',
+    transporterId: 'driver-1',
+    driver: 'Fixture Driver',
+    route: 'CX1',
+    routeComplete: true,
+    deliveryCoverage: 'unavailable',
+    meals: [],
+    unreadable: 'meal_start',
+  };
+  const page = hooked({ 'itinerary-1': { status: 200, body: response(props) } });
+  page.expect(candidate);
+  page.request();
+  assert.deepEqual(without(page.take()).itinerary, unknown);
+  // The rendered page reads it the same way.
+  assert.deepEqual(without(read(props, href(scope.date, true), candidate)).itinerary, unknown);
 });
 
 test('the hook reads several routes it waits for at once, whatever order they arrive in', () => {

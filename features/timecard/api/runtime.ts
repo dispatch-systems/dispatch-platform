@@ -116,6 +116,7 @@ const assessment = z.object({
     'missing_data',
     'different',
     'same',
+    'cortex_unreadable',
   ]),
   longGap: z.boolean(),
   lateIn: z.boolean(),
@@ -138,6 +139,18 @@ const mealEmployee = z
       })
       .nullable(),
     cortex: z.array(cortexMeal),
+    cortexUnreadable: z.array(
+      z.object({
+        itineraryId: text,
+        cortexId: text,
+        driverName: text,
+        station: text,
+        timezone: text,
+        collectedAt: text,
+        rule: text,
+        sourceUrl: optionalText,
+      }),
+    ),
     assessment,
   })
   .superRefine((row, context) => {
