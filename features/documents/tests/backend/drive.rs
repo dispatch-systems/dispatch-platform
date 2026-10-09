@@ -21,7 +21,10 @@ fn answer(start: &reqwest::Request) -> serde_json::Value {
         .url()
         .query_pairs()
         .find(|(key, _)| key == "fields")
-        .map_or_else(|| "kind,id,name,mimeType".to_owned(), |(_, f)| f.into_owned());
+        .map_or_else(
+            || "kind,id,name,mimeType".to_owned(),
+            |(_, f)| f.into_owned(),
+        );
     // Each field asked for, without what's asked of it in parentheses.
     let mut depth = 0;
     let names: Vec<&str> = asked
@@ -42,10 +45,19 @@ fn answer(start: &reqwest::Request) -> serde_json::Value {
 
 #[test]
 fn an_upload_asks_at_its_start_for_everything_documents_reads_of_the_file_it_made() {
-    let start = upload_start("token", "Fuel receipts.pdf", "application/pdf", "folder", 48213)
-        .build()
-        .unwrap();
+    let start = upload_start(
+        "token",
+        "Fuel receipts.pdf",
+        "application/pdf",
+        "folder",
+        48213,
+    )
+    .build()
+    .unwrap();
     let made: Item = serde_json::from_value(answer(&start)).expect("Google's answer reads");
     assert_eq!(made.parents, ["folder"]);
-    assert_eq!(made.web_view_link, "https://drive.google.com/file/d/1a2b3c/view");
+    assert_eq!(
+        made.web_view_link,
+        "https://drive.google.com/file/d/1a2b3c/view"
+    );
 }
