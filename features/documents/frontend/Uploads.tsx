@@ -1,15 +1,19 @@
 import { useRef, useState } from 'react';
 import { CircleAlert, CircleCheck, LoaderCircle, X } from 'lucide-react';
 import { messageOf } from '../../../core/shell/frontend/lib/errors.js';
+import { Modal } from '../../../core/shell/frontend/ui/index.js';
 import { UPLOAD_LIMIT, createItem, uploadFile } from '../api/client.js';
 import { size } from './items.js';
 
 // Uploading files and folders into the folder open, from a picker or dropped on the page:
-// a folder's folders are made first, then its files go up two at a time, each showing how
-// far it got.
+// the files picked on their own are named first, a folder's folders are made, then the files
+// go up two at a time, each showing how far it got.
 
-/** A file to upload, with the folders it sits in inside what was picked or dropped. */
-export type Picked = { path: string[]; file: File };
+/**
+ * A file to upload, with the folders it sits in inside what was picked or dropped, and the
+ * name it was given, when not its own.
+ */
+export type Picked = { path: string[]; file: File; name?: string };
 type Upload = {
   key: number;
   name: string;
@@ -66,10 +70,10 @@ export function useUploads(folder: string | undefined, uploaded: () => void) {
     setUploads((all) => all.map((each) => (each.key === key ? { ...each, ...update } : each)));
   async function start(files: Picked[]) {
     if (!files.length) return;
-    const queued = files.map(({ path, file }) => {
+    const queued = files.map(({ path, file, name }) => {
       const upload: Upload = {
         key: next.current++,
-        name: file.name,
+        name: name ?? file.name,
         bytes: file.size,
         sent: 0,
         state: file.size > UPLOAD_LIMIT ? 'failed' : 'waiting',
@@ -102,7 +106,7 @@ export function useUploads(folder: string | undefined, uploaded: () => void) {
         change(key, { state: 'uploading' });
         try {
           const parent = await into(each.path);
-          await uploadFile(each.file, parent, (sent) => change(key, { sent }));
+          await uploadFile(each.file, each.upload.name, parent, (sent) => change(key, { sent }));
           change(key, { state: 'done', sent: each.file.size });
           uploaded();
         } catch (error) {
@@ -114,6 +118,102 @@ export function useUploads(folder: string | undefined, uploaded: () => void) {
   }
   const clear = () => setUploads((all) => all.filter((each) => each.state === 'uploading'));
   return { uploads, start, clear };
+}
+
+/** The extension a file's name keeps, such as `.pdf`, as the server reads one: none if not. */
+export function extension(name: string) {
+  const dot = name.lastIndexOf('.');
+  return dot > 0 && /^[A-Za-z0-9]{1,8}$/.test(name.slice(dot + 1)) ? name.slice(dot) : '';
+}
+
+/**
+ * Asks what to name the files picked or dropped on their own before any goes up. Each keeps
+ * its extension, which isn't shown, so it can't be changed by accident. A file inside a folder
+ * that came with them keeps its name, and one too large is left out.
+ */
+export function UploadNaming({
+  files,
+  upload,
+  done,
+}: {
+  files: Picked[];
+  upload: (files: Picked[]) => void;
+  done: () => void;
+}) {
+  const loose = files.filter((each) => !each.path.length);
+  const inFolders = files.filter((each) => each.path.length);
+  const [names, setNames] = useState(() =>
+    loose.map(({ file }) => file.name.slice(0, file.name.length - extension(file.name).length)),
+  );
+  const fits = (at: number) => loose[at]!.file.size <= UPLOAD_LIMIT;
+  const named = (at: number) => names[at]!.trim() + extension(loose[at]!.file.name);
+  const ready =
+    (inFolders.length > 0 || loose.some((_, at) => fits(at))) &&
+    loose.every((_, at) => !fits(at) || (names[at]!.trim() && named(at).length <= 200));
+  const one = loose.length === 1;
+  return (
+    <Modal
+      title={one ? 'Upload file' : `Upload ${loose.length} files`}
+      onClose={done}
+      initialFocus="input"
+    >
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!ready) return;
+          upload([
+            ...loose.flatMap((each, at) => (fits(at) ? [{ ...each, name: named(at) }] : [])),
+            ...inFolders,
+          ]);
+          done();
+        }}
+      >
+        <ul className="documents-naming">
+          {loose.map(({ file }, at) => (
+            <li key={at}>
+              {fits(at) ? (
+                <label>
+                  {one && 'Name'}
+                  <input
+                    value={names[at]}
+                    maxLength={200 - extension(file.name).length}
+                    required
+                    aria-label={one ? undefined : `Name of ${file.name}`}
+                    onChange={(event) =>
+                      setNames((all) =>
+                        all.map((name, i) => (i === at ? event.target.value : name)),
+                      )
+                    }
+                    onFocus={(event) => event.target.select()}
+                  />
+                </label>
+              ) : (
+                <span>{file.name}</span>
+              )}
+              <small className={fits(at) ? 'muted' : 'documents-too-large'}>
+                {fits(at) ? size(file.size) : 'Files can be up to 100 MB.'}
+              </small>
+            </li>
+          ))}
+        </ul>
+        {inFolders.length > 0 && (
+          <p className="muted">
+            {inFolders.length === 1
+              ? '1 file in a folder goes up with its own name.'
+              : `${inFolders.length} files in folders go up with their own names.`}
+          </p>
+        )}
+        <div className="form-actions">
+          <button type="button" onClick={done}>
+            Cancel
+          </button>
+          <button className="primary" disabled={!ready}>
+            Upload
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
 }
 
 /** How the uploads are going, in the corner of the page. */

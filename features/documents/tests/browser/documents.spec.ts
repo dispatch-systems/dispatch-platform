@@ -38,7 +38,7 @@ test('an owner connects Google, starts with folders and makes a Doc that opens i
   await expect(page.getByRole('link', { name: /Rescue plan/ })).toHaveAttribute('target', '_blank');
 });
 
-test('a member uploads files and a folder, drops one on the page, and downloads one', async ({
+test('a member names files as they upload, drops one on the page, renames and downloads one', async ({
   page,
 }) => {
   await login(page);
@@ -54,9 +54,15 @@ test('a member uploads files and a folder, drops one on the page, and downloads 
     { name: 'Uniform policy.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') },
     { name: 'Route notes.txt', mimeType: 'text/plain', buffer: Buffer.from('Route notes') },
   ]);
+  // Each is named before it goes up, its extension kept out of reach.
+  const naming = page.getByRole('dialog', { name: 'Upload 2 files' });
+  const policy = naming.getByRole('textbox', { name: 'Name of Uniform policy.pdf' });
+  await expect(policy).toHaveValue('Uniform policy');
+  await policy.fill('Uniform policy 2026');
+  await naming.getByRole('button', { name: 'Upload' }).click();
   const uploads = page.getByRole('region', { name: 'Uploads' });
   await expect(uploads).toContainText('2 uploaded');
-  await expect(page.getByRole('link', { name: /Uniform policy\.pdf/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Uniform policy 2026\.pdf/ })).toBeVisible();
   await expect(page.getByRole('row', { name: /Route notes\.txt/ })).toContainText('11 B');
 
   // Too large a file never leaves the browser. The file is sparse: its size, not its bytes.
@@ -64,7 +70,10 @@ test('a member uploads files and a folder, drops one on the page, and downloads 
   fs.writeFileSync(large, '');
   fs.truncateSync(large, 100 * 1024 * 1024 + 1);
   await page.getByLabel('Files to upload').setInputFiles(large);
-  await expect(uploads).toContainText('Files can be up to 100 MB.');
+  const tooLarge = page.getByRole('dialog', { name: 'Upload file' });
+  await expect(tooLarge).toContainText('Files can be up to 100 MB.');
+  await expect(tooLarge.getByRole('button', { name: 'Upload' })).toBeDisabled();
+  await tooLarge.getByRole('button', { name: 'Cancel' }).click();
   await uploads.getByRole('button', { name: 'Close uploads' }).click();
 
   // Dropped on the page, a file goes up to the folder open.
@@ -77,14 +86,26 @@ test('a member uploads files and a folder, drops one on the page, and downloads 
         new DragEvent(type, { dataTransfer: transfer, bubbles: true, cancelable: true }),
       );
   });
+  await page
+    .getByRole('dialog', { name: 'Upload file' })
+    .getByRole('button', { name: 'Upload' })
+    .click();
   await expect(uploads).toContainText('1 uploaded');
   await expect(page.getByRole('link', { name: /Checklist\.txt/ })).toBeVisible();
 
-  const saving = page.waitForEvent('download');
+  // Renaming keeps the extension out of reach too.
   await page.getByLabel('Actions for Route notes.txt').click();
+  await page.getByRole('button', { name: 'Rename' }).click();
+  const renaming = page.getByRole('dialog', { name: 'Rename file' });
+  await expect(renaming.getByRole('textbox', { name: 'Name' })).toHaveValue('Route notes');
+  await renaming.getByRole('textbox', { name: 'Name' }).fill('Route notes week 41');
+  await renaming.getByRole('button', { name: 'Rename' }).click();
+
+  const saving = page.waitForEvent('download');
+  await page.getByLabel('Actions for Route notes week 41.txt').click();
   await page.getByRole('button', { name: 'Download' }).click();
   const saved = await saving;
-  expect(saved.suggestedFilename()).toBe('Route notes.txt');
+  expect(saved.suggestedFilename()).toBe('Route notes week 41.txt');
 });
 
 test('an owner adds a file someone made directly in Drive', async ({ page }) => {

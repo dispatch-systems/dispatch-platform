@@ -30,8 +30,10 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   site), so it only passes what Google sent on to the DSP's Documents page, which finishes
   the sign-in as the member who started it. Each sign-in is used once, by its starter, within
   ten minutes, and its code is bound to a PKCE verifier only the server holds.
-- **Uploads and downloads:** a file streams through Dispatch to Google as it arrives, into
-  the folder open, never held whole. Its type is the browser's, but never one of Google's own,
+- **Uploads and downloads:** files picked or dropped on their own are named first, in a
+  dialog that shows each name without its extension and keeps the extension; a folder's files
+  keep their names. A file streams through Dispatch to Google as it arrives, into the folder
+  open, never held whole. Its type is the browser's, but never one of Google's own,
   which Google would convert the bytes into. Like what Dispatch makes, its editors can't share
   it on. A folder uploaded or dropped on the page keeps its folders: Dispatch makes them first.
   A download streams back as Google sends it: an uploaded file as it was, Google's own Docs,
@@ -72,6 +74,10 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   links and when the team panel opens. The main folder and everything Dispatch makes in it
   can't be shared on by its editors (`writersCanShare` off), so the team decides who it's
   shared with. The panel also shows how full the account's storage is.
+- **Renaming** a file keeps its extension, the letters and digits after its last dot (up to
+  eight): the dialog shows the name without it, and `…/rename` refuses a name that changes it
+  (`documents_extension_kept`). Folders and Google's own Docs, Sheets and Slides have none, so
+  their whole name changes. Each item names its `extension` for the dialog.
 - **Reconnecting** takes the same Google account only: `drive.file` reaches the files
   Dispatch made through that account and no other.
 - **Data:** `documents_connection`, `documents_connect_requests`, `documents_files` and

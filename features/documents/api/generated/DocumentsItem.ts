@@ -32,4 +32,9 @@ location: string | null,
 /**
  * Where the page fetches Google's picture of what it holds, when Google made one.
  */
-thumbnail: string | null, };
+thumbnail: string | null,
+/**
+ * The extension its name keeps when renamed, such as `.pdf`: none for a folder, Google's
+ * own Docs, Sheets and Slides, or a name without one.
+ */
+extension: string | null, };

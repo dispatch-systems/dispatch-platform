@@ -135,6 +135,9 @@ pub struct DocumentsItem {
     pub location: Option<String>,
     /// Where the page fetches Google's picture of what it holds, when Google made one.
     pub thumbnail: Option<String>,
+    /// The extension its name keeps when renamed, such as `.pdf`: none for a folder, Google's
+    /// own Docs, Sheets and Slides, or a name without one.
+    pub extension: Option<String>,
 }
 
 /// A step of the way to a folder.

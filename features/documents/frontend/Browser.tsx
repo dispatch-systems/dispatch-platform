@@ -42,7 +42,7 @@ import { GoogleLogo } from './GoogleLogo.js';
 import { Initials, Thumb, Tile, edited, editedInline, kindLabel, typeOf } from './items.js';
 import { TeamPanel } from './TeamPanel.js';
 import { ReadyDialog } from './ReadyDialog.js';
-import { UploadsPanel, dropped, picked, useUploads } from './Uploads.js';
+import { UploadNaming, UploadsPanel, dropped, picked, useUploads, type Picked } from './Uploads.js';
 import { useFromDrive } from './FromDrive.js';
 
 // The DSP's Documents, once Google is connected: a folder at a time, as a list or a grid,
@@ -139,6 +139,12 @@ export function Browser({
   const [team, showTeam] = useState(false);
   const [ready, setReady] = useState(connected);
   const uploads = useUploads(folder, listing.refresh);
+  // Files picked or dropped on their own are named before they go up; a folder goes as it is.
+  const [naming, setNaming] = useState<Picked[]>();
+  const offer = (files: Picked[]) => {
+    if (files.some((each) => !each.path.length)) setNaming(files);
+    else void uploads.start(files);
+  };
   const fromDrive = useFromDrive(overview.picker, folder, () => {
     listing.refresh();
     overviewChanged();
@@ -244,7 +250,7 @@ export function Browser({
             hidden
             aria-label="Files to upload"
             onChange={(event) => {
-              void uploads.start(picked(event.target.files));
+              offer(picked(event.target.files));
               event.target.value = '';
             }}
           />
@@ -257,7 +263,7 @@ export function Browser({
             hidden
             aria-label="Folder to upload"
             onChange={(event) => {
-              void uploads.start(picked(event.target.files));
+              offer(picked(event.target.files));
               event.target.value = '';
             }}
           />
@@ -316,7 +322,7 @@ export function Browser({
           if (!event.dataTransfer.types.includes('Files')) return;
           event.preventDefault();
           setDragging(false);
-          void dropped(event.dataTransfer).then(uploads.start);
+          void dropped(event.dataTransfer).then(offer);
         }}
       >
         {dragging && (
@@ -353,6 +359,13 @@ export function Browser({
         </DataState>
       </div>
       <UploadsPanel uploads={uploads.uploads} clear={uploads.clear} />
+      {naming && (
+        <UploadNaming
+          files={naming}
+          upload={(files) => void uploads.start(files)}
+          done={() => setNaming(undefined)}
+        />
+      )}
       {fromDrive.dialog}
       {asked?.to === 'make' && (
         <Naming
@@ -379,7 +392,11 @@ export function Browser({
       {asked?.to === 'rename' && (
         <Naming
           title={`Rename ${asked.item.kind === 'folder' ? 'folder' : 'file'}`}
-          initial={asked.item.name}
+          initial={asked.item.name.slice(
+            0,
+            asked.item.name.length - (asked.item.extension ?? '').length,
+          )}
+          extension={asked.item.extension ?? ''}
           confirm="Rename"
           done={() => ask(undefined)}
           save={async (name) => {
@@ -653,10 +670,11 @@ function Grid({ view, items, searching, ask }: ViewProps) {
   );
 }
 
-/** Asks for a name, to make something or rename it. */
+/** Asks for a name, to make something or rename it: a file's `extension` stays, unshown. */
 function Naming({
   title,
   initial,
+  extension = '',
   confirm,
   save,
   success,
@@ -664,6 +682,7 @@ function Naming({
 }: {
   title: string;
   initial: string;
+  extension?: string;
   confirm: string;
   save: (name: string) => Promise<void>;
   success: string;
@@ -672,7 +691,7 @@ function Naming({
   const [name, setName] = useState(initial);
   const saving = useAction(
     async () => {
-      await save(name.trim());
+      await save(name.trim() + extension);
       done();
     },
     { success, inline: true },
@@ -689,7 +708,7 @@ function Naming({
           Name
           <input
             value={name}
-            maxLength={200}
+            maxLength={200 - extension.length}
             required
             onChange={(event) => setName(event.target.value)}
             onFocus={(event) => event.target.select()}

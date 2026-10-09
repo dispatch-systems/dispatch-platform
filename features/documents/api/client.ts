@@ -38,6 +38,7 @@ const wording: Record<string, string> = {
   documents_item_not_found:
     'That file or folder is gone: someone moved it, trashed it or changed it in Google Drive. Refresh the page.',
   documents_name_invalid: 'Choose a name of up to 200 characters.',
+  documents_extension_kept: "A file's extension stays as it is when it's renamed.",
   documents_storage_full:
     'The Google account that holds Documents is out of storage. Free up space in it, or add storage with Google One.',
   documents_too_many_files: 'Documents holds more files than Dispatch can list at once.',
@@ -98,11 +99,12 @@ export const UPLOAD_LIMIT = 100 * 1024 * 1024;
 /** Uploads `file` named `name` into `folder`, or the top, telling `progress` how much went. */
 export const uploadFile = (
   file: File,
+  name: string,
   folder: string | undefined,
   progress?: (sent: number) => void,
   signal?: AbortSignal,
 ) => {
-  const params = new URLSearchParams({ name: file.name });
+  const params = new URLSearchParams({ name });
   if (folder) params.set('folder', folder);
   if (file.type) params.set('type', file.type);
   return moving(
@@ -112,9 +114,9 @@ export const uploadFile = (
 /** Adds files picked with Google's picker to `folder`, or the top. */
 export const addFiles = (files: string[], folder: string | undefined) =>
   call<DocumentsItem[]>('/api/dsp/documents/add', { files, folder: folder ?? null });
-/** Saves the file `id`: Google's own Docs, Sheets and Slides as Word, Excel and PowerPoint. */
 /** Google's picture of a file, at the address its item names. */
 export const thumbnail = (url: string, signal: AbortSignal) => picture(url, signal);
+/** Saves the file `id`: Google's own Docs, Sheets and Slides as Word, Excel and PowerPoint. */
 export const downloadItem = (id: string) =>
   moving(download(`/api/dsp/documents/items/${encodeURIComponent(id)}/download`));
 export const renameItem = (id: string, name: string) =>

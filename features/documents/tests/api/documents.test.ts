@@ -360,7 +360,7 @@ test('members who stop using Documents lose the folder, and others shared in Goo
   );
 });
 
-test('a team uploads files into its folders, sees pictures of them, and downloads them and Google’s own as Office files', async (t) => {
+test('a team uploads files into its folders, sees pictures of them, renames them keeping their extensions, and downloads them and Google’s own as Office files', async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
@@ -427,6 +427,16 @@ test('a team uploads files into its folders, sees pictures of them, and download
   );
   assert.match(exported.headers.get('content-disposition')!, /filename="Plan\.docx"/);
   assert.equal((await (await download(safety.id)).json()).error, 'documents_item_not_found');
+
+  // An uploaded file keeps its extension when renamed; Google's own have none to keep.
+  assert.equal(file.extension, '.pdf');
+  const rename = (id: string, name: string) =>
+    owner.post(`/api/dsp/documents/items/${id}/rename`, { name });
+  for (const name of ['Rescue plan.exe', 'Rescue plan', 'Rescue plan.PDF', '.pdf'])
+    assert.equal((await rename(file.id, name)).value.error, 'documents_extension_kept', name);
+  assert.equal((await rename(file.id, 'Rescue plan v2.1.pdf')).value.name, 'Rescue plan v2.1.pdf');
+  assert.equal(doc.extension, null);
+  assert.equal((await rename(doc.id, 'Plan v2.1')).value.name, 'Plan v2.1');
 
   // An image's card shows Google's picture of it, which the browser keeps for that view.
   const png = 'fixture png bytes';

@@ -507,6 +507,36 @@
   bottom: 14px;
 }
 
+/* Naming files before they upload: a row each, the list scrolling past a few. Its padding
+   keeps a focused box's ring clear of the scrolling edge. */
+.documents-naming {
+  display: grid;
+  gap: 10px;
+  max-height: 50vh;
+  margin: -4px -4px 12px;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+}
+.documents-naming li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 4.5em;
+  align-items: end;
+  gap: 12px;
+}
+.documents-naming li > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.documents-naming small {
+  padding-bottom: 10px;
+  text-align: right;
+}
+.documents-too-large {
+  color: var(--destructive);
+}
+
 /* A drawing of a file's first page. */
 .documents-thumb {
   position: relative;
