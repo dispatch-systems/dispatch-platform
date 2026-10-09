@@ -9,6 +9,11 @@ type App = Awaited<ReturnType<typeof fixture>>;
 export const everyKind: AgentArea[] = readToggleGroups.flatMap((group) =>
   group.toggles.filter((toggle) => !toggle.optIn).map((toggle) => toggle.id),
 );
+/** How a new key's or app's row counts what it reads, as "12 of 13 kinds". */
+export const newKinds = `${everyKind.length} of ${readToggleGroups.reduce(
+  (count, group) => count + group.toggles.length,
+  0,
+)} kinds`;
 
 /**
  * Four keys as the Agents page would hold them: read-only and operator keys, one reading a

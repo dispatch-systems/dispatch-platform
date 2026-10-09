@@ -1,25 +1,4 @@
 {
-  "dashboard": [
-    "core/shell/tests/frontend/api.test.ts",
-    "app/tests/frontend/audit-subjects.test.ts",
-    "core/shell/tests/frontend/calendar.test.ts",
-    "core/platform_owner/tests/frontend/collection-history.test.ts",
-    "core/shell/tests/frontend/csv.test.ts",
-    "features/timecard/tests/frontend/daily-sort.test.ts",
-    "core/shell/tests/frontend/dashboard-format.test.ts",
-    "app/tests/rules/dashboard-structure.test.ts",
-    "app/tests/frontend/data-policy.test.ts",
-    "core/platform_owner/tests/frontend/diagnostics.test.ts",
-    "features/dvic/tests/frontend/dvic.test.ts",
-    "app/tests/frontend/features.test.ts",
-    "features/timecard/tests/frontend/meal-breaks.test.ts",
-    "core/shell/tests/frontend/response-cache.test.ts",
-    "app/tests/frontend/role-assignability.test.ts",
-    "app/tests/frontend/slots.test.ts",
-    "core/shell/tests/frontend/slots.test.ts",
-    "features/timecard/tests/frontend/timecard-format.test.ts",
-    "features/uniforms/tests/frontend/uniforms.test.ts"
-  ],
   "pythonIntegration": [
     "tooling/tests/compiler_paths_integration_test.py",
     "ops/tests/production_launcher_integration_test.py"
