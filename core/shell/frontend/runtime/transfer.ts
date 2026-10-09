@@ -74,11 +74,12 @@ export function savedName(disposition: string | null): string | undefined {
   return /filename="([^"]*)"/i.exec(disposition ?? '')?.[1];
 }
 
-/** Saves what `url` answers as a file, under the name the server gives it. */
-export async function download(url: string): Promise<void> {
+/** What `url` answers, asked as the page's own calls are: with the session and the DSP's view. */
+async function fetched(url: string, signal?: AbortSignal): Promise<Response> {
   const response = await fetch(url, {
     credentials: 'same-origin',
     headers: view ? { 'X-Dispatch-View': view } : {},
+    signal,
   });
   if (!response.ok)
     throw failed(
@@ -86,10 +87,24 @@ export async function download(url: string): Promise<void> {
       await response.json().catch(() => ({})),
       response.headers.get('x-request-id') ?? undefined,
     );
+  return response;
+}
+
+/** Saves what `url` answers as a file, under the name the server gives it. */
+export async function download(url: string): Promise<void> {
+  const response = await fetched(url);
   const link = document.createElement('a');
   link.href = URL.createObjectURL(await response.blob());
   link.download = savedName(response.headers.get('content-disposition')) ?? 'download';
   link.click();
   // The browser has the file once the click is handled; the address goes a moment after.
   setTimeout(() => URL.revokeObjectURL(link.href), 60_000);
+}
+
+/**
+ * A picture `url` answers, for the page to show: an image's own address can't send the DSP's
+ * view, so it comes as bytes the page shows at an address of its own.
+ */
+export async function picture(url: string, signal?: AbortSignal): Promise<Blob> {
+  return (await fetched(url, signal)).blob();
 }

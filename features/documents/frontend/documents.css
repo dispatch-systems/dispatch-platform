@@ -518,6 +518,16 @@
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
+/* Google's picture of a file in its place: a page from its top, a photo from its middle. */
+.documents-thumb-picture img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+.documents-thumb-photo img {
+  object-position: center;
+}
 .documents-page {
   display: flex;
   flex-direction: column;

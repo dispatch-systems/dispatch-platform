@@ -630,7 +630,7 @@ function Grid({ view, items, searching, ask }: ViewProps) {
             {files.map((item) => (
               <div className="documents-file-card" key={item.id}>
                 <Opens view={view} item={item} className="documents-file-open">
-                  <Thumb kind={item.kind} />
+                  <Thumb kind={item.kind} picture={item.thumbnail} />
                   <span className="documents-name">
                     <Tile kind={item.kind} />
                     <span>

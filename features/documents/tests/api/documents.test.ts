@@ -360,7 +360,7 @@ test('members who stop using Documents lose the folder, and others shared in Goo
   );
 });
 
-test('a team uploads files into its folders, and downloads them and Google’s own as Office files', async (t) => {
+test('a team uploads files into its folders, sees pictures of them, and downloads them and Google’s own as Office files', async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
@@ -428,6 +428,20 @@ test('a team uploads files into its folders, and downloads them and Google’s o
   assert.match(exported.headers.get('content-disposition')!, /filename="Plan\.docx"/);
   assert.equal((await (await download(safety.id)).json()).error, 'documents_item_not_found');
 
+  // An image's card shows Google's picture of it, which the browser keeps for that view.
+  const png = 'fixture png bytes';
+  const photo = await (await send(into(null, 'Route map.png', 'image/png'), png)).json();
+  const listed = (await owner.get('/api/dsp/documents/folder')).value.items.find(
+    (item: { id: string }) => item.id === photo.id,
+  );
+  const picture = (url: string) => fetch(origin + url, { headers: owner.headers });
+  const pictured = await picture(listed.thumbnail);
+  assert.equal(pictured.status, 200);
+  assert.equal(pictured.headers.get('content-type'), 'image/png');
+  assert.match(pictured.headers.get('cache-control')!, /^private, max-age=\d+/);
+  assert.equal(pictured.headers.get('vary'), 'X-Dispatch-View');
+  assert.equal(await pictured.text(), png);
+
   // A type naming one of Google's own is only bytes, and a name is checked as any is.
   const typed = await (
     await send(into(null, 'notes', 'application/vnd.google-apps.document'), 'hi')
@@ -472,6 +486,7 @@ test('a team uploads files into its folders, and downloads them and Google’s o
     'documents_item_not_found',
   );
   assert.equal((await (await download(file.id)).json()).error, 'documents_item_not_found');
+  assert.equal((await (await picture(listed.thumbnail)).json()).error, 'documents_item_not_found');
 });
 
 test('those who manage Documents add files made directly in Drive, picked as its account', async (t) => {

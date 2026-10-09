@@ -72,6 +72,8 @@ enum Payload {
     /// A file streamed as it comes, with its content type, the name it's saved as and, when
     /// known, its length.
     Download(String, String, Option<u64>, axum::body::Body),
+    /// A picture the page shows, with its content type.
+    Picture(String, Bytes),
 }
 
 pub struct Reply {
@@ -130,6 +132,16 @@ impl Reply {
     ) -> Self {
         Self {
             value: Payload::Download(content_type.to_owned(), name.to_owned(), length, body),
+            status: 200,
+            cookie: None,
+        }
+    }
+    /// A picture of `content_type` for the page to show, which the browser keeps: its address
+    /// names the version, so a new picture comes at a new one. Kept apart for each view of a
+    /// DSP, since the view decides who may see it.
+    pub fn picture(content_type: &str, body: Bytes) -> Self {
+        Self {
+            value: Payload::Picture(content_type.to_owned(), body),
             status: 200,
             cookie: None,
         }
@@ -214,6 +226,19 @@ impl IntoResponse for Reply {
                 }
                 response
             }
+            Payload::Picture(kind, body) => (
+                status,
+                [
+                    (axum::http::header::CONTENT_TYPE, kind),
+                    (
+                        axum::http::header::CACHE_CONTROL,
+                        "private, max-age=604800, immutable".to_owned(),
+                    ),
+                    (axum::http::header::VARY, "X-Dispatch-View".to_owned()),
+                ],
+                body,
+            )
+                .into_response(),
         };
         if let Some(cookie) = self.cookie
             && let Ok(value) = cookie.parse()

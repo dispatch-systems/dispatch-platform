@@ -37,6 +37,7 @@ pub fn routes() -> Vec<Route> {
         async_post("/api/dsp/documents/new", USE, create),
         upload("/api/dsp/documents/upload", USE, UPLOAD_LIMIT, upload_file),
         async_get("/api/dsp/documents/items/{id}/download", USE, download),
+        async_get("/api/dsp/documents/items/{id}/thumbnail", USE, thumbnail),
         async_post("/api/dsp/documents/add", MANAGE, add_files),
         async_post("/api/dsp/documents/items/{id}/rename", USE, rename),
         async_post("/api/dsp/documents/items/{id}/trash", USE, trash),
@@ -191,6 +192,18 @@ async fn download(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply>
         file.length,
         file.body,
     ))
+}
+/// Google's picture of a file. Its address names the picture's version, `v`, which only tells
+/// one picture from the next.
+async fn thumbnail(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.query, &["v"])?;
+    let id = file_id(input.param("id"))?;
+    let picture = files::picture(&state, &c, id).await?;
+    // The member's access may have changed while Google answered.
+    state.read(move |db| access.revalidate(db, &c)).await?;
+    Ok(Reply::picture(&picture.kind, picture.bytes))
 }
 async fn rename(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();

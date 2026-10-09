@@ -28,4 +28,8 @@ url: string,
 /**
  * The folder it is in, for a search's results.
  */
-location: string | null, };
+location: string | null,
+/**
+ * Where the page fetches Google's picture of what it holds, when Google made one.
+ */
+thumbnail: string | null, };
