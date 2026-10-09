@@ -164,11 +164,6 @@ export function Shell({
           >
             <Menu size={20} />
           </button>
-          <div className="breadcrumb">
-            <span>{workspace}</span>
-            <span aria-hidden="true">/</span>
-            <strong>{label}</strong>
-          </div>
           {pending && (
             <span className="navigation-progress" role="status">
               Opening page…
