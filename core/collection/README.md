@@ -12,5 +12,5 @@ one waiting request on `/api/dsp/collection-updates`, which the permissions feat
 `live` may make, wakes as a run ends or a collector shows results partway, and its feature's
 `collected` and `collection` cache rules say which reads that refreshes. A member hears only of
 the collections kept by features whose `live` permissions it holds, so a hint, such as the
-employee a timecard sync names, stays with its feature's readers. A job's status isn't
+employee code a change names, stays with its feature's readers. A job's status isn't
 announced, so a page shows a run's progress by reading its status while it runs.
