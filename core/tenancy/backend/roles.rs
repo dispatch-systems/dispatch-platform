@@ -199,22 +199,32 @@ pub fn backfill(db: &Db) -> Result<()> {
         for dsp in db.all("SELECT id FROM dsps", [])? {
             seed(db, s(&dsp, "id"))?;
         }
-        for table in ["memberships", "invitations"] {
-            for row in db.all(
-                &format!("SELECT DISTINCT dsp_id,role FROM {table} WHERE role_id IS NULL"),
-                [],
-            )? {
-                let id = default_role(db, s(&row, "dsp_id"), s(&row, "role"))?;
-                db.exec(
-                    &format!(
-                        "UPDATE {table} SET role_id=? WHERE role_id IS NULL AND dsp_id=? AND role=?"
-                    ),
-                    [&id, s(&row, "dsp_id"), s(&row, "role")],
-                )?;
-            }
-        }
-        Ok(())
+        legacy_roles(db)
     })
+}
+/// `backfill` in `dsp`'s own directory, which holds its people and roles alone.
+pub fn backfill_directory(db: &Db, dsp: &str) -> Result<()> {
+    db.transaction(|| {
+        seed(db, dsp)?;
+        legacy_roles(db)
+    })
+}
+fn legacy_roles(db: &Db) -> Result<()> {
+    for table in ["memberships", "invitations"] {
+        for row in db.all(
+            &format!("SELECT DISTINCT dsp_id,role FROM {table} WHERE role_id IS NULL"),
+            [],
+        )? {
+            let id = default_role(db, s(&row, "dsp_id"), s(&row, "role"))?;
+            db.exec(
+                &format!(
+                    "UPDATE {table} SET role_id=? WHERE role_id IS NULL AND dsp_id=? AND role=?"
+                ),
+                [&id, s(&row, "dsp_id"), s(&row, "role")],
+            )?;
+        }
+    }
+    Ok(())
 }
 pub fn seed(db: &Db, dsp: &str) -> Result<()> {
     if db
@@ -374,7 +384,7 @@ impl Store {
         let dsp = c.dsp.id.as_str();
         let (name, permissions) = Self::role_input(c, name, permissions)?;
         let people = self.dsp(dsp)?;
-        people.transaction(|| {
+        self.across(&people, || {
             self.ensure_name_free(dsp, &name, "")?;
             let count = people.count("SELECT count(*) FROM roles WHERE dsp_id=?", [dsp])?;
             ensure(count < 50, "role_limit", 409)?;
@@ -405,7 +415,7 @@ impl Store {
         let dsp = c.dsp.id.as_str();
         let (name, permissions) = Self::role_input(c, name, permissions)?;
         let people = self.dsp(dsp)?;
-        people.transaction(|| {
+        self.across(&people, || {
             let role = self.role(dsp, id)?;
             ensure(!role.system, "owner_role_locked", 409)?;
             self.ensure_assignable(c, &role)?;
@@ -457,7 +467,7 @@ impl Store {
     pub fn delete_role(&self, c: &Context, id: &str) -> Result<()> {
         let dsp = c.dsp.id.as_str();
         let people = self.dsp(dsp)?;
-        people.transaction(|| {
+        self.across(&people, || {
             let role = self.role(dsp, id)?;
             ensure(!role.system, "owner_role_locked", 409)?;
             self.ensure_assignable(c, &role)?;

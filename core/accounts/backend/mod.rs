@@ -124,6 +124,12 @@ impl Store {
     pub(crate) fn people(&self, a: &Auth) -> Result<Directory<'_>> {
         self.directory(a.scope.as_deref())
     }
+    /// Runs `f` in a transaction of `people`, a DSP's directory, inside one of the
+    /// platform's, for a change written to both, as a DSP's change and its audit event are:
+    /// either commits with the other, unless the platform's own commit fails after the DSP's.
+    pub(crate) fn across<T>(&self, people: &Db, f: impl FnOnce() -> Result<T>) -> Result<T> {
+        self.platform.transaction(|| people.transaction(f))
+    }
     /// The directory a request to `site` signs in against, and the DSP it is, if any: the
     /// platform's at the admin's address, a DSP's own at its address, and none at the invite
     /// page or at an address no DSP has.

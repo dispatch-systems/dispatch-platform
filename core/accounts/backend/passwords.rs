@@ -9,7 +9,7 @@ impl Store {
     ) -> Result<()> {
         let id = user.id.as_str();
         let people = self.directory(dsp)?;
-        people.transaction(|| {
+        self.across(&people, || {
             people.exec(
                 "UPDATE users SET password=?,version=version+1 WHERE id=?",
                 [encoded, id],
@@ -40,7 +40,7 @@ impl Store {
         };
         if let Some(UserRow { user, version, .. }) = found {
             let raw = crypto::token()?;
-            people.transaction(|| {
+            self.across(&people, || {
                 self.platform.exec(
                     "DELETE FROM outbox WHERE user_id=? AND kind='reset' AND status IN ('pending','failed')",
                     [&user.id],

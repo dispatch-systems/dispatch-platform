@@ -453,7 +453,7 @@ impl Store {
     pub fn set_role(&self, c: &Context, member: &str, role: Option<&str>) -> Result<()> {
         let dsp = c.dsp.id.as_str();
         let people = self.dsp(dsp)?;
-        people.transaction(|| {
+        self.across(&people, || {
             let user: (String,) = people
                 .one_as(
                     "SELECT user_id FROM memberships WHERE id=? AND dsp_id=?",

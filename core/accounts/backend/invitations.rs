@@ -60,38 +60,40 @@ impl Store {
             "email_queue_full",
             429,
         )?;
-        // A resend replaces the outstanding grant rather than accumulating links.
-        people.exec(
-            "DELETE FROM invitations WHERE dsp_id=? AND email=? COLLATE NOCASE AND used_at IS NULL",
-            [dsp, email],
-        )?;
         let raw = crypto::token()?;
         let hash = crypto::sha(&raw);
-        people.exec(
-            "INSERT INTO invitations(hash,dsp_id,email,role,role_id,expires_at,created_by) \
-             VALUES (?,?,?,?,?,?,?)",
-            params![
-                hash,
-                dsp,
-                email.to_lowercase(),
-                role.legacy(),
-                role.id,
-                now() + INVITATION_TTL,
-                a.user.id
-            ],
-        )?;
-        self.platform.exec(
-            "INSERT INTO invitation_routes(hash,dsp_id) VALUES (?,?)",
-            [hash.as_str(), dsp],
-        )?;
-        self.audit_with(
-            Some(&a.user.id),
-            Some(dsp),
-            "member.invited",
-            &role.name,
-            Some(&email.to_lowercase()),
-            &[],
-        )?;
+        self.across(&people, || {
+            // A resend replaces the outstanding grant rather than accumulating links.
+            people.exec(
+                "DELETE FROM invitations WHERE dsp_id=? AND email=? COLLATE NOCASE AND used_at IS NULL",
+                [dsp, email],
+            )?;
+            people.exec(
+                "INSERT INTO invitations(hash,dsp_id,email,role,role_id,expires_at,created_by) \
+                 VALUES (?,?,?,?,?,?,?)",
+                params![
+                    hash,
+                    dsp,
+                    email.to_lowercase(),
+                    role.legacy(),
+                    role.id,
+                    now() + INVITATION_TTL,
+                    a.user.id
+                ],
+            )?;
+            self.platform.exec(
+                "INSERT INTO invitation_routes(hash,dsp_id) VALUES (?,?)",
+                [hash.as_str(), dsp],
+            )?;
+            self.audit_with(
+                Some(&a.user.id),
+                Some(dsp),
+                "member.invited",
+                &role.name,
+                Some(&email.to_lowercase()),
+                &[],
+            )
+        })?;
         Ok(raw)
     }
     /// A DSP's last hundred invitations, open or accepted, the latest to expire first.
@@ -107,16 +109,19 @@ impl Store {
     /// Revokes what is outstanding of `email`'s invitations to the member's DSP, and logs it,
     /// as every invitation's events are.
     pub fn revoke_invitation(&self, c: &Context, email: &str) -> Result<()> {
-        self.dsp(&c.dsp.id)?.exec(
-            "DELETE FROM invitations WHERE dsp_id=? AND email=? COLLATE NOCASE AND used_at IS NULL",
-            [c.dsp.id.as_str(), email],
-        )?;
-        self.audit(
-            Some(c.actor()),
-            Some(&c.dsp.id),
-            "invitation.revoked",
-            email,
-        )
+        let people = self.dsp(&c.dsp.id)?;
+        self.across(&people, || {
+            people.exec(
+                "DELETE FROM invitations WHERE dsp_id=? AND email=? COLLATE NOCASE AND used_at IS NULL",
+                [c.dsp.id.as_str(), email],
+            )?;
+            self.audit(
+                Some(c.actor()),
+                Some(&c.dsp.id),
+                "invitation.revoked",
+                email,
+            )
+        })
     }
     /// The address an invitation to `dsp` is accepted at: the DSP's own, once it has a short
     /// code, and until then the invite page, where its first owner gives it one.
@@ -364,8 +369,9 @@ impl crate::State {
                 db.ensure_dsp_profile(dsp, profile)?;
             }
             let id = crypto::id("usr")?;
+            // The account, its joining and the DSP's details commit together.
             let people = db.dsp(dsp)?;
-            people.transaction(|| {
+            db.across(&people, || {
                 ensure(
                     people
                         .one("SELECT id FROM users WHERE email=?", [email])?
@@ -386,26 +392,26 @@ impl crate::State {
                     "UPDATE invitations SET used_at=? WHERE hash=?",
                     params![now(), hash],
                 )?;
+                let changes: Vec<_> = db
+                    .inviter_name(dsp, &hash)?
+                    .map(|name| ("invitedBy", None, Some(name)))
+                    .into_iter()
+                    .collect();
+                db.audit_ref(
+                    Some(&id),
+                    Some(dsp),
+                    "member.joined",
+                    &role.name,
+                    Some(&format!("{first} {last}")),
+                    &changes,
+                    Some(("member", &id)),
+                )?;
+                if let Some(profile) = &dsp_profile {
+                    db.complete_dsp_profile(dsp, &id, profile)?;
+                }
                 Ok(())
             })?;
             drop(people);
-            let changes: Vec<_> = db
-                .inviter_name(dsp, &hash)?
-                .map(|name| ("invitedBy", None, Some(name)))
-                .into_iter()
-                .collect();
-            db.audit_ref(
-                Some(&id),
-                Some(dsp),
-                "member.joined",
-                &role.name,
-                Some(&format!("{first} {last}")),
-                &changes,
-                Some(("member", &id)),
-            )?;
-            if let Some(profile) = &dsp_profile {
-                db.complete_dsp_profile(dsp, &id, profile)?;
-            }
             Ok(json!({
                 "email": invite["email"],
                 "dspId": invite["dspId"],

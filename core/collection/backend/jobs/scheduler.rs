@@ -116,14 +116,15 @@ impl Scheduler {
                 }
                 // Expired access tokens have no remaining authentication purpose, in the
                 // platform's directory or any DSP's.
-                const EXPIRED: [&str; 3] = [
+                const EXPIRED: [&str; 2] = [
                     "DELETE FROM sessions WHERE expires_at<?",
                     "DELETE FROM resets WHERE expires_at<?",
-                    // An accepted invitation stays 90 days, so Diagnostics can show
-                    // that it was accepted. It can no longer be used.
-                    "DELETE FROM invitations WHERE expires_at<?1 AND \
-                     (used_at IS NULL OR used_at<?1-7776000000)",
                 ];
+                // An accepted invitation stays 90 days, so Diagnostics can show that it was
+                // accepted. It can no longer be used. Invitations are each DSP's own: the ones
+                // the platform's directory still holds stay as the release before left them.
+                const INVITATIONS: &str = "DELETE FROM invitations WHERE expires_at<?1 AND \
+                     (used_at IS NULL OR used_at<?1-7776000000)";
                 db.platform.transaction(|| {
                     for sql in EXPIRED
                         .iter()
@@ -141,7 +142,7 @@ impl Scheduler {
                 for (dsp,) in dsps {
                     let people = db.dsp(&dsp)?;
                     people.transaction(|| {
-                        for sql in EXPIRED {
+                        for sql in EXPIRED.iter().chain(&[INVITATIONS]) {
                             people.exec(sql, [now()])?;
                         }
                         Ok(())

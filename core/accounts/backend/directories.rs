@@ -1,8 +1,13 @@
 //! Each DSP's people, moved from the platform's directory into the DSP's own: once, as the
 //! server starts, for a DSP whose database does not hold them yet. What the platform held stays
-//! where it was, so the release before reads it as it always did.
+//! where it was, so the release before reads it as it always did. Should that release run
+//! again for a while, what it changed there is moved again at the next start, as long as
+//! nothing changed in the DSP's own directory meanwhile.
 use super::*;
 use crate::tenancy::dsps::DIRECTORY;
+
+/// What both directories held of a DSP's people as they were last moved, as digests.
+const MOVED_FROM: &str = "accounts.moved_from";
 
 /// What a DSP's people are, in the platform's directory, each table with the query that
 /// selects that DSP's rows of it, in the order their references need. Platform owners stay
@@ -50,19 +55,65 @@ pub fn people(platform: &Db, dsp: &str) -> Result<Moved> {
         .collect()
 }
 
+/// A digest of `dsp`'s people as `db` holds them, the rows `PEOPLE` selects: two equal
+/// digests of one directory, the same people. Roles count without their permissions, which
+/// startup renames in both directories as permissions retire.
+fn digest(db: &Db, dsp: &str) -> Result<String> {
+    let mut all = Vec::new();
+    for (table, select) in PEOPLE {
+        let select = match table {
+            "roles" => "SELECT id,dsp_id,name,system,created_at FROM roles WHERE dsp_id=?1",
+            _ => select,
+        };
+        all.push(json!([
+            table,
+            db.all(&format!("SELECT * FROM ({select}) ORDER BY 1"), [dsp])?
+        ]));
+    }
+    Ok(crypto::sha(&serde_json::to_string(&all)?))
+}
+
 impl Store {
     /// Moves `dsp`'s people into its own directory, unless it holds them already: its roles,
     /// its members' accounts, memberships, authenticator apps and recovery codes, and its
     /// invitations, which the platform then routes to it. Sign-ins and resets end with the
-    /// move, as everyone signs in again at the DSP's own address. Answers what it copied: a
-    /// row the DSP's database already had is not copied again.
+    /// move, as everyone signs in again at the DSP's own address. Answers what it copied.
+    ///
+    /// Once moved, they are moved again only when the platform's rows changed since, as the
+    /// release before writes them, and the DSP's own did not: then the platform's are the
+    /// current ones. When both changed, neither is the whole story, and an error says so.
     pub fn move_people(&self, dsp: &str) -> Result<Option<Moved>> {
         let people = self.dsp(dsp)?;
-        if !people.setting(DIRECTORY, Value::Null)?.is_null() {
-            return Ok(None);
-        }
+        let again = match people.setting(DIRECTORY, Value::Null)?.as_str() {
+            None => false,
+            Some("moved") => {
+                let from = people.setting(MOVED_FROM, Value::Null)?;
+                if from["platform"] == digest(&self.platform, dsp)? {
+                    return Ok(None);
+                }
+                // A passkey is made only here, so one means this directory is in use.
+                let untouched = from["directory"] == digest(&people, dsp)?
+                    && people.count("SELECT count(*) FROM account_passkeys", [])? == 0;
+                if !untouched {
+                    crate::foundation::observability::event(
+                        "error",
+                        "accounts.diverged",
+                        json!({"dspId": dsp}),
+                    );
+                    return Ok(None);
+                }
+                true
+            }
+            Some(_) => return Ok(None),
+        };
         let mut moved = Moved::new();
-        people.transaction(|| {
+        self.across(&people, || {
+            if again {
+                // In the order their references need; the rest goes with sessions and users.
+                for table in ["sessions", "resets", "invitations", "memberships", "users", "roles"] {
+                    people.exec(&format!("DELETE FROM {table}"), [])?;
+                }
+            }
             for (table, select) in PEOPLE {
                 // Each value as SQLite holds it, so the copy is exact.
                 let mut query = self.platform.0.prepare(select)?;
@@ -92,12 +143,19 @@ impl Store {
                  SELECT hash,dsp_id FROM invitations WHERE dsp_id=?",
                 [dsp],
             )?;
-            people.set(DIRECTORY, &json!("moved"))
+            // Repaired as startup repairs them, so what is compared next time is what stays.
+            crate::tenancy::roles::backfill_directory(&people, dsp)?;
+            crate::manifest::retirement::roles(&people)?;
+            people.set(DIRECTORY, &json!("moved"))?;
+            people.set(
+                MOVED_FROM,
+                &json!({"platform": digest(&self.platform, dsp)?, "directory": digest(&people, dsp)?}),
+            )
         })?;
         crate::foundation::observability::event(
             "info",
             "accounts.moved",
-            json!({"dspId": dsp, "copied": moved}),
+            json!({"dspId": dsp, "copied": moved, "again": again}),
         );
         Ok(Some(moved))
     }

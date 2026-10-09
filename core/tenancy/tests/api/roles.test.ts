@@ -3,6 +3,34 @@ import assert from 'node:assert/strict';
 import type { DatabaseSync } from 'node:sqlite';
 import { demo, fixture } from '../../../shell/tests/support/support.js';
 
+test('memberships written without a role id resolve through the legacy role after restart', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const north = (await f.client('member@dispatch.test')).session.dsps[0];
+  await f.stop();
+  // A DSP's people and roles are its own directory's, which startup repairs as it does the
+  // platform's.
+  f.people(north.id, (db) => {
+    db.exec('UPDATE memberships SET role_id=NULL');
+    db.exec("DELETE FROM roles WHERE name='Member'");
+  });
+  await f.start();
+  const member = await f.client('member@dispatch.test');
+  // The Member role comes back as every role starts: with no permission.
+  assert.deepEqual((await member.select(north.id)).permissions, []);
+  const rows = f.people(north.id, (db) =>
+    db
+      .prepare(
+        'SELECT m.role,r.name FROM memberships m JOIN roles r ON r.id=m.role_id AND r.dsp_id=m.dsp_id',
+      )
+      .all(),
+  );
+  assert.deepEqual(
+    rows.map((row) => ({ ...row })),
+    [{ role: 'member', name: 'Member' }],
+  );
+});
+
 test("a DSP's roles and people are its own, and the platform owner opens any DSP without being one of them", async (t) => {
   const f = await fixture();
   t.after(f.close);

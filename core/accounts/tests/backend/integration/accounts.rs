@@ -439,3 +439,92 @@ async fn a_dsps_people_move_into_its_own_directory_once_and_sign_in_there_as_bef
         "invalid_login"
     );
 }
+
+#[test]
+fn people_move_again_after_the_release_before_ran_unless_their_directory_changed_too() {
+    common::install(&[], &[]);
+    use dispatch_core::tenancy::roles;
+    let (_root, db, dsp) = bootstrapped();
+    let theirs = db.dsp(&dsp).unwrap();
+    theirs
+        .exec("DELETE FROM settings WHERE key='accounts.directory'", [])
+        .unwrap();
+    theirs.exec("DELETE FROM roles", []).unwrap();
+    drop(theirs);
+    roles::seed(&db.platform, &dsp).unwrap();
+    let platform = |sql: &str, values: &[&dyn rusqlite::ToSql]| {
+        db.platform.exec(sql, values).unwrap();
+    };
+    let member = |id: &str, email: &str, password: &str| {
+        platform(
+            "INSERT INTO users(id,email,first_name,last_name,password,created_at) \
+             VALUES (?,?,'Dana','Driver',?,'then')",
+            &[&id, &email, &password],
+        );
+        platform(
+            "INSERT INTO memberships(id,user_id,dsp_id,role) VALUES (?,?,?,'member')",
+            &[&format!("mem_{email}"), &id, &dsp],
+        );
+        roles::backfill(&db.platform).unwrap();
+    };
+    let first = "usr_00000000000000000000000000000001";
+    member(first, "first@example.test", "before");
+    assert!(db.move_people(&dsp).unwrap().is_some());
+    // The new release signs them in at the DSP's address, which changes none of their people.
+    db.dsp(&dsp)
+        .unwrap()
+        .exec(
+            "INSERT INTO sessions VALUES ('session',?,1,?,1)",
+            [first, &(db::now() + 60000).to_string()],
+        )
+        .unwrap();
+    assert!(db.move_people(&dsp).unwrap().is_none());
+
+    // The release before runs again: a password changes and someone joins, in the platform's.
+    platform(
+        "UPDATE users SET password='after',version=version+1 WHERE id=?",
+        &[&first],
+    );
+    member(
+        "usr_00000000000000000000000000000002",
+        "second@example.test",
+        "theirs",
+    );
+    let moved = db.move_people(&dsp).unwrap().unwrap();
+    assert_eq!((moved["users"], moved["memberships"]), (2, 2));
+    let theirs = db.dsp(&dsp).unwrap();
+    let passwords = |people: &dispatch_core::db::DspLease| {
+        people
+            .all("SELECT email,password FROM users ORDER BY email", [])
+            .unwrap()
+    };
+    assert_eq!(
+        json!(passwords(&theirs)),
+        json!([
+            {"email": "first@example.test", "password": "after"},
+            {"email": "second@example.test", "password": "theirs"}
+        ])
+    );
+    drop(theirs);
+    assert!(db.move_people(&dsp).unwrap().is_none());
+    // Startup renames a retired permission in the platform's roles too, which is not the
+    // release before running.
+    platform(
+        "UPDATE roles SET permissions='[\"renamed\"]' WHERE dsp_id=?",
+        &[&dsp],
+    );
+    assert!(db.move_people(&dsp).unwrap().is_none());
+
+    // Changed in both, neither directory is the whole story: nothing moves.
+    platform(
+        "UPDATE users SET password='rolled back' WHERE id=?",
+        &[&first],
+    );
+    db.dsp(&dsp)
+        .unwrap()
+        .exec("UPDATE users SET first_name='Renamed' WHERE id=?", [first])
+        .unwrap();
+    assert!(db.move_people(&dsp).unwrap().is_none());
+    let theirs = db.dsp(&dsp).unwrap();
+    assert_eq!(passwords(&theirs)[0]["password"], "after");
+}

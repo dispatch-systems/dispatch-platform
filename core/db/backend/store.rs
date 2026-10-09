@@ -69,11 +69,13 @@ impl Store {
             store.open_collectors(id)?;
             store.initialize_schedules(id)?;
         }
-        // Each DSP's people move into its own directory once, then any of its roles naming a
-        // retired permission is renamed, as the platform's were.
+        // Each DSP's people move into its own directory once, then its roles are repaired as
+        // the platform's were: a role for each legacy membership, and no retired permission.
         for id in store.kept_dsps()? {
             store.move_people(&id)?;
-            crate::manifest::retirement::roles(&*store.dsp(&id)?)?;
+            let people = store.dsp(&id)?;
+            crate::tenancy::roles::backfill_directory(&people, &id)?;
+            crate::manifest::retirement::roles(&people)?;
         }
         store.backfill_codes()?;
         Ok(store)
