@@ -9,6 +9,11 @@
       "id": 2,
       "name": "meal_stops",
       "sha256": "fd745ffd2ec1146911833be2daa826a2a4c7a5cb646d20638056200c6887bc55"
+    },
+    {
+      "id": 3,
+      "name": "meal_unreadable",
+      "sha256": "adc83f12cac279e181a2b05bc9a330b06d2450939b549601ea3e05e14296734c"
     }
   ],
   "paycom": [

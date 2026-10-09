@@ -12,6 +12,7 @@ export type { AssessedClock } from './generated/AssessedClock.js';
 export type { PunchEvent } from './generated/PunchEvent.js';
 export type { PaycomDay } from './generated/PaycomDay.js';
 export type { CortexMeal } from './generated/CortexMeal.js';
+export type { CortexUnreadable } from './generated/CortexUnreadable.js';
 export type { MealPaycom } from './generated/MealPaycom.js';
 export type { MealSource } from './generated/MealSource.js';
 export type { MealEmployee } from './generated/MealEmployee.js';

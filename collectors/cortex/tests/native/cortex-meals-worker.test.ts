@@ -268,16 +268,26 @@ test(
         assert.equal(link.searchParams.get('selectedDay'), '2026-01-10');
       }
     });
-    mode = 'invalid';
-    const failed = await collect('2026-01-10', 'bad');
-    assert.equal(failed.status, 'failed');
-    assert.equal(failed.error, 'cortex_invalid_meal_evidence');
-    assert.deepEqual((await publications()).value, initial);
-    mode = 'meal-conflict';
-    const mealConflict = await collect('2026-01-10', 'meal-conflict');
-    assert.equal(mealConflict.status, 'failed');
-    assert.equal(mealConflict.error, 'cortex_invalid_meal_evidence');
-    assert.deepEqual((await publications()).value, initial);
+    // Punches the rules can't read leave that route's meals unknown, named for the rule;
+    // the day is still published.
+    for (const [shape, rule] of [
+      ['invalid', 'meal_end_before_start'],
+      ['meal-conflict', 'meal_repeat_conflict'],
+    ] as const) {
+      mode = shape;
+      const job = await collect('2026-01-10', shape);
+      assert.equal(job.status, 'succeeded', JSON.stringify(job));
+      const [publication] = (await publications()).value;
+      assert.equal(publication.itineraryCount, 2);
+      assert.equal(publication.mealCount, 0);
+      f.database(`dsps/${dsp.id}/data/cortex/cortex.sqlite`, (db) => {
+        const unknown = db
+          .prepare('SELECT itinerary_id,rule FROM meal_unreadable WHERE publication_id=?')
+          .all(publication.id)
+          .map((row) => ({ ...(row as object) }));
+        assert.deepEqual(unknown, [{ itinerary_id: 'itinerary-1', rule }], shape);
+      });
+    }
     mode = 'unavailable';
     assert.equal((await collect('2026-01-10', 'unknown')).status, 'succeeded');
     assert.equal((await publications()).value[0].verifiedGapPairs, 0);

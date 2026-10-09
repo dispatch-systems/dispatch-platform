@@ -5,7 +5,7 @@
 // meal_rules.js. `input.kind` asks for the list's routes, a route's evidence, or only
 // whether the page shows the scope's station, day and provider (`scope`).
 (input, rules) => {
-  const { fail, token, meals, detail } = rules;
+  const { fail, token, routeMeals, detail } = rules;
   const scope = input.scope;
   const url = new URL(location.href);
   if (url.origin !== input.origin || url.username || url.password)
@@ -81,13 +81,15 @@
           !driver.trim()
         )
           throw new Error('cortex_invalid_identity');
+        const { meals, unreadable } = routeMeals(s.breaks);
         const item = {
           id: s.itineraryId,
           transporterId: s.transporterId,
           driver,
           route: s.routeCode || 'UNASSIGNED',
           routeComplete: s.executionStatus === 'COMPLETE',
-          meals: meals(s.breaks),
+          meals,
+          ...(unreadable ? { unreadable } : {}),
         };
         // Only published facts version a route. Delivery progress changes with
         // every package, so including it would fail every sync of a working day;

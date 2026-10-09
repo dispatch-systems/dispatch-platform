@@ -36,4 +36,6 @@ Timecard's collections. It names drivers through Driver Match.
   `timecards` and `meal_breaks` kinds of data.
 - **Storage:** in the collectors' own databases, which it migrates: Paycom's (`paycom`) and
   Cortex's (`cortex`). A Cortex meal collection asks it for the scope's active publication, so
-  finished routes are not read again.
+  finished routes are not read again. A route whose meal punches Cortex sent in a shape the
+  meal rules can't read is kept in `meal_unreadable`, and its driver reads as
+  `cortex_unreadable` (Check Cortex punches), linked to the route, rather than as no meal.

@@ -107,6 +107,7 @@ pub fn assess_meal(row: &MealSource, date: &str, late: Option<&LateRule>) -> Mea
     });
     let missing = row.paycom.is_none()
         || row.cortex.is_empty()
+        || !row.cortex_unreadable.is_empty()
         || paycom.review
         || paycom.in_day.is_none()
         || paycom.out_day.is_none()
@@ -122,7 +123,10 @@ pub fn assess_meal(row: &MealSource, date: &str, late: Option<&LateRule>) -> Mea
                         || m.first_delivery.as_deref().is_none_or(str::is_empty)
                 })
         });
-    let status = if row.paycom.is_none() {
+    // Meals Cortex's punches leave unknown can't be compared, whatever else is known.
+    let status = if !row.cortex_unreadable.is_empty() {
+        MealStatus::CortexUnreadable
+    } else if row.paycom.is_none() {
         MealStatus::FlexOnly
     } else if row.cortex.is_empty() {
         MealStatus::NoFlexMeal

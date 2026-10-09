@@ -677,6 +677,10 @@
         {
           "id": 2,
           "name": "meal_stops"
+        },
+        {
+          "id": 3,
+          "name": "meal_unreadable"
         }
       ],
       "paycom": [
@@ -764,7 +768,8 @@
           "meal status: flex_only",
           "meal status: review_punches",
           "meal status: review_pairing",
-          "meal status: missing_data"
+          "meal status: missing_data",
+          "meal status: cortex_unreadable"
         ]
       },
       "people": [
@@ -808,7 +813,8 @@
         "meal_records",
         "meal_schema",
         "meal_sources",
-        "meal_stops"
+        "meal_stops",
+        "meal_unreadable"
       ],
       "paycom": [
         "employee_timecard_syncs",

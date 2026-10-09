@@ -46,6 +46,10 @@ pub struct Itinerary {
     /// page content; captures from before links were retained carry none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_url: Option<String>,
+    /// The rule the route's meal punches broke, when Cortex sent punches the meal rules
+    /// can't read: its meals are then unknown, not absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unreadable: Option<String>,
 }
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -106,6 +110,16 @@ impl Capture {
                 "invalid_cortex_capture",
                 502,
             )?;
+            if let Some(rule) = &route.unreadable {
+                ensure(
+                    route.meals.is_empty()
+                        && route.delivery_coverage == Coverage::Unavailable
+                        && (1..=64).contains(&rule.len())
+                        && rule.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'),
+                    "invalid_cortex_capture",
+                    502,
+                )?;
+            }
             if let Some(url) = &route.source_url {
                 ensure(
                     dispatch_core::foundation::validate::source_url(url).is_ok()
@@ -195,6 +209,7 @@ pub fn fixture(scope: &Scope) -> Capture {
                 first_delivery_stop: Some(12),
             }],
             source_url: None,
+            unreadable: None,
         }],
     }
 }

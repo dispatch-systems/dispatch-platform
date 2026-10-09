@@ -8,7 +8,8 @@ fn employee() -> MealSource {
         "cortex":[{"mealId":"meal-1","itineraryId":"route-1","cortexId":"driver-1","driverName":"Example Employee",
             "station":"DEMO1","timezone":"America/Los_Angeles","collectedAt":"2026-09-16T06:00:00Z",
             "lastDelivery":"2026-09-15T21:33:00Z","start":"2026-09-15T21:38:53Z","end":"2026-09-15T22:08:42Z",
-            "firstDelivery":"2026-09-15T22:10:00Z","beforeStatus":"verified","afterStatus":"verified"}]
+            "firstDelivery":"2026-09-15T22:10:00Z","beforeStatus":"verified","afterStatus":"verified"}],
+        "cortexUnreadable":[]
     })).unwrap()
 }
 fn punches(row: &mut MealSource, value: serde_json::Value) {
@@ -137,6 +138,20 @@ fn comparisons_keep_minute_precision_and_status_precedence() {
     assert_eq!(summary(&row).status, MealStatus::MissingData);
     row.paycom = None;
     assert_eq!(summary(&row).status, MealStatus::FlexOnly);
+    // A route whose punches Cortex sent in a shape the rules can't read leaves the driver's
+    // meals unknown: no comparison stands, whatever else either source shows.
+    row.cortex_unreadable.push(
+        serde_json::from_value(json!({"itineraryId":"route-2",
+        "cortexId":"driver-1","driverName":"Example Employee","station":"DEMO1",
+        "timezone":"America/Los_Angeles","collectedAt":"2026-09-16T06:00:00Z",
+        "rule":"meal_repeat_sequence"}))
+        .unwrap(),
+    );
+    assert_eq!(summary(&row).status, MealStatus::CortexUnreadable);
+    row.paycom = employee().paycom;
+    let result = summary(&row);
+    assert_eq!(result.status, MealStatus::CortexUnreadable);
+    assert!(result.missing);
 }
 #[test]
 fn lateness_uses_in_day_at_or_after_the_configured_time_and_department() {

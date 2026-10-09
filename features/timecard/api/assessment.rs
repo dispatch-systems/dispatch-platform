@@ -66,6 +66,7 @@ text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
     pub enum MealStatus {
+        CortexUnreadable => "cortex_unreadable",
         FlexOnly => "flex_only", NoFlexMeal => "no_flex_meal",
         ReviewPunches => "review_punches", MissingLunch => "missing_lunch",
         ReviewPairing => "review_pairing", MissingData => "missing_data",

@@ -32,6 +32,25 @@ pub struct CortexMeal {
     pub first_delivery_url: Option<String>,
 }
 
+/// A driver's route whose meal punches Cortex sent in a shape the meal rules can't read,
+/// so its meals are unknown rather than absent: `rule` names the shape.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct CortexUnreadable {
+    pub itinerary_id: String,
+    pub cortex_id: String,
+    pub driver_name: String,
+    pub station: String,
+    pub timezone: String,
+    pub collected_at: String,
+    pub rule: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
+    pub source_url: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
@@ -67,6 +86,8 @@ pub struct MealSource {
     pub name: String,
     pub paycom: Option<MealPaycom>,
     pub cortex: Vec<CortexMeal>,
+    /// Routes of the driver's whose meals Cortex's punches leave unknown.
+    pub cortex_unreadable: Vec<CortexUnreadable>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

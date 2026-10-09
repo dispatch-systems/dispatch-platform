@@ -218,6 +218,58 @@ fn a_driver_driver_match_has_not_reached_never_takes_an_employee_it_gave_someone
     assert_eq!(driver("late")["matchType"], "unmatched");
     assert!(driver("late")["paycomCode"].is_null());
 }
+// A route whose punches Cortex sent in a shape the meal rules can't read keeps its driver
+// on the page with that route's meals unknown, linked to the route, rather than reading as
+// a driver who took no meal.
+#[test]
+fn a_driver_whose_meal_punches_cant_be_read_is_unknown_not_absent() {
+    install();
+    let (_root, db, id) = common::bootstrapped();
+    let (date, _) = seed(&db, &id);
+    let scope = Scope {
+        date: date.clone(),
+        station: "DEMO1".into(),
+        service_area_id: "area-demo".into(),
+        provider: "provider-demo".into(),
+        timezone: "America/Los_Angeles".into(),
+    };
+    let mut capture = meals::fixture(&scope);
+    let route = &mut capture.itineraries[0];
+    route.driver = "Demo Driver".into();
+    route.meals.clear();
+    route.delivery_coverage = meals::Coverage::Unavailable;
+    route.unreadable = Some("meal_repeat_sequence".into());
+    let link = format!(
+        "https://logistics.amazon.com{}",
+        scope.detail_path(&route.id)
+    );
+    route.source_url = Some(link.clone());
+    db.publish_meals(&id, "unreadable", &capture, &scope)
+        .unwrap();
+    let data = db
+        .meal_comparison(&id, &date, "UTC")
+        .map(|value| serde_json::to_value(value).unwrap())
+        .unwrap();
+    let row = rows(&data)
+        .iter()
+        .find(|r| r["paycom"]["employeeCode"] == "E001")
+        .unwrap();
+    assert_eq!(row["cortex"], json!([]));
+    assert_eq!(row["assessment"]["status"], "cortex_unreadable");
+    let unknown = &row["cortexUnreadable"][0];
+    assert_eq!(
+        (
+            &unknown["rule"],
+            &unknown["sourceUrl"],
+            &unknown["itineraryId"]
+        ),
+        (
+            &json!("meal_repeat_sequence"),
+            &json!(link),
+            &json!("fixture-itinerary")
+        )
+    );
+}
 #[test]
 fn newer_empty_scope_suppresses_stale_meals_and_latest_paycom_period_wins() {
     install();

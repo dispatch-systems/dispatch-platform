@@ -273,7 +273,21 @@ fn a_collection_learns_the_routes_kept_for_its_scope_as_it_collected_them() {
     none.delivery_coverage = Coverage::Unavailable;
     none.meals.clear();
     none.source_url = link("quiet-itinerary");
-    c.itineraries.extend([out, none]);
+    // And one whose punches the meal rules couldn't read, which can hold no meals.
+    let mut unknown = none.clone();
+    unknown.id = "unknown-itinerary".into();
+    unknown.transporter_id = "unknown-driver".into();
+    unknown.source_url = link("unknown-itinerary");
+    unknown.unreadable = Some("meal_repeat_sequence".into());
+    let mut guessed = c.clone();
+    guessed.itineraries[0].unreadable = Some("meal_repeat_sequence".into());
+    assert_eq!(
+        db.publish_meals(&id, "job-guessed", &guessed, &scope)
+            .unwrap_err()
+            .code,
+        "invalid_cortex_capture"
+    );
+    c.itineraries.extend([out, none, unknown]);
     db.publish_meals(&id, "job-kept", &c, &scope).unwrap();
     let keeper = registry().keeper(meals::JOB_KIND);
     assert_eq!(

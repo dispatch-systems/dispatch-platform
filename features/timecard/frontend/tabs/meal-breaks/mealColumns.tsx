@@ -82,6 +82,7 @@ const difference = (minutes: number | null | undefined) =>
   minutes === null || minutes === undefined ? null : Math.abs(minutes);
 /** Statuses in the order a review reads them: attention first, agreement last. */
 const statusOrder = [
+  'Check Cortex punches',
   'Different times',
   'Missing Paycom lunch',
   'Missing data',
@@ -298,34 +299,53 @@ export function MealDetail({ line: { row, summary } }: { line: MealLine }) {
       </section>
       <section>
         <h3>Flex meals</h3>
-        {row.cortex.length ? (
-          row.cortex.map((meal, i) => (
-            <div key={`${meal.itineraryId}:${meal.mealId}`}>
-              <p>
-                Meal {i + 1} · {fullName(meal.driverName)} · {meal.station} · {meal.timezone}
-              </p>
-              <p className="muted">
-                Last delivery:{' '}
-                {meal.beforeStatus === 'verified'
-                  ? 'available'
-                  : meal.beforeStatus === 'absent'
-                    ? 'none before this meal'
-                    : 'unavailable'}
-                . First delivery:{' '}
-                {meal.afterStatus === 'verified'
-                  ? 'available'
-                  : meal.afterStatus === 'absent'
-                    ? 'none after this meal'
-                    : meal.afterStatus === 'pending'
-                      ? 'meal has not ended'
+        {row.cortexUnreadable.map((route) => (
+          <div key={route.itineraryId}>
+            <p>
+              {fullName(route.driverName)} · {route.station} · {route.timezone}
+            </p>
+            <p className="muted">
+              Cortex sent this route’s meal punches in a shape Dispatch can’t read, so its meal
+              times are unknown.{' '}
+              {route.sourceUrl ? (
+                <a href={route.sourceUrl} target="_blank" rel="noreferrer">
+                  Check the route in Cortex
+                </a>
+              ) : (
+                'Check the route in Cortex'
+              )}
+              .
+            </p>
+          </div>
+        ))}
+        {row.cortex.length
+          ? row.cortex.map((meal, i) => (
+              <div key={`${meal.itineraryId}:${meal.mealId}`}>
+                <p>
+                  Meal {i + 1} · {fullName(meal.driverName)} · {meal.station} · {meal.timezone}
+                </p>
+                <p className="muted">
+                  Last delivery:{' '}
+                  {meal.beforeStatus === 'verified'
+                    ? 'available'
+                    : meal.beforeStatus === 'absent'
+                      ? 'none before this meal'
                       : 'unavailable'}
-                .
-              </p>
-            </div>
-          ))
-        ) : (
-          <p>No Flex meal collected for this employee on this date.</p>
-        )}
+                  . First delivery:{' '}
+                  {meal.afterStatus === 'verified'
+                    ? 'available'
+                    : meal.afterStatus === 'absent'
+                      ? 'none after this meal'
+                      : meal.afterStatus === 'pending'
+                        ? 'meal has not ended'
+                        : 'unavailable'}
+                  .
+                </p>
+              </div>
+            ))
+          : !row.cortexUnreadable.length && (
+              <p>No Flex meal collected for this employee on this date.</p>
+            )}
         {summary.pairs.length > 1 && (
           <p className="muted">
             Meals appear in each source’s time order. Differences are shown only when the meal

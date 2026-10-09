@@ -32,6 +32,7 @@ test('the dashboard formats server decisions without recalculating status, laten
     name: 'Employee',
     paycom: null,
     cortex: [],
+    cortexUnreadable: [],
     assessment: {
       paycom: {
         inDay: { minute: 1445, day: 1 },

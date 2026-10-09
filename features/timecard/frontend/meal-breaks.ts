@@ -81,6 +81,7 @@ export function cortexClock(value: string | null, date: string, zone: string): C
   return { minute, day, label: label(minute) };
 }
 const statusLabels = {
+  cortex_unreadable: 'Check Cortex punches',
   flex_only: 'Flex only',
   no_flex_meal: 'No Flex meal',
   review_punches: 'Review Paycom punches',

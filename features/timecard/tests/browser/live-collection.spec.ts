@@ -79,7 +79,15 @@ test('driver results update open timecards and meal breaks without resetting the
         timezone: 'America/Los_Angeles',
         rows:
           selected === date
-            ? [{ id: 'paycom:E001', name: card.name, paycom: card, cortex: meals }]
+            ? [
+                {
+                  id: 'paycom:E001',
+                  name: card.name,
+                  paycom: card,
+                  cortex: meals,
+                  cortexUnreadable: [],
+                },
+              ]
             : [],
         paycomCollectedAt: null,
         cortexPublications: [],

@@ -64,6 +64,9 @@ pub(crate) struct Candidate {
     route: String,
     route_complete: bool,
     meals: Vec<Punch>,
+    /// The rule the route's punches broke, when they can't be read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    unreadable: Option<String>,
     revision: String,
 }
 #[derive(Clone, Deserialize, Serialize)]
@@ -521,8 +524,8 @@ impl Driver {
         }
         result
     }
-    /// A route the list shows without meals: there are no deliveries to bound, so its
-    /// itinerary is not read and its deliveries are not counted.
+    /// A route the list shows without meals, or whose punches it can't read: there are no
+    /// deliveries to bound, so its itinerary is not read and its deliveries are not counted.
     fn without_meals(&self, scope: &Scope, c: &Candidate) -> Itinerary {
         Itinerary {
             id: c.id.clone(),
@@ -534,6 +537,7 @@ impl Driver {
             delivery_coverage: Coverage::Unavailable,
             meals: Vec::new(),
             source_url: Some(format!("{}{}", self.origin, scope.detail_path(&c.id))),
+            unreadable: c.unreadable.clone(),
         }
     }
     /// Reads until one pass finds every listed route's record at its latest revision.
@@ -561,8 +565,8 @@ impl Driver {
         // Swipes arrive every few minutes at midday; allow for several of them.
         for pass in 0..6 {
             known.extend(candidates.iter().map(|c| c.id.clone()));
-            // Routes the list alone answers: one without meals, and a finished one
-            // Timecard holds unchanged.
+            // Routes the list alone answers: one without meals or whose punches can't be
+            // read, and a finished one Timecard holds unchanged.
             for c in &candidates {
                 if records
                     .get(&c.id)
@@ -571,7 +575,11 @@ impl Driver {
                     continue;
                 }
                 let route = if c.meals.is_empty() {
-                    metrics.detail("meal_list_only");
+                    metrics.detail(if c.unreadable.is_some() {
+                        "meal_unreadable"
+                    } else {
+                        "meal_list_only"
+                    });
                     self.without_meals(scope, c)
                 } else if let Some(route) = finished(kept, c) {
                     metrics.detail("meal_kept");

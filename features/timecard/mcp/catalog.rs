@@ -199,4 +199,11 @@ pub const TERMS: &[Term] = &[
         meaning: "A source has nothing for the driver yet.",
         order: 160,
     },
+    Term {
+        term: "meal status: cortex_unreadable",
+        meaning: "Cortex has the driver's route, but sent its meal punches in a shape Dispatch \
+         can't read, such as two starts far apart for one meal: its meal times are unknown \
+         until Cortex corrects them. Check the route in Cortex.",
+        order: 170,
+    },
 ];
