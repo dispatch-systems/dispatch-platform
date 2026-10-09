@@ -1,27 +1,31 @@
 import { ApiError, useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import { download, picture, upload } from '../../../core/shell/frontend/runtime/transfer.js';
+import type { DocumentsAccount } from './generated/DocumentsAccount.js';
 import type { DocumentsOverview } from './generated/DocumentsOverview.js';
+import type { GoogleConnected } from './generated/GoogleConnected.js';
 import type { GoogleSignIn } from './generated/GoogleSignIn.js';
 import type { DocumentsFolder } from './generated/DocumentsFolder.js';
 import type { DocumentsItem } from './generated/DocumentsItem.js';
 import type { NewKind } from './generated/NewKind.js';
-import type { DocumentsTeam } from './generated/DocumentsTeam.js';
 import type { MySharing } from './generated/MySharing.js';
 
+export type { DocumentsAccount } from './generated/DocumentsAccount.js';
+export type { DriveStorage } from './generated/DriveStorage.js';
 export type { DocumentsOverview } from './generated/DocumentsOverview.js';
 export type { DocumentsConnection } from './generated/DocumentsConnection.js';
 export type { DocumentsFolder } from './generated/DocumentsFolder.js';
 export type { DocumentsItem } from './generated/DocumentsItem.js';
 export type { ItemKind } from './generated/ItemKind.js';
 export type { NewKind } from './generated/NewKind.js';
-export type { DocumentsTeam } from './generated/DocumentsTeam.js';
-export type { TeamPerson } from './generated/TeamPerson.js';
 export type { MySharing } from './generated/MySharing.js';
 export type { PickerSetup } from './generated/PickerSetup.js';
 
 // Documents's endpoints, as its screens call them.
 
-/** What its error codes say. Only its page makes the calls that raise them, so they load with it. */
+/**
+ * What its error codes say. Only its page and its cards on Settings' Connections make the calls
+ * that raise them, so they load with those.
+ */
 const wording: Record<string, string> = {
   google_unavailable: "Google isn't set up for Dispatch yet. Ask Dispatch support to finish it.",
   google_unreachable: "Google didn't answer. Try again in a minute.",
@@ -42,9 +46,6 @@ const wording: Record<string, string> = {
   documents_storage_full:
     'The Google account that holds Documents is out of storage. Free up space in it, or add storage with Google One.',
   documents_too_many_files: 'Documents holds more files than Dispatch can list at once.',
-  documents_person_not_found:
-    'They have a Google account now, or left your team. Refresh the list.',
-  documents_share_not_found: 'That share is gone already. Refresh the list.',
   documents_picked_elsewhere:
     'Those files were picked as another Google account. Pick them again, signed in to Google as the account that holds Documents.',
   upload_too_large: 'Files can be up to 100 MB.',
@@ -67,12 +68,18 @@ async function moving<T>(work: Promise<T>) {
 
 /** The DSP's Google connection, and whether it can make one. */
 export const useDocumentsOverview = () => useData<DocumentsOverview>('/api/dsp/documents');
-/** Starts a sign-in with Google: where the browser goes next. */
+/** The DSP's Google account, as those who manage its connections see it. */
+export const documentsAccountUrl = '/api/dsp/documents/account';
+export const useDocumentsAccount = () =>
+  useData<DocumentsAccount>(documentsAccountUrl, 0, undefined, undefined, false, (signal) =>
+    call<DocumentsAccount>(documentsAccountUrl, undefined, signal),
+  );
+/** Starts a sign-in with Google to connect the DSP's account: where the browser goes next. */
 export const connectGoogle = () => call<GoogleSignIn>('/api/dsp/documents/connect', {});
 /** Finishes the sign-in Google sent the browser back from. */
 export const finishGoogle = (state: string, code: string) =>
-  call<DocumentsOverview>('/api/dsp/documents/connect/finish', { state, code });
-export const disconnectGoogle = () => call<DocumentsOverview>('/api/dsp/documents/disconnect', {});
+  call<GoogleConnected>('/api/dsp/documents/connect/finish', { state, code });
+export const disconnectGoogle = () => call<DocumentsAccount>('/api/dsp/documents/disconnect', {});
 
 /** What a folder holds, or with `query`, what a search inside it found. No folder: the top. */
 export const documentsFolderUrl = (folder?: string, query?: string) => {
@@ -125,20 +132,12 @@ export const renameItem = (id: string, name: string) =>
 export const trashItem = (id: string) =>
   call<unknown>(`/api/dsp/documents/items/${encodeURIComponent(id)}/trash`, {});
 
-/** Who on the team edits in Google, who can't yet, and how full the account is. */
-export const documentsTeamUrl = '/api/dsp/documents/team';
-export const useDocumentsTeam = () =>
-  useData<DocumentsTeam>(documentsTeamUrl, 0, undefined, undefined, false, (signal) =>
-    call<DocumentsTeam>(documentsTeamUrl, undefined, signal),
-  );
-/** Emails a member again how to link a Google account. */
-export const emailAgain = (user: string) =>
-  call<DocumentsTeam>('/api/dsp/documents/team/email', { user });
-/** Takes back a share someone made in Google Drive for someone not on the team. */
-export const removeShare = (share: string) =>
-  call<DocumentsTeam>('/api/dsp/documents/team/remove', { share });
-/** Starts the sign-in that links the member's own Google account: where the browser goes. */
-export const linkGoogle = () => call<GoogleSignIn>('/api/dsp/documents/link', {});
+/**
+ * Starts the sign-in that links the member's own Google account: where the browser goes. Google
+ * sends them back to Settings' Connections when they started there, or else to Documents.
+ */
+export const linkGoogle = (from?: 'settings') =>
+  call<GoogleSignIn>('/api/dsp/documents/link', from ? { from } : {});
 /** Finishes it, once Google sent the browser back. */
 export const finishLink = (state: string, code: string) =>
   call<MySharing | null>('/api/dsp/documents/link/finish', { state, code });

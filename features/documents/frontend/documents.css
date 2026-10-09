@@ -74,10 +74,27 @@
 .documents-connect-copy > p {
   margin-top: 10px;
 }
-.documents-connect .documents-google-button {
+.documents-connect .documents-settings-button {
   margin-top: 24px;
   min-height: 44px;
   padding: 10px 18px;
+}
+/* Where the DSP's Google account is connected and reconnected: Settings' Connections. */
+.documents-settings-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--control-height);
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font: 500 14px/1.4 var(--font-family);
+  transition: background-color var(--motion-duration);
+}
+.documents-settings-button:hover {
+  background: var(--primary-hover);
 }
 .documents-steps {
   display: flex;
@@ -149,6 +166,17 @@
 .documents-waiting p {
   max-width: 440px;
 }
+/* A member whose email isn't a Google account: linking one opens Documents. */
+.documents-gate p {
+  max-width: 520px;
+}
+.documents-gate .documents-google-button {
+  margin-top: 8px;
+}
+.documents-gate .documents-gate-note {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
 
 /* The connection stopped working. */
 .documents-broken {
@@ -173,24 +201,6 @@
 }
 
 /* Connected: the folder, and where it lives. */
-.documents-connected {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 22px 24px;
-}
-.documents-connected > div {
-  flex: 1;
-  min-width: 0;
-}
-.documents-connected p {
-  margin-top: 3px;
-  font-size: 13px;
-}
-.documents-disconnect {
-  color: var(--destructive);
-  white-space: nowrap;
-}
 
 @media (width <= 600px) {
   .documents-connect-copy {
@@ -198,9 +208,6 @@
   }
   .documents-broken {
     padding: 22px 20px;
-  }
-  .documents-connected {
-    flex-wrap: wrap;
   }
 }
 
@@ -265,9 +272,6 @@
 }
 
 /* The heading's buttons. */
-.documents-account-button {
-  gap: 8px;
-}
 .documents-new {
   position: relative;
 }
@@ -675,56 +679,6 @@
   height: 18%;
 }
 
-/* The Google account that holds Documents. */
-.documents-account {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-.documents-account-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 18px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-.documents-account-card > div {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-.documents-account-card strong {
-  overflow-wrap: anywhere;
-}
-/* On a phone, the account's address keeps the card's width and Reconnect goes under it. */
-@media (width <= 600px) {
-  .documents-account-card {
-    flex-wrap: wrap;
-  }
-  .documents-account-card > div {
-    flex-basis: calc(100% - 36px);
-  }
-  .documents-account-card button {
-    width: 100%;
-  }
-}
-.documents-account-card small {
-  color: var(--muted-foreground);
-  font-size: 13px;
-}
-.documents-account-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-  font-size: 13px;
-}
-
 /* Documents is ready: some folders to start with. */
 .documents-ready-title {
   display: inline-flex;
@@ -786,43 +740,35 @@
   }
 }
 
-/* What a member does to edit in Google. */
-.documents-banner {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 18px;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
+/* Documents's cards on Settings' Connections: the DSP's Google account, with how full it is,
+   and the member's own. */
+.documents-details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 10px 20px;
+  margin: 0;
+  font-size: 14px;
 }
-.documents-banner > div {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.documents-banner strong {
-  font-weight: 550;
-}
-.documents-banner span {
+.documents-details dt {
   color: var(--muted-foreground);
-  font-size: 13px;
 }
-
-/* Who edits in Google. */
-.documents-team {
+.documents-details dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.documents-details small {
+  display: block;
+  color: var(--muted-foreground);
+}
+.documents-connection-card .documents-row {
+  margin-top: 0;
+  align-items: center;
+}
+.documents-storage {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-}
-.documents-storage > div:first-child {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  font-size: 13px;
+  gap: 6px;
 }
 .documents-meter {
   height: 8px;
@@ -854,97 +800,6 @@
   flex-shrink: 0;
   margin-top: 2px;
   color: var(--warning);
-}
-.documents-team-group h3 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-}
-.documents-team-group h3 svg {
-  color: var(--warning);
-}
-.documents-team-group.ok h3 svg {
-  color: var(--success);
-}
-.documents-team-group.alert h3 svg {
-  color: var(--destructive);
-}
-.documents-team-group h3 span {
-  color: var(--muted-foreground);
-  font-weight: 500;
-}
-.documents-team-group > p {
-  margin: 4px 0 6px;
-  font-size: 13px;
-  line-height: 1.5;
-}
-.documents-team-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
-}
-.documents-team-row:last-child {
-  border-bottom: 0;
-}
-.documents-team-row > div {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-}
-.documents-team-row small {
-  overflow: hidden;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.documents-team .documents-initials {
-  width: 32px;
-  height: 32px;
-  font-size: 11px;
-}
-.documents-tag {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--muted);
-  color: var(--muted-foreground);
-  font-size: 12px;
-}
-.documents-ready-team {
-  margin-top: 16px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-.documents-ready-team p {
-  display: flex;
-  gap: 12px;
-  padding: 14px 16px;
-}
-.documents-ready-team p + p {
-  border-top: 1px solid var(--border);
-}
-.documents-ready-team svg {
-  flex-shrink: 0;
-  margin-top: 3px;
-  color: var(--success);
-}
-.documents-ready-team .documents-ready-waiting svg {
-  color: var(--warning);
-}
-.documents-ready-team span {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.documents-ready-team small {
-  color: var(--muted-foreground);
-  font-size: 13px;
-  line-height: 1.5;
 }
 
 /* Uploading: the New menu's upload items, the hint over the page while files are dragged on

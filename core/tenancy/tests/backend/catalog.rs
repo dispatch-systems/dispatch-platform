@@ -13,6 +13,7 @@ fn feature(id: &'static str, kind: Kind, permissions: &'static [&'static str]) -
         default: true,
         tab: false,
         mandatory: false,
+        connects: false,
     }
 }
 
@@ -30,6 +31,32 @@ fn a_part_of_a_page_owns_its_permissions_apart_from_the_page() {
     assert!(grants_in(&catalog, &both, "notes.upload"));
     // A permission no feature owns exists everywhere.
     assert!(grants_in(&catalog, &on(&[]), "members.invite"));
+}
+
+// Manage DSP Connections manages the DSP's own accounts, so it exists while a collector's
+// connection is on, or a page that adds one of its own, and not for a page that doesn't.
+#[test]
+fn managing_dsp_connections_exists_while_a_connection_or_a_page_adding_one_is_on() {
+    let mut files = feature("files", Kind::Page, &["files.use"]);
+    files.connects = true;
+    let catalog = [
+        feature("payroll", Kind::Connection, &[]),
+        files,
+        feature("notes", Kind::Page, &["notes.view"]),
+    ];
+    let on = |ids: &[&str]| ids.iter().map(|id| (*id).to_owned()).collect::<Vec<_>>();
+    for (enabled, exists) in [
+        (&["payroll"][..], true),
+        (&["files"], true),
+        (&["notes"], false),
+        (&[], false),
+    ] {
+        assert_eq!(
+            grants_in(&catalog, &on(enabled), CONNECTIONS),
+            exists,
+            "{enabled:?}"
+        );
+    }
 }
 
 // A mandatory feature is never switched on, so a part of it that started on would reach every

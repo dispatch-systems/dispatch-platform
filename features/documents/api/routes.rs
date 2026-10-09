@@ -2,7 +2,7 @@
 //! session and the permission before a handler runs; the handlers that call Google wait
 //! outside the database and check again before they write.
 use crate::{
-    api::types::NewKind,
+    api::types::{NewKind, SharingState},
     backend::{connection, files, google::RETURN_PATH, picker, team},
 };
 use axum::{
@@ -18,34 +18,33 @@ use dispatch_core::{
     server::http::{
         input::optional,
         input::{Input, Reply},
-        route::{Dsp, Grant, Member, Route, async_get, async_post, protocol, read, upload, write},
+        route::{Dsp, Grant, Member, Route, async_get, async_post, protocol, upload, write},
         upload::{UPLOAD_LIMIT, Upload},
     },
 };
 use std::sync::Arc;
 
 const USE: Dsp = Dsp("documents.use");
-const MANAGE: Dsp = Dsp("documents.manage");
+/// The DSP's Google account is one of its own accounts on Settings' DSP Connections.
+const CONNECTIONS: Dsp = Dsp("connections.manage");
 
 pub fn routes() -> Vec<Route> {
     vec![
-        read("/api/dsp/documents", USE, overview),
-        write("/api/dsp/documents/connect", MANAGE, connect),
-        async_post("/api/dsp/documents/connect/finish", MANAGE, finish),
-        async_post("/api/dsp/documents/disconnect", MANAGE, disconnect),
+        async_get("/api/dsp/documents", USE, overview),
+        async_get("/api/dsp/documents/account", CONNECTIONS, account),
+        write("/api/dsp/documents/connect", CONNECTIONS, connect),
+        async_post("/api/dsp/documents/connect/finish", CONNECTIONS, finish),
+        async_post("/api/dsp/documents/disconnect", CONNECTIONS, disconnect),
         async_get("/api/dsp/documents/folder", USE, folder),
         async_post("/api/dsp/documents/new", USE, create),
         upload("/api/dsp/documents/upload", USE, UPLOAD_LIMIT, upload_file),
         async_get("/api/dsp/documents/items/{id}/download", USE, download),
         async_get("/api/dsp/documents/items/{id}/thumbnail", USE, thumbnail),
-        async_post("/api/dsp/documents/add", MANAGE, add_files),
+        async_post("/api/dsp/documents/add", CONNECTIONS, add_files),
         async_post("/api/dsp/documents/items/{id}/rename", USE, rename),
         async_post("/api/dsp/documents/items/{id}/trash", USE, trash),
         write("/api/dsp/documents/link", USE, link),
         async_post("/api/dsp/documents/link/finish", USE, finish_link),
-        async_get("/api/dsp/documents/team", MANAGE, team_view),
-        async_post("/api/dsp/documents/team/email", MANAGE, email_again),
-        async_post("/api/dsp/documents/team/remove", MANAGE, remove_share),
         protocol(Method::GET, RETURN_PATH, |state, request| {
             Box::pin(returned(state, request))
         }),
@@ -55,8 +54,24 @@ pub fn routes() -> Vec<Route> {
     ]
 }
 
-fn overview(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    Reply::of(&connection::overview(db, c)?)
+/// The connection as the member sees it. One Documents hasn't shared the folder with yet has
+/// it shared now, rather than within the minute.
+async fn overview(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let c = state.run(move |db| access.authorize(db, &input)).await?;
+    let dsp = c.dsp.id.clone();
+    let answer = state.read(move |db| connection::overview(db, &c)).await?;
+    let pending = answer
+        .me
+        .as_ref()
+        .is_some_and(|me| me.state == SharingState::Pending);
+    if pending && answer.connection.is_some() {
+        team::nudge(&state, &dsp);
+    }
+    Reply::of(&answer)
+}
+async fn account(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let c = state.run(move |db| access.authorize(db, &input)).await?;
+    Reply::of(&connection::account(&state, &c.dsp.id).await?)
 }
 fn connect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
@@ -220,9 +235,14 @@ async fn trash(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     Ok(Reply::ok())
 }
 
+/// Starts linking the member's own Google account: from Settings' Connections when `from`
+/// says so, or else from Documents, where Google sends them back.
 fn link(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    v::fields(&input.body, &[])?;
-    Reply::of(&team::start_link(db, c)?)
+    v::fields(&input.body, &["from"])?;
+    let from = optional(&input.body, "from", |b, key| {
+        v::choice(b, key, &["settings"])
+    })?;
+    Reply::of(&team::start_link(db, c, from.is_some())?)
 }
 async fn finish_link(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
@@ -232,28 +252,10 @@ async fn finish_link(state: Arc<State>, input: Input, access: Dsp) -> Result<Rep
     let code = v::text(&input.body, "code", 1, 2048)?.to_owned();
     Reply::of(&team::finish_link(&state, c, access, sign_in, code).await?)
 }
-async fn team_view(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
-    let c = state.run(move |db| access.authorize(db, &input)).await?;
-    Reply::of(&team::team(&state, &c).await?)
-}
-async fn email_again(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
-    let asked = input.clone();
-    let c = state.run(move |db| access.authorize(db, &asked)).await?;
-    v::fields(&input.body, &["user"])?;
-    let user = v::text(&input.body, "user", 1, 100)?.to_owned();
-    Reply::of(&team::email_again(&state, c, access, user).await?)
-}
-async fn remove_share(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
-    let asked = input.clone();
-    let c = state.run(move |db| access.authorize(db, &asked)).await?;
-    v::fields(&input.body, &["share"])?;
-    let share = file_id(v::text(&input.body, "share", 1, 128)?)?;
-    Reply::of(&team::remove(&state, c, access, share).await?)
-}
-
 /// Google sends the browser back here, without the session: its cookie stays on Dispatch's
-/// own site. So the browser goes on to the DSP's Documents page with what Google sent, and the
-/// page finishes the sign-in as the member, in the session that started it.
+/// own site. So the browser goes on with what Google sent to the page the sign-in started on,
+/// the DSP's Connections or Documents, which finishes it as the member, in the session that
+/// started it.
 async fn returned(state: Arc<State>, request: Request) -> Response {
     let origin = &state.config.origin;
     let sent: Vec<(String, String)> =
@@ -274,10 +276,16 @@ async fn returned(state: Arc<State>, request: Request) -> Response {
         return Reply::redirect(format!("{origin}/")).into_response();
     };
     let mut back = url::form_urlencoded::Serializer::new(String::new());
+    let page = if team::back_to_documents(sign_in) {
+        "documents"
+    } else {
+        back.append_pair("tab", "connections");
+        "settings"
+    };
     back.append_pair("googleState", sign_in);
     match field("code") {
         Some(code) => back.append_pair("googleCode", code),
         None => back.append_pair("googleError", field("error").unwrap_or("failed")),
     };
-    Reply::redirect(format!("{origin}/#dsp/{dsp}/documents?{}", back.finish())).into_response()
+    Reply::redirect(format!("{origin}/#dsp/{dsp}/{page}?{}", back.finish())).into_response()
 }

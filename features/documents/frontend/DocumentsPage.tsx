@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  ArrowRight,
   ExternalLink,
   FolderOpen,
   Info,
@@ -8,75 +9,65 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import type { DspView } from '../../../core/accounts/api/index.js';
-import { hashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
+import { dspHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
+import { settingsPage } from '../../../core/shell/frontend/runtime/slots.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { DataState, ErrorBox } from '../../../core/shell/frontend/ui/index.js';
 import {
-  finishGoogle,
   finishLink,
+  linkGoogle,
   useDocumentsOverview,
   type DocumentsConnection,
   type DocumentsOverview,
+  type MySharing,
 } from '../api/client.js';
 import { Browser } from './Browser.js';
 import { GoogleLogo } from './GoogleLogo.js';
-import { useSignIn } from './signIn.js';
+import { cancelled, isLink, settle, takeGoogleReturn } from './googleReturn.js';
 
-type GoogleReturn = { state: string; code: string; error: string };
-/** What Google sent back, until the page that took it starts finishing it. */
-let pending: GoogleReturn | undefined;
-/**
- * What Google sent the browser back with, taken out of the address so the code is neither
- * used twice nor left in the browser's history. It is kept until the page starts finishing
- * it: React may set aside a page's first render and render it again, and that render finds
- * the address already clean.
- */
-function takeGoogleReturn() {
-  const query = hashQuery();
-  const state = query.get('googleState');
-  if (state) {
-    const page = location.hash.split('?')[0];
-    history.replaceState(history.state, '', `${location.pathname}${location.search}${page}`);
-    pending = { state, code: query.get('googleCode') ?? '', error: query.get('googleError') ?? '' };
-  }
-  return pending;
-}
-const cancelled = (error: string) =>
-  error === 'access_denied'
-    ? 'Google sign-in was cancelled, so nothing changed.'
-    : "Google didn't finish signing in. Try connecting again.";
+// The DSP's Documents, once Google is connected and the member can edit in it: the folder is
+// shared with them at a Google account. Its Google account is connected on Settings'
+// Connections, so the page sends those who manage it there.
+
+/** Where the DSP's Google account is connected: Settings' Connections. */
+const connections = (view: DspView) => dspHash(view.dsp.id, settingsPage(), { tab: 'connections' });
 
 export function DocumentsPage({ view }: { view: DspView }) {
   const overview = useDocumentsOverview();
-  const canManage = can(view, 'documents.manage');
-  const [returned] = useState(takeGoogleReturn);
-  // Whether Google was connected on this visit, so Documents offers folders to start with.
-  const [connected, setConnected] = useState(false);
-  // A member linking their own Google account comes back here too: its sign-in says so.
-  const linking = Boolean(returned?.state.includes('.link.'));
+  const manages = can(view, 'connections.manage');
+  // A member who linked their own Google account from here comes back here.
+  const [returned] = useState(() => {
+    const found = takeGoogleReturn();
+    return found && isLink(found) ? found : undefined;
+  });
   const finishing = useAction(
     async (state: string, code: string) => {
-      if (linking) await finishLink(state, code);
-      else {
-        await finishGoogle(state, code);
-        setConnected(true);
-      }
+      await finishLink(state, code);
       overview.refresh();
     },
-    { success: linking ? 'Google account linked' : 'Google connected', inline: true },
+    { success: 'Google account linked', inline: true },
   );
   const finished = useRef(false);
   useEffect(() => {
-    // The page shown took it: a later visit to Documents doesn't find it again.
-    if (returned === pending) pending = undefined;
-    if (!returned?.code || finished.current) return;
+    if (!returned) return;
+    settle(returned);
+    if (!returned.code || finished.current) return;
     finished.current = true;
     void finishing.run(returned.state, returned.code);
   }, [returned, finishing]);
   const connection = overview.data?.connection;
+  const me = overview.data?.me;
+  // Until Documents first asks Google about the member, it does so now: ask again in a moment.
+  const checking = connection?.status === 'connected' && me?.state === 'pending';
+  useEffect(() => {
+    if (!checking) return;
+    const again = setTimeout(overview.refresh, 2000);
+    return () => clearTimeout(again);
+  }, [checking, overview.data, overview.refresh]);
   const notice = (returned?.error && cancelled(returned.error)) || finishing.error;
-  if (connection?.status === 'connected' && !finishing.busy)
+  // The platform owner isn't one of the DSP's members: the folder is never shared with them.
+  if (connection?.status === 'connected' && !finishing.busy && (!me || me.state === 'shared'))
     return (
       <>
         <ErrorBox message={notice} />
@@ -84,8 +75,6 @@ export function DocumentsPage({ view }: { view: DspView }) {
           view={view}
           overview={overview.data!}
           connection={connection}
-          canManage={canManage}
-          connected={connected}
           overviewChanged={overview.refresh}
         />
       </>
@@ -105,7 +94,7 @@ export function DocumentsPage({ view }: { view: DspView }) {
         </div>
       ) : (
         <DataState data={overview.data} error={overview.error} retry={overview.refresh}>
-          {(data) => <Body view={view} data={data} canManage={canManage} />}
+          {(data) => <Body view={view} data={data} manages={manages} />}
         </DataState>
       )}
     </>
@@ -115,44 +104,42 @@ export function DocumentsPage({ view }: { view: DspView }) {
 function Body({
   view,
   data,
-  canManage,
+  manages,
 }: {
   view: DspView;
   data: DocumentsOverview;
-  canManage: boolean;
+  manages: boolean;
 }) {
   const connection = data.connection;
   if (!connection) {
-    if (!canManage) return <NotSetUp />;
-    return data.available ? <Connect dspName={view.dsp.name} /> : <Unavailable />;
+    if (!manages) return <NotSetUp />;
+    return data.available ? <Connect view={view} /> : <Unavailable />;
   }
-  return canManage ? (
-    <Broken connection={connection} />
-  ) : (
-    <BrokenForMember connection={connection} />
-  );
+  if (connection.status === 'broken')
+    return manages ? (
+      <Broken view={view} connection={connection} />
+    ) : (
+      <BrokenForMember connection={connection} />
+    );
+  return data.me?.state === 'pending' ? <Checking /> : <NeedsGoogle me={data.me!} />;
 }
 
-function Connect({ dspName }: { dspName: string }) {
-  const signIn = useSignIn();
+function Connect({ view }: { view: DspView }) {
   return (
     <section className="documents-card documents-connect">
       <div className="documents-connect-copy">
         <h2>Connect Google to start using Documents</h2>
         <p>
-          Dispatch makes a {dspName} folder in the Google account you connect and shares it with
-          your team. Anything your team creates here also shows up in their Google Drive.
+          Your team's Google Drive account is connected in Settings, under DSP Connections. Dispatch
+          makes a {view.dsp.name} folder in it and shares it with everyone who uses Documents.
+          Anything your team creates here also shows up in their Google Drive.
         </p>
-        <button
-          className="documents-google-button"
-          disabled={signIn.busy}
-          onClick={() => void signIn.run()}
-        >
-          <GoogleLogo />
-          Connect Google
-        </button>
+        <a className="documents-settings-button" href={connections(view)}>
+          Go to Settings → Connections
+          <ArrowRight size={16} />
+        </a>
         <ol className="documents-steps">
-          <li>Sign in with Google and click Allow.</li>
+          <li>In Settings → Connections, click Connect Google, sign in and click Allow.</li>
           <li>
             Dispatch makes your team's folder.
             <small>About 10 seconds.</small>
@@ -207,8 +194,7 @@ function NotSetUp() {
   );
 }
 
-function Broken({ connection }: { connection: DocumentsConnection }) {
-  const signIn = useSignIn();
+function Broken({ view, connection }: { view: DspView; connection: DocumentsConnection }) {
   return (
     <section className="documents-card documents-broken">
       <TriangleAlert size={22} />
@@ -216,18 +202,14 @@ function Broken({ connection }: { connection: DocumentsConnection }) {
         <h2>Google stopped accepting Dispatch's connection</h2>
         <p>
           Your files are safe in Google Drive. Reconnect with{' '}
-          <strong>{connection.accountEmail}</strong>, the account Documents was set up with, so your
-          team can open them here again.
+          <strong>{connection.accountEmail}</strong>, the account Documents was set up with, in
+          Settings → Connections, so your team can open them here again.
         </p>
         <div className="documents-row">
-          <button
-            className="documents-google-button"
-            disabled={signIn.busy}
-            onClick={() => void signIn.run()}
-          >
-            <GoogleLogo />
-            Reconnect Google
-          </button>
+          <a className="documents-settings-button" href={connections(view)}>
+            Reconnect in Settings
+            <ArrowRight size={16} />
+          </a>
           <a
             className="documents-link-button"
             href={connection.folderUrl}
@@ -254,6 +236,65 @@ function BrokenForMember({ connection }: { connection: DocumentsConnection }) {
           needs to reconnect Google.
         </p>
       </div>
+    </section>
+  );
+}
+
+/** A moment after the member is given Use Documents, while Documents asks Google about them. */
+function Checking() {
+  return (
+    <section className="documents-card documents-waiting" role="status">
+      <span className="documents-folder-tile">
+        <LoaderCircle className="spin" size={22} />
+      </span>
+      <h2>Getting your access ready…</h2>
+      <p>Dispatch is sharing your team's folder with you. This takes a few seconds.</p>
+    </section>
+  );
+}
+
+/**
+ * For a member Google won't share the folder with: their email isn't a Google account, or
+ * Google refused for another reason. Linking a Google account opens Documents to them.
+ */
+function NeedsGoogle({ me }: { me: MySharing }) {
+  const linking = useAction(async () => {
+    const { url } = await linkGoogle();
+    window.location.assign(url);
+  });
+  return (
+    <section className="documents-card documents-waiting documents-gate">
+      <span className="documents-folder-tile">
+        <GoogleLogo size={24} />
+      </span>
+      {me.state === 'refused' ? (
+        <>
+          <h2>Google won't share your team's folder with you</h2>
+          <p>
+            Google refused to share it with <strong>{me.email}</strong>. Link a different Google
+            account to open Documents, or ask your DSP owner.
+          </p>
+        </>
+      ) : (
+        <>
+          <h2>Documents needs a Google account</h2>
+          <p>
+            Your team's files live in Google Drive, and <strong>{me.email}</strong> isn't a Google
+            account. Link a Gmail or any Google account to open Documents. You'll still sign in to
+            Dispatch with {me.email}.
+          </p>
+        </>
+      )}
+      <ErrorBox message={linking.error} />
+      <button
+        className="documents-google-button"
+        disabled={linking.busy}
+        onClick={() => void linking.run()}
+      >
+        <GoogleLogo />
+        Link Google account
+      </button>
+      <p className="documents-gate-note">You can also do this anytime in Settings → Connections.</p>
     </section>
   );
 }

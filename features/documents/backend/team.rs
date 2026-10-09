@@ -1,20 +1,18 @@
 //! Who on the team edits the DSP's Documents in Google. Everyone who holds Use Documents gets
 //! the main folder shared with them, and through it everything inside: at the Google account
 //! they linked, or else their Dispatch email. Google refuses an address that is no Google
-//! account, so Dispatch emails that member how to link one. Members who leave, or no longer
-//! use Documents, lose the share Dispatch gave them. Anyone else the folder is shared with in
-//! Google Drive is listed for those who manage Documents to remove.
+//! account, so Dispatch emails that member, once, how to link one, and Documents asks them to
+//! until they do. Members who leave, or no longer use Documents, lose the share Dispatch gave
+//! them.
 use super::{
     drive::{Refused, Share},
-    files::{self, Drive},
+    files,
     google::Google,
     storage::{DocumentsStore, Person, Sharing},
 };
-use crate::api::types::{
-    DocumentsTeam, GoogleSignIn, MySharing, SharingState, TeamOutsider, TeamPerson,
-};
+use crate::api::types::{GoogleSignIn, MySharing, SharingState};
 use dispatch_core::{
-    Error, Result, State,
+    Result, State,
     accounts::Context,
     db::{Store, iso},
     ensure,
@@ -33,9 +31,7 @@ pub const GOOGLE_ACCOUNT_MAIL: &str = "documents.google_account";
 /// A member who should edit in Google: they hold Use Documents.
 struct Member {
     user: String,
-    name: String,
     email: String,
-    owner: bool,
 }
 fn members(db: &Store, dsp: &str) -> Result<Vec<Member>> {
     let mut wanted = Vec::new();
@@ -47,9 +43,7 @@ fn members(db: &Store, dsp: &str) -> Result<Vec<Member>> {
         if holds {
             wanted.push(Member {
                 user: member.user_id,
-                name: member.name,
                 email: member.email.to_lowercase(),
-                owner: member.owner,
             });
         }
     }
@@ -228,13 +222,14 @@ fn email(db: &Store, dsp: &str, user: &str, name: &str, origin: &str, dev: bool)
             "{name} keeps its team's folders, Docs and Sheets in Google Drive, through Dispatch."
         ),
         concat!(
-            "Your Dispatch email isn't a Google account, so you can see your team's files in ",
-            "Dispatch but can't edit Docs and Sheets in Google yet."
+            "Your Dispatch email isn't a Google account, so you can't open your team's ",
+            "Documents yet."
         )
         .to_owned(),
         concat!(
-            "To edit them, open Documents and link a Google account: any Gmail address works, ",
-            "or make a free Google account with the email you already use."
+            "Open Documents and link a Google account: any Gmail address works, or make a ",
+            "free Google account with the email you already use. You keep signing in to ",
+            "Dispatch as you do now."
         )
         .to_owned(),
     ];
@@ -260,147 +255,25 @@ fn email(db: &Store, dsp: &str, user: &str, name: &str, origin: &str, dev: bool)
     }
 }
 
-/// The team as the team access panel shows it, with who the folder is shared with now.
-async fn view(
-    state: &Arc<State>,
-    dsp: &str,
-    shares: Vec<Share>,
-    drive: &Drive,
-) -> Result<DocumentsTeam> {
-    let storage = drive.google.storage(&drive.access).await?;
-    let at = dsp.to_owned();
-    let (wanted, people) = state
-        .read(move |db| Ok((members(db, &at)?, db.documents_people(&at)?)))
-        .await?;
-    let mut listed: Vec<TeamPerson> = wanted
-        .iter()
-        .map(|member| {
-            let person = people.iter().find(|person| person.user == member.user);
-            let (state, refusal) = match person.map(|person| &person.sharing) {
-                Some(Sharing::Shared) => (SharingState::Shared, None),
-                Some(Sharing::Refused(code)) => (SharingState::Refused, Some(code.clone())),
-                _ => (SharingState::NeedsAccount, None),
-            };
-            TeamPerson {
-                user_id: member.user.clone(),
-                name: member.name.clone(),
-                email: person
-                    .and_then(|person| person.linked.clone())
-                    .unwrap_or_else(|| member.email.clone()),
-                state,
-                refusal,
-                emailed_at: person.and_then(|person| person.emailed_at.clone()),
-                owner: member.owner,
-            }
-        })
-        .collect();
-    listed.sort_by(|a, b| a.name.cmp(&b.name));
-    let team: Vec<String> = people
-        .iter()
-        .filter_map(|person| {
-            person
-                .shared
-                .as_ref()
-                .map(|(email, _)| email.to_lowercase())
-        })
-        .chain(listed.iter().map(|person| person.email.to_lowercase()))
-        .collect();
-    let outsiders = shares
-        .into_iter()
-        .filter(|share| share.role != "owner")
-        .filter_map(|share| {
-            let email = share.email_address?;
-            (!team.contains(&email.to_lowercase())).then_some(TeamOutsider {
-                share_id: share.id,
-                email,
-            })
-        })
-        .collect();
-    Ok(DocumentsTeam {
-        people: listed,
-        outsiders,
-        storage_used: storage.used,
-        storage_limit: storage.limit,
-    })
-}
-
-/// The team, its sharing brought up to date first.
-pub async fn team(state: &Arc<State>, c: &Context) -> Result<DocumentsTeam> {
-    let shares = sync(state, &c.dsp.id).await?;
-    let drive = files::open(state, &c.dsp.id, false).await?;
-    view(state, &c.dsp.id, shares, &drive).await
-}
-
-/// Emails the member `user` again how to link a Google account.
-pub async fn email_again(
-    state: &Arc<State>,
-    c: Context,
-    access: Dsp,
-    user: String,
-) -> Result<DocumentsTeam> {
-    let (origin, dev) = (state.config.origin.clone(), state.config.env().is_preview());
-    let asking = c.clone();
-    state
-        .run(move |db| {
-            let c = access.revalidate(db, &c)?;
-            let dsp = c.dsp.id.clone();
-            let mut person = db
-                .documents_people(&dsp)?
-                .into_iter()
-                .find(|person| person.user == user && person.sharing == Sharing::NeedsAccount)
-                .ok_or_else(|| Error::new("documents_person_not_found", 404))?;
-            let name = db.find_dsp(&dsp)?.name;
-            email(db, &dsp, &user, &name, &origin, dev);
-            person.emailed_at = Some(iso());
-            db.save_documents_person(&dsp, &person)?;
-            Ok(())
-        })
-        .await?;
-    team(state, &asking).await
-}
-
-/// Takes back a share someone made in Google Drive for someone not on the team.
-pub async fn remove(
-    state: &Arc<State>,
-    c: Context,
-    access: Dsp,
-    share: String,
-) -> Result<DocumentsTeam> {
-    let dsp = c.dsp.id.clone();
-    let shares = sync(state, &dsp).await?;
-    let drive = files::open(state, &dsp, false).await?;
-    let before = view(state, &dsp, shares, &drive).await?;
-    let outsider = before
-        .outsiders
-        .iter()
-        .find(|outsider| outsider.share_id == share)
-        .ok_or_else(|| Error::new("documents_share_not_found", 404))?
-        .email
-        .clone();
-    drive
-        .google
-        .unshare(&drive.access, &drive.connection.folder_id, &share)
-        .await?;
-    state
-        .run(move |db| {
-            let c = access.revalidate(db, &c)?;
-            c.audit(db, "documents.unshared", &outsider)
-        })
-        .await?;
-    let shares = drive
-        .google
-        .shares(&drive.access, &drive.connection.folder_id)
-        .await?;
-    view(state, &dsp, shares, &drive).await
-}
-
-/// How the folder is shared with the member asking, once Documents has tried.
+/// How the folder is shared with the member asking: pending until Documents first asks
+/// Google, a moment after they're given Use Documents. The platform owner isn't one of the
+/// DSP's members, so the folder is never shared with them.
 pub fn mine(db: &Store, c: &Context) -> Result<Option<MySharing>> {
+    if c.auth.user.platform_owner {
+        return Ok(None);
+    }
     let person = db
         .documents_people(&c.dsp.id)?
         .into_iter()
         .find(|person| person.user == c.actor());
-    Ok(person.map(|person| MySharing {
+    let Some(person) = person else {
+        return Ok(Some(MySharing {
+            state: SharingState::Pending,
+            email: c.auth.user.email.clone(),
+            linked: false,
+        }));
+    };
+    Ok(Some(MySharing {
         state: match person.sharing {
             Sharing::Shared => SharingState::Shared,
             Sharing::NeedsAccount => SharingState::NeedsAccount,
@@ -414,24 +287,43 @@ pub fn mine(db: &Store, c: &Context) -> Result<Option<MySharing>> {
         linked: person.linked.is_some(),
     }))
 }
-/// How many on the team edit in Google.
-pub fn editors(db: &Store, dsp: &str) -> Result<u32> {
-    Ok(db
-        .documents_people(dsp)?
-        .iter()
-        .filter(|person| person.sharing == Sharing::Shared)
-        .count() as u32)
+
+/// Shares the folder now, rather than within the minute, for a member Documents hasn't asked
+/// Google about yet: unless it's already sharing for the DSP.
+pub fn nudge(state: &Arc<State>, dsp: &str) {
+    if turn(dsp).try_lock().is_err() {
+        return;
+    }
+    let (state, dsp) = (Arc::clone(state), dsp.to_owned());
+    tokio::spawn(async move {
+        if let Err(error) = sync(&state, &dsp).await {
+            observability::event(
+                "warn",
+                "documents_share_failed",
+                json!({"error": error.code}),
+            );
+        }
+    });
 }
 
-/// A link sign-in's state names the DSP, then says it links a member's own account.
+/// A link sign-in's state names the DSP, then says it links a member's own account, and
+/// whether they started on Settings' Connections rather than Documents.
 const LINK: &str = ".link.";
+const FROM_SETTINGS: &str = ".link.settings.";
 pub fn is_link(sign_in: &str) -> bool {
     sign_in.contains(LINK)
 }
-/// Starts a member's sign-in with Google to link their own account.
-pub fn start_link(db: &Store, c: &Context) -> Result<GoogleSignIn> {
+/// Whether Google sends the browser back to Documents: for a member who linked their account
+/// from there. Every other sign-in started on Settings' Connections.
+pub fn back_to_documents(sign_in: &str) -> bool {
+    is_link(sign_in) && !sign_in.contains(FROM_SETTINGS)
+}
+/// Starts a member's sign-in with Google to link their own account, from Settings'
+/// Connections or else from Documents.
+pub fn start_link(db: &Store, c: &Context, from_settings: bool) -> Result<GoogleSignIn> {
     let google = Google::of(&db.config)?;
-    let state = format!("{}{LINK}{}", c.dsp.id, crypto::token()?);
+    let link = if from_settings { FROM_SETTINGS } else { LINK };
+    let state = format!("{}{link}{}", c.dsp.id, crypto::token()?);
     let verifier = crypto::token()?;
     db.start_documents_sign_in(&c.dsp.id, c.actor(), &state, &verifier)?;
     Ok(GoogleSignIn {

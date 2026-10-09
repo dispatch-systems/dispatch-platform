@@ -145,11 +145,11 @@ export const featureCatalog = [
     "id": "documents",
     "label": "Documents",
     "permissions": [
-      "documents.use",
-      "documents.manage"
+      "documents.use"
     ],
     "requires": [],
-    "kind": "page"
+    "kind": "page",
+    "connects": true
   },
   {
     "id": "team",
@@ -256,24 +256,22 @@ export const permissions = [
   "weekly_scorecard.collect",
   "weekly_scorecard.manage",
   "driver_match.manage",
-  "connections.manage",
   "members.invite",
   "members.manage",
   "roles.manage",
   "settings.manage",
+  "connections.manage",
   "daily_performance.view",
   "daily_performance.collect",
   "daily_performance.manage",
-  "documents.use",
-  "documents.manage"
+  "documents.use"
 ] as const;
 export const permissionLabels = {
   "collections.run": "Run Collections",
-  "connections.manage": "Manage Connections",
+  "connections.manage": "Manage DSP Connections",
   "daily_performance.collect": "Collect Daily Performance",
   "daily_performance.manage": "Manage Daily Performance",
   "daily_performance.view": "View Daily Performance",
-  "documents.manage": "Manage Documents",
   "documents.use": "Use Documents",
   "driver_match.manage": "Manage Driver Match",
   "dvic.collect": "Collect DVIC",
@@ -353,14 +351,7 @@ export const permissionGroups = [
   [
     "Documents",
     [
-      "documents.use",
-      "documents.manage"
-    ]
-  ],
-  [
-    "Connections",
-    [
-      "connections.manage"
+      "documents.use"
     ]
   ],
   [
@@ -372,9 +363,10 @@ export const permissionGroups = [
     ]
   ],
   [
-    "DSP",
+    "DSP Settings",
     [
-      "settings.manage"
+      "settings.manage",
+      "connections.manage"
     ]
   ]
 ] as const;
@@ -384,9 +376,6 @@ export const impliedPermissions = {
   ],
   "daily_performance.manage": [
     "daily_performance.view"
-  ],
-  "documents.manage": [
-    "documents.use"
   ],
   "dvic.collect": [
     "dvic.view"

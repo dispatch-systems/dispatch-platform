@@ -5,9 +5,9 @@ mod backend;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
-    AccountKind, ConnectionStatus, DocumentsConnection, DocumentsFolder, DocumentsItem,
-    DocumentsOverview, DocumentsTeam, DriveFile, FolderStep, GoogleSignIn, ItemKind, MySharing,
-    NewKind, PickerKeys, PickerSetup, SharingState, TeamOutsider, TeamPerson,
+    AccountKind, ConnectionStatus, DocumentsAccount, DocumentsConnection, DocumentsFolder,
+    DocumentsItem, DocumentsOverview, DriveFile, DriveStorage, FolderStep, GoogleConnected,
+    GoogleSignIn, ItemKind, MySharing, NewKind, PickerKeys, PickerSetup, SharingState,
 };
 
 use dispatch_core::{
@@ -19,10 +19,11 @@ use dispatch_core::{
 pub const FEATURE: Feature = Feature {
     place: 90,
     switch: optional("documents", "Documents", &[]),
-    permissions: &[
-        perm("documents.use", "Use Documents", 110),
-        perm("documents.manage", "Manage Documents", 111).implies(&["documents.use"]),
-    ],
+    // Everyone who uses Documents works in it alike. Its Google account is one of the DSP's
+    // own, managed on Settings' DSP Connections, so roles that managed Documents now use it.
+    permissions: &[perm("documents.use", "Use Documents", 110)],
+    retired_identifiers: &[("documents.manage", "documents.use")],
+    dsp_connection: true,
     routes: api::routes::routes,
     tables: &[(
         "dsp",
@@ -89,8 +90,8 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         DocumentsFolder,
         SharingState,
         MySharing,
-        TeamPerson,
-        TeamOutsider,
-        DocumentsTeam,
+        DriveStorage,
+        DocumentsAccount,
+        GoogleConnected,
     )
 }

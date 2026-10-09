@@ -115,8 +115,7 @@
       ]
     },
     "permissions": [
-      "documents.use",
-      "documents.manage"
+      "documents.use"
     ],
     "slots": {
       "after_collection": false,
@@ -154,6 +153,7 @@
       "people": [],
       "routes": [
         "GET /api/dsp/documents",
+        "GET /api/dsp/documents/account",
         "POST /api/dsp/documents/connect",
         "POST /api/dsp/documents/connect/finish",
         "POST /api/dsp/documents/disconnect",
@@ -167,9 +167,6 @@
         "POST /api/dsp/documents/items/{id}/trash",
         "POST /api/dsp/documents/link",
         "POST /api/dsp/documents/link/finish",
-        "GET /api/dsp/documents/team",
-        "POST /api/dsp/documents/team/email",
-        "POST /api/dsp/documents/team/remove",
         "GET /api/documents/google/return",
         "GET /api/documents/google/picker"
       ],

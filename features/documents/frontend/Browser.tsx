@@ -11,7 +11,6 @@ import {
   LoaderCircle,
   Plus,
   Upload,
-  Users,
 } from 'lucide-react';
 import type { DspView } from '../../../core/accounts/api/index.js';
 import { dspHash, hashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
@@ -31,17 +30,13 @@ import {
   renameItem,
   trashItem,
   useDocumentsFolder,
-  linkGoogle,
   type DocumentsConnection,
   type DocumentsFolder,
   type DocumentsOverview,
   type DocumentsItem,
   type NewKind,
 } from '../api/client.js';
-import { GoogleLogo } from './GoogleLogo.js';
 import { Initials, Thumb, Tile, edited, editedInline, kindLabel, typeOf } from './items.js';
-import { TeamPanel } from './TeamPanel.js';
-import { ReadyDialog } from './ReadyDialog.js';
 import { UploadNaming, UploadsPanel, dropped, picked, useUploads, type Picked } from './Uploads.js';
 import { useFromDrive } from './FromDrive.js';
 
@@ -115,16 +110,11 @@ export function Browser({
   view,
   overview,
   connection,
-  canManage,
-  connected,
   overviewChanged,
 }: {
   view: DspView;
   overview: DocumentsOverview;
   connection: DocumentsConnection;
-  canManage: boolean;
-  /** Whether Google was connected just now, so the page offers some folders to start with. */
-  connected: boolean;
   overviewChanged: () => void;
 }) {
   const folder = useFolder();
@@ -136,8 +126,6 @@ export function Browser({
   );
   const listing = useDocumentsFolder(folder, query);
   const [asked, ask] = useState<Asked>();
-  const [team, showTeam] = useState(false);
-  const [ready, setReady] = useState(connected);
   const uploads = useUploads(folder, listing.refresh);
   // Files picked or dropped on their own are named before they go up; a folder goes as it is.
   const [naming, setNaming] = useState<Picked[]>();
@@ -175,16 +163,6 @@ export function Browser({
           </p>
         </div>
         <div className="heading-actions">
-          {canManage && (
-            <button className="documents-account-button" onClick={() => showTeam(true)}>
-              <Users size={16} />
-              {overview.editors === 0
-                ? 'Team access'
-                : overview.editors === 1
-                  ? '1 person'
-                  : `${overview.editors} people`}
-            </button>
-          )}
           <a
             className="documents-link-button"
             href={at?.url ?? connection.folderUrl}
@@ -269,7 +247,6 @@ export function Browser({
           />
         </div>
       </div>
-      <Linking overview={overview} />
       <div className="documents-toolbar">
         {at && at.path.length > 0 ? (
           <Path view={view} at={at} />
@@ -409,65 +386,11 @@ export function Browser({
       {asked?.to === 'trash' && (
         <Trash item={asked.item} done={() => ask(undefined)} trashed={listing.refresh} />
       )}
-      {team && (
-        <TeamPanel
-          view={view}
-          connection={connection}
-          close={() => {
-            showTeam(false);
-            overviewChanged();
-          }}
-          disconnected={overviewChanged}
-        />
-      )}
-      {ready && top && at && !searching && at.items.length === 0 && (
-        <ReadyDialog
-          connection={connection}
-          close={() => setReady(false)}
-          made={() => {
-            setReady(false);
-            listing.refresh();
-          }}
-        />
-      )}
     </>
   );
 }
 
 /** What the member asking needs to do to edit in Google, if anything. */
-function Linking({ overview }: { overview: DocumentsOverview }) {
-  const linking = useAction(async () => {
-    const { url } = await linkGoogle();
-    window.location.assign(url);
-  });
-  const me = overview.me;
-  if (!me || me.state === 'shared') return null;
-  return (
-    <section className="documents-banner">
-      <GoogleLogo size={20} />
-      <div>
-        {me.state === 'needs_account' ? (
-          <>
-            <strong>Link a Google account to edit Docs and Sheets</strong>
-            <span>
-              {me.email} isn't a Google account, so you can see your team's files here but can't
-              edit them in Google yet. Any Gmail address works.
-            </span>
-          </>
-        ) : (
-          <>
-            <strong>Google won't share your team's folder with {me.email}</strong>
-            <span>Link another Google account, or ask your DSP owner.</span>
-          </>
-        )}
-      </div>
-      <button disabled={linking.busy} onClick={() => void linking.run()}>
-        Link Google account
-      </button>
-    </section>
-  );
-}
-
 const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 /** "7 folders and 8 files", or only the part there is. */
 const counted = (folders: number, files: number) =>

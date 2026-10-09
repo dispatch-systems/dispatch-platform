@@ -576,6 +576,10 @@ pub struct Feature {
     pub schedule_aliases: &'static [ScheduleAlias],
     /// The permissions it owns, for the role sheet.
     pub permissions: &'static [Permission],
+    /// Whether it adds one of the DSP's own accounts to Settings' DSP Connections, as a
+    /// collector's connection does: Manage DSP Connections exists while it is on, to manage
+    /// that account.
+    pub dsp_connection: bool,
     /// Its endpoints, each with its path and access. The app serves every feature's.
     pub routes: fn() -> Vec<Route>,
     /// The permissions that may follow its collections' progress as it arrives, through
@@ -633,6 +637,7 @@ pub const fn feature(name: &'static str) -> Feature {
         subfeatures: &[],
         schedule_aliases: &[],
         permissions: &[],
+        dsp_connection: false,
         routes: Vec::new,
         live: &[],
         settings: &[],
