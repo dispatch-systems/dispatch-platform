@@ -45,8 +45,9 @@ pub fn forget(dsp: &str) {
 /// Google's links to pictures of what each DSP's Documents showed, by DSP and file, with when
 /// each was shown. A picture is fetched only by a link kept here: so only for a file the DSP's
 /// own Documents showed, and never by a link a browser sent.
-static PICTURES: LazyLock<Mutex<HashMap<(String, String), (String, Instant)>>> =
-    LazyLock::new(Default::default);
+static PICTURES: LazyLock<Mutex<Shown>> = LazyLock::new(Default::default);
+/// Each link, and when Documents showed it, by DSP and file.
+type Shown = HashMap<(String, String), (String, Instant)>;
 /// How long a link is used after Documents showed it, well inside the hours Google's last.
 const PICTURE_LINK_LASTS: Duration = Duration::from_secs(60 * 60);
 /// The most links kept across every DSP; past them, a card keeps its drawing.
