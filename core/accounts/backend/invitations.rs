@@ -149,9 +149,12 @@ impl Store {
         ensure(self.inviter_authorized(&hash)?, "invitation_expired", 404)?;
         let owner = flag(&invitation, "owner");
         invitation.as_object_mut().unwrap().remove("owner");
-        let profile = self.profile(s(&invitation, "dspId"))?;
+        let dsp = s(&invitation, "dspId").to_owned();
+        let profile = self.profile(&dsp)?;
         invitation["onboarding"] = json!(owner && profile.setup_required);
         invitation["stationCode"] = json!(profile.station_code);
+        // A short code the platform owner already gave the DSP stays as it is.
+        invitation["code"] = json!(self.find_dsp(&dsp)?.code);
         Ok(invitation)
     }
     /// What an invitation's link shows: the open invitation, or that it was already accepted.
@@ -185,8 +188,11 @@ impl Store {
     pub fn short_code_check(&self, raw: &str, site: &Site, code: &str) -> Result<Value> {
         let invitation = self.invitation(raw, site)?;
         ensure(flag(&invitation, "onboarding"), "permission_denied", 403)?;
+        let own = invitation["code"]
+            .as_str()
+            .is_some_and(|own| own.eq_ignore_ascii_case(code.trim()));
         Ok(json!({
-            "available": self.code_available(code)?,
+            "available": own || self.code_available(code)?,
             "address": self.config.dsp_url(code),
         }))
     }

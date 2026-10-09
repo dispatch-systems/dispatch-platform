@@ -149,24 +149,26 @@ test('parallel worktree previews isolate ports, files, fixtures and browser sess
   // Even copying a canonical session cookie cannot authenticate the other preview.
   jar.set('dispatch_session', [...jar.values()][0]!);
   assert.equal((await request(second.origin, '/api/session')).status, 401);
-  // The other preview's own owner, an account of its own fixtures.
+  // The member signs in at their DSP's own address on the other preview.
+  const memberOrigin = `http://${demo.memberDsp}.localhost:${new URL(second.origin).port}`;
   assert.equal(
     (
-      await request(second.origin, '/api/auth/login', {
-        email: demo.email,
+      await request(memberOrigin, '/api/auth/login', {
+        email: demo.member,
         password: demo.password,
       })
     ).status,
     200,
   );
   assert.equal(jar.size, 3);
-  const other = await request(second.origin, '/api/session');
-  assert.equal((await request(first.origin, '/api/session')).value.user.id, owner.value.user.id);
-  assert.notEqual(owner.value.user.id, other.value.user.id);
+  const member = await request(memberOrigin, '/api/session');
+  assert.equal(member.value.user.platformOwner, false);
+  assert.equal((await request(first.origin, '/api/session')).value.user.platformOwner, true);
+  assert.notEqual(owner.value.user.id, member.value.user.id);
   assert.equal((await request(first.origin, '/api/auth/logout', {})).status, 403);
   assert.equal((await request(first.origin, '/api/auth/logout', {}, owner.value.csrf)).status, 200);
   assert.equal((await request(first.origin, '/api/session')).status, 401);
-  assert.equal((await request(second.origin, '/api/session')).status, 200);
+  assert.equal((await request(memberOrigin, '/api/session')).status, 200);
 
   // An explicit occupied port fails, without taking over or stopping its owner.
   await assert.rejects(
@@ -176,7 +178,7 @@ test('parallel worktree previews isolate ports, files, fixtures and browser sess
   assert.equal((await fetch(first.origin)).status, 200);
   await first.close();
   assert.equal(fs.existsSync(first.root), false);
-  assert.equal((await request(second.origin, '/api/session')).status, 200);
+  assert.equal((await request(memberOrigin, '/api/session')).status, 200);
   await second.close();
   assert.equal(fs.existsSync(second.root), false);
 });

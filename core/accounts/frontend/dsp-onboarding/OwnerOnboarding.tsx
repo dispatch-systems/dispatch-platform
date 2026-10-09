@@ -13,7 +13,16 @@ import { OnboardingLayout } from './OnboardingLayout.js';
  * A new DSP's first owner sets it up and makes their profile in one go, then signs in at the
  * address its short code gave it.
  */
-export function OwnerOnboarding({ token, email }: { token: string; email: string }) {
+export function OwnerOnboarding({
+  token,
+  email,
+  code,
+}: {
+  token: string;
+  email: string;
+  /** The short code the platform owner already gave the DSP: then it stays. */
+  code: string | null;
+}) {
   const [profile, setProfile] = useState<DspSetup>();
   const [step, setStep] = useState<1 | 2>(1);
   const [passwordError, setPasswordError] = useState('');
@@ -43,6 +52,8 @@ export function OwnerOnboarding({ token, email }: { token: string; email: string
       <DspSetupForm
         hidden={step !== 1}
         checkCode={checkCode}
+        locked={Boolean(code)}
+        initial={code ? { abbreviation: code.toUpperCase() } : undefined}
         onSubmit={(next) => {
           setProfile(next);
           setStep(2);

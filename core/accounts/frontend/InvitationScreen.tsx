@@ -15,6 +15,8 @@ type OpenInvitation = {
   stationCode: string;
   timezone: string;
   onboarding: boolean;
+  /** The short code the platform owner already gave the DSP, if any. */
+  code: string | null;
 };
 type AcceptedInvitation = {
   accepted: true;
@@ -48,7 +50,8 @@ export function InvitationScreen({ token }: { token: string }) {
       />
     );
   // Choose the screen before loading its artwork; the invitation flows stay independent.
-  if (data?.onboarding && token) return <OwnerOnboarding token={token} email={data.email} />;
+  if (data?.onboarding && token)
+    return <OwnerOnboarding token={token} email={data.email} code={data.code} />;
   return (
     <MemberProfileCreation
       token={token}

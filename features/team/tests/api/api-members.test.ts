@@ -244,3 +244,44 @@ test('owner onboarding validates DSP setup before accepting and denies setup thr
   assert.equal((await f.request(memberInvite + '/accept', account, at)).status, 200);
   assert.equal((await user.select(id)).dsp.name, 'Northstar Logistics');
 });
+
+test('a short code the platform owner gave a DSP stays as its first owner sets it up', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const platform = await f.client();
+  const created = await platform.post('/api/platform/dsps', { ownerEmail: 'coded@dispatch.test' });
+  const id = created.value.dsp.id;
+  const coded = await platform.post(`/api/platform/dsps/${id}/code`, { code: ' Cdsp ' });
+  assert.equal(coded.value.code, 'cdsp', coded.body);
+  const audit = (await platform.get('/api/platform/audit')).value.events.find(
+    (event: { action: string }) => event.action === 'dsp.code_changed',
+  );
+  assert.equal(audit.detail, 'cdsp');
+  const token = /token=([A-Za-z0-9_-]{43})/.exec(
+    (await capturedMail(f.root, 'coded@dispatch.test')).text,
+  )![1];
+  const invite = `/api/invitations/${token}`;
+  const at = f.at('cdsp');
+  const open = (await f.request(invite, undefined, at)).value;
+  assert.deepEqual([open.onboarding, open.code], [true, 'cdsp']);
+  // Its own code is no other DSP's: the owner may keep it.
+  const check = async (code: string) =>
+    (await f.request(`${invite}/short-code?code=${code}`, undefined, at)).value.available;
+  assert.deepEqual([await check('CDSP'), await check(demo.memberDsp)], [true, false]);
+  const dspProfile = {
+    name: 'Coded Logistics',
+    abbreviation: 'CDSP',
+    stationCode: 'tst3',
+    timezone: 'America/Chicago',
+  };
+  const account = { firstName: 'Coded', lastName: 'Owner', password };
+  const refused = await f.request(
+    invite + '/accept',
+    { ...account, dspProfile: { ...dspProfile, abbreviation: 'OTHER' } },
+    at,
+  );
+  assert.equal(refused.value.error, 'short_code_locked');
+  const accepted = await f.request(invite + '/accept', { ...account, dspProfile }, at);
+  assert.equal(accepted.status, 200, accepted.body);
+  assert.equal(accepted.value.signIn, `http://cdsp.localhost:${f.env.PORT}/#signin`);
+});

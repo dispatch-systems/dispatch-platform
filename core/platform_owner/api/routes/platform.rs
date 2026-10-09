@@ -176,17 +176,20 @@ async fn set_support_visibility(
 async fn set_code(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<Reply> {
     change_dsp(state, input, access, false, |db, dsp, actor, b| {
         v::fields(b, &["code"])?;
-        let code = v::text(b, "code", 1, 16)?;
+        let code = v::text(b, "code", 1, 16)?.trim().to_ascii_lowercase();
         let before = db.find_dsp(dsp)?.code;
-        let code = db.set_code(dsp, code)?;
-        db.audit_with(
-            Some(actor),
-            Some(dsp),
-            "dsp.code_changed",
-            &code,
-            None,
-            &[("code", before, Some(code.clone()))],
-        )?;
+        // Recorded with the change, and kept only if the code is taken: its profile last.
+        db.platform.transaction(|| {
+            db.audit_with(
+                Some(actor),
+                Some(dsp),
+                "dsp.code_changed",
+                &code,
+                None,
+                &[("code", before, Some(code.clone()))],
+            )?;
+            db.set_code(dsp, &code)
+        })?;
         Ok(json!(db.find_dsp(dsp)?))
     })
     .await
