@@ -447,18 +447,20 @@ impl Driver {
             "invalid_cortex_scope",
             400,
         )?;
-        let hook = json!({"source": *HOOK});
         let installed = if method.hook {
             let added = self
                 .page
-                .command("Page.addScriptToEvaluateOnNewDocument", hook.clone())
+                .command(
+                    "Page.addScriptToEvaluateOnNewDocument",
+                    json!({"source": *HOOK}),
+                )
                 .await?;
             Some(added["identifier"].clone())
         } else {
             None
         };
         let result = self
-            .read_day(scope, kept, metrics, live, &progress, method, &hook)
+            .read_day(scope, kept, metrics, live, &progress, method)
             .await;
         // The session's tab goes on to other collections, whose pages keep what they fetch.
         if let Some(identifier) = installed {
@@ -472,7 +474,6 @@ impl Driver {
         }
         result
     }
-    #[allow(clippy::too_many_arguments)]
     async fn read_day<F, Fut>(
         &self,
         scope: &Scope,
@@ -481,7 +482,6 @@ impl Driver {
         live: Option<&Writer>,
         progress: &F,
         method: &MealMethod,
-        hook: &Value,
     ) -> Result<Value>
     where
         F: Fn(i64, String) -> Fut,
@@ -502,8 +502,11 @@ impl Driver {
             };
             page.allow_origins(&self.origins.iter().map(String::as_str).collect::<Vec<_>>());
             if method.hook {
-                page.command("Page.addScriptToEvaluateOnNewDocument", hook.clone())
-                    .await?;
+                page.command(
+                    "Page.addScriptToEvaluateOnNewDocument",
+                    json!({"source": *HOOK}),
+                )
+                .await?;
             }
             others.push(page);
         }

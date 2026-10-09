@@ -241,7 +241,11 @@ impl Drives for Driver {
             let scope = self
                 .resolve_scope(&serde_json::from_value(run.request.clone())?, run.metrics)
                 .await?;
-            let kept = kept_meals(run, &scope).await?;
+            // What Timecard holds only saves reads: without it, every route is read.
+            let kept = kept_meals(run, &scope).await.unwrap_or_else(|_| {
+                run.metrics.detail("meal_kept_unavailable");
+                Vec::new()
+            });
             let data = Driver::collect(
                 self,
                 &scope,
