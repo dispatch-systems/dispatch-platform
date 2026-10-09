@@ -91,8 +91,8 @@ async fn collection_updates(state: Arc<State>, input: Input, access: Dsp) -> Res
     Reply::of(&crate::collection::api::types::CollectionUpdates { revision, changes })
 }
 
-/// The kinds of job whose finished collections a member may hear of: those its features keep
-/// whose `live` permissions the member holds.
+/// The kinds of job whose results a member may hear of: those kept by the features whose `live`
+/// permissions it holds.
 fn followed(c: &Context) -> Vec<&'static str> {
     let features = registry().features.iter();
     let following = features.filter(|feature| feature.live.iter().any(|p| c.can(p)));
