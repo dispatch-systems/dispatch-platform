@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { fixture, until } from '../../../../core/shell/tests/support/support.js';
 
-/** Synthetic inspections in the real DVIC store, for the daily log's browser checks. */
-export async function seedDvic(app: Awaited<ReturnType<typeof fixture>>, count = 19) {
+/** Northline Logistics with its station and a Cortex connection, ready to collect DVIC. */
+export async function connectDvic(app: Awaited<ReturnType<typeof fixture>>) {
   const owner = await app.client();
   const dsp = owner.session.dsps.find(
     (item: { name: string }) => item.name === 'Northline Logistics',
@@ -29,6 +29,12 @@ export async function seedDvic(app: Awaited<ReturnType<typeof fixture>>, count =
     ).status,
     200,
   );
+  return { owner, dsp };
+}
+
+/** Synthetic inspections in the real DVIC store, for the daily log's browser checks. */
+export async function seedDvic(app: Awaited<ReturnType<typeof fixture>>, count = 19) {
+  const { owner, dsp } = await connectDvic(app);
   const job = await owner.post('/api/dsp/dvic/collect', {
     requestId: 'daily-log-fixture',
     week: '2026-W39',

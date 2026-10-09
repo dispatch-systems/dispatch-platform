@@ -5,7 +5,7 @@ import {
   openDsp,
   demo,
 } from '../../../../core/shell/tests/support/fixtures.js';
-import { seedDvic } from '../support/dvic.js';
+import { connectDvic, seedDvic } from '../support/dvic.js';
 
 test('unconfigured collection explains the missing station and Cortex connection', async ({
   page,
@@ -225,6 +225,32 @@ test('schedules persist, pause, reject stale edits and delete; manual sync reach
   await expect(page.getByRole('button', { name: 'Sync now', exact: true })).toBeEnabled({
     timeout: 15000,
   });
+});
+
+test('a run started elsewhere shows on an open DVIC page as soon as it finishes', async ({
+  page,
+  dispatch,
+}) => {
+  const { dsp, owner } = await connectDvic(dispatch);
+  await login(page);
+  await openDsp(page, dsp.name);
+  // The page's second wait for collection updates is the one a finished run wakes.
+  const following = page.waitForRequest(
+    (request) =>
+      request.url().includes('/api/dsp/collection-updates?after=') &&
+      !request.url().endsWith('after='),
+  );
+  await page.getByRole('link', { name: 'DVIC', exact: true }).click();
+  const freshness = page.locator('.dvic-freshness');
+  await expect(freshness).toContainText('No completed sync yet');
+  await following;
+  const job = await owner.post('/api/dsp/dvic/collect', {
+    requestId: 'started-elsewhere',
+    week: '2026-W39',
+  });
+  expect(job.status, job.body).toBe(202);
+  // Idle, the page rereads its status once a minute; the finished run reaches it well before.
+  await expect(freshness).toContainText('Synced', { timeout: 20000 });
 });
 
 test('DVIC viewers can read without collection controls; a disabled feature has no page or navigation', async ({

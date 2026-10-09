@@ -323,7 +323,9 @@
       "domains": [
         "dvic"
       ],
-      "live": [],
+      "live": [
+        "dvic.view"
+      ],
       "maintenance": [],
       "mcp": {
         "daily": [

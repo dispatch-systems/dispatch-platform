@@ -27,6 +27,7 @@ pub const FEATURE: Feature = Feature {
         perm("dvic.manage", "Manage DVIC", 42).implies(&["dvic.view"]),
     ],
     routes: api::routes::routes,
+    live: &["dvic.view"],
     keeps: &[&backend::keeper::Dvic],
     tables: &[(
         "dvic",

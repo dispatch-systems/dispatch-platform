@@ -44,6 +44,10 @@ export const feature: FrontendFeature = {
       'Set your station code in the DSP profile before collecting DVIC reports.',
   },
   cache: {
+    // A finished Cortex collection rereads the status; the inspections follow what it published.
+    collected: ['/api/dsp/dvic/status'],
+    collection: (_, changes) =>
+      changes.some((change) => change.provider === 'all' || change.provider === 'cortex'),
     connections: ['/api/dsp/dvic/'],
     write: (write, url) =>
       write.startsWith('/api/dsp/dvic/') ? begins(url, '/api/dsp/dvic/') : undefined,

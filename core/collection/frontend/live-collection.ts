@@ -1,15 +1,18 @@
 import { useEffect } from 'react';
-import { ApiError, view } from '../../../core/shell/frontend/runtime/api.js';
-import { backoff } from '../../../core/shell/frontend/lib/backoff.js';
-import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
+import { ApiError, view } from '../../shell/frontend/runtime/api.js';
+import { backoff } from '../../shell/frontend/lib/backoff.js';
+import { dataCache } from '../../shell/frontend/runtime/data-cache.js';
 import {
   collectionAffects,
   collectionData,
   type CollectionChange,
-} from '../../../core/shell/frontend/runtime/data-policy.js';
-import { getCollectionUpdates } from '../../../core/collection/api/client.js';
+} from '../../shell/frontend/runtime/data-policy.js';
+import { getCollectionUpdates } from '../api/client.js';
 
-/** One sleeping request for the Timecard page, shared across days and tabs. */
+/**
+ * One sleeping request for a page that follows its collections live, shared across its days and
+ * tabs. A finished collection refreshes the reads its feature's cache rules say it reaches.
+ */
 export function useCollectionUpdates() {
   const token = view;
   useEffect(() => {
