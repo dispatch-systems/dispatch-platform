@@ -157,6 +157,87 @@ pub(crate) fn publish_meals(
         Ok(json!({"id":id,"itineraries":capture.itineraries.len(),"meals":meals,"verifiedGapPairs":gaps}))
     })
 }
+/// The routes of the scope's active publication, as Cortex collected them. Only a
+/// publication that kept each delivery's stop stands in for a collection.
+pub(crate) fn kept_routes(store: &Store, dsp: &str, scope: &Scope) -> Result<Vec<Itinerary>> {
+    let db = store.collector(dsp, cortex::PROVIDER)?;
+    let Some(publication) = db.one(
+        "SELECT id FROM meal_publications WHERE active=1 AND report_date=? AND station=? AND \
+         service_area_id=? AND provider=? AND timezone=? AND adapter_version>=4",
+        params![
+            scope.date,
+            scope.station,
+            scope.service_area_id,
+            scope.provider,
+            scope.timezone
+        ],
+    )?
+    else {
+        return Ok(Vec::new());
+    };
+    let id = s(&publication, "id");
+    let time = |row: &Value, field: &str| -> Result<Option<i64>> {
+        row[field]
+            .as_str()
+            .map(|text| {
+                chrono::DateTime::parse_from_rfc3339(text)
+                    .map(|t| t.timestamp_millis())
+                    .map_err(|_| dispatch_core::Error::new("invalid_cortex_capture", 500))
+            })
+            .transpose()
+    };
+    let stop = |row: &Value, field: &str| row[field].as_u64().and_then(|v| u32::try_from(v).ok());
+    let mut meals: std::collections::HashMap<String, Vec<Meal>> = Default::default();
+    for row in db.all(
+        "SELECT m.itinerary_id,m.meal_id,m.last_delivery_at,m.started_at,m.ended_at,\
+         m.first_delivery_at,t.last_delivery_stop,t.first_delivery_stop FROM meal_records m \
+         LEFT JOIN meal_stops t USING(publication_id,itinerary_id,meal_id) \
+         WHERE m.publication_id=? ORDER BY m.itinerary_id,m.started_at,m.meal_id",
+        [id],
+    )? {
+        let meal = Meal {
+            id: s(&row, "meal_id").into(),
+            start: time(&row, "started_at")?
+                .ok_or_else(|| dispatch_core::Error::new("invalid_cortex_capture", 500))?,
+            end: time(&row, "ended_at")?,
+            last_delivery: time(&row, "last_delivery_at")?,
+            first_delivery: time(&row, "first_delivery_at")?,
+            last_delivery_stop: stop(&row, "last_delivery_stop"),
+            first_delivery_stop: stop(&row, "first_delivery_stop"),
+        };
+        meals
+            .entry(s(&row, "itinerary_id").into())
+            .or_default()
+            .push(meal);
+    }
+    db.all(
+        "SELECT i.itinerary_id,i.transporter_id,i.driver_name,i.route_code,i.observed_at,\
+         i.route_complete,i.delivery_coverage,u.url FROM meal_itineraries i \
+         LEFT JOIN meal_sources u USING(publication_id,itinerary_id) \
+         WHERE i.publication_id=? ORDER BY i.itinerary_id",
+        [id],
+    )?
+    .iter()
+    .map(|row| {
+        Ok(Itinerary {
+            id: s(row, "itinerary_id").into(),
+            transporter_id: s(row, "transporter_id").into(),
+            driver: s(row, "driver_name").into(),
+            route: s(row, "route_code").into(),
+            observed_at: time(row, "observed_at")?
+                .ok_or_else(|| dispatch_core::Error::new("invalid_cortex_capture", 500))?,
+            route_complete: row["route_complete"] == 1,
+            delivery_coverage: if s(row, "delivery_coverage") == "complete" {
+                Coverage::Complete
+            } else {
+                Coverage::Unavailable
+            },
+            meals: meals.remove(s(row, "itinerary_id")).unwrap_or_default(),
+            source_url: row["url"].as_str().map(Into::into),
+        })
+    })
+    .collect()
+}
 pub(crate) fn meal_publications(store: &Store, dsp: &str, date: &str) -> Result<Value> {
     ensure(
         NaiveDate::parse_from_str(date, "%Y-%m-%d").is_ok(),

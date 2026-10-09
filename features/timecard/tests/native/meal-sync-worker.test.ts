@@ -9,6 +9,8 @@ import {
 import {
   executionPage,
   itineraryApi,
+  listResponse,
+  summariesApi,
 } from '../../../../collectors/cortex/tests/support/cortex-execution.js';
 
 const native = process.env.DISPATCH_TEST_NATIVE !== '1';
@@ -88,6 +90,11 @@ test(
         );
         return true;
       }
+      if (url.pathname === summariesApi) {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(listResponse([candidate], { 'driver-1': 'Fixture Driver' })));
+        return true;
+      }
       if (!url.pathname.startsWith('/operations/execution/itineraries')) return false;
       paths.push(url.pathname + url.search);
       if (!url.searchParams.get('serviceAreaId')) {
@@ -95,27 +102,20 @@ test(
         res.end();
         return true;
       }
-      const p: any = {
-        selectedDay: date,
-        serviceAreaId: 'area-1',
-        selectedStation: {
-          serviceAreaID: 'area-1',
-          defaultStationCode: 'TST1',
-          timeZone: 'US/Pacific',
-        },
-        providerFilterValue: url.searchParams.get('provider') ?? 'ALL_DSPS',
-        providerFilterOptions: [
-          { value: 'ALL_DRIVERS', label: 'All Drivers' },
-          { value: 'ALL_DSPS' },
-          { value: 'provider-1', label: 'NLL' },
-          { value: 'other-provider', label: 'Other' },
-        ],
-        isLoadingSummaries: false,
-        allItinerarySummaries: [candidate],
-        transporterSummary: { 'driver-1': { transporterName: 'Fixture Driver' } },
-      };
       res.setHeader('Content-Type', 'text/html');
-      res.end(executionPage(p));
+      res.end(
+        executionPage(
+          {},
+          {
+            providerFilterOptions: [
+              { value: 'ALL_DRIVERS', label: 'All Drivers' },
+              { value: 'ALL_DSPS' },
+              { value: 'provider-1', label: 'NLL' },
+              { value: 'other-provider', label: 'Other' },
+            ],
+          },
+        ),
+      );
       return true;
     });
     t.after(f.close);

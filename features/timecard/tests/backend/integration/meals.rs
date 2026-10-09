@@ -242,6 +242,54 @@ fn deliveries_open_the_route_at_the_stop_that_held_them() {
         0
     );
 }
+// A collection asks Timecard what it holds for its scope: each route of the active
+// publication as Cortex collected it, so a finished one need not be read again. Only a
+// publication that kept each delivery's stop, and only for the same scope, answers.
+#[test]
+fn a_collection_learns_the_routes_kept_for_its_scope_as_it_collected_them() {
+    use dispatch_core::manifest::registry;
+    install();
+    let (_root, db, id) = common::bootstrapped();
+    let scope = scope();
+    let link = |route: &str| {
+        Some(format!(
+            "https://logistics.amazon.com{}",
+            scope.detail_path(route)
+        ))
+    };
+    let mut c = meals::fixture(&scope);
+    c.itineraries[0].source_url = link("fixture-itinerary");
+    // A route still out, mid-meal, and one without meals.
+    let mut out = c.itineraries[0].clone();
+    out.id = "out-itinerary".into();
+    out.transporter_id = "out-driver".into();
+    out.route_complete = false;
+    out.source_url = None;
+    let meal = &mut out.meals[0];
+    (meal.end, meal.first_delivery, meal.first_delivery_stop) = (None, None, None);
+    let mut none = c.itineraries[0].clone();
+    none.id = "quiet-itinerary".into();
+    none.transporter_id = "quiet-driver".into();
+    none.delivery_coverage = Coverage::Unavailable;
+    none.meals.clear();
+    none.source_url = link("quiet-itinerary");
+    c.itineraries.extend([out, none]);
+    db.publish_meals(&id, "job-kept", &c, &scope).unwrap();
+    let keeper = registry().keeper(meals::JOB_KIND);
+    assert_eq!(
+        keeper.kept(&db, &id, &json!(scope)).unwrap(),
+        json!(c.itineraries)
+    );
+    let mut other = scope.clone();
+    other.provider = "provider-2".into();
+    assert_eq!(keeper.kept(&db, &id, &json!(other)).unwrap(), json!([]));
+    // Without its stops a kept route would lose them when collected again.
+    db.collector(&id, cortex::PROVIDER)
+        .unwrap()
+        .exec("UPDATE meal_publications SET adapter_version=3", [])
+        .unwrap();
+    assert_eq!(keeper.kept(&db, &id, &json!(scope)).unwrap(), json!([]));
+}
 #[test]
 fn invalid_or_shrinking_refresh_preserves_publication_and_retention_is_bounded() {
     install();

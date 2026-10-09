@@ -1,13 +1,14 @@
 //! Cortex authentication and performance transport from Amazon Logistics.
 pub mod performance;
 use crate::collections::meals::collect as collection;
+use crate::discovery::Scope;
 use dispatch_core::collection::browser::{
     Collected, Driver as Drives, Pending, Run,
     attempt::Attempts,
     browseros,
     page::{Page, call},
 };
-use dispatch_core::{Error, Result, db::s, ensure};
+use dispatch_core::{Error, Result, db::s, ensure, manifest::registry};
 use serde_json::{Value, json};
 use std::{path::Path, time::Duration};
 use tokio::time::{Instant, sleep};
@@ -183,6 +184,25 @@ impl Driver {
         result
     }
 }
+/// The routes Timecard already holds for `scope`, which the collection need not read again
+/// while they stay as they were.
+async fn kept_meals(run: &Run<'_>, scope: &Scope) -> Result<Vec<crate::meals::Itinerary>> {
+    let job = run.job.to_owned();
+    let question = serde_json::to_value(scope)?;
+    let kept = run
+        .state
+        .read(move |store| {
+            let dsp = store.job_row(&job, None)?.dsp_id;
+            registry()
+                .keeper(crate::meals::JOB_KIND)
+                .kept(store, &dsp, &question)
+        })
+        .await?;
+    if kept.is_null() {
+        return Ok(Vec::new());
+    }
+    Ok(serde_json::from_value(kept)?)
+}
 impl Drives for Driver {
     fn request(&mut self, command: Value) -> Pending<'_, Value> {
         Box::pin(Driver::request(self, command))
@@ -221,9 +241,11 @@ impl Drives for Driver {
             let scope = self
                 .resolve_scope(&serde_json::from_value(run.request.clone())?, run.metrics)
                 .await?;
+            let kept = kept_meals(run, &scope).await?;
             let data = Driver::collect(
                 self,
                 &scope,
+                &kept,
                 run.metrics,
                 Some(&crate::meals::Writer::new(
                     run.state.clone(),
