@@ -379,7 +379,13 @@ pub async fn rename(
 ) -> Result<DocumentsItem> {
     let dsp = c.dsp.id.clone();
     let (_, tree) = tree(state, &dsp).await?;
-    let before = tree.get(&id).ok_or_else(not_found)?.name.clone();
+    let item = tree.get(&id).ok_or_else(not_found)?;
+    let before = item.name.clone();
+    // A file keeps its extension, so renaming never changes what kind of file it is.
+    if let Some(kept) = extension(&before, &item.mime_type) {
+        let same = extension(&name, &item.mime_type) == Some(kept);
+        ensure(same, "documents_extension_kept", 400)?;
+    }
     let (connection, renamed) = on_drive!(state, &dsp, |google, token| google
         .rename(token, &id, &name))?;
     let after = renamed.name.clone();
@@ -487,6 +493,7 @@ impl Described<'_> {
                 .filter(|_| located)
                 .map(|parent| parent.name.clone()),
             thumbnail: self.picture(item),
+            extension: extension(&item.name, &item.mime_type).map(str::to_owned),
         }
     }
     /// Where the page fetches Google's picture of `item`, keeping its link for the DSP to
@@ -519,6 +526,19 @@ impl Described<'_> {
             item.id
         ))
     }
+}
+
+/// The extension a file's name keeps, such as `.pdf`: the letters and digits after its last
+/// dot, up to eight, with something before the dot. Folders and Google's own Docs, Sheets and
+/// Slides have none.
+fn extension<'a>(name: &'a str, mime: &str) -> Option<&'a str> {
+    if mime.starts_with("application/vnd.google-apps.") {
+        return None;
+    }
+    let dot = name.rfind('.')?;
+    let after = &name[dot + 1..];
+    let named = dot > 0 && (1..=8).contains(&after.len());
+    (named && after.bytes().all(|b| b.is_ascii_alphanumeric())).then(|| &name[dot..])
 }
 
 pub(crate) fn kind(mime: &str) -> ItemKind {
