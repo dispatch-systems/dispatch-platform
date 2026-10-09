@@ -45,7 +45,7 @@ pub fn overview(db: &Store, c: &Context) -> Result<DocumentsOverview> {
             account_email: found.account.email,
             folder_url: google::folder_url(&found.folder_id),
             folder_name: found.folder_name,
-            connected_by: db.actor_name(&found.connected_by)?,
+            connected_by: db.actor_name(&c.dsp.id, &found.connected_by)?,
             connected_at: found.connected_at,
         }),
         None => None,

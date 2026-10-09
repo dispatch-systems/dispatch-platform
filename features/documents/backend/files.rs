@@ -399,7 +399,7 @@ fn known(
         .collect();
     let mut names = BTreeMap::new();
     for user in people {
-        if let Some(name) = db.actor_name(user)? {
+        if let Some(name) = db.actor_name(dsp, user)? {
             names.insert(user.to_owned(), name);
         }
     }

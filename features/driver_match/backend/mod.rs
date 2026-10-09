@@ -361,7 +361,7 @@ impl DriverMatchStore for Store {
                     .get(&id.key())
                     .map(|x| names::display(x.name())),
                 code: None,
-                actor: actor_name(self, id.actor_id.as_deref())?,
+                actor: actor_name(self, dsp, id.actor_id.as_deref())?,
             });
         }
         let named = |code: &str| {
@@ -384,7 +384,7 @@ impl DriverMatchStore for Store {
                 link: None,
                 name: None,
                 code: Some(merged.clone()),
-                actor: actor_name(self, by.as_deref())?,
+                actor: actor_name(self, dsp, by.as_deref())?,
             });
             merged_codes.push(merged);
         }
@@ -399,7 +399,7 @@ impl DriverMatchStore for Store {
                 link: None,
                 name: from.as_deref().and_then(named),
                 code: from,
-                actor: actor_name(self, by.as_deref())?,
+                actor: actor_name(self, dsp, by.as_deref())?,
             });
         }
         for (first, second, at, by) in db.query_as::<(String, String, String, Option<String>)>(
@@ -414,7 +414,7 @@ impl DriverMatchStore for Store {
                 link: None,
                 name: named(&other),
                 code: Some(other),
-                actor: actor_name(self, by.as_deref())?,
+                actor: actor_name(self, dsp, by.as_deref())?,
             });
         }
         history.sort_by(|a, b| b.at.cmp(&a.at));
@@ -915,9 +915,9 @@ pub(crate) fn name_driver_events(store: &Store, events: &mut [Value]) {
 }
 
 /// Who did something, as the DSP sees them.
-fn actor_name(store: &Store, id: Option<&str>) -> Result<Option<String>> {
+fn actor_name(store: &Store, dsp: &str, id: Option<&str>) -> Result<Option<String>> {
     let Some(id) = id else { return Ok(None) };
-    store.actor_name(id)
+    store.actor_name(dsp, id)
 }
 
 /// Writes the confirmed links back where the meal-break page kept them, so the previous

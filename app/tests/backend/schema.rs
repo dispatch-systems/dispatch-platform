@@ -165,10 +165,11 @@ fn platform_databases_from_before_each_added_column_gain_it() {
     };
     let new = root.path().join("new.sqlite");
     let new = Db::create(&new, Kind::PLATFORM, "").unwrap();
-    // v0.0.9 has no audit data or shown. Before v0.0.6 there was no actor_name,
-    // and before roles no role_id or its indexes.
+    // v0.0.9 has no audit data or shown, nor member ids. Before v0.0.6 there was no
+    // actor_name, and before roles no role_id or its indexes.
     let v9 = recorded(Kind::PLATFORM)
         .replace(RECORD, "")
+        .replace(", member_id TEXT)", ")")
         .replace(", data TEXT, shown INTEGER)", ")");
     let first = v9
         .replace(", actor_name TEXT)", ")")

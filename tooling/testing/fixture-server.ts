@@ -345,6 +345,9 @@ export async function fixture(options: boolean | FixtureOptions = true) {
     at,
     client,
     database,
+    /** A DSP's own database, where its people, roles and invitations are kept. */
+    people: <T>(dspId: string, callback: (db: DatabaseSync) => T): T =>
+      database(`dsps/${dspId}/data/dispatch.sqlite`, callback),
     collector: <T>(dspId: string, callback: (db: DatabaseSync) => T): T =>
       database(path.relative(root, collectorDatabase(root, dspId, 'paycom')), callback),
     pid: () => server!.pid!,

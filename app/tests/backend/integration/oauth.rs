@@ -2714,7 +2714,22 @@ fn a_notice_waiting_to_be_sent_goes_only_to_a_platform_owner_still_active() {
             .unwrap();
         id
     };
-    let (owner, member) = (user("owner@dispatch.test"), user("member@dispatch.test"));
+    let owner = user("owner@dispatch.test");
+    // The member's account is Northline's own.
+    let (north,): (String,) = db
+        .platform
+        .one_as("SELECT id FROM dsps WHERE name='Northline Logistics'", [])
+        .unwrap()
+        .unwrap();
+    let (member,): (String,) = db
+        .dsp(&north)
+        .unwrap()
+        .one_as(
+            "SELECT id FROM users WHERE email='member@dispatch.test'",
+            [],
+        )
+        .unwrap()
+        .unwrap();
     db.platform
         .exec(
             "INSERT INTO users(id,email,first_name,last_name,password,platform_owner,status,\

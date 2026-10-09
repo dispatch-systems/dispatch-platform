@@ -152,7 +152,7 @@ fn concurrent_legacy_dsp_adoption_accepts_the_identity_committed_while_waiting()
     });
 
     verify_dsp_identity(&first, &id).unwrap();
-    assert_eq!(ids(&first), vec![1, 2, 3, 4, 5, 6, 7, 8]);
+    assert_eq!(ids(&first), (1..=12).collect::<Vec<i64>>());
 }
 
 #[test]
@@ -367,7 +367,7 @@ fn jobs_and_schedules_from_before_the_dvic_collection_keep_their_rows_through_th
     let db = Db::open(&file, Kind::DSP).unwrap();
     migrate_dsp(&db, &id).unwrap();
     verify_dsp_identity(&db, &id).unwrap();
-    assert_eq!(ids(&db), vec![1, 2, 3, 4, 5, 6, 7, 8]);
+    assert_eq!(ids(&db), (1..=12).collect::<Vec<i64>>());
     assert_eq!(dump(&db), recorded(Kind::DSP));
     assert_eq!(
         db.all("SELECT id,collection,enabled FROM collection_schedules", [])
@@ -455,7 +455,7 @@ fn schedules_from_before_collections_were_open_keep_their_rows_through_the_rebui
     let db = Db::open(&file, Kind::DSP).unwrap();
     migrate_dsp(&db, &id).unwrap();
     verify_dsp_identity(&db, &id).unwrap();
-    assert_eq!(ids(&db), vec![1, 2, 3, 4, 5, 6, 7, 8]);
+    assert_eq!(ids(&db), (1..=12).collect::<Vec<i64>>());
     assert_eq!(dump(&db), recorded(Kind::DSP));
     assert_eq!(
         db.all("SELECT id,collection,enabled FROM collection_schedules", [])

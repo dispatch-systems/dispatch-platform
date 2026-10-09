@@ -114,17 +114,21 @@ impl Scheduler {
                 if !agents_used.is_empty() {
                     db.record_agent_use(&agents_used)?;
                 }
-                // Expired access tokens have no remaining authentication purpose.
+                // Expired access tokens have no remaining authentication purpose, in the
+                // platform's directory or any DSP's.
+                const EXPIRED: [&str; 3] = [
+                    "DELETE FROM sessions WHERE expires_at<?",
+                    "DELETE FROM resets WHERE expires_at<?",
+                    // An accepted invitation stays 90 days, so Diagnostics can show
+                    // that it was accepted. It can no longer be used.
+                    "DELETE FROM invitations WHERE expires_at<?1 AND \
+                     (used_at IS NULL OR used_at<?1-7776000000)",
+                ];
                 db.platform.transaction(|| {
-                    for sql in [
-                        "DELETE FROM sessions WHERE expires_at<?",
-                        "DELETE FROM resets WHERE expires_at<?",
-                        // An accepted invitation stays 90 days, so Diagnostics can show
-                        // that it was accepted. It can no longer be used.
-                        "DELETE FROM invitations WHERE expires_at<?1 AND \
-                         (used_at IS NULL OR used_at<?1-7776000000)",
-                        "DELETE FROM throttle WHERE reset_at<?",
-                    ] {
+                    for sql in EXPIRED
+                        .iter()
+                        .chain(&["DELETE FROM throttle WHERE reset_at<?"])
+                    {
                         db.platform.exec(sql, [now()])?;
                     }
                     Ok(())
@@ -135,6 +139,14 @@ impl Scheduler {
                     [],
                 )?;
                 for (dsp,) in dsps {
+                    let people = db.dsp(&dsp)?;
+                    people.transaction(|| {
+                        for sql in EXPIRED {
+                            people.exec(sql, [now()])?;
+                        }
+                        Ok(())
+                    })?;
+                    drop(people);
                     for provider in Provider::all() {
                         provider.collector().prune(db, &dsp)?;
                     }

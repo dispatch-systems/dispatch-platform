@@ -28,6 +28,11 @@ pub async fn run() -> Result<()> {
         println!("{}", operations::status(&config)?);
         return Ok(());
     }
+    // Read-only, as status is: what starting this release moves into each DSP's directory.
+    if command == "directories" {
+        println!("{}", operations::directories(&config)?);
+        return Ok(());
+    }
     // Without the platform lock: each family of commands says why it needs none.
     let mut families = registry()
         .features

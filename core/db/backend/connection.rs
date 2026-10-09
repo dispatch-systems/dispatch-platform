@@ -195,7 +195,22 @@ impl Db {
     pub fn count(&self, sql: &str, p: impl Params) -> Result<i64> {
         Ok(self.0.prepare_cached(sql)?.query_row(p, |row| row.get(0))?)
     }
+    /// Runs `f` in a transaction, or inside one already open on this connection, as when a
+    /// DSP's database is reached twice within one change, as a savepoint of it.
     pub fn transaction<T>(&self, f: impl FnOnce() -> Result<T>) -> Result<T> {
+        if !self.0.is_autocommit() {
+            self.0.execute_batch("SAVEPOINT nested")?;
+            return match f() {
+                Ok(result) => {
+                    self.0.execute_batch("RELEASE nested")?;
+                    Ok(result)
+                }
+                Err(error) => {
+                    self.0.execute_batch("ROLLBACK TO nested; RELEASE nested")?;
+                    Err(error)
+                }
+            };
+        }
         let tx = self.0.unchecked_transaction()?;
         let result = f()?;
         tx.commit()?;

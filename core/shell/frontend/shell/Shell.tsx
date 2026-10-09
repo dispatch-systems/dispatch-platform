@@ -136,9 +136,6 @@ export function Shell({
             }
           >
             <a href={(dspId && settingsHash(dspId)) || platformHash('account')}>Account settings</a>
-            {!session.user.platformOwner && session.dsps.length > 1 && (
-              <a href={platformHash()}>Switch DSP</a>
-            )}
             <a href={source.href} target="_blank" rel="noreferrer">
               Source code
               <span className="source-version">

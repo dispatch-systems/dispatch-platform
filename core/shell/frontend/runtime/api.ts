@@ -53,7 +53,6 @@ const labels: Record<string, string> = {
   invalid_date: 'Choose a valid date that is not in the future.',
   email_unavailable: 'Email sending is not configured for this environment.',
   invitation_expired: 'This invitation has expired or was revoked. Ask for a new invitation.',
-  sign_in_with_existing_password: 'Use your existing Dispatch password to accept this invitation.',
   invalid_short_code: 'A short code is 2 to 16 letters and numbers.',
   short_code_taken: 'That short code is taken. Choose another.',
   short_code_locked: 'This DSP’s short code is already set.',

@@ -1,35 +1,34 @@
 use super::{Db, Kind, identifier, key_file, migrations, private_dir, private_file, s};
 use crate::{Result, ensure, foundation::config::Config};
 use std::path::{Path, PathBuf};
+/// A connection to one of a DSP's databases. Every lease of the same file within one store's
+/// work shares its connection, as the platform's database is shared, so work that reaches a
+/// DSP's database twice sees, and joins, the same transaction.
 pub struct DspLease<'a> {
-    id: String,
-    db: Option<Db>,
-    cache: &'a std::cell::RefCell<Vec<(String, Db)>>,
+    db: std::rc::Rc<Db>,
+    _store: std::marker::PhantomData<&'a Store>,
 }
 impl std::ops::Deref for DspLease<'_> {
     type Target = Db;
     fn deref(&self) -> &Db {
-        self.db.as_ref().expect("database lease")
+        &self.db
     }
 }
-impl Drop for DspLease<'_> {
-    fn drop(&mut self) {
-        if let Some(db) = self.db.take() {
-            let mut cache = self.cache.borrow_mut();
-            if cache.len() >= 4 {
-                cache.remove(0);
-            }
-            cache.push((self.id.clone(), db));
-        }
-    }
-}
+
+/// The DSP databases a store has open, each shared by every lease of it.
+struct DspCache(std::cell::RefCell<Vec<(String, std::rc::Rc<Db>)>>);
+// SAFETY: the counted connections are reached only through the store, which is not `Sync`,
+// and through leases that borrow it and are not `Send`. A store moves to another thread only
+// once no lease borrows it, so every count moves with it and none is ever touched from two
+// threads.
+unsafe impl Send for DspCache {}
 
 pub struct Store {
     pub config: Config,
     pub platform: Db,
     pub jobs: Db,
     pub key: Vec<u8>,
-    dsp_cache: std::cell::RefCell<Vec<(String, Db)>>,
+    dsp_cache: DspCache,
     // Set when this work queued mail; the state wakes the mailer once the work is done.
     mail_queued: std::cell::Cell<bool>,
 }
@@ -55,7 +54,7 @@ impl Store {
             )?,
             config,
             key,
-            dsp_cache: std::cell::RefCell::new(Vec::new()),
+            dsp_cache: DspCache(std::cell::RefCell::new(Vec::new())),
             mail_queued: std::cell::Cell::new(false),
         };
         crate::manifest::retirement::platform(&store)?;
@@ -70,6 +69,12 @@ impl Store {
             store.open_collectors(id)?;
             store.initialize_schedules(id)?;
         }
+        // Each DSP's people move into its own directory once, then any of its roles naming a
+        // retired permission is renamed, as the platform's were.
+        for id in store.kept_dsps()? {
+            store.move_people(&id)?;
+            crate::manifest::retirement::roles(&*store.dsp(&id)?)?;
+        }
         store.backfill_codes()?;
         Ok(store)
     }
@@ -79,7 +84,7 @@ impl Store {
             jobs: Db::open(&config.environment_root().join("jobs.sqlite"), Kind::JOBS)?,
             config,
             key,
-            dsp_cache: std::cell::RefCell::new(Vec::new()),
+            dsp_cache: DspCache(std::cell::RefCell::new(Vec::new())),
             mail_queued: std::cell::Cell::new(false),
         })
     }
@@ -115,21 +120,19 @@ impl Store {
         private_file(path, false)?;
         ensure(path.is_file(), "storage_file_missing", 503)?;
         let id = path.to_string_lossy();
-        let cached = {
-            let mut cache = self.dsp_cache.borrow_mut();
-            cache
-                .iter()
-                .position(|(key, _)| key == &id)
-                .map(|index| cache.remove(index).1)
+        let mut cache = self.dsp_cache.0.borrow_mut();
+        // The most recently used stay, four at most; one still leased outlives its eviction.
+        let db = match cache.iter().position(|(key, _)| key == &id) {
+            Some(index) => cache.remove(index).1,
+            None => std::rc::Rc::new(Db::open(path, kind)?),
         };
-        let db = match cached {
-            Some(db) => db,
-            None => Db::open(path, kind)?,
-        };
+        if cache.len() >= 4 {
+            cache.remove(0);
+        }
+        cache.push((id.into_owned(), db.clone()));
         Ok(DspLease {
-            id: id.into_owned(),
-            db: Some(db),
-            cache: &self.dsp_cache,
+            db,
+            _store: std::marker::PhantomData,
         })
     }
     pub fn initialize_dsp(&self, id: &str) -> Result<Db> {

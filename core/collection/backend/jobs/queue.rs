@@ -509,13 +509,18 @@ impl Store {
             409,
         )?;
         if let Some(actor) = row.actor_id.as_deref() {
-            let user: (UserStatus, bool) = self
-                .platform
-                .one_as(
-                    "SELECT status,platform_owner FROM users WHERE id=?",
-                    [actor],
-                )?
-                .ok_or_else(|| Error::new("permission_denied", 403))?;
+            // Whoever asked: a platform owner, or one of the DSP's own people.
+            let owner: Option<(UserStatus, bool)> = self.platform.one_as(
+                "SELECT status,platform_owner FROM users WHERE id=? AND platform_owner=1",
+                [actor],
+            )?;
+            let user: (UserStatus, bool) = match owner {
+                Some(owner) => owner,
+                None => self
+                    .dsp(&row.dsp_id)?
+                    .one_as("SELECT status,0 FROM users WHERE id=?", [actor])?
+                    .ok_or_else(|| Error::new("permission_denied", 403))?,
+            };
             let (status, platform_owner) = user;
             ensure(
                 status == UserStatus::Active

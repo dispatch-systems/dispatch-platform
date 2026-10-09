@@ -34,7 +34,7 @@
   "core/accounts/tests/browser/account-security.spec.ts › passkeys gate new sessions, reject replay, and recovery codes work once": 6.7,
   "core/accounts/tests/browser/account-security.spec.ts › password dialog saves the new password and signs out existing sessions": 4.1,
   "core/accounts/tests/browser/account-security.spec.ts › session controls revoke selected, other, and all sessions": 3.9,
-  "core/accounts/tests/browser/email-invitations.spec.ts › an existing account opens its newly invited DSP instead of another membership": 6.4,
+  "core/accounts/tests/browser/email-invitations.spec.ts › an address another DSP already has gets a login of its own at a newly invited DSP": 6.4,
   "core/accounts/tests/browser/email-invitations.spec.ts › an owner whose DSP has no details yet sets them up on opening it": 7.2,
   "core/accounts/tests/browser/member-profile.spec.ts › an expired invitation has its own page that returns to the separate sign-in page": 2.1,
   "core/accounts/tests/browser/onboarding.spec.ts › desktop reveals map and form together and remains usable if the map fails": 5.3,

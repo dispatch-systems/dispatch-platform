@@ -79,7 +79,7 @@ fn a_disabled_switch_is_migrated_once_and_old_input_is_rejected() {
 #[test]
 fn restricted_permissions_migrate_without_granting_collection_or_daily_access() {
     let (_root, db, dsp) = ready();
-    db.platform.exec("INSERT INTO roles(id,dsp_id,name,permissions,system,created_at) VALUES ('old-role',?,'Weekly reader','[\"scorecard.view\"]',0,'2026-01-01')",[&dsp]).unwrap();
+    db.dsp(&dsp).unwrap().exec("INSERT INTO roles(id,dsp_id,name,permissions,system,created_at) VALUES ('old-role',?,'Weekly reader','[\"scorecard.view\"]',0,'2026-01-01')",[&dsp]).unwrap();
     let db = restart(db);
     let role = db.role(&dsp, "old-role").unwrap();
     assert_eq!(role.permissions, ["weekly_scorecard.view"]);
@@ -99,7 +99,8 @@ fn restricted_permissions_migrate_without_granting_collection_or_daily_access() 
             .is_err()
     );
     let saved = db
-        .platform
+        .dsp(&dsp)
+        .unwrap()
         .one("SELECT permissions FROM roles WHERE id='old-role'", [])
         .unwrap()
         .unwrap();

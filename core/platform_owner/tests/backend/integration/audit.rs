@@ -13,16 +13,18 @@ fn dsp_audit_log_hides_platform_owner_actions() {
         .unwrap()
         .unwrap();
     let id = s(&tenant, "id");
-    let user = |owner: i64| {
-        db.platform
-            .one(
-                "SELECT id FROM users WHERE platform_owner=? LIMIT 1",
-                [owner],
-            )
-            .unwrap()
-            .unwrap()
-    };
-    let (owner, member) = (user(1), user(0));
+    let owner = db
+        .platform
+        .one("SELECT id FROM users WHERE platform_owner=1 LIMIT 1", [])
+        .unwrap()
+        .unwrap();
+    // The member's account is Northline's own.
+    let member = db
+        .dsp(id)
+        .unwrap()
+        .one("SELECT id FROM users LIMIT 1", [])
+        .unwrap()
+        .unwrap();
     db.audit(Some(s(&owner, "id")), Some(id), "collection.requested", "")
         .unwrap();
     db.audit(Some(s(&member, "id")), Some(id), "schedule.updated", "")
@@ -99,7 +101,12 @@ fn audit_log_filters_pages_and_counts_by_area() {
     let one = |sql: &str| db.platform.one(sql, []).unwrap().unwrap();
     let tenant = one("SELECT id FROM dsps WHERE name='Northline Logistics'");
     let dsp = s(&tenant, "id");
-    let member = one("SELECT id FROM users WHERE platform_owner=0 LIMIT 1");
+    let member = db
+        .dsp(dsp)
+        .unwrap()
+        .one("SELECT id FROM users LIMIT 1", [])
+        .unwrap()
+        .unwrap();
     let member = s(&member, "id");
     db.audit(Some(member), Some(dsp), "schedule.created", "Morning 100%")
         .unwrap();

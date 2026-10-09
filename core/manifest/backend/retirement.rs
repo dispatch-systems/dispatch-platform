@@ -1,7 +1,7 @@
 //! Owner-declared identifier retirements run at startup, before readers are opened.
 use crate::{
     Result,
-    db::{Store, s},
+    db::{Db, Store, s},
     manifest::registry,
 };
 use serde_json::Value;
@@ -48,6 +48,29 @@ fn read_choices(value: &mut Value) {
         _ => {}
     }
 }
+/// Renames the permissions retired identifiers named in the roles `db` keeps: the platform's
+/// from before DSPs kept their own, and each DSP's.
+pub(crate) fn roles(db: &Db) -> Result<()> {
+    db.transaction(|| {
+        for row in db.all("SELECT id,permissions FROM roles", [])? {
+            let saved: Vec<String> = serde_json::from_str(s(&row, "permissions"))?;
+            let mut next = Vec::new();
+            for permission in &saved {
+                let permission = renamed(permission).to_owned();
+                if !next.contains(&permission) {
+                    next.push(permission);
+                }
+            }
+            if next != saved {
+                db.exec(
+                    "UPDATE roles SET permissions=? WHERE id=?",
+                    [serde_json::to_string(&next)?.as_str(), s(&row, "id")],
+                )?;
+            }
+        }
+        Ok(())
+    })
+}
 pub(crate) fn platform(store: &Store) -> Result<()> {
     store.platform.transaction(|| {
         for (old,new) in registry().features.iter().flat_map(|feature| feature.retired_identifiers) {
@@ -57,16 +80,7 @@ pub(crate) fn platform(store: &Store) -> Result<()> {
                 [new,old,new])?;
             store.platform.exec("DELETE FROM dsp_features WHERE feature=?", [old])?;
         }
-        for row in store.platform.all("SELECT id,permissions FROM roles",[])? {
-            let saved: Vec<String> = serde_json::from_str(s(&row,"permissions"))?;
-            let mut next = Vec::new();
-            for permission in &saved {
-                let permission=renamed(permission).to_owned();
-                if !next.contains(&permission) { next.push(permission); }
-            }
-            if next!=saved { store.platform.exec("UPDATE roles SET permissions=? WHERE id=?",
-                [serde_json::to_string(&next)?.as_str(),s(&row,"id")])?; }
-        }
+        roles(&store.platform)?;
         for table in ["agent_keys","agent_key_dsp_reads"] {
             for row in store.platform.all(&format!("SELECT rowid migration_row,areas FROM {table}"),[])? {
                 let next = areas(s(&row,"areas"));

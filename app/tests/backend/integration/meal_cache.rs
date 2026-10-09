@@ -115,11 +115,22 @@ impl Server {
         let code = self
             .state
             .run(move |db| {
-                let user = db
+                // A platform owner's account is the platform's; anyone else's, its DSP's own.
+                let find = "SELECT id,version FROM users WHERE email=?";
+                let mut found = db
                     .platform
-                    .one("SELECT id,version FROM users WHERE email=?", [email])?
-                    .unwrap();
-                db.platform.exec(
+                    .one(&format!("{find} AND platform_owner=1"), [email])?
+                    .map(|user| (None, None, user));
+                for dsp in db.platform.all("SELECT id,code FROM dsps", [])? {
+                    if found.is_none()
+                        && let Some(user) = db.dsp(s(&dsp, "id"))?.one(find, [email])?
+                    {
+                        let code = dsp["code"].as_str().map(str::to_owned);
+                        found = Some((Some(s(&dsp, "id").to_owned()), code, user));
+                    }
+                }
+                let (scope, code, user) = found.unwrap();
+                db.directory(scope.as_deref())?.exec(
                     "INSERT INTO sessions VALUES (?,?,?,?,?)",
                     rusqlite::params![
                         crypto::sha(&token),
@@ -129,12 +140,7 @@ impl Server {
                         db::now()
                     ],
                 )?;
-                let code: Option<(Option<String>,)> = db.platform.one_as(
-                    "SELECT d.code FROM memberships m JOIN dsps d ON d.id=m.dsp_id \
-                     WHERE m.user_id=? LIMIT 1",
-                    [s(&user, "id")],
-                )?;
-                Ok(code.and_then(|(code,)| code))
+                Ok(code)
             })
             .await
             .unwrap();

@@ -1,6 +1,7 @@
 //! Accounts, authenticated contexts, sessions and invitations.
 #[path = "../api/mod.rs"]
 pub mod api;
+pub mod directories;
 mod invitations;
 mod passwords;
 mod security;
@@ -15,7 +16,6 @@ use crate::{
     server::mail::templates as email,
     tenancy::api::types::DspStatus,
 };
-use passwords::same_password_user;
 use rusqlite::params;
 use serde_json::{Value, json};
 /// One fixed lifetime drives both the server deadline and the browser cookie.
@@ -39,19 +39,15 @@ const SESSION_USER: &str = "SELECT u.* FROM users u JOIN sessions s ON s.user_id
 const RESET_USER: &str = "SELECT u.* FROM resets r JOIN users u ON u.id=r.user_id \
     WHERE r.hash=? AND r.used_at IS NULL AND r.expires_at>? AND r.user_version=u.version \
     AND u.status='active'";
-const INVITER: &str = "SELECT u.first_name||' '||u.last_name name,u.platform_owner \
-    FROM invitations i JOIN users u ON u.id=i.created_by WHERE i.hash=?";
-const INVITATION: &str = "SELECT i.email,i.dsp_id dspId,d.name dspName,d.timezone,r.name role,r.id roleId,\
-    r.system owner FROM invitations i JOIN dsps d ON d.id=i.dsp_id \
-    JOIN roles r ON r.id=i.role_id AND r.dsp_id=i.dsp_id WHERE i.hash=? AND i.used_at IS NULL \
-    AND i.expires_at>? AND d.status='active' AND d.environment=?";
+// An invitation, as its DSP's directory keeps it; the DSP's own details are the platform's.
+const INVITATION: &str = "SELECT i.email,i.dsp_id dspId,r.name role,r.id roleId,\
+    r.system owner FROM invitations i JOIN roles r ON r.id=i.role_id AND r.dsp_id=i.dsp_id \
+    WHERE i.hash=? AND i.used_at IS NULL AND i.expires_at>?";
 /// A used invitation still names its DSP and role, so opening its link again can point to Sign In.
 /// It does so only until the invitation would have expired, the same window an open one has.
-const ACCEPTED_INVITATION: &str = "SELECT i.email,i.dsp_id dspId,d.name dspName,\
-    COALESCE(r.name,i.role) role \
-    FROM invitations i JOIN dsps d ON d.id=i.dsp_id LEFT JOIN roles r ON r.id=i.role_id \
-    AND r.dsp_id=i.dsp_id WHERE i.hash=? AND i.used_at IS NOT NULL AND i.expires_at>? \
-    AND d.status='active' AND d.environment=?";
+const ACCEPTED_INVITATION: &str = "SELECT i.email,i.dsp_id dspId,COALESCE(r.name,i.role) role \
+    FROM invitations i LEFT JOIN roles r ON r.id=i.role_id AND r.dsp_id=i.dsp_id \
+    WHERE i.hash=? AND i.used_at IS NOT NULL AND i.expires_at>?";
 
 /// What a queued message is for. Diagnostics joins it back to the invitation or account.
 enum MailContext<'a> {
@@ -101,6 +97,44 @@ impl UserRow {
         }
     }
 }
+/// The database an account lives in: the platform's own for its owners, and each DSP's own
+/// for that DSP's people, whose tables match the platform's.
+pub enum Directory<'a> {
+    Platform(&'a Db),
+    Dsp(crate::db::DspLease<'a>),
+}
+impl std::ops::Deref for Directory<'_> {
+    type Target = Db;
+    fn deref(&self) -> &Db {
+        match self {
+            Self::Platform(db) => db,
+            Self::Dsp(db) => db,
+        }
+    }
+}
+impl Store {
+    /// The directory of `dsp`'s people, or with none, the platform's own.
+    pub fn directory(&self, dsp: Option<&str>) -> Result<Directory<'_>> {
+        Ok(match dsp {
+            None => Directory::Platform(&self.platform),
+            Some(dsp) => Directory::Dsp(self.dsp(dsp)?),
+        })
+    }
+    /// The directory that holds the account of `a`.
+    pub(crate) fn people(&self, a: &Auth) -> Result<Directory<'_>> {
+        self.directory(a.scope.as_deref())
+    }
+    /// The directory a request to `site` signs in against, and the DSP it is, if any: the
+    /// platform's at the admin's address, a DSP's own at its address, and none at the invite
+    /// page or at an address no DSP has.
+    pub(crate) fn site_directory(&self, site: &Site) -> Result<Option<Option<String>>> {
+        Ok(match site {
+            Site::Admin => Some(None),
+            Site::Dsp(code) => self.dsp_at(code)?.map(|dsp| Some(dsp.id)),
+            Site::Invite => None,
+        })
+    }
+}
 #[derive(Clone)]
 pub struct Auth {
     pub user: PublicUser,
@@ -112,16 +146,9 @@ pub struct Auth {
     pub preview: Option<String>,
     /// The address the session is used at, where it was made.
     pub site: Site,
-    /// The one DSP a session at a DSP's address may open: that DSP. None at the admin's.
+    /// The DSP whose directory holds the account, the only DSP its session may open. None for
+    /// a platform owner, whose account is the platform's.
     pub scope: Option<String>,
-}
-/// Whether an account may be signed in at an address: a platform owner only at the admin's,
-/// where every DSP is theirs to open, a DSP's members only at that DSP's, and nobody at the
-/// invite page.
-pub(crate) enum Admission {
-    Refused,
-    Platform,
-    Dsp(String),
 }
 #[derive(Clone)]
 pub struct Context {
@@ -168,47 +195,48 @@ impl Context {
     }
 }
 impl Store {
-    /// Who did something, as a DSP sees them: a platform owner is always Platform support.
-    /// `None` once their account is gone.
-    pub fn actor_name(&self, user: &str) -> Result<Option<String>> {
+    /// Who did something in `dsp`, as it sees them: a platform owner is always Platform
+    /// support. `None` once their account is gone.
+    pub fn actor_name(&self, dsp: &str, user: &str) -> Result<Option<String>> {
+        if self.platform_owner(user)? {
+            return Ok(Some("Platform support".to_owned()));
+        }
         Ok(self
-            .platform
-            .query_as::<(String, bool)>(
-                "SELECT first_name||' '||last_name,platform_owner FROM users WHERE id=?",
+            .dsp(dsp)?
+            .query_as::<(String,)>(
+                "SELECT first_name||' '||last_name FROM users WHERE id=?",
                 [user],
             )?
             .into_iter()
             .next()
-            .map(|(name, owner)| {
-                if owner {
-                    "Platform support".to_owned()
-                } else {
-                    name
-                }
-            }))
+            .map(|(name,)| name))
     }
+    /// A new account: a platform owner's in the platform's directory, or with `dsp`, one of
+    /// that DSP's people in its own, which a membership then admits.
     pub fn create_user(
         &self,
+        dsp: Option<&str>,
         email: &str,
         first: &str,
         last: &str,
         password: &str,
-        owner: bool,
     ) -> Result<PublicUser> {
         let value = json!({"email":email,"firstName":first,"lastName":last});
         let email = v::email(&value, "email")?;
         let first = v::name(&value, "firstName", 100)?;
         let last = v::name(&value, "lastName", 100)?;
         let encoded = crypto::hash_password(password)?;
+        let directory = self.directory(dsp)?;
         ensure(
-            self.platform
+            directory
                 .one("SELECT id FROM users WHERE email=?", [&email])?
                 .is_none(),
             "email_already_registered",
             409,
         )?;
         let id = crypto::id("usr")?;
-        self.platform.exec(
+        let owner = dsp.is_none();
+        directory.exec(
             "INSERT INTO users(id,email,first_name,last_name,password,platform_owner,created_at) \
              VALUES (?,?,?,?,?,?,?)",
             params![id, email, first, last, encoded, owner, iso()],
@@ -221,7 +249,15 @@ impl Store {
             platform_owner: owner,
         })
     }
-    fn queue_mail(&self, to: &str, mail: &email::Message, context: MailContext) -> Result<()> {
+    /// Queues `mail` to `to`, for what `context` names: in `dsp`'s directory when it is one
+    /// of its people's.
+    fn queue_mail(
+        &self,
+        dsp: Option<&str>,
+        to: &str,
+        mail: &email::Message,
+        context: MailContext,
+    ) -> Result<()> {
         ensure(self.config.mail_available(), "email_unavailable", 503)?;
         let (text, html) = (&mail.text, Some(&mail.html));
         let subject = if self.config.env().is_preview() {
@@ -252,8 +288,8 @@ impl Store {
         )?;
         self.platform.exec(
             "INSERT INTO outbox(id,encrypted_message,available_at,created_at,kind,\
-             invitation_hash,user_id) VALUES (?,?,?3,?3,?,?,?)",
-            params![id, encrypted, now(), kind, invitation, user],
+             invitation_hash,user_id,dsp_id) VALUES (?,?,?3,?3,?,?,?,?)",
+            params![id, encrypted, now(), kind, invitation, user, dsp],
         )?;
         self.mail_queued();
         Ok(())
@@ -263,7 +299,13 @@ impl Store {
     /// `<feature>.<what>` such as `documents.google_account`. It is queued as every email
     /// is: retried, listed in the platform owner's mail log and caught in a preview. It goes
     /// unsent once the member's account is gone.
-    pub fn email_member(&self, user: &str, kind: &str, mail: &email::Message) -> Result<()> {
+    pub fn email_member(
+        &self,
+        dsp: &str,
+        user: &str,
+        kind: &str,
+        mail: &email::Message,
+    ) -> Result<()> {
         let named = kind.split_once('.').is_some_and(|(feature, what)| {
             [feature, what].iter().all(|part| {
                 !part.is_empty() && part.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
@@ -271,14 +313,14 @@ impl Store {
         });
         ensure(named, "invalid_mail_kind", 500)?;
         let to = self
-            .platform
+            .dsp(dsp)?
             .one(
                 "SELECT email FROM users WHERE id=? AND status='active'",
                 [user],
             )?
             .map(|row| s(&row, "email").to_owned())
             .ok_or_else(|| Error::new("user_not_found", 404))?;
-        self.queue_mail(&to, mail, MailContext::Feature { kind, user })
+        self.queue_mail(Some(dsp), &to, mail, MailContext::Feature { kind, user })
     }
 
     /// Emails every active platform owner a notice about a connected app, `message` written
@@ -305,7 +347,7 @@ impl Store {
         for (user, to) in owners {
             let mail = message(&to);
             if let Err(error) =
-                self.queue_mail(&to, &mail, MailContext::ConnectedApp { user: &user })
+                self.queue_mail(None, &to, &mail, MailContext::ConnectedApp { user: &user })
             {
                 skipped(error);
             }

@@ -1,6 +1,8 @@
 use super::*;
 impl Store {
-    pub fn password_attempt(&self, email: &str, ip: &str) -> Result<()> {
+    /// Counts a password tried for `email` in `dsp`'s directory, or the platform's: an
+    /// account's attempts are its directory's, so the same address elsewhere is untouched.
+    pub fn password_attempt(&self, dsp: Option<&str>, email: &str, ip: &str) -> Result<()> {
         self.throttle_ip(
             "login-ip",
             ip,
@@ -8,7 +10,11 @@ impl Store {
             self.config.security.password_window_seconds * 1000,
         )?;
         self.throttle(
-            &format!("login:email:{}", email.to_lowercase()),
+            &format!(
+                "login:email:{}{}",
+                dsp.map_or(String::new(), |dsp| format!("{dsp}:")),
+                email.to_lowercase()
+            ),
             self.config.security.password_account_attempts,
             self.config.security.password_window_seconds * 1000,
         )
@@ -70,7 +76,11 @@ impl Store {
         )?;
         Ok(())
     }
-    pub fn authenticate(&self, raw: &str) -> Result<Auth> {
+    /// The session `raw` names at the address the request came to, kept in that address's
+    /// directory: the platform's at the admin's, for its owners, and a DSP's own at its
+    /// address, for the people it still has. Anywhere else it reads as signed out, as a
+    /// removed member's does.
+    pub fn authenticate(&self, raw: &str, site: &Site) -> Result<Auth> {
         ensure(
             raw.len() == 43
                 && raw
@@ -79,42 +89,28 @@ impl Store {
             "sign_in_required",
             401,
         )?;
+        let scope = self
+            .site_directory(site)?
+            .ok_or_else(|| Error::new("sign_in_required", 401))?;
         let hash = crypto::sha(raw);
-        let user: PublicUser = self
-            .platform
+        let directory = self.directory(scope.as_deref())?;
+        let user: PublicUser = directory
             .one_as(SESSION_USER, params![hash, now()])?
             .ok_or_else(|| Error::new("sign_in_required", 401))?;
+        ensure(
+            admitted(&directory, &user, scope.as_deref())?,
+            "sign_in_required",
+            401,
+        )?;
         Ok(Auth {
             user,
             hash,
             csrf: crypto::sign(&self.key, &format!("csrf:{raw}")),
             raw: raw.into(),
             preview: None,
-            site: Site::Admin,
-            scope: None,
+            site: site.clone(),
+            scope,
         })
-    }
-    /// Whether `user` may be signed in at `site`.
-    pub(crate) fn admission(&self, user: &PublicUser, site: &Site) -> Result<Admission> {
-        Ok(match site {
-            Site::Admin if user.platform_owner => Admission::Platform,
-            Site::Dsp(code) if !user.platform_owner => match self.dsp_at(code)? {
-                Some(dsp) if self.grant(&user.id, &dsp.id)?.is_some() => Admission::Dsp(dsp.id),
-                _ => Admission::Refused,
-            },
-            _ => Admission::Refused,
-        })
-    }
-    /// A session at the address the request came to. Anywhere it may not be used, it reads as
-    /// signed out, as a member removed from the DSP is.
-    pub fn admit(&self, mut a: Auth, site: &Site) -> Result<Auth> {
-        a.scope = match self.admission(&a.user, site)? {
-            Admission::Refused => return Err(Error::new("sign_in_required", 401)),
-            Admission::Platform => None,
-            Admission::Dsp(id) => Some(id),
-        };
-        a.site = site.clone();
-        Ok(a)
     }
     pub fn context(&self, a: &Auth, id: &str, permission: &str) -> Result<Context> {
         // At a DSP's address, no other DSP exists.
@@ -218,9 +214,7 @@ impl Store {
     pub fn revalidate(&self, c: &Context, permission: &str) -> Result<Context> {
         let a = Auth {
             preview: c.auth.preview.clone(),
-            site: c.auth.site.clone(),
-            scope: c.auth.scope.clone(),
-            ..self.authenticate(&c.auth.raw)?
+            ..self.authenticate(&c.auth.raw, &c.auth.site)?
         };
         let fresh = self.context(&a, &c.dsp.id, permission)?;
         ensure(
@@ -266,18 +260,22 @@ impl crate::State {
             .try_acquire_owned()
             .map_err(|_| Error::new("login_busy", 429))?;
         let at = site.clone();
-        // An account that may not sign in at this address is as unknown here as a missing
-        // one, and takes as long to refuse.
-        let row = self
+        // An account another directory keeps, or one this one no longer admits, is as unknown
+        // here as a missing one, and takes as long to refuse.
+        let (scope, row) = self
             .run(move |db| {
-                db.password_attempt(&email, &ip)?;
-                let row = UserRow::find(&db.platform, "email", &email)?;
-                Ok(match row {
-                    Some(row) if !matches!(db.admission(&row.user, &at)?, Admission::Refused) => {
-                        Some(row)
-                    }
+                let Some(scope) = db.site_directory(&at)? else {
+                    db.password_attempt(None, &email, &ip)?;
+                    return Ok((None, None));
+                };
+                db.password_attempt(scope.as_deref(), &email, &ip)?;
+                let directory = db.directory(scope.as_deref())?;
+                let row = UserRow::find(&directory, "email", &email)?;
+                let row = match row {
+                    Some(row) if admitted(&directory, &row.user, scope.as_deref())? => Some(row),
                     _ => None,
-                })
+                };
+                Ok((Some(scope), row))
             })
             .await?;
         let value = row.clone();
@@ -296,16 +294,17 @@ impl crate::State {
         })
         .await
         .map_err(|_| Error::new("login_failed", 500))?;
-        let row = row
-            .filter(|r| valid && r.active())
-            .ok_or_else(|| Error::new("invalid_login", 401))?;
+        let (Some(scope), Some(row)) = (scope, row.filter(|r| valid && r.active())) else {
+            return Err(Error::new("invalid_login", 401));
+        };
         self.run(move |db| {
-            let current = UserRow::find(&db.platform, "id", &row.user.id)?
+            let directory = db.directory(scope.as_deref())?;
+            let current = UserRow::find(&directory, "id", &row.user.id)?
                 .ok_or_else(|| Error::new("invalid_login", 401))?;
             ensure(
                 current.active()
                     && current.version == row.version
-                    && !matches!(db.admission(&current.user, &site)?, Admission::Refused),
+                    && admitted(&directory, &current.user, scope.as_deref())?,
                 "invalid_login",
                 401,
             )?;
@@ -313,10 +312,9 @@ impl crate::State {
             let created_at = now();
             let device = device_label(&user_agent);
             let hash = crypto::sha(&raw);
-            db.platform.transaction(|| {
-                db.platform
-                    .exec("DELETE FROM sessions WHERE expires_at<?", [now()])?;
-                db.platform.exec(
+            directory.transaction(|| {
+                directory.exec("DELETE FROM sessions WHERE expires_at<?", [now()])?;
+                directory.exec(
                     "INSERT INTO sessions VALUES (?,?,?,?,?)",
                     params![
                         hash,
@@ -326,16 +324,31 @@ impl crate::State {
                         created_at
                     ],
                 )?;
-                db.platform.exec(
+                directory.exec(
                     "INSERT INTO session_metadata(session_hash,device) VALUES (?,?)",
                     params![hash, device],
-                )?;
-                db.audit(Some(&row.user.id), None, "account.signed_in", "")
+                )
             })?;
+            drop(directory);
+            db.audit_account(&row.user, scope.as_deref(), "account.signed_in", "")?;
             Ok(raw)
         })
         .await
     }
+}
+
+/// Whether `directory` admits `user`: the platform's its owners alone, whose every DSP is
+/// theirs to open, and a DSP's own the people it still has.
+pub(super) fn admitted(directory: &Db, user: &PublicUser, dsp: Option<&str>) -> Result<bool> {
+    Ok(match dsp {
+        None => user.platform_owner,
+        Some(dsp) => directory
+            .one(
+                "SELECT 1 FROM memberships WHERE user_id=? AND dsp_id=?",
+                [user.id.as_str(), dsp],
+            )?
+            .is_some(),
+    })
 }
 
 fn device_label(user_agent: &str) -> String {

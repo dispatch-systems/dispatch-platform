@@ -279,7 +279,8 @@ impl Store {
     // A member's effective role. Rows written by an older runtime have no
     // role_id yet, so they resolve through the legacy value without writing.
     pub fn grant(&self, user: &str, dsp: &str) -> Result<Option<Grant>> {
-        let member: Option<(String, Option<String>)> = self.platform.one_as(
+        let people = self.dsp(dsp)?;
+        let member: Option<(String, Option<String>)> = people.one_as(
             "SELECT role,role_id FROM memberships WHERE user_id=? AND dsp_id=?",
             [user, dsp],
         )?;
@@ -289,14 +290,13 @@ impl Store {
         let row: Option<RoleRow> = if let Some(id) = &role_id {
             self.find_role(dsp, id)?
         } else if legacy == "owner" {
-            self.platform
-                .one_as("SELECT * FROM roles WHERE dsp_id=? AND system=1", [dsp])?
+            people.one_as("SELECT * FROM roles WHERE dsp_id=? AND system=1", [dsp])?
         } else {
             let name = DefaultRole::ALL
                 .iter()
                 .find(|d| d.key() == legacy)
                 .map_or("", |d| d.name());
-            self.platform.one_as(
+            people.one_as(
                 "SELECT * FROM roles WHERE dsp_id=? AND system=0 AND name=?",
                 [dsp, name],
             )?
@@ -304,10 +304,10 @@ impl Store {
         Ok(row.map(Grant::from))
     }
     pub fn owner_role(&self, dsp: &str) -> Result<String> {
-        default_role(&self.platform, dsp, "owner")
+        default_role(&*self.dsp(dsp)?, dsp, "owner")
     }
     pub fn find_role(&self, dsp: &str, id: &str) -> Result<Option<RoleRow>> {
-        self.platform
+        self.dsp(dsp)?
             .one_as("SELECT * FROM roles WHERE id=? AND dsp_id=?", [id, dsp])
     }
     pub fn role(&self, dsp: &str, id: &str) -> Result<RoleRow> {
@@ -315,7 +315,7 @@ impl Store {
             .ok_or_else(|| Error::new("role_not_found", 404))
     }
     pub fn roles(&self, dsp: &str) -> Result<Vec<Role>> {
-        let roles: Vec<CountedRole> = self.platform.query_as(ROLES, params![now(), dsp])?;
+        let roles: Vec<CountedRole> = self.dsp(dsp)?.query_as(ROLES, params![now(), dsp])?;
         Ok(roles.into_iter().map(|role| role.0).collect())
     }
     // Nobody hands out access they do not hold: the owner role is reserved for
@@ -360,7 +360,7 @@ impl Store {
     }
     fn ensure_name_free(&self, dsp: &str, name: &str, except: &str) -> Result<()> {
         ensure(
-            self.platform
+            self.dsp(dsp)?
                 .one(
                     "SELECT id FROM roles WHERE dsp_id=? AND name=? AND id<>?",
                     [dsp, name, except],
@@ -373,14 +373,13 @@ impl Store {
     pub fn create_role(&self, c: &Context, name: &str, permissions: &[String]) -> Result<Role> {
         let dsp = c.dsp.id.as_str();
         let (name, permissions) = Self::role_input(c, name, permissions)?;
-        self.platform.transaction(|| {
+        let people = self.dsp(dsp)?;
+        people.transaction(|| {
             self.ensure_name_free(dsp, &name, "")?;
-            let count = self
-                .platform
-                .count("SELECT count(*) FROM roles WHERE dsp_id=?", [dsp])?;
+            let count = people.count("SELECT count(*) FROM roles WHERE dsp_id=?", [dsp])?;
             ensure(count < 50, "role_limit", 409)?;
             let id = crypto::id("role")?;
-            self.platform.exec(
+            people.exec(
                 "INSERT INTO roles(id,dsp_id,name,permissions,created_at) VALUES (?,?,?,?,?)",
                 params![id, dsp, name, json!(permissions).to_string(), iso()],
             )?;
@@ -405,7 +404,8 @@ impl Store {
     ) -> Result<Role> {
         let dsp = c.dsp.id.as_str();
         let (name, permissions) = Self::role_input(c, name, permissions)?;
-        self.platform.transaction(|| {
+        let people = self.dsp(dsp)?;
+        people.transaction(|| {
             let role = self.role(dsp, id)?;
             ensure(!role.system, "owner_role_locked", 409)?;
             self.ensure_assignable(c, &role)?;
@@ -422,16 +422,16 @@ impl Store {
                 .filter(|p| permissions.iter().any(|v| v == *p) || hidden.iter().any(|v| v == p))
                 .map(|p| (*p).to_owned())
                 .collect();
-            self.platform.exec(
+            people.exec(
                 "UPDATE roles SET name=?,permissions=? WHERE id=?",
                 params![name, json!(permissions).to_string(), id],
             )?;
             let mirror = legacy(false, &permissions);
-            self.platform.exec(
+            people.exec(
                 "UPDATE memberships SET role=? WHERE role_id=?",
                 [mirror, id],
             )?;
-            self.platform.exec(
+            people.exec(
                 "UPDATE invitations SET role=? WHERE role_id=? AND used_at IS NULL",
                 [mirror, id],
             )?;
@@ -456,20 +456,19 @@ impl Store {
     }
     pub fn delete_role(&self, c: &Context, id: &str) -> Result<()> {
         let dsp = c.dsp.id.as_str();
-        self.platform.transaction(|| {
+        let people = self.dsp(dsp)?;
+        people.transaction(|| {
             let role = self.role(dsp, id)?;
             ensure(!role.system, "owner_role_locked", 409)?;
             self.ensure_assignable(c, &role)?;
-            let members = self
-                .platform
-                .count("SELECT count(*) FROM memberships WHERE role_id=?", [id])?;
+            let members = people.count("SELECT count(*) FROM memberships WHERE role_id=?", [id])?;
             ensure(members == 0, "role_in_use", 409)?;
             // Deleting a role is the one change that cancels its pending invitations.
-            self.platform.exec(
+            people.exec(
                 "DELETE FROM invitations WHERE role_id=? AND used_at IS NULL",
                 [id],
             )?;
-            self.platform.exec("DELETE FROM roles WHERE id=?", [id])?;
+            people.exec("DELETE FROM roles WHERE id=?", [id])?;
             self.audit_ref(
                 Some(c.actor()),
                 Some(dsp),

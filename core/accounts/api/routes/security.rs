@@ -192,9 +192,9 @@ fn revoke_others(db: &Store, user: &User, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
     db.ensure_recent(user)?;
     db.revoke_other_sessions(user)?;
-    db.audit(
-        Some(user.actor()),
-        None,
+    db.audit_account(
+        &user.user,
+        user.scope.as_deref(),
         "account.other_sessions_revoked",
         "",
     )?;
@@ -204,10 +204,15 @@ fn revoke_others(db: &Store, user: &User, input: &Input) -> Result<Reply> {
 fn revoke_all(db: &Store, user: &User, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
     db.ensure_recent(user)?;
-    db.platform.transaction(|| {
-        db.platform
-            .exec("DELETE FROM sessions WHERE user_id=?", [&user.user.id])?;
-        db.audit(Some(user.actor()), None, "account.all_sessions_revoked", "")
+    let people = db.people(user)?;
+    people.transaction(|| {
+        people.exec("DELETE FROM sessions WHERE user_id=?", [&user.user.id])?;
+        db.audit_account(
+            &user.user,
+            user.scope.as_deref(),
+            "account.all_sessions_revoked",
+            "",
+        )
     })?;
     Ok(Reply::signed_out(user.state.config.development))
 }

@@ -104,7 +104,7 @@ pub fn bootstrap(
         "bootstrap_requires_empty_platform",
         409,
     )?;
-    let owner = db.create_user(email, first, last, password, true)?;
+    let owner = db.create_user(None, email, first, last, password)?;
     let dsp = if db.config.env().is_preview() {
         let dsp = db.new_dsp("Dev DSP", "UTC", &owner.id, true)?;
         db.enable_all_features(&dsp.id)?;
@@ -142,11 +142,11 @@ pub fn seed(db: &Store) -> Result<()> {
         409,
     )?;
     let owner = db.create_user(
+        None,
         "owner@dispatch.test",
         "Platform",
         "Owner",
         "Dispatch-demo-2026!",
-        true,
     )?;
     let dev = db.new_dsp("Dev DSP", "America/Chicago", &owner.id, true)?;
     let north = db.new_dsp("Northline Logistics", "America/Chicago", &owner.id, false)?;
@@ -157,22 +157,25 @@ pub fn seed(db: &Store) -> Result<()> {
     // Each DSP but Dev's has an address of its own, as a DSP has once it is set up.
     db.set_code(&north.id, "nll")?;
     db.set_code(&summit.id, "sum")?;
+    // Northline's member, in its own directory.
     let member = db.create_user(
+        Some(&north.id),
         "member@dispatch.test",
         "Jordan",
         "Ellis",
         "Dispatch-demo-2026!",
-        false,
     )?;
-    db.platform.exec(
+    let people = db.dsp(&north.id)?;
+    people.exec(
         "INSERT INTO memberships(id,user_id,dsp_id,role,role_id) VALUES (?,?,?,'member',?)",
         params![
             crypto::id("mem")?,
             member.id,
             north.id,
-            crate::tenancy::roles::default_role(&db.platform, &north.id, "member")?
+            crate::tenancy::roles::default_role(&people, &north.id, "member")?
         ],
     )?;
+    drop(people);
     for dsp in [&dev, &north] {
         let id = dsp.id.as_str();
         for collector in registry().collectors {
@@ -192,7 +195,7 @@ pub fn demo(db: &Store, dsp: &str, timezone: &str) -> Result<()> {
     for demo in registry().features.iter().filter_map(|f| f.demo) {
         demo(db, dsp, timezone)?;
     }
-    crate::tenancy::roles::demo(&db.platform, dsp)
+    crate::tenancy::roles::demo(&*db.dsp(dsp)?, dsp)
 }
 pub fn backup(config: &Config, destination: &Path) -> Result<Value> {
     ensure(
@@ -336,6 +339,9 @@ pub fn restore(source: &Path, target: &Path) -> Result<Value> {
         db.execute_batch(
             "DELETE FROM sessions;DELETE FROM resets;DELETE FROM invitations;DELETE FROM outbox;",
         )?;
+        if table_exists(&db, "invitation_routes")? {
+            db.execute("DELETE FROM invitation_routes", [])?;
+        }
         // Agent keys end like sessions do. A backup older than them has none.
         if table_exists(&db, "agent_keys")? {
             db.execute(
@@ -349,6 +355,25 @@ pub fn restore(source: &Path, target: &Path) -> Result<Value> {
             db.execute("DELETE FROM oauth_codes WHERE used_at IS NULL", [])?;
         }
     }
+    // Each DSP's own sign-ins and grants end the same way. A backup older than DSPs keeping
+    // their people has none.
+    let dsps = target.join("dsps");
+    if dsps.is_dir() {
+        for entry in fs::read_dir(dsps)? {
+            let database = entry?.path().join("data/dispatch.sqlite");
+            if !database.is_file() {
+                continue;
+            }
+            let db = rusqlite::Connection::open(database)?;
+            if table_exists(&db, "sessions")? {
+                db.execute_batch(
+                    "DELETE FROM security_challenges;DELETE FROM session_security;\
+                     DELETE FROM session_metadata;DELETE FROM sessions;DELETE FROM resets;\
+                     DELETE FROM invitations;",
+                )?;
+            }
+        }
+    }
     for env in ["preview", "production"] {
         let jobs = target.join("data").join(env).join("jobs.sqlite");
         if jobs.exists() {
@@ -359,6 +384,53 @@ pub fn restore(source: &Path, target: &Path) -> Result<Value> {
     Ok(json!({"target":target,"files":files.len()}))
 }
 
+/// What starting this release moves into each DSP's own directory, read beside a running
+/// server without changing anything: per DSP, whether it already holds its people and what
+/// moving them copies.
+pub fn directories(config: &Config) -> Result<Value> {
+    let read_only = |path: &Path| -> Result<db::Db> {
+        ensure(path.is_file(), "platform_not_initialized", 404)?;
+        db::private_file(path, false)?;
+        Ok(db::Db(rusqlite::Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?))
+    };
+    let platform = read_only(&config.platform().join("accounts.sqlite"))?;
+    let mut dsps = Vec::new();
+    // Every column, as a release before short codes has no `code` yet.
+    for row in platform.all(
+        "SELECT * FROM dsps WHERE environment=? ORDER BY name",
+        [&config.environment],
+    )? {
+        let id = s(&row, "id");
+        let database = config
+            .root
+            .join("dsps")
+            .join(id)
+            .join("data/dispatch.sqlite");
+        let held = match read_only(&database) {
+            Ok(dsp) if table_exists(&dsp.0, "settings")? => dsp
+                .setting(crate::tenancy::dsps::DIRECTORY, Value::Null)?
+                .as_str()
+                .map(str::to_owned),
+            _ => None,
+        };
+        dsps.push(json!({
+            "id": id,
+            "name": row["name"],
+            "code": row["code"],
+            "status": row["status"],
+            "directory": held,
+            "moves": if held.is_none() {
+                json!(crate::accounts::directories::people(&platform, id)?)
+            } else {
+                Value::Null
+            },
+        }));
+    }
+    Ok(json!({"environment": config.environment, "dsps": dsps}))
+}
 /// Read-only CLI inspection is safe while the serving process owns the write lock.
 pub fn status(config: &Config) -> Result<Value> {
     let path = config.platform().join("accounts.sqlite");

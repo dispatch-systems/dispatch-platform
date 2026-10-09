@@ -10,9 +10,20 @@ fn the_log_follows_an_invitation_and_failed_mail_can_be_retried_or_discarded() {
     let (_root, db) = seeded();
     let row = |sql: &str| db.platform.one(sql, []).unwrap().unwrap();
     let dsp = row("SELECT id FROM dsps WHERE name='Northline Logistics'");
-    let owner = row("SELECT user_id id FROM memberships WHERE role='member' LIMIT 1");
-    let role = row("SELECT role_id id FROM memberships WHERE role='member' LIMIT 1");
+    let north = dsp["id"].as_str().unwrap();
+    // The inviter and the invitation are Northline's own; the platform routes its token.
+    let theirs = |sql: &str| db.dsp(north).unwrap().one(sql, []).unwrap().unwrap();
+    let sender = theirs("SELECT user_id id FROM memberships WHERE role='member' LIMIT 1");
+    let role = theirs("SELECT role_id id FROM memberships WHERE role='member' LIMIT 1");
+    let owner = row("SELECT id FROM users WHERE platform_owner=1");
     db.platform
+        .exec(
+            "INSERT INTO invitation_routes(hash,dsp_id) VALUES ('hash-1',?)",
+            [north],
+        )
+        .unwrap();
+    db.dsp(north)
+        .unwrap()
         .exec(
             "INSERT INTO invitations(hash,dsp_id,email,role,role_id,expires_at,created_by,used_at) \
              VALUES ('hash-1',?,'new@example.test','member',?,?,?,?)",
@@ -20,7 +31,7 @@ fn the_log_follows_an_invitation_and_failed_mail_can_be_retried_or_discarded() {
                 dsp["id"].as_str(),
                 role["id"].as_str(),
                 now() + 1000,
-                owner["id"].as_str(),
+                sender["id"].as_str(),
                 now()
             ],
         )

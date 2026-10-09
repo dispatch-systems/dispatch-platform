@@ -13,7 +13,7 @@ import { createHash } from 'node:crypto';
 
 // This flow performs additional sign-ins; like every browser test it owns its server,
 // so its accounts and throttles stay isolated.
-test('an existing account opens its newly invited DSP instead of another membership', async ({
+test('an address another DSP already has gets a login of its own at a newly invited DSP', async ({
   page,
   dispatch,
 }) => {
@@ -63,14 +63,18 @@ test('an existing account opens its newly invited DSP instead of another members
   await expect(page.getByText('Your dashboard will be at nids.localhost')).toBeVisible();
   await page.getByLabel('Station code', { exact: true }).fill('TST1');
   await page.getByRole('button', { name: 'Continue to profile', exact: true }).click();
+  // The new DSP keeps a login of its own, with a password of its own.
+  const separate = 'A-separate-password-1!';
   await page.getByLabel('First name', { exact: true }).fill('Existing');
   await page.getByLabel('Last name', { exact: true }).fill('Member');
-  await page.getByLabel('Password', { exact: true }).fill(demo.password);
-  await page.getByLabel('Confirm password', { exact: true }).fill(demo.password);
+  await page.getByLabel('Password', { exact: true }).fill(separate);
+  await page.getByLabel('Confirm password', { exact: true }).fill(separate);
   await page.getByRole('button', { name: 'Finish setup', exact: true }).click();
   // Its owner signs in at the address its short code gave it.
   await expect(page).toHaveURL(`${nids}#signin`);
-  await signIn(page, 'existing-invite@dispatch.test');
+  await page.getByLabel('Email address').fill('existing-invite@dispatch.test');
+  await page.getByLabel('Password', { exact: true }).fill(separate);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Currently under development', exact: true }),
   ).toBeVisible();

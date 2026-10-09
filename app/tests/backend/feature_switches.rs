@@ -29,11 +29,11 @@ fn a_new_dsp_starts_with_only_what_every_dsp_has_and_a_demo_dsp_with_all() {
     let db = Store::initialize(config).unwrap();
     let owner = db
         .create_user(
+            None,
             "owner@example.test",
             "Platform",
             "Owner",
             "Features-test-2026!",
-            true,
         )
         .unwrap();
     let dsp = db.new_dsp("New DSP", "UTC", &owner.id, false).unwrap();
@@ -86,11 +86,11 @@ fn a_tab_follows_its_page_and_the_last_one_takes_the_page() {
     let db = Store::initialize(config).unwrap();
     let owner = db
         .create_user(
+            None,
             "owner@example.test",
             "Platform",
             "Owner",
             "Tabs-test-2026!",
-            true,
         )
         .unwrap();
     let dsp = db.new_dsp("Tabs DSP", "UTC", &owner.id, false).unwrap().id;
@@ -142,11 +142,11 @@ fn a_part_needs_a_connection_of_its_own_beside_its_pages() {
     let db = Store::initialize(config).unwrap();
     let owner = db
         .create_user(
+            None,
             "owner@example.test",
             "Platform",
             "Owner",
             "Parts-test-2026!",
-            true,
         )
         .unwrap();
     let dsp = db.new_dsp("Parts DSP", "UTC", &owner.id, false).unwrap().id;
@@ -190,11 +190,11 @@ fn a_hidden_feature_keeps_running_out_of_its_members_sight() {
     let db = Store::initialize(config).unwrap();
     let owner = db
         .create_user(
+            None,
             "owner@example.test",
             "Platform",
             "Owner",
             "Hidden-test-2026!",
-            true,
         )
         .unwrap();
     let dsp = db
@@ -262,11 +262,11 @@ fn a_feature_made_optional_stays_on_for_every_dsp_that_had_it() {
     let db = Store::initialize(config).unwrap();
     let owner = db
         .create_user(
+            None,
             "owner@example.test",
             "Platform",
             "Owner",
             "Kept-test-2026!",
-            true,
         )
         .unwrap();
     let dsp = db.new_dsp("Kept DSP", "UTC", &owner.id, false).unwrap().id;
