@@ -11,7 +11,7 @@ checks recent publication weeks; historical backfills remain available through t
 The page reads every cursor page before displaying counts, and keeps source wall times
 unchanged. It follows core's live collection updates (`live`, for `dvic.view`): a run that ends,
 wherever it started, refreshes it at once, and one in progress is read every five seconds,
-since only a finished run is announced.
+since a DVIC run is announced only as it ends.
 CV/CDV inspections shorter than 90 seconds and SV inspections shorter than 300 seconds
 are exceptions. Exactly 90/300 seconds meets the minimum. Unknown vehicle types fail
 validation rather than guessing a threshold.

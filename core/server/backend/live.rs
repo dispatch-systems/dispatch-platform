@@ -9,7 +9,8 @@ use tokio::sync::{Semaphore, watch};
 
 struct Tenant {
     sender: watch::Sender<u64>,
-    changes: VecDeque<(u64, CollectionChange)>,
+    /// Each change, with the kind of job whose collection made it; none reaches every reader.
+    changes: VecDeque<(u64, Option<String>, CollectionChange)>,
 }
 pub struct Updates {
     epoch: String,
@@ -37,12 +38,16 @@ impl Updates {
             .subscribe()
     }
     pub fn notify(&self, dsp: &str) {
-        self.changed(dsp, CollectionChange::all());
+        self.record(dsp, None, CollectionChange::all());
     }
-    pub fn changed(&self, dsp: &str, change: CollectionChange) {
+    /// What a finished collection of a job of `kind` changed.
+    pub fn changed(&self, dsp: &str, kind: &str, change: CollectionChange) {
+        self.record(dsp, Some(kind.to_owned()), change);
+    }
+    fn record(&self, dsp: &str, kind: Option<String>, change: CollectionChange) {
         if let Some(tenant) = self.tenants.lock().unwrap().get_mut(dsp) {
             let revision = *tenant.sender.borrow() + 1;
-            tenant.changes.push_back((revision, change));
+            tenant.changes.push_back((revision, kind, change));
             while tenant.changes.len() > 128 {
                 tenant.changes.pop_front();
             }
@@ -52,7 +57,15 @@ impl Updates {
     pub fn token(&self, receiver: &watch::Receiver<u64>) -> String {
         format!("{}:{}", self.epoch, *receiver.borrow())
     }
-    pub fn changes(&self, dsp: &str, after: &str, through: &str) -> Vec<CollectionChange> {
+    /// The changes between two tokens a reader may follow: those of the kinds `follows` admits,
+    /// and those every reader may. Lost history is one change that reaches everything.
+    pub fn changes(
+        &self,
+        dsp: &str,
+        after: &str,
+        through: &str,
+        follows: impl Fn(&str) -> bool,
+    ) -> Vec<CollectionChange> {
         if after == through {
             return vec![];
         }
@@ -72,15 +85,17 @@ impl Updates {
             || tenant
                 .changes
                 .front()
-                .is_none_or(|(first, _)| after < first.saturating_sub(1))
+                .is_none_or(|(first, _, _)| after < first.saturating_sub(1))
         {
             return vec![CollectionChange::all()];
         }
         tenant
             .changes
             .iter()
-            .filter(|(n, _)| *n > after && *n <= through)
-            .map(|(_, change)| change.clone())
+            .filter(|(n, kind, _)| {
+                *n > after && *n <= through && kind.as_deref().is_none_or(&follows)
+            })
+            .map(|(_, _, change)| change.clone())
             .collect()
     }
 }

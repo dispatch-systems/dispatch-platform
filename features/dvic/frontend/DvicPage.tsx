@@ -89,8 +89,8 @@ export function DvicPage({ view }: { view: DspView }) {
   useLayoutEffect(() => {
     committed = true;
   }, []);
-  // A run that ends, wherever it started, shows at once; one in progress is still read every
-  // few seconds, since only a finished run is announced.
+  // A DVIC run is announced as it ends, wherever it started; while one runs, its status is
+  // still read every few seconds, since its progress isn't announced.
   useCollectionUpdates();
   const [collecting, setCollecting] = useState(false);
   const status = useCachedData<DvicStatus>(
