@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Globe2 } from 'lucide-react';
-import { api, ApiError } from '../../../../core/shell/frontend/runtime/api.js';
+import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
 import { ErrorBox, Modal } from '../../../../core/shell/frontend/ui/index.js';
 import type { CollectionSchedule, ScheduleInput } from '../../../../core/collection/api/index.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { nextCollection } from './nextCollection.js';
 import { saveSchedule, removeSchedule } from '../../../../core/collection/api/client.js';
-import { schedules } from '../../api/client.js';
+import { previewSchedule, schedules } from '../../api/client.js';
 
 const newSchedule = (): ScheduleInput => ({
   name: '',
@@ -74,8 +74,7 @@ export function ScheduleEditor({
       return;
     }
     const timer = setTimeout(() => {
-      void api<{ nextRun: string }>(
-        `${schedules}/preview`,
+      void previewSchedule(
         {
           cadence,
           intervalMinutes,

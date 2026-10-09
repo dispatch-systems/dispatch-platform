@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
-import { api, useCachedData, useData } from '../../../core/shell/frontend/runtime/api.js';
+import { useCachedData, useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { cancelPrefetches, prefetchData } from '../../../core/shell/frontend/runtime/prefetch.js';
 import type {
@@ -12,15 +12,31 @@ import type {
   PaycomPreferences,
   PaycomSettings,
 } from './index.js';
-import type { Job } from '../../../core/collection/api/index.js';
+import type { Job, ScheduleInput } from '../../../core/collection/api/index.js';
+import { dailyTimecardsUrl, employeeTimecardUrl, mealComparisonUrl, schedules } from './urls.js';
 
-// Timecard's endpoints, as its pages call them.
+export { dailyTimecardsUrl, employeeTimecardUrl, mealComparisonUrl, schedules };
 
-/** Where its schedules are served, as core's schedule calls take it. */
-export const schedules = '/api/dsp/schedules';
+// Timecard's endpoints, as its pages call them. Only its own screens raise these, so their
+// words load with them.
+const api = wordedApi({
+  meal_sync_paycom_required: 'Connect Paycom before syncing meal breaks.',
+  meal_sync_flex_required: 'Connect Cortex in Settings → Connections before syncing Flex.',
+  meal_sync_scope_required: 'Complete your DSP profile with a station code to sync Flex.',
+  settings_changed_reload_before_saving:
+    'These settings changed in another session. Discard your draft and try again.',
+});
 
-export const employeeTimecardUrl = (code: string, period?: EmployeeTimecardPeriod | null) =>
-  `/api/dsp/employees/${encodeURIComponent(code)}${period ? `?from=${period.from}&to=${period.to}` : ''}`;
+/** Syncs a day's meal breaks from both their sources, once for `requestId`. */
+export const syncMealBreaks = (date: string, requestId: string) =>
+  api('/api/dsp/jobs/meal-breaks', { requestId, date });
+/** When a schedule with this timing would run next. */
+export const previewSchedule = (
+  timing: Pick<ScheduleInput, 'cadence' | 'intervalMinutes' | 'localTime'> & {
+    scheduleId?: string;
+  },
+  signal: AbortSignal,
+) => api<{ nextRun: string }>(`${schedules}/preview`, timing, signal);
 export const syncEmployeeTimecard = (
   code: string,
   period: EmployeeTimecardPeriod,
@@ -66,16 +82,12 @@ export const useEmployees = (
     0,
     refreshKey,
   );
-export const dailyTimecardsUrl = (date: string) =>
-  `/api/dsp/timecards?date=${date}&sort=name&direction=asc`;
 export const useDailyTimecards = (date: string, refreshKey?: string | null) =>
   useCachedData<DailyTimecards>(
     dailyTimecardsUrl(date),
     performancePolicy.recoveryPollMs,
     refreshKey,
   );
-export const mealComparisonUrl = (date: string) =>
-  `/api/dsp/paycom/meal-breaks?date=${encodeURIComponent(date)}`;
 export const useMealComparison = (date: string, refreshKey?: string | null) =>
   useCachedData<MealComparison>(
     mealComparisonUrl(date),

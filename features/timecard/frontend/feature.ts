@@ -62,18 +62,6 @@ export const feature: FrontendFeature = {
   ],
   platformSlots: () => import('./platform-slots.js'),
   replies,
-  errors: {
-    meal_sync_paycom_required: 'Connect Paycom before syncing meal breaks.',
-    meal_sync_flex_required: 'Connect Cortex in Settings → Connections before syncing Flex.',
-    meal_sync_scope_required: 'Complete your DSP profile with a station code to sync Flex.',
-    settings_changed_reload_before_saving:
-      'These settings changed in another session. Discard your draft and try again.',
-    connect_paycom_before_automatic_sync: 'Connect Paycom before turning on automatic sync.',
-    employee_already_linked:
-      'A Paycom employee can only link to one Flex driver. Review duplicate selections.',
-    employee_link_source_missing:
-      'This employee is no longer available. Refresh and review the links again.',
-  },
   scheduleIssues: {
     schedule_scope_required: 'Run an initial Meal Break collection to set up the DSP’s station.',
   },
