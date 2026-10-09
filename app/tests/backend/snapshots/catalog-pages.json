@@ -75,7 +75,7 @@
     {
       "id": "documents",
       "label": "Documents",
-      "permissions": ["documents.use", "documents.manage"],
+      "permissions": ["documents.use"],
       "requires": [],
       "default": false,
       "mandatory": false

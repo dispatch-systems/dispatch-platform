@@ -59,7 +59,7 @@ export function ReadyDialog({
         Dispatch made <strong>{connection.folderName}</strong> in {connection.accountEmail}'s Google
         Drive.
       </p>
-      <p className="muted">
+      <p className="muted documents-ready-note">
         Everyone who uses Documents gets it shared with them in a minute. Anyone whose email isn't a
         Google account is asked to link one.
       </p>

@@ -680,6 +680,9 @@
 }
 
 /* Documents is ready: some folders to start with. */
+.documents-ready-note {
+  margin-top: 8px;
+}
 .documents-ready-title {
   display: inline-flex;
   align-items: center;
