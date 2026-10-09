@@ -153,6 +153,8 @@ test('lib depends on nothing else in the frontend', () => {
 const entries = [
   // The account's Settings panels, which the platform owner's Settings page shows too.
   'core/accounts/frontend/settings/tabs.ts',
+  // The wait on collection updates, for a page that follows its collections live.
+  'core/collection/frontend/live-collection.ts',
 ];
 
 test('an owner reaches another only through a front door or public entry', () => {
