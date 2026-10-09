@@ -37,7 +37,7 @@ export type RoutePrefetch = {
 };
 
 type Page<Context> = {
-  /** The page's name in the sidebar, the breadcrumb and the document title. */
+  /** The page's name in the sidebar and the document title. */
   label: string;
   /** The navigation item to highlight for a page that has none of its own. */
   parent?: string;
