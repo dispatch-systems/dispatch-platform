@@ -105,7 +105,9 @@ async fn record_data_requests() -> Result<()> {
         )?;
         let metrics = Recorder::new(&json!({}));
         let started = Instant::now();
-        let candidates = driver.candidates(&scope, &metrics).await?;
+        let candidates = driver
+            .candidates(&scope, &collection::MealMethod::rendered(), &metrics)
+            .await?;
         let list = driver.browser.evaluate(&driver.page.id, REQUESTS).await?;
         eprintln!(
             "REQUESTS {}",
@@ -115,7 +117,9 @@ async fn record_data_requests() -> Result<()> {
             .first()
             .ok_or_else(|| Error::new("benchmark_no_routes", 409))?;
         let started = Instant::now();
-        driver.meal_page(&driver.page, &scope, Some(candidate), &metrics).await?;
+        driver
+            .meal_page(&driver.page, &scope, collection::Ask::Detail(candidate), &metrics)
+            .await?;
         let detail = driver.browser.evaluate(&driver.page.id, REQUESTS).await?;
         eprintln!(
             "REQUESTS {}",
@@ -296,7 +300,9 @@ async fn compare_tabs() -> Result<()> {
             "/operations/execution/api/summaries",
         )
         .await?;
-        driver.candidates(&scope, &Recorder::new(&json!({}))).await?;
+        driver
+            .candidates(&scope, &collection::MealMethod::rendered(), &Recorder::new(&json!({})))
+            .await?;
         let listed = driver
             .browser
             .evaluate(
@@ -320,7 +326,7 @@ async fn compare_tabs() -> Result<()> {
                 ..collection::MealMethod::rendered()
             };
             let capture = driver
-                .collect(&scope, &metrics, None, |_, _| async { Ok(()) }, &method)
+                .collect(&scope, &[], &metrics, None, |_, _| async { Ok(()) }, &method)
                 .await;
             let capture = match capture {
                 Ok(capture) => capture,
@@ -475,7 +481,7 @@ async fn diagnose_tabs() -> Result<()> {
         };
         let collect = async {
             let result = driver
-                .collect(&scope, &metrics, None, |_, _| async { Ok(()) }, &collection::MealMethod::rendered())
+                .collect(&scope, &[], &metrics, None, |_, _| async { Ok(()) }, &collection::MealMethod::rendered())
                 .await;
             done.store(true, std::sync::atomic::Ordering::SeqCst);
             result
@@ -1302,7 +1308,10 @@ async fn probe_routes_api() -> Result<()> {
 // current default when unset), with the browser in DISPATCH_BENCHMARK_MODE. Run each in
 // its own cgroup (systemd-run --user --scope). Prints times, passes, CPU, memory, bytes,
 // counts and a digest of each route's record; never a value. Its own deadline closes the
-// browser, so a slow run never has to be killed.
+// browser, so a slow run never has to be killed. DISPATCH_BENCHMARK_KEPT names an earlier
+// run's capture to treat as what Timecard holds, and the capture is saved under
+// DISPATCH_BENCHMARK_OUTPUT when it is set, for comparing records; both are the operator's
+// to delete.
 #[tokio::test]
 #[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
 async fn measure_meal_method() -> Result<()> {
@@ -1313,6 +1322,12 @@ async fn measure_meal_method() -> Result<()> {
     let method: MealMethod = match std::env::var("DISPATCH_BENCHMARK_METHOD").as_deref() {
         Ok(text) if !text.is_empty() => serde_json::from_str(text)?,
         _ => MealMethod::default(),
+    };
+    let kept: Vec<crate::meals::Itinerary> = match std::env::var("DISPATCH_BENCHMARK_KEPT") {
+        Ok(path) => serde_json::from_value(
+            serde_json::from_str::<Value>(&std::fs::read_to_string(path)?)?["itineraries"].clone(),
+        )?,
+        Err(_) => Vec::new(),
     };
     let mode = if std::env::var("DISPATCH_BENCHMARK_MODE").as_deref() == Ok("headless") {
         browseros::Mode::Headless
@@ -1393,6 +1408,7 @@ async fn measure_meal_method() -> Result<()> {
             Duration::from_secs(600),
             driver.collect(
                 &scope,
+                &kept,
                 &metrics,
                 None,
                 |_, message: String| {
@@ -1412,6 +1428,9 @@ async fn measure_meal_method() -> Result<()> {
         drop(sampling_guard);
         let (max_pss, avg_pss) = sampler.await.unwrap_or((0, 0));
         let capture = collected?;
+        if let Ok(output) = std::env::var("DISPATCH_BENCHMARK_OUTPUT") {
+            db::write_private(Path::new(&output), &serde_json::to_vec(&capture)?)?;
+        }
         let peak_bytes: u64 = {
             use std::io::{Read, Seek};
             let mut text = String::new();

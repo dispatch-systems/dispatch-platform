@@ -196,11 +196,25 @@ const response = (props: ReturnType<typeof finished>) =>
   });
 const api = (id = 'itinerary-1') =>
   `/operations/execution/api/itineraries/?documentType=Itinerary&historicalDay=true&itineraryId=${id}&serviceAreaId=area-1`;
+const summaries = (day = scope.date) =>
+  `/operations/execution/api/summaries?historicalDay=false&localDate=${day}&serviceAreaId=area-1`;
+// The day's list as the summaries API sends it for `props`' routes.
+const listed = (props: ReturnType<typeof page>) =>
+  JSON.stringify({
+    itinerarySummaries: props.allItinerarySummaries,
+    transporters: [{ transporterId: 'driver-1', firstName: 'Fixture', lastName: 'Driver' }],
+    companies: [{ companyId: 'provider-1' }],
+  });
 // A page with the hook installed, whose application requests with `XMLHttpRequest` or
-// `fetch` and is answered from `answers`.
+// `fetch` and is answered from `answers`: by itinerary, or `list` for the day's list.
 function hooked(answers: Record<string, { status: number; body: string }>) {
-  const answer = (url: string) =>
-    answers[new URL(url, origin).searchParams.get('itineraryId')!] ?? { status: 404, body: '' };
+  const answer = (url: string) => {
+    const address = new URL(url, origin);
+    const key = address.pathname.endsWith('/summaries')
+      ? 'list'
+      : address.searchParams.get('itineraryId')!;
+    return answers[key] ?? { status: 404, body: '' };
+  };
   class Request {
     readyState = 0;
     responseType = '';
@@ -258,7 +272,11 @@ function hooked(answers: Record<string, { status: number; body: string }>) {
         `window.__dispatchMeals.expect(${JSON.stringify({ candidate: route, scope, origin: at })})`,
       ),
     take: (id = 'itinerary-1') => run(`window.__dispatchMeals.take(${JSON.stringify(id)})`),
-    // What the application sees of its request.
+    want: (route: object) =>
+      run(`window.__dispatchMeals.want(${JSON.stringify({ candidate: route, scope, origin })})`),
+    taken: () => run('window.__dispatchMeals.taken()'),
+    list: () => run(`window.__dispatchMeals.list(${JSON.stringify({ scope, origin })})`),
+    // What the application sees of its request: an itinerary's, or the address `id` names.
     request(id = 'itinerary-1', type = '') {
       const xhr = new context.XMLHttpRequest();
       let seen: unknown;
@@ -267,7 +285,7 @@ function hooked(answers: Record<string, { status: number; body: string }>) {
         if (xhr.readyState === 4)
           seen = { status: xhr.status, body: type === 'json' ? xhr.response : xhr.responseText };
       };
-      xhr.open('GET', api(id));
+      xhr.open('GET', id.startsWith('/') ? id : api(id));
       xhr.send();
       return seen;
     },
@@ -409,4 +427,55 @@ test('a delivery the page cannot account for leaves both its time and its stop o
     ]),
     [[null, null, null, null]],
   );
+});
+
+test("the hook reads the day's list from its response as meal.js reads it from the page", () => {
+  const props = page();
+  const app = hooked({ list: { status: 200, body: listed(props) } });
+  assert.equal(app.list(), null, 'Nothing until the application has its list');
+  // The application gets its list as sent.
+  assert.deepEqual(app.request(summaries()), { status: 200, body: listed(props) });
+  assert.deepEqual(app.list(), read(props, href()));
+  // A list for another day or service area is not the scope's.
+  app.request(summaries('2026-09-14'));
+  assert.deepEqual(app.list(), { error: 'cortex_scope_mismatch', reason: 'list_scope' });
+  // A meal punch the rules reject names its rule, as meal.js names it.
+  const rejected = page();
+  rejected.allItinerarySummaries[0]!.breaks[0]!.timeStampOn = 0;
+  const strict = hooked({ list: { status: 200, body: listed(rejected) } });
+  strict.request(summaries());
+  assert.deepEqual(strict.list(), read(rejected, href()));
+  assert.deepEqual(strict.list(), {
+    error: 'cortex_invalid_meal_evidence',
+    reason: 'list_meal_start',
+  });
+});
+
+test('the hook reads several routes it waits for at once, whatever order they arrive in', () => {
+  const props = finished();
+  const [first] = read(props, href()).candidates;
+  // The same route under other ids, as other routes of the day.
+  const route = (id: string) => {
+    const other = finished();
+    other.itineraryDetails.itineraryId = id;
+    return { status: 200, body: response(other) };
+  };
+  const page = hooked({
+    'itinerary-1': route('itinerary-1'),
+    'itinerary-2': route('itinerary-2'),
+    'itinerary-3': route('itinerary-3'),
+  });
+  const second = { ...first, id: 'itinerary-2' };
+  const third = { ...first, id: 'itinerary-3' };
+  // A freshly loaded page fetches its own route before the collection names it.
+  page.request('itinerary-3');
+  assert.equal(page.want(first), true);
+  assert.equal(page.want(second), true);
+  page.request('itinerary-2');
+  page.request('itinerary-1');
+  assert.equal(page.want(third), true, 'Read from the response that already came');
+  const taken = page.taken();
+  assert.deepEqual(Object.keys(taken).sort(), ['itinerary-1', 'itinerary-2', 'itinerary-3']);
+  for (const [id, result] of Object.entries<any>(taken)) assert.equal(result.itinerary.id, id);
+  assert.deepEqual(page.taken(), {}, 'Taken once');
 });

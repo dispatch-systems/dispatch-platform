@@ -32,6 +32,14 @@ impl Keeper for MealBreaks {
         )?;
         Ok(())
     }
+    /// The routes the scope's active publication holds, as Cortex collected them, so a
+    /// collection reads again only what may still change.
+    fn kept(&self, store: &Store, dsp: &str, question: &Value) -> Result<Value> {
+        let scope: Scope = serde_json::from_value(question.clone())?;
+        Ok(serde_json::to_value(super::kept_routes(
+            store, dsp, &scope,
+        )?)?)
+    }
     fn verify(&self, db: &Db) -> Result<()> {
         ensure(
             db.all("SELECT version FROM meal_schema", [])? == vec![json!({"version":1})],

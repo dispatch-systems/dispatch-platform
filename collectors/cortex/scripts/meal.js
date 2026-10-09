@@ -2,7 +2,8 @@
 // references, stop/task IDs, addresses, cookies or tokens leave the page; of the stops,
 // only the places in the route of the two that bound each meal. Runs in the application's world
 // because React's props are not visible from an isolated JavaScript world. `rules` is
-// meal_rules.js.
+// meal_rules.js. `input.kind` asks for the list's routes, a route's evidence, or only
+// whether the page shows the scope's station, day and provider (`scope`).
 (input, rules) => {
   const { fail, token, meals, detail } = rules;
   const scope = input.scope;
@@ -31,7 +32,7 @@
         props &&
         Array.isArray(props.allItinerarySummaries) &&
         props.transporterSummary &&
-        (input.kind === 'list' || props.itineraryDetails)
+        (input.kind !== 'detail' || props.itineraryDetails)
       )
         root = props;
     }
@@ -62,6 +63,7 @@
   } catch {
     return fail('cortex_timezone_mismatch', 'timezone');
   }
+  if (input.kind === 'scope') return { scope: true };
   try {
     const all = root.allItinerarySummaries;
     if (all.length > 1000) return fail('cortex_source_too_large', 'summaries');

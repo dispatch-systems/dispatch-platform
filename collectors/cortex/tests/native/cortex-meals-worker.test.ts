@@ -3,26 +3,15 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { fixture, until } from '../../../../core/shell/tests/support/support.js';
-import { executionPage, itineraryApi, type Quirks } from '../support/cortex-execution.js';
+import {
+  executionPage,
+  itineraryApi,
+  listResponse,
+  summariesApi,
+  type Quirks,
+} from '../support/cortex-execution.js';
 
 const native = process.env.DISPATCH_TEST_NATIVE !== '1';
-// An execution page's list props for `date`'s routes, each driver named for its route.
-const listProps = (date: string, routes: { transporterId: string; routeCode: string }[]) => ({
-  selectedDay: date,
-  serviceAreaId: 'area-1',
-  selectedStation: {
-    serviceAreaID: 'area-1',
-    defaultStationCode: 'TST1',
-    timeZone: 'US/Pacific',
-  },
-  providerFilterValue: 'provider-1',
-  providerFilterOptions: [{ value: 'provider-1' }],
-  isLoadingSummaries: false,
-  allItinerarySummaries: routes,
-  transporterSummary: Object.fromEntries(
-    routes.map((r) => [r.transporterId, { transporterName: `Driver ${r.routeCode}` }]),
-  ),
-});
 const delivered = (id: string, time: number) => ({
   taskId: id,
   taskType: 'DROP_OFF',
@@ -45,6 +34,7 @@ async function site(t: TestContext, answer: Answer) {
     }
     if (
       !url.pathname.startsWith(itineraryApi) &&
+      url.pathname !== summariesApi &&
       !url.pathname.startsWith('/operations/execution/itineraries')
     ) {
       res.writeHead(404);
@@ -135,7 +125,8 @@ test(
           transporterId: 'driver-1',
           routeCode: 'CX1',
           companyId: 'provider-1',
-          executionStatus: 'COMPLETE',
+          // Still out, so each collection reads it again.
+          executionStatus: 'IN_PROGRESS',
           // Deliveries keep advancing during a working day; only meal and
           // route facts may restart a read.
           stopProgress: { total: 2, completed: lists },
@@ -147,7 +138,7 @@ test(
                 br('meal#2', start + 3600000, start + 4500000),
                 { ...br('start-punch', start + 600, null), breakId: 'break-meal#1' },
               ]
-            : [],
+            : [br('meal#1', start, start + 900000)],
         },
         {
           itineraryId: 'itinerary-2',
@@ -204,13 +195,12 @@ test(
           });
         return { json: { itineraryDetails: details } };
       }
-      if (!url.pathname.includes('/documentType/')) {
-        lists++;
+      if (url.pathname === summariesApi) {
         if (lists === 3) await gate;
+        return { json: listResponse(summaries(), { 'driver-1': 'Fixture Driver' }) };
       }
-      const p = listProps('2026-01-10', summaries());
-      p.transporterSummary = { 'driver-1': { transporterName: 'Fixture Driver' } };
-      return { html: executionPage(p) };
+      if (!url.pathname.includes('/documentType/')) lists++;
+      return { html: executionPage() };
     });
     const first = collect('2026-01-10', 'first');
     await until(async () => {
@@ -230,8 +220,8 @@ test(
     release();
     assert.equal((await first).status, 'succeeded');
     assert(visits['itinerary-1']! >= 2, 'Changed existing meals must be re-read');
-    // Read from its own response, whatever the page shows, a route needs no reload.
-    assert.equal(visits['itinerary-2'], 1, 'An unchanged route is read once');
+    // A route without meals has no deliveries to bound: the list alone records it.
+    assert.equal(visits['itinerary-2'], undefined, 'A route without meals is never read');
     const publications = () => owner.get('/api/dsp/cortex/meal-breaks?date=2026-01-10');
     const initial = (await publications()).value;
     assert.equal(initial[0].itineraryCount, 2);
@@ -324,7 +314,7 @@ test(
   },
 );
 test(
-  'Cortex reads every route of a day three at once, however many routes the day has',
+  'Cortex waits for many routes of a day at once, and reads a finished day once',
   { skip: native, timeout: 240000 },
   async (t) => {
     // Days of one, two and 25 routes. On the busy day a rescue route joins after the
@@ -352,6 +342,10 @@ test(
       for (const date of Object.keys(held)) releaseDay(date);
       for (const timer of timers) clearTimeout(timer);
     });
+    // The collection waits for twelve routes at once. Cortex answers over HTTP/2; this
+    // stand-in over HTTP/1.1, to which the browser opens six connections, so six at once
+    // is all it can see.
+    const atOnce = (routes: number) => Math.min(6, routes);
     let active = 0;
     let swiped = false;
     const route = (date: string, n: number) => {
@@ -427,22 +421,24 @@ test(
           },
         };
       }
+      if (url.pathname === summariesApi)
+        return { json: listResponse(routes(url.searchParams.get('localDate')!)) };
       const date = url.searchParams.get('selectedDay')!;
       if (url.pathname.includes('/documentType/')) pages[date] = (pages[date] ?? 0) + 1;
       else lists[date] = (lists[date] ?? 0) + 1;
-      return { html: executionPage(listProps(date, routes(date))) };
+      return { html: executionPage() };
     });
     for (const [date, size] of Object.entries(sizes)) {
       const collecting = collect(date, `every-route-${date}`, 90000);
       void collecting.catch(() => {});
       try {
-        await until(async () => (held[date]?.length ?? 0) >= Math.min(3, size), 30000);
+        await until(async () => (held[date]?.length ?? 0) >= atOnce(size), 30000);
         // A real core round trip while the provider reads are held also proves
         // that collection leaves the API responsive.
         assert.equal((await owner.get('/api/platform/health')).status, 200);
         assert(!expired.has(date), `${date}: health responds before held reads expire`);
-        assert.equal(active, Math.min(3, size), `${date}: reads remain held during health`);
-        assert.equal(peaks[date], Math.min(3, size));
+        assert.equal(active, atOnce(size), `${date}: reads remain held during health`);
+        assert.equal(peaks[date], atOnce(size));
       } finally {
         releaseDay(date);
       }
@@ -455,10 +451,11 @@ test(
       assert.equal(published[0].verifiedGapPairs, count, `${date}: each meal keeps both gaps`);
       const read = Object.keys(reads).filter((id) => id.includes(date));
       assert.equal(read.length, count, `${date}: every route's itinerary was read`);
-      assert.equal(peaks[date], Math.min(3, count), `${date}: as many at once as tabs, no more`);
-      // The list's application moves to each route; only the other tabs load a route's
-      // page, each for its first route.
-      assert((pages[date] ?? 0) <= Math.min(3, count) - 1, JSON.stringify(pages));
+      assert.equal(peaks[date], atOnce(count), `${date}: as many at once as the browser sends`);
+      assert.equal(pages[date] ?? 0, 0, `${date}: the list's application moves to each route`);
+      // A finished day changes no more: unless a route changed while it was read, its list
+      // is not read again to confirm it.
+      if (date !== busy) assert.equal(lists[date], 1, `${date}: listed once`);
       f.database(`dsps/${dsp.id}/data/cortex/cortex.sqlite`, (db) => {
         const rows = db
           .prepare(
@@ -477,6 +474,27 @@ test(
           assert.equal(Date.parse(r.last_delivery_at), on - 60000, r.driver);
           assert.equal(Date.parse(r.first_delivery_at), on + 1860000, r.driver);
         }
+      });
+      // Collected again, every finished route Timecard holds stands as it was.
+      const before = { ...reads };
+      const again = await collect(date, `again-${date}`, 90000);
+      assert.equal(again.status, 'succeeded', JSON.stringify(again));
+      assert.deepEqual(reads, before, `${date}: no route is read again`);
+      const republished = (await owner.get(`/api/dsp/cortex/meal-breaks?date=${date}`)).value;
+      assert.notEqual(republished[0].id, published[0].id);
+      f.database(`dsps/${dsp.id}/data/cortex/cortex.sqlite`, (db) => {
+        const records = (publication: string) =>
+          db
+            .prepare(
+              `SELECT r.itinerary_id,r.meal_id,r.last_delivery_at,r.started_at,r.ended_at,
+                      r.first_delivery_at,r.before_status,r.after_status,
+                      t.last_delivery_stop,t.first_delivery_stop
+                 FROM meal_records r LEFT JOIN meal_stops t USING(publication_id,itinerary_id,meal_id)
+                WHERE r.publication_id=? ORDER BY r.itinerary_id,r.meal_id`,
+            )
+            .all(publication)
+            .map((r) => ({ ...(r as object) }));
+        assert.deepEqual(records(republished[0].id), records(published[0].id), date);
       });
     }
     assert.equal(reads[swipe], 2, 'The meal that ended while the day was read is read again');
@@ -542,6 +560,10 @@ test(
           },
         };
       }
+      if (url.pathname === summariesApi) {
+        const date = url.searchParams.get('localDate')!;
+        return { json: listResponse([route(date === '2026-01-15' ? failing : still)]) };
+      }
       const date = url.searchParams.get('selectedDay')!;
       const id = date === '2026-01-15' ? failing : still;
       const quirks: Quirks = date === '2026-01-15' ? {} : { still: [still] };
@@ -549,7 +571,7 @@ test(
         pages[id] = (pages[id] ?? 0) + 1;
         if (id === failing && pages[id] === 2) quirks.show = 'itinerary-2026-01-15-9';
       }
-      return { html: executionPage(listProps(date, [route(id)]), quirks) };
+      return { html: executionPage(quirks) };
     });
     for (const date of ['2026-01-15', '2026-01-16']) {
       const job = await collect(date, `unanswered-${date}`, 90000);
