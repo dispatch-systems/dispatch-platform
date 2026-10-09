@@ -17,9 +17,9 @@ import type { Connection } from '../../../core/collection/api/index.js';
 import type { DspView } from '../../../core/accounts/api/index.js';
 import type { EmployeeTimecardResponse } from '../api/index.js';
 import { paycomDefaults } from './paycom.js';
-import { api, useCachedData, useData } from '../../../core/shell/frontend/runtime/api.js';
+import { useCachedData, useData } from '../../../core/shell/frontend/runtime/api.js';
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
-import { syncEmployeeTimecard, usePaycomSettings } from '../api/client.js';
+import { syncEmployeeTimecard, syncMealBreaks, usePaycomSettings } from '../api/client.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { collectionData } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { useCollectionUpdates } from './live-collection.js';
@@ -158,11 +158,7 @@ export function PaycomPage({ view }: { view: DspView }) {
       try {
         if (timecard) {
           await syncEmployeeTimecard(timecard.employee.code, timecard.period, randomId());
-        } else if (daily)
-          await api('/api/dsp/jobs/meal-breaks', {
-            requestId: randomId(),
-            date,
-          });
+        } else if (daily) await syncMealBreaks(date, randomId());
       } finally {
         refresh();
         // Keep every Sync Now disabled until status read after this request arrives.
