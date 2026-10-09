@@ -69,8 +69,8 @@ impl Config {
                     "DISPATCH_INVITE_ORIGIN",
                     "DISPATCH_DSP_ORIGIN",
                 ]
-                    .iter()
-                    .all(|key| env::var(key).is_ok_and(|v| !v.trim().is_empty())),
+                .iter()
+                .all(|key| env::var(key).is_ok_and(|v| !v.trim().is_empty())),
                 "production_configuration_required",
                 400,
             )?;
@@ -162,6 +162,7 @@ impl Config {
         )?;
         (c.invite_origin, c.dsp_origin) = addresses(
             &origin,
+            development,
             env::var("DISPATCH_INVITE_ORIGIN").ok(),
             env::var("DISPATCH_DSP_ORIGIN").ok(),
         )?;
@@ -253,7 +254,8 @@ impl Config {
     }
     /// The address of the DSP with short code `code`.
     pub fn dsp_url(&self, code: &str) -> String {
-        self.dsp_origin.replacen(CODE, &code.to_ascii_lowercase(), 1)
+        self.dsp_origin
+            .replacen(CODE, &code.to_ascii_lowercase(), 1)
     }
     /// A code no DSP may take: a name kept for the platform's own addresses, or one whose DSP
     /// address would be the admin's or the invite page's.
@@ -309,9 +311,33 @@ pub enum Site {
 const CODE: &str = "{code}";
 /// Names kept for addresses the platform has or may have: never a DSP's short code.
 const RESERVED_CODES: &[&str] = &[
-    "admin", "api", "app", "assets", "auth", "blog", "cdn", "dev", "dispatch", "dispatchbot",
-    "dispatchdev", "docs", "email", "ftp", "help", "imap", "invite", "login", "mail", "pop",
-    "smtp", "static", "staging", "status", "support", "test", "www",
+    "admin",
+    "api",
+    "app",
+    "assets",
+    "auth",
+    "blog",
+    "cdn",
+    "dev",
+    "dispatch",
+    "dispatchbot",
+    "dispatchdev",
+    "docs",
+    "email",
+    "ftp",
+    "help",
+    "imap",
+    "invite",
+    "login",
+    "mail",
+    "pop",
+    "smtp",
+    "static",
+    "staging",
+    "status",
+    "support",
+    "test",
+    "www",
 ];
 
 /// Whether `code` can be a DSP's short code: 2 to 16 letters and digits, as it appears in
@@ -328,11 +354,12 @@ fn authority(origin: &str) -> &str {
     origin.split_once("://").map_or(origin, |(_, rest)| rest)
 }
 
-/// The invite page's and the DSPs' addresses: as configured, or beside a loopback origin, the
-/// same server under `localhost`'s names, since a browser sends every `*.localhost` to its
-/// own machine. Any other origin names both.
+/// The invite page's and the DSPs' addresses: as configured, or in development or beside a
+/// loopback origin, the same server under `localhost`'s names, since a browser sends every
+/// `*.localhost` to its own machine. A deployed server names both.
 fn addresses(
     origin: &url::Url,
+    development: bool,
     invite: Option<String>,
     dsp: Option<String>,
 ) -> Result<(String, String)> {
@@ -344,12 +371,14 @@ fn addresses(
         None => false,
     };
     let local = |label: &str| {
-        let port = origin.port().map_or(String::new(), |port| format!(":{port}"));
+        let port = origin
+            .port()
+            .map_or(String::new(), |port| format!(":{port}"));
         format!("{}://{label}.localhost{port}", origin.scheme())
     };
     let (invite, dsp) = match (blank(invite), blank(dsp)) {
         (Some(invite), Some(dsp)) => (invite, dsp),
-        (None, None) if loopback => (local("invite"), local(CODE)),
+        (None, None) if development || loopback => (local("invite"), local(CODE)),
         _ => return Err(crate::Error::new("address_configuration_required", 400)),
     };
     let canonical = |address: &str| {

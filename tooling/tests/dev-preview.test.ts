@@ -149,20 +149,20 @@ test('parallel worktree previews isolate ports, files, fixtures and browser sess
   // Even copying a canonical session cookie cannot authenticate the other preview.
   jar.set('dispatch_session', [...jar.values()][0]!);
   assert.equal((await request(second.origin, '/api/session')).status, 401);
+  // The other preview's own owner, an account of its own fixtures.
   assert.equal(
     (
       await request(second.origin, '/api/auth/login', {
-        email: demo.member,
+        email: demo.email,
         password: demo.password,
       })
     ).status,
     200,
   );
   assert.equal(jar.size, 3);
-  const member = await request(second.origin, '/api/session');
-  assert.equal(member.value.user.platformOwner, false);
-  assert.equal((await request(first.origin, '/api/session')).value.user.platformOwner, true);
-  assert.notEqual(owner.value.user.id, member.value.user.id);
+  const other = await request(second.origin, '/api/session');
+  assert.equal((await request(first.origin, '/api/session')).value.user.id, owner.value.user.id);
+  assert.notEqual(owner.value.user.id, other.value.user.id);
   assert.equal((await request(first.origin, '/api/auth/logout', {})).status, 403);
   assert.equal((await request(first.origin, '/api/auth/logout', {}, owner.value.csrf)).status, 200);
   assert.equal((await request(first.origin, '/api/session')).status, 401);

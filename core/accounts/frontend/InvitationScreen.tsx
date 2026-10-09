@@ -16,15 +16,15 @@ type OpenInvitation = {
   timezone: string;
   onboarding: boolean;
 };
-type AcceptedInvitation = { accepted: true; email: string; dspName: string; role: string };
+type AcceptedInvitation = {
+  accepted: true;
+  email: string;
+  dspName: string;
+  role: string;
+  signIn: string | null;
+};
 
-export function InvitationScreen({
-  token,
-  onLogin,
-}: {
-  token: string;
-  onLogin: () => Promise<void>;
-}) {
+export function InvitationScreen({ token }: { token: string }) {
   const invitation = useData<OpenInvitation | AcceptedInvitation>(
     `/api/invitations/${encodeURIComponent(token)}`,
   );
@@ -39,10 +39,16 @@ export function InvitationScreen({
   // A spent link gets its own page; any other failure keeps the form with its error.
   if (invitation.errorCode === 'invitation_expired') return <InvitationExpired />;
   if (data?.accepted)
-    return <InvitationAccepted email={data.email} dspName={data.dspName} role={data.role} />;
+    return (
+      <InvitationAccepted
+        email={data.email}
+        dspName={data.dspName}
+        role={data.role}
+        signIn={data.signIn}
+      />
+    );
   // Choose the screen before loading its artwork; the invitation flows stay independent.
-  if (data?.onboarding && token)
-    return <OwnerOnboarding token={token} email={data.email} onLogin={onLogin} />;
+  if (data?.onboarding && token) return <OwnerOnboarding token={token} email={data.email} />;
   return (
     <MemberProfileCreation
       token={token}

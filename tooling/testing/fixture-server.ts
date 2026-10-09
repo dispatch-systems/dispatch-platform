@@ -16,6 +16,8 @@ export const demo = {
   email: 'owner@dispatch.test',
   member: 'member@dispatch.test',
   password: 'Dispatch-demo-2026!',
+  /** The short code of the DSP the member belongs to: they sign in at its address. */
+  memberDsp: 'nll',
 };
 /** The release build `npm run build` writes, which browser and smoke checks serve. */
 export const built = {
@@ -258,10 +260,29 @@ export async function fixture(options: boolean | FixtureOptions = true) {
       db.close();
     }
   };
-  const client = async (email = demo.email, secret = password) => {
-    const login = await request('/api/auth/login', { email, password: secret });
+  /**
+   * The Host and Origin of a DSP's own address, whose short code is `code`, or of the invite
+   * page as `invite`: a request with them comes from those pages. Without one, the admin's.
+   */
+  const at = (code?: string): Record<string, string> => {
+    if (!code) return {};
+    const host = `${code}.localhost:${env.PORT}`;
+    return { host, origin: `http://${host}` };
+  };
+  /**
+   * A signed-in client: the platform owner at the admin's address, or a member at their DSP's,
+   * the demo member's by default.
+   */
+  const client = async (
+    email = demo.email,
+    secret = password,
+    dsp = email === demo.member ? demo.memberDsp : undefined,
+  ) => {
+    const site = at(dsp);
+    const login = await request('/api/auth/login', { email, password: secret }, site);
     assert.equal(login.status, 200, JSON.stringify(login.value));
     const headers: Record<string, string> = {
+      ...site,
       cookie: login.headers.get('set-cookie')!.split(';')[0]!,
       'x-dispatch-recovery-code-format': 'grouped-v1',
     };
@@ -321,6 +342,7 @@ export async function fixture(options: boolean | FixtureOptions = true) {
     stop,
     request,
     raw,
+    at,
     client,
     database,
     collector: <T>(dspId: string, callback: (db: DatabaseSync) => T): T =>

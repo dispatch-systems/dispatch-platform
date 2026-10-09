@@ -153,7 +153,9 @@ impl Fixture {
         let options = Options {
             root,
             production,
-            origin: "https://dispatch.example.test".into(),
+            origin: "https://admin.dispatch.example.test".into(),
+            invite_origin: "https://invite.dispatch.example.test".into(),
+            dsp_origin: "https://{code}.dispatch.example.test".into(),
             email: "owner@example.test".into(),
             first: "First Name".into(),
             last: "Last Name".into(),
@@ -231,6 +233,8 @@ fn invalid_origin_owner_sandbox_and_existing_state_cannot_bootstrap() {
     for problem in [
         "origin",
         "origin_path",
+        "invite_origin",
+        "dsp_origin",
         "email",
         "name",
         "sandbox",
@@ -244,6 +248,8 @@ fn invalid_origin_owner_sandbox_and_existing_state_cannot_bootstrap() {
         match problem {
             "origin" => f.options.origin = "http://dispatch.example.test".into(),
             "origin_path" => f.options.origin = "https://dispatch.example.test/path".into(),
+            "invite_origin" => f.options.invite_origin = f.options.origin.clone(),
+            "dsp_origin" => f.options.dsp_origin = "https://dsp.dispatch.example.test".into(),
             "email" => f.options.email = "invalid".into(),
             "name" => f.options.first = "injected\nKEY=value".into(),
             "sandbox" => {

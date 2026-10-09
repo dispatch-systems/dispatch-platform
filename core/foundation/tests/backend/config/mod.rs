@@ -51,3 +51,122 @@ fn smtp_requires_transport_security() {
     assert!(super::secure_smtp_url(&loopback, true));
     assert!(!super::secure_smtp_url(&loopback, false));
 }
+
+#[test]
+fn a_host_names_the_admin_the_invite_page_or_a_dsp_by_its_short_code() {
+    use super::Site;
+    let mut config = super::Config::load().unwrap();
+    config.origin = "https://admin.dspdispatch.com".into();
+    config.invite_origin = "https://invite.dspdispatch.com".into();
+    config.dsp_origin = "https://{code}.dspdispatch.com".into();
+    let dsp = |code: &str| Some(Site::Dsp(code.into()));
+    for (host, site) in [
+        ("admin.dspdispatch.com", Some(Site::Admin)),
+        ("ADMIN.dspdispatch.com", Some(Site::Admin)),
+        (&format!("127.0.0.1:{}", config.port), Some(Site::Admin)),
+        ("invite.dspdispatch.com", Some(Site::Invite)),
+        ("fscl.dspdispatch.com", dsp("fscl")),
+        ("FSCL.dspdispatch.com", dsp("fscl")),
+        ("dsp2.dspdispatch.com", dsp("dsp2")),
+        // A short code is 2 to 16 letters and digits, and never a name kept for the platform.
+        ("f.dspdispatch.com", None),
+        ("a234567890123456x.dspdispatch.com", None),
+        ("fs-cl.dspdispatch.com", None),
+        ("www.dspdispatch.com", None),
+        ("dev.dspdispatch.com", None),
+        ("fscl.dev.dspdispatch.com", None),
+        ("dspdispatch.com", None),
+        ("fscl.dspdispatch.com.evil.test", None),
+        ("evil.test", None),
+        ("", None),
+    ] {
+        assert_eq!(config.site(host), site, "{host}");
+    }
+    assert_eq!(config.dsp_url("FSCL"), "https://fscl.dspdispatch.com");
+    assert_eq!(
+        config.site_origin(&Site::Dsp("fscl".into())),
+        "https://fscl.dspdispatch.com"
+    );
+    assert!(config.reserved_code("admin") && config.reserved_code("Invite"));
+    assert!(!config.reserved_code("fscl"));
+    // A DSP's address can never be the admin's or the invite page's, whatever they are named.
+    config.origin = "https://boss.dspdispatch.com".into();
+    assert!(config.reserved_code("boss"));
+    assert_eq!(config.site("boss.dspdispatch.com"), Some(Site::Admin));
+}
+
+#[test]
+fn a_deployed_server_names_every_address_and_development_runs_on_localhost() {
+    let parse = |origin: &str| url::Url::parse(origin).unwrap();
+    let local = super::addresses(&parse("http://127.0.0.1:4100"), false, None, None).unwrap();
+    assert_eq!(
+        local,
+        (
+            "http://invite.localhost:4100".into(),
+            "http://{code}.localhost:4100".into()
+        )
+    );
+    let preview = super::addresses(&parse("http://100.64.0.2:4100"), true, None, None).unwrap();
+    assert_eq!(preview, local);
+    let admin = parse("https://admin.dspdispatch.com");
+    let named = |invite: &str, dsp: &str| {
+        super::addresses(&admin, false, Some(invite.into()), Some(dsp.into()))
+    };
+    assert_eq!(
+        named(
+            "https://invite.dspdispatch.com",
+            "https://{code}.dspdispatch.com"
+        )
+        .unwrap(),
+        (
+            "https://invite.dspdispatch.com".into(),
+            "https://{code}.dspdispatch.com".into()
+        )
+    );
+    assert!(super::addresses(&admin, false, None, None).is_err());
+    assert!(
+        super::addresses(
+            &admin,
+            false,
+            Some("https://invite.dspdispatch.com".into()),
+            None
+        )
+        .is_err()
+    );
+    for (invite, dsp) in [
+        (
+            "http://invite.dspdispatch.com",
+            "https://{code}.dspdispatch.com",
+        ),
+        (
+            "https://admin.dspdispatch.com",
+            "https://{code}.dspdispatch.com",
+        ),
+        (
+            "https://invite.dspdispatch.com/",
+            "https://{code}.dspdispatch.com",
+        ),
+        (
+            "https://invite.dspdispatch.com",
+            "https://dsp.dspdispatch.com",
+        ),
+        (
+            "https://invite.dspdispatch.com",
+            "https://fscl{code}.dspdispatch.com",
+        ),
+        (
+            "https://invite.dspdispatch.com",
+            "https://{code}.{code}.dspdispatch.com",
+        ),
+        (
+            "https://invite.dspdispatch.com",
+            "https://dspdispatch.com/{code}",
+        ),
+        (
+            "https://invite.dspdispatch.com",
+            "http://{code}.dspdispatch.com",
+        ),
+    ] {
+        assert!(named(invite, dsp).is_err(), "{invite} {dsp}");
+    }
+}

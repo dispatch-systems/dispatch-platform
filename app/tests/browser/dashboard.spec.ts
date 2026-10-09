@@ -14,7 +14,7 @@ test('owner dashboard, search, workforce, timecards, connection verification and
   await owner.select(dsp.id);
   await owner.post('/api/dsp/profile', {
     name: dsp.name,
-    abbreviation: 'NL',
+    abbreviation: 'NLL',
     stationCode: 'DEMO1',
     timezone: 'America/Chicago',
   });
@@ -196,7 +196,7 @@ test('platform owner looks through a DSP role until they leave the DSP', async (
   await owner.select(dsp.id);
   await owner.post('/api/dsp/profile', {
     name: dsp.name,
-    abbreviation: 'NL',
+    abbreviation: 'NLL',
     stationCode: 'DEMO1',
     timezone: 'America/Chicago',
   });
@@ -265,8 +265,14 @@ test('create a DSP and accept its owner invitation while another account is sign
   await page.getByLabel('DSP name', { exact: true }).fill('Invitation Test DSP');
   await page.getByLabel('Station code', { exact: true }).fill('DEMO1');
   await page.getByRole('button', { name: 'Continue to profile', exact: true }).click();
-  await expect(page.getByLabel('Abbreviation', { exact: true })).toBeFocused();
-  await page.getByLabel('Abbreviation', { exact: true }).fill('TEST');
+  await expect(page.getByLabel('Short code', { exact: true })).toBeFocused();
+  // A name kept for the platform is taken; the address names the one chosen instead.
+  await page.getByLabel('Short code', { exact: true }).fill('TEST');
+  await expect(page.getByText('That short code is taken. Choose another.')).toBeVisible();
+  await page.getByLabel('Short code', { exact: true }).fill('ITD');
+  await expect(
+    page.getByText(/Your dashboard will be at itd\.localhost:\d+ · Available/),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Continue to profile', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Create your profile', exact: true }),
@@ -283,6 +289,12 @@ test('create a DSP and accept its owner invitation while another account is sign
   await expect(page.getByText('The passwords must match.', { exact: true })).toBeVisible();
   await page.getByLabel('Confirm password', { exact: true }).fill('Invited-secure-1!');
   await page.getByRole('button', { name: 'Finish setup' }).click();
+  // The new owner signs in at the DSP's own address.
+  await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+  expect(new URL(page.url()).hostname).toBe('itd.localhost');
+  await page.getByLabel('Email address').fill('invited-owner@dispatch.test');
+  await page.getByLabel('Password', { exact: true }).fill('Invited-secure-1!');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   expect(errors).toEqual([]);
   await expect(
     page.getByRole('heading', { name: 'Currently under development', exact: true }),

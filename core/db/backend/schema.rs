@@ -186,9 +186,7 @@ const PLATFORM: &[Migration] = &[
     Migration {
         id: 19,
         name: "dsp_codes",
-        apply: Sql(include_str!(
-            "../../tenancy/migrations/platform/0019_dsp_codes.sql"
-        )),
+        apply: Code(dsp_codes),
     },
 ];
 const JOBS: &[Migration] = &[
@@ -288,6 +286,13 @@ fn feature_shown(db: &Db) -> Result<()> {
         "shown",
         "INTEGER NOT NULL DEFAULT 1 CHECK (shown IN (0, 1))",
     )
+}
+// Each DSP's short code, which names its address, in lowercase: none until it is set up.
+// No two DSPs share one.
+fn dsp_codes(db: &Db) -> Result<()> {
+    add_column(db, "dsps", "code", "TEXT")?;
+    db.0.execute_batch("CREATE UNIQUE INDEX IF NOT EXISTS dsps_code ON dsps(code)")?;
+    Ok(())
 }
 fn audit_actor_name(db: &Db) -> Result<()> {
     add_column(db, "audit", "actor_name", "TEXT")

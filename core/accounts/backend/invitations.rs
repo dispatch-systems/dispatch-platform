@@ -123,8 +123,12 @@ impl Store {
             None => Site::Invite,
         })
     }
-    /// An invitation's link works only at the address its email named.
+    /// An invitation's link works at the address its email named, and at the invite page,
+    /// which a DSP's links named until it had a short code; at no other DSP's.
     fn ensure_invitation_site(&self, hash: &str, site: &Site) -> Result<()> {
+        if site == &Site::Invite {
+            return Ok(());
+        }
         let dsp: Option<(String,)> = self
             .platform
             .one_as("SELECT dsp_id FROM invitations WHERE hash=?", [hash])?;
@@ -274,19 +278,27 @@ impl crate::State {
         } = request;
         let token = raw.clone();
         let at = site.clone();
-        let (invite, existing) = self
+        let (invite, existing, addressed) = self
             .run(move |db| {
                 db.throttle(&format!("invite-token:{}", crypto::sha(&token)), 10, 900000)?;
                 let invite = db.invitation(&token, &at)?;
                 db.password_attempt(s(&invite, "email"), &ip)?;
                 let existing = UserRow::find(&db.platform, "email", s(&invite, "email"))?;
-                Ok((invite, existing))
+                let addressed = db.find_dsp(s(&invite, "dspId"))?.code.is_some();
+                Ok((invite, existing, addressed))
             })
             .await?;
         ensure(
             dsp_profile.is_none() || flag(&invite, "onboarding"),
             "permission_denied",
             403,
+        )?;
+        // A DSP's first owner sets it up as they join, short code and so address included,
+        // unless the platform owner gave it one: then they finish setting it up there.
+        ensure(
+            dsp_profile.is_some() || !flag(&invite, "onboarding") || addressed,
+            "dsp_setup_required",
+            400,
         )?;
         let expected = existing.clone();
         let encoded = self

@@ -143,7 +143,10 @@ impl Store {
         let code = code.trim().to_ascii_lowercase();
         Ok(short_code(&code)
             && !self.config.reserved_code(&code)
-            && self.platform.count("SELECT count(*) FROM dsps WHERE code=?", [&code])? == 0)
+            && self
+                .platform
+                .count("SELECT count(*) FROM dsps WHERE code=?", [&code])?
+                == 0)
     }
     /// Gives each DSP set up before its short code named its address the code its
     /// abbreviation already is, when that is one and is free. Any other waits for the

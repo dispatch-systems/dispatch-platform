@@ -26,7 +26,7 @@ test('Meal Breaks sync authorizes both collectors and publishes their selected d
   );
   const profile = await owner.post('/api/dsp/profile', {
     name: dsp.name,
-    abbreviation: 'NL',
+    abbreviation: 'NLL',
     stationCode: 'DEMO1',
     timezone: 'America/Los_Angeles',
   });

@@ -12,7 +12,7 @@ test('Settings shows a member the tabs they may use, and its address keeps the o
     'true',
   );
   await tabs.getByRole('tab', { name: 'Theme', exact: true }).click();
-  await expect(page).toHaveURL(/\/settings\?tab=theme$/);
+  await expect(page).toHaveURL(/#settings\?tab=theme$/);
   await page.reload();
   await expect(
     page

@@ -32,22 +32,30 @@ class BackupTests(unittest.TestCase):
                 "DISPATCH_BACKUP_BINARY": str(binary),
                 "DISPATCH_BACKUP_STATE_ROOT": str(root),
                 "DISPATCH_BACKUP_STAGING": str(root / "staging"),
-                "DISPATCH_BACKUP_ORIGIN": "https://dispatch.example.test",
+                "DISPATCH_BACKUP_ORIGIN": "https://admin.dispatch.example.test",
+                "DISPATCH_BACKUP_INVITE_ORIGIN": "https://invite.dispatch.example.test",
+                "DISPATCH_BACKUP_DSP_ORIGIN": "https://{code}.dispatch.example.test",
                 "RESTIC_REPOSITORY": str(root / "repository"),
                 "RESTIC_PASSWORD_FILE": str(password),
             }
             with self.assertRaises(ValueError):
                 module.Settings(environment, require_root=False)
             environment["RESTIC_REPOSITORY"] = "rest:https://backup.example.test/repository"
-            environment["DISPATCH_BACKUP_ORIGIN"] = "http://dispatch.example.test"
-            with self.assertRaises(ValueError):
-                module.Settings(environment, require_root=False)
+            for name, value in (
+                ("DISPATCH_BACKUP_ORIGIN", "http://admin.dispatch.example.test"),
+                ("DISPATCH_BACKUP_INVITE_ORIGIN", "http://invite.dispatch.example.test"),
+                ("DISPATCH_BACKUP_DSP_ORIGIN", "https://dsp.dispatch.example.test"),
+            ):
+                with self.subTest(name=name), self.assertRaises(ValueError):
+                    module.Settings({**environment, name: value}, require_root=False)
 
     def test_backend_environment_does_not_receive_backup_credentials(self):
         class FakeSettings:
             binary = Path("/opt/dispatch-production/current/services/rust/dispatch-backend")
             state = Path("/var/lib/dispatch-production")
-            origin = "https://dispatch.example.test"
+            origin = "https://admin.dispatch.example.test"
+            invite_origin = "https://invite.dispatch.example.test"
+            dsp_origin = "https://{code}.dispatch.example.test"
 
         before = os.environ.copy()
         os.environ.update(RESTIC_PASSWORD="private", AWS_SECRET_ACCESS_KEY="private")

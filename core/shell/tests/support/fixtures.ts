@@ -51,10 +51,19 @@ export async function signIn(page: Page, email = demo.email) {
   await page.getByLabel('Password', { exact: true }).fill(demo.password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 }
-/** Open the app and sign in, as the platform owner unless another seeded account is named. */
+/**
+ * Open the app and sign in, as the platform owner at the admin's address unless another
+ * seeded account is named: the demo member at their DSP's own.
+ */
 export async function login(page: Page, email = demo.email) {
   await page.goto('/');
+  if (email === demo.member) await page.goto(dspAddress(page, demo.memberDsp));
   await signIn(page, email);
+}
+/** The address of the DSP whose short code is `code`, beside the admin's the page is at. */
+export function dspAddress(page: Page, code: string) {
+  const admin = new URL(page.url());
+  return `${admin.protocol}//${code}.localhost:${admin.port}/`;
 }
 /** From the platform's DSP list, choose a DSP and enter its view from its pane. */
 export async function openDsp(page: Page, name: string) {
@@ -67,3 +76,16 @@ export async function openDsp(page: Page, name: string) {
     .getByRole('button', { name: 'View', exact: true })
     .click();
 }
+/**
+ * What `path` answers at the address the page is at, asked from the page itself, as the
+ * dashboard there asks: with its session, at a DSP's address as at the admin's.
+ */
+export async function fromPage(page: Page, path: string) {
+  return page.evaluate(async (path) => {
+    const response = await fetch(path);
+    return { status: response.status, value: await response.json().catch(() => null) };
+  }, path);
+}
+/** The link an email sends its reader to. */
+export const linkIn = (text: string) =>
+  /(https?:\/\/\S+#invite\?token=[A-Za-z0-9_-]{43})/.exec(text)![1]!;

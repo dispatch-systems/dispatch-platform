@@ -28,6 +28,8 @@ struct Who {
     cookie: String,
     csrf: String,
     view: Option<String>,
+    /// A member's DSP's own address, where their session was made: none for the platform owner.
+    host: Option<String>,
 }
 struct Answer {
     status: u16,
@@ -114,6 +116,8 @@ impl Server {
         config.dashboard = dashboard;
         config.port = port;
         config.origin = format!("http://127.0.0.1:{port}");
+        config.invite_origin = format!("http://invite.localhost:{port}");
+        config.dsp_origin = format!("http://{{code}}.localhost:{port}");
         operations::seed(&Store::initialize(config.clone()).unwrap()).unwrap();
         let state = State::new(config).unwrap();
         let app = dispatch_core::server::http::router(state.clone())
@@ -126,11 +130,13 @@ impl Server {
             client: reqwest::Client::builder().no_proxy().build().unwrap(),
         }
     }
-    // A session row written directly, so tests do not pay for password hashing.
+    // A session row written directly, so tests do not pay for password hashing, used at the
+    // address its account signs in at: the admin's, or its DSP's own.
     async fn session(&self, email: &'static str) -> Who {
         let raw = crypto::token().unwrap();
         let token = raw.clone();
-        self.state
+        let code = self
+            .state
             .run(move |db| {
                 let user = db
                     .platform
@@ -146,14 +152,21 @@ impl Server {
                         db::now()
                     ],
                 )?;
-                Ok(())
+                let code: Option<(Option<String>,)> = db.platform.one_as(
+                    "SELECT d.code FROM memberships m JOIN dsps d ON d.id=m.dsp_id \
+                     WHERE m.user_id=? LIMIT 1",
+                    [s(&user, "id")],
+                )?;
+                Ok(code.and_then(|(code,)| code))
             })
             .await
             .unwrap();
+        let port = self.origin.rsplit(':').next().unwrap();
         let mut who = Who {
             cookie: format!("dispatch_session={raw}"),
             csrf: String::new(),
             view: None,
+            host: code.map(|code| format!("{code}.localhost:{port}")),
         };
         let session = self.send(Call::get("/api/session").who(&who)).await;
         assert_eq!(session.status, 200, "{}", session.body);
@@ -188,8 +201,15 @@ impl Server {
             let name = reqwest::header::HeaderName::from_bytes(name.as_bytes()).unwrap();
             headers.insert(name, value.parse().unwrap());
         };
+        let host = call.who.and_then(|who| who.host.as_deref());
         if call.origin {
-            set("origin", &self.origin);
+            set(
+                "origin",
+                &host.map_or_else(|| self.origin.clone(), |host| format!("http://{host}")),
+            );
+        }
+        if let Some(host) = host {
+            set("host", host);
         }
         if let Some(who) = call.who {
             set("cookie", &who.cookie);
@@ -708,7 +728,7 @@ async fn only_dsp_and_schedule_writes_that_succeed_wake_the_scheduler() {
     let profile = json!({
         "name":"Northline Logistics",
         "timezone":"America/Chicago",
-        "abbreviation":"NL",
+        "abbreviation":"NLL",
         "stationCode":"DCH1"
     });
     let saved = server
@@ -739,7 +759,7 @@ async fn only_dsp_and_schedule_writes_that_succeed_wake_the_scheduler() {
 #[tokio::test]
 async fn signing_in_and_out_sets_and_clears_the_session_cookie() {
     let server = Server::start().await;
-    let credentials = json!({"email":"member@dispatch.test","password":"Dispatch-demo-2026!"});
+    let credentials = json!({"email":"owner@dispatch.test","password":"Dispatch-demo-2026!"});
     let login = server
         .send(Call::post("/api/auth/login", credentials))
         .await;
@@ -754,6 +774,7 @@ async fn signing_in_and_out_sets_and_clears_the_session_cookie() {
         cookie: pair.to_owned(),
         csrf: String::new(),
         view: None,
+        host: None,
     };
     let session = server.send(Call::get("/api/session").who(&who)).await;
     who.csrf = s(&session.body, "csrf").to_owned();
@@ -857,12 +878,12 @@ async fn remembered_sessions_have_a_fixed_seven_day_deadline() {
     let server = Server::start().await;
     for value in [json!("true"), json!(1), Value::Null] {
         server.expect(Call::post("/api/auth/login", json!({
-            "email":"member@dispatch.test", "password":"Dispatch-demo-2026!", "rememberMe":value
+            "email":"owner@dispatch.test", "password":"Dispatch-demo-2026!", "rememberMe":value
         })), 400, "invalid_input").await;
     }
     for (remember, seconds) in [(false, 28800), (true, 604800)] {
         let login = server.send(Call::post("/api/auth/login", json!({
-            "email":"member@dispatch.test", "password":"Dispatch-demo-2026!", "rememberMe":remember
+            "email":"owner@dispatch.test", "password":"Dispatch-demo-2026!", "rememberMe":remember
         }))).await;
         assert_eq!(login.status, 200, "{}", login.body);
         let (pair, attributes) = login.header("set-cookie").split_once(';').unwrap();
@@ -890,6 +911,7 @@ async fn remembered_sessions_have_a_fixed_seven_day_deadline() {
             cookie: pair.to_owned(),
             csrf: String::new(),
             view: None,
+            host: None,
         };
         for _ in 0..2 {
             let session = server.send(Call::get("/api/session").who(&who)).await;

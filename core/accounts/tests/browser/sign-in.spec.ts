@@ -1,5 +1,12 @@
 import type { Page } from '@playwright/test';
-import { test, expect, demo, login, signIn } from '../../../shell/tests/support/fixtures.js';
+import {
+  test,
+  expect,
+  demo,
+  dspAddress,
+  login,
+  signIn,
+} from '../../../shell/tests/support/fixtures.js';
 import { capturedMail } from '../../../shell/tests/support/mail-support.js';
 
 test.use({ launchOptions: { args: ['--enable-unsafe-swiftshader'] } });
@@ -46,11 +53,13 @@ test('remembering sign-in appearance keeps different accounts independent', asyn
   await page.getByRole('radio', { name: 'Dark', exact: true }).check();
   await signOut(page);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.goto(dspAddress(page, demo.memberDsp));
   await signIn(page, demo.member);
   await expect(page.locator('.account-menu')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await signOut(page);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.goto('/');
   await signIn(page);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });

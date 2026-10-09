@@ -216,13 +216,13 @@ test('the folder is shared with the team, and those without Google are emailed t
   const token = /token=([A-Za-z0-9_-]{43})/.exec(
     (await capturedMail(f.root, 'riley@example.net')).text,
   )![1];
-  const accepted = await f.request(`/api/invitations/${token}/accept`, {
-    firstName: 'Riley',
-    lastName: 'Park',
-    password: demo.password,
-  });
+  const accepted = await f.request(
+    `/api/invitations/${token}/accept`,
+    { firstName: 'Riley', lastName: 'Park', password: demo.password },
+    f.at(north.code),
+  );
   assert.equal(accepted.status, 200, JSON.stringify(accepted.value));
-  const member = await f.client('riley@example.net');
+  const member = await f.client('riley@example.net', demo.password, north.code);
   await member.select(north.id);
   await connect(owner);
 

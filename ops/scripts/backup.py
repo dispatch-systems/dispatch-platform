@@ -32,15 +32,22 @@ class Settings:
         self.state = absolute_path(environment, "DISPATCH_BACKUP_STATE_ROOT")
         self.staging = absolute_path(environment, "DISPATCH_BACKUP_STAGING")
         self.origin = environment.get("DISPATCH_BACKUP_ORIGIN", "")
+        self.invite_origin = environment.get("DISPATCH_BACKUP_INVITE_ORIGIN", "")
+        self.dsp_origin = environment.get("DISPATCH_BACKUP_DSP_ORIGIN", "")
         self.repository = environment.get("RESTIC_REPOSITORY", "")
         self.password_file = absolute_path(environment, "RESTIC_PASSWORD_FILE")
         self.restic = Path("/usr/bin/restic")
         self.runuser = Path("/usr/sbin/runuser")
-        origin = urllib.parse.urlsplit(self.origin)
-        if not (origin.scheme == "https" and origin.netloc and origin.path in ("", "/")
-                and not origin.username and not origin.password and not origin.query
-                and not origin.fragment):
-            raise ValueError("DISPATCH_BACKUP_ORIGIN must be a canonical HTTPS origin")
+        # The backend reads all three of Production's addresses, as the server does.
+        for name, value in (
+            ("DISPATCH_BACKUP_ORIGIN", self.origin),
+            ("DISPATCH_BACKUP_INVITE_ORIGIN", self.invite_origin),
+            ("DISPATCH_BACKUP_DSP_ORIGIN", self.dsp_origin.replace("{code}", "dsp", 1)),
+        ):
+            if not canonical_https(value):
+                raise ValueError(f"{name} must be a canonical HTTPS origin")
+        if not self.dsp_origin.startswith("https://{code}."):
+            raise ValueError("DISPATCH_BACKUP_DSP_ORIGIN must name a DSP by {code}")
         if not self.repository.startswith(REMOTE_REPOSITORIES):
             raise ValueError("RESTIC_REPOSITORY must be off-host")
         for path in (self.binary, self.password_file, self.restic, self.runuser):
@@ -56,6 +63,13 @@ class Settings:
         self.runtime_gid = runtime.pw_gid
         if self.runtime_uid == 0:
             raise PermissionError("dispatch-runtime must be unprivileged")
+
+
+def canonical_https(value):
+    origin = urllib.parse.urlsplit(value)
+    return (origin.scheme == "https" and bool(origin.netloc) and origin.path in ("", "/")
+            and not origin.username and not origin.password and not origin.query
+            and not origin.fragment)
 
 
 def secure_root_file(path):
@@ -79,6 +93,8 @@ def backend_environment(settings):
         "DISPATCH_STATE_ROOT": str(settings.state),
         "DISPATCH_ARTIFACT_ROOT": str(artifact),
         "DISPATCH_ORIGIN": settings.origin,
+        "DISPATCH_INVITE_ORIGIN": settings.invite_origin,
+        "DISPATCH_DSP_ORIGIN": settings.dsp_origin,
     }
 
 

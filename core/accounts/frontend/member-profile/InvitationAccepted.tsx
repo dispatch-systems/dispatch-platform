@@ -1,5 +1,5 @@
 import { ArrowRight, CircleCheck } from 'lucide-react';
-import { signInAfterProfile } from '../sign-in-handoff.js';
+import { signInAt } from '../sign-in-handoff.js';
 import { DspAvatar } from '../../../shell/frontend/ui/index.js';
 import { MemberProfileLayout } from './MemberProfileLayout.js';
 
@@ -8,10 +8,12 @@ export function InvitationAccepted({
   email,
   dspName,
   role,
+  signIn,
 }: {
   email: string;
   dspName: string;
   role: string;
+  signIn: string | null;
 }) {
   return (
     <MemberProfileLayout
@@ -30,7 +32,7 @@ export function InvitationAccepted({
         <span>You joined {dspName} with this invitation. Sign in with your Dispatch password.</span>
       </p>
       <div className="member-profile-actions">
-        <button className="primary" onClick={() => signInAfterProfile(email)}>
+        <button className="primary" onClick={() => signInAt(email, signIn)}>
           Sign in
           <ArrowRight size={21} aria-hidden="true" />
         </button>

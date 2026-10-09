@@ -2,12 +2,13 @@ import { ChevronLeft, Ellipsis, Eye } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
 import { useUpdateState } from '../../../shell/frontend/runtime/browser-update.js';
 import { connectionFeatures } from '../../../shell/frontend/runtime/features.js';
+import { dspAddress } from '../../../shell/frontend/runtime/site.js';
 import { Badge, DspAvatar, Popover, Tabs } from '../../../shell/frontend/ui/index.js';
 import { deviceTimezone, time } from '../../../shell/frontend/lib/format.js';
 import { DspFeaturesTab } from './DspFeaturesTab.js';
 import { dspState, stateLabels } from './status.js';
 
-export type DspAction = 'view' | 'enable' | 'retry' | 'restore' | 'remove' | 'disable';
+export type DspAction = 'view' | 'code' | 'enable' | 'retry' | 'restore' | 'remove' | 'disable';
 
 // The chosen DSP: its facts, its features and what the platform may do to it.
 export function DspDetail({
@@ -28,6 +29,11 @@ export function DspDetail({
   const viewable = dsp.status === 'active' && !removed;
   const actions: [DspAction, string, boolean][] = [
     ['view', 'View', viewable],
+    [
+      'code',
+      dsp.code ? 'Change short code' : 'Set short code',
+      !removed && ['active', 'suspended'].includes(dsp.status),
+    ],
     ['restore', 'Restore DSP', removed],
     ['retry', 'Retry', dsp.status === 'failed'],
     ['enable', 'Enable DSP', dsp.status === 'suspended' && !removed],
@@ -50,6 +56,16 @@ export function DspDetail({
         : dsp.ownerStatus === 'invited'
           ? `Invitation sent to ${dsp.ownerEmail}`
           : 'Invitation expired',
+    ],
+    [
+      'Address',
+      dsp.code ? (
+        <a href={dspAddress(dsp.code)} target="_blank" rel="noopener noreferrer">
+          {new URL(dspAddress(dsp.code)).host}
+        </a>
+      ) : (
+        'None until it has a short code'
+      ),
     ],
     ['Members', String(dsp.members)],
     ['Created', time(dsp.createdAt, zone)],

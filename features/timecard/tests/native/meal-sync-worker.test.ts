@@ -107,7 +107,7 @@ test(
         providerFilterOptions: [
           { value: 'ALL_DRIVERS', label: 'All Drivers' },
           { value: 'ALL_DSPS' },
-          { value: 'provider-1', label: 'NLOG' },
+          { value: 'provider-1', label: 'NLL' },
           { value: 'other-provider', label: 'Other' },
         ],
         isLoadingSummaries: false,
@@ -126,7 +126,7 @@ test(
       (
         await owner.post('/api/dsp/profile', {
           name: 'Northline Logistics',
-          abbreviation: 'NLOG',
+          abbreviation: 'NLL',
           stationCode: 'TST1',
           timezone: 'America/Los_Angeles',
         })

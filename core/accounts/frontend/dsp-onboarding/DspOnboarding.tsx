@@ -9,10 +9,13 @@ import { OnboardingLayout } from './OnboardingLayout.js';
  */
 export function DspOnboarding({
   saveTo,
+  code,
   complete,
   signOut,
 }: {
   saveTo: string;
+  /** The DSP's short code, when it has one already: then it stays. */
+  code?: string | null;
   complete: () => Promise<void>;
   signOut: () => Promise<void>;
 }) {
@@ -24,6 +27,8 @@ export function DspOnboarding({
     <OnboardingLayout title="Set up your DSP">
       <DspSetupForm
         resume
+        locked={Boolean(code)}
+        initial={code ? { abbreviation: code.toUpperCase() } : undefined}
         busy={save.busy || logout.busy}
         error={save.error || logout.error}
         onSubmit={(profile) => {

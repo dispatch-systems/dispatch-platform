@@ -1,5 +1,13 @@
 import type { Page } from '@playwright/test';
-import { test, expect, demo, login, openDsp } from '../../../core/shell/tests/support/fixtures.js';
+import {
+  test,
+  expect,
+  demo,
+  fromPage,
+  linkIn,
+  login,
+  openDsp,
+} from '../../../core/shell/tests/support/fixtures.js';
 import { capturedMail } from '../../../core/shell/tests/support/mail-support.js';
 import type { fixture } from '../../../core/shell/tests/support/support.js';
 import { fits } from '../../../core/accounts/tests/support/member-profile.js';
@@ -19,12 +27,12 @@ async function inviteMember(page: Page, root: string) {
     page.getByText('Invitation email queued for new-member@dispatch.test', { exact: true }),
   ).toBeVisible();
   const mail = await capturedMail(root, 'new-member@dispatch.test');
-  const token = /token=([A-Za-z0-9_-]{43})/.exec(mail.text)![1];
   // Leave the owner's dashboard before its session is cleared, so the invite opens in a
   // fresh page as an invitee's would. Otherwise the dashboard's own refreshes after the
   // invite are refused without the session, and signing the owner out can race the link.
   await page.goto('about:blank');
-  return `/#invite?token=${token}`;
+  // The link opens at Northline's own address.
+  return linkIn(mail.text);
 }
 
 test('a DSP member invite creates a profile in its own responsive map screen', async ({
@@ -68,12 +76,15 @@ test('a DSP member invite creates a profile in its own responsive map screen', a
   await expect(page.getByLabel('Email address')).toHaveValue('new-member@dispatch.test');
   await expect(page.getByLabel('Password', { exact: true })).toBeFocused();
   expect(logins).toEqual([]);
-  expect((await page.request.get('/api/session')).status()).toBe(401);
+  expect((await fromPage(page, '/api/session')).status).toBe(401);
   await page.getByLabel('Password', { exact: true }).fill(demo.password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page).toHaveURL(/#dsp\/[^/]+\//);
+  await expect(
+    page.getByRole('heading', { name: 'Currently under development', exact: true }),
+  ).toBeVisible();
+  expect(new URL(page.url()).hostname).toBe(`${demo.memberDsp}.localhost`);
   await expect(page.locator('.member-profile-page')).toHaveCount(0);
-  const session = await (await page.request.get('/api/session')).json();
+  const session = (await fromPage(page, '/api/session')).value;
   expect(session.user.email).toBe('new-member@dispatch.test');
   expect(session.dsps).toHaveLength(1);
   expect(session.dsps[0].name).toBe('Northline Logistics');
@@ -92,8 +103,7 @@ async function apiInvitation(dispatch: Awaited<ReturnType<typeof fixture>>) {
     role: role.id,
   });
   expect(result.status).toBe(200);
-  const mail = await capturedMail(dispatch.root, 'new-member@dispatch.test');
-  return `/#invite?token=${/token=([A-Za-z0-9_-]{43})/.exec(mail.text)![1]}`;
+  return linkIn((await capturedMail(dispatch.root, 'new-member@dispatch.test')).text);
 }
 
 test('an accepted invitation says so and hands its email to sign-in', async ({
@@ -104,11 +114,11 @@ test('an accepted invitation says so and hands its email to sign-in', async ({
   const url = await apiInvitation(dispatch);
   await context.clearCookies();
   const token = url.split('token=')[1]!;
-  const accepted = await dispatch.request(`/api/invitations/${token}/accept`, {
-    firstName: 'Jamie',
-    lastName: 'Morgan',
-    password: demo.password,
-  });
+  const accepted = await dispatch.request(
+    `/api/invitations/${token}/accept`,
+    { firstName: 'Jamie', lastName: 'Morgan', password: demo.password },
+    dispatch.at(demo.memberDsp),
+  );
   expect(accepted.status).toBe(200);
   await page.goto(url);
   await expect(page.getByRole('heading', { name: 'Already accepted' })).toBeVisible();
@@ -135,7 +145,7 @@ test('an accepted invitation says so and hands its email to sign-in', async ({
   await expect(page).toHaveURL(/#signin$/);
   await expect(page.getByLabel('Email address')).toHaveValue('new-member@dispatch.test');
   await expect(page.getByLabel('Password', { exact: true })).toBeFocused();
-  expect((await page.request.get('/api/session')).status()).toBe(401);
+  expect((await fromPage(page, '/api/session')).status).toBe(401);
 });
 
 async function fillMemberProfile(page: Page) {
@@ -180,7 +190,7 @@ for (const variant of ['phone', 'reduced motion', 'unavailable artwork'] as cons
     await expect(page.locator('.auth-panel .notice')).toHaveCount(0);
     await expect(page.getByLabel('Email address')).toHaveValue('new-member@dispatch.test');
     await expect(page.locator('.auth-layout')).toHaveAttribute('data-enter', 'false');
-    expect((await page.request.get('/api/session')).status()).toBe(401);
+    expect((await fromPage(page, '/api/session')).status).toBe(401);
     if (variant !== 'unavailable artwork')
       expect(assets.filter((url) => /MemberProfileCompletion-/.test(url))).toEqual([]);
     else expect(failedArtwork).toBe(1);
@@ -206,5 +216,5 @@ test('resizing to a phone during member completion finishes the handoff immediat
   await expect(page).toHaveURL(/#signin$/);
   await expect(page.locator('.auth-layout')).toHaveAttribute('data-enter', 'false');
   await expect(page.locator('.member-completion')).toHaveCount(0);
-  expect((await page.request.get('/api/session')).status()).toBe(401);
+  expect((await fromPage(page, '/api/session')).status).toBe(401);
 });

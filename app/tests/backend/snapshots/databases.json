@@ -21,7 +21,8 @@
       [15, "agent_activity", "58be6602d76e2bec"],
       [16, "agent_reads", "code"],
       [17, "feature_availability", "99b9a0f0a60cd78f"],
-      [18, "feature_shown", "code"]
+      [18, "feature_shown", "code"],
+      [19, "dsp_codes", "code"]
     ]
   },
   {

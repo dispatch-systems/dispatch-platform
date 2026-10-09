@@ -52,6 +52,7 @@ const INVENTORY: &[Row] = &[
     ("POST", "/api/auth/forgot-password", Public, Async, false),
     ("POST", "/api/auth/reset-password", Public, Async, false),
     ("GET", "/api/invitations/{token}", Public, Write, false),
+    ("GET", "/api/invitations/{token}/short-code", Public, Write, false),
     ("POST", "/api/invitations/{token}/accept", Public, Async, false),
     ("GET", "/api/auth/security/status", Session, Read, false),
     ("GET", "/api/auth/security/passkeys", Session, Read, false),
@@ -71,6 +72,7 @@ const INVENTORY: &[Row] = &[
     ("POST", "/api/auth/security/sessions/revoke-others", Session, Write, false),
     ("POST", "/api/auth/security/sessions/revoke-all", Session, Write, false),
     ("POST", "/api/auth/security/reauthenticate", Session, Async, false),
+    ("GET", "/api/site", Public, Read, false),
     ("GET", "/api/session", Session, Read, false),
     ("POST", "/api/session/dsp", Session, Write, false),
 
@@ -113,6 +115,7 @@ const INVENTORY: &[Row] = &[
     ("POST", "/api/platform/dsps/{id}/retry", PlatformOwner, Write, WAKES_SCHEDULER),
     ("POST", "/api/platform/dsps/{id}/status", PlatformOwner, Async, false),
     ("POST", "/api/platform/dsps/{id}/support-visibility", PlatformOwner, Async, false),
+    ("POST", "/api/platform/dsps/{id}/code", PlatformOwner, Async, false),
     ("GET", "/api/platform/dsps/{id}/features", PlatformOwner, Read, false),
     ("POST", "/api/platform/dsps/{id}/features", PlatformOwner, Async, false),
     ("POST", "/api/platform/dsps/{id}/features/shown", PlatformOwner, Write, false),

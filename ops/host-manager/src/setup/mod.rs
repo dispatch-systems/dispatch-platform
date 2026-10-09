@@ -24,6 +24,10 @@ struct Options {
     root: PathBuf,
     production: bool,
     origin: String,
+    /// Where a new DSP's owner sets it up.
+    invite_origin: String,
+    /// Each DSP's address, `{code}` standing for its short code.
+    dsp_origin: String,
     email: String,
     first: String,
     last: String,
@@ -47,19 +51,36 @@ impl Options {
                 == Some(if self.production { "public" } else { "dev" }),
             "Real environment root required",
         )?;
-        let origin = reqwest::Url::parse(&self.origin)?;
+        let canonical = |address: &str| {
+            reqwest::Url::parse(address).is_ok_and(|url| {
+                url.scheme() == "https"
+                    && url.host_str().is_some()
+                    && url.username().is_empty()
+                    && url.password().is_none()
+                    && url.query().is_none()
+                    && url.fragment().is_none()
+                    && url.path() == "/"
+                    && url.as_str() == format!("{address}/")
+            })
+        };
+        require(canonical(&self.origin), "Canonical HTTPS origin required")?;
         require(
-            origin.scheme() == "https"
-                && origin.host_str().is_some()
-                && origin.username().is_empty()
-                && origin.password().is_none()
-                && origin.query().is_none()
-                && origin.fragment().is_none()
-                && origin.path() == "/"
-                && origin.as_str() == format!("{}/", self.origin),
-            "Canonical HTTPS origin required",
+            canonical(&self.invite_origin) && self.invite_origin != self.origin,
+            "Canonical HTTPS invite origin required",
         )?;
-        for value in [&self.origin, &self.email, &self.first, &self.last] {
+        require(
+            self.dsp_origin.starts_with("https://{code}.")
+                && canonical(&self.dsp_origin.replacen("{code}", "dsp", 1)),
+            "HTTPS DSP origin with {code} required",
+        )?;
+        for value in [
+            &self.origin,
+            &self.invite_origin,
+            &self.dsp_origin,
+            &self.email,
+            &self.first,
+            &self.last,
+        ] {
             require(
                 !value.trim().is_empty() && !value.contains(['\n', '\r', '\0']),
                 "Single-line setup values required",
@@ -118,6 +139,8 @@ fn parse(args: &[String]) -> Result<Options> {
             [
                 "--root",
                 "--origin",
+                "--invite-origin",
+                "--dsp-origin",
                 "--owner-email",
                 "--first-name",
                 "--last-name",
@@ -154,6 +177,8 @@ fn parse(args: &[String]) -> Result<Options> {
         root: std::path::absolute(required("--root")?)?,
         production: environment == "production",
         origin: required("--origin")?,
+        invite_origin: required("--invite-origin")?,
+        dsp_origin: required("--dsp-origin")?,
         email: required("--owner-email")?,
         first: required("--first-name")?,
         last: required("--last-name")?,
@@ -167,7 +192,7 @@ fn parse(args: &[String]) -> Result<Options> {
 pub fn run(args: &[String], system: &dyn System) -> Result<()> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!(
-            "host setup <dev|production> --root PATH --origin HTTPS_ORIGIN --owner-email EMAIL --first-name NAME --last-name NAME [--provider native|fixture] [--sandbox-executable PATH] [--artifact ARCHIVE --commit SHA --version VERSION]"
+            "host setup <dev|production> --root PATH --origin HTTPS_ORIGIN --invite-origin HTTPS_ORIGIN --dsp-origin 'https://{{code}}.DOMAIN' --owner-email EMAIL --first-name NAME --last-name NAME [--provider native|fixture] [--sandbox-executable PATH] [--artifact ARCHIVE --commit SHA --version VERSION]"
         );
         return Ok(());
     }
@@ -333,6 +358,11 @@ fn prepare(options: &Options, system: &dyn System) -> Result<transaction::Journa
     .map(|(k, v)| (k.into(), v.into()))
     .collect();
     env.insert("DISPATCH_ORIGIN".into(), options.origin.clone());
+    env.insert(
+        "DISPATCH_INVITE_ORIGIN".into(),
+        options.invite_origin.clone(),
+    );
+    env.insert("DISPATCH_DSP_ORIGIN".into(), options.dsp_origin.clone());
     env.insert(
         "DISPATCH_STATE_ROOT".into(),
         staging.to_str().ok_or("Invalid state path")?.into(),

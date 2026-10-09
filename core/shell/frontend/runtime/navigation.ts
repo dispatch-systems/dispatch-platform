@@ -6,6 +6,7 @@ import {
   type DspRouteId,
   type PlatformRouteId,
 } from './slots.js';
+import { siteDsp } from './site.js';
 
 const destinations = new Map<string, DspRouteId>();
 export function rememberDestination(dspId: string, page: DspRouteId) {
@@ -23,12 +24,14 @@ export function forgetDestination(dspId: string, page: string) {
 /**
  * A DSP's page, by default the last one open there, or else its landing page. Without a
  * landing page the address names no page, and the app opens the first one the person may.
+ * At the DSP's own address, the address already names the DSP, so the page alone does.
  */
 export const dspHash = (
   dspId: string,
   page: DspRouteId | undefined = destinations.get(dspId) ?? landingPage(),
   query?: Record<string, string>,
-) => `#dsp/${dspId}/${page ?? ''}${query ? `?${new URLSearchParams(query)}` : ''}`;
+) =>
+  `${dspId === siteDsp() ? '#' : `#dsp/${dspId}/`}${page ?? ''}${query ? `?${new URLSearchParams(query)}` : ''}`;
 /**
  * A DSP's Settings, on `tab` if one is named: the page that draws the settings tabs. None
  * without that page, or without the tab, so a link to it is left out.
@@ -46,8 +49,18 @@ export const signInHash = '#signin';
 export function navigate(hash: string) {
   window.location.hash = hash;
 }
-/** Where the address points: `#dsp/<id>/<page>?…` inside a DSP, `#<page>?…` outside one. */
+/** Signing in, or following an invitation or reset link: outside any DSP, at every address. */
+const signedOut = /^(?:signin$|invite\?|reset\?)/;
+/**
+ * Where the address points: `#dsp/<id>/<page>?…` inside a DSP, `#<page>?…` outside one. At a
+ * DSP's own address, every `#<page>?…` is that DSP's but signing in and the links mailed there.
+ */
 export function parseHash(hash: string) {
+  const own = siteDsp();
+  if (own && !signedOut.test(hash.replace(/^#/, ''))) {
+    const route = hash.replace(/^#/, '');
+    return { route, dspId: own, page: (route || landingPage() || '').split('?')[0]! };
+  }
   const route = hash.replace(/^#/, '') || 'dsps';
   const dspId = route.startsWith('dsp/') ? route.split('/')[1] : undefined;
   return {

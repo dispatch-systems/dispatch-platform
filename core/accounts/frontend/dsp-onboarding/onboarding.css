@@ -144,6 +144,16 @@ body:has(.onboarding-page) {
   font-size: 14px;
   line-height: 1.4;
 }
+.onboarding-address {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+}
+.onboarding-address strong {
+  color: var(--foreground);
+  font-weight: 550;
+}
 .onboarding-example {
   font-weight: 400;
   font-size: 12px;

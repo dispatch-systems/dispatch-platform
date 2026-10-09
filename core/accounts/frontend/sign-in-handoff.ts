@@ -14,3 +14,12 @@ export const getSignInHandoff = () => pending;
 export function clearSignInHandoff() {
   pending = undefined;
 }
+
+/**
+ * Sign In where the account signs in: here, with its email filled in, or at its DSP's own
+ * address when that is another, which opens its sign-in page.
+ */
+export function signInAt(email: string, signIn: string | null | undefined, animate = false) {
+  if (signIn && new URL(signIn).origin !== location.origin) location.assign(signIn);
+  else signInAfterProfile(email, animate);
+}

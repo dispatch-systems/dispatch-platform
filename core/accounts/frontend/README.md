@@ -2,7 +2,8 @@
 
 - `dsp-onboarding/` owns DSP setup, owner invitations, its forms, map and styles.
 - `member-profile/` owns member invitations, profile creation, the completion lanyard and the
-  pages for an expired or already-accepted invitation link.
+  pages for an expired or already-accepted invitation link, for the invite page opened without
+  one, and for a DSP's address no DSP has.
 - `sign-in/` owns sign-in, password recovery and its van artwork.
 
 `SignedOutScreen` and `InvitationScreen` choose the screen. Screen directories never import
@@ -11,7 +12,8 @@ UI primitives are allowed. Similar artwork is maintained separately by each scre
 
 Member profile acceptance creates the account without logging in. The only navigation
 data sent to Sign In is an in-memory email and entrance flag in `app/sign-in-handoff.ts`.
-Passwords are never passed to Sign In or persisted by this flow.
+Passwords are never passed to Sign In or persisted by this flow. When the account signs in at
+another address, its DSP's, `signInAt` opens Sign In there instead, with nothing handed over.
 
 An invitation lookup answers `accepted: true` with the email, DSP name and role once the link
 has been used, until the invitation's original seven days run out. It answers

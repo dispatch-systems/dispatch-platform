@@ -125,6 +125,8 @@ test('role edits need no fresh verification and invitations follow their sender 
   const owner = await f.client();
   const member = await f.client('member@dispatch.test');
   const north = member.session.dsps[0];
+  // Northline's invitations open at its own address.
+  const at = f.at(north.code);
   const summit = owner.session.dsps.find((d: { name: string }) => d.name === 'Summit Delivery');
   await owner.select(summit.id);
   const summitMember = (await owner.get('/api/dsp/roles')).value.find(
@@ -198,27 +200,29 @@ test('role edits need no fresh verification and invitations follow their sender 
   const memberRole = (await roles()).find((role) => role.name === 'Member')!;
   assert.equal((await write(`/api/dsp/members/${sender.id}`, { role: memberRole.id })).status, 200);
   const burst = await Promise.all(
-    Array.from({ length: 32 }, (_, index) => f.request(`/api/invitations/${tokens[index % 2]}`)),
+    Array.from({ length: 32 }, (_, index) =>
+      f.request(`/api/invitations/${tokens[index % 2]}`, undefined, at),
+    ),
   );
   assert.deepEqual(
     burst.map((result) => result.status),
     Array.from({ length: 32 }, (_, index) => (index % 2 === 0 ? 200 : 404)),
   );
   assert.equal((await write(`/api/dsp/members/${sender.id}`, { role: null })).status, 200);
-  assert.equal((await f.request(`/api/invitations/${tokens[0]}`)).status, 200);
-  assert.equal((await f.request(`/api/invitations/${tokens[1]}`)).status, 404);
-  assert.equal((await f.request(`/api/invitations/${tokens[2]}`)).status, 200);
-  const denied = await f.request(`/api/invitations/${tokens[1]}/accept`, {
-    firstName: 'Casey',
-    lastName: 'Rivers',
-    password: demo.password,
-  });
+  assert.equal((await f.request(`/api/invitations/${tokens[0]}`, undefined, at)).status, 200);
+  assert.equal((await f.request(`/api/invitations/${tokens[1]}`, undefined, at)).status, 404);
+  assert.equal((await f.request(`/api/invitations/${tokens[2]}`, undefined, at)).status, 200);
+  const denied = await f.request(
+    `/api/invitations/${tokens[1]}/accept`,
+    { firstName: 'Casey', lastName: 'Rivers', password: demo.password },
+    at,
+  );
   assert.equal(denied.status, 404, denied.body);
-  const accepted = await f.request(`/api/invitations/${tokens[0]}/accept`, {
-    firstName: 'Alex',
-    lastName: 'Rivera',
-    password: demo.password,
-  });
+  const accepted = await f.request(
+    `/api/invitations/${tokens[0]}/accept`,
+    { firstName: 'Alex', lastName: 'Rivera', password: demo.password },
+    at,
+  );
   assert.equal(accepted.status, 200, accepted.body);
   await owner.select(north.id);
   const joined = (await owner.get('/api/dsp/members')).value.find(
@@ -229,8 +233,8 @@ test('role edits need no fresh verification and invitations follow their sender 
   // Deleting a role with pending invitations is allowed and cancels them.
   assert.equal((await roles()).find((role) => role.id === temp.id)!.invitations, 1);
   assert.equal((await write(`/api/dsp/roles/${temp.id}/remove`, {})).status, 200);
-  assert.equal((await f.request(`/api/invitations/${tokens[2]}`)).status, 404);
-  assert.equal((await f.request(`/api/invitations/${tokens[0]}`)).status, 200);
+  assert.equal((await f.request(`/api/invitations/${tokens[2]}`, undefined, at)).status, 404);
+  assert.equal((await f.request(`/api/invitations/${tokens[0]}`, undefined, at)).status, 200);
   assert.equal((await write(`/api/dsp/roles/${crew.id}/remove`, {})).value.error, 'role_in_use');
 });
 

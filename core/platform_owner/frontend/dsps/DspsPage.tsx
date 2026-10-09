@@ -25,7 +25,7 @@ import { open } from './open.js';
 import { dspState, dspStates, stateLabels } from './status.js';
 
 const none: DspSummary[] = [];
-const requests: Record<Exclude<DspAction, 'view'>, [string, unknown, string]> = {
+const requests: Record<Exclude<DspAction, 'view' | 'code'>, [string, unknown, string]> = {
   enable: ['status', { status: 'active' }, 'DSP enabled'],
   retry: ['retry', {}, 'DSP available'],
   restore: ['restore', {}, 'DSP restored'],
@@ -38,6 +38,7 @@ export function DspsPage() {
   const [query, setQuery] = useUpdateState('dsp-query', ''),
     [creating, setCreating] = useState(false),
     [confirming, setConfirming] = useState<{ action: 'remove' | 'disable'; dsp: DspSummary }>(),
+    [coding, setCoding] = useState<DspSummary>(),
     // The chosen DSP rides in the address, so a reload and a phone's back link keep it.
     [chosen, setChosen] = useState(() => hashQuery().get('dsp') ?? '');
   const dsps = data ?? none;
@@ -58,8 +59,16 @@ export function DspsPage() {
     },
     { success: (ownerEmail) => `Invitation email queued for ${ownerEmail}` },
   );
+  const setCode = useAction(
+    async (dsp: DspSummary, code: string) => {
+      await api(`/api/platform/dsps/${dsp.id}/code`, { code });
+      setCoding(undefined);
+      refresh();
+    },
+    { inline: true, success: (_, code) => `Short code set to ${code.toUpperCase()}` },
+  );
   const change = useAction(
-    async (dsp: DspSummary, action: Exclude<DspAction, 'view'>) => {
+    async (dsp: DspSummary, action: Exclude<DspAction, 'view' | 'code'>) => {
       const [path, body] = requests[action];
       await api(`/api/platform/dsps/${dsp.id}/${path}`, body);
       setConfirming(undefined);
@@ -69,6 +78,7 @@ export function DspsPage() {
   );
   const act = (dsp: DspSummary, action: DspAction) => {
     if (action === 'view') open(dsp);
+    else if (action === 'code') setCoding(dsp);
     else if (action === 'remove' || action === 'disable') setConfirming({ action, dsp });
     else void change.run(dsp, action);
   };
@@ -143,6 +153,50 @@ export function DspsPage() {
               </button>
               <button className="primary" disabled={create.busy}>
                 {create.busy ? 'Creating…' : 'Create DSP'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {coding && (
+        <Modal
+          title={coding.code ? 'Change short code' : 'Set short code'}
+          variant="sheet"
+          onClose={() => setCoding(undefined)}
+        >
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              const code = String(new FormData(event.currentTarget).get('code')).trim();
+              void setCode.run(coding, code);
+            }}
+          >
+            <label>
+              Short code
+              <input
+                name="code"
+                autoComplete="off"
+                required
+                minLength={2}
+                maxLength={16}
+                pattern="[A-Za-z0-9]{2,16}"
+                title="2 to 16 letters and numbers"
+                defaultValue={coding.code?.toUpperCase()}
+                disabled={setCode.busy}
+              />
+            </label>
+            <p>
+              {coding.code
+                ? `${coding.name}’s members sign in at the new address from then on. The old one stops working, and so do passkeys made there.`
+                : `${coding.name}’s members sign in at the address it gives.`}
+            </p>
+            <ErrorBox message={setCode.error} />
+            <div className="form-actions">
+              <button type="button" onClick={() => setCoding(undefined)}>
+                Cancel
+              </button>
+              <button className="primary" disabled={setCode.busy}>
+                {setCode.busy ? 'Saving…' : 'Save'}
               </button>
             </div>
           </form>
