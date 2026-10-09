@@ -4,11 +4,11 @@ import type { DspView } from '../../../core/accounts/api/index.js';
 import type { Job } from '../../../core/collection/api/index.js';
 import type { DvicStatus } from '../api/index.js';
 import {
-  api,
   ApiError,
   useCachedData,
   view as admittedToken,
 } from '../../../core/shell/frontend/runtime/api.js';
+import { cancelDvicJob, collectDvic } from '../api/client.js';
 import {
   readUpdateState,
   useUpdateState,
@@ -157,13 +157,11 @@ export function DvicPage({ view }: { view: DspView }) {
   const sync = useAction(
     async () => {
       request.current ??= randomId();
-      const job = await api<Job>('/api/dsp/dvic/collect', { requestId: request.current }).catch(
-        (cause) => {
-          if (cause instanceof ApiError && cause.code === 'connection_required')
-            throw new Error('Connect Cortex in Settings → Connections before syncing DVIC.');
-          throw cause;
-        },
-      );
+      const job: Job = await collectDvic(request.current).catch((cause) => {
+        if (cause instanceof ApiError && cause.code === 'connection_required')
+          throw new Error('Connect Cortex in Settings → Connections before syncing DVIC.');
+        throw cause;
+      });
       request.current = null;
       setPending(job);
       status.refresh();
@@ -173,7 +171,7 @@ export function DvicPage({ view }: { view: DspView }) {
   const cancel = useAction(
     async () => {
       if (!running) return;
-      await api('/api/dsp/dvic/jobs/' + running.id + '/cancel', {});
+      await cancelDvicJob(running.id);
       status.refresh();
     },
     { inline: true },

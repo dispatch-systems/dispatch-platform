@@ -4,14 +4,15 @@ import type {
   CollectionSchedule,
   CollectionSchedules,
 } from '../../../../core/collection/api/index.js';
-import { api, useData } from '../../../../core/shell/frontend/runtime/api.js';
+import { useData } from '../../../../core/shell/frontend/runtime/api.js';
+import { getSchedules, setScheduleEnabled } from '../../../../core/collection/api/client.js';
+import { schedules as endpoint } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
 import { time } from '../../../../core/shell/frontend/lib/format.js';
 import { DataState, Empty, ErrorBox, Modal } from '../../../../core/shell/frontend/ui/index.js';
 import { ScheduleForm, type Leave } from './ScheduleForm.js';
 
-const endpoint = '/api/dsp/dvic/schedules';
 export function CollectionSettings({ onClose }: { onClose: () => void }) {
   const schedules = useData<CollectionSchedules>(endpoint);
   const [editing, setEditing] = useState<CollectionSchedule | null>();
@@ -21,10 +22,7 @@ export function CollectionSettings({ onClose }: { onClose: () => void }) {
   const toggle = useAction(
     async (schedule: CollectionSchedule) => {
       try {
-        await api(endpoint + '/' + schedule.id + '/enabled', {
-          enabled: !schedule.enabled,
-          revision: schedule.revision,
-        });
+        await setScheduleEnabled(endpoint, schedule.id, !schedule.enabled, schedule.revision);
       } finally {
         schedules.refresh();
       }
@@ -102,7 +100,7 @@ export function CollectionSettings({ onClose }: { onClose: () => void }) {
                   schedules.refresh();
                 }}
                 onReload={async () => {
-                  const latest = await api<CollectionSchedules>(endpoint);
+                  const latest = await getSchedules(endpoint);
                   setEditing(latest.schedules.find((item) => item.id === editing?.id));
                   schedules.refresh();
                 }}

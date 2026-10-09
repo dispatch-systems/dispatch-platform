@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
-import type {
-  CollectionSchedule,
-  ScheduleInput,
-  SchedulePreview,
-} from '../../../../core/collection/api/index.js';
-import { api, ApiError } from '../../../../core/shell/frontend/runtime/api.js';
+import type { CollectionSchedule, ScheduleInput } from '../../../../core/collection/api/index.js';
+import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
+import { removeSchedule, saveSchedule } from '../../../../core/collection/api/client.js';
+import { previewSchedule, schedules } from '../../api/client.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { time } from '../../../../core/shell/frontend/lib/format.js';
 import { ErrorBox, Modal } from '../../../../core/shell/frontend/ui/index.js';
@@ -74,8 +72,7 @@ export function ScheduleForm({
     )
       return;
     const timer = setTimeout(() => {
-      void api<SchedulePreview>(
-        '/api/dsp/dvic/schedules/preview',
+      void previewSchedule(
         {
           cadence,
           intervalMinutes,
@@ -103,12 +100,9 @@ export function ScheduleForm({
     setBusy(true);
     setError('');
     try {
-      if (remove && schedule)
-        await api('/api/dsp/dvic/schedules/' + schedule.id + '/remove', {
-          revision: schedule.revision,
-        });
+      if (remove && schedule) await removeSchedule(schedules, schedule.id, schedule.revision);
       else
-        await api('/api/dsp/dvic/schedules' + (schedule ? '/' + schedule.id : ''), {
+        await saveSchedule(schedules, schedule?.id, {
           name: draft.name.trim(),
           collection: 'dvic',
           cadence,

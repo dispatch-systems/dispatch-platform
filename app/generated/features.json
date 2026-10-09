@@ -458,7 +458,12 @@
     "slots": {
       "after_collection": false,
       "audit": {
-        "areas": [],
+        "areas": [
+          [
+            "routes.",
+            "collections"
+          ]
+        ],
         "names": false,
         "subjects": []
       },

@@ -38,7 +38,19 @@ const AREAS: &[(&str, &str, &str)] = &[
     ("dsp.feature_enabled", "dsps", "dsps"),
     ("dsp.feature_disabled", "dsps", "dsps"),
     ("dsp.support_visibility_changed", "settings", "settings"),
-    ("routes.collection_requested", "settings", "settings"),
+    (
+        "routes.collection_requested",
+        if cfg!(feature = "routes") {
+            "collections"
+        } else {
+            "settings"
+        },
+        if cfg!(feature = "routes") {
+            "collections"
+        } else {
+            "settings"
+        },
+    ),
     (
         "weekly_scorecard.collection_requested",
         if cfg!(feature = "weekly_scorecard") {
