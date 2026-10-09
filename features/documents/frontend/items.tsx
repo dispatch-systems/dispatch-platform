@@ -40,7 +40,7 @@ export function Tile({ kind, size = 16 }: { kind: ItemKind; size?: number }) {
  * a drawing of its first page until then, or when Google has none.
  */
 export function Thumb({ kind, picture }: { kind: ItemKind; picture?: string | null }) {
-  const [box, shown] = usePicture(picture);
+  const [box, shown, lost] = usePicture(picture);
   if (shown)
     return (
       <div
@@ -48,7 +48,7 @@ export function Thumb({ kind, picture }: { kind: ItemKind; picture?: string | nu
         className={`documents-thumb documents-thumb-picture${kind === 'image' ? ' documents-thumb-photo' : ''}`}
         aria-hidden="true"
       >
-        <img src={shown} alt="" />
+        <img src={shown} alt="" onError={lost} />
       </div>
     );
   return (
@@ -98,11 +98,12 @@ function Drawing({ kind }: { kind: ItemKind }) {
 
 /**
  * The picture at `url`, fetched once its box nears the screen, as an address the page shows;
- * none until it comes, and none if it can't, so the card keeps its drawing.
+ * none until it comes, and none if it can't be fetched or shown, so the card keeps its
+ * drawing. `lost` gives up on one the browser couldn't show.
  */
 function usePicture(url: string | null | undefined) {
   const box = useRef<HTMLDivElement>(null);
-  const [shown, setShown] = useState<{ url: string; src: string }>();
+  const [shown, setShown] = useState<{ url: string; src?: string }>();
   useEffect(() => {
     const at = box.current;
     if (!url || !at) return;
@@ -130,7 +131,11 @@ function usePicture(url: string | null | undefined) {
       if (src) URL.revokeObjectURL(src);
     };
   }, [url]);
-  return [box, shown && shown.url === url ? shown.src : undefined] as const;
+  const lost = () => {
+    if (shown?.src) URL.revokeObjectURL(shown.src);
+    setShown(shown && { url: shown.url });
+  };
+  return [box, shown && shown.url === url ? shown.src : undefined, lost] as const;
 }
 
 /** A file's size, for one anyone uploaded. */

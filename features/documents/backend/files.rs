@@ -505,11 +505,15 @@ impl Described<'_> {
             }
         }
         links.insert(key, (link, Instant::now()));
-        let version = item
+        // Google's version tells its pictures apart; without one, when the file changed does.
+        let version: String = item
             .thumbnail_version
             .as_deref()
-            .filter(|version| !version.is_empty() && version.bytes().all(|b| b.is_ascii_digit()))
-            .unwrap_or("0");
+            .filter(|version| !version.is_empty())
+            .unwrap_or(&item.modified_time)
+            .chars()
+            .filter(char::is_ascii_alphanumeric)
+            .collect();
         Some(format!(
             "/api/dsp/documents/items/{}/thumbnail?v={version}",
             item.id

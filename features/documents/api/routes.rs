@@ -201,6 +201,8 @@ async fn thumbnail(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply
     v::fields(&input.query, &["v"])?;
     let id = file_id(input.param("id"))?;
     let picture = files::picture(&state, &c, id).await?;
+    // The member's access may have changed while Google answered.
+    state.read(move |db| access.revalidate(db, &c)).await?;
     Ok(Reply::picture(&picture.kind, picture.bytes))
 }
 async fn rename(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {

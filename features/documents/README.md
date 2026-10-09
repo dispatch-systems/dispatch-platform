@@ -43,8 +43,9 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   opens only for the account, so Dispatch fetches it with the account's token and hands the
   picture on: members needn't be signed in to Google, and the token never reaches a browser.
   A listing keeps, for its DSP, the links of the files it showed, for an hour; a picture is
-  fetched only by a link kept for that DSP, never one a browser sent, and Google refusing one
-  only leaves the drawing. Its address names the picture's version, so each browser keeps a
+  fetched only by a link kept for that DSP, never one a browser sent, only from Google's own
+  hosts (a redirect anywhere else is refused), and only as a PNG, JPEG, GIF or WebP of up to
+  2 MB; Google refusing one only leaves the drawing. Its address names the picture's version, so each browser keeps a
   picture until the file changes; eight are fetched from Google at once across the server.
 - **Adding from Google Drive:** a file someone made directly in Drive is out of `drive.file`'s
   reach until Google's picker gives it. Those who manage Documents pick it in a window of its

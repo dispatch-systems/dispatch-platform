@@ -6,7 +6,9 @@
 use super::google::{FILES, FOLDER, Google, HTTP, read, send, unreachable};
 use axum::body::Body;
 use axum::body::Bytes;
-use dispatch_core::{Error, Result, db::iso, foundation::crypto, server::http::upload::Upload};
+use dispatch_core::{
+    Error, Result, db::iso, ensure, foundation::crypto, server::http::upload::Upload,
+};
 use futures_util::TryStreamExt;
 use serde::Deserialize;
 use serde_json::json;
@@ -34,6 +36,22 @@ const PICTURE_SIZE: u32 = 600;
 const PICTURE_LIMIT: usize = 2 * 1024 * 1024;
 /// How many pictures the server fetches from Google at once, across every DSP.
 static PICTURES: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(8);
+/// The kinds of picture Dispatch hands on.
+const PICTURE_KINDS: [&str; 4] = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+/// Fetches pictures, following a redirect only to Google's own hosts.
+static PICTURE_HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if attempt.previous().len() < 5 && google(attempt.url()) {
+                attempt.follow()
+            } else {
+                attempt.stop()
+            }
+        }))
+        .build()
+        .expect("the TLS backend is built in")
+});
 /// The Office files Google's own Docs, Sheets and Slides download as, with their endings.
 const DOCX: (&str, &str) = (
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -457,6 +475,11 @@ impl Google {
             return fixture(access, |drive| {
                 let item = drive.files.get(id).ok_or_else(missing)?;
                 let bytes = drive.contents.get(id).ok_or_else(missing)?;
+                ensure(
+                    handed(&item.mime_type, bytes.len()),
+                    "documents_item_not_found",
+                    404,
+                )?;
                 Ok(Picture {
                     kind: item.mime_type.clone(),
                     bytes: Bytes::from(bytes.clone()),
@@ -465,7 +488,7 @@ impl Google {
         }
         let link = sized(link).ok_or_else(missing)?;
         let _turn = PICTURES.acquire().await.map_err(|_| missing())?;
-        let response = HTTP
+        let mut response = PICTURE_HTTP
             .get(link)
             .bearer_auth(access)
             .send()
@@ -482,23 +505,25 @@ impl Google {
                     .trim()
                     .to_ascii_lowercase()
             })
-            .filter(|kind| {
-                ["image/png", "image/jpeg", "image/gif", "image/webp"].contains(&kind.as_str())
-            });
-        let (true, Some(kind)) = (response.status().is_success(), kind) else {
-            return Err(missing());
-        };
-        if response
+            .unwrap_or_default();
+        let length = response
             .content_length()
-            .is_some_and(|length| length > PICTURE_LIMIT as u64)
-        {
+            .map_or(0, |length| usize::try_from(length).unwrap_or(usize::MAX));
+        if !response.status().is_success() || !handed(&kind, length) {
             return Err(missing());
         }
-        let bytes = response.bytes().await.map_err(unreachable)?;
-        if bytes.len() > PICTURE_LIMIT {
-            return Err(missing());
+        // Read as it comes, giving up past the limit, whatever length Google stated.
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(unreachable)? {
+            bytes.extend_from_slice(&chunk);
+            if bytes.len() > PICTURE_LIMIT {
+                return Err(missing());
+            }
         }
-        Ok(Picture { kind, bytes })
+        Ok(Picture {
+            kind,
+            bytes: bytes.into(),
+        })
     }
     /// The file `item`, to save: Google's own Docs, Sheets and Slides as the Word, Excel and
     /// PowerPoint files they export as, and an uploaded file as it was.
@@ -651,14 +676,21 @@ pub struct Picture {
     pub kind: String,
     pub bytes: Bytes,
 }
-/// Google's link to a picture, asking for it at a card's size: only a link to Google's own
-/// pictures, over HTTPS, since the account's token goes with it.
+/// Whether a picture of `kind` and `length` bytes is one Dispatch hands on.
+fn handed(kind: &str, length: usize) -> bool {
+    PICTURE_KINDS.contains(&kind) && length <= PICTURE_LIMIT
+}
+/// Whether `url` is Google's own, over HTTPS: the only place a picture is fetched from, since
+/// the account's token goes with it.
+fn google(url: &reqwest::Url) -> bool {
+    let host = url.host_str().unwrap_or_default();
+    url.scheme() == "https"
+        && (host.ends_with(".googleusercontent.com")
+            || ["docs.google.com", "drive.google.com"].contains(&host))
+}
+/// Google's link to a picture, asking for it at a card's size: only a link of Google's own.
 fn sized(link: &str) -> Option<String> {
-    let url = url::Url::parse(link).ok()?;
-    let host = url.host_str()?;
-    let google = host.ends_with(".googleusercontent.com")
-        || ["docs.google.com", "drive.google.com"].contains(&host);
-    if url.scheme() != "https" || !google {
+    if !google(&reqwest::Url::parse(link).ok()?) {
         return None;
     }
     // Google names the size at the link's end, `=s220`.
