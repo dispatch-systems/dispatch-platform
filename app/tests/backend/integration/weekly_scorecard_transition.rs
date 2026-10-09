@@ -39,6 +39,8 @@ fn owner(db: &Store, dsp: &str) -> dispatch_core::accounts::Context {
         csrf: String::new(),
         raw: String::new(),
         preview: None,
+        site: dispatch_core::foundation::config::Site::Admin,
+        scope: None,
     };
     db.context(&auth, dsp, "access").unwrap()
 }

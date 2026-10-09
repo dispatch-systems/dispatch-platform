@@ -33,7 +33,14 @@ async fn login(state: Arc<State>, input: Input, _: Public) -> Result<Reply> {
     };
     let user_agent = input.header("user-agent").to_owned();
     let raw = state
-        .login(login.email, login.password, input.ip, user_agent, lifetime)
+        .login(
+            login.email,
+            login.password,
+            input.ip,
+            user_agent,
+            lifetime,
+            input.site,
+        )
         .await?;
     Ok(Reply::signed_in(&raw, state.config.development, lifetime))
 }
@@ -62,12 +69,12 @@ async fn forgot_password(state: Arc<State>, input: Input, _: Public) -> Result<R
         let b = &input.body;
         v::fields(b, &["email"])?;
         let email = v::email(b, "email")?.to_owned();
-        let ip = input.ip;
+        let (ip, site) = (input.ip, input.site);
         state
             .run(move |db| {
                 db.throttle_ip("forgot-ip", &ip, 20, 3600000)?;
                 db.throttle(&format!("forgot:email:{email}"), 5, 3600000)?;
-                if let Err(error) = db.recovery(&email) {
+                if let Err(error) = db.recovery(&email, &site) {
                     // Account-specific queue state must not change the public response. Operators
                     // still receive the sanitized failure through the structured event stream.
                     crate::foundation::observability::event(

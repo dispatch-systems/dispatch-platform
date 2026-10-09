@@ -154,6 +154,9 @@ pub fn seed(db: &Store) -> Result<()> {
     for dsp in [&dev, &north, &summit] {
         db.enable_all_features(&dsp.id)?;
     }
+    // Each DSP but Dev's has an address of its own, as a DSP has once it is set up.
+    db.set_code(&north.id, "northline")?;
+    db.set_code(&summit.id, "summit")?;
     let member = db.create_user(
         "member@dispatch.test",
         "Jordan",

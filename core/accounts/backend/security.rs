@@ -10,9 +10,11 @@ use webauthn_rs::prelude::*;
 
 const CHALLENGE_TTL: i64 = 5 * 60000;
 
-fn webauthn(db: &Store) -> Result<Webauthn> {
-    let origin =
-        url::Url::parse(&db.config.origin).map_err(|_| Error::new("invalid_origin", 500))?;
+// A passkey belongs to the address it was made at: the admin's for a platform owner, a DSP's
+// own for its members.
+fn webauthn(db: &Store, a: &Auth) -> Result<Webauthn> {
+    let origin = url::Url::parse(&db.config.site_origin(&a.site))
+        .map_err(|_| Error::new("invalid_origin", 500))?;
     WebauthnBuilder::new(
         origin
             .host_str()
@@ -230,7 +232,7 @@ impl Store {
         ensure(keys.len() < 10, "passkey_limit", 409)?;
         let user = Uuid::parse_str(a.user.id.strip_prefix("usr_").unwrap_or(""))
             .map_err(|_| Error::new("invalid_account", 500))?;
-        let (challenge, state) = webauthn(self)?
+        let (challenge, state) = webauthn(self, a)?
             .start_passkey_registration(
                 user,
                 &a.user.email,
@@ -251,7 +253,7 @@ impl Store {
         self.ensure_enrollment_allowed(a)?;
         let state: PasskeyRegistration = self.read_challenge(a, "passkey-register", true)?;
         let credential: RegisterPublicKeyCredential = serde_json::from_value(credential)?;
-        let key = webauthn(self)?
+        let key = webauthn(self, a)?
             .finish_passkey_registration(&credential, &state)
             .map_err(|_| Error::new("passkey_failed", 400))?;
         let id = crypto::sha(serde_json::to_string(key.cred_id())?);
@@ -275,7 +277,7 @@ impl Store {
     pub fn passkey_verify_start(&self, a: &Auth) -> Result<Value> {
         let keys = self.passkeys(a)?;
         ensure(!keys.is_empty(), "passkey_unavailable", 409)?;
-        let (challenge, state) = webauthn(self)?
+        let (challenge, state) = webauthn(self, a)?
             .start_passkey_authentication(&keys)
             .map_err(|_| Error::new("passkey_failed", 400))?;
         self.save_challenge(a, "passkey-verify", &state)?;
@@ -285,7 +287,7 @@ impl Store {
     pub fn passkey_verify_finish(&self, a: &Auth, credential: Value) -> Result<()> {
         let state: PasskeyAuthentication = self.read_challenge(a, "passkey-verify", true)?;
         let credential: PublicKeyCredential = serde_json::from_value(credential)?;
-        let result = webauthn(self)?
+        let result = webauthn(self, a)?
             .finish_passkey_authentication(&credential, &state)
             .map_err(|_| Error::new("passkey_failed", 403))?;
         self.platform.transaction(|| {

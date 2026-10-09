@@ -183,6 +183,13 @@ const PLATFORM: &[Migration] = &[
         name: "feature_shown",
         apply: Code(feature_shown),
     },
+    Migration {
+        id: 19,
+        name: "dsp_codes",
+        apply: Sql(include_str!(
+            "../../tenancy/migrations/platform/0019_dsp_codes.sql"
+        )),
+    },
 ];
 const JOBS: &[Migration] = &[
     Migration {

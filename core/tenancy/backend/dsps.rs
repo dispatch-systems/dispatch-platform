@@ -11,7 +11,10 @@ use crate::{
     collection::api::types::ConnectionStatus,
     db::{self, FromRow, Row, Store, iso, now},
     ensure,
-    foundation::{config::Config, crypto},
+    foundation::{
+        config::{Config, short_code},
+        crypto,
+    },
     manifest::registry,
     tenancy::api::types::{DspStatus, OwnerStatus},
 };
@@ -107,6 +110,63 @@ impl Store {
             .one_as("SELECT * FROM dsps WHERE id=?", [id])?
             .ok_or_else(|| Error::new("dsp_not_found", 404))
     }
+    /// The DSP of this environment whose address has short code `code`, if any has.
+    pub fn dsp_at(&self, code: &str) -> Result<Option<Dsp>> {
+        self.platform.one_as(
+            "SELECT * FROM dsps WHERE code=? AND environment=?",
+            params![code.to_ascii_lowercase(), self.config.environment],
+        )
+    }
+    /// Gives a DSP the short code `code`, which then names its address: letters and digits,
+    /// free, and not kept for the platform's own addresses. Its abbreviation is the code.
+    pub fn set_code(&self, id: &str, code: &str) -> Result<String> {
+        let code = code.trim().to_ascii_lowercase();
+        ensure(short_code(&code), "invalid_short_code", 400)?;
+        ensure(
+            !self.config.reserved_code(&code)
+                && self.platform.count(
+                    "SELECT count(*) FROM dsps WHERE code=? AND id<>?",
+                    [code.as_str(), id],
+                )? == 0,
+            "short_code_taken",
+            409,
+        )?;
+        self.platform.exec(
+            "UPDATE dsps SET code=?,revision=revision+1 WHERE id=?",
+            [code.as_str(), id],
+        )?;
+        self.set_profile(id, json!({"abbreviation": code.to_ascii_uppercase()}))?;
+        Ok(code)
+    }
+    /// Whether `code` is free for a DSP to take as its short code.
+    pub fn code_available(&self, code: &str) -> Result<bool> {
+        let code = code.trim().to_ascii_lowercase();
+        Ok(short_code(&code)
+            && !self.config.reserved_code(&code)
+            && self.platform.count("SELECT count(*) FROM dsps WHERE code=?", [&code])? == 0)
+    }
+    /// Gives each DSP set up before its short code named its address the code its
+    /// abbreviation already is, when that is one and is free. Any other waits for the
+    /// platform owner to give it one.
+    pub fn backfill_codes(&self) -> Result<()> {
+        let waiting: Vec<(String,)> = self.platform.query_as(
+            "SELECT id FROM dsps WHERE code IS NULL AND environment=? \
+             AND status IN ('active','suspended')",
+            [self.config.environment.as_str()],
+        )?;
+        for (id,) in waiting {
+            let abbreviation = self.profile(&id)?.abbreviation;
+            if self.code_available(&abbreviation)? {
+                let code = self.set_code(&id, &abbreviation)?;
+                crate::foundation::observability::event(
+                    "info",
+                    "dsp.code_assigned",
+                    json!({"dspId": id, "code": code}),
+                );
+            }
+        }
+        Ok(())
+    }
     /// A DSP that may collect: active, and of the environment this backend serves.
     pub fn ensure_dsp_active(&self, id: &str) -> Result<Dsp> {
         let dsp = self.find_dsp(id)?;
@@ -174,9 +234,13 @@ impl Store {
     }
     pub fn dsps(&self, a: &Auth) -> Result<Vec<DspSummary>> {
         let platform = a.user.platform_owner;
-        let rows: Vec<DspListing> = self
+        let mut rows: Vec<DspListing> = self
             .platform
             .query_as(DSPS, params![now(), a.user.id, platform])?;
+        // At a DSP's address, the session lists that DSP alone.
+        if let Some(scope) = &a.scope {
+            rows.retain(|row| &row.dsp.id == scope);
+        }
         let mut result = Vec::new();
         for DspListing {
             dsp,
@@ -336,6 +400,17 @@ impl Store {
         actor: &str,
         profile: &DspSetupRequest,
     ) -> Result<()> {
+        // The abbreviation is the DSP's short code, and names its address: chosen once.
+        match self.find_dsp(id)?.code {
+            Some(code) => ensure(
+                code.eq_ignore_ascii_case(&profile.abbreviation),
+                "short_code_locked",
+                409,
+            )?,
+            None => {
+                self.set_code(id, &profile.abbreviation)?;
+            }
+        }
         self.update_dsp_details(id, actor, &profile.name, &profile.timezone)?;
         self.set_profile(
             id,

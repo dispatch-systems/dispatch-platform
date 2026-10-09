@@ -4,7 +4,7 @@
 use super::input::Input;
 use crate::{
     Error, Result, State, ensure,
-    foundation::{crypto, observability},
+    foundation::{config::Site, crypto, observability},
     mcp::oauth,
 };
 use axum::{
@@ -66,7 +66,10 @@ pub async fn pipeline(
     };
     let agent = request.uri().path().starts_with("/api/v1/");
     let mut response = match admit(&state, &request) {
-        Ok(()) => next.run(request).await,
+        Ok(site) => {
+            request.extensions_mut().insert(site);
+            next.run(request).await
+        }
         Err(error) => failure(error),
     };
     if agent {
@@ -183,19 +186,15 @@ fn agent_challenge(state: &State, response: &mut Response) {
     }
 }
 
-// Only the configured origin, or this machine, may address the server, and
-// only the dashboard's own pages may send the API anything but a read.
-fn admit(state: &State, request: &Request) -> Result<()> {
+// Only one of the server's addresses, or this machine, may address the server, and only
+// the pages of the address a request came to may send its API anything but a read.
+fn admit(state: &State, request: &Request) -> Result<Site> {
     let header = |name| request.headers().get(name).and_then(|v| v.to_str().ok());
     let host = header(header::HOST).unwrap_or("");
-    let origin =
-        url::Url::parse(&state.config.origin).map_err(|_| Error::new("invalid_origin", 500))?;
-    let authority = &origin[url::Position::BeforeHost..url::Position::AfterPort];
-    ensure(
-        host == authority || host == format!("127.0.0.1:{}", state.config.port),
-        "invalid_host",
-        400,
-    )?;
+    let site = state
+        .config
+        .site(host)
+        .ok_or_else(|| Error::new("invalid_host", 400))?;
     let reads = [Method::GET, Method::HEAD, Method::OPTIONS];
     if request.uri().path().starts_with("/api/") && !reads.contains(request.method()) {
         // The agent API takes only a key, which is its own proof from wherever it runs, and
@@ -205,7 +204,7 @@ fn admit(state: &State, request: &Request) -> Result<()> {
         let agent = request.uri().path().starts_with("/api/v1/");
         let origin = header(header::ORIGIN);
         ensure(
-            agent || origin == Some(&state.config.origin),
+            agent || origin == Some(&state.config.site_origin(&site)),
             "invalid_origin",
             403,
         )?;
@@ -217,7 +216,7 @@ fn admit(state: &State, request: &Request) -> Result<()> {
             415,
         )?;
     }
-    Ok(())
+    Ok(site)
 }
 /// Refuses a body that isn't JSON: every route's but an upload's.
 pub(super) fn json_only(parts: &Parts) -> Result<()> {
@@ -276,6 +275,11 @@ pub fn head(state: &State, parts: &Parts, pattern: &'static str) -> Result<Input
         query.insert(k.into_owned(), json!(value));
     }
     let ip = address(state, parts, pattern)?;
+    let site = parts
+        .extensions
+        .get::<Site>()
+        .cloned()
+        .ok_or_else(|| Error::new("invalid_host", 400))?;
     let trace = parts
         .extensions
         .get::<observability::RequestTrace>()
@@ -294,6 +298,7 @@ pub fn head(state: &State, parts: &Parts, pattern: &'static str) -> Result<Input
         body: Value::Null,
         query: Value::Object(query),
         ip,
+        site,
         trace,
         pattern,
     })

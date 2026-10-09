@@ -16,6 +16,8 @@ pub struct Input {
     pub body: Value,
     pub query: Value,
     pub ip: String,
+    /// Which of the server's addresses the request came to.
+    pub site: crate::foundation::config::Site,
     pub trace: crate::foundation::observability::RequestTrace,
     // The registered pattern, whose `{name}` segments name the path parameters.
     pub(super) pattern: &'static str,

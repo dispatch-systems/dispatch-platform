@@ -90,9 +90,37 @@ impl Store {
             csrf: crypto::sign(&self.key, &format!("csrf:{raw}")),
             raw: raw.into(),
             preview: None,
+            site: Site::Admin,
+            scope: None,
         })
     }
+    /// Whether `user` may be signed in at `site`.
+    pub(crate) fn admission(&self, user: &PublicUser, site: &Site) -> Result<Admission> {
+        Ok(match site {
+            Site::Admin if user.platform_owner => Admission::Platform,
+            Site::Dsp(code) if !user.platform_owner => match self.dsp_at(code)? {
+                Some(dsp) if self.grant(&user.id, &dsp.id)?.is_some() => Admission::Dsp(dsp.id),
+                _ => Admission::Refused,
+            },
+            _ => Admission::Refused,
+        })
+    }
+    /// A session at the address the request came to. Anywhere it may not be used, it reads as
+    /// signed out, as a member removed from the DSP is.
+    pub fn admit(&self, mut a: Auth, site: &Site) -> Result<Auth> {
+        a.scope = match self.admission(&a.user, site)? {
+            Admission::Refused => return Err(Error::new("sign_in_required", 401)),
+            Admission::Platform => None,
+            Admission::Dsp(id) => Some(id),
+        };
+        a.site = site.clone();
+        Ok(a)
+    }
     pub fn context(&self, a: &Auth, id: &str, permission: &str) -> Result<Context> {
+        // At a DSP's address, no other DSP exists.
+        if let Some(scope) = &a.scope {
+            ensure(scope == id, "permission_denied", 403)?;
+        }
         // An ordinary member learns whether they belong to a DSP, never whether a
         // caller-supplied DSP id exists. Resolve their grant first so an absent DSP
         // and an existing DSP outside their membership have the same answer.
@@ -190,6 +218,8 @@ impl Store {
     pub fn revalidate(&self, c: &Context, permission: &str) -> Result<Context> {
         let a = Auth {
             preview: c.auth.preview.clone(),
+            site: c.auth.site.clone(),
+            scope: c.auth.scope.clone(),
             ..self.authenticate(&c.auth.raw)?
         };
         let fresh = self.context(&a, &c.dsp.id, permission)?;
@@ -228,16 +258,26 @@ impl crate::State {
         ip: String,
         user_agent: String,
         lifetime: SessionLifetime,
+        site: Site,
     ) -> Result<String> {
         let permit = self
             .password_slots
             .clone()
             .try_acquire_owned()
             .map_err(|_| Error::new("login_busy", 429))?;
+        let at = site.clone();
+        // An account that may not sign in at this address is as unknown here as a missing
+        // one, and takes as long to refuse.
         let row = self
             .run(move |db| {
                 db.password_attempt(&email, &ip)?;
-                UserRow::find(&db.platform, "email", &email)
+                let row = UserRow::find(&db.platform, "email", &email)?;
+                Ok(match row {
+                    Some(row) if !matches!(db.admission(&row.user, &at)?, Admission::Refused) => {
+                        Some(row)
+                    }
+                    _ => None,
+                })
             })
             .await?;
         let value = row.clone();
@@ -263,7 +303,9 @@ impl crate::State {
             let current = UserRow::find(&db.platform, "id", &row.user.id)?
                 .ok_or_else(|| Error::new("invalid_login", 401))?;
             ensure(
-                current.active() && current.version == row.version,
+                current.active()
+                    && current.version == row.version
+                    && !matches!(db.admission(&current.user, &site)?, Admission::Refused),
                 "invalid_login",
                 401,
             )?;

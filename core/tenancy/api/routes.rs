@@ -4,19 +4,46 @@ use crate::{
     accounts::api::types::{DspView, RoleSummary, SessionResponse},
     db::Store,
     ensure,
-    foundation::{config::ProviderMode, validate as v},
+    foundation::{
+        config::{ProviderMode, Site},
+        validate as v,
+    },
     server::http::{
         input::{Input, Reply},
-        route::{Route, Session, User, read, write},
+        route::{Anyone, Public, Route, Session, User, read, write},
     },
-    tenancy::roles,
+    tenancy::{
+        api::types::{SiteDsp, SiteInfo, SiteKind},
+        roles,
+    },
 };
 
 pub fn routes() -> Vec<Route> {
     vec![
+        read("/api/site", Public, site),
         read("/api/session", Session, session),
         write("/api/session/dsp", Session, open_dsp),
     ]
+}
+
+// Which address the dashboard was loaded from, before anyone signs in there.
+fn site(db: &Store, _: &Anyone, input: &Input) -> Result<Reply> {
+    let (kind, dsp) = match &input.site {
+        Site::Admin => (SiteKind::Admin, None),
+        Site::Invite => (SiteKind::Invite, None),
+        Site::Dsp(code) => (
+            SiteKind::Dsp,
+            db.dsp_at(code)?.map(|dsp| SiteDsp {
+                id: dsp.id,
+                code: code.clone(),
+            }),
+        ),
+    };
+    Reply::of(&SiteInfo {
+        kind,
+        dsp,
+        dsp_address: db.config.dsp_origin.clone(),
+    })
 }
 
 fn session(db: &Store, user: &User, _: &Input) -> Result<Reply> {
@@ -102,7 +129,12 @@ pub(crate) fn summaries(
 ) -> Result<Vec<crate::accounts::api::types::DspSummary>> {
     user.state.read_cache.read(
         crate::server::cache::Scope::listings(),
-        format!("dsps:{}:{}", user.actor(), user.user.platform_owner),
+        format!(
+            "dsps:{}:{}:{}",
+            user.actor(),
+            user.user.platform_owner,
+            user.scope.as_deref().unwrap_or("")
+        ),
         user.state
             .data_revision
             .load(std::sync::atomic::Ordering::Relaxed),

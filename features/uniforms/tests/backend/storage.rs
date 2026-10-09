@@ -29,6 +29,8 @@ fn ready() -> (tempfile::TempDir, Store, Context) {
         csrf: String::new(),
         raw: String::new(),
         preview: None,
+        site: dispatch_core::foundation::config::Site::Admin,
+        scope: None,
     };
     let context = store
         .context(&auth, s(&bootstrap["dsp"], "id"), "uniforms.manage")

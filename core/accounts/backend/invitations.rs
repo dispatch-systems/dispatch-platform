@@ -115,9 +115,29 @@ impl Store {
             email,
         )
     }
-    pub fn invitation(&self, raw: &str) -> Result<Value> {
+    /// The address an invitation to `dsp` is accepted at: the DSP's own, once it has a short
+    /// code, and until then the invite page, where its first owner gives it one.
+    pub fn invitation_site(&self, dsp: &str) -> Result<Site> {
+        Ok(match self.find_dsp(dsp)?.code {
+            Some(code) => Site::Dsp(code),
+            None => Site::Invite,
+        })
+    }
+    /// An invitation's link works only at the address its email named.
+    fn ensure_invitation_site(&self, hash: &str, site: &Site) -> Result<()> {
+        let dsp: Option<(String,)> = self
+            .platform
+            .one_as("SELECT dsp_id FROM invitations WHERE hash=?", [hash])?;
+        let at = match dsp {
+            Some((dsp,)) => Some(self.invitation_site(&dsp)?),
+            None => None,
+        };
+        ensure(at.as_ref() == Some(site), "invitation_expired", 404)
+    }
+    pub fn invitation(&self, raw: &str, site: &Site) -> Result<Value> {
         ensure(raw.len() == 43, "invitation_expired", 404)?;
         let hash = crypto::sha(raw);
+        self.ensure_invitation_site(&hash, site)?;
         let mut invitation = self
             .platform
             .one(INVITATION, params![hash, now(), self.config.environment])?
@@ -131,7 +151,7 @@ impl Store {
         Ok(invitation)
     }
     /// What an invitation's link shows: the open invitation, or that it was already accepted.
-    pub fn invitation_link(&self, raw: &str) -> Result<Value> {
+    pub fn invitation_link(&self, raw: &str, site: &Site) -> Result<Value> {
         let accepted = match raw.len() {
             43 => self.platform.one(
                 ACCEPTED_INVITATION,
@@ -141,11 +161,30 @@ impl Store {
         };
         match accepted {
             Some(mut accepted) => {
+                self.ensure_invitation_site(&crypto::sha(raw), site)?;
                 accepted["accepted"] = json!(true);
+                accepted["signIn"] = json!(self.sign_in_at(s(&accepted, "dspId"))?);
                 Ok(accepted)
             }
-            None => self.invitation(raw),
+            None => self.invitation(raw, site),
         }
+    }
+    /// Where the members of `dsp` sign in: its own address, once it has a short code.
+    fn sign_in_at(&self, dsp: &str) -> Result<Option<String>> {
+        Ok(self
+            .find_dsp(dsp)?
+            .code
+            .map(|code| format!("{}/#signin", self.config.dsp_url(&code))))
+    }
+    /// Whether an onboarding invitation's DSP could take `code` as its short code, and the
+    /// address it would then have.
+    pub fn short_code_check(&self, raw: &str, site: &Site, code: &str) -> Result<Value> {
+        let invitation = self.invitation(raw, site)?;
+        ensure(flag(&invitation, "onboarding"), "permission_denied", 403)?;
+        Ok(json!({
+            "available": self.code_available(code)?,
+            "address": self.config.dsp_url(code),
+        }))
     }
     /// An outstanding invitation never outlives the authority that issued it.
     fn inviter_authorized(&self, hash: &str) -> Result<bool> {
@@ -191,6 +230,14 @@ impl Store {
         onboarding: bool,
     ) -> Result<()> {
         let inviter = a.user.name();
+        let (dsp_id,): (String,) = self
+            .platform
+            .one_as(
+                "SELECT dsp_id FROM invitations WHERE hash=?",
+                [crypto::sha(raw)],
+            )?
+            .ok_or_else(|| Error::new("invitation_expired", 404))?;
+        let at = self.config.site_origin(&self.invitation_site(&dsp_id)?);
         let mail = email::invitation(&email::Invitation {
             origin: &self.config.origin,
             dev: self.config.env().is_preview(),
@@ -198,7 +245,7 @@ impl Store {
             inviter: inviter.trim(),
             dsp,
             role,
-            url: &format!("{}/#invite?token={raw}", self.config.origin),
+            url: &format!("{at}/#invite?token={raw}"),
             expires_at: now() + INVITATION_TTL,
             onboarding,
         });
@@ -217,6 +264,7 @@ impl crate::State {
         raw: String,
         request: crate::accounts::api::requests::InvitationRequest,
         ip: String,
+        site: Site,
     ) -> Result<Value> {
         let crate::accounts::api::requests::InvitationRequest {
             first_name: first,
@@ -225,10 +273,11 @@ impl crate::State {
             dsp_profile,
         } = request;
         let token = raw.clone();
+        let at = site.clone();
         let (invite, existing) = self
             .run(move |db| {
                 db.throttle(&format!("invite-token:{}", crypto::sha(&token)), 10, 900000)?;
-                let invite = db.invitation(&token)?;
+                let invite = db.invitation(&token, &at)?;
                 db.password_attempt(s(&invite, "email"), &ip)?;
                 let existing = UserRow::find(&db.platform, "email", s(&invite, "email"))?;
                 Ok((invite, existing))
@@ -256,7 +305,7 @@ impl crate::State {
             .await?;
         self.run(move |db| {
             db.platform.transaction(|| {
-                let fresh_invite = db.invitation(&raw)?;
+                let fresh_invite = db.invitation(&raw, &site)?;
                 ensure(fresh_invite == invite, "invitation_expired", 404)?;
                 let (email, dsp) = (s(&invite, "email"), s(&invite, "dspId"));
                 let fresh = UserRow::find(&db.platform, "email", email)?;
@@ -313,7 +362,11 @@ impl crate::State {
                 if let Some(profile) = &dsp_profile {
                     db.complete_dsp_profile(dsp, &id, profile)?;
                 }
-                Ok(json!({"email":invite["email"],"dspId":invite["dspId"]}))
+                Ok(json!({
+                    "email": invite["email"],
+                    "dspId": invite["dspId"],
+                    "signIn": db.sign_in_at(dsp)?,
+                }))
             })
         })
         .await

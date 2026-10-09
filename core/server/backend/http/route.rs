@@ -11,7 +11,7 @@ use crate::{
     accounts::{Auth, Context},
     db::Store,
     ensure,
-    foundation::{crypto, observability::RequestTrace},
+    foundation::{config::Site, crypto, observability::RequestTrace},
     manifest::registry,
     mcp::{
         self, Caller, activity,
@@ -92,7 +92,10 @@ impl Grant for Session {
         Access::Session
     }
     fn authorize(self, db: &Store, input: &Input) -> Result<Auth> {
-        let auth = db.authenticate(input.session_token(db.config.development))?;
+        let auth = db.admit(
+            db.authenticate(input.session_token(db.config.development))?,
+            &input.site,
+        )?;
         {
             let mut trace = input
                 .trace
@@ -175,6 +178,8 @@ impl Grant for Agent {
         Access::Agent(self.0.as_str())
     }
     fn authorize(self, db: &Store, input: &Input) -> Result<Caller> {
+        // Agents are the platform owner's, and reach Dispatch only at the admin's address.
+        ensure(input.site == Site::Admin, "not_found", 404)?;
         let header = input.header("authorization");
         let (token, bearer) = match header.split_once(' ') {
             Some((scheme, token)) if scheme.eq_ignore_ascii_case("bearer") => (token.trim(), true),
@@ -565,7 +570,13 @@ impl Route {
                 let request = self.signed(*access, state, request).await?;
                 return Ok(handler(request).await);
             }
-            Handler::Open(handler) => return Ok(handler(state, request).await),
+            // Agents' sign-in, and the pages outside services send the browser back to, are
+            // the admin's alone.
+            Handler::Open(handler) => {
+                let admin = request.extensions().get::<Site>() == Some(&Site::Admin);
+                ensure(admin, "not_found", 404)?;
+                return Ok(handler(state, request).await);
+            }
             Handler::Upload(limit, handler) => {
                 let (parts, body) = request.into_parts();
                 let input = middleware::head(&state, &parts, self.path)?;
