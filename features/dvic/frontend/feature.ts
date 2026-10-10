@@ -39,6 +39,7 @@ export const feature: FrontendFeature = {
     },
   ],
   platformSlots: () => import('./platform-slots.js'),
+  people: () => import('./people.js'),
   errors: {
     dvic_station_required:
       'Set your station code in the DSP profile before collecting DVIC reports.',

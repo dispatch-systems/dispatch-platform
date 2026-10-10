@@ -5,8 +5,8 @@ import { useTableState } from '../../../../core/shell/frontend/runtime/useTableS
 import { dateFormatter } from '../../../../core/shell/frontend/lib/date-format.js';
 import { time } from '../../../../core/shell/frontend/lib/format.js';
 import {
-  dataLabels,
-  dataOrder,
+  dataKinds,
+  dataLabel,
   driverFilters,
   driverFilter,
   driverSearchTerms,
@@ -20,7 +20,7 @@ import {
   TablePagination,
   useDataTable,
 } from '../../../../core/shell/frontend/ui/index.js';
-import { dataIcons } from '../dataIcons.js';
+import { DataIcon } from '../DataIcon.js';
 import { driverColumns } from '../driverColumns.js';
 import { DriverSheet } from '../DriverSheet.js';
 import { DriverSummary } from '../DriverSummary.js';
@@ -81,15 +81,12 @@ export function DriverMatchSettings({ timezone }: { timezone: string }) {
               <div className="driver-section-head">
                 <h2 id="driver-list-title">All drivers</h2>
                 <div className="driver-legend" aria-hidden="true">
-                  {dataOrder.map((kind) => {
-                    const Icon = dataIcons[kind];
-                    return (
-                      <span key={kind}>
-                        <Icon size={13} />
-                        {dataLabels[kind]}
-                      </span>
-                    );
-                  })}
+                  {dataKinds.map((kind) => (
+                    <span key={kind}>
+                      <DataIcon kind={kind} size={13} />
+                      {dataLabel(kind)}
+                    </span>
+                  ))}
                 </div>
               </div>
               <div className="driver-tools">

@@ -34,6 +34,8 @@ const COLLECTIONS: &str = "core/collection/api/generated/collections.ts";
 /// The kinds of record an audit event names, core's and the features', which the audit
 /// log's reply check accepts.
 const AUDIT_SUBJECTS: &str = "core/tenancy/api/generated/audit-subjects.ts";
+/// The kinds of collected data that name people, in their order, as lists of people name them.
+const DRIVER_DATA: &str = "core/manifest/api/generated/driver-data.ts";
 
 fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
     let cfg = ts_rs::Config::new().with_out_dir(root);
@@ -138,6 +140,7 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
     bindings.insert(CAPABILITIES.into(), capabilities());
     bindings.insert(COLLECTIONS.into(), collections());
     bindings.insert(AUDIT_SUBJECTS.into(), audit_subjects());
+    bindings.insert(DRIVER_DATA.into(), driver_data());
     bindings
 }
 
@@ -209,6 +212,19 @@ fn audit_subjects() -> String {
     generated(
         "the audit log's subjects",
         &[("auditSubjects", kinds.into())],
+    )
+}
+
+/// Every kind of collected data the features' people declare, in their order, with how it is
+/// named and what one of its records is.
+fn driver_data() -> String {
+    use serde_json::json;
+    let kinds: Vec<_> = DriverData::all()
+        .map(|data| json!({"id": data.as_str(), "label": data.label(), "unit": data.unit()}))
+        .collect();
+    generated(
+        "the kinds of data the features' people declare",
+        &[("driverData", kinds.into())],
     )
 }
 

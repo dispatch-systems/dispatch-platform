@@ -15,6 +15,8 @@ use std::collections::{BTreeMap, BTreeSet};
 const DATA: PeopleData = PeopleData {
     id: "timecards",
     order: 10,
+    label: "Timecards",
+    unit: "day",
 };
 pub struct Employees;
 impl People for Employees {

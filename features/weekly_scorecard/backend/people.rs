@@ -19,6 +19,8 @@ fn week_start(week: &str) -> String {
 const DATA: PeopleData = PeopleData {
     id: "weekly_scorecard",
     order: 50,
+    label: "Weekly Scorecard",
+    unit: "week",
 };
 pub struct Drivers;
 impl People for Drivers {

@@ -12,6 +12,8 @@ use dispatch_core::{
 const DATA: PeopleData = PeopleData {
     id: "dvic",
     order: 40,
+    label: "DVIC",
+    unit: "inspection",
 };
 pub struct Drivers;
 impl People for Drivers {

@@ -1,7 +1,7 @@
 import { ChevronRight } from 'lucide-react';
 import type { Driver, DriverSource } from '../api/index.js';
 import type { TableColumn } from '../../../core/shell/frontend/ui/index.js';
-import { dataLabels, dayLabel, firstId, shortId, statusLabels } from './driver-match.js';
+import { dataLabel, dayLabel, firstId, shortId, statusLabels } from './driver-match.js';
 import { AppearsIn } from './AppearsIn.js';
 import { DriverButton } from './DriverButton.js';
 import { DriverTag } from './DriverTag.js';
@@ -58,7 +58,7 @@ export function driverColumns(
     {
       id: 'appears',
       header: 'Appears in',
-      value: (driver) => driver.appears.map((data) => dataLabels[data]).join(', '),
+      value: (driver) => driver.appears.map(dataLabel).join(', '),
       cell: (driver) => <AppearsIn data={driver.appears} />,
     },
     {

@@ -2,7 +2,7 @@ import { Check, CircleAlert, CircleCheck, GitMerge, Link2 } from 'lucide-react';
 import type { DriverPair } from '../api/index.js';
 import { keepDriversApart, mergeDrivers } from '../api/client.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
-import { dataLabels, evidenceSupports, evidenceText, firstId, shortId } from './driver-match.js';
+import { dataLabel, evidenceSupports, evidenceText, firstId, shortId } from './driver-match.js';
 import { DriverButton } from './DriverButton.js';
 
 /** Someone only Paycom knows beside someone only Amazon knows, and why they may be one. */
@@ -19,7 +19,7 @@ export function ReviewPair({ pair, onOpen }: { pair: DriverPair; onOpen: (code: 
   const paycom = firstId(pair.paycom, 'paycom');
   const amazon = firstId(pair.amazon, 'amazon');
   const appears = (data: DriverPair['paycom']['appears']) =>
-    data.map((d) => dataLabels[d]).join(' · ') || 'No collected data yet';
+    data.map(dataLabel).join(' · ') || 'No collected data yet';
   return (
     <div className="driver-pair">
       <DriverButton driver={pair.paycom} onOpen={onOpen}>

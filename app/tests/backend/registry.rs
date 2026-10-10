@@ -92,6 +92,8 @@ struct Again;
 const AGAIN: PeopleData = PeopleData {
     id: "routes",
     order: 99,
+    label: "Routes",
+    unit: "day",
 };
 impl People for Again {
     fn data(&self) -> DriverData {
