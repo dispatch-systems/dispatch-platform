@@ -22,3 +22,7 @@ impl Tool for Whoami {
             .await
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/tools/whoami.rs"]
+mod tests;

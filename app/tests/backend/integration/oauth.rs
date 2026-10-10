@@ -10,8 +10,10 @@ use dispatch_core::{
 };
 use dispatch_mcp::{
     GuardStore, OAuthStore,
+    api::types::ToolLevel,
     oauth::network::{Network, Pending},
     piece::Kept,
+    toolbox::{Grants, Toolbox},
 };
 use serde_json::{Value, json};
 use std::{os::unix::fs::PermissionsExt, sync::Arc};
@@ -380,6 +382,16 @@ impl Server {
 }
 fn everything(name: &str) -> Value {
     json!({"name":name,"allDsps":true,"dsps":[],"allTools":true,"tools":{}})
+}
+/// How the owners' email words the tools of an app approved choosing none but those added
+/// later: none of those there are, if any, and new ones, to read.
+fn tools_line() -> String {
+    let toolbox = Toolbox::installed();
+    let chosen = toolbox
+        .switchable()
+        .map(|tool| (tool.name().to_owned(), ToolLevel::Off))
+        .collect();
+    format!("Tools: {}", toolbox.summary(&Grants { all: true, chosen }))
 }
 
 #[tokio::test]
@@ -2596,7 +2608,7 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
             "App: Claude Code (known metadata)",
             "Sends access to: this computer",
             "DSPs: Northline Logistics",
-            "Tools: Any, to read, as they are added",
+            &tools_line(),
             "Approved by: Platform Owner",
             &format!("{}/#agents?tab=apps", server.origin),
             &format!("This notice was sent to {to}"),
@@ -2642,10 +2654,7 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
     for text in ended {
         assert!(text.contains("one-time code"), "{text}");
         assert!(text.contains("Sent access to: chatgpt.com"), "{text}");
-        assert!(
-            text.contains("Tools: Any, to read, as they are added\n"),
-            "{text}"
-        );
+        assert!(text.contains(&format!("{}\n", tools_line())), "{text}");
     }
     // An app signing out, or the owner revoking one, is no news to them.
     let signed_in = server

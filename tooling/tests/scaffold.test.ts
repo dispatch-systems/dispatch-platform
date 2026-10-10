@@ -493,111 +493,127 @@ test('--no-backend writes a frontend-only feature, and refuses the pieces that n
     );
 });
 
-test('a tool is a file and a test in its feature, listed in its manifest, that works as written', async () => {
-  const plan = await tool('dvic', 'short_inspections', '--description', 'List short ones.');
-  assert.deepEqual(writes(plan, 'features/dvic'), [
-    'mcp/mod.rs',
-    'mcp/short_inspections.rs',
-    'tests/backend/mcp/short_inspections.rs',
+test('a tool is a file and a test in mcp/tools, listed in TOOLS, that works as written', async () => {
+  const plan = await tool(
+    'short_inspections',
+    '--features',
+    'dvic',
+    '--description',
+    'List short ones.',
+  );
+  assert.deepEqual(writes(plan, 'mcp'), [
+    'tests/backend/tools/short_inspections.rs',
+    'tools/short_inspections.rs',
   ]);
-  const written = file(plan, 'features/dvic/mcp/short_inspections.rs');
+  const written = file(plan, 'mcp/tools/short_inspections.rs');
   assert.match(written, /const NAME: &'static str = "short_inspections";/);
   assert.match(written, /const DESCRIPTION: &'static str = "List short ones\.";/);
-  // It reads unless it says otherwise, and never says who may use it.
-  assert.doesNotMatch(written, /EFFECT|PART|access|allow/i);
-  assert.match(
-    file(plan, 'features/dvic/mcp/mod.rs'),
-    /= &\[&short_inspections::ShortInspections\];/,
-  );
-  const manifest = file(plan, 'features/dvic/feature.rs');
-  assert.match(manifest, /^mod mcp;$/m);
-  assert.match(manifest, /^ {4}tools: mcp::TOOLS,\n {4}\.\.feature\("dvic"\)/m);
-  const crate = file(plan, 'features/dvic/Cargo.toml');
-  const section = (name: string) => crate.split(`[${name}]\n`)[1]!.split('\n[')[0]!;
-  assert.match(section('dependencies'), /^schemars = \{ workspace = true \}$/m);
-  assert.match(section('dev-dependencies'), /^serde_json = \{ workspace = true \}$/m);
-  // Its test installs what the feature's own tests do, and switches the feature off and on.
-  const test = file(plan, 'features/dvic/tests/backend/mcp/short_inspections.rs');
-  assert.match(test, /install\(&\[&dispatch_cortex::COLLECTOR\], &\[&crate::FEATURE\]\)/);
-  assert.match(test, /set_feature\(&dsp, "dvic", false, &owner\)/);
+  assert.match(written, /const FEATURES: &'static \[&'static str\] = &\["dvic"\];/);
+  // It reads, about one DSP, unless it says otherwise, and never says who may use it.
+  assert.doesNotMatch(written, /EFFECT|SCOPE|ToolLevel|allow/);
+  assert.match(written, /#\[path = "\.\.\/tests\/backend\/tools\/short_inspections\.rs"\]/);
+  const list = file(plan, 'mcp/tools/mod.rs');
+  assert.match(list, /^mod short_inspections;$/m);
+  assert.match(list, /^ {4}&short_inspections::ShortInspections,$/m);
+  // Its test switches on what it needs, and grants it as an owner would.
+  const test = file(plan, 'mcp/tests/backend/tools/short_inspections.rs');
+  assert.match(test, /db\.set_feature\(&dsp, "dvic", true, &owner\)/);
+  assert.match(test, /agent\(&db, &\[&dsp\], &\[\("short_inspections", ToolLevel::Read\)\]\)/);
+  assert.match(test, /"switched_off"/);
 
-  // One that changes something says so, one of a part names it, and a feature that uses
-  // another has its test install that one too.
-  const changes = await tool(
-    'timecard',
-    'approve_meal_break',
-    '--changes',
-    '--part',
+  // One of several actions, some that change something, at a part of a feature.
+  const review = await tool(
+    'review_meal_breaks',
+    '--features',
     'timecard.meal_breaks',
+    '--actions',
+    'list,approve',
+    '--changing',
+    'approve',
   );
-  const approve = file(changes, 'features/timecard/mcp/approve_meal_break.rs');
-  assert.match(approve, /const EFFECT: Effect = Effect::Changes;/);
-  assert.match(approve, /const PART: Option<&'static str> = Some\("timecard\.meal_breaks"\);/);
-  assert.match(approve, /const TITLE: &'static str = "Approve meal break";/);
+  const reviewed = file(review, 'mcp/tools/review_meal_breaks.rs');
+  assert.match(reviewed, /const EFFECT: Effect = Effect::Changes;/);
   assert.match(
-    file(changes, 'features/timecard/tests/backend/mcp/approve_meal_break.rs'),
-    /install\(\s*&\[&dispatch_cortex::COLLECTOR, &dispatch_paycom::COLLECTOR\],\s*&\[&dispatch_driver_match::FEATURE, &crate::FEATURE\],?\s*\)/,
+    reviewed,
+    /#\[serde\(tag = "action", rename_all = "snake_case", deny_unknown_fields\)\]/,
+  );
+  assert.match(reviewed, /^ {4}List \{\},$/m);
+  assert.match(reviewed, /ReviewMealBreaksAction::Approve \{\} => Effect::Changes,/);
+  assert.match(reviewed, /cx\.write\(/);
+  const reviewTest = file(review, 'mcp/tests/backend/tools/review_meal_breaks.rs');
+  assert.match(reviewTest, /"timecard", true[\s\S]*"timecard\.meal_breaks", true/);
+  assert.match(reviewTest, /ToolLevel::Change/);
+  assert.match(reviewTest, /json!\(\{"action": "approve"\}\)/);
+
+  // About several DSPs, or the connection itself.
+  const survey = file(await tool('survey', '--scope', 'dsps', '--changes'), 'mcp/tools/survey.rs');
+  assert.match(survey, /const SCOPE: Scope = Scope::Dsps;/);
+  assert.match(survey, /pub dsps: Vec<String>,/);
+  const own = await tool('my_connection', '--scope', 'connection');
+  assert.match(file(own, 'mcp/tools/my_connection.rs'), /const SCOPE: Scope = Scope::Connection;/);
+  assert.match(
+    file(own, 'mcp/tests/backend/tools/my_connection.rs'),
+    /let caller = agent\(&db, &\[&dsp\], &\[\]\);/,
   );
 });
 
-test("a second tool joins its feature's list, its module in order", async () => {
+test('a second tool joins the list, its module in order', async () => {
   const workspace = temporary();
   try {
     for (const entry of ['features/dvic', 'mcp/tools']) {
       fs.cpSync(entry, path.join(workspace, entry), { recursive: true });
     }
-    const first = (await planTool(workspace, ['dvic', 'short_inspections'])).plan;
+    const first = (await planTool(workspace, ['short_inspections'])).plan;
     for (const [name, content] of [...first.files, ...first.changes]) {
       fs.mkdirSync(path.dirname(path.join(workspace, name)), { recursive: true });
       fs.writeFileSync(path.join(workspace, name), content);
     }
-    const second = (await planTool(workspace, ['dvic', 'flag_inspection', '--changes'])).plan;
-    assert.deepEqual(writes(second, 'features/dvic'), [
-      'mcp/flag_inspection.rs',
-      'tests/backend/mcp/flag_inspection.rs',
+    const second = (await planTool(workspace, ['flag_inspection', '--changes'])).plan;
+    assert.deepEqual(writes(second, 'mcp'), [
+      'tests/backend/tools/flag_inspection.rs',
+      'tools/flag_inspection.rs',
     ]);
-    assert.equal(
-      file(second, 'features/dvic/mcp/mod.rs')
-        .split('\n')
-        .filter((line) => /^mod |^ {4}&/.test(line))
-        .join('\n'),
-      [
-        'mod flag_inspection;',
-        'mod short_inspections;',
-        '    &short_inspections::ShortInspections,',
-        '    &flag_inspection::FlagInspection,',
-      ].join('\n'),
-    );
-    // The manifest and the crate have what they need already.
-    assert(!second.changes.has('features/dvic/feature.rs'));
-    assert(!second.changes.has('features/dvic/Cargo.toml'));
-    await assert.rejects(planTool(workspace, ['dvic', 'short_inspections']), /is taken/);
+    const lines = file(second, 'mcp/tools/mod.rs')
+      .split('\n')
+      .filter((line) => /^mod |^ {4}&/.test(line));
+    assert.deepEqual(lines, [
+      'mod flag_inspection;',
+      'mod get_profile;',
+      'mod short_inspections;',
+      'mod whoami;',
+      '    &get_profile::GetProfile,',
+      '    &whoami::Whoami,',
+      '    &short_inspections::ShortInspections,',
+      '    &flag_inspection::FlagInspection,',
+    ]);
+    await assert.rejects(planTool(workspace, ['short_inspections']), /is taken/);
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });
   }
 });
 
-test('a tool has a name of its own, in a feature and a part there are', async () => {
+test('a tool has a name of its own, and needs features and actions there are', async () => {
   const refusedTool = async (pattern: RegExp, ...argv: string[]) =>
     assert.rejects(planTool(root, argv), pattern);
-  await refusedTool(/no feature/, 'parking', 'find_spaces');
-  await refusedTool(/not a tool's name/, 'dvic', 'Short-Inspections');
-  await refusedTool(/whoami is taken: core declares it/, 'dvic', 'whoami');
+  await refusedTool(/not a tool's name/, 'Short-Inspections');
+  await refusedTool(/whoami is taken: mcp\/tools\/whoami\.rs declares it/, 'whoami');
+  await refusedTool(/teleport is no feature or part of one/, 'beam', '--features', 'teleport');
+  await refusedTool(/--scope is dsp, dsps, connection/, 'beam', '--scope', 'galaxy');
+  await refusedTool(/--changing names actions/, 'beam', '--changing', 'approve');
   await refusedTool(
-    /no part of dvic/,
-    'dvic',
-    'short_inspections',
-    '--part',
-    'timecard.meal_breaks',
+    /reject is none of its --actions/,
+    'beam',
+    '--actions',
+    'list',
+    '--changing',
+    'reject',
   );
-  await refusedTool(
-    /ending with a full stop/,
-    'dvic',
-    'short_inspections',
-    '--description',
-    'List',
-  );
-  await refusedTool(/Name the feature, then the tool/, 'dvic');
+  await refusedTool(/With --actions, name the actions/, 'beam', '--actions', 'list', '--changes');
+  await refusedTool(/only reads/, 'beam', '--scope', 'connection', '--changes');
+  await refusedTool(/only reads/, 'beam', '--scope', 'connection', '--features', 'dvic');
+  await refusedTool(/ending with a full stop/, 'beam', '--description', 'List');
+  await refusedTool(/Name the tool, and only the tool/);
+  await refusedTool(/Name the tool, and only the tool/, 'dvic', 'beam');
 });
 
 test('names are lowercase words, not taken by an owner and not retired', async () => {
@@ -623,7 +639,8 @@ test('everything written is formatted as the repository formats it, with no plac
     (await planFeature(copy, ['notes', '--tab-of', 'timecard', '--mandatory'])).plan,
     await feature('desk', '--api'),
     await collector('fleet'),
-    await tool('timecard', 'approve_meal_break', '--changes', '--part', 'timecard.meal_breaks'),
+    await tool('approve_meal_break', '--features', 'timecard.meal_breaks', '--changes'),
+    await tool('review_routes', '--scope', 'dsps', '--actions', 'list,flag', '--changing', 'flag'),
   ];
   const config = (await prettier.resolveConfig(path.join(root, 'package.json'))) ?? {};
   for (const plan of plans)

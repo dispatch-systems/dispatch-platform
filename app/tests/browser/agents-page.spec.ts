@@ -4,6 +4,7 @@ import type { AgentKeys } from '../../../mcp/api/index.js';
 import { platformHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { utcDay } from '../../../core/shell/frontend/lib/format.js';
 import { test, expect, login } from '../../../core/shell/tests/support/fixtures.js';
+import { startingTools } from '../support/agent-keys.js';
 
 // The Agents page: keys, connected apps and what they called.
 
@@ -48,7 +49,9 @@ async function connectApp(page: Page, origin: string, name: string) {
 test('the platform owner makes a key, sees it once, tests it, changes and revokes it', async ({
   page,
   baseURL,
+  dispatch,
 }) => {
+  const starting = await startingTools(dispatch);
   await login(page);
   await page.getByRole('link', { name: 'Agents', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Agents', level: 1 })).toBeVisible();
@@ -93,7 +96,7 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
 
   const row = page.getByRole('row').filter({ hasText: 'Laptop – Claude Code' });
   await expect(row).toContainText(`…${token!.slice(-4)}`);
-  await expect(row).toContainText('Read tools as added');
+  await expect(row).toContainText(starting.text);
   await expect(row).toContainText('Northline Logistics');
   // The page never shows the key again.
   await expect(page.getByText(token!)).toHaveCount(0);
@@ -104,7 +107,7 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   await edit.getByRole('combobox', { name: /^Expires/ }).selectOption('30');
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Save changes', exact: true }).last().click();
-  await expect(row).toContainText('Read tools as added');
+  await expect(row).toContainText(starting.text);
 
   // Using keys, folded away beneath them: testing a key answers as an agent would.
   const using = page.getByRole('group').filter({ hasText: 'Using keys' });
@@ -142,7 +145,9 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
 
 test('a key takes tools, to read, as they are added, until the owner says otherwise', async ({
   page,
+  dispatch,
 }) => {
+  const starting = await startingTools(dispatch);
   await login(page);
   await page.getByRole('link', { name: 'Agents', exact: true }).click();
   await page.getByRole('tab', { name: 'Keys', exact: true }).click();
@@ -158,14 +163,15 @@ test('a key takes tools, to read, as they are added, until the owner says otherw
     .getByRole('button', { name: 'Done', exact: true })
     .click();
   const row = page.getByRole('row').filter({ hasText: 'Nightly report script' });
-  await expect(row).toContainText('Read tools as added');
+  await expect(row).toContainText(starting.text);
 
   // Changed afterwards, without making the key again.
   await row.getByRole('button', { name: 'Open Nightly report script' }).click();
   const edit = page.getByRole('dialog', { name: 'Nightly report script', exact: true });
   await edit.getByRole('switch', { name: 'New tools, to read', exact: true }).click();
   await edit.getByRole('button', { name: 'Save changes', exact: true }).click();
-  await expect(row).toContainText('No tools');
+  // With tools to choose, the key keeps them; it only stops taking those added later.
+  await expect(row).toContainText(starting.count ? starting.text : 'No tools');
 });
 
 test('the Activity tab lists each call a key makes, and what Dispatch answered', async ({
@@ -244,6 +250,7 @@ test('the owner changes where a connected app reaches, without being asked to si
   const pairing = await owner.post('/api/platform/oauth/pairing');
   expect(pairing.status, pairing.body).toBe(200);
   await connectApp(page, baseURL!, 'Laptop – Claude Code');
+  const starting = await startingTools(dispatch);
   const agents = async () => (await owner.get('/api/platform/agents')).value as AgentKeys;
   const { dsps } = await agents();
   const summit = dsps.find((dsp) => dsp.name === 'Summit Delivery')!;
@@ -260,7 +267,7 @@ test('the owner changes where a connected app reaches, without being asked to si
   await page.goto(`/${platformHash('agents')}`);
   const row = page.getByRole('row').filter({ hasText: 'Laptop – Claude Code' });
   await expect(row).toContainText('All DSPs');
-  await expect(row).toContainText('Read tools as added');
+  await expect(row).toContainText(starting.text);
   await row.getByRole('button', { name: 'Edit Laptop – Claude Code', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Laptop – Claude Code' });
   await expect(sheet.getByText('Known metadata', { exact: true })).toBeVisible();
