@@ -265,6 +265,8 @@ pub struct ConnectedApp<'a> {
     pub destination: Option<&'a str>,
     /// The DSPs it reaches by name; empty when it reaches all of them.
     pub dsps: &'a [String],
+    /// The tools it may use, in words.
+    pub tools: &'a str,
     pub approved_by: &'a str,
     /// When it connected or was disconnected, in milliseconds.
     pub at: i64,
@@ -384,7 +386,7 @@ pub fn app_connected(app: &ConnectedApp) -> Message {
     rows.extend(app.destination.map(|to| ("Sends access to", to.to_owned())));
     rows.extend([
         ("DSPs", app.reach()),
-        ("Access", "Read only".to_owned()),
+        ("Tools", app.tools.to_owned()),
         ("Approved by", app.approved_by.to_owned()),
         ("Connected", when(app.at)),
     ]);
@@ -418,7 +420,7 @@ pub fn app_disconnected(app: &ConnectedApp, reason: &str) -> Message {
     ];
     rows.extend(app.destination.map(|to| ("Sent access to", to.to_owned())));
     rows.extend([
-        ("Access", "Read only".to_owned()),
+        ("Tools", app.tools.to_owned()),
         ("Disconnected", when(app.at)),
     ]);
     app.message(

@@ -204,6 +204,48 @@ fn platform_databases_from_before_each_added_column_gain_it() {
     }
 }
 
+/// The column the agent tools migration adds to agent_keys, as the recorded schema ends it.
+const ALL_TOOLS: &str = ", all_tools INTEGER NOT NULL DEFAULT 1 CHECK(all_tools IN (0,1))";
+
+#[cfg(feature = "driver_match")]
+#[test]
+fn agent_keys_from_before_tools_use_every_tool_that_reads() {
+    crate::install();
+    let root = private();
+    let new = Db::create(&root.path().join("new.sqlite"), Kind::PLATFORM, "").unwrap();
+    // The release before tools were chosen: no choices, and no say in tools added later.
+    let before: String = recorded(Kind::PLATFORM)
+        .replace(RECORD, "")
+        .replace(ALL_TOOLS, "")
+        .lines()
+        .filter(|line| !line.contains("agent_key_tools"))
+        .map(|line| format!("{line}\n"))
+        .collect();
+    assert!(!before.contains("all_tools"));
+    let file = root.path().join("platform.sqlite");
+    older(&file, Kind::PLATFORM, &before);
+    rusqlite::Connection::open(&file)
+        .unwrap()
+        .execute_batch(
+            "INSERT INTO users(id,email,first_name,last_name,password,platform_owner,\
+             created_at) VALUES ('u','owner@example.test','O','Wner','x',1,'then'); \
+             INSERT INTO agent_keys(id,name,hash,hint,user_id,all_dsps,access,tools,\
+             locations,created_at) VALUES ('k','Laptop','h','abcd','u',1,'read','full',0,'then');",
+        )
+        .unwrap();
+    let db = Db::create(&file, Kind::PLATFORM, "").unwrap();
+    assert_eq!(dump(&db), dump(&new));
+    assert_eq!(
+        db.all("SELECT all_tools FROM agent_keys", []).unwrap(),
+        vec![json!({"all_tools":1})]
+    );
+    assert_eq!(
+        db.all("SELECT count(*) n FROM agent_key_tools", [])
+            .unwrap(),
+        vec![json!({"n":0})]
+    );
+}
+
 #[cfg(feature = "driver_match")]
 #[test]
 fn agent_keys_from_before_connected_apps_stay_keys() {
@@ -214,6 +256,7 @@ fn agent_keys_from_before_connected_apps_stay_keys() {
     // that read no differently.
     let before: String = recorded(Kind::PLATFORM)
         .replace(RECORD, "")
+        .replace(ALL_TOOLS, "")
         .replace(
             ", kind TEXT NOT NULL DEFAULT 'key' CHECK(kind IN ('key','app')), client_id TEXT, \
              client_name TEXT, client_verified INTEGER NOT NULL DEFAULT 0, areas TEXT NOT \
@@ -222,7 +265,7 @@ fn agent_keys_from_before_connected_apps_stay_keys() {
             ")",
         )
         .lines()
-        .filter(|line| !line.contains("oauth_"))
+        .filter(|line| !line.contains("oauth_") && !line.contains("agent_key_tools"))
         .map(|line| format!("{line}\n"))
         .collect();
     assert!(!before.contains("client_verified"));
@@ -259,6 +302,7 @@ fn agent_keys_from_before_reads_read_every_kind_with_their_addresses() {
     // and calls never marked as bypassing features.
     let before: String = recorded(Kind::PLATFORM)
         .replace(RECORD, "")
+        .replace(ALL_TOOLS, "")
         .replace(
             ", areas TEXT NOT NULL DEFAULT 'routes,timecards,meal_breaks,dvic,feedback,\
              safety,returns,scorecard', bypass INTEGER NOT NULL DEFAULT 0 CHECK(bypass IN \
@@ -267,7 +311,7 @@ fn agent_keys_from_before_reads_read_every_kind_with_their_addresses() {
         )
         .replace(" , bypassed INTEGER NOT NULL DEFAULT 0)", " )")
         .lines()
-        .filter(|line| !line.contains("agent_key_dsp_reads"))
+        .filter(|line| !line.contains("agent_key_dsp_reads") && !line.contains("agent_key_tools"))
         .map(|line| format!("{line}\n"))
         .collect();
     assert!(!before.contains("bypass") && !before.contains("areas"));

@@ -69,6 +69,10 @@ pub struct AgentKey {
     /// Every DSP, those added later included; otherwise only `dsps`.
     pub all_dsps: bool,
     pub dsps: Vec<String>,
+    /// Whether a tool added later is allowed as it comes, when it only reads.
+    pub all_tools: bool,
+    /// The tools of `AgentKeys` it may use now.
+    pub tools: Vec<String>,
     pub created_at: String,
     pub expires_at: Option<String>,
     pub revoked_at: Option<String>,
@@ -101,6 +105,8 @@ impl FromRow for AgentKey {
             access: row.get("access")?,
             all_dsps: row.get::<i64>("all_dsps")? == 1,
             dsps: vec![],
+            all_tools: row.get::<i64>("all_tools")? == 1,
+            tools: vec![],
             created_at: row.get("created_at")?,
             expires_at: row.get("expires_at")?,
             revoked_at: row.get("revoked_at")?,
@@ -118,7 +124,22 @@ pub struct AgentDsp {
     pub id: String,
     pub name: String,
 }
-/// The Agents page: every key, newest first, and the DSPs a key can be given.
+/// A tool a key or app can be allowed, as the Agents page lists it under its feature.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/mcp/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct AgentTool {
+    pub name: String,
+    pub title: String,
+    pub description: String,
+    /// The feature it belongs to, as the DSPs page names it; null for core's own.
+    pub feature: Option<String>,
+    /// Whether it changes something, rather than only reading.
+    pub changes: bool,
+}
+/// The Agents page: every key, newest first, the DSPs a key can be given and the tools it can
+/// be allowed, in their order.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/mcp/api/generated/"))]
@@ -126,6 +147,7 @@ pub struct AgentDsp {
 pub struct AgentKeys {
     pub keys: Vec<AgentKey>,
     pub dsps: Vec<AgentDsp>,
+    pub tools: Vec<AgentTool>,
 }
 /// A new key: the key itself, shown this once, and the key as the page lists it.
 #[derive(Clone, Debug, Serialize)]
@@ -136,7 +158,9 @@ pub struct AgentKeyCreated {
     pub key: AgentKey,
     pub token: String,
 }
-/// What a new or changed key may do. `expiresAt` is an RFC 3339 time, or null for never.
+/// What a new or changed key may do and use. `tools` are the tools of `AgentKeys` it may use;
+/// `allTools`, whether one added later is allowed as it comes, when it only reads.
+/// `expiresAt` is an RFC 3339 time, or null for never.
 #[derive(Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/mcp/api/generated/"))]
@@ -146,6 +170,8 @@ pub struct AgentKeyRequest {
     pub all_dsps: bool,
     pub dsps: Vec<String>,
     pub access: AgentAccess,
+    pub all_tools: bool,
+    pub tools: Vec<String>,
     pub expires_at: Option<String>,
 }
 impl AgentKeyRequest {
@@ -160,11 +186,14 @@ impl AgentKeyRequest {
             "invalid_input",
             400,
         )?;
+        ensure(input.tools.len() <= 500, "invalid_input", 400)?;
+        input.tools.sort();
+        input.tools.dedup();
         Ok(input)
     }
 }
-/// What the platform owner grants an app they approve: the choices a key is made with,
-/// always read-only and never expiring.
+/// What the platform owner grants an app they approve: the choices a key is made with, the
+/// tools it may use among them, never expiring.
 #[derive(Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/mcp/api/generated/"))]
@@ -173,6 +202,8 @@ pub struct OAuthApproval {
     pub name: String,
     pub all_dsps: bool,
     pub dsps: Vec<String>,
+    pub all_tools: bool,
+    pub tools: Vec<String>,
 }
 impl OAuthApproval {
     pub fn parse(value: &Value) -> Result<Self> {
@@ -183,6 +214,9 @@ impl OAuthApproval {
             "invalid_input",
             400,
         )?;
+        ensure(input.tools.len() <= 500, "invalid_input", 400)?;
+        input.tools.sort();
+        input.tools.dedup();
         Ok(input)
     }
     /// The same choices as a key's, checked by the same rules.
@@ -192,6 +226,8 @@ impl OAuthApproval {
             all_dsps: self.all_dsps,
             dsps: self.dsps.clone(),
             access: AgentAccess::Read,
+            all_tools: self.all_tools,
+            tools: self.tools.clone(),
             expires_at: None,
         }
     }
@@ -337,6 +373,8 @@ pub struct AgentWhoamiKey {
     pub name: String,
     pub access: AgentAccess,
     pub expires_at: Option<String>,
+    /// The tools it may use now, wherever a DSP it reaches has them on.
+    pub tools: Vec<String>,
 }
 /// A DSP as an agent sees it: its local date, so "today" and "yesterday" mean the DSP's.
 #[derive(Clone, Debug, Serialize, schemars::JsonSchema)]

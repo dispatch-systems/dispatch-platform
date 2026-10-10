@@ -42,6 +42,8 @@ const everything = (name: string): OAuthApproval => ({
   name,
   allDsps: true,
   dsps: [],
+  allTools: true,
+  tools: [],
 });
 
 /** A PKCE pair as a client makes one: a random verifier and its S256 challenge. */
@@ -350,6 +352,8 @@ test('Claude Code connects by its published document and reaches only what the o
     name: 'Laptop – Claude Code',
     allDsps: false,
     dsps: [c.north.id],
+    allTools: true,
+    tools: [],
   });
   assert.ok(redirect.startsWith(`${callback}?`), redirect);
   const code = c.code(redirect, started.state);
@@ -391,7 +395,12 @@ test('Claude Code connects by its published document and reaches only what the o
   assert.equal(called.body.result.isError, false, JSON.stringify(called.body));
   const me = called.body.result.structuredContent as AgentWhoami;
   assert.deepEqual(JSON.parse(called.body.result.content[0].text), me);
-  assert.deepEqual(me.key, { name: 'Laptop – Claude Code', access: 'read', expiresAt: null });
+  assert.deepEqual(me.key, {
+    name: 'Laptop – Claude Code',
+    access: 'read',
+    expiresAt: null,
+    tools: ['get_profile', 'whoami'],
+  });
   assert.deepEqual(
     me.dsps.map((dsp) => dsp.id),
     [c.north.id],
@@ -499,6 +508,8 @@ test('connecting the same app again under the same name replaces the earlier con
     ...everything('Laptop – Claude Code'),
     allDsps: false,
     dsps: [c.north.id],
+    allTools: true,
+    tools: [],
   });
   c.refused(await c.whoami(earlier.access_token), 'the replaced connection');
   const renewed = await c.refresh(claudeCode, earlier.refresh_token);
@@ -728,6 +739,8 @@ test('the platform owner is emailed when an app connects and when Dispatch disco
     name: 'Laptop – Claude Code',
     allDsps: false,
     dsps: [c.north.id],
+    allTools: true,
+    tools: [],
   });
   const connected = await capturedMail(f.root, owner);
   assert.equal(connected.subject, '[Dispatch Dev] Claude Code connected to Dispatch');
@@ -736,7 +749,7 @@ test('the platform owner is emailed when an app connects and when Dispatch disco
     'App: Claude Code (known metadata)',
     'Sends access to: this computer',
     'DSPs: Northline Logistics',
-    'Access: Read only',
+    'Tools: Any that only read, as they are added',
     `${c.issuer}/#agents?tab=apps`,
   ]) {
     assert.ok(connected.text.includes(line), `${line}\n${connected.text}`);

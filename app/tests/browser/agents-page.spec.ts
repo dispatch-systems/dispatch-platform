@@ -88,12 +88,12 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   await expect(setup).toContainText(`"Authorization": "Bearer ${token}"`);
   await ready.getByRole('tab', { name: 'Claude Code', exact: true }).click();
   await ready.getByRole('button', { name: 'Send test request' }).click();
-  await expect(ready.getByRole('status')).toContainText('Connected · Read only · 1 DSP');
+  await expect(ready.getByRole('status')).toContainText('Connected · 1 DSP');
   await ready.getByRole('button', { name: 'Done', exact: true }).click();
 
   const row = page.getByRole('row').filter({ hasText: 'Laptop – Claude Code' });
   await expect(row).toContainText(`…${token!.slice(-4)}`);
-  await expect(row).toContainText('Read only');
+  await expect(row).toContainText('Read tools as added');
   await expect(row).toContainText('Northline Logistics');
   // The page never shows the key again.
   await expect(page.getByText(token!)).toHaveCount(0);
@@ -104,7 +104,7 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   await edit.getByRole('combobox', { name: /^Expires/ }).selectOption('30');
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Save changes', exact: true }).last().click();
-  await expect(row).toContainText('Read only');
+  await expect(row).toContainText('Read tools as added');
 
   // Using keys, folded away beneath them: testing a key answers as an agent would.
   const using = page.getByRole('group').filter({ hasText: 'Using keys' });
@@ -114,7 +114,7 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   await expect(using.locator('summary')).toHaveText('Using keys');
   await using.getByLabel('Key to test').fill(token!);
   await using.getByRole('button', { name: 'Test key', exact: true }).click();
-  await expect(using.getByRole('status')).toContainText('Connected · Read only · 1 DSP');
+  await expect(using.getByRole('status')).toContainText('Connected · 1 DSP');
   // The addresses an agent needs, ready to copy.
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseURL });
   const addresses = using.locator('.agents-endpoint');
@@ -140,35 +140,32 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   await expect(using.getByRole('status')).toContainText('That key was revoked.');
 });
 
-test('an existing Operator key keeps its access when edited and can be changed to read only', async ({
+test('a key takes the tools that only read as they are added, until the owner says otherwise', async ({
   page,
-  dispatch,
 }) => {
-  const owner = await dispatch.client();
-  const made = await owner.post('/api/platform/agents/keys', {
-    name: 'Existing Operator',
-    allDsps: true,
-    dsps: [],
-    access: 'operator',
-    expiresAt: null,
-  });
-  expect(made.status, made.body).toBe(200);
   await login(page);
   await page.getByRole('link', { name: 'Agents', exact: true }).click();
   await page.getByRole('tab', { name: 'Keys', exact: true }).click();
-  await page.getByRole('button', { name: 'Open Existing Operator' }).click();
-  let edit = page.getByRole('dialog', { name: 'Existing Operator', exact: true });
-  await expect(edit.getByRole('radio', { name: /Operator/ })).toBeChecked();
-  await expect(edit).toContainText('collection controls unavailable');
-  await edit.getByLabel('Name', { exact: true }).fill('Existing Operator renamed');
+  await page.getByRole('button', { name: 'New key', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'New key' });
+  await sheet.getByLabel('Name').fill('Nightly report script');
+  const tools = sheet.getByRole('group', { name: 'Tools', exact: true });
+  const added = tools.getByRole('switch', { name: 'New tools that only read', exact: true });
+  await expect(added).toBeChecked();
+  await sheet.getByRole('button', { name: 'Create key', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Nightly report script is ready' })
+    .getByRole('button', { name: 'Done', exact: true })
+    .click();
+  const row = page.getByRole('row').filter({ hasText: 'Nightly report script' });
+  await expect(row).toContainText('Read tools as added');
+
+  // Changed afterwards, without making the key again.
+  await row.getByRole('button', { name: 'Open Nightly report script' }).click();
+  const edit = page.getByRole('dialog', { name: 'Nightly report script', exact: true });
+  await edit.getByRole('switch', { name: 'New tools that only read', exact: true }).click();
   await edit.getByRole('button', { name: 'Save changes', exact: true }).click();
-  const row = page.getByRole('row').filter({ hasText: 'Existing Operator renamed' });
-  await expect(row.locator('.agents-tag')).toHaveText('Operator');
-  await row.getByRole('button', { name: 'Open Existing Operator renamed' }).click();
-  edit = page.getByRole('dialog', { name: 'Existing Operator renamed', exact: true });
-  await edit.getByRole('radio', { name: /Read only/ }).check();
-  await edit.getByRole('button', { name: 'Save changes', exact: true }).click();
-  await expect(row).toContainText('Read only');
+  await expect(row).toContainText('No tools');
 });
 
 test('the Activity tab lists each call a key makes, and what Dispatch answered', async ({
@@ -186,6 +183,8 @@ test('the Activity tab lists each call a key makes, and what Dispatch answered',
     allDsps: true,
     dsps: [],
     access: 'read',
+    allTools: true,
+    tools: [],
     expiresAt: null,
   });
   expect(made.status, made.body).toBe(200);
@@ -261,7 +260,7 @@ test('the owner changes where a connected app reaches, without being asked to si
   await page.goto(`/${platformHash('agents')}`);
   const row = page.getByRole('row').filter({ hasText: 'Laptop – Claude Code' });
   await expect(row).toContainText('All DSPs');
-  await expect(row).toContainText('Read only');
+  await expect(row).toContainText('Read tools as added');
   await row.getByRole('button', { name: 'Edit Laptop – Claude Code', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Laptop – Claude Code' });
   await expect(sheet.getByText('Known metadata', { exact: true })).toBeVisible();

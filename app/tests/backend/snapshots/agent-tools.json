@@ -49,9 +49,14 @@
           "properties": {
             "name": {"type": "string"},
             "access": {"$ref": "#/$defs/AgentAccess"},
-            "expiresAt": {"type": ["string", "null"]}
+            "expiresAt": {"type": ["string", "null"]},
+            "tools": {
+              "description": "The tools it may use now, wherever a DSP it reaches has them on.",
+              "type": "array",
+              "items": {"type": "string"}
+            }
           },
-          "required": ["name", "access"]
+          "required": ["name", "access", "tools"]
         },
         "AgentAccess": {
           "description": "What an agent key may do: look things up, or also run collections and test\nconnections.",

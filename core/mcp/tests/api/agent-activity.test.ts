@@ -18,6 +18,8 @@ test('the Activity log lists what a key called over REST and MCP, written down i
     allDsps: false,
     dsps: [north.id],
     access: 'read',
+    allTools: true,
+    tools: [],
     expiresAt: null,
   });
   assert.equal(made.status, 200, made.body);

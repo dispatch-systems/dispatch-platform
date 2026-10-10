@@ -54,6 +54,7 @@ pub const TABLES: Tables = &[
             "agent_keys",
             "agent_key_dsps",
             "agent_key_dsp_reads",
+            "agent_key_tools",
             "agent_activity",
             "oauth_apps",
             "oauth_clients",
@@ -211,6 +212,11 @@ const PLATFORM: &[Migration] = &[
         id: 20,
         name: "dsp_directories",
         apply: Code(dsp_directories),
+    },
+    Migration {
+        id: 21,
+        name: "agent_tools",
+        apply: Code(agent_tools),
     },
 ];
 const JOBS: &[Migration] = &[
@@ -408,6 +414,21 @@ fn agent_reads(db: &Db) -> Result<()> {
     )?;
     db.0.execute_batch(include_str!(
         "../../mcp/migrations/platform/0016_agent_reads.sql"
+    ))?;
+    Ok(())
+}
+
+// all_tools: whether a key or app uses tools that only read as they are added. Keys and apps
+// from before do, as they used every tool that read.
+fn agent_tools(db: &Db) -> Result<()> {
+    add_column(
+        db,
+        "agent_keys",
+        "all_tools",
+        "INTEGER NOT NULL DEFAULT 1 CHECK(all_tools IN (0,1))",
+    )?;
+    db.0.execute_batch(include_str!(
+        "../../mcp/migrations/platform/0021_agent_tools.sql"
     ))?;
     Ok(())
 }

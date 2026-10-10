@@ -23,6 +23,7 @@ export type { AgentKeyKind } from '../../mcp/api/generated/AgentKeyKind.js';
 export type { AgentKeyRequest } from '../../mcp/api/generated/AgentKeyRequest.js';
 export type { AgentKeys } from '../../mcp/api/generated/AgentKeys.js';
 export type { AgentKeysRevoked } from '../../mcp/api/generated/AgentKeysRevoked.js';
+export type { AgentTool } from '../../mcp/api/generated/AgentTool.js';
 export type { AgentWhoami } from '../../mcp/api/generated/AgentWhoami.js';
 export type { AgentWhoamiDsp } from '../../mcp/api/generated/AgentWhoamiDsp.js';
 export type { AgentWhoamiKey } from '../../mcp/api/generated/AgentWhoamiKey.js';

@@ -3,7 +3,6 @@ import { CircleCheck, Send } from 'lucide-react';
 import type { AgentWhoami } from '../../api/index.js';
 import { agentWhoami } from '../../api/client.js';
 import { errorLabel } from '../../../shell/frontend/runtime/api.js';
-import { accessLabels } from './agents.js';
 import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
 
 const failures: Record<string, string> = {
@@ -21,7 +20,7 @@ export function whoamiText(whoami: AgentWhoami) {
   const today = dateFormatter('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).format(
     new Date(whoami.now),
   );
-  return `Connected · ${accessLabels[whoami.key.access]} · ${dsps} · ${today}`;
+  return `Connected · ${dsps} · ${today}`;
 }
 
 /** Sends one request with a key, as an agent would, and shows what came back. */

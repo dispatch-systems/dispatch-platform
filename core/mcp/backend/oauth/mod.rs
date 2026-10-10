@@ -12,7 +12,7 @@ mod notices;
 
 pub use clients::Documents;
 
-use super::{Caller, token, token::Kind};
+use super::{Caller, token, token::Kind, tools::Toolbox};
 use crate::{
     Error, Result,
     db::{Store, at, iso, now, s},
@@ -455,11 +455,14 @@ impl Store {
         )?;
         self.check_agent_key(None, &approval.key(), &replaced)?;
         let code = crypto::token()?;
-        // What an older release redeeming the code would let the app read: nothing.
+        // What an older release redeeming the code would let the app read: nothing. `tools`
+        // is its own word for something else.
         let choices = json!({
             "name": approval.name,
             "all_dsps": approval.all_dsps,
             "dsps": approval.dsps,
+            "all_tools": approval.all_tools,
+            "agent_tools": approval.tools,
             "reads": {"areas": [], "bypass": false},
             "tools": "full",
             "locations": false,
@@ -582,11 +585,21 @@ impl Store {
             return Err(grant("The owner no longer lets this kind of app connect"));
         }
         let choices: Value = serde_json::from_str(s(&row, "choices")).map_err(Error::from)?;
+        // Approved before tools were chosen: every tool that reads, and those added later.
+        let (all_tools, tools) = match choices.get("agent_tools") {
+            Some(tools) => (
+                choices["all_tools"] == true,
+                serde_json::from_value(tools.clone()).map_err(Error::from)?,
+            ),
+            None => (true, Toolbox::installed().defaults()),
+        };
         let key = AgentKeyRequest {
             name: s(&choices, "name").to_owned(),
             all_dsps: choices["all_dsps"] == true,
             dsps: serde_json::from_value(choices["dsps"].clone()).map_err(Error::from)?,
             access: AgentAccess::Read,
+            all_tools,
+            tools,
             expires_at: None,
         };
         let owner = s(&row, "approved_by");
@@ -646,6 +659,7 @@ impl Store {
                 ],
             )?;
             self.set_agent_key_dsps(&id, &key)?;
+            self.set_agent_key_tools(&id, &key)?;
             self.audit_with(
                 Some(owner),
                 None,
@@ -847,7 +861,7 @@ impl Store {
             .platform
             .one(
                 "SELECT t.expires_at token_expires_at,t.resource,k.id,k.name,k.user_id,k.all_dsps,\
-                 k.access,k.areas,k.bypass,k.locations,k.expires_at,k.revoked_at,u.platform_owner,\
+                 k.access,k.all_tools,k.expires_at,k.revoked_at,u.platform_owner,\
                  u.status FROM oauth_tokens t JOIN agent_keys k ON k.id=t.key_id \
                  JOIN users u ON u.id=k.user_id WHERE t.hash=? AND t.kind='access'",
                 [crypto::sha(token)],

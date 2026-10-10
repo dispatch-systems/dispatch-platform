@@ -2,6 +2,7 @@ use super::*;
 use crate::{
     foundation::config::Environment,
     manifest::{feature, optional},
+    mcp::api::types::{AgentAccess, AgentKeyRequest},
     tenancy::api::types::DspStatus,
 };
 use serde::Deserialize;
@@ -48,6 +49,10 @@ fn caller(dsps: Vec<Dsp>) -> Caller {
         name: "Laptop".into(),
         user: "user_a".into(),
         access: AgentAccess::Read,
+        tools: Grants {
+            all: true,
+            chosen: HashMap::new(),
+        },
         expires_at: None,
         dsps,
         client: "curl".into(),
@@ -245,4 +250,104 @@ fn a_tool_belongs_to_a_part_of_its_own_feature() {
         ..feature("listing")
     };
     check(&[&LISTING]);
+}
+
+/// Calls an installed tool as `caller` now is, with the DSP it reaches.
+fn called(db: &Store, caller: &Caller, name: &str) -> Answer<Value> {
+    let caller = db.revalidate_agent(caller).unwrap();
+    crate::testing::call_tool(db, &caller, name, json!({}))
+}
+fn code(answer: Answer<Value>) -> String {
+    match answer {
+        Err(Failure::Refused(refusal)) => refusal.code,
+        other => panic!("not refused: {other:?}"),
+    }
+}
+
+#[test]
+fn a_key_uses_the_tools_chosen_for_it_and_new_ones_only_when_they_read() {
+    crate::testing::install(&[], &[]);
+    let (_root, db, dsp) = crate::testing::bootstrapped();
+    let owner = crate::testing::platform_owner(&db);
+    // A new key starts with every tool that only reads.
+    assert_eq!(Toolbox::installed().defaults(), ["stand_in_read"]);
+    let caller = crate::testing::agent(&db, &[&dsp], &["stand_in_read"]);
+    let listed = db.agent_keys(&HashMap::new()).unwrap();
+    let names: Vec<&str> = listed.tools.iter().map(|tool| tool.name.as_str()).collect();
+    assert_eq!(names, ["stand_in_read", "stand_in_change"]);
+    assert!(listed.tools[1].changes);
+    assert_eq!(listed.keys[0].tools, ["stand_in_read"]);
+    assert!(called(&db, &caller, "stand_in_read").is_ok());
+    assert_eq!(code(called(&db, &caller, "stand_in_change")), "not_allowed");
+    // Core's own tools are always the connection's.
+    assert!(called(&db, &caller, "whoami").is_ok());
+
+    // Switched on afterwards, a tool that changes something runs on the next call.
+    let request = |tools: &[&str], all: bool| {
+        AgentKeyRequest::parse(
+            &json!({"name": caller.name, "allDsps": false, "dsps": [dsp],
+            "access": "read", "allTools": all, "tools": tools, "expiresAt": null}),
+        )
+        .unwrap()
+    };
+    let both = request(&["stand_in_change", "stand_in_read"], true);
+    db.update_agent_key(&owner, &caller.key, &both).unwrap();
+    assert!(called(&db, &caller, "stand_in_change").is_ok());
+    assert_eq!(
+        crate::testing::audit_actions(&db, &dsp, "stand_in."),
+        ["stand_in.changed"]
+    );
+    let edits = crate::testing::audits(&db, None).unwrap();
+    let edited = edits
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|event| event["action"] == "agent.key_updated")
+        .unwrap();
+    assert_eq!(
+        edited["changes"],
+        json!([{"field":"tools","from":"[stand_in_read]",
+            "to":"[stand_in_change, stand_in_read]"}])
+    );
+
+    // A tool added since the key's tools were chosen has no choice of its own: it is allowed
+    // when it only reads and the key takes new tools, and one that changes something never is.
+    db.platform
+        .exec("DELETE FROM agent_key_tools WHERE key_id=?", [&caller.key])
+        .unwrap();
+    assert!(called(&db, &caller, "stand_in_read").is_ok());
+    assert_eq!(code(called(&db, &caller, "stand_in_change")), "not_allowed");
+    db.update_agent_key(&owner, &caller.key, &request(&[], false))
+        .unwrap();
+    db.platform
+        .exec("DELETE FROM agent_key_tools WHERE key_id=?", [&caller.key])
+        .unwrap();
+    assert_eq!(code(called(&db, &caller, "stand_in_read")), "not_allowed");
+
+    // As the platform owners' emails word it.
+    let toolbox = Toolbox::installed();
+    let grants = |all: bool, chosen: &[(&str, bool)]| Grants {
+        all,
+        chosen: chosen
+            .iter()
+            .map(|(tool, on)| ((*tool).to_owned(), *on))
+            .collect(),
+    };
+    assert_eq!(toolbox.summary(&grants(false, &[])), "None of 2");
+    assert_eq!(
+        toolbox.summary(&grants(true, &[])),
+        "1 of 2; and new ones that only read"
+    );
+    assert_eq!(
+        toolbox.summary(&grants(
+            false,
+            &[("stand_in_read", true), ("stand_in_change", true)]
+        )),
+        "All 2, 1 that makes changes"
+    );
+
+    // Only a tool there is can be chosen.
+    let unknown = request(&["drive_truck"], true);
+    let refused = db.update_agent_key(&owner, &caller.key, &unknown);
+    assert_eq!(refused.unwrap_err().code, "invalid_input");
 }

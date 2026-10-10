@@ -1,26 +1,14 @@
 import { useState } from 'react';
 import { ChevronRight, Clock, Plus, Power, TriangleAlert } from 'lucide-react';
-import type { AgentAccess, AgentKey, AgentKeyCreated } from '../../api/index.js';
+import type { AgentKey, AgentKeyCreated } from '../../api/index.js';
 import { ConfirmDialog, DataState, Empty, SearchInput } from '../../../shell/frontend/ui/index.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { revokeAllAgentKeys, useAgentKeys } from '../../api/client.js';
-import {
-  accessLabels,
-  daysLeft,
-  expiryText,
-  inUse,
-  keyState,
-  lastUsedText,
-  reachText,
-} from './agents.js';
+import { daysLeft, expiryText, inUse, keyState, lastUsedText, reachText } from './agents.js';
 import { KeyReady } from './KeyReady.js';
 import { KeySheet } from './KeySheet.js';
+import { ToolsCell } from './ToolChoices.js';
 import { UsingKeys } from './UsingKeys.js';
-
-const accessTones: Record<AgentAccess, string> = {
-  read: 'access-read',
-  operator: 'access-operator',
-};
 
 function Expiry({ agentKey }: { agentKey: AgentKey }) {
   const state = keyState(agentKey);
@@ -107,7 +95,7 @@ export function KeysTab() {
                     <thead>
                       <tr>
                         <th>Name</th>
-                        <th>Access</th>
+                        <th>Tools</th>
                         <th>DSPs</th>
                         <th>Last used</th>
                         <th>Expires</th>
@@ -128,9 +116,7 @@ export function KeysTab() {
                               </button>
                             </td>
                             <td>
-                              <span className={`agents-tag ${accessTones[key.access]}`}>
-                                {accessLabels[key.access]}
-                              </span>
+                              <ToolsCell agentKey={key} tools={data.tools} />
                             </td>
                             <td>
                               {reach.count}
@@ -180,6 +166,7 @@ export function KeysTab() {
               {open === 'new' && (
                 <KeySheet
                   dsps={data.dsps}
+                  tools={data.tools}
                   close={() => setOpen(null)}
                   created={(made) => {
                     setOpen(null);
@@ -193,6 +180,7 @@ export function KeysTab() {
                 <KeySheet
                   key={editing.id}
                   dsps={data.dsps}
+                  tools={data.tools}
                   existing={editing}
                   close={() => setOpen(null)}
                   created={() => {}}

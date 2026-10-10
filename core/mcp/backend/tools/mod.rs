@@ -2,7 +2,8 @@
 //! owning it lists in its manifest's `tools` (core lists its own, `connection`). A tool says
 //! what it is: its name, what it does, what it takes and answers as Rust types whose JSON
 //! Schema the server publishes, and whether it only reads or changes something. It never says
-//! who may use it: that is the connection's, chosen when the platform owner adds the agent.
+//! who may use it: that is the connection's (`Grants`), chosen when the platform owner adds the
+//! agent and changed on the Agents page whenever they like.
 //!
 //! Before a tool runs, core checks the call, the same for every tool: the key or app still
 //! stands and may use the tool, the DSP the call names is one it reaches, and that DSP has the
@@ -17,13 +18,16 @@ use crate::{
     accounts::api::types::Dsp,
     db::Store,
     manifest::{Feature, registry},
-    mcp::api::types::AgentAccess,
+    mcp::api::types::AgentTool,
     tenancy::{audit::AuditChange, catalog},
 };
 use schemars::{JsonSchema, generate::SchemaSettings};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value, json};
-use std::{any::type_name, collections::BTreeSet};
+use std::{
+    any::type_name,
+    collections::{BTreeSet, HashMap},
+};
 
 pub use connection::Nothing;
 /// The schema crate the tools' types derive theirs with, so a feature uses the same one.
@@ -277,6 +281,70 @@ impl Toolbox {
             .copied()
             .find(|listed| listed.tool.name() == name)
     }
+    /// The tools a key or app can be allowed or not: every tool but core's about the
+    /// connection itself, which are always allowed.
+    pub fn switchable(&self) -> impl Iterator<Item = Listed> + '_ {
+        self.0
+            .iter()
+            .copied()
+            .filter(|listed| listed.tool.scope() == Scope::Dsp)
+    }
+    /// The switchable tools as the Agents page lists them.
+    pub fn listed(&self) -> Vec<AgentTool> {
+        self.switchable()
+            .map(|listed| AgentTool {
+                name: listed.tool.name().to_owned(),
+                title: listed.tool.title().to_owned(),
+                description: listed.tool.description().to_owned(),
+                feature: listed
+                    .feature
+                    .map(|feature| feature.switch.label.to_owned()),
+                changes: listed.tool.effect() == Effect::Changes,
+            })
+            .collect()
+    }
+    /// The switchable tools `grants` allow, by name.
+    pub fn allowed(&self, grants: &Grants) -> Vec<String> {
+        self.switchable()
+            .filter(|listed| grants.allows(listed.tool))
+            .map(|listed| listed.tool.name().to_owned())
+            .collect()
+    }
+    /// What a new key or app starts with: every tool that only reads, and those added later.
+    pub fn defaults(&self) -> Vec<String> {
+        self.allowed(&Grants {
+            all: true,
+            chosen: HashMap::new(),
+        })
+    }
+    /// What `grants` let a key or app use, in words, as its email says it.
+    pub fn summary(&self, grants: &Grants) -> String {
+        let total = self.switchable().count();
+        let allowed: Vec<Listed> = self
+            .switchable()
+            .filter(|listed| grants.allows(listed.tool))
+            .collect();
+        let mut text = match (allowed.len(), total) {
+            (_, 0) if grants.all => return "Any that only read, as they are added".into(),
+            (_, 0) => return "None".into(),
+            (0, _) => format!("None of {total}"),
+            (count, _) if count == total => format!("All {total}"),
+            (count, _) => format!("{count} of {total}"),
+        };
+        let changes = allowed
+            .iter()
+            .filter(|listed| listed.tool.effect() == Effect::Changes)
+            .count();
+        match changes {
+            0 => {}
+            1 => text.push_str(", 1 that makes changes"),
+            _ => text.push_str(&format!(", {changes} that make changes")),
+        }
+        if grants.all {
+            text.push_str("; and new ones that only read");
+        }
+        text
+    }
 
     /// The tools a connection may use, each where at least one DSP it reaches has the tool's
     /// feature on. Any other is refused when called.
@@ -384,12 +452,29 @@ fn about(dsp: &Dsp) -> AgentDsp {
     }
 }
 
-/// Whether a connection may use a tool at all. A tool that changes something needs a key
-/// with operator access.
+/// Whether a connection may use a tool at all.
 fn allowed(caller: &Caller, tool: &dyn AnyTool) -> bool {
-    match tool.effect() {
-        Effect::Reads => true,
-        Effect::Changes => caller.access == AgentAccess::Operator,
+    caller.tools.allows(tool)
+}
+
+/// What a key or app may use: each tool as the platform owner last chose it, and whether a tool
+/// added since, which no choice names, is allowed when it only reads. One that changes
+/// something waits until it is switched on. Core's tools about the connection itself are
+/// always allowed.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Grants {
+    pub all: bool,
+    pub chosen: HashMap<String, bool>,
+}
+impl Grants {
+    pub fn allows(&self, tool: &dyn AnyTool) -> bool {
+        if tool.scope() == Scope::Connection {
+            return true;
+        }
+        match self.chosen.get(tool.name()) {
+            Some(&allowed) => allowed,
+            None => self.all && tool.effect() == Effect::Reads,
+        }
     }
 }
 

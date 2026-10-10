@@ -113,6 +113,31 @@
       "id": 16,
       "name": "agent_reads",
       "sha256": "23c6e8811cd96cce45b9bfbbf85484c0939c6a7f3a331fdceb0957a4f2ed6690"
+    },
+    {
+      "id": 17,
+      "name": "feature_availability",
+      "sha256": "99b9a0f0a60cd78fb3e1618dab8a0ceb47ecf314749e2d49660b1e9fd1889323"
+    },
+    {
+      "id": 18,
+      "name": "feature_shown",
+      "sha256": "ed409adf890b2c6a2753a3dc91805676a24c21976c77f2101c40e7c6acfdfd07"
+    },
+    {
+      "id": 19,
+      "name": "dsp_codes",
+      "sha256": "b57ca7119ca94a24f5c3ed178f9b13e053db2157363b1398b07edaf5d5a14874"
+    },
+    {
+      "id": 20,
+      "name": "dsp_directories",
+      "sha256": "ddc68abd8a082e3c277313b575037c3ea69951b75b7420c2b08b668176dc1f51"
+    },
+    {
+      "id": 21,
+      "name": "agent_tools",
+      "sha256": "e4003dfefecb532d36f05fb15e03c82d5c20272de56e7e09cdf066ae6c35b8f8"
     }
   ],
   "jobs": [
@@ -197,6 +222,11 @@
       "id": 11,
       "name": "documents_people",
       "sha256": "fb130ca99f140d80c61ff5efad8350cb2b3e8ea4385196136d124adeeb70a10e"
+    },
+    {
+      "id": 12,
+      "name": "accounts",
+      "sha256": "3b90671344bd46dd528e15852f8cf9109a6a9fc78f66468e99be54a9811ce436"
     }
   ],
   "dvic": [

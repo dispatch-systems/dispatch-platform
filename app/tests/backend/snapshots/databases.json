@@ -23,7 +23,8 @@
       [17, "feature_availability", "99b9a0f0a60cd78f"],
       [18, "feature_shown", "code"],
       [19, "dsp_codes", "code"],
-      [20, "dsp_directories", "code"]
+      [20, "dsp_directories", "code"],
+      [21, "agent_tools", "code"]
     ]
   },
   {

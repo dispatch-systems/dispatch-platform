@@ -1,5 +1,5 @@
 /* The Agents page: connected apps and connecting one, keys, their calls, the sheet that edits
-   either and what they read, the setup dialog and app approval. */
+   either and the tools it may use, the setup dialog and app approval. */
 .agents-tag {
   display: inline-flex;
   align-items: center;
@@ -11,14 +11,6 @@
   white-space: nowrap;
   background: var(--muted);
   color: var(--foreground);
-}
-.agents-tag.access-read {
-  background: var(--sage-surface);
-  color: var(--sage);
-}
-.agents-tag.access-operator {
-  background: var(--violet-surface);
-  color: var(--violet);
 }
 .agents-tags {
   display: flex;
@@ -272,9 +264,74 @@
   padding-top: 24px;
 }
 
-/* A key or app, where it reaches and what it may do: a wider sheet. */
+/* A key or app, where it reaches and the tools it may use: a wider sheet. */
 .modal.side-sheet:has(.agents-sheet) {
   width: 520px;
+}
+.agents-form legend:has(+ .agents-hint) {
+  margin-bottom: 3px;
+}
+.agents-hint {
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+/* A switch for each tool, under the feature it belongs to. */
+.agents-tools {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.agents-tools-group + .agents-tools-group {
+  border-top: 1px solid var(--border);
+}
+.agents-tools-group > header {
+  padding: 10px 14px 2px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.agents-tool {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 14px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.agents-tool small {
+  display: block;
+  margin-top: 1px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+/* Whether tools added later come with it: a box of its own, under the tools. */
+.agents-new-tools {
+  margin-top: 10px;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+/* A tool that makes changes, wherever it is named. */
+.agents-changes {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  margin-left: 8px;
+  padding: 0 7px;
+  border: 1px solid var(--warning-border);
+  border-radius: 999px;
+  background: var(--warning-surface);
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 500;
+  vertical-align: middle;
+}
+.agents-table td small.agents-changes {
+  display: inline-flex;
+  margin: 4px 0 0;
 }
 
 /* The key, shown once, and how to set it up: wide enough for the key on one line. */
