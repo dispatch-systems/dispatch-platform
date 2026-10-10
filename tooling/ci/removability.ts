@@ -210,8 +210,8 @@ function generated(root: string): string[] {
   const owners = ['core', 'collectors', 'features'].flatMap((top) =>
     fs.readdirSync(path.join(root, top)).map((name) => `${top}/${name}/api/generated`),
   );
-  return ['app/frontend/features.ts', 'app/generated', ...owners].filter((file) =>
-    fs.existsSync(path.join(root, file)),
+  return ['app/frontend/features.ts', 'app/generated', 'mcp/api/generated', ...owners].filter(
+    (file) => fs.existsSync(path.join(root, file)),
   );
 }
 

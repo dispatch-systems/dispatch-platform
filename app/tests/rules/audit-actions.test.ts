@@ -50,6 +50,7 @@ test('every audit action the backend records has wording in the audit log', () =
   // The log's own wording, and each owner's through its slot.
   const wordings = [
     'core/platform_owner/frontend/audit/wording.ts',
+    'mcp/frontend/audit-wording.ts',
     ...['core', 'features', 'collectors'].flatMap((top) =>
       fs
         .readdirSync(top)

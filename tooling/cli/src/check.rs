@@ -176,11 +176,12 @@ fn joined(dir: &str, relative: &str) -> String {
     }
     parts.join("/")
 }
-/// The owner a file belongs to, by its directory: core, a collector, a feature or the app.
+/// The owner a file belongs to, by its directory: core, a collector, a feature, the MCP or
+/// the app.
 fn owner(file: &str) -> Option<String> {
     let mut parts = file.split('/');
     match (parts.next()?, parts.next()?, parts.next()) {
-        (top @ ("core" | "app"), _, _) => Some(top.to_owned()),
+        (top @ ("core" | "mcp" | "app"), _, _) => Some(top.to_owned()),
         (top @ ("collectors" | "features"), name, Some(_)) => Some(format!("{top}/{name}")),
         _ => None,
     }
@@ -648,6 +649,26 @@ mod tests {
                 "tooling/cli/dispatchdev build && npx tsx --test core/tenancy/tests/api/roles.test.ts"
             ]
         );
+    }
+    #[test]
+    fn the_mcp_is_an_owner_whose_frontend_asks_for_no_rust() {
+        let (_root, workspace) = workspace(
+            r#""core", "mcp", "app/backend""#,
+            &[
+                ("core", "dispatch-core", &[]),
+                ("mcp", "dispatch-mcp", &["core"]),
+                ("app/backend", "dispatch-backend", &["core", "mcp"]),
+            ],
+        );
+        let changed = |files: &[&str]| -> Vec<String> {
+            let files: Vec<String> = files.iter().map(|file| (*file).to_owned()).collect();
+            affected(&files, &Value::Null, &workspace)
+        };
+        assert_eq!(
+            changed(&["mcp/backend/keys.rs"])[1],
+            "cargo test --locked -p dispatch-backend -p dispatch-mcp"
+        );
+        assert!(changed(&["mcp/frontend/KeysTab.tsx", "mcp/api/client.ts"]).is_empty());
     }
     #[test]
     fn each_owners_crate_is_the_one_its_directory_holds() {

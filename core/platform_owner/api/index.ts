@@ -1,4 +1,4 @@
-// The platform owner's API: health, mail, feature switches, the audit log and the Agents page.
+// The platform owner's API: health, mail, feature switches and the audit log.
 export type { PlatformHealth } from './generated/PlatformHealth';
 export type { MailMessage } from '../../accounts/api/generated/MailMessage';
 export type { DspFeatures } from './generated/DspFeatures';
@@ -10,31 +10,3 @@ export type { AuditEvent } from '../../tenancy/api/generated/AuditEvent';
 export type { AuditArea } from '../../tenancy/api/generated/AuditArea';
 export type { AuditChange } from '../../tenancy/api/generated/AuditChange';
 export type { AuditPage } from '../../tenancy/api/generated/AuditPage';
-export type { AgentAccess } from '../../mcp/api/generated/AgentAccess.js';
-export type { AgentActivity } from '../../mcp/api/generated/AgentActivity.js';
-export type { AgentActivityKey } from '../../mcp/api/generated/AgentActivityKey.js';
-export type { AgentActivityPage } from '../../mcp/api/generated/AgentActivityPage.js';
-export type { AgentAppStatus } from '../../mcp/api/generated/AgentAppStatus.js';
-export type { AgentClient } from '../../mcp/api/generated/AgentClient.js';
-export type { AgentDsp } from '../../mcp/api/generated/AgentDsp.js';
-export type { AgentKey } from '../../mcp/api/generated/AgentKey.js';
-export type { AgentKeyCreated } from '../../mcp/api/generated/AgentKeyCreated.js';
-export type { AgentKeyKind } from '../../mcp/api/generated/AgentKeyKind.js';
-export type { AgentKeyRequest } from '../../mcp/api/generated/AgentKeyRequest.js';
-export type { AgentKeys } from '../../mcp/api/generated/AgentKeys.js';
-export type { AgentKeysRevoked } from '../../mcp/api/generated/AgentKeysRevoked.js';
-export type { AgentTool } from '../../mcp/api/generated/AgentTool.js';
-export type { AgentWhoami } from '../../mcp/api/generated/AgentWhoami.js';
-export type { AgentWhoamiDsp } from '../../mcp/api/generated/AgentWhoamiDsp.js';
-export type { AgentWhoamiKey } from '../../mcp/api/generated/AgentWhoamiKey.js';
-export type { OAuthAllowedApp } from '../../mcp/api/generated/OAuthAllowedApp.js';
-export type { OAuthAllowedApps } from '../../mcp/api/generated/OAuthAllowedApps.js';
-export type { OAuthApp } from '../../mcp/api/generated/OAuthApp.js';
-export type { OAuthAppChoice } from '../../mcp/api/generated/OAuthAppChoice.js';
-export type { OAuthAppId } from '../../mcp/api/generated/OAuthAppId.js';
-export type { OAuthApproval } from '../../mcp/api/generated/OAuthApproval.js';
-export type { OAuthPairing } from '../../mcp/api/generated/OAuthPairing.js';
-export type { OAuthPairingOpened } from '../../mcp/api/generated/OAuthPairingOpened.js';
-export type { OAuthRedirect } from '../../mcp/api/generated/OAuthRedirect.js';
-export type { OAuthReplaced } from '../../mcp/api/generated/OAuthReplaced.js';
-export type { OAuthRequest } from '../../mcp/api/generated/OAuthRequest.js';

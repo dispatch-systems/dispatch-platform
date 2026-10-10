@@ -1,4 +1,4 @@
-import type { AgentKeyRequest } from '../../../core/platform_owner/api/index.js';
+import type { AgentKeyRequest } from '../../../mcp/api/index.js';
 import type { fixture } from '../../../core/shell/tests/support/support.js';
 
 type App = Awaited<ReturnType<typeof fixture>>;

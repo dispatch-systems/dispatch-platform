@@ -25,6 +25,7 @@ pub const SOURCE_ROOTS: &[&str] = &[
     "core",
     "collectors",
     "features",
+    "mcp",
     "ops/host-manager",
     "tooling/cli",
     "tooling/shared",

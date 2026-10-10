@@ -7,14 +7,15 @@ Run commands from the repository root.
 | --------------------------- | --------------------------------------------------------------------------------------------------------- |
 | `core/`                     | The platform, in parts; names no collector or feature                                                     |
 | `collectors/`               | One directory per outside site: `paycom/`, `cortex/`                                                      |
-| `features/`                 | One directory per feature: backend, API, MCP, frontend, migrations and tests                              |
+| `features/`                 | One directory per feature: backend, API, frontend, migrations and tests                                   |
+| `mcp/`                      | The MCP, whole: how outside agents connect, the tools they use and the Agents page                        |
 | `app/`                      | The assembly: the `dispatch-backend` binary, the frontend entry, whole-product tests                      |
 | `services/cloudflare-mail/` | Email Worker and its generated environment types                                                          |
 | `tooling/`                  | Build, CI, dev, scaffolding, testing, agent eval, benchmark, asset, security, mail and screenshot helpers |
 | `ops/`                      | Host manager, launchers, systemd units and host scripts                                                   |
 
-Dependencies point one way: `app → features → collectors → core`. Core, each collector, each
-feature and the app is its own crate, and each feature and collector declares what it
+Dependencies point one way: `app → mcp → features → collectors → core`. Core, each collector,
+each feature, the MCP and the app is its own crate, and each feature and collector declares what it
 contributes in its manifest (`feature.rs`, `collector.rs`). Only `app/` lists them: its list of
 features, and their place in its Cargo manifest, are written from the folders in `features/`, so
 adding a feature is adding its folder, and its `place` in its manifest sets where it is listed.
@@ -30,8 +31,8 @@ The preview prints a private fixture URL. `npm run check:rules` runs the structu
 other source checks before a push. `npm run check:ci` runs full validation;
 `npm run check:ci -- checks` runs the dashboard checks against a build. Every owner keeps its
 tests in `tests/<kind>/`: `npm test` discovers the TypeScript tests, and
-`npm run test:feature -- <name>`, `test:collector -- <site>` and `test:core -- <part>` run one
-owner's tests of every kind. Python tests use
+`npm run test:feature -- <name>`, `test:collector -- <site>`, `test:core -- <part>` and
+`test:mcp` run one owner's tests of every kind. Python tests use
 `python3 -m unittest discover -s tooling/tests -p '*_test.py'` and `-s ops/tests`.
 `dispatchdev new feature <name>` and `dispatchdev new collector <site>` start a feature or a
 collector that already builds and passes its checks.

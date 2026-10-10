@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { ownerTests, shell } from '../testing/owner-tests.js';
 
-// test:feature, test:collector and test:core, listed rather than run: the commands they would
+// test:feature, test:collector, test:core and test:mcp, listed rather than run: the commands they would
 // run name the owner's tests of every kind, found by the folder each sits in.
 
 const root = path.resolve(import.meta.dirname, '../..');
@@ -111,6 +111,17 @@ test("a core part's list names its integration tests, API tests and browser spec
     commands.includes(
       `npm run test:ui -- ${owned('core/accounts/tests/browser', /\.spec\.ts$/).join(' ')}`,
     ),
+  );
+});
+
+test("the MCP's list, which takes no name, names its crate's tests, API tests and browser specs", () => {
+  const { status, commands } = list('mcp');
+  assert.equal(status, 0);
+  assert.equal(commands[0], 'cargo test --locked -p dispatch-mcp');
+  const api = owned('mcp/tests/api', /\.test\.ts$/);
+  assert(commands.includes(`node node_modules/tsx/dist/cli.mjs --test ${api.join(' ')}`));
+  assert(
+    commands.includes(`npm run test:ui -- ${owned('mcp/tests/browser', /\.spec\.ts$/).join(' ')}`),
   );
 });
 

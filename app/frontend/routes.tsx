@@ -17,8 +17,20 @@ import {
 import { dspHash } from '../../core/shell/frontend/runtime/navigation.js';
 import { features } from './features.js';
 
-// Every owner's pages, each with its navigation, access and component, in sidebar order.
-const table: readonly Route[] = features.flatMap((feature) => feature.routes ?? []);
+// Every owner's pages, each with its navigation, access and component, in sidebar order: its
+// owner's, but a platform page that names another to follow comes right after it.
+const table: readonly Route[] = placed(features.flatMap((feature) => feature.routes ?? []));
+function placed(routes: readonly Route[]) {
+  const listed = routes.filter((route) => route.scope !== 'platform' || !route.after);
+  for (const route of routes)
+    if (route.scope === 'platform' && route.after) {
+      const at = listed.findIndex(
+        (other) => other.scope === 'platform' && other.id === route.after,
+      );
+      listed.splice(at < 0 ? listed.length : at + 1, 0, route);
+    }
+  return listed;
+}
 const allowed = (route: Route, access: Access) => !route.permission || route.permission(access);
 
 export const findRoute = (scope: Route['scope'], page: string) =>

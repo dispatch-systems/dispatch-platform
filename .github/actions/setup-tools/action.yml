@@ -37,7 +37,7 @@ runs:
       run: |
         image="${{ runner.os }}-${{ runner.arch }}-${ImageOS:-unknown}"
         echo "tools=dispatch-tools-$image-${{ hashFiles('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo/**', 'tooling/cli/**', 'tooling/shared/**', 'ops/host-manager/**', 'ops/launchers/*.py', 'tooling/build/*.py') }}" >> "$GITHUB_OUTPUT"
-        echo "fixture=dispatch-fixture-$image-${{ hashFiles('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo/**', 'app/**', 'core/**', 'collectors/**', 'features/**', 'ops/host-manager/Cargo.toml', 'tooling/cli/Cargo.toml', 'tooling/shared/Cargo.toml', 'ops/launchers/*.py', 'tooling/build/*.py') }}" >> "$GITHUB_OUTPUT"
+        echo "fixture=dispatch-fixture-$image-${{ hashFiles('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo/**', 'app/**', 'core/**', 'collectors/**', 'features/**', 'mcp/**', 'ops/host-manager/Cargo.toml', 'tooling/cli/Cargo.toml', 'tooling/shared/Cargo.toml', 'ops/launchers/*.py', 'tooling/build/*.py') }}" >> "$GITHUB_OUTPUT"
         playwright=$(jq -er '.packages["node_modules/playwright-core"].version' package-lock.json)
         echo "playwright=dispatch-playwright-${{ runner.os }}-${{ runner.arch }}-$playwright" >> "$GITHUB_OUTPUT"
         echo "DISPATCH_CI_TOOLS=$GITHUB_WORKSPACE/.ci-tools" >> "$GITHUB_ENV"

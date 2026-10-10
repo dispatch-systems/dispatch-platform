@@ -1,0 +1,40 @@
+[package]
+name = "dispatch-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+autotests = false
+
+[lib]
+path = "mcp.rs"
+doctest = false
+
+[features]
+# `dispatch_mcp::testing`, for the app's tests through its dev-dependencies.
+testing = ["dispatch-core/testing"]
+# TypeScript definitions of its API types, for the app's export test; never in a build. They
+# name core's, whose definitions core's own ts feature brings.
+ts = ["dep:ts-rs", "dispatch-core/ts"]
+
+[dependencies]
+dispatch-core = { path = "../core" }
+axum = { workspace = true }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+reqwest = { workspace = true }
+rmcp = { workspace = true }
+rusqlite = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+# Its answers keep the order their fields are written in.
+serde_json = { workspace = true, features = ["preserve_order"] }
+tokio = { workspace = true }
+ts-rs = { workspace = true, optional = true }
+url = { workspace = true }
+
+[dev-dependencies]
+dispatch-core = { path = "../core", features = ["testing"] }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

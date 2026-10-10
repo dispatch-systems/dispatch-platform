@@ -66,7 +66,7 @@ fn placed(registry: &'static Registry) -> &'static Registry {
 /// stand-in for what the features left out would bring; nothing else may run it.
 pub fn install_partial(registry: &'static Registry) {
     #[cfg(feature = "testing")]
-    crate::testing::install(registry.collectors, registry.features);
+    crate::testing::install_with(registry.agents, registry.collectors, registry.features);
     #[cfg(not(feature = "testing"))]
     panic!(
         "this build leaves features out, so only its tests run; it has {} features",

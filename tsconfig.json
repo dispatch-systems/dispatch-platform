@@ -16,5 +16,5 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["app", "core", "collectors", "features", "tooling", "*.ts"]
+  "include": ["app", "core", "collectors", "features", "mcp", "tooling", "*.ts"]
 }

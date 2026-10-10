@@ -7,7 +7,7 @@ use crate::{
     collection::{browser::Collected, registry::Provider},
     db::{self, Migration, Migrations, Store, migrations::Apply, s},
     foundation::config::Config,
-    manifest::{self, Collector, Feature, Keeper, Registry, feature, mandatory, optional},
+    manifest::{self, Agents, Collector, Feature, Keeper, Registry, feature, mandatory, optional},
     server::operations,
 };
 use serde_json::Value;
@@ -18,15 +18,29 @@ use std::{collections::BTreeSet, os::unix::fs::PermissionsExt, sync::Mutex};
 /// own tests get core alone, each integration test just what it names, and the app's module
 /// tests the app's whole registry, which holds every part they name.
 pub fn install(collectors: &[&'static dyn Collector], features: &[&'static Feature]) {
+    install_with(None, collectors, features);
+}
+
+/// Installs a registry as `install` does, with `agents` as its agents' piece: the MCP's
+/// tests install it so.
+pub fn install_with(
+    agents: Option<&'static Agents>,
+    collectors: &[&'static dyn Collector],
+    features: &[&'static Feature],
+) {
     static INSTALLING: Mutex<()> = Mutex::new(());
     let _one = INSTALLING
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let registry = manifest::installed().unwrap_or_else(|| {
-        let registry = whole(collectors, features);
+        let registry = whole(agents, collectors, features);
         manifest::install(registry);
         registry
     });
+    assert!(
+        agents.is_none_or(|agents| registry.agents.is_some_and(|a| std::ptr::eq(a, agents))),
+        "the installed registry has other agents"
+    );
     for collector in collectors {
         assert!(
             registry.collectors.iter().any(|c| c.id() == collector.id()),
@@ -43,17 +57,19 @@ pub fn install(collectors: &[&'static dyn Collector], features: &[&'static Featu
     }
 }
 
-/// A registry of `collectors` and `features`, with a stand-in for what they leave out.
+/// A registry of `agents`, `collectors` and `features`, with a stand-in for what they leave
+/// out.
 pub fn whole(
+    agents: Option<&'static Agents>,
     collectors: &[&'static dyn Collector],
     features: &[&'static Feature],
 ) -> &'static Registry {
     let mut parts = features.to_vec();
-    parts.push(stand_in(collectors, features));
+    parts.push(stand_in(agents, collectors, features));
     leak(Registry {
         collectors: leak(collectors.to_vec()),
         features: leak(parts),
-        agents: Some(&crate::mcp::testing::AGENTS),
+        agents,
     })
 }
 
@@ -62,13 +78,14 @@ pub fn whole(
 /// some of them. A stand-in takes the place of each missing owner: it keeps nothing, owns
 /// no table, and its migrations change nothing.
 fn stand_in(
+    agents: Option<&'static Agents>,
     collectors: &[&'static dyn Collector],
     features: &[&'static Feature],
 ) -> &'static Feature {
     let named = Registry {
         collectors: leak(collectors.to_vec()),
         features: leak(features.to_vec()),
-        agents: Some(&crate::mcp::testing::AGENTS),
+        agents,
     };
     let keeps: Vec<&'static dyn Keeper> = collectors
         .iter()
@@ -84,7 +101,7 @@ fn stand_in(
                 .flat_map(|collector| collector.migrations()),
         )
         .chain(features.iter().flat_map(|feature| feature.migrations))
-        .chain(crate::mcp::testing::AGENTS.migrations);
+        .chain(agents.into_iter().flat_map(|agents| agents.migrations));
     let mut missing = Vec::new();
     for kind in named.databases() {
         let ids: BTreeSet<u32> = lists

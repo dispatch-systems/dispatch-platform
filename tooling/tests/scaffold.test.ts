@@ -46,6 +46,7 @@ before(() => {
     'core',
     'collectors',
     'features',
+    'mcp',
     'ops/host-manager',
     'tooling/cli',
     'tooling/shared',
@@ -542,7 +543,7 @@ test('a tool is a file and a test in its feature, listed in its manifest, that w
 test("a second tool joins its feature's list, its module in order", async () => {
   const workspace = temporary();
   try {
-    for (const entry of ['features/dvic', 'core/mcp/backend/tools']) {
+    for (const entry of ['features/dvic', 'mcp/backend/tools']) {
       fs.cpSync(entry, path.join(workspace, entry), { recursive: true });
     }
     const first = (await planTool(workspace, ['dvic', 'short_inspections'])).plan;

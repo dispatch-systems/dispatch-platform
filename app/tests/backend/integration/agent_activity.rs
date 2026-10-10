@@ -6,13 +6,13 @@ use dispatch_core::{
     State,
     db::{self, Store, s},
     foundation::{config::Config, crypto},
-    mcp::{
-        activity,
-        api::types::{AgentActivityKey, AgentKeyKind, AgentKeyRequest},
-        oauth,
-        piece::Kept,
-    },
     server::operations,
+};
+use dispatch_mcp::{
+    ActivityStore, KeyStore, activity,
+    api::types::{AgentActivityKey, AgentKeyKind, AgentKeyRequest},
+    oauth,
+    piece::Kept,
 };
 use serde_json::{Value, json};
 use std::{os::unix::fs::PermissionsExt, sync::Arc};

@@ -12,6 +12,7 @@ import {
   platformHash,
   signInHash,
 } from '../../../shell/frontend/runtime/navigation.js';
+import { routeOf } from '../../../shell/frontend/runtime/slots.js';
 import { clearSignInHandoff, getSignInHandoff } from '../sign-in-handoff.js';
 export function SignInScreen({ onLogin }: { onLogin: () => Promise<void> }) {
   const [handoff] = useState(getSignInHandoff);
@@ -42,9 +43,11 @@ export function SignInScreen({ onLogin }: { onLogin: () => Promise<void> }) {
           rememberMe: form.get('rememberMe') === 'on',
         });
         await onLogin();
-        // A DSP's page, or an app waiting for approval, stays where it was asked for.
+        // A DSP's page, or a link to a platform page that keeps it, such as an app waiting
+        // for approval, stays where it was asked for.
         const address = window.location.hash;
-        if (!parseHash(address).dspId && !address.startsWith('#authorize?'))
+        const { dspId, page } = parseHash(address);
+        if (!dspId && !(address.includes('?') && routeOf('platform', page)?.linked))
           navigate(platformHash());
       }
       if (mode === 'forgot') {

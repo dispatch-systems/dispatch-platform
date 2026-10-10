@@ -6,11 +6,12 @@ use dispatch_core::{
     State,
     db::{self, Store, s},
     foundation::{config::Config, crypto},
-    mcp::{
-        oauth::network::{Network, Pending},
-        piece::Kept,
-    },
     server::operations,
+};
+use dispatch_mcp::{
+    GuardStore, OAuthStore,
+    oauth::network::{Network, Pending},
+    piece::Kept,
 };
 use serde_json::{Value, json};
 use std::{os::unix::fs::PermissionsExt, sync::Arc};
@@ -2489,7 +2490,7 @@ async fn in_fixture_mode_the_sample_website_connects_without_the_network() {
             json!({"id":"web","allowed":true}),
         )
         .await;
-    let site = dispatch_core::mcp::oauth::network::FIXTURE_APP;
+    let site = dispatch_mcp::oauth::network::FIXTURE_APP;
     let callback = "https://app.dispatch.test/oauth/callback";
     let tokens = server
         .connect(&owner, site, callback, everything("Example web app"))
@@ -3171,4 +3172,61 @@ async fn agents_ask_for_no_recent_verification_while_removing_a_dsp_still_does()
             "{path}"
         );
     }
+}
+
+#[tokio::test]
+async fn an_app_stops_renewing_and_connecting_once_its_owner_is_no_platform_owner() {
+    let server = Server::paired().await;
+    let owner = server.owner().await;
+    let local = "http://127.0.0.1:61007/callback";
+    let tokens = server
+        .connect(&owner, CLAUDE_CODE, local, everything("Laptop"))
+        .await;
+    // An approval waiting to be redeemed, from the same owner.
+    let request = server.requested(CHATGPT, CHATGPT_REDIRECT).await;
+    let code = server.approved(&owner, &request, everything("Desk")).await;
+    let standing = |platform_owner: i64| {
+        let state = server.state.clone();
+        async move {
+            state
+                .run(move |db| {
+                    db.platform.exec(
+                        "UPDATE users SET platform_owner=? WHERE email='owner@dispatch.test'",
+                        [platform_owner],
+                    )?;
+                    Ok(())
+                })
+                .await
+                .unwrap()
+        }
+    };
+    standing(0).await;
+    let refused = server
+        .refresh(CLAUDE_CODE, s(&tokens, "refresh_token"))
+        .await;
+    assert_eq!(
+        (
+            s(&refused.body, "error"),
+            s(&refused.body, "error_description")
+        ),
+        ("invalid_grant", "The connection was ended"),
+        "{}",
+        refused.body
+    );
+    let redeemed = server.exchange(CHATGPT, CHATGPT_REDIRECT, &code).await;
+    assert_eq!(
+        (
+            s(&redeemed.body, "error"),
+            s(&redeemed.body, "error_description")
+        ),
+        ("invalid_grant", "The approval no longer stands"),
+        "{}",
+        redeemed.body
+    );
+    // A platform owner again, the app renews as it stood: the refusal spent nothing.
+    standing(1).await;
+    let renewed = server
+        .refresh(CLAUDE_CODE, s(&tokens, "refresh_token"))
+        .await;
+    assert_eq!(renewed.status, 200, "{}", renewed.body);
 }

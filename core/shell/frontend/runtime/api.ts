@@ -66,11 +66,6 @@ const labels: Record<string, string> = {
   browser_capacity: 'Browser capacity is full. Try again shortly.',
   rate_limited: 'Too many attempts. Wait a few minutes and try again.',
   invalid_credentials: 'The provider could not verify those credentials.',
-  agent_key_name_taken: 'Another key already uses this name.',
-  agent_key_limit: 'You can have up to 50 keys in use. Revoke one first.',
-  agent_key_revoked: 'This key was revoked. Make a new one instead.',
-  agent_key_not_found: 'This key no longer exists. Refresh the page.',
-  invalid_expiry: 'Choose an expiry between tomorrow and five years from now.',
 };
 const recoveryCodeResponses = new Set([
   '/api/auth/security/passkeys/register/finish',

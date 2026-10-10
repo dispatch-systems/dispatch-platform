@@ -13,7 +13,7 @@ const plan = JSON.parse(fs.readFileSync(new URL('./test-plan.json', import.meta.
 };
 
 /** Where tests live: each owner's `tests/<kind>/`, the tooling's `tooling/tests/` and ops' `ops/tests/`. */
-export const testRoots = ['app', 'collectors', 'core', 'features', 'tooling', 'ops'];
+export const testRoots = ['app', 'collectors', 'core', 'features', 'mcp', 'tooling', 'ops'];
 /** Every other test file: the api job runs these, so nothing runs twice in a full run. */
 export function allTests(roots = testRoots) {
   return roots

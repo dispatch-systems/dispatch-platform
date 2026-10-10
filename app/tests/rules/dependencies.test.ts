@@ -14,7 +14,7 @@ import {
 } from './support/repo.js';
 import { lex, rust, useTree } from './support/rust.js';
 
-// Dependencies point one way, app → features → collectors → core, and are declared: a
+// Dependencies point one way, app → mcp → features → collectors → core, and are declared: a
 // feature's manifest names the features and collectors it uses, its Cargo.toml lists the
 // same, and its Rust reaches nothing else. plans/restructure/enforcement.md, sections 1 and 3.
 // What a feature's TypeScript may import is encapsulation.test.ts's rule, from the same list.
@@ -57,6 +57,18 @@ test("core's Cargo.toml lists none of our crates", () => {
   const listed = isFile('core/Cargo.toml')
     ? [true, false].flatMap((dev) => workspaceDependencies(readCrate('core/Cargo.toml'), dev))
     : [];
+  assert.deepEqual(
+    listed.filter((dir) => dir !== 'core'),
+    [],
+  );
+});
+
+// The MCP sits above the features, but uses only core until a rule names what else it may.
+test("the MCP's Cargo.toml lists core and none other of our crates", () => {
+  const listed = isFile('mcp/Cargo.toml')
+    ? [true, false].flatMap((dev) => workspaceDependencies(readCrate('mcp/Cargo.toml'), dev))
+    : [];
+  assert(listed.includes('core'), 'the MCP depends on core');
   assert.deepEqual(
     listed.filter((dir) => dir !== 'core'),
     [],

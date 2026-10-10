@@ -2,7 +2,7 @@
 //! answers, and the feature it belongs to. Agents rely on every word of it, so a change shows in
 //! review as a change to app/tests/backend/snapshots/agent-tools.json.
 use crate::snapshot;
-use dispatch_core::mcp::tools::{Effect, Scope, Toolbox};
+use dispatch_mcp::tools::{Effect, Scope, Toolbox};
 use serde_json::{Value, json};
 
 #[cfg(feature = "default")]
