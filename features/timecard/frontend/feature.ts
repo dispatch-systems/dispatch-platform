@@ -61,7 +61,6 @@ export const feature: FrontendFeature = {
     },
   ],
   platformSlots: () => import('./platform-slots.js'),
-  people: () => import('./people.js'),
   replies,
   scheduleIssues: {
     schedule_scope_required: 'Run an initial Meal Break collection to set up the DSP’s station.',

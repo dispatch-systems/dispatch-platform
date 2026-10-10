@@ -20,5 +20,4 @@ export const feature: FrontendFeature = {
     },
   ],
   platformSlots: () => import('./platform-slots.js'),
-  people: () => import('./people.js'),
 };

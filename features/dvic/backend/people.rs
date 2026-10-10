@@ -14,6 +14,7 @@ const DATA: PeopleData = PeopleData {
     order: 40,
     label: "DVIC",
     unit: "inspection",
+    icon: "ClipboardCheck",
 };
 pub struct Drivers;
 impl People for Drivers {

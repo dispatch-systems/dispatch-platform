@@ -31,6 +31,9 @@ pub struct PeopleData {
     pub label: &'static str,
     /// What one of its records is, singular, to count a person's: "inspection".
     pub unit: &'static str,
+    /// Its icon where people are listed, by the name lucide-react exports it as:
+    /// "ClipboardCheck".
+    pub icon: &'static str,
 }
 /// The collected data a person can appear in: compared, hashed, sent and read by its id, and
 /// in TypeScript the union of the declared ids.
@@ -63,6 +66,9 @@ impl DriverData {
     }
     pub const fn unit(self) -> &'static str {
         self.0.unit
+    }
+    pub const fn icon(self) -> &'static str {
+        self.0.icon
     }
 }
 impl PartialEq for DriverData {

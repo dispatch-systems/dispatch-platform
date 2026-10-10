@@ -6,6 +6,4 @@ export const feature: FrontendFeature = {
   name: 'daily_performance',
   // Its switch's icon on the DSPs page.
   platformSlots: () => import('./platform-slots.js'),
-  // Its data's icon in the lists of people.
-  people: () => import('./people.js'),
 };

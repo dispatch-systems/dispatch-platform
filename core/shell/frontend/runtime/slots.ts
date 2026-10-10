@@ -272,11 +272,6 @@ export type FrontendFeature = {
   pageTabs?: readonly PageTab[];
   /** Loads its module that exports what it puts in the platform owner's slots, as `slots`. */
   platformSlots?: () => Promise<{ slots: PlatformSlots }>;
-  /**
-   * Loads its module that exports the icon of each kind of its collected data that names
-   * people, by the kind's id, as `icons`: the lists of people load them.
-   */
-  people?: () => Promise<{ icons: Record<string, LucideIcon> }>;
   /** Its connection's card. */
   connectionCard?: ConnectionCard;
   /** Its cards on a DSP's Connections tab. */
@@ -299,8 +294,6 @@ export function installFeatures(features: readonly FrontendFeature[]) {
   installed = features;
   loadedSlots = [];
   slotsLoad = undefined;
-  loadedIcons = {};
-  iconsLoad = undefined;
 }
 
 /** The installed page at an address. */
@@ -440,24 +433,3 @@ export const auditWording = () => loadedSlots.flatMap((slots) => slots.auditWord
 
 /** How Diagnostics words every collection's runs, as the first owner listed with it does. */
 export const runWording = () => loadedSlots.find((slots) => slots.runWording)?.runWording;
-
-let loadedIcons: Record<string, LucideIcon> = {};
-let iconsLoad: Promise<void> | undefined;
-/**
- * Loads every owner's icons of the kinds of data that name people, once; a failed load is tried
- * again next time. `peopleIcon` finds nothing until it has loaded.
- */
-export function loadPeopleIcons() {
-  iconsLoad ??= Promise.all(
-    installed.flatMap(({ people }) => (people ? [people().then(({ icons }) => icons)] : [])),
-  ).then(
-    (icons) => void (loadedIcons = Object.assign({}, ...icons)),
-    (error: unknown) => {
-      iconsLoad = undefined;
-      throw error;
-    },
-  );
-  return iconsLoad;
-}
-/** The icon of a kind of collected data that names people, once they have loaded. */
-export const peopleIcon = (kind: string): LucideIcon | undefined => loadedIcons[kind];

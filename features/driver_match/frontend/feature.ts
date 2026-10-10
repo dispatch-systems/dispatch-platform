@@ -1,15 +1,10 @@
 import { createElement, lazy } from 'react';
 import { begins } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
-import {
-  loadPeopleIcons,
-  type FrontendFeature,
-} from '../../../core/shell/frontend/runtime/slots.js';
+import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
 import { replies } from '../api/runtime.js';
 
-// The tab's code, with the icon each feature gives its kinds of data.
-const load = () =>
-  Promise.all([import('./index.js'), loadPeopleIcons()]).then(([module]) => module);
+const load = () => import('./index.js');
 const loadBadge = () => import('./badge.js');
 const DriverMatchSettings = lazy(() =>
   load().then((module) => ({ default: module.DriverMatchSettings })),

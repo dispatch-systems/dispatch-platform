@@ -7,5 +7,6 @@ name. The frontend's slots are typed in `core/shell/frontend/runtime/slots.ts`.
 It holds the people slot's words too (`people`): the sources whose IDs name drivers, the kinds
 of collected data that name them and where a person stands, which Driver Match and the
 features that name people share, written to TypeScript in `api/generated/`. Each kind is
-written there with its label and unit too, in their order (`driver-data.ts`), and its icon is
-in its feature's frontend `people` slot, which the lists of people load.
+written there with its label, unit and icon too, in their order (`driver-data.ts`, which
+imports the icons from lucide-react by the names the kinds declare), and only the lists of
+people load it.

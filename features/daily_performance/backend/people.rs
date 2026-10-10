@@ -11,6 +11,7 @@ const DATA: PeopleData = PeopleData {
     order: 60,
     label: "Daily Performance",
     unit: "day",
+    icon: "CalendarDays",
 };
 pub struct Drivers;
 impl People for Drivers {

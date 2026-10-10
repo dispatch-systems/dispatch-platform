@@ -1,8 +1,8 @@
 import type { DriverData } from '../api/index.js';
-import { peopleIcon } from '../../../core/shell/frontend/runtime/slots.js';
+import { dataKind } from './driver-match.js';
 
 /** A kind of collected data's icon, as the feature whose data it is declares it. */
 export function DataIcon({ kind, size }: { kind: DriverData; size: number }) {
-  const Icon = peopleIcon(kind);
+  const Icon = dataKind(kind)?.icon;
   return Icon ? <Icon size={size} aria-hidden="true" /> : null;
 }

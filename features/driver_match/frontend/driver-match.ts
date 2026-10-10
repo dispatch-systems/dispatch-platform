@@ -56,12 +56,13 @@ export const statusTones: Record<DriverStatus, string> = {
 
 /** Every kind of collected data a person can appear in, in their order, as the features declare them. */
 export const dataKinds: readonly DriverData[] = driverData.map((kind) => kind.id);
-const kindOf = (data: DriverData) => driverData.find((kind) => kind.id === data);
+/** A kind of collected data as its feature declares it: its label, unit and icon. */
+export const dataKind = (data: DriverData) => driverData.find((kind) => kind.id === data);
 /** How a kind of collected data is named. */
-export const dataLabel = (data: DriverData) => kindOf(data)?.label ?? data;
+export const dataLabel = (data: DriverData) => dataKind(data)?.label ?? data;
 /** How much of one kind of data a person has, in its own unit. */
 export function dataAmount(data: DriverData, count: number) {
-  const unit = kindOf(data)?.unit ?? 'record';
+  const unit = dataKind(data)?.unit ?? 'record';
   return `${count.toLocaleString('en-US')} ${unit}${count === 1 ? '' : 's'}`;
 }
 

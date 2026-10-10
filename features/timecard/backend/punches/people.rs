@@ -17,6 +17,7 @@ const DATA: PeopleData = PeopleData {
     order: 10,
     label: "Timecards",
     unit: "day",
+    icon: "CalendarDays",
 };
 pub struct Employees;
 impl People for Employees {

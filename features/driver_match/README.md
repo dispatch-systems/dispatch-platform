@@ -22,9 +22,9 @@ only what was decided.
   merged into.
 - **Matching:** after every collection that finishes, and hourly to catch up anything missed,
   every ID the DSP's data holds gets a code. Each feature whose data names people declares the
-  kind of data it is in its `people` (`PeopleData`: its id, order, label and unit), and the
-  kind's icon in its frontend's `people`. Driver Match reads them all, in their order, and
-  names no kind itself, so a build without a feature lists its kinds nowhere. Someone only one source knows, off Paycom's roster and unseen for 21 days before the
+  kind of data it is in its `people` (`PeopleData`: its id, order, label, unit and icon).
+  Driver Match reads them all, in their order, from the generated `driver-data.ts`, and names
+  no kind itself, so a build without a feature lists its kinds nowhere. Someone only one source knows, off Paycom's roster and unseen for 21 days before the
   newest data, counts as having left. People outside the departments a source's settings count
   as drivers work in the office.
 - **Log:** its decisions are audited as `driver_match.merged`, `driver_match.split` and

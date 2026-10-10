@@ -21,6 +21,7 @@ const DATA: PeopleData = PeopleData {
     order: 50,
     label: "Weekly Scorecard",
     unit: "week",
+    icon: "Award",
 };
 pub struct Drivers;
 impl People for Drivers {

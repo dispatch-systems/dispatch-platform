@@ -34,7 +34,8 @@ const COLLECTIONS: &str = "core/collection/api/generated/collections.ts";
 /// The kinds of record an audit event names, core's and the features', which the audit
 /// log's reply check accepts.
 const AUDIT_SUBJECTS: &str = "core/tenancy/api/generated/audit-subjects.ts";
-/// The kinds of collected data that name people, in their order, as lists of people name them.
+/// The kinds of collected data that name people, in their order, as lists of people show them.
+/// Only those lists import it, with the icons it imports.
 const DRIVER_DATA: &str = "core/manifest/api/generated/driver-data.ts";
 
 fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
@@ -216,16 +217,29 @@ fn audit_subjects() -> String {
 }
 
 /// Every kind of collected data the features' people declare, in their order, with how it is
-/// named and what one of its records is.
+/// named, what one of its records is and its icon, imported from lucide-react by its name.
 fn driver_data() -> String {
-    use serde_json::json;
-    let kinds: Vec<_> = DriverData::all()
-        .map(|data| json!({"id": data.as_str(), "label": data.label(), "unit": data.unit()}))
-        .collect();
-    generated(
-        "the kinds of data the features' people declare",
-        &[("driverData", kinds.into())],
-    )
+    use std::collections::BTreeSet;
+    let quoted = |text: &str| serde_json::to_string(text).unwrap();
+    let icons: BTreeSet<_> = DriverData::all().map(DriverData::icon).collect();
+    let mut text = "// Generated from the kinds of data the features' people declare.\n\
+        // Run `npm run contracts:generate` after changing them.\n"
+        .to_owned();
+    if !icons.is_empty() {
+        let names: Vec<_> = icons.into_iter().collect();
+        text += &format!("import {{ {} }} from 'lucide-react';\n", names.join(", "));
+    }
+    text += "export const driverData = [\n";
+    for data in DriverData::all() {
+        text += &format!(
+            "  {{ id: {}, label: {}, unit: {}, icon: {} }},\n",
+            quoted(data.as_str()),
+            quoted(data.label()),
+            quoted(data.unit()),
+            data.icon()
+        );
+    }
+    text + "] as const;\n"
 }
 
 /// Runtime catalogs, exported from their actual values rather than Rust source formatting.

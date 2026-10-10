@@ -4,14 +4,11 @@ import '../support/manifests.js';
 import { featureCatalog } from '../../../core/shell/frontend/runtime/features.js';
 import { features } from '../../frontend/features.js';
 import { errorLabel } from '../../../core/shell/frontend/runtime/api.js';
-import { driverData } from '../../../core/manifest/api/generated/driver-data.js';
 import {
   cacheRules,
   connectionCard,
   connectionCards,
-  loadPeopleIcons,
   loadPlatformSlots,
-  peopleIcon,
   switchIcon,
 } from '../../../core/shell/frontend/runtime/slots.js';
 
@@ -31,16 +28,6 @@ test("each page's switch has its icon, declared once", async () => {
   await loadPlatformSlots();
   for (const page of featureCatalog.filter((entry) => entry.kind === 'page'))
     assert(switchIcon(page.id), `${page.id} has no icon`);
-});
-
-test('each kind of data that names people has its icon, declared once', async () => {
-  const modules = await Promise.all(features.map((feature) => feature.people?.()));
-  once(
-    modules.flatMap((module) => Object.keys(module?.icons ?? {})),
-    'icons of kinds of data',
-  );
-  await loadPeopleIcons();
-  for (const kind of driverData) assert(peopleIcon(kind.id), `${kind.id} has no icon`);
 });
 
 test('each connection has one card', () => {

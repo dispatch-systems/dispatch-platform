@@ -14,6 +14,7 @@ const DATA: PeopleData = PeopleData {
     order: 20,
     label: "Routes",
     unit: "day",
+    icon: "Route",
 };
 pub struct Drivers;
 impl People for Drivers {

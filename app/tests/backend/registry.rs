@@ -94,6 +94,7 @@ const AGAIN: PeopleData = PeopleData {
     order: 99,
     label: "Routes",
     unit: "day",
+    icon: "Route",
 };
 impl People for Again {
     fn data(&self) -> DriverData {
