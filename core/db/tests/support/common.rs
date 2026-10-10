@@ -83,7 +83,8 @@ fn stand_in(
                 .iter()
                 .flat_map(|collector| collector.migrations()),
         )
-        .chain(features.iter().flat_map(|feature| feature.migrations));
+        .chain(features.iter().flat_map(|feature| feature.migrations))
+        .chain(crate::mcp::testing::AGENTS.migrations);
     let mut missing = Vec::new();
     for kind in named.databases() {
         let ids: BTreeSet<u32> = lists
