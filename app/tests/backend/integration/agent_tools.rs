@@ -261,7 +261,7 @@ async fn mcp_uses_current_dsp_reach_for_an_admitted_caller() {
             .collect()
     };
     let who = admitted_mcp(&state, &caller, "tools/call", json!({"name":"whoami"})).await;
-    assert_eq!(reached(&who), [dsp.clone()]);
+    assert_eq!(reached(&who), std::slice::from_ref(&dsp));
     // The owner gives the key another DSP instead: the admitted caller reaches only that.
     let (actor, key, granted) = (user.clone(), made.key.id.clone(), second.clone());
     state
@@ -272,7 +272,7 @@ async fn mcp_uses_current_dsp_reach_for_an_admitted_caller() {
         .await
         .unwrap();
     let who = admitted_mcp(&state, &caller, "tools/call", json!({"name":"whoami"})).await;
-    assert_eq!(reached(&who), [second.clone()]);
+    assert_eq!(reached(&who), std::slice::from_ref(&second));
     // Suspended, it is reached no longer.
     state
         .run(move |db| {
