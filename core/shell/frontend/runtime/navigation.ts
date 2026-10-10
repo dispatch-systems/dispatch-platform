@@ -70,12 +70,19 @@ export function parseHash(hash: string) {
   };
 }
 export const hashQuery = () => new URLSearchParams(window.location.hash.split('?')[1]);
-/** Read a one-time link secret once, then remove it from browser history immediately. */
+const linkTokens: { invite?: string; reset?: string } = {};
+/**
+ * A one-time link's secret, removed from browser history as soon as it is read. React may
+ * render the screen that reads it again, or throw a first render away and render it anew, so
+ * the secret is remembered while the address stays at the link's page, and forgotten once it
+ * leaves.
+ */
 export function consumeHashToken(kind: 'invite' | 'reset') {
-  if (!window.location.hash.startsWith(`#${kind}?`)) return undefined;
-  const token = hashQuery().get('token') ?? '';
-  history.replaceState(history.state, '', `${location.pathname}${location.search}#${kind}`);
-  return token;
+  if (window.location.hash.startsWith(`#${kind}?`)) {
+    linkTokens[kind] = hashQuery().get('token') ?? '';
+    history.replaceState(history.state, '', `${location.pathname}${location.search}#${kind}`);
+  } else if (window.location.hash !== `#${kind}`) linkTokens[kind] = undefined;
+  return linkTokens[kind];
 }
 /** Records a page's own state in the address without navigating. */
 export function replaceHashQuery(query: Record<string, string>) {
