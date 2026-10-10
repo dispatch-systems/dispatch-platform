@@ -87,7 +87,10 @@ fn each_collection_writes_the_domain_it_did() {
             )
         })
         .collect();
-    snapshot::check("collection-domains.json", &json!(written));
+    // The whole product's; a build without the feature keeping a collection writes another.
+    if cfg!(feature = "default") {
+        snapshot::check("collection-domains.json", &json!(written));
+    }
     for (kind, name) in written {
         let kind = JobKind::parse(kind).unwrap();
         assert_eq!(

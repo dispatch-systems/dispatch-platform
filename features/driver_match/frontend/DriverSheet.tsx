@@ -5,8 +5,8 @@ import { splitDriver, useDriverDetails } from '../api/client.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import {
   dataAmount,
-  dataLabels,
-  dataOrder,
+  dataKinds,
+  dataLabel,
   eventText,
   goesBy,
   seenRange,
@@ -14,7 +14,7 @@ import {
 } from './driver-match.js';
 import { time } from '../../../core/shell/frontend/lib/format.js';
 import { ConfirmDialog, DataState, Modal } from '../../../core/shell/frontend/ui/index.js';
-import { dataIcons } from './dataIcons.js';
+import { DataIcon } from './DataIcon.js';
 import { DayStrip } from './DayStrip.js';
 import { DriverAvatar } from './DriverAvatar.js';
 import { DriverTag } from './DriverTag.js';
@@ -109,16 +109,15 @@ export function DriverSheet({
               <h3 id="driver-activity">Appears in</h3>
               {data.activity.length ? (
                 <dl className="driver-activity">
-                  {dataOrder
+                  {dataKinds
                     .filter((kind) => data.activity.some((a) => a.data === kind))
                     .map((kind) => {
-                      const Icon = dataIcons[kind];
                       const count = data.activity.find((a) => a.data === kind)!.count;
                       return (
                         <div key={kind}>
                           <dt>
-                            <Icon size={14} aria-hidden="true" />
-                            {dataLabels[kind]}
+                            <DataIcon kind={kind} size={14} />
+                            {dataLabel(kind)}
                           </dt>
                           <dd>{dataAmount(kind, count)}</dd>
                         </div>

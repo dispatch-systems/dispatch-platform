@@ -8,6 +8,7 @@ import type {
   DriverStatus,
 } from '../api/index.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
+import { driverData } from '../../../core/manifest/api/generated/driver-data.js';
 
 export type DriverFilter = 'all' | 'matched' | 'review' | 'paycom' | 'amazon' | 'office' | 'former';
 export const driverFilters: [DriverFilter, string][] = [
@@ -53,25 +54,15 @@ export const statusTones: Record<DriverStatus, string> = {
   former: 'neutral',
 };
 
-export const dataLabels: Record<DriverData, string> = {
-  timecards: 'Timecards',
-  routes: 'Routes',
-  meal_breaks: 'Meal breaks',
-  dvic: 'DVIC',
-  daily_performance: 'Daily Performance',
-  weekly_scorecard: 'Weekly Scorecard',
-};
-export const dataOrder: DriverData[] = [
-  'timecards',
-  'routes',
-  'meal_breaks',
-  'dvic',
-  'weekly_scorecard',
-  'daily_performance',
-];
+/** Every kind of collected data a person can appear in, in their order, as the features declare them. */
+export const dataKinds: readonly DriverData[] = driverData.map((kind) => kind.id);
+/** A kind of collected data as its feature declares it: its label, unit and icon. */
+export const dataKind = (data: DriverData) => driverData.find((kind) => kind.id === data);
+/** How a kind of collected data is named. */
+export const dataLabel = (data: DriverData) => dataKind(data)?.label ?? data;
 /** How much of one kind of data a person has, in its own unit. */
 export function dataAmount(data: DriverData, count: number) {
-  const unit = data === 'dvic' ? 'inspection' : data === 'weekly_scorecard' ? 'week' : 'day';
+  const unit = dataKind(data)?.unit ?? 'record';
   return `${count.toLocaleString('en-US')} ${unit}${count === 1 ? '' : 's'}`;
 }
 

@@ -12,6 +12,9 @@ use dispatch_cortex as cortex;
 const DATA: PeopleData = PeopleData {
     id: "meal_breaks",
     order: 30,
+    label: "Meal breaks",
+    unit: "day",
+    icon: "Utensils",
 };
 pub struct MealDrivers;
 impl People for MealDrivers {
