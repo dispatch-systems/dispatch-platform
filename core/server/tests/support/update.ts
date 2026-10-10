@@ -53,9 +53,12 @@ export async function runAnswered(page: Page, ms: number) {
   if (counted === undefined) throw new Error('countUpdateChecks(page) before the page loads');
   for (let ran = 0; ran < ms; ran += 1000) {
     await page.clock.runFor(Math.min(1000, ms - ran));
-    // A reload the update starts empties the count with the page it leaves.
+    // A reload the update starts takes the count with the page it leaves: until the next
+    // page answers with its own, nothing is known.
     await expect
-      .poll(() => page.evaluate(() => (window as unknown as Counted).updateChecks ?? 0))
+      .poll(() =>
+        page.evaluate(() => (window as unknown as Counted).updateChecks).catch(() => undefined),
+      )
       .toBe(0);
   }
 }
