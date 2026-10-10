@@ -21,6 +21,7 @@ const columns: TableColumn<Day>[] = [
     id: 'date',
     header: 'Date',
     rowHeader: true,
+    sticky: true,
     cell: (day, { expanded, toggle }) => (
       <div className="meal-employee">
         {day.line && day.line.index === 0 && (
