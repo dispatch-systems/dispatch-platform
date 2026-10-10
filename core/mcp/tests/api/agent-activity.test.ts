@@ -44,7 +44,7 @@ test('the Activity log lists what a key called over REST and MCP, written down i
   });
   const called = await mcp.json();
   assert.equal(called.result.isError, true, JSON.stringify(called));
-  assert.match(called.result.content[0].text, /^unknown_parameter/);
+  assert.match(called.result.content[0].text, /^invalid_input/);
 
   // The scheduler writes calls down every few seconds; until then the log has none of them.
   let page: AgentActivityPage = { rows: [], next: null };
@@ -56,7 +56,7 @@ test('the Activity log lists what a key called over REST and MCP, written down i
   assert.deepEqual(
     page.rows.map((row) => [row.surface, row.outcome]),
     [
-      ['mcp:whoami', 'unknown_parameter'],
+      ['mcp:whoami', 'invalid_input'],
       ['rest:whoami', 'ok'],
     ],
   );

@@ -8,10 +8,22 @@ use crate::{
     db::{self, Migration, Migrations, Store, migrations::Apply, s},
     foundation::config::Config,
     manifest::{self, Collector, Feature, Keeper, Registry, feature, mandatory, optional},
+    mcp::{
+        Caller,
+        api::types::{AgentAccess, AgentKeyRequest},
+        tools::{Answer, Toolbox},
+    },
     server::operations,
 };
-use serde_json::Value;
-use std::{collections::BTreeSet, os::unix::fs::PermissionsExt, sync::Mutex};
+use serde_json::{Value, json};
+use std::{
+    collections::BTreeSet,
+    os::unix::fs::PermissionsExt,
+    sync::{
+        Mutex,
+        atomic::{AtomicU32, Ordering},
+    },
+};
 
 /// Installs a registry of `collectors` and `features`, what a test needs beside core,
 /// unless one holding them is installed already. A test binary holds one registry: core's
@@ -171,6 +183,33 @@ pub fn seeded() -> (tempfile::TempDir, Store) {
     let (root, db) = store();
     operations::seed(&db).unwrap();
     (root, db)
+}
+
+/// A key the platform owner made with `access`, reaching `dsps`, as an agent signs in with it.
+pub fn agent(db: &Store, dsps: &[&str], access: AgentAccess) -> Caller {
+    static MADE: AtomicU32 = AtomicU32::new(0);
+    let made = MADE.fetch_add(1, Ordering::Relaxed);
+    let request = AgentKeyRequest::parse(&json!({
+        "name": format!("Test agent {made}"),
+        "allDsps": dsps.is_empty(),
+        "dsps": dsps,
+        "access": access,
+        "expiresAt": null,
+    }))
+    .unwrap();
+    let key = db.create_agent_key(&platform_owner(db), &request).unwrap();
+    db.authenticate_agent(&key.token, "test").unwrap()
+}
+
+/// Calls a tool of the installed registry as `caller`, checked as the MCP server checks a
+/// call: `call_tool(&db, &caller, "approve_timecard", json!({"dsp": dsp, "date": "…"}))`.
+pub fn call_tool(db: &Store, caller: &Caller, name: &str, arguments: Value) -> Answer<Value> {
+    let Value::Object(arguments) = arguments else {
+        panic!("a tool's arguments are an object");
+    };
+    Toolbox::installed()
+        .invoke(db, caller, name, arguments)
+        .answer
 }
 
 /// The newest audit events the platform (`None`) or one DSP may see.

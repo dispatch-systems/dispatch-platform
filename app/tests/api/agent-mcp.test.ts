@@ -127,7 +127,7 @@ test('any MCP client connects with a key, on every protocol version', async (t) 
   assert.equal(long.isError, true);
   assert.ok(!long.content[0].text.includes(longName));
   const extra = await call(full, 'whoami', { dsp: 'Northline Logistics' });
-  assert.match(extra.content[0].text, /^unknown_parameter: whoami takes no arguments/);
+  assert.match(extra.content[0].text, /^invalid_input: unknown field `dsp`/);
 
   // 2026-07-28 drops the handshake: each request says who it is and what it speaks.
   const meta = {

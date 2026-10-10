@@ -317,7 +317,7 @@ async fn rest_and_mcp_calls_are_held_then_written_with_their_outcome() {
         [
             row("rest:whoami", "key", "-", "ok"),
             row("mcp:whoami", "key", "-", "ok"),
-            row("mcp:whoami", "key", "-", "unknown_parameter"),
+            row("mcp:whoami", "key", "-", "invalid_input"),
             row("mcp:unknown", "key", "-", "unknown_tool"),
             row("rest:whoami", "app", "-", "ok"),
             row("mcp:get_profile", "app", "-", "ok"),

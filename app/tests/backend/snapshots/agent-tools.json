@@ -1,0 +1,84 @@
+[
+  {
+    "name": "get_profile",
+    "title": "Current Dispatch profile",
+    "description": "Return the stable Dispatch profile represented by this request's authenticated credentials.",
+    "feature": null,
+    "part": null,
+    "changes": false,
+    "dsp": false,
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {}
+    },
+    "output": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "Opaque profile identifier, stable across refresh and reconnection.",
+          "type": "string"
+        },
+        "name": {"description": "Display name for the authenticated profile.", "type": "string"}
+      }
+    }
+  },
+  {
+    "name": "whoami",
+    "title": "This connection",
+    "description": "Return this connection's name, access and expiry, the time now, and each DSP it reaches with the DSP's own date today.",
+    "feature": null,
+    "part": null,
+    "changes": false,
+    "dsp": false,
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {}
+    },
+    "output": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$defs": {
+        "AgentWhoamiKey": {
+          "type": "object",
+          "properties": {
+            "name": {"type": "string"},
+            "access": {"$ref": "#/$defs/AgentAccess"},
+            "expiresAt": {"type": ["string", "null"]}
+          },
+          "required": ["name", "access"]
+        },
+        "AgentAccess": {
+          "description": "What an agent key may do: look things up, or also run collections and test\nconnections.",
+          "type": "string",
+          "enum": ["read", "operator"]
+        },
+        "Environment": {"type": "string", "enum": ["preview", "production"]},
+        "AgentWhoamiDsp": {
+          "description": "A DSP as an agent sees it: its local date, so \"today\" and \"yesterday\" mean the DSP's.",
+          "type": "object",
+          "properties": {
+            "id": {"type": "string"},
+            "name": {"type": "string"},
+            "timezone": {"type": "string"},
+            "today": {"type": "string"}
+          },
+          "required": ["id", "name", "timezone", "today"]
+        }
+      },
+      "required": ["key", "environment", "now", "dsps"],
+      "type": "object",
+      "properties": {
+        "key": {"$ref": "#/$defs/AgentWhoamiKey"},
+        "environment": {"$ref": "#/$defs/Environment"},
+        "now": {"type": "string"},
+        "dsps": {"type": "array", "items": {"$ref": "#/$defs/AgentWhoamiDsp"}}
+      }
+    }
+  }
+]

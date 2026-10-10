@@ -35,6 +35,7 @@ qrcode = { workspace = true }
 reqwest = { workspace = true }
 rmcp = { workspace = true }
 rusqlite = { workspace = true }
+schemars = { workspace = true }
 serde = { workspace = true }
 # Answers keep the order their fields are written in. The binary always had this through
 # dispatch-host; core's own tests need it too.

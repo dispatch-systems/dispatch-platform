@@ -12,6 +12,7 @@ use crate::{
     },
     db::{self, Db, Kind, Migration, Migrations, OwnMigrations, Store},
     foundation::config::Config,
+    mcp::tools::{self, AnyTool},
     server::{
         cache::{self, Cached, DataDomain},
         http::Route,
@@ -272,7 +273,7 @@ impl Registry {
     /// numbered from 1 without a gap or a repeat, every table is declared once, every
     /// domain is declared once and before it is named, every audit prefix is a dotted name
     /// listed under an area other than settings, each kind of data that names people has a
-    /// place of its own.
+    /// place of its own, and every agent tool is declared as `mcp::tools::check` asks.
     pub fn check(&self) {
         let mut named = std::collections::BTreeSet::new();
         for feature in self.features {
@@ -535,6 +536,7 @@ impl Registry {
                 kind.data().as_str()
             );
         }
+        tools::check(self.features);
     }
 }
 
@@ -609,6 +611,9 @@ pub struct Feature {
     pub commands: Option<Commands>,
     /// Who its data names, for Driver Match to tell apart.
     pub people: &'static [&'static dyn People],
+    /// What agents can use of it, each a tool of its own: `&[&ApproveTimecard]`. A tool is
+    /// offered at a DSP while the feature, or the part it belongs to, is on there.
+    pub tools: &'static [&'static dyn AnyTool],
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
@@ -640,6 +645,7 @@ pub const fn feature(name: &'static str) -> Feature {
         demo: None,
         commands: None,
         people: &[],
+        tools: &[],
     }
 }
 

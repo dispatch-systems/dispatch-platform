@@ -70,6 +70,9 @@ test('an optional piece arrives with its companions', () => {
       out.push(`${dir} has backend/ and no test in tests/backend/`);
     if (isDirectory(`${dir}/api`) && !isDirectory(`${dir}/tests/api`))
       out.push(`${dir} has api/ and no tests/api/`);
+    // The tools agents use come with tests of their own.
+    if (isDirectory(`${dir}/mcp`) && !hasRustTest(`${dir}/tests/backend/mcp`))
+      out.push(`${dir} has mcp/ and no test in tests/backend/mcp/`);
     if (isDirectory(`${dir}/frontend`)) {
       if (!isFile(`${dir}/frontend/feature.ts`))
         out.push(`${dir} has frontend/ and no frontend/feature.ts`);

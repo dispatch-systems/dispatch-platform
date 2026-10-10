@@ -58,7 +58,8 @@
         "POST /api/dsp/daily-performance/schedules/{key}/enabled",
         "POST /api/dsp/daily-performance/schedules/{key}/remove"
       ],
-      "settings": []
+      "settings": [],
+      "tools": []
     },
     "switch": "daily_performance",
     "mandatory": false,
@@ -146,7 +147,8 @@
           "GOOGLE_API_KEY",
           "GOOGLE_APP_ID"
         ]
-      ]
+      ],
+      "tools": []
     },
     "switch": "documents",
     "mandatory": false,
@@ -210,7 +212,8 @@
         "POST /api/dsp/driver-match/split",
         "POST /api/dsp/driver-match/apart"
       ],
-      "settings": []
+      "settings": [],
+      "tools": []
     },
     "switch": "driver_match",
     "mandatory": false,
@@ -293,7 +296,8 @@
         "POST /api/dsp/dvic/schedules/{key}/enabled",
         "POST /api/dsp/dvic/schedules/{key}/remove"
       ],
-      "settings": []
+      "settings": [],
+      "tools": []
     },
     "switch": "dvic",
     "mandatory": false,
@@ -334,7 +338,8 @@
       "maintenance": [],
       "people": [],
       "routes": [],
-      "settings": []
+      "settings": [],
+      "tools": []
     },
     "switch": "home",
     "mandatory": true,
@@ -414,7 +419,8 @@
         "POST /api/dsp/routes/schedules/{key}/enabled",
         "POST /api/dsp/routes/schedules/{key}/remove"
       ],
-      "settings": []
+      "settings": [],
+      "tools": []
     },
     "switch": "routes",
     "mandatory": false,
@@ -463,7 +469,8 @@
       "routes": [
         "POST /api/dsp/profile"
       ],
-      "settings": []
+      "settings": [],
+      "tools": []
     },
     "switch": "settings",
     "mandatory": true,
@@ -506,7 +513,8 @@
         "POST /api/dsp/roles/{id}",
         "POST /api/dsp/roles/{id}/remove"
       ],
-      "settings": []
+      "settings": [],
+      "tools": []
     },
     "switch": "team",
     "mandatory": true,
@@ -611,7 +619,8 @@
         "POST /api/dsp/schedules/{key}/enabled",
         "POST /api/dsp/schedules/{key}/remove"
       ],
-      "settings": []
+      "settings": [],
+      "tools": []
     },
     "switch": "timecard",
     "mandatory": false,
@@ -685,7 +694,8 @@
         "POST /api/dsp/uniforms/{id}/archive",
         "POST /api/dsp/uniforms/stock/{id}"
       ],
-      "settings": []
+      "settings": [],
+      "tools": []
     },
     "switch": "uniforms",
     "mandatory": false,
@@ -762,7 +772,8 @@
         "POST /api/dsp/weekly-scorecard/schedules/{key}/enabled",
         "POST /api/dsp/weekly-scorecard/schedules/{key}/remove"
       ],
-      "settings": []
+      "settings": [],
+      "tools": []
     },
     "switch": "weekly_scorecard",
     "mandatory": false,

@@ -4,6 +4,8 @@
 //! `browseros_host` and `browseros_worker` stay programs of their own, which the collector
 //! shards run on a real browser.
 mod agent_activity;
+#[cfg(feature = "dvic")]
+mod agent_tool_checks;
 mod agent_tools;
 mod collection_jobs;
 mod contracts;

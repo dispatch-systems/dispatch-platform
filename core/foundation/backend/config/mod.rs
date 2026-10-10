@@ -405,6 +405,7 @@ fn addresses(
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "core/foundation/api/generated/"))]
+    #[derive(schemars::JsonSchema)]
         pub enum Environment {
         Preview => "preview",
         Production => "production",

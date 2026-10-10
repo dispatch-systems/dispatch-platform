@@ -11,6 +11,7 @@ use serde_json::Value;
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "core/mcp/api/generated/"))]
+    #[derive(schemars::JsonSchema)]
     /// What an agent key may do: look things up, or also run collections and test
     /// connections.
     pub enum AgentAccess {
@@ -307,8 +308,18 @@ pub struct AgentKeysRevoked {
     pub revoked: usize,
 }
 
+/// The platform owner an agent is signed in as, as hosts such as ChatGPT ask for it.
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AgentProfile {
+    /// Opaque profile identifier, stable across refresh and reconnection.
+    pub id: String,
+    /// Display name for the authenticated profile.
+    pub name: String,
+}
+
 /// What `GET /api/v1/whoami` tells an agent: its key, the time, and the DSPs it reaches.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/mcp/api/generated/"))]
 #[serde(rename_all = "camelCase")]
@@ -318,7 +329,7 @@ pub struct AgentWhoami {
     pub now: String,
     pub dsps: Vec<AgentWhoamiDsp>,
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/mcp/api/generated/"))]
 #[serde(rename_all = "camelCase")]
@@ -328,7 +339,7 @@ pub struct AgentWhoamiKey {
     pub expires_at: Option<String>,
 }
 /// A DSP as an agent sees it: its local date, so "today" and "yesterday" mean the DSP's.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/mcp/api/generated/"))]
 #[serde(rename_all = "camelCase")]
