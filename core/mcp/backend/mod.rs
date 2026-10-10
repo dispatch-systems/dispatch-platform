@@ -1,24 +1,18 @@
 //! Agent keys: how an outside agent signs in to Dispatch. Only a platform owner makes them.
 //! A key works for the platform owner who made it, while they stay an active platform
-//! owner; reaches the DSPs it was given, active ones of this environment only; reads there
-//! the kinds of data it was allowed, its own settings or a DSP's own; and stops once it
-//! expires or is revoked. Nothing an agent does appears in a DSP's activity log.
+//! owner; reaches the DSPs it was given, active ones of this environment only; and stops once
+//! it expires or is revoked. Nothing an agent does appears in a DSP's activity log.
 //! An app the owner connects with Sign in with Dispatch (`oauth`) is a key of kind `app`.
 //! What keys and apps call is kept for the Agents page's Activity log (`activity`).
 pub mod activity;
 #[path = "../api/mod.rs"]
 pub mod api;
-pub mod data;
 pub mod oauth;
-pub mod pieces;
 pub mod server;
-pub mod skill;
-pub mod synthetic;
 mod token;
 mod usage;
 
 pub use activity::Activity;
-pub use pieces::Mcp;
 pub use usage::{LastUse, PER_MINUTE, Usage};
 
 use crate::{
@@ -28,15 +22,14 @@ use crate::{
     ensure,
     foundation::crypto,
     mcp::api::types::{
-        AgentAccess, AgentArea, AgentDsp, AgentDspReads, AgentKey, AgentKeyCreated, AgentKeyDsp,
-        AgentKeyKind, AgentKeyRequest, AgentKeys, AgentReads, AgentSource, AgentWhoami,
-        AgentWhoamiDsp, AgentWhoamiKey,
+        AgentAccess, AgentDsp, AgentKey, AgentKeyCreated, AgentKeyKind, AgentKeyRequest, AgentKeys,
+        AgentWhoami, AgentWhoamiDsp, AgentWhoamiKey,
     },
     tenancy::audit::AuditChange,
 };
 use rusqlite::params;
 use serde_json::{Value, json};
-use std::{collections::HashMap, sync::LazyLock};
+use std::collections::HashMap;
 
 /// Keys that may be in use at once.
 const MOST_KEYS: i64 = 50;
@@ -47,26 +40,16 @@ const LONGEST: i64 = 5 * 366 * 86_400_000;
 const LISTED: &str = "SELECT k.*,EXISTS(SELECT 1 FROM oauth_tokens t WHERE t.key_id=k.id \
     AND t.kind='refresh' AND t.used_at IS NULL AND t.expires_at>?1) signed_in FROM agent_keys k";
 
-/// An agent signed in with a key: what the key may do and read, and the DSPs it reaches now.
+/// An agent signed in with a key: what the key may do, and the DSPs it reaches now.
 #[derive(Clone, Debug)]
 pub struct Caller {
     pub key: String,
     pub name: String,
     pub user: String,
     pub access: AgentAccess,
-    /// What it reads at a DSP without settings of its own.
-    pub reads: AgentReads,
-    /// The DSPs with settings of their own, by id.
-    pub dsp_reads: HashMap<String, AgentReads>,
     pub expires_at: Option<String>,
     pub dsps: Vec<Dsp>,
     pub client: String,
-}
-impl Caller {
-    /// What it reads at a DSP: the DSP's own settings, or else its own.
-    pub fn reads_at(&self, dsp: &str) -> &AgentReads {
-        self.dsp_reads.get(dsp).unwrap_or(&self.reads)
-    }
 }
 
 /// The client a request came from, as the Agents page names it: a known agent or tool and
@@ -139,20 +122,6 @@ fn expiry(value: Option<&str>) -> Result<Option<String>> {
     Ok(Some(at(when)))
 }
 
-/// The audit log's field for an app-wide kind of data, as `reads.timecards`.
-fn read_field(area: AgentArea) -> &'static str {
-    static FIELDS: LazyLock<Vec<(AgentArea, String)>> = LazyLock::new(|| {
-        AgentArea::all()
-            .map(|area| (area, format!("reads.{}", area.as_str())))
-            .collect()
-    });
-    FIELDS
-        .iter()
-        .find(|(kind, _)| *kind == area)
-        .map(|(_, field)| field.as_str())
-        .expect("a declared kind of data")
-}
-
 impl Store {
     fn agent_dsp_choices(&self) -> Result<Vec<AgentDsp>> {
         Ok(self
@@ -172,7 +141,6 @@ impl Store {
             .one_as(&format!("{LISTED} WHERE k.id=?2"), [iso(), id.to_owned()])?
             .ok_or_else(|| Error::new("agent_key_not_found", 404))?;
         key.dsps = self.agent_key_dsps(id)?;
-        key.dsp_reads = self.agent_key_dsp_reads(id)?;
         Ok(key)
     }
     fn agent_key_dsps(&self, id: &str) -> Result<Vec<String>> {
@@ -186,29 +154,9 @@ impl Store {
             .map(|(dsp,)| dsp)
             .collect())
     }
-    fn agent_key_dsp_reads(&self, id: &str) -> Result<Vec<AgentDspReads>> {
-        Ok(self
-            .platform
-            .query_as::<(String, String, i64)>(
-                "SELECT dsp_id,areas,bypass FROM agent_key_dsp_reads WHERE key_id=? \
-                 ORDER BY dsp_id",
-                [id],
-            )?
-            .into_iter()
-            .map(|(dsp, areas, bypass)| {
-                let reads = AgentReads::stored(&areas, bypass);
-                AgentDspReads {
-                    dsp,
-                    areas: reads.areas,
-                    bypass: reads.bypass,
-                }
-            })
-            .collect())
-    }
 
-    /// Every key, those in use first and newest first, with the DSPs a key can be given and
-    /// the features each has switched off. `seen` is what this process knows of each key's
-    /// last use, newer than the database.
+    /// Every key, those in use first and newest first, with the DSPs a key can be given.
+    /// `seen` is what this process knows of each key's last use, newer than the database.
     pub fn agent_keys(&self, seen: &HashMap<String, LastUse>) -> Result<AgentKeys> {
         let mut keys: Vec<AgentKey> = self.platform.query_as(
             &format!("{LISTED} ORDER BY k.revoked_at IS NOT NULL,k.created_at DESC,k.id"),
@@ -216,7 +164,6 @@ impl Store {
         )?;
         for key in &mut keys {
             key.dsps = self.agent_key_dsps(&key.id)?;
-            key.dsp_reads = self.agent_key_dsp_reads(&key.id)?;
             if let Some((when, client)) = seen.get(&key.id) {
                 let when = at(*when);
                 if key.last_used_at.as_ref().is_none_or(|last| *last < when) {
@@ -225,18 +172,10 @@ impl Store {
                 }
             }
         }
-        let mut dsps = vec![];
-        for dsp in self.agent_dsp_choices()? {
-            let on = data::switched_on(self, &dsp.id)?;
-            dsps.push(AgentKeyDsp {
-                switched_off: AgentSource::all()
-                    .filter(|source| !on.contains(source))
-                    .collect(),
-                id: dsp.id,
-                name: dsp.name,
-            });
-        }
-        Ok(AgentKeys { keys, dsps })
+        Ok(AgentKeys {
+            keys,
+            dsps: self.agent_dsp_choices()?,
+        })
     }
 
     // What every new or changed key must satisfy. `before` is the key being changed, as it
@@ -268,12 +207,10 @@ impl Store {
             .into_iter()
             .map(|dsp| dsp.id)
             .collect();
-        // A DSP that isn't active, as one suspended or removed, can't be given to a key or
-        // given settings of its own. One the key already has stays as it is, with its own
-        // settings, for when it is active again: the Agents page doesn't list it, and sends it
-        // back unchanged.
+        // A DSP that isn't active, as one suspended or removed, can't be given to a key. One
+        // the key already has stays, for when it is active again: the Agents page doesn't
+        // list it, and sends it back unchanged.
         let kept = before.map_or(&[][..], |key| key.dsps.as_slice());
-        let kept_reads = before.map_or(&[][..], |key| key.dsp_reads.as_slice());
         ensure(
             input
                 .dsps
@@ -282,18 +219,9 @@ impl Store {
             "invalid_input",
             400,
         )?;
-        // A DSP has settings of its own only while the key reaches it.
-        ensure(
-            input.dsp_reads.iter().all(|own| {
-                (choices.contains(&own.dsp) || kept_reads.contains(own))
-                    && (input.all_dsps || input.dsps.contains(&own.dsp))
-            }),
-            "invalid_input",
-            400,
-        )?;
         Ok(())
     }
-    /// The DSPs a key reaches, and the settings of their own any of them has.
+    /// The DSPs a key reaches.
     fn set_agent_key_dsps(&self, id: &str, input: &AgentKeyRequest) -> Result<()> {
         self.platform
             .exec("DELETE FROM agent_key_dsps WHERE key_id=?", [id])?;
@@ -303,38 +231,7 @@ impl Store {
                 [id, dsp.as_str()],
             )?;
         }
-        self.platform
-            .exec("DELETE FROM agent_key_dsp_reads WHERE key_id=?", [id])?;
-        for own in &input.dsp_reads {
-            self.platform.exec(
-                "INSERT INTO agent_key_dsp_reads(key_id,dsp_id,areas,bypass) VALUES (?,?,?,?)",
-                params![id, own.dsp, own.reads().areas_text(), i64::from(own.bypass)],
-            )?;
-        }
         Ok(())
-    }
-    /// DSPs' own settings as the audit log shows them: "Summit Delivery: 7 of 9, bypass on;
-    /// Harbor Route Co: 9 of 9", or "none".
-    fn dsp_reads_line(&self, own: &[AgentDspReads]) -> Result<String> {
-        if own.is_empty() {
-            return Ok("none".into());
-        }
-        let names: HashMap<String, String> = self
-            .platform
-            .query_as::<(String, String)>("SELECT id,name FROM dsps", [])?
-            .into_iter()
-            .collect();
-        let mut lines: Vec<String> = own
-            .iter()
-            .map(|own| {
-                let name = names.get(&own.dsp).unwrap_or(&own.dsp);
-                let bypass = if own.bypass { ", bypass on" } else { "" };
-                let count = own.areas.len();
-                format!("{name}: {count} of {}{bypass}", AgentArea::all().count())
-            })
-            .collect();
-        lines.sort_by_key(|line| line.to_lowercase());
-        Ok(lines.join("; "))
     }
 
     /// Makes a key. The key itself is returned this once; only its hash is kept.
@@ -344,11 +241,11 @@ impl Store {
         let token = token::new(token::Kind::Key, self.config.env())?;
         let id = crypto::id("agentkey")?;
         self.platform.transaction(|| {
-            // tools and locations as an older release reads them: every tool, and the addresses.
+            // What an older release reads it may read, run again in a rollback: nothing.
             self.platform.exec(
                 "INSERT INTO agent_keys(id,name,hash,hint,user_id,all_dsps,access,tools,\
                  locations,areas,bypass,created_at,expires_at) \
-                 VALUES (?,?,?,?,?,?,?,'full',?,?,?,?,?)",
+                 VALUES (?,?,?,?,?,?,?,'full',0,'',0,?,?)",
                 params![
                     id,
                     input.name,
@@ -357,9 +254,6 @@ impl Store {
                     user,
                     i64::from(input.all_dsps),
                     input.access,
-                    i64::from(input.reads.locations()),
-                    input.reads.areas_text(),
-                    i64::from(input.reads.bypass),
                     iso(),
                     expires
                 ],
@@ -380,7 +274,7 @@ impl Store {
         })
     }
 
-    /// Changes what a key or connected app may do and read. A revoked one stays revoked; an
+    /// Changes what a key or connected app may do and reach. A revoked one stays revoked; an
     /// app only ever reads, and never expires.
     pub fn update_agent_key(
         &self,
@@ -424,18 +318,6 @@ impl Store {
             before.access.as_str().into(),
             input.access.as_str().into(),
         );
-        for area in AgentArea::all() {
-            change(
-                read_field(area),
-                before.reads.has(area).to_string(),
-                input.reads.has(area).to_string(),
-            );
-        }
-        change(
-            "bypass",
-            before.reads.bypass.to_string(),
-            input.reads.bypass.to_string(),
-        );
         change(
             "dsps",
             reach(before.all_dsps, &before.dsps),
@@ -447,29 +329,17 @@ impl Store {
             before.expires_at.clone().unwrap_or_else(never),
             expires.clone().unwrap_or_else(never),
         );
-        // DSPs' own settings changed are noted even where their lines read alike.
-        if before.dsp_reads != input.dsp_reads {
-            changes.push((
-                "dsp_reads",
-                Some(self.dsp_reads_line(&before.dsp_reads)?),
-                Some(self.dsp_reads_line(&input.dsp_reads)?),
-            ));
-        }
         let action = match before.kind {
             AgentKeyKind::Key => "agent.key_updated",
             AgentKeyKind::App => "agent.app_updated",
         };
         self.platform.transaction(|| {
             self.platform.exec(
-                "UPDATE agent_keys SET name=?,all_dsps=?,access=?,tools='full',locations=?,\
-                 areas=?,bypass=?,expires_at=? WHERE id=?",
+                "UPDATE agent_keys SET name=?,all_dsps=?,access=?,expires_at=? WHERE id=?",
                 params![
                     input.name,
                     i64::from(input.all_dsps),
                     input.access,
-                    i64::from(input.reads.locations()),
-                    input.reads.areas_text(),
-                    i64::from(input.reads.bypass),
                     expires,
                     id
                 ],
@@ -550,9 +420,9 @@ impl Store {
         let row = self
             .platform
             .one(
-                "SELECT k.id,k.name,k.user_id,k.all_dsps,k.access,k.areas,k.bypass,k.locations,\
-                 k.expires_at,k.revoked_at,u.platform_owner,u.status FROM agent_keys k \
-                 JOIN users u ON u.id=k.user_id WHERE k.hash=?",
+                "SELECT k.id,k.name,k.user_id,k.all_dsps,k.access,k.expires_at,k.revoked_at,\
+                 u.platform_owner,u.status FROM agent_keys k JOIN users u ON u.id=k.user_id \
+                 WHERE k.hash=?",
                 [crypto::sha(token)],
             )?
             .ok_or_else(|| Error::new("agent_key_invalid", 401))?;
@@ -565,9 +435,9 @@ impl Store {
         let row = self
             .platform
             .one(
-                "SELECT k.id,k.name,k.user_id,k.all_dsps,k.access,k.areas,k.bypass,k.locations,\
-             k.expires_at,k.revoked_at,u.platform_owner,u.status FROM agent_keys k \
-             JOIN users u ON u.id=k.user_id WHERE k.id=? AND k.user_id=?",
+                "SELECT k.id,k.name,k.user_id,k.all_dsps,k.access,k.expires_at,k.revoked_at,\
+                 u.platform_owner,u.status FROM agent_keys k JOIN users u ON u.id=k.user_id \
+                 WHERE k.id=? AND k.user_id=?",
                 [&caller.key, &caller.user],
             )?
             .ok_or_else(|| Error::new("agent_key_invalid", 401))?;
@@ -606,22 +476,11 @@ impl Store {
                 [key.as_str(), environment.as_str()],
             )?
         };
-        let dsp_reads = self
-            .agent_key_dsp_reads(&key)?
-            .into_iter()
-            .map(|own| (own.dsp.clone(), own.reads()))
-            .collect();
         Ok(Caller {
             name: text("name"),
             user: text("user_id"),
             access: AgentAccess::parse(&text("access"))
                 .ok_or_else(|| Error::new("invalid_stored_record", 500))?,
-            reads: AgentReads::stored_key(
-                &text("areas"),
-                row["bypass"].as_i64().unwrap_or(0),
-                row["locations"].as_i64().unwrap_or(0),
-            ),
-            dsp_reads,
             expires_at,
             dsps,
             client: client.to_owned(),
@@ -665,8 +524,7 @@ impl Store {
         Ok(json!({"id":id,"name":name.trim()}))
     }
 
-    /// What an agent is told about itself: its key, the time, and each DSP it reaches with
-    /// what it reads there.
+    /// What an agent is told about itself: its key, the time, and each DSP it reaches.
     pub fn agent_whoami(&self, caller: &Caller) -> Result<AgentWhoami> {
         let mut dsps = vec![];
         for dsp in &caller.dsps {
@@ -679,8 +537,6 @@ impl Store {
                     .with_timezone(&zone)
                     .date_naive()
                     .to_string(),
-                features: self.features(&dsp.id)?,
-                reads: caller.reads_at(&dsp.id).clone(),
             });
         }
         Ok(AgentWhoami {

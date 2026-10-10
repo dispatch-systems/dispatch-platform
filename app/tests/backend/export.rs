@@ -1,7 +1,6 @@
 //! The TypeScript the owners' API types are written to, each in its owner's api/generated/,
-//! and the catalogs': the access catalog and the capabilities' labels in tenancy's, the
-//! Agents page's read toggles in mcp's and the collections' labels in collection's, checked
-//! against the files committed there.
+//! and the catalogs': the access catalog and the capabilities' labels in tenancy's and the
+//! collections' labels in collection's, checked against the files committed there.
 use dispatch_core::accounts::api::types::*;
 use dispatch_core::collection::api::{jobs::*, metrics::*, types::*};
 use dispatch_core::collection::{
@@ -10,7 +9,10 @@ use dispatch_core::collection::{
 };
 use dispatch_core::db::{Kind, Migrations};
 use dispatch_core::foundation::config::{Environment, ProviderMode};
-use dispatch_core::manifest::{Capability, Collection, Collector};
+use dispatch_core::manifest::{
+    Capability, Collection, Collector,
+    people::{DriverData, DriverSource, DriverStatus},
+};
 use dispatch_core::mcp::api::types::*;
 use dispatch_core::platform_owner::api::types::*;
 use dispatch_core::server::api::types::*;
@@ -24,11 +26,9 @@ use std::{
 /// The access catalog's file: its types are tenancy's.
 const ACCESS_CATALOG: &str = "core/tenancy/api/generated/access-catalog.ts";
 // The labels only the platform owner's pages show, each in a file of its own, so that no
-// other page loads them: how the DSPs page names what a page needs, the Agents page's read
-// toggles, and how Diagnostics and the audit log name each collection. The job schema reads
+// other page loads them: how the DSPs page names what a page needs, and how Diagnostics and the audit log name each collection. The job schema reads
 // the collections' kinds too, so every page loads that one.
 const CAPABILITIES: &str = "core/tenancy/api/generated/capabilities.ts";
-const READ_TOGGLES: &str = "core/mcp/api/generated/read-toggles.ts";
 const COLLECTIONS: &str = "core/collection/api/generated/collections.ts";
 /// The kinds of record an audit event names, core's and the features', which the audit
 /// log's reply check accepts.
@@ -39,16 +39,11 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
     let mut bindings = dispatch_core::typescript!(
         &cfg,
         AgentAccess,
-        AgentArea,
-        AgentSource,
-        AgentReads,
-        AgentDspReads,
         AgentKeyKind,
         AgentAppStatus,
         AgentClient,
         AgentKey,
         AgentDsp,
-        AgentKeyDsp,
         AgentKeys,
         AgentKeyCreated,
         AgentKeyRequest,
@@ -138,7 +133,6 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
     bindings.extend(crate::features::typescript(&cfg));
     bindings.insert(ACCESS_CATALOG.into(), access_catalog());
     bindings.insert(CAPABILITIES.into(), capabilities());
-    bindings.insert(READ_TOGGLES.into(), read_toggles());
     bindings.insert(COLLECTIONS.into(), collections());
     bindings.insert(AUDIT_SUBJECTS.into(), audit_subjects());
     bindings
@@ -179,52 +173,6 @@ fn capability_labels(collectors: &[&dyn Collector]) -> serde_json::Map<String, s
         }
     }
     labels
-}
-
-/// The Agents page's switches: each feature's kinds of data under its switch's name, the
-/// features in the order of their kinds, with how a key's row names what it doesn't read.
-fn read_toggles() -> String {
-    use dispatch_core::{manifest::registry, mcp::api::types::AgentArea};
-    use serde_json::json;
-    let mut groups: Vec<_> = registry()
-        .features
-        .iter()
-        .filter(|feature| !feature.mcp.reads.is_empty())
-        .collect();
-    groups.sort_by_key(|feature| feature.mcp.reads.iter().map(|area| area.order()).min());
-    let listed = groups.iter().flat_map(|feature| feature.mcp.reads).copied();
-    assert!(
-        listed.eq(AgentArea::all()),
-        "the Agents page lists each kind of data once, under its feature, in the one order"
-    );
-    let groups: Vec<_> = groups
-        .iter()
-        .map(|feature| {
-            let switch = feature.switch;
-            json!({
-                "label": switch.label,
-                "missing": feature.mcp.missing,
-                "sources": feature.mcp.sources.iter()
-                    .map(|source| json!({"id": source.as_str(), "label": source.label()}))
-                    .collect::<Vec<_>>(),
-                "toggles": feature.mcp.reads.iter()
-                    .map(|area| json!({
-                        "id": area.as_str(),
-                        "label": area.label(),
-                        "hint": area.hint(),
-                        "missing": area.missing(),
-                        "source": area.source().as_str(),
-                        "with": area.with().map(AgentArea::as_str),
-                        "optIn": area.opt_in(),
-                    }))
-                    .collect::<Vec<_>>(),
-            })
-        })
-        .collect();
-    generated(
-        "the features' read toggles",
-        &[("readToggleGroups", groups.into())],
-    )
 }
 
 /// Every collection, with the collector that runs it, as Diagnostics and the audit log name
@@ -560,7 +508,6 @@ fn feature_map(root: &Path) -> String {
             );
             list.sort_by_key(|migration| migration["id"].as_u64());
         }
-        let mcp = &feature.mcp;
         let audit = &feature.audit;
         let slots = json!({
             "after_collection": feature.after_collection.is_some(),
@@ -577,19 +524,6 @@ fn feature_map(root: &Path) -> String {
             "live": feature.live,
             "maintenance": feature.maintenance.iter().map(|task| task.every.as_secs())
                 .collect::<Vec<_>>(),
-            "mcp": {
-                "daily": mcp.daily.iter().map(|daily| daily.coverage()).collect::<Vec<_>>(),
-                "examples": mcp.examples.len(),
-                "endpoints": mcp.endpoints.iter().map(|endpoint| endpoint.tool)
-                    .collect::<Vec<_>>(),
-                "identity": mcp.identity.is_some(),
-                "metrics": mcp.metrics.iter().map(|metric| metric.name).collect::<Vec<_>>(),
-                "places": mcp.places.is_some(),
-                "reads": mcp.reads.iter().map(|area| area.as_str()).collect::<Vec<_>>(),
-                "sources": mcp.sources.iter().map(|source| source.as_str()).collect::<Vec<_>>(),
-                "synthetic": mcp.synthetic.steps.len(),
-                "terms": mcp.terms.iter().map(|term| term.term).collect::<Vec<_>>(),
-            },
             "people": feature.people.iter().map(|people| people.data().as_str())
                 .collect::<Vec<_>>(),
             "routes": (feature.routes)().iter()

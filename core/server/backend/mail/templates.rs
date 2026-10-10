@@ -1,6 +1,5 @@
 // Transactional email bodies. Mail clients ignore stylesheets and SVG, so the
 // layout is nested tables with inline styles and the mark is a hosted PNG.
-use crate::mcp::api::types::{AgentArea, AgentReads};
 
 const FONT: &str =
     "Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
@@ -266,8 +265,6 @@ pub struct ConnectedApp<'a> {
     pub destination: Option<&'a str>,
     /// The DSPs it reaches by name; empty when it reaches all of them.
     pub dsps: &'a [String],
-    /// What it reads at a DSP without settings of its own.
-    pub reads: &'a AgentReads,
     pub approved_by: &'a str,
     /// When it connected or was disconnected, in milliseconds.
     pub at: i64,
@@ -332,20 +329,6 @@ impl ConnectedApp<'_> {
             ),
         }
     }
-    /// What it reads, in words: all data or the kinds of it, and whether it bypasses features.
-    fn access(&self) -> String {
-        let kinds: Vec<&str> = self.reads.areas.iter().map(|area| area.label()).collect();
-        let reads = match kinds.len() {
-            0 => "Reads nothing".to_owned(),
-            count if count == AgentArea::all().count() => "Reads all data".to_owned(),
-            _ => format!("Reads {}", kinds.join(", ")),
-        };
-        if self.reads.bypass {
-            format!("{reads}. Bypasses switched-off features.")
-        } else {
-            reads
-        }
-    }
     fn link(&self) -> String {
         format!("{}/#agents?tab=apps", self.origin)
     }
@@ -401,7 +384,7 @@ pub fn app_connected(app: &ConnectedApp) -> Message {
     rows.extend(app.destination.map(|to| ("Sends access to", to.to_owned())));
     rows.extend([
         ("DSPs", app.reach()),
-        ("Access", app.access()),
+        ("Access", "Read only".to_owned()),
         ("Approved by", app.approved_by.to_owned()),
         ("Connected", when(app.at)),
     ]);
@@ -434,7 +417,10 @@ pub fn app_disconnected(app: &ConnectedApp, reason: &str) -> Message {
         ("App", app.app_line()),
     ];
     rows.extend(app.destination.map(|to| ("Sent access to", to.to_owned())));
-    rows.extend([("Access", app.access()), ("Disconnected", when(app.at))]);
+    rows.extend([
+        ("Access", "Read only".to_owned()),
+        ("Disconnected", when(app.at)),
+    ]);
     app.message(
         subject,
         lead,

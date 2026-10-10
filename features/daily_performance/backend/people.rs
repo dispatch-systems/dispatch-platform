@@ -3,8 +3,7 @@ use crate::DailyPerformanceStore;
 use dispatch_core::{
     Result,
     db::{Store, n, s},
-    manifest::people::{self, Appearances, Named, People},
-    mcp::api::types::{DriverData, DriverSource, PeopleData},
+    manifest::people::{self, Appearances, DriverData, DriverSource, Named, People, PeopleData},
 };
 /// What it names people in, as Driver Match lists it.
 const DATA: PeopleData = PeopleData {

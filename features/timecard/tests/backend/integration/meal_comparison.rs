@@ -2,7 +2,7 @@ use dispatch_core::testing as common;
 use dispatch_core::{
     accounts::{Auth, Context},
     db::{Store, s},
-    mcp::api::types::DriverSource,
+    manifest::people::DriverSource,
 };
 use dispatch_cortex::{self as cortex, discovery::Scope, meals};
 use dispatch_driver_match::DriverMatchStore;

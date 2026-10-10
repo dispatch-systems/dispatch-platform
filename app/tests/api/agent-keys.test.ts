@@ -7,15 +7,12 @@ import type {
   AgentKeys,
   AgentWhoami,
 } from '../../../core/platform_owner/api/index.js';
-import { everyKind } from '../support/agent-keys.js';
 
 const body = (dsps: string[]): AgentKeyRequest => ({
   name: 'Laptop – Claude Code',
   allDsps: dsps.length === 0,
   dsps,
   access: 'read',
-  reads: { areas: everyKind, bypass: false },
-  dspReads: [],
   expiresAt: null,
 });
 

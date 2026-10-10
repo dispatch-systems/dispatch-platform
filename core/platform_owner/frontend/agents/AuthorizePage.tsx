@@ -20,7 +20,7 @@ import {
   ErrorBox,
   Header,
 } from '../../../shell/frontend/ui/index.js';
-import { bypassHint, DspReach, ReadChoices, SwitchBox } from './KeyChoices.js';
+import { DspReach } from './KeyChoices.js';
 
 const again = 'Start the connection again from your app.';
 const expired = `This request expired. ${again}`;
@@ -141,8 +141,8 @@ function Approval({
 }) {
   const { app } = request;
   const [form, setForm] = useState<OAuthApproval>(() => {
-    const { allDsps, dsps, reads } = blankKey();
-    return { name: app.name, allDsps, dsps, reads };
+    const { allDsps, dsps } = blankKey();
+    return { name: app.name, allDsps, dsps };
   });
   const [leaving, setLeaving] = useState(false);
   // The connection approving would replace, as last checked for a name.
@@ -240,22 +240,6 @@ function Approval({
         />
       </label>
       <DspReach dsps={dsps} form={form} set={set} />
-      <ReadChoices
-        legend="What it can read"
-        hint={
-          'Applies to every DSP it reaches. To give a DSP its own settings, edit the app ' +
-          'afterwards in Agents → Apps.'
-        }
-        areas={form.reads.areas}
-        set={(areas) => set({ reads: { ...form.reads, areas } })}
-      />
-      <SwitchBox
-        tone="bypass"
-        label="Bypass features"
-        hint={bypassHint}
-        on={form.reads.bypass}
-        set={(bypass) => set({ reads: { ...form.reads, bypass } })}
-      />
       {replaces && (
         <div className="notice agents-notice" role="status">
           <TriangleAlert size={16} aria-hidden="true" />

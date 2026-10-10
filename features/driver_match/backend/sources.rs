@@ -4,8 +4,8 @@
 use dispatch_core::{
     Result,
     db::Store,
+    manifest::people::{DriverData, DriverSource},
     manifest::{people::Workdays, registry},
-    mcp::api::types::{DriverData, DriverSource},
 };
 use std::collections::{BTreeMap, BTreeSet};
 

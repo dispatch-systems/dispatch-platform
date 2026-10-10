@@ -272,160 +272,9 @@
   padding-top: 24px;
 }
 
-/* What a key or app reads, and the DSPs with settings of their own: a wider sheet. */
+/* A key or app, where it reaches and what it may do: a wider sheet. */
 .modal.side-sheet:has(.agents-sheet) {
   width: 520px;
-}
-.agents-form legend:has(+ .agents-hint) {
-  margin-bottom: 3px;
-}
-.agents-hint {
-  font-size: 13px;
-  color: var(--muted-foreground);
-}
-/* The DSPs it reaches, each following the key's settings or with its own. */
-.agents-dsp-list {
-  margin-top: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-.agents-dsp-list li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 50px;
-  padding: 8px 12px 8px 14px;
-  font-size: 14px;
-}
-.agents-dsp-list li + li {
-  border-top: 1px solid var(--border);
-}
-.agents-dsp-name {
-  flex: 1;
-  min-width: 0;
-  font-weight: 500;
-}
-label.agents-dsp-name {
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-}
-.agents-dsp-list li.out .agents-dsp-name {
-  color: var(--muted-foreground);
-  font-weight: 400;
-}
-.agents-dsp-state {
-  font-size: 13px;
-  color: var(--muted-foreground);
-}
-.agents-dsp-state.own {
-  color: var(--primary);
-  font-weight: 500;
-}
-.agents-dsp-list button {
-  gap: 4px;
-  min-height: 28px;
-  padding: 2px 6px 2px 10px;
-  border: 0;
-  background: transparent;
-  color: var(--muted-foreground);
-  font-size: 13px;
-}
-.agents-dsp-list button:hover {
-  background: var(--muted);
-  color: var(--foreground);
-}
-/* A switch for each kind of data, under the feature that collects it. */
-.agents-reads {
-  margin-top: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-.agents-reads-group + .agents-reads-group {
-  border-top: 1px solid var(--border);
-}
-.agents-reads-group > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 14px 2px;
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted-foreground);
-}
-.agents-off {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--warning);
-}
-.agents-read {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 9px 14px;
-  font-weight: 400;
-  cursor: pointer;
-}
-.agents-read:last-child {
-  padding-bottom: 12px;
-}
-.agents-read small {
-  display: block;
-  margin-top: 1px;
-  font-size: 12px;
-  color: var(--muted-foreground);
-}
-.agents-read .agents-off {
-  display: flex;
-  margin-top: 2px;
-}
-/* Following the key's settings: shown, not changeable here. */
-.agents-reads.following .agents-read {
-  color: var(--muted-foreground);
-  cursor: default;
-}
-/* One switch in a box: bypassing features, amber while on, or following the key's settings. */
-.agents-box {
-  flex-direction: row;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 13px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  cursor: pointer;
-}
-.agents-box small {
-  display: block;
-  margin-top: 3px;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1.45;
-  color: var(--muted-foreground);
-}
-.agents-box input {
-  margin-top: 3px;
-}
-.agents-box:has(input:disabled) {
-  cursor: default;
-}
-.agents-box.bypass.on {
-  border-color: var(--warning-border);
-  background: var(--warning-surface);
-}
-.agents-box.follow.on {
-  border-color: var(--primary);
-  background: var(--selection);
 }
 
 /* The key, shown once, and how to set it up: wide enough for the key on one line. */
@@ -574,31 +423,6 @@ label.agents-dsp-name {
   margin-top: 10px;
 }
 
-/* Links that fetch a file, drawn as the dashboard's buttons. */
-.agents-files {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 16px;
-}
-.agents-files a {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 34px;
-  padding: 4px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--background);
-  color: var(--foreground);
-  font: 500 13px/1.4 var(--font-family);
-  text-decoration: none;
-  transition: background-color var(--motion-duration);
-}
-.agents-files a:hover {
-  background: var(--accent);
-}
-
 /* The apps that may sign in, a switch each, in a narrow sheet. */
 .modal.side-sheet:has(.agents-allowed-sheet) {
   width: 420px;
@@ -665,10 +489,6 @@ label.agents-dsp-name {
 .agents-table .cell-end .agents-row-actions button {
   gap: 6px;
   padding: 4px 10px;
-}
-/* A key or app that reads where a DSP has switched a feature off. */
-.agents-table td small.agents-bypass {
-  color: var(--warning);
 }
 
 /* An app asking to connect: who it is, where access goes and what it may do. */
@@ -744,23 +564,11 @@ label.agents-dsp-name {
   min-width: 180px;
   white-space: normal;
 }
-/* A call that read a feature its DSP has switched off. */
+/* A call's outcome. */
 .agents-outcome {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-}
-.agents-bypassed {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 7px;
-  border: 1px solid var(--warning-border);
-  border-radius: 999px;
-  background: var(--warning-surface);
-  color: var(--warning);
-  font-size: 11px;
-  font-weight: 500;
 }
 
 /* A website Dispatch doesn't know: where access goes, before anything else. */

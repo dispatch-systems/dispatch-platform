@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url';
 import type { Command } from '../ci/execution-plan.js';
 
 // `npm run snapshots:update`: rewrites the snapshots the app's tests hold the whole product to,
-// such as its catalog, its databases and their schemas, the agent API and the kinds of data
-// agents read, then names each file that changed, to review with the change that changed it.
+// such as its catalog, its databases and their schemas, then names each file that changed, to
+// review with the change that changed it.
 // Each of those tests fails on a difference, naming this command, unless
 // DISPATCH_UPDATE_SNAPSHOTS is set, as it is here. `--list` prints the commands and runs nothing.
 //
@@ -16,11 +16,7 @@ import type { Command } from '../ci/execution-plan.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 /** Where the snapshots are. */
-const snapshotDirs = [
-  'app/tests/backend/snapshots',
-  'app/tests/backend/agent_api',
-  'core/db/tests/backend/schema',
-];
+const snapshotDirs = ['app/tests/backend/snapshots', 'core/db/tests/backend/schema'];
 const frontend = fs
   .readdirSync(path.join(root, 'app/tests/frontend'))
   .filter((name) => name.endsWith('.test.ts'))

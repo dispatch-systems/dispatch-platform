@@ -1,7 +1,6 @@
 //! Routes: each day's routes, itineraries and packages from Cortex.
 mod api;
 mod backend;
-mod mcp;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
@@ -79,7 +78,6 @@ pub const FEATURE: Feature = Feature {
     }],
     domains: &[backend::DOMAIN],
     maintenance: &[backend::maintenance::MAINTENANCE],
-    mcp: mcp::MCP,
     people: &[&backend::people::Drivers],
     // Its events are its collections' and their data's, which its settings keep.
     audit: Audit {

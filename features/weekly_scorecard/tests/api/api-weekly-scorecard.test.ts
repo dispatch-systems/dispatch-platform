@@ -70,49 +70,6 @@ test('a scorecard week is collected on request, stored per dataset and listed, a
   const week = weeks.weeks[0];
   assert.equal(week.week, '2026-W38');
   assert.equal(week.posted, true);
-  const made = await owner.post('/api/platform/agents/keys', {
-    name: 'Weekly scorecard compatibility',
-    allDsps: false,
-    dsps: [dsp.id],
-    access: 'read',
-    reads: { areas: ['weekly_scorecard'], bypass: false },
-    dspReads: [],
-    expiresAt: null,
-  });
-  assert.equal(made.status, 200, made.body);
-  const headers = { authorization: `Bearer ${made.value.token}` };
-  const canonical = await f.request('/api/v1/weekly-scorecard?week=2026-W38', undefined, headers);
-  const legacy = await f.request('/api/v1/scorecard?week=2026-W38', undefined, headers);
-  assert.equal(canonical.status, 200, canonical.body);
-  assert.equal(legacy.status, 404);
-  const rpc = async (method: string, params: object) => {
-    // MCP keys are native-client credentials; the browser fixture adds an Origin header.
-    const response = await fetch(`http://127.0.0.1:${f.env.PORT}/api/v1/mcp`, {
-      method: 'POST',
-      headers: {
-        ...headers,
-        'content-type': 'application/json',
-        accept: 'application/json, text/event-stream',
-        'mcp-protocol-version': '2025-06-18',
-      },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-    });
-    const body = await response.text();
-    assert.equal(response.status, 200, body);
-    return JSON.parse(body).result;
-  };
-  const listed = await rpc('tools/list', {});
-  assert.equal(listed.tools.filter((tool: any) => tool.name === 'weekly_scorecard').length, 1);
-  assert.ok(listed.tools.every((tool: any) => tool.name !== 'scorecard'));
-  const weekly = await rpc('tools/call', {
-    name: 'weekly_scorecard',
-    arguments: { week: '2026-W38' },
-  });
-  const old = await rpc('tools/call', { name: 'scorecard', arguments: { week: '2026-W38' } });
-  assert.equal(weekly.isError, false);
-  assert.equal(old.isError, true);
-  assert.match(old.content[0].text, /^unknown_tool\b/);
-  assert.deepEqual(weekly.structuredContent, canonical.value);
   assert.equal(week.publication.rowCount, 19);
   assert.equal(
     week.publication.datasets.find((d: any) => d.table === 'returns_to_station').rows,

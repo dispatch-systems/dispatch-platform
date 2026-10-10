@@ -1,45 +1,16 @@
 # MCP
 
-The MCP server and the agent API under `/api/v1/`, with its OpenAPI document and the Agent
-Skill, all built from one catalog so they can't drift apart; agent keys and connected apps,
-Sign in with Dispatch, usage limits and activity. Features bring their endpoints, facts, read
-toggles and the skill's example questions in their `mcp/`, with what their data tells of
-drivers and what it answers (`about`, `asked`), which the skill's description lists. The one
-feature that tells people apart names itself in `identity`, so agents hear of its codes; core
-names no feature in what it tells agents. Tool names, paths and answers are what agents rely
-on, and nothing an agent does appears in a DSP's activity log.
+How an outside agent connects to Dispatch: agent keys and connected apps, Sign in with
+Dispatch (`oauth`), usage limits and the Activity log, and the MCP server at `/api/v1/mcp`.
+A key or app belongs to the platform owner who made or approved it, reaches the DSPs it was
+given, and stops at once when revoked, when it expires or when its owner stops being an active
+platform owner. Every call checks the key again before it answers.
 
-Collection queries accept a driver or everyone, a date, `from`/`to`, or periods such as
-`past 14 days`. Routes and meal breaks default to yesterday; timecards default to yesterday
-for everyone or 30 days for one driver. Other period tools default to 30 days. Periods span
-up to 366 days, with a 92-day limit for payroll and meal assessments; longer requests use
-nonoverlapping ranges. Weekly Scorecards select a posted week, defaulting to the latest.
-DVIC holds short-inspection exceptions, including their durations; an empty exception list
-does not establish that an inspection was completed.
+The server offers the tools that tell an agent about its own connection: `get_profile`, the
+stable profile it is signed in as, and `whoami`, its key, the time and the DSPs it reaches with
+each one's date today. `GET /api/v1/whoami` answers the same over REST. Tool names, paths and
+answers are what agents rely on, and nothing an agent does appears in a DSP's activity log.
 
-Counts and totals cover the matching collected range, independently of `limit`. Details
-remain available in pages of up to 500 rows within the 24 KB answer budget. Keep filters
-unchanged when following `next_cursor`. With groups and details together, `groups_cursor`
-advances groups and `cursor` advances the list; with groups alone, `cursor` retains its
-original behavior. `driver_report(metrics: "short_inspections,packages_delivered")` reads
-only the selected daily sources, reports unknown days as null and leaves day-only metrics'
-period totals null. Source counts and detail pages use SQL where possible; payroll and
-meal comparisons still assess bounded batches before paging their derived results.
-
-Features can register an opt-in `view` contract for their agent queries. Adapters declare
-their view name, cursor prefix, default period, query normalization and source grant. One
-adapter can declare the shared default period for `compare`, which reads all registered
-views for the same range. Discovery derives its choices and cursor parameters from these
-declarations. These are agent API/MCP queries only; frontend APIs, databases, collection
-jobs, history, policies and schedules remain independent. No view falls back to another
-source. Each requested source needs its own read grant and enabled feature; compare checks
-every grant before reading any source.
-
-View answers carry `contract_version: 2`, source, count units and coverage. Summaries are
-the default; `detail: full` or `list: true` adds bounded pages. `groups_cursor` and `cursor`
-always page separate tables in v2. Compare nests answers under `sources`, keyed by the
-registered view names. Each view has independent `<prefix>_cursor` and
-`<prefix>_groups_cursor` parameters. Counts cover the complete filtered
-range; page limits do not truncate totals. Comparison counts are never additive.
-Omitting `view` preserves the existing source-specific contract and its default period.
-Reconciliation and source-specific count semantics stay in their feature adapters and docs.
+The tables keep columns an older release reads and writes: what a key reads (`areas`,
+`bypass`, `locations`, `tools`, `agent_key_dsp_reads`) and whether a call bypassed a feature
+(`bypassed`). This release writes a new key's as reading nothing, and reads none of them.

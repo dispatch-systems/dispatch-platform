@@ -28,8 +28,6 @@ only what was decided.
   as drivers work in the office.
 - **Log:** its decisions are audited as `driver_match.merged`, `driver_match.split` and
   `driver_match.kept_apart`, naming drivers by their codes; the log puts today's names to them.
-- **Agents:** it fills core's `identity`, as "Driver Match", so agents may name a driver by
-  their code and every answer names drivers by it.
 - **Storage:** `driver_codes` in the platform's database (platform migration 10) and
   `people`, `person_ids` and `people_apart` in each DSP's (DSP migration 7). Links saved on
   the meal-break page before Driver Match are read as decisions.

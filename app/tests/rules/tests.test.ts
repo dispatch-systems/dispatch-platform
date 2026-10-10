@@ -4,7 +4,7 @@ import { files, isDirectory, isFile, ownerOf, owners, templated } from './suppor
 import { lexFile, rust, testAttributes } from './support/rust.js';
 
 // plans/restructure/structure.md, "Tests": the folder decides how a test runs.
-const kinds = ['api', 'browser', 'frontend', 'backend', 'native', 'mcp', 'support'];
+const kinds = ['api', 'browser', 'frontend', 'backend', 'native', 'support'];
 /**
  * Where the tooling's and the hosts' own tests live, beside the owners' tests/<kind>/: their
  * tests/ folders, and those of their Rust crates, which keep Cargo's layout.

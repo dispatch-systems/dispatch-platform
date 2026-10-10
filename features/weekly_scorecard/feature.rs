@@ -1,7 +1,6 @@
 //! Weekly Scorecard: Amazon's weekly scorecard, collected from Cortex.
 mod api;
 mod backend;
-mod mcp;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
@@ -116,7 +115,6 @@ pub const FEATURE: Feature = Feature {
         areas: &[("weekly_scorecard.", Collections)],
         ..Audit::NONE
     },
-    mcp: mcp::MCP,
     people: &[&backend::people::Drivers],
     ..feature("weekly_scorecard")
 };

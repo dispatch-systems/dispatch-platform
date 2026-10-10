@@ -1,5 +1,5 @@
 import test from 'node:test';
-import { featureManifest, literals, textOf } from './support/manifests.js';
+import { featureManifest, textOf } from './support/manifests.js';
 import { holds } from './support/holds.js';
 import {
   collectors,
@@ -70,14 +70,6 @@ test('an optional piece arrives with its companions', () => {
       out.push(`${dir} has backend/ and no test in tests/backend/`);
     if (isDirectory(`${dir}/api`) && !isDirectory(`${dir}/tests/api`))
       out.push(`${dir} has api/ and no tests/api/`);
-    // Endpoints agents call come with the read toggles that allow them and eval questions.
-    // An mcp/ without endpoints, such as Driver Match's identity, is tested with its backend.
-    const own = (file: string) => file.startsWith(`${dir}/`);
-    const endpoints = literals('Endpoint', own).filter(({ fields }) => fields.has('tool'));
-    if (isDirectory(`${dir}/mcp`) && endpoints.length) {
-      if (!literals('ReadToggle', own).length) out.push(`${dir} has mcp/ and no read toggle`);
-      if (!isDirectory(`${dir}/tests/mcp`)) out.push(`${dir} has mcp/ and no tests/mcp/`);
-    }
     if (isDirectory(`${dir}/frontend`)) {
       if (!isFile(`${dir}/frontend/feature.ts`))
         out.push(`${dir} has frontend/ and no frontend/feature.ts`);

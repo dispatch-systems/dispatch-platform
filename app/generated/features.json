@@ -41,27 +41,6 @@
       ],
       "live": [],
       "maintenance": [],
-      "mcp": {
-        "daily": [],
-        "examples": 0,
-        "endpoints": [
-          "daily_performance"
-        ],
-        "identity": false,
-        "metrics": [],
-        "places": false,
-        "reads": [
-          "daily_performance",
-          "daily_feedback",
-          "daily_returns",
-          "daily_safety"
-        ],
-        "sources": [
-          "daily_performance"
-        ],
-        "synthetic": 1,
-        "terms": []
-      },
       "people": [
         "daily_performance"
       ],
@@ -138,18 +117,6 @@
         3600,
         60
       ],
-      "mcp": {
-        "daily": [],
-        "examples": 0,
-        "endpoints": [],
-        "identity": false,
-        "metrics": [],
-        "places": false,
-        "reads": [],
-        "sources": [],
-        "synthetic": 0,
-        "terms": []
-      },
       "people": [],
       "routes": [
         "GET /api/dsp/documents",
@@ -234,20 +201,6 @@
       "maintenance": [
         3600
       ],
-      "mcp": {
-        "daily": [],
-        "examples": 0,
-        "endpoints": [],
-        "identity": true,
-        "metrics": [],
-        "places": false,
-        "reads": [],
-        "sources": [],
-        "synthetic": 1,
-        "terms": [
-          "Driver Match code"
-        ]
-      },
       "people": [],
       "routes": [
         "GET /api/dsp/driver-match",
@@ -325,31 +278,6 @@
         "dvic.view"
       ],
       "maintenance": [],
-      "mcp": {
-        "daily": [
-          "dvic"
-        ],
-        "examples": 1,
-        "endpoints": [
-          "dvic_inspections"
-        ],
-        "identity": false,
-        "metrics": [
-          "inspections",
-          "short_inspections"
-        ],
-        "places": false,
-        "reads": [
-          "dvic"
-        ],
-        "sources": [
-          "dvic"
-        ],
-        "synthetic": 1,
-        "terms": [
-          "DVIC"
-        ]
-      },
       "people": [
         "dvic"
       ],
@@ -404,18 +332,6 @@
       "domains": [],
       "live": [],
       "maintenance": [],
-      "mcp": {
-        "daily": [],
-        "examples": 0,
-        "endpoints": [],
-        "identity": false,
-        "metrics": [],
-        "places": false,
-        "reads": [],
-        "sources": [],
-        "synthetic": 0,
-        "terms": []
-      },
       "people": [],
       "routes": [],
       "settings": []
@@ -477,44 +393,6 @@
       "maintenance": [
         3600
       ],
-      "mcp": {
-        "daily": [
-          "routes"
-        ],
-        "examples": 4,
-        "endpoints": [
-          "packages",
-          "route_day",
-          "route_stops",
-          "find_package"
-        ],
-        "identity": false,
-        "metrics": [
-          "routes",
-          "stops_completed",
-          "stops_total",
-          "packages_delivered",
-          "packages_total",
-          "packages_remaining",
-          "packages_undeliverable",
-          "break_minutes",
-          "overtime_minutes"
-        ],
-        "places": true,
-        "reads": [
-          "routes",
-          "locations"
-        ],
-        "sources": [
-          "routes"
-        ],
-        "synthetic": 1,
-        "terms": [
-          "departed",
-          "ended",
-          "snapshot"
-        ]
-      },
       "people": [
         "routes"
       ],
@@ -581,18 +459,6 @@
       "domains": [],
       "live": [],
       "maintenance": [],
-      "mcp": {
-        "daily": [],
-        "examples": 0,
-        "endpoints": [],
-        "identity": false,
-        "metrics": [],
-        "places": false,
-        "reads": [],
-        "sources": [],
-        "synthetic": 0,
-        "terms": []
-      },
       "people": [],
       "routes": [
         "POST /api/dsp/profile"
@@ -628,18 +494,6 @@
       "domains": [],
       "live": [],
       "maintenance": [],
-      "mcp": {
-        "daily": [],
-        "examples": 0,
-        "endpoints": [],
-        "identity": false,
-        "metrics": [],
-        "places": false,
-        "reads": [],
-        "sources": [],
-        "synthetic": 0,
-        "terms": []
-      },
       "people": [],
       "routes": [
         "GET /api/dsp/members",
@@ -730,48 +584,6 @@
         "collections.run"
       ],
       "maintenance": [],
-      "mcp": {
-        "daily": [
-          "timecards",
-          "mealBreaks"
-        ],
-        "examples": 0,
-        "endpoints": [
-          "timecards",
-          "meal_breaks"
-        ],
-        "identity": false,
-        "metrics": [
-          "hours_worked",
-          "days_worked",
-          "lunch_minutes",
-          "clock_in",
-          "clock_out",
-          "meal_issues",
-          "meal_status"
-        ],
-        "places": false,
-        "reads": [
-          "timecards",
-          "meal_breaks"
-        ],
-        "sources": [
-          "timecards",
-          "meal_breaks"
-        ],
-        "synthetic": 2,
-        "terms": [
-          "meal status: same",
-          "meal status: different",
-          "meal status: missing_lunch",
-          "meal status: no_flex_meal",
-          "meal status: flex_only",
-          "meal status: review_punches",
-          "meal status: review_pairing",
-          "meal status: missing_data",
-          "meal status: cortex_unreadable"
-        ]
-      },
       "people": [
         "timecards",
         "meal_breaks"
@@ -862,18 +674,6 @@
       "domains": [],
       "live": [],
       "maintenance": [],
-      "mcp": {
-        "daily": [],
-        "examples": 0,
-        "endpoints": [],
-        "identity": false,
-        "metrics": [],
-        "places": false,
-        "reads": [],
-        "sources": [],
-        "synthetic": 0,
-        "terms": []
-      },
       "people": [],
       "routes": [
         "GET /api/dsp/uniforms",
@@ -945,30 +745,6 @@
       ],
       "live": [],
       "maintenance": [],
-      "mcp": {
-        "daily": [],
-        "examples": 4,
-        "endpoints": [
-          "customer_feedback",
-          "safety_events",
-          "returns",
-          "weekly_scorecard"
-        ],
-        "identity": false,
-        "metrics": [],
-        "places": false,
-        "reads": [
-          "feedback",
-          "safety",
-          "returns",
-          "weekly_scorecard"
-        ],
-        "sources": [
-          "weekly_scorecard"
-        ],
-        "synthetic": 1,
-        "terms": []
-      },
       "people": [
         "weekly_scorecard"
       ],

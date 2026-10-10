@@ -4,7 +4,7 @@
 use super::sources::{Identity, Key};
 use crate::api::types::DriverLink;
 use dispatch_core::foundation::names::{Name, name_key};
-use dispatch_core::mcp::api::types::DriverSource;
+use dispatch_core::manifest::people::DriverSource;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// An ID someone already holds, with the names its sources write today.

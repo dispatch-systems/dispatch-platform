@@ -1,7 +1,6 @@
 //! Daily Quality and Day Safety, stored and read independently of posted weekly scorecards.
 mod api;
 mod backend;
-mod mcp;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
@@ -57,7 +56,6 @@ pub const FEATURE: Feature = Feature {
         areas: &[("daily_performance.", Collections)],
         ..Audit::NONE
     },
-    mcp: mcp::MCP,
     people: &[&backend::people::Drivers],
     ..feature("daily_performance")
 };

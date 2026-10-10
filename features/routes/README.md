@@ -1,6 +1,6 @@
 # Routes
 
-Each day's routes, itineraries, stops and packages from Cortex, read by agents and kept for as
+Each day's routes, itineraries, stops and packages from Cortex, kept for as
 long as the DSP's retention setting (its Data tab in Settings) says. Every response is stored
 whole and compressed for reprocessing, beside the rows reads filter on. Its database keeps the
 name `routedata` on disk.
@@ -26,6 +26,4 @@ name `routedata` on disk.
   manage routes.
 - **Log:** `routes.collection_requested`, `routes.retention_changed` and `routes.data_expired`,
   under Collections.
-- **Agents:** `routes`, `routes/{route}`, `packages` and `packages/{tracking}` under `/api/v1/`,
-  read with the `routes` toggle, and delivery addresses and GPS only with `locations` too.
-  Its drivers and their days are Driver Match's `routes` kind of data.
+- **People:** its drivers and their days are Driver Match's `routes` kind of data.

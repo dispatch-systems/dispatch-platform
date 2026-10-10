@@ -3,14 +3,14 @@ import { Pencil, Plus, SlidersHorizontal } from 'lucide-react';
 import type { AgentKey } from '../../api/index.js';
 import { Badge, DataState, Empty } from '../../../shell/frontend/ui/index.js';
 import { useAgentKeys } from '../../api/client.js';
-import { accessText, expiryText, inUse, knownApp, lastUsedText, reachText } from './agents.js';
+import { accessLabels, expiryText, inUse, knownApp, lastUsedText, reachText } from './agents.js';
 import { AllowedApps } from './AllowedApps.js';
 import { AppIcon } from './AppIcon.js';
 import { ConnectDialog } from './ConnectDialog.js';
 import { KeySheet } from './KeySheet.js';
 import { RevokeDialog } from './RevokeDialog.js';
 
-/** Every app connected through "Sign in with Dispatch": what it reaches and reads and when it
+/** Every app connected through "Sign in with Dispatch": what it reaches and may do and when it
  * was used, with the way to change one, to connect another and to choose which apps may. */
 export function AppsTab() {
   const keys = useAgentKeys();
@@ -57,7 +57,6 @@ export function AppsTab() {
                     <tbody>
                       {rows.map((app) => {
                         const reach = reachText(app, data.dsps);
-                        const access = accessText(app, data.dsps);
                         // Out of renewals, the app has to connect again from its side.
                         const signedOut = inUse(app) && app.client?.status === 'signed_out';
                         return (
@@ -92,14 +91,7 @@ export function AppsTab() {
                               {reach.count}
                               {reach.names && <small>{reach.names}</small>}
                             </td>
-                            <td>
-                              {access.count}
-                              {access.note && (
-                                <small className={access.bypass ? 'agents-bypass' : undefined}>
-                                  {access.note}
-                                </small>
-                              )}
-                            </td>
+                            <td>{accessLabels[app.access]}</td>
                             <td>
                               {/* Once it has ended: "Revoked Oct 2" or "Expired Oct 2". */}
                               {inUse(app) ? lastUsedText(app.lastUsedAt) : expiryText(app)}

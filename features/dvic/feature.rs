@@ -1,7 +1,6 @@
 //! DVIC: vehicle inspections, from the weekly reports Cortex publishes.
 mod api;
 mod backend;
-mod mcp;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{DvicInspection, DvicInspections, DvicReport, DvicStatus, DvicWeek};
@@ -69,7 +68,6 @@ pub const FEATURE: Feature = Feature {
         prefix: "dvic-",
         run: backend::cli::run,
     }),
-    mcp: mcp::MCP,
     people: &[&backend::people::Drivers],
     ..feature("dvic")
 };

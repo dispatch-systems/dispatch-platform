@@ -13,41 +13,6 @@ fn renamed(value: &str) -> &str {
         .find(|(old, _)| *old == value)
         .map_or(value, |(_, new)| *new)
 }
-fn areas(value: &str) -> String {
-    let mut result = Vec::new();
-    for area in value.split(',').filter(|area| !area.is_empty()) {
-        let next = renamed(area);
-        if !result.contains(&next) {
-            result.push(next);
-        }
-    }
-    result.join(",")
-}
-fn read_choices(value: &mut Value) {
-    match value {
-        Value::Object(fields) => {
-            for (name, value) in fields {
-                if name == "areas"
-                    && let Value::Array(values) = value
-                {
-                    for value in values {
-                        if let Some(text) = value.as_str() {
-                            *value = Value::String(renamed(text).into());
-                        }
-                    }
-                } else {
-                    read_choices(value);
-                }
-            }
-        }
-        Value::Array(values) => {
-            for value in values {
-                read_choices(value);
-            }
-        }
-        _ => {}
-    }
-}
 /// Renames the permissions retired identifiers named in the roles `db` keeps: the platform's
 /// from before DSPs kept their own, and each DSP's.
 pub(crate) fn roles(db: &Db) -> Result<()> {
@@ -81,19 +46,6 @@ pub(crate) fn platform(store: &Store) -> Result<()> {
             store.platform.exec("DELETE FROM dsp_features WHERE feature=?", [old])?;
         }
         roles(&store.platform)?;
-        for table in ["agent_keys","agent_key_dsp_reads"] {
-            for row in store.platform.all(&format!("SELECT rowid migration_row,areas FROM {table}"),[])? {
-                let next = areas(s(&row,"areas"));
-                if next!=s(&row,"areas") { store.platform.exec(&format!("UPDATE {table} SET areas=? WHERE rowid=?"),
-                    rusqlite::params![next,row["migration_row"].as_i64()])?; }
-            }
-        }
-        for row in store.platform.all("SELECT hash,choices FROM oauth_codes",[])? {
-            let mut choices: Value = serde_json::from_str(s(&row,"choices"))?;
-            let previous=choices.clone(); read_choices(&mut choices);
-            if choices!=previous { store.platform.exec("UPDATE oauth_codes SET choices=? WHERE hash=?",
-                [choices.to_string().as_str(),s(&row,"hash")])?; }
-        }
         for (old,new) in registry().features.iter().flat_map(|feature| feature.retired_identifiers)
             .filter(|(old,_)| !old.contains('.')) {
             store.platform.exec("UPDATE audit SET action=? || substr(action,length(?) + 1) WHERE substr(action,1,length(?) + 1)=? || '.'",

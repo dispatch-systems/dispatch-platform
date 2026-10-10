@@ -4,8 +4,9 @@ use super::preferences::preferences;
 use dispatch_core::{
     Result,
     db::{Store, n, s},
-    manifest::people::{self, Appearances, Named, People, Workdays},
-    mcp::api::types::{DriverData, DriverSource, PeopleData},
+    manifest::people::{
+        self, Appearances, DriverData, DriverSource, Named, People, PeopleData, Workdays,
+    },
 };
 use dispatch_paycom as paycom;
 use std::collections::{BTreeMap, BTreeSet};

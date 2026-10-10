@@ -1,19 +1,13 @@
-// What the Agents page says about keys: their access, what they read, reach, last use and
-// expiry, and how an agent sets one up.
+// What the Agents page says about keys: their access, reach, last use and expiry, and how an
+// agent sets one up.
 import type {
   AgentAccess,
   AgentActivity,
-  AgentArea,
   AgentClient,
   AgentDsp,
-  AgentDspReads,
   AgentKey,
-  AgentKeyDsp,
   AgentKeyRequest,
-  AgentReads,
-  AgentSource,
 } from '../../api/index.js';
-import { readToggleGroups } from '../../../mcp/api/generated/read-toggles.js';
 import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
 import { utcDay } from '../../../shell/frontend/lib/format.js';
 
@@ -21,154 +15,6 @@ export const accessLabels: Record<AgentAccess, string> = {
   read: 'Read only',
   operator: 'Operator',
 };
-
-/** A kind of data agents may read, as the Agents page shows its switch. */
-type ReadToggle = {
-  /** Permanent: keys, apps and the audit log store it. */
-  id: AgentArea;
-  label: string;
-  /** What it holds, where its label alone doesn't say. */
-  hint: string | null;
-  /** How a key's row names it when the key doesn't read it. */
-  missing: string;
-  /** The switch it is read from, which a DSP may have switched off. */
-  source: AgentSource;
-  /** The kind it comes with and only matters beside: it is allowed only with that one. */
-  with: AgentArea | null;
-  /** A new key or app leaves it off. */
-  optIn: boolean;
-};
-/** A feature's kinds of data agents may read, under its name on the Agents page. */
-type ReadGroup = {
-  label: string;
-  /** How a key's row names the whole group when the key reads none of it. */
-  missing: string;
-  /** Each of its switches' names, said alone when only that one is off. */
-  sources: readonly { id: AgentSource; label: string }[];
-  toggles: readonly ReadToggle[];
-};
-
-// Each feature declares the kinds of its data agents may read, grouped under its name, in the
-// one order the backend lists them in.
-const groups: readonly ReadGroup[] = readToggleGroups;
-const toggles = groups.flatMap((group) => group.toggles);
-const byArea = <T>(read: (toggle: ReadToggle) => T) =>
-  Object.fromEntries(toggles.map((toggle) => [toggle.id, read(toggle)])) as Record<AgentArea, T>;
-
-/** The kinds of data a key or app may read, in the order every list shows them. */
-export const agentAreas: readonly AgentArea[] = toggles.map((toggle) => toggle.id);
-export const areaLabels = byArea((toggle) => toggle.label);
-/** What a kind of data holds, where its label alone doesn't say. */
-export const areaHints: Partial<Record<AgentArea, string>> = Object.fromEntries(
-  toggles.flatMap((toggle) => (toggle.hint ? [[toggle.id, toggle.hint]] : [])),
-);
-/** The feature each kind of data comes from, which a DSP may have switched off. */
-export const areaSources = byArea((toggle) => toggle.source);
-/** The kind each comes with, for those allowed only beside another. */
-export const areaWith: Partial<Record<AgentArea, AgentArea>> = Object.fromEntries(
-  toggles.flatMap((toggle) => (toggle.with ? [[toggle.id, toggle.with]] : [])),
-);
-export const sourceLabels = Object.fromEntries(
-  groups.flatMap((group) => group.sources.map((source) => [source.id, source.label])),
-) as Record<AgentSource, string>;
-/** The kinds of data under the page that collects them, as the switches are grouped. `missing`
- * names a whole group a key doesn't read. */
-export const areaGroups: readonly {
-  label: string;
-  missing: string;
-  areas: readonly AgentArea[];
-}[] = groups.map(({ label, missing, toggles }) => ({
-  label,
-  missing,
-  areas: toggles.map((toggle) => toggle.id),
-}));
-/** A kind of data a key doesn't read, as its table row names it. */
-const missingLabels = byArea((toggle) => toggle.missing);
-
-/** What a new key or app reads: every kind but those it must opt in to, and only where the
- * DSP has the feature on. */
-export const defaultReads = (): AgentReads => ({
-  areas: toggles.filter((toggle) => !toggle.optIn).map((toggle) => toggle.id),
-  bypass: false,
-});
-/** Kinds of data once each, in order. A kind that comes with another comes only with it. */
-export function canonicalAreas(areas: readonly AgentArea[]) {
-  const set = new Set(areas);
-  for (const toggle of toggles) if (toggle.with && !set.has(toggle.with)) set.delete(toggle.id);
-  return agentAreas.filter((area) => set.has(area));
-}
-/** `areas` with one switched on or off; switching a kind off switches off those that come
- * with it. */
-export const withArea = (areas: readonly AgentArea[], area: AgentArea, on: boolean) =>
-  canonicalAreas(on ? [...areas, area] : areas.filter((each) => each !== area));
-
-const and = (names: string[]) =>
-  names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : (names[0] ?? '');
-/** Small counts, as words. */
-const counts = ['no', 'one', 'two', 'three', 'four'];
-
-/** The features agents read from that a DSP has switched off, as the owner knows them: a
- * page, or only its tab when the page itself is on. */
-function switchedOffNames(off: readonly AgentSource[]) {
-  return areaGroups.flatMap((group) => {
-    const sources = [...new Set(group.areas.map((area) => areaSources[area]))];
-    const here = sources.filter((source) => off.includes(source));
-    if (here.length === sources.length) return [group.label];
-    return here.map((source) => sourceLabels[source]);
-  });
-}
-/** The line under what a key reads at a DSP: which features are switched off there. */
-export function switchedOffText(dsp: Pick<AgentKeyDsp, 'name' | 'switchedOff'>) {
-  const names = switchedOffNames(dsp.switchedOff);
-  if (!names.length) return `Every feature is on at ${dsp.name}.`;
-  return `${and(names)} ${names.length === 1 ? 'is' : 'are'} switched off at ${dsp.name}.`;
-}
-/** What bypassing features does at a DSP with settings of its own: `who` reads the data of
- * the features switched off there, which stopped collecting when they were. */
-export function bypassHere(who: string, dsp: Pick<AgentKeyDsp, 'switchedOff'>) {
-  const off = switchedOffNames(dsp.switchedOff).length;
-  const reads = `${who} reads every feature’s data here`;
-  if (!off) return `${reads}, even if one is switched off later. It only ever reads.`;
-  if (off === 1)
-    return (
-      `${reads}, including the one switched off. Its collection stays off, so that data ends ` +
-      'on the day it was switched off. It only ever reads.'
-    );
-  return (
-    `${reads}, including the ${counts[off]} switched off. Their collection stays off, so that ` +
-    'data ends on the day each was switched off. It only ever reads.'
-  );
-}
-
-/** How much a key or app reads, as its row says it: "All data" or "7 of 9 kinds", and a line
- * naming the DSPs with settings of their own, else that it bypasses features, else the one or
- * two things it doesn't read. `bypass` when any of its settings bypasses features. */
-export function accessText(
-  key: Pick<AgentKey, 'reads' | 'dspReads'>,
-  dsps: Pick<AgentDsp, 'id' | 'name'>[],
-) {
-  const areas = canonicalAreas(key.reads.areas);
-  const count =
-    areas.length === agentAreas.length
-      ? 'All data'
-      : `${areas.length} of ${agentAreas.length} kinds`;
-  const bypass = key.reads.bypass || key.dspReads.some((own) => own.bypass);
-  if (key.dspReads.length > 1)
-    return { count, note: `${key.dspReads.length} DSPs with own settings`, bypass };
-  const [own] = key.dspReads;
-  if (own) {
-    const name = dsps.find((dsp) => dsp.id === own.dsp)?.name ?? 'A removed DSP';
-    return { count, note: `${name}: own settings${own.bypass ? ', bypass on' : ''}`, bypass };
-  }
-  if (bypass) return { count, note: 'Bypass on', bypass };
-  const missing = areaGroups.flatMap((group) => {
-    const off = group.areas.filter((area) => !areas.includes(area));
-    if (off.length > 1 && off.length === group.areas.length) return [group.missing];
-    return off.map((area) => missingLabels[area]);
-  });
-  const note = missing.length && missing.length <= 2 ? `No ${missing.join(' or ')}` : '';
-  return { count, note, bypass };
-}
 
 const DAY = 86_400_000;
 /** How long a new key lasts, as the key sheet offers it. */
@@ -276,7 +122,7 @@ export const appKindName = (id: string | null) =>
   (id && Object.hasOwn(appKinds, id) && appKinds[id]) || 'this app';
 
 /** Where an agent's call went, as the Activity tab shows it: `rest:whoami` is the REST
- * endpoint whoami, `mcp:find_driver` the MCP tool find_driver. */
+ * endpoint whoami, `mcp:whoami` the MCP tool whoami. */
 export function surfaceOf(surface: string) {
   const split = surface.indexOf(':');
   const via = split < 0 ? '' : surface.slice(0, split);
@@ -286,46 +132,23 @@ export function surfaceOf(surface: string) {
     : { via: '', name: surface };
 }
 
-/** A new key's starting point: read only, every DSP, the default reads, 90 days. */
+/** A new key's starting point: read only, every DSP, 90 days. */
 export const blankKey = (): AgentKeyRequest => ({
   name: '',
   allDsps: true,
   dsps: [],
   access: 'read',
-  reads: defaultReads(),
-  dspReads: [],
   expiresAt: null,
-});
-const ownReads = ({ dsp, areas, bypass }: AgentDspReads): AgentDspReads => ({
-  dsp,
-  areas: canonicalAreas(areas),
-  bypass,
 });
 export const requestOf = (key: AgentKey): AgentKeyRequest => ({
   name: key.name,
   allDsps: key.allDsps,
   dsps: [...key.dsps].sort(),
   access: key.access,
-  reads: { areas: canonicalAreas(key.reads.areas), bypass: key.reads.bypass },
-  dspReads: key.dspReads.map(ownReads),
   expiresAt: key.expiresAt,
 });
-/** The settings of their own that go with a key: only those of the DSPs it still reaches. A
- * suspended or removed DSP isn't listed, but one the key reaches keeps its own settings, sent
- * back as they are, for when it is active again. */
-export const reachedReads = (key: Pick<AgentKeyRequest, 'allDsps' | 'dsps' | 'dspReads'>) =>
-  key.dspReads.filter((own) => key.allDsps || key.dsps.includes(own.dsp));
 const comparable = (key: AgentKeyRequest) =>
-  JSON.stringify([
-    key.name,
-    key.allDsps,
-    [...key.dsps].sort(),
-    key.access,
-    canonicalAreas(key.reads.areas),
-    key.reads.bypass,
-    key.dspReads.map(ownReads).sort((a, b) => a.dsp.localeCompare(b.dsp)),
-    key.expiresAt,
-  ]);
+  JSON.stringify([key.name, key.allDsps, [...key.dsps].sort(), key.access, key.expiresAt]);
 export const sameRequest = (a: AgentKeyRequest, b: AgentKeyRequest) =>
   comparable(a) === comparable(b);
 
@@ -421,12 +244,6 @@ export function signIns(origin: string) {
 export function setups(origin: string, token: string) {
   const mcp = `${origin}/api/v1/mcp`;
   const key = `export DISPATCH_KEY="${token}"`;
-  const skill = (folder: string) =>
-    [
-      '# The Dispatch skill',
-      `curl -fsS -H "Authorization: Bearer $DISPATCH_KEY" ${origin}/api/v1/skill \\`,
-      `  --create-dirs -o ${folder}/dispatch/SKILL.md`,
-    ].join('\n');
   return [
     {
       id: 'claude-code',
@@ -437,8 +254,6 @@ export function setups(origin: string, token: string) {
         'claude mcp add --transport http --scope user dispatch \\',
         `  ${mcp} \\`,
         '  --header "Authorization: Bearer $DISPATCH_KEY"',
-        '',
-        skill('~/.claude/skills'),
       ].join('\n'),
     },
     {
@@ -450,8 +265,6 @@ export function setups(origin: string, token: string) {
         '',
         `codex mcp add dispatch --url ${mcp} \\`,
         '  --bearer-token-env-var DISPATCH_KEY',
-        '',
-        skill('~/.agents/skills'),
       ].join('\n'),
     },
     {
@@ -467,8 +280,6 @@ export function setups(origin: string, token: string) {
         `    url: "${mcp}"`,
         '    headers:',
         '      Authorization: "Bearer ${DISPATCH_KEY}"',
-        '',
-        skill('~/.hermes/skills/operations'),
       ].join('\n'),
     },
     {

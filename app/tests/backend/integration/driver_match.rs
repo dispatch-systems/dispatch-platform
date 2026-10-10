@@ -4,7 +4,7 @@ use dispatch_core::testing as common;
 use dispatch_core::{
     accounts::{Auth, Context},
     db::{Store, s},
-    mcp::api::types::{DriverSource, DriverStatus},
+    manifest::people::{DriverSource, DriverStatus},
 };
 use dispatch_cortex::{discovery::Scope, meals};
 use dispatch_driver_match::{
