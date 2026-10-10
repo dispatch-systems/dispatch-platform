@@ -1,0 +1,17 @@
+//! {{title}}, called as an agent calls it.
+use dispatch_core::testing::{self, agent, bootstrapped, call_tool};
+use serde_json::json;
+
+#[test]
+fn answers_where_{{feature}}_is_on() {
+    testing::install(&[{{collectors}}], &[{{features}}]);
+    let (_root, db, dsp) = bootstrapped();
+    let caller = agent(&db, &[&dsp], &["{{name}}"]);
+{{#optional}}
+    // Switched off at the DSP, it is refused there.
+    assert!(call_tool(&db, &caller, "{{name}}", json!({})).is_err());
+{{/optional}}
+    db.enable_all_features(&dsp).unwrap();
+    let answer = call_tool(&db, &caller, "{{name}}", json!({})).unwrap();
+    assert_eq!(answer, json!({"dsp": db.find_dsp(&dsp).unwrap().name}));
+}

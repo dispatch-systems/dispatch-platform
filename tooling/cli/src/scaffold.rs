@@ -1,16 +1,17 @@
-//! `dispatchdev new feature <name> [options]` and `new collector <site> [options]`: a feature or
-//! a collector that works as written, made in a worktree and listed in the app, with what is
-//! generated from it written too. The checkout's own scaffolder makes it and says what each
+//! `dispatchdev new feature <name> [options]`, `new collector <site> [options]` and `new tool
+//! <feature> <name> [options]`: a feature, a collector or a feature's agent tool that works as
+//! written, made in a worktree and listed in the app, with what is generated from it written too. The checkout's own scaffolder makes it and says what each
 //! option adds (`tooling/scaffold/`); then the catalog, the API types and the snapshots are
 //! written for it, a line each, as `dispatchdev check` runs its steps.
 use crate::{Native, Result, require, test, workspace::Workspace};
 use std::{path::Path, process::Command};
 
-pub const USAGE: &str = "Usage: dispatchdev new feature <name> [options] | new collector <site> [options]. Either with no name lists its options.";
+pub const USAGE: &str = "Usage: dispatchdev new feature <name> [options] | new collector <site> [options] | new tool <feature> <name> [options]. Each with no name lists its options.";
 /// What `new` makes, each with its scaffolder.
 const KINDS: &[(&str, &str)] = &[
     ("feature", "tooling/scaffold/new-feature.ts"),
     ("collector", "tooling/scaffold/new-collector.ts"),
+    ("tool", "tooling/scaffold/new-tool.ts"),
 ];
 /// What the scaffolder leaves to commands, run once it has written its files.
 const GENERATE: &[&str] = &["npm run contracts:generate", "npm run snapshots:update"];

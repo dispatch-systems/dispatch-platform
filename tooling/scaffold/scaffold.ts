@@ -408,7 +408,7 @@ export const routeInventory = 'app/tests/backend/integration/http_routes.rs';
  */
 export const snapshotsNote =
   "Then `npm run snapshots:update` rewrites the snapshots of the whole product the app's tests " +
-  'hold, such as the catalog, the databases and what agents read, and names each one that ' +
+  'hold, such as the catalog, the databases and the tools agents use, and names each one that ' +
   'changed: review them with the rest.';
 /** The app's test that writes every owner's API types to TypeScript, which lists each type. */
 export const typescriptExport = 'app/tests/backend/export.rs';
@@ -453,11 +453,12 @@ export function finish(plan: Plan, root: string, options: { dryRun: boolean; out
       fs.writeFileSync(path.join(target, file), content);
     }
   const changed = [...plan.changes.keys()];
-  // Builds run with --locked, which refuses a crate Cargo.lock does not list.
-  const crate = [...plan.files.keys()].some((file) => file.endsWith('/Cargo.toml'));
+  // Builds run with --locked, which refuses a crate, or a crate's dependencies, Cargo.lock does
+  // not list.
+  const crate = [...plan.files.keys(), ...changed].some((file) => file.endsWith('/Cargo.toml'));
   if (crate && options.dryRun)
     plan.notes.unshift(
-      'Cargo.lock would list the new crate, as `cargo update --workspace` adds it.',
+      'Cargo.lock would list the crates as they now are, as `cargo update --workspace` does.',
     );
   else if (crate && exists(root, 'Cargo.lock')) {
     const before = read(root, 'Cargo.lock');
@@ -465,8 +466,8 @@ export function finish(plan: Plan, root: string, options: { dryRun: boolean; out
       if (read(root, 'Cargo.lock') !== before) changed.push('Cargo.lock');
     } else
       plan.notes.unshift(
-        'Cargo.lock does not list the new crate yet, and builds with --locked refuse it: ' +
-          'run `cargo update --workspace`.',
+        'Cargo.lock does not list the crates as they now are, and builds with --locked refuse ' +
+          'it: run `cargo update --workspace`.',
       );
   }
   const verb = options.dryRun ? 'Would write' : 'Wrote';
