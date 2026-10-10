@@ -4,7 +4,7 @@ use crate::{
     collection::{browser, registry},
     db,
     foundation::{config, observability},
-    mcp,
+    manifest,
     server::{cache, http, live, mail, presence},
 };
 use std::sync::{Arc, Mutex, RwLock};
@@ -37,14 +37,9 @@ pub struct State {
     /// Every feature's own live channels.
     pub topics: live::Topics,
     pub presence: presence::Presence,
-    // How much each agent key is used, until the scheduler writes it down.
-    pub agents: mcp::Usage,
-    // The calls agents made, until the scheduler writes them down.
-    pub activity: mcp::Activity,
-    // The known apps' client documents, as last fetched.
-    pub oauth: mcp::oauth::Documents,
-    // Public OAuth requests admitted before they can consume database capacity.
-    pub oauth_limits: mcp::oauth::limits::Limits,
+    /// What the agents' piece keeps in memory for as long as the server runs, in its own
+    /// terms; none in a build without it.
+    pub agents: Option<Box<dyn std::any::Any + Send + Sync>>,
 }
 impl State {
     /// Reads the registry, which the app installs before it builds one.
@@ -60,8 +55,10 @@ impl State {
                     status='error',error='verification_expired' WHERE status IN ('signing_in','needs_verification')",[])?;
             }
         }
-        // Each key's calls recorded today, so a restart keeps its daily cap.
-        let activity = mcp::Activity::seeded(&store)?;
+        let agents = match manifest::registry().agents {
+            Some(agents) => Some((agents.state)(&store)?),
+            None => None,
+        };
         Ok(Arc::new(Self {
             key: store.key.clone(),
             assets: http::assets(&config.dashboard, &config.release)?,
@@ -80,10 +77,7 @@ impl State {
             updates: live::Updates::new()?,
             topics: live::Topics::default(),
             presence: presence::Presence::default(),
-            agents: mcp::Usage::default(),
-            activity,
-            oauth: mcp::oauth::Documents::default(),
-            oauth_limits: mcp::oauth::limits::Limits::default(),
+            agents,
         }))
     }
     pub async fn run<T: Send + 'static>(

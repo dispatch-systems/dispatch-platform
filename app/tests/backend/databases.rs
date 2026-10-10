@@ -99,6 +99,7 @@ fn with(extra: &'static Feature) -> Registry {
     Registry {
         collectors: crate::REGISTRY.collectors,
         features: Box::leak(features.into_boxed_slice()),
+        agents: crate::REGISTRY.agents,
     }
 }
 

@@ -7,6 +7,7 @@
 pub mod clients;
 pub mod guard;
 pub mod limits;
+mod mail;
 pub mod network;
 mod notices;
 

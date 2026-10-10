@@ -14,6 +14,7 @@ use crate::{
             self, Answer, Query, Refusal,
             limits::{Endpoint as Limited, Limits},
         },
+        piece::Kept,
     },
     server::http::{
         input::{Input, Reply, optional_text},
@@ -97,7 +98,11 @@ async fn authorize(state: Arc<State>, request: Request) -> Response {
         Ok(ip) => ip,
         Err(error) => return middleware::failure(error),
     };
-    if state.oauth_limits.admit(Limited::Authorize, &ip).is_err() {
+    if Kept::of(&state)
+        .limits
+        .admit(Limited::Authorize, &ip)
+        .is_err()
+    {
         let response = Reply::redirect(format!(
             "{}/#authorize?error=rate_limited",
             oauth::issuer(&state.config)
@@ -124,9 +129,9 @@ async fn authorize(state: Arc<State>, request: Request) -> Response {
     // An app's document is read before the database is opened, never while it is held.
     let document = match query.one("client_id") {
         Ok(Some(id)) if id.starts_with("https://") => Some(if app == OAuthAppId::Web {
-            state.oauth.website(&state.config, id).await
+            Kept::of(&state).documents.website(&state.config, id).await
         } else {
-            state.oauth.client(&state.config, id).await
+            Kept::of(&state).documents.client(&state.config, id).await
         }),
         _ => None,
     };
@@ -200,7 +205,7 @@ async fn token(state: Arc<State>, request: Request) -> Response {
     };
     match answer {
         Ok(tokens) => answered(200, tokens),
-        Err(refusal) => refused(&state.oauth_limits, "token", refusal),
+        Err(refusal) => refused(&Kept::of(&state).limits, "token", refusal),
     }
 }
 
@@ -208,18 +213,18 @@ async fn register(state: Arc<State>, request: Request) -> Response {
     let (parts, body) = request.into_parts();
     let ip = match post_head(&state, &parts, "/oauth/register", Limited::Register) {
         Ok(ip) => ip,
-        Err(error) => return refused(&state.oauth_limits, "register", error),
+        Err(error) => return refused(&Kept::of(&state).limits, "register", error),
     };
     let body = match middleware::bytes(body).await {
         Ok(body) => body,
-        Err(error) => return refused(&state.oauth_limits, "register", error.into()),
+        Err(error) => return refused(&Kept::of(&state).limits, "register", error.into()),
     };
     let Some(metadata) = content_type(&parts, "application/json")
         .then(|| serde_json::from_slice::<Value>(&body).ok())
         .flatten()
     else {
         return refused(
-            &state.oauth_limits,
+            &Kept::of(&state).limits,
             "register",
             Refusal::new("invalid_client_metadata", "The body must be JSON"),
         );
@@ -236,7 +241,7 @@ async fn register(state: Arc<State>, request: Request) -> Response {
         .and_then(|answer| answer);
     match answer {
         Ok(client) => answered(201, client),
-        Err(refusal) => refused(&state.oauth_limits, "register", refusal),
+        Err(refusal) => refused(&Kept::of(&state).limits, "register", refusal),
     }
 }
 
@@ -252,7 +257,7 @@ async fn revoke(state: Arc<State>, request: Request) -> Response {
     };
     match answer {
         Ok(()) => answered(200, json!({})),
-        Err(refusal) => refused(&state.oauth_limits, "revoke", refusal),
+        Err(refusal) => refused(&Kept::of(&state).limits, "revoke", refusal),
     }
 }
 
@@ -291,7 +296,7 @@ fn post_head(
             "Cross-site browser form posts are not accepted",
         ));
     }
-    state.oauth_limits.admit(endpoint, &ip)?;
+    Kept::of(&state).limits.admit(endpoint, &ip)?;
     Ok(ip)
 }
 fn cross_site(parts: &Parts, origin: &str) -> bool {

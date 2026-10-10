@@ -15,6 +15,7 @@ use dispatch_core::{
 pub static REGISTRY: Registry = Registry {
     collectors: &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
     features: features::FEATURES,
+    agents: Some(&dispatch_core::mcp::AGENTS),
 };
 /// Installs `REGISTRY`, and hands core what a DSP path no route matches asks for. Every
 /// entry point, and every one of the app's tests, calls this before anything reads the

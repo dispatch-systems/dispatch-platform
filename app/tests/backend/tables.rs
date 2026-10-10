@@ -89,6 +89,7 @@ fn a_registry_where_two_owners_declare_one_table_is_refused() {
     Registry {
         collectors: REGISTRY.collectors,
         features: Box::leak(features.into_boxed_slice()),
+        agents: REGISTRY.agents,
     }
     .check();
 }

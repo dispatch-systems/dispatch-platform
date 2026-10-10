@@ -7,13 +7,19 @@
 pub mod activity;
 #[path = "../api/mod.rs"]
 pub mod api;
+mod migrations;
 pub mod oauth;
+pub mod piece;
 pub mod server;
+#[cfg(any(test, feature = "testing"))]
+#[path = "../tests/support/testing.rs"]
+pub mod testing;
 mod token;
 pub mod tools;
 mod usage;
 
 pub use activity::Activity;
+pub use piece::{AGENTS, Agent};
 pub use usage::{LastUse, PER_MINUTE, Usage};
 
 use tools::{Grants, Toolbox};

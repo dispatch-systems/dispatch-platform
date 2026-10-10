@@ -5,12 +5,13 @@
 //! here, in memory, once answered. The scheduler writes calls down in batches, so an agent's
 //! read never waits for the platform's write lock. Calls are kept 90 days, and at most
 //! `DAILY` of each key's a day, so one busy key cannot fill the disk.
-use super::server;
+use super::{piece::Kept, server};
 use crate::{
     Result, State,
     db::{FromRow, Row, Store, now},
-    foundation::observability::{self, RequestTrace},
+    foundation::observability::{self, RequestContext, RequestTrace},
     mcp::api::types::{AgentActivity, AgentActivityKey, AgentActivityPage, AgentDsp},
+    server::http::Answered,
 };
 use rusqlite::params;
 use serde_json::json;
@@ -59,16 +60,13 @@ pub struct Noted {
     pub outcome: Option<String>,
 }
 
-/// How a request an agent sent ended, as its route saw it.
-pub struct Answered<'a> {
-    /// The route's registered path.
-    pub path: &'static str,
-    pub at: i64,
-    pub ms: u128,
-    pub bytes: u64,
-    pub status: u16,
-    /// The code the route failed with, when it failed rather than answered.
-    pub failed: Option<&'a str>,
+/// What the request's trace notes of an agent's call, made the first time it is asked for.
+pub fn noted(context: &mut RequestContext) -> &mut Noted {
+    context
+        .agent
+        .get_or_insert_with(|| Box::new(Noted::default()))
+        .downcast_mut::<Noted>()
+        .expect("only the MCP notes an agent's call")
 }
 
 /// The calls not yet written down.
@@ -257,8 +255,9 @@ pub fn tool_call(body: &[u8]) -> Option<String> {
 /// Notes what a handler found of an agent's call: the DSP it was about, and how it ended.
 pub fn note(trace: &RequestTrace, dsp: Option<AgentDsp>, outcome: &str) {
     let mut context = trace.lock().unwrap_or_else(|poison| poison.into_inner());
-    context.agent.dsp = dsp;
-    context.agent.outcome = Some(outcome.to_owned());
+    let noted = noted(&mut context);
+    noted.dsp = dsp;
+    noted.outcome = Some(outcome.to_owned());
 }
 
 /// Writes down every call held, a batch at a time, each under the platform lock only as long
@@ -267,7 +266,7 @@ pub fn note(trace: &RequestTrace, dsp: Option<AgentDsp>, outcome: &str) {
 pub async fn flush(state: &Arc<State>) -> Result<usize> {
     let mut written = 0;
     for _ in 0..HELD.div_ceil(BATCH) {
-        let taken = state.activity.take(BATCH);
+        let taken = Kept::of(state).activity.take(BATCH);
         if taken.dropped > 0 {
             observability::event(
                 "warn",
@@ -292,7 +291,9 @@ pub async fn flush(state: &Arc<State>) -> Result<usize> {
             .run_bookkeeping(move |db| db.record_agent_activity(&writing))
             .await;
         if let Err(error) = result {
-            state.activity.restore(Arc::unwrap_or_clone(calls));
+            Kept::of(state)
+                .activity
+                .restore(Arc::unwrap_or_clone(calls));
             return Err(error);
         }
         written += count;

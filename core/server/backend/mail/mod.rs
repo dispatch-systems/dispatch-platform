@@ -86,7 +86,8 @@ fn current(
                 .is_some(),
             _ => false,
         },
-        Some("connected_app") => match user {
+        // A notice to a platform owner (`notify_platform_owners`).
+        Some(kind) if !kind.contains('.') && dsp.is_none() => match user {
             Some(user) => db
                 .platform
                 .one(

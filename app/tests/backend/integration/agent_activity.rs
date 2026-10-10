@@ -10,6 +10,7 @@ use dispatch_core::{
         activity,
         api::types::{AgentActivityKey, AgentKeyKind, AgentKeyRequest},
         oauth,
+        piece::Kept,
     },
     server::operations,
 };
@@ -303,10 +304,10 @@ async fn rest_and_mcp_calls_are_held_then_written_with_their_outcome() {
 
     // Nothing was written yet: every call waits in memory.
     assert_eq!(server.written().await, 0);
-    assert_eq!(server.state.activity.pending(), 6);
+    assert_eq!(Kept::of(&server.state).activity.pending(), 6);
     assert_eq!(server.log(&cookie, "").await.body["rows"], json!([]));
     assert_eq!(activity::flush(&server.state).await.unwrap(), 6);
-    assert_eq!(server.state.activity.pending(), 0);
+    assert_eq!(Kept::of(&server.state).activity.pending(), 0);
     assert_eq!(server.written().await, 6);
 
     let log = server.log(&cookie, "").await;
@@ -354,7 +355,7 @@ async fn a_key_refused_for_its_rate_is_recorded_once_a_minute() {
     // alike. A minute may turn between filling it and calling: then fill the new one.
     let mut minutes = 0;
     for _ in 0..3 {
-        while server.state.agents.admit(&key, "curl").is_ok() {}
+        while Kept::of(&server.state).usage.admit(&key, "curl").is_ok() {}
         let rest = server.rest(&token, "/api/v1/whoami").await;
         let tool = server.tool(&token, "whoami", json!({})).await;
         if rest.status == 429 {
@@ -404,7 +405,7 @@ async fn the_log_pages_newest_first_and_narrows_to_a_key_or_to_refusals() {
         })
         .collect();
     for call in &calls {
-        server.state.activity.record(call.clone());
+        Kept::of(&server.state).activity.record(call.clone());
     }
     activity::flush(&server.state).await.unwrap();
     let surfaces = |answer: &Answer| -> Vec<String> {
@@ -519,9 +520,9 @@ async fn a_key_past_its_days_calls_is_capped_and_a_restart_keeps_the_cap() {
         return; // The day turned while the test ran.
     }
     for n in 0..3 {
-        restarted.activity.record(call(&busy, now + n));
+        Kept::of(&restarted).activity.record(call(&busy, now + n));
     }
-    restarted.activity.record(call(&quiet, now + 3));
+    Kept::of(&restarted).activity.record(call(&quiet, now + 3));
     // The day's last call, then the row that marks it capped; the third is only counted.
     assert_eq!(activity::flush(&restarted).await.unwrap(), 3);
     let counted = busy.clone();

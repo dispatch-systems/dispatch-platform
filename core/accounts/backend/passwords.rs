@@ -17,9 +17,13 @@ impl Store {
             people.exec("DELETE FROM sessions WHERE user_id=?", [id])?;
             people.exec("DELETE FROM resets WHERE user_id=?", [id])?;
             // A reset can follow a stolen password, so whatever it may have made stops too,
-            // in the same step as the password itself. Agent keys are platform owners'.
-            if action == "account.password_reset" && dsp.is_none() {
-                self.revoke_agent_keys_within(Some(id), Some(id))?;
+            // in the same step as the password itself: agents' credentials are platform
+            // owners'.
+            if action == "account.password_reset"
+                && dsp.is_none()
+                && let Some(agents) = crate::manifest::registry().agents
+            {
+                (agents.password_reset)(self, id)?;
             }
             self.audit_account(user, dsp, action, "")
         })

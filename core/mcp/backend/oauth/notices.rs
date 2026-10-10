@@ -1,14 +1,20 @@
 //! What the platform owners hear about connected apps: an email when an app connects, and
 //! one when Dispatch itself disconnects an app because its code or a refresh token was
 //! presented again. Each is best effort and never stops what it reports.
-use super::{super::tools::Toolbox, clients};
+use super::{
+    super::tools::Toolbox,
+    clients,
+    mail::{self as email, ConnectedApp},
+};
 use crate::{
     Result,
     db::{Store, now, s},
     foundation::observability,
-    server::mail::templates::{self as email, ConnectedApp},
 };
 use serde_json::json;
+
+/// The kind of email the notices are, as the mail log names it.
+pub const KIND: &str = "connected_app";
 
 /// What happened to a connected app.
 #[derive(Clone, Copy)]
@@ -63,7 +69,7 @@ impl Store {
         let tools =
             Toolbox::installed().summary(&self.agent_key_grants(key, app["all_tools"] == 1)?);
         let at = now();
-        self.notify_platform_owners(|to| {
+        self.notify_platform_owners(KIND, |to| {
             let described = ConnectedApp {
                 origin: &self.config.origin,
                 dev: self.config.env().is_preview(),
