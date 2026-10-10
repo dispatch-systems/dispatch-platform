@@ -351,6 +351,10 @@ fn ambiguity_includes_employees_without_punches_and_drivers_without_meals() {
 fn meal_period_counts_each_verified_gap_and_only_time_beyond_five_minutes() {
     install();
     let (_root, db, id) = common::bootstrapped();
+    let mut previous_workforce =
+        fixtures::fixture_date("America/Los_Angeles", Some("2026-09-05".parse().unwrap())).unwrap();
+    previous_workforce["employees"][0]["name"] = json!("Driver, Demo");
+    db.publish_timecards(&id, &previous_workforce).unwrap();
     let mut workforce =
         fixtures::fixture_date("America/Los_Angeles", Some("2026-09-19".parse().unwrap())).unwrap();
     workforce["employees"][0]["name"] = json!("Driver, Demo");
