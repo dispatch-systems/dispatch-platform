@@ -32,6 +32,11 @@ All endpoints use the existing authenticated DSP context and CSRF rules.
 | `POST /api/dsp/dvic/schedules/{key}/remove`                   | `dvic.manage`  | Delete with `revision`                                                                        |
 | `POST /api/dsp/dvic/schedules/preview`                        | `dvic.manage`  | Preview cadence in the DSP's timezone                                                         |
 
+Other owners read DVIC through `DvicStore`: `dvic_inspections` as above, `dvic_drivers` (each
+driver with short inspections, by the name their latest one gave, with how many and when), and
+`dvic_coverage` (the days the collected reports cover; each daily report covers the eight days
+before it, so a day outside them is unknown rather than one nobody was short).
+
 Manual sync defaults to the current and previous publication week; an explicit week
 alone selects that week. A request returns one queued job, and replaying its requestId
 is idempotent. Schedules use the existing daily/interval scheduler, timezone handling,

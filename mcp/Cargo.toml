@@ -16,7 +16,10 @@ doctest = false
 # the crates its tests install with it. Every one is on by default, for the MCP's own tests;
 # the app, which has no default of the MCP's, turns on each it has.
 # Every feature the MCP's tools need: written from mcp/tools/ by `npm run contracts:generate`, to the blank line.
-default = []
+default = [
+    "dvic",
+]
+dvic = ["dep:dispatch-cortex", "dep:dispatch-dvic"]
 
 # `dispatch_mcp::testing`, for the app's tests through its dev-dependencies.
 testing = ["dispatch-core/testing"]
@@ -41,6 +44,8 @@ tokio = { workspace = true }
 ts-rs = { workspace = true, optional = true }
 url = { workspace = true }
 # Every feature the MCP's tools need: written from mcp/tools/ by `npm run contracts:generate`, to the blank line.
+dispatch-cortex = { path = "../collectors/cortex", optional = true }
+dispatch-dvic = { path = "../features/dvic", optional = true }
 
 [dev-dependencies]
 dispatch-core = { path = "../core", features = ["testing"] }

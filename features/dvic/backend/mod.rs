@@ -6,7 +6,7 @@ pub(crate) mod keeper;
 pub(crate) mod people;
 mod storage;
 
-pub use storage::DvicStore;
+pub use storage::{DvicCoverage, DvicDriver, DvicStore};
 
 use dispatch_core::{
     Error, Result,

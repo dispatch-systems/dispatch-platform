@@ -777,6 +777,8 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "dispatch-core",
+ "dispatch-cortex",
+ "dispatch-dvic",
  "reqwest",
  "rmcp",
  "rusqlite",
