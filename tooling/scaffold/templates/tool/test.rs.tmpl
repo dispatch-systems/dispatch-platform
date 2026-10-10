@@ -8,10 +8,12 @@ fn answers_where_{{feature}}_is_on() {
     let (_root, db, dsp) = bootstrapped();
     let caller = agent(&db, &[&dsp], &["{{name}}"]);
 {{#optional}}
-    // Switched off at the DSP, it is refused there.
+    // Switched off at the DSP, it is refused there; switched on, it answers.
+    let owner = testing::platform_owner(&db);
+    db.set_feature(&dsp, "{{switchId}}", false, &owner).unwrap();
     assert!(call_tool(&db, &caller, "{{name}}", json!({})).is_err());
+    db.set_feature(&dsp, "{{switchId}}", true, &owner).unwrap();
 {{/optional}}
-    db.enable_all_features(&dsp).unwrap();
     let answer = call_tool(&db, &caller, "{{name}}", json!({})).unwrap();
     assert_eq!(answer, json!({"dsp": db.find_dsp(&dsp).unwrap().name}));
 }

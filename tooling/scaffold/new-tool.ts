@@ -100,14 +100,16 @@ export function toolValues(root: string, argv: string[]) {
     throw new UsageError(`${part} is no part of ${feature}: its manifest declares none by that id`);
   const words = name.split('_');
   const title =
-    args.options.get('title') ?? [words[0]![0]!.toUpperCase() + words[0]!.slice(1), ...words.slice(1)].join(' ');
+    args.options.get('title') ??
+    [words[0]![0]!.toUpperCase() + words[0]!.slice(1), ...words.slice(1)].join(' ');
   const description = args.options.get('description') ?? 'Answer with the DSP it is about.';
   if (!/[.!?]$/.test(description.trim()))
     throw new UsageError('--description is a sentence or two, ending with a full stop');
-  const label = /switch: (?:optional|mandatory)\(\s*"[^"]+",\s*"([^"]+)"/.exec(manifest)?.[1];
+  const declared = /switch: (?:optional|mandatory)\(\s*"([^"]+)",\s*"([^"]+)"/.exec(manifest);
   const values: Values = {
     feature,
-    featureLabel: label ?? namesOf(feature).label,
+    featureLabel: declared?.[2] ?? namesOf(feature).label,
+    switchId: declared?.[1] ?? feature,
     name,
     pascal: namesOf(name).pascal,
     title: literal(title),
@@ -142,16 +144,20 @@ function depend(text: string, section: string, line: string) {
   lines.splice(last, 0, line);
   return lines.join('\n');
 }
+/** `text` with `mod <name>;` among its other modules, in the order rustfmt keeps them. */
+function withModule(text: string, name: string) {
+  const mods = [...text.matchAll(/^mod ([a-z_0-9]+);$/gm)];
+  if (!mods.length) throw new Error(`no module list to add mod ${name}; to`);
+  const before = mods.find((mod) => mod[1]! > name);
+  if (before) return `${text.slice(0, before.index)}mod ${name};\n${text.slice(before.index)}`;
+  const last = mods.at(-1)!;
+  const at = last.index + last[0].length;
+  return `${text.slice(0, at)}\nmod ${name};${text.slice(at)}`;
+}
 /** Has the manifest list its mcp/ module and name its tools. */
 function wire(text: string, feature: string) {
   let wired = text;
-  if (!/^mod mcp;$/m.test(wired)) {
-    const mods = [...wired.matchAll(/^mod [a-z_]+;$/gm)];
-    const after = mods.at(-1);
-    if (!after) throw new Error(`features/${feature}/feature.rs has no module list; add mod mcp;`);
-    const at = after.index + after[0].length;
-    wired = `${wired.slice(0, at)}\nmod mcp;${wired.slice(at)}`;
-  }
+  if (!/^mod mcp;$/m.test(wired)) wired = withModule(wired, 'mcp');
   if (!/^\s+tools: mcp::TOOLS,$/m.test(wired)) {
     const tail = new RegExp(`^(\\s+)\\.\\.feature\\("${feature}"\\)`, 'm').exec(wired);
     if (!tail)
@@ -173,13 +179,9 @@ export async function planTool(root: string, argv: string[]) {
   plan.files.set(`${dir}/mcp/${name}.rs`, tool);
   plan.files.set(`${dir}/tests/backend/mcp/${name}.rs`, template('tool/test.rs', values));
   if (exists(root, `${dir}/mcp/mod.rs`)) {
-    await change(plan, root, `${dir}/mcp/mod.rs`, (text) => {
-      const mods = [...text.matchAll(/^mod [a-z_0-9]+;$/gm)];
-      const after = mods.at(-1);
-      const at = after ? after.index + after[0].length : text.indexOf('\npub(crate) const TOOLS');
-      const listed = `${text.slice(0, at)}\nmod ${name};${text.slice(at)}`;
-      return appendToList(listed, TOOLS_LIST, `&${name}::${pascal},`, `${dir}/mcp/mod.rs`);
-    });
+    await change(plan, root, `${dir}/mcp/mod.rs`, (text) =>
+      appendToList(withModule(text, name), TOOLS_LIST, `&${name}::${pascal},`, `${dir}/mcp/mod.rs`),
+    );
   } else plan.files.set(`${dir}/mcp/mod.rs`, template('tool/mod.rs', values));
   await change(plan, root, `${dir}/feature.rs`, (text) => wire(text, feature));
   await change(plan, root, `${dir}/Cargo.toml`, (text) => {
