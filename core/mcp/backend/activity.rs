@@ -248,7 +248,7 @@ pub fn tool_call(body: &[u8]) -> Option<String> {
         return None;
     }
     let name = message.params.and_then(|p| p.name).unwrap_or_default();
-    Some(match server::TOOLS.iter().find(|tool| **tool == name) {
+    Some(match server::known(&name) {
         Some(tool) => format!("mcp:{tool}"),
         None => "mcp:unknown".into(),
     })

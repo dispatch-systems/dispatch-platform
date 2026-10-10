@@ -10,6 +10,7 @@ pub mod api;
 pub mod oauth;
 pub mod server;
 mod token;
+pub mod tools;
 mod usage;
 
 pub use activity::Activity;
@@ -23,12 +24,11 @@ use crate::{
     foundation::crypto,
     mcp::api::types::{
         AgentAccess, AgentDsp, AgentKey, AgentKeyCreated, AgentKeyKind, AgentKeyRequest, AgentKeys,
-        AgentWhoami, AgentWhoamiDsp, AgentWhoamiKey,
+        AgentProfile, AgentWhoami, AgentWhoamiDsp, AgentWhoamiKey,
     },
     tenancy::audit::AuditChange,
 };
 use rusqlite::params;
-use serde_json::{Value, json};
 use std::collections::HashMap;
 
 /// Keys that may be in use at once.
@@ -504,7 +504,7 @@ impl Store {
     }
 
     /// The pseudonymous platform-owner profile represented by an agent credential.
-    pub fn agent_profile(&self, caller: &Caller) -> Result<Value> {
+    pub fn agent_profile(&self, caller: &Caller) -> Result<AgentProfile> {
         let user = self
             .platform
             .one(
@@ -521,7 +521,10 @@ impl Store {
             "profile_{}",
             crypto::sign(&self.key, &format!("agent-profile:{}", s(&user, "id")))
         );
-        Ok(json!({"id":id,"name":name.trim()}))
+        Ok(AgentProfile {
+            id,
+            name: name.trim().to_owned(),
+        })
     }
 
     /// What an agent is told about itself: its key, the time, and each DSP it reaches.

@@ -37,6 +37,9 @@ use dispatch_core::testing;
 #[path = "../tests/backend/agent_calls.rs"]
 mod agent_calls;
 #[cfg(test)]
+#[path = "../tests/backend/agent_toolbox.rs"]
+mod agent_toolbox;
+#[cfg(test)]
 #[cfg(all(feature = "timecard", feature = "dvic"))]
 #[path = "../tests/backend/audit.rs"]
 mod audit_areas;

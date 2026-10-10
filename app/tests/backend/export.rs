@@ -531,6 +531,7 @@ fn feature_map(root: &Path) -> String {
                 .map(|route| format!("{} {}", route.method, route.path))
                 .collect::<Vec<_>>(),
             "settings": feature.settings,
+            "tools": feature.tools.iter().map(|tool| tool.name()).collect::<Vec<_>>(),
         });
         let dir = format!("features/{}", feature.name);
         let entry = json!({

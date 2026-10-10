@@ -95,7 +95,7 @@ async fn modern_mcp_exposes_a_stable_strict_profile_and_structured_results() {
         .find(|tool| tool["name"] == "get_profile")
         .unwrap();
     assert_eq!(profile["inputSchema"]["additionalProperties"], false);
-    assert_eq!(profile["outputSchema"]["required"], json!(["id"]));
+    assert_eq!(profile["outputSchema"]["required"], json!(["id", "name"]));
     assert_eq!(profile["outputSchema"]["additionalProperties"], false);
     assert_eq!(profile["_meta"]["openai/profile"], true);
     assert_eq!(
@@ -165,7 +165,7 @@ async fn modern_mcp_exposes_a_stable_strict_profile_and_structured_results() {
         refused["result"]["content"][0]["text"]
             .as_str()
             .unwrap()
-            .starts_with("unknown_parameter:")
+            .starts_with("invalid_input:")
     );
 }
 
