@@ -200,7 +200,7 @@ async function frontendContributions() {
   const settingsPieces: Contribution[] = [];
   const names: { file: string; name: string }[] = [];
   const manifests = files.filter((file) =>
-    /^(core|features|collectors)\/[^/]+\/frontend\/feature\.ts$/.test(file),
+    /^((core|features|collectors)\/[^/]+|mcp)\/frontend\/feature\.ts$/.test(file),
   );
   for (const file of manifests) {
     const { feature } = (await import(pathToFileURL(path.join(root, file)).href)) as {

@@ -5,6 +5,7 @@
     "../../core",
     "../../collectors",
     "../../features",
+    "../../mcp",
     "../../*.ts"
   ]
 }

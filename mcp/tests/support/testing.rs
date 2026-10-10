@@ -15,8 +15,9 @@ use dispatch_core::{
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicU32, Ordering};
 
-/// The MCP with the stand-in tools, as its tests install it.
-pub const AGENTS: Agents = piece(&Own {
+/// The MCP with the stand-in tools, as its tests install it: one static, so its address is the
+/// registry's own.
+pub static AGENTS: Agents = piece(&Own {
     tools: &[&StandInRead, &StandInChange],
 });
 

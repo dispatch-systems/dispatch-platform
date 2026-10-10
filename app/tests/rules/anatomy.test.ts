@@ -120,6 +120,29 @@ test("a feature's and a collector's root hold only their pieces", () => {
   holds('anatomy', 'roots', stray);
 });
 
+// The MCP is one owner in one folder: its crate, its README, and the pieces a feature may
+// have, each with its tests.
+const mcpPieces = ['backend', 'api', 'frontend', 'migrations', 'tests'];
+test("the MCP's root holds its crate, its README and its pieces, each with its tests", () => {
+  const out = [
+    ...['Cargo.toml', 'mcp.rs', 'README.md']
+      .filter((file) => !isFile(`mcp/${file}`))
+      .map((file) => `mcp has no ${file}`),
+    ...entries('mcp')
+      .filter((name) => ![...mcpPieces, 'Cargo.toml', 'mcp.rs', 'README.md'].includes(name))
+      .map((name) => `mcp/${name} is no piece of the MCP`),
+  ];
+  if (isDirectory('mcp/backend') && !hasRustTest('mcp/tests/backend'))
+    out.push('mcp has backend/ and no test in tests/backend/');
+  if (isDirectory('mcp/api') && !isDirectory('mcp/tests/api'))
+    out.push('mcp has api/ and no tests/api/');
+  if (isDirectory('mcp/frontend') && !isFile('mcp/frontend/feature.ts'))
+    out.push('mcp has frontend/ and no frontend/feature.ts');
+  if (isDirectory('mcp/frontend') && !isDirectory('mcp/tests/browser'))
+    out.push('mcp has frontend/ and no tests/browser/');
+  holds('anatomy', 'the MCP', out);
+});
+
 // Core is one crate: its parts are folders named as a feature's pieces, with no crate or
 // root of their own, beside core's Cargo.toml and core.rs.
 test('core holds its parts, and each part only the folders a feature may have', () => {

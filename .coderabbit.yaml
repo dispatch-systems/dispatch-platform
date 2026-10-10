@@ -69,7 +69,7 @@ reviews:
           copying rows with an explicit column list, rebuilding referencing tables before
           their parent, and recreating the indexes, as `jobs/0002_scorecard_kind.sql` does.
           The release that rebuilds must not write the new values yet.
-    - path: '{app,core,collectors,features}/**/*.rs'
+    - path: '{app,core,collectors,features,mcp}/**/*.rs'
       instructions: |
         - Logs and request events never carry request bodies, raw emails or IP addresses,
           cookies, tokens or employee records. Session identifiers shown to users are HMAC
@@ -99,7 +99,8 @@ reviews:
       instructions: |
         Core names no feature or collector: flag a feature's or collector's name, id, table,
         host or wording in core outside its tests. What a feature adds reaches core through a
-        slot. Anything for the platform owner's dashboard belongs in `core/platform_owner/`.
+        slot. Anything for the platform owner's dashboard belongs in `core/platform_owner/`,
+        but the Agents page, which is the MCP's, in `mcp/frontend/`.
     - path: 'collectors/**'
       instructions: |
         A collector names no feature and none of a feature's tables. It returns typed data; the
@@ -109,11 +110,16 @@ reviews:
         A feature uses only its own tables, core, and the collectors and features its manifest
         declares. Flag SQL against another owner's tables and imports beyond those
         dependencies.
+    - path: 'mcp/**'
+      instructions: |
+        The MCP uses its own tables, and reads people, DSPs and features' data only through
+        their owners' functions, never their SQL. A tool never decides who may use it: the
+        connection's grants do, and every call is checked again as the connection stands.
     - path: 'collectors/paycom/{collections/timecards/extract.rs,scripts/timecard.js}'
       instructions: |
         `extract.rs` ports `timecard.js`'s detached reading. A change to one must be matched in
         the other and proved with `http_extraction_parity`.
-    - path: '{app,core,features,collectors}/**/frontend/**'
+    - path: '{app,core,features,collectors,mcp}/**/frontend/**'
       instructions: |
         - No Tailwind, shadcn, Motion or TanStack Virtual. TanStack Table is used only through
           `core/shell/frontend/ui/useDataTable.ts`. Styles use the tokens in

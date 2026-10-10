@@ -651,6 +651,26 @@ mod tests {
         );
     }
     #[test]
+    fn the_mcp_is_an_owner_whose_frontend_asks_for_no_rust() {
+        let (_root, workspace) = workspace(
+            r#""core", "mcp", "app/backend""#,
+            &[
+                ("core", "dispatch-core", &[]),
+                ("mcp", "dispatch-mcp", &["core"]),
+                ("app/backend", "dispatch-backend", &["core", "mcp"]),
+            ],
+        );
+        let changed = |files: &[&str]| -> Vec<String> {
+            let files: Vec<String> = files.iter().map(|file| (*file).to_owned()).collect();
+            affected(&files, &Value::Null, &workspace)
+        };
+        assert_eq!(
+            changed(&["mcp/backend/keys.rs"])[1],
+            "cargo test --locked -p dispatch-backend -p dispatch-mcp"
+        );
+        assert!(changed(&["mcp/frontend/KeysTab.tsx", "mcp/api/client.ts"]).is_empty());
+    }
+    #[test]
     fn each_owners_crate_is_the_one_its_directory_holds() {
         let (root, _) = workspace(
             r#""core", "features/*", "app/backend""#,

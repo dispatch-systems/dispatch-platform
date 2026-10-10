@@ -74,6 +74,7 @@ const RESERVED = [
   'core',
   'drivers',
   'features',
+  'mcp',
   'meals',
   'routedata',
   'workforce',
