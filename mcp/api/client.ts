@@ -1,4 +1,4 @@
-import { api, useData } from '../../core/shell/frontend/runtime/api.js';
+import { useData, wordedApi } from '../../core/shell/frontend/runtime/api.js';
 import type {
   AgentActivityPage,
   AgentKey,
@@ -18,6 +18,16 @@ import type {
 
 // The MCP's endpoints, as the Agents page calls them: agent keys, connected apps and the
 // Activity log.
+
+/** What the MCP's error codes say: only its pages make the calls that raise them. */
+export const errors: Readonly<Record<string, string>> = {
+  agent_key_name_taken: 'Another key already uses this name.',
+  agent_key_limit: 'You can have up to 50 keys in use. Revoke one first.',
+  agent_key_revoked: 'This key was revoked. Make a new one instead.',
+  agent_key_not_found: 'This key no longer exists. Refresh the page.',
+  invalid_expiry: 'Choose an expiry between tomorrow and five years from now.',
+};
+const api = wordedApi(errors);
 
 /** Whose calls the Activity tab lists, and whether only those Dispatch refused. */
 export type AgentActivityFilter = { key: string; outcome: '' | 'refused' };

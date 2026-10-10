@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CircleCheck, Send } from 'lucide-react';
 import type { AgentWhoami } from '../api/index.js';
-import { agentWhoami } from '../api/client.js';
+import { agentWhoami, errors } from '../api/client.js';
 import { errorLabel } from '../../core/shell/frontend/runtime/api.js';
 import { dateFormatter } from '../../core/shell/frontend/lib/date-format.js';
 
@@ -43,6 +43,7 @@ export function KeyTest({ token, label = 'Send test request' }: { token: string;
                   ok: false,
                   text:
                     failures[answer.error] ??
+                    errors[answer.error] ??
                     errorLabel(answer.error) ??
                     (answer.error.startsWith('http_')
                       ? `Dispatch answered ${answer.error.slice(5)} instead of the test.`

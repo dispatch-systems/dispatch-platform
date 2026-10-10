@@ -3,6 +3,8 @@ import { Bot } from 'lucide-react';
 import type { Access, FrontendFeature } from '../../core/shell/frontend/runtime/slots.js';
 
 // The MCP's frontend manifest, loaded up front: it stays small and loads its pages lazily.
+// Its error codes are worded in its API client, which loads with its pages: only they make
+// the calls that raise them.
 
 declare module '../../core/shell/frontend/runtime/slots.js' {
   interface PlatformPages {
@@ -47,11 +49,4 @@ export const feature: FrontendFeature = {
     },
   ],
   platformSlots: () => import('./platform-slots.js'),
-  errors: {
-    agent_key_name_taken: 'Another key already uses this name.',
-    agent_key_limit: 'You can have up to 50 keys in use. Revoke one first.',
-    agent_key_revoked: 'This key was revoked. Make a new one instead.',
-    agent_key_not_found: 'This key no longer exists. Refresh the page.',
-    invalid_expiry: 'Choose an expiry between tomorrow and five years from now.',
-  },
 };
