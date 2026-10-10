@@ -23,6 +23,7 @@ import {
   Modal,
   Popover,
   SearchInput,
+  openContextMenu,
 } from '../../../core/shell/frontend/ui/index.js';
 import {
   createItem,
@@ -42,7 +43,8 @@ import { useFromDrive } from './FromDrive.js';
 
 // The DSP's Documents, once Google is connected: a folder at a time, as a list or a grid,
 // with what Documents makes and what anyone uploads, by picking files or dropping them on
-// the page. A file opens in Google, in a tab of its own, or downloads.
+// the page. A file opens in Google, in a tab of its own, or downloads. Right-clicking a file or
+// folder opens its menu where the pointer is.
 
 type Filter = 'all' | 'folders' | 'docs' | 'sheets' | 'slides' | 'uploads';
 const FILTERS: [Filter, string][] = [
@@ -500,7 +502,7 @@ function Table({ view, items, searching, ask }: ViewProps) {
         </thead>
         <tbody>
           {items.map((item) => (
-            <tr key={item.id}>
+            <tr key={item.id} onContextMenu={openContextMenu}>
               <td>
                 <Opens view={view} item={item} className="documents-name">
                   <Tile kind={item.kind} />
@@ -549,7 +551,7 @@ function Grid({ view, items, searching, ask }: ViewProps) {
           <h2>Folders</h2>
           <div className="documents-card-grid">
             {folders.map((item) => (
-              <div className="documents-folder-card" key={item.id}>
+              <div className="documents-folder-card" key={item.id} onContextMenu={openContextMenu}>
                 <Opens view={view} item={item} className="documents-name">
                   <Tile kind="folder" size={18} />
                   <span>
@@ -568,7 +570,7 @@ function Grid({ view, items, searching, ask }: ViewProps) {
           <h2>Files</h2>
           <div className="documents-card-grid">
             {files.map((item) => (
-              <div className="documents-file-card" key={item.id}>
+              <div className="documents-file-card" key={item.id} onContextMenu={openContextMenu}>
                 <Opens view={view} item={item} className="documents-file-open">
                   <Thumb kind={item.kind} picture={item.thumbnail} />
                   <span className="documents-name">
