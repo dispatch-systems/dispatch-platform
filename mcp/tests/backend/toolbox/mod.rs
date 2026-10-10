@@ -3,7 +3,6 @@ use crate::{
     KeyStore,
     api::types::{AgentAccess, AgentKeyRequest},
     testing::{agent, call_tool, serving},
-    tools::Nothing,
 };
 use dispatch_core::{
     foundation::config::Environment,
@@ -81,7 +80,10 @@ fn a_dsp_tool_takes_dsp_beside_its_own_arguments_and_nothing_else() {
     assert_eq!(schema["properties"][DSP]["type"], "string");
     assert_eq!(schema["required"], json!(["word"]));
     // The tools about the connection take no DSP.
-    for tool in crate::tools::TOOLS {
+    let connection = crate::tools::TOOLS
+        .iter()
+        .filter(|tool| tool.scope() == Scope::Connection);
+    for tool in connection {
         assert!(tool.input_schema()["properties"].get(DSP).is_none());
     }
     // A tool about several takes a list of them.

@@ -13,8 +13,8 @@ import path from 'node:path';
 //   npm run check:removability -- --every [--dry-run]
 //
 // Every step runs with the left-out features really gone: their directories are moved aside
-// and the app's manifest no longer names their crates, so nothing, product or test, can still
-// use them. The Cargo steps run without `--locked`, since the lock loses their crates. The
+// and neither the app's manifest nor the MCP's names their crates, so nothing, product or test,
+// can still use them. The Cargo steps run without `--locked`, since the lock loses their crates. The
 // typecheck covers all but the app's cross-owner tests and the tooling, which name every
 // feature as the app's Rust tests do. Afterwards the checkout is as it was: the directories,
 // the manifest, the lock and the generated TypeScript all come back.
@@ -37,6 +37,8 @@ export const repositoryRoot = path.resolve(import.meta.dirname, '../..');
 export const featureMap = 'app/generated/features.json';
 /** The app's manifest, which a run rewrites without the left-out features' crates. */
 export const appManifest = 'app/backend/Cargo.toml';
+/** The MCP's, which names the crates of the features its tools need, rewritten the same way. */
+export const mcpManifest = 'mcp/Cargo.toml';
 /** The workspace's lock, which the Cargo steps rewrite without their crates. */
 const lock = 'Cargo.lock';
 /** The workspace's manifest, whose `features/*` a run drops when it leaves out every feature. */
@@ -226,7 +228,10 @@ function checkout(root: string, removal: Plan) {
     throw new Error(
       `${workspace} holds what an earlier run moved aside: put its features/ back and delete it`,
     );
-  const before = [...generated(root), appManifest, lock, workspaceManifest];
+  const manifests = [appManifest, mcpManifest].filter((file) =>
+    fs.existsSync(path.join(root, file)),
+  );
+  const before = [...generated(root), ...manifests, lock, workspaceManifest];
   for (const file of before)
     fs.cpSync(path.join(root, file), path.join(store, 'kept', file), { recursive: true });
   const moved: string[] = [];
@@ -237,11 +242,13 @@ function checkout(root: string, removal: Plan) {
         fs.renameSync(path.join(root, dir), path.join(store, dir));
         moved.push(dir);
       }
-      const manifest = path.join(root, appManifest);
-      fs.writeFileSync(
-        manifest,
-        withoutFeatures(fs.readFileSync(manifest, 'utf8'), removal.leftOut),
-      );
+      for (const file of manifests) {
+        const manifest = path.join(root, file);
+        fs.writeFileSync(
+          manifest,
+          withoutFeatures(fs.readFileSync(manifest, 'utf8'), removal.leftOut),
+        );
+      }
       // With every feature aside, the workspace's `features/*` names nothing, which Cargo
       // refuses.
       const features = path.join(root, 'features');

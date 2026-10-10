@@ -12,6 +12,12 @@ path = "mcp.rs"
 doctest = false
 
 [features]
+# Each feature a tool needs is the MCP's own Cargo feature: it brings the feature's crate, and
+# the crates its tests install with it. Every one is on by default, for the MCP's own tests;
+# the app, which has no default of the MCP's, turns on each it has.
+# Every feature the MCP's tools need: written from mcp/tools/ by `npm run contracts:generate`, to the blank line.
+default = []
+
 # `dispatch_mcp::testing`, for the app's tests through its dev-dependencies.
 testing = ["dispatch-core/testing"]
 # TypeScript definitions of its API types, for the app's export test; never in a build. They
@@ -34,6 +40,7 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 tokio = { workspace = true }
 ts-rs = { workspace = true, optional = true }
 url = { workspace = true }
+# Every feature the MCP's tools need: written from mcp/tools/ by `npm run contracts:generate`, to the blank line.
 
 [dev-dependencies]
 dispatch-core = { path = "../core", features = ["testing"] }

@@ -63,16 +63,40 @@ test("core's Cargo.toml lists none of our crates", () => {
   );
 });
 
-// The MCP sits above the features, but uses only core until a rule names what else it may.
-test("the MCP's Cargo.toml lists core and none other of our crates", () => {
-  const listed = isFile('mcp/Cargo.toml')
-    ? [true, false].flatMap((dev) => workspaceDependencies(readCrate('mcp/Cargo.toml'), dev))
-    : [];
-  assert(listed.includes('core'), 'the MCP depends on core');
-  assert.deepEqual(
-    listed.filter((dir) => dir !== 'core'),
-    [],
+// The MCP sits above the features. It uses core, and a feature's crate only as the features its
+// tools need bring it: an optional dependency that the MCP's Cargo feature of that feature turns
+// on, with the crates the MCP's tests install beside it, as `npm run contracts:generate` writes
+// them. Its tests use nothing else.
+test("the MCP's Cargo.toml lists core, and features and collectors only as its tools bring them", () => {
+  if (!isFile('mcp/Cargo.toml')) return;
+  const crate = readCrate('mcp/Cargo.toml');
+  const ours = (dev: boolean) =>
+    crate.dependencies
+      .filter((dependency) => dependency.dev === dev)
+      .flatMap((dependency) => {
+        const dir = localDependencies(
+          { ...crate, dependencies: [dependency] },
+          rust().crates,
+          dev,
+        )[0];
+        return dir ? [{ dependency, unit: unitOfFile(`${dir}/Cargo.toml`) }] : [];
+      });
+  const wrong = [
+    ...ours(false)
+      .filter(({ unit }) => unit !== 'core')
+      .flatMap(({ dependency, unit }) => [
+        ...(/^(features|collectors)\//.test(unit) ? [] : [`mcp/Cargo.toml lists ${unit}`]),
+        ...(dependency.optional ? [] : [`mcp/Cargo.toml lists ${unit} as always on`]),
+      ]),
+    ...ours(true)
+      .filter(({ unit }) => unit !== 'core')
+      .map(({ unit }) => `mcp/Cargo.toml's dev-dependencies list ${unit}`),
+  ];
+  assert(
+    ours(false).some(({ unit }) => unit === 'core'),
+    'the MCP depends on core',
   );
+  holds('dependencies', 'the MCP', wrong);
 });
 
 test("a feature's manifest declares only features and collectors that exist", () => {

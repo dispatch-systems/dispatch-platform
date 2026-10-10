@@ -33,7 +33,7 @@ use dispatch_core::{
     State, accounts::api::types::Dsp, db::Store, manifest::registry, tenancy::catalog,
 };
 use schemars::JsonSchema;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value};
 use std::{
     any::Any,
@@ -42,6 +42,11 @@ use std::{
     pin::Pin,
     sync::Arc,
 };
+
+/// What a tool that takes nothing takes.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Nothing {}
 
 /// What a call does: only reads, or changes something.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

@@ -1,8 +1,6 @@
 import path from 'node:path';
 import {
   UsageError,
-  appendToList,
-  change,
   emptyPlan,
   features,
   files,
@@ -19,9 +17,10 @@ import {
 } from './scaffold.js';
 
 // `dispatchdev new tool <name> [options]`: a tool agents can use, in mcp/tools/: its file,
-// which works as written, a test that calls it as an agent does, and its place in
-// `tools::TOOLS`. Who may use it is no part of it: the platform owner chooses, for each key and
-// app, on the Agents page: Off, Read, or Read and change.
+// which works as written, and a test that calls it as an agent does. `npm run
+// contracts:generate`, which `dispatchdev new` runs next, lists it in `tools::TOOLS`, and gives
+// the MCP the crates of the features it needs. Who may use it is no part of it: the platform
+// owner chooses, for each key and app, on the Agents page: Off, Read, or Read and change.
 
 export const usage = `Usage: npm run new:tool -- <name> [options]
 
@@ -49,7 +48,6 @@ const SCOPES = ['dsp', 'dsps', 'connection'] as const;
 type Scope = (typeof SCOPES)[number];
 /** Where the tools live, and the list that names them. */
 const TOOLS = 'mcp/tools';
-const TOOLS_LIST = /pub const TOOLS: &\[&dyn AnyTool\] = &\[/;
 const WORD = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 
 /** Every tool name already taken, with the file that declares it. */
@@ -212,17 +210,6 @@ ${changing.length < actions.length ? '            _ => Effect::Reads,\n' : ''}  
   return { declared, effects, arms };
 }
 
-/** `text` with `mod <name>;` among its other modules, in the order rustfmt keeps them. */
-function withModule(text: string, name: string) {
-  const mods = [...text.matchAll(/^mod ([a-z_0-9]+);$/gm)];
-  if (!mods.length) throw new Error(`no module list to add mod ${name}; to`);
-  const before = mods.find((mod) => mod[1]! > name);
-  if (before) return `${text.slice(0, before.index)}mod ${name};\n${text.slice(before.index)}`;
-  const last = mods.at(-1)!;
-  const at = last.index + last[0].length;
-  return `${text.slice(0, at)}\nmod ${name};${text.slice(at)}`;
-}
-
 export async function planTool(root: string, argv: string[]) {
   const { args, values, docs, actions, changing } = toolValues(root, argv);
   const { name, pascal } = values as { name: string; pascal: string };
@@ -235,10 +222,10 @@ export async function planTool(root: string, argv: string[]) {
     );
   plan.files.set(`${TOOLS}/${name}.rs`, tool);
   plan.files.set(`mcp/tests/backend/tools/${name}.rs`, template('tool/test.rs', values));
-  await change(plan, root, `${TOOLS}/mod.rs`, (text) =>
-    appendToList(withModule(text, name), TOOLS_LIST, `&${name}::${pascal},`, `${TOOLS}/mod.rs`),
-  );
   formatRust(plan);
+  plan.notes.push(
+    '`npm run contracts:generate` lists it, with the crates of the features it needs; `dispatchdev new` runs it next.',
+  );
   plan.notes.push(
     `Make it do what it's for: its Input and Output in ${TOOLS}/${name}.rs, and its test.`,
   );

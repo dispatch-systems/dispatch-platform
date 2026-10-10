@@ -37,12 +37,14 @@ type Listing = { product: Set<string>; all: Set<string> };
 /**
  * Whether a file lists features or collectors as only the app may. A feature's or collector's
  * tests may name the manifests of itself and of what it may use, the dependencies rule's set,
- * to install a registry of just those; core's tests name none.
+ * to install a registry of just those, and the MCP's tests those its tools need; core's tests
+ * name none.
  */
 function listsOthers(file: string, { product, all }: Listing): boolean {
   if (all.size < 2 || file.startsWith('app/')) return false;
   const owner = ownerOf(file);
-  if (product.size > 1 || !owner || !['feature', 'collector'].includes(owner.layer)) return true;
+  if (product.size > 1 || !owner || !['feature', 'collector', 'mcp'].includes(owner.layer))
+    return true;
   const may = new Set([owner.dir, ...declared(owner)]);
   return [...all].some((dir) => !may.has(dir));
 }
@@ -97,7 +99,9 @@ test('only the app lists the features and collectors', () => {
 });
 
 // Adding a feature is adding its folder: the app's list of them is written from features/.
-test('the app lists every feature in features/, as `npm run contracts:generate` writes it', () => {
+// Adding a tool is adding its file: the MCP's list of them, and the crates of the features they
+// need, are written from mcp/tools/.
+test('the app lists every feature, and the MCP every tool, as `npm run contracts:generate` writes them', () => {
   const stale = [...wiring(root)]
     .filter(([file, text]) => read(file) !== text)
     .map(([file]) => file);

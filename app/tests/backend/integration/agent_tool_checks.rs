@@ -8,8 +8,7 @@ use dispatch_mcp::{
     Caller, KeyStore,
     api::types::ToolLevel,
     testing::{agent, serving},
-    toolbox::{Answer, AnyTool, Cx, Effect, Failure, Reply, Scope, Tool, Toolbox},
-    tools::Nothing,
+    toolbox::{Answer, AnyTool, Cx, Effect, Failure, Nothing, Reply, Scope, Tool, Toolbox},
 };
 use serde::Serialize;
 use serde_json::{Map, Value, json};

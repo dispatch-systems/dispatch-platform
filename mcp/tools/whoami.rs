@@ -1,10 +1,9 @@
 //! The connection's name, access and expiry, the time now, and each DSP it reaches with the
 //! DSP's own date today.
-use super::Nothing;
 use crate::{
     KeyStore,
     api::types::AgentWhoami,
-    toolbox::{Answer, Cx, Reply, Scope, Tool},
+    toolbox::{Answer, Cx, Nothing, Reply, Scope, Tool},
 };
 
 pub struct Whoami;

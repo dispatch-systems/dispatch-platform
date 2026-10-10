@@ -1,8 +1,5 @@
 //! {{title}}: {{description}}
-{{^actions}}
-use super::Nothing;
-{{/actions}}
-use crate::toolbox::{Answer, Cx, {{#changes}}Effect, {{/changes}}Reply, {{^dsp}}Scope, {{/dsp}}Tool};
+use crate::toolbox::{Answer, Cx, {{#changes}}Effect, {{/changes}}{{^actions}}Nothing, {{/actions}}Reply, {{^dsp}}Scope, {{/dsp}}Tool};
 
 /// What {{name}} answers.
 #[derive(serde::Serialize, schemars::JsonSchema)]
