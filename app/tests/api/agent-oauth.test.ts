@@ -749,7 +749,7 @@ test('the platform owner is emailed when an app connects and when Dispatch disco
     'App: Claude Code (known metadata)',
     'Sends access to: this computer',
     'DSPs: Northline Logistics',
-    'Access: Read only',
+    'Tools: Any that only read, as they are added',
     `${c.issuer}/#agents?tab=apps`,
   ]) {
     assert.ok(connected.text.includes(line), `${line}\n${connected.text}`);
