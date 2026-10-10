@@ -2,6 +2,8 @@
 import type { AgentAccess } from "./AgentAccess";
 
 /**
- * What a new or changed key may do. `expiresAt` is an RFC 3339 time, or null for never.
+ * What a new or changed key may do and use. `tools` are the tools of `AgentKeys` it may use;
+ * `allTools`, whether one added later is allowed as it comes, when it only reads.
+ * `expiresAt` is an RFC 3339 time, or null for never.
  */
-export type AgentKeyRequest = { name: string, allDsps: boolean, dsps: Array<string>, access: AgentAccess, expiresAt: string | null, };
+export type AgentKeyRequest = { name: string, allDsps: boolean, dsps: Array<string>, access: AgentAccess, allTools: boolean, tools: Array<string>, expiresAt: string | null, };

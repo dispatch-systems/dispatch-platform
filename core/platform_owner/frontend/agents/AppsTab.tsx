@@ -3,12 +3,13 @@ import { Pencil, Plus, SlidersHorizontal } from 'lucide-react';
 import type { AgentKey } from '../../api/index.js';
 import { Badge, DataState, Empty } from '../../../shell/frontend/ui/index.js';
 import { useAgentKeys } from '../../api/client.js';
-import { accessLabels, expiryText, inUse, knownApp, lastUsedText, reachText } from './agents.js';
+import { expiryText, inUse, knownApp, lastUsedText, reachText } from './agents.js';
 import { AllowedApps } from './AllowedApps.js';
 import { AppIcon } from './AppIcon.js';
 import { ConnectDialog } from './ConnectDialog.js';
 import { KeySheet } from './KeySheet.js';
 import { RevokeDialog } from './RevokeDialog.js';
+import { ToolsCell } from './ToolChoices.js';
 
 /** Every app connected through "Sign in with Dispatch": what it reaches and may do and when it
  * was used, with the way to change one, to connect another and to choose which apps may. */
@@ -47,7 +48,7 @@ export function AppsTab() {
                         <th>Name</th>
                         <th>App</th>
                         <th>DSPs</th>
-                        <th>Access</th>
+                        <th>Tools</th>
                         <th>Last used</th>
                         <th>
                           <span className="sr-only">Edit or revoke</span>
@@ -91,7 +92,9 @@ export function AppsTab() {
                               {reach.count}
                               {reach.names && <small>{reach.names}</small>}
                             </td>
-                            <td>{accessLabels[app.access]}</td>
+                            <td>
+                              <ToolsCell agentKey={app} tools={data.tools} />
+                            </td>
                             <td>
                               {/* Once it has ended: "Revoked Oct 2" or "Expired Oct 2". */}
                               {inUse(app) ? lastUsedText(app.lastUsedAt) : expiryText(app)}
@@ -142,6 +145,7 @@ export function AppsTab() {
               <KeySheet
                 key={edited.id}
                 dsps={data.dsps}
+                tools={data.tools}
                 existing={edited}
                 close={() => setEditing(null)}
                 created={() => {}}

@@ -1,20 +1,36 @@
-// What the Agents page says about keys: their access, reach, last use and expiry, and how an
-// agent sets one up.
+// What the Agents page says about keys: the tools they may use, their reach, last use and
+// expiry, and how an agent sets one up.
 import type {
-  AgentAccess,
   AgentActivity,
   AgentClient,
   AgentDsp,
   AgentKey,
   AgentKeyRequest,
+  AgentTool,
 } from '../../api/index.js';
 import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
 import { utcDay } from '../../../shell/frontend/lib/format.js';
 
-export const accessLabels: Record<AgentAccess, string> = {
-  read: 'Read only',
-  operator: 'Operator',
-};
+/** What a key or app may use, as its row says it: "All tools", "2 of 5 tools" or "No tools",
+ * and how many of them make changes. With no tools to choose yet, whether tools that only read
+ * come as they are added. */
+export function toolsText(key: Pick<AgentKey, 'allTools' | 'tools'>, tools: AgentTool[]) {
+  const allowed = tools.filter((tool) => key.tools.includes(tool.name));
+  const changes = allowed.filter((tool) => tool.changes).length;
+  if (!tools.length) return { count: key.allTools ? 'Read tools as added' : 'No tools', changes };
+  if (allowed.length === tools.length) return { count: 'All tools', changes };
+  if (!allowed.length) return { count: 'No tools', changes };
+  return { count: `${allowed.length} of ${tools.length} tools`, changes };
+}
+/** The tools under the feature each belongs to, in their order; core's own under Dispatch. */
+export function toolGroups(tools: AgentTool[]) {
+  const groups = new Map<string, AgentTool[]>();
+  for (const tool of tools) {
+    const label = tool.feature ?? 'Dispatch';
+    groups.set(label, [...(groups.get(label) ?? []), tool]);
+  }
+  return [...groups];
+}
 
 const DAY = 86_400_000;
 /** How long a new key lasts, as the key sheet offers it. */
@@ -132,12 +148,15 @@ export function surfaceOf(surface: string) {
     : { via: '', name: surface };
 }
 
-/** A new key's starting point: read only, every DSP, 90 days. */
-export const blankKey = (): AgentKeyRequest => ({
+/** A new key's or app's starting point: every DSP, every tool that only reads and those added
+ * later, none that makes changes. */
+export const blankKey = (tools: AgentTool[]): AgentKeyRequest => ({
   name: '',
   allDsps: true,
   dsps: [],
   access: 'read',
+  allTools: true,
+  tools: tools.filter((tool) => !tool.changes).map((tool) => tool.name),
   expiresAt: null,
 });
 export const requestOf = (key: AgentKey): AgentKeyRequest => ({
@@ -145,10 +164,20 @@ export const requestOf = (key: AgentKey): AgentKeyRequest => ({
   allDsps: key.allDsps,
   dsps: [...key.dsps].sort(),
   access: key.access,
+  allTools: key.allTools,
+  tools: [...key.tools].sort(),
   expiresAt: key.expiresAt,
 });
 const comparable = (key: AgentKeyRequest) =>
-  JSON.stringify([key.name, key.allDsps, [...key.dsps].sort(), key.access, key.expiresAt]);
+  JSON.stringify([
+    key.name,
+    key.allDsps,
+    [...key.dsps].sort(),
+    key.access,
+    key.allTools,
+    [...key.tools].sort(),
+    key.expiresAt,
+  ]);
 export const sameRequest = (a: AgentKeyRequest, b: AgentKeyRequest) =>
   comparable(a) === comparable(b);
 

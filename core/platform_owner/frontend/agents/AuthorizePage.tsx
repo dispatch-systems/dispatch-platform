@@ -1,6 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Globe, Info, TriangleAlert } from 'lucide-react';
-import type { AgentDsp, OAuthApproval, OAuthReplaced, OAuthRequest } from '../../api/index.js';
+import type {
+  AgentDsp,
+  AgentTool,
+  OAuthApproval,
+  OAuthReplaced,
+  OAuthRequest,
+} from '../../api/index.js';
 import { ApiError } from '../../../shell/frontend/runtime/api.js';
 import {
   approveOAuthRequest,
@@ -21,6 +27,7 @@ import {
   Header,
 } from '../../../shell/frontend/ui/index.js';
 import { DspReach } from './KeyChoices.js';
+import { ToolChoices } from './ToolChoices.js';
 
 const again = 'Start the connection again from your app.';
 const expired = `This request expired. ${again}`;
@@ -114,7 +121,8 @@ function Authorization({ query }: { query: URLSearchParams }) {
         {problem}
       </p>
     );
-  const loaded = request.data && agents.data && { pending: request.data, dsps: agents.data.dsps };
+  const loaded = request.data &&
+    agents.data && { pending: request.data, dsps: agents.data.dsps, tools: agents.data.tools };
   return (
     <DataState
       data={loaded || undefined}
@@ -124,7 +132,9 @@ function Authorization({ query }: { query: URLSearchParams }) {
         agents.refresh();
       }}
     >
-      {({ pending, dsps }) => <Approval request={pending} dsps={dsps} end={setEnded} />}
+      {({ pending, dsps, tools }) => (
+        <Approval request={pending} dsps={dsps} tools={tools} end={setEnded} />
+      )}
     </DataState>
   );
 }
@@ -132,17 +142,19 @@ function Authorization({ query }: { query: URLSearchParams }) {
 function Approval({
   request,
   dsps,
+  tools,
   end,
 }: {
   request: OAuthRequest;
   dsps: AgentDsp[];
+  tools: AgentTool[];
   /** The request can't be answered here any more, for this reason. */
   end: (code: string) => void;
 }) {
   const { app } = request;
   const [form, setForm] = useState<OAuthApproval>(() => {
-    const { allDsps, dsps } = blankKey();
-    return { name: app.name, allDsps, dsps };
+    const { allDsps, dsps, allTools, tools: allowed } = blankKey(tools);
+    return { name: app.name, allDsps, dsps, allTools, tools: allowed };
   });
   const [leaving, setLeaving] = useState(false);
   // The connection approving would replace, as last checked for a name.
@@ -214,21 +226,18 @@ function Approval({
           </span>
         </p>
       )}
-      <DetailList
-        items={[
-          ...(website
-            ? []
-            : ([
-                [
-                  'Sends access to',
-                  app.redirectScheme
-                    ? `an app on ${app.redirectHost} (${app.redirectScheme}://…)`
-                    : app.redirectHost,
-                ],
-              ] as [string, ReactNode][])),
-          ['Access', 'Read only'],
-        ]}
-      />
+      {!website && (
+        <DetailList
+          items={[
+            [
+              'Sends access to',
+              app.redirectScheme
+                ? `an app on ${app.redirectHost} (${app.redirectScheme}://…)`
+                : app.redirectHost,
+            ],
+          ]}
+        />
+      )}
       <label>
         Connection name
         <input
@@ -240,6 +249,7 @@ function Approval({
         />
       </label>
       <DspReach dsps={dsps} form={form} set={set} />
+      <ToolChoices tools={tools} form={form} set={set} />
       {replaces && (
         <div className="notice agents-notice" role="status">
           <TriangleAlert size={16} aria-hidden="true" />

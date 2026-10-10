@@ -19,4 +19,12 @@ hint: string, access: AgentAccess,
 /**
  * Every DSP, those added later included; otherwise only `dsps`.
  */
-allDsps: boolean, dsps: Array<string>, createdAt: string, expiresAt: string | null, revokedAt: string | null, lastUsedAt: string | null, lastClient: string | null, };
+allDsps: boolean, dsps: Array<string>,
+/**
+ * Whether a tool added later is allowed as it comes, when it only reads.
+ */
+allTools: boolean,
+/**
+ * The tools of `AgentKeys` it may use now.
+ */
+tools: Array<string>, createdAt: string, expiresAt: string | null, revokedAt: string | null, lastUsedAt: string | null, lastClient: string | null, };

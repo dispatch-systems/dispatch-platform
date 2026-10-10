@@ -50,6 +50,7 @@ fn connected(known: bool, dsps: &[String]) -> ConnectedApp<'_> {
         known,
         destination: Some("this computer"),
         dsps,
+        tools: "All 3, 2 that make changes",
         approved_by: "Platform Owner",
         at: 1_790_337_600_000,
     }
@@ -63,7 +64,7 @@ fn a_connected_app_is_described_plainly_and_escaped() {
         "App: Claude Code (known metadata)",
         "Sends access to: this computer",
         "DSPs: All DSPs",
-        "Access: Read only\n",
+        "Tools: All 3, 2 that make changes\n",
         "Approved by: Platform Owner",
         "Connected: September 25, 2026 at 12:00 PM UTC",
         "Review connected apps: https://dispatch.test/#agents?tab=apps",

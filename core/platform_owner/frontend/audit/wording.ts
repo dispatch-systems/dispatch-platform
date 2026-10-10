@@ -279,6 +279,8 @@ const fields: Record<string, string> = {
   access: 'Access',
   dsps: 'DSPs',
   expires: 'Expires',
+  // The tools a key or app may use, and whether tools that only read come as they are added.
+  all_tools: 'New tools that only read',
   // Earlier key changes, from when keys chose what they read: a kind of data each, as
   // `reads.timecards`, reads as its title.
   bypass: 'Bypass features',
@@ -297,7 +299,7 @@ const agentValues: Record<string, string> = {
   false: 'Off',
   never: 'Never',
 };
-const agentFields = ['access', 'expires', 'bypass', 'tools', 'locations'];
+const agentFields = ['access', 'expires', 'bypass', 'tools', 'all_tools', 'locations'];
 // A schedule's collection as its collector names it.
 const scheduleLabel = (value: string) =>
   collections.find((collection) => collection.schedule === value)?.label;

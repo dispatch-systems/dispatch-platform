@@ -1,12 +1,11 @@
 //! What core checks before an agent's tool runs, for a tool a feature declares: it runs only at
 //! a DSP that has the feature on, hidden from its members or not, and one that changes
-//! something only for a key allowed to, recorded in the activity log as made by the platform
-//! owner, through the agent.
+//! something only for a key it was switched on for, recorded in the activity log as made by
+//! the platform owner, through the agent.
 use dispatch_core::{
     db::Store,
     mcp::{
         Caller,
-        api::types::AgentAccess,
         tools::{Answer, Cx, Effect, Failure, Listed, Nothing, Tool, Toolbox},
     },
     testing::{self as common, agent, audits, bootstrapped, platform_owner},
@@ -87,7 +86,7 @@ fn a_tool_runs_only_where_its_feature_is_on_hidden_or_not() {
     let owner = platform_owner(&db);
     let other = db.new_dsp("Other DSP", "UTC", &owner, false).unwrap().id;
     db.set_feature(&north, "dvic", true, &owner).unwrap();
-    let reader = agent(&db, &[&north, &other], AgentAccess::Read);
+    let reader = agent(&db, &[&north, &other], &[]);
     let name = |dsp: &str| db.find_dsp(dsp).unwrap().name;
 
     assert_eq!(offered(&db, &reader), ["inspect"]);
@@ -114,19 +113,21 @@ fn a_tool_runs_only_where_its_feature_is_on_hidden_or_not() {
 }
 
 #[test]
-fn a_tool_that_changes_something_runs_for_an_operator_key_as_its_agent() {
+fn a_tool_that_changes_something_runs_only_where_switched_on_as_its_agent() {
     dispatch_backend::install();
     let (_root, db, north) = bootstrapped();
     let owner = platform_owner(&db);
     db.set_feature(&north, "dvic", true, &owner).unwrap();
-    let reader = agent(&db, &[&north], AgentAccess::Read);
+    let reader = agent(&db, &[&north], &[]);
     let (code, message) = refusal(call(&db, &reader, "mark", &north));
     assert_eq!(code, "not_allowed");
     assert!(message.contains("may not use mark"), "{message}");
     assert_eq!(offered(&db, &reader), ["inspect"]);
     assert!(common::audit_actions(&db, &north, "dvic.marked").is_empty());
 
-    let operator = agent(&db, &[&north], AgentAccess::Operator);
+    // Switched on for one key, it runs for that key alone.
+    let mut operator = agent(&db, &[&north], &[]);
+    operator.tools.chosen.insert("mark".into(), true);
     assert_eq!(offered(&db, &operator), ["inspect", "mark"]);
     assert!(call(&db, &operator, "mark", &north).is_ok());
     // The platform owner's own, as any change they make at a DSP is.

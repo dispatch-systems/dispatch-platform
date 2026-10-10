@@ -1,7 +1,7 @@
 //! What the platform owners hear about connected apps: an email when an app connects, and
 //! one when Dispatch itself disconnects an app because its code or a refresh token was
 //! presented again. Each is best effort and never stops what it reports.
-use super::clients;
+use super::{super::tools::Toolbox, clients};
 use crate::{
     Result,
     db::{Store, now, s},
@@ -33,7 +33,7 @@ impl Store {
 
     fn try_tell_owners(&self, key: &str, told: Told) -> Result<()> {
         let Some(app) = self.platform.one(
-            "SELECT k.name,k.client_name,k.client_verified,k.all_dsps,\
+            "SELECT k.name,k.client_name,k.client_verified,k.all_dsps,k.all_tools,\
              u.first_name||' '||u.last_name approved_by,\
              (SELECT redirect_uri FROM oauth_codes c WHERE c.key_id=k.id) redirect_uri \
              FROM agent_keys k JOIN users u ON u.id=k.user_id WHERE k.id=? AND k.kind='app'",
@@ -60,6 +60,8 @@ impl Store {
             Told::Disconnected { .. } => app["redirect_uri"].as_str(),
         };
         let destination = redirect_uri.map(|uri| clients::destination(uri).0);
+        let tools =
+            Toolbox::installed().summary(&self.agent_key_grants(key, app["all_tools"] == 1)?);
         let at = now();
         self.notify_platform_owners(|to| {
             let described = ConnectedApp {
@@ -71,6 +73,7 @@ impl Store {
                 known: app["client_verified"] == 1,
                 destination: destination.as_deref(),
                 dsps: &dsps,
+                tools: &tools,
                 approved_by: s(&app, "approved_by"),
                 at,
             };

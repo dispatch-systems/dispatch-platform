@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { Ban } from 'lucide-react';
-import type { AgentDsp, AgentKey, AgentKeyCreated, AgentKeyRequest } from '../../api/index.js';
+import type {
+  AgentDsp,
+  AgentKey,
+  AgentKeyCreated,
+  AgentKeyRequest,
+  AgentTool,
+} from '../../api/index.js';
 import { Badge, Modal } from '../../../shell/frontend/ui/index.js';
 import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { createAgentKey, updateAgentKey } from '../../api/client.js';
@@ -18,6 +24,7 @@ import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
 import { AppIcon } from './AppIcon.js';
 import { DspReach } from './KeyChoices.js';
 import { RevokeDialog } from './RevokeDialog.js';
+import { ToolChoices } from './ToolChoices.js';
 
 const day = (value: string | null) =>
   value
@@ -27,24 +34,26 @@ const day = (value: string | null) =>
     : 'Never';
 
 /**
- * Makes a key, or changes a key or a connected app: where it reaches, what it may do, and a
- * key's expiry. Edits leave only through Save or Discard; closing the tab drops them silently.
+ * Makes a key, or changes a key or a connected app: where it reaches, the tools it may use, and
+ * a key's expiry. Edits leave only through Save or Discard; closing the tab drops them silently.
  */
 export function KeySheet({
   dsps,
+  tools,
   existing,
   close,
   created,
   changed,
 }: {
   dsps: AgentDsp[];
+  tools: AgentTool[];
   existing?: AgentKey;
   close: () => void;
   created: (made: AgentKeyCreated) => void;
   changed: () => void;
 }) {
   const noun = existing?.kind === 'app' ? 'app' : 'key';
-  const start = existing ? requestOf(existing) : blankKey();
+  const start = existing ? requestOf(existing) : blankKey(tools);
   const [form, setForm] = useState<AgentKeyRequest>(start);
   const [expiry, setExpiry] = useState<ExpiryChoice | 'keep'>(existing ? 'keep' : '90');
   const [date, setDate] = useState('');
@@ -130,38 +139,7 @@ export function KeySheet({
           />
         </label>
         <DspReach dsps={dsps} form={form} set={set} />
-        {/* Existing Operator keys retain their setting; new keys only read. */}
-        {!app && existing?.access === 'operator' && (
-          <fieldset>
-            <legend>Access</legend>
-            <div className="agents-choices two">
-              <label className="agents-choice">
-                <input
-                  type="radio"
-                  name="access"
-                  checked={form.access === 'read'}
-                  onChange={() => set({ access: 'read' })}
-                />
-                <span>
-                  <strong>Read only</strong>
-                  <small>Look up any data</small>
-                </span>
-              </label>
-              <label className="agents-choice">
-                <input
-                  type="radio"
-                  name="access"
-                  checked={form.access === 'operator'}
-                  onChange={() => set({ access: 'operator' })}
-                />
-                <span>
-                  <strong>Operator</strong>
-                  <small>Read access; collection controls unavailable</small>
-                </span>
-              </label>
-            </div>
-          </fieldset>
-        )}
+        <ToolChoices tools={tools} form={form} set={set} />
         {!app && (
           <div className="agents-expiry">
             <label>

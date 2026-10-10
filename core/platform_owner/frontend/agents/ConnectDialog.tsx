@@ -1,15 +1,15 @@
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { ArrowRight, Check, ChevronRight, Clock, LoaderCircle } from 'lucide-react';
-import type { AgentDsp, AgentKey } from '../../api/index.js';
+import type { AgentDsp, AgentKey, AgentTool } from '../../api/index.js';
 import { useAgentKeys } from '../../api/client.js';
 import { platformHash } from '../../../shell/frontend/runtime/navigation.js';
 import {
-  accessLabels,
   connectApps,
   connectedAs,
   inUse,
   reachText,
   signIns,
+  toolsText,
   type ConnectApp,
 } from './agents.js';
 import { countdown } from '../../../shell/frontend/lib/format.js';
@@ -168,7 +168,13 @@ export function ConnectDialog({ close, connected }: { close: () => void; connect
     >
       <div className="agents-connect" ref={pane}>
         {done && app ? (
-          <Connected agentKey={done} app={app} dsps={keys.data?.dsps ?? []} close={close} />
+          <Connected
+            agentKey={done}
+            app={app}
+            dsps={keys.data?.dsps ?? []}
+            tools={keys.data?.tools ?? []}
+            close={close}
+          />
         ) : app ? (
           <>
             <div className="agents-connect-body">
@@ -372,13 +378,16 @@ function Connected({
   agentKey,
   app,
   dsps,
+  tools,
   close,
 }: {
   agentKey: AgentKey;
   app: ConnectApp;
   dsps: AgentDsp[];
+  tools: AgentTool[];
   close: () => void;
 }) {
+  const allowed = toolsText(agentKey, tools);
   const name = app.id === 'other' ? (agentKey.client?.name ?? agentKey.name) : app.label;
   return (
     <>
@@ -400,7 +409,8 @@ function Connected({
         </p>
         <span className="agents-tags">
           <span className="agents-tag">{reachText(agentKey, dsps).count}</span>
-          <span className="agents-tag">{accessLabels[agentKey.access]}</span>
+          <span className="agents-tag">{allowed.count}</span>
+          {allowed.changes > 0 && <span className="agents-tag">Makes changes</span>}
         </span>
       </div>
       <div className="agents-connect-footer">

@@ -20,6 +20,8 @@ export async function seedAgentKeys(app: App) {
     allDsps: dsps.length === 0,
     dsps,
     access: 'read',
+    allTools: true,
+    tools: [],
     expiresAt,
   });
   const keys: [AgentKeyRequest, string][] = [

@@ -17,6 +17,8 @@ test('any MCP client connects with a key, on every protocol version', async (t) 
       allDsps: false,
       dsps: [north.id],
       access: 'read',
+      allTools: true,
+      tools: [],
       expiresAt: null,
     });
     assert.equal(made.status, 200, made.body);

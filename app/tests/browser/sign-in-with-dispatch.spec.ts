@@ -114,7 +114,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     const connected = connecting.getByRole('status').filter({ hasText: 'is connected' });
     await expect(connected.getByRole('heading')).toHaveText('Claude Code is connected');
     await expect(connected).toContainText('Start a new Claude Code session to use Dispatch.');
-    await expect(connected.locator('.agents-tag')).toHaveText(['1 DSP', 'Read only']);
+    await expect(connected.locator('.agents-tag')).toHaveText(['1 DSP', 'Read tools as added']);
     await connecting.getByRole('button', { name: 'Done', exact: true }).click();
     await expect(connecting).toHaveCount(0);
 
@@ -151,7 +151,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     await expect(row).toContainText('Claude Code');
     await expect(row).toContainText('Known metadata');
     await expect(row).toContainText('Northline Logistics');
-    await expect(row).toContainText('Read only');
+    await expect(row).toContainText('Read tools as added');
     // An app with recognized metadata shows its own logo.
     await expect(row.locator('img')).toHaveAttribute('src', /claude-[\w-]+\.png$/);
     await row.getByRole('button', { name: 'Revoke Laptop – Claude Code app', exact: true }).click();

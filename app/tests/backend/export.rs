@@ -46,6 +46,7 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         AgentKey,
         AgentDsp,
         AgentKeys,
+        AgentTool,
         AgentKeyCreated,
         AgentKeyRequest,
         AgentKeysRevoked,

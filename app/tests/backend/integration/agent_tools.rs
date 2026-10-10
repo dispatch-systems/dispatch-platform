@@ -17,7 +17,7 @@ fn request(value: Value) -> AgentKeyRequest {
 
 fn reach(dsps: &[&str]) -> Value {
     json!({"name":"Laptop – Claude Code","allDsps":dsps.is_empty(),"dsps":dsps,
-        "access":"read","expiresAt":null})
+        "access":"read","allTools":true,"tools":[],"expiresAt":null})
 }
 fn owner(db: &Store) -> String {
     s(

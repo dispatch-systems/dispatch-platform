@@ -16,6 +16,8 @@ mod usage;
 pub use activity::Activity;
 pub use usage::{LastUse, PER_MINUTE, Usage};
 
+use tools::{Grants, Toolbox};
+
 use crate::{
     Error, Result,
     accounts::api::types::Dsp,
@@ -40,13 +42,14 @@ const LONGEST: i64 = 5 * 366 * 86_400_000;
 const LISTED: &str = "SELECT k.*,EXISTS(SELECT 1 FROM oauth_tokens t WHERE t.key_id=k.id \
     AND t.kind='refresh' AND t.used_at IS NULL AND t.expires_at>?1) signed_in FROM agent_keys k";
 
-/// An agent signed in with a key: what the key may do, and the DSPs it reaches now.
+/// An agent signed in with a key: what the key may do and use, and the DSPs it reaches now.
 #[derive(Clone, Debug)]
 pub struct Caller {
     pub key: String,
     pub name: String,
     pub user: String,
     pub access: AgentAccess,
+    pub tools: Grants,
     pub expires_at: Option<String>,
     pub dsps: Vec<Dsp>,
     pub client: String,
@@ -141,7 +144,24 @@ impl Store {
             .one_as(&format!("{LISTED} WHERE k.id=?2"), [iso(), id.to_owned()])?
             .ok_or_else(|| Error::new("agent_key_not_found", 404))?;
         key.dsps = self.agent_key_dsps(id)?;
+        key.tools = Toolbox::installed().allowed(&self.agent_key_grants(id, key.all_tools)?);
         Ok(key)
+    }
+    /// What a key or app may use: its choices, and whether a tool added since that only
+    /// reads is allowed (`all`).
+    fn agent_key_grants(&self, id: &str, all: bool) -> Result<Grants> {
+        Ok(Grants {
+            all,
+            chosen: self
+                .platform
+                .query_as::<(String, i64)>(
+                    "SELECT tool,allowed FROM agent_key_tools WHERE key_id=?",
+                    [id],
+                )?
+                .into_iter()
+                .map(|(tool, allowed)| (tool, allowed == 1))
+                .collect(),
+        })
     }
     fn agent_key_dsps(&self, id: &str) -> Result<Vec<String>> {
         Ok(self
@@ -155,15 +175,18 @@ impl Store {
             .collect())
     }
 
-    /// Every key, those in use first and newest first, with the DSPs a key can be given.
-    /// `seen` is what this process knows of each key's last use, newer than the database.
+    /// Every key, those in use first and newest first, with the DSPs a key can be given and
+    /// the tools it can be allowed. `seen` is what this process knows of each key's last use,
+    /// newer than the database.
     pub fn agent_keys(&self, seen: &HashMap<String, LastUse>) -> Result<AgentKeys> {
+        let toolbox = Toolbox::installed();
         let mut keys: Vec<AgentKey> = self.platform.query_as(
             &format!("{LISTED} ORDER BY k.revoked_at IS NOT NULL,k.created_at DESC,k.id"),
             [iso()],
         )?;
         for key in &mut keys {
             key.dsps = self.agent_key_dsps(&key.id)?;
+            key.tools = toolbox.allowed(&self.agent_key_grants(&key.id, key.all_tools)?);
             if let Some((when, client)) = seen.get(&key.id) {
                 let when = at(*when);
                 if key.last_used_at.as_ref().is_none_or(|last| *last < when) {
@@ -175,6 +198,7 @@ impl Store {
         Ok(AgentKeys {
             keys,
             dsps: self.agent_dsp_choices()?,
+            tools: toolbox.listed(),
         })
     }
 
@@ -219,6 +243,17 @@ impl Store {
             "invalid_input",
             400,
         )?;
+        // Only tools a key can be allowed; a tool no longer installed is no choice.
+        let toolbox = Toolbox::installed();
+        ensure(
+            input.tools.iter().all(|name| {
+                toolbox
+                    .switchable()
+                    .any(|listed| listed.tool.name() == name)
+            }),
+            "invalid_input",
+            400,
+        )?;
         Ok(())
     }
     /// The DSPs a key reaches.
@@ -229,6 +264,28 @@ impl Store {
             self.platform.exec(
                 "INSERT OR IGNORE INTO agent_key_dsps(key_id,dsp_id) VALUES (?,?)",
                 [id, dsp.as_str()],
+            )?;
+        }
+        Ok(())
+    }
+    /// The tools a key or app may use: a choice for every tool there is now, and whether one
+    /// added later that only reads is allowed as it comes.
+    fn set_agent_key_tools(&self, id: &str, input: &AgentKeyRequest) -> Result<()> {
+        self.platform.exec(
+            "UPDATE agent_keys SET all_tools=? WHERE id=?",
+            params![i64::from(input.all_tools), id],
+        )?;
+        self.platform
+            .exec("DELETE FROM agent_key_tools WHERE key_id=?", [id])?;
+        for listed in Toolbox::installed().switchable() {
+            let name = listed.tool.name();
+            self.platform.exec(
+                "INSERT INTO agent_key_tools(key_id,tool,allowed) VALUES (?,?,?)",
+                params![
+                    id,
+                    name,
+                    i64::from(input.tools.iter().any(|tool| tool == name))
+                ],
             )?;
         }
         Ok(())
@@ -259,6 +316,7 @@ impl Store {
                 ],
             )?;
             self.set_agent_key_dsps(&id, input)?;
+            self.set_agent_key_tools(&id, input)?;
             self.audit_with(
                 Some(user),
                 None,
@@ -274,8 +332,8 @@ impl Store {
         })
     }
 
-    /// Changes what a key or connected app may do and reach. A revoked one stays revoked; an
-    /// app only ever reads, and never expires.
+    /// Changes where a key or connected app reaches, what it may use, and a key's expiry. A
+    /// revoked one stays revoked; an app keeps its access and never expires.
     pub fn update_agent_key(
         &self,
         user: &str,
@@ -284,7 +342,7 @@ impl Store {
     ) -> Result<AgentKey> {
         let before = self.agent_key(id)?;
         ensure(before.revoked_at.is_none(), "agent_key_revoked", 409)?;
-        // An app is edited like a key, but stays read-only and never expires.
+        // An app is edited like a key, but keeps its access and never expires.
         if before.kind == AgentKeyKind::App {
             ensure(
                 input.access == AgentAccess::Read && input.expires_at == before.expires_at,
@@ -323,6 +381,19 @@ impl Store {
             reach(before.all_dsps, &before.dsps),
             reach(input.all_dsps, &input.dsps),
         );
+        let tools = |tools: &[String]| {
+            if tools.is_empty() {
+                "none".to_owned()
+            } else {
+                format!("[{}]", tools.join(", "))
+            }
+        };
+        change("tools", tools(&before.tools), tools(&input.tools));
+        change(
+            "all_tools",
+            before.all_tools.to_string(),
+            input.all_tools.to_string(),
+        );
         let never = || "never".to_owned();
         change(
             "expires",
@@ -345,6 +416,7 @@ impl Store {
                 ],
             )?;
             self.set_agent_key_dsps(id, input)?;
+            self.set_agent_key_tools(id, input)?;
             if !changes.is_empty() {
                 self.audit_with(Some(user), None, action, id, Some(&input.name), &changes)?;
             }
@@ -420,9 +492,9 @@ impl Store {
         let row = self
             .platform
             .one(
-                "SELECT k.id,k.name,k.user_id,k.all_dsps,k.access,k.expires_at,k.revoked_at,\
-                 u.platform_owner,u.status FROM agent_keys k JOIN users u ON u.id=k.user_id \
-                 WHERE k.hash=?",
+                "SELECT k.id,k.name,k.user_id,k.all_dsps,k.access,k.all_tools,k.expires_at,\
+                 k.revoked_at,u.platform_owner,u.status FROM agent_keys k \
+                 JOIN users u ON u.id=k.user_id WHERE k.hash=?",
                 [crypto::sha(token)],
             )?
             .ok_or_else(|| Error::new("agent_key_invalid", 401))?;
@@ -435,9 +507,9 @@ impl Store {
         let row = self
             .platform
             .one(
-                "SELECT k.id,k.name,k.user_id,k.all_dsps,k.access,k.expires_at,k.revoked_at,\
-                 u.platform_owner,u.status FROM agent_keys k JOIN users u ON u.id=k.user_id \
-                 WHERE k.id=? AND k.user_id=?",
+                "SELECT k.id,k.name,k.user_id,k.all_dsps,k.access,k.all_tools,k.expires_at,\
+                 k.revoked_at,u.platform_owner,u.status FROM agent_keys k \
+                 JOIN users u ON u.id=k.user_id WHERE k.id=? AND k.user_id=?",
                 [&caller.key, &caller.user],
             )?
             .ok_or_else(|| Error::new("agent_key_invalid", 401))?;
@@ -481,6 +553,7 @@ impl Store {
             user: text("user_id"),
             access: AgentAccess::parse(&text("access"))
                 .ok_or_else(|| Error::new("invalid_stored_record", 500))?,
+            tools: self.agent_key_grants(&key, row["all_tools"] == 1)?,
             expires_at,
             dsps,
             client: client.to_owned(),
@@ -547,6 +620,12 @@ impl Store {
                 name: caller.name.clone(),
                 access: caller.access,
                 expires_at: caller.expires_at.clone(),
+                tools: Toolbox::installed()
+                    .all()
+                    .iter()
+                    .filter(|listed| caller.tools.allows(listed.tool))
+                    .map(|listed| listed.tool.name().to_owned())
+                    .collect(),
             },
             environment: self.config.env(),
             now: iso(),
