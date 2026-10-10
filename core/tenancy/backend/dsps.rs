@@ -20,6 +20,7 @@ use crate::{
 };
 use rusqlite::params;
 use serde_json::{Value, json};
+use std::collections::HashMap;
 
 /// Marks a DSP's database as holding its people: set when it is made, and once theirs move
 /// into it.
@@ -155,6 +156,22 @@ impl Store {
     }
     pub fn serves(&self, dsp: &Dsp) -> bool {
         dsp.status == DspStatus::Active && dsp.environment == self.config.env()
+    }
+    /// The DSPs this backend serves, active and of its environment, by name.
+    pub fn served_dsps(&self) -> Result<Vec<Dsp>> {
+        self.platform.query_as(
+            "SELECT * FROM dsps WHERE environment=? AND status='active' \
+             ORDER BY name COLLATE NOCASE",
+            [self.config.env().as_str()],
+        )
+    }
+    /// The names of the DSPs of `ids` there are, by id, whatever their status.
+    pub fn dsp_names(&self, ids: &[&str]) -> Result<HashMap<String, String>> {
+        let named: Vec<(String, String)> = self.platform.query_as(
+            "SELECT id,name FROM dsps WHERE id IN (SELECT value FROM json_each(?))",
+            [serde_json::to_string(ids)?],
+        )?;
+        Ok(named.into_iter().collect())
     }
     /// The DSPs whose data is kept up: every active or suspended one.
     pub fn kept_dsps(&self) -> Result<Vec<String>> {

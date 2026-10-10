@@ -609,6 +609,7 @@ dependencies = [
  "dispatch-dvic",
  "dispatch-home",
  "dispatch-host",
+ "dispatch-mcp",
  "dispatch-paycom",
  "dispatch-routes",
  "dispatch-settings",
@@ -648,7 +649,6 @@ dependencies = [
  "libc",
  "qrcode",
  "reqwest",
- "rmcp",
  "rusqlite",
  "schemars",
  "serde",
@@ -766,6 +766,26 @@ dependencies = [
  "tar",
  "tempfile",
  "zip",
+]
+
+[[package]]
+name = "dispatch-mcp"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "chrono-tz",
+ "dispatch-core",
+ "reqwest",
+ "rmcp",
+ "rusqlite",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "ts-rs",
+ "url",
 ]
 
 [[package]]

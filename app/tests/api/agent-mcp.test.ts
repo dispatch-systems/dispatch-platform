@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture } from '../../../core/shell/tests/support/support.js';
-import type { AgentKeyCreated, AgentKeys } from '../../../core/platform_owner/api/index.js';
+import type { AgentKeyCreated, AgentKeys } from '../../../mcp/api/index.js';
 
 type Rpc = { status: number; headers: Headers; body: any };
 

@@ -202,6 +202,18 @@ impl Context {
     }
 }
 impl Store {
+    /// `user` of the platform's directory while they are an active platform owner, as whom
+    /// an outside agent acts: `None` once they are not.
+    pub fn active_platform_owner(&self, user: &str) -> Result<Option<PublicUser>> {
+        Ok(UserRow::find(&self.platform, "id", user)?
+            .filter(|row| row.active() && row.user.platform_owner)
+            .map(|row| row.user))
+    }
+    /// The name of `user` of the platform's directory, whatever their standing: `None` once
+    /// their account is gone.
+    pub fn platform_user_name(&self, user: &str) -> Result<Option<String>> {
+        Ok(UserRow::find(&self.platform, "id", user)?.map(|row| row.user.name()))
+    }
     /// Who did something in `dsp`, as it sees them: a platform owner is always Platform
     /// support. `None` once their account is gone.
     pub fn actor_name(&self, dsp: &str, user: &str) -> Result<Option<String>> {

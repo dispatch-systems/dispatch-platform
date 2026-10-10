@@ -6,7 +6,7 @@ import type {
   AgentKeyRequest,
   AgentKeys,
   AgentWhoami,
-} from '../../../core/platform_owner/api/index.js';
+} from '../../../mcp/api/index.js';
 
 const body = (dsps: string[]): AgentKeyRequest => ({
   name: 'Laptop – Claude Code',

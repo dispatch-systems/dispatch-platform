@@ -55,6 +55,7 @@ operator-probes = ["dispatch-cortex/operator-probes", "dispatch-paycom/operator-
 dispatch-core = { path = "../../core" }
 dispatch-cortex = { path = "../../collectors/cortex" }
 dispatch-host = { path = "../../ops/host-manager" }
+dispatch-mcp = { path = "../../mcp" }
 dispatch-paycom = { path = "../../collectors/paycom" }
 # Every feature: written from features/ by `npm run contracts:generate`, to the blank line.
 dispatch-daily-performance = { path = "../../features/daily_performance", optional = true }
@@ -79,6 +80,7 @@ tokio = { workspace = true }
 [dev-dependencies]
 # Core's test support, and the TypeScript of every crate's API types for the export test.
 dispatch-core = { path = "../../core", features = ["testing", "ts"] }
+dispatch-mcp = { path = "../../mcp", features = ["testing", "ts"] }
 dispatch-paycom = { path = "../../collectors/paycom", features = ["ts"] }
 # Every feature: written from features/ by `npm run contracts:generate`, to the blank line.
 dispatch-daily-performance = { path = "../../features/daily_performance", features = ["ts"] }

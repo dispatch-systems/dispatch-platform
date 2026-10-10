@@ -7,14 +7,15 @@ Run commands from the repository root.
 | --------------------------- | --------------------------------------------------------------------------------------------------------- |
 | `core/`                     | The platform, in parts; names no collector or feature                                                     |
 | `collectors/`               | One directory per outside site: `paycom/`, `cortex/`                                                      |
-| `features/`                 | One directory per feature: backend, API, MCP, frontend, migrations and tests                              |
+| `features/`                 | One directory per feature: backend, API, frontend, migrations and tests                                   |
+| `mcp/`                      | The MCP, whole: how outside agents connect, the tools they use and the Agents page                        |
 | `app/`                      | The assembly: the `dispatch-backend` binary, the frontend entry, whole-product tests                      |
 | `services/cloudflare-mail/` | Email Worker and its generated environment types                                                          |
 | `tooling/`                  | Build, CI, dev, scaffolding, testing, agent eval, benchmark, asset, security, mail and screenshot helpers |
 | `ops/`                      | Host manager, launchers, systemd units and host scripts                                                   |
 
-Dependencies point one way: `app → features → collectors → core`. Core, each collector, each
-feature and the app is its own crate, and each feature and collector declares what it
+Dependencies point one way: `app → mcp → features → collectors → core`. Core, each collector,
+each feature, the MCP and the app is its own crate, and each feature and collector declares what it
 contributes in its manifest (`feature.rs`, `collector.rs`). Only `app/` lists them: its list of
 features, and their place in its Cargo manifest, are written from the folders in `features/`, so
 adding a feature is adding its folder, and its `place` in its manifest sets where it is listed.

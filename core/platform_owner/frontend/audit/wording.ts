@@ -117,19 +117,6 @@ const phrases: AuditPhrases = {
   'mail.discarded': (e) => ['discarded an email', ...(e.target ? [' to ', strong(e.target)] : [])],
   'dsp.created': (e) => ['created ', strong(e.dspName ?? 'a DSP')],
   'dsp.removed': (e) => ['removed ', strong(e.dspName ?? 'a DSP')],
-  'agent.key_created': (e) => ['created the agent key ', strong(e.target ?? 'a key')],
-  'agent.key_updated': (e) => ['changed the agent key ', strong(e.target ?? 'a key')],
-  'agent.key_revoked': (e) => ['revoked the agent key ', strong(e.target ?? 'a key')],
-  'agent.app_connected': (e) => ['connected the app ', strong(e.target ?? 'an app')],
-  'agent.app_updated': (e) => ['changed the connected app ', strong(e.target ?? 'an app')],
-  'agent.app_revoked': (e) => ['revoked the connected app ', strong(e.target ?? 'an app')],
-  'agent.pairing_opened': () => ['let apps start connecting for 10 minutes'],
-  'agent.app_allowed': (e) => ['let ', strong(e.target ?? 'an app'), ' connect'],
-  'agent.app_disallowed': (e) => ['stopped ', strong(e.target ?? 'an app'), ' from connecting'],
-  'agent.keys_revoked': (e) => [
-    'revoked ',
-    strong(e.detail === '1' ? 'an agent key' : `${e.detail} agent keys`),
-  ],
   'dsp.restored': (e) => ['restored ', strong(e.dspName ?? 'a DSP')],
   'dsp.suspended': (e) => ['suspended ', strong(e.dspName ?? 'a DSP')],
   'dsp.resumed': (e) => ['resumed ', strong(e.dspName ?? 'a DSP')],
@@ -183,14 +170,6 @@ const collected = (event: AuditEvent) => {
   if (collection) return collection.label;
   const provider = fact(event, 'provider');
   return owners.find((owner) => owner.collected?.[provider])?.collected?.[provider];
-};
-// Why Dispatch itself ended a connected app.
-const appEndings: Record<string, string> = {
-  replaced: 'Replaced by a new connection',
-  signed_out: 'The app signed out',
-  code_reused: 'Its sign-in code was used twice',
-  refresh_reused: 'An old token was used again',
-  token_reuse: 'An old token was used again',
 };
 function outcome(event: AuditEvent): Part[] {
   const attempt = event.action === 'collection.retrying' && fact(event, 'attempt');
@@ -279,27 +258,9 @@ const fields: Record<string, string> = {
   access: 'Access',
   dsps: 'DSPs',
   expires: 'Expires',
-  // The tools a key or app may use, and whether tools that only read come as they are added.
-  all_tools: 'New tools that only read',
-  // Earlier key changes, from when keys chose what they read: a kind of data each, as
-  // `reads.timecards`, reads as its title.
-  bypass: 'Bypass features',
-  dsp_reads: 'DSP settings',
-  tools: 'Tools',
-  locations: 'Addresses and GPS',
 };
 export const fieldLabel = (field: string) =>
   fields[field] ?? owners.find((owner) => owner.fields?.[field])?.fields?.[field] ?? title(field);
-const agentValues: Record<string, string> = {
-  read: 'Read only',
-  operator: 'Operator',
-  full: 'Full',
-  essential: 'Essential',
-  true: 'On',
-  false: 'Off',
-  never: 'Never',
-};
-const agentFields = ['access', 'expires', 'bypass', 'tools', 'all_tools', 'locations'];
 // A schedule's collection as its collector names it.
 const scheduleLabel = (value: string) =>
   collections.find((collection) => collection.schedule === value)?.label;
@@ -324,7 +285,6 @@ export function changeValue(field: string, value: string) {
     return dateFormatter('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(
       new Date(value),
     );
-  if (agentFields.includes(field) || field.startsWith('reads.')) return agentValues[value] ?? value;
   return value;
 }
 export function changeText(change: AuditChange) {
@@ -362,9 +322,6 @@ export function notes(event: AuditEvent, platform: boolean): string[] {
       ? [`After ${Number.parseInt(fact(event, 'attempt'))} attempts`]
       : []),
     ...(fact(event, 'invitedBy') ? [`Invited by ${fact(event, 'invitedBy')}`] : []),
-    ...(event.action === 'agent.app_revoked' && fact(event, 'reason')
-      ? [appEndings[fact(event, 'reason')] ?? title(fact(event, 'reason'))]
-      : []),
     ...owners.flatMap((owner) => owner.notes?.(event) ?? []),
   ];
 }

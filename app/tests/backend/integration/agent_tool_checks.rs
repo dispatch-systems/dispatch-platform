@@ -4,12 +4,12 @@
 //! the platform owner, through the agent.
 use dispatch_core::{
     db::Store,
-    mcp::{
-        Caller,
-        testing::agent,
-        tools::{Answer, Cx, Effect, Failure, Listed, Nothing, Tool, Toolbox},
-    },
     testing::{self as common, audits, bootstrapped, platform_owner},
+};
+use dispatch_mcp::{
+    Caller,
+    testing::agent,
+    tools::{Answer, Cx, Effect, Failure, Listed, Nothing, Tool, Toolbox},
 };
 use serde::Serialize;
 use serde_json::{Map, Value, json};
@@ -51,7 +51,7 @@ impl Tool for Mark {
 
 fn tools() -> Toolbox {
     Toolbox::of(
-        [&Inspect as &dyn dispatch_core::mcp::tools::AnyTool, &Mark]
+        [&Inspect as &dyn dispatch_mcp::tools::AnyTool, &Mark]
             .into_iter()
             .map(|tool| Listed {
                 tool,

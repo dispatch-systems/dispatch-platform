@@ -53,10 +53,10 @@ export function templated(file: string): string {
   return match ? `${match[1]}s/template/${match[2]}` : file;
 }
 
-export type Layer = 'app' | 'core' | 'collector' | 'feature';
+export type Layer = 'app' | 'mcp' | 'core' | 'collector' | 'feature';
 /**
- * What owns a file: the app, a core part, a collector or a feature. Tooling, ops and services
- * own nothing.
+ * What owns a file: the app, the MCP, a core part, a collector or a feature. Tooling, ops and
+ * services own nothing.
  */
 export type Owner = { dir: string; layer: Layer; name: string };
 const layers: Record<string, Layer> = {
@@ -67,6 +67,8 @@ const layers: Record<string, Layer> = {
 export function ownerOf(file: string): Owner | undefined {
   const [top, name, rest] = file.split('/');
   if (top === 'app') return { dir: 'app', layer: 'app', name: 'app' };
+  // The MCP is one owner, in one folder: everything outside agents use, and how they connect.
+  if (top === 'mcp' && name) return { dir: 'mcp', layer: 'mcp', name: 'mcp' };
   // Core's crate root and Cargo.toml sit beside its parts and belong to core as a whole.
   if (top === 'core' && name && rest === undefined)
     return { dir: 'core', layer: 'core', name: 'core' };

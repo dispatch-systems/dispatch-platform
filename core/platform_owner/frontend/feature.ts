@@ -1,5 +1,5 @@
 import { createElement, lazy } from 'react';
-import { Bot, Building2, FlaskConical, ScrollText, Settings } from 'lucide-react';
+import { Building2, FlaskConical, ScrollText, Settings } from 'lucide-react';
 import {
   auditWording,
   loadPlatformSlots,
@@ -12,8 +12,6 @@ declare module '../../shell/frontend/runtime/slots.js' {
   interface PlatformPages {
     dsps: true;
     jobs: true;
-    agents: true;
-    authorize: true;
     audit: true;
     account: true;
   }
@@ -26,7 +24,6 @@ const loadPicker = () => import('./dsps/picker.js');
 // Diagnostics words each collection's runs as an owner does.
 const loadDiagnostics = () =>
   Promise.all([import('./diagnostics/index.js'), loadPlatformSlots()]).then(([module]) => module);
-const loadAgents = () => import('./agents/index.js');
 // The audit log is handed every owner's wording.
 const loadAudit = () =>
   loadPlatformSlots()
@@ -42,10 +39,6 @@ const DspsPage = lazy(() => loadDsps().then((module) => ({ default: module.DspsP
 const DspPicker = lazy(() => loadPicker().then((module) => ({ default: module.DspPicker })));
 const DiagnosticsPage = lazy(() =>
   loadDiagnostics().then((module) => ({ default: module.DiagnosticsPage })),
-);
-const AgentsPage = lazy(() => loadAgents().then((module) => ({ default: module.AgentsPage })));
-const AuthorizePage = lazy(() =>
-  loadAgents().then((module) => ({ default: module.AuthorizePage })),
 );
 const AuditPage = lazy(() => loadAudit().then((module) => ({ default: module.AuditPage })));
 const SettingsPage = lazy(() =>
@@ -82,26 +75,6 @@ export const feature: FrontendFeature = {
       permission: platformOwner,
       preload: loadDiagnostics,
       render: () => createElement(DiagnosticsPage),
-    },
-    {
-      id: 'agents',
-      scope: 'platform',
-      label: 'Agents',
-      icon: Bot,
-      nav: true,
-      permission: platformOwner,
-      preload: loadAgents,
-      render: () => createElement(AgentsPage),
-    },
-    {
-      id: 'authorize',
-      scope: 'platform',
-      label: 'Connect an app',
-      parent: 'agents',
-      nav: false,
-      permission: platformOwner,
-      preload: loadAgents,
-      render: () => createElement(AuthorizePage),
     },
     {
       id: 'audit',

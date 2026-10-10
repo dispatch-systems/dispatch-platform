@@ -10,12 +10,12 @@ use dispatch_core::{
     server::http,
 };
 
-/// Everything this build of Dispatch is made of: its collectors and its features. Each
+/// Everything this build of Dispatch is made of: its collectors, its features and the MCP. Each
 /// feature is a Cargo feature of the app, which a build may leave out.
 pub static REGISTRY: Registry = Registry {
     collectors: &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
     features: features::FEATURES,
-    agents: Some(&dispatch_core::mcp::AGENTS),
+    agents: Some(&dispatch_mcp::AGENTS),
 };
 /// Installs `REGISTRY`, and hands core what a DSP path no route matches asks for. Every
 /// entry point, and every one of the app's tests, calls this before anything reads the

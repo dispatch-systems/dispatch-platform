@@ -69,6 +69,13 @@ export type DspRoute = Page<DspPageContext> & {
 export type PlatformRoute = Page<PageContext> & {
   id: PlatformRouteId;
   scope: 'platform';
+  /** The page the sidebar lists it after, one an owner listed before its own declares. */
+  after?: PlatformRouteId;
+  /**
+   * Whether signing in at a link to it, one with a query, stays there, as for an app asking
+   * to connect; else signing in opens the platform's first page.
+   */
+  linked?: boolean;
   /** Called only while no DSP view is admitted. */
   prefetch?: (prefetch: RoutePrefetch) => void;
 };

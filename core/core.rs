@@ -11,8 +11,6 @@ pub mod db;
 pub mod foundation;
 #[path = "manifest/backend/mod.rs"]
 pub mod manifest;
-#[path = "mcp/backend/mod.rs"]
-pub mod mcp;
 #[path = "platform_owner/backend/mod.rs"]
 pub mod platform_owner;
 #[path = "server/backend/mod.rs"]

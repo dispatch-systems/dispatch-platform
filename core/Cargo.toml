@@ -33,7 +33,6 @@ lettre = { workspace = true }
 libc = { workspace = true }
 qrcode = { workspace = true }
 reqwest = { workspace = true }
-rmcp = { workspace = true }
 rusqlite = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }

@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import type { Page } from '@playwright/test';
-import type { AgentKeys } from '../../../core/platform_owner/api/index.js';
+import type { AgentKeys } from '../../../mcp/api/index.js';
 import { platformHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { utcDay } from '../../../core/shell/frontend/lib/format.js';
 import { test, expect, login } from '../../../core/shell/tests/support/fixtures.js';

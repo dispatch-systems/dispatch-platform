@@ -6,7 +6,10 @@ use dispatch_core::testing as common;
 use dispatch_core::{
     db::{self, Store, s},
     foundation::crypto,
-    mcp::api::types::{AgentAccess, AgentKeyRequest},
+};
+use dispatch_mcp::{
+    KeyStore,
+    api::types::{AgentAccess, AgentKeyRequest},
 };
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -36,7 +39,7 @@ fn refused(db: &Store, token: &str) -> String {
 /// Replay the policy snapshot left by admission, after a committed policy change.
 async fn admitted_mcp(
     state: &std::sync::Arc<dispatch_core::State>,
-    caller: &dispatch_core::mcp::Caller,
+    caller: &dispatch_mcp::Caller,
     method: &str,
     params: Value,
 ) -> Value {
@@ -45,7 +48,7 @@ async fn admitted_mcp(
 
 async fn admitted_mcp_version(
     state: &std::sync::Arc<dispatch_core::State>,
-    caller: &dispatch_core::mcp::Caller,
+    caller: &dispatch_mcp::Caller,
     method: &str,
     params: Value,
     protocol: &str,
@@ -67,7 +70,7 @@ async fn admitted_mcp_version(
         .unwrap();
     request.extensions_mut().insert(state.clone());
     request.extensions_mut().insert(caller.clone());
-    let response = dispatch_core::mcp::server::serve(request).await;
+    let response = dispatch_mcp::server::serve(request).await;
     let status = response.status();
     let body = to_bytes(response.into_body(), 100_000).await.unwrap();
     assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));

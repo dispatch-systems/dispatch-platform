@@ -176,11 +176,12 @@ fn joined(dir: &str, relative: &str) -> String {
     }
     parts.join("/")
 }
-/// The owner a file belongs to, by its directory: core, a collector, a feature or the app.
+/// The owner a file belongs to, by its directory: core, a collector, a feature, the MCP or
+/// the app.
 fn owner(file: &str) -> Option<String> {
     let mut parts = file.split('/');
     match (parts.next()?, parts.next()?, parts.next()) {
-        (top @ ("core" | "app"), _, _) => Some(top.to_owned()),
+        (top @ ("core" | "mcp" | "app"), _, _) => Some(top.to_owned()),
         (top @ ("collectors" | "features"), name, Some(_)) => Some(format!("{top}/{name}")),
         _ => None,
     }

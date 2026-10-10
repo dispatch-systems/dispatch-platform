@@ -11,13 +11,14 @@ import {
   resolveModule,
 } from '../../../tooling/testing/source-analysis.js';
 
-// Every owner: the app, core's parts, the features and the collectors. An owner's frontend is
-// its frontend/ and its api/client.ts, the frontend's end of its API.
+// Every owner: the app, core's parts, the features, the collectors and the MCP. An owner's
+// frontend is its frontend/ and its api/client.ts, the frontend's end of its API.
 const owners = [
   'app',
   ...['core', 'features', 'collectors'].flatMap((top) =>
     fs.readdirSync(top).map((name) => path.join(top, name)),
   ),
+  'mcp',
 ];
 const frontends = owners
   .map((directory) => path.join(directory, 'frontend'))
@@ -288,7 +289,7 @@ test('every route is declared once and every parent is a route', () => {
 test('contracts, tooling, services and backends are independent of the frontends', () => {
   const frontendRoots = frontends.map((directory) => path.resolve(directory) + path.sep);
   const clientFiles = clients.map((file) => path.resolve(file));
-  for (const directory of ['tooling', 'services', 'app', 'core', 'collectors', 'features']) {
+  for (const directory of ['tooling', 'services', 'app', 'core', 'collectors', 'features', 'mcp']) {
     const files = fs
       .readdirSync(directory, { recursive: true, encoding: 'utf8' })
       .filter((name) => /\.(tsx?|m?js|rs)$/.test(name))

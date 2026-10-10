@@ -6,11 +6,12 @@ use dispatch_core::{
     State,
     db::{self, Store, s},
     foundation::{config::Config, crypto},
-    mcp::{
-        oauth::network::{Network, Pending},
-        piece::Kept,
-    },
     server::operations,
+};
+use dispatch_mcp::{
+    GuardStore, OAuthStore,
+    oauth::network::{Network, Pending},
+    piece::Kept,
 };
 use serde_json::{Value, json};
 use std::{os::unix::fs::PermissionsExt, sync::Arc};
@@ -2489,7 +2490,7 @@ async fn in_fixture_mode_the_sample_website_connects_without_the_network() {
             json!({"id":"web","allowed":true}),
         )
         .await;
-    let site = dispatch_core::mcp::oauth::network::FIXTURE_APP;
+    let site = dispatch_mcp::oauth::network::FIXTURE_APP;
     let callback = "https://app.dispatch.test/oauth/callback";
     let tokens = server
         .connect(&owner, site, callback, everything("Example web app"))

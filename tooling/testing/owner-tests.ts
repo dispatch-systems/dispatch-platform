@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Command } from '../ci/execution-plan.js';
 
-// `npm run test:feature <name>`, `test:collector <site>` and `test:core <part>`: one owner's tests
-// of every kind, found by the folder they sit in, and run as CI runs them. Each command is printed
+// `npm run test:feature <name>`, `test:collector <site>`, `test:core <part>` and `test:mcp`: one
+// owner's tests of every kind, found by the folder they sit in, and run as CI runs them. Each command is printed
 // before it runs; `--list` prints them and runs nothing, `--no-build` skips the builds.
 //
 //   Rust      its crate's tests, `cargo test -p <crate>`. A core part's are the core crate's,
@@ -16,8 +16,9 @@ import type { Command } from '../ci/execution-plan.js';
 
 const usage = `Usage: npm run test:feature -- <name> [--list] [--no-build]
        npm run test:collector -- <site> [--list] [--no-build]
-       npm run test:core -- <part> [--list] [--no-build]`;
-const homes = { feature: 'features', collector: 'collectors', core: 'core' } as const;
+       npm run test:core -- <part> [--list] [--no-build]
+       npm run test:mcp -- [--list] [--no-build]`;
+const homes = { feature: 'features', collector: 'collectors', core: 'core', mcp: 'mcp' } as const;
 export type Kind = keyof typeof homes;
 
 const read = (root: string, file: string) => fs.readFileSync(path.join(root, file), 'utf8');
@@ -105,8 +106,9 @@ function rust(root: string, kind: Kind, dir: string, part: string, notes: string
 }
 
 export function ownerTests(root: string, kind: Kind, name: string, options = { build: true }) {
-  const dir = `${homes[kind]}/${name}`;
-  if (!/^[a-z][a-z0-9_]*$/.test(name) || !exists(root, dir)) {
+  // The MCP is one owner in one folder, with no name of its own.
+  const dir = kind === 'mcp' ? homes.mcp : `${homes[kind]}/${name}`;
+  if ((kind !== 'mcp' && !/^[a-z][a-z0-9_]*$/.test(name)) || !exists(root, dir)) {
     const known = fs
       .readdirSync(path.join(root, homes[kind]), { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
@@ -170,16 +172,23 @@ const quote = (arg: string) =>
 export const shell = ({ command, args }: Command) => [command, ...args].map(quote).join(' ');
 
 function main(argv: string[]) {
-  const [kind, name, ...rest] = argv;
+  const [kind, ...given] = argv;
+  // The MCP's tests take no name.
+  const [name, ...rest] = kind === 'mcp' ? ['', ...given] : given;
   const unknown = rest.filter((arg) => !['--list', '--no-build'].includes(arg));
-  if (!kind || !(kind in homes) || !name || name.startsWith('-') || unknown.length) {
+  if (
+    !kind ||
+    !(kind in homes) ||
+    (kind !== 'mcp' && (!name || name.startsWith('-'))) ||
+    unknown.length
+  ) {
     process.stderr.write(`${usage}\n`);
     return 1;
   }
   const root = path.resolve(import.meta.dirname, '../..');
   let plan: ReturnType<typeof ownerTests>;
   try {
-    plan = ownerTests(root, kind as Kind, name, { build: !rest.includes('--no-build') });
+    plan = ownerTests(root, kind as Kind, name ?? '', { build: !rest.includes('--no-build') });
   } catch (error) {
     process.stderr.write(`${(error as Error).message}\n`);
     return 1;

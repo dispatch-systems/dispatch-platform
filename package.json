@@ -27,6 +27,7 @@
     "test:feature": "tsx tooling/testing/owner-tests.ts feature",
     "test:collector": "tsx tooling/testing/owner-tests.ts collector",
     "test:core": "tsx tooling/testing/owner-tests.ts core",
+    "test:mcp": "tsx tooling/testing/owner-tests.ts mcp",
     "predev": "tooling/cli/dispatchdev build",
     "pretest": "tooling/cli/dispatchdev build",
     "benchmark:rust": "tooling/cli/dispatchdev build --release && tsx tooling/benchmarks/benchmark-rust.ts",

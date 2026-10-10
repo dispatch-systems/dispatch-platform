@@ -82,7 +82,7 @@ test('every test file is run by exactly one check of full validation and none is
   assert.deepEqual(
     files.filter(
       (file) =>
-        !/^((app|(core|collectors|features)\/[a-z_]+)\/tests\/(api|frontend|native|rules)|(tooling|ops)\/tests)\//.test(
+        !/^((app|mcp|(core|collectors|features)\/[a-z_]+)\/tests\/(api|frontend|native|rules)|(tooling|ops)\/tests)\//.test(
           file,
         ),
     ),

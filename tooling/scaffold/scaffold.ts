@@ -204,7 +204,7 @@ export function files(root: string, dir: string, pattern: RegExp): string[] {
     .filter((file) => pattern.test(file) && !/(^|\/)(node_modules|target)\//.test(file))
     .sort();
 }
-const ownerRoots = ['core', 'collectors', 'features', 'app'];
+const ownerRoots = ['core', 'collectors', 'features', 'mcp', 'app'];
 const rustSources = (root: string) =>
   ownerRoots.flatMap((dir) => files(root, dir, /\.rs$/)).filter((file) => !/\/tests\//.test(file));
 
