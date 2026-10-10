@@ -231,7 +231,9 @@ fn a_hidden_feature_keeps_running_out_of_its_members_sight() {
     assert_eq!(back.hidden, ["timecard.employees"]);
     assert!(!shown(&db).contains(&"timecard.employees".to_owned()));
     // What every DSP has, and a connection, are never hidden.
-    let refused = db.show_feature(&dsp, "team", false, &owner.id).unwrap_err();
+    let every = mandatory();
+    let every = every.first().expect("a feature every DSP has");
+    let refused = db.show_feature(&dsp, every, false, &owner.id).unwrap_err();
     assert_eq!(
         (refused.code.as_str(), refused.status),
         ("feature_mandatory", 409)
