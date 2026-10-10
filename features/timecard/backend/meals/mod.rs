@@ -2,6 +2,7 @@ pub(crate) mod assessment;
 pub(crate) mod comparison;
 pub(crate) mod keeper;
 pub(crate) mod people;
+pub(crate) mod period;
 pub(crate) mod sync;
 // Cortex meal evidence and atomic publication. Browser data is untrusted input.
 use chrono::NaiveDate;

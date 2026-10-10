@@ -3,6 +3,7 @@ use crate::api::types::EmployeesResponse;
 use dispatch_core::{
     Result,
     db::{Store, boolean, s},
+    foundation::names::{compare, display},
 };
 use dispatch_paycom as paycom;
 use rusqlite::params;
@@ -31,43 +32,36 @@ pub(crate) fn timecard_employees(
         });
     };
     let publication_id = s(&publication, "id");
-    let direction = if desc { "DESC" } else { "ASC" };
-    let condition = "publication_id=?1 AND (?2='' OR department=?2) AND (?3='' OR \
-        station=?3) AND (?4='' OR instr(dispatch_lower(dispatch_name(name,?5)||' '||code),?4)>0) \
-        AND (?6 IS NULL OR active=?6)";
-    let total = db.count(
-        &format!("SELECT count(*) FROM employees WHERE {condition}"),
-        params![
-            publication_id,
-            s(p, "department"),
-            s(p, "station"),
-            query.to_lowercase(),
-            s(p, "name_order"),
-            active
-        ],
-    )?;
     let mut rows = db.all(
-        &format!(
-            "SELECT code,dispatch_name(name,?5) \
-        name,department,position,station,active FROM employees WHERE {condition} ORDER \
-        BY name COLLATE dispatch_unicode {direction},code COLLATE dispatch_unicode \
-        {direction} LIMIT ?7 OFFSET \
-        ?8"
-        ),
-        params![
-            publication_id,
-            s(p, "department"),
-            s(p, "station"),
-            query.to_lowercase(),
-            s(p, "name_order"),
-            active,
-            limit.map_or(-1, |value| value as i64),
-            offset as i64
-        ],
+        "SELECT code,name,department,position,station,active FROM employees WHERE \
+         publication_id=?1 AND (?2='' OR department=?2) AND (?3='' OR station=?3) \
+         AND (?4 IS NULL OR active=?4)",
+        params![publication_id, s(p, "department"), s(p, "station"), active],
     )?;
     for row in &mut rows {
         boolean(row, &["active"]);
+        row["name"] = json!(display(s(row, "name")));
     }
+    // Normalize before searching, ordering and paging so every operation sees exactly
+    // the displayed first/last name, including spacing, compound surnames and suffixes.
+    let query = query.to_lowercase();
+    rows.retain(|row| {
+        query.is_empty()
+            || format!("{} {}", s(row, "name"), s(row, "code"))
+                .to_lowercase()
+                .contains(&query)
+    });
+    rows.sort_by(|a, b| {
+        let order =
+            compare(s(a, "name"), s(b, "name")).then_with(|| compare(s(a, "code"), s(b, "code")));
+        if desc { order.reverse() } else { order }
+    });
+    let total = rows.len();
+    let rows: Vec<_> = rows
+        .into_iter()
+        .skip(offset)
+        .take(limit.unwrap_or(usize::MAX))
+        .collect();
     Ok(serde_json::from_value(
         json!({"employees":rows,"total":total,"collectedAt":publication["collected_at"]}),
     )?)

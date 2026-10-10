@@ -346,3 +346,95 @@ fn ambiguity_includes_employees_without_punches_and_drivers_without_meals() {
     assert_eq!(data["drivers"].as_array().unwrap().len(), 1);
     assert_eq!(data["drivers"][0]["matchType"], "unmatched");
 }
+
+#[test]
+fn meal_period_counts_each_verified_gap_and_only_time_beyond_five_minutes() {
+    install();
+    let (_root, db, id) = common::bootstrapped();
+    let mut previous_workforce =
+        fixtures::fixture_date("America/Los_Angeles", Some("2026-09-05".parse().unwrap())).unwrap();
+    previous_workforce["employees"][0]["name"] = json!("Driver, Demo");
+    db.publish_timecards(&id, &previous_workforce).unwrap();
+    let mut workforce =
+        fixtures::fixture_date("America/Los_Angeles", Some("2026-09-19".parse().unwrap())).unwrap();
+    workforce["employees"][0]["name"] = json!("Driver, Demo");
+    db.publish_timecards(&id, &workforce).unwrap();
+    for (date, before, after) in [
+        ("2026-09-05", 99, 99), // Outside the period.
+        ("2026-09-06", 7, 5),   // Exactly five minutes is excluded.
+        ("2026-09-07", 9, 12),
+        ("2026-09-08", 8, 6),
+        ("2026-09-09", 5, 5),
+        ("2026-09-20", 99, 99),
+    ] {
+        let scope = Scope {
+            date: date.into(),
+            station: "DEMO1".into(),
+            service_area_id: "area-demo".into(),
+            provider: "provider-demo".into(),
+            timezone: "America/Los_Angeles".into(),
+        };
+        let mut capture = meals::fixture(&scope);
+        let route = &mut capture.itineraries[0];
+        route.driver = "Demo Driver".into();
+        route.meals.truncate(1);
+        let meal = &mut route.meals[0];
+        meal.last_delivery = Some(meal.start - before * 60_000);
+        meal.first_delivery = Some(meal.end.unwrap() + after * 60_000);
+        db.publish_meals(&id, &format!("period-{date}"), &capture, &scope)
+            .unwrap();
+    }
+    let result = db
+        .meal_period(
+            &id,
+            "paycom:E001",
+            Some("2026-09-07"),
+            None,
+            "America/Los_Angeles",
+        )
+        .unwrap();
+    assert_eq!(result.period.from, "2026-09-06");
+    assert_eq!(result.period.to, "2026-09-19");
+    assert_eq!(result.days.len(), 14);
+    assert!(
+        result
+            .days
+            .iter()
+            .all(|day| day.rows.iter().all(|row| row.source.id == "paycom:E001"))
+    );
+    assert_eq!(result.gaps.len(), 5);
+    assert_eq!(
+        result
+            .gaps
+            .iter()
+            .map(|gap| gap.milliseconds / 60_000)
+            .collect::<Vec<_>>(),
+        vec![7, 9, 12, 8, 6]
+    );
+    assert_eq!(result.excess_milliseconds, 17 * 60_000);
+    let previous = db
+        .meal_period(
+            &id,
+            "paycom:E001",
+            Some("2026-09-05"),
+            None,
+            "America/Los_Angeles",
+        )
+        .unwrap();
+    assert_eq!(previous.period.from, "2026-08-23");
+    assert_eq!(previous.period.to, "2026-09-05");
+    assert_eq!(previous.gaps.len(), 2);
+    assert_eq!(
+        db.timecard_period(&id, Some("E001"), Some("2026-09-07"), None)
+            .unwrap(),
+        result.period
+    );
+    let invalid = dispatch_paycom::timecards::EmployeeTimecardPeriod {
+        from: "2026-09-07".into(),
+        to: "2026-09-20".into(),
+    };
+    assert!(
+        db.meal_period(&id, "paycom:E001", None, Some(&invalid), "UTC")
+            .is_err()
+    );
+}

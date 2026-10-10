@@ -2,7 +2,7 @@
 //! employees, timecards and preferences, and the meal breaks Cortex reports. Each method is
 //! written beside the rest of its part of Timecard.
 use crate::api::{
-    meals::MealComparison,
+    meals::{MealComparison, MealPeriod},
     types::{DailyTimecards, EmployeeTimecardResponse, EmployeesResponse},
 };
 use dispatch_core::{Result, db::Store};
@@ -12,6 +12,21 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 pub trait TimecardStore {
+    fn timecard_period(
+        &self,
+        id: &str,
+        code: Option<&str>,
+        date: Option<&str>,
+        requested: Option<&EmployeeTimecardPeriod>,
+    ) -> Result<EmployeeTimecardPeriod>;
+    fn meal_period(
+        &self,
+        id: &str,
+        source: &str,
+        date: Option<&str>,
+        requested: Option<&EmployeeTimecardPeriod>,
+        timezone: &str,
+    ) -> Result<MealPeriod>;
     fn daily_timecards_source(
         &self,
         id: &str,
@@ -102,6 +117,25 @@ pub trait TimecardStore {
     fn enqueue_meal_sync(&self, id: &str, actor: &str, key: &str, date: &str) -> Result<Value>;
 }
 impl TimecardStore for Store {
+    fn timecard_period(
+        &self,
+        id: &str,
+        code: Option<&str>,
+        date: Option<&str>,
+        requested: Option<&EmployeeTimecardPeriod>,
+    ) -> Result<EmployeeTimecardPeriod> {
+        super::punches::timecards::timecard_period(self, id, code, date, requested)
+    }
+    fn meal_period(
+        &self,
+        id: &str,
+        source: &str,
+        date: Option<&str>,
+        requested: Option<&EmployeeTimecardPeriod>,
+        timezone: &str,
+    ) -> Result<MealPeriod> {
+        super::meals::period::meal_period(self, id, source, date, requested, timezone)
+    }
     fn daily_timecards_source(
         &self,
         id: &str,

@@ -439,3 +439,63 @@ fn late_da_settings_default_for_older_preferences_and_validate() {
     assert_eq!(saved["values"]["late_da_time"], "09:45");
     assert_eq!(saved["values"]["late_da_departments"], json!(["Delivery"]));
 }
+
+#[test]
+fn employee_and_daily_names_use_first_last_for_search_and_pagination() {
+    install();
+    let (_root, db, id) = bootstrapped();
+    let mut data = fixtures::fixture_date("UTC", Some("2026-09-19".parse().unwrap())).unwrap();
+    data["employees"].as_array_mut().unwrap().truncate(3);
+    for (employee, name) in data["employees"].as_array_mut().unwrap().iter_mut().zip([
+        "ZULU, ANA",
+        "ALLEN JR, JUSTIN",
+        "de la Cruz, Mateo",
+    ]) {
+        employee["name"] = json!(name);
+    }
+    data["timecards"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|card| ["E001", "E002", "E003"].contains(&s(card, "employeeCode")));
+    db.publish_timecards(&id, &data).unwrap();
+    let actor = common::platform_owner(&db);
+    let mut settings = db.timecard_preferences(&id).unwrap()["values"].clone();
+    settings["name_order"] = json!("last_first");
+    db.save_timecard_preferences(&id, &actor, 0, &settings)
+        .unwrap();
+    let directory = db
+        .timecard_employees(&id, "", 0, Some(2), false, None)
+        .unwrap();
+    assert_eq!(directory.total, 3);
+    assert_eq!(
+        directory
+            .employees
+            .iter()
+            .map(|employee| employee.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Ana Zulu", "Justin Allen Jr"]
+    );
+    let search = db
+        .timecard_employees(&id, "Mateo de la Cruz", 0, None, false, None)
+        .unwrap();
+    assert_eq!(search.employees.len(), 1);
+    assert_eq!(search.employees[0].name, "Mateo de la Cruz");
+    assert_eq!(
+        db.employee_timecard(&id, "E002", None)
+            .unwrap()
+            .employee
+            .name,
+        "Justin Allen Jr"
+    );
+    let daily = db
+        .daily_timecards(&id, "2026-09-19", "name", false)
+        .unwrap();
+    assert_eq!(
+        daily
+            .rows
+            .iter()
+            .map(|row| row.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Ana Zulu", "Justin Allen Jr", "Mateo de la Cruz"]
+    );
+}

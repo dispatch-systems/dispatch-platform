@@ -5,9 +5,20 @@ import type { EmployeeTimecardPeriod } from './index.js';
 
 /** Where its schedules are served, as core's schedule calls take it. */
 export const schedules = '/api/dsp/schedules';
-export const employeeTimecardUrl = (code: string, period?: EmployeeTimecardPeriod | null) =>
-  `/api/dsp/employees/${encodeURIComponent(code)}${period ? `?from=${period.from}&to=${period.to}` : ''}`;
+export const employeesPath = '/api/dsp/employees';
+export const mealBreaksPath = '/api/dsp/paycom/meal-breaks';
+export const mealPeriodPath = `${mealBreaksPath}/period`;
+export const paycomSettingsPath = '/api/dsp/paycom/settings';
+export const paycomStatusPath = '/api/dsp/paycom/status';
+export const employeeTimecardUrl = (
+  code: string,
+  period?: EmployeeTimecardPeriod | null,
+  date?: string,
+) =>
+  `${employeesPath}/${encodeURIComponent(code)}${period ? `?from=${period.from}&to=${period.to}` : date ? `?date=${date}` : ''}`;
 export const dailyTimecardsUrl = (date: string) =>
   `/api/dsp/timecards?date=${date}&sort=name&direction=asc`;
 export const mealComparisonUrl = (date: string) =>
-  `/api/dsp/paycom/meal-breaks?date=${encodeURIComponent(date)}`;
+  `${mealBreaksPath}?date=${encodeURIComponent(date)}`;
+export const mealPeriodUrl = (source: string, period: EmployeeTimecardPeriod | string) =>
+  `${mealPeriodPath}?source=${encodeURIComponent(source)}&${typeof period === 'string' ? `date=${period}` : `from=${period.from}&to=${period.to}`}`;

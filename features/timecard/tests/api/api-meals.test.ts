@@ -28,6 +28,32 @@ test('meal API requires DSP context, exposes the punch union to members, and lin
     const member = await f.client('member@dispatch.test');
     await member.select(dsp.id);
     assert.equal((await member.get(`/api/dsp/paycom/meal-breaks?date=${date}`)).status, 200);
+    const periodUrl = `/api/dsp/paycom/meal-breaks/period?source=paycom%3AE001&date=${date}`;
+    const period = await member.get(periodUrl);
+    assert.equal(period.status, 200);
+    checkReply([timecardReplies], '/api/dsp/paycom/meal-breaks/period', 'GET', period.value);
+    assert.equal(period.value.days.length, 14);
+    assert(
+      period.value.days.every((day: any) =>
+        day.rows.every((row: MealEmployee) => row.id === 'paycom:E001'),
+      ),
+    );
+    const employee = await member.get(`/api/dsp/employees/E001?date=${date}`);
+    assert.deepEqual(period.value.period, employee.value.period);
+    assert.equal((await member.get(`${periodUrl}&from=2026-09-06&to=2026-09-19`)).status, 400);
+    assert.equal(
+      (await member.get('/api/dsp/paycom/meal-breaks/period?source=unknown&date=2026-09-07'))
+        .status,
+      400,
+    );
+    assert.equal(
+      (
+        await member.get(
+          '/api/dsp/paycom/meal-breaks/period?source=paycom%3AE001&from=2026-09-07&to=2026-09-20',
+        )
+      ).status,
+      400,
+    );
     // The meal-break page's own link editor is gone; links are decided in Driver Match.
     const retired = { revision: 0, changes: [{ cortexId: 'driver-1', paycomCode: null }] };
     assert.equal((await member.post('/api/dsp/paycom/employee-links', retired)).status, 403);

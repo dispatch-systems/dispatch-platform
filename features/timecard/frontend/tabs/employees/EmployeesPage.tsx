@@ -22,9 +22,25 @@ const statuses = ['all', 'active', 'inactive'] as const;
 export function EmployeesPage({
   actions,
   refreshKey,
+  selection,
+  onSelectionChange: setSelection,
+  employeeView,
+  onViewChange,
+  showMeals,
+  today,
 }: {
   actions: (timecard: EmployeeTimecardResponse | undefined) => ReactNode;
   refreshKey: string;
+  selection?: { code: string; period: EmployeeTimecardPeriod | null; date?: string };
+  onSelectionChange: (selection: {
+    code: string;
+    period: EmployeeTimecardPeriod | null;
+    date?: string;
+  }) => void;
+  employeeView: 'timecard' | 'meals';
+  onViewChange: (view: 'timecard' | 'meals') => void;
+  showMeals: boolean;
+  today: string;
 }) {
   const [desc, setDesc] = useUpdateState('employee-sort-desc', false);
   const [query, setQuery] = useUpdateState('employee-query', '');
@@ -39,13 +55,6 @@ export function EmployeesPage({
     }, performancePolicy.employeeSearchDelayMs);
     return () => clearTimeout(timer);
   }, [query, search, setPage]);
-  const [selection, setSelection] = useUpdateState<
-    | {
-        code: string;
-        period: EmployeeTimecardPeriod | null;
-      }
-    | undefined
-  >('employee-selection', undefined);
   const { data: current, stale, error } = useEmployees(search, status, desc, refreshKey, page);
   const data = current ?? stale;
   const busy = !current || search !== query;
@@ -53,10 +62,19 @@ export function EmployeesPage({
     if (current && page && page * performancePolicy.employeePageSize >= current.total)
       setPage(Math.max(0, Math.ceil(current.total / performancePolicy.employeePageSize) - 1));
   }, [current, page, setPage]);
+  const directoryEmployee =
+    data?.employees.find((person) => person.code === selection?.code) ??
+    (selection?.date ? undefined : data?.employees[0]);
+  const code = selection?.date ? selection.code : (directoryEmployee?.code ?? '');
+  const period = code === selection?.code ? selection.period : null;
+  const timecard = useEmployeeTimecard(code, period, refreshKey, selection?.date);
   const employee =
-    data?.employees.find((person) => person.code === selection?.code) ?? data?.employees[0];
-  const period = employee?.code === selection?.code ? (selection?.period ?? null) : null;
-  const timecard = useEmployeeTimecard(employee?.code ?? '', period, refreshKey);
+    directoryEmployee ??
+    (timecard.data?.employee.code === code ? timecard.data.employee : undefined) ??
+    (timecard.stale?.employee.code === code ? timecard.stale.employee : undefined);
+  const clearLinkedDate = () => {
+    if (selection?.date) setSelection({ code: selection.code, period: null });
+  };
   const directory = useRef<HTMLUListElement>(null);
   const visibleCodes = data?.employees.map((person) => person.code).join(',');
   useEffect(() => {
@@ -97,7 +115,10 @@ export function EmployeesPage({
           label="Search employees"
           placeholder="Search employees…"
           value={query}
-          onChange={setQuery}
+          onChange={(value) => {
+            clearLinkedDate();
+            setQuery(value);
+          }}
         />
         <div className="employees-filters" role="group" aria-label="Employee status">
           {statuses.map((value) => (
@@ -106,6 +127,7 @@ export function EmployeesPage({
               type="button"
               aria-pressed={status === value}
               onClick={() => {
+                clearLinkedDate();
                 setStatus(value);
                 setPage(0);
               }}
@@ -118,6 +140,7 @@ export function EmployeesPage({
           type="button"
           aria-label={desc ? 'Sort employees A to Z' : 'Sort employees Z to A'}
           onClick={() => {
+            clearLinkedDate();
             setDesc(!desc);
             setPage(0);
           }}
@@ -129,7 +152,7 @@ export function EmployeesPage({
       <DataState data={data} error={error} failed={!!error}>
         {(data) => (
           <>
-            {employee ? (
+            {code ? (
               <div className="employees-workspace" aria-busy={busy}>
                 <nav className="employees-directory" aria-label="Employee directory">
                   <div className="employees-directory-heading">
@@ -143,7 +166,7 @@ export function EmployeesPage({
                           type="button"
                           className="employees-person"
                           data-employee={person.code}
-                          aria-pressed={person.code === employee.code}
+                          aria-pressed={person.code === code}
                           onClick={() => setSelection({ code: person.code, period: null })}
                           onPointerEnter={() =>
                             prefetchData([employeeTimecardUrl(person.code)], {
@@ -169,16 +192,29 @@ export function EmployeesPage({
                     page={page}
                     pageSize={performancePolicy.employeePageSize}
                     total={data.total}
-                    onChange={setPage}
+                    onChange={(page) => {
+                      clearLinkedDate();
+                      setPage(page);
+                    }}
                   />
                 </nav>
-                <EmployeeDetail
-                  key={employee.code}
-                  employee={employee}
-                  period={period}
-                  timecard={timecard}
-                  onPeriodChange={(period) => setSelection({ code: employee.code, period })}
-                />
+                <DataState data={employee} error={timecard.error} failed={!!timecard.error}>
+                  {(employee) => (
+                    <EmployeeDetail
+                      key={employee.code}
+                      employee={employee}
+                      period={period}
+                      timecard={timecard}
+                      onPeriodChange={(period) => setSelection({ code: employee.code, period })}
+                      employeeView={employeeView}
+                      onViewChange={onViewChange}
+                      showMeals={showMeals}
+                      today={today}
+                      refreshKey={refreshKey}
+                      focusDate={selection?.date}
+                    />
+                  )}
+                </DataState>
               </div>
             ) : (
               <Empty

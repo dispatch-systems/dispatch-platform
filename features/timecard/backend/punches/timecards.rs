@@ -1,14 +1,11 @@
 //! Employee timecards: calendar navigation and explicitly scoped collections.
 use super::{cards, sync::synced_cards};
-use crate::{
-    api::types::{EmployeeTimecardResponse, Timecard},
-    backend::TimecardStore,
-};
+use crate::api::types::{EmployeeTimecardResponse, Timecard};
 use dispatch_core::{
     Error, Result,
     db::{Store, boolean, s},
     ensure,
-    foundation::{names::display_name, validate as v},
+    foundation::{names::display, validate as v},
 };
 use dispatch_paycom::{
     self as paycom,
@@ -23,6 +20,43 @@ const LATEST: &str = "SELECT p.period_from,p.period_to FROM publications p \
     ORDER BY p.period_to DESC,p.period_from DESC LIMIT 1";
 
 const EARLIEST_DATE: &str = "2000-01-01";
+
+pub(crate) fn timecard_period(
+    store: &Store,
+    id: &str,
+    code: Option<&str>,
+    date: Option<&str>,
+    requested: Option<&EmployeeTimecardPeriod>,
+) -> Result<EmployeeTimecardPeriod> {
+    if let Some(code) = code {
+        v::code(code)?;
+    }
+    let db = store.collector(id, paycom::PROVIDER)?;
+    let latest = if let Some(code) = code {
+        db.one_as::<EmployeeTimecardPeriod>(LATEST, [code])?
+    } else {
+        db.one_as::<EmployeeTimecardPeriod>(
+            "SELECT period_from,period_to FROM publications \
+             ORDER BY period_to DESC,period_from DESC LIMIT 1",
+            [],
+        )?
+    }
+    .ok_or_else(|| Error::new("timecard_period_unavailable", 404))?;
+    let period = if let Some(date) = date {
+        v::date(date)?;
+        let day: chrono::NaiveDate = date.parse().map_err(|_| Error::new("invalid_date", 400))?;
+        latest.shift((day - latest.start()?).num_days().div_euclid(PERIOD_DAYS))?
+    } else {
+        requested.unwrap_or(&latest).clone()
+    };
+    let offset = (latest.start()? - period.start()?).num_days();
+    ensure(
+        period.from.as_str() >= EARLIEST_DATE && offset >= 0 && offset % PERIOD_DAYS == 0,
+        "invalid_period",
+        400,
+    )?;
+    Ok(period)
+}
 
 pub(crate) fn paycom_employee(store: &Store, id: &str, code: &str) -> Result<Value> {
     v::code(code)?;
@@ -92,11 +126,7 @@ pub(crate) fn employee_timecard(
         timecards.sort_by(|a, b| s(b, "date").cmp(s(a, "date")));
         collected_at = Some(s(&sync, "collected_at").to_owned());
     }
-    let settings = store.timecard_preference_values(id)?;
-    employee["name"] = json!(display_name(
-        s(&employee, "name"),
-        s(&settings["values"], "name_order")
-    ));
+    employee["name"] = json!(display(s(&employee, "name")));
     let previous = period.shift(-1)?;
     let job = store.latest_job_requesting(
         id,

@@ -3,7 +3,7 @@ use crate::{api::types::DailyTimecards, backend::TimecardStore};
 use dispatch_core::{
     Result,
     db::{Db, Store, s},
-    foundation::names::{compare, display_name},
+    foundation::names::{compare, display},
 };
 use dispatch_paycom as paycom;
 use serde_json::{Value, json};
@@ -82,7 +82,7 @@ fn display_daily(
     let mut rows: Vec<Value> = source.rows.into_values().collect();
     rows.retain(|r| visible(r, p, true));
     for row in &mut rows {
-        row["name"] = json!(display_name(s(row, "name"), s(p, "name_order")));
+        row["name"] = json!(display(s(row, "name")));
         row.as_object_mut().unwrap().remove("department");
         row.as_object_mut().unwrap().remove("station");
     }

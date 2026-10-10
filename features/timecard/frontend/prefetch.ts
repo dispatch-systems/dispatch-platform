@@ -2,7 +2,13 @@ import type { DspView } from '../../../core/accounts/api/index.js';
 import type { EmployeesResponse } from '../api/index.js';
 import { readUpdateState } from '../../../core/shell/frontend/runtime/browser-update.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
-import { dailyTimecardsUrl, employeeTimecardUrl, mealComparisonUrl } from '../api/urls.js';
+import {
+  dailyTimecardsUrl,
+  employeesPath,
+  employeeTimecardUrl,
+  mealComparisonUrl,
+  paycomSettingsPath,
+} from '../api/urls.js';
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
 import { dspHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
@@ -14,7 +20,7 @@ import { selectedPaycomDate } from './paycom-date.js';
 
 function timecardUrls(tab: string, date: string, view: DspView): string[] {
   if (!admitted(view) || !can(view, 'timecard.view')) return [];
-  const urls = ['/api/dsp/paycom/settings'];
+  const urls = [paycomSettingsPath];
   if (tab === 'timecards' && hasFeature(view, 'timecard.daily')) urls.push(dailyTimecardsUrl(date));
   else if (tab === 'meal-breaks' && hasFeature(view, 'timecard.meal_breaks'))
     urls.push(mealComparisonUrl(date));
@@ -25,7 +31,7 @@ function timecardUrls(tab: string, date: string, view: DspView): string[] {
     const page = readUpdateState('employee-page', 0, hash);
     const desc = readUpdateState('employee-sort-desc', false, hash);
     const directoryUrl =
-      `/api/dsp/employees?q=${encodeURIComponent(query)}&status=${status}` +
+      `${employeesPath}?q=${encodeURIComponent(query)}&status=${status}` +
       `&limit=${performancePolicy.employeePageSize}&offset=${page * performancePolicy.employeePageSize}` +
       `&direction=${desc ? 'desc' : 'asc'}`;
     urls.push(directoryUrl);

@@ -597,6 +597,7 @@
         "GET /api/dsp/paycom/settings",
         "POST /api/dsp/paycom/settings",
         "GET /api/dsp/paycom/meal-breaks",
+        "GET /api/dsp/paycom/meal-breaks/period",
         "GET /api/dsp/cortex/meal-breaks",
         "GET /api/dsp/jobs",
         "POST /api/dsp/jobs",

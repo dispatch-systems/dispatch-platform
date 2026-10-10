@@ -7,6 +7,7 @@ import type {
   Punch,
   PaycomDay,
   MealComparison,
+  MealPeriod,
   MealEmployee,
   MealAssessment,
   PaycomPreferences,
@@ -14,6 +15,7 @@ import type {
 } from './index.js';
 import { jobSchema, jobsSchema } from '../../../core/collection/api/runtime.js';
 import { count, text, type Replies } from '../../../core/foundation/api/runtime.js';
+import { employeesPath, mealBreaksPath, mealPeriodPath, paycomSettingsPath } from './urls.js';
 
 const optionalText = text.nullable().optional();
 export const employeeSchema = z.object({
@@ -186,6 +188,14 @@ export const mealComparisonSchema = z.object({
     }),
   ),
 }) satisfies z.ZodType<MealComparison>;
+export const mealPeriodSchema = z.object({
+  period,
+  days: z.array(mealComparisonSchema),
+  gaps: z.array(
+    z.object({ date: text, meal: count, side: z.enum(['before', 'after']), milliseconds: count }),
+  ),
+  excessMilliseconds: count,
+}) satisfies z.ZodType<MealPeriod>;
 const preferences = z.object({
   opening_page: z.enum(['timecards', 'meal-breaks', 'employees']),
   rows_per_page: z.union([z.literal(25), z.literal(50), z.literal(100)]),
@@ -213,15 +223,16 @@ export const paycomSettingsSchema = z.object({
 export const replies: Replies = (route, method) => {
   if (method === 'GET') {
     if (route === '/api/dsp/jobs') return jobsSchema;
-    if (route === '/api/dsp/paycom/settings') return paycomSettingsSchema;
-    if (route === '/api/dsp/employees') return employeesSchema;
+    if (route === paycomSettingsPath) return paycomSettingsSchema;
+    if (route === employeesPath) return employeesSchema;
     if (/^\/api\/dsp\/employees\/[^/]+$/.test(route)) return employeeTimecardSchema;
     if (route === '/api/dsp/timecards') return dailyTimecardsSchema;
-    if (route === '/api/dsp/paycom/meal-breaks') return mealComparisonSchema;
+    if (route === mealBreaksPath) return mealComparisonSchema;
+    if (route === mealPeriodPath) return mealPeriodSchema;
     return undefined;
   }
   if (route === '/api/dsp/jobs') return jobSchema;
-  if (route === '/api/dsp/paycom/settings') return paycomSettingsSchema;
+  if (route === paycomSettingsPath) return paycomSettingsSchema;
   if (route === '/api/dsp/cortex/meal-breaks/collect') return jobSchema;
   if (route === '/api/dsp/jobs/meal-breaks') return z.object({ date: text, jobs: jobsSchema });
   return undefined;

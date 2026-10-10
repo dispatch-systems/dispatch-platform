@@ -9,11 +9,18 @@ import type {
   EmployeeTimecardResponse,
   EmployeesResponse,
   MealComparison,
+  MealPeriod,
   PaycomPreferences,
   PaycomSettings,
 } from './index.js';
 import type { Job, ScheduleInput } from '../../../core/collection/api/index.js';
-import { dailyTimecardsUrl, employeeTimecardUrl, mealComparisonUrl, schedules } from './urls.js';
+import {
+  dailyTimecardsUrl,
+  employeeTimecardUrl,
+  mealComparisonUrl,
+  mealPeriodUrl,
+  schedules,
+} from './urls.js';
 
 export { dailyTimecardsUrl, employeeTimecardUrl, mealComparisonUrl, schedules };
 
@@ -46,8 +53,9 @@ export const useEmployeeTimecard = (
   code: string,
   period: EmployeeTimecardPeriod | null,
   refreshKey: string,
+  date?: string,
 ) => {
-  const url = code ? employeeTimecardUrl(code, period) : '';
+  const url = code ? employeeTimecardUrl(code, period, date) : '';
   const result = useCachedData<EmployeeTimecardResponse>(url, 0, refreshKey);
   useEffect(() => {
     if (!result.data) return;
@@ -91,6 +99,16 @@ export const useDailyTimecards = (date: string, refreshKey?: string | null) =>
 export const useMealComparison = (date: string, refreshKey?: string | null) =>
   useCachedData<MealComparison>(
     mealComparisonUrl(date),
+    performancePolicy.recoveryPollMs,
+    refreshKey,
+  );
+export const useMealPeriod = (
+  source: string,
+  period: EmployeeTimecardPeriod | string | undefined,
+  refreshKey?: string | null,
+) =>
+  useCachedData<MealPeriod>(
+    period ? mealPeriodUrl(source, period) : '',
     performancePolicy.recoveryPollMs,
     refreshKey,
   );

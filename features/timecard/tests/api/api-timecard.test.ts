@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sortDailyRows } from '../../frontend/daily-sort.js';
-import { employeeName } from '../../frontend/paycom.js';
 import { localDate } from '../../../../core/shell/frontend/lib/day.js';
 import { fixture, until } from '../../../../core/shell/tests/support/support.js';
 
@@ -68,9 +67,9 @@ test('Rust workforce settings enforce revisions, filter employees and timecards,
   const employees = (await owner.get('/api/dsp/employees?limit=5')).value;
   assert.equal(employees.total, 11);
   assert.equal(employees.employees.length, 5);
-  assert(employees.employees.every((e: { name: string }) => e.name.includes(', ')));
+  assert(employees.employees.every((e: { name: string }) => !e.name.includes(', ')));
   const detail = (await owner.get('/api/dsp/employees/E002')).value;
-  assert.equal(detail.employee.name, 'Ellis, Jordan');
+  assert.equal(detail.employee.name, 'Jordan Ellis');
   const today = localDate('America/Chicago');
   assert.equal(
     detail.timecards.length,
@@ -174,7 +173,7 @@ test('Unicode employee sorting agrees with the dashboard locale and preserves di
   await f.start();
   const owner = await f.client();
   await owner.select(dsp.id);
-  const normalize = (s: string) => employeeName(s, 'first_last');
+  const normalize = (s: string) => s.trim().replace(/\s+/g, ' ');
   const expected = names
     .map((name, i) => ({ name: normalize(name), code: `E${i}` }))
     .sort((a, b) => a.name.localeCompare(b.name, 'en') || a.code.localeCompare(b.code, 'en'));

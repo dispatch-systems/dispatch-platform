@@ -1,10 +1,4 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import type {
-  EmployeeTimecardPeriod,
-  EmployeeTimecardResponse,
-  Timecard,
-  PunchEvent,
-} from '../../../api/index.js';
+import type { EmployeeTimecardResponse, Timecard, PunchEvent } from '../../../api/index.js';
 import { addDays } from '../../../../../core/shell/frontend/lib/calendar.js';
 import {
   DataState,
@@ -13,7 +7,7 @@ import {
   useDataTable,
   type TableColumn,
 } from '../../../../../core/shell/frontend/ui/index.js';
-import { hoursAndMinutes, timecardDate, timecardPeriod, punchTime } from '../../timecard-format.js';
+import { hoursAndMinutes, timecardDate, punchTime } from '../../timecard-format.js';
 
 type EmployeeDay = Timecard & { events: PunchEvent[] };
 function periodDays(data: EmployeeTimecardResponse | undefined): EmployeeDay[] {
@@ -52,15 +46,11 @@ export function EmployeeTimecard({
   data,
   busy,
   error,
-  requestedPeriod,
-  onPeriodChange,
   onRetry,
 }: {
   data: EmployeeTimecardResponse | undefined;
   busy: boolean;
   error: string;
-  requestedPeriod: EmployeeTimecardPeriod | null;
-  onPeriodChange: (period: EmployeeTimecardPeriod) => void;
   onRetry: () => void;
 }) {
   const current = busy || error ? undefined : data;
@@ -70,42 +60,8 @@ export function EmployeeTimecard({
   ).length;
   const table = useDataTable({ columns, rows: days, rowId: (card) => card.date });
   const minutes = days.reduce((total, card) => total + Math.round(card.hours * 60), 0);
-  const period = requestedPeriod ?? data?.period;
-  let status = data?.nextPeriod ? 'Previous timecard' : 'Latest';
-  if (data && !data.collectedAt) status = 'Not collected';
-  if (busy) status = 'Loading…';
-  if (error) status = 'Unavailable';
   return (
     <>
-      <div className="employee-timecard-heading">
-        <h4>Timecard</h4>
-        <span className={!data?.collectedAt || data.nextPeriod ? 'muted' : 'employee-latest'}>
-          {status}
-        </span>
-      </div>
-      <nav className="employee-period-controls" aria-label="Timecard navigation">
-        <button
-          type="button"
-          className="icon-button"
-          aria-label="Previous timecard"
-          disabled={!data?.previousPeriod}
-          aria-disabled={busy || !data?.previousPeriod}
-          onClick={() => !busy && data?.previousPeriod && onPeriodChange(data.previousPeriod)}
-        >
-          <ChevronLeft size={16} />
-        </button>
-        <span aria-live="polite">{period ? timecardPeriod(period.from, period.to) : '—'}</span>
-        <button
-          type="button"
-          className="icon-button"
-          aria-label="Next timecard"
-          disabled={!data?.nextPeriod}
-          aria-disabled={busy || !data?.nextPeriod}
-          onClick={() => !busy && data?.nextPeriod && onPeriodChange(data.nextPeriod)}
-        >
-          <ChevronRight size={16} />
-        </button>
-      </nav>
       <div className="employee-timecard-body">
         <div
           className="table-wrap employee-timecard-scroll"

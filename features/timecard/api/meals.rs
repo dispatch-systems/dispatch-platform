@@ -147,3 +147,28 @@ pub struct MealComparison {
     pub cortex_publications: Vec<CortexPublication>,
     pub drivers: Vec<MealDriver>,
 }
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct PeriodMealGap {
+    pub date: String,
+    pub meal: usize,
+    pub side: String,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub milliseconds: i64,
+}
+
+/// Verified delivery gaps for one person, over the same calendar as their timecard.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct MealPeriod {
+    pub period: dispatch_paycom::timecards::EmployeeTimecardPeriod,
+    pub days: Vec<MealComparison>,
+    pub gaps: Vec<PeriodMealGap>,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub excess_milliseconds: i64,
+}

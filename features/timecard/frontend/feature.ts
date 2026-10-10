@@ -5,6 +5,14 @@ import { begins, collectionData, path } from '../../../core/shell/frontend/runti
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { Access, FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
 import { replies } from '../api/runtime.js';
+import {
+  employeesPath,
+  mealBreaksPath,
+  mealPeriodPath,
+  paycomSettingsPath,
+  paycomStatusPath,
+  schedules,
+} from '../api/urls.js';
 import { isTimecardDataReady, prefetchTimecard } from './prefetch.js';
 
 declare module '../../../core/shell/frontend/runtime/slots.js' {
@@ -69,36 +77,37 @@ export const feature: FrontendFeature = {
     collected: [
       '/api/dsp/jobs',
       '/api/dsp/timecards',
-      '/api/dsp/employees',
-      '/api/dsp/paycom/meal-breaks',
-      '/api/dsp/paycom/settings',
-      '/api/dsp/paycom/status',
+      employeesPath,
+      mealBreaksPath,
+      paycomSettingsPath,
+      paycomStatusPath,
     ],
     collection: (url, changes) => {
       const route = path(url);
-      if (begins(url, '/api/dsp/paycom/status', '/api/dsp/jobs')) return true;
+      if (begins(url, paycomStatusPath, '/api/dsp/jobs')) return true;
       return changes.some((change) => {
         if (change.provider === 'all') return true;
-        if (change.provider === 'cortex' && route !== '/api/dsp/paycom/meal-breaks') return false;
-        if (route === '/api/dsp/paycom/settings') return Boolean(change.roster);
-        if (route === '/api/dsp/employees') return Boolean(change.roster);
-        if (route.startsWith('/api/dsp/employees/'))
+        if (change.provider === 'cortex' && !route.startsWith(mealBreaksPath)) return false;
+        // A day's publication or match can change any summary whose pay period contains it.
+        if (route === mealPeriodPath) return true;
+        if (route === paycomSettingsPath) return Boolean(change.roster);
+        if (route === employeesPath) return Boolean(change.roster);
+        if (route.startsWith(`${employeesPath}/`))
           return (
             !change.employeeCode ||
-            decodeURIComponent(route.slice('/api/dsp/employees/'.length)) === change.employeeCode
+            decodeURIComponent(route.slice(employeesPath.length + 1)) === change.employeeCode
           );
         const day = new URLSearchParams(url.split('?')[1]).get('date');
         return !day || !change.dates?.length || change.dates.includes(day);
       });
     },
-    jobs: ['/api/dsp/jobs', '/api/dsp/paycom/status'],
-    connections: ['/api/dsp/schedules'],
+    jobs: ['/api/dsp/jobs', paycomStatusPath],
+    connections: [schedules],
     write: (write, url) => {
-      if (write.startsWith('/api/dsp/schedules')) return begins(url, '/api/dsp/schedules');
-      if (write === '/api/dsp/paycom/settings') return collectionData(url) || path(url) === write;
+      if (write.startsWith(schedules)) return begins(url, schedules);
+      if (write === paycomSettingsPath) return collectionData(url) || path(url) === write;
       // A Driver Match decision moves drivers between rows of the meal-break comparison.
-      if (write.startsWith('/api/dsp/driver-match'))
-        return begins(url, '/api/dsp/paycom/meal-breaks');
+      if (write.startsWith('/api/dsp/driver-match')) return begins(url, mealBreaksPath);
       return undefined;
     },
   },

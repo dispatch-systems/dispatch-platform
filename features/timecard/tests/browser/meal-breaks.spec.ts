@@ -173,11 +173,33 @@ test('comparison filters, search and details use the assessed meal data', async 
   await page.getByLabel('Search meal break employees').fill('Alex');
   // The search filters a deferred render later.
   await expect(page.locator('.meal-table tbody > tr')).toHaveCount(1);
-  await page.locator('.meal-employee > span').click();
-  await expect(page.locator('.meal-detail')).toHaveCount(0);
   await page.getByRole('button', { name: 'Details for Alex Morgan', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Paycom punches', exact: true })).toBeVisible();
-  await expect(page.locator('.meal-detail')).toContainText('America/Los_Angeles');
+  await expect(page.locator('.meal-detail').getByLabel('Meal break gap summary')).toBeVisible();
+  await expect(page.locator('.meal-detail')).toContainText('Total time beyond 5 min');
+  await expect(page.locator('.meal-detail')).not.toContainText('Paycom punches');
+  await page.getByRole('button', { name: 'Alex Morgan', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Employees', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page.locator('.employee-identity h3')).toHaveText('Avery Morgan');
+  const view = page.getByRole('group', { name: 'Employee view', exact: true });
+  await expect(view.getByRole('button', { name: 'Meal Breaks', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.locator('.employee-meals .meal-table tbody > tr')).toHaveCount(14);
+  const period = await page.locator('.employee-period-controls > span').textContent();
+  await view.getByRole('button', { name: 'Timecard', exact: true }).click();
+  await expect(page.getByRole('table', { name: 'Employee timecard' })).toBeVisible();
+  await expect(page.locator('.employee-period-controls > span')).toHaveText(period!);
+  await view.getByRole('button', { name: 'Meal Breaks', exact: true }).click();
+  await page.locator('.employees-person').filter({ hasText: 'Jordan Ellis' }).click();
+  await expect(view.getByRole('button', { name: 'Meal Breaks', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.locator('.employee-meals .meal-table tbody > tr')).toHaveCount(14);
   expect(errors).toEqual([]);
 });
 
