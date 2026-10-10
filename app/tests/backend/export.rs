@@ -26,8 +26,9 @@ use std::{
 /// The access catalog's file: its types are tenancy's.
 const ACCESS_CATALOG: &str = "core/tenancy/api/generated/access-catalog.ts";
 // The labels only the platform owner's pages show, each in a file of its own, so that no
-// other page loads them: how the DSPs page names what a page needs, and how Diagnostics and the audit log name each collection. The job schema reads
-// the collections' kinds too, so every page loads that one.
+// other page loads them: how the DSPs page names what a page needs, and how Diagnostics and
+// the audit log name each collection. The job schema reads the collections' kinds too, so
+// every page loads that one.
 const CAPABILITIES: &str = "core/tenancy/api/generated/capabilities.ts";
 const COLLECTIONS: &str = "core/collection/api/generated/collections.ts";
 /// The kinds of record an audit event names, core's and the features', which the audit
