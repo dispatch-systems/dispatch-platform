@@ -126,7 +126,7 @@ impl Server {
     /// A key made the way the Agents page makes one, reaching `dsps` (every DSP when empty).
     async fn key(&self, name: &str, dsps: Vec<String>) -> (String, String) {
         let request = AgentKeyRequest::parse(&json!({"name":name,"allDsps":dsps.is_empty(),
-            "dsps":dsps,"access":"read","allTools":true,"tools":[],"expiresAt":null}))
+            "dsps":dsps,"access":"read","allTools":true,"tools":{},"expiresAt":null}))
         .unwrap();
         self.state
             .run(move |db| {

@@ -21,6 +21,7 @@ ts = ["dep:ts-rs", "dispatch-core/ts"]
 [dependencies]
 dispatch-core = { path = "../core" }
 axum = { workspace = true }
+base64 = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
 reqwest = { workspace = true }

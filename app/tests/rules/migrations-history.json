@@ -138,6 +138,11 @@
       "id": 21,
       "name": "agent_tools",
       "sha256": "e4003dfefecb532d36f05fb15e03c82d5c20272de56e7e09cdf066ae6c35b8f8"
+    },
+    {
+      "id": 22,
+      "name": "agent_tool_levels",
+      "sha256": "d67131a0667dcedc41862adfad66e6acdbf3ec81e496844fb8de8eab4ada54e1"
     }
   ],
   "jobs": [

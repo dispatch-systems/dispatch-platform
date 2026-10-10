@@ -7,6 +7,7 @@ use dispatch_core::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -17,6 +18,17 @@ text_enum! {
     pub enum AgentAccess {
         Read => "read",
         Operator => "operator",
+    }
+}
+text_enum! {
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "mcp/api/generated/"))]
+    #[derive(schemars::JsonSchema)]
+    /// What a key or app may do with a tool: nothing, read, or read and change.
+    pub enum ToolLevel {
+        Off => "off",
+        Read => "read",
+        Change => "change",
     }
 }
 text_enum! {
@@ -69,10 +81,10 @@ pub struct AgentKey {
     /// Every DSP, those added later included; otherwise only `dsps`.
     pub all_dsps: bool,
     pub dsps: Vec<String>,
-    /// Whether a tool added later is allowed as it comes, when it only reads.
+    /// Whether a tool added later comes, to read, as it is added.
     pub all_tools: bool,
-    /// The tools of `AgentKeys` it may use now.
-    pub tools: Vec<String>,
+    /// The tools of `AgentKeys` it may use now, with what it may do with each.
+    pub tools: BTreeMap<String, ToolLevel>,
     pub created_at: String,
     pub expires_at: Option<String>,
     pub revoked_at: Option<String>,
@@ -106,7 +118,7 @@ impl FromRow for AgentKey {
             all_dsps: row.get::<i64>("all_dsps")? == 1,
             dsps: vec![],
             all_tools: row.get::<i64>("all_tools")? == 1,
-            tools: vec![],
+            tools: BTreeMap::new(),
             created_at: row.get("created_at")?,
             expires_at: row.get("expires_at")?,
             revoked_at: row.get("revoked_at")?,
@@ -124,7 +136,8 @@ pub struct AgentDsp {
     pub id: String,
     pub name: String,
 }
-/// A tool a key or app can be allowed, as the Agents page lists it under its feature.
+/// A tool a key or app can be granted, as the Agents page lists it under the features it
+/// needs.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "mcp/api/generated/"))]
@@ -133,9 +146,9 @@ pub struct AgentTool {
     pub name: String,
     pub title: String,
     pub description: String,
-    /// The feature it belongs to, as the DSPs page names it; null for core's own.
-    pub feature: Option<String>,
-    /// Whether it changes something, rather than only reading.
+    /// The features it needs, as the DSPs page names them; none for one that needs none.
+    pub features: Vec<String>,
+    /// Whether it can change something, rather than only reading.
     pub changes: bool,
 }
 /// The Agents page: every key, newest first, the DSPs a key can be given and the tools it can
@@ -158,9 +171,9 @@ pub struct AgentKeyCreated {
     pub key: AgentKey,
     pub token: String,
 }
-/// What a new or changed key may do and use. `tools` are the tools of `AgentKeys` it may use;
-/// `allTools`, whether one added later is allowed as it comes, when it only reads.
-/// `expiresAt` is an RFC 3339 time, or null for never.
+/// What a new or changed key may do and use. `tools` are the tools of `AgentKeys` it may use,
+/// with what it may do with each; one left out is off. `allTools`, whether one added later
+/// comes, to read, as it is added. `expiresAt` is an RFC 3339 time, or null for never.
 #[derive(Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "mcp/api/generated/"))]
@@ -171,7 +184,7 @@ pub struct AgentKeyRequest {
     pub dsps: Vec<String>,
     pub access: AgentAccess,
     pub all_tools: bool,
-    pub tools: Vec<String>,
+    pub tools: BTreeMap<String, ToolLevel>,
     pub expires_at: Option<String>,
 }
 impl AgentKeyRequest {
@@ -187,8 +200,7 @@ impl AgentKeyRequest {
             400,
         )?;
         ensure(input.tools.len() <= 500, "invalid_input", 400)?;
-        input.tools.sort();
-        input.tools.dedup();
+        input.tools.retain(|_, level| *level != ToolLevel::Off);
         Ok(input)
     }
 }
@@ -203,7 +215,7 @@ pub struct OAuthApproval {
     pub all_dsps: bool,
     pub dsps: Vec<String>,
     pub all_tools: bool,
-    pub tools: Vec<String>,
+    pub tools: BTreeMap<String, ToolLevel>,
 }
 impl OAuthApproval {
     pub fn parse(value: &Value) -> Result<Self> {
@@ -215,8 +227,7 @@ impl OAuthApproval {
             400,
         )?;
         ensure(input.tools.len() <= 500, "invalid_input", 400)?;
-        input.tools.sort();
-        input.tools.dedup();
+        input.tools.retain(|_, level| *level != ToolLevel::Off);
         Ok(input)
     }
     /// The same choices as a key's, checked by the same rules.
@@ -373,8 +384,8 @@ pub struct AgentWhoamiKey {
     pub name: String,
     pub access: AgentAccess,
     pub expires_at: Option<String>,
-    /// The tools it may use now, wherever a DSP it reaches has them on.
-    pub tools: Vec<String>,
+    /// The tools it may use now, where a DSP it reaches has them on, each to read or change.
+    pub tools: BTreeMap<String, ToolLevel>,
 }
 /// A DSP as an agent sees it: its local date, so "today" and "yesterday" mean the DSP's.
 #[derive(Clone, Debug, Serialize, schemars::JsonSchema)]

@@ -56,6 +56,7 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         AgentActivityKey,
         AgentActivity,
         AgentActivityPage,
+        ToolLevel,
         OAuthApproval,
         OAuthRequest,
         OAuthApp,

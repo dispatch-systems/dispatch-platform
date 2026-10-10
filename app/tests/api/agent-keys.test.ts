@@ -14,7 +14,7 @@ const body = (dsps: string[]): AgentKeyRequest => ({
   dsps,
   access: 'read',
   allTools: true,
-  tools: [],
+  tools: {},
   expiresAt: null,
 });
 

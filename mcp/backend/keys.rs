@@ -6,10 +6,10 @@ use crate::{
     LastUse,
     api::types::{
         AgentAccess, AgentDsp, AgentKey, AgentKeyCreated, AgentKeyKind, AgentKeyRequest, AgentKeys,
-        AgentProfile, AgentWhoami, AgentWhoamiDsp, AgentWhoamiKey,
+        AgentProfile, AgentWhoami, AgentWhoamiDsp, AgentWhoamiKey, ToolLevel,
     },
     token,
-    tools::{Grants, Toolbox},
+    toolbox::{Effect, Grants, Toolbox},
 };
 use dispatch_core::{
     Error, Result,
@@ -20,7 +20,7 @@ use dispatch_core::{
     tenancy::audit::AuditChange,
 };
 use rusqlite::params;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// Keys that may be in use at once.
 const MOST_KEYS: i64 = 50;
@@ -160,7 +160,7 @@ impl KeyStore for Store {
         )?;
         for key in &mut keys {
             key.dsps = agent_key_dsps(self, &key.id)?;
-            key.tools = toolbox.allowed(&agent_key_grants(self, &key.id, key.all_tools)?);
+            key.tools = toolbox.granted(&agent_key_grants(self, &key.id, key.all_tools)?);
             if let Some((when, client)) = seen.get(&key.id) {
                 let when = at(*when);
                 if key.last_used_at.as_ref().is_none_or(|last| *last < when) {
@@ -258,11 +258,20 @@ impl KeyStore for Store {
             reach(before.all_dsps, &before.dsps),
             reach(input.all_dsps, &input.dsps),
         );
-        let tools = |tools: &[String]| {
-            if tools.is_empty() {
+        // Each tool by name, one that may also change something marked so.
+        let tools = |tools: &BTreeMap<String, ToolLevel>| {
+            let named: Vec<String> = tools
+                .iter()
+                .filter(|(_, level)| **level != ToolLevel::Off)
+                .map(|(name, level)| match level {
+                    ToolLevel::Change => format!("{name} (changes)"),
+                    _ => name.clone(),
+                })
+                .collect();
+            if named.is_empty() {
                 "none".to_owned()
             } else {
-                format!("[{}]", tools.join(", "))
+                format!("[{}]", named.join(", "))
             }
         };
         change("tools", tools(&before.tools), tools(&input.tools));
@@ -412,8 +421,8 @@ impl KeyStore for Store {
                 tools: Toolbox::installed()
                     .all()
                     .iter()
-                    .filter(|listed| caller.tools.allows(listed.tool))
-                    .map(|listed| listed.tool.name().to_owned())
+                    .map(|tool| (tool.name().to_owned(), caller.tools.level(*tool)))
+                    .filter(|(_, level)| *level != ToolLevel::Off)
                     .collect(),
             },
             environment: self.config.env(),
@@ -467,7 +476,7 @@ pub(crate) fn agent_key(db: &Store, id: &str) -> Result<AgentKey> {
         .one_as(&format!("{LISTED} WHERE k.id=?2"), [iso(), id.to_owned()])?
         .ok_or_else(|| Error::new("agent_key_not_found", 404))?;
     key.dsps = agent_key_dsps(db, id)?;
-    key.tools = Toolbox::installed().allowed(&agent_key_grants(db, id, key.all_tools)?);
+    key.tools = Toolbox::installed().granted(&agent_key_grants(db, id, key.all_tools)?);
     Ok(key)
 }
 
@@ -478,12 +487,19 @@ pub(crate) fn agent_key_grants(db: &Store, id: &str, all: bool) -> Result<Grants
         all,
         chosen: db
             .platform
-            .query_as::<(String, i64)>(
-                "SELECT tool,allowed FROM agent_key_tools WHERE key_id=?",
+            .query_as::<(String, i64, i64)>(
+                "SELECT tool,allowed,changes FROM agent_key_tools WHERE key_id=?",
                 [id],
             )?
             .into_iter()
-            .map(|(tool, allowed)| (tool, allowed == 1))
+            .map(|(tool, allowed, changes)| {
+                let level = match (allowed, changes) {
+                    (0, _) => ToolLevel::Off,
+                    (_, 0) => ToolLevel::Read,
+                    _ => ToolLevel::Change,
+                };
+                (tool, level)
+            })
             .collect(),
     })
 }
@@ -540,13 +556,15 @@ pub(crate) fn check_agent_key(
         "invalid_input",
         400,
     )?;
-    // Only tools a key can be allowed; a tool no longer installed is no choice.
+    // Only tools a key can be granted, a tool no longer installed being no choice; and
+    // changing something only with a tool that can.
     let toolbox = Toolbox::installed();
     ensure(
-        input.tools.iter().all(|name| {
-            toolbox
-                .switchable()
-                .any(|listed| listed.tool.name() == name)
+        input.tools.iter().all(|(name, level)| {
+            toolbox.switchable().any(|tool| {
+                tool.name() == name
+                    && (*level != ToolLevel::Change || tool.effect() == Effect::Changes)
+            })
         }),
         "invalid_input",
         400,
@@ -567,8 +585,8 @@ pub(crate) fn set_agent_key_dsps(db: &Store, id: &str, input: &AgentKeyRequest) 
     Ok(())
 }
 
-/// The tools a key or app may use: a choice for every tool there is now, and whether one
-/// added later that only reads is allowed as it comes.
+/// What a key or app may do with each tool: a choice for every tool there is now, and
+/// whether one added later comes, to read, as it is added.
 pub(crate) fn set_agent_key_tools(db: &Store, id: &str, input: &AgentKeyRequest) -> Result<()> {
     db.platform.exec(
         "UPDATE agent_keys SET all_tools=? WHERE id=?",
@@ -576,14 +594,19 @@ pub(crate) fn set_agent_key_tools(db: &Store, id: &str, input: &AgentKeyRequest)
     )?;
     db.platform
         .exec("DELETE FROM agent_key_tools WHERE key_id=?", [id])?;
-    for listed in Toolbox::installed().switchable() {
-        let name = listed.tool.name();
+    for tool in Toolbox::installed().switchable() {
+        let level = input
+            .tools
+            .get(tool.name())
+            .copied()
+            .unwrap_or(ToolLevel::Off);
         db.platform.exec(
-            "INSERT INTO agent_key_tools(key_id,tool,allowed) VALUES (?,?,?)",
+            "INSERT INTO agent_key_tools(key_id,tool,allowed,changes) VALUES (?,?,?,?)",
             params![
                 id,
-                name,
-                i64::from(input.tools.iter().any(|tool| tool == name))
+                tool.name(),
+                i64::from(level != ToolLevel::Off),
+                i64::from(level == ToolLevel::Change)
             ],
         )?;
     }

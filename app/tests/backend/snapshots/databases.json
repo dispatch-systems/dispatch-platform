@@ -24,7 +24,8 @@
       [18, "feature_shown", "code"],
       [19, "dsp_codes", "code"],
       [20, "dsp_directories", "code"],
-      [21, "agent_tools", "code"]
+      [21, "agent_tools", "code"],
+      [22, "agent_tool_levels", "code"]
     ]
   },
   {

@@ -13,10 +13,10 @@ mod notices;
 
 pub use clients::Documents;
 
-use super::{Caller, token, token::Kind, tools::Toolbox};
+use super::{Caller, token, token::Kind, toolbox::Toolbox};
 use crate::api::types::{
     AgentAccess, AgentKeyRequest, OAuthApp, OAuthApproval, OAuthRedirect, OAuthReplaced,
-    OAuthRequest,
+    OAuthRequest, ToolLevel,
 };
 use crate::{ClientStore, GuardStore, keys};
 use clients::Client;
@@ -350,13 +350,15 @@ impl OAuthStore for Store {
         keys::check_agent_key(self, None, &approval.key(), &replaced)?;
         let code = crypto::token()?;
         // What an older release redeeming the code would let the app read: nothing. `tools`
-        // is its own word for something else.
+        // is its own word for something else, and `agent_tools` the tools it may use at all.
+        let allowed: Vec<&String> = approval.tools.keys().collect();
         let choices = json!({
             "name": approval.name,
             "all_dsps": approval.all_dsps,
             "dsps": approval.dsps,
             "all_tools": approval.all_tools,
-            "agent_tools": approval.tools,
+            "tool_levels": approval.tools,
+            "agent_tools": allowed,
             "reads": {"areas": [], "bypass": false},
             "tools": "full",
             "locations": false,
@@ -687,13 +689,22 @@ fn redeem_code(db: &Store, form: &Query, client_id: &str) -> Answer<Value> {
         return Err(grant("The owner no longer lets this kind of app connect"));
     }
     let choices: Value = serde_json::from_str(s(&row, "choices")).map_err(Error::from)?;
-    // Approved before tools were chosen: every tool that reads, and those added later.
-    let (all_tools, tools) = match choices.get("agent_tools") {
-        Some(tools) => (
+    // Approved before tools had levels, each tool it may use reads; approved before tools
+    // were chosen, every tool reads, and those added later.
+    let (all_tools, tools) = match (choices.get("tool_levels"), choices.get("agent_tools")) {
+        (Some(levels), _) => (
             choices["all_tools"] == true,
-            serde_json::from_value(tools.clone()).map_err(Error::from)?,
+            serde_json::from_value(levels.clone()).map_err(Error::from)?,
         ),
-        None => (true, Toolbox::installed().defaults()),
+        (None, Some(tools)) => (
+            choices["all_tools"] == true,
+            serde_json::from_value::<Vec<String>>(tools.clone())
+                .map_err(Error::from)?
+                .into_iter()
+                .map(|tool| (tool, ToolLevel::Read))
+                .collect(),
+        ),
+        (None, None) => (true, Toolbox::installed().defaults()),
     };
     let key = AgentKeyRequest {
         name: s(&choices, "name").to_owned(),

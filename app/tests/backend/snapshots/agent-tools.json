@@ -3,10 +3,9 @@
     "name": "get_profile",
     "title": "Current Dispatch profile",
     "description": "Return the stable Dispatch profile represented by this request's authenticated credentials.",
-    "feature": null,
-    "part": null,
+    "features": [],
     "changes": false,
-    "dsp": false,
+    "scope": "connection",
     "input": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -31,10 +30,9 @@
     "name": "whoami",
     "title": "This connection",
     "description": "Return this connection's name, access and expiry, the time now, and each DSP it reaches with the DSP's own date today.",
-    "feature": null,
-    "part": null,
+    "features": [],
     "changes": false,
-    "dsp": false,
+    "scope": "connection",
     "input": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -51,9 +49,9 @@
             "access": {"$ref": "#/$defs/AgentAccess"},
             "expiresAt": {"type": ["string", "null"]},
             "tools": {
-              "description": "The tools it may use now, wherever a DSP it reaches has them on.",
-              "type": "array",
-              "items": {"type": "string"}
+              "description": "The tools it may use now, where a DSP it reaches has them on, each to read or change.",
+              "type": "object",
+              "additionalProperties": {"$ref": "#/$defs/ToolLevel"}
             }
           },
           "required": ["name", "access", "tools"]
@@ -62,6 +60,11 @@
           "description": "What an agent key may do: look things up, or also run collections and test\nconnections.",
           "type": "string",
           "enum": ["read", "operator"]
+        },
+        "ToolLevel": {
+          "description": "What a key or app may do with a tool: nothing, read, or read and change.",
+          "type": "string",
+          "enum": ["off", "read", "change"]
         },
         "Environment": {"type": "string", "enum": ["preview", "production"]},
         "AgentWhoamiDsp": {

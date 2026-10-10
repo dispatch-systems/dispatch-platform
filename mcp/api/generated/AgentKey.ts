@@ -2,6 +2,7 @@
 import type { AgentAccess } from "./AgentAccess";
 import type { AgentClient } from "./AgentClient";
 import type { AgentKeyKind } from "./AgentKeyKind";
+import type { ToolLevel } from "./ToolLevel";
 
 /**
  * A key as the Agents page lists it. The key itself is shown once, when it is made. A
@@ -21,10 +22,10 @@ hint: string, access: AgentAccess,
  */
 allDsps: boolean, dsps: Array<string>,
 /**
- * Whether a tool added later is allowed as it comes, when it only reads.
+ * Whether a tool added later comes, to read, as it is added.
  */
 allTools: boolean,
 /**
- * The tools of `AgentKeys` it may use now.
+ * The tools of `AgentKeys` it may use now, with what it may do with each.
  */
-tools: Array<string>, createdAt: string, expiresAt: string | null, revokedAt: string | null, lastUsedAt: string | null, lastClient: string | null, };
+tools: { [key in string]: ToolLevel }, createdAt: string, expiresAt: string | null, revokedAt: string | null, lastUsedAt: string | null, lastClient: string | null, };

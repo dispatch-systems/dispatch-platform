@@ -1,8 +1,8 @@
 //! The MCP: how outside agents connect to Dispatch, and all they use there, in one place.
 //! Agent keys (`keys`) and the apps the owner connects with Sign in with Dispatch (`oauth`),
-//! a key of kind `app`, sign in; the MCP server (`server`) offers them the tools
-//! (`tools`) their connection allows; what keys and apps call is kept for the Agents page's
-//! Activity log (`activity`). Core reaches it only through the agents' piece the app installs
+//! a key of kind `app`, sign in; the MCP server (`server`) offers them the tools (`tools`,
+//! made of `toolbox`) their connection allows; what keys and apps call is kept for the Agents
+//! page's Activity log (`activity`). Core reaches it only through the agents' piece the app installs
 //! (`piece`), and it reaches core and features as any owner above them does.
 #[path = "backend/activity.rs"]
 pub mod activity;
@@ -23,7 +23,8 @@ pub mod server;
 pub mod testing;
 #[path = "backend/token.rs"]
 mod token;
-#[path = "backend/tools/mod.rs"]
+#[path = "backend/toolbox/mod.rs"]
+pub mod toolbox;
 pub mod tools;
 #[path = "backend/usage.rs"]
 mod usage;

@@ -140,7 +140,7 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   await expect(using.getByRole('status')).toContainText('That key was revoked.');
 });
 
-test('a key takes the tools that only read as they are added, until the owner says otherwise', async ({
+test('a key takes tools, to read, as they are added, until the owner says otherwise', async ({
   page,
 }) => {
   await login(page);
@@ -150,7 +150,7 @@ test('a key takes the tools that only read as they are added, until the owner sa
   const sheet = page.getByRole('dialog', { name: 'New key' });
   await sheet.getByLabel('Name').fill('Nightly report script');
   const tools = sheet.getByRole('group', { name: 'Tools', exact: true });
-  const added = tools.getByRole('switch', { name: 'New tools that only read', exact: true });
+  const added = tools.getByRole('switch', { name: 'New tools, to read', exact: true });
   await expect(added).toBeChecked();
   await sheet.getByRole('button', { name: 'Create key', exact: true }).click();
   await page
@@ -163,7 +163,7 @@ test('a key takes the tools that only read as they are added, until the owner sa
   // Changed afterwards, without making the key again.
   await row.getByRole('button', { name: 'Open Nightly report script' }).click();
   const edit = page.getByRole('dialog', { name: 'Nightly report script', exact: true });
-  await edit.getByRole('switch', { name: 'New tools that only read', exact: true }).click();
+  await edit.getByRole('switch', { name: 'New tools, to read', exact: true }).click();
   await edit.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(row).toContainText('No tools');
 });
@@ -184,7 +184,7 @@ test('the Activity tab lists each call a key makes, and what Dispatch answered',
     dsps: [],
     access: 'read',
     allTools: true,
-    tools: [],
+    tools: {},
     expiresAt: null,
   });
   expect(made.status, made.body).toBe(200);

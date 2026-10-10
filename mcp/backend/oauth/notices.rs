@@ -2,7 +2,7 @@
 //! one when Dispatch itself disconnects an app because its code or a refresh token was
 //! presented again. Each is best effort and never stops what it reports.
 use super::{
-    super::{keys, tools::Toolbox},
+    super::{keys, toolbox::Toolbox},
     clients,
     mail::{self as email, ConnectedApp},
 };
