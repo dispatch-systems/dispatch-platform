@@ -37,9 +37,11 @@ A change, from start to finish:
   new collector <site> [options]   written, listed in app/, with its catalog, API types and
                                    snapshots written. With no name it lists its options;
                                    --dry-run prints what it would write.
-  new tool <feature> <name>        A tool agents can use, in the feature's mcp/: its file and
-           [options]               its test, listed in the feature's manifest. Who may use it
-                                   is chosen per key and app on the Agents page.
+  new tool <name> [options]        A tool agents can use, in mcp/tools/: its file and its
+                                   test, listed in its TOOLS. It can need features, be about
+                                   one DSP, several or the connection, and take actions, some
+                                   that change something. Who may use it is chosen per key and
+                                   app on the Agents page: Off, Read, or Read and change.
 
   build [--release | --fixture]    Build the backend, or the browser tests' assessment
         [--cache-key]              fixture, reusing a build of identical inputs.

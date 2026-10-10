@@ -1,19 +1,91 @@
 //! {{title}}, called as an agent calls it.
-use dispatch_core::testing::{self, agent, bootstrapped, call_tool};
+use crate::{
+{{^connection}}
+    api::types::ToolLevel,
+{{/connection}}
+    testing::{self, agent, call_tool, serving},
+{{#refusals}}
+    toolbox::Failure,
+{{/refusals}}
+};
+use dispatch_core::testing::{bootstrapped, platform_owner};
 use serde_json::json;
 
-#[test]
-fn answers_where_{{feature}}_is_on() {
-    testing::install(&[{{collectors}}], &[{{features}}]);
+#[tokio::test]
+async fn answers_as_an_agent_calls_it() {
+    testing::install();
     let (_root, db, dsp) = bootstrapped();
-    let caller = agent(&db, &[&dsp], &["{{name}}"]);
-{{#optional}}
-    // Switched off at the DSP, it is refused there; switched on, it answers.
-    let owner = testing::platform_owner(&db);
-    db.set_feature(&dsp, "{{switchId}}", false, &owner).unwrap();
-    assert!(call_tool(&db, &caller, "{{name}}", json!({})).is_err());
-    db.set_feature(&dsp, "{{switchId}}", true, &owner).unwrap();
-{{/optional}}
-    let answer = call_tool(&db, &caller, "{{name}}", json!({})).unwrap();
-    assert_eq!(answer, json!({"dsp": db.find_dsp(&dsp).unwrap().name}));
+{{#features}}
+    // What it needs is switched on where it answers.
+    let owner = platform_owner(&db);
+{{switchOn}}
+{{/features}}
+{{^features}}
+    let _owner = platform_owner(&db);
+{{/features}}
+{{#changes}}
+    let caller = agent(&db, &[&dsp], &[("{{name}}", ToolLevel::Change)]);
+    let reader = agent(&db, &[&dsp], &[("{{name}}", ToolLevel::Read)]);
+{{/changes}}
+{{#reads}}
+    let caller = agent(&db, &[&dsp], &[("{{name}}", ToolLevel::Read)]);
+{{/reads}}
+{{#connection}}
+    // Every connection may use it.
+    let caller = agent(&db, &[&dsp], &[]);
+{{/connection}}
+    let name = db.find_dsp(&dsp).unwrap().name;
+    let state = serving(db);
+{{#actions}}
+    let asked = json!({"action": "{{firstAction}}"});
+{{/actions}}
+{{^actions}}
+    let asked = json!({});
+{{/actions}}
+
+    let answer = call_tool(&state, &caller, "{{name}}", asked.clone()).await;
+{{#dsp}}
+    assert_eq!(answer.unwrap().data, json!({"dsp": name}));
+{{/dsp}}
+{{#dsps}}
+    assert_eq!(answer.unwrap().data, json!({"dsps": [name]}));
+{{/dsps}}
+{{#connection}}
+    let _ = name;
+    assert_eq!(answer.unwrap().data, json!({"connection": caller.name}));
+{{/connection}}
+{{#changes}}
+    // A key that may only read with it is refused what changes something.
+{{#everyCall}}
+    let changing = asked.clone();
+{{/everyCall}}
+{{^everyCall}}
+    let changing = json!({"action": "{{changingAction}}"});
+{{/everyCall}}
+    match call_tool(&state, &reader, "{{name}}", changing).await {
+        Err(Failure::Refused(refusal)) => assert_eq!(refusal.code, "not_allowed"),
+        other => panic!("a key that only reads changed something: {other:?}"),
+    }
+{{/changes}}
+{{#features}}
+
+    // Switched off at the DSP, it is refused there.
+    let owner = platform_owner_of(&state).await;
+    let off = dsp.clone();
+    state
+        .run(move |db| db.set_feature(&off, "{{firstFeature}}", false, &owner).map(|_| ()))
+        .await
+        .unwrap();
+    match call_tool(&state, &caller, "{{name}}", asked).await {
+        Err(Failure::Refused(refusal)) => assert_eq!(refusal.code, "switched_off"),
+        other => panic!("it ran with {{firstFeature}} off: {other:?}"),
+    }
+{{/features}}
 }
+{{#features}}
+
+/// The platform owner, as the server's state reads them.
+async fn platform_owner_of(state: &std::sync::Arc<dispatch_core::State>) -> String {
+    state.read(|db| Ok(platform_owner(db))).await.unwrap()
+}
+{{/features}}

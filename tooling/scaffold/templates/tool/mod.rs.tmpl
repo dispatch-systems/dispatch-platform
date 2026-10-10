@@ -1,7 +1,0 @@
-//! What agents can use of {{featureLabel}}: each tool in a file of its own, listed in `TOOLS`,
-//! which the manifest's `tools` names.
-use dispatch_core::mcp::tools::AnyTool;
-
-mod {{name}};
-
-pub(crate) const TOOLS: &[&dyn AnyTool] = &[&{{name}}::{{pascal}}];

@@ -25,8 +25,11 @@ answers. `GET /api/v1/whoami` answers what the `whoami` tool does, over REST.
 
 ## Tools
 
-Every tool lives in `tools/`, a file each, listed in `tools::TOOLS`; what they are made of is
-`backend/toolbox/`. A tool is a type implementing `toolbox::Tool`:
+Every tool lives in `tools/`, a file each, listed in `tools::TOOLS`, with its test in
+`tests/backend/tools/`; what they are made of is `backend/toolbox/`.
+`dispatchdev new tool <name>` makes one that works as written, with its test, and lists it; its
+`--features`, `--scope`, `--actions`, `--changes` and `--changing` set what the list below
+describes. A tool is a type implementing `toolbox::Tool`:
 
 - `NAME`, `TITLE` and `DESCRIPTION`: what agents call it and read about it.
 - `SCOPE`: one DSP (`Dsp`, the default), several (`Dsps`), or the connection itself

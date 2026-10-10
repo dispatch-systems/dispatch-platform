@@ -209,11 +209,7 @@ impl Toolbox {
                 name: tool.name().to_owned(),
                 title: tool.title().to_owned(),
                 description: tool.description().to_owned(),
-                features: tool
-                    .features()
-                    .iter()
-                    .map(|switch| label(switch).to_owned())
-                    .collect(),
+                features: tool.features().iter().map(|switch| named(switch)).collect(),
                 changes: tool.effect() == Effect::Changes,
             })
             .collect()
@@ -493,6 +489,14 @@ fn has_all(on: &[String], needed: &[&str]) -> bool {
 /// A feature, or its part, as the DSPs page names it.
 fn label(switch: &str) -> &str {
     catalog::find(switch).map_or(switch, |feature| feature.label)
+}
+/// A feature, or a part with its feature, as the Agents page groups tools under it:
+/// `Timecard · Meal breaks`.
+fn named(switch: &str) -> String {
+    match switch.split_once('.') {
+        Some((feature, _)) => format!("{} · {}", label(feature), label(switch)),
+        None => label(switch).to_owned(),
+    }
 }
 
 /// The DSP a call names, by its ID or its name, among those the connection reaches; or the

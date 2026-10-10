@@ -744,12 +744,17 @@ test('the platform owner is emailed when an app connects and when Dispatch disco
   });
   const connected = await capturedMail(f.root, owner);
   assert.equal(connected.subject, '[Dispatch Dev] Claude Code connected to Dispatch');
+  // Choosing no tool but those added later: none of those there are, if any.
+  const { tools }: AgentKeys = (await c.owner.get('/api/platform/agents')).value;
+  const toolsLine = tools.length
+    ? `Tools: None of ${tools.length}; and new ones, to read`
+    : 'Tools: Any, to read, as they are added';
   for (const line of [
     'Connection: Laptop – Claude Code',
     'App: Claude Code (known metadata)',
     'Sends access to: this computer',
     'DSPs: Northline Logistics',
-    'Tools: Any, to read, as they are added',
+    toolsLine,
     `${c.issuer}/#agents?tab=apps`,
   ]) {
     assert.ok(connected.text.includes(line), `${line}\n${connected.text}`);

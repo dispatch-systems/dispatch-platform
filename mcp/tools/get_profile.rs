@@ -21,3 +21,7 @@ impl Tool for GetProfile {
             .await
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/tools/get_profile.rs"]
+mod tests;

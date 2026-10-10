@@ -1,13 +1,34 @@
-//! {{title}}, a tool agents can use.
-use dispatch_core::mcp::tools::{Answer, Cx, {{#changes}}Effect, {{/changes}}Nothing, Tool};
-use serde::Serialize;
+//! {{title}}: {{description}}
+{{^actions}}
+use super::Nothing;
+{{/actions}}
+use crate::toolbox::{Answer, Cx, {{#changes}}Effect, {{/changes}}Reply, {{^dsp}}Scope, {{/dsp}}Tool};
 
 /// What {{name}} answers.
-#[derive(Serialize, schemars::JsonSchema)]
+#[derive(serde::Serialize, schemars::JsonSchema)]
 pub struct {{pascal}}Answer {
+{{#dsp}}
     /// The DSP it answered for.
     pub dsp: String,
+{{/dsp}}
+{{#dsps}}
+    /// The DSPs it answered for.
+    pub dsps: Vec<String>,
+{{/dsps}}
+{{#connection}}
+    /// The connection it answered for.
+    pub connection: String,
+{{/connection}}
 }
+{{#actions}}
+
+/// What {{name}} is asked to do.
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+pub enum {{pascal}}Action {
+{{declared}}
+}
+{{/actions}}
 
 /// {{description}}
 pub struct {{pascal}};
@@ -15,21 +36,54 @@ impl Tool for {{pascal}} {
     const NAME: &'static str = "{{name}}";
     const TITLE: &'static str = "{{title}}";
     const DESCRIPTION: &'static str = "{{description}}";
+{{#dsps}}
+    const SCOPE: Scope = Scope::Dsps;
+{{/dsps}}
+{{#connection}}
+    const SCOPE: Scope = Scope::Connection;
+{{/connection}}
+{{#features}}
+    const FEATURES: &'static [&'static str] = &[{{featureList}}];
+{{/features}}
 {{#changes}}
     const EFFECT: Effect = Effect::Changes;
 {{/changes}}
-{{#part}}
-    const PART: Option<&'static str> = Some("{{partId}}");
-{{/part}}
+{{#actions}}
+    type Input = {{pascal}}Action;
+{{/actions}}
+{{^actions}}
     type Input = Nothing;
+{{/actions}}
     type Output = {{pascal}}Answer;
-    fn call(cx: &Cx, _: Nothing) -> Answer<{{pascal}}Answer> {
-        Ok({{pascal}}Answer {
-            dsp: cx.dsp().name.clone(),
-        })
+{{#actions}}
+{{effects}}
+    async fn call(cx: Cx, input: {{pascal}}Action) -> Answer<Reply<{{pascal}}Answer>> {
+        match input {
+{{arms}}
+        }
+{{/actions}}
+{{^actions}}
+    async fn call(cx: Cx, _: Nothing) -> Answer<Reply<{{pascal}}Answer>> {
+{{#everyCall}}
+        // Make the change here, and record it with `w.audit`.
+        cx.write(move |_w| Ok(())).await?;
+{{/everyCall}}
+{{/actions}}
+{{#dsp}}
+        let dsp = cx.dsp().name.clone();
+        Ok({{pascal}}Answer { dsp }.into())
+{{/dsp}}
+{{#dsps}}
+        let dsps = cx.dsps().iter().map(|dsp| dsp.name.clone()).collect();
+        Ok({{pascal}}Answer { dsps }.into())
+{{/dsps}}
+{{#connection}}
+        let connection = cx.caller().name.clone();
+        Ok({{pascal}}Answer { connection }.into())
+{{/connection}}
     }
 }
 
 #[cfg(test)]
-#[path = "../tests/backend/mcp/{{name}}.rs"]
+#[path = "../tests/backend/tools/{{name}}.rs"]
 mod tests;

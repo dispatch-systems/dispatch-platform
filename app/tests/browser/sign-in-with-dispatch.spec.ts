@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { platformHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { test, expect, demo, signIn } from '../../../core/shell/tests/support/fixtures.js';
+import { startingTools } from '../support/agent-keys.js';
 
 // Sign in with Dispatch, approving an app and where it reaches.
 
@@ -13,7 +14,9 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
   request,
   baseURL,
   browser,
+  dispatch,
 }) => {
+  const starting = await startingTools(dispatch);
   const verifier = crypto.randomBytes(32).toString('base64url');
   const state = crypto.randomBytes(16).toString('base64url');
   const resource = `${baseURL}/api/v1/mcp`;
@@ -114,7 +117,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     const connected = connecting.getByRole('status').filter({ hasText: 'is connected' });
     await expect(connected.getByRole('heading')).toHaveText('Claude Code is connected');
     await expect(connected).toContainText('Start a new Claude Code session to use Dispatch.');
-    await expect(connected.locator('.agents-tag')).toHaveText(['1 DSP', 'Read tools as added']);
+    await expect(connected.locator('.agents-tag')).toHaveText(['1 DSP', starting.text]);
     await connecting.getByRole('button', { name: 'Done', exact: true }).click();
     await expect(connecting).toHaveCount(0);
 
@@ -151,7 +154,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     await expect(row).toContainText('Claude Code');
     await expect(row).toContainText('Known metadata');
     await expect(row).toContainText('Northline Logistics');
-    await expect(row).toContainText('Read tools as added');
+    await expect(row).toContainText(starting.text);
     // An app with recognized metadata shows its own logo.
     await expect(row.locator('img')).toHaveAttribute('src', /claude-[\w-]+\.png$/);
     await row.getByRole('button', { name: 'Revoke Laptop – Claude Code app', exact: true }).click();

@@ -15,7 +15,7 @@ import { lexFile, testAttributes } from './support/rust.js';
 
 // What every feature, collector and core part is made of: plans/restructure/structure.md,
 // "A feature's anatomy" and "What every feature has, and what it adds".
-const featurePieces = ['backend', 'api', 'mcp', 'frontend', 'migrations', 'tooling', 'tests'];
+const featurePieces = ['backend', 'api', 'frontend', 'migrations', 'tooling', 'tests'];
 const collectorPieces = [
   'connection',
   'discovery',
@@ -37,6 +37,8 @@ const generatedOnly = (dir: string) => entries(`${dir}/api`).every((name) => nam
 /** Whether a folder holds a Rust test: a `#[test]` in a file under it. */
 const hasRustTest = (directory: string) =>
   filesIn(directory).some((file) => file.endsWith('.rs') && testAttributes(lexFile(file)).length);
+/** Whether a Rust file holds a test. */
+const isRustTest = (file: string) => isFile(file) && testAttributes(lexFile(file)).length > 0;
 
 test('every feature has its crate, manifest and README, and a backend, an API or a frontend', () => {
   const missing = features().flatMap(({ dir }) => [
@@ -70,9 +72,6 @@ test('an optional piece arrives with its companions', () => {
       out.push(`${dir} has backend/ and no test in tests/backend/`);
     if (isDirectory(`${dir}/api`) && !isDirectory(`${dir}/tests/api`))
       out.push(`${dir} has api/ and no tests/api/`);
-    // The tools agents use come with tests of their own.
-    if (isDirectory(`${dir}/mcp`) && !hasRustTest(`${dir}/tests/backend/mcp`))
-      out.push(`${dir} has mcp/ and no test in tests/backend/mcp/`);
     if (isDirectory(`${dir}/frontend`)) {
       if (!isFile(`${dir}/frontend/feature.ts`))
         out.push(`${dir} has frontend/ and no frontend/feature.ts`);
@@ -140,6 +139,13 @@ test("the MCP's root holds its crate, its README and its pieces, each with its t
     out.push('mcp has frontend/ and no frontend/feature.ts');
   if (isDirectory('mcp/frontend') && !isDirectory('mcp/tests/browser'))
     out.push('mcp has frontend/ and no tests/browser/');
+  // Every tool agents use comes with a test of its own, as `dispatchdev new tool` writes it.
+  for (const file of filesIn('mcp/tools').filter((file) => file.endsWith('.rs'))) {
+    const tool = file.slice('mcp/tools/'.length);
+    if (tool === 'mod.rs') continue;
+    if (!isRustTest(`mcp/tests/backend/tools/${tool}`))
+      out.push(`${file} has no test in mcp/tests/backend/tools/${tool}`);
+  }
   holds('anatomy', 'the MCP', out);
 });
 
