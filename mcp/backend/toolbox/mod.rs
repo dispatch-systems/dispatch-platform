@@ -171,12 +171,19 @@ const DSPS: &str = "dsps";
 const DSPS_ABOUT: &str = "The DSPs, each by its name or ID. Leave it out for every DSP this \
     connection reaches with the tool's features on.";
 
-/// The tools a server offers: `tools::TOOLS`, and any the installed MCP adds, as a test's.
+/// The tools a server offers: `tools::TOOLS`, and any the installed MCP adds, as a test's;
+/// each but one that needs a feature this build leaves out.
 pub struct Toolbox(Vec<&'static dyn AnyTool>);
 impl Toolbox {
     pub fn installed() -> Self {
+        let built = built();
         let tools = crate::tools::TOOLS.iter().chain(super::piece::own().tools);
-        Self(tools.copied().collect())
+        Self(
+            tools
+                .copied()
+                .filter(|tool| tool.features().iter().all(|switch| built.contains(switch)))
+                .collect(),
+        )
     }
     pub fn of(tools: Vec<&'static dyn AnyTool>) -> Self {
         Self(tools)
@@ -594,17 +601,22 @@ fn find<'a>(caller: &'a Caller, named: &str) -> Result<&'a Dsp, Refusal> {
         })
 }
 
-/// Panics unless every tool has a name of its own as agents call it, says what it is, needs
-/// only features there are, refuses arguments it doesn't name, leaves `dsp` and `dsps` to the
-/// server, and answers an object.
-pub fn check(tools: &[&dyn AnyTool]) {
-    let switches: BTreeSet<&str> = registry()
+/// Every switch this build has: each feature's, and each of its parts'.
+fn built() -> BTreeSet<&'static str> {
+    registry()
         .features
         .iter()
         .flat_map(|feature| {
             std::iter::once(feature.switch.id).chain(feature.subfeatures.iter().map(|sub| sub.id))
         })
-        .collect();
+        .collect()
+}
+
+/// Panics unless every tool has a name of its own as agents call it, says what it is, needs
+/// only features there are, refuses arguments it doesn't name, leaves `dsp` and `dsps` to the
+/// server, and answers an object.
+pub fn check(tools: &[&dyn AnyTool]) {
+    let switches = built();
     let mut names = BTreeSet::new();
     for tool in tools {
         let name = tool.name();

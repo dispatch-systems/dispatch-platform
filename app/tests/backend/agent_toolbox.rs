@@ -31,3 +31,21 @@ fn the_tools_agents_use_keep_their_names_and_contracts() {
         .collect();
     snapshot::check("agent-tools.json", &json!(tools));
 }
+
+// A tool that needs a feature this build leaves out isn't offered in it; in the whole
+// product, every tool is, so a feature misnamed by a tool fails here.
+#[cfg(feature = "default")]
+#[test]
+fn every_tool_needs_only_features_the_product_has() {
+    crate::install();
+    let offered: Vec<&str> = Toolbox::installed()
+        .all()
+        .iter()
+        .map(|tool| tool.name())
+        .collect();
+    let declared: Vec<&str> = dispatch_mcp::tools::TOOLS
+        .iter()
+        .map(|tool| tool.name())
+        .collect();
+    assert_eq!(offered, declared);
+}

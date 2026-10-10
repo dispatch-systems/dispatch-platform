@@ -275,9 +275,11 @@ async fn a_key_reads_or_changes_with_each_tool_as_the_owner_chose() {
     crate::testing::install();
     let (_root, db, north) = bootstrapped();
     let owner = platform_owner(&db);
-    // A new key starts with every tool, to read.
+    // A new key starts with every tool, to read: the stand-ins among them.
+    let mut defaults = Toolbox::installed().defaults();
+    defaults.retain(|name, _| name.starts_with("stand_in_"));
     assert_eq!(
-        Toolbox::installed().defaults(),
+        defaults,
         BTreeMap::from(
             [
                 "stand_in_across",
@@ -290,7 +292,12 @@ async fn a_key_reads_or_changes_with_each_tool_as_the_owner_chose() {
     );
     let reader = agent(&db, &[&north], &[]);
     let listed = db.agent_keys(&HashMap::new()).unwrap();
-    let names: Vec<&str> = listed.tools.iter().map(|tool| tool.name.as_str()).collect();
+    let stand_ins: Vec<_> = listed
+        .tools
+        .iter()
+        .filter(|tool| tool.name.starts_with("stand_in_"))
+        .collect();
+    let names: Vec<&str> = stand_ins.iter().map(|tool| tool.name.as_str()).collect();
     assert_eq!(
         names,
         [
@@ -301,8 +308,7 @@ async fn a_key_reads_or_changes_with_each_tool_as_the_owner_chose() {
         ]
     );
     assert_eq!(
-        listed
-            .tools
+        stand_ins
             .iter()
             .map(|tool| tool.changes)
             .collect::<Vec<_>>(),
@@ -443,8 +449,13 @@ async fn a_tool_added_since_reads_only_when_the_key_takes_new_tools() {
     let refused = db.update_agent_key(&owner, &caller.key, &request);
     assert_eq!(refused.unwrap_err().code, "invalid_input");
 
-    // As the platform owners' emails word it.
-    let toolbox = Toolbox::installed();
+    // As the platform owners' emails word it, of the stand-ins.
+    let toolbox = Toolbox::of(vec![
+        &crate::testing::StandInRead,
+        &crate::testing::StandInChange,
+        &crate::testing::StandInActions,
+        &crate::testing::StandInAcross,
+    ]);
     let grants = |all: bool, chosen: &[(&str, ToolLevel)]| Grants {
         all,
         chosen: chosen
