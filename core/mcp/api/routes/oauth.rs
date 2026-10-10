@@ -296,7 +296,7 @@ fn post_head(
             "Cross-site browser form posts are not accepted",
         ));
     }
-    Kept::of(&state).limits.admit(endpoint, &ip)?;
+    Kept::of(state).limits.admit(endpoint, &ip)?;
     Ok(ip)
 }
 fn cross_site(parts: &Parts, origin: &str) -> bool {

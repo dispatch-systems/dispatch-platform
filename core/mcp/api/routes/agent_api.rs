@@ -49,7 +49,7 @@ pub fn routes() -> Vec<Route> {
 }
 
 fn keys(db: &Store, owner: &User, _: &Input) -> Result<Reply> {
-    Reply::of(&db.agent_keys(&Kept::of(&owner.state).usage.last())?)
+    Reply::of(&db.agent_keys(&Kept::of(owner.state).usage.last())?)
 }
 fn create(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     let request = AgentKeyRequest::parse(&input.body)?;
