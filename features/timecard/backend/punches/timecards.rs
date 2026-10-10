@@ -40,7 +40,8 @@ pub(crate) fn timecard_period(
              ORDER BY period_to DESC,period_from DESC LIMIT 1",
             [],
         )?
-    }.ok_or_else(|| Error::new("timecard_period_unavailable", 404))?;
+    }
+    .ok_or_else(|| Error::new("timecard_period_unavailable", 404))?;
     let period = if let Some(date) = date {
         v::date(date)?;
         let day: chrono::NaiveDate = date.parse().map_err(|_| Error::new("invalid_date", 400))?;
