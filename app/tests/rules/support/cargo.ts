@@ -128,7 +128,7 @@ export function parseToml(text: string): Table {
 }
 
 export type Target = { kind: 'lib' | 'bin' | 'test' | 'example'; name: string; file: string };
-export type Dependency = { name: string; dev: boolean; path?: string };
+export type Dependency = { name: string; dev: boolean; optional: boolean; path?: string };
 /** A crate of the workspace, as its Cargo.toml declares it. */
 export type Crate = {
   manifest: string;
@@ -151,7 +151,8 @@ function dependencies(table: Table | undefined, dev: boolean, dir: string): Depe
       typeof spec === 'object' && !Array.isArray(spec) && typeof spec.package === 'string'
         ? spec.package
         : undefined;
-    return { name: renamed ?? name, dev, ...(local ? { path: local } : {}) };
+    const optional = typeof spec === 'object' && !Array.isArray(spec) && spec.optional === true;
+    return { name: renamed ?? name, dev, optional, ...(local ? { path: local } : {}) };
   });
 }
 export function readCrate(manifest: string): Crate {

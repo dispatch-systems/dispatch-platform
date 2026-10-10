@@ -1,10 +1,9 @@
 //! The stable profile the agent is signed in as, which hosts such as ChatGPT ask for to tell
 //! one signed-in account from another.
-use super::Nothing;
 use crate::{
     KeyStore,
     api::types::AgentProfile,
-    toolbox::{Answer, Cx, Reply, Scope, Tool},
+    toolbox::{Answer, Cx, Nothing, Reply, Scope, Tool},
 };
 
 pub struct GetProfile;

@@ -1,28 +1,31 @@
 //! The MCP's test support, for its own tests and, behind the `testing` feature, the app's: the
-//! MCP with stand-in tools in core's test registry, with a stand-in for each feature a tool
-//! needs, a key as an agent signs in with it, the server's state, and a tool called as the
-//! server calls it.
+//! MCP with stand-in tools in core's test registry, with the product's features its tools need,
+//! a key as an agent signs in with it, the server's state, and a tool called as the server
+//! calls it.
 use super::{
     Caller, KeyStore,
     api::types::{AgentAccess, AgentKeyRequest, ToolLevel},
     piece::{Own, piece},
-    toolbox::{Answer, Answered, AnyTool, Cx, Effect, Reply, Scope, Tool, Toolbox},
-    tools::{Nothing, TOOLS},
+    toolbox::{Answer, Answered, AnyTool, Cx, Effect, Nothing, Reply, Scope, Tool, Toolbox},
 };
 use dispatch_core::{
     State,
     db::Store,
-    manifest::{Agents, Feature, feature, optional, sub},
+    manifest::Agents,
     testing::{self, platform_owner},
 };
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
     sync::{
-        Arc, OnceLock,
+        Arc,
         atomic::{AtomicU32, Ordering},
     },
 };
+
+/// The product's features the tools need, and what those keep and use.
+#[path = "product.rs"]
+mod product;
 
 /// The stand-in tools, which its tests add to `tools::TOOLS`.
 const STAND_INS: &[&dyn AnyTool] = &[
@@ -36,54 +39,11 @@ const STAND_INS: &[&dyn AnyTool] = &[
 /// registry's own.
 pub static AGENTS: Agents = piece(&Own { tools: STAND_INS });
 
-/// Installs core's test registry with the MCP, `AGENTS`, as its agents' piece, and a stand-in
-/// for each feature a tool needs.
+/// Installs core's test registry with the MCP, `AGENTS`, as its agents' piece, and the
+/// product's features its tools need, with the collectors and features those keep and use, so
+/// a tool's test reads and switches them as the product does.
 pub fn install() {
-    testing::install_with(Some(&AGENTS), &[], needed());
-}
-
-/// A stand-in for each feature a tool needs, with the parts the tools name: the MCP's tests
-/// install none of the product's features, so a tool's test switches these on and off as it
-/// would the feature itself.
-fn needed() -> &'static [&'static Feature] {
-    static NEEDED: OnceLock<&'static [&'static Feature]> = OnceLock::new();
-    fn leak<T>(value: T) -> &'static T {
-        Box::leak(Box::new(value))
-    }
-    // `timecard.meal_breaks` as people read it: Timecard meal breaks.
-    fn label(id: &str) -> &'static str {
-        let words = id.replace(['.', '_'], " ");
-        let mut chars = words.chars();
-        let label = chars
-            .next()
-            .map(|first| first.to_uppercase().chain(chars).collect::<String>())
-            .unwrap_or_default();
-        Box::leak(label.into_boxed_str())
-    }
-    NEEDED.get_or_init(|| {
-        let mut parts: BTreeMap<&'static str, Vec<&'static str>> = BTreeMap::new();
-        for tool in TOOLS.iter().chain(STAND_INS) {
-            for &switch in tool.features() {
-                let owner = switch.split('.').next().unwrap_or(switch);
-                let named = parts.entry(owner).or_default();
-                if switch != owner && !named.contains(&switch) {
-                    named.push(switch);
-                }
-            }
-        }
-        let features: Vec<&'static Feature> = parts
-            .into_iter()
-            .map(|(name, parts)| {
-                let subfeatures: Vec<_> = parts.into_iter().map(|id| sub(id, label(id))).collect();
-                leak(Feature {
-                    switch: optional(name, label(name), &[]),
-                    subfeatures: Box::leak(subfeatures.into_boxed_slice()),
-                    ..feature(name)
-                })
-            })
-            .collect();
-        Box::leak(features.into_boxed_slice())
-    })
+    testing::install_with(Some(&AGENTS), product::COLLECTORS, product::FEATURES);
 }
 
 /// The server's state over the database `db` holds, as the server runs on it: `db` is set up

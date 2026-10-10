@@ -8,6 +8,7 @@ import * as prettier from 'prettier';
 import { planCollector } from '../scaffold/new-collector.js';
 import { planFeature } from '../scaffold/new-feature.js';
 import { planTool } from '../scaffold/new-tool.js';
+import { crates, tools, wiredTools } from '../scaffold/wire.js';
 import { render, repositoryRoot as root, type Plan } from '../scaffold/scaffold.js';
 
 // The generators, run with --dry-run: the files each flag writes, what they say, and how the
@@ -493,7 +494,7 @@ test('--no-backend writes a frontend-only feature, and refuses the pieces that n
     );
 });
 
-test('a tool is a file and a test in mcp/tools, listed in TOOLS, that works as written', async () => {
+test('a tool is a file and a test in mcp/tools, that works as written', async () => {
   const plan = await tool(
     'short_inspections',
     '--features',
@@ -512,9 +513,8 @@ test('a tool is a file and a test in mcp/tools, listed in TOOLS, that works as w
   // It reads, about one DSP, unless it says otherwise, and never says who may use it.
   assert.doesNotMatch(written, /EFFECT|SCOPE|ToolLevel|allow/);
   assert.match(written, /#\[path = "\.\.\/tests\/backend\/tools\/short_inspections\.rs"\]/);
-  const list = file(plan, 'mcp/tools/mod.rs');
-  assert.match(list, /^mod short_inspections;$/m);
-  assert.match(list, /^ {4}&short_inspections::ShortInspections,$/m);
+  // The wiring lists it, so the scaffold changes nothing else.
+  assert.deepEqual([...plan.changes.keys()], []);
   // Its test switches on what it needs, and grants it as an owner would.
   const test = file(plan, 'mcp/tests/backend/tools/short_inspections.rs');
   assert.match(test, /db\.set_feature\(&dsp, "dvic", true, &owner\)/);
@@ -557,35 +557,20 @@ test('a tool is a file and a test in mcp/tools, listed in TOOLS, that works as w
   );
 });
 
-test('a second tool joins the list, its module in order', async () => {
+test('a tool written into mcp/tools is listed by the wiring, and its name is then taken', async () => {
   const workspace = temporary();
   try {
     for (const entry of ['features/dvic', 'mcp/tools']) {
       fs.cpSync(entry, path.join(workspace, entry), { recursive: true });
     }
-    const first = (await planTool(workspace, ['short_inspections'])).plan;
+    const first = (await planTool(workspace, ['short_inspections', '--features', 'dvic'])).plan;
     for (const [name, content] of [...first.files, ...first.changes]) {
       fs.mkdirSync(path.dirname(path.join(workspace, name)), { recursive: true });
       fs.writeFileSync(path.join(workspace, name), content);
     }
-    const second = (await planTool(workspace, ['flag_inspection', '--changes'])).plan;
-    assert.deepEqual(writes(second, 'mcp'), [
-      'tests/backend/tools/flag_inspection.rs',
-      'tools/flag_inspection.rs',
-    ]);
-    const lines = file(second, 'mcp/tools/mod.rs')
-      .split('\n')
-      .filter((line) => /^mod |^ {4}&/.test(line));
-    assert.deepEqual(lines, [
-      'mod flag_inspection;',
-      'mod get_profile;',
-      'mod short_inspections;',
-      'mod whoami;',
-      '    &get_profile::GetProfile,',
-      '    &whoami::Whoami,',
-      '    &short_inspections::ShortInspections,',
-      '    &flag_inspection::FlagInspection,',
-    ]);
+    const listed = wiredTools(tools(workspace, crates(workspace)));
+    assert.match(listed, /^#\[cfg\(feature = "dvic"\)\]\nmod short_inspections;$/m);
+    assert.match(listed, /^ {4}&short_inspections::ShortInspections,$/m);
     await assert.rejects(planTool(workspace, ['short_inspections']), /is taken/);
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });

@@ -146,6 +146,44 @@ test("the app's manifest loses the left-out features' crates, and no list names 
   assert.equal(withoutFeatures(manifest, []), manifest);
 });
 
+test("the MCP's manifest loses a left-out feature's crate, and its feature reads as off", () => {
+  const manifest = [
+    '[features]',
+    'default = [',
+    '    "dvic",',
+    '    "timecard",',
+    ']',
+    'dvic = ["dep:dispatch-cortex", "dep:dispatch-dvic"]',
+    'timecard = ["dep:dispatch-cortex", "dep:dispatch-driver-match", "dep:dispatch-timecard"]',
+    '',
+    '[dependencies]',
+    'dispatch-core = { path = "../core" }',
+    'dispatch-cortex = { path = "../collectors/cortex", optional = true }',
+    'dispatch-driver-match = { path = "../features/driver_match", optional = true }',
+    'dispatch-dvic = { path = "../features/dvic", optional = true }',
+    'dispatch-timecard = { path = "../features/timecard", optional = true }',
+    '',
+  ].join('\n');
+  assert.equal(
+    withoutFeatures(manifest, ['dvic']),
+    [
+      '[features]',
+      'default = [',
+      '    "timecard",',
+      ']',
+      'dvic = []',
+      'timecard = ["dep:dispatch-cortex", "dep:dispatch-driver-match", "dep:dispatch-timecard"]',
+      '',
+      '[dependencies]',
+      'dispatch-core = { path = "../core" }',
+      'dispatch-cortex = { path = "../collectors/cortex", optional = true }',
+      'dispatch-driver-match = { path = "../features/driver_match", optional = true }',
+      'dispatch-timecard = { path = "../features/timecard", optional = true }',
+      '',
+    ].join('\n'),
+  );
+});
+
 test("each removal leaves the app's manifest naming none of what it leaves out", () => {
   const features = readFeatures(root);
   const manifest = fs.readFileSync(path.join(root, appManifest), 'utf8');

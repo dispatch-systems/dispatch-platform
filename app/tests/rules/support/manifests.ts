@@ -1,4 +1,5 @@
 import { closing, includes, lexFile, literalAt, rust, type Lexed } from './rust.js';
+import { readCrate } from './cargo.js';
 import { collectors, features, files, isFile, isTestFile, ownerOf, type Owner } from './repo.js';
 
 /** A span of a file's source, as offsets into it. */
@@ -443,6 +444,9 @@ export function declared(owner: Owner): Set<string> {
   return declarations.get(owner.dir)!;
 }
 function readDeclared(owner: Owner): Set<string> {
+  // The MCP uses the features its tools bring, and what its tests install with them: every
+  // feature and collector its Cargo.toml lists.
+  if (owner.layer === 'mcp') return mcpDeclared();
   if (owner.layer !== 'feature') return new Set();
   const names = featureManifest(owner)?.dependsOn ?? [];
   const dirs = names.map((name) =>
@@ -454,4 +458,13 @@ function readDeclared(owner: Owner): Set<string> {
   for (const collection of collections())
     if (kinds.has(collection.jobKind)) dirs.push(collection.owner.dir);
   return new Set(dirs);
+}
+/** The features and collectors the MCP's Cargo.toml lists, by folder. */
+function mcpDeclared(): Set<string> {
+  if (!isFile('mcp/Cargo.toml')) return new Set();
+  return new Set(
+    readCrate('mcp/Cargo.toml')
+      .dependencies.flatMap((dependency) => (dependency.path ? [dependency.path] : []))
+      .filter((dir) => /^(features|collectors)\/[^/]+$/.test(dir)),
+  );
 }
