@@ -10,13 +10,12 @@ use crate::{
     mcp::{
         activity::{self, ActivityQuery, Outcomes},
         api::types::{AgentKeyRequest, AgentKeysRevoked},
+        piece::{Agent, Kept},
         server,
     },
     server::http::{
         input::{Input, Reply, optional_text, query_number},
-        route::{
-            Agent, PlatformOwner, PlatformRoutine, Route, Served, User, agent_protocol, read, write,
-        },
+        route::{PlatformOwner, PlatformRoutine, Route, Served, User, agent_protocol, read, write},
     },
 };
 use axum::{extract::Request, http::Method};
@@ -50,7 +49,7 @@ pub fn routes() -> Vec<Route> {
 }
 
 fn keys(db: &Store, owner: &User, _: &Input) -> Result<Reply> {
-    Reply::of(&db.agent_keys(&owner.state.agents.last())?)
+    Reply::of(&db.agent_keys(&Kept::of(owner.state).usage.last())?)
 }
 fn create(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     let request = AgentKeyRequest::parse(&input.body)?;

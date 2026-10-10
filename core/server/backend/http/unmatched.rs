@@ -1,9 +1,9 @@
 //! The answer to a path or method no route was registered for.
 use super::{
     middleware,
-    route::{Agent, Dsp, Grant, PlatformOwner},
+    route::{Dsp, Grant, PlatformOwner},
 };
-use crate::{Error, Result, State, db::Store};
+use crate::{Error, Result, State, db::Store, manifest::registry};
 use axum::{
     extract::{Request, State as AxumState},
     http::Method,
@@ -42,8 +42,10 @@ async fn refuse(state: Arc<State>, request: Request) -> Result<std::convert::Inf
                 .get()
                 .expect("the app hands over the DSP area's permissions at startup");
             Dsp(areas(&input.path, post)).authorize(db, &input)?;
-        } else if input.path.starts_with("/api/v1/") {
-            Agent::READ.authorize(db, &input)?;
+        } else if input.path.starts_with("/api/v1/")
+            && let Some(agents) = registry().agents
+        {
+            (agents.authorize)(db, &input)?;
         }
         Err(Error::new("not_found", 404))
     };

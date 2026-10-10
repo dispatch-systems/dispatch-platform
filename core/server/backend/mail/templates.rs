@@ -1,11 +1,12 @@
 // Transactional email bodies. Mail clients ignore stylesheets and SVG, so the
-// layout is nested tables with inline styles and the mark is a hosted PNG.
+// layout is nested tables with inline styles and the mark is a hosted PNG. The pieces they are
+// built of are public, for the emails other owners write in the same layout.
 
-const FONT: &str =
+pub const FONT: &str =
     "Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-const INK: &str = "#171b25";
-const MUTED: &str = "#626b7a";
-const BORDER: &str = "#e3e7ee";
+pub const INK: &str = "#171b25";
+pub const MUTED: &str = "#626b7a";
+pub const BORDER: &str = "#e3e7ee";
 const PRIMARY: &str = "#2055ed";
 const PAGE: &str = "#f4f6fa";
 // Every email comes from a no-reply address; each one says so where a reader looks first
@@ -38,7 +39,7 @@ pub struct Invitation<'a> {
     pub onboarding: bool,
 }
 
-fn escape(value: &str) -> String {
+pub fn escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -81,21 +82,21 @@ fn avatar(name: &str) -> String {
     )
 }
 
-fn heading(value: &str) -> String {
+pub fn heading(value: &str) -> String {
     format!(
         r#"<h1 style="margin:0 0 10px;font:600 22px/1.3 {FONT};letter-spacing:-.4px;color:{INK}">{}</h1>"#,
         escape(value)
     )
 }
 
-fn action(label: &str, url: &str, note: &str) -> String {
+pub fn action(label: &str, url: &str, note: &str) -> String {
     let url = escape(url);
     format!(
         r#"<table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="border-radius:8px;background:{PRIMARY}"><a href="{url}" style="display:inline-block;padding:13px 24px;font:600 15px {FONT};color:#ffffff;text-decoration:none">{label}</a></td></tr></table><p style="margin:18px 0 0;font:400 13px/1.6 {FONT};color:{MUTED}">{note}</p><p style="margin:28px 0 0;padding-top:20px;border-top:1px solid {BORDER};font:400 12px/1.6 {FONT};color:{MUTED}">Button not working? Paste this link into your browser:<br><a href="{url}" style="color:{PRIMARY};text-decoration:none;word-break:break-all">{url}</a></p>"#
     )
 }
 
-fn shell(origin: &str, dev: bool, preheader: &str, body: &str, footer: &str) -> String {
+pub fn shell(origin: &str, dev: bool, preheader: &str, body: &str, footer: &str) -> String {
     let pill = if dev {
         format!(
             r#" <span style="display:inline-block;vertical-align:middle;margin-left:8px;padding:2px 7px;border-radius:999px;background:#fdf0d5;color:#8a5a00;font:600 10px {FONT};letter-spacing:.6px">DEV</span>"#
@@ -249,186 +250,6 @@ pub fn notice(n: &Notice) -> Message {
         text,
         html: shell(n.origin, n.dev, n.preheader, &body, &footer),
     }
-}
-
-/// A connected app, as the notices to platform owners about it describe it.
-pub struct ConnectedApp<'a> {
-    pub origin: &'a str,
-    pub dev: bool,
-    pub to: &'a str,
-    /// The connection's name, as the owner approved it.
-    pub connection: &'a str,
-    /// The app's name: Dispatch's for a known app, the app's own word for any other.
-    pub app: &'a str,
-    pub known: bool,
-    /// Where it was sent its access: "this computer" or a website's host, when known.
-    pub destination: Option<&'a str>,
-    /// The DSPs it reaches by name; empty when it reaches all of them.
-    pub dsps: &'a [String],
-    /// The tools it may use, in words.
-    pub tools: &'a str,
-    pub approved_by: &'a str,
-    /// When it connected or was disconnected, in milliseconds.
-    pub at: i64,
-}
-
-/// Label and value rows, as a plain table in HTML and lines in text.
-fn facts(rows: &[(&str, String)]) -> (String, String) {
-    let text = rows
-        .iter()
-        .map(|(label, value)| format!("{label}: {value}"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let html: String = rows
-        .iter()
-        .map(|(label, value)| {
-            format!(
-                "<tr><td style=\"padding:7px 16px 7px 0;border-bottom:1px solid {BORDER};\
-                 font:400 13px/1.5 {FONT};color:{MUTED};white-space:nowrap;vertical-align:top\">\
-                 {}</td><td style=\"padding:7px 0;border-bottom:1px solid {BORDER};\
-                 font:500 14px/1.5 {FONT};color:{INK}\">{}</td></tr>",
-                escape(label),
-                escape(value)
-            )
-        })
-        .collect();
-    (
-        text,
-        format!(
-            "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" \
-             style=\"margin:0 0 26px;border-top:1px solid {BORDER}\">{html}</table>"
-        ),
-    )
-}
-
-fn when(at: i64) -> String {
-    chrono::DateTime::from_timestamp_millis(at)
-        .map(|at| at.format("%B %-d, %Y at %-I:%M %p UTC").to_string())
-        .unwrap_or_default()
-}
-
-impl ConnectedApp<'_> {
-    /// The app as the owner should read it: an unrecognized one only by its own word.
-    fn app_line(&self) -> String {
-        if self.known {
-            format!("{} (known metadata)", self.app)
-        } else {
-            format!(
-                "Unrecognized app, which says it is \u{201c}{}\u{201d}",
-                self.app
-            )
-        }
-    }
-    fn reach(&self) -> String {
-        const SHOWN: usize = 10;
-        match self.dsps.len() {
-            0 => "All DSPs".into(),
-            count if count <= SHOWN => self.dsps.join(", "),
-            count => format!(
-                "{} and {} more",
-                self.dsps[..SHOWN].join(", "),
-                count - SHOWN
-            ),
-        }
-    }
-    fn link(&self) -> String {
-        format!("{}/#agents?tab=apps", self.origin)
-    }
-    fn footer(&self) -> String {
-        format!(
-            "This notice was sent to {} because you are a platform owner on Dispatch. {NO_REPLY}",
-            self.to
-        )
-    }
-    fn message(
-        &self,
-        subject: String,
-        lead: String,
-        rows: &[(&str, String)],
-        note: &str,
-    ) -> Message {
-        let label = "Review connected apps";
-        let url = self.link();
-        let (rows_text, rows_html) = facts(rows);
-        let footer = self.footer();
-        let body = format!(
-            r#"{}<p style="margin:0 0 22px;font:400 15px/1.6 {FONT};color:{MUTED}">{}</p>{rows_html}{}"#,
-            heading(&subject),
-            escape(&lead),
-            action(label, &url, &escape(note))
-        );
-        Message {
-            text: format!(
-                "{subject}\n\n{lead}\n\n{rows_text}\n\n{label}: {url}\n\n{note}\n\n{footer}"
-            ),
-            html: shell(self.origin, self.dev, &lead, &body, &footer),
-            subject,
-        }
-    }
-}
-
-/// Tells a platform owner that an app connected to Dispatch, with what it reaches.
-pub fn app_connected(app: &ConnectedApp) -> Message {
-    let subject = if app.known {
-        format!("{} connected to Dispatch", app.app)
-    } else {
-        format!("{} (unrecognized) connected to Dispatch", app.app)
-    };
-    let lead = format!(
-        "{} connected to Dispatch with Sign in with Dispatch, as \u{201c}{}\u{201d}. It can use \
-         Dispatch as described below until the connection is revoked.",
-        app.app, app.connection
-    );
-    let mut rows = vec![
-        ("Connection", app.connection.to_owned()),
-        ("App", app.app_line()),
-    ];
-    rows.extend(app.destination.map(|to| ("Sends access to", to.to_owned())));
-    rows.extend([
-        ("DSPs", app.reach()),
-        ("Tools", app.tools.to_owned()),
-        ("Approved by", app.approved_by.to_owned()),
-        ("Connected", when(app.at)),
-    ]);
-    app.message(
-        subject,
-        lead,
-        &rows,
-        "If you don't recognize this connection, revoke it on the Agents page. Its access stops at once.",
-    )
-}
-
-/// Tells a platform owner that Dispatch ended a connected app itself, and why in plain words.
-pub fn app_disconnected(app: &ConnectedApp, reason: &str) -> Message {
-    let why = match reason {
-        "code_reused" => {
-            "the one-time code that connected it was used a second time, which can mean someone else had a copy of it"
-        }
-        "refresh_reused" => {
-            "a sign-in renewal it had already used was presented again, which can mean someone else had a copy of it"
-        }
-        _ => "its sign-in could no longer be trusted",
-    };
-    let subject = format!("Dispatch disconnected {}", app.app);
-    let lead = format!(
-        "Dispatch ended the connection \u{201c}{}\u{201d} because {why}. Its access stopped at once.",
-        app.connection
-    );
-    let mut rows = vec![
-        ("Connection", app.connection.to_owned()),
-        ("App", app.app_line()),
-    ];
-    rows.extend(app.destination.map(|to| ("Sent access to", to.to_owned())));
-    rows.extend([
-        ("Tools", app.tools.to_owned()),
-        ("Disconnected", when(app.at)),
-    ]);
-    app.message(
-        subject,
-        lead,
-        &rows,
-        "To keep using the app with Dispatch, connect it again from the app.",
-    )
 }
 
 #[cfg(test)]

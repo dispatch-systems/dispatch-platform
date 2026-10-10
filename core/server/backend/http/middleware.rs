@@ -5,7 +5,7 @@ use super::input::Input;
 use crate::{
     Error, Result, State, ensure,
     foundation::{config::Site, crypto, observability},
-    mcp::oauth,
+    manifest::registry,
 };
 use axum::{
     body::{Body, Bytes, to_bytes},
@@ -146,30 +146,20 @@ pub async fn pipeline(
     response
 }
 
-// What an agent needs to recover: where and how to sign in, and when to try again. An MCP
-// client finds Dispatch's authorization server from the challenge's resource metadata. One
-// that sent a token hears it was refused, and refreshes it; one that sent none is not told
-// of an error (RFC 6750 §3.1).
+// What an agent needs to recover: where and how to sign in, as the agents' piece words the
+// challenge for the code it was refused with, and when to try again.
 fn agent_challenge(state: &State, response: &mut Response) {
     let status = response.status().as_u16();
-    let refused = response
+    let code = response
         .extensions()
         .get::<Failure>()
-        .is_some_and(|failure| failure.0 != "agent_key_required");
+        .map(|failure| failure.0.clone());
     let headers = response.headers_mut();
     match status {
         401 => {
-            let challenge = format!(
-                "Bearer realm=\"Dispatch\", resource_metadata=\"{}\", scope=\"{}\"{}",
-                oauth::resource_metadata(&state.config),
-                oauth::SCOPE,
-                if refused {
-                    ", error=\"invalid_token\""
-                } else {
-                    ""
-                }
-            );
-            if let Ok(value) = challenge.parse() {
+            if let Some(agents) = registry().agents
+                && let Ok(value) = (agents.challenge)(&state.config, code.as_deref()).parse()
+            {
                 headers.insert(header::WWW_AUTHENTICATE, value);
             }
         }

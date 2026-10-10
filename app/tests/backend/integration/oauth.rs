@@ -6,7 +6,10 @@ use dispatch_core::{
     State,
     db::{self, Store, s},
     foundation::{config::Config, crypto},
-    mcp::oauth::network::{Network, Pending},
+    mcp::{
+        oauth::network::{Network, Pending},
+        piece::Kept,
+    },
     server::operations,
 };
 use serde_json::{Value, json};
@@ -1545,7 +1548,7 @@ async fn a_connected_app_reaches_only_what_the_owner_chose() {
         .collect();
     assert_eq!(tools, ["get_profile", "whoami"]);
     // Its calls count like a key's, under the connected app.
-    let used = server.state.agents.last();
+    let used = Kept::of(&server.state).usage.last();
     let listed = server
         .as_owner(&owner, "GET", "/api/platform/agents", json!({}))
         .await;
@@ -2318,7 +2321,9 @@ async fn websites_connect_only_when_allowed_and_only_from_public_addresses() {
         (200, client_document(site, "Other", callback)),
     );
     let internet = Arc::new(internet);
-    server.state.oauth.use_network(internet.clone());
+    Kept::of(&server.state)
+        .documents
+        .use_network(internet.clone());
     let page = |error: &str| format!("{}/#authorize?error={error}", server.origin);
     let register = |redirect: &str| {
         server.send(

@@ -43,7 +43,7 @@ impl Input {
             })
             .map_or("", |(_, segment)| segment)
     }
-    pub(super) fn session_token(&self, development: bool) -> &str {
+    pub fn session_token(&self, development: bool) -> &str {
         let prefix = if development {
             "dispatch_session="
         } else {
@@ -178,7 +178,7 @@ impl Reply {
             "{name}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0{secure}"
         ))
     }
-    pub(crate) fn cookie(mut self, cookie: String) -> Self {
+    pub fn cookie(mut self, cookie: String) -> Self {
         self.cookie = Some(cookie);
         self
     }

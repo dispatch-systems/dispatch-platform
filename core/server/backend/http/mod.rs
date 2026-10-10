@@ -4,14 +4,15 @@
 //! asset or `unmatched`.
 mod assets;
 pub mod input;
-pub(crate) mod middleware;
+pub mod middleware;
 pub mod proxy;
 pub mod route;
 mod unmatched;
 pub mod upload;
 
 pub use assets::{Asset, assets, browser_update_ready};
-pub use route::{Access, Route, Work, needs_recent_verification};
+pub use input::Input;
+pub use route::{Access, Answered, Route, Work, needs_recent_verification};
 pub use unmatched::unmatched_areas;
 
 use crate::{State, foundation::observability, manifest::registry};
@@ -27,10 +28,11 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-/// Every registered route: core's, then every registered feature's, in the registry's order.
+/// Every registered route: core's, the agents' piece's, then every registered feature's, in
+/// the registry's order.
 /// `app/tests/backend/integration/http_routes.rs` holds the expected list.
 pub fn table() -> Vec<Route> {
-    use crate::{accounts, collection, mcp, platform_owner, server, tenancy};
+    use crate::{accounts, collection, platform_owner, server, tenancy};
     let core = [
         server::api::routes::routes(),
         accounts::api::routes::sign_in::routes(),
@@ -38,14 +40,17 @@ pub fn table() -> Vec<Route> {
         accounts::api::routes::invitations::routes(),
         tenancy::api::routes::routes(),
         platform_owner::api::routes::platform::routes(),
-        mcp::api::routes::agent_api::routes(),
-        mcp::api::routes::oauth::routes(),
         collection::api::routes::jobs::routes(),
         collection::api::routes::connections::routes(),
         platform_owner::api::routes::audit::routes(),
     ];
+    let agents = registry().agents.map(|agents| (agents.routes)());
     let features = registry().features.iter().map(|feature| (feature.routes)());
-    core.into_iter().chain(features).flatten().collect()
+    core.into_iter()
+        .chain(agents)
+        .chain(features)
+        .flatten()
+        .collect()
 }
 
 /// The route the request log names a request by until its route reads it: a logged route's

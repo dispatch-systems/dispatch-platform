@@ -57,8 +57,9 @@ enum MailContext<'a> {
     Reset {
         user: &'a str,
     },
-    /// A notice to a platform owner about an app connected to Dispatch.
-    ConnectedApp {
+    /// A notice to a platform owner, of a kind its sender names.
+    PlatformNotice {
+        kind: &'a str,
         user: &'a str,
     },
     /// What a feature writes to a member, of the feature's own kind.
@@ -280,7 +281,7 @@ impl Store {
         let (kind, invitation, user) = match context {
             MailContext::Invitation { hash } => ("invitation", Some(hash), None),
             MailContext::Reset { user } => ("reset", None, Some(user)),
-            MailContext::ConnectedApp { user } => ("connected_app", None, Some(user)),
+            MailContext::PlatformNotice { kind, user } => (kind, None, Some(user)),
             MailContext::Feature { kind, user } => (kind, None, Some(user)),
         };
         // Invitation traffic has its own ceiling; recovery keeps reserved capacity.
@@ -329,10 +330,11 @@ impl Store {
         self.queue_mail(Some(dsp), &to, mail, MailContext::Feature { kind, user })
     }
 
-    /// Emails every active platform owner a notice about a connected app, `message` written
-    /// for each address, when email is on. What it reports has already happened, so a notice
-    /// that cannot be queued is noted in the log and never fails the caller.
-    pub(crate) fn notify_platform_owners(&self, message: impl Fn(&str) -> email::Message) {
+    /// Emails every active platform owner a notice of `kind`, a word without a dot,
+    /// `message` written for each address, when email is on. What it reports has already
+    /// happened, so a notice that cannot be queued is noted in the log and never fails the
+    /// caller. One still waiting is sent only while its owner is an active platform owner.
+    pub fn notify_platform_owners(&self, kind: &str, message: impl Fn(&str) -> email::Message) {
         if !self.config.mail_available() {
             return;
         }
@@ -340,7 +342,7 @@ impl Store {
             crate::foundation::observability::event(
                 "warn",
                 "mail.notice_skipped",
-                json!({"kind":"connected_app","error":error.code}),
+                json!({"kind":kind,"error":error.code}),
             );
         };
         let owners = match self.platform.query_as::<(String, String)>(
@@ -352,9 +354,8 @@ impl Store {
         };
         for (user, to) in owners {
             let mail = message(&to);
-            if let Err(error) =
-                self.queue_mail(None, &to, &mail, MailContext::ConnectedApp { user: &user })
-            {
+            let context = MailContext::PlatformNotice { kind, user: &user };
+            if let Err(error) = self.queue_mail(None, &to, &mail, context) {
                 skipped(error);
             }
         }

@@ -388,6 +388,7 @@ fn a_new_collection_leaves_what_both_runs_as_it_is() {
     let later = Registry {
         collectors: Box::leak(collectors.into_boxed_slice()),
         features: registry.features,
+        agents: registry.agents,
     };
     let runs = |registry: &Registry, collection: &str| -> Vec<(&str, &str)> {
         registry

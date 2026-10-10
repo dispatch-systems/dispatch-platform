@@ -6,9 +6,10 @@ use dispatch_core::{
     db::Store,
     mcp::{
         Caller,
+        testing::agent,
         tools::{Answer, Cx, Effect, Failure, Listed, Nothing, Tool, Toolbox},
     },
-    testing::{self as common, agent, audits, bootstrapped, platform_owner},
+    testing::{self as common, audits, bootstrapped, platform_owner},
 };
 use serde::Serialize;
 use serde_json::{Map, Value, json};

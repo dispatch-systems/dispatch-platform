@@ -323,10 +323,7 @@ const AREAS: &[(&str, &str)] = &[
         "a.action IN ('dsp.view_opened','dsp.owner_view_opened')",
         "CASE WHEN ?1 IS NULL THEN 'access' ELSE 'team' END",
     ),
-    (
-        "a.action LIKE 'account.%' OR a.action LIKE 'agent.%'",
-        "'access'",
-    ),
+    ("a.action LIKE 'account.%'", "'access'"),
     (
         "a.action IN ('dsp.created','dsp.removed','dsp.restored','dsp.suspended','dsp.resumed',\
          'dsp.feature_enabled','dsp.feature_disabled','dsp.feature_hidden','dsp.feature_shown')",
@@ -334,13 +331,13 @@ const AREAS: &[(&str, &str)] = &[
     ),
 ];
 /// The area of the log an event is listed and counted under, as SQL: core's areas, each
-/// joined by the prefixes the features declare for it, and settings for everything else.
+/// joined by the prefixes the agents' piece and the features declare for it, and settings for
+/// everything else.
 fn areas() -> &'static str {
     static AREA: LazyLock<String> = LazyLock::new(|| {
-        let declared: Vec<_> = registry()
-            .features
-            .iter()
-            .flat_map(|f| f.audit.areas)
+        let agents = registry().agents.into_iter().flat_map(|a| a.audit.areas);
+        let declared: Vec<_> = agents
+            .chain(registry().features.iter().flat_map(|f| f.audit.areas))
             .collect();
         let mut sql = "CASE".to_owned();
         for (condition, then) in AREAS {

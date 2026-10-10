@@ -9,7 +9,6 @@ use crate::{
     foundation::crypto,
     job_statuses,
     manifest::registry,
-    mcp::activity,
     server::cache::DataDomain,
 };
 use rusqlite::params;
@@ -88,10 +87,9 @@ struct Scheduler {
     refresh: Refresh,
     // A year's retention does not need checking every minute.
     audit_pruned: i64,
-    // When each feature's upkeep was last due, in the registry's order.
+    // When each upkeep task was last due: the agents' piece's, then each feature's, in the
+    // registry's order.
     upkept: Vec<i64>,
-    // When agents' calls were last written down for the Activity log.
-    activity_written: i64,
 }
 impl Scheduler {
     async fn cleanup(&mut self) {
@@ -99,8 +97,6 @@ impl Scheduler {
         if prune_audit {
             self.audit_pruned = now();
         }
-        let agents_used = self.state.agents.take();
-        let agent_keys: Vec<String> = agents_used.iter().map(|(key, _)| key.clone()).collect();
         let cache_state = self.state.clone();
         let result = self
             .state
@@ -110,9 +106,6 @@ impl Scheduler {
                 cache_state.read_cache.invalidate_listings();
                 if prune_audit {
                     db.prune_audit()?;
-                }
-                if !agents_used.is_empty() {
-                    db.record_agent_use(&agents_used)?;
                 }
                 // Expired access tokens have no remaining authentication purpose, in the
                 // platform's directory or any DSP's.
@@ -134,7 +127,6 @@ impl Scheduler {
                     }
                     Ok(())
                 })?;
-                db.prune_oauth()?;
                 let dsps: Vec<(String,)> = db.platform.query_as(
                     "SELECT id FROM dsps WHERE status IN ('active','suspended')",
                     [],
@@ -156,38 +148,15 @@ impl Scheduler {
             })
             .await;
         if let Err(error) = result {
-            // Nothing was committed, so the keys' last use is written next time.
-            self.state.agents.unsaved(&agent_keys);
             failed("checkpoint_cleanup_failed", &error);
-        }
-        // Agents' calls past 90 days, a step a minute, apart from the rest so a long
-        // backlog never holds the lock for the other cleanup.
-        if let Err(error) = self
-            .state
-            .run_bookkeeping(|db| db.prune_agent_activity())
-            .await
-        {
-            failed("agent_activity_prune_failed", &error);
         }
         self.maintain().await;
     }
-    /// Writes down agents' calls for the Activity log every five seconds, or sooner once a
-    /// batch is waiting: one write for many calls, never one per call.
-    async fn write_activity(&mut self) {
-        let waiting = self.state.activity.pending();
-        if waiting == 0
-            || (waiting < activity::BATCH && now() - self.activity_written < activity::EVERY_MS)
-        {
-            return;
-        }
-        self.activity_written = now();
-        if let Err(error) = activity::flush(&self.state).await {
-            failed("agent_activity_failed", &error);
-        }
-    }
-    /// Each feature's upkeep, in the registry's order, told whether it is due.
+    /// The agents' piece's upkeep, then each feature's, in the registry's order, told
+    /// whether it is due.
     async fn maintain(&mut self) {
-        let tasks = registry().features.iter().flat_map(|f| f.maintenance);
+        let agents = registry().agents.into_iter().flat_map(|a| a.maintenance);
+        let tasks = agents.chain(registry().features.iter().flat_map(|f| f.maintenance));
         for (task, last) in tasks.zip(self.upkept.iter_mut()) {
             let due = now() - *last >= task.every.as_millis() as i64;
             if due {
@@ -328,13 +297,13 @@ pub async fn start(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<boo
         audit_pruned: 0,
         upkept: vec![
             0;
-            registry()
-                .features
-                .iter()
-                .map(|f| f.maintenance.len())
-                .sum()
+            registry().agents.map_or(0, |a| a.maintenance.len())
+                + registry()
+                    .features
+                    .iter()
+                    .map(|f| f.maintenance.len())
+                    .sum::<usize>()
         ],
-        activity_written: 0,
     };
     let mut timer = tokio::time::interval(Duration::from_secs(1));
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -353,14 +322,16 @@ pub async fn start(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<boo
             },
             _ = checkpoint_cleanup.tick() => scheduler.cleanup().await,
             _ = timer.tick() => {
-                scheduler.write_activity().await;
+                if let Some(agents) = registry().agents {
+                    (agents.tick)(scheduler.state.clone(), false).await;
+                }
                 scheduler.tick().await;
             },
         }
     }
-    // What agents called since the last write is not lost to a restart.
-    if let Err(error) = activity::flush(&scheduler.state).await {
-        failed("agent_activity_failed", &error);
+    // What the agents' piece holds in memory is not lost to a restart.
+    if let Some(agents) = registry().agents {
+        (agents.tick)(scheduler.state.clone(), true).await;
     }
     scheduler.state.browsers.close().await;
     while scheduler.tasks.join_next().await.is_some() {}

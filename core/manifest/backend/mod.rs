@@ -11,17 +11,17 @@ use crate::{
         registry::AddedStorage,
     },
     db::{self, Db, Kind, Migration, Migrations, OwnMigrations, Store},
-    foundation::config::Config,
-    mcp::tools::{self, AnyTool},
+    foundation::{config::Config, observability::RequestTrace},
     server::{
         cache::{self, Cached, DataDomain},
-        http::Route,
+        http::{Answered, Input, Route},
     },
     tenancy::api::audit::AuditArea,
 };
 use people::People;
 use serde_json::Value;
 use std::{
+    any::Any,
     future::Future,
     path::Path,
     pin::Pin,
@@ -33,6 +33,8 @@ use std::{
 pub struct Registry {
     pub collectors: &'static [&'static dyn Collector],
     pub features: &'static [&'static Feature],
+    /// What lets outside agents use Dispatch, if this build has it.
+    pub agents: Option<&'static Agents>,
 }
 
 /// The registry installed, as given and with its features in their places.
@@ -55,6 +57,7 @@ fn placed(registry: &'static Registry) -> &'static Registry {
     Box::leak(Box::new(Registry {
         collectors: registry.collectors,
         features: Box::leak(features.into_boxed_slice()),
+        agents: registry.agents,
     }))
 }
 
@@ -185,14 +188,20 @@ impl Registry {
             .chain(collectors)
             .chain(added)
     }
-    /// What every owner adds to the databases: core's parts, each collector, each feature.
+    /// What every owner adds to the databases: core's parts, the agents' piece, each
+    /// collector, each feature.
     fn migration_lists(&self) -> impl Iterator<Item = &'static Migrations> {
+        let agents = self.agents.into_iter().flat_map(|agents| agents.migrations);
         let collectors = self.collectors.iter().flat_map(|c| c.migrations());
         let features = self
             .features
             .iter()
             .flat_map(|feature| feature.migrations.iter().chain(feature.retired_migrations));
-        db::CORE_MIGRATIONS.iter().chain(collectors).chain(features)
+        db::CORE_MIGRATIONS
+            .iter()
+            .chain(agents)
+            .chain(collectors)
+            .chain(features)
     }
     /// One kind of database's migrations, gathered from every owner, in order.
     pub fn migrations(&self, kind: Kind) -> Vec<Migration> {
@@ -209,9 +218,9 @@ impl Registry {
         });
         db::owned_ledger(kind, owners)
     }
-    /// Every table an owner declares, as its owner, database and name: core's, then each
-    /// collector's, then each feature's. Core's owner is `core`; a database `*` is every
-    /// database that holds the table.
+    /// Every table an owner declares, as its owner, database and name: core's, the agents'
+    /// piece's, then each collector's, then each feature's. Core's owner is `core` and the
+    /// agents' piece's `agents`; a database `*` is every database that holds the table.
     pub fn tables(&self) -> Vec<(&'static str, &'static str, &'static str)> {
         let owned = |owner: &'static str, tables: Tables| {
             tables.iter().flat_map(move |(database, names)| {
@@ -223,7 +232,12 @@ impl Registry {
             .iter()
             .flat_map(|c| owned(c.id(), c.tables()));
         let features = self.features.iter().flat_map(|f| owned(f.name, f.tables));
+        let agents = self
+            .agents
+            .into_iter()
+            .flat_map(|a| owned("agents", a.tables));
         owned("core", db::CORE_TABLES)
+            .chain(agents)
             .chain(collectors)
             .chain(features)
             .collect()
@@ -273,7 +287,7 @@ impl Registry {
     /// numbered from 1 without a gap or a repeat, every table is declared once, every
     /// domain is declared once and before it is named, every audit prefix is a dotted name
     /// listed under an area other than settings, each kind of data that names people has a
-    /// place of its own, and every agent tool is declared as `mcp::tools::check` asks.
+    /// place of its own, and the agents' piece's own declarations are as it asks.
     pub fn check(&self) {
         let mut named = std::collections::BTreeSet::new();
         for feature in self.features {
@@ -516,7 +530,8 @@ impl Registry {
             );
         }
         // Prefixes are written into the log's SQL.
-        for (prefix, area) in self.features.iter().flat_map(|f| f.audit.areas) {
+        let agents = self.agents.into_iter().flat_map(|a| a.audit.areas);
+        for (prefix, area) in agents.chain(self.features.iter().flat_map(|f| f.audit.areas)) {
             let plain = prefix.ends_with('.')
                 && prefix
                     .split('.')
@@ -536,7 +551,9 @@ impl Registry {
                 kind.data().as_str()
             );
         }
-        tools::check(self.features);
+        if let Some(agents) = self.agents {
+            (agents.check)();
+        }
     }
 }
 
@@ -611,9 +628,6 @@ pub struct Feature {
     pub commands: Option<Commands>,
     /// Who its data names, for Driver Match to tell apart.
     pub people: &'static [&'static dyn People],
-    /// What agents can use of it, each a tool of its own: `&[&ApproveTimecard]`. A tool is
-    /// offered at a DSP while the feature, or the part it belongs to, is on there.
-    pub tools: &'static [&'static dyn AnyTool],
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
@@ -645,7 +659,6 @@ pub const fn feature(name: &'static str) -> Feature {
         demo: None,
         commands: None,
         people: &[],
-        tools: &[],
     }
 }
 
@@ -682,6 +695,48 @@ impl Audit {
         subjects: &[],
         names: None,
     };
+}
+
+/// What lets outside agents use Dispatch beside its people: their credentials, how they
+/// sign in and what they call. One piece at most, outside the features, declares it; core
+/// reaches it through these and nothing else. Its routes take `Access::Agent` under
+/// `/api/v1/`, the agent API.
+pub struct Agents {
+    pub routes: fn() -> Vec<Route>,
+    /// What it adds to the databases others number, numbered with theirs.
+    pub migrations: &'static [Migrations],
+    /// The tables it keeps.
+    pub tables: Tables,
+    /// How the activity log lists its actions.
+    pub audit: Audit,
+    /// Upkeep it needs the scheduler to run every minute.
+    pub maintenance: &'static [Maintenance],
+    /// What it keeps in memory for as long as the server runs, made as it starts.
+    pub state: fn(&Store) -> Result<Box<dyn Any + Send + Sync>>,
+    /// Runs every second, and once more as the server stops (`true`).
+    pub tick: fn(Arc<State>, bool) -> Upkeep,
+    /// Signs in a request to the agent API that no route serves, so it is refused as any of
+    /// its routes would refuse it before it is told there is nothing there.
+    pub authorize: fn(&Store, &Input) -> Result<()>,
+    /// The `WWW-Authenticate` challenge an answer of the agent API refused for its
+    /// credentials carries, given the code it was refused with.
+    pub challenge: fn(&Config, Option<&str>) -> String,
+    /// Notes in the request's trace what a message to one of its protocol routes calls, read
+    /// from the body before the caller is signed in.
+    pub called: fn(&RequestTrace, &[u8]),
+    /// What an agent's request noted in its trace (`RequestContext::agent`), once its route
+    /// answered.
+    pub answered: fn(&State, Option<Box<dyn Any + Send>>, Answered<'_>),
+    /// Ends what a person's credentials made, inside the transaction of a reset of their
+    /// password, as their sessions end.
+    pub password_reset: fn(&Store, &str) -> Result<()>,
+    /// Ends, in a restored backup's platform database, what its credentials made, as its
+    /// sessions end.
+    pub restored: fn(&rusqlite::Connection) -> Result<()>,
+    /// Panics unless what it declares of itself holds, as the registry is installed.
+    pub check: fn(),
+    /// What only the piece itself reads of its declaration.
+    pub own: &'static (dyn Any + Send + Sync),
 }
 
 /// Work a feature runs for the platform, with nothing to answer: it logs its own failures.

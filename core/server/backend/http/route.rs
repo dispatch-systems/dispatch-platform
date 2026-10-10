@@ -13,15 +13,11 @@ use crate::{
     ensure,
     foundation::{config::Site, crypto, observability::RequestTrace},
     manifest::registry,
-    mcp::{
-        self, Caller, activity,
-        api::types::{AgentAccess, AgentActivityKey, AgentKeyKind},
-    },
 };
 use axum::{
     body::{Body, HttpBody},
     extract::Request,
-    http::Method,
+    http::{Extensions, Method},
     response::{IntoResponse, Response},
 };
 use std::{future::Future, pin::Pin, sync::Arc};
@@ -37,8 +33,9 @@ pub enum Access {
     PlatformOwner,
     /// A member looking at a DSP through a role holding one of the `|`-separated permissions.
     Dsp(&'static str),
-    /// An outside agent signed in with a key, or a connected app with its access token:
-    /// `read` for any, `operator` for a key that may also run collections and test connections.
+    /// An outside agent signed in with its own credentials, never a browser session, as the
+    /// agents' piece (`manifest::Agents`) signs it in: what it is allowed, in that piece's
+    /// words.
     Agent(&'static str),
 }
 
@@ -69,13 +66,6 @@ pub struct PlatformOwner;
 pub struct PlatformRoutine;
 #[derive(Clone, Copy)]
 pub struct Dsp(pub &'static str);
-/// An outside agent's key or a connected app's access token, never a browser session.
-/// `Agent::READ` is any; a route that acts would ask for `AgentAccess::Operator`.
-#[derive(Clone, Copy)]
-pub struct Agent(AgentAccess);
-impl Agent {
-    pub const READ: Agent = Agent(AgentAccess::Read);
-}
 
 impl Grant for Public {
     type Who = ();
@@ -169,63 +159,6 @@ impl Grant for Dsp {
         Ok(context)
     }
 }
-impl Grant for Agent {
-    type Who = Caller;
-    fn access(self) -> Access {
-        Access::Agent(self.0.as_str())
-    }
-    fn authorize(self, db: &Store, input: &Input) -> Result<Caller> {
-        // Agents are the platform owner's, and reach Dispatch only at the admin's address.
-        ensure(input.site == Site::Admin, "not_found", 404)?;
-        let header = input.header("authorization");
-        let (token, bearer) = match header.split_once(' ') {
-            Some((scheme, token)) if scheme.eq_ignore_ascii_case("bearer") => (token.trim(), true),
-            _ if header.is_empty() => (input.header("x-api-key").trim(), false),
-            _ => ("", false),
-        };
-        ensure(!token.is_empty(), "agent_key_required", 401)?;
-        // A key and a session never travel together, so a browser can never lend its
-        // session to a request an agent sends, or the other way round.
-        ensure(
-            input.session_token(db.config.development).is_empty(),
-            "session_and_key",
-            400,
-        )?;
-        let client = mcp::client_label(input.header("user-agent"));
-        // A connected app signs in with its OAuth access token, and only ever as a bearer.
-        let app = bearer && token.starts_with("dsa_");
-        let caller = if app {
-            db.authenticate_app(token, &client)?
-        } else {
-            db.authenticate_agent(token, &client)?
-        };
-        {
-            let mut trace = input
-                .trace
-                .lock()
-                .unwrap_or_else(|poison| poison.into_inner());
-            trace.actor = Some(format!("agent:{}", caller.key));
-            trace.agent.key = Some(AgentActivityKey {
-                id: caller.key.clone(),
-                name: caller.name.clone(),
-                kind: if app {
-                    AgentKeyKind::App
-                } else {
-                    AgentKeyKind::Key
-                },
-            });
-        }
-        ensure(
-            self.0 == AgentAccess::Read || caller.access == AgentAccess::Operator,
-            "agent_read_only",
-            403,
-        )?;
-        Ok(caller)
-    }
-    fn admit(self, state: &State, who: &Caller) -> Result<()> {
-        state.agents.admit(&who.key, &who.client)
-    }
-}
 impl Dsp {
     /// Checks again, after work done outside the database, that the member may still do this.
     pub fn revalidate(self, db: &Store, context: &Context) -> Result<Context> {
@@ -281,13 +214,18 @@ type Blocking = Arc<dyn Fn(&Store, &State, &Input) -> Result<Reply> + Send + Syn
 type Pending = Pin<Box<dyn Future<Output = Result<Reply>> + Send>>;
 pub type Served = Pin<Box<dyn Future<Output = Response> + Send>>;
 type Uploaded = Box<dyn Fn(Arc<State>, Input, Upload) -> Pending + Send + Sync>;
+/// Signs in the caller of a protocol route under the shared lock, counts the call, and puts
+/// who it is in the request's extensions.
+type Signer = Arc<
+    dyn Fn(&Store, &State, &Input) -> Result<Box<dyn FnOnce(&mut Extensions) + Send>> + Send + Sync,
+>;
 enum Handler {
     Blocking(Blocking),
     Async(Box<dyn Fn(Arc<State>, Input) -> Pending + Send + Sync>),
     /// Its most bytes, and the handler.
     Upload(u64, Uploaded),
     Memory(fn(&State) -> Reply),
-    Protocol(Agent, fn(Request) -> Served),
+    Protocol(Signer, fn(Request) -> Served),
     Open(fn(Arc<State>, Request) -> Served),
 }
 
@@ -427,14 +365,25 @@ where
     }
 }
 /// `method path` for a protocol an agent speaks whose requests the handler reads itself,
-/// such as MCP. The key is checked and counted first, under the shared lock; the handler
-/// then finds the `Caller` and the server's `Arc<State>` in the request's extensions.
-pub fn agent_protocol(
+/// such as MCP. The caller is signed in and counted first, under the shared lock; the
+/// handler then finds who it is (`A::Who`) and the server's `Arc<State>` in the request's
+/// extensions.
+pub fn agent_protocol<A: Grant>(
     method: Method,
     path: &'static str,
-    access: Agent,
+    access: A,
     handler: fn(Request) -> Served,
-) -> Route {
+) -> Route
+where
+    A::Who: Clone + Sync,
+{
+    let signer: Signer = Arc::new(move |db: &Store, state: &State, input: &Input| {
+        let who = access.authorize(db, input)?;
+        access.admit(state, &who)?;
+        Ok(Box::new(move |extensions: &mut Extensions| {
+            extensions.insert(who);
+        }))
+    });
     Route {
         method,
         path,
@@ -442,8 +391,19 @@ pub fn agent_protocol(
         work: Work::Async,
         invalidates_schedules: false,
         logged: false,
-        handler: Handler::Protocol(access, handler),
+        handler: Handler::Protocol(signer, handler),
     }
+}
+/// How an agent's request ended, as its route saw it, for the agents' piece to record.
+pub struct Answered<'a> {
+    /// The route's registered path.
+    pub path: &'static str,
+    pub at: i64,
+    pub ms: u128,
+    pub bytes: u64,
+    pub status: u16,
+    /// The code the route failed with, when it failed rather than answered.
+    pub failed: Option<&'a str>,
 }
 /// A public `method path` whose requests the handler reads and answers itself, as OAuth's
 /// form posts and redirects need. Such a path sits outside `/api/`, so the JSON-only rule
@@ -521,8 +481,8 @@ impl Route {
         self
     }
     pub(super) async fn serve(&self, state: Arc<State>, request: Request) -> Response {
-        // An agent's call is noted as the request goes, and recorded for the Activity log
-        // once answered: in memory, so recording it never waits for the database.
+        // An agent's call is noted as the request goes, and handed to the agents' piece once
+        // answered, which records it in memory, so recording it never waits for the database.
         let call = matches!(self.access, Access::Agent(_)).then(|| {
             let trace = request.extensions().get::<RequestTrace>().cloned();
             (crate::db::now(), std::time::Instant::now(), trace)
@@ -534,17 +494,17 @@ impl Route {
                 (middleware::failure(error), Some(code))
             }
         };
-        if let Some((at, started, Some(trace))) = call {
-            let noted = std::mem::take(
-                &mut trace
-                    .lock()
-                    .unwrap_or_else(|poison| poison.into_inner())
-                    .agent,
-            );
+        if let (Some((at, started, Some(trace))), Some(agents)) = (call, registry().agents) {
+            let noted = trace
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .agent
+                .take();
             let size = response.body().size_hint();
-            state.activity.finish(
+            (agents.answered)(
+                &state,
                 noted,
-                activity::Answered {
+                Answered {
                     path: self.path,
                     at,
                     ms: started.elapsed().as_millis(),
@@ -563,8 +523,8 @@ impl Route {
                 let input = middleware::input(&state, request, self.path).await?;
                 return Ok(handler(state, input).await?.into_response());
             }
-            Handler::Protocol(access, handler) => {
-                let request = self.signed(*access, state, request).await?;
+            Handler::Protocol(signer, handler) => {
+                let request = self.signed(signer.clone(), state, request).await?;
                 return Ok(handler(request).await);
             }
             // Agents' sign-in, and the pages outside services send the browser back to, are
@@ -597,32 +557,21 @@ impl Route {
         }
         Ok(reply.into_response())
     }
-    /// The request with its agent's key checked and counted, carrying the caller and the
-    /// server's state for the protocol's handler. The body keeps the usual limits.
-    async fn signed(&self, access: Agent, state: Arc<State>, request: Request) -> Result<Request> {
+    /// The request with its agent signed in and counted, carrying who it is and the server's
+    /// state for the protocol's handler. The body keeps the usual limits.
+    async fn signed(&self, signer: Signer, state: Arc<State>, request: Request) -> Result<Request> {
         let (mut parts, body) = request.into_parts();
         let input = middleware::head(&state, &parts, self.path)?;
         middleware::json_only(&parts)?;
         let body = middleware::bytes(body).await?;
-        // The tool an MCP message calls, if any, for the Activity log, before the key is
-        // even counted: a call refused for its rate is still that tool's.
-        if let Some(tool) = activity::tool_call(&body) {
-            input
-                .trace
-                .lock()
-                .unwrap_or_else(|poison| poison.into_inner())
-                .agent
-                .surface = Some(tool);
+        // What the message calls, if anything, before the caller is even counted: a call
+        // refused for its rate is still noted as what it called.
+        if let Some(agents) = registry().agents {
+            (agents.called)(&input.trace, &body);
         }
         let shared = state.clone();
-        let caller = state
-            .read(move |db| {
-                let caller = access.authorize(db, &input)?;
-                access.admit(&shared, &caller)?;
-                Ok(caller)
-            })
-            .await?;
-        parts.extensions.insert(caller);
+        let who = state.read(move |db| signer(db, &shared, &input)).await?;
+        who(&mut parts.extensions);
         parts.extensions.insert(state);
         Ok(Request::from_parts(parts, Body::from(body)))
     }

@@ -342,17 +342,9 @@ pub fn restore(source: &Path, target: &Path) -> Result<Value> {
         if table_exists(&db, "invitation_routes")? {
             db.execute("DELETE FROM invitation_routes", [])?;
         }
-        // Agent keys end like sessions do. A backup older than them has none.
-        if table_exists(&db, "agent_keys")? {
-            db.execute(
-                "UPDATE agent_keys SET revoked_at=?1 WHERE revoked_at IS NULL",
-                [iso()],
-            )?;
-        }
-        // An unspent OAuth code is a short-lived bearer capability that can mint a new key.
-        // Old backups predate OAuth, so invalidate it only when the table was present.
-        if table_exists(&db, "oauth_codes")? {
-            db.execute("DELETE FROM oauth_codes WHERE used_at IS NULL", [])?;
+        // Agents' credentials end like sessions do.
+        if let Some(agents) = crate::manifest::registry().agents {
+            (agents.restored)(&db)?;
         }
     }
     // Each DSP's own sign-ins and grants end the same way. A backup older than DSPs keeping

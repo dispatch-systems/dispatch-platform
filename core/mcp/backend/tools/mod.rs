@@ -17,7 +17,7 @@ use crate::{
     Error,
     accounts::api::types::Dsp,
     db::Store,
-    manifest::{Feature, registry},
+    manifest::Feature,
     mcp::api::types::AgentTool,
     tenancy::{audit::AuditChange, catalog},
 };
@@ -257,17 +257,15 @@ impl Listed {
 pub struct Toolbox(Vec<Listed>);
 impl Toolbox {
     pub fn installed() -> Self {
-        let core = connection::TOOLS.iter().map(|&tool| Listed {
-            tool,
-            feature: None,
-        });
-        let features = registry().features.iter().flat_map(|&feature| {
-            feature.tools.iter().map(move |&tool| Listed {
-                tool,
-                feature: Some(feature),
-            })
-        });
-        Self::of(core.chain(features).collect())
+        let tools = connection::TOOLS.iter().chain(super::piece::own().tools);
+        Self::of(
+            tools
+                .map(|&tool| Listed {
+                    tool,
+                    feature: None,
+                })
+                .collect(),
+        )
     }
     pub fn of(tools: Vec<Listed>) -> Self {
         Self(tools)
@@ -512,14 +510,14 @@ fn pick(caller: &Caller, named: Option<Value>) -> Result<&Dsp, Refusal> {
     }
 }
 
-/// Panics unless every tool, core's and the features', has a name of its own as agents call
-/// it, says what it is, belongs to a part of the feature listing it, refuses arguments it
-/// doesn't name, leaves `dsp` to core, and answers an object.
-pub fn check(features: &[&Feature]) {
-    let core = connection::TOOLS.iter().map(|&tool| (tool, None));
-    let theirs = features
+/// Panics unless every tool, core's own and `tools`, has a name of its own as agents call it,
+/// says what it is, belongs to a part of the feature listing it, refuses arguments it doesn't
+/// name, leaves `dsp` to core, and answers an object.
+pub fn check(tools: &[&dyn AnyTool]) {
+    let core = connection::TOOLS
         .iter()
-        .flat_map(|&feature| feature.tools.iter().map(move |&tool| (tool, Some(feature))));
+        .map(|&tool| (tool, None::<&Feature>));
+    let theirs = tools.iter().map(|&tool| (tool, None));
     let mut names = BTreeSet::new();
     for (tool, feature) in core.chain(theirs) {
         let name = tool.name();

@@ -1,7 +1,6 @@
 use super::*;
 use crate::{
     foundation::config::Environment,
-    manifest::{feature, optional},
     mcp::api::types::{AgentAccess, AgentKeyRequest},
     tenancy::api::types::DspStatus,
 };
@@ -199,63 +198,33 @@ impl Tool for Elsewhere {
 #[test]
 #[should_panic(expected = "is not lowercase words joined by _")]
 fn a_tool_is_called_by_lowercase_words() {
-    static LISTING: Feature = Feature {
-        switch: optional("listing", "Listing", &[]),
-        tools: &[&Misnamed],
-        ..feature("listing")
-    };
-    check(&[&LISTING]);
+    check(&[&Misnamed]);
 }
 #[test]
 #[should_panic(expected = "two tools are called echo")]
 fn two_tools_never_share_a_name() {
-    static FIRST: Feature = Feature {
-        switch: optional("first", "First", &[]),
-        tools: &[&Echo],
-        ..feature("first")
-    };
-    static SECOND: Feature = Feature {
-        switch: optional("second", "Second", &[]),
-        tools: &[&Echo],
-        ..feature("second")
-    };
-    check(&[&FIRST, &SECOND]);
+    check(&[&Echo, &Echo]);
 }
 #[test]
 #[should_panic(expected = "lenient takes an object that refuses fields it doesn't name")]
 fn a_tool_refuses_arguments_it_does_not_name() {
-    static LISTING: Feature = Feature {
-        switch: optional("listing", "Listing", &[]),
-        tools: &[&Lenient],
-        ..feature("listing")
-    };
-    check(&[&LISTING]);
+    check(&[&Lenient]);
 }
 #[test]
 #[should_panic(expected = "chooser names its own `dsp`")]
 fn a_dsp_tool_leaves_choosing_the_dsp_to_core() {
-    static LISTING: Feature = Feature {
-        switch: optional("listing", "Listing", &[]),
-        tools: &[&Chooser],
-        ..feature("listing")
-    };
-    check(&[&LISTING]);
+    check(&[&Chooser]);
 }
 #[test]
 #[should_panic(expected = "elsewhere belongs to timecard.meals, which is no part of the feature")]
 fn a_tool_belongs_to_a_part_of_its_own_feature() {
-    static LISTING: Feature = Feature {
-        switch: optional("listing", "Listing", &[]),
-        tools: &[&Elsewhere],
-        ..feature("listing")
-    };
-    check(&[&LISTING]);
+    check(&[&Elsewhere]);
 }
 
 /// Calls an installed tool as `caller` now is, with the DSP it reaches.
 fn called(db: &Store, caller: &Caller, name: &str) -> Answer<Value> {
     let caller = db.revalidate_agent(caller).unwrap();
-    crate::testing::call_tool(db, &caller, name, json!({}))
+    crate::mcp::testing::call_tool(db, &caller, name, json!({}))
 }
 fn code(answer: Answer<Value>) -> String {
     match answer {
@@ -271,7 +240,7 @@ fn a_key_uses_the_tools_chosen_for_it_and_new_ones_only_when_they_read() {
     let owner = crate::testing::platform_owner(&db);
     // A new key starts with every tool that only reads.
     assert_eq!(Toolbox::installed().defaults(), ["stand_in_read"]);
-    let caller = crate::testing::agent(&db, &[&dsp], &["stand_in_read"]);
+    let caller = crate::mcp::testing::agent(&db, &[&dsp], &["stand_in_read"]);
     let listed = db.agent_keys(&HashMap::new()).unwrap();
     let names: Vec<&str> = listed.tools.iter().map(|tool| tool.name.as_str()).collect();
     assert_eq!(names, ["stand_in_read", "stand_in_change"]);
