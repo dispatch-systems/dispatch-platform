@@ -8,7 +8,7 @@ use super::{
         routes::{agent_api, oauth as oauth_routes},
         types::{AgentAccess, AgentActivityKey, AgentKeyKind},
     },
-    client_label, migrations, oauth,
+    client_label, keys, migrations, oauth,
     tools::{self, AnyTool},
     usage::Usage,
 };
@@ -35,8 +35,8 @@ use std::{
     time::Duration,
 };
 
-/// The MCP, as the app installs it.
-pub const AGENTS: Agents = piece(&Own { tools: &[] });
+/// The MCP, as the app installs it: one static, so its address is the registry's own.
+pub static AGENTS: Agents = piece(&Own { tools: &[] });
 
 /// The MCP with `own`'s tools beside core's, as the app installs it or a test installs it
 /// with tools of its own.
@@ -273,8 +273,7 @@ fn answered(state: &State, noted: Option<Box<dyn Any + Send>>, answered: Answere
 
 /// A reset can follow a stolen password, so the keys and apps of its owner end with it.
 fn password_reset(db: &Store, user: &str) -> Result<()> {
-    db.revoke_agent_keys_within(Some(user), Some(user))
-        .map(|_| ())
+    keys::revoke_agent_keys_within(db, Some(user), Some(user)).map(|_| ())
 }
 
 /// Agent keys end like sessions do, and an unspent OAuth code, a short-lived bearer

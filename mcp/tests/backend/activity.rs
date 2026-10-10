@@ -176,3 +176,43 @@ fn every_page_of_the_log_reads_one_index_in_order() {
     assert!(plans[1].contains("agent_activity_key"), "{}", plans[1]);
     assert!(plans[3].contains("agent_activity_refused"), "{}", plans[3]);
 }
+
+#[test]
+fn the_log_names_each_dsp_as_it_is_now_or_as_it_was_once_gone() {
+    crate::testing::install();
+    let (_root, db, dsp) = dispatch_core::testing::bootstrapped();
+    let at_dsp = |at: i64, id: &str, name: &str| Call {
+        dsp: Some(AgentDsp {
+            id: id.into(),
+            name: name.into(),
+        }),
+        ..call(at, "key_a", "ok")
+    };
+    db.record_agent_activity(&[
+        at_dsp(now() - 2_000, &dsp, "Before its rename"),
+        at_dsp(now() - 1_000, "dsp_gone", "A DSP since removed"),
+    ])
+    .unwrap();
+    dispatch_core::testing::set_dsp(&db, &dsp, "Renamed Logistics", "UTC").unwrap();
+    let page = db
+        .agent_activity(&ActivityQuery {
+            key: None,
+            outcomes: Outcomes::All,
+            before: None,
+            limit: 50,
+        })
+        .unwrap();
+    let named: Vec<(String, String)> = page
+        .rows
+        .iter()
+        .filter_map(|row| row.dsp.as_ref())
+        .map(|dsp| (dsp.id.clone(), dsp.name.clone()))
+        .collect();
+    assert_eq!(
+        named,
+        [
+            ("dsp_gone".to_owned(), "A DSP since removed".to_owned()),
+            (dsp, "Renamed Logistics".to_owned()),
+        ]
+    );
+}

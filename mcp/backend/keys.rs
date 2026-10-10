@@ -135,10 +135,6 @@ pub trait KeyStore {
     /// the tokens of the apps and the approvals not yet redeemed. Answers how many.
     fn revoke_agent_keys(&self, actor: Option<&str>, owner: Option<&str>) -> Result<usize>;
 
-    /// The same inside a transaction the caller holds, so the revocation stands or falls
-    /// with what it belongs to, such as a password reset.
-    fn revoke_agent_keys_within(&self, actor: Option<&str>, owner: Option<&str>) -> Result<usize>;
-
     /// The agent a key belongs to, or why it may not sign in.
     fn authenticate_agent(&self, token: &str, client: &str) -> Result<Caller>;
 
@@ -328,28 +324,7 @@ impl KeyStore for Store {
 
     fn revoke_agent_keys(&self, actor: Option<&str>, owner: Option<&str>) -> Result<usize> {
         self.platform
-            .transaction(|| self.revoke_agent_keys_within(actor, owner))
-    }
-
-    fn revoke_agent_keys_within(&self, actor: Option<&str>, owner: Option<&str>) -> Result<usize> {
-        let revoked = self.platform.exec(
-            "UPDATE agent_keys SET revoked_at=?1 WHERE revoked_at IS NULL \
-             AND (?2 IS NULL OR user_id=?2)",
-            params![iso(), owner],
-        )?;
-        self.platform.exec(
-            "DELETE FROM oauth_tokens WHERE key_id IN \
-             (SELECT id FROM agent_keys WHERE revoked_at IS NOT NULL)",
-            [],
-        )?;
-        self.platform.exec(
-            "DELETE FROM oauth_codes WHERE used_at IS NULL AND (?1 IS NULL OR approved_by=?1)",
-            [owner],
-        )?;
-        if revoked > 0 {
-            self.audit(actor, None, "agent.keys_revoked", &revoked.to_string())?;
-        }
-        Ok(revoked)
+            .transaction(|| revoke_agent_keys_within(self, actor, owner))
     }
 
     fn authenticate_agent(&self, token: &str, client: &str) -> Result<Caller> {
@@ -446,6 +421,33 @@ impl KeyStore for Store {
             dsps,
         })
     }
+}
+
+/// `KeyStore::revoke_agent_keys` inside a transaction the caller holds, so the revocation
+/// stands or falls with what it belongs to, such as a password reset.
+pub(crate) fn revoke_agent_keys_within(
+    db: &Store,
+    actor: Option<&str>,
+    owner: Option<&str>,
+) -> Result<usize> {
+    let revoked = db.platform.exec(
+        "UPDATE agent_keys SET revoked_at=?1 WHERE revoked_at IS NULL \
+         AND (?2 IS NULL OR user_id=?2)",
+        params![iso(), owner],
+    )?;
+    db.platform.exec(
+        "DELETE FROM oauth_tokens WHERE key_id IN \
+         (SELECT id FROM agent_keys WHERE revoked_at IS NOT NULL)",
+        [],
+    )?;
+    db.platform.exec(
+        "DELETE FROM oauth_codes WHERE used_at IS NULL AND (?1 IS NULL OR approved_by=?1)",
+        [owner],
+    )?;
+    if revoked > 0 {
+        db.audit(actor, None, "agent.keys_revoked", &revoked.to_string())?;
+    }
+    Ok(revoked)
 }
 
 fn agent_dsp_choices(db: &Store) -> Result<Vec<AgentDsp>> {
