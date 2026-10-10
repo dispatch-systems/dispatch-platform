@@ -11,7 +11,7 @@ export { Header } from './Header.js';
 export { Loading } from './Loading.js';
 export { Modal } from './Modal.js';
 export { Pagination } from './Pagination.js';
-export { Popover } from './Popover.js';
+export { Popover, openContextMenu } from './Popover.js';
 export { SearchInput } from './SearchInput.js';
 export { RecoveryCodes } from './RecoveryCodes.js';
 export { SortHeader } from './SortHeader.js';

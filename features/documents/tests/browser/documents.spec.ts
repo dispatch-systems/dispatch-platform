@@ -113,8 +113,9 @@ test('a member names files as they upload, drops one on the page, renames and do
   await renaming.getByRole('textbox', { name: 'Name' }).fill('Route notes week 41');
   await renaming.getByRole('button', { name: 'Rename' }).click();
 
+  // Right-clicking a file opens the same menu as its button.
   const saving = page.waitForEvent('download');
-  await page.getByLabel('Actions for Route notes week 41.txt').click();
+  await page.getByRole('link', { name: /Route notes week 41\.txt/ }).click({ button: 'right' });
   await page.getByRole('button', { name: 'Download' }).click();
   const saved = await saving;
   expect(saved.suggestedFilename()).toBe('Route notes week 41.txt');
