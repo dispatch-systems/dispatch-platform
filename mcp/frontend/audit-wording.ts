@@ -30,11 +30,11 @@ const phrases: AuditPhrases = {
   ],
 };
 
-// The tools a key or app may use, and whether tools that only read come as they are added.
+// The tools a key or app may use, and whether tools come, to read, as they are added.
 // Earlier key changes, from when keys chose what they read: a kind of data each, as
 // `reads.timecards`, reads as its title.
 const fields: Record<string, string> = {
-  all_tools: 'New tools that only read',
+  all_tools: 'New tools, to read',
   bypass: 'Bypass features',
   dsp_reads: 'DSP settings',
   tools: 'Tools',

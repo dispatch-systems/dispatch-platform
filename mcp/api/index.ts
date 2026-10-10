@@ -16,6 +16,7 @@ export type { AgentTool } from './generated/AgentTool.js';
 export type { AgentWhoami } from './generated/AgentWhoami.js';
 export type { AgentWhoamiDsp } from './generated/AgentWhoamiDsp.js';
 export type { AgentWhoamiKey } from './generated/AgentWhoamiKey.js';
+export type { ToolLevel } from './generated/ToolLevel.js';
 export type { OAuthAllowedApp } from './generated/OAuthAllowedApp.js';
 export type { OAuthAllowedApps } from './generated/OAuthAllowedApps.js';
 export type { OAuthApp } from './generated/OAuthApp.js';

@@ -9,7 +9,7 @@ use super::{
         types::{AgentAccess, AgentActivityKey, AgentKeyKind},
     },
     client_label, keys, migrations, oauth,
-    tools::{self, AnyTool},
+    toolbox::{self, AnyTool, Toolbox},
     usage::Usage,
 };
 use crate::{ActivityStore, KeyStore, OAuthStore};
@@ -38,8 +38,8 @@ use std::{
 /// The MCP, as the app installs it: one static, so its address is the registry's own.
 pub static AGENTS: Agents = piece(&Own { tools: &[] });
 
-/// The MCP with `own`'s tools beside core's, as the app installs it or a test installs it
-/// with tools of its own.
+/// The MCP with `own`'s tools beside `tools::TOOLS`: none as the app installs it, and a
+/// test's own as a test installs it.
 pub const fn piece(own: &'static Own) -> Agents {
     Agents {
         routes,
@@ -69,7 +69,8 @@ const MAINTENANCE: &[Maintenance] = &[Maintenance {
     run: upkeep,
 }];
 
-/// What only the MCP reads of its own declaration: the tools it offers beside core's.
+/// What only the MCP reads of its own declaration: the tools it offers beside
+/// `tools::TOOLS`.
 pub struct Own {
     pub tools: &'static [&'static dyn AnyTool],
 }
@@ -299,5 +300,5 @@ fn restored(db: &rusqlite::Connection) -> Result<()> {
 }
 
 fn check() {
-    tools::check(own().tools);
+    toolbox::check(Toolbox::installed().all());
 }

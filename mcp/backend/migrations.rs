@@ -1,6 +1,6 @@
 //! What agents' keys, connected apps and their activity add to the platform's database,
-//! numbered with core's own migrations there. They shipped in core's list, so each keeps the
-//! number, name and steps it was recorded with.
+//! numbered with core's own migrations there. Those that shipped in core's list each keep the
+//! number, name and steps they were recorded with.
 use dispatch_core::{
     Result,
     db::{
@@ -46,6 +46,11 @@ pub const MIGRATIONS: &[Migrations] = &[Migrations {
             id: 21,
             name: "agent_tools",
             apply: Code(agent_tools),
+        },
+        Migration {
+            id: 22,
+            name: "agent_tool_levels",
+            apply: Code(agent_tool_levels),
         },
     ],
 }];
@@ -134,4 +139,16 @@ fn agent_tools(db: &Db) -> Result<()> {
     )?;
     db.0.execute_batch(include_str!("../migrations/platform/0021_agent_tools.sql"))?;
     Ok(())
+}
+
+// changes: whether a key or app allowed a tool (`allowed`) may also change something with it,
+// rather than only read. A release before reads `allowed` alone, which stays as it was. No
+// tool that changes something has shipped, so every choice made before reads.
+fn agent_tool_levels(db: &Db) -> Result<()> {
+    add_column(
+        db,
+        "agent_key_tools",
+        "changes",
+        "INTEGER NOT NULL DEFAULT 0 CHECK(changes IN (0,1))",
+    )
 }

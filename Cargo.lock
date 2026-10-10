@@ -773,6 +773,7 @@ name = "dispatch-mcp"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "base64 0.23.1",
  "chrono",
  "chrono-tz",
  "dispatch-core",

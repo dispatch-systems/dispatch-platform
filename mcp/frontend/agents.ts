@@ -7,29 +7,50 @@ import type {
   AgentKey,
   AgentKeyRequest,
   AgentTool,
+  ToolLevel,
 } from '../api/index.js';
 import { dateFormatter } from '../../core/shell/frontend/lib/date-format.js';
 import { utcDay } from '../../core/shell/frontend/lib/format.js';
 
 /** What a key or app may use, as its row says it: "All tools", "2 of 5 tools" or "No tools",
- * and how many of them make changes. With no tools to choose yet, whether tools that only read
- * come as they are added. */
+ * and with how many of them it may make changes. With no tools to choose yet, whether tools
+ * come, to read, as they are added. */
 export function toolsText(key: Pick<AgentKey, 'allTools' | 'tools'>, tools: AgentTool[]) {
-  const allowed = tools.filter((tool) => key.tools.includes(tool.name));
-  const changes = allowed.filter((tool) => tool.changes).length;
+  const allowed = tools.filter((tool) => (key.tools[tool.name] ?? 'off') !== 'off');
+  const changes = allowed.filter((tool) => key.tools[tool.name] === 'change').length;
   if (!tools.length) return { count: key.allTools ? 'Read tools as added' : 'No tools', changes };
   if (allowed.length === tools.length) return { count: 'All tools', changes };
   if (!allowed.length) return { count: 'No tools', changes };
   return { count: `${allowed.length} of ${tools.length} tools`, changes };
 }
-/** The tools under the feature each belongs to, in their order; core's own under Dispatch. */
+/** The tools under the features each needs, in their order; one that needs none under
+ * Dispatch. */
 export function toolGroups(tools: AgentTool[]) {
   const groups = new Map<string, AgentTool[]>();
   for (const tool of tools) {
-    const label = tool.feature ?? 'Dispatch';
+    const label = tool.features.join(' and ') || 'Dispatch';
     groups.set(label, [...(groups.get(label) ?? []), tool]);
   }
   return [...groups];
+}
+/** What a key or app may do with a tool, as its choices offer it: Read and change only for a
+ * tool that can change something. */
+export const toolLevels = (tool: AgentTool): [ToolLevel, string][] => [
+  ['off', 'Off'],
+  ['read', 'Read'],
+  ...(tool.changes ? [['change', 'Read and change'] as [ToolLevel, string]] : []),
+];
+/** `tools` with `name` at `level`: a tool that is off is left out. */
+export function withLevel(
+  tools: Partial<Record<string, ToolLevel>>,
+  name: string,
+  level: ToolLevel,
+): Record<string, ToolLevel> {
+  const next: Record<string, ToolLevel> = {};
+  for (const [tool, given] of Object.entries(tools))
+    if (tool !== name && given && given !== 'off') next[tool] = given;
+  if (level !== 'off') next[name] = level;
+  return next;
 }
 
 const DAY = 86_400_000;
@@ -148,15 +169,15 @@ export function surfaceOf(surface: string) {
     : { via: '', name: surface };
 }
 
-/** A new key's or app's starting point: every DSP, every tool that only reads and those added
- * later, none that makes changes. */
+/** A new key's or app's starting point: every DSP, and every tool, those added later
+ * included, to read. Nothing makes changes. */
 export const blankKey = (tools: AgentTool[]): AgentKeyRequest => ({
   name: '',
   allDsps: true,
   dsps: [],
   access: 'read',
   allTools: true,
-  tools: tools.filter((tool) => !tool.changes).map((tool) => tool.name),
+  tools: Object.fromEntries(tools.map((tool) => [tool.name, 'read' as const])),
   expiresAt: null,
 });
 export const requestOf = (key: AgentKey): AgentKeyRequest => ({
@@ -165,7 +186,7 @@ export const requestOf = (key: AgentKey): AgentKeyRequest => ({
   dsps: [...key.dsps].sort(),
   access: key.access,
   allTools: key.allTools,
-  tools: [...key.tools].sort(),
+  tools: withLevel(key.tools, '', 'off'),
   expiresAt: key.expiresAt,
 });
 const comparable = (key: AgentKeyRequest) =>
@@ -175,7 +196,7 @@ const comparable = (key: AgentKeyRequest) =>
     [...key.dsps].sort(),
     key.access,
     key.allTools,
-    [...key.tools].sort(),
+    Object.entries(key.tools).sort(([a], [b]) => a.localeCompare(b)),
     key.expiresAt,
   ]);
 export const sameRequest = (a: AgentKeyRequest, b: AgentKeyRequest) =>

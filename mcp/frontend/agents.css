@@ -275,7 +275,7 @@
   font-size: 13px;
   color: var(--muted-foreground);
 }
-/* A switch for each tool, under the feature it belongs to. */
+/* A choice for each tool, under the features it needs. */
 .agents-tools {
   margin-top: 10px;
   border: 1px solid var(--border);
@@ -293,12 +293,15 @@
   color: var(--muted-foreground);
 }
 .agents-tool {
+  display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 9px 14px;
   font-weight: 400;
+}
+label.agents-tool {
   cursor: pointer;
 }
 .agents-tool small {
@@ -306,6 +309,45 @@
   margin-top: 1px;
   font-size: 12px;
   color: var(--muted-foreground);
+}
+/* What it may do with a tool: Off, Read, or Read and change, side by side. */
+.agents-levels {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.agents-level {
+  position: relative;
+  flex-direction: row;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.agents-level + .agents-level {
+  border-left: 1px solid var(--border);
+}
+.agents-level input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.agents-level span {
+  padding: 5px 10px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.agents-level:has(input:checked) span {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.agents-level:has(input:focus-visible) span {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }
 /* Whether tools added later come with it: a box of its own, under the tools. */
 .agents-new-tools {

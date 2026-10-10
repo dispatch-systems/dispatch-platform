@@ -120,9 +120,9 @@ test("a feature's and a collector's root hold only their pieces", () => {
   holds('anatomy', 'roots', stray);
 });
 
-// The MCP is one owner in one folder: its crate, its README, and the pieces a feature may
-// have, each with its tests.
-const mcpPieces = ['backend', 'api', 'frontend', 'migrations', 'tests'];
+// The MCP is one owner in one folder: its crate, its README, its tools, and the pieces a
+// feature may have, each with its tests.
+const mcpPieces = ['backend', 'api', 'frontend', 'migrations', 'tests', 'tools'];
 test("the MCP's root holds its crate, its README and its pieces, each with its tests", () => {
   const out = [
     ...['Cargo.toml', 'mcp.rs', 'README.md']

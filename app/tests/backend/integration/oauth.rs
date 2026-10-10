@@ -379,7 +379,7 @@ impl Server {
     }
 }
 fn everything(name: &str) -> Value {
-    json!({"name":name,"allDsps":true,"dsps":[],"allTools":true,"tools":[]})
+    json!({"name":name,"allDsps":true,"dsps":[],"allTools":true,"tools":{}})
 }
 
 #[tokio::test]
@@ -919,7 +919,7 @@ async fn a_name_a_key_or_another_app_holds_stays_taken() {
             "POST",
             "/api/platform/agents/keys",
             json!({"name":"Desk key","allDsps":true,"dsps":[],"access":"read",
-                "allTools":true,"tools":[],"expiresAt":null}),
+                "allTools":true,"tools":{},"expiresAt":null}),
         )
         .await;
     assert_eq!(key.status, 200, "{}", key.body);
@@ -1480,7 +1480,7 @@ async fn expired_or_revoked_access_ends_with_invalid_token() {
             "POST",
             &format!("/api/platform/agents/keys/{id}"),
             json!({"name":"Claude Code","allDsps":true,"dsps":[],"access":"operator",
-                "allTools":true,"tools":[],"expiresAt":null}),
+                "allTools":true,"tools":{},"expiresAt":null}),
         )
         .await;
     // An app is edited like a key, but only ever reads.
@@ -1520,7 +1520,7 @@ async fn a_connected_app_reaches_only_what_the_owner_chose() {
             &owner,
             CHATGPT,
             CHATGPT_REDIRECT,
-            json!({"name":"ChatGPT","allDsps":false,"dsps":[north],"allTools":true,"tools":[]}),
+            json!({"name":"ChatGPT","allDsps":false,"dsps":[north],"allTools":true,"tools":{}}),
         )
         .await;
     let access = s(&tokens, "access_token");
@@ -1529,7 +1529,7 @@ async fn a_connected_app_reaches_only_what_the_owner_chose() {
     assert_eq!(
         whoami.body["key"],
         json!({"name":"ChatGPT","access":"read","expiresAt":null,
-            "tools":["get_profile","whoami"]})
+            "tools":{"get_profile":"read","whoami":"read"}})
     );
     let dsps: Vec<&str> = whoami.body["dsps"]
         .as_array()
@@ -2580,7 +2580,7 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
         .approved(
             &owner,
             &request,
-            json!({"name":"Laptop","allDsps":false,"dsps":[north],"allTools":true,"tools":[]}),
+            json!({"name":"Laptop","allDsps":false,"dsps":[north],"allTools":true,"tools":{}}),
         )
         .await;
     let tokens = server.exchange(CLAUDE_CODE, local, &code).await;
@@ -2596,7 +2596,7 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
             "App: Claude Code (known metadata)",
             "Sends access to: this computer",
             "DSPs: Northline Logistics",
-            "Tools: Any that only read, as they are added",
+            "Tools: Any, to read, as they are added",
             "Approved by: Platform Owner",
             &format!("{}/#agents?tab=apps", server.origin),
             &format!("This notice was sent to {to}"),
@@ -2643,7 +2643,7 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
         assert!(text.contains("one-time code"), "{text}");
         assert!(text.contains("Sent access to: chatgpt.com"), "{text}");
         assert!(
-            text.contains("Tools: Any that only read, as they are added\n"),
+            text.contains("Tools: Any, to read, as they are added\n"),
             "{text}"
         );
     }
@@ -3003,16 +3003,16 @@ async fn an_approval_keeps_its_choices_and_one_from_before_still_connects() {
         .approved(
             &owner,
             &request,
-            json!({"name":"Laptop","allDsps":false,"dsps":[north],"allTools":true,"tools":[]}),
+            json!({"name":"Laptop","allDsps":false,"dsps":[north],"allTools":true,"tools":{}}),
         )
         .await;
     // The code carries the choices until the app redeems it; an older release redeeming one
-    // in a rollback reads that it may read nothing.
+    // in a rollback reads that it may read nothing, and uses the tools of `agent_tools`.
     assert_eq!(
         stored_choices(&server, &code).await,
         json!({"name":"Laptop","all_dsps":false,"dsps":[north],"all_tools":true,
-            "agent_tools":[],"reads":{"areas":[],"bypass":false},"tools":"full",
-            "locations":false})
+            "tool_levels":{},"agent_tools":[],"reads":{"areas":[],"bypass":false},
+            "tools":"full","locations":false})
     );
     let tokens = server.exchange(CLAUDE_CODE, local, &code).await;
     assert_eq!(tokens.status, 200, "{}", tokens.body);
@@ -3059,7 +3059,7 @@ async fn a_connected_app_is_edited_like_a_key_but_only_ever_reads_and_never_expi
             &owner,
             CLAUDE_CODE,
             local,
-            json!({"name":"Laptop","allDsps":false,"dsps":[north],"allTools":true,"tools":[]}),
+            json!({"name":"Laptop","allDsps":false,"dsps":[north],"allTools":true,"tools":{}}),
         )
         .await;
     let access = s(&tokens, "access_token").to_owned();
@@ -3067,7 +3067,7 @@ async fn a_connected_app_is_edited_like_a_key_but_only_ever_reads_and_never_expi
     let path = format!("/api/platform/agents/keys/{id}");
     let edit = |change: Value| {
         let mut body = json!({"name":"Laptop","allDsps":false,"dsps":[north],"access":"read",
-            "allTools":true,"tools":[],"expiresAt":null});
+            "allTools":true,"tools":{},"expiresAt":null});
         for (field, value) in change.as_object().unwrap() {
             body[field] = value.clone();
         }
@@ -3120,7 +3120,7 @@ async fn agents_ask_for_no_recent_verification_while_removing_a_dsp_still_does()
     let server = Server::paired().await;
     let earlier = server.signed_in(db::now() - DAY).await;
     let north = server.dsp("Northline Logistics").await;
-    let key = |name: &str| json!({"name":name,"allDsps":true,"dsps":[],"access":"read","allTools":true,"tools":[],"expiresAt":null});
+    let key = |name: &str| json!({"name":name,"allDsps":true,"dsps":[],"access":"read","allTools":true,"tools":{},"expiresAt":null});
     // A day after signing in, the owner makes and edits a key, approves an app and edits it.
     let made = server
         .as_owner(&earlier, "POST", "/api/platform/agents/keys", key("Desk"))

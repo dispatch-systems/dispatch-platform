@@ -1,14 +1,14 @@
 import { useId } from 'react';
-import type { AgentKey, AgentKeyRequest, AgentTool } from '../api/index.js';
-import { toolGroups, toolsText } from './agents.js';
+import type { AgentKey, AgentKeyRequest, AgentTool, ToolLevel } from '../api/index.js';
+import { toolGroups, toolLevels, toolsText, withLevel } from './agents.js';
 
 /** What a key or app may use. */
 type Choices = Pick<AgentKeyRequest, 'allTools' | 'tools'>;
 
 /**
- * What a key or app may use: a switch for each tool, under the feature it belongs to, those that
- * make changes marked, and whether tools added later that only read come as they are added. A
- * tool that makes changes always waits until it is switched on here.
+ * What a key or app may do with each tool, under the features it needs: Off, Read, or for a
+ * tool that can change something, Read and change; and whether tools added later come, to
+ * read, as they are added. Nothing added later changes something until it is allowed to here.
  */
 export function ToolChoices({
   tools,
@@ -20,14 +20,14 @@ export function ToolChoices({
   set: (change: Partial<Choices>) => void;
 }) {
   const id = useId();
-  const toggle = (name: string, on: boolean) =>
-    set({ tools: on ? [...form.tools, name] : form.tools.filter((tool) => tool !== name) });
+  const choose = (name: string, level: ToolLevel) =>
+    set({ tools: withLevel(form.tools, name, level) });
   return (
     <fieldset aria-describedby={`${id}-hint`}>
       <legend>Tools</legend>
       <p className="agents-hint" id={`${id}-hint`}>
         {tools.length
-          ? 'What it can use at the DSPs it reaches, where the tool’s feature is on.'
+          ? 'What it can do with each tool at the DSPs it reaches, where the tool’s features are on.'
           : 'No tools yet.'}
       </p>
       {tools.length > 0 && (
@@ -41,21 +41,32 @@ export function ToolChoices({
             >
               <header id={`${id}-group-${index}`}>{label}</header>
               {listed.map((tool) => (
-                <label key={tool.name} className="agents-tool">
+                <div key={tool.name} className="agents-tool">
                   <span>
                     <span id={`${id}-${tool.name}`}>{tool.title}</span>
-                    {tool.changes && <span className="agents-changes">Makes changes</span>}
+                    {tool.changes && <span className="agents-changes">Can make changes</span>}
                     <small id={`${id}-${tool.name}-hint`}>{tool.description}</small>
                   </span>
-                  <input
-                    type="checkbox"
-                    role="switch"
+                  <span
+                    className="agents-levels"
+                    role="radiogroup"
                     aria-labelledby={`${id}-${tool.name}`}
                     aria-describedby={`${id}-${tool.name}-hint`}
-                    checked={form.tools.includes(tool.name)}
-                    onChange={(event) => toggle(tool.name, event.target.checked)}
-                  />
-                </label>
+                  >
+                    {toolLevels(tool).map(([level, text]) => (
+                      <label key={level} className="agents-level">
+                        <input
+                          type="radio"
+                          name={`${id}-${tool.name}`}
+                          value={level}
+                          checked={(form.tools[tool.name] ?? 'off') === level}
+                          onChange={() => choose(tool.name, level)}
+                        />
+                        <span>{text}</span>
+                      </label>
+                    ))}
+                  </span>
+                </div>
               ))}
             </div>
           ))}
@@ -63,9 +74,9 @@ export function ToolChoices({
       )}
       <label className="agents-tool agents-new-tools">
         <span>
-          <span id={`${id}-new`}>New tools that only read</span>
+          <span id={`${id}-new`}>New tools, to read</span>
           <small id={`${id}-new-hint`}>
-            Allowed as they are added. A new tool that makes changes waits until you switch it on.
+            They can read as they are added. Nothing added later makes changes until you allow it.
           </small>
         </span>
         <input

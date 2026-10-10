@@ -43,7 +43,7 @@ const everything = (name: string): OAuthApproval => ({
   allDsps: true,
   dsps: [],
   allTools: true,
-  tools: [],
+  tools: {},
 });
 
 /** A PKCE pair as a client makes one: a random verifier and its S256 challenge. */
@@ -353,7 +353,7 @@ test('Claude Code connects by its published document and reaches only what the o
     allDsps: false,
     dsps: [c.north.id],
     allTools: true,
-    tools: [],
+    tools: {},
   });
   assert.ok(redirect.startsWith(`${callback}?`), redirect);
   const code = c.code(redirect, started.state);
@@ -399,7 +399,7 @@ test('Claude Code connects by its published document and reaches only what the o
     name: 'Laptop – Claude Code',
     access: 'read',
     expiresAt: null,
-    tools: ['get_profile', 'whoami'],
+    tools: { get_profile: 'read', whoami: 'read' },
   });
   assert.deepEqual(
     me.dsps.map((dsp) => dsp.id),
@@ -509,7 +509,7 @@ test('connecting the same app again under the same name replaces the earlier con
     allDsps: false,
     dsps: [c.north.id],
     allTools: true,
-    tools: [],
+    tools: {},
   });
   c.refused(await c.whoami(earlier.access_token), 'the replaced connection');
   const renewed = await c.refresh(claudeCode, earlier.refresh_token);
@@ -740,7 +740,7 @@ test('the platform owner is emailed when an app connects and when Dispatch disco
     allDsps: false,
     dsps: [c.north.id],
     allTools: true,
-    tools: [],
+    tools: {},
   });
   const connected = await capturedMail(f.root, owner);
   assert.equal(connected.subject, '[Dispatch Dev] Claude Code connected to Dispatch');
@@ -749,7 +749,7 @@ test('the platform owner is emailed when an app connects and when Dispatch disco
     'App: Claude Code (known metadata)',
     'Sends access to: this computer',
     'DSPs: Northline Logistics',
-    'Tools: Any that only read, as they are added',
+    'Tools: Any, to read, as they are added',
     `${c.issuer}/#agents?tab=apps`,
   ]) {
     assert.ok(connected.text.includes(line), `${line}\n${connected.text}`);

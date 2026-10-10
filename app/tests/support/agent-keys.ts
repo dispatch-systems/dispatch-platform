@@ -21,7 +21,7 @@ export async function seedAgentKeys(app: App) {
     dsps,
     access: 'read',
     allTools: true,
-    tools: [],
+    tools: {},
     expiresAt,
   });
   const keys: [AgentKeyRequest, string][] = [
