@@ -79,7 +79,10 @@ export const feature: FrontendFeature = {
       if (begins(url, '/api/dsp/paycom/status', '/api/dsp/jobs')) return true;
       return changes.some((change) => {
         if (change.provider === 'all') return true;
-        if (change.provider === 'cortex' && route !== '/api/dsp/paycom/meal-breaks') return false;
+        if (change.provider === 'cortex' && !route.startsWith('/api/dsp/paycom/meal-breaks'))
+          return false;
+        // A day's publication or match can change any summary whose pay period contains it.
+        if (route === '/api/dsp/paycom/meal-breaks/period') return true;
         if (route === '/api/dsp/paycom/settings') return Boolean(change.roster);
         if (route === '/api/dsp/employees') return Boolean(change.roster);
         if (route.startsWith('/api/dsp/employees/'))

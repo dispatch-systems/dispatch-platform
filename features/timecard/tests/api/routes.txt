@@ -7,6 +7,7 @@ GET /api/dsp/employees/{code} Dsp("timecard.view") Read
 GET /api/dsp/jobs Dsp("collections.run") Read
 GET /api/dsp/jobs/meal-breaks Dsp("timecard.view") Read
 GET /api/dsp/paycom/meal-breaks Dsp("timecard.view") Read
+GET /api/dsp/paycom/meal-breaks/period Dsp("timecard.view") Read
 GET /api/dsp/paycom/settings Dsp("timecard.view") Read
 GET /api/dsp/paycom/status Dsp("timecard.view") Read
 GET /api/dsp/schedules Dsp("timecard.manage") Read

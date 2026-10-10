@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { cortexClock, fullName, displayMeal, type ClockTime } from '../../meal-breaks.js';
+import { cortexClock, displayMeal, type ClockTime } from '../../meal-breaks.js';
 import type { MealEmployee } from '../../../api/index.js';
 import type { TableColumn } from '../../../../../core/shell/frontend/ui/index.js';
 import { Clock, GapBadge, LunchCell, type SourceLink } from './cells.js';
@@ -16,6 +16,7 @@ export interface MealLine {
   pair: Pair;
   index: number;
   more?: MealLine[];
+  onOpenEmployee?: () => void;
 }
 export function mealLines(
   row: MealEmployee,
@@ -104,7 +105,7 @@ export const mealColumns: TableColumn<MealLine>[] = [
     sticky: true,
     sortHeader,
     value: (line) => line.name,
-    cell: ({ name, summary, index }, { expanded, toggle }) =>
+    cell: ({ name, summary, index, onOpenEmployee }, { expanded, toggle }) =>
       index === 0 ? (
         <div className="meal-employee">
           <button
@@ -116,7 +117,13 @@ export const mealColumns: TableColumn<MealLine>[] = [
             {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           </button>
           <span>
-            {name}
+            {onOpenEmployee ? (
+              <button type="button" className="meal-name-link" onClick={onOpenEmployee}>
+                {name}
+              </button>
+            ) : (
+              name
+            )}
             {summary.pairs.length > 1 && <small>{summary.pairs.length} meals</small>}
             {!expanded &&
               summary.pairs
@@ -265,94 +272,3 @@ export const mealColumns: TableColumn<MealLine>[] = [
       ),
   },
 ];
-
-/** Every collected punch and meal behind an employee's row. */
-export function MealDetail({ line: { row, summary } }: { line: MealLine }) {
-  return (
-    <div className="meal-detail-grid">
-      <section>
-        <h3>Paycom punches</h3>
-        {row.paycom ? (
-          <>
-            <p>
-              {fullName(row.paycom.name)} · {row.paycom.employeeCode}
-            </p>
-            <ul>
-              {summary.paycom.events.map((event, i) => (
-                <li key={i}>
-                  <span>{event.kind}</span>
-                  <Clock value={event.time} />
-                  {!event.time && <span>{event.raw}</span>}
-                </li>
-              ))}
-            </ul>
-            {summary.paycom.legacy && (
-              <p className="muted">Labels follow the complete timecard’s punch-pair order.</p>
-            )}
-            {summary.paycom.review && (
-              <p>Some punch labels are unavailable. Review the collected punches above.</p>
-            )}
-          </>
-        ) : (
-          <p>No Paycom punches for this employee on this date.</p>
-        )}
-      </section>
-      <section>
-        <h3>Flex meals</h3>
-        {row.cortexUnreadable.map((route) => (
-          <div key={route.itineraryId}>
-            <p>
-              {fullName(route.driverName)} · {route.station} · {route.timezone}
-            </p>
-            <p className="muted">
-              Cortex sent this route’s meal punches in a shape Dispatch can’t read, so its meal
-              times are unknown.{' '}
-              {route.sourceUrl ? (
-                <a href={route.sourceUrl} target="_blank" rel="noreferrer">
-                  Check the route in Cortex
-                </a>
-              ) : (
-                'Check the route in Cortex'
-              )}
-              .
-            </p>
-          </div>
-        ))}
-        {row.cortex.length
-          ? row.cortex.map((meal, i) => (
-              <div key={`${meal.itineraryId}:${meal.mealId}`}>
-                <p>
-                  Meal {i + 1} · {fullName(meal.driverName)} · {meal.station} · {meal.timezone}
-                </p>
-                <p className="muted">
-                  Last delivery:{' '}
-                  {meal.beforeStatus === 'verified'
-                    ? 'available'
-                    : meal.beforeStatus === 'absent'
-                      ? 'none before this meal'
-                      : 'unavailable'}
-                  . First delivery:{' '}
-                  {meal.afterStatus === 'verified'
-                    ? 'available'
-                    : meal.afterStatus === 'absent'
-                      ? 'none after this meal'
-                      : meal.afterStatus === 'pending'
-                        ? 'meal has not ended'
-                        : 'unavailable'}
-                  .
-                </p>
-              </div>
-            ))
-          : !row.cortexUnreadable.length && (
-              <p>No Flex meal collected for this employee on this date.</p>
-            )}
-        {summary.pairs.length > 1 && (
-          <p className="muted">
-            Meals appear in each source’s time order. Differences are shown only when the meal
-            counts agree.
-          </p>
-        )}
-      </section>
-    </div>
-  );
-}

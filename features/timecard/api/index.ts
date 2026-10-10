@@ -19,6 +19,8 @@ export type { MealEmployee } from './generated/MealEmployee.js';
 export type { MealDriver } from './generated/MealDriver.js';
 export type { CortexPublication } from './generated/CortexPublication.js';
 export type { MealComparison } from './generated/MealComparison.js';
+export type { MealPeriod } from './generated/MealPeriod.js';
+export type { PeriodMealGap } from './generated/PeriodMealGap.js';
 export type { DeliveryGap } from './generated/DeliveryGap.js';
 export type { MealAssessment } from './generated/MealAssessment.js';
 export type { MealStatus } from './generated/MealStatus.js';

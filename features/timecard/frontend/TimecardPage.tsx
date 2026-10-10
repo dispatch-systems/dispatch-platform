@@ -15,7 +15,7 @@ import {
 import { ArrowRight, RefreshCw, Settings } from 'lucide-react';
 import type { Connection } from '../../../core/collection/api/index.js';
 import type { DspView } from '../../../core/accounts/api/index.js';
-import type { EmployeeTimecardResponse } from '../api/index.js';
+import type { EmployeeTimecardPeriod, EmployeeTimecardResponse } from '../api/index.js';
 import { paycomDefaults } from './paycom.js';
 import { useCachedData, useData } from '../../../core/shell/frontend/runtime/api.js';
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
@@ -91,6 +91,13 @@ export function isTimecardPageReady(view: DspView) {
 export function PaycomPage({ view }: { view: DspView }) {
   const canCollect = can(view, 'collections.run');
   const [selectedTab, setTab] = useUpdateState<string | undefined>('paycom-tab', undefined);
+  const [employeeSelection, setEmployeeSelection] = useUpdateState<
+    { code: string; period: EmployeeTimecardPeriod | null; date?: string } | undefined
+  >('employee-selection', undefined);
+  const [employeeView, setEmployeeView] = useUpdateState<'timecard' | 'meals'>(
+    'employee-view',
+    'timecard',
+  );
   const [pending, startTransition] = useTransition();
   const { date, today, selectDate } = usePaycomDate(view.dsp.id, view.dsp.timezone);
   const preferences = usePaycomSettings();
@@ -267,6 +274,15 @@ export function PaycomPage({ view }: { view: DspView }) {
                 refreshKey={refreshKey}
                 timezone={view.dsp.timezone}
                 dspId={view.dsp.id}
+                onOpenEmployee={
+                  hasFeature(view, 'timecard.employees')
+                    ? (code, date) => {
+                        setEmployeeSelection({ code, period: null, date });
+                        setEmployeeView('meals');
+                        startTransition(() => setTab('employees'));
+                      }
+                    : undefined
+                }
                 canMatch={can(view, 'driver_match.manage')}
                 preferences={preferences.data?.values ?? paycomDefaults}
               />
@@ -285,6 +301,14 @@ export function PaycomPage({ view }: { view: DspView }) {
               <div className="embedded-page">
                 {tab === 'employees' ? (
                   <EmployeesPage
+                    selection={employeeSelection}
+                    onSelectionChange={setEmployeeSelection}
+                    employeeView={
+                      hasFeature(view, 'timecard.meal_breaks') ? employeeView : 'timecard'
+                    }
+                    onViewChange={setEmployeeView}
+                    showMeals={hasFeature(view, 'timecard.meal_breaks')}
+                    today={today}
                     refreshKey={`${refreshKey}:${syncRevision}`}
                     actions={(timecard) => (
                       <>

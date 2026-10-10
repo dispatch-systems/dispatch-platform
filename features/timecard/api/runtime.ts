@@ -7,6 +7,7 @@ import type {
   Punch,
   PaycomDay,
   MealComparison,
+  MealPeriod,
   MealEmployee,
   MealAssessment,
   PaycomPreferences,
@@ -186,6 +187,14 @@ export const mealComparisonSchema = z.object({
     }),
   ),
 }) satisfies z.ZodType<MealComparison>;
+export const mealPeriodSchema = z.object({
+  period,
+  days: z.array(mealComparisonSchema),
+  gaps: z.array(
+    z.object({ date: text, meal: count, side: z.enum(['before', 'after']), milliseconds: count }),
+  ),
+  excessMilliseconds: count,
+}) satisfies z.ZodType<MealPeriod>;
 const preferences = z.object({
   opening_page: z.enum(['timecards', 'meal-breaks', 'employees']),
   rows_per_page: z.union([z.literal(25), z.literal(50), z.literal(100)]),
@@ -218,6 +227,7 @@ export const replies: Replies = (route, method) => {
     if (/^\/api\/dsp\/employees\/[^/]+$/.test(route)) return employeeTimecardSchema;
     if (route === '/api/dsp/timecards') return dailyTimecardsSchema;
     if (route === '/api/dsp/paycom/meal-breaks') return mealComparisonSchema;
+    if (route === '/api/dsp/paycom/meal-breaks/period') return mealPeriodSchema;
     return undefined;
   }
   if (route === '/api/dsp/jobs') return jobSchema;

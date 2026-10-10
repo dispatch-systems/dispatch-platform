@@ -76,7 +76,7 @@
 }
 .employees-workspace {
   display: grid;
-  grid-template-columns: minmax(240px, 0.86fr) minmax(0, 1.4fr);
+  grid-template-columns: minmax(220px, 0.65fr) minmax(0, 1.6fr);
   border-top: 1px solid var(--border);
   overflow: hidden;
   background: var(--card);
@@ -386,4 +386,19 @@
     width: 44px;
     min-height: 44px;
   }
+}
+
+.employee-meals.meal-page {
+  margin-top: 0;
+}
+.employee-meals .meal-gap-summary {
+  margin-bottom: 18px;
+}
+.employee-meals .meal-table th:first-child {
+  min-width: 135px;
+}
+.employee-meals .meal-focused-day > * {
+  box-shadow:
+    inset 0 2px var(--primary),
+    inset 0 -2px var(--primary);
 }

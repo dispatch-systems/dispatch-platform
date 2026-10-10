@@ -18,13 +18,13 @@ import { time } from '../../../../../core/shell/frontend/lib/format.js';
 import { clockLabel, displayMeal, personName } from '../../meal-breaks.js';
 import type { MealEmployee, PaycomPreferences } from '../../../api/index.js';
 import { PaycomDateControls } from '../../DateControls.js';
-import { MealDetail, mealColumns, mealLines, type MealLine } from './mealColumns.js';
+import { mealColumns, mealLines, type MealLine } from './mealColumns.js';
 import { useAdjacentDays } from '../../useAdjacentDays.js';
+import { MealDetail } from './MealGapSummary.js';
 import './meal-breaks.css';
 
 const rowClassName = (_: MealLine, { depth }: { depth: number }) =>
   depth ? 'meal-extra' : undefined;
-const renderDetail = (line: MealLine) => <MealDetail line={line} />;
 
 export function MealBreaksPage({
   date,
@@ -35,6 +35,7 @@ export function MealBreaksPage({
   dspId,
   canMatch,
   preferences,
+  onOpenEmployee,
 }: {
   date: string;
   today: string;
@@ -45,6 +46,7 @@ export function MealBreaksPage({
   /** Whether the person may review matches in Settings → Driver Match. */
   canMatch: boolean;
   preferences: PaycomPreferences;
+  onOpenEmployee?: (code: string, date: string) => void;
 }) {
   const driverMatch = settingsHash(dspId, 'driver-match');
   const [query, setQuery] = useUpdateState('meal-query', ''),
@@ -61,12 +63,16 @@ export function MealBreaksPage({
   const nameOrder = preferences.name_order;
   const lateTime = preferences.late_da_time,
     lateDepartments = preferences.late_da_departments;
-  const rows = useMemo(
+  const rows = useMemo<MealLine[]>(
     () =>
-      (data?.rows ?? []).map((row: MealEmployee) =>
-        mealLines(row, displayMeal(row), personName(row.name, nameOrder), shownDate),
-      ),
-    [data, shownDate, nameOrder],
+      (data?.rows ?? []).map((row: MealEmployee) => ({
+        ...mealLines(row, displayMeal(row), personName(row.name, nameOrder), shownDate),
+        onOpenEmployee:
+          onOpenEmployee && row.id.startsWith('paycom:')
+            ? () => onOpenEmployee(row.id.slice(7), shownDate)
+            : undefined,
+      })),
+    [data, shownDate, nameOrder, onOpenEmployee],
   );
   const prepared = useMemo(() => {
     const counts = { all: rows.length, late: 0, different: 0, missing: 0, gaps: 0 };
@@ -245,7 +251,7 @@ export function MealBreaksPage({
                   className="meal-table"
                   caption={`Meal breaks for ${shownDate}. Paycom local clock times and Flex station-local times, compared to the minute.`}
                   rowClassName={rowClassName}
-                  renderDetail={renderDetail}
+                  renderDetail={(line) => <MealDetail line={line} refreshKey={refreshKey} />}
                   detailClassName="meal-detail"
                 />
               </div>

@@ -331,32 +331,6 @@
   background: var(--muted);
   white-space: normal;
 }
-.meal-detail-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 32px;
-}
-.meal-detail-grid h3 {
-  font-size: 13px;
-  margin: 0 0 10px;
-}
-.meal-detail-grid p {
-  font-size: 12px;
-  margin: 6px 0;
-}
-.meal-detail-grid ul {
-  padding: 0;
-  margin: 12px 0;
-  list-style: none;
-}
-.meal-detail-grid li {
-  display: flex;
-  gap: 16px;
-  margin: 6px 0;
-}
-.meal-detail-grid li > span:first-child {
-  min-width: 100px;
-}
 .paycom-day-results .pagination-pages {
   padding: 12px 18px;
   border-top: 1px solid var(--border);
@@ -402,4 +376,57 @@
     min-width: 155px;
     max-width: 175px;
   }
+}
+.meal-name-link {
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+.meal-name-link:hover,
+.meal-name-link:focus-visible {
+  color: var(--primary);
+  text-decoration: underline;
+}
+.meal-gap-summary-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+.meal-gap-summary-heading strong {
+  font-size: 16px;
+  margin-inline: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.meal-gap-summary > p {
+  margin: 10px 0;
+  font-size: 12px;
+}
+.meal-gap-list {
+  width: 100%;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.meal-table .meal-gap-list th,
+.meal-table .meal-gap-list td {
+  padding: 8px 12px;
+  height: auto;
+  min-width: 0;
+  white-space: normal;
+  background: transparent;
+}
+.meal-gap-list th,
+.meal-gap-list td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.meal-gap-list td:nth-last-child(-n + 2) {
+  white-space: nowrap;
 }

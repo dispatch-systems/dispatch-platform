@@ -55,6 +55,7 @@ pub fn routes() -> Vec<Route> {
         read("/api/dsp/paycom/settings", VIEW, paycom_settings).logged(),
         write("/api/dsp/paycom/settings", MANAGE, save_paycom_settings),
         read("/api/dsp/paycom/meal-breaks", VIEW, meal_comparison).logged(),
+        read("/api/dsp/paycom/meal-breaks/period", VIEW, meal_period).logged(),
         read("/api/dsp/cortex/meal-breaks", VIEW, cortex_meal_breaks),
         job_list("/api/dsp/jobs", RUN, KINDS).logged(),
         write("/api/dsp/jobs", RUN, collect),
@@ -99,7 +100,13 @@ fn employees(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 fn employee(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     tab(c, EMPLOYEES)?;
     let q = &input.query;
-    v::fields(q, &["from", "to"])?;
+    v::fields(q, &["from", "to", "date"])?;
+    let date = optional(q, "date", |q, key| v::text(q, key, 10, 10))?;
+    dispatch_core::ensure(
+        date.is_none() || (q.get("from").is_none() && q.get("to").is_none()),
+        "invalid_period",
+        400,
+    )?;
     let period = if q.get("from").is_some() || q.get("to").is_some() {
         let from = v::text(q, "from", 10, 10)?;
         let to = v::text(q, "to", 10, 10)?;
@@ -112,6 +119,11 @@ fn employee(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         })
     } else {
         None
+    };
+    let period = if date.is_some() {
+        Some(db.timecard_period(c.dsp_id(), Some(input.param("code")), date, None)?)
+    } else {
+        period
     };
     Reply::of(&db.employee_timecard(c.dsp_id(), input.param("code"), period.as_ref())?)
 }
@@ -194,6 +206,34 @@ fn meal_comparison(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         || db.meal_comparison(c.dsp_id(), date, c.dsp.timezone.as_str()),
     )?;
     Ok(Reply::encoded(comparison))
+}
+
+fn meal_period(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    tab(c, MEAL_BREAKS)?;
+    let q = &input.query;
+    v::fields(q, &["source", "date", "from", "to"])?;
+    let source = v::text(q, "source", 1, 200)?;
+    let date = optional(q, "date", |q, key| v::text(q, key, 10, 10))?;
+    dispatch_core::ensure(
+        date.is_none() || (q.get("from").is_none() && q.get("to").is_none()),
+        "invalid_period",
+        400,
+    )?;
+    let requested = if q.get("from").is_some() || q.get("to").is_some() {
+        Some(EmployeeTimecardPeriod {
+            from: v::text(q, "from", 10, 10)?.into(),
+            to: v::text(q, "to", 10, 10)?.into(),
+        })
+    } else {
+        None
+    };
+    Reply::of(&db.meal_period(
+        c.dsp_id(),
+        source,
+        date,
+        requested.as_ref(),
+        c.dsp.timezone.as_str(),
+    )?)
 }
 
 fn cortex_meal_breaks(db: &Store, c: &Member, input: &Input) -> Result<Reply> {

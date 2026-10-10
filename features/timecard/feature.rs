@@ -10,7 +10,7 @@ pub use api::{
     },
     meals::{
         CortexMeal, CortexPublication, CortexUnreadable, MatchType, MealComparison, MealDriver,
-        MealEmployee, MealPaycom, MealSource,
+        MealEmployee, MealPaycom, MealPeriod, MealSource, PeriodMealGap,
     },
     settings::{
         DepartmentOption, NameOrder, PaycomColumn, PaycomOptions, PaycomPage, PaycomPreferences,
@@ -214,6 +214,8 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         MealDriver,
         CortexPublication,
         MealComparison,
+        MealPeriod,
+        PeriodMealGap,
         EmployeeTimecardResponse,
     )
 }
