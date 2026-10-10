@@ -5,7 +5,7 @@ mod backend;
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{DvicInspection, DvicInspections, DvicReport, DvicStatus, DvicWeek};
 /// What the app uses: its storage and its database.
-pub use backend::{DATABASE, DvicStore};
+pub use backend::{DATABASE, DvicCoverage, DvicDriver, DvicStore};
 
 use dispatch_core::{
     db::{

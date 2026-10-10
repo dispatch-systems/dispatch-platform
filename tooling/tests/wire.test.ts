@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   crateOf,
+  crates,
   mcpMarker,
   toolOf,
   tools,
@@ -163,6 +164,8 @@ test("the app turns on the MCP's Cargo feature of each feature its tools need", 
 
 test("the repository's tools are listed as it holds them", () => {
   const root = path.resolve(import.meta.dirname, '../..');
-  const names = tools(root, []).map((each) => each.module);
+  const list = tools(root, crates(root));
+  const names = list.map((each) => each.module);
   assert(names.includes('whoami') && names.includes('get_profile'), names.join(', '));
+  assert.deepEqual(list.find((each) => each.module === 'dvic_short_inspections')?.needs, ['dvic']);
 });

@@ -8,6 +8,24 @@ use dispatch_cortex as cortex;
 use rusqlite::params;
 use std::collections::HashMap;
 
+/// A driver DVIC has recorded short of the minimum: their transporter ID, the name their latest
+/// short inspection gave, how many short inspections, and on which days the first and last were.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DvicDriver {
+    pub id: String,
+    pub name: String,
+    pub short_inspections: usize,
+    pub first_date: String,
+    pub last_date: String,
+}
+/// The days the DSP's collected reports cover: the first, and the last. A day outside them is
+/// unknown, not a day nobody was short. Each daily report covers the eight days before it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DvicCoverage {
+    pub from: String,
+    pub through: String,
+}
+
 /// What DVIC reads and writes for a DSP: its inspections, in the database beside Cortex's,
 /// and the collections that bring them.
 pub trait DvicStore {
@@ -38,6 +56,10 @@ pub trait DvicStore {
         after: &str,
         limit: usize,
     ) -> Result<DvicInspections>;
+    /// Every driver the DSP's station has short inspections for, by name.
+    fn dvic_drivers(&self, id: &str) -> Result<Vec<DvicDriver>>;
+    /// The days the DSP's station's collected reports cover, or none before the first.
+    fn dvic_coverage(&self, id: &str) -> Result<Option<DvicCoverage>>;
 }
 impl DvicStore for Store {
     fn dvic_db(&self, id: &str) -> Result<DspLease<'_>> {
@@ -272,6 +294,49 @@ impl DvicStore for Store {
             inspections: rows,
             next_cursor,
         })
+    }
+    fn dvic_drivers(&self, id: &str) -> Result<Vec<DvicDriver>> {
+        let station = self.profile(id)?.station_code;
+        let rows = self.dvic_db(id)?.all(
+            "SELECT i.transporter_id id,\
+             (SELECT transporter_name FROM dvic_inspections n WHERE n.station=i.station \
+              AND n.transporter_id=i.transporter_id AND n.short=1 AND n.scope_verified=1 \
+              ORDER BY n.start_date DESC,n.start_time DESC LIMIT 1) name,\
+             count(*) shorts,min(i.start_date) first,max(i.start_date) last \
+             FROM dvic_inspections i WHERE i.station=? AND i.short=1 AND i.scope_verified=1 \
+             GROUP BY i.transporter_id ORDER BY name COLLATE NOCASE,id",
+            [&station],
+        )?;
+        Ok(rows
+            .iter()
+            .map(|row| DvicDriver {
+                id: s(row, "id").to_owned(),
+                name: s(row, "name").to_owned(),
+                short_inspections: row["shorts"].as_u64().unwrap_or(0) as usize,
+                first_date: s(row, "first").to_owned(),
+                last_date: s(row, "last").to_owned(),
+            })
+            .collect())
+    }
+    fn dvic_coverage(&self, id: &str) -> Result<Option<DvicCoverage>> {
+        let station = self.profile(id)?.station_code;
+        let (first, last): (Option<String>, Option<String>) = self
+            .dvic_db(id)?
+            .query_as(
+                "SELECT min(report_date),max(report_date) FROM dvic_reports \
+                 WHERE station=? AND scope_verified=1",
+                [&station],
+            )?
+            .into_iter()
+            .next()
+            .unwrap_or((None, None));
+        let shifted = |date: Option<String>, days: i64| -> Option<String> {
+            let date = chrono::NaiveDate::parse_from_str(&date?, "%Y-%m-%d").ok()?;
+            Some((date + chrono::Duration::days(days)).to_string())
+        };
+        Ok(shifted(first, -8)
+            .zip(shifted(last, -1))
+            .map(|(from, through)| DvicCoverage { from, through }))
     }
 }
 

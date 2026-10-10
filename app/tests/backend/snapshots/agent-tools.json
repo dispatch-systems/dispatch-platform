@@ -1,5 +1,168 @@
 [
   {
+    "name": "dvic_short_inspections",
+    "title": "DVIC short inspections",
+    "description": "Find the drivers whose DVIC pre-trip inspections were shorter than the minimum time (90 seconds, 300 for a step van), at one DSP: for some drivers, a day, or a range such as the last 3 days or last week. DVIC records only the inspections that fell short. Answers each driver's count and days, the inspections, and how far DVIC is collected, since a day it hasn't collected is unknown.",
+    "features": ["dvic"],
+    "changes": false,
+    "scope": "dsp",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$defs": {
+        "Week": {
+          "description": "A week, Sunday to Saturday, as the DVIC page shows it.",
+          "type": "string",
+          "enum": ["this", "last"]
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "drivers": {
+          "description": "Drivers, each by name, part of a name, or Amazon transporter ID; none for everyone.",
+          "type": ["array", "null"],
+          "items": {"type": "string"}
+        },
+        "date": {
+          "description": "One day, YYYY-MM-DD, in the DSP's own time.",
+          "type": ["string", "null"]
+        },
+        "from": {
+          "description": "The first day of a range, YYYY-MM-DD; the range ends today unless `to` says otherwise.",
+          "type": ["string", "null"]
+        },
+        "to": {
+          "description": "The last day of a range, YYYY-MM-DD; only with `from`.",
+          "type": ["string", "null"]
+        },
+        "last_days": {
+          "description": "The last this many days, today included, 1 to 366: 3 is today and the two days before.",
+          "type": ["integer", "null"],
+          "format": "int64"
+        },
+        "week": {
+          "description": "A week, Sunday to Saturday: `this` one so far, or `last` one.",
+          "anyOf": [
+            {"$ref": "#/$defs/Week"},
+            {"type": "null"}
+          ]
+        },
+        "dsp": {
+          "type": "string",
+          "description": "The DSP, by its name or ID. Leave it out when this connection reaches one DSP."
+        }
+      }
+    },
+    "output": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$defs": {
+        "Collected": {
+          "description": "The days DVIC's collected reports cover.",
+          "type": "object",
+          "properties": {"from": {"type": "string"}, "through": {"type": "string"}},
+          "required": ["from", "through"]
+        },
+        "Driver": {
+          "description": "A driver short of the minimum on the days searched.",
+          "type": "object",
+          "properties": {
+            "name": {"type": "string"},
+            "id": {"description": "Their Amazon transporter ID.", "type": "string"},
+            "short_inspections": {"type": "integer", "format": "uint", "minimum": 0},
+            "days": {
+              "description": "The days they were short, oldest first.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "most_short_by_seconds": {
+              "description": "How many seconds short their shortest inspection was of its minimum.",
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "required": ["name", "id", "short_inspections", "days", "most_short_by_seconds"]
+        },
+        "Inspection": {
+          "description": "An inspection shorter than its minimum.",
+          "type": "object",
+          "properties": {
+            "date": {"type": "string"},
+            "start_time": {
+              "description": "When it started, as Amazon's report gives it, with no time zone.",
+              "type": "string"
+            },
+            "driver": {"type": "string"},
+            "driver_id": {"description": "The driver's Amazon transporter ID.", "type": "string"},
+            "vehicle_type": {
+              "description": "CV, CDV or SV: 90 seconds is the minimum for the first two, 300 for a step van.",
+              "type": "string"
+            },
+            "vin": {"type": "string"},
+            "duration_seconds": {"type": "number", "format": "double"},
+            "minimum_seconds": {"type": "integer", "format": "uint", "minimum": 0},
+            "short_by_seconds": {"type": "number", "format": "double"}
+          },
+          "required": [
+            "date",
+            "start_time",
+            "driver",
+            "driver_id",
+            "vehicle_type",
+            "vin",
+            "duration_seconds",
+            "minimum_seconds",
+            "short_by_seconds"
+          ]
+        }
+      },
+      "required": ["dsp", "from", "to", "complete", "drivers", "inspections", "more", "not_found"],
+      "type": "object",
+      "properties": {
+        "dsp": {"description": "The DSP searched.", "type": "string"},
+        "from": {
+          "description": "The first day searched, YYYY-MM-DD, in the DSP's own time.",
+          "type": "string"
+        },
+        "to": {
+          "description": "The last day searched, YYYY-MM-DD, in the DSP's own time.",
+          "type": "string"
+        },
+        "collected": {
+          "description": "The days DVIC has collected, or null for none yet; a day outside is unknown, not clean.",
+          "anyOf": [
+            {"$ref": "#/$defs/Collected"},
+            {"type": "null"}
+          ]
+        },
+        "complete": {
+          "description": "Whether every day searched is within what is collected.",
+          "type": "boolean"
+        },
+        "drivers": {
+          "description": "Each driver short of the minimum on the days searched, the most short inspections first.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/Driver"}
+        },
+        "inspections": {
+          "description": "The short inspections, newest first, at most 100.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/Inspection"}
+        },
+        "more": {
+          "description": "How many more short inspections there are than listed: ask for fewer days to see them.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "not_found": {
+          "description": "The drivers asked for whom DVIC has never recorded short of the minimum.",
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    }
+  },
+  {
     "name": "get_profile",
     "title": "Current Dispatch profile",
     "description": "Return the stable Dispatch profile represented by this request's authenticated credentials.",

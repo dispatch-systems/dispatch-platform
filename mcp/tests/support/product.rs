@@ -3,5 +3,11 @@
 //! install them, each while the MCP's Cargo feature of a feature that brings it is on.
 use dispatch_core::manifest::{Collector, Feature};
 
-pub const COLLECTORS: &[&dyn Collector] = &[];
-pub const FEATURES: &[&Feature] = &[];
+pub const COLLECTORS: &[&dyn Collector] = &[
+    #[cfg(feature = "dvic")]
+    &dispatch_cortex::COLLECTOR,
+];
+pub const FEATURES: &[&Feature] = &[
+    #[cfg(feature = "dvic")]
+    &dispatch_dvic::FEATURE,
+];

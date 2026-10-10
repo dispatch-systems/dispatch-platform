@@ -541,3 +541,62 @@ fn the_operator_commands_hide_list_and_unhide_without_stopping_the_server() {
         "dsp_not_found"
     );
 }
+
+#[test]
+fn drivers_are_listed_by_their_latest_name_and_coverage_by_the_reports_collected() {
+    install();
+    let (_root, db, id) = ready();
+    assert_eq!(db.dvic_coverage(&id).unwrap(), None);
+    assert!(db.dvic_drivers(&id).unwrap().is_empty());
+    let older = dvic::fixture(&request(&["2026-W38"])).unwrap();
+    publish(&db, &id, "older", &older);
+    let mut newer = dvic::fixture(&request(&["2026-W39"])).unwrap();
+    let rows = newer.reports[0].rows.as_mut().unwrap();
+    rows[0].transporter_name = "Fixture Driver Jr".into();
+    let mut step_van = rows[0].clone();
+    step_van.transporter_id = "driver-2".into();
+    step_van.transporter_name = "Avery Morgan".into();
+    step_van.vin = "1FIXTURE000000002".into();
+    step_van.fleet_type = "SV".into();
+    step_van.start_time = "2026-09-26 10:00:00".into();
+    step_van.end_time = "2026-09-26 10:03:20".into();
+    step_van.duration = 200.0;
+    rows.push(step_van);
+    publish(&db, &id, "newer", &newer);
+
+    let drivers = db.dvic_drivers(&id).unwrap();
+    let listed: Vec<(&str, &str, usize, &str, &str)> = drivers
+        .iter()
+        .map(|d| {
+            let (id, name) = (d.id.as_str(), d.name.as_str());
+            (
+                id,
+                name,
+                d.short_inspections,
+                d.first_date.as_str(),
+                d.last_date.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            ("driver-2", "Avery Morgan", 1, "2026-09-26", "2026-09-26"),
+            (
+                "driver-1",
+                "Fixture Driver Jr",
+                2,
+                "2026-09-19",
+                "2026-09-26"
+            ),
+        ]
+    );
+    // Each daily report covers the eight days before it: here the reports of Sep 20 and 27.
+    assert_eq!(
+        db.dvic_coverage(&id).unwrap(),
+        Some(dispatch_dvic::DvicCoverage {
+            from: "2026-09-12".into(),
+            through: "2026-09-26".into(),
+        })
+    );
+}
