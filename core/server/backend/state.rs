@@ -10,6 +10,14 @@ use crate::{
 use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::Semaphore;
 
+tokio::task_local! {
+    /// Set while a claimed job runs: see `State::patiently`.
+    static PATIENT: ();
+}
+/// How long a running job's database call waits for its turn: past the longest write it may
+/// queue behind, such as another DSP's publication, where a request gives up after two seconds.
+const PATIENCE: std::time::Duration = std::time::Duration::from_secs(60);
+
 enum CacheChange {
     All,
     Bookkeeping,
@@ -105,6 +113,12 @@ impl State {
         self.database(true, CacheChange::Tenant(dsp.into(), domain), f)
             .await
     }
+    /// Runs a claimed job's work. Its database calls wait their turn for up to a minute, where
+    /// a request's are turned away with `platform_busy` after two seconds: a job has no one to
+    /// try again for it, and a refusal would cost it an attempt.
+    pub async fn patiently<F: std::future::Future>(work: F) -> F::Output {
+        PATIENT.scope((), work).await
+    }
     pub async fn read<T: Send + 'static>(
         self: &Arc<Self>,
         f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
@@ -120,18 +134,31 @@ impl State {
         // Bound both queued requests and blocking threads. Short bursts wait without
         // allocating another database pool or failing otherwise healthy requests.
         let started = std::time::Instant::now();
-        let queued = self
-            .db_queue
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| Error::new("platform_busy", 503))?;
-        let permit = tokio::time::timeout(
-            std::time::Duration::from_secs(2),
-            self.db_slots.clone().acquire_owned(),
-        )
-        .await
-        .map_err(|_| Error::new("platform_busy", 503))?
-        .map_err(|_| Error::new("platform_unavailable", 503))?;
+        let busy = || Error::new("platform_busy", 503);
+        let unavailable = |_| Error::new("platform_unavailable", 503);
+        let (queued, permit) = if PATIENT.try_with(|_| ()).is_ok() {
+            tokio::time::timeout(PATIENCE, async {
+                let queued = self.db_queue.clone().acquire_owned().await;
+                Ok((queued?, self.db_slots.clone().acquire_owned().await?))
+            })
+            .await
+            .map_err(|_| busy())?
+            .map_err(unavailable)?
+        } else {
+            let queued = self
+                .db_queue
+                .clone()
+                .try_acquire_owned()
+                .map_err(|_| busy())?;
+            let permit = tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                self.db_slots.clone().acquire_owned(),
+            )
+            .await
+            .map_err(|_| busy())?
+            .map_err(unavailable)?;
+            (queued, permit)
+        };
         let queued_ms = started.elapsed().as_secs_f64() * 1000.0;
         let state = self.clone();
         tokio::task::spawn_blocking(move || {
@@ -226,3 +253,7 @@ pub async fn supervise(
     }
     result
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/state.rs"]
+mod tests;
