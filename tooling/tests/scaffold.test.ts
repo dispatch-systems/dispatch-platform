@@ -7,6 +7,7 @@ import path from 'node:path';
 import * as prettier from 'prettier';
 import { planCollector } from '../scaffold/new-collector.js';
 import { planFeature } from '../scaffold/new-feature.js';
+import { planTool } from '../scaffold/new-tool.js';
 import { render, repositoryRoot as root, type Plan } from '../scaffold/scaffold.js';
 
 // The generators, run with --dry-run: the files each flag writes, what they say, and how the
@@ -16,6 +17,7 @@ const tsx = path.join(root, 'node_modules/tsx/dist/cli.mjs');
 const temporary = () => fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-scaffold-'));
 const feature = async (...argv: string[]) => (await planFeature(root, argv)).plan;
 const collector = async (...argv: string[]) => (await planCollector(root, argv)).plan;
+const tool = async (...argv: string[]) => (await planTool(root, argv)).plan;
 /** The files a plan writes under `dir`, relative to it. */
 const writes = (plan: Plan, dir: string) =>
   [...plan.files.keys()].map((file) => path.posix.relative(dir, file)).sort();
@@ -490,6 +492,113 @@ test('--no-backend writes a frontend-only feature, and refuses the pieces that n
     );
 });
 
+test('a tool is a file and a test in its feature, listed in its manifest, that works as written', async () => {
+  const plan = await tool('dvic', 'short_inspections', '--description', 'List short ones.');
+  assert.deepEqual(writes(plan, 'features/dvic'), [
+    'mcp/mod.rs',
+    'mcp/short_inspections.rs',
+    'tests/backend/mcp/short_inspections.rs',
+  ]);
+  const written = file(plan, 'features/dvic/mcp/short_inspections.rs');
+  assert.match(written, /const NAME: &'static str = "short_inspections";/);
+  assert.match(written, /const DESCRIPTION: &'static str = "List short ones\.";/);
+  // It reads unless it says otherwise, and never says who may use it.
+  assert.doesNotMatch(written, /EFFECT|PART|access|allow/i);
+  assert.match(
+    file(plan, 'features/dvic/mcp/mod.rs'),
+    /= &\[&short_inspections::ShortInspections\];/,
+  );
+  const manifest = file(plan, 'features/dvic/feature.rs');
+  assert.match(manifest, /^mod mcp;$/m);
+  assert.match(manifest, /^ {4}tools: mcp::TOOLS,\n {4}\.\.feature\("dvic"\)/m);
+  const crate = file(plan, 'features/dvic/Cargo.toml');
+  const section = (name: string) => crate.split(`[${name}]\n`)[1]!.split('\n[')[0]!;
+  assert.match(section('dependencies'), /^schemars = \{ workspace = true \}$/m);
+  assert.match(section('dev-dependencies'), /^serde_json = \{ workspace = true \}$/m);
+  // Its test installs what the feature's own tests do, and switches the feature off and on.
+  const test = file(plan, 'features/dvic/tests/backend/mcp/short_inspections.rs');
+  assert.match(test, /install\(&\[&dispatch_cortex::COLLECTOR\], &\[&crate::FEATURE\]\)/);
+  assert.match(test, /set_feature\(&dsp, "dvic", false, &owner\)/);
+
+  // One that changes something says so, one of a part names it, and a feature that uses
+  // another has its test install that one too.
+  const changes = await tool(
+    'timecard',
+    'approve_meal_break',
+    '--changes',
+    '--part',
+    'timecard.meal_breaks',
+  );
+  const approve = file(changes, 'features/timecard/mcp/approve_meal_break.rs');
+  assert.match(approve, /const EFFECT: Effect = Effect::Changes;/);
+  assert.match(approve, /const PART: Option<&'static str> = Some\("timecard\.meal_breaks"\);/);
+  assert.match(approve, /const TITLE: &'static str = "Approve meal break";/);
+  assert.match(
+    file(changes, 'features/timecard/tests/backend/mcp/approve_meal_break.rs'),
+    /install\(\s*&\[&dispatch_cortex::COLLECTOR, &dispatch_paycom::COLLECTOR\],\s*&\[&dispatch_driver_match::FEATURE, &crate::FEATURE\],?\s*\)/,
+  );
+});
+
+test("a second tool joins its feature's list, its module in order", async () => {
+  const workspace = temporary();
+  try {
+    for (const entry of ['features/dvic', 'core/mcp/backend/tools']) {
+      fs.cpSync(entry, path.join(workspace, entry), { recursive: true });
+    }
+    const first = (await planTool(workspace, ['dvic', 'short_inspections'])).plan;
+    for (const [name, content] of [...first.files, ...first.changes]) {
+      fs.mkdirSync(path.dirname(path.join(workspace, name)), { recursive: true });
+      fs.writeFileSync(path.join(workspace, name), content);
+    }
+    const second = (await planTool(workspace, ['dvic', 'flag_inspection', '--changes'])).plan;
+    assert.deepEqual(writes(second, 'features/dvic'), [
+      'mcp/flag_inspection.rs',
+      'tests/backend/mcp/flag_inspection.rs',
+    ]);
+    assert.equal(
+      file(second, 'features/dvic/mcp/mod.rs')
+        .split('\n')
+        .filter((line) => /^mod |^ {4}&/.test(line))
+        .join('\n'),
+      [
+        'mod flag_inspection;',
+        'mod short_inspections;',
+        '    &short_inspections::ShortInspections,',
+        '    &flag_inspection::FlagInspection,',
+      ].join('\n'),
+    );
+    // The manifest and the crate have what they need already.
+    assert(!second.changes.has('features/dvic/feature.rs'));
+    assert(!second.changes.has('features/dvic/Cargo.toml'));
+    await assert.rejects(planTool(workspace, ['dvic', 'short_inspections']), /is taken/);
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('a tool has a name of its own, in a feature and a part there are', async () => {
+  const refusedTool = async (pattern: RegExp, ...argv: string[]) =>
+    assert.rejects(planTool(root, argv), pattern);
+  await refusedTool(/no feature/, 'parking', 'find_spaces');
+  await refusedTool(/not a tool's name/, 'dvic', 'Short-Inspections');
+  await refusedTool(/whoami is taken: core declares it/, 'dvic', 'whoami');
+  await refusedTool(
+    /no part of dvic/,
+    'dvic',
+    'short_inspections',
+    '--part',
+    'timecard.meal_breaks',
+  );
+  await refusedTool(
+    /ending with a full stop/,
+    'dvic',
+    'short_inspections',
+    '--description',
+    'List',
+  );
+  await refusedTool(/Name the feature, then the tool/, 'dvic');
+});
+
 test('names are lowercase words, not taken by an owner and not retired', async () => {
   await refused(/is not a name/, 'Parking');
   await refused(/is not a name/, 'parking-lot');
@@ -513,6 +622,7 @@ test('everything written is formatted as the repository formats it, with no plac
     (await planFeature(copy, ['notes', '--tab-of', 'timecard', '--mandatory'])).plan,
     await feature('desk', '--api'),
     await collector('fleet'),
+    await tool('timecard', 'approve_meal_break', '--changes', '--part', 'timecard.meal_breaks'),
   ];
   const config = (await prettier.resolveConfig(path.join(root, 'package.json'))) ?? {};
   for (const plan of plans)

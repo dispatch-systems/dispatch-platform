@@ -1,0 +1,35 @@
+//! {{title}}, a tool agents can use.
+use dispatch_core::mcp::tools::{Answer, Cx, {{#changes}}Effect, {{/changes}}Nothing, Tool};
+use serde::Serialize;
+
+/// What {{name}} answers.
+#[derive(Serialize, schemars::JsonSchema)]
+pub struct {{pascal}}Answer {
+    /// The DSP it answered for.
+    pub dsp: String,
+}
+
+/// {{description}}
+pub struct {{pascal}};
+impl Tool for {{pascal}} {
+    const NAME: &'static str = "{{name}}";
+    const TITLE: &'static str = "{{title}}";
+    const DESCRIPTION: &'static str = "{{description}}";
+{{#changes}}
+    const EFFECT: Effect = Effect::Changes;
+{{/changes}}
+{{#part}}
+    const PART: Option<&'static str> = Some("{{partId}}");
+{{/part}}
+    type Input = Nothing;
+    type Output = {{pascal}}Answer;
+    fn call(cx: &Cx, _: Nothing) -> Answer<{{pascal}}Answer> {
+        Ok({{pascal}}Answer {
+            dsp: cx.dsp().name.clone(),
+        })
+    }
+}
+
+#[cfg(test)]
+#[path = "../tests/backend/mcp/{{name}}.rs"]
+mod tests;

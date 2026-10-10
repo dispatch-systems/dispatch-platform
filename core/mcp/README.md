@@ -16,7 +16,8 @@ A tool is a type of its own, in a file of its own, implementing `tools::Tool`: i
 and description, what it takes and answers as Rust types whose JSON Schema the server publishes
 (`schemars::JsonSchema`), whether it reads or changes something (`EFFECT`), whether it is about
 one DSP or the connection (`SCOPE`), and the part of its feature it belongs to, if any (`PART`).
-A feature lists its tools in its manifest's `tools`, from its `mcp/`; core lists its own,
+`dispatchdev new tool <feature> <name>` makes one that works as written, with its test. A
+feature lists its tools in its manifest's `tools`, from its `mcp/`; core lists its own,
 `get_profile` and `whoami`, in `tools/connection.rs`.
 
 A tool never says who may use it: the connection does (`Grants`). The platform owner chooses
