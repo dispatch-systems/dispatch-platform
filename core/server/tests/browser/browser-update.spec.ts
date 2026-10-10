@@ -1,5 +1,5 @@
 import { test, expect, demo } from '../../../shell/tests/support/fixtures.js';
-import { clockVisible, loginWithClock, runAnswered } from '../support/update.js';
+import { clockVisible, countUpdateChecks, loginWithClock, runAnswered } from '../support/update.js';
 
 // Keep the loaded HTML deliberately old after refresh to exercise the loop guard too.
 test('completed update waits for two idle seconds, restores filters, and reloads once', async ({
@@ -122,6 +122,7 @@ test('unavailable update check does not refresh or interrupt sign in', async ({ 
   // Freeze before navigation so animation frames cannot advance past a wall-clock target.
   await page.clock.install({ time: new Date('2026-09-20T12:00:00Z') });
   await page.clock.pauseAt(new Date('2026-09-20T12:01:00Z'));
+  await countUpdateChecks(page);
   await page.goto('/');
   await clockVisible(page, page.getByLabel('Email address'));
   await page.getByLabel('Email address').fill(demo.email);

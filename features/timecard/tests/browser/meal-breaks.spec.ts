@@ -171,6 +171,8 @@ test('comparison filters, search and details use the assessed meal data', async 
   await expect(page.locator('.meal-table tbody > tr')).toHaveCount(3);
   await page.getByRole('button', { name: 'All 5', exact: true }).click();
   await page.getByLabel('Search meal break employees').fill('Alex');
+  // The search filters a deferred render later.
+  await expect(page.locator('.meal-table tbody > tr')).toHaveCount(1);
   await page.locator('.meal-employee > span').click();
   await expect(page.locator('.meal-detail')).toHaveCount(0);
   await page.getByRole('button', { name: 'Details for Alex Morgan', exact: true }).click();

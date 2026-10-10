@@ -1,4 +1,4 @@
-import type { Locator, Page, Request } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, login } from '../../../shell/tests/support/fixtures.js';
 
 /** Waits for `locator` to show, running the frozen test clock: dynamic routes commit through
@@ -12,9 +12,31 @@ export async function clockVisible(page: Page, locator: Locator) {
     .toBe(true);
 }
 
-/** Installs the test clock, then signs in as the platform owner. */
+/** The page's count of the update checks it has started and not yet heard back from. */
+type Counted = { updateChecks?: number };
+/**
+ * Counts the page's update checks in the page itself, in the very call that starts each one and
+ * its five-second timeout: a request event reaches the test later, too late under load to stop
+ * the clock running past the timeout. Each page the tab loads counts them, once installed.
+ */
+export async function countUpdateChecks(page: Page) {
+  await page.addInitScript(() => {
+    const counted = window as unknown as Counted;
+    counted.updateChecks = 0;
+    const fetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (new URL(url, location.href).pathname !== '/api/browser-update') return fetch(input, init);
+      counted.updateChecks! += 1;
+      return fetch(input, init).finally(() => (counted.updateChecks! -= 1));
+    };
+  });
+}
+
+/** Installs the test clock and counts update checks, then signs in as the platform owner. */
 export async function loginWithClock(page: Page) {
   await page.clock.install();
+  await countUpdateChecks(page);
   await login(page);
   await expect(page.getByRole('heading', { name: 'DSPs', exact: true })).toBeVisible();
 }
@@ -23,25 +45,17 @@ export async function loginWithClock(page: Page) {
  * Runs the frozen test clock for `ms`, a second at a time, letting every update check the page
  * starts be answered before the clock moves on. A check gives up after five seconds of the
  * page's clock, the test clock included: one long jump would abort it before its real answer
- * arrived, and the page would never learn of the update.
+ * arrived, and the page would never learn of the update. The page must count its checks
+ * (`countUpdateChecks`) from before it loaded.
  */
 export async function runAnswered(page: Page, ms: number) {
-  const checks = new Set<Request>();
-  const started = (request: Request) => {
-    if (new URL(request.url()).pathname === '/api/browser-update') checks.add(request);
-  };
-  const ended = (request: Request) => checks.delete(request);
-  page.on('request', started);
-  page.on('requestfinished', ended);
-  page.on('requestfailed', ended);
-  try {
-    for (let ran = 0; ran < ms; ran += 1000) {
-      await page.clock.runFor(Math.min(1000, ms - ran));
-      await expect.poll(() => checks.size).toBe(0);
-    }
-  } finally {
-    page.off('request', started);
-    page.off('requestfinished', ended);
-    page.off('requestfailed', ended);
+  const counted = await page.evaluate(() => (window as unknown as Counted).updateChecks);
+  if (counted === undefined) throw new Error('countUpdateChecks(page) before the page loads');
+  for (let ran = 0; ran < ms; ran += 1000) {
+    await page.clock.runFor(Math.min(1000, ms - ran));
+    // A reload the update starts empties the count with the page it leaves.
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as Counted).updateChecks ?? 0))
+      .toBe(0);
   }
 }
