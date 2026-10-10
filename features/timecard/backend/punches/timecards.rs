@@ -35,7 +35,11 @@ pub(crate) fn timecard_period(
     let latest = if let Some(code) = code {
         db.one_as::<EmployeeTimecardPeriod>(LATEST, [code])?
     } else {
-        db.one_as::<EmployeeTimecardPeriod>("SELECT period_from,period_to FROM publications ORDER BY period_to DESC,period_from DESC LIMIT 1", [])?
+        db.one_as::<EmployeeTimecardPeriod>(
+            "SELECT period_from,period_to FROM publications \
+             ORDER BY period_to DESC,period_from DESC LIMIT 1",
+            [],
+        )?
     }.ok_or_else(|| Error::new("timecard_period_unavailable", 404))?;
     let period = if let Some(date) = date {
         v::date(date)?;
