@@ -4,7 +4,6 @@
 GET /api/dsp/dvic/inspections Dsp("dvic.view") Read
 GET /api/dsp/dvic/schedules Dsp("dvic.manage") Read
 GET /api/dsp/dvic/status Dsp("dvic.view") Read
-GET /api/v1/dvic Agent("read") Read
 POST /api/dsp/dvic/collect Dsp("dvic.collect") Write
 POST /api/dsp/dvic/jobs/{id}/cancel Dsp("dvic.collect") Async
 POST /api/dsp/dvic/schedules Dsp("dvic.manage") Write wakes-scheduler

@@ -4,8 +4,7 @@ use dispatch_core::{
     Result,
     db::{Store, n, s},
     foundation::weeks,
-    manifest::people::{self, Appearances, Named, People},
-    mcp::api::types::{DriverData, DriverSource, PeopleData},
+    manifest::people::{self, Appearances, DriverData, DriverSource, Named, People, PeopleData},
 };
 
 /// The Saturday a scorecard week ends, or the week as written when it does not parse.

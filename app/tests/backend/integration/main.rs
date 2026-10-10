@@ -3,28 +3,7 @@
 //! program links the product once, where a program per file linked it a dozen times.
 //! `browseros_host` and `browseros_worker` stay programs of their own, which the collector
 //! shards run on a real browser.
-#[cfg(all(
-    feature = "timecard",
-    feature = "routes",
-    feature = "dvic",
-    feature = "weekly_scorecard"
-))]
 mod agent_activity;
-#[cfg(feature = "default")]
-mod agent_api;
-#[cfg(all(
-    feature = "timecard",
-    feature = "routes",
-    feature = "dvic",
-    feature = "weekly_scorecard"
-))]
-mod agent_data;
-#[cfg(all(
-    feature = "timecard",
-    feature = "routes",
-    feature = "dvic",
-    feature = "weekly_scorecard"
-))]
 mod agent_tools;
 mod collection_jobs;
 mod contracts;
@@ -35,18 +14,9 @@ mod http_routes;
 #[cfg(feature = "timecard")]
 mod meal_cache;
 mod network_policy;
-#[cfg(all(
-    feature = "timecard",
-    feature = "routes",
-    feature = "dvic",
-    feature = "weekly_scorecard"
-))]
 mod oauth;
 #[cfg(feature = "weekly_scorecard")]
 mod weekly_scorecard_transition;
 
 #[cfg(all(feature = "daily_performance", feature = "weekly_scorecard"))]
 mod daily_performance;
-
-#[cfg(all(feature = "daily_performance", feature = "weekly_scorecard"))]
-mod performance_views;

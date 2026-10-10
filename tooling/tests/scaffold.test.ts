@@ -395,47 +395,6 @@ test("--keeps writes the keeper of a collector's collection, tested with its fix
   );
 });
 
-test('--mcp writes one agent endpoint, its read toggle and an eval question', async () => {
-  const plan = await feature('parking', '--mcp');
-  assert.deepEqual(
-    writes(plan, 'features/parking').filter((name) => /mcp\//.test(name)),
-    ['mcp/catalog.rs', 'mcp/mod.rs', 'mcp/views.rs', 'tests/mcp/questions.ts'],
-  );
-  assert.match(file(plan, 'features/parking/feature.rs'), /mcp: mcp::MCP,/);
-  const mcp = file(plan, 'features/parking/mcp/mod.rs');
-  assert.match(
-    mcp,
-    /pub\(crate\) const PARKING: AgentArea = AgentArea::new\(&ReadToggle \{\s*id: "parking",/,
-  );
-  assert.match(mcp, /features: &\["parking"\],/);
-  assert.match(file(plan, 'features/parking/mcp/catalog.rs'), /path: "\/api\/v1\/parking",/);
-  // The Agents page offers its kind of data, generated from its read toggle, in a group after
-  // every other owner's: the groups follow their kinds' order.
-  assert.match(mcp, /missing: "parking",\s*order: \d+,/);
-  assert.match(mcp, /reads: &\[PARKING\],\s*missing: "parking data",/);
-  // The skill's description says what its data is about.
-  assert.match(mcp, /about: "parking",\s*asked: "about parking",/);
-  const order = Number(/ReadToggle \{[^}]*order: (\d+),/.exec(mcp)?.[1]);
-  for (const owner of fs.readdirSync('features')) {
-    const other = `features/${owner}/mcp/mod.rs`;
-    if (!fs.existsSync(other)) continue;
-    for (const toggle of fs
-      .readFileSync(other, 'utf8')
-      .matchAll(/ReadToggle \{[^}]*order: (\d+),/g))
-      assert(Number(toggle[1]) < order, `${other} has the place ${order}`);
-  }
-  assert.doesNotMatch(file(plan, 'features/parking/frontend/platform-slots.ts'), /readToggles/);
-  assert.match(
-    file(plan, 'features/parking/tests/mcp/questions.ts'),
-    /export function questions\(_world: World\): Question\[\]/,
-  );
-  assert.match(
-    file(plan, 'features/parking/tests/api/routes.txt'),
-    /^GET \/api\/v1\/parking Agent\("read"\) Read$/m,
-  );
-  await refused(/--mcp needs an optional feature/, 'parking', '--mcp', '--mandatory');
-});
-
 test('--page, --tab-of and --settings write frontend/feature.ts, the screen and a browser test', async () => {
   const page = await feature('parking', '--page', '--api');
   assert.deepEqual(
@@ -521,7 +480,7 @@ test('--no-backend writes a frontend-only feature, and refuses the pieces that n
     ),
   );
   await refused(/add --page, --tab-of or --settings/, 'front', '--no-backend');
-  for (const piece of [['--api'], ['--tables', 'dsp'], ['--keeps', 'cortex.dvic'], ['--mcp']])
+  for (const piece of [['--api'], ['--tables', 'dsp'], ['--keeps', 'cortex.dvic']])
     await refused(
       new RegExp(`Rust logic that ${piece[0]} needs`),
       'front',
@@ -546,14 +505,13 @@ test('everything written is formatted as the repository formats it, with no plac
       '--api',
       '--tables',
       'dsp',
-      '--mcp',
       '--page',
       '--settings',
       '--label',
       'Parking Lot',
     ),
     (await planFeature(copy, ['notes', '--tab-of', 'timecard', '--mandatory'])).plan,
-    await feature('desk', '--mcp'),
+    await feature('desk', '--api'),
     await collector('fleet'),
   ];
   const config = (await prettier.resolveConfig(path.join(root, 'package.json'))) ?? {};

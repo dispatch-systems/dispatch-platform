@@ -232,17 +232,6 @@ export function nextPermissionOrder(root: string) {
       highest = Math.max(highest, Number(match[1]));
   return (Math.floor(highest / 10) + 1) * 10;
 }
-/** A place after every agent kind, source, endpoint and term declared so far. */
-export function nextAgentOrder(root: string) {
-  let highest = 0;
-  const declared = rustSources(root).filter((file) =>
-    /^(core\/mcp|features\/[^/]+\/mcp)\//.test(file),
-  );
-  for (const file of declared)
-    for (const match of read(root, file).matchAll(/\border:\s*(\d+)/g))
-      highest = Math.max(highest, Number(match[1]));
-  return (Math.floor(highest / 10) + 1) * 10;
-}
 /** The collections a collector reads: one directory each under `collections/`. */
 export const collectionsOf = (root: string, site: string) =>
   directories(root, `collectors/${site}/collections`);

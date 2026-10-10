@@ -6,7 +6,6 @@ import { useAction } from '../../../shell/frontend/runtime/useAction.js';
 import { revokeAllAgentKeys, useAgentKeys } from '../../api/client.js';
 import {
   accessLabels,
-  accessText,
   daysLeft,
   expiryText,
   inUse,
@@ -120,7 +119,6 @@ export function KeysTab() {
                     <tbody>
                       {rows.map((key) => {
                         const reach = reachText(key, data.dsps);
-                        const access = accessText(key, data.dsps);
                         return (
                           <tr key={key.id} className={inUse(key) ? undefined : 'ended'}>
                             <td>
@@ -130,17 +128,9 @@ export function KeysTab() {
                               </button>
                             </td>
                             <td>
-                              <div className="agents-tags">
-                                <span className={`agents-tag ${accessTones[key.access]}`}>
-                                  {accessLabels[key.access]}
-                                </span>
-                                {access.count}
-                              </div>
-                              {access.note && (
-                                <small className={access.bypass ? 'agents-bypass' : undefined}>
-                                  {access.note}
-                                </small>
-                              )}
+                              <span className={`agents-tag ${accessTones[key.access]}`}>
+                                {accessLabels[key.access]}
+                              </span>
                             </td>
                             <td>
                               {reach.count}

@@ -34,18 +34,8 @@ pub fn install() {
 use dispatch_core::testing;
 
 #[cfg(test)]
-#[cfg(feature = "dvic")]
 #[path = "../tests/backend/agent_calls.rs"]
 mod agent_calls;
-#[cfg(test)]
-#[path = "../tests/backend/agent_catalog.rs"]
-mod agent_catalog;
-#[cfg(test)]
-#[path = "../tests/backend/agent_pages.rs"]
-mod agent_pages;
-#[cfg(test)]
-#[path = "../tests/backend/agent_skill.rs"]
-mod agent_skill;
 #[cfg(test)]
 #[cfg(all(feature = "timecard", feature = "dvic"))]
 #[path = "../tests/backend/audit.rs"]
@@ -73,10 +63,6 @@ mod collector_registry;
 #[cfg(feature = "timecard")]
 #[path = "../tests/backend/collector_storage.rs"]
 mod collector_storage;
-#[cfg(test)]
-#[cfg(all(feature = "timecard", feature = "routes"))]
-#[path = "../tests/backend/connected_app_mail.rs"]
-mod connected_app_mail;
 #[cfg(test)]
 #[path = "../tests/backend/contracts.rs"]
 mod contracts;

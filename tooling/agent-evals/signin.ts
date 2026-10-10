@@ -168,7 +168,7 @@ function run(args: string[], env: NodeJS.ProcessEnv, cwd: string, ms = 60_000) {
 
 /**
  * The owner's side, in a browser: open the app's sign-in link, sign in, approve it for the
- * one DSP reading what a new app reads, and answer where the browser is sent back to the app.
+ * one DSP, and answer where the browser is sent back to the app.
  * With `stop`, the browser goes no further than that address, as when the app is elsewhere.
  */
 async function approve(browser: Browser, link: string, stop: boolean, shot?: string) {
@@ -877,19 +877,18 @@ async function main() {
         (key) => key.kind === 'app' && !key.revokedAt && key.client?.name === client.app,
       );
       const app = apps[0];
-      // Approved as a new app reads: every kind of data but delivery addresses, bypassing none.
-      const reads = app?.reads as { areas: string[]; bypass: boolean } | undefined;
+      // Approved for the one DSP, read only.
       step(
         'connected app',
         apps.length === 1 &&
           app.client.verified === client.verified &&
           app.client.status === 'connected' &&
-          reads?.areas.length === 8 &&
-          !reads.areas.includes('locations') &&
-          !reads.bypass,
+          !app.allDsps &&
+          app.dsps.length === 1 &&
+          app.access === 'read',
         app
           ? `kind ${app.kind}, ${app.client.name}, ${app.client.verified ? 'verified' : 'unverified'}, ` +
-              `${app.client.status}, reads ${reads?.areas.length} of 9 kinds, ` +
+              `${app.client.status}, reaches ${app.dsps.length} DSP, ${app.access}, ` +
               `last used by ${app.lastClient ?? 'nothing yet'}`
           : 'not listed',
       );

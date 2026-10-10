@@ -1,7 +1,6 @@
 //! Driver Match: one code per driver across Paycom and every Amazon source.
 mod api;
 mod backend;
-mod mcp;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
@@ -56,7 +55,6 @@ pub const FEATURE: Feature = Feature {
         names: Some(backend::name_driver_events),
         ..Audit::NONE
     },
-    mcp: mcp::MCP,
     ..feature("driver_match")
 };
 

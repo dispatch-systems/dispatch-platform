@@ -262,26 +262,6 @@ test('every feature and collector is known by its directory name', async () => {
   holds('slots', 'owner names', misnamed);
 });
 
-test('every MCP endpoint, tool and read toggle has an id of its own', () => {
-  const endpoints = literals('Endpoint').filter(({ fields }) => fields.has('tool'));
-  const field = (name: string) =>
-    endpoints.flatMap(({ file, offset, fields }) => {
-      const value = fields.get(name) && stringOf(fields.get(name)!);
-      return value ? [{ id: value, at: place({ file, offset }) }] : [];
-    });
-  const toggles = literals('ReadToggle').flatMap(({ file, offset, fields }) => {
-    const value = fields.get('id') && stringOf(fields.get('id')!);
-    return value ? [{ id: value, at: place({ file, offset }) }] : [];
-  });
-  assert(endpoints.length > 10, `found only ${endpoints.length} MCP endpoints`);
-  holds('slots', 'mcp', [
-    ...collisions('MCP endpoint', field('id')),
-    ...collisions('MCP tool', field('tool')),
-    ...collisions('MCP path', field('path')),
-    ...collisions('read toggle', toggles),
-  ]);
-});
-
 test('every collection has a job kind of its own', () => {
   const kinds = collections().map(({ jobKind, file, offset }) => ({
     id: jobKind,

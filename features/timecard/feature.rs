@@ -1,7 +1,6 @@
 //! Timecard: Paycom's punches and timecards, and the meal breaks Cortex reports.
 mod api;
 mod backend;
-mod mcp;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::{
@@ -169,7 +168,6 @@ pub const FEATURE: Feature = Feature {
         ..Audit::NONE
     },
     demo: Some(punches::demo),
-    mcp: mcp::MCP,
     people: &[&punches::people::Employees, &meals::people::MealDrivers],
     ..feature("timecard")
 };

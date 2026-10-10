@@ -17,7 +17,7 @@ use dispatch_core::{
     db::{Db, FromRow, Row, Store, iso},
     ensure,
     foundation::{crypto, names},
-    mcp::api::types::{DriverData, DriverSource, DriverStatus},
+    manifest::people::{DriverData, DriverSource, DriverStatus},
     server::cache::DataDomain,
 };
 use matching::{Member, Saved};

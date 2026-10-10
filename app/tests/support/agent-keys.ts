@@ -1,25 +1,12 @@
-import type { AgentArea, AgentKeyRequest } from '../../../core/platform_owner/api/index.js';
-import { readToggleGroups } from '../../../core/mcp/api/generated/read-toggles.js';
+import type { AgentKeyRequest } from '../../../core/platform_owner/api/index.js';
 import type { fixture } from '../../../core/shell/tests/support/support.js';
 
 type App = Awaited<ReturnType<typeof fixture>>;
 
-/** Every kind of data but those a key must opt in to, such as delivery addresses, as a new
- * key starts. */
-export const everyKind: AgentArea[] = readToggleGroups.flatMap((group) =>
-  group.toggles.filter((toggle) => !toggle.optIn).map((toggle) => toggle.id),
-);
-/** How a new key's or app's row counts what it reads, as "12 of 13 kinds". */
-export const newKinds = `${everyKind.length} of ${readToggleGroups.reduce(
-  (count, group) => count + group.toggles.length,
-  0,
-)} kinds`;
-
 /**
- * Four keys as the Agents page would hold them: read-only and operator keys, one reading a
- * few kinds of data that bypasses features and expires in five days, one with Northline's own
- * settings, and one that never expires, each used once by a different client so the page
- * shows when and from what.
+ * Four keys as the Agents page would hold them: read-only and operator keys, one that reaches
+ * Northline only and expires in five days, and one that never expires, each used once by a
+ * different client so the page shows when and from what.
  */
 export async function seedAgentKeys(app: App) {
   const owner = await app.client();
@@ -33,34 +20,13 @@ export async function seedAgentKeys(app: App) {
     allDsps: dsps.length === 0,
     dsps,
     access: 'read',
-    reads: { areas: everyKind, bypass: false },
-    dspReads: [],
     expiresAt,
   });
   const keys: [AgentKeyRequest, string][] = [
     [key('Laptop – Claude Code', [], days(90)), 'claude-code/2.1.283'],
-    [
-      {
-        ...key('Desktop – Codex', [north.id], null),
-        access: 'operator',
-        reads: { areas: ['locations', ...everyKind], bypass: false },
-      },
-      'codex_cli_rs/0.157.1',
-    ],
-    [
-      {
-        ...key('Home server – Hermes', [north.id], days(5)),
-        reads: { areas: ['routes', 'dvic'], bypass: true },
-      },
-      'hermes-agent/1.4.0',
-    ],
-    [
-      {
-        ...key('Nightly report script', [], days(180)),
-        dspReads: [{ dsp: north.id, areas: ['timecards', 'meal_breaks'], bypass: true }],
-      },
-      'curl/8.5.0',
-    ],
+    [{ ...key('Desktop – Codex', [north.id], null), access: 'operator' }, 'codex_cli_rs/0.157.1'],
+    [key('Home server – Hermes', [north.id], days(5)), 'hermes-agent/1.4.0'],
+    [key('Nightly report script', [], days(180)), 'curl/8.5.0'],
   ];
   for (const [request, agent] of keys) {
     const made = await owner.post('/api/platform/agents/keys', request);

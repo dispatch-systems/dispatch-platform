@@ -161,8 +161,6 @@ export function ownerTests(root: string, kind: Kind, name: string, options = { b
       args: ['run', 'test:browseros', '--', '--shard', shard],
     });
   }
-  if (exists(root, `${dir}/tests/mcp`))
-    notes.push('Its agent eval questions in tests/mcp/ run on demand, with `npm run agents:eval`.');
   if (!commands.length) notes.push(`${dir} has no tests yet.`);
   return { commands, notes };
 }

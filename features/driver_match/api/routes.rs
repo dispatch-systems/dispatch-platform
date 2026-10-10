@@ -5,7 +5,7 @@ use dispatch_core::{
     Result,
     db::Store,
     foundation::validate as v,
-    mcp::api::types::DriverSource,
+    manifest::people::DriverSource,
     server::http::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, read, write},

@@ -1,12 +1,11 @@
 //! The Agents page's Activity log: each call an agent made with a key or as a connected app,
 //! over REST or MCP. When it started, with which key, to which endpoint or tool, about which
-//! DSP, how it ended, whether it read a switched-off feature by bypassing features, how long
-//! it took and how much it answered; never what it asked beyond
+//! DSP, how it ended, how long it took and how much it answered; never what it asked beyond
 //! the endpoint or tool, and never a token. A request notes its call as it goes and records it
 //! here, in memory, once answered. The scheduler writes calls down in batches, so an agent's
 //! read never waits for the platform's write lock. Calls are kept 90 days, and at most
 //! `DAILY` of each key's a day, so one busy key cannot fill the disk.
-use super::data::catalog;
+use super::server;
 use crate::{
     Result, State,
     db::{FromRow, Row, Store, now},
@@ -46,20 +45,18 @@ pub struct Call {
     pub surface: String,
     pub dsp: Option<AgentDsp>,
     pub outcome: String,
-    pub bypassed: bool,
     pub ms: u32,
     pub bytes: u32,
 }
 
 /// What a request notes of an agent's call as it goes: the key that signed it, as the access
-/// check found it; the MCP tool it calls; and the DSP, outcome and bypassing its handler found.
+/// check found it; the MCP tool it calls; and the DSP and outcome its handler found.
 #[derive(Clone, Debug, Default)]
 pub struct Noted {
     pub key: Option<AgentActivityKey>,
     pub surface: Option<String>,
     pub dsp: Option<AgentDsp>,
     pub outcome: Option<String>,
-    pub bypassed: bool,
 }
 
 /// How a request an agent sent ended, as its route saw it.
@@ -148,7 +145,6 @@ impl Activity {
                     surface: CAPPED_SURFACE.into(),
                     dsp: None,
                     outcome: CAPPED.into(),
-                    bypassed: false,
                     ms: 0,
                     bytes: 0,
                     ..call
@@ -191,7 +187,6 @@ impl Activity {
             surface,
             dsp: noted.dsp,
             outcome,
-            bypassed: noted.bypassed,
             ms: u32::try_from(answered.ms).unwrap_or(u32::MAX),
             bytes: u32::try_from(answered.bytes).unwrap_or(u32::MAX),
         });
@@ -228,18 +223,15 @@ impl Held {
     }
 }
 
-/// The endpoint a REST route answers, as the log names it.
+/// The endpoint a REST route answers, as the log names it: `rest:whoami` for
+/// `/api/v1/whoami`. The MCP endpoint names its calls by their tool instead.
 fn surface(path: &str) -> Option<String> {
-    let id = match path {
-        "/api/v1/openapi.json" => "openapi",
-        "/api/v1/skill" => "skill",
-        _ => catalog::ENDPOINTS.iter().find(|e| e.path == path)?.id,
-    };
-    Some(format!("rest:{id}"))
+    let endpoint = path.strip_prefix("/api/v1/")?;
+    (endpoint != "mcp").then(|| format!("rest:{endpoint}"))
 }
 
-/// The tool an MCP message calls, as the log names it: `mcp:<tool>` for a tool of the
-/// catalog, and `mcp:unknown` for any other name, which is only the agent's own text. Any
+/// The tool an MCP message calls, as the log names it: `mcp:<tool>` for a tool the server
+/// offers, and `mcp:unknown` for any other name, which is only the agent's own text. Any
 /// other message, such as the handshake or a list, is no call.
 pub fn tool_call(body: &[u8]) -> Option<String> {
     #[derive(serde::Deserialize)]
@@ -256,19 +248,17 @@ pub fn tool_call(body: &[u8]) -> Option<String> {
         return None;
     }
     let name = message.params.and_then(|p| p.name).unwrap_or_default();
-    Some(match catalog::tool(&name) {
-        Some(endpoint) => format!("mcp:{}", endpoint.tool),
+    Some(match server::TOOLS.iter().find(|tool| **tool == name) {
+        Some(tool) => format!("mcp:{tool}"),
         None => "mcp:unknown".into(),
     })
 }
 
-/// Notes what a handler found of an agent's call: the DSP it was about, how it ended, and
-/// whether it read a switched-off feature by bypassing features.
-pub fn note(trace: &RequestTrace, dsp: Option<AgentDsp>, outcome: &str, bypassed: bool) {
+/// Notes what a handler found of an agent's call: the DSP it was about, and how it ended.
+pub fn note(trace: &RequestTrace, dsp: Option<AgentDsp>, outcome: &str) {
     let mut context = trace.lock().unwrap_or_else(|poison| poison.into_inner());
     context.agent.dsp = dsp;
     context.agent.outcome = Some(outcome.to_owned());
-    context.agent.bypassed = bypassed;
 }
 
 /// Writes down every call held, a batch at a time, each under the platform lock only as long
@@ -367,7 +357,6 @@ impl FromRow for Listed {
                 outcome: row.get("outcome")?,
                 ms: row.get("ms")?,
                 bytes: row.get("bytes")?,
-                bypassed: row.get::<i64>("bypassed")? == 1,
             },
         })
     }
@@ -381,7 +370,7 @@ impl Store {
                 let dsp = call.dsp.as_ref();
                 self.platform.exec(
                     "INSERT INTO agent_activity(at,key_id,key_name,key_kind,surface,dsp_id,\
-                     dsp_name,outcome,bypassed,ms,bytes) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                     dsp_name,outcome,ms,bytes) VALUES (?,?,?,?,?,?,?,?,?,?)",
                     params![
                         call.at,
                         call.key.id,
@@ -391,7 +380,6 @@ impl Store {
                         dsp.map(|d| &d.id),
                         dsp.map(|d| &d.name),
                         call.outcome,
-                        i64::from(call.bypassed),
                         call.ms,
                         call.bytes
                     ],
@@ -434,7 +422,7 @@ impl Store {
 fn page(query: &ActivityQuery) -> (String, Vec<rusqlite::types::Value>) {
     let mut sql = "SELECT a.id,a.at,a.key_id,COALESCE(k.name,a.key_name) key_name,\
         a.key_kind,a.surface,a.dsp_id,COALESCE(d.name,a.dsp_name) dsp_name,a.outcome,\
-        a.bypassed,a.ms,a.bytes FROM agent_activity a LEFT JOIN agent_keys k ON k.id=a.key_id \
+        a.ms,a.bytes FROM agent_activity a LEFT JOIN agent_keys k ON k.id=a.key_id \
         LEFT JOIN dsps d ON d.id=a.dsp_id WHERE 1"
         .to_owned();
     let mut values: Vec<rusqlite::types::Value> = vec![];

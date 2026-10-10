@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { ChevronRight, Download, ExternalLink } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { CopyButton } from './CopyButton.js';
 import { KeyTest } from './KeyTest.js';
 
 /** What an agent or script needs to use a key, folded away beneath the keys: Dispatch's
- * addresses, a way to test a key, and the OpenAPI spec and skill. Each new key comes with its
- * own setup. */
+ * addresses and a way to test a key. Each new key comes with its own setup. */
 export function UsingKeys() {
   const [open, setOpen] = useState(false);
   const [token, setToken] = useState('');
@@ -23,7 +22,7 @@ export function UsingKeys() {
       <summary>
         <ChevronRight size={14} aria-hidden="true" />
         Using keys
-        {!open && <span className="muted">· addresses, key tester, OpenAPI spec and skill</span>}
+        {!open && <span className="muted">· addresses and key tester</span>}
       </summary>
       <div className="agents-using-body">
         {addresses.map(([name, address, label]) => (
@@ -45,16 +44,6 @@ export function UsingKeys() {
             onChange={(event) => setToken(event.target.value)}
           />
           <KeyTest token={token} label="Test key" />
-        </div>
-        <div className="agents-files">
-          <a href="/api/platform/agents/openapi.json" target="_blank" rel="noopener">
-            <ExternalLink size={16} aria-hidden="true" />
-            OpenAPI spec
-          </a>
-          <a href="/api/platform/agents/skill" download="SKILL.md">
-            <Download size={16} aria-hidden="true" />
-            Download Dispatch skill
-          </a>
         </div>
       </div>
     </details>

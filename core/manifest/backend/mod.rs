@@ -12,7 +12,6 @@ use crate::{
     },
     db::{self, Db, Kind, Migration, Migrations, OwnMigrations, Store},
     foundation::config::Config,
-    mcp::{self, Mcp},
     server::{
         cache::{self, Cached, DataDomain},
         http::Route,
@@ -273,7 +272,7 @@ impl Registry {
     /// numbered from 1 without a gap or a repeat, every table is declared once, every
     /// domain is declared once and before it is named, every audit prefix is a dotted name
     /// listed under an area other than settings, each kind of data that names people has a
-    /// place of its own, and what agents may read is declared as `mcp::pieces::check` asks.
+    /// place of its own.
     pub fn check(&self) {
         let mut named = std::collections::BTreeSet::new();
         for feature in self.features {
@@ -310,17 +309,7 @@ impl Registry {
                         || feature
                             .keeps
                             .iter()
-                            .any(|keeper| keeper.keeps() == *current)
-                        || feature
-                            .mcp
-                            .reads
-                            .iter()
-                            .any(|area| area.as_str() == *current)
-                        || feature
-                            .mcp
-                            .sources
-                            .iter()
-                            .any(|source| source.as_str() == *current),
+                            .any(|keeper| keeper.keeps() == *current),
                     "{} retires an identifier into one it does not own: {current}",
                     feature.name
                 );
@@ -546,7 +535,6 @@ impl Registry {
                 kind.data().as_str()
             );
         }
-        mcp::pieces::check(self.features);
     }
 }
 
@@ -619,8 +607,6 @@ pub struct Feature {
     pub demo: Option<Demo>,
     /// Operator commands of the binary it answers for.
     pub commands: Option<Commands>,
-    /// What agents can ask of it.
-    pub mcp: Mcp,
     /// Who its data names, for Driver Match to tell apart.
     pub people: &'static [&'static dyn People],
 }
@@ -653,7 +639,6 @@ pub const fn feature(name: &'static str) -> Feature {
         audit: Audit::NONE,
         demo: None,
         commands: None,
-        mcp: Mcp::NONE,
         people: &[],
     }
 }

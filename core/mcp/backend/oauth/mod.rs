@@ -19,8 +19,8 @@ use crate::{
     ensure,
     foundation::{config::Config, crypto},
     mcp::api::types::{
-        AgentAccess, AgentArea, AgentKeyRequest, AgentReads, OAuthApp, OAuthApproval,
-        OAuthRedirect, OAuthReplaced, OAuthRequest, OLDER_LOCATIONS,
+        AgentAccess, AgentKeyRequest, OAuthApp, OAuthApproval, OAuthRedirect, OAuthReplaced,
+        OAuthRequest,
     },
 };
 use clients::Client;
@@ -455,14 +455,14 @@ impl Store {
         )?;
         self.check_agent_key(None, &approval.key(), &replaced)?;
         let code = crypto::token()?;
-        // tools and locations as an older release redeems the code, as a key's are written.
+        // What an older release redeeming the code would let the app read: nothing.
         let choices = json!({
             "name": approval.name,
             "all_dsps": approval.all_dsps,
             "dsps": approval.dsps,
-            "reads": approval.reads,
+            "reads": {"areas": [], "bypass": false},
             "tools": "full",
-            "locations": approval.reads.locations(),
+            "locations": false,
         });
         self.platform.transaction(|| {
             self.answer_request(id)?;
@@ -582,24 +582,11 @@ impl Store {
             return Err(grant("The owner no longer lets this kind of app connect"));
         }
         let choices: Value = serde_json::from_str(s(&row, "choices")).map_err(Error::from)?;
-        let reads = match choices.get("reads") {
-            Some(reads) => serde_json::from_value(reads.clone()).map_err(Error::from)?,
-            // Approved before reads were chosen, with tools and addresses: every kind of data,
-            // the addresses as chosen, and no bypassing.
-            None => AgentReads {
-                areas: AgentArea::all()
-                    .filter(|area| area.as_str() != OLDER_LOCATIONS || choices["locations"] == true)
-                    .collect(),
-                bypass: false,
-            },
-        };
         let key = AgentKeyRequest {
             name: s(&choices, "name").to_owned(),
             all_dsps: choices["all_dsps"] == true,
             dsps: serde_json::from_value(choices["dsps"].clone()).map_err(Error::from)?,
             access: AgentAccess::Read,
-            reads,
-            dsp_reads: vec![],
             expires_at: None,
         };
         let owner = s(&row, "approved_by");
@@ -639,11 +626,12 @@ impl Store {
             for earlier in &replaced {
                 self.end_app_within(Some(owner), earlier, "replaced")?;
             }
-            // tools and locations as an older release reads them, as a key's are.
+            // What an older release reads it may read, run again in a rollback: nothing, as a
+            // key's.
             self.platform.exec(
                 "INSERT INTO agent_keys(id,name,hash,hint,user_id,all_dsps,access,tools,locations,\
                  areas,bypass,created_at,kind,client_id,client_name,client_verified) \
-                 VALUES (?,?,?,'',?,?,?,'full',?,?,?,?,'app',?,?,?)",
+                 VALUES (?,?,?,'',?,?,?,'full',0,'',0,?,'app',?,?,?)",
                 rusqlite::params![
                     id,
                     key.name,
@@ -651,9 +639,6 @@ impl Store {
                     owner,
                     i64::from(key.all_dsps),
                     key.access,
-                    i64::from(key.reads.locations()),
-                    key.reads.areas_text(),
-                    i64::from(key.reads.bypass),
                     iso(),
                     client_id,
                     s(&row, "client_name"),

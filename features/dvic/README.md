@@ -56,9 +56,8 @@ prioritizes never-checked weeks, then least recently checked weeks older than se
 days. Missing/empty reports stay eligible for later checks. Manual sync can target
 older publication weeks explicitly. DVIC's schedules are its own, under its own routes and
 behind `dvic.manage`, and the DVIC page's collection settings manage them; they run only
-while DVIC is on. Agents read the exceptions at `GET /api/v1/dvic`, with the `dvic` toggle.
-Its errors are worded in its API client, but for a missing station (`dvic_station_required`),
-which a schedule meets too, worded in its manifest.
+while DVIC is on. Its errors are worded in its API client, but for a missing station
+(`dvic_station_required`), which a schedule meets too, worded in its manifest.
 
 ## Dates, storage, and efficiency
 

@@ -18,16 +18,13 @@ test('the Activity log lists what a key called over REST and MCP, written down i
     allDsps: false,
     dsps: [north.id],
     access: 'read',
-    // No kind of data a feature declares: the calls below are core's own.
-    reads: { areas: [], bypass: false },
-    dspReads: [],
     expiresAt: null,
   });
   assert.equal(made.status, 200, made.body);
   const { key, token }: AgentKeyCreated = made.value;
   const bearer = { authorization: `Bearer ${token}`, 'user-agent': 'claude-code/2.1.283' };
 
-  const status = await f.raw('/api/v1/status', undefined, bearer);
+  const status = await f.raw('/api/v1/whoami', undefined, bearer);
   const answered = await status.text();
   assert.equal(status.status, 200, answered);
   const mcp = await fetch(`http://127.0.0.1:${f.env.PORT}/api/v1/mcp`, {
@@ -42,12 +39,12 @@ test('the Activity log lists what a key called over REST and MCP, written down i
       jsonrpc: '2.0',
       id: 1,
       method: 'tools/call',
-      params: { name: 'driver_report', arguments: { driver: 'Nobody Anywhere' } },
+      params: { name: 'whoami', arguments: { driver: 'Nobody Anywhere' } },
     }),
   });
   const called = await mcp.json();
   assert.equal(called.result.isError, true, JSON.stringify(called));
-  assert.match(called.result.content[0].text, /^driver_not_found/);
+  assert.match(called.result.content[0].text, /^unknown_parameter/);
 
   // The scheduler writes calls down every few seconds; until then the log has none of them.
   let page: AgentActivityPage = { rows: [], next: null };
@@ -57,17 +54,14 @@ test('the Activity log lists what a key called over REST and MCP, written down i
   }, 20000);
   const [tool, rest] = page.rows;
   assert.deepEqual(
-    page.rows.map((row) => [row.surface, row.dsp?.name ?? null, row.outcome]),
+    page.rows.map((row) => [row.surface, row.outcome]),
     [
-      ['mcp:driver_report', 'Northline Logistics', 'driver_not_found'],
-      ['rest:status', 'Northline Logistics', 'ok'],
+      ['mcp:whoami', 'unknown_parameter'],
+      ['rest:whoami', 'ok'],
     ],
   );
   assert.deepEqual(rest!.key, { id: key.id, name: 'Laptop – Claude Code', kind: 'key' });
-  assert.equal(rest!.dsp!.id, north.id);
   assert.equal(rest!.bytes, Buffer.byteLength(answered));
-  // Neither read a switched-off feature by bypassing features.
-  assert.ok(page.rows.every((row) => row.bypassed === false));
   assert.ok(rest!.ms >= 0 && tool!.bytes > 0);
   assert.ok(Date.parse(tool!.at) >= Date.parse(rest!.at));
   assert.equal(page.next, null);
@@ -81,16 +75,16 @@ test('the Activity log lists what a key called over REST and MCP, written down i
   );
   assert.deepEqual(
     refused.rows.map((row) => row.surface),
-    ['mcp:driver_report'],
+    ['mcp:whoami'],
   );
   const first: AgentActivityPage = await owner.read(
     `/api/platform/agents/activity?key=${key.id}&limit=1`,
   );
-  assert.equal(first.rows[0]!.surface, 'mcp:driver_report');
+  assert.equal(first.rows[0]!.surface, 'mcp:whoami');
   const second: AgentActivityPage = await owner.read(
     `/api/platform/agents/activity?key=${key.id}&limit=1&before=${first.next}`,
   );
-  assert.deepEqual([second.rows[0]!.surface, second.next], ['rest:status', null]);
+  assert.deepEqual([second.rows[0]!.surface, second.next], ['rest:whoami', null]);
   assert.equal((await owner.get('/api/platform/agents/activity?outcome=maybe')).status, 400);
 
   // Only a platform owner reads it.

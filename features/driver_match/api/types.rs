@@ -1,5 +1,5 @@
 use dispatch_core::{
-    mcp::api::types::{DriverData, DriverSource, DriverStatus},
+    manifest::people::{DriverData, DriverSource, DriverStatus},
     text_enum,
 };
 use serde::Serialize;

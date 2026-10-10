@@ -82,8 +82,6 @@ const INVENTORY: &[Row] = &[
     ("POST", "/api/platform/agents/keys/{id}/revoke", PlatformOwner, Write, false),
     ("POST", "/api/platform/agents/revoke-all", PlatformOwner, Write, false),
     ("GET", "/api/platform/agents/activity", PlatformOwner, Read, false),
-    ("GET", "/api/platform/agents/skill", PlatformOwner, Read, false),
-    ("GET", "/api/platform/agents/openapi.json", PlatformOwner, Read, false),
     ("GET", "/.well-known/oauth-protected-resource", Public, Memory, false),
     ("GET", "/.well-known/oauth-protected-resource/api/v1/mcp", Public, Memory, false),
     ("GET", "/.well-known/oauth-authorization-server", Public, Memory, false),
@@ -100,15 +98,8 @@ const INVENTORY: &[Row] = &[
     ("GET", "/api/platform/oauth/apps", PlatformOwner, Read, false),
     ("POST", "/api/platform/oauth/apps", PlatformOwner, Write, false),
     ("GET", "/api/v1/whoami", Agent("read"), Read, false),
-    ("GET", "/api/v1/openapi.json", Agent("read"), Read, false),
-    ("GET", "/api/v1/skill", Agent("read"), Read, false),
     ("POST", "/api/v1/mcp", Agent("read"), Async, false),
     ("GET", "/api/v1/mcp", Agent("read"), Async, false),
-    ("GET", "/api/v1/status", Agent("read"), Read, false),
-    ("GET", "/api/v1/metrics", Agent("read"), Read, false),
-    ("GET", "/api/v1/drivers", Agent("read"), Read, false),
-    ("GET", "/api/v1/drivers/{driver}", Agent("read"), Read, false),
-    ("GET", "/api/v1/team", Agent("read"), Read, false),
 
     ("GET", "/api/platform/dsps", PlatformOwner, Read, false),
     ("POST", "/api/platform/dsps", PlatformOwner, Write, WAKES_SCHEDULER),
@@ -186,15 +177,8 @@ fn listed(feature: &str) -> BTreeSet<String> {
 
 #[test]
 fn each_feature_lists_exactly_the_routes_it_registers() {
-    let table = table();
     for feature in dispatch_core::manifest::registry().features {
-        // Its own routes, and its agent endpoints, which core serves from what it declares.
-        let agents: BTreeSet<_> = feature.mcp.endpoints.iter().map(|e| e.path).collect();
-        let registered = described(
-            (feature.routes)()
-                .iter()
-                .chain(table.iter().filter(|route| agents.contains(route.path))),
-        );
+        let registered = described((feature.routes)().iter());
         let expected = listed(feature.name);
         let missing: Vec<_> = expected.difference(&registered).collect();
         let unlisted: Vec<_> = registered.difference(&expected).collect();

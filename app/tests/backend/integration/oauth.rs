@@ -6,19 +6,11 @@ use dispatch_core::{
     State,
     db::{self, Store, s},
     foundation::{config::Config, crypto},
-    mcp::{
-        api::types::AgentArea,
-        oauth::network::{Network, Pending},
-    },
+    mcp::oauth::network::{Network, Pending},
     server::operations,
 };
 use serde_json::{Value, json};
 use std::{os::unix::fs::PermissionsExt, sync::Arc};
-
-/// A kind of data a key may read, by its id.
-fn kind(id: &str) -> AgentArea {
-    AgentArea::parse(id).unwrap()
-}
 
 const CLAUDE_CODE: &str = "https://claude.ai/oauth/claude-code-client-metadata";
 const CHATGPT: &str = "https://chatgpt.com/oauth/client.json";
@@ -382,14 +374,8 @@ impl Server {
         .await
     }
 }
-/// Every kind of data there is, delivery addresses included.
-/// Every kind of data an agent may read, as the features declare them, in their order.
-fn every() -> Vec<&'static str> {
-    dispatch_backend::install();
-    AgentArea::all().map(AgentArea::as_str).collect()
-}
 fn everything(name: &str) -> Value {
-    json!({"name":name,"allDsps":true,"dsps":[],"reads":{"areas":every(),"bypass":false}})
+    json!({"name":name,"allDsps":true,"dsps":[]})
 }
 
 #[tokio::test]
@@ -929,7 +915,7 @@ async fn a_name_a_key_or_another_app_holds_stays_taken() {
             "POST",
             "/api/platform/agents/keys",
             json!({"name":"Desk key","allDsps":true,"dsps":[],"access":"read",
-                "reads":{"areas":["routes"],"bypass":false},"dspReads":[],"expiresAt":null}),
+                "expiresAt":null}),
         )
         .await;
     assert_eq!(key.status, 200, "{}", key.body);
@@ -1490,7 +1476,7 @@ async fn expired_or_revoked_access_ends_with_invalid_token() {
             "POST",
             &format!("/api/platform/agents/keys/{id}"),
             json!({"name":"Claude Code","allDsps":true,"dsps":[],"access":"operator",
-                "reads":{"areas":every(),"bypass":false},"dspReads":[],"expiresAt":null}),
+                "expiresAt":null}),
         )
         .await;
     // An app is edited like a key, but only ever reads.
@@ -1530,8 +1516,7 @@ async fn a_connected_app_reaches_only_what_the_owner_chose() {
             &owner,
             CHATGPT,
             CHATGPT_REDIRECT,
-            json!({"name":"ChatGPT","allDsps":false,"dsps":[north],
-                "reads":{"areas":["dvic","routes","dvic"],"bypass":false}}),
+            json!({"name":"ChatGPT","allDsps":false,"dsps":[north]}),
         )
         .await;
     let access = s(&tokens, "access_token");
@@ -1548,10 +1533,7 @@ async fn a_connected_app_reaches_only_what_the_owner_chose() {
         .map(|dsp| s(dsp, "id"))
         .collect();
     assert_eq!(dsps, [north.as_str()]);
-    // What the owner approved it to read, each kind once in its order.
-    let reads = json!({"areas":["routes","dvic"],"bypass":false});
-    assert_eq!(whoami.body["dsps"][0]["reads"], reads);
-    // MCP offers the tools that read nothing in particular, and those of what it reads.
+    // MCP offers it the tools a key has.
     let listed = server.mcp(access, "tools/list").await;
     assert_eq!(listed.status, 200, "{}", listed.body);
     let tools: Vec<&str> = listed.body["result"]["tools"]
@@ -1560,18 +1542,7 @@ async fn a_connected_app_reaches_only_what_the_owner_chose() {
         .iter()
         .map(|tool| s(tool, "name"))
         .collect();
-    let read: Vec<&str> = dispatch_core::mcp::data::catalog::ENDPOINTS
-        .iter()
-        .filter(|endpoint| {
-            endpoint
-                .area
-                .is_none_or(|area| [kind("routes"), kind("dvic")].contains(&area))
-        })
-        .map(|endpoint| endpoint.tool)
-        .collect();
-    assert_eq!(tools[0], "get_profile");
-    assert_eq!(&tools[1..], read);
-    assert!(tools.contains(&"route_day") && !tools.contains(&"timecards"));
+    assert_eq!(tools, ["get_profile", "whoami"]);
     // Its calls count like a key's, under the connected app.
     let used = server.state.agents.last();
     let listed = server
@@ -1581,7 +1552,6 @@ async fn a_connected_app_reaches_only_what_the_owner_chose() {
     assert!(used.contains_key(s(app, "id")));
     assert!(app["lastUsedAt"].is_string());
     assert_eq!(app["dsps"], json!([north]));
-    assert_eq!((&app["reads"], &app["dspReads"]), (&reads, &json!([])));
 }
 
 #[tokio::test]
@@ -2603,8 +2573,7 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
         .approved(
             &owner,
             &request,
-            json!({"name":"Laptop","allDsps":false,"dsps":[north],
-                "reads":{"areas":["routes","timecards"],"bypass":true}}),
+            json!({"name":"Laptop","allDsps":false,"dsps":[north]}),
         )
         .await;
     let tokens = server.exchange(CLAUDE_CODE, local, &code).await;
@@ -2620,7 +2589,7 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
             "App: Claude Code (known metadata)",
             "Sends access to: this computer",
             "DSPs: Northline Logistics",
-            "Access: Reads Routes & packages, Timecards. Bypasses switched-off features.",
+            "Access: Read only",
             "Approved by: Platform Owner",
             &format!("{}/#agents?tab=apps", server.origin),
             &format!("This notice was sent to {to}"),
@@ -2655,17 +2624,6 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
             .status,
         200
     );
-    // An older release, run again in a rollback, stopped its addresses in the only column it
-    // knows: the owners hear it reads everything else.
-    server
-        .state
-        .run(|db| {
-            db.platform
-                .exec("UPDATE agent_keys SET locations=0 WHERE name='ChatGPT'", [])?;
-            Ok(())
-        })
-        .await
-        .unwrap();
     for _ in 0..2 {
         let replay = server.exchange(CHATGPT, CHATGPT_REDIRECT, &code).await;
         assert_eq!(s(&replay.body, "error"), "invalid_grant");
@@ -2677,16 +2635,7 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
     for text in ended {
         assert!(text.contains("one-time code"), "{text}");
         assert!(text.contains("Sent access to: chatgpt.com"), "{text}");
-        // Every kind of data but delivery addresses, which this test took away from the app.
-        let reads: Vec<_> = every()
-            .into_iter()
-            .filter(|area| *area != "locations")
-            .map(|area| kind(area).label())
-            .collect();
-        assert!(
-            text.contains(&format!("Access: Reads {}\n", reads.join(", "))),
-            "{text}"
-        );
+        assert!(text.contains("Access: Read only\n"), "{text}");
     }
     // An app signing out, or the owner revoking one, is no news to them.
     let signed_in = server
@@ -3034,80 +2983,57 @@ async fn stored_choices(server: &Server, code: &str) -> Value {
 }
 
 #[tokio::test]
-async fn an_approval_keeps_what_it_reads_and_one_from_before_reads_everything() {
+async fn an_approval_keeps_its_choices_and_one_from_before_still_connects() {
     let server = Server::paired().await;
     let owner = server.owner().await;
+    let north = server.dsp("Northline Logistics").await;
     let local = "http://localhost:50020/callback";
     let request = server.requested(CLAUDE_CODE, local).await;
     let code = server
         .approved(
             &owner,
             &request,
-            json!({"name":"Laptop","allDsps":true,"dsps":[],
-                "reads":{"areas":["timecards","routes"],"bypass":true}}),
+            json!({"name":"Laptop","allDsps":false,"dsps":[north]}),
         )
         .await;
-    // The code carries the choices, reads among them, until the app redeems it; with every
-    // tool and the addresses as chosen, as an older release redeems one in a rollback.
+    // The code carries the choices until the app redeems it; an older release redeeming one
+    // in a rollback reads that it may read nothing.
     assert_eq!(
         stored_choices(&server, &code).await,
-        json!({"name":"Laptop","all_dsps":true,"dsps":[],
-            "reads":{"areas":["routes","timecards"],"bypass":true},
-            "tools":"full","locations":false})
+        json!({"name":"Laptop","all_dsps":false,"dsps":[north],
+            "reads":{"areas":[],"bypass":false},"tools":"full","locations":false})
     );
     let tokens = server.exchange(CLAUDE_CODE, local, &code).await;
     assert_eq!(tokens.status, 200, "{}", tokens.body);
     let app = listed_key(&server, &owner, "Laptop").await;
     assert_eq!(
-        (&app["reads"], &app["dspReads"]),
-        (
-            &json!({"areas":["routes","timecards"],"bypass":true}),
-            &json!([])
-        )
+        (&app["allDsps"], &app["dsps"]),
+        (&json!(false), &json!([north]))
     );
 
-    // A code approved before this release, with tools and addresses, reads every kind of
-    // data, addresses as they were chosen, and bypasses nothing.
-    for (name, locations, areas) in [
-        ("Desk", true, every()),
-        (
-            "Tablet",
-            false,
-            every()
-                .into_iter()
-                .filter(|area| *area != "locations")
-                .collect(),
-        ),
-    ] {
-        let request = server.requested(CHATGPT, CHATGPT_REDIRECT).await;
-        let code = server.approved(&owner, &request, everything(name)).await;
-        let stored = stored_choices(&server, &code).await;
-        assert_eq!(
-            (&stored["tools"], &stored["locations"]),
-            (&json!("full"), &json!(true))
-        );
-        let old = json!({"name":name,"all_dsps":true,"dsps":[],"tools":"essential",
-            "locations":locations})
-        .to_string();
-        let hash = crypto::sha(&code);
-        server
-            .state
-            .run(move |db| {
-                db.platform
-                    .exec("UPDATE oauth_codes SET choices=? WHERE hash=?", [old, hash])?;
-                Ok(())
-            })
-            .await
-            .unwrap();
-        let tokens = server.exchange(CHATGPT, CHATGPT_REDIRECT, &code).await;
-        assert_eq!(tokens.status, 200, "{}", tokens.body);
-        let app = listed_key(&server, &owner, name).await;
-        assert_eq!(
-            app["reads"],
-            json!({"areas":areas,"bypass":false}),
-            "{name}"
-        );
-    }
+    // A code an older release approved, with what it read, connects as chosen.
+    let request = server.requested(CHATGPT, CHATGPT_REDIRECT).await;
+    let code = server.approved(&owner, &request, everything("Desk")).await;
+    let old = json!({"name":"Desk","all_dsps":true,"dsps":[],"tools":"essential",
+        "locations":true,"reads":{"areas":["routes"],"bypass":true}})
+    .to_string();
+    let hash = crypto::sha(&code);
+    server
+        .state
+        .run(move |db| {
+            db.platform
+                .exec("UPDATE oauth_codes SET choices=? WHERE hash=?", [old, hash])?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let tokens = server.exchange(CHATGPT, CHATGPT_REDIRECT, &code).await;
+    assert_eq!(tokens.status, 200, "{}", tokens.body);
+    let app = listed_key(&server, &owner, "Desk").await;
+    assert_eq!(
+        (&app["allDsps"], &app["access"]),
+        (&json!(true), &json!("read"))
+    );
 }
 
 #[tokio::test]
@@ -3122,8 +3048,7 @@ async fn a_connected_app_is_edited_like_a_key_but_only_ever_reads_and_never_expi
             &owner,
             CLAUDE_CODE,
             local,
-            json!({"name":"Laptop","allDsps":false,"dsps":[north],
-                "reads":{"areas":["routes","timecards"],"bypass":false}}),
+            json!({"name":"Laptop","allDsps":false,"dsps":[north]}),
         )
         .await;
     let access = s(&tokens, "access_token").to_owned();
@@ -3131,20 +3056,16 @@ async fn a_connected_app_is_edited_like_a_key_but_only_ever_reads_and_never_expi
     let path = format!("/api/platform/agents/keys/{id}");
     let edit = |change: Value| {
         let mut body = json!({"name":"Laptop","allDsps":false,"dsps":[north],"access":"read",
-            "reads":{"areas":["routes","timecards"],"bypass":false},"dspReads":[],
             "expiresAt":null});
         for (field, value) in change.as_object().unwrap() {
             body[field] = value.clone();
         }
         body
     };
-    // Never an operator, never an expiry, and never settings for a DSP it doesn't reach.
+    // Never an operator, and never an expiry.
     for refused in [
         json!({"access":"operator"}),
         json!({"expiresAt":"2030-01-01T00:00:00Z"}),
-        json!({"dspReads":[{"dsp":summit,"areas":[],"bypass":false}]}),
-        json!({"dspReads":[{"dsp":north,"areas":[],"bypass":false},
-            {"dsp":north,"areas":["dvic"],"bypass":false}]}),
     ] {
         let answer = server
             .as_owner(&owner, "POST", &path, edit(refused.clone()))
@@ -3155,39 +3076,25 @@ async fn a_connected_app_is_edited_like_a_key_but_only_ever_reads_and_never_expi
             "{refused}"
         );
     }
-    // Renamed, reaching another DSP, with Summit's own settings: the next call reads them.
+    // Renamed and reaching another DSP: the next call reaches it.
     let edited = server
         .as_owner(
             &owner,
             "POST",
             &path,
-            edit(json!({"name":"Laptop – Claude Code","dsps":[north, summit],
-                "dspReads":[{"dsp":summit,"areas":["dvic"],"bypass":true}]})),
+            edit(json!({"name":"Laptop – Claude Code","dsps":[north, summit]})),
         )
         .await;
     assert_eq!(edited.status, 200, "{}", edited.body);
     assert_eq!(edited.body["kind"], "app");
-    assert_eq!(
-        edited.body["dspReads"],
-        json!([{"dsp":summit,"areas":["dvic"],"bypass":true}])
-    );
     let whoami = server.bearer("/api/v1/whoami", &access).await;
-    let reads: Vec<(&str, &Value)> = whoami.body["dsps"]
+    let reached: Vec<&str> = whoami.body["dsps"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|dsp| (s(dsp, "name"), &dsp["reads"]))
+        .map(|dsp| s(dsp, "name"))
         .collect();
-    assert_eq!(
-        reads,
-        [
-            (
-                "Northline Logistics",
-                &json!({"areas":["routes","timecards"],"bypass":false})
-            ),
-            ("Summit Delivery", &json!({"areas":["dvic"],"bypass":true})),
-        ]
-    );
+    assert_eq!(reached, ["Northline Logistics", "Summit Delivery"]);
     assert_eq!(
         logged(&server, "agent.app_updated").await,
         [(
@@ -3202,10 +3109,8 @@ async fn agents_ask_for_no_recent_verification_while_removing_a_dsp_still_does()
     let server = Server::paired().await;
     let earlier = server.signed_in(db::now() - DAY).await;
     let north = server.dsp("Northline Logistics").await;
-    let key = |name: &str| {
-        json!({"name":name,"allDsps":true,"dsps":[],"access":"read",
-            "reads":{"areas":["routes"],"bypass":false},"dspReads":[],"expiresAt":null})
-    };
+    let key =
+        |name: &str| json!({"name":name,"allDsps":true,"dsps":[],"access":"read","expiresAt":null});
     // A day after signing in, the owner makes and edits a key, approves an app and edits it.
     let made = server
         .as_owner(&earlier, "POST", "/api/platform/agents/keys", key("Desk"))
@@ -3213,7 +3118,7 @@ async fn agents_ask_for_no_recent_verification_while_removing_a_dsp_still_does()
     assert_eq!(made.status, 200, "{}", made.body);
     let id = s(&made.body["key"], "id");
     let mut wider = key("Desk");
-    wider["reads"]["bypass"] = json!(true);
+    wider["access"] = json!("operator");
     let edited = server
         .as_owner(
             &earlier,
@@ -3231,7 +3136,8 @@ async fn agents_ask_for_no_recent_verification_while_removing_a_dsp_still_does()
     assert_eq!(server.exchange(CLAUDE_CODE, local, &code).await.status, 200);
     let app = s(&listed_key(&server, &earlier, "Laptop").await, "id").to_owned();
     let mut narrower = key("Laptop");
-    narrower["reads"]["areas"] = json!(["dvic"]);
+    narrower["allDsps"] = json!(false);
+    narrower["dsps"] = json!([north]);
     let app_edited = server
         .as_owner(
             &earlier,

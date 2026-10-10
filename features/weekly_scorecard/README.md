@@ -2,11 +2,11 @@
 
 Amazon's posted weekly scorecards, one week per Cortex job. The same Cortex connection and
 performance reader serve Daily Performance; weekly publications remain a separate source,
-with their own permissions, schedules, read allowances and storage.
+with their own permissions, schedules and storage.
 
 The current names are `weekly_scorecard`, `cortex.weekly_scorecard.collect`,
-`weekly_scorecard.view/collect/manage`, `/api/dsp/weekly-scorecard` and the
-`weekly_scorecard` agent tool at `/api/v1/weekly-scorecard`. There is no dedicated page.
+`weekly_scorecard.view/collect/manage` and `/api/dsp/weekly-scorecard`. There is no
+dedicated page.
 
 Storage is `weekly_scorecard/weekly_scorecard.sqlite`. Historical publications and source
 rows are retained when a week is collected again. Provider daily datasets inside a weekly
@@ -17,22 +17,10 @@ dispute outcomes can change. `/policy` defaults to one recent week and a 20-hour
 configurable from 1–8 weeks and 1–168 hours. Schedule times and cadence are independent of
 daily schedules. Manual recollection can target older weeks.
 
-Agent-only focused tools offer `view: posted_scorecard` for this publication's returns,
-feedback and safety outcomes, and `view: compare` alongside independent operational daily
-results. Each source needs its own grant. View answers use contract version 2 with named
-count units; explicit source-only calls keep their existing contracts. No frontend API or
-stored data is combined. Weekly scoring annotations remain authoritative for questions about
-the posted scorecard, even when daily detail has overlapping delivery attempts or events.
-Posted and comparison views default to last week. Compare keeps the weekly answer under
-`sources.posted_scorecard`, with `posted_cursor` and `posted_groups_cursor` for independent
-detail and group pages; single-view calls use `cursor` and `groups_cursor`. Weekly safety
-retains the posted dispute outcomes. Weekly package feedback records and DSP response
-counters are distinct measures, and neither is additive with daily feedback response counts.
-
 Startup retires old Dispatch identifiers: saved switches (including disabled states), role
-permissions, agent allowances and OAuth grants, collection schedules, job kinds/requests and
-audit action prefixes migrate to their weekly names. IDs, restrictions and schedule timing
-are preserved. New requests reject old permissions, collection names, routes and tools.
+permissions, collection schedules, job kinds/requests and audit action prefixes migrate to
+their weekly names. IDs, restrictions and schedule timing are preserved. New requests reject
+old permissions, collection names and routes.
 
 A marked prior `scorecard/scorecard.sqlite` is imported into the new database in a transaction.
 All publications, rows and source metadata keep their IDs and verified-scope flags. A durable

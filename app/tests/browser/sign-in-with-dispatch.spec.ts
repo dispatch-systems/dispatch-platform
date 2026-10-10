@@ -1,9 +1,8 @@
 import crypto from 'node:crypto';
 import { platformHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { test, expect, demo, signIn } from '../../../core/shell/tests/support/fixtures.js';
-import { newKinds } from '../support/agent-keys.js';
 
-// Sign in with Dispatch, approving what an app reads: the kinds of data the features declare.
+// Sign in with Dispatch, approving an app and where it reaches.
 
 const claudeCode = 'https://claude.ai/oauth/claude-code-client-metadata';
 // Claude Code's own listener on this computer; the test answers for it.
@@ -78,34 +77,6 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     await name.fill('Laptop – Claude Code app');
     await approval.getByText('Choose DSPs', { exact: true }).click();
     await approval.getByRole('checkbox', { name: 'Northline Logistics' }).check();
-    // It reads everything but delivery addresses and GPS, and bypasses no feature, unless the
-    // owner says otherwise; a DSP gets its own settings afterwards.
-    const reads = approval.getByRole('group', { name: 'What it can read', exact: true });
-    await expect(reads).toHaveAccessibleDescription(
-      'Applies to every DSP it reaches. To give a DSP its own settings, edit the app afterwards ' +
-        'in Agents → Apps.',
-    );
-    const kinds = reads.getByRole('switch');
-    await expect(kinds).toHaveCount(13);
-    for (const [index, on] of [
-      true,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-    ].entries())
-      await expect(kinds.nth(index)).toBeChecked({ checked: on });
-    await expect(approval.getByRole('switch', { name: 'Bypass features' })).not.toBeChecked();
-    await reads.getByRole('switch', { name: 'Delivery addresses & GPS', exact: true }).click();
-    await reads.getByRole('switch', { name: 'Weekly Scorecard', exact: true }).click();
     const approved = page.waitForRequest(
       (sent) => sent.method() === 'POST' && sent.url().endsWith('/approve'),
     );
@@ -113,23 +84,6 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     expect((await approved).postDataJSON()).toMatchObject({
       name: 'Laptop – Claude Code app',
       allDsps: false,
-      reads: {
-        areas: [
-          'routes',
-          'locations',
-          'timecards',
-          'meal_breaks',
-          'dvic',
-          'feedback',
-          'safety',
-          'returns',
-          'daily_performance',
-          'daily_feedback',
-          'daily_returns',
-          'daily_safety',
-        ],
-        bypass: false,
-      },
     });
 
     // The browser goes back to the app with a code for it, its state and the issuer.
@@ -140,7 +94,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     const code = answer.searchParams.get('code');
     expect(code).toBeTruthy();
 
-    // The app redeems the code, and its token reads Dispatch.
+    // The app redeems the code, and its token signs in to Dispatch.
     const token = await request.post('/oauth/token', {
       form: {
         grant_type: 'authorization_code',
@@ -160,7 +114,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     const connected = connecting.getByRole('status').filter({ hasText: 'is connected' });
     await expect(connected.getByRole('heading')).toHaveText('Claude Code is connected');
     await expect(connected).toContainText('Start a new Claude Code session to use Dispatch.');
-    await expect(connected.locator('.agents-tag')).toHaveText(['1 DSP', newKinds]);
+    await expect(connected.locator('.agents-tag')).toHaveText(['1 DSP', 'Read only']);
     await connecting.getByRole('button', { name: 'Done', exact: true }).click();
     await expect(connecting).toHaveCount(0);
 
@@ -197,8 +151,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     await expect(row).toContainText('Claude Code');
     await expect(row).toContainText('Known metadata');
     await expect(row).toContainText('Northline Logistics');
-    await expect(row).toContainText(newKinds);
-    await expect(row).toContainText('No weekly scorecard');
+    await expect(row).toContainText('Read only');
     // An app with recognized metadata shows its own logo.
     await expect(row.locator('img')).toHaveAttribute('src', /claude-[\w-]+\.png$/);
     await row.getByRole('button', { name: 'Revoke Laptop – Claude Code app', exact: true }).click();

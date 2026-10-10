@@ -5,9 +5,6 @@ mod api;
 {{#backend}}
 mod backend;
 {{/backend}}
-{{#mcp}}
-mod mcp;
-{{/mcp}}
 
 {{#api}}
 /// What its API answers with, which the app writes to TypeScript.
@@ -60,9 +57,6 @@ pub const FEATURE: Feature = Feature {
         }],
     }],
 {{/tables}}
-{{#mcp}}
-    mcp: mcp::MCP,
-{{/mcp}}
     ..feature("{{name}}")
 };
 {{#api}}

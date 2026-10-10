@@ -16,7 +16,6 @@ import {
   formatRust,
   keeperOf,
   names as namesOf,
-  nextAgentOrder,
   nextPermissionOrder,
   nextPlace,
   pageOf,
@@ -42,7 +41,6 @@ export const usage = `Usage: npm run new:feature -- <name> [options]
   --tables <database>               a first table: dsp, a collector's database, or the
                                     feature's own name with --keeps for a database of its own
   --keeps <collector>.<collection>  the keeper of a collector's collection
-  --mcp                             mcp/ with one agent endpoint and its read toggle
   --page                            a page in a DSP's sidebar
   --tab-of <feature>                a tab of another feature's page
   --settings                        a tab on a DSP's Settings page
@@ -53,7 +51,7 @@ export const usage = `Usage: npm run new:feature -- <name> [options]
   --out <dir>                       with --dry-run, write the files under <dir> instead
   --root <dir>                      the repository to write into (default: this one)`;
 
-const FLAGS = ['mandatory', 'api', 'mcp', 'page', 'settings', 'no-backend', 'dry-run'];
+const FLAGS = ['mandatory', 'api', 'page', 'settings', 'no-backend', 'dry-run'];
 const OPTIONS = ['tables', 'keeps', 'tab-of', 'label', 'out', 'root'];
 /** Where the shell's frontend reads a DSP view's type from, relative to the root. */
 const DSP_VIEW = 'core/accounts/api/index.js';
@@ -77,22 +75,17 @@ export function featureValues(root: string, argv: string[]) {
 
   const mandatory = args.flags.has('mandatory');
   const api = args.flags.has('api');
-  const mcp = args.flags.has('mcp');
   const page = args.flags.has('page');
   const settings = args.flags.has('settings');
   const host = args.options.get('tab-of');
   if (page && host)
     throw new UsageError('--page and --tab-of each give it its own screen: choose one');
-  if (mcp && mandatory)
-    throw new UsageError(
-      'Agents read a feature through its switch: --mcp needs an optional feature',
-    );
   if (args.flags.has('no-backend')) {
     if (!page && !host && !settings)
       throw new UsageError(
         '--no-backend leaves only a frontend: add --page, --tab-of or --settings',
       );
-    const logic = ['api', 'tables', 'keeps', 'mcp'].filter(
+    const logic = ['api', 'tables', 'keeps'].filter(
       (piece) => args.flags.has(piece) || args.options.has(piece),
     );
     if (logic.length)
@@ -169,14 +162,13 @@ export function featureValues(root: string, argv: string[]) {
     ),
     ...(database ? ['rusqlite = { workspace = true }'] : []),
     ...(api || database ? ['serde = { workspace = true }'] : []),
-    ...(mcp ? ['serde_json = { workspace = true }'] : []),
     ...(api ? ['ts-rs = { workspace = true, optional = true }'] : []),
   ];
   const devDependencies = [
     ...(database || keeps
       ? ['dispatch-core = { path = "../../core", features = ["testing"] }']
       : []),
-    ...(keeps && !mcp ? ['serde_json = { workspace = true }'] : []),
+    ...(keeps ? ['serde_json = { workspace = true }'] : []),
   ];
   const databaseFile = !database
     ? ''
@@ -264,10 +256,6 @@ export function featureValues(root: string, argv: string[]) {
       ['job', '&str'],
     ])}, _collected: Collected`,
     testCollectors: used.map((collector) => `&${identOf(collector)}::COLLECTOR`).join(', '),
-    mcp,
-    agentOrder: mcp ? nextAgentOrder(root) : 0,
-    // How a key's row on the Agents page names its data when the key doesn't read it.
-    missing: names.label.toLowerCase(),
     frontend,
     screens,
     platformSlots: switched,
@@ -305,10 +293,6 @@ function pieces(values: Values): [boolean, string, string][] {
     [values.tables as boolean, 'tests/backend/storage.rs', 'tests/backend/storage.rs'],
     [values.keeps as boolean, 'backend/keeper.rs', 'backend/keeper.rs'],
     [values.keeps as boolean, 'tests/backend/keeper.rs', 'tests/backend/keeper.rs'],
-    [values.mcp as boolean, 'mcp/mod.rs', 'mcp/mod.rs'],
-    [values.mcp as boolean, 'mcp/catalog.rs', 'mcp/catalog.rs'],
-    [values.mcp as boolean, 'mcp/views.rs', 'mcp/views.rs'],
-    [values.mcp as boolean, 'tests/mcp/questions.ts', 'tests/mcp/questions.ts'],
     [values.frontend as boolean, 'frontend/feature.ts', 'frontend/feature.ts'],
     [values.page as boolean, 'frontend/index.ts', 'frontend/index.ts'],
     [values.page as boolean, 'frontend/Page.tsx', `frontend/${pascal}Page.tsx`],
@@ -326,7 +310,7 @@ function pieces(values: Values): [boolean, string, string][] {
 
 export async function planFeature(root: string, argv: string[]) {
   const { args, names, values } = featureValues(root, argv);
-  const { name, slug } = names;
+  const { name } = names;
   const dir = `features/${name}`;
   const plan: Plan = emptyPlan();
   for (const [wanted, source, target] of pieces(values)) {
@@ -349,10 +333,7 @@ export async function planFeature(root: string, argv: string[]) {
   await edit(appManifest, (text) => wiredManifest(text, wired));
   await edit(featureList, () => wiredList(wired));
   // Its routes, and who may call each, in its own list, which the app's route test holds it to.
-  const routes = [
-    ...(values.api ? [`GET ${values.apiPath} Dsp("${name}.view") Read`] : []),
-    ...(values.mcp ? [`GET /api/v1/${slug} Agent("read") Read`] : []),
-  ];
+  const routes = [...(values.api ? [`GET ${values.apiPath} Dsp("${name}.view") Read`] : [])];
   if (routes.length)
     plan.files.set(
       `${dir}/tests/api/routes.txt`,

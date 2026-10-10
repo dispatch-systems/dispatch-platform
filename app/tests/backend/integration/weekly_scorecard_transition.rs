@@ -3,7 +3,6 @@ use dispatch_core::manifest::Collector;
 use dispatch_core::{
     accounts::Auth,
     db::{Store, s},
-    mcp::{api::types::AgentKeyRequest, data::catalog},
     testing as common,
 };
 use dispatch_cortex::{self as cortex, weekly_scorecard};
@@ -107,66 +106,6 @@ fn restricted_permissions_migrate_without_granting_collection_or_daily_access() 
     assert_eq!(
         serde_json::from_str::<Value>(s(&saved, "permissions")).unwrap(),
         json!(["weekly_scorecard.view"])
-    );
-}
-#[test]
-fn key_and_per_dsp_allowances_migrate_and_keep_their_exact_scope() {
-    let (_root, db, dsp) = ready();
-    let input = AgentKeyRequest::parse(
-        &json!({"name":"Weekly reader","allDsps":false,"dsps":[dsp],"access":"read",
-        "reads":{"areas":["feedback","weekly_scorecard"],"bypass":false},
-        "dspReads":[{"dsp":dsp,"areas":["weekly_scorecard"],"bypass":false}],"expiresAt":null}),
-    )
-    .unwrap();
-    let created = db
-        .create_agent_key(&common::platform_owner(&db), &input)
-        .unwrap();
-    db.platform
-        .exec(
-            "UPDATE agent_keys SET areas='feedback,scorecard' WHERE id=?",
-            [&created.key.id],
-        )
-        .unwrap();
-    db.platform
-        .exec(
-            "UPDATE agent_key_dsp_reads SET areas='scorecard' WHERE key_id=?",
-            [&created.key.id],
-        )
-        .unwrap();
-    let db = restart(db);
-    let saved = db
-        .agent_keys(&std::collections::HashMap::new())
-        .unwrap()
-        .keys
-        .into_iter()
-        .find(|key| key.id == created.key.id)
-        .unwrap();
-    assert_eq!(
-        serde_json::to_value(&saved.reads).unwrap(),
-        json!({"areas":["feedback","weekly_scorecard"],"bypass":false})
-    );
-    assert_eq!(saved.dsp_reads[0].areas[0].as_str(), "weekly_scorecard");
-    let caller = db
-        .authenticate_agent(&created.token, "migration-test")
-        .unwrap();
-    assert_eq!(caller.reads_at(&dsp).areas.len(), 1);
-    assert_eq!(caller.reads_at(&dsp).areas[0].as_str(), "weekly_scorecard");
-    assert_eq!(
-        db.platform
-            .one(
-                "SELECT areas,bypass FROM agent_keys WHERE id=?",
-                [&saved.id]
-            )
-            .unwrap()
-            .unwrap(),
-        json!({"areas":"feedback,weekly_scorecard","bypass":0})
-    );
-    assert!(
-        AgentKeyRequest::parse(
-            &json!({"name":"Retired","allDsps":false,"dsps":[dsp],"access":"read",
-        "reads":{"areas":["scorecard"],"bypass":false},"dspReads":[],"expiresAt":null})
-        )
-        .is_err()
     );
 }
 #[test]
@@ -408,7 +347,7 @@ fn old_storage_history_is_imported_verified_archived_and_not_duplicated_on_resta
     );
 }
 #[test]
-fn missing_marked_prior_storage_fails_closed_and_catalog_lists_only_current_names() {
+fn missing_marked_prior_storage_fails_closed() {
     let (_root, db, dsp) = ready();
     db.dsp(&dsp)
         .unwrap()
@@ -424,16 +363,6 @@ fn missing_marked_prior_storage_fails_closed_and_catalog_lists_only_current_name
     let config = db.config.clone();
     drop(db);
     assert!(Store::initialize(config).is_err());
-    assert!(catalog::tool("scorecard").is_none());
-    assert_eq!(
-        catalog::tool("weekly_scorecard").unwrap().path,
-        "/api/v1/weekly-scorecard"
-    );
-    assert!(
-        catalog::openapi("https://example.test")["paths"]
-            .get("/api/v1/scorecard")
-            .is_none()
-    );
 }
 
 #[test]

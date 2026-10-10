@@ -12,7 +12,6 @@ fn call(at: i64, key: &str, outcome: &str) -> Call {
         surface: "rest:whoami".into(),
         dsp: None,
         outcome: outcome.into(),
-        bypassed: false,
         ms: 3,
         bytes: 120,
     }
@@ -118,17 +117,16 @@ fn a_key_keeps_its_days_first_calls_then_one_row_that_marks_the_day_capped() {
 fn calls_are_named_by_endpoint_or_tool_and_never_by_what_they_ask() {
     crate::testing::install(&[], &[]);
     assert_eq!(surface("/api/v1/whoami").unwrap(), "rest:whoami");
-    assert_eq!(surface("/api/v1/drivers/{driver}").unwrap(), "rest:driver");
-    assert_eq!(surface("/api/v1/skill").unwrap(), "rest:skill");
     assert_eq!(surface("/api/v1/mcp"), None);
+    assert_eq!(surface("/api/platform/agents"), None);
     let message = |method: &str, params: serde_json::Value| {
         json!({"jsonrpc":"2.0","id":1,"method":method,"params":params}).to_string()
     };
     let called = message(
         "tools/call",
-        json!({"name":"driver_report","arguments":{"driver":"Avery Morgan"}}),
+        json!({"name":"whoami","arguments":{"driver":"Avery Morgan"}}),
     );
-    assert_eq!(tool_call(called.as_bytes()).unwrap(), "mcp:driver_report");
+    assert_eq!(tool_call(called.as_bytes()).unwrap(), "mcp:whoami");
     let invented = message("tools/call", json!({"name":"x".repeat(25_000)}));
     assert_eq!(tool_call(invented.as_bytes()).unwrap(), "mcp:unknown");
     assert_eq!(tool_call(message("tools/list", json!({})).as_bytes()), None);

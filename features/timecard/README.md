@@ -31,9 +31,8 @@ Timecard's collections. It names drivers through Driver Match.
   `meal_breaks.sync_requested`, under Collections, and `paycom.settings_updated`, under
   Settings. They keep the names they shipped with, which history holds, rather than
   `timecard.…`.
-- **Agents:** `timecards` and `meal-breaks` under `/api/v1/`, read with the `timecards` and
-  `meal_breaks` toggles. Its employees and its meal breaks' drivers are Driver Match's
-  `timecards` and `meal_breaks` kinds of data.
+- **People:** its employees and its meal breaks' drivers are Driver Match's `timecards` and
+  `meal_breaks` kinds of data.
 - **Storage:** in the collectors' own databases, which it migrates: Paycom's (`paycom`) and
   Cortex's (`cortex`). A Cortex meal collection asks it for the scope's active publication, so
   finished routes are not read again. A route whose meal punches Cortex sent in a shape the

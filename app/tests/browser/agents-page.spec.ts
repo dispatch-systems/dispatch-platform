@@ -1,18 +1,15 @@
 import crypto from 'node:crypto';
-import fs from 'node:fs';
 import type { Page } from '@playwright/test';
 import type { AgentKeys } from '../../../core/platform_owner/api/index.js';
 import { platformHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { utcDay } from '../../../core/shell/frontend/lib/format.js';
 import { test, expect, login } from '../../../core/shell/tests/support/fixtures.js';
-import { newKinds } from '../support/agent-keys.js';
 
-// The Agents page with what keys and apps read: the kinds of data the features declare, and
-// the features a DSP has switched on.
+// The Agents page: keys, connected apps and what they called.
 
 /** Connects Claude Code as `name` while apps may connect: it asks from this browser, the owner
- * signed in on `page` approves what a new app reads, and the app redeems its code. Its listener
- * on this computer answers for it. */
+ * signed in on `page` approves it, and the app redeems its code. Its listener on this computer
+ * answers for it. */
 async function connectApp(page: Page, origin: string, name: string) {
   const callback = 'http://localhost:43821/callback';
   const client = 'https://claude.ai/oauth/claude-code-client-metadata';
@@ -98,9 +95,6 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   await expect(row).toContainText(`…${token!.slice(-4)}`);
   await expect(row).toContainText('Read only');
   await expect(row).toContainText('Northline Logistics');
-  // A new key reads everything but delivery addresses and GPS.
-  await expect(row).toContainText(newKinds);
-  await expect(row).toContainText('No delivery addresses');
   // The page never shows the key again.
   await expect(page.getByText(token!)).toHaveCount(0);
 
@@ -114,16 +108,14 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
 
   // Using keys, folded away beneath them: testing a key answers as an agent would.
   const using = page.getByRole('group').filter({ hasText: 'Using keys' });
-  await expect(using.locator('summary')).toHaveText(
-    'Using keys· addresses, key tester, OpenAPI spec and skill',
-  );
+  await expect(using.locator('summary')).toHaveText('Using keys· addresses and key tester');
   await expect(using.getByLabel('Key to test')).toBeHidden();
   await using.locator('summary').click();
   await expect(using.locator('summary')).toHaveText('Using keys');
   await using.getByLabel('Key to test').fill(token!);
   await using.getByRole('button', { name: 'Test key', exact: true }).click();
   await expect(using.getByRole('status')).toContainText('Connected · Read only · 1 DSP');
-  // The addresses an agent needs, ready to copy, the OpenAPI spec and the skill.
+  // The addresses an agent needs, ready to copy.
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseURL });
   const addresses = using.locator('.agents-endpoint');
   await expect(addresses).toHaveText([
@@ -134,16 +126,6 @@ test('the platform owner makes a key, sees it once, tests it, changes and revoke
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${baseURL}/api/v1`);
   // Each new key comes with its own setup, so the page holds none.
   await expect(page.locator('.agents-snippet')).toHaveCount(0);
-  await expect(using.getByRole('link', { name: 'OpenAPI spec' })).toHaveAttribute(
-    'href',
-    '/api/platform/agents/openapi.json',
-  );
-  const download = page.waitForEvent('download');
-  await using.getByRole('link', { name: 'Download Dispatch skill' }).click();
-  const skill = await download;
-  expect(skill.suggestedFilename()).toBe('SKILL.md');
-  const text = fs.readFileSync((await skill.path())!, 'utf8');
-  expect(text).toMatch(/^---\nname: dispatch\n/);
 
   // Revoked, it stops at once.
   await row.getByRole('button', { name: 'Open Laptop – Claude Code' }).click();
@@ -168,8 +150,6 @@ test('an existing Operator key keeps its access when edited and can be changed t
     allDsps: true,
     dsps: [],
     access: 'operator',
-    reads: { areas: ['routes'], bypass: false },
-    dspReads: [],
     expiresAt: null,
   });
   expect(made.status, made.body).toBe(200);
@@ -206,8 +186,6 @@ test('the Activity tab lists each call a key makes, and what Dispatch answered',
     allDsps: true,
     dsps: [],
     access: 'read',
-    reads: { areas: ['routes', 'timecards'], bypass: false },
-    dspReads: [],
     expiresAt: null,
   });
   expect(made.status, made.body).toBe(200);
@@ -254,25 +232,9 @@ test('the Activity tab lists each call a key makes, and what Dispatch answered',
     `Over 10,000 calls from Nightly report script on ${utcDay(capped)} (UTC); later calls that day aren’t listed.`,
   );
   await expect(page.getByRole('row')).toHaveCount(3);
-  // A call that read a feature its DSP has switched off says it bypassed it.
-  await expect(page.getByText('Bypassed', { exact: true })).toHaveCount(0);
-  dispatch.database('data/platform/accounts.sqlite', (db) =>
-    db
-      .prepare(
-        `INSERT INTO agent_activity(at,key_id,key_name,key_kind,surface,dsp_id,dsp_name,outcome,ms,bytes,bypassed)
-         VALUES (?,?,?,'key','mcp:timecards','dsp_summit','Summit Delivery','ok',42,900,1)`,
-      )
-      .run(Date.now(), made.value.key.id, 'Nightly report script'),
-  );
-  await page.getByRole('tab', { name: 'Keys', exact: true }).click();
-  await page.getByRole('tab', { name: 'Activity', exact: true }).click();
-  const bypassed = page.getByRole('row').filter({ hasText: 'timecards' });
-  await expect(bypassed).toContainText('Summit Delivery');
-  await expect(bypassed.getByText('Bypassed', { exact: true })).toBeVisible();
-  await expect(page.getByText('Bypassed', { exact: true })).toHaveCount(1);
 });
 
-test('the owner changes what a connected app reads, and gives a DSP settings of its own', async ({
+test('the owner changes where a connected app reaches, without being asked to sign in again', async ({
   page,
   baseURL,
   dispatch,
@@ -283,17 +245,11 @@ test('the owner changes what a connected app reads, and gives a DSP settings of 
   const pairing = await owner.post('/api/platform/oauth/pairing');
   expect(pairing.status, pairing.body).toBe(200);
   await connectApp(page, baseURL!, 'Laptop – Claude Code');
-  // Summit Delivery has Routes, Timecard and Weekly Scorecard switched off.
   const agents = async () => (await owner.get('/api/platform/agents')).value as AgentKeys;
-  const summit = (await agents()).dsps.find((dsp) => dsp.name === 'Summit Delivery')!;
-  for (const feature of ['routes', 'timecard', 'weekly_scorecard']) {
-    const off = await owner.post(`/api/platform/dsps/${summit.id}/features`, {
-      feature,
-      enabled: false,
-    });
-    expect(off.status, off.body).toBe(200);
-  }
-  // Long after signing in, removing a DSP asks for the password again; what an app reads
+  const { dsps } = await agents();
+  const summit = dsps.find((dsp) => dsp.name === 'Summit Delivery')!;
+  const north = dsps.find((dsp) => dsp.name === 'Northline Logistics')!;
+  // Long after signing in, removing a DSP asks for the password again; where an app reaches
   // changes without it.
   dispatch.database('data/platform/accounts.sqlite', (db) => {
     db.prepare('UPDATE sessions SET created_at=0').run();
@@ -304,139 +260,24 @@ test('the owner changes what a connected app reads, and gives a DSP settings of 
 
   await page.goto(`/${platformHash('agents')}`);
   const row = page.getByRole('row').filter({ hasText: 'Laptop – Claude Code' });
-  await expect(row).toContainText(newKinds);
-  await expect(row).toContainText('No delivery addresses');
+  await expect(row).toContainText('All DSPs');
+  await expect(row).toContainText('Read only');
   await row.getByRole('button', { name: 'Edit Laptop – Claude Code', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Laptop – Claude Code' });
   await expect(sheet.getByText('Known metadata', { exact: true })).toBeVisible();
   // An app only ever reads, and never expires.
   await expect(sheet.getByRole('radio', { name: /Operator/ })).toHaveCount(0);
   await expect(sheet.getByLabel('Expires')).toHaveCount(0);
-
-  // What it reads at every DSP: addresses and GPS come only with routes.
-  const switchIn = (scope: typeof sheet, name: string) =>
-    scope.getByRole('switch', { name, exact: true });
-  const routes = switchIn(sheet, 'Routes & packages');
-  const addresses = switchIn(sheet, 'Delivery addresses & GPS');
-  await expect(addresses).not.toBeChecked();
-  await routes.click();
-  await expect(routes).not.toBeChecked();
-  await expect(addresses).toBeDisabled();
-  await routes.click();
-  await addresses.click();
-  await expect(addresses).toBeChecked();
-  await switchIn(sheet, 'Customer feedback').click();
-  await expect(switchIn(sheet, 'Customer feedback')).not.toBeChecked();
-  await expect(switchIn(sheet, 'Bypass features')).not.toBeChecked();
-
-  // Every DSP follows the app's settings until it has its own.
-  const dspRow = (name: string) => sheet.getByRole('listitem').filter({ hasText: name });
-  await expect(dspRow('Summit Delivery')).toContainText('App settings');
-  await sheet.getByRole('button', { name: 'Edit Summit Delivery', exact: true }).click();
-  const here = page.getByRole('dialog', { name: 'Summit Delivery' });
-  const back = here.getByRole('button', { name: 'Back', exact: true });
-  await expect(back).toBeFocused();
-  const follow = switchIn(here, 'Use app settings');
-  await expect(follow).toBeChecked();
-  await expect(here).toContainText(
-    'Routes, Timecard and Weekly Scorecard are switched off at Summit Delivery.',
-  );
-  for (const group of ['Routes', 'Timecard', 'Weekly Scorecard'])
-    await expect(here.getByRole('group', { name: group, exact: true })).toHaveAccessibleDescription(
-      'Switched off here',
-    );
-  await expect(here.getByRole('group', { name: 'DVIC', exact: true })).toHaveAccessibleDescription(
-    '',
-  );
-  // Following, it shows the app's settings, which change only on the app.
-  await expect(switchIn(here, 'Delivery addresses & GPS')).toBeChecked();
-  await expect(switchIn(here, 'Customer feedback')).not.toBeChecked();
-  await expect(switchIn(here, 'Customer feedback')).toBeDisabled();
-  await expect(switchIn(here, 'Bypass features')).toBeDisabled();
-  await expect(switchIn(here, 'Bypass features')).toHaveAccessibleDescription(
-    'Follows Laptop – Claude Code’s settings: off.',
-  );
-
-  // Its own settings start as the app's; here it reads no addresses, and bypasses features.
-  await follow.click();
-  await expect(follow).not.toBeChecked();
-  await expect(switchIn(here, 'Delivery addresses & GPS')).toBeEnabled();
-  await switchIn(here, 'Delivery addresses & GPS').click();
-  await switchIn(here, 'Bypass features').click();
-  await expect(switchIn(here, 'Bypass features')).toBeChecked();
-  await expect(switchIn(here, 'Bypass features')).toHaveAccessibleDescription(
-    'Laptop – Claude Code reads every feature’s data here, including the three switched off. ' +
-      'Their collection stays off, so that data ends on the day each was switched off. It only ' +
-      'ever reads.',
-  );
-  // Back, by keyboard, returns to the DSP's Edit.
-  await back.focus();
-  await page.keyboard.press('Enter');
-  const edit = sheet.getByRole('button', { name: 'Edit Summit Delivery', exact: true });
-  await expect(edit).toBeFocused();
-  await expect(dspRow('Summit Delivery')).toContainText('Own settings · Bypass on');
-
-  // Another DSP given settings of its own goes back to the app's.
-  await sheet.getByRole('button', { name: 'Edit Northline Logistics', exact: true }).click();
-  const north = page.getByRole('dialog', { name: 'Northline Logistics' });
-  await expect(north).toContainText('Every feature is on at Northline Logistics.');
-  await switchIn(north, 'Use app settings').click();
-  await switchIn(north, 'Timecards').click();
-  await north.getByRole('button', { name: 'Done', exact: true }).click();
-  await expect(dspRow('Northline Logistics')).toContainText('Own settings');
-  await sheet.getByRole('button', { name: 'Edit Northline Logistics', exact: true }).click();
-  await expect(switchIn(north, 'Timecards')).not.toBeChecked();
-  await switchIn(north, 'Use app settings').click();
-  await expect(switchIn(north, 'Timecards')).toBeChecked();
-  await expect(switchIn(north, 'Timecards')).toBeDisabled();
-  await north.getByRole('button', { name: 'Done', exact: true }).click();
-  await expect(dspRow('Northline Logistics')).toContainText('App settings');
+  await sheet.getByText('Choose DSPs', { exact: true }).click();
+  await sheet.getByRole('checkbox', { name: 'Northline Logistics' }).check();
 
   // Saved at once: no password asked.
   await sheet.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(page.getByText('App updated', { exact: true })).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Confirm it’s you' })).toHaveCount(0);
   await expect(sheet).toHaveCount(0);
-  await expect(row).toContainText(newKinds);
-  await expect(row).toContainText('Summit Delivery: own settings, bypass on');
+  await expect(row).toContainText('1 DSP');
+  await expect(row).toContainText('Northline Logistics');
   const saved = (await agents()).keys.find((key) => key.name === 'Laptop – Claude Code')!;
-  expect(saved.reads).toEqual({
-    areas: [
-      'routes',
-      'locations',
-      'timecards',
-      'meal_breaks',
-      'dvic',
-      'safety',
-      'returns',
-      'weekly_scorecard',
-      'daily_performance',
-      'daily_feedback',
-      'daily_returns',
-      'daily_safety',
-    ],
-    bypass: false,
-  });
-  expect(saved.dspReads).toEqual([
-    {
-      dsp: summit.id,
-      areas: [
-        'routes',
-        'timecards',
-        'meal_breaks',
-        'dvic',
-        'safety',
-        'returns',
-        'weekly_scorecard',
-        'daily_performance',
-        'daily_feedback',
-        'daily_returns',
-        'daily_safety',
-      ],
-      bypass: true,
-    },
-  ]);
-  await row.getByRole('button', { name: 'Edit Laptop – Claude Code', exact: true }).click();
-  await expect(dspRow('Summit Delivery')).toContainText('Own settings · Bypass on');
-  await expect(dspRow('Northline Logistics')).toContainText('App settings');
+  expect([saved.allDsps, saved.dsps]).toEqual([false, [north.id]]);
 });

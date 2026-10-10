@@ -4,10 +4,9 @@ use dispatch_core::{
     db::Store,
     manifest::{
         Feature, Registry, ScheduleAlias, feature, optional,
-        people::{Appearances, Named, People},
+        people::{Appearances, DriverData, DriverSource, Named, People, PeopleData},
         perm, sub,
     },
-    mcp::api::types::{DriverData, DriverSource, PeopleData},
 };
 
 /// The app's registry with one more feature, as `install` would check it.
@@ -124,23 +123,6 @@ fn a_kind_of_data_that_names_people_twice_is_refused() {
     };
     crate::install();
     with(&TWICE).check();
-}
-
-#[cfg(all(feature = "daily_performance", feature = "weekly_scorecard"))]
-#[test]
-#[should_panic(expected = "feedback repeats a source variant")]
-fn a_tool_source_variant_declared_twice_is_refused() {
-    use dispatch_core::mcp::pieces::Mcp;
-    static AGAIN: Feature = Feature {
-        switch: optional("again", "Again", &[]),
-        mcp: Mcp {
-            variants: &[dispatch_daily_performance::FEATURE.mcp.variants[0]],
-            ..Mcp::NONE
-        },
-        ..feature("again")
-    };
-    crate::install();
-    with(&AGAIN).check();
 }
 
 #[test]

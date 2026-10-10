@@ -4,7 +4,7 @@ import type { AgentDsp, AgentKey } from '../../api/index.js';
 import { useAgentKeys } from '../../api/client.js';
 import { platformHash } from '../../../shell/frontend/runtime/navigation.js';
 import {
-  accessText,
+  accessLabels,
   connectApps,
   connectedAs,
   inUse,
@@ -367,7 +367,7 @@ function Status({
   );
 }
 
-/** The app connected: what it reaches and reads, and how to start using it. */
+/** The app connected: what it reaches and may do, and how to start using it. */
 function Connected({
   agentKey,
   app,
@@ -400,7 +400,7 @@ function Connected({
         </p>
         <span className="agents-tags">
           <span className="agents-tag">{reachText(agentKey, dsps).count}</span>
-          <span className="agents-tag">{accessText(agentKey, dsps).count}</span>
+          <span className="agents-tag">{accessLabels[agentKey.access]}</span>
         </span>
       </div>
       <div className="agents-connect-footer">

@@ -16,7 +16,6 @@ import type {
   OAuthRedirect,
   OAuthRequest,
 } from '../../../core/platform_owner/api/index.js';
-import { everyKind } from '../support/agent-keys.js';
 
 // Sign in with Dispatch, driven over HTTP the way an MCP client drives it: a 401 that says
 // where to sign in, the discovery documents, the browser's trip through /oauth/authorize, the
@@ -28,23 +27,6 @@ const claudeCode = 'https://claude.ai/oauth/claude-code-client-metadata';
 const chatgpt = 'https://chatgpt.com/oauth/client.json';
 const chatgptRedirect = 'https://chatgpt.com/connector_platform_oauth_redirect';
 const cursorRedirect = 'cursor://anysphere.cursor-retrieval/oauth/callback';
-// The tools an app reading routes and DVIC is offered, as agent-mcp.test.ts lists them for a
-// key: theirs, and those that read nothing in particular.
-const routesAndDvic: OAuthApproval['reads'] = { areas: ['routes', 'dvic'], bypass: false };
-const routesAndDvicTools = [
-  'data_status',
-  'driver_report',
-  'dvic_inspections',
-  'find_drivers',
-  'find_package',
-  'get_profile',
-  'list_metrics',
-  'packages',
-  'route_day',
-  'route_stops',
-  'team_table',
-  'whoami',
-];
 
 type App = Awaited<ReturnType<typeof fixture>>;
 type Answer = { status: number; headers: Headers; body: any };
@@ -60,7 +42,6 @@ const everything = (name: string): OAuthApproval => ({
   name,
   allDsps: true,
   dsps: [],
-  reads: { areas: ['locations', ...everyKind], bypass: false },
 });
 
 /** A PKCE pair as a client makes one: a random verifier and its S256 challenge. */
@@ -369,7 +350,6 @@ test('Claude Code connects by its published document and reaches only what the o
     name: 'Laptop – Claude Code',
     allDsps: false,
     dsps: [c.north.id],
-    reads: routesAndDvic,
   });
   assert.ok(redirect.startsWith(`${callback}?`), redirect);
   const code = c.code(redirect, started.state);
@@ -406,15 +386,15 @@ test('Claude Code connects by its published document and reaches only what the o
   const listed = await c.rpc(access, 'tools/list');
   assert.equal(listed.status, 200, JSON.stringify(listed.body));
   const tools = (listed.body.result.tools as { name: string }[]).map((tool) => tool.name);
-  assert.deepEqual(tools.sort(), routesAndDvicTools);
+  assert.deepEqual(tools, ['get_profile', 'whoami']);
   const called = await c.rpc(access, 'tools/call', { name: 'whoami', arguments: {} });
   assert.equal(called.body.result.isError, false, JSON.stringify(called.body));
   const me = called.body.result.structuredContent as AgentWhoami;
   assert.deepEqual(JSON.parse(called.body.result.content[0].text), me);
   assert.deepEqual(me.key, { name: 'Laptop – Claude Code', access: 'read', expiresAt: null });
   assert.deepEqual(
-    me.dsps.map((dsp) => [dsp.id, dsp.reads]),
-    [[c.north.id, routesAndDvic]],
+    me.dsps.map((dsp) => dsp.id),
+    [c.north.id],
   );
 
   // The same code presented again, with everything right, ends the app it made.
@@ -514,24 +494,28 @@ test('connecting the same app again under the same name replaces the earlier con
   const [first] = await c.listed('Laptop – Claude Code');
 
   // Claude Code signs in again, as after its tokens were lost; the owner approves it under
-  // the same name, now reading routes and DVIC alone.
+  // the same name, now reaching Northline alone.
   const again = await c.connect(claudeCode, callback, {
     ...everything('Laptop – Claude Code'),
-    reads: routesAndDvic,
+    allDsps: false,
+    dsps: [c.north.id],
   });
   c.refused(await c.whoami(earlier.access_token), 'the replaced connection');
   const renewed = await c.refresh(claudeCode, earlier.refresh_token);
   assert.deepEqual([renewed.status, renewed.body.error], [400, 'invalid_grant']);
   const me = await c.whoami(again.access_token);
   assert.equal(me.status, 200, JSON.stringify(me.body));
-  assert.deepEqual((me.body as AgentWhoami).dsps[0]!.reads, routesAndDvic);
+  assert.deepEqual(
+    (me.body as AgentWhoami).dsps.map((dsp) => dsp.id),
+    [c.north.id],
+  );
 
   // One live connection of that name, the new one; the earlier one is listed as revoked.
   const laptops = await c.listed('Laptop – Claude Code');
   const live = laptops.filter((key) => key.revokedAt === null);
   assert.equal(live.length, 1);
   assert.notEqual(live[0]!.id, first!.id);
-  assert.deepEqual(live[0]!.reads, routesAndDvic);
+  assert.deepEqual(live[0]!.dsps, [c.north.id]);
   assert.ok(laptops.find((key) => key.id === first!.id)?.revokedAt);
   // A connection of the same app under another name is left alone.
   assert.equal((await c.whoami(other.access_token)).status, 200);
@@ -744,7 +728,6 @@ test('the platform owner is emailed when an app connects and when Dispatch disco
     name: 'Laptop – Claude Code',
     allDsps: false,
     dsps: [c.north.id],
-    reads: routesAndDvic,
   });
   const connected = await capturedMail(f.root, owner);
   assert.equal(connected.subject, '[Dispatch Dev] Claude Code connected to Dispatch');
@@ -753,7 +736,7 @@ test('the platform owner is emailed when an app connects and when Dispatch disco
     'App: Claude Code (known metadata)',
     'Sends access to: this computer',
     'DSPs: Northline Logistics',
-    'Access: Reads Routes & packages, DVIC inspections',
+    'Access: Read only',
     `${c.issuer}/#agents?tab=apps`,
   ]) {
     assert.ok(connected.text.includes(line), `${line}\n${connected.text}`);

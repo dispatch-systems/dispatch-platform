@@ -6,7 +6,7 @@ use dispatch_core::testing as common;
 use dispatch_core::{
     db::{self, Store, s},
     foundation::crypto,
-    mcp::api::types::{AgentAccess, AgentArea, AgentKeyRequest, AgentReads, AgentSource},
+    mcp::api::types::{AgentAccess, AgentKeyRequest},
 };
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -15,30 +15,9 @@ fn request(value: Value) -> AgentKeyRequest {
     AgentKeyRequest::parse(&value).unwrap()
 }
 
-/// A kind of data a key may read, by its id.
-fn kind(id: &str) -> AgentArea {
-    AgentArea::parse(id).unwrap()
-}
-/// Every kind of data but delivery addresses, as a new key starts: every kind the features
-/// declare, in their order.
-fn key_reads() -> Vec<&'static str> {
-    dispatch_backend::install();
-    AgentArea::all()
-        .map(AgentArea::as_str)
-        .filter(|area| *area != "locations")
-        .collect()
-}
 fn reach(dsps: &[&str]) -> Value {
     json!({"name":"Laptop – Claude Code","allDsps":dsps.is_empty(),"dsps":dsps,
-        "access":"read","reads":{"areas":key_reads(),"bypass":false},"dspReads":[],"expiresAt":null})
-}
-/// The kinds of data a request reads, without one.
-fn without(areas: &[&'static str], left_out: &str) -> Vec<&'static str> {
-    areas
-        .iter()
-        .copied()
-        .filter(|area| *area != left_out)
-        .collect()
+        "access":"read","expiresAt":null})
 }
 fn owner(db: &Store) -> String {
     s(
@@ -123,13 +102,6 @@ async fn modern_mcp_exposes_a_stable_strict_profile_and_structured_results() {
         profile["_meta"]["securitySchemes"],
         json!([{"type":"oauth2","scopes":["dispatch"]}])
     );
-    let find = tools
-        .iter()
-        .find(|tool| tool["name"] == "find_drivers")
-        .unwrap();
-    assert_eq!(find["inputSchema"]["additionalProperties"], false);
-    assert_eq!(find["inputSchema"]["properties"]["q"]["maxLength"], 200);
-    assert_eq!(find["outputSchema"]["type"], "object");
 
     let first = admitted_mcp_version(
         &state,
@@ -264,23 +236,13 @@ async fn mcp_revalidates_admitted_keys_before_protected_reads_and_discovery() {
     }
 }
 
-/// The names of the tools an MCP list offers.
-fn tool_names(listed: &Value) -> Vec<String> {
-    listed["result"]["tools"]
-        .as_array()
-        .unwrap_or_else(|| panic!("{listed}"))
-        .iter()
-        .map(|tool| s(tool, "name").to_owned())
-        .collect()
-}
-
 #[tokio::test]
-async fn mcp_uses_current_reads_and_dsp_reach_for_an_admitted_caller() {
+async fn mcp_uses_current_dsp_reach_for_an_admitted_caller() {
     dispatch_backend::install();
     use dispatch_core::State;
     let (_root, db, dsp) = bootstrapped();
-    db.enable_all_features(&dsp).unwrap();
     let user = owner(&db);
+    let second = db.new_dsp("Other DSP", "UTC", &user, false).unwrap().id;
     let made = db
         .create_agent_key(&user, &request(reach(&[&dsp])))
         .unwrap();
@@ -288,145 +250,40 @@ async fn mcp_uses_current_reads_and_dsp_reach_for_an_admitted_caller() {
     let config = db.config.clone();
     drop(db);
     let state = State::new(config).unwrap();
-    let full = admitted_mcp(&state, &caller, "tools/list", json!({})).await;
-    assert!(tool_names(&full).contains(&"timecards".to_owned()));
-    let (actor, key, reached) = (user.clone(), made.key.id.clone(), dsp.clone());
+    let reached = |who: &Value| -> Vec<String> {
+        let value: Value =
+            serde_json::from_str(who["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+        value["dsps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|dsp| s(dsp, "id").to_owned())
+            .collect()
+    };
+    let who = admitted_mcp(&state, &caller, "tools/call", json!({"name":"whoami"})).await;
+    assert_eq!(reached(&who), std::slice::from_ref(&dsp));
+    // The owner gives the key another DSP instead: the admitted caller reaches only that.
+    let (actor, key, granted) = (user.clone(), made.key.id.clone(), second.clone());
     state
         .run(move |db| {
-            let mut body = reach(&[&reached]);
-            body["reads"]["areas"] = json!(without(&key_reads(), "timecards"));
-            db.update_agent_key(&actor, &key, &request(body))?;
+            db.update_agent_key(&actor, &key, &request(reach(&[&granted])))?;
             Ok(())
         })
         .await
         .unwrap();
-    // A tool no DSP lets the key read is no longer offered, and is refused if called anyway.
-    let listed = admitted_mcp(&state, &caller, "tools/list", json!({})).await;
-    assert!(!tool_names(&listed).contains(&"timecards".to_owned()));
-    assert!(tool_names(&listed).contains(&"dvic_inspections".to_owned()));
-    let hidden = admitted_mcp(&state, &caller, "tools/call", json!({"name":"timecards"})).await;
-    assert_eq!(hidden["result"]["isError"], true);
-    assert!(
-        hidden["result"]["content"][0]["text"]
-            .as_str()
-            .unwrap()
-            .starts_with("not_allowed: Laptop – Claude Code can't read Timecards at "),
-        "{hidden}"
-    );
+    let who = admitted_mcp(&state, &caller, "tools/call", json!({"name":"whoami"})).await;
+    assert_eq!(reached(&who), std::slice::from_ref(&second));
+    // Suspended, it is reached no longer.
     state
         .run(move |db| {
             db.platform
-                .exec("UPDATE dsps SET status='suspended' WHERE id=?", [&dsp])?;
+                .exec("UPDATE dsps SET status='suspended' WHERE id=?", [&second])?;
             Ok(())
         })
         .await
         .unwrap();
     let who = admitted_mcp(&state, &caller, "tools/call", json!({"name":"whoami"})).await;
-    let current: Value =
-        serde_json::from_str(who["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
-    assert_eq!(current["dsps"], json!([]));
-}
-
-#[tokio::test]
-async fn mcp_rechecks_location_policy_and_changed_dsp_grants() {
-    dispatch_backend::install();
-    use dispatch_core::State;
-    let (_root, db, dsp) = bootstrapped();
-    db.enable_all_features(&dsp).unwrap();
-    let user = owner(&db);
-    let second = db.new_dsp("Other DSP", "UTC", &user, false).unwrap().id;
-    let mut body = reach(&[&dsp]);
-    body["reads"]["areas"] = json!(["routes", "locations"]);
-    let made = db.create_agent_key(&user, &request(body.clone())).unwrap();
-    let caller = db.authenticate_agent(&made.token, "test").unwrap();
-    let config = db.config.clone();
-    drop(db);
-    let state = State::new(config).unwrap();
-    let normal = admitted_mcp(
-        &state,
-        &caller,
-        "tools/call",
-        json!({"name":"packages","arguments":{"date":"2026-09-12","list":true}}),
-    )
-    .await;
-    let value: Value =
-        serde_json::from_str(normal["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
-    assert!(
-        value["list"]["columns"]
-            .as_array()
-            .unwrap()
-            .contains(&json!("address")),
-        "{normal}"
-    );
-    body["reads"]["areas"] = json!(["routes"]);
-    let key = made.key.id.clone();
-    let actor = user.clone();
-    state
-        .run(move |db| {
-            db.update_agent_key(&actor, &key, &request(body))?;
-            Ok(())
-        })
-        .await
-        .unwrap();
-    let current = admitted_mcp(
-        &state,
-        &caller,
-        "tools/call",
-        json!({"name":"packages","arguments":{"date":"2026-09-12","list":true}}),
-    )
-    .await;
-    let value: Value =
-        serde_json::from_str(current["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
-    assert!(
-        !value["list"]["columns"]
-            .as_array()
-            .unwrap()
-            .contains(&json!("address")),
-        "{current}"
-    );
-    let grouping = admitted_mcp(
-        &state,
-        &caller,
-        "tools/call",
-        json!({"name":"packages","arguments":{"date":"2026-09-12","group_by":"address"}}),
-    )
-    .await;
-    assert_eq!(grouping["result"]["isError"], true, "{grouping}");
-    assert!(
-        grouping["result"]["content"][0]["text"]
-            .as_str()
-            .unwrap()
-            .starts_with("not_allowed: Laptop – Claude Code can't read Delivery addresses & GPS"),
-        "{grouping}"
-    );
-    let granted = second.clone();
-    state
-        .run(move |db| {
-            db.update_agent_key(&user, &made.key.id, &request(reach(&[&granted])))?;
-            Ok(())
-        })
-        .await
-        .unwrap();
-    let who = admitted_mcp(&state, &caller, "tools/call", json!({"name":"whoami"})).await;
-    let value: Value =
-        serde_json::from_str(who["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
-    assert_eq!(value["dsps"][0]["id"], second);
-    assert_eq!(value["dsps"].as_array().unwrap().len(), 1);
-    let foreign = admitted_mcp(
-        &state,
-        &caller,
-        "tools/call",
-        json!({"name":"find_drivers","arguments":{"dsp":dsp}}),
-    )
-    .await;
-    assert_eq!(foreign["result"]["isError"], true, "{foreign}");
-    assert!(
-        foreign["result"]["content"][0]["text"]
-            .as_str()
-            .unwrap()
-            .starts_with("dsp_not_found:"),
-        "{foreign}"
-    );
+    assert!(reached(&who).is_empty());
 }
 
 #[test]
@@ -818,7 +675,7 @@ async fn a_password_reset_ends_its_owners_keys() {
 }
 
 #[test]
-fn reads_are_kept_in_order_and_dsps_own_settings_only_where_the_key_reaches() {
+fn a_suspended_dsp_keeps_its_reach_through_an_edit() {
     dispatch_backend::install();
     let (_root, db, first) = bootstrapped();
     let user = owner(&db);
@@ -826,300 +683,10 @@ fn reads_are_kept_in_order_and_dsps_own_settings_only_where_the_key_reaches() {
         .new_dsp("Harbor Route Co", "UTC", &user, false)
         .unwrap()
         .id;
-    // Kinds come back once each, in the page's order, whatever order they were sent in.
-    let mut body = reach(&[&first]);
-    body["reads"]["areas"] = json!(["dvic", "routes", "dvic", "locations"]);
-    body["dspReads"] = json!([{"dsp":first,"areas":["safety","feedback"],"bypass":true}]);
-    let made = db.create_agent_key(&user, &request(body)).unwrap();
-    assert_eq!(
-        serde_json::to_value(&made.key.reads).unwrap(),
-        json!({"areas":["routes","locations","dvic"],"bypass":false})
-    );
-    assert_eq!(
-        serde_json::to_value(&made.key.dsp_reads).unwrap(),
-        json!([{"dsp":first,"areas":["feedback","safety"],"bypass":true}])
-    );
-    // An older release reads the old columns: every tool, and the addresses as allowed.
-    let row = db
-        .platform
-        .one(
-            "SELECT tools,locations,areas,bypass FROM agent_keys WHERE id=?",
-            [&made.key.id],
-        )
-        .unwrap()
+    let chosen = reach(&[&first, &second]);
+    let made = db
+        .create_agent_key(&user, &request(chosen.clone()))
         .unwrap();
-    assert_eq!(
-        row,
-        json!({"tools":"full","locations":1,"areas":"routes,locations,dvic","bypass":0})
-    );
-    // A DSP's own settings are for a DSP the key reaches, once, and at most 500 of them.
-    let own = |dsps: &[&str]| {
-        let mut body = reach(&[&first]);
-        body["name"] = json!("Other");
-        body["dspReads"] = json!(
-            dsps.iter()
-                .map(|dsp| json!({"dsp":dsp,"areas":[],"bypass":false}))
-                .collect::<Vec<_>>()
-        );
-        body
-    };
-    assert_eq!(
-        db.create_agent_key(&user, &request(own(&[&second])))
-            .unwrap_err()
-            .code,
-        "invalid_input"
-    );
-    assert!(AgentKeyRequest::parse(&own(&[&first, &first])).is_err());
-    assert!(AgentKeyRequest::parse(&own(&vec!["dsp_x"; 501])).is_err());
-    // Reaching every DSP, any active one may have its own; sent without them, they go.
-    let mut all = own(&[&second]);
-    all["allDsps"] = json!(true);
-    all["dsps"] = json!([]);
-    let other = db.create_agent_key(&user, &request(all)).unwrap();
-    assert_eq!(other.key.dsp_reads.len(), 1);
-    let narrowed = db
-        .update_agent_key(&user, &other.key.id, &request(own(&[])))
-        .unwrap();
-    assert!(narrowed.dsp_reads.is_empty());
-    // The Agents page lists each DSP with the features it has switched off.
-    db.enable_all_features(&first).unwrap();
-    db.set_feature(&first, "dvic", false, &user).unwrap();
-    let listed = db.agent_keys(&HashMap::new()).unwrap();
-    let dsps: Vec<(String, Value)> = listed
-        .dsps
-        .iter()
-        .map(|dsp| {
-            (
-                dsp.name.clone(),
-                serde_json::to_value(&dsp.switched_off).unwrap(),
-            )
-        })
-        .collect();
-    // Harbor Route Co has none: every source the features declare, in their order.
-    let switched_off: Vec<&str> = AgentSource::all().map(AgentSource::as_str).collect();
-    assert_eq!(
-        dsps,
-        [
-            ("Dev DSP".to_owned(), json!(["dvic"])),
-            ("Harbor Route Co".to_owned(), json!(switched_off)),
-        ]
-    );
-}
-
-#[tokio::test]
-async fn a_dsps_own_settings_are_read_there_in_place_of_the_keys_own() {
-    dispatch_backend::install();
-    use dispatch_core::{State, mcp::data};
-    let (_root, db, first) = bootstrapped();
-    let user = owner(&db);
-    let second = db
-        .new_dsp("Harbor Route Co", "UTC", &user, false)
-        .unwrap()
-        .id;
-    for dsp in [&first, &second] {
-        db.enable_all_features(dsp).unwrap();
-    }
-    // Timecards for every DSP but the second, whose own settings read them alone.
-    let mut body = reach(&[]);
-    body["reads"]["areas"] = json!(without(&key_reads(), "timecards"));
-    body["dspReads"] = json!([{"dsp":second,"areas":["timecards"],"bypass":false}]);
-    let made = db.create_agent_key(&user, &request(body)).unwrap();
-    let caller = db.authenticate_agent(&made.token, "test").unwrap();
-    assert!(!caller.reads_at(&first).has(kind("timecards")));
-    assert!(caller.reads_at(&second).has(kind("timecards")));
-    let whoami = serde_json::to_value(db.agent_whoami(&caller).unwrap()).unwrap();
-    let reads: Vec<(&str, usize)> = whoami["dsps"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|dsp| {
-            (
-                s(dsp, "id"),
-                dsp["reads"]["areas"].as_array().unwrap().len(),
-            )
-        })
-        .collect();
-    assert_eq!(
-        reads,
-        [
-            (first.as_str(), key_reads().len() - 1),
-            (second.as_str(), 1)
-        ]
-    );
-    let config = db.config.clone();
-    drop(db);
-    let state = State::new(config).unwrap();
-    let ask = |id: &'static str, dsp: String| {
-        let (state, who) = (state.clone(), caller.clone());
-        async move {
-            let shared = state.clone();
-            state
-                .read(move |db| {
-                    data::settle(data::ask(
-                        data::catalog::endpoint(id),
-                        db,
-                        &shared,
-                        &who,
-                        "",
-                        &json!({"dsp": dsp}),
-                    ))
-                })
-                .await
-                .unwrap()
-        }
-    };
-    // Timecards at the second, not the first; DVIC at the first, not the second.
-    assert_eq!(ask("timecards", second.clone()).await.0, 200);
-    let (status, refused) = ask("timecards", first.clone()).await;
-    assert_eq!((status, s(&refused, "error")), (403, "not_allowed"));
-    assert_eq!(
-        s(&refused, "message"),
-        "Laptop – Claude Code can't read Timecards at Dev DSP. Tell the user they can \
-         allow it for this connection on the Agents page in Dispatch."
-    );
-    assert_eq!(ask("dvic", first).await.0, 200);
-    let (status, refused) = ask("dvic", second).await;
-    assert_eq!((status, s(&refused, "error")), (403, "not_allowed"));
-}
-
-#[tokio::test]
-async fn tools_are_listed_where_any_dsp_the_key_reaches_lets_it_read_them() {
-    dispatch_backend::install();
-    use dispatch_core::State;
-    let (_root, db, first) = bootstrapped();
-    let user = owner(&db);
-    let second = db
-        .new_dsp("Harbor Route Co", "UTC", &user, false)
-        .unwrap()
-        .id;
-    // Routes everywhere; the scorecard's safety events only at the second DSP.
-    let mut body = reach(&[&first, &second]);
-    body["reads"]["areas"] = json!(["routes"]);
-    body["dspReads"] = json!([{"dsp":second,"areas":["safety"],"bypass":false}]);
-    let made = db.create_agent_key(&user, &request(body.clone())).unwrap();
-    let caller = db.authenticate_agent(&made.token, "test").unwrap();
-    let config = db.config.clone();
-    drop(db);
-    let state = State::new(config).unwrap();
-    let mut listed = tool_names(&admitted_mcp(&state, &caller, "tools/list", json!({})).await);
-    listed.sort();
-    assert_eq!(
-        listed,
-        [
-            "data_status",
-            "driver_report",
-            "find_drivers",
-            "find_package",
-            "get_profile",
-            "list_metrics",
-            "packages",
-            "route_day",
-            "route_stops",
-            "safety_events",
-            "team_table",
-            "whoami",
-        ]
-    );
-    // Without the second DSP's own settings, nothing lets it read safety events.
-    body["dspReads"] = json!([]);
-    let (actor, key) = (user.clone(), made.key.id.clone());
-    state
-        .run(move |db| {
-            db.update_agent_key(&actor, &key, &request(body))?;
-            Ok(())
-        })
-        .await
-        .unwrap();
-    let listed = tool_names(&admitted_mcp(&state, &caller, "tools/list", json!({})).await);
-    assert!(!listed.contains(&"safety_events".to_owned()));
-    assert!(listed.contains(&"route_day".to_owned()));
-}
-
-#[test]
-fn edits_are_audited_kind_by_kind_with_each_dsps_own_settings_in_a_line() {
-    dispatch_backend::install();
-    let (_root, db, first) = bootstrapped();
-    let user = owner(&db);
-    let second = db
-        .new_dsp("Harbor Route Co", "UTC", &user, false)
-        .unwrap()
-        .id;
-    let made = db.create_agent_key(&user, &request(reach(&[]))).unwrap();
-    let mut body = reach(&[]);
-    body["reads"] = json!({"areas":without(&key_reads(), "safety"),"bypass":true});
-    body["reads"]["areas"]
-        .as_array_mut()
-        .unwrap()
-        .push(json!("locations"));
-    body["dspReads"] = json!([
-        {"dsp":first,"areas":["routes","timecards","meal_breaks","dvic","feedback","returns","weekly_scorecard"],"bypass":true},
-        {"dsp":second,"areas":key_reads().iter().chain(&["locations"]).collect::<Vec<_>>(),"bypass":false},
-    ]);
-    db.update_agent_key(&user, &made.key.id, &request(body.clone()))
-        .unwrap();
-    let changes = |db: &Store| audits(db, None).unwrap().as_array().unwrap()[0]["changes"].clone();
-    let count = key_reads().len() + 1;
-    let line = format!("Dev DSP: 7 of {count}, bypass on; Harbor Route Co: {count} of {count}");
-    assert_eq!(
-        changes(&db),
-        json!([
-            {"field":"reads.locations","from":"false","to":"true"},
-            {"field":"reads.safety","from":"true","to":"false"},
-            {"field":"bypass","from":"false","to":"true"},
-            {"field":"dsp_reads","from":"none",
-                "to":line},
-        ])
-    );
-    // A DSP's own settings changed under the same count are noted all the same.
-    body["dspReads"][0]["areas"] = json!([
-        "routes",
-        "timecards",
-        "meal_breaks",
-        "dvic",
-        "feedback",
-        "safety",
-        "weekly_scorecard"
-    ]);
-    db.update_agent_key(&user, &made.key.id, &request(body.clone()))
-        .unwrap();
-    assert_eq!(
-        changes(&db),
-        json!([{"field":"dsp_reads","from":line,"to":line}])
-    );
-    // Nothing changed, nothing noted; the old fields are never written.
-    let count = audits(&db, None).unwrap().as_array().unwrap().len();
-    db.update_agent_key(&user, &made.key.id, &request(body))
-        .unwrap();
-    let events = audits(&db, None).unwrap();
-    assert_eq!(events.as_array().unwrap().len(), count);
-    let text = events.to_string();
-    assert!(
-        !text.contains("\"tools\"") && !text.contains("\"locations\""),
-        "{text}"
-    );
-}
-
-#[test]
-fn a_suspended_dsp_keeps_its_reach_and_own_settings_through_an_edit() {
-    dispatch_backend::install();
-    let (_root, db, first) = bootstrapped();
-    let user = owner(&db);
-    let second = db
-        .new_dsp("Harbor Route Co", "UTC", &user, false)
-        .unwrap()
-        .id;
-    // A key choosing both DSPs and one reaching every DSP, each with the second's own settings.
-    let own = json!([{"dsp":second,"areas":["dvic"],"bypass":true}]);
-    let mut chosen = reach(&[&first, &second]);
-    chosen["dspReads"] = own.clone();
-    let mut every = reach(&[]);
-    every["name"] = json!("Every DSP");
-    every["dspReads"] = own.clone();
-    let keys = [
-        db.create_agent_key(&user, &request(chosen.clone()))
-            .unwrap(),
-        db.create_agent_key(&user, &request(every.clone())).unwrap(),
-    ];
     // Suspended, as a removed DSP is too, the Agents page no longer lists it.
     let status = |status: &str| {
         db.platform
@@ -1130,178 +697,28 @@ fn a_suspended_dsp_keeps_its_reach_and_own_settings_through_an_edit() {
     let listed = db.agent_keys(&HashMap::new()).unwrap();
     assert!(listed.dsps.iter().all(|dsp| dsp.id != second));
 
-    // Edited with the suspended DSP sent back as it was, each saves and keeps it.
-    for (made, body) in keys.iter().zip([&chosen, &every]) {
-        let mut body = body.clone();
-        body["reads"]["bypass"] = json!(true);
-        let edited = db
-            .update_agent_key(&user, &made.key.id, &request(body))
-            .unwrap();
-        assert!(edited.reads.bypass);
-        assert_eq!(edited.dsps, made.key.dsps);
-        assert_eq!(serde_json::to_value(&edited.dsp_reads).unwrap(), own);
-    }
-    assert_eq!(keys[0].key.dsps.len(), 2);
-    // Active again, it is reached and reads its own settings, as before it was suspended.
+    // Edited with the suspended DSP sent back as it was, the key saves and keeps it.
+    let mut renamed = chosen.clone();
+    renamed["name"] = json!("Renamed");
+    let edited = db
+        .update_agent_key(&user, &made.key.id, &request(renamed))
+        .unwrap();
+    assert_eq!(edited.dsps, made.key.dsps);
+    assert_eq!(made.key.dsps.len(), 2);
+    // Active again, it is reached, as before it was suspended.
     status("active");
-    for made in &keys {
-        let caller = db.authenticate_agent(&made.token, "test").unwrap();
-        assert!(caller.dsps.iter().any(|dsp| dsp.id == second));
-        assert_eq!(
-            serde_json::to_value(caller.reads_at(&second)).unwrap(),
-            json!({"areas":["dvic"],"bypass":true})
-        );
-    }
+    let caller = db.authenticate_agent(&made.token, "test").unwrap();
+    assert!(caller.dsps.iter().any(|dsp| dsp.id == second));
 
-    // While it is suspended, it isn't given to a key, nor given settings, nor its own changed.
+    // While it is suspended, it isn't given to a key.
     status("suspended");
     let mut new = reach(&[&first, &second]);
     new["name"] = json!("New");
-    let mut changed = chosen.clone();
-    changed["dspReads"][0]["areas"] = json!(["dvic", "safety"]);
-    let mut given = every.clone();
-    given["name"] = json!("Given");
-    given["dspReads"] = json!([]);
-    let unreached = db.create_agent_key(&user, &request(given.clone())).unwrap();
-    given["dspReads"] = own.clone();
-    for (id, body) in [
-        (None, new),
-        (Some(&keys[0].key.id), changed),
-        (Some(&unreached.key.id), given),
-    ] {
-        let refused = match id {
-            None => db.create_agent_key(&user, &request(body)).unwrap_err(),
-            Some(id) => db.update_agent_key(&user, id, &request(body)).unwrap_err(),
-        };
-        assert_eq!(refused.code, "invalid_input");
-    }
+    let refused = db.create_agent_key(&user, &request(new)).unwrap_err();
+    assert_eq!(refused.code, "invalid_input");
     // Left out of a request, it goes, as any DSP does.
     let narrowed = db
-        .update_agent_key(&user, &keys[0].key.id, &request(reach(&[&first])))
+        .update_agent_key(&user, &made.key.id, &request(reach(&[&first])))
         .unwrap();
     assert_eq!(narrowed.dsps, std::slice::from_ref(&first));
-    assert!(narrowed.dsp_reads.is_empty());
-}
-
-#[test]
-fn addresses_an_older_release_stopped_in_a_rollback_stay_stopped() {
-    dispatch_backend::install();
-    let (_root, db, dsp) = bootstrapped();
-    let user = owner(&db);
-    let mut body = reach(&[&dsp]);
-    body["reads"]["areas"] = json!(["routes", "locations", "dvic"]);
-    let made = db.create_agent_key(&user, &request(body.clone())).unwrap();
-    assert!(made.key.reads.has(kind("locations")));
-    // An older release, run again, stops the addresses in the only column it knows.
-    db.platform
-        .exec(
-            "UPDATE agent_keys SET locations=0 WHERE id=?",
-            [&made.key.id],
-        )
-        .unwrap();
-    let without = json!({"areas":["routes","dvic"],"bypass":false});
-    let caller = db.authenticate_agent(&made.token, "test").unwrap();
-    assert_eq!(serde_json::to_value(&caller.reads).unwrap(), without);
-    let whoami = db.agent_whoami(&caller).unwrap();
-    assert_eq!(
-        serde_json::to_value(&whoami.dsps[0].reads).unwrap(),
-        without
-    );
-    let listed = db.agent_keys(&HashMap::new()).unwrap();
-    assert_eq!(
-        serde_json::to_value(&listed.keys[0].reads).unwrap(),
-        without
-    );
-    // Allowed again here, both columns say so.
-    db.update_agent_key(&user, &made.key.id, &request(body))
-        .unwrap();
-    let row = db
-        .platform
-        .one(
-            "SELECT locations,areas FROM agent_keys WHERE id=?",
-            [&made.key.id],
-        )
-        .unwrap()
-        .unwrap();
-    assert_eq!(row, json!({"locations":1,"areas":"routes,locations,dvic"}));
-    let caller = db.authenticate_agent(&made.token, "test").unwrap();
-    assert!(caller.reads.has(kind("locations")));
-}
-
-#[test]
-fn delivery_addresses_are_never_claimed_without_the_routes() {
-    dispatch_backend::install();
-    let (_root, db, dsp) = bootstrapped();
-    let user = owner(&db);
-    // Asked for without routes, at every DSP or at one, the addresses aren't kept.
-    let mut body = reach(&[&dsp]);
-    body["reads"]["areas"] = json!(["locations", "dvic"]);
-    body["dspReads"] = json!([{"dsp":dsp,"areas":["safety","locations"],"bypass":false}]);
-    let made = db.create_agent_key(&user, &request(body)).unwrap();
-    assert_eq!(
-        serde_json::to_value(&made.key.reads).unwrap(),
-        json!({"areas":["dvic"],"bypass":false})
-    );
-    assert_eq!(
-        serde_json::to_value(&made.key.dsp_reads).unwrap(),
-        json!([{"dsp":dsp,"areas":["safety"],"bypass":false}])
-    );
-    let row = db
-        .platform
-        .one(
-            "SELECT locations,areas FROM agent_keys WHERE id=?",
-            [&made.key.id],
-        )
-        .unwrap()
-        .unwrap();
-    assert_eq!(row, json!({"locations":0,"areas":"dvic"}));
-    assert_eq!(
-        AgentReads::stored("locations,dvic", 0).areas,
-        [kind("dvic")]
-    );
-    // Routes taken away take the addresses with them, as whoami and the audit log say.
-    let mut body = reach(&[&dsp]);
-    body["name"] = json!("Routes");
-    body["reads"]["areas"] = json!(["routes", "locations"]);
-    let routes = db.create_agent_key(&user, &request(body.clone())).unwrap();
-    body["reads"]["areas"] = json!(["locations"]);
-    let edited = db
-        .update_agent_key(&user, &routes.key.id, &request(body))
-        .unwrap();
-    assert!(edited.reads.areas.is_empty());
-    let caller = db.authenticate_agent(&routes.token, "test").unwrap();
-    let whoami = db.agent_whoami(&caller).unwrap();
-    assert!(whoami.dsps[0].reads.areas.is_empty());
-    assert_eq!(
-        audits(&db, None).unwrap().as_array().unwrap()[0]["changes"],
-        json!([
-            {"field":"reads.routes","from":"true","to":"false"},
-            {"field":"reads.locations","from":"true","to":"false"},
-        ])
-    );
-}
-
-#[cfg(feature = "daily_performance")]
-#[tokio::test]
-async fn daily_only_allowances_offer_focused_tools_once_and_keep_object_output_contracts() {
-    dispatch_backend::install();
-    let (_root, db, dsp) = bootstrapped();
-    let mut input = reach(&[&dsp]);
-    input["reads"]["areas"] = json!(["daily_feedback", "daily_returns", "daily_safety"]);
-    let key = db.create_agent_key(&owner(&db), &request(input)).unwrap();
-    let caller = db.authenticate_agent(&key.token, "test").unwrap();
-    let state = dispatch_core::State::new(db.config.clone()).unwrap();
-    let listed = admitted_mcp_version(&state, &caller, "tools/list", json!({}), "2025-06-18").await;
-    let tools = listed["result"]["tools"].as_array().unwrap();
-    for name in ["customer_feedback", "returns", "safety_events"] {
-        let offered: Vec<_> = tools.iter().filter(|tool| tool["name"] == name).collect();
-        assert_eq!(offered.len(), 1, "{listed}");
-        assert_eq!(offered[0]["outputSchema"]["type"], "object");
-        assert_eq!(
-            offered[0]["inputSchema"]["properties"]["source"]["enum"],
-            json!(["weekly_scorecard", "daily_performance"])
-        );
-    }
-    assert!(!tools.iter().any(|tool| tool["name"] == "daily_performance"));
-    assert!(!tools.iter().any(|tool| tool["name"] == "weekly_scorecard"));
 }

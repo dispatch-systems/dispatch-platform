@@ -12,7 +12,6 @@ import type {
   AuditWording,
   AuditWords,
 } from '../../../shell/frontend/runtime/slots.js';
-import { agentAreas, areaLabels } from '../agents/agents.js';
 
 export const views = new Set(['dsp.view_opened', 'dsp.owner_view_opened']);
 
@@ -280,11 +279,10 @@ const fields: Record<string, string> = {
   access: 'Access',
   dsps: 'DSPs',
   expires: 'Expires',
-  // What an agent key or app reads, a kind of data each, and the DSPs' own settings.
-  ...Object.fromEntries(agentAreas.map((area) => [`reads.${area}`, areaLabels[area]])),
+  // Earlier key changes, from when keys chose what they read: a kind of data each, as
+  // `reads.timecards`, reads as its title.
   bypass: 'Bypass features',
   dsp_reads: 'DSP settings',
-  // Earlier key changes, from before keys read by kind of data.
   tools: 'Tools',
   locations: 'Addresses and GPS',
 };

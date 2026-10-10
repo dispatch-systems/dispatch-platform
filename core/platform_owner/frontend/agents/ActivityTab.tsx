@@ -60,8 +60,6 @@ const columns = (timeZone: string): TableColumn<AgentActivity>[] => [
         ) : (
           <Badge value="failed">{call.outcome}</Badge>
         )}
-        {/* It read a feature the DSP has switched off. */}
-        {call.bypassed && <span className="agents-bypassed">Bypassed</span>}
       </span>
     ),
   },
