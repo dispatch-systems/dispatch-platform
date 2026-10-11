@@ -12,8 +12,7 @@ const TYPES: &[&str] = &[
 ];
 const MOST: usize = 72;
 
-/// The sections a body holds, in order, by the kind of change its title names. A change the
-/// dashboard shows may end with Screenshots.
+/// The sections a body holds, in order, by the kind of change its title names.
 pub fn sections(title: &str) -> Result<&'static [&'static str]> {
     let (head, summary) = title.split_once(": ").ok_or(
         "A title is type(scope): what it does, such as fix(dvic): keep the week when paging.",
@@ -80,12 +79,10 @@ pub fn check_body(title: &str, body: &str) -> Result<()> {
         .filter_map(|line| line.strip_prefix("## "))
         .map(str::trim)
         .collect();
-    let screenshots = headings.last() == Some(&"Screenshots");
-    let listed = &headings[..headings.len() - usize::from(screenshots)];
     require(
-        listed == wanted,
+        headings == wanted,
         &format!(
-            "This body's sections are {}; a {} change's are {}{}.",
+            "This body's sections are {}; a {} change's are {}.",
             if headings.is_empty() {
                 "none".to_owned()
             } else {
@@ -93,11 +90,6 @@ pub fn check_body(title: &str, body: &str) -> Result<()> {
             },
             title.split([':', '(']).next().unwrap_or(""),
             wanted.join(", "),
-            if wanted[1] == "Problem" || wanted[1] == "Symptom" {
-                ", then Screenshots if the dashboard shows it"
-            } else {
-                ""
-            }
         ),
     )?;
     let lower = body.to_lowercase();
@@ -251,7 +243,7 @@ mod tests {
         let fix =
             "## Summary\n\nx\n\n## Symptom\n\n## Cause\n\n## Fix\n\n## Verification\n\n## Review\n";
         assert!(check_body("fix: x", fix).is_ok());
-        assert!(check_body("fix: x", &format!("{fix}\n## Screenshots\n")).is_ok());
+        assert!(check_body("fix: x", &format!("{fix}\n## Screenshots\n")).is_err());
         let swapped = fix.replace("## Symptom\n\n## Cause", "## Cause\n\n## Symptom");
         assert!(check_body("fix: x", &swapped).is_err());
         assert!(check_body("chore: x", fix).is_err());
