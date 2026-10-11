@@ -110,7 +110,9 @@ export function DvicPage({ view }: { view: DspView }) {
   const [selected, setSelected] = useState<string>();
   const [settings, setSettings] = useState(false);
   const [pending, setPending] = useState<Job>();
-  const request = useRef<string | null>(null);
+  // A retry keeps its request's id, so a lost reply can't queue it twice; another week is
+  // another request.
+  const request = useRef<{ id: string; viewing: string } | null>(null);
   const today = localDate(view.dsp.timezone);
   const { start, latestDate } = selectedWeek(status.data, today, chosenWeek);
   const days = useMemo(() => weekDays(start), [start]);
@@ -160,8 +162,8 @@ export function DvicPage({ view }: { view: DspView }) {
   useEffect(() => setCollecting(active), [active]);
   const sync = useAction(
     async () => {
-      request.current ??= randomId();
-      const job: Job = await collectDvic(request.current).catch((cause) => {
+      if (request.current?.viewing !== start) request.current = { id: randomId(), viewing: start };
+      const job: Job = await collectDvic(request.current.id, start).catch((cause) => {
         if (cause instanceof ApiError && cause.code === 'connection_required')
           throw new Error('Connect Cortex in Settings → Connections before syncing DVIC.');
         throw cause;
@@ -201,7 +203,7 @@ export function DvicPage({ view }: { view: DspView }) {
             className="primary"
             disabled={sync.busy || !!running}
             onClick={() => void sync.run()}
-            title="Check the current and previous publication weeks"
+            title="Check the latest publication weeks and the week shown"
           >
             <RefreshCw size={16} />
             {sync.busy || running ? 'Syncing…' : 'Sync now'}

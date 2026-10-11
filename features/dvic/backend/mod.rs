@@ -8,6 +8,7 @@ mod storage;
 
 pub use storage::{DvicCoverage, DvicDriver, DvicStore};
 
+use chrono::{Datelike, Duration, NaiveDate};
 use dispatch_core::{
     Error, Result,
     collection::registry::AddedStorage,
@@ -72,4 +73,18 @@ pub fn weeks_ending(week: &str, count: usize) -> Result<Vec<String>> {
         400,
     )?;
     weeks::weeks_before(week, count - 1)
+}
+
+/// The publication weeks whose reports hold the Sunday–Saturday week of `day`, newest first.
+/// Each daily report covers the eight days before it, so that week's days are in the reports
+/// published from its Monday to the Sunday after it.
+fn weeks_holding(day: &str) -> Result<[String; 2]> {
+    validate::date(day)?;
+    let day =
+        NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|_| Error::new("invalid_date", 400))?;
+    let sunday = day - Duration::days(day.weekday().num_days_from_sunday().into());
+    Ok([
+        report_week(sunday + Duration::days(8)),
+        report_week(sunday + Duration::days(1)),
+    ])
 }

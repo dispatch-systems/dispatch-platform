@@ -125,7 +125,14 @@ fn request(weeks: &[&str]) -> Request {
 /// Publishes `capture` as DVIC's collection of its weeks does.
 fn publish(db: &Store, id: &str, key: &str, capture: &Capture) {
     let job = db
-        .enqueue_dvic(id, None, key, Some(&capture.weeks[0]), capture.weeks.len())
+        .enqueue_dvic(
+            id,
+            None,
+            key,
+            Some(&capture.weeks[0]),
+            capture.weeks.len(),
+            None,
+        )
         .unwrap();
     let job = dispatch_core::db::s(&job, "id").to_owned();
     let queued: Value = serde_json::from_str(&db.job_row(&job, Some(id)).unwrap().request).unwrap();

@@ -67,7 +67,14 @@ fn ready() -> (tempfile::TempDir, Store, String) {
 }
 fn publish(db: &Store, id: &str, key: &str, capture: &Capture) -> String {
     let job = db
-        .enqueue_dvic(id, None, key, Some(&capture.weeks[0]), capture.weeks.len())
+        .enqueue_dvic(
+            id,
+            None,
+            key,
+            Some(&capture.weeks[0]),
+            capture.weeks.len(),
+            None,
+        )
         .unwrap();
     let job = s(&job, "id").to_owned();
     publish_capture(db, id, &job, capture).unwrap();
@@ -143,7 +150,7 @@ fn unchanged_reports_require_a_matching_committed_revision_and_batches_are_atomi
     bad.reports[1].rows = None;
     bad.reports[1].sha256 = dvic::hash(b"not imported");
     let job = db
-        .enqueue_dvic(&id, None, "bad", Some("2026-W39"), 2)
+        .enqueue_dvic(&id, None, "bad", Some("2026-W39"), 2, None)
         .unwrap();
     assert!(publish_capture(&db, &id, s(&job, "id"), &bad).is_err());
     assert_eq!(count(&db, &id, "dvic_revisions"), 2);
@@ -177,7 +184,7 @@ fn publication_rejects_wrong_scope_and_reads_are_paginated_and_isolated() {
     let (_root, db, id) = ready();
     let mut capture = dvic::fixture(&request(&["2026-W39", "2026-W38"])).unwrap();
     let job = db
-        .enqueue_dvic(&id, None, "scope", Some("2026-W39"), 2)
+        .enqueue_dvic(&id, None, "scope", Some("2026-W39"), 2, None)
         .unwrap();
     let refused = |capture: &Capture| {
         publish_capture(&db, &id, s(&job, "id"), capture)
@@ -423,6 +430,34 @@ fn older_weeks_checked_this_week_wait_but_the_newest_and_unverified_do_not() {
         requested[..],
         [&weeks[0], &weeks[1], last].map(|week| json!(week))
     );
+}
+
+#[test]
+fn a_manual_sync_also_checks_the_publication_weeks_holding_the_week_shown() {
+    install();
+    let (_root, db, id) = ready();
+    let requested = |key: &str, viewing: &str| {
+        let job = db
+            .enqueue_dvic(&id, None, key, None, 2, Some(viewing))
+            .unwrap();
+        let queued: serde_json::Value =
+            serde_json::from_str(&db.job_row(s(&job, "id"), Some(&id)).unwrap().request).unwrap();
+        serde_json::from_value::<Vec<String>>(queued["weeks"].clone()).unwrap()
+    };
+    let today = chrono::Utc::now().date_naive();
+    let latest = weeks_before(&dvic::report_week(today), 1).unwrap();
+    // Sunday, August 23 to Saturday, August 29, 2026 is in the reports published from
+    // Monday, August 24 to Sunday, September 6, whichever of its days is shown.
+    for day in ["2026-08-23", "2026-08-29"] {
+        let older = ["2026-W36".to_owned(), "2026-W35".to_owned()];
+        assert_eq!(
+            requested(day, day),
+            [&latest[..], &older[..]].concat(),
+            "{day}"
+        );
+    }
+    // The week shown is the latest: once each, and none not yet published.
+    assert_eq!(requested("today", &today.to_string()), latest);
 }
 
 #[test]

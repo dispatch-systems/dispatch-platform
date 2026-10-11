@@ -7,7 +7,8 @@ a Week tab (drivers by day, showing the shortest inspection or the count), with 
 navigation, driver/VIN search, vehicle filters, and inspection details. Bands state the
 share of the minimum reached (75%+, 35–75%, under 35%) without a verdict. Viewing,
 manual sync, and schedule management use the separate permissions below. Sync now
-checks recent publication weeks; historical backfills remain available through the API.
+checks recent publication weeks and those holding the week shown; historical backfills
+remain available through the API.
 The page reads every cursor page before displaying counts, and keeps source wall times
 unchanged. It follows core's live collection updates (`live`, for `dvic.view`): a run that ends,
 wherever it started, refreshes it at once, and one in progress is read every five seconds,
@@ -24,7 +25,7 @@ All endpoints use the existing authenticated DSP context and CSRF rules.
 | ------------------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------- |
 | `GET /api/dsp/dvic/status`                                    | `dvic.view`    | Recent jobs, report inventory, checked weeks, exception count                                 |
 | `GET /api/dsp/dvic/inspections?from=2026-09-01&to=2026-09-30` | `dvic.view`    | Exceptions by actual inspection date; optional `driver`, `limit` (1–500), `after` cursor      |
-| `POST /api/dsp/dvic/collect`                                  | `dvic.collect` | Manual sync with `requestId`; optional ending publication `week` and number of `weeks` (1–26) |
+| `POST /api/dsp/dvic/collect`                                  | `dvic.collect` | Manual sync with `requestId`; optional ending `week`, number of `weeks` (1–26), `viewing` day |
 | `POST /api/dsp/dvic/jobs/{id}/cancel`                         | `dvic.collect` | Cancel this DSP's DVIC job                                                                    |
 | `GET/POST /api/dsp/dvic/schedules`                            | `dvic.manage`  | List/create DVIC schedules                                                                    |
 | `POST /api/dsp/dvic/schedules/{key}`                          | `dvic.manage`  | Edit a schedule with its current `revision`                                                   |
@@ -38,8 +39,10 @@ driver with short inspections, by the name their latest one gave, with how many 
 before it, so a day outside them is unknown rather than one nobody was short).
 
 Manual sync defaults to the current and previous publication week; an explicit week
-alone selects that week. A request returns one queued job, and replaying its requestId
-is idempotent. Schedules use the existing daily/interval scheduler, timezone handling,
+alone selects that week. A `viewing` day adds the two publication weeks whose reports
+hold its Sunday–Saturday week, those already published: Sync now sends the first day of
+the week shown. A request returns one queued job, and replaying its requestId is
+idempotent. Schedules use the existing daily/interval scheduler, timezone handling,
 revision checks, overlap prevention, cancellation, and retry/backoff policy.
 
 Example daily schedule body:
