@@ -751,7 +751,7 @@ test('the platform owner is emailed when an app connects and when Dispatch disco
     : 'Tools: Any, to read, as they are added';
   for (const line of [
     'Connection: Laptop – Claude Code',
-    'App: Claude Code (known metadata)',
+    'App: Claude Code (recognized app)',
     'Sends access to: this computer',
     'DSPs: Northline Logistics',
     toolsLine,

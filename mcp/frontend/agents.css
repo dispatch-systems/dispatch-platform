@@ -554,10 +554,9 @@ label.agents-tool {
   align-items: center;
   gap: 4px 10px;
 }
-.status-indicator.known_metadata > i {
-  background: var(--success);
-}
-.status-indicator.app_provided > i,
+/* An unrecognized or signed-out app in amber. A recognized one keeps the plain dot: Dispatch
+   knows the app, not who is using its name. */
+.status-indicator.unrecognized > i,
 .status-indicator.signed_out > i {
   background: var(--warning);
 }

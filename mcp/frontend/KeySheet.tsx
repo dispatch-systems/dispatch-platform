@@ -100,8 +100,8 @@ export function KeySheet({
               {/* Only recognized published metadata gets an app logo. */}
               <AppIcon app={app.client?.known ? knownApp(app.client) : null} />
               <bdi>{app.client?.name ?? 'Unknown app'}</bdi>
-              <Badge value={app.client?.known ? 'known_metadata' : 'app_provided'}>
-                {app.client?.known ? 'Known metadata' : 'App-provided metadata'}
+              <Badge value={app.client?.known ? 'recognized' : 'unrecognized'}>
+                {app.client?.known ? 'Recognized app' : 'Unrecognized app'}
               </Badge>
             </dd>
             <dt>Connected</dt>

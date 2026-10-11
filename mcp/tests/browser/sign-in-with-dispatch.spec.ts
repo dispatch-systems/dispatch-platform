@@ -145,7 +145,7 @@ test('an app connects only while the owner lets apps connect and it is on, and o
   query.set('redirect_uri', site);
   await page.goto(`/oauth/authorize?${query}`);
   const website = page.getByRole('form', { name: 'Route Planner' });
-  await expect(website.getByText('App-provided metadata', { exact: true })).toBeVisible();
+  await expect(website.getByText('Unrecognized app', { exact: true })).toBeVisible();
   await expect(website).toContainText('Unrecognized app: it says it is “Route Planner”.');
   await expect(website.locator('.agents-sends')).toHaveText('Sends access to: app.example.com');
 });

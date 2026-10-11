@@ -64,7 +64,7 @@ impl ConnectedApp<'_> {
     /// The app as the owner should read it: an unrecognized one only by its own word.
     fn app_line(&self) -> String {
         if self.known {
-            format!("{} (known metadata)", self.app)
+            format!("{} (recognized app)", self.app)
         } else {
             format!(
                 "Unrecognized app, which says it is \u{201c}{}\u{201d}",

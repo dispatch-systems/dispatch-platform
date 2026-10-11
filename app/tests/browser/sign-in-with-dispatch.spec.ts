@@ -64,14 +64,15 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     expect(page.url()).toBe(approvalUrl);
 
     const approval = page.getByRole('form', { name: 'Claude Code' });
-    await expect(approval.getByText('Known metadata', { exact: true })).toBeVisible();
+    await expect(approval.getByText('Recognized app', { exact: true })).toBeVisible();
     await expect(approval.getByText('this computer', { exact: true })).toBeVisible();
     // Every request asks the owner to approve only what they started.
     await expect(
       approval.getByText(
-        'Dispatch recognizes this app’s published metadata, but public app identity is not ' +
-          'authenticated. Only approve if you started connecting Claude Code yourself just now. ' +
-          'If you didn’t, choose Deny. Access will be sent to an app running on this computer.',
+        'Dispatch recognizes Claude Code and only sends access to its reviewed address. It ' +
+          'can’t confirm who started this. Only approve if you started connecting Claude Code ' +
+          'yourself just now. If you didn’t, choose Deny. Access will be sent to an app running ' +
+          'on this computer.',
       ),
     ).toBeVisible();
     await expect(approval.getByText(/^Approving replaces/)).toHaveCount(0);
@@ -152,7 +153,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     await dashboard.getByRole('tab', { name: 'Apps', exact: true }).click();
     const row = dashboard.getByRole('row').filter({ hasText: 'Laptop – Claude Code app' });
     await expect(row).toContainText('Claude Code');
-    await expect(row).toContainText('Known metadata');
+    await expect(row).toContainText('Recognized app');
     await expect(row).toContainText('Northline Logistics');
     await expect(row).toContainText(starting.text);
     // An app with recognized metadata shows its own logo.

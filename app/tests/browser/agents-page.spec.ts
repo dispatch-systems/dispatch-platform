@@ -270,7 +270,7 @@ test('the owner changes where a connected app reaches, without being asked to si
   await expect(row).toContainText(starting.text);
   await row.getByRole('button', { name: 'Edit Laptop – Claude Code', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Laptop – Claude Code' });
-  await expect(sheet.getByText('Known metadata', { exact: true })).toBeVisible();
+  await expect(sheet.getByText('Recognized app', { exact: true })).toBeVisible();
   // An app only ever reads, and never expires.
   await expect(sheet.getByRole('radio', { name: /Operator/ })).toHaveCount(0);
   await expect(sheet.getByLabel('Expires')).toHaveCount(0);

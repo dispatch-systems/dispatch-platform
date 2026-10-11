@@ -81,10 +81,8 @@ export function AppsTab() {
                             <td>
                               <span className="agents-named">
                                 <bdi>{app.client?.name ?? 'Unknown app'}</bdi>
-                                <Badge
-                                  value={app.client?.known ? 'known_metadata' : 'app_provided'}
-                                >
-                                  {app.client?.known ? 'Known metadata' : 'App-provided metadata'}
+                                <Badge value={app.client?.known ? 'recognized' : 'unrecognized'}>
+                                  {app.client?.known ? 'Recognized app' : 'Unrecognized app'}
                                 </Badge>
                               </span>
                             </td>
