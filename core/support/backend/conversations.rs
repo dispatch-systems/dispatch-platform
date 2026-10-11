@@ -51,13 +51,15 @@ pub fn reply(db: &Store, auth: &Auth, ticket: &str, body: &str, target: &str) ->
     ensure(!body.trim().is_empty(), "invalid_input", 400)?;
     db.platform.transaction(|| {
         let private = target == "agent";
-        let role = if auth.user.platform_owner {
+        let row = tickets::record(db, ticket)?;
+        let reporter = row["reporter_id"] == auth.user.id
+            && row["reporter_scope"] == auth.scope.as_deref().unwrap_or("");
+        let role = if auth.user.platform_owner && (private || !reporter) {
             "owner"
         } else {
             "reporter"
         };
         let message = add(db, ticket, &auth.user.name(), role, body.trim(), private)?;
-        let row = tickets::record(db, ticket)?;
         let version = row["proposal_version"].as_u64().unwrap_or(0) as u32;
         if private {
             ensure(
@@ -66,20 +68,24 @@ pub fn reply(db: &Store, auth: &Auth, ticket: &str, body: &str, target: &str) ->
                 409,
             )?;
             jobs::enqueue(db, ticket, "answer", version, Some(&message))?;
+        } else if reporter {
+            notifications::owners(db, ticket, "The reporter replied to an AI Support ticket")?;
+            if row["approved_version"].is_null()
+                && row["pr_url"].is_null()
+                && [
+                    "triaging",
+                    "needs_information",
+                    "acknowledged",
+                    "answered",
+                    "unclear_bug",
+                    "unclear_feature",
+                ]
+                .contains(&s(&row, "status"))
+            {
+                jobs::route_reply(db, ticket, version, s(&row, "status"), &message)?;
+            }
         } else if auth.user.platform_owner {
             notifications::reporter(db, ticket, "Platform support sent you a message")?;
-        } else {
-            notifications::owners(db, ticket, "The reporter replied to an AI Support ticket")?;
-            if s(&row, "status") == "needs_information" {
-                jobs::cancel(db, ticket)?;
-                tickets::progress(
-                    db,
-                    ticket,
-                    "investigating",
-                    "Reporter replied · investigation resuming",
-                )?;
-                jobs::enqueue(db, ticket, "investigate", version, None)?;
-            }
         }
         Ok(())
     })

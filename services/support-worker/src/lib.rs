@@ -3,6 +3,7 @@ pub mod config;
 pub mod dispatch;
 pub mod github;
 pub mod hermes;
+pub mod intake;
 pub mod jobs;
 pub mod process;
 pub mod verification;

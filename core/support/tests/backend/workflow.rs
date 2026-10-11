@@ -186,6 +186,210 @@ fn an_invalid_or_someone_elses_attachment_rolls_back_the_whole_submission() {
 }
 
 #[test]
+fn intake_finishes_atomically_without_a_proposal_and_clarifications_return_to_routing() {
+    testing::install(&[], &[]);
+    let (_root, db, dsp) = testing::bootstrapped();
+    let member = reporter(&db, &dsp, "intake@example.test");
+    let platform_owner = owner(&db);
+    for (outcome, kind, auth) in [
+        ("acknowledged", "bug", &member),
+        ("answered", "feature", &member),
+        ("unclear_bug", "bug", &member),
+        ("unclear_feature", "feature", &platform_owner),
+    ] {
+        let ticket = tickets::create(
+            &db,
+            auth,
+            &json!({
+                "requestId":format!("adaptive-intake-{outcome}-request"),"kind":kind,
+                "title":"A short request","description":"Please help","attachmentIds":[]
+            }),
+        )
+        .unwrap();
+        assert_eq!(ticket.ticket.status, "triaging");
+        let mut job = jobs::claim(&db).unwrap().unwrap();
+        if outcome == "acknowledged" {
+            conversations::reply(
+                &db,
+                auth,
+                &ticket.ticket.id,
+                "This is just a test",
+                "reporter",
+            )
+            .unwrap();
+            assert_eq!(
+                jobs::heartbeat(&db, &job.id, &job.lease, &json!({}))
+                    .unwrap_err()
+                    .code,
+                "support_lease_lost"
+            );
+            job = jobs::claim(&db).unwrap().unwrap();
+            assert_eq!(job.checkpoint["phase"], "routing");
+        }
+        let unclear = outcome.starts_with("unclear_");
+        let result = json!({
+            "outcome":outcome,"reply":"A helpful response for the reporter",
+            "reason":"Private intake decision context",
+            "findings":if unclear {vec!["Read-only inspection could not identify the intended outcome"]} else {vec![]},
+            "questions":if unclear {vec!["Which page and result did you intend?"]} else {vec![]},
+            "investigationAttempted":unclear
+        });
+        assert_eq!(
+            verification::complete(&db, &job.id, "stale-lease", &result)
+                .unwrap_err()
+                .code,
+            "support_lease_lost"
+        );
+        if unclear {
+            let mut invalid = result.clone();
+            invalid["investigationAttempted"] = json!(false);
+            assert_eq!(
+                verification::complete(&db, &job.id, &job.lease, &invalid)
+                    .unwrap_err()
+                    .code,
+                "support_intake_incomplete"
+            );
+            invalid = result.clone();
+            invalid["outcome"] = json!(if kind == "bug" {
+                "unclear_feature"
+            } else {
+                "unclear_bug"
+            });
+            assert_eq!(
+                verification::complete(&db, &job.id, &job.lease, &invalid)
+                    .unwrap_err()
+                    .code,
+                "support_intake_incomplete"
+            );
+            assert!(
+                tickets::detail(&db, auth, &ticket.ticket.id)
+                    .unwrap()
+                    .messages
+                    .is_empty()
+            );
+        }
+        let mut invalid = result.clone();
+        invalid["approve"] = json!(true);
+        assert_eq!(
+            verification::complete(&db, &job.id, &job.lease, &invalid)
+                .unwrap_err()
+                .code,
+            "invalid_input"
+        );
+        verification::complete(&db, &job.id, &job.lease, &result).unwrap();
+        let detail = tickets::detail(&db, auth, &ticket.ticket.id).unwrap();
+        assert_eq!(detail.ticket.status, outcome);
+        assert_eq!(detail.ticket.proposal_version, 0);
+        assert_eq!(detail.ticket.approved_version, None);
+        assert!(detail.proposals.is_empty() && detail.evidence.is_empty());
+        let public: Vec<_> = detail
+            .messages
+            .iter()
+            .filter(|message| !message.private && message.role == "agent")
+            .collect();
+        assert_eq!(public.len(), 1);
+        assert_eq!(public[0].role, "agent");
+        assert_eq!(public[0].body, "A helpful response for the reporter");
+        if !auth.user.platform_owner {
+            assert!(detail.messages.iter().all(|message| !message.private));
+            assert!(detail.intake.is_none());
+        }
+        let owner_detail = tickets::detail(&db, &platform_owner, &ticket.ticket.id).unwrap();
+        assert_eq!(
+            owner_detail.intake.as_ref().unwrap().reason,
+            "Private intake decision context"
+        );
+        assert!(notifications::unread(&db, auth).unwrap() > 0);
+        assert!(jobs::claim(&db).unwrap().is_none());
+        assert_eq!(
+            approvals::decide(&db, &platform_owner, &ticket.ticket.id, 0, "approve", "")
+                .unwrap_err()
+                .code,
+            "support_proposal_changed"
+        );
+        assert_eq!(
+            verification::complete(&db, &job.id, &job.lease, &result)
+                .unwrap_err()
+                .code,
+            "support_lease_lost"
+        );
+        conversations::reply(&db, auth, &ticket.ticket.id, "Thanks", "reporter").unwrap();
+        let thanks = jobs::claim(&db).unwrap().unwrap();
+        assert_eq!(thanks.kind, "investigate");
+        assert_eq!(thanks.checkpoint["phase"], "routing");
+        assert_eq!(thanks.checkpoint["previousStatus"], outcome);
+        // Routing checkpoints can advance without losing the previous durable unclear review.
+        jobs::heartbeat(&db, &thanks.id, &thanks.lease, &json!({"phase":"triaged"})).unwrap();
+        verification::complete(
+            &db,
+            &thanks.id,
+            &thanks.lease,
+            &json!({
+                "outcome":"acknowledged","reply":"You are welcome","reason":"A thanks reply",
+                "findings":[],"questions":[],"investigationAttempted":false
+            }),
+        )
+        .unwrap();
+        let after = tickets::detail(&db, &platform_owner, &ticket.ticket.id).unwrap();
+        assert_eq!(
+            after.ticket.status,
+            if unclear { outcome } else { "acknowledged" }
+        );
+        if unclear {
+            let original = owner_detail.intake.unwrap();
+            let retained = after.intake.unwrap();
+            assert_eq!(retained.reason, original.reason);
+            assert_eq!(retained.findings, original.findings);
+            assert_eq!(retained.questions, original.questions);
+        }
+        assert!(jobs::claim(&db).unwrap().is_none());
+        conversations::reply(&db, auth, &ticket.ticket.id, "One more thing", "reporter").unwrap();
+        let superseded = jobs::claim(&db).unwrap().unwrap();
+        conversations::reply(
+            &db,
+            auth,
+            &ticket.ticket.id,
+            "The selection disappears on refresh",
+            "reporter",
+        )
+        .unwrap();
+        assert_eq!(
+            jobs::heartbeat(&db, &superseded.id, &superseded.lease, &json!({}))
+                .unwrap_err()
+                .code,
+            "support_lease_lost"
+        );
+        let clarified = jobs::claim(&db).unwrap().unwrap();
+        assert_eq!(clarified.checkpoint["phase"], "routing");
+        assert_ne!(
+            clarified.checkpoint["replyId"],
+            superseded.checkpoint["replyId"]
+        );
+        assert_eq!(clarified.checkpoint["previousStatus"], after.ticket.status);
+        assert_eq!(clarified.detail.messages.last().unwrap().role, "reporter");
+        assert_eq!(
+            clarified.detail.messages.last().unwrap().body,
+            "The selection disappears on refresh"
+        );
+        jobs::progress(
+            &db,
+            &clarified.id,
+            &clarified.lease,
+            "investigating",
+            "Inspecting the source",
+            &json!({}),
+        )
+        .unwrap();
+        proposals::publish(&db, &clarified.id, &clarified.lease, proposal()).unwrap();
+        verification::complete(&db, &clarified.id, &clarified.lease, &json!({})).unwrap();
+        let planned = tickets::detail(&db, &platform_owner, &ticket.ticket.id).unwrap();
+        assert_eq!(planned.ticket.status, "awaiting_approval");
+        assert_eq!(planned.ticket.proposal_version, 1);
+        assert!(planned.intake.is_none());
+    }
+}
+
+#[test]
 fn approval_is_version_bound_and_a_revised_proposal_revokes_running_implementation() {
     testing::install(&[], &[]);
     let (_root, db, dsp) = testing::bootstrapped();
@@ -193,6 +397,20 @@ fn approval_is_version_bound_and_a_revised_proposal_revokes_running_implementati
     let job = approved(&db, &a);
     assert_eq!(job.version, 1);
     assert_eq!(job.kind, "implement");
+    assert_eq!(
+        verification::complete(
+            &db,
+            &job.id,
+            &job.lease,
+            &json!({
+                "outcome":"acknowledged","reply":"Hello","reason":"A greeting",
+                "findings":[],"questions":[],"investigationAttempted":false
+            })
+        )
+        .unwrap_err()
+        .code,
+        "support_merge_unconfirmed"
+    );
     assert!(approvals::decide(&db, &a, &job.detail.ticket.id, 1, "approve", "").is_err());
     let mut incomplete = proposal();
     incomplete.production_verification = vec![" ".into()];

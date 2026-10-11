@@ -7,6 +7,7 @@ pub mod browser;
 pub mod conversations;
 pub mod diagnostics;
 pub mod github_events;
+mod intake;
 pub mod jobs;
 pub mod notifications;
 pub mod proposals;

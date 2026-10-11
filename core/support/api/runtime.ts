@@ -4,6 +4,7 @@ import type {
   SupportAttachment,
   SupportDetail,
   SupportEvidence,
+  SupportIntake,
   SupportMessage,
   SupportNotification,
   SupportProposal,
@@ -15,6 +16,11 @@ const ticket = z.object({
   kind: z.enum(['bug', 'feature']),
   title: text,
   status: z.enum([
+    'triaging',
+    'acknowledged',
+    'answered',
+    'unclear_bug',
+    'unclear_feature',
     'investigating',
     'needs_information',
     'awaiting_approval',
@@ -91,6 +97,16 @@ const detail = z.object({
   attachments: z.array(attachmentSchema),
   proposals: z.array(proposal),
   evidence: z.array(evidence),
+  intake: z.nullable(
+    z.object({
+      outcome: z.enum(['acknowledged', 'answered', 'unclear_bug', 'unclear_feature']),
+      reply: text,
+      reason: text,
+      findings: strings,
+      questions: strings,
+      investigationAttempted: z.boolean(),
+    }) satisfies z.ZodMiniType<SupportIntake>,
+  ),
 }) satisfies z.ZodMiniType<SupportDetail>;
 const notification = z.object({
   id: text,

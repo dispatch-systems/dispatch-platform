@@ -140,6 +140,8 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         SupportAttachment,
         SupportProposal,
         SupportEvidence,
+        SupportIntake,
+        SupportIntakeOutcome,
         SupportDetail,
         SupportNotification,
     );

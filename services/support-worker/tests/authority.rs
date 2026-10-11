@@ -2,6 +2,8 @@
 use dispatch_support_worker::{
     config::{Config, Origin, read_private},
     github::{admitted, redact_identities},
+    hermes::safe_job,
+    intake::{Analysis, Decision},
     verification::cortex_collections,
 };
 use serde_json::json;
@@ -100,4 +102,82 @@ fn only_the_required_admission_success_permits_queuing() {
         assert_eq!(admitted(&status), expected);
     }
     assert!(!admitted(&json!({})));
+}
+
+#[test]
+fn reporter_model_payload_excludes_owner_private_context_but_owner_answers_retain_it() {
+    let mut job: dispatch_core::support::api::types::SupportJob = serde_json::from_value(json!({
+        "id":"job","kind":"investigate","version":0,"lease":"LEASE_CANARY","leaseUntil":0,
+        "checkpoint":{"reason":"CHECKPOINT_CANARY"},"questionId":null,"environment":"dev","origin":"https://dispatch.example",
+        "detail":{
+            "ticket":{"id":"support_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","kind":"bug","title":"Public report","status":"triaging","progress":"","reporterName":"Demo reporter","dspId":null,"dspName":null,"proposalVersion":0,"approvedVersion":null,"prUrl":null,"headSha":null,"mergeSha":null,"releasedVersion":null,"createdAt":0,"updatedAt":0},
+            "description":"PUBLIC_REPORT","release":"v1","sourceSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "messages":[
+                {"id":"public","author":"reporter","role":"reporter","body":"PUBLIC_REPLY","private":false,"createdAt":0},
+                {"id":"owner","author":"owner","role":"owner","body":"OWNER_CANARY","private":true,"createdAt":0}
+            ],
+            "attachments":[{"id":"private","name":"ATTACHMENT_CANARY","mediaType":"image/png","size":0,"private":true}],
+            "proposals":[{"version":1,"sourceSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","reproduction":"","observations":[],"uncertainties":[],"analysis":"PROPOSAL_CANARY","plan":[],"alternatives":[],"acceptanceCriteria":[],"verification":[],"productionVerification":[],"affectedAreas":[],"risks":[],"createdAt":0}],
+            "evidence":[{"id":"proof","phase":"investigation","sourceSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","criterion":"","steps":[],"outcome":"EVIDENCE_CANARY","passed":false,"attachmentIds":[],"createdAt":0}],
+            "intake":{"outcome":"answered","reply":"Public answer","reason":"INTAKE_CANARY","findings":[],"questions":[],"investigationAttempted":false}
+        }
+    })).unwrap();
+    let public = safe_job(&job).unwrap().to_string();
+    assert!(public.contains("PUBLIC_REPORT") && public.contains("PUBLIC_REPLY"));
+    for canary in [
+        "LEASE_CANARY",
+        "CHECKPOINT_CANARY",
+        "OWNER_CANARY",
+        "ATTACHMENT_CANARY",
+        "PROPOSAL_CANARY",
+        "EVIDENCE_CANARY",
+        "INTAKE_CANARY",
+    ] {
+        assert!(!public.contains(canary), "private field leaked: {canary}");
+    }
+    job.kind = "answer".into();
+    let owner = safe_job(&job).unwrap().to_string();
+    assert!(owner.contains("OWNER_CANARY") && owner.contains("PROPOSAL_CANARY"));
+    assert!(!owner.contains("LEASE_CANARY") && !owner.contains("CHECKPOINT_CANARY"));
+}
+
+#[test]
+fn unclear_intake_requires_real_investigation_and_matching_clarification_context() {
+    let decision: Decision = serde_json::from_value(
+        json!({"route":"acknowledge","reason":"Only a greeting","reply":"Hello!"}),
+    )
+    .unwrap();
+    decision.validate().unwrap();
+    assert_eq!(
+        decision.completion().unwrap()["investigationAttempted"],
+        false
+    );
+    assert!(
+        serde_json::from_value::<Decision>(
+            json!({"route":"unclear_bug","reason":"Too vague","reply":"What happened?"})
+        )
+        .is_err()
+    );
+    let mut analysis: Analysis = serde_json::from_value(json!({"nextStep":"finish","outcome":"unclear_bug","reason":"The affected action is still unidentified","reply":"Which action failed?","findings":["Read the relevant route module but no failing action was identified"],"questions":["Which route action failed?"],"proposal":null})).unwrap();
+    assert!(analysis.validate("bug", false, false).is_err());
+    assert!(analysis.validate("bug", true, false).is_err());
+    assert!(analysis.validate("feature", true, true).is_err());
+    analysis.validate("bug", true, true).unwrap();
+    analysis.reply = "Please share more details.".into();
+    let completion = analysis.completion(true);
+    let public_reply = completion["reply"].as_str().unwrap();
+    assert!(public_reply.contains("Which route action failed?"));
+    assert!(!public_reply.contains(&analysis.reason));
+    assert!(!public_reply.contains(&analysis.findings[0]));
+    analysis.reply = public_reply.into();
+    assert_eq!(
+        analysis.completion(true)["reply"]
+            .as_str()
+            .unwrap()
+            .matches("Which route action failed?")
+            .count(),
+        1
+    );
+    analysis.questions.clear();
+    assert!(analysis.validate("bug", true, true).is_err());
 }

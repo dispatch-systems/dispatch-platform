@@ -232,6 +232,7 @@
   border-radius: 50%;
   flex-shrink: 0;
 }
+.support-status-triaging,
 .support-status-investigating,
 .support-status-implementing,
 .support-status-verifying,
@@ -241,10 +242,14 @@
 }
 .support-status-awaiting_approval,
 .support-status-needs_information,
+.support-status-unclear_bug,
+.support-status-unclear_feature,
 .support-status-waiting {
   color: var(--warning);
   background: var(--warning-surface);
 }
+.support-status-acknowledged,
+.support-status-answered,
 .support-status-resolved {
   color: var(--success);
   background: var(--sage-surface);
@@ -460,13 +465,15 @@ button.support-ticket-row.selected {
 .support-proposal-section {
   margin-top: 18px;
 }
-.support-proposal h4 {
+.support-proposal h4,
+.support-intake-review h4 {
   font-size: 12px;
   font-weight: 600;
   margin-bottom: 7px;
 }
 .support-proposal ul,
 .support-proposal ol,
+.support-intake-review ul,
 .support-evidence ol {
   padding-left: 21px;
   margin: 0;
@@ -474,8 +481,12 @@ button.support-ticket-row.selected {
   line-height: 1.65;
 }
 .support-proposal li + li,
+.support-intake-review li + li,
 .support-evidence li + li {
   margin-top: 5px;
+}
+.support-intake-outcome > button {
+  margin-top: 12px;
 }
 .support-proposal-more {
   margin-top: 18px;

@@ -9,11 +9,20 @@ import subprocess
 class Policy:
     def __init__(self, request):
         self.request = request
-        self.root = Path(request["worktree"]).resolve(strict=True)
+        self.root = Path(request["worktree"]).resolve(strict=True) if request["worktree"] else None
         self.role = request["role"]
+        self.tools = frozenset(request["profile"]["tools"])
+        self.activity = []
+        self.observations = []
         self.browser = None
 
+    def permit(self, name):
+        if name not in self.tools:
+            raise PermissionError("Tool is absent from the effective support stage")
+
     def path(self, raw):
+        if self.root is None:
+            raise PermissionError("This support stage has no assigned source")
         path = Path(raw)
         if not path.is_absolute():
             path = self.root / path
@@ -25,26 +34,43 @@ class Policy:
         return path
 
     def read(self, args, **kwargs):
+        self.permit("dispatch_read_file")
         # Copy Hermes's exact pagination/text-file handler into our bundle, with a path guard.
         from tools.file_tools import _handle_read_file
         checked = dict(args)
         checked["path"] = str(self.path(args["path"]))
         if set(checked) - {"path", "offset", "limit"}:
             raise PermissionError("Unknown file options")
-        return _handle_read_file(checked, **kwargs)
+        self.activity.append("dispatch_read_file")
+        result = _handle_read_file(checked, **kwargs)
+        try:
+            answer = json.loads(result)
+        except (TypeError, ValueError):
+            answer = None
+        # Hermes returns JSON content for a completed text read, but errors, binary
+        # refusals and dedup stubs do not provide fresh source observations.
+        if (isinstance(answer, dict) and not answer.get("error")
+                and answer.get("success") is not False and not answer.get("is_binary")
+                and isinstance(answer.get("content"), str)):
+            self.observations.append("dispatch_read_file")
+        return result
 
     def write(self, args, **kwargs):
+        self.permit("dispatch_write_file")
         if self.role != "builder":
             raise PermissionError("Only the approved builder can edit")
         path = self.path(args["path"])
+        self.activity.append("dispatch_write_file")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(args["content"], encoding="utf-8")
         return json.dumps({"written": str(path.relative_to(self.root))})
 
     def patch(self, args, **kwargs):
+        self.permit("dispatch_patch")
         if self.role != "builder":
             raise PermissionError("Only the approved builder can edit")
         path = self.path(args["path"])
+        self.activity.append("dispatch_patch")
         content = path.read_text(encoding="utf-8")
         old = args["old_string"]
         if not old or content.count(old) != 1:
@@ -53,10 +79,14 @@ class Policy:
         return json.dumps({"patched": str(path.relative_to(self.root))})
 
     def command(self, args, **kwargs):
+        self.permit("dispatch_command")
+        if self.root is None:
+            raise PermissionError("This support stage has no assigned source")
         import shutil
         if not shutil.which("bwrap"):
             raise RuntimeError("bubblewrap is required; refusing an unsandboxed command")
         cwd = self.path(args.get("cwd", "."))
+        self.activity.append("dispatch_command")
         bind = "--bind" if self.role == "builder" else "--ro-bind"
         command = ["bwrap", "--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL", "--clearenv", "--ro-bind", "/usr", "/usr", "--ro-bind", "/bin", "/bin", "--ro-bind", "/lib", "/lib", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--dir", "/sandbox", "--dir", "/sandbox/home", "--dir", "/sandbox/bin", bind, str(self.root), "/workspace", "--setenv", "HOME", "/sandbox/home", "--setenv", "PATH", "/sandbox/bin:/sandbox/.cargo/bin:/usr/local/bin:/usr/bin:/bin", "--setenv", "CARGO_HOME", "/sandbox/.cargo", "--setenv", "RUSTUP_HOME", "/sandbox/.rustup", "--setenv", "CARGO_TARGET_DIR", "/tmp/target", "--setenv", "TMPDIR", "/tmp"]
         # Only compiler binaries and package caches are mounted; never .cargo/credentials or SSH.
@@ -70,15 +100,24 @@ class Policy:
         node = Path(self.request["node"])
         command += ["--ro-bind", str(node.resolve()), "/sandbox/bin/node", "--ro-bind", str(self.root / ".git"), "/workspace/.git", "--chdir", "/workspace/" + str(cwd.relative_to(self.root)), "/bin/bash", "-c", args["command"].replace(str(self.root), "/workspace")]
         result = subprocess.run(command, text=True, capture_output=True, check=False)
+        if result.returncode == 0:
+            self.observations.append("dispatch_command")
         return json.dumps({"exitCode": result.returncode, "stdout": result.stdout[-100000:], "stderr": result.stderr[-100000:], "sandbox": "assigned-worktree-no-host-network"})
 
     def diff(self, args, **kwargs):
+        self.permit("dispatch_diff")
+        if self.root is None:
+            raise PermissionError("This support stage has no assigned source")
+        self.activity.append("dispatch_diff")
         base = subprocess.run(["git", "rev-parse", "--verify", "origin/main"], cwd=self.root, capture_output=True, check=False)
         result = subprocess.run(["git", "diff", "--no-ext-diff", "--no-textconv", "origin/main...HEAD" if base.returncode == 0 else "HEAD", "--", "."], cwd=self.root, capture_output=True, text=True, check=True)
         pending = subprocess.run(["git", "diff", "--no-ext-diff", "--no-textconv", "HEAD", "--", "."], cwd=self.root, capture_output=True, text=True, check=True)
+        self.observations.append("dispatch_diff")
         return json.dumps({"committedDiff":result.stdout[-100000:], "pendingDiff":pending.stdout[-100000:]})
 
     def browse(self, args, **kwargs):
+        self.permit("dispatch_browser")
+        self.activity.append("dispatch_browser")
         attempt = Path(self.request["home"]) / "browser-attempt.json"
         attempt.write_text(json.dumps({"attempted": True, "action": args["action"], "sourceSha": self.request["context"]["headSha"]}), encoding="utf-8")
         if self.browser is None:
@@ -91,13 +130,17 @@ class Policy:
             raise RuntimeError("Private verification browser unavailable; inspect runner logs")
         answer = json.loads(line)
         artifact = answer.get("artifact")
-        if artifact and args["action"] == "screenshot":
+        if "error" not in answer and artifact and args["action"] == "screenshot":
             # Reuse Hermes's native vision envelope so the selected Codex model sees pixels;
             # no auxiliary API provider, remote browser or paid image service is called.
             from tools.vision_tools import _build_native_vision_tool_result, _resize_image_for_vision
             image = Path(self.request["home"]) / "evidence" / artifact
             data_url = _resize_image_for_vision(image, mime_type="image/png")
-            return _build_native_vision_tool_result(str(image), "Inspect this actual platform screenshot for the approved criterion and layout.", data_url, image.stat().st_size)
+            result = _build_native_vision_tool_result(str(image), "Inspect this actual platform screenshot for the approved criterion and layout.", data_url, image.stat().st_size)
+            self.observations.append("dispatch_browser")
+            return result
+        if "error" not in answer and answer.get("success") is not False:
+            self.observations.append("dispatch_browser")
         return line.strip()
 
     def close(self):

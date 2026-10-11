@@ -37,6 +37,49 @@ pub(crate) fn cancel(db: &Store, ticket: &str) -> Result<()> {
     )?;
     Ok(())
 }
+
+/// A clarification first returns to tool-free routing, never directly to heavy work.
+pub(crate) fn route_reply(
+    db: &Store,
+    ticket: &str,
+    version: u32,
+    previous_status: &str,
+    reply: &str,
+) -> Result<()> {
+    let previous_status = if previous_status == "triaging" {
+        let current = db.platform.one_as::<(String,)>(
+            "SELECT checkpoint FROM support_jobs WHERE ticket_id=? AND kind='investigate' \
+             AND version=? AND status IN ('queued','running','waiting') ORDER BY created_at DESC,rowid DESC LIMIT 1",
+            params![ticket, version],
+        )?;
+        let current: Value = current
+            .map(|(text,)| decode(&text))
+            .transpose()?
+            .unwrap_or_else(|| json!({}));
+        if let Some(previous) = current["previousStatus"].as_str() {
+            previous.to_owned()
+        } else {
+            super::intake::latest(db, ticket, version)?.map_or_else(
+                || previous_status.to_owned(),
+                |saved| saved.outcome.status().to_owned(),
+            )
+        }
+    } else {
+        previous_status.to_owned()
+    };
+    db.platform.exec(
+        "UPDATE support_jobs SET status='cancelled',lease_hash=NULL,lease_until=NULL,updated_at=? \
+         WHERE ticket_id=? AND kind='investigate' AND status IN ('queued','running','waiting')",
+        params![now(), ticket],
+    )?;
+    enqueue(db, ticket, "investigate", version, None)?;
+    let checkpoint = json!({"phase":"routing","previousStatus":previous_status,"replyId":reply});
+    db.platform.exec(
+        "UPDATE support_jobs SET checkpoint=? WHERE ticket_id=? AND kind='investigate' AND version=? AND status='queued'",
+        params![serde_json::to_string(&checkpoint)?, ticket, version],
+    )?;
+    tickets::progress(db, ticket, "triaging", "Routing your reply")
+}
 pub(crate) fn leased(db: &Store, job: &str, lease: &str) -> Result<Lease> {
     let row = db.platform.one(
         "SELECT * FROM support_jobs WHERE id=? AND status='running' AND lease_hash=? AND lease_until>?",
@@ -118,7 +161,7 @@ pub fn progress(
         let run = leased(db, job, lease)?;
         let allowed = match run.kind.as_str() {
             "implement" => ["implementing", "verifying", "queued"].contains(&status),
-            "investigate" => ["investigating", "needs_information"].contains(&status),
+            "investigate" => ["triaging", "investigating", "needs_information"].contains(&status),
             "release" => status == "merged",
             _ => false,
         };

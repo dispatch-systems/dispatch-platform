@@ -195,8 +195,8 @@ export function ReportForm({ onSubmitted }: { onSubmitted: (detail: SupportDetai
       )}
       <ErrorBox message={error} />
       <p className="support-report-note muted">
-        An agent investigates first. The platform owner reviews the proposal before any changes
-        begin.
+        The agent reviews your message, answers questions and investigates reports that need further
+        work. The platform owner approves a proposal before any changes begin.
       </p>
       <div className="support-report-submit">
         <span role="status">{progress}</span>
