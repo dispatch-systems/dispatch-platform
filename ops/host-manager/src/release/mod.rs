@@ -21,22 +21,22 @@ use std::{
     time::Duration,
 };
 
-const HELP: &str = "Dispatch release [run|status|prepare|publish] [X.Y.Z] --root CHECKOUT
-  run       Release main's head, publish and verify Production (the default).
+const HELP: &str = "Dispatch release [publish|status] [X.Y.Z] --root CHECKOUT
+  publish   Release main's head: require the full suite and Dev serving the commit, publish
+            the release and verify Production installs it (the default).
   status    Inspect GitHub, saved assets and public health without changing release state.
-  prepare   Require the full suite and Dev serving the commit; stop at a verified draft.
-  publish   Publish an existing verified preparation and verify Production.
+With no version, publish makes a new release, the latest published version bumped. It sets
+aside any release never published, unless that release already holds the same commit, which
+it continues. A version publishes, or finishes publishing, exactly that release.
 Options: --bump patch|minor|major, --commit REV, --notes PATH, --releases PATH
 Origins: --dev-origin HTTPS_ORIGIN --production-origin HTTPS_ORIGIN
   Or set devOrigin and productionOrigin in CHECKOUT/config/release.json.
-Rerun the same command after fixing a failure. Tags and existing assets are never overwritten.";
+Rerun the same command after fixing a failure. Tags and published assets are never overwritten.";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Stage {
-    Run,
-    Status,
-    Prepare,
     Publish,
+    Status,
 }
 
 struct Options {
@@ -52,7 +52,7 @@ struct Options {
 impl Options {
     fn parse(args: &[String]) -> Result<Self> {
         let mut value = Self {
-            stage: Stage::Run,
+            stage: Stage::Publish,
             version: None,
             root: PathBuf::new(),
             bump: "patch".into(),
@@ -63,10 +63,8 @@ impl Options {
         };
         let mut iter = args.iter().peekable();
         if let Some(stage) = iter.peek().and_then(|s| match s.as_str() {
-            "run" => Some(Stage::Run),
-            "status" => Some(Stage::Status),
-            "prepare" => Some(Stage::Prepare),
             "publish" => Some(Stage::Publish),
+            "status" => Some(Stage::Status),
             _ => None,
         }) {
             value.stage = stage;
@@ -144,6 +142,8 @@ struct Release<'a> {
     /// A temporary branch at the release commit, only for dispatching its full checks.
     checks_branch: String,
     origins: origins::Origins,
+    /// No version was named: a new release, which takes the place of any never published.
+    fresh: bool,
 }
 
 fn say(message: impl std::fmt::Display) {
@@ -168,20 +168,42 @@ impl<'a> Release<'a> {
             .releases
             .clone()
             .unwrap_or_else(|| platform.join("releases"));
+        let release = Self::at(system, &options.root, &directory, &options.origins, version);
+        Self {
+            notes: options.notes.clone().unwrap_or(release.notes.clone()),
+            fresh: options.version.is_none(),
+            ..release
+        }
+    }
+    fn at(
+        system: &'a dyn System,
+        root: &Path,
+        directory: &Path,
+        origins: &origins::Origins,
+        version: &str,
+    ) -> Self {
         Self {
             system,
-            root: options.root.clone(),
+            root: root.into(),
             output: directory.join(format!("v{version}")),
-            notes: options
-                .notes
-                .clone()
-                .unwrap_or_else(|| directory.join(format!("v{version}-notes.md"))),
-            directory,
+            notes: directory.join(format!("v{version}-notes.md")),
+            directory: directory.into(),
             version: version.into(),
             tag: format!("v{version}"),
             checks_branch: format!("release-checks/v{version}"),
-            origins: options.origins.clone(),
+            origins: origins.clone(),
+            fresh: false,
         }
+    }
+    /// Another version's release in the same directory, with its own notes.
+    fn other(&self, version: &str) -> Self {
+        Self::at(
+            self.system,
+            &self.root,
+            &self.directory,
+            &self.origins,
+            version,
+        )
     }
     fn command(&self, args: &[&str], cwd: Option<&Path>, timeout: u64) -> Result<String> {
         Ok(String::from_utf8(self.system.command(
@@ -308,22 +330,14 @@ impl<'a> Release<'a> {
             .map_err(|_| "Another release command is running")?;
         let _lock = ReleaseLock(lock);
         self.git(&["fetch", "--tags", "origin", "main"], None, 300)?;
-        let published = self.listed_release()?.is_some_and(|r| r["draft"] == false);
-        if published {
-            require(
-                stage != Stage::Prepare,
-                "Release is already published; use status or publish to verify it",
-            )?;
-        } else if stage != Stage::Publish {
+        if self.fresh {
+            self.replace_unpublished(requested)?;
+        }
+        if !self.listed_release()?.is_some_and(|r| r["draft"] == false) {
             let commit = self.pin(requested)?;
             let prepared = self.prepare(&commit)?;
             self.smoke(&prepared)?;
             self.ensure_draft(&prepared)?;
-            if stage == Stage::Prepare {
-                return Ok(
-                    json!({"version":self.version,"stage":"draft-verified","commit":commit}),
-                );
-            }
         }
         // Publication can only consume complete, revalidated preparation.
         let prepared = self.prepared(None)?;
@@ -362,6 +376,20 @@ impl<'a> Release<'a> {
             "release":self.listed_release()?,"production":health}),
         )
     }
+    /// A new release takes the place of every release started after the latest published
+    /// one and never published, except one pinned to the commit it releases: a rerun after a
+    /// failure, which it continues.
+    fn replace_unpublished(&self, requested: Option<&str>) -> Result<()> {
+        let commit = self.resolve(requested)?;
+        for version in unpublished(&self.directory, &all_releases(self.system)?)? {
+            let other = self.other(&version);
+            if version == self.version && other.journal()?.commit.as_deref() == Some(&commit) {
+                continue;
+            }
+            other.supersede()?;
+        }
+        Ok(())
+    }
 }
 
 fn all_releases(system: &dyn System) -> Result<Vec<Value>> {
@@ -389,16 +417,22 @@ fn latest_version(listed: &[Value]) -> &str {
         .map(|(_, s)| s)
         .unwrap_or("0.0.0")
 }
-fn unfinished(directory: &Path, listed: &[Value]) -> Result<Option<String>> {
+/// The versions after the latest published release that were started and never published:
+/// a GitHub draft, an unfinished journal or a prepared directory.
+fn unpublished(directory: &Path, listed: &[Value]) -> Result<BTreeSet<String>> {
     let latest = releases::version(latest_version(listed))?;
     let mut found = BTreeSet::new();
+    let mut published = BTreeSet::new();
     for release in listed {
-        if release["draft"] == true
-            && let Some(v) = release["tag_name"]
-                .as_str()
-                .and_then(|s| s.strip_prefix('v'))
+        if let Some(v) = release["tag_name"]
+            .as_str()
+            .and_then(|s| s.strip_prefix('v'))
         {
-            found.insert(v.to_owned());
+            if release["draft"] == true {
+                found.insert(v.to_owned());
+            } else {
+                published.insert(v.to_owned());
+            }
         }
     }
     if directory.try_exists()? {
@@ -415,27 +449,16 @@ fn unfinished(directory: &Path, listed: &[Value]) -> Result<Option<String>> {
                     found.insert(journal.version);
                 }
             } else if entry.file_type()?.is_dir()
-                && !entry
-                    .path()
-                    .join("deployment-verification.json")
-                    .try_exists()?
                 && let Some(version) = name.strip_prefix('v')
-                && let Ok(parts) = releases::version(version)
-                && parts >= latest
             {
-                // Legacy history may predate deployment receipts. A newer
-                // published version supersedes it; explicit journals above
-                // still retain unfinished work regardless of release age.
                 found.insert(version.into());
             }
         }
     }
-    found.retain(|v| releases::version(v).is_ok());
-    require(
-        found.len() <= 1,
-        "Several releases are unfinished; name the version to continue",
-    )?;
-    Ok(found.into_iter().next())
+    found.retain(|v| {
+        !published.contains(v) && releases::version(v).is_ok_and(|parts| parts > latest)
+    });
+    Ok(found)
 }
 
 pub fn run(args: &[String], system: &dyn System) -> Result<Value> {
@@ -468,14 +491,12 @@ pub fn run(args: &[String], system: &dyn System) -> Result<Value> {
         .unwrap_or_else(|| platform.join("releases"));
     let version = match &options.version {
         Some(version) => version.clone(),
-        None => match unfinished(&directory, &listed)? {
-            Some(version) => version,
-            None if options.stage == Stage::Status => latest.into(),
-            None if options.stage == Stage::Publish => {
-                return Err("Name the prepared or published version to verify".into());
-            }
-            None => next_version(latest, &options.bump)?,
-        },
+        // Status shows the newest release, published or not.
+        None if options.stage == Stage::Status => unpublished(&directory, &listed)?
+            .into_iter()
+            .max_by_key(|v| releases::version(v).ok())
+            .unwrap_or_else(|| latest.into()),
+        None => next_version(latest, &options.bump)?,
     };
     if options.stage != Stage::Status {
         require(

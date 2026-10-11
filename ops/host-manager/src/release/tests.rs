@@ -157,6 +157,9 @@ impl System for Fake {
                 require(args.contains(&"PATCH"), "Unexpected branch update")?;
                 self.branch.replace(Some(field("sha")));
                 json!({ "ref": checks_ref })
+            } else if endpoint == "releases/9" && args.contains(&"DELETE") {
+                self.listed.borrow_mut().retain(|r| r["id"] != 9);
+                return Ok(vec![]);
             } else if endpoint == "releases/9" && args.contains(&"PATCH") {
                 self.listed.borrow_mut()[0]["draft"] = json!(false);
                 self.listed.borrow_mut()[0]["published_at"] = json!("2026-09-21T00:00:00Z");
@@ -399,7 +402,7 @@ impl Fixture {
     }
     fn release(&self) -> Release<'_> {
         let options = Options {
-            stage: Stage::Run,
+            stage: Stage::Publish,
             version: Some("1.0.0".into()),
             root: self.root.clone(),
             bump: "patch".into(),
@@ -417,6 +420,25 @@ impl Fixture {
             "1.0.0",
             self.temp.path().to_path_buf(),
         )
+    }
+    /// `release publish` with no version, as a person runs it.
+    fn publish(&self, args: &[&str]) -> Result<Value> {
+        let root = self.root.to_str().unwrap();
+        let options = [
+            "--root",
+            root,
+            "--dev-origin",
+            DEV,
+            "--production-origin",
+            PRODUCTION,
+        ];
+        let args: Vec<String> = ["publish"]
+            .iter()
+            .chain(args)
+            .chain(&options)
+            .map(|s| s.to_string())
+            .collect();
+        run(&args, &self.system)
     }
     fn prepare(&self) -> assets::Prepared {
         let release = self.release();
@@ -440,15 +462,19 @@ fn legacy_cli_defaults_and_explicit_stages_are_validated_before_effects() {
         args.extend(["--dev-origin", DEV, "--production-origin", PRODUCTION].map(String::from));
         Options::parse(&args)
     };
-    assert_eq!(parse(&["--root", "/checkout"]).unwrap().stage, Stage::Run);
     assert_eq!(
-        parse(&["prepare", "1.0.0", "--root", "/checkout"])
+        parse(&["--root", "/checkout"]).unwrap().stage,
+        Stage::Publish
+    );
+    assert_eq!(
+        parse(&["publish", "1.0.0", "--root", "/checkout"])
             .unwrap()
             .stage,
-        Stage::Prepare
+        Stage::Publish
     );
     for args in [
         vec!["publish", "bad", "--root", "/checkout"],
+        vec!["prepare", "--root", "/checkout"],
         vec!["--root", "/a", "--root", "/b"],
         vec!["status"],
         vec!["--root", "/a", "--bump", "bad"],
@@ -732,21 +758,11 @@ fn conflicting_uploads_or_wrong_tags_never_publish() {
 }
 
 #[test]
-fn prepare_stops_at_draft_and_publish_checks_again_then_completes() {
+fn publish_goes_from_main_to_production_and_failed_checks_hold_a_draft() {
     let f = Fixture::new();
     let release = f.release();
     io::private_directory(&release.directory).unwrap();
     fs::write(&release.notes, "Notes").unwrap();
-    assert_eq!(
-        release.execute(Stage::Prepare, None).unwrap()["stage"],
-        "draft-verified"
-    );
-    assert_eq!(f.system.listed.borrow()[0]["draft"], true);
-    assert!(!release.journal().unwrap().complete);
-    f.system.runs.borrow_mut()[0]["conclusion"] = json!("failure");
-    assert!(release.execute(Stage::Publish, None).is_err());
-    assert!(!f.system.has_call(&["PATCH"]));
-    f.system.runs.borrow_mut()[0]["conclusion"] = json!("success");
     assert_eq!(
         release.execute(Stage::Publish, None).unwrap()["stage"],
         "complete"
@@ -759,6 +775,18 @@ fn prepare_stops_at_draft_and_publish_checks_again_then_completes() {
             .is_file()
     );
     assert!(release.journal().unwrap().complete);
+    // Checks that fail once the draft exists keep it a draft until they pass.
+    let f = Fixture::new();
+    f.draft();
+    let release = f.release();
+    f.system.runs.borrow_mut()[0]["conclusion"] = json!("failure");
+    assert!(release.execute(Stage::Publish, None).is_err());
+    assert!(!f.system.has_call(&["PATCH"]));
+    f.system.runs.borrow_mut()[0]["conclusion"] = json!("success");
+    assert_eq!(
+        release.execute(Stage::Publish, None).unwrap()["stage"],
+        "complete"
+    );
 }
 
 #[test]
@@ -792,13 +820,11 @@ fn publication_response_loss_and_production_failure_resume_without_republishing_
 }
 
 #[test]
-fn smoke_failure_stops_draft_creation_and_publish_needs_preparation() {
+fn smoke_failure_stops_draft_creation() {
     let f = Fixture::new();
     let release = f.release();
-    assert!(release.execute(Stage::Publish, None).is_err());
-    assert!(!release.output.exists());
     f.system.fail("smoke");
-    assert!(release.execute(Stage::Prepare, None).is_err());
+    assert!(release.execute(Stage::Publish, None).is_err());
     assert!(release.output.is_dir());
     assert!(f.system.listed.borrow().is_empty());
     assert!(!release.output.join("smoke-verification.json").exists());
@@ -833,24 +859,22 @@ fn status_is_read_only_even_for_missing_preparation() {
 }
 
 #[test]
-fn unfinished_discovery_covers_a_pinned_commit_before_draft_and_published_before_verification() {
+fn unpublished_releases_are_those_after_the_latest_published_one_never_published() {
     let f = Fixture::new();
     let release = f.release();
-    assert!(unfinished(&release.directory, &[]).unwrap().is_none());
+    assert!(unpublished(&release.directory, &[]).unwrap().is_empty());
     io::private_directory(&release.directory).unwrap();
     release.record_commit(&f.system.commit).unwrap();
+    let draft = json!({"tag_name":"v2.0.0","draft":true});
     assert_eq!(
-        unfinished(&release.directory, &[]).unwrap().as_deref(),
-        Some("1.0.0")
+        unpublished(&release.directory, &[draft]).unwrap(),
+        BTreeSet::from(["1.0.0".to_owned(), "2.0.0".to_owned()])
     );
-    let other = json!({"tag_name":"v2.0.0","draft":true});
-    assert!(unfinished(&release.directory, &[other]).is_err());
-    let listed = json!({"tag_name":"v1.0.0","draft":false});
-    assert_eq!(
-        unfinished(&release.directory, &[listed])
+    let published = json!({"tag_name":"v1.0.0","draft":false,"prerelease":false});
+    assert!(
+        unpublished(&release.directory, std::slice::from_ref(&published))
             .unwrap()
-            .as_deref(),
-        Some("1.0.0")
+            .is_empty()
     );
     // Journals from releases that went through a release PR still read.
     let mut legacy = serde_json::to_value(release.journal().unwrap()).unwrap();
@@ -863,32 +887,75 @@ fn unfinished_discovery_covers_a_pinned_commit_before_draft_and_published_before
     );
     journal.complete = true;
     release.save(&journal).unwrap();
-    assert!(unfinished(&release.directory, &[]).unwrap().is_none());
+    assert!(unpublished(&release.directory, &[]).unwrap().is_empty());
+    // A directory left from a release before the latest published one is history.
+    io::private_directory(&release.directory.join("v0.0.3")).unwrap();
+    assert!(
+        unpublished(&release.directory, &[published])
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        unpublished(&release.directory, &[]).unwrap(),
+        BTreeSet::from(["0.0.3".to_owned()])
+    );
 }
 
 #[test]
-fn legacy_history_without_receipts_does_not_reopen_superseded_releases() {
+fn a_release_without_a_version_replaces_an_unpublished_one_unless_it_holds_the_same_commit() {
+    // A rerun after a failure continues the draft it made.
     let f = Fixture::new();
-    let release = f.release();
-    io::private_directory(&release.directory.join("v0.0.3")).unwrap();
-    let listed = vec![json!({"tag_name":"v1.0.0","draft":false,"prerelease":false})];
-    assert!(unfinished(&release.directory, &listed).unwrap().is_none());
-    io::private_directory(&release.output).unwrap();
+    f.draft();
+    f.release().record_commit(&f.system.commit).unwrap();
     assert_eq!(
-        unfinished(&release.directory, &listed).unwrap().as_deref(),
-        Some("1.0.0")
+        f.publish(&["--bump", "major"]).unwrap()["stage"],
+        "complete"
     );
-    fs::remove_dir(&release.output).unwrap();
-    let mut journal = release.journal().unwrap();
-    journal.version = "0.0.3".into();
-    io::write_json(
-        &release.directory.join(".v0.0.3-state.json"),
-        &serde_json::to_value(journal).unwrap(),
-    )
-    .unwrap();
+    assert_eq!(f.system.count(&["gh", "release", "create"]), 1);
+    assert!(!f.system.has_call(&["DELETE"]));
+    // A draft of an older commit is deleted, its files are set aside, and main's head is
+    // released under its version with notes of its own.
+    let f = Fixture::new();
+    git(
+        &f.root,
+        &["tag", "v0.9.0", &format!("{}^1", f.system.commit)],
+    );
+    let stale = git(&f.root, &["rev-parse", "main^1"]);
+    f.system.listed.replace(vec![
+        json!({"id":9,"tag_name":"v1.0.0","draft":true,"prerelease":false,"target_commitish":stale,"assets":[]}),
+        json!({"tag_name":"v0.9.0","draft":false,"prerelease":false}),
+    ]);
+    let release = f.release();
+    io::private_directory(&release.output).unwrap();
+    fs::write(release.output.join("provenance.json"), "{}").unwrap();
+    fs::write(&release.notes, "Stale notes").unwrap();
+    release.record_commit(&stale).unwrap();
     assert_eq!(
-        unfinished(&release.directory, &listed).unwrap().as_deref(),
-        Some("0.0.3")
+        f.publish(&["--bump", "major"]).unwrap()["stage"],
+        "complete"
+    );
+    let deleted = format!("repos/{REPOSITORY}/releases/9");
+    assert!(
+        f.system
+            .has_call(&["gh", "api", &deleted, "--method", "DELETE"])
+    );
+    let aside = release
+        .directory
+        .join(format!("superseded/v1.0.0-{}", &stale[..8]));
+    assert_eq!(
+        fs::read_to_string(aside.join("v1.0.0-notes.md")).unwrap(),
+        "Stale notes"
+    );
+    assert!(aside.join("v1.0.0/provenance.json").is_file());
+    assert!(aside.join(".v1.0.0-state.json").is_file());
+    assert_eq!(
+        release.journal().unwrap().commit.as_deref(),
+        Some(f.system.commit.as_str())
+    );
+    assert!(
+        !fs::read_to_string(release.output.join("notes.md"))
+            .unwrap()
+            .contains("Stale")
     );
 }
 
@@ -905,7 +972,7 @@ fn locking_prevents_overlapping_mutations() {
     lock.try_lock_exclusive().unwrap();
     assert!(
         release
-            .execute(Stage::Prepare, None)
+            .execute(Stage::Publish, None)
             .unwrap_err()
             .to_string()
             .contains("Another release")
@@ -1127,7 +1194,7 @@ fn a_commit_without_a_full_run_gets_one_on_a_temporary_branch_before_preparation
     io::private_directory(&release.directory).unwrap();
     fs::write(&release.notes, "Notes").unwrap();
     let error = release
-        .execute(Stage::Prepare, None)
+        .execute(Stage::Publish, None)
         .unwrap_err()
         .to_string();
     assert!(error.contains("Checks ended with failure"), "{error}");
@@ -1137,13 +1204,13 @@ fn a_commit_without_a_full_run_gets_one_on_a_temporary_branch_before_preparation
         Some(f.system.commit.as_str())
     );
     // A rerun awaits that same run instead of starting another.
-    assert!(release.execute(Stage::Prepare, None).is_err());
+    assert!(release.execute(Stage::Publish, None).is_err());
     assert_eq!(f.system.count(&["gh", "workflow", "run"]), 1);
     // Rerunning its failed jobs passes it; the release continues and drops the branch.
     f.system.runs.borrow_mut()[1]["conclusion"] = json!("success");
     assert_eq!(
-        release.execute(Stage::Prepare, None).unwrap()["stage"],
-        "draft-verified"
+        release.execute(Stage::Publish, None).unwrap()["stage"],
+        "complete"
     );
     assert_eq!(f.system.count(&["gh", "workflow", "run"]), 1);
     assert!(f.system.branch.borrow().is_none());

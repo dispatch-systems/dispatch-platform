@@ -521,9 +521,7 @@ impl Release<'_> {
         Ok(release)
     }
     pub(super) fn publish(&self, prepared: &Prepared) -> Result<Value> {
-        let release = self
-            .listed_release()?
-            .ok_or("No draft exists; run prepare first")?;
+        let release = self.listed_release()?.ok_or("No draft exists to publish")?;
         self.verify_identity(&release, prepared)?;
         if release["draft"] == false {
             self.verify_assets(&release, false)?;
