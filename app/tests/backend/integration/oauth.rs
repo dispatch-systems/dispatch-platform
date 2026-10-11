@@ -2605,7 +2605,7 @@ async fn platform_owners_hear_when_an_app_connects_and_when_dispatch_ends_one() 
         assert_eq!(subject, "[Dispatch Dev] Claude Code connected to Dispatch");
         for line in [
             "Connection: Laptop",
-            "App: Claude Code (known metadata)",
+            "App: Claude Code (recognized app)",
             "Sends access to: this computer",
             "DSPs: Northline Logistics",
             &tools_line(),

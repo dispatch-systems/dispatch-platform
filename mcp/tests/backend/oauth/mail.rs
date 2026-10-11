@@ -21,7 +21,7 @@ fn a_connected_app_is_described_plainly_and_escaped() {
     assert_eq!(mail.subject, "Claude Code connected to Dispatch");
     for line in [
         "Connection: Laptop <Claude>",
-        "App: Claude Code (known metadata)",
+        "App: Claude Code (recognized app)",
         "Sends access to: this computer",
         "DSPs: All DSPs",
         "Tools: All 3, 2 that make changes\n",

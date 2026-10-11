@@ -231,8 +231,8 @@ function Approval({
             </h2>
             <p>It gets only the DSPs and tools you allow below.</p>
             <div className="agents-approval-facts">
-              <Badge value={app.known ? 'known_metadata' : 'app_provided'}>
-                {app.known ? 'Known metadata' : 'App-provided metadata'}
+              <Badge value={app.known ? 'recognized' : 'unrecognized'}>
+                {app.known ? 'Recognized app' : 'Unrecognized app'}
               </Badge>
               {!website && (
                 <span>
@@ -257,10 +257,12 @@ function Approval({
           <div className="notice agents-consent">
             <Info size={16} aria-hidden="true" />
             <span>
+              {/* A recognized app's reviewed addresses bound where access goes, but any app can
+                  ask under its name. */}
               {app.known ? (
                 <>
-                  Dispatch recognizes this app’s published metadata, but public app identity is not
-                  authenticated.{' '}
+                  Dispatch recognizes {name} and only sends access to its reviewed address. It can’t
+                  confirm who started this.{' '}
                 </>
               ) : (
                 <>Unrecognized app: it says it is “{name}”. </>
