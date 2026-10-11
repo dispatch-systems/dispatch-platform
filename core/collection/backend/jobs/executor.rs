@@ -14,7 +14,22 @@ use crate::{
 use rusqlite::params;
 use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
+/// Runs a claimed job to its outcome, waiting its turn at the database rather than being
+/// turned away (`State::patiently`).
 pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
+    State::patiently(run(state, job, owner)).await
+}
+
+/// A job's work, running as a task of its own, stopped with the execution waiting on it, as
+/// when the scheduler stops.
+struct Work(tokio::task::JoinHandle<crate::Result<()>>);
+impl Drop for Work {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+async fn run(state: Arc<State>, job: JobRow, owner: String) {
     let id = job.id.clone();
     let dsp = job.dsp_id.clone();
     let metrics = Recorder::start(&job);
@@ -23,7 +38,16 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
     // publishes it.
     let keeper = registry().keeper(job.kind.as_str());
     let domain = DataDomain::collection(job.kind);
-    let task = async {
+    let (state_, id_, owner_, dsp_, metrics_) = (
+        state.clone(),
+        id.clone(),
+        owner.clone(),
+        dsp.clone(),
+        metrics.clone(),
+    );
+    let (request, attempt) = (job.request.clone(), job.attempt);
+    let task = async move {
+        let (state, id, owner, dsp, metrics) = (state_, id_, owner_, dsp_, metrics_);
         let jid = id.clone();
         let worker = owner.clone();
         state
@@ -63,7 +87,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
         }
         let jid = id.clone();
         let worker = owner.clone();
-        let request: Value = serde_json::from_str(&job.request)?;
+        let request: Value = serde_json::from_str(&request)?;
         let tenant = dsp.clone();
         let request = state
             .read(move |db| keeper.bind(db, &tenant, &request))
@@ -77,7 +101,7 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
             .await?;
         metrics.phase(Phase::Collection);
         let collected = session
-            .collect(&state, &id, &owner, &metrics, &request, job.attempt)
+            .collect(&state, &id, &owner, &metrics, &request, attempt)
             .await?;
         metrics.counts(provider.collector().counts(&collected.data));
         // Work that needs no database first; then staging stores what it can in short
@@ -101,13 +125,15 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
             })
             .await
     };
-    let mut task = Box::pin(task);
+    // The work runs as a task of its own, so the writes below never leave it parked partway
+    // through a database call, holding a slot it was given while they wait for one.
+    let mut task = Work(tokio::spawn(State::patiently(task)));
     let mut heartbeat = tokio::time::interval(Duration::from_secs(5));
     let mut sample = tokio::time::interval(Duration::from_secs(1));
     sample.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let result = loop {
         tokio::select! {
-            result=&mut task=>break result,
+            joined=&mut task.0=>break joined.unwrap_or_else(|_|Err(crate::Error::new("operation_failed",500))),
             _=sample.tick()=>{
                 if let Some(session)=state.browsers.get_for(&dsp,
                     provider).filter(|session|session.revision==job.connection_revision)
@@ -128,12 +154,17 @@ pub(super) async fn execute(state: Arc<State>, job: JobRow, owner: String) {
                 let guard=state.run_bookkeeping(move|db|{db.guard(&jid,&worker)?;db.jobs.exec("UPDATE \
                     jobs SET lease_until=? WHERE id=? AND lease_owner=?",params![now()+120000,jid,worker])?;Ok(())}).await;
                 // A publication may have finished the job while this waited for the lock:
-                // the task's own outcome then stands, not the lease it released.
-                if let Err(error)=guard{break futures_util::FutureExt::now_or_never(&mut task).unwrap_or(Err(error));}
+                // the task's own outcome then stands, not the lease it released, so it is
+                // left to return it. Any other lost lease stops the work.
+                if let Err(error)=guard{
+                    let jid=id.clone();
+                    let succeeded=state.read(move|db|Ok(db.job_row(&jid,None)?.status==JobStatus::Succeeded)).await.unwrap_or(false);
+                    if !succeeded{task.0.abort();}
+                    break (&mut task.0).await.unwrap_or(Err(error));
+                }
             }
         }
     };
-    drop(task);
     // A settings-page browser or another just-claimed job may win admission.
     // Put this job back without consuming a provider attempt or retry history.
     if result
