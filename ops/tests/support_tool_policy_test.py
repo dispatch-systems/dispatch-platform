@@ -97,7 +97,7 @@ class PolicyTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             module.Policy({**request, "profile":granted}).server({"action":"health"})
         dsp = "dsp_" + "a" * 32
-        grant = {"host":"100.64.0.2", "user":"dispatch-reader", "keyFile":"/private/reader",
+        grant = {"host":"production.test", "user":"dispatch-reader", "keyFile":"/private/reader",
                  "knownHosts":"/private/known_hosts", "dsp":dsp}
         policy = module.Policy({**request, "profile":granted, "productionServer":grant})
         with self.assertRaises(PermissionError):
@@ -110,7 +110,7 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(command[command.index("-i") + 1], "/private/reader")
         for option in ("IdentitiesOnly=yes", "IdentityAgent=none", "StrictHostKeyChecking=yes"):
             self.assertIn(option, command)
-        self.assertEqual(command[-2:], ["dispatch-reader@100.64.0.2", f"logs --since 2h --level error --dsp {dsp}"])
+        self.assertEqual(command[-2:], ["dispatch-reader@production.test", f"logs --since 2h --level error --dsp {dsp}"])
         self.assertEqual(run.call_args.kwargs["env"], {"PATH":"/usr/bin:/bin"})
         self.assertEqual(policy.observations, ["dispatch_production_server"])
 

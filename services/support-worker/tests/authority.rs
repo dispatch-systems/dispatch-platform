@@ -156,7 +156,7 @@ fn production_server_reads_go_only_to_production_analysis_with_the_tickets_dsp()
     let mut config = config();
     assert!(production_server(&config, &job, "analyst", Some("source")).is_none());
     config.production_reader = Some(ProductionReader {
-        host: "100.64.0.2".into(),
+        host: "production.test".into(),
         user: "dispatch-reader".into(),
         key_file: "/runtime/production-reader".into(),
         known_hosts: "/runtime/production-reader.known_hosts".into(),
