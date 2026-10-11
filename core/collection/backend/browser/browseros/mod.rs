@@ -3,8 +3,10 @@
 mod cdp;
 mod loading;
 mod native;
+mod projection;
 mod sandbox;
 mod worker;
+pub use projection::VerificationAuthority;
 
 use super::egress::Egress;
 use crate::{Error, Result, db, ensure, foundation::crypto};
@@ -61,6 +63,7 @@ pub struct Runtime {
     executable: PathBuf,
     runs: PathBuf,
     slots: Arc<Semaphore>,
+    verification: Option<VerificationAuthority>,
 }
 impl Runtime {
     pub fn new(
@@ -88,6 +91,7 @@ impl Runtime {
             executable,
             runs: db::private_dir(runs)?,
             slots: Arc::new(Semaphore::new(capacity)),
+            verification: None,
         })
     }
 
@@ -112,7 +116,11 @@ impl Runtime {
     }
     async fn launch(&self, profile: &Path, mode: Mode, policy: NetworkPolicy) -> Result<Session> {
         if matches!(mode, Mode::Windowed) {
-            sandbox::trusted(Path::new("/usr/bin/Xvfb"), true)?;
+            if let Some(authority) = &self.verification {
+                authority.display()?;
+            } else {
+                sandbox::trusted(Path::new("/usr/bin/Xvfb"), true)?;
+            }
         }
         let slot = self
             .slots

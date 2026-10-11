@@ -1,0 +1,19 @@
+name: Support execution sandbox
+description: Install Bubblewrap and verify its isolated namespace support.
+runs:
+  using: composite
+  steps:
+    - name: Install the support execution sandbox
+      shell: bash
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends apparmor bubblewrap
+        # Allow namespaces for Bubblewrap while retaining its mount/network isolation.
+        sudo apparmor_parser -r <<'PROFILE'
+        abi <abi/4.0>,
+        include <tunables/global>
+        profile bwrap /usr/bin/bwrap flags=(unconfined) {
+          userns,
+        }
+        PROFILE
+        bwrap --unshare-all --ro-bind / / -- /usr/bin/true

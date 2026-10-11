@@ -52,6 +52,19 @@ pub struct State {
 impl State {
     /// Reads the registry, which the app installs before it builds one.
     pub fn new(config: config::Config) -> Result<Arc<Self>> {
+        Self::initialize(config, browser::Manager::default())
+    }
+    pub(crate) fn for_collection_verification(
+        config: config::Config,
+        authority: browser::browseros::VerificationAuthority,
+    ) -> Result<Arc<Self>> {
+        let runtime = authority.runtime(
+            &config.environment_root().join("browser-runs"),
+            config.browser_capacity,
+        )?;
+        Self::initialize(config, browser::Manager::with_verified_runtime(runtime))
+    }
+    fn initialize(config: config::Config, browsers: browser::Manager) -> Result<Arc<Self>> {
         crate::manifest::registry().check_settings(&config)?;
         let store = db::Store::initialize(config.clone())?;
         for dsp in store.platform.all(
@@ -81,7 +94,7 @@ impl State {
             password_slots: Arc::new(Semaphore::new(2)),
             mail_transport: Mutex::new(mail::TransportHealth::default()),
             mail_wake: tokio::sync::Notify::new(),
-            browsers: browser::Manager::default(),
+            browsers,
             updates: live::Updates::new()?,
             topics: live::Topics::default(),
             presence: presence::Presence::default(),

@@ -267,7 +267,11 @@ fn install_credentials(db: &Store, request: &Request, provider: Provider) -> Res
 
 /// Runs without a web server, through the same claim/driver/publication path as normal
 /// collections. Interactive provider challenges become an explicit waiting outcome.
-pub async fn run(config: Config, input: &[u8]) -> Result<Value> {
+pub async fn run(
+    config: Config,
+    input: &[u8],
+    authority: crate::collection::browser::browseros::VerificationAuthority,
+) -> Result<Value> {
     ensure(input.len() <= 16384, "invalid_input", 400)?;
     let request: Request = serde_json::from_slice(input)?;
     ensure(
@@ -301,7 +305,7 @@ pub async fn run(config: Config, input: &[u8]) -> Result<Value> {
         400,
     )?;
     ensure(request.request.is_object(), "invalid_input", 400)?;
-    let state = State::new(config)?;
+    let state = State::for_collection_verification(config, authority)?;
     let retained = state
         .run({
             let request = request.clone();

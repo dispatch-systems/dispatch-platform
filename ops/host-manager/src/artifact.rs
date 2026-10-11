@@ -165,6 +165,8 @@ pub fn manifest(root: &Path) -> Result<Manifest> {
 }
 pub fn verify(root: &Path, commit: Option<&str>) -> Result<Manifest> {
     let manifest = manifest(root)?;
+    let metadata: Value = serde_json::from_slice(&fs::read(root.join("tooling/build-info.json"))?)?;
+    let support_resources = crate::support::resources(&metadata)?;
     let mut files = BTreeMap::new();
     require(
         manifest.files.len() <= 50_000,
@@ -189,7 +191,7 @@ pub fn verify(root: &Path, commit: Option<&str>) -> Result<Manifest> {
         require(
             entry.path.starts_with("dashboard/")
                 || REQUIRED[1..].contains(&entry.path.as_str())
-                || crate::support::RESOURCES.contains(&entry.path.as_str()),
+                || support_resources.contains(&entry.path.as_str()),
             "Rust-only artifact contains retired runtime files",
         )?;
     }
@@ -197,10 +199,9 @@ pub fn verify(root: &Path, commit: Option<&str>) -> Result<Manifest> {
         actual.len() == files.len() && REQUIRED.iter().all(|name| files.contains_key(name)),
         "Artifact incomplete or contains extra files",
     )?;
-    let metadata: Value = serde_json::from_slice(&fs::read(root.join("tooling/build-info.json"))?)?;
-    if metadata["supportWorker"] == 1 {
+    if !support_resources.is_empty() {
         require(
-            crate::support::RESOURCES
+            support_resources
                 .iter()
                 .all(|name| files.contains_key(name)),
             "Support worker artifact bundle is incomplete",

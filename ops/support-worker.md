@@ -17,40 +17,63 @@ The Dev artifact includes:
 - `services/support-worker/support-collection.py`, a trusted credential-reference wrapper;
 - `services/support-worker/dispatch-support-worker.service`, the Dev-only user service.
 
-The first supporting artifact needs a compatible host manager: older managers reject its
-new resource paths before they can adopt the manager embedded in that artifact. From the
-trusted checkout of the merged, checked supporting commit, build and run its standalone
-manager once. It uses the ordinary update lock, queue validation, artifact hashing, service
-health check and rollback path; successful installation then refreshes the installed manager.
-It does not change the live checkout before those checks pass.
+The first supporting artifact needs a compatible host manager: older managers and their
+Python startup guards reject its new resource paths. From the trusted checkout of the merged,
+checked supporting commit, build a standalone manager. A temporary, uniquely named service
+drop-in replaces the legacy artifact-verification startup command with that manager's full
+verification. It keeps the ordinary update lock, queue validation, artifact hashing, service
+health check and rollback path. The live checkout changes only through that updater.
+
+For the installed Dev unit whose only `ExecStartPre` is the legacy verification command:
 
 ```sh
+set -eu
+umask 077
+checked_commit=$(git rev-parse HEAD)
 cargo build --locked --release -p dispatch-host
-target/release/dispatch-host host dev --root "$HOME/dispatch-platform/dev"
-target/release/dispatch-host host dev --root "$HOME/dispatch-platform/dev" --verify-management
+manager_target=$(cargo metadata --locked --no-deps --format-version 1 |
+  python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
+bootstrap=$(mktemp -d "${XDG_RUNTIME_DIR:?}/dispatch-support-bootstrap-XXXXXX")
+install -m 700 "$manager_target/release/dispatch-host" "$bootstrap/dispatch-host"
+unit_directory="$HOME/.config/systemd/user/dispatch-dev.service.d"
+mkdir -p "$unit_directory"
+dropin=$(mktemp --suffix=.conf "$unit_directory/99-ai-support-bootstrap-XXXXXX")
+printf '[Service]\nExecStartPre=\nExecStartPre="%s" host dev --root %%h/dispatch-platform/dev --verify\n' \
+  "$bootstrap/dispatch-host" > "$dropin"
+systemctl --user daemon-reload
+"$bootstrap/dispatch-host" host dev --root "$HOME/dispatch-platform/dev"
+"$bootstrap/dispatch-host" host dev --root "$HOME/dispatch-platform/dev" --wait "$checked_commit"
+"$bootstrap/dispatch-host" host dev --root "$HOME/dispatch-platform/dev" --install-management
+"$bootstrap/dispatch-host" host dev --root "$HOME/dispatch-platform/dev" --verify-management
+rm -- "$dropin"
+systemctl --user daemon-reload
+systemctl --user restart dispatch-dev.service
+"$bootstrap/dispatch-host" host dev --root "$HOME/dispatch-platform/dev" --wait "$checked_commit"
+rm -- "$bootstrap/dispatch-host"
+rmdir -- "$bootstrap"
 ```
 
-If checks are still pending, run the ordinary update command again after they pass. Running
-`--install-management` before this first update would copy the old active manager. Keep the
-previous management copy for rollback; do not bypass the artifact allowlist or install an
-unverified candidate executable.
+If the installed unit has other startup commands, retain them in the temporary override.
+If checks are pending, rerun the ordinary update command after they pass. Keep the drop-in and
+standalone manager until the new runtime is healthy and `--install-management` has installed
+the complete verified management bundle, including both Python compatibility files. An
+automatic binary refresh alone leaves the legacy Python guard in place. Only then remove the
+specific drop-in, reload the unit, and restart through its original startup verification.
+Remove the temporary standalone manager after that restart is healthy. The installer retains
+the previous management bundle for rollback. Running `--install-management` before activation
+would copy the old manager; never bypass the artifact allowlist or use an unverified candidate.
 
-Production has the same first-artifact compatibility transition. During a separately
-authorized release rollout, build the standalone manager from that trusted source commit,
-copy it over authenticated SSH into a private staging directory on Production, and run it
-once in ordinary Production mode:
-
-```sh
-chmod 700 "$HOME/.local/share/dispatch-rollout/dispatch-host"
-"$HOME/.local/share/dispatch-rollout/dispatch-host" host production --root "$HOME/dispatch-platform/public"
-"$HOME/.local/share/dispatch-rollout/dispatch-host" host production --root "$HOME/dispatch-platform/public" --verify-management
-```
-
-Create the staging directory with mode `0700`, compare its transferred SHA-256 with the
-trusted locally built binary, and remove it after successful adoption. The new manager
-still requires the normal immutable published release, provenance, attestation, archive
-digest, source binding and health checks. This step does not publish a release and must not
-run until the Production rollout itself is authorized. Production never enables a worker.
+Production has the same compatibility transition, reserved for a separately authorized future
+release rollout. Transfer the trusted standalone manager over authenticated SSH into a unique
+private staging directory with mode `0700` and compare its SHA-256 with the local binary. The
+temporary override must use full `host production --root ... --verify` for the actual installed
+Production service. Run only the ordinary Production updater after the authorized release is
+published. Once its runtime is healthy, install the complete management bundle before removing
+that specific override and reloading the unit; restart through the original startup guard and
+confirm health before removing the staged manager. Preserve unrelated unit overrides and the
+retained previous management bundle. The updater still requires the immutable published
+release, provenance, attestation, archive digest and source binding. This procedure publishes
+no release and authorizes no Production change. Production never enables a worker.
 
 Run the installed host manager's `host support --root $HOME/dispatch-platform/dev
 --install-unit` to install the unit from a verified active artifact. The command installs

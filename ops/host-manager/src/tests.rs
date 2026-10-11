@@ -23,11 +23,61 @@ fn support_worker_requires_a_verified_dev_bundle_and_never_restarts_on_productio
     }
     fs::write(
         updater.active.join("tooling/build-info.json"),
+        json!({"commit":f.old,"hostManagement":1,"supportWorker":2}).to_string(),
+    )
+    .unwrap();
+    artifact::write_manifest(&updater.active, "0.1.0").unwrap();
+    crate::support::verify(&updater).unwrap();
+    let pin = updater
+        .active
+        .join("services/support-worker/browseros-release.json");
+    let metadata = updater.active.join("tooling/build-info.json");
+    fs::remove_file(&pin).unwrap();
+    // A new manager accepts the already deployed marker-1 bundle for adoption/rollback.
+    fs::write(
+        &metadata,
         json!({"commit":f.old,"hostManagement":1,"supportWorker":1}).to_string(),
     )
     .unwrap();
     artifact::write_manifest(&updater.active, "0.1.0").unwrap();
     crate::support::verify(&updater).unwrap();
+    fs::write(&pin, "common resource").unwrap();
+    assert!(
+        artifact::write_manifest(&updater.active, "0.1.0")
+            .unwrap_err()
+            .to_string()
+            .contains("retired runtime files")
+    );
+    fs::remove_file(&pin).unwrap();
+    fs::write(
+        &metadata,
+        json!({"commit":f.old,"hostManagement":1,"supportWorker":2}).to_string(),
+    )
+    .unwrap();
+    assert!(
+        artifact::write_manifest(&updater.active, "0.1.0")
+            .unwrap_err()
+            .to_string()
+            .contains("bundle is incomplete")
+    );
+    fs::write(
+        &metadata,
+        json!({"commit":f.old,"hostManagement":1,"supportWorker":3}).to_string(),
+    )
+    .unwrap();
+    assert!(
+        artifact::write_manifest(&updater.active, "0.1.0")
+            .unwrap_err()
+            .to_string()
+            .contains("Unsupported support worker artifact version")
+    );
+    fs::write(&pin, "common resource").unwrap();
+    fs::write(
+        &metadata,
+        json!({"commit":f.old,"hostManagement":1,"supportWorker":2}).to_string(),
+    )
+    .unwrap();
+    artifact::write_manifest(&updater.active, "0.1.0").unwrap();
     // The installed worker and credential broker must start after the archive round trip.
     // Resource content never controls which artifact paths receive executable permission.
     let package = f._temp.path().join("support.tar.gz");

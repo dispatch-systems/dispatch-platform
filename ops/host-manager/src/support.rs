@@ -4,6 +4,7 @@ use crate::{
     Result, artifact, io, require,
     updater::{Environment, Updater},
 };
+use serde_json::Value;
 use std::{fs, io::Write, os::unix::fs::PermissionsExt, path::Path};
 
 /// The support sidecar is one versioned bundle, never an unrestricted services directory.
@@ -25,7 +26,21 @@ pub(crate) const RESOURCES: &[&str] = &[
     "services/support-worker/hermes/skills/proposal-analysis/SKILL.md",
     "services/support-worker/hermes/skills/approved-implementation/SKILL.md",
     "services/support-worker/hermes/skills/queue-correction/SKILL.md",
+    // The preceding frozen prefix is the marker-1 bundle. Marker 2 adds the canonical pin.
+    "services/support-worker/browseros-release.json",
 ];
+
+const V1_RESOURCE_COUNT: usize = 17;
+const V2_RESOURCE_COUNT: usize = 18;
+
+pub(crate) fn resources(metadata: &Value) -> Result<&'static [&'static str]> {
+    match metadata.get("supportWorker") {
+        None => Ok(&[]),
+        Some(value) if value == 1 => Ok(&RESOURCES[..V1_RESOURCE_COUNT]),
+        Some(value) if value == 2 => Ok(&RESOURCES[..V2_RESOURCE_COUNT]),
+        _ => Err("Unsupported support worker artifact version".into()),
+    }
+}
 
 pub fn run(args: &[String], system: &dyn io::System) -> Result<()> {
     require(
@@ -69,11 +84,13 @@ pub fn verify(updater: &Updater<'_>) -> Result<()> {
         "AI Support worker runs only on Dev",
     )?;
     let manifest = updater.verify()?;
+    let metadata = io::read_json(&updater.active.join("tooling/build-info.json"))?;
+    let resources = resources(&metadata)?;
     require(
-        io::read_json(&updater.active.join("tooling/build-info.json"))?["supportWorker"] == 1,
+        !resources.is_empty(),
         "Active artifact has no support worker",
     )?;
-    for &path in RESOURCES {
+    for &path in resources {
         require(
             manifest.files.iter().any(|file| file.path == path),
             "Support resource missing from verified artifact",
@@ -96,7 +113,7 @@ pub fn verify(updater: &Updater<'_>) -> Result<()> {
 pub fn refresh(updater: &Updater<'_>) {
     if updater.environment != Environment::Dev
         || !io::read_json(&updater.active.join("tooling/build-info.json"))
-            .is_ok_and(|value| value["supportWorker"] == 1)
+            .is_ok_and(|value| resources(&value).is_ok_and(|paths| !paths.is_empty()))
     {
         return;
     }

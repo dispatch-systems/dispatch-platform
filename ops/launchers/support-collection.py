@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import ctypes
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,78 @@ import subprocess
 import sys
 import tempfile
 import time
+
+
+PINNED_BROWSER = json.loads(Path(__file__).with_name("browseros-release.json").read_text())
+BROWSER = Path("/opt/dispatch-browseros") / PINNED_BROWSER["version"] / "browseros"
+HOST_NAMESPACES = ("pid", "net", "mnt", "ipc", "uts", "user")
+
+
+def file_digest(path):
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def root_owned(path, executable=False):
+    """Run on the host, before ownership is remapped by the collector namespace."""
+    for entry in (path, *path.parents):
+        info = entry.lstat()
+        expected = stat.S_ISREG(info.st_mode) if entry == path else stat.S_ISDIR(info.st_mode)
+        if (not expected or info.st_uid != 0 or info.st_mode & 0o022
+                or (entry == path and executable and not info.st_mode & 0o111)):
+            raise ValueError("Trusted installed browser runtime required")
+
+
+def browser_authority(binary, source_sha):
+    root_owned(BROWSER, executable=True)
+    directory = BROWSER.parent
+    manifest_path = directory / "dispatch-install.json"
+    root_owned(manifest_path)
+    manifest = json.loads(manifest_path.read_text())
+    if (set(manifest) != set(PINNED_BROWSER) | {"files"}
+            or any(manifest[key] != value for key, value in PINNED_BROWSER.items())
+            or not isinstance(manifest["files"], list)):
+        raise ValueError("Pinned installed browser release required")
+    inventory = {}
+    for entry in manifest["files"]:
+        if not isinstance(entry, dict) or set(entry) != {"path", "sha256"}:
+            raise ValueError("Invalid installed browser inventory")
+        relative = entry["path"]
+        if (not isinstance(relative, str) or Path(relative).is_absolute()
+                or any(part in ("", ".", "..") for part in relative.split("/"))
+                or relative in inventory or not re.fullmatch(r"[0-9a-f]{64}", entry["sha256"])):
+            raise ValueError("Invalid installed browser inventory")
+        inventory[relative] = entry["sha256"]
+    actual = set()
+    for path in directory.rglob("*"):
+        info = path.lstat()
+        if (info.st_uid != 0 or info.st_mode & 0o022
+                or not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode))):
+            raise ValueError("Trusted installed browser runtime required")
+        if path.is_file():
+            relative = path.relative_to(directory).as_posix()
+            actual.add(relative)
+            if path != manifest_path and inventory.get(relative) != file_digest(path):
+                raise ValueError("Installed browser file changed")
+    if actual != set(inventory) | {"dispatch-install.json"} or "browseros" not in inventory:
+        raise ValueError("Installed browser inventory differs")
+    tools = {"browser": BROWSER, "sandbox": Path("/usr/bin/bwrap"), "display": Path("/usr/bin/Xvfb")}
+    for path in tools.values():
+        root_owned(path, executable=True)
+    return {"schemaVersion": 1, "sourceSha": source_sha, "backendSha256": file_digest(binary),
+            "hostNamespaces": {name: os.readlink(f"/proc/self/ns/{name}") for name in HOST_NAMESPACES},
+            "executables": {name: {"path": str(path), "sha256": file_digest(path)} for name, path in tools.items()}}
+
+
+def seal_browser_authority(egress, authority):
+    # The whole directory is mounted read-only in the collector. Only the host broker
+    # retains write access; no branch/agent process receives a writable descriptor.
+    path = egress / "browser-authority.json"
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400)
+    with os.fdopen(descriptor, "w") as stream:
+        json.dump(authority, stream, separators=(",", ":"))
+        stream.flush()
+        os.fsync(stream.fileno())
 
 
 def private_file(path):
@@ -208,7 +281,7 @@ def main():
     env = {"NODE_ENV":"development", "DISPATCH_ENVIRONMENT":"preview", "DISPATCH_STATE_ROOT":str(state),
            "DISPATCH_ARTIFACT_ROOT":str(artifact), "DISPATCH_ORIGIN":"http://localhost:5173",
            "DISPATCH_PROVIDER_MODE":"fixture", "DISPATCH_DEV_MAIL_MODE":"capture",
-           "DISPATCH_BROWSEROS_EXECUTABLE":"/opt/dispatch-browseros/0.50.5/browseros"}
+           "DISPATCH_BROWSEROS_EXECUTABLE":str(BROWSER)}
     if not args.state_root:
         subprocess.run(sandbox(artifact, state, dict(env)) + [str(binary), "seed"], check=True,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -217,6 +290,7 @@ def main():
         row = connection.execute("SELECT id FROM dsps WHERE code='nll' AND status='active'").fetchone()
     if row is None or not isinstance(row[0], str) or not re.fullmatch(r"dsp_[0-9a-f]{32}", row[0]):
         raise ValueError("Isolated verification DSP unavailable")
+    authority = browser_authority(binary, head)
     lock_root = source / "dsps" / dsp / "state/credential-leases"
     lock_root.mkdir(mode=0o700, parents=True, exist_ok=True)
     lock_path = lock_root / f"{args.provider}.lock"
@@ -234,6 +308,7 @@ def main():
             current = project_account(source, dsp, args.provider, projection)
             egress = broker_root / "network"
             egress.mkdir()
+            seal_browser_authority(egress, authority)
             installed_artifact = (source / ".build").resolve(strict=True)
             installed = installed_artifact / "services/rust/dispatch-backend"
             broker_env = {**env, "DISPATCH_ARTIFACT_ROOT":str(installed_artifact)}
