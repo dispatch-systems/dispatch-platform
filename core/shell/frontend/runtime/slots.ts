@@ -268,7 +268,7 @@ export type AccountAction = {
 export type FrontendFeature = {
   /** The owner's directory name. */
   name: string;
-  /** Actions beside Account settings, Source code and Sign out. */
+  /** Actions beside Source code and Sign out. */
   accountActions?: readonly AccountAction[];
   /** Its pages, in sidebar order. */
   routes?: readonly Route[];
