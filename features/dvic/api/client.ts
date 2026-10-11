@@ -16,8 +16,9 @@ export const previewSchedule = (
   },
   signal: AbortSignal,
 ) => api<SchedulePreview>(`${schedules}/preview`, timing, signal);
-/** Starts collecting the latest week, once for `requestId`. */
-export const collectDvic = (requestId: string) => api<Job>('/api/dsp/dvic/collect', { requestId });
+/** Starts collecting the latest weeks and the week of `viewing`, once for `requestId`. */
+export const collectDvic = (requestId: string, viewing: string) =>
+  api<Job>('/api/dsp/dvic/collect', { requestId, viewing });
 export const cancelDvicJob = (id: string) => api(`/api/dsp/dvic/jobs/${id}/cancel`, {});
 /** One page of a week's inspections, from its address. */
 export const inspectionPage = (url: string, signal: AbortSignal) =>

@@ -37,6 +37,7 @@ pub trait DvicStore {
         key: &str,
         week: Option<&str>,
         weeks: usize,
+        viewing: Option<&str>,
     ) -> Result<Value>;
     fn dvic_jobs(&self, id: &str) -> Result<Vec<(String, Value)>>;
     fn publish_dvic(
@@ -72,12 +73,24 @@ impl DvicStore for Store {
         key: &str,
         week: Option<&str>,
         weeks: usize,
+        viewing: Option<&str>,
     ) -> Result<Value> {
         let latest = report_week(chrono::Utc::now().date_naive());
         let week = week.unwrap_or(&latest);
         weeks::parse_week(week)?;
         ensure(week <= latest.as_str(), "dvic_week_not_available", 400)?;
-        let request = dvic_request(self, id, weeks_ending(week, weeks)?)?;
+        let mut requested = weeks_ending(week, weeks)?;
+        if let Some(day) = viewing {
+            // Those not yet published are left for a later sync.
+            requested.extend(
+                weeks_holding(day)?
+                    .into_iter()
+                    .filter(|week| week <= &latest),
+            );
+            requested.sort_unstable_by(|a, b| b.cmp(a));
+            requested.dedup();
+        }
+        let request = dvic_request(self, id, requested)?;
         let job = self
             .enqueue_batch(id, actor, &[(key.into(), cortex::PROVIDER, request)])?
             .remove(0);
