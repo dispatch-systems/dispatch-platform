@@ -23,6 +23,7 @@ import {
   filterInspections,
   inspectionDate,
   inspectionWeekday,
+  isCollected,
   weekDays,
   weekStart,
   type VehicleClass,
@@ -154,6 +155,7 @@ export function DvicPage({ view }: { view: DspView }) {
     return counts;
   }, [rows]);
   const filtered = !!(query || vehicles);
+  const collected = (date: string) => isCollected(status.data?.covered ?? [], date);
   const shown = tab === 'day' ? dayRows : rows;
   const detail = inspections.rows?.find((row) => row.id === selected);
   const newest = jobs[0];
@@ -302,7 +304,9 @@ export function DvicPage({ view }: { view: DspView }) {
               <small>
                 {inspections.rows === undefined || date > today
                   ? '—'
-                  : (counts.get(date) ?? 0) + ' short'}
+                  : counts.get(date) || collected(date)
+                    ? (counts.get(date) ?? 0) + ' short'
+                    : 'Not collected'}
               </small>
             </button>
           ))}
@@ -362,6 +366,7 @@ export function DvicPage({ view }: { view: DspView }) {
                 rows={dayRows}
                 week={rows}
                 filtered={filtered}
+                collected={collected(day)}
                 onSelect={(row) => setSelected(row.id)}
               />
             </>
@@ -370,6 +375,7 @@ export function DvicPage({ view }: { view: DspView }) {
               days={days}
               rows={rows}
               today={today}
+              collected={collected}
               filtered={filtered}
               page={page}
               onPageChange={setPage}

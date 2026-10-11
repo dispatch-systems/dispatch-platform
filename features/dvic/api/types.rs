@@ -24,6 +24,16 @@ pub struct DvicWeek {
     pub checked_at: String,
     pub report_count: usize,
 }
+/// Days the DSP's checked reports cover, from `from` through `through`. A day outside them is
+/// unknown, not a day nobody was short. Each daily report covers the eight days before it.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/dvic/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct DvicCoverage {
+    pub from: String,
+    pub through: String,
+}
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/dvic/api/generated/"))]
@@ -34,6 +44,8 @@ pub struct DvicStatus {
     pub short_inspections: usize,
     pub weeks: Vec<DvicWeek>,
     pub reports: Vec<DvicReport>,
+    /// Every stretch of days the checked reports cover, oldest first.
+    pub covered: Vec<DvicCoverage>,
     pub jobs: Vec<PublicJob>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]

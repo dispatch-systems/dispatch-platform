@@ -1,10 +1,13 @@
-import type { DvicInspection, DvicInspections } from '../api/index.js';
+import type { DvicCoverage, DvicInspection, DvicInspections } from '../api/index.js';
 import { shiftDate } from '../../../core/shell/frontend/lib/day.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 
 export const weekStart = (date: string) =>
   shiftDate(date, -new Date(date + 'T12:00:00Z').getUTCDay());
 export const weekDays = (start: string) => Array.from({ length: 7 }, (_, i) => shiftDate(start, i));
+/** Whether a checked report covers the day; if none does, its short inspections are unknown. */
+export const isCollected = (covered: DvicCoverage[], date: string) =>
+  covered.some((stretch) => stretch.from <= date && date <= stretch.through);
 export const inspectionDate = (date: string, weekday = false) =>
   dateFormatter('en-US', {
     timeZone: 'UTC',

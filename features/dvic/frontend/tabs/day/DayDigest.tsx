@@ -85,11 +85,14 @@ export function DayDigest({
   rows,
   week,
   filtered,
+  collected,
   onSelect,
 }: {
   rows: DvicInspection[];
   week: DvicInspection[];
   filtered: boolean;
+  /** Whether a checked report covers the day. */
+  collected: boolean;
   onSelect: (row: DvicInspection) => void;
 }) {
   const repeat = useMemo(() => repeatDrivers(week, rows), [week, rows]);
@@ -98,7 +101,7 @@ export function DayDigest({
     <>
       <div className="dvic-kpi">
         <span>Short inspections</span>
-        <strong>{rows.length}</strong>
+        <strong>{rows.length || collected ? rows.length : '—'}</strong>
       </div>
       {repeat.length > 0 && (
         <p className="dvic-callout" role="note">
@@ -109,6 +112,10 @@ export function DayDigest({
       )}
       {rows.length ? (
         groups.map((group) => <VehicleGroup key={group.vehicles} {...group} onSelect={onSelect} />)
+      ) : !collected ? (
+        <Empty title="Not collected yet">
+          No DVIC report collected so far covers this day, so its short inspections are unknown.
+        </Empty>
       ) : (
         <Empty title={filtered ? 'No matching inspections' : 'No short inspections on this day'}>
           {filtered

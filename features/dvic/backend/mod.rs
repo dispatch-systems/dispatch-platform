@@ -6,7 +6,7 @@ pub(crate) mod keeper;
 pub(crate) mod people;
 mod storage;
 
-pub use storage::{DvicCoverage, DvicDriver, DvicStore};
+pub use storage::{DvicDriver, DvicStore};
 
 use chrono::{Datelike, Duration, NaiveDate};
 use dispatch_core::{

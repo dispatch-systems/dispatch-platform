@@ -19,6 +19,7 @@ export function WeekGrid({
   days,
   rows,
   today,
+  collected,
   filtered,
   page,
   onPageChange,
@@ -27,6 +28,8 @@ export function WeekGrid({
   days: string[];
   rows: DvicInspection[];
   today: string;
+  /** Whether a checked report covers the day. */
+  collected: (date: string) => boolean;
   filtered: boolean;
   page: number;
   onPageChange: (page: number) => void;
@@ -76,7 +79,11 @@ export function WeekGrid({
                     <th scope="col" key={date} data-future={date > today}>
                       <span>{inspectionWeekday(date)}</span>
                       <strong>{Number(date.slice(8))}</strong>
-                      <small>{date > today ? '—' : (totals.get(date) ?? 0)}</small>
+                      <small>
+                        {date > today || !(totals.get(date) || collected(date))
+                          ? '—'
+                          : (totals.get(date) ?? 0)}
+                      </small>
                     </th>
                   ))}
                   <th scope="col" className="dvic-grid-total">
@@ -129,6 +136,11 @@ export function WeekGrid({
             />
           </nav>
         </>
+      ) : days.every((date) => date > today || !collected(date)) ? (
+        <Empty title="Not collected yet">
+          No DVIC report collected so far covers these dates, so their short inspections are
+          unknown.
+        </Empty>
       ) : (
         <Empty title={filtered ? 'No matching inspections' : 'No short inspections stored'}>
           {filtered

@@ -118,6 +118,14 @@ test('the day digest and week grid read the same inspections, with details on de
   );
   await expect(page.getByText('No short inspections stored', { exact: true })).toBeVisible();
   await expect(page.locator('.dvic-cell')).toHaveCount(0);
+  // The only report collected, Sep 27's, covers Sep 19 to 26: a day before it is unknown, not zero.
+  await page.getByRole('tab', { name: 'Day' }).click();
+  const strip = page.getByRole('navigation', { name: 'Inspection days' });
+  await expect(strip.getByRole('button').last()).toContainText('0 short');
+  await expect(strip.getByRole('button').first()).toContainText('Not collected');
+  await strip.getByRole('button').first().click();
+  await expect(page.getByText('Not collected yet', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Week' }).click();
   await page.getByRole('button', { name: 'Latest' }).click();
   await expect(page.locator('.dvic-footer')).toContainText('19 records this week');
   await expect(page.getByRole('button', { name: 'Latest' })).toBeDisabled();

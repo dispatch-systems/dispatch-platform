@@ -8,7 +8,8 @@ navigation, driver/VIN search, vehicle filters, and inspection details. Bands st
 share of the minimum reached (75%+, 35–75%, under 35%) without a verdict. Viewing,
 manual sync, and schedule management use the separate permissions below. Sync now
 checks recent publication weeks and those holding the week shown; historical backfills
-remain available through the API.
+remain available through the API. A day no checked report covers reads Not collected, not
+zero: its short inspections are unknown.
 The page reads every cursor page before displaying counts, and keeps source wall times
 unchanged. It follows core's live collection updates (`live`, for `dvic.view`): a run that ends,
 wherever it started, refreshes it at once, and one in progress is read every five seconds,
@@ -23,7 +24,7 @@ All endpoints use the existing authenticated DSP context and CSRF rules.
 
 | Endpoint                                                      | Permission     | Purpose                                                                                       |
 | ------------------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------- |
-| `GET /api/dsp/dvic/status`                                    | `dvic.view`    | Recent jobs, report inventory, checked weeks, exception count                                 |
+| `GET /api/dsp/dvic/status`                                    | `dvic.view`    | Recent jobs, report inventory, checked weeks, days covered, exception count                   |
 | `GET /api/dsp/dvic/inspections?from=2026-09-01&to=2026-09-30` | `dvic.view`    | Exceptions by actual inspection date; optional `driver`, `limit` (1–500), `after` cursor      |
 | `POST /api/dsp/dvic/collect`                                  | `dvic.collect` | Manual sync with `requestId`; optional ending `week`, number of `weeks` (1–26), `viewing` day |
 | `POST /api/dsp/dvic/jobs/{id}/cancel`                         | `dvic.collect` | Cancel this DSP's DVIC job                                                                    |
