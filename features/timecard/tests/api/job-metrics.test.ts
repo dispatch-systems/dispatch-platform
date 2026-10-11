@@ -30,7 +30,7 @@ test('collection metrics survive restart, validate historical responses and pres
   let job: Job;
   await until(async () => {
     job = (
-      parseApiResponse('/api/dsp/jobs', 'GET', await owner.read('/api/dsp/jobs')) as Job[]
+      (await parseApiResponse('/api/dsp/jobs', 'GET', await owner.read('/api/dsp/jobs'))) as Job[]
     ).find((j) => j.id === id)!;
     return job.status === 'succeeded';
   });
@@ -69,16 +69,16 @@ test('collection metrics survive restart, validate historical responses and pres
   );
   const response = await owner.get('/api/dsp/jobs');
   assert.equal(response.status, 200);
-  const historical = (parseApiResponse('/api/dsp/jobs', 'GET', response.value) as Job[]).find(
-    (row) => row.id === id,
-  )!;
+  const historical = (
+    (await parseApiResponse('/api/dsp/jobs', 'GET', response.value)) as Job[]
+  ).find((row) => row.id === id)!;
   assert.equal(historical.metrics[0]!.pageReads, undefined);
   assert.equal(historical.metrics[0]!.employees, value.employees);
   assert.equal(historical.metrics[0]!.collectionMs, value.collectionMs);
   const bad = structuredClone(job!);
   (bad.metrics[0]! as unknown as Record<string, unknown>).phase = 'private-provider-payload';
-  assert.throws(
-    () => parseApiResponse('/api/platform/jobs', 'GET', [bad]),
+  await assert.rejects(
+    parseApiResponse('/api/platform/jobs', 'GET', [bad]),
     /^Error: invalid_api_response$/,
   );
   await f.stop();

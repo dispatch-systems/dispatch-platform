@@ -26,8 +26,8 @@ const page = (kind: string) => ({
   dsps: [],
 });
 
-test('the audit log accepts an event about every kind of record core and the features name', () => {
+test('the audit log accepts an event about every kind of record core and the features name', async () => {
   for (const kind of auditSubjects) {
-    assert.doesNotThrow(() => parseApiResponse('/api/platform/audit', 'GET', page(kind)), kind);
+    await assert.doesNotReject(parseApiResponse('/api/platform/audit', 'GET', page(kind)), kind);
   }
 });
