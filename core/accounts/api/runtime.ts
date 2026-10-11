@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/mini';
 import type { Dsp } from './generated/Dsp';
 import { features } from '../../tenancy/api/index.js';
 import {
@@ -29,15 +29,16 @@ const connectionStatus = z.enum([
   'needs_verification',
   'error',
 ]);
+const filled = text.check(z.minLength(1));
 const userSchema = z.object({
-  id: text.min(1),
-  email: text.min(1),
+  id: filled,
+  email: filled,
   firstName: text,
   lastName: text,
   platformOwner: z.boolean(),
-}) satisfies z.ZodType<User>;
+}) satisfies z.ZodMiniType<User>;
 const dsp = z.object({
-  id: text.min(1),
+  id: filled,
   name: text,
   environment,
   status: z.enum(['provisioning', 'active', 'suspended', 'failed']),
@@ -45,31 +46,30 @@ const dsp = z.object({
   permanent: z.boolean(),
   revision: count,
   createdAt: text,
-  code: text.nullable(),
-}) satisfies z.ZodType<Dsp>;
+  code: z.nullable(text),
+}) satisfies z.ZodMiniType<Dsp>;
 const profile = z.object({
   abbreviation: text,
   stationCode: text,
   setupRequired: z.boolean(),
   removed: z.boolean(),
   supportVisible: z.boolean(),
-}) satisfies z.ZodType<DspProfile>;
+}) satisfies z.ZodMiniType<DspProfile>;
 const permission = z.enum(permissions);
 const feature = z.enum(features);
-const dspSummary = dsp
-  .extend({
-    profile,
-    ownerEmail: text.nullable(),
-    ownerStatus: z.enum(['active', 'invited', 'missing']),
-    paycom: connectionStatus,
-    connections: z.record(text, connectionStatus),
-    lastCollection: text.nullable(),
-    nextCollection: text.nullable(),
-    role: text.nullable(),
-    features: z.array(feature),
-    members: count,
-  })
-  .passthrough() satisfies z.ZodType<DspSummary>;
+const dspSummary = z.looseObject({
+  ...dsp.shape,
+  profile,
+  ownerEmail: z.nullable(text),
+  ownerStatus: z.enum(['active', 'invited', 'missing']),
+  paycom: connectionStatus,
+  connections: z.record(text, connectionStatus),
+  lastCollection: z.nullable(text),
+  nextCollection: z.nullable(text),
+  role: z.nullable(text),
+  features: z.array(feature),
+  members: count,
+}) satisfies z.ZodMiniType<DspSummary>;
 const securityStatus = z.object({
   enrolled: z.boolean(),
   required: z.boolean(),
@@ -77,52 +77,52 @@ const securityStatus = z.object({
   recent: z.boolean(),
   passkeyCount: count,
   authenticator: z.boolean(),
-}) satisfies z.ZodType<SecurityStatus>;
+}) satisfies z.ZodMiniType<SecurityStatus>;
 const passkeySummary = z.object({
-  id: text.min(1),
-  name: text.min(1),
+  id: filled,
+  name: filled,
   createdAt: milliseconds,
-}) satisfies z.ZodType<PasskeySummary>;
+}) satisfies z.ZodMiniType<PasskeySummary>;
 const authenticatorSetup = z.object({
-  secret: text.regex(/^[A-Z2-7]{32}$/),
-  qrCode: text.startsWith('data:image/svg+xml;base64,'),
-}) satisfies z.ZodType<AuthenticatorSetup>;
+  secret: text.check(z.regex(/^[A-Z2-7]{32}$/)),
+  qrCode: text.check(z.startsWith('data:image/svg+xml;base64,')),
+}) satisfies z.ZodMiniType<AuthenticatorSetup>;
 const accountSession = z.object({
-  id: text.min(1),
+  id: filled,
   current: z.boolean(),
   createdAt: milliseconds,
   expiresAt: milliseconds,
-  device: text.nullable(),
-}) satisfies z.ZodType<AccountSession>;
+  device: z.nullable(text),
+}) satisfies z.ZodMiniType<AccountSession>;
 const recoveryCodes = z.object({
   codes: z
-    .array(text.regex(/^(?:[A-Za-z0-9_.]{4}(?:-[A-Za-z0-9_.]{4}){3}|[A-Za-z0-9_-]{43})$/))
-    .max(10),
+    .array(text.check(z.regex(/^(?:[A-Za-z0-9_.]{4}(?:-[A-Za-z0-9_.]{4}){3}|[A-Za-z0-9_-]{43})$/)))
+    .check(z.maxLength(10)),
 });
 const passkeyOptions = z.object({
-  publicKey: z.object({ challenge: text.min(1) }).passthrough(),
+  publicKey: z.looseObject({ challenge: filled }),
 });
 export const sessionSchema = z.object({
   user: userSchema,
-  csrf: text.min(1),
+  csrf: filled,
   dsps: z.array(dspSummary),
   development: z.boolean(),
   environment,
   release: text,
   providerMode,
-  source: z.object({ version: text.nullable(), commit: text.nullable() }),
+  source: z.object({ version: z.nullable(text), commit: z.nullable(text) }),
   security: securityStatus,
-}) satisfies z.ZodType<SessionView>;
+}) satisfies z.ZodMiniType<SessionView>;
 const viewRole = z.object({ id: text, name: text, owner: z.boolean() });
 const viewSchema = z.object({
   dsp,
-  token: text.min(1),
+  token: filled,
   role: viewRole,
-  roles: z.array(viewRole).optional(),
+  roles: z.optional(z.array(viewRole)),
   permissions: z.array(permission),
   features: z.array(feature),
   profile,
-}) satisfies z.ZodType<DspView>;
+}) satisfies z.ZodMiniType<DspView>;
 const okSchema = z.object({ ok: z.literal(true) });
 
 /** The replies of sign-in, security, the session and its DSP view, and the list of DSPs. */

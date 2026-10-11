@@ -1,4 +1,4 @@
-CREATE TABLE support_tickets (
+CREATE TABLE IF NOT EXISTS support_tickets (
     id TEXT PRIMARY KEY,
     request_id TEXT NOT NULL,
     reporter_id TEXT NOT NULL,
@@ -23,10 +23,10 @@ CREATE TABLE support_tickets (
     updated_at INTEGER NOT NULL,
     UNIQUE(reporter_scope, reporter_id, request_id)
 );
-CREATE INDEX support_tickets_reporter ON support_tickets(reporter_scope,reporter_id,updated_at DESC);
-CREATE INDEX support_tickets_status ON support_tickets(status,updated_at DESC);
-CREATE TABLE support_messages (
-    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE INDEX IF NOT EXISTS support_tickets_reporter ON support_tickets(reporter_scope,reporter_id,updated_at DESC);
+CREATE INDEX IF NOT EXISTS support_tickets_status ON support_tickets(status,updated_at DESC);
+CREATE TABLE IF NOT EXISTS support_messages (
+    sequence INTEGER PRIMARY KEY,
     id TEXT NOT NULL UNIQUE,
     ticket_id TEXT NOT NULL REFERENCES support_tickets(id),
     author TEXT NOT NULL,
@@ -35,8 +35,8 @@ CREATE TABLE support_messages (
     private INTEGER NOT NULL CHECK(private IN (0,1)),
     created_at INTEGER NOT NULL
 );
-CREATE INDEX support_messages_ticket ON support_messages(ticket_id,sequence);
-CREATE TABLE support_attachments (
+CREATE INDEX IF NOT EXISTS support_messages_ticket ON support_messages(ticket_id,sequence);
+CREATE TABLE IF NOT EXISTS support_attachments (
     id TEXT PRIMARY KEY,
     ticket_id TEXT REFERENCES support_tickets(id),
     uploader_id TEXT NOT NULL,
@@ -47,15 +47,15 @@ CREATE TABLE support_attachments (
     private INTEGER NOT NULL DEFAULT 0 CHECK(private IN (0,1)),
     created_at INTEGER NOT NULL
 );
-CREATE INDEX support_attachments_ticket ON support_attachments(ticket_id);
-CREATE TABLE support_proposals (
+CREATE INDEX IF NOT EXISTS support_attachments_ticket ON support_attachments(ticket_id);
+CREATE TABLE IF NOT EXISTS support_proposals (
     ticket_id TEXT NOT NULL REFERENCES support_tickets(id),
     version INTEGER NOT NULL,
     body TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     PRIMARY KEY(ticket_id,version)
 );
-CREATE TABLE support_approvals (
+CREATE TABLE IF NOT EXISTS support_approvals (
     ticket_id TEXT NOT NULL REFERENCES support_tickets(id),
     version INTEGER NOT NULL,
     owner_id TEXT NOT NULL,
@@ -65,7 +65,7 @@ CREATE TABLE support_approvals (
     PRIMARY KEY(ticket_id,version),
     FOREIGN KEY(ticket_id,version) REFERENCES support_proposals(ticket_id,version)
 );
-CREATE TABLE support_jobs (
+CREATE TABLE IF NOT EXISTS support_jobs (
     id TEXT PRIMARY KEY,
     ticket_id TEXT NOT NULL REFERENCES support_tickets(id),
     kind TEXT NOT NULL CHECK(kind IN ('investigate','answer','implement','release')),
@@ -80,21 +80,21 @@ CREATE TABLE support_jobs (
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
-CREATE INDEX support_jobs_claim ON support_jobs(status,available_at,lease_until);
-CREATE UNIQUE INDEX support_jobs_active ON support_jobs(ticket_id,kind,version)
+CREATE INDEX IF NOT EXISTS support_jobs_claim ON support_jobs(status,available_at,lease_until);
+CREATE UNIQUE INDEX IF NOT EXISTS support_jobs_active ON support_jobs(ticket_id,kind,version)
     WHERE status IN ('queued','running','waiting') AND kind<>'answer';
-CREATE UNIQUE INDEX support_jobs_question ON support_jobs(question_id) WHERE question_id IS NOT NULL;
-CREATE TABLE support_evidence (
-    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE UNIQUE INDEX IF NOT EXISTS support_jobs_question ON support_jobs(question_id) WHERE question_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS support_evidence (
+    sequence INTEGER PRIMARY KEY,
     id TEXT NOT NULL UNIQUE,
     job_id TEXT NOT NULL REFERENCES support_jobs(id),
     ticket_id TEXT NOT NULL REFERENCES support_tickets(id),
     body TEXT NOT NULL,
     created_at INTEGER NOT NULL
 );
-CREATE INDEX support_evidence_ticket ON support_evidence(ticket_id,sequence);
-CREATE TABLE support_notifications (
-    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE INDEX IF NOT EXISTS support_evidence_ticket ON support_evidence(ticket_id,sequence);
+CREATE TABLE IF NOT EXISTS support_notifications (
+    sequence INTEGER PRIMARY KEY,
     id TEXT NOT NULL UNIQUE,
     ticket_id TEXT NOT NULL REFERENCES support_tickets(id),
     user_id TEXT NOT NULL,
@@ -103,8 +103,8 @@ CREATE TABLE support_notifications (
     read_at INTEGER,
     created_at INTEGER NOT NULL
 );
-CREATE INDEX support_notifications_user ON support_notifications(user_scope,user_id,created_at DESC);
-CREATE TABLE support_github_events (
+CREATE INDEX IF NOT EXISTS support_notifications_user ON support_notifications(user_scope,user_id,created_at DESC);
+CREATE TABLE IF NOT EXISTS support_github_events (
     delivery_id TEXT PRIMARY KEY,
     ticket_id TEXT NOT NULL REFERENCES support_tickets(id),
     event TEXT NOT NULL,

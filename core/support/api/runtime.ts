@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/mini';
 import { count, milliseconds, text, type Replies } from '../../foundation/api/runtime.js';
 import type {
   SupportAttachment,
@@ -11,7 +11,7 @@ import type {
 } from './index.js';
 
 const ticket = z.object({
-  id: text.min(1),
+  id: text.check(z.minLength(1)),
   kind: z.enum(['bug', 'feature']),
   title: text,
   status: z.enum([
@@ -28,17 +28,17 @@ const ticket = z.object({
   ]),
   progress: text,
   reporterName: text,
-  dspId: text.nullable(),
-  dspName: text.nullable(),
+  dspId: z.nullable(text),
+  dspName: z.nullable(text),
   proposalVersion: count,
-  approvedVersion: count.nullable(),
-  prUrl: text.nullable(),
-  headSha: text.nullable(),
-  mergeSha: text.nullable(),
-  releasedVersion: text.nullable(),
+  approvedVersion: z.nullable(count),
+  prUrl: z.nullable(text),
+  headSha: z.nullable(text),
+  mergeSha: z.nullable(text),
+  releasedVersion: z.nullable(text),
   createdAt: milliseconds,
   updatedAt: milliseconds,
-}) satisfies z.ZodType<SupportTicket>;
+}) satisfies z.ZodMiniType<SupportTicket>;
 const message = z.object({
   id: text,
   author: text,
@@ -46,14 +46,14 @@ const message = z.object({
   body: text,
   private: z.boolean(),
   createdAt: milliseconds,
-}) satisfies z.ZodType<SupportMessage>;
+}) satisfies z.ZodMiniType<SupportMessage>;
 export const attachmentSchema = z.object({
-  id: text.min(1),
+  id: text.check(z.minLength(1)),
   name: text,
   mediaType: text,
   size: count,
   private: z.boolean(),
-}) satisfies z.ZodType<SupportAttachment>;
+}) satisfies z.ZodMiniType<SupportAttachment>;
 const strings = z.array(text);
 const proposal = z.object({
   version: count,
@@ -70,7 +70,7 @@ const proposal = z.object({
   affectedAreas: strings,
   risks: strings,
   createdAt: milliseconds,
-}) satisfies z.ZodType<SupportProposal>;
+}) satisfies z.ZodMiniType<SupportProposal>;
 const evidence = z.object({
   id: text,
   phase: text,
@@ -81,7 +81,7 @@ const evidence = z.object({
   passed: z.boolean(),
   attachmentIds: strings,
   createdAt: milliseconds,
-}) satisfies z.ZodType<SupportEvidence>;
+}) satisfies z.ZodMiniType<SupportEvidence>;
 const detail = z.object({
   ticket,
   description: text,
@@ -91,14 +91,14 @@ const detail = z.object({
   attachments: z.array(attachmentSchema),
   proposals: z.array(proposal),
   evidence: z.array(evidence),
-}) satisfies z.ZodType<SupportDetail>;
+}) satisfies z.ZodMiniType<SupportDetail>;
 const notification = z.object({
   id: text,
   ticketId: text,
   body: text,
-  readAt: milliseconds.nullable(),
+  readAt: z.nullable(milliseconds),
   createdAt: milliseconds,
-}) satisfies z.ZodType<SupportNotification>;
+}) satisfies z.ZodMiniType<SupportNotification>;
 export const replies: Replies = (route, method) => {
   if (method === 'GET') {
     if (route === '/api/support/tickets' || route === '/api/platform/support/tickets')

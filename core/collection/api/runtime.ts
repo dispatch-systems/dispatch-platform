@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/mini';
 import type { CollectionUpdates, Job, JobMetrics } from './index.js';
 import { collections } from './generated/collections.js';
 import {
@@ -17,52 +17,52 @@ const pageRead = z.object({
   navigationMs: milliseconds,
   contentMs: milliseconds,
   extractionMs: milliseconds,
-  error: text.nullable(),
-  pendingRequests: count.nullable().default(null),
-  documentState: z.enum(['loading', 'interactive', 'complete']).nullable().default(null),
+  error: z.nullable(text),
+  pendingRequests: z._default(z.nullable(count), null),
+  documentState: z._default(z.nullable(z.enum(['loading', 'interactive', 'complete'])), null),
 });
 const metricsSchema = z.object({
   attempt: count,
   startedAt: text,
-  finishedAt: text.nullable(),
+  finishedAt: z.nullable(text),
   outcome: z.enum(['running', 'succeeded', 'failed', 'cancelled', 'interrupted']),
-  error: text.nullable(),
-  phase: z
-    .enum(['starting', 'authentication', 'verification', 'collection', 'publication'])
-    .nullable(),
-  detail: text.nullable().default(null),
+  error: z.nullable(text),
+  phase: z.nullable(
+    z.enum(['starting', 'authentication', 'verification', 'collection', 'publication']),
+  ),
+  detail: z._default(z.nullable(text), null),
   queueMs: milliseconds,
   elapsedMs: milliseconds,
-  authenticationMs: milliseconds.nullable(),
-  verificationMs: milliseconds.nullable(),
-  collectionMs: milliseconds.nullable(),
-  publicationMs: milliseconds.nullable(),
-  employees: count.nullable(),
-  timecards: count.nullable(),
-  itineraries: count.nullable().default(null),
-  meals: count.nullable().default(null),
-  rows: count.nullable().default(null),
-  peakRssBytes: count.nullable(),
-  peakPssBytes: count.nullable(),
-  peakPrivateBytes: count.nullable(),
+  authenticationMs: z.nullable(milliseconds),
+  verificationMs: z.nullable(milliseconds),
+  collectionMs: z.nullable(milliseconds),
+  publicationMs: z.nullable(milliseconds),
+  employees: z.nullable(count),
+  timecards: z.nullable(count),
+  itineraries: z._default(z.nullable(count), null),
+  meals: z._default(z.nullable(count), null),
+  rows: z._default(z.nullable(count), null),
+  peakRssBytes: z.nullable(count),
+  peakPssBytes: z.nullable(count),
+  peakPrivateBytes: z.nullable(count),
   memorySamples: count,
   incompleteMemorySamples: count,
-  pageReads: z
-    .object({
+  pageReads: z.optional(
+    z.object({
       completed: count,
       retries: count,
       recovered: count,
-      resumed: count.default(0),
-      earlyReady: count.default(0),
-      direct: count.default(0),
-      spotChecked: count.default(0),
+      resumed: z._default(count, 0),
+      earlyReady: z._default(count, 0),
+      direct: z._default(count, 0),
+      spotChecked: z._default(count, 0),
       totalMs: milliseconds,
       active: z.array(pageRead),
       slowest: z.array(pageRead),
       failures: z.array(pageRead),
-    })
-    .optional(),
-}) satisfies z.ZodType<JobMetrics>;
+    }),
+  ),
+}) satisfies z.ZodMiniType<JobMetrics>;
 const jobStatusSchema = z.enum([
   'queued',
   'running',
@@ -72,26 +72,26 @@ const jobStatusSchema = z.enum([
   'cancelled',
 ]);
 export const jobSchema = z.object({
-  id: text.min(1),
-  dspId: text.min(1),
+  id: text.check(z.minLength(1)),
+  dspId: text.check(z.minLength(1)),
   dspName: text,
   environment,
   // Every registered collection's, as the collectors' manifests name them.
   kind: z.enum(collections.map((collection) => collection.kind)),
   status: jobStatusSchema,
-  progress: count.max(100),
+  progress: count.check(z.lte(100)),
   message: text,
   attempt: count,
   maxAttempts: count,
   availableAt: text,
   createdAt: text,
-  startedAt: text.nullable(),
-  completedAt: text.nullable(),
-  error: text.nullable(),
+  startedAt: z.nullable(text),
+  completedAt: z.nullable(text),
+  error: z.nullable(text),
   release: text,
-  actorId: text.nullable(),
+  actorId: z.nullable(text),
   metrics: z.array(metricsSchema),
-}) satisfies z.ZodType<Job>;
+}) satisfies z.ZodMiniType<Job>;
 
 const collectionUpdatesSchema = z.object({
   revision: text,
@@ -99,11 +99,11 @@ const collectionUpdatesSchema = z.object({
     z.object({
       provider: text,
       dates: z.array(text),
-      employeeCode: text.nullable(),
+      employeeCode: z.nullable(text),
       roster: z.boolean(),
     }),
   ),
-}) satisfies z.ZodType<CollectionUpdates>;
+}) satisfies z.ZodMiniType<CollectionUpdates>;
 /** A list of jobs, as the DSP's and the platform owner's job lists answer. */
 export const jobsSchema = z.array(jobSchema);
 
