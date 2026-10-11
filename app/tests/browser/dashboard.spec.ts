@@ -342,9 +342,6 @@ test('Timecard schedules can be created, edited, paused and deleted', async ({ p
       'href',
       `#dsp/${dspId}/settings`,
     );
-    await expect(
-      page.locator('.account-popover a').filter({ hasText: 'Account settings' }),
-    ).toHaveAttribute('href', `#dsp/${dspId}/settings`);
     await paycom.click();
     expect(new URL(page.url()).hash).toBe(`#dsp/${dspId}/paycom`);
   } finally {

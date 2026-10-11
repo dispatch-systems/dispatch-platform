@@ -145,7 +145,7 @@ test('intake outcomes show agent responses and unclear reports focus the shared 
       status: 'answered',
       kind: 'feature',
       title: 'Where are account settings?',
-      response: 'Open your account menu and choose Account settings.',
+      response: 'Choose Settings in the sidebar.',
     },
     {
       status: 'unclear_bug',

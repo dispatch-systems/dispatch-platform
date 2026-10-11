@@ -4,7 +4,7 @@ import type { DspView, SessionView } from '../../../accounts/api/index.js';
 import { Brand } from '../runtime/Brand.js';
 import { Popover } from '../ui/Popover.js';
 import { useFocusTrap } from '../ui/useFocusTrap.js';
-import { dspHash, platformHash, settingsHash } from '../runtime/navigation.js';
+import { dspHash, platformHash } from '../runtime/navigation.js';
 import { sourceLink } from '../lib/source.js';
 import { accountActions, type DspRouteId, type PlatformRouteId } from '../runtime/slots.js';
 // Only a platform owner viewing a DSP sees it, so it loads then.
@@ -152,7 +152,6 @@ export function Shell({
                 <ArrowUpRight aria-hidden="true" />
               </span>
             </a>
-            <a href={(dspId && settingsHash(dspId)) || platformHash('account')}>Account settings</a>
             {actions.map(({ id, label: actionLabel, icon: Icon, preload }) => (
               <button
                 key={id}
