@@ -16,9 +16,8 @@ pub const LAYOUT: &str = "storage.collectors";
 /// What a member needs to manage the DSP's own accounts on Settings' Connections tab. It
 /// exists while any connection does, or a page that adds one, and the role sheet lists it
 /// under DSP Settings, after Manage DSP Settings.
-pub const CONNECTIONS: Permission = perm("connections.manage", "Manage DSP Connections", 91)
-    .group("DSP Settings")
-    .recently_verified();
+pub const CONNECTIONS: Permission =
+    perm("connections.manage", "Manage DSP Connections", 91).group("DSP Settings");
 
 /// A provider, named by its collector's id. Each collector declares its own
 /// (`PROVIDER`); what a provider is lives in its `Collector`, found in the registry.
