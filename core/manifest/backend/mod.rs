@@ -995,6 +995,11 @@ pub trait Collector: Sync {
     fn job_kind_for(&self, _request: &Value) -> &'static str {
         self.collections()[0].job_kind
     }
+    /// Normalizes a trusted read-only verification request for this isolated DSP. A
+    /// collector must opt in and bind its own provider scope; future collectors fail closed.
+    fn verification_request(&self, _: &Store, _dsp: &str, _input: &Value) -> Result<Value> {
+        Err(crate::Error::new("support_verification_unsupported", 403))
+    }
     /// Its database. Its migrations are every owner's, its own included (`migrations`).
     fn database(&self) -> Kind;
     /// What it adds to databases, starting with its own's baseline.

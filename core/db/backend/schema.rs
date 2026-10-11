@@ -52,6 +52,15 @@ pub const TABLES: Tables = &[
             "audit",
             "outbox",
             "invitation_routes",
+            "support_tickets",
+            "support_messages",
+            "support_attachments",
+            "support_proposals",
+            "support_approvals",
+            "support_jobs",
+            "support_evidence",
+            "support_notifications",
+            "support_github_events",
         ],
     ),
     ("jobs", &["jobs", "job_metrics"]),
@@ -172,6 +181,13 @@ const PLATFORM: &[Migration] = &[
         id: 20,
         name: "dsp_directories",
         apply: Code(dsp_directories),
+    },
+    Migration {
+        id: 23,
+        name: "ai_support",
+        apply: Sql(include_str!(
+            "../../support/migrations/platform/0023_ai_support.sql"
+        )),
     },
 ];
 const JOBS: &[Migration] = &[

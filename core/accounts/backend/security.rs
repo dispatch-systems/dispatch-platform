@@ -103,6 +103,18 @@ impl Store {
     }
 
     pub fn security_status(&self, a: &Auth) -> Result<SecurityStatus> {
+        if crate::support::browser::read_only(a) {
+            // This service identity already passed the job lease and current reporter-access
+            // checks. It grants no account writes or fresh-verification authority.
+            return Ok(SecurityStatus {
+                enrolled: false,
+                required: false,
+                verified: true,
+                recent: false,
+                passkey_count: 0,
+                authenticator: false,
+            });
+        }
         let (passkey_count, authenticator) = self.factor_counts(a)?;
         let enrolled = passkey_count > 0 || authenticator;
         let verified: Option<(i64,)> = self.people(a)?.one_as(

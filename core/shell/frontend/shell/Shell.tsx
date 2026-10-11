@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Menu, X, ChevronDown, LogOut, ArrowUpRight, type LucideIcon } from 'lucide-react';
 import type { DspView, SessionView } from '../../../accounts/api/index.js';
 import { Brand } from '../runtime/Brand.js';
@@ -6,7 +6,7 @@ import { Popover } from '../ui/Popover.js';
 import { useFocusTrap } from '../ui/useFocusTrap.js';
 import { dspHash, platformHash, settingsHash } from '../runtime/navigation.js';
 import { sourceLink } from '../lib/source.js';
-import type { DspRouteId, PlatformRouteId } from '../runtime/slots.js';
+import { accountActions, type DspRouteId, type PlatformRouteId } from '../runtime/slots.js';
 // Only a platform owner viewing a DSP sees it, so it loads then.
 const DspViewBanner = lazy(() =>
   import('./DspViewBanner.js').then((module) => ({ default: module.DspViewBanner })),
@@ -46,6 +46,9 @@ export function Shell({
   children: ReactNode;
 }) {
   const [mobile, setMobile] = useState(false);
+  const [accountAction, setAccountAction] = useState<string>();
+  const actions = accountActions({ session, view });
+  const openedAction = actions.find((action) => action.id === accountAction);
   const sidebar = useRef<HTMLElement>(null);
   const name = `${session.user.firstName} ${session.user.lastName}`;
   const workspace = view?.dsp.name ?? (session.user.platformOwner ? 'Platform' : 'Workspace');
@@ -131,11 +134,32 @@ export function Shell({
                         : 'Team member'}
                   </span>
                 </span>
+                <Suspense fallback={null}>
+                  {actions.map((action) =>
+                    action.indicator ? (
+                      <Fragment key={action.id}>{action.indicator({ session, view })}</Fragment>
+                    ) : null,
+                  )}
+                </Suspense>
                 <ChevronDown aria-hidden="true" />
               </>
             }
           >
             <a href={(dspId && settingsHash(dspId)) || platformHash('account')}>Account settings</a>
+            {actions.map(({ id, label: actionLabel, icon: Icon, preload }) => (
+              <button
+                key={id}
+                onPointerEnter={() => void preload().catch(() => undefined)}
+                onFocus={() => void preload().catch(() => undefined)}
+                onClick={() => {
+                  setMobile(false);
+                  setAccountAction(id);
+                }}
+              >
+                {Icon && <Icon size={16} />}
+                {actionLabel}
+              </button>
+            ))}
             <a href={source.href} target="_blank" rel="noreferrer">
               Source code
               <span className="source-version">
@@ -180,6 +204,11 @@ export function Shell({
           {children}
         </main>
       </div>
+      {openedAction && (
+        <Suspense fallback={null}>
+          {openedAction.render({ session, view, onClose: () => setAccountAction(undefined) })}
+        </Suspense>
+      )}
     </div>
   );
 }

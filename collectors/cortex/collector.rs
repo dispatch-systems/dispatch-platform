@@ -190,6 +190,14 @@ impl Collector for Cortex {
             meals::JOB_KIND
         }
     }
+    fn verification_request(
+        &self,
+        store: &dispatch_core::db::Store,
+        dsp: &str,
+        input: &Value,
+    ) -> Result<Value> {
+        collections::verification::request(store, dsp, input)
+    }
     fn database(&self) -> Kind {
         DATABASE
     }

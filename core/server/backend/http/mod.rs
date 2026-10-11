@@ -32,7 +32,7 @@ use std::{
 /// the registry's order.
 /// `app/tests/backend/integration/http_routes.rs` holds the expected list.
 pub fn table() -> Vec<Route> {
-    use crate::{accounts, collection, platform_owner, server, tenancy};
+    use crate::{accounts, collection, platform_owner, server, support, tenancy};
     let core = [
         server::api::routes::routes(),
         accounts::api::routes::sign_in::routes(),
@@ -43,6 +43,7 @@ pub fn table() -> Vec<Route> {
         collection::api::routes::jobs::routes(),
         collection::api::routes::connections::routes(),
         platform_owner::api::routes::audit::routes(),
+        support::api::routes::routes(),
     ];
     let agents = registry().agents.map(|agents| (agents.routes)());
     let features = registry().features.iter().map(|feature| (feature.routes)());

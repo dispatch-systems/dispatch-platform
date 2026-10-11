@@ -1,0 +1,4 @@
+name: dispatch-support
+version: 1.0.0
+description: Assigned-workspace tools for the Dispatch support lifecycle
+entrypoint: __init__.py

@@ -6,6 +6,7 @@
 #[cfg(feature = "dvic")]
 mod dvic_short_inspections;
 mod get_profile;
+mod support_ticket_diagnostics;
 mod whoami;
 
 use crate::toolbox::AnyTool;
@@ -15,5 +16,6 @@ pub const TOOLS: &[&dyn AnyTool] = &[
     #[cfg(feature = "dvic")]
     &dvic_short_inspections::DvicShortInspections,
     &get_profile::GetProfile,
+    &support_ticket_diagnostics::SupportTicketDiagnostics,
     &whoami::Whoami,
 ];

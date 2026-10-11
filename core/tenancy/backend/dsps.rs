@@ -359,6 +359,47 @@ impl Store {
             .set("dsp.profile", &serde_json::to_value(&profile)?)?;
         Ok(profile)
     }
+    /// Native collection verification copies only its configured source account's scope
+    /// into isolated preview state. Fixture URL codes and the source DSP stay unchanged.
+    pub fn set_verification_profile(
+        &self,
+        id: &str,
+        name: &str,
+        timezone: &str,
+        abbreviation: &str,
+        station: &str,
+    ) -> Result<()> {
+        ensure(
+            self.config.development && self.config.environment == "preview" && !self.config.fixture,
+            "support_verification_dev_only",
+            403,
+        )?;
+        ensure(
+            !name.trim().is_empty()
+                && name.len() <= 256
+                && !name.chars().any(char::is_control)
+                && timezone.parse::<chrono_tz::Tz>().is_ok()
+                && (abbreviation.is_empty()
+                    || crate::foundation::validate::token(abbreviation, 32))
+                && (station.is_empty()
+                    || ((3..=8).contains(&station.len())
+                        && station
+                            .bytes()
+                            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit()))),
+            "invalid_verification_reference",
+            400,
+        )?;
+        self.ensure_dsp_active(id)?;
+        self.platform.exec(
+            "UPDATE dsps SET name=?,timezone=?,revision=revision+1 WHERE id=?",
+            [name, timezone, id],
+        )?;
+        self.set_profile(
+            id,
+            json!({"abbreviation":abbreviation,"stationCode":station}),
+        )?;
+        Ok(())
+    }
     pub fn set_status(&self, id: &str, status: DspStatus, actor: &str) -> Result<Dsp> {
         let dsp = self.find_dsp(id)?;
         ensure(!dsp.permanent, "permanent_dev_required", 409)?;

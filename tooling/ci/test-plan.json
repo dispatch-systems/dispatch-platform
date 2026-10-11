@@ -1,7 +1,9 @@
 {
   "pythonIntegration": [
     "tooling/tests/compiler_paths_integration_test.py",
-    "ops/tests/production_launcher_integration_test.py"
+    "ops/tests/production_launcher_integration_test.py",
+    "ops/tests/support_tool_policy_test.py",
+    "ops/tests/support_host_sandbox_test.py"
   ],
   "rules": [
     "app/tests/rules/anatomy.test.ts",

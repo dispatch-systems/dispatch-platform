@@ -12,6 +12,94 @@ use std::{
     time::Duration,
 };
 
+#[test]
+fn support_worker_requires_a_verified_dev_bundle_and_never_restarts_on_production() {
+    let f = Fixture::new(Environment::Dev);
+    let updater = f.updater();
+    for name in crate::support::RESOURCES {
+        let path = updater.active.join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, "common resource").unwrap();
+    }
+    fs::write(
+        updater.active.join("tooling/build-info.json"),
+        json!({"commit":f.old,"hostManagement":1,"supportWorker":1}).to_string(),
+    )
+    .unwrap();
+    artifact::write_manifest(&updater.active, "0.1.0").unwrap();
+    crate::support::verify(&updater).unwrap();
+    // The installed worker and credential broker must start after the archive round trip.
+    // Resource content never controls which artifact paths receive executable permission.
+    let package = f._temp.path().join("support.tar.gz");
+    artifact::pack(&updater.active, &package).unwrap();
+    let unpacked = f._temp.path().join("support-unpacked");
+    artifact::unpack(&package, &unpacked).unwrap();
+    artifact::verify(&unpacked, Some(&f.old)).unwrap();
+    for path in [
+        "services/rust/dispatch-backend",
+        "services/rust/dispatch-support-worker",
+        "services/support-worker/support-collection.py",
+    ] {
+        assert_eq!(
+            fs::metadata(unpacked.join(path))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+    }
+    assert_eq!(
+        fs::metadata(unpacked.join("services/support-worker/hermes/profiles/reviewer.json"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
+    fs::write(
+        updater.active.join("services/rust/dispatch-support-worker"),
+        "tampered",
+    )
+    .unwrap();
+    assert!(crate::support::verify(&updater).is_err());
+    fs::write(
+        updater.active.join("services/rust/dispatch-support-worker"),
+        "common resource",
+    )
+    .unwrap();
+    let reviewer = updater
+        .active
+        .join("services/support-worker/hermes/profiles/reviewer.json");
+    fs::remove_file(&reviewer).unwrap();
+    assert!(
+        artifact::write_manifest(&updater.active, "0.1.0")
+            .unwrap_err()
+            .to_string()
+            .contains("bundle is incomplete")
+    );
+    fs::write(reviewer, "common resource").unwrap();
+    fs::write(
+        updater
+            .active
+            .join("services/support-worker/unregistered.py"),
+        "unexpected code",
+    )
+    .unwrap();
+    assert!(
+        artifact::write_manifest(&updater.active, "0.1.0")
+            .unwrap_err()
+            .to_string()
+            .contains("retired runtime files")
+    );
+    let production = Fixture::new(Environment::Production);
+    let updater = production.updater();
+    assert!(crate::support::verify(&updater).is_err());
+    production.system.calls.borrow_mut().clear();
+    crate::support::refresh(&updater);
+    assert!(production.system.calls.borrow().is_empty());
+}
+
 #[derive(Default)]
 struct Fake {
     calls: RefCell<Vec<Vec<String>>>,

@@ -17,6 +17,8 @@ const INPUTS: &[&str] = &[
     "ops/launchers/runtime_artifact.py",
     "ops/launchers/update-dev.py",
     "ops/launchers/update-production.py",
+    "ops/launchers/support-collection.py",
+    "ops/systemd/dispatch-support-worker.service",
 ];
 /// Every directory the Rust workspace compiles from: crates, their modules, the files they
 /// embed, migrations and tests.
@@ -27,6 +29,7 @@ pub const SOURCE_ROOTS: &[&str] = &[
     "features",
     "mcp",
     "ops/host-manager",
+    "services/support-worker",
     "tooling/cli",
     "tooling/shared",
 ];

@@ -121,6 +121,9 @@ impl Collector for Paycom {
     fn collections(&self) -> &'static [Collection] {
         &COLLECTIONS
     }
+    fn verification_request(&self, store: &Store, dsp: &str, input: &Value) -> Result<Value> {
+        collections::verification::request(store, dsp, input)
+    }
     fn database(&self) -> Kind {
         DATABASE
     }

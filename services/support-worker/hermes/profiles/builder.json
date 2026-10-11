@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "provider": "openai-codex",
+  "model": "gpt-6.1-sol",
+  "reasoningEffort": "xhigh",
+  "serviceTier": "default",
+  "toolset": "dispatch_support_build",
+  "tools": [
+    "dispatch_read_file",
+    "dispatch_write_file",
+    "dispatch_patch",
+    "dispatch_command",
+    "dispatch_diff",
+    "dispatch_browser"
+  ],
+  "skills": ["dispatch-context", "approved-implementation", "queue-correction"]
+}

@@ -1,0 +1,23 @@
+[package]
+name = "dispatch-support-worker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+dispatch-core = { path = "../../core" }
+dispatchdev-cli = { path = "../../tooling/cli" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+url.workspace = true
+fs2.workspace = true
+libc.workspace = true
+
+[[bin]]
+name = "dispatch-support-worker"
+path = "src/main.rs"
+test = false

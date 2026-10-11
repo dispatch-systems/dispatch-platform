@@ -51,6 +51,7 @@ before(() => {
     'ops/host-manager',
     'tooling/cli',
     'tooling/shared',
+    'services/support-worker',
     'tooling/ci/test-plan.json',
     '.github/workflows/checks.yml',
   ])

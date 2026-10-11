@@ -393,8 +393,10 @@ impl<'a> Updater<'a> {
         })();
         if let Err(error) = activation {
             self.recover()?;
+            crate::support::refresh(self);
             return Err(error);
         }
+        crate::support::refresh(self);
         Ok(())
     }
     pub fn run_locked(&self) -> Result<()> {

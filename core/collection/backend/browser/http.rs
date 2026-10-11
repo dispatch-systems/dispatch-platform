@@ -1,8 +1,9 @@
 //! A provider over plain HTTP from this process, with the session a browser signed
 //! in. Signing in stays in the browser; only a collection's repeated reads come here.
 //! Requests keep to the browser's egress rules: the provider's own HTTPS hosts on
-//! public IPv4 addresses, no redirects and no proxies, bounded in size and time. The
-//! session's cookies stay in memory for the job and are never written or logged.
+//! public IPv4 addresses, no redirects or ambient proxies, bounded in size and time. An
+//! isolated support verification uses its fixed trusted provider broker. Session cookies
+//! stay in memory for the job and are never written or logged.
 use super::{browseros, egress};
 use crate::{Error, Result, db::s};
 use reqwest::{
@@ -127,7 +128,7 @@ impl Http {
         } else {
             Hosts::Provider(hosts)
         };
-        let mut client = Client::builder().redirect(Policy::none()).no_proxy();
+        let mut client = verification_proxy(Client::builder().redirect(Policy::none()))?;
         if !hosts.http2() {
             client = client.http1_only().no_gzip();
         }
@@ -249,10 +250,11 @@ impl Http {
             }
             jar.add_cookie_str(&line, &url);
         }
-        let mut client = Client::builder()
-            .cookie_provider(Arc::new(jar))
-            .redirect(Policy::none())
-            .no_proxy();
+        let mut client = verification_proxy(
+            Client::builder()
+                .cookie_provider(Arc::new(jar))
+                .redirect(Policy::none()),
+        )?;
         // HTTP/2 only where the provider's hosts ask for it, never for the local stand-in.
         if !hosts.http2() {
             client = client.http1_only().no_gzip();
@@ -391,5 +393,24 @@ impl Http {
             .await
             .map_err(|_| Refusal::Unavailable)?;
         Self::body(response, "text/html").await
+    }
+}
+
+fn verification_proxy(client: reqwest::ClientBuilder) -> Result<reqwest::ClientBuilder> {
+    if std::env::var_os("SUPPORT_VERIFICATION_EGRESS").is_some() {
+        crate::ensure(
+            std::env::var("SUPPORT_VERIFICATION_EGRESS").as_deref()
+                == Ok("/run/support-provider/egress.sock")
+                && std::env::var("DISPATCH_ENVIRONMENT").as_deref() == Ok("preview")
+                && std::env::var("NODE_ENV").as_deref() == Ok("development"),
+            "egress_denied",
+            403,
+        )?;
+        Ok(client.no_proxy().proxy(
+            reqwest::Proxy::https("http://127.0.0.1:17892")
+                .map_err(|_| Error::new("egress_denied", 403))?,
+        ))
+    } else {
+        Ok(client.no_proxy())
     }
 }

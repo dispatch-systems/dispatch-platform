@@ -9,6 +9,7 @@ mod management;
 mod release;
 mod releases;
 mod setup;
+mod support;
 pub mod updater;
 
 pub use cli::run;

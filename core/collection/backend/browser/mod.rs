@@ -55,6 +55,7 @@ pub struct Session {
     started: std::time::Instant,
     last_used: Mutex<std::time::Instant>,
     collecting: std::sync::atomic::AtomicBool,
+    credential_lease: Mutex<Option<std::fs::File>>,
 }
 
 /// The durable authority behind a provider operation. Member requests and jobs
@@ -244,6 +245,10 @@ impl Session {
             browser.close().await;
         }
         let _ = std::fs::remove_dir_all(&self.run);
+        self.credential_lease
+            .lock()
+            .expect("credential lease")
+            .take();
     }
     pub(crate) async fn request_guarded(
         &self,
@@ -558,6 +563,18 @@ impl State {
             }
             return Ok(session);
         }
+        let credential_lease = self
+            .read({
+                let dsp = id.to_owned();
+                move |db| {
+                    crate::collection::verification::credential_lease(
+                        &db.config.root,
+                        &dsp,
+                        provider,
+                    )
+                }
+            })
+            .await?;
         let (cancel, _) = watch::channel(false);
         let session = Arc::new(Session {
             id: run.file_name().unwrap().to_string_lossy().into_owned(),
@@ -577,6 +594,7 @@ impl State {
             started: std::time::Instant::now(),
             last_used: Mutex::new(std::time::Instant::now()),
             collecting: std::sync::atomic::AtomicBool::new(false),
+            credential_lease: Mutex::new(Some(credential_lease)),
         });
         {
             let mut sessions = self
