@@ -421,7 +421,8 @@ impl Release<'_> {
             target = superseded.join(format!("{}-{pinned}-{n}", self.tag));
         }
         io::private_directory(&target)?;
-        // The journal moves last: until it does, a rerun finds this release and continues.
+        // Only the directory and journal mark a release unpublished, so they move last: a
+        // run interrupted here leaves this release for the next one to set aside.
         for path in [self.notes.clone(), self.output.clone(), self.journal_path()] {
             if path.try_exists()? {
                 fs::rename(&path, target.join(path.file_name().ok_or("Invalid path")?))?;
