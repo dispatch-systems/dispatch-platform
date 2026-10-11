@@ -24,6 +24,26 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
     let config = Config::load()?;
+    if command == "support-provider-egress" {
+        ensure(args.len() == 3, "invalid_verification_arguments", 400)?;
+        return dispatch_core::collection::verification::provider_egress(
+            config,
+            &args[1],
+            Path::new(&args[2]),
+        )
+        .await;
+    }
+    if command == "support-verify-collection" {
+        ensure(args.len() == 1, "invalid_verification_arguments", 400)?;
+        let _lock = Lock::acquire(&config.root)?;
+        let mut input = Vec::new();
+        std::io::stdin().take(16385).read_to_end(&mut input)?;
+        println!(
+            "{}",
+            dispatch_core::collection::verification::run(config, &input).await?
+        );
+        return Ok(());
+    }
     if command == "status" {
         println!("{}", operations::status(&config)?);
         return Ok(());

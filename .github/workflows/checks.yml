@@ -253,6 +253,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      - name: Install the support execution sandbox
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends apparmor bubblewrap
+          # Allow namespaces for Bubblewrap while retaining its mount/network isolation.
+          sudo apparmor_parser -r <<'PROFILE'
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+          }
+          PROFILE
+          bwrap --unshare-all --ro-bind / / -- /usr/bin/true
       - uses: ./.github/actions/setup-tools
       - uses: ./.github/actions/setup-build
         with:

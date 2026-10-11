@@ -91,7 +91,9 @@ fn open_dsp(db: &Store, user: &User, input: &Input) -> Result<Reply> {
     } else {
         ""
     };
-    db.audit_visit(a.user.id.as_str(), c.dsp.id.as_str(), action, previewed)?;
+    if !crate::support::browser::read_only(&a) {
+        db.audit_visit(a.user.id.as_str(), c.dsp.id.as_str(), action, previewed)?;
+    }
     let summary = |role: crate::accounts::api::types::Role| RoleSummary {
         id: role.id,
         name: role.name,

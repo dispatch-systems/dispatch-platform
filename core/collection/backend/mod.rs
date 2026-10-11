@@ -8,3 +8,4 @@ pub mod live;
 pub mod metrics;
 pub mod registry;
 pub mod schedules;
+pub mod verification;

@@ -190,6 +190,41 @@
     }
   },
   {
+    "name": "support_ticket_diagnostics",
+    "title": "AI Support ticket diagnostics",
+    "description": "Read an authorized AI Support ticket's runtime and recent provider/job health at its DSP.",
+    "features": [],
+    "changes": false,
+    "scope": "dsp",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": ["ticket_id"],
+      "type": "object",
+      "properties": {
+        "ticket_id": {
+          "description": "The AI Support ticket ID; the ticket must belong to this call's DSP.",
+          "type": "string"
+        },
+        "dsp": {
+          "type": "string",
+          "description": "The DSP, by its name or ID. Leave it out when this connection reaches one DSP."
+        }
+      },
+      "additionalProperties": false
+    },
+    "output": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": ["ticket_id", "diagnostics"],
+      "type": "object",
+      "properties": {
+        "ticket_id": {"type": "string"},
+        "diagnostics": {
+          "description": "Ticket-derived runtime and bounded provider/job health; excludes reports and employee records."
+        }
+      }
+    }
+  },
+  {
     "name": "whoami",
     "title": "This connection",
     "description": "Return this connection's name, access and expiry, the time now, and each DSP it reaches with the DSP's own date today.",

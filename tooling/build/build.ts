@@ -28,10 +28,38 @@ const manifest = await replaceBuild(out, async (staging) => {
   const backend = path.join(staging, 'services/rust/dispatch-backend');
   const built = debug ? 'debug/dispatch-backend' : 'release/dispatch-backend';
   fs.copyFileSync(path.join(metadata.target_directory, built), backend);
+  const worker = path.join(staging, 'services/rust/dispatch-support-worker');
+  execFileSync(
+    'cargo',
+    ['build', '--locked', '-p', 'dispatch-support-worker', ...(debug ? [] : ['--release'])],
+    { stdio: 'inherit' },
+  );
+  fs.copyFileSync(
+    path.join(
+      metadata.target_directory,
+      debug ? 'debug/dispatch-support-worker' : 'release/dispatch-support-worker',
+    ),
+    worker,
+  );
+  if (debug) execFileSync('strip', [worker], { stdio: 'inherit' });
+  const support = path.join(staging, 'services/support-worker');
+  fs.mkdirSync(support, { recursive: true });
+  fs.cpSync(path.join(root, 'services/support-worker/hermes'), path.join(support, 'hermes'), {
+    recursive: true,
+    filter: (source) => !source.includes('__pycache__') && !source.endsWith('.pyc'),
+  });
+  fs.copyFileSync(
+    path.join(root, 'ops/launchers/support-collection.py'),
+    path.join(support, 'support-collection.py'),
+  );
+  fs.copyFileSync(
+    path.join(root, 'ops/systemd/dispatch-support-worker.service'),
+    path.join(support, 'dispatch-support-worker.service'),
+  );
   // Stripped as the release profile strips its own: a debug build's debug information names this
   // machine's compiler.
   if (debug) execFileSync('strip', [backend], { stdio: 'inherit' });
-  execFileSync('python3', ['tooling/security/check-build-paths.py', backend], {
+  execFileSync('python3', ['tooling/security/check-build-paths.py', backend, worker], {
     stdio: 'inherit',
   });
   await viteBuild({
@@ -53,7 +81,7 @@ const manifest = await replaceBuild(out, async (staging) => {
   const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   fs.writeFileSync(
     path.join(staging, 'tooling/build-info.json'),
-    JSON.stringify({ commit, hostManagement: 1, dashboardAssets }) + '\n',
+    JSON.stringify({ commit, hostManagement: 1, supportWorker: 1, dashboardAssets }) + '\n',
   );
   writeManifest(staging, JSON.parse(fs.readFileSync('package.json', 'utf8')).version);
 });

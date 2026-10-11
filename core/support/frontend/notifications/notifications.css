@@ -1,0 +1,13 @@
+.support-unread-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 19px;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--selection);
+  color: var(--primary);
+  font-size: 10px;
+  line-height: 1.5;
+}

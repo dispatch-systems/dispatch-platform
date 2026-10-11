@@ -1,0 +1,26 @@
+[Unit]
+Description=Dispatch AI Support worker for Dev and Production
+After=network-online.target dispatch-dev.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/dispatch-platform/dev/.build
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=SUPPORT_WORKER_CONFIG=%h/dispatch-platform/.runtime/support-worker/config.json
+Environment=SUPPORT_WORKER_RESOURCES=%h/dispatch-platform/dev/.build/services/support-worker/hermes
+Environment=SUPPORT_WORKSPACE_ROOT=%h/dispatch-platform
+Environment=SUPPORT_COLLECTION_REFERENCE_FILE=%h/dispatch-platform/.runtime/support-worker/collection-reference.json
+ExecStart=%h/dispatch-platform/dev/.build/services/rust/dispatch-support-worker
+Restart=on-failure
+RestartSec=10
+# Work survives restarts in the platform's leased queue and the private worker checkpoint.
+TimeoutStopSec=45
+KillMode=mixed
+OOMPolicy=continue
+OOMScoreAdjust=400
+UMask=0077
+
+[Install]
+WantedBy=default.target

@@ -570,6 +570,7 @@ async fn the_request_pipeline_checks_host_origin_content_type_and_size() {
             "status":"ready",
             "environment":"preview",
             "release":server.state.config.release,
+            "source":server.state.config.source,
             "runtime":"rust"
         })
     );

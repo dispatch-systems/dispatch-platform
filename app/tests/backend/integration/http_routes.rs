@@ -5,7 +5,7 @@ use dispatch_core::{
     server::http::{
         Access::{self, Agent, Dsp, PlatformOwner, Public, Session},
         Route,
-        Work::{self, Async, Memory, Read, Write},
+        Work::{self, Async, Memory, Read, Upload, Write},
     },
     tenancy::roles,
 };
@@ -44,6 +44,33 @@ const OUTSIDE_THE_API: &[&str] = &[
 // sees, in one line, who can reach it, and a permission changed by accident fails a test.
 #[rustfmt::skip]
 const INVENTORY: &[Row] = &[
+    ("GET", "/api/support/tickets", Session, Read, false),
+    ("POST", "/api/support/tickets", Session, Write, false),
+    ("GET", "/api/support/tickets/{id}", Session, Read, false),
+    ("POST", "/api/support/tickets/{id}/messages", Session, Write, false),
+    ("POST", "/api/support/tickets/{id}/reopen", Session, Write, false),
+    ("POST", "/api/support/attachments", Session, Upload, false),
+    ("GET", "/api/support/attachments/{id}", Session, Read, false),
+    ("GET", "/api/support/notifications", Session, Read, false),
+    ("GET", "/api/support/notifications/unread", Session, Read, false),
+    ("POST", "/api/support/notifications/read", Session, Write, false),
+    ("GET", "/api/platform/support/tickets", PlatformOwner, Read, false),
+    ("POST", "/api/platform/support/tickets/{id}/decision", PlatformOwner, Write, false),
+    ("POST", "/api/platform/support/tickets/{id}/resume", PlatformOwner, Write, false),
+    ("POST", "/api/v1/support/worker/claim", Agent("support worker"), Write, false),
+    ("GET", "/api/v1/support/worker/jobs/{id}/status", Agent("support worker"), Read, false),
+    ("POST", "/api/v1/support/worker/jobs/{id}/heartbeat", Agent("support worker"), Write, false),
+    ("POST", "/api/v1/support/worker/jobs/{id}/progress", Agent("support worker"), Write, false),
+    ("POST", "/api/v1/support/worker/jobs/{id}/proposal", Agent("support worker"), Write, false),
+    ("POST", "/api/v1/support/worker/jobs/{id}/evidence", Agent("support worker"), Write, false),
+    ("POST", "/api/v1/support/worker/jobs/{id}/github", Agent("support worker"), Write, false),
+    ("POST", "/api/v1/support/worker/jobs/{id}/complete", Agent("support worker"), Write, false),
+    ("POST", "/api/v1/support/worker/jobs/{id}/wait", Agent("support worker"), Write, false),
+    ("POST", "/api/v1/support/worker/jobs/{id}/browser", Agent("support worker"), Write, false),
+    ("GET", "/api/v1/support/worker/jobs/{id}/diagnostics", Agent("support worker"), Read, false),
+    ("POST", "/api/v1/support/worker/jobs/{id}/attachments", Agent("support worker"), Upload, false),
+    ("GET", "/api/v1/support/worker/jobs/{id}/attachments/{image}", Agent("support worker"), Read, false),
+    ("POST", "/api/v1/support/worker/github/events", Agent("support github"), Write, false),
     ("GET", "/api/health", Public, Memory, false),
     ("GET", "/api/browser-update", Public, Memory, false),
     ("POST", "/api/auth/login", Public, Async, false),
@@ -242,8 +269,8 @@ fn no_route_is_registered_twice_and_only_get_and_post_exist() {
     }
 }
 
-// The versioned API is for agents alone, signed in with a key, and agents reach nothing
-// else: no session can call it, and no key can call the dashboard's routes.
+// The versioned API admits agent keys and dedicated support service bearers, never
+// browser sessions. Those credentials cannot call the dashboard's routes.
 #[test]
 fn only_agents_reach_the_versioned_api_and_nothing_else() {
     for route in table() {
@@ -251,7 +278,16 @@ fn only_agents_reach_the_versioned_api_and_nothing_else() {
         let agent = matches!(route.access, Agent(_));
         assert_eq!(versioned, agent, "{} {}", route.method, route.path);
         if let Agent(access) = route.access {
-            assert!(["read", "operator"].contains(&access), "{}", route.path);
+            let admitted = match access {
+                "read" | "operator" => !route.path.starts_with("/api/v1/support/"),
+                "support worker" => {
+                    route.path.starts_with("/api/v1/support/worker/")
+                        && route.path != "/api/v1/support/worker/github/events"
+                }
+                "support github" => route.path == "/api/v1/support/worker/github/events",
+                _ => false,
+            };
+            assert!(admitted, "{} requires {access}", route.path);
             // Calls are counted in memory, so a read is never a write. Only the MCP server
             // reads its own requests, and its tools only read.
             assert!(

@@ -81,6 +81,27 @@ impl Store {
     /// address, for the people it still has. Anywhere else it reads as signed out, as a
     /// removed member's does.
     pub fn authenticate(&self, raw: &str, site: &Site) -> Result<Auth> {
+        if raw.starts_with(crate::support::browser::PREFIX) {
+            let (id, scope) = crate::support::browser::identity(self, raw, site)?;
+            let directory = self.directory(scope.as_deref())?;
+            let row = UserRow::find(&directory, "id", &id)?
+                .filter(UserRow::active)
+                .ok_or_else(|| Error::new("sign_in_required", 401))?;
+            ensure(
+                admitted(&directory, &row.user, scope.as_deref())?,
+                "sign_in_required",
+                401,
+            )?;
+            return Ok(Auth {
+                user: row.user,
+                hash: crypto::sha(raw),
+                csrf: crypto::sign(&self.key, &format!("csrf:{raw}")),
+                raw: raw.into(),
+                preview: None,
+                site: site.clone(),
+                scope,
+            });
+        }
         ensure(
             raw.len() == 43
                 && raw

@@ -62,6 +62,17 @@ impl Egress {
         Self::start_with_policy(run, policy)
     }
     pub fn start_with_policy(run: &Path, policy: NetworkPolicy) -> Result<Self> {
+        let delegated =
+            std::env::var_os("SUPPORT_VERIFICATION_EGRESS").map(std::path::PathBuf::from);
+        if let Some(path) = &delegated {
+            ensure(
+                path == Path::new("/run/support-provider/egress.sock")
+                    && std::env::var("DISPATCH_ENVIRONMENT").as_deref() == Ok("preview")
+                    && std::env::var("NODE_ENV").as_deref() == Ok("development"),
+                "egress_denied",
+                403,
+            )?;
+        }
         crate::db::private_dir(run)?;
         let directory = std::fs::File::open(run)?;
         let listener = UnixListener::bind(format!(
@@ -84,11 +95,22 @@ impl Egress {
                     accepted=listener.accept()=>match accepted {
                         Ok((stream,_))=> {
                             if let Ok(permit)=slots.clone().try_acquire_owned() {
+                                let delegated = delegated.clone();
                                 tasks.spawn(async move {
                                     let _permit=permit;
-                                    let _=tokio::time::timeout(
-                                        std::time::Duration::from_secs(120),proxy(stream,policy)
-                                    ).await;
+                                    let operation = async {
+                                        if let Some(path) = delegated {
+                                            let mut upstream = UnixStream::connect(path).await?;
+                                            let mut stream = stream;
+                                            tokio::io::copy_bidirectional(&mut stream, &mut upstream).await?;
+                                            Ok(())
+                                        } else {
+                                            proxy(stream, policy).await
+                                        }
+                                    };
+                                    let _: Result<()> = tokio::time::timeout(
+                                        std::time::Duration::from_secs(120),operation
+                                    ).await.unwrap_or_else(|_|Err(Error::new("egress_closed",503)));
                                 });
                             }
                         },

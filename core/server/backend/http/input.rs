@@ -60,6 +60,24 @@ impl Input {
         let first = values.next().unwrap_or("");
         if values.next().is_some() { "" } else { first }
     }
+    /// A support investigation's separate, read-only identity. Duplicate cookies are refused.
+    pub fn support_read_token(&self, development: bool) -> &str {
+        let prefix = if development {
+            "dispatch_support_read="
+        } else {
+            "__Host-dispatch_support_read="
+        };
+        let mut values = self
+            .headers
+            .get_all("cookie")
+            .iter()
+            .filter_map(|header| header.to_str().ok())
+            .flat_map(|header| header.split(';'))
+            .map(str::trim)
+            .filter_map(|part| part.strip_prefix(prefix));
+        let first = values.next().unwrap_or("");
+        if values.next().is_some() { "" } else { first }
+    }
 }
 
 enum Payload {

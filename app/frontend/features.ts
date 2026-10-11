@@ -17,6 +17,7 @@ import { feature as cortex } from '../../collectors/cortex/frontend/feature.js';
 import { feature as accounts } from '../../core/accounts/frontend/feature.js';
 import { feature as collection } from '../../core/collection/frontend/feature.js';
 import { feature as platformOwner } from '../../core/platform_owner/frontend/feature.js';
+import { feature as support } from '../../core/support/frontend/feature.js';
 import { feature as mcp } from '../../mcp/frontend/feature.js';
 
 // Every owner's frontend manifest: the features, the collectors, core's parts with screens,
@@ -39,5 +40,6 @@ export const features: readonly FrontendFeature[] = [
   accounts,
   collection,
   platformOwner,
+  support,
   mcp,
 ];

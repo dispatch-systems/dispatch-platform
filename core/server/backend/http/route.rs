@@ -82,7 +82,21 @@ impl Grant for Session {
         Access::Session
     }
     fn authorize(self, db: &Store, input: &Input) -> Result<Auth> {
-        let auth = db.authenticate(input.session_token(db.config.development), &input.site)?;
+        let support = input.support_read_token(db.config.development);
+        let raw = if support.is_empty() {
+            input.session_token(db.config.development)
+        } else {
+            support
+        };
+        let auth = db.authenticate(raw, &input.site)?;
+        if crate::support::browser::read_only(&auth) {
+            ensure(
+                input.method == Method::GET
+                    || (input.method == Method::POST && input.path == "/api/session/dsp"),
+                "support_read_only",
+                403,
+            )?;
+        }
         {
             let mut trace = input
                 .trace
@@ -517,6 +531,29 @@ impl Route {
         response
     }
     async fn answer(&self, state: Arc<State>, request: Request) -> Result<Response> {
+        // Even public routes and GET routes registered as writes cannot mutate through the
+        // support browser. The one POST opens a signed view and skips its visit audit below.
+        let support_cookie = if state.config.development {
+            "dispatch_support_read="
+        } else {
+            "__Host-dispatch_support_read="
+        };
+        let support = request
+            .headers()
+            .get_all("cookie")
+            .iter()
+            .filter_map(|h| h.to_str().ok())
+            .flat_map(|h| h.split(';'))
+            .any(|part| part.trim().starts_with(support_cookie));
+        if support {
+            let view = self.path == "/api/session/dsp" && request.method() == Method::POST;
+            ensure(
+                view || (request.method() == Method::GET
+                    && matches!(self.work, Work::Read | Work::Memory)),
+                "support_read_only",
+                403,
+            )?;
+        }
         let handler = match &self.handler {
             Handler::Memory(handler) => return Ok(handler(&state).into_response()),
             Handler::Async(handler) => {

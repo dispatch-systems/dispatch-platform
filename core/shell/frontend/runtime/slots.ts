@@ -252,10 +252,24 @@ export type PlatformSlots = {
   mailKinds?: Record<string, string>;
 };
 
+/** An authenticated account action, with its own lazily loaded overlay and unread indicator. */
+export type AccountAction = {
+  id: string;
+  label: string;
+  part?: Feature;
+  icon?: LucideIcon;
+  visible?: (access: Access) => boolean;
+  preload: () => Promise<unknown>;
+  render: (context: Access & { onClose: () => void }) => ReactNode;
+  indicator?: (context: Access) => ReactNode;
+};
+
 /** An owner's frontend: what it puts in each slot. */
 export type FrontendFeature = {
   /** The owner's directory name. */
   name: string;
+  /** Actions beside Account settings, Source code and Sign out. */
+  accountActions?: readonly AccountAction[];
   /** Its pages, in sidebar order. */
   routes?: readonly Route[];
   /** Its tabs on a DSP's Settings page. */
@@ -292,6 +306,11 @@ export type FrontendFeature = {
 };
 
 let installed: readonly FrontendFeature[] = [];
+/** Account actions admitted for the current signed-in person and DSP view. */
+export const accountActions = (access: Access) =>
+  present(access.view, (feature) => feature.accountActions).filter(
+    (action) => !action.visible || action.visible(access),
+  );
 /** Called once by the app, before the first render, with every owner's manifest. */
 export function installFeatures(features: readonly FrontendFeature[]) {
   installed = features;

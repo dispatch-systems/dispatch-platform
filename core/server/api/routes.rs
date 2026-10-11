@@ -52,6 +52,7 @@ fn health(state: &State) -> Reply {
         "status":"ready",
         "environment":state.config.environment,
         "release":state.config.release,
+        "source":state.config.source,
         "runtime":"rust"
     }))
 }

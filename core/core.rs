@@ -15,6 +15,8 @@ pub mod manifest;
 pub mod platform_owner;
 #[path = "server/backend/mod.rs"]
 pub mod server;
+#[path = "support/backend/mod.rs"]
+pub mod support;
 #[path = "tenancy/backend/mod.rs"]
 pub mod tenancy;
 /// Core's test support, for core's tests and, behind the `testing` feature, every other

@@ -15,6 +15,14 @@ const REQUIRED: [&str; 3] = [
     "services/rust/dispatch-backend",
     "tooling/build-info.json",
 ];
+fn executable(path: &str) -> bool {
+    matches!(
+        path,
+        "services/rust/dispatch-backend"
+            | "services/rust/dispatch-support-worker"
+            | "services/support-worker/support-collection.py"
+    )
+}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Entry {
@@ -179,7 +187,9 @@ pub fn verify(root: &Path, commit: Option<&str>) -> Result<Manifest> {
             "Artifact file verification failed",
         )?;
         require(
-            entry.path.starts_with("dashboard/") || REQUIRED[1..].contains(&entry.path.as_str()),
+            entry.path.starts_with("dashboard/")
+                || REQUIRED[1..].contains(&entry.path.as_str())
+                || crate::support::RESOURCES.contains(&entry.path.as_str()),
             "Rust-only artifact contains retired runtime files",
         )?;
     }
@@ -188,6 +198,14 @@ pub fn verify(root: &Path, commit: Option<&str>) -> Result<Manifest> {
         "Artifact incomplete or contains extra files",
     )?;
     let metadata: Value = serde_json::from_slice(&fs::read(root.join("tooling/build-info.json"))?)?;
+    if metadata["supportWorker"] == 1 {
+        require(
+            crate::support::RESOURCES
+                .iter()
+                .all(|name| files.contains_key(name)),
+            "Support worker artifact bundle is incomplete",
+        )?;
+    }
     let source = metadata["commit"].as_str().unwrap_or("");
     require(hex(source, 40), "Invalid build commit")?;
     require(
@@ -227,7 +245,7 @@ pub fn pack(root: &Path, archive: &Path) -> Result<()> {
         let mut header = tar::Header::new_gnu();
         header.set_entry_type(tar::EntryType::Regular);
         header.set_size(file.metadata()?.len());
-        header.set_mode(if name == REQUIRED[1] { 0o755 } else { 0o644 });
+        header.set_mode(if executable(name) { 0o755 } else { 0o644 });
         header.set_mtime(0);
         tar.append_data(&mut header, name, file)?;
     }
@@ -291,7 +309,10 @@ pub fn unpack(archive: &Path, destination: &Path) -> Result<()> {
                 "Truncated artifact entry",
             )?;
             output.flush()?;
-            fs::set_permissions(target, fs::Permissions::from_mode(0o600))?;
+            fs::set_permissions(
+                target,
+                fs::Permissions::from_mode(if executable(&name) { 0o700 } else { 0o600 }),
+            )?;
         }
     }
     Ok(())

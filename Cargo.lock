@@ -847,6 +847,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "dispatch-support-worker"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
+ "dispatchdev-cli",
+ "fs2",
+ "libc",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "dispatch-team"
 version = "0.0.0"
 dependencies = [

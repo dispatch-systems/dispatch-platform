@@ -202,6 +202,13 @@ impl Context {
     }
 }
 impl Store {
+    /// Active platform owners, for core services that notify their inboxes.
+    pub fn active_platform_owners(&self) -> Result<Vec<PublicUser>> {
+        self.platform.query_as(
+            "SELECT * FROM users WHERE platform_owner=1 AND status='active'",
+            [],
+        )
+    }
     /// `user` of the platform's directory while they are an active platform owner, as whom
     /// an outside agent acts: `None` once they are not.
     pub fn active_platform_owner(&self, user: &str) -> Result<Option<PublicUser>> {

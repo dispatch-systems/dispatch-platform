@@ -15,6 +15,7 @@ use dispatch_core::manifest::{
 };
 use dispatch_core::platform_owner::api::types::*;
 use dispatch_core::server::api::types::*;
+use dispatch_core::support::api::types::*;
 use dispatch_core::tenancy::api::{audit::*, types::*};
 use dispatch_mcp::api::types::*;
 use dispatch_paycom::timecards::EmployeeTimecardPeriod;
@@ -134,6 +135,13 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         PasskeySummary,
         AuthenticatorSetup,
         AccountSession,
+        SupportTicket,
+        SupportMessage,
+        SupportAttachment,
+        SupportProposal,
+        SupportEvidence,
+        SupportDetail,
+        SupportNotification,
     );
     // Each feature's, as it lists them, when the build has it.
     bindings.extend(crate::features::typescript(&cfg));
