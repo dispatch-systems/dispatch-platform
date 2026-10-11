@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ExternalLink, FolderOpen, LoaderCircle, TriangleAlert } from 'lucide-react';
 import type { DspView } from '../../../core/accounts/api/index.js';
-import { dspHash } from '../../../core/shell/frontend/runtime/navigation.js';
+import { dspHash, navigate } from '../../../core/shell/frontend/runtime/navigation.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import {
@@ -17,13 +17,11 @@ import {
   linkGoogle,
   useDocumentsAccount,
   useDocumentsOverview,
-  type DocumentsConnection,
   type DriveStorage,
   type MySharing,
 } from '../api/client.js';
 import { GoogleLogo } from './GoogleLogo.js';
 import { cancelled, isLink, settle, takeGoogleReturn, type GoogleReturn } from './googleReturn.js';
-import { ReadyDialog } from './ReadyDialog.js';
 import { useSignIn } from './signIn.js';
 
 // Documents's cards on Settings' Connections: the DSP's Google account, which those who manage
@@ -90,15 +88,13 @@ const time = (at: string, timeZone: string) =>
 export function GoogleDriveCard({ view }: { view: DspView }) {
   const account = useDocumentsAccount();
   const signIn = useSignIn();
-  // Right after Dispatch makes the DSP's folder, folders to start with, for those who use it.
-  const [ready, setReady] = useState<DocumentsConnection>();
   const returned = useReturn(
     (returned) => !isLink(returned),
     async (state, code) => {
-      const connected = await finishGoogle(state, code);
-      if (connected.madeFolder && can(view, 'documents.use'))
-        setReady(connected.account.connection ?? undefined);
-      account.refresh();
+      await finishGoogle(state, code);
+      // Those who use Documents go straight to it, to start filling it.
+      if (can(view, 'documents.use')) navigate(dspHash(view.dsp.id, 'documents'));
+      else account.refresh();
     },
     'Google connected',
   );
@@ -112,154 +108,145 @@ export function GoogleDriveCard({ view }: { view: DspView }) {
     { success: 'Google disconnected' },
   );
   return (
-    <>
-      <article className="archived-connection-card documents-connection-card">
-        <header>
-          <h3>
-            <GoogleLogo size={20} />
-            Google Drive
-          </h3>
-        </header>
-        <DataState data={account.data} error={account.error} retry={account.refresh}>
-          {(data) => {
-            const connection = data.connection;
-            if (returned.busy)
-              return (
-                <div className="archived-connection-content">
-                  <div role="status">
-                    <Badge value="signing_in">Connecting</Badge>
-                  </div>
-                  <p className="muted documents-row">
-                    <LoaderCircle className="spin" size={16} /> Finishing with Google…
-                  </p>
+    <article className="archived-connection-card documents-connection-card">
+      <header>
+        <h3>
+          <GoogleLogo size={20} />
+          Google Drive
+        </h3>
+      </header>
+      <DataState data={account.data} error={account.error} retry={account.refresh}>
+        {(data) => {
+          const connection = data.connection;
+          if (returned.busy)
+            return (
+              <div className="archived-connection-content">
+                <div role="status">
+                  <Badge value="signing_in">Connecting</Badge>
                 </div>
-              );
-            if (!connection)
-              return (
-                <>
-                  <div className="archived-connection-content">
-                    <div role="status">
-                      <Badge value="not_connected" />
-                    </div>
-                    <ErrorBox message={returned.notice} />
-                    <p className="muted">
-                      {data.available
-                        ? "Connect a Google account to keep your team's Documents in its Google Drive. Use your company's Google Workspace, or a Gmail made just for the business."
-                        : "Google isn't set up for Dispatch yet. Dispatch support needs to finish setting it up."}
-                    </p>
-                  </div>
-                  {data.available && (
-                    <footer>
-                      <button
-                        className="primary documents-row"
-                        disabled={signIn.busy}
-                        onClick={() => void signIn.run()}
-                      >
-                        <GoogleLogo size={16} />
-                        Connect Google
-                      </button>
-                    </footer>
-                  )}
-                </>
-              );
-            const broken = connection.status === 'broken';
+                <p className="muted documents-row">
+                  <LoaderCircle className="spin" size={16} /> Finishing with Google…
+                </p>
+              </div>
+            );
+          if (!connection)
             return (
               <>
                 <div className="archived-connection-content">
                   <div role="status">
-                    {broken ? (
-                      <Badge value="failed">Needs Reconnecting</Badge>
-                    ) : (
-                      <Badge value="ready" />
-                    )}
+                    <Badge value="not_connected" />
                   </div>
                   <ErrorBox message={returned.notice} />
-                  {broken && (
-                    <p className="muted">
-                      Google stopped accepting Dispatch's access to{' '}
-                      <strong>{connection.accountEmail}</strong>, so your team can't open Documents.
-                      Your files are safe in Google Drive. Reconnect with that same account to pick
-                      up where you left off.
-                    </p>
-                  )}
-                  <dl className="documents-details">
-                    <dt>Account</dt>
-                    <dd>
-                      {connection.accountEmail}
-                      <small>
-                        {connection.accountKind === 'workspace'
-                          ? 'Google Workspace'
-                          : 'Personal Google account'}
-                      </small>
-                    </dd>
-                    <dt>Folder</dt>
-                    <dd>{connection.folderName}</dd>
-                    {data.storage && (
-                      <>
-                        <dt>Storage</dt>
-                        <dd>
-                          <Storage storage={data.storage} />
-                        </dd>
-                      </>
-                    )}
-                    <dt>Connected</dt>
-                    <dd>
-                      {time(connection.connectedAt, view.dsp.timezone)}
-                      {connection.connectedBy ? `, by ${connection.connectedBy}` : ''}
-                    </dd>
-                  </dl>
+                  <p className="muted">
+                    {data.available
+                      ? "Connect a Google account to keep your team's Documents in its Google Drive. Use your company's Google Workspace, or a Gmail made just for the business."
+                      : "Google isn't set up for Dispatch yet. Dispatch support needs to finish setting it up."}
+                  </p>
                 </div>
-                <footer>
-                  {broken && (
+                {data.available && (
+                  <footer>
                     <button
                       className="primary documents-row"
                       disabled={signIn.busy}
                       onClick={() => void signIn.run()}
                     >
                       <GoogleLogo size={16} />
-                      Reconnect Google
+                      Connect Google
                     </button>
-                  )}
-                  <a
-                    className="documents-link-button"
-                    href={connection.folderUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <ExternalLink size={16} />
-                    Open in Drive
-                  </a>
-                  <button className="text-button" onClick={() => setDisconnecting(true)}>
-                    Disconnect
-                  </button>
-                </footer>
-                {disconnecting && (
-                  <ConfirmDialog
-                    title="Disconnect Google?"
-                    confirm="Disconnect"
-                    tone="danger"
-                    busy={disconnect.busy}
-                    onConfirm={() => void disconnect.run()}
-                    onCancel={() => setDisconnecting(false)}
-                  >
-                    Your team stops seeing Documents in Dispatch, and Dispatch's access to{' '}
-                    {connection.accountEmail} is removed. {connection.folderName} and everything in
-                    it stay in that account's Google Drive, shared as it is.
-                  </ConfirmDialog>
+                  </footer>
                 )}
               </>
             );
-          }}
-        </DataState>
-      </article>
-      {ready && (
-        <ReadyDialog
-          connection={ready}
-          close={() => setReady(undefined)}
-          made={() => setReady(undefined)}
-        />
-      )}
-    </>
+          const broken = connection.status === 'broken';
+          return (
+            <>
+              <div className="archived-connection-content">
+                <div role="status">
+                  {broken ? (
+                    <Badge value="failed">Needs Reconnecting</Badge>
+                  ) : (
+                    <Badge value="ready" />
+                  )}
+                </div>
+                <ErrorBox message={returned.notice} />
+                {broken && (
+                  <p className="muted">
+                    Google stopped accepting Dispatch's access to{' '}
+                    <strong>{connection.accountEmail}</strong>, so your team can't open Documents.
+                    Your files are safe in Google Drive. Reconnect with that same account to pick up
+                    where you left off.
+                  </p>
+                )}
+                <dl className="documents-details">
+                  <dt>Account</dt>
+                  <dd>
+                    {connection.accountEmail}
+                    <small>
+                      {connection.accountKind === 'workspace'
+                        ? 'Google Workspace'
+                        : 'Personal Google account'}
+                    </small>
+                  </dd>
+                  <dt>Folder</dt>
+                  <dd>{connection.folderName}</dd>
+                  {data.storage && (
+                    <>
+                      <dt>Storage</dt>
+                      <dd>
+                        <Storage storage={data.storage} />
+                      </dd>
+                    </>
+                  )}
+                  <dt>Connected</dt>
+                  <dd>
+                    {time(connection.connectedAt, view.dsp.timezone)}
+                    {connection.connectedBy ? `, by ${connection.connectedBy}` : ''}
+                  </dd>
+                </dl>
+              </div>
+              <footer>
+                {broken && (
+                  <button
+                    className="primary documents-row"
+                    disabled={signIn.busy}
+                    onClick={() => void signIn.run()}
+                  >
+                    <GoogleLogo size={16} />
+                    Reconnect Google
+                  </button>
+                )}
+                <a
+                  className="documents-link-button"
+                  href={connection.folderUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <ExternalLink size={16} />
+                  Open in Drive
+                </a>
+                <button className="text-button" onClick={() => setDisconnecting(true)}>
+                  Disconnect
+                </button>
+              </footer>
+              {disconnecting && (
+                <ConfirmDialog
+                  title="Disconnect Google?"
+                  confirm="Disconnect"
+                  tone="danger"
+                  busy={disconnect.busy}
+                  onConfirm={() => void disconnect.run()}
+                  onCancel={() => setDisconnecting(false)}
+                >
+                  Your team stops seeing Documents in Dispatch, and Dispatch's access to{' '}
+                  {connection.accountEmail} is removed. {connection.folderName} and everything in it
+                  stay in that account's Google Drive, shared as it is.
+                </ConfirmDialog>
+              )}
+            </>
+          );
+        }}
+      </DataState>
+    </article>
   );
 }
 

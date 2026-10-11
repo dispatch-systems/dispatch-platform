@@ -119,8 +119,8 @@ pub struct DocumentsConnection {
 #[serde(rename_all = "camelCase")]
 pub struct GoogleConnected {
     pub account: DocumentsAccount,
-    /// Whether Dispatch made the DSP's main folder just now, so Documents holds nothing yet
-    /// and offers folders to start with.
+    /// Whether Dispatch made the DSP's main folder just now, rather than keeping the one the
+    /// account already held.
     pub made_folder: bool,
 }
 
