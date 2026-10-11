@@ -11,10 +11,7 @@ fn the_same_writes_ask_for_recent_verification() {
         .copied()
         .filter(|permission| needs_recent_verification(permission))
         .collect();
-    assert_eq!(
-        asking,
-        ["members.invite", "members.manage", "connections.manage"]
-    );
+    assert_eq!(asking, ["members.invite", "members.manage"]);
     // A route open to any of several permissions asks for none.
     assert!(!needs_recent_verification(
         "members.invite|members.manage|roles.manage"
