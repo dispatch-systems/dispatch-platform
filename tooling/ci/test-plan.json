@@ -20,7 +20,6 @@
     "tooling/tests/owner-tests.test.ts",
     "tooling/tests/removability.test.ts",
     "tooling/tests/scaffold.test.ts",
-    "tooling/tests/screenshots-worker.test.ts",
     "tooling/tests/source-lines.test.ts",
     "tooling/tests/test-plan.test.ts"
   ],

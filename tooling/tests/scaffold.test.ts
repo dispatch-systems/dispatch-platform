@@ -598,6 +598,7 @@ test('a tool has a name of its own, and needs features and actions there are', a
   await refusedTool(/only reads/, 'beam', '--scope', 'connection', '--changes');
   await refusedTool(/only reads/, 'beam', '--scope', 'connection', '--features', 'dvic');
   await refusedTool(/ending with a full stop/, 'beam', '--description', 'List');
+  await refusedTool(/120 characters at most/, 'beam', '--description', 'List. '.repeat(21));
   await refusedTool(/Name the tool, and only the tool/);
   await refusedTool(/Name the tool, and only the tool/, 'dvic', 'beam');
 });

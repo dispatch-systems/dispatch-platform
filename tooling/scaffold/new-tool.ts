@@ -35,7 +35,7 @@ export const usage = `Usage: npm run new:tool -- <name> [options]
   --changes               every call changes something
   --changing <names>      with --actions, the actions that change something
   --title <title>         its name as people read it (default: from <name>)
-  --description <text>    what it does and answers, for the model choosing a tool
+  --description <text>    what it does, in one short sentence of at most 120 characters
   --dry-run               print what it would write and change nothing
   --out <dir>             with --dry-run, write the files under <dir> instead
   --root <dir>            the repository to write into (default: this one)
@@ -146,7 +146,10 @@ export function toolValues(root: string, argv: string[]) {
   const about = { dsp: 'the DSP', dsps: 'the DSPs', connection: 'this connection' }[scope];
   const description = args.options.get('description') ?? `Answer with ${about}.`;
   if (!/[.!?]$/.test(description.trim()))
-    throw new UsageError('--description is a sentence or two, ending with a full stop');
+    throw new UsageError('--description is a sentence, ending with a full stop');
+  // As long as the registry lets a description be.
+  if (description.trim().length > 120)
+    throw new UsageError('--description is one short sentence, 120 characters at most');
   const values: Values = {
     name,
     pascal: pascalOf(name),

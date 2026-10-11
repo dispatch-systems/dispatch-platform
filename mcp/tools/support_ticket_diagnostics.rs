@@ -22,9 +22,8 @@ pub struct SupportTicketDiagnostics;
 impl Tool for SupportTicketDiagnostics {
     const NAME: &'static str = "support_ticket_diagnostics";
     const TITLE: &'static str = "AI Support ticket diagnostics";
-    const DESCRIPTION: &'static str = "Read an authorized AI Support ticket's runtime and recent \
-        provider/job health at its DSP. The ticket fixes the DSP and time window; reports, \
-        conversations, employee records and credentials are excluded.";
+    const DESCRIPTION: &'static str =
+        "Read an authorized AI Support ticket's runtime and recent provider/job health at its DSP.";
     const SCOPE: Scope = Scope::Dsp;
     type Input = Input;
     type Output = Diagnostics;

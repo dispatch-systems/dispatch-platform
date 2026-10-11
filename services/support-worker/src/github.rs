@@ -111,12 +111,12 @@ pub async fn publish(
     // Reports, reporter identity, credentials and private screenshots stay in the platform.
     let body = if kind == "bug fix" {
         format!(
-            "## Summary\n\n{summary}\n\n## Symptom\n\nThe approved support proposal identified behavior requiring a fix.\n\n## Cause\n\nSee the scoped implementation and regression test in this patch.\n\n## Fix\n\nImplements the exact owner-approved proposal version {}.\n\n## Verification\n\nAn independent agent exercised every acceptance criterion in a real browser on this exact head.\n\n{verification}\n\n## Review\n\nIndependent browser review completed. CodeRabbit omitted under the owner’s support workflow policy.\n\n## Screenshots\n\nScreenshots and traces remain in the private AI Support ticket to preserve reporter and DSP privacy.\n",
+            "## Summary\n\n{summary}\n\n## Symptom\n\nThe approved support proposal identified behavior requiring a fix.\n\n## Cause\n\nSee the scoped implementation and regression test in this patch.\n\n## Fix\n\nImplements the exact owner-approved proposal version {}.\n\n## Verification\n\nAn independent agent exercised every acceptance criterion in a real browser on this exact head.\n\n{verification}\n\n## Review\n\nIndependent browser review completed. CodeRabbit omitted under the owner’s support workflow policy. Screenshots and traces remain in the private AI Support ticket to preserve reporter and DSP privacy.\n",
             job.version
         )
     } else {
         format!(
-            "## Summary\n\n{summary}\n\n## Problem\n\nThe owner approved a support proposal for this feature.\n\n## Change\n\nImplements the exact approved proposal version {}.\n\n## Rollout\n\nThe merge reaches Dev after checks; production requires a separately published release.\n\n## Verification\n\nAn independent agent exercised every acceptance criterion in a real browser on this exact head.\n\n{verification}\n\n## Review\n\nIndependent browser review completed. CodeRabbit omitted under the owner’s support workflow policy.\n\n## Screenshots\n\nScreenshots and traces remain in the private AI Support ticket to preserve reporter and DSP privacy.\n",
+            "## Summary\n\n{summary}\n\n## Problem\n\nThe owner approved a support proposal for this feature.\n\n## Change\n\nImplements the exact approved proposal version {}.\n\n## Rollout\n\nThe merge reaches Dev after checks; production requires a separately published release.\n\n## Verification\n\nAn independent agent exercised every acceptance criterion in a real browser on this exact head.\n\n{verification}\n\n## Review\n\nIndependent browser review completed. CodeRabbit omitted under the owner’s support workflow policy. Screenshots and traces remain in the private AI Support ticket to preserve reporter and DSP privacy.\n",
             job.version
         )
     };
