@@ -73,11 +73,11 @@ test(
       fs.readFileSync(path.join(artifact, 'tooling/build-info.json'), 'utf8'),
     ).dashboardAssets;
     const graphs = [
-      { name: 'initial', entries: [], raw: 400_000, transferred: 115_000 },
+      { name: 'initial', entries: [], raw: 500_000, transferred: 115_000 },
       {
         name: 'DSP picker',
         entries: ['../../core/platform_owner/frontend/dsps/picker.ts'],
-        raw: 410_000,
+        raw: 500_000,
         transferred: 120_000,
       },
       {

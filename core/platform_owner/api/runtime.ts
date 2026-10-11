@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/mini';
 import type { AuditPage, PlatformHealth } from './index.js';
 import {
   count,
@@ -20,7 +20,7 @@ export const platformHealthSchema = z.object({
     active: count,
     capacity: count,
     memory: z.object({
-      availableBytes: count.nullable(),
+      availableBytes: z.nullable(count),
       requiredBytes: count,
       canStart: z.boolean(),
     }),
@@ -31,14 +31,14 @@ export const platformHealthSchema = z.object({
     enabled: z.boolean(),
     pending: count,
     failed: count,
-    oldestPendingAgeMs: count.nullable(),
-    lastSuccessAt: text.nullable(),
-    lastAttemptAt: text.nullable(),
-    lastError: text.nullable(),
-    transport: z.object({ error: text.nullable(), checkedAt: text.nullable() }),
+    oldestPendingAgeMs: z.nullable(count),
+    lastSuccessAt: z.nullable(text),
+    lastAttemptAt: z.nullable(text),
+    lastError: z.nullable(text),
+    transport: z.object({ error: z.nullable(text), checkedAt: z.nullable(text) }),
   }),
   providerMode,
-}) satisfies z.ZodType<PlatformHealth>;
+}) satisfies z.ZodMiniType<PlatformHealth>;
 const area = z.enum([
   'team',
   'roles',
@@ -55,23 +55,23 @@ const auditPageSchema = z.object({
     z.object({
       id: count,
       at: text,
-      actorId: text.nullable(),
+      actorId: z.nullable(text),
       actorName: text,
-      dspId: text.nullable(),
-      dspName: text.nullable(),
+      dspId: z.nullable(text),
+      dspName: z.nullable(text),
       action: text,
       detail: text,
       area,
-      target: text.nullable(),
-      ref: z.object({ kind: z.enum(auditSubjects), id: text }).nullable(),
-      changes: z.array(z.object({ field: text, from: text.nullable(), to: text.nullable() })),
+      target: z.nullable(text),
+      ref: z.nullable(z.object({ kind: z.enum(auditSubjects), id: text })),
+      changes: z.array(z.object({ field: text, from: z.nullable(text), to: z.nullable(text) })),
     }),
   ),
   total: count,
   counts: z.partialRecord(z.union([area, z.literal('failures')]), count),
   actors: z.array(named),
   dsps: z.array(named),
-}) satisfies z.ZodType<AuditPage>;
+}) satisfies z.ZodMiniType<AuditPage>;
 
 /** The replies of the platform's health and the audit log. */
 export const replies: Replies = (route, method) => {

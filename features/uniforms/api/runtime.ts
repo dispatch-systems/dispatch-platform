@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/mini';
 import type {
   UniformInventory,
   UniformAdjustment,
@@ -26,33 +26,33 @@ export const uniformInventorySchema = z.object({
       variants: z.array(variant),
     }),
   ),
-}) satisfies z.ZodType<UniformInventory>;
+}) satisfies z.ZodMiniType<UniformInventory>;
 export const uniformAdjustmentSchema = z.object({
   revision: count,
   variantId: z.string(),
   quantity: count,
-}) satisfies z.ZodType<UniformAdjustment>;
+}) satisfies z.ZodMiniType<UniformAdjustment>;
 export const uniformUpdatesSchema = z.object({
   revision: count,
-  inventory: uniformInventorySchema.nullable(),
+  inventory: z.nullable(uniformInventorySchema),
   adjustments: z.array(uniformAdjustmentSchema),
-}) satisfies z.ZodType<UniformUpdates>;
+}) satisfies z.ZodMiniType<UniformUpdates>;
 export const uniformHistorySchema = z.object({
   events: z.array(
     z.object({
       revision: count,
       kind: z.enum(['initialized', 'created', 'updated', 'archived', 'adjusted']),
       uniformName: z.string(),
-      fit: fit.nullable(),
-      size: z.string().nullable(),
-      delta: z.number().int().nullable(),
-      quantity: count.nullable(),
+      fit: z.nullable(fit),
+      size: z.nullable(z.string()),
+      delta: z.nullable(z.number().check(z.int())),
+      quantity: z.nullable(count),
       actorName: z.string(),
       at: z.string(),
     }),
   ),
-  nextBefore: count.nullable(),
-}) satisfies z.ZodType<UniformHistory>;
+  nextBefore: z.nullable(count),
+}) satisfies z.ZodMiniType<UniformHistory>;
 
 /** The replies of the inventory, its live updates and history, and its edits. */
 export const replies: Replies = (route, method) => {
