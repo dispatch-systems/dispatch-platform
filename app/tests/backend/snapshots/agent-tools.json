@@ -192,7 +192,7 @@
   {
     "name": "support_ticket_diagnostics",
     "title": "AI Support ticket diagnostics",
-    "description": "Read an authorized AI Support ticket's runtime and recent provider/job health at its DSP.",
+    "description": "Read an AI Support ticket's runtime and recent provider/job health at its DSP.",
     "features": [],
     "changes": false,
     "scope": "dsp",
@@ -219,7 +219,7 @@
       "properties": {
         "ticket_id": {"type": "string"},
         "diagnostics": {
-          "description": "Ticket-derived runtime and bounded provider/job health; excludes reports and employee records."
+          "description": "Ticket-derived runtime and bounded provider/job health; no reports, names or employee records."
         }
       }
     }

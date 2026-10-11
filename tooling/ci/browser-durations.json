@@ -1,7 +1,7 @@
 {
   "app/tests/browser/account-security.spec.ts › DSP settings keep recovery codes up until they are saved": 5.9,
   "app/tests/browser/agents-page.spec.ts › the Activity tab lists each call a key makes, and what Dispatch answered": 4.5,
-  "app/tests/browser/agents-page.spec.ts › the owner changes where a connected app reaches, without being asked to sign in again": 5.0,
+  "app/tests/browser/agents-page.spec.ts › the owner changes where a connected app reaches once they confirm it’s them": 10.0,
   "app/tests/browser/agents-page.spec.ts › the platform owner makes a key, sees it once, tests it, changes and revokes it": 4.5,
   "app/tests/browser/audit-access.spec.ts › DSP members cannot open the platform audit page": 2.0,
   "app/tests/browser/audit-access.spec.ts › audit access is only in the Platform Owner Dashboard, including old DSP links": 4.5,

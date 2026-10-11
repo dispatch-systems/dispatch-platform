@@ -715,9 +715,14 @@ pub struct Agents {
     pub state: fn(&Store) -> Result<Box<dyn Any + Send + Sync>>,
     /// Runs every second, and once more as the server stops (`true`).
     pub tick: fn(Arc<State>, bool) -> Upkeep,
+    /// Refuses a request to the agent API before any database turn, from what the request
+    /// alone says, as each of its routes does.
+    pub gate: fn(&State, &Input) -> Result<()>,
     /// Signs in a request to the agent API that no route serves, so it is refused as any of
     /// its routes would refuse it before it is told there is nothing there.
     pub authorize: fn(&Store, &Input) -> Result<()>,
+    /// Told that `authorize` refused a request with this error.
+    pub refused: fn(&State, &Input, &crate::Error),
     /// The `WWW-Authenticate` challenge an answer of the agent API refused for its
     /// credentials carries, given the code it was refused with.
     pub challenge: fn(&Config, Option<&str>) -> String,

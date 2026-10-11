@@ -11,6 +11,7 @@ export function Modal({
   dismissible = true,
   initialFocus = 'input,button,select',
   onBack,
+  above = false,
 }: {
   title: ReactNode;
   description?: string;
@@ -21,6 +22,8 @@ export function Modal({
   variant?: 'dialog' | 'sheet' | 'browser';
   /** A dialog in steps: goes back a step, from an arrow before the title. */
   onBack?: () => void;
+  /** Shown over any other dialog or sheet open, as a prompt the page itself raised is. */
+  above?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const headingId = useId();
@@ -30,7 +33,7 @@ export function Modal({
   useFocusTrap(ref, { initialFocus, onEscape: dismiss });
   return (
     <div
-      className={`modal-backdrop ${variant === 'sheet' ? 'sheet-backdrop' : ''}`}
+      className={`modal-backdrop ${variant === 'sheet' ? 'sheet-backdrop' : ''} ${above ? 'modal-above' : ''}`}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) dismiss();
       }}

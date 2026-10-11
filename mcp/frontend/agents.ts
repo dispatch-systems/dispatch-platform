@@ -184,7 +184,8 @@ export const requestOf = (key: AgentKey): AgentKeyRequest => ({
   name: key.name,
   allDsps: key.allDsps,
   dsps: [...key.dsps].sort(),
-  access: key.access,
+  // Every key reads: the operator level is nothing a key may be given.
+  access: 'read',
   allTools: key.allTools,
   tools: withLevel(key.tools, '', 'off'),
   expiresAt: key.expiresAt,

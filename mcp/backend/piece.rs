@@ -8,13 +8,13 @@ use super::{
         routes::{agent_api, oauth as oauth_routes},
         types::{AgentAccess, AgentActivityKey, AgentKeyKind},
     },
-    client_label, keys, migrations, oauth,
+    client_label, gate, keys, migrations, oauth, token,
     toolbox::{self, AnyTool, Toolbox},
     usage::Usage,
 };
 use crate::{ActivityStore, KeyStore, OAuthStore};
 use dispatch_core::{
-    Result, State,
+    Error, Result, State,
     db::{Store, iso, now},
     ensure,
     foundation::{
@@ -52,7 +52,9 @@ pub const fn piece(own: &'static Own) -> Agents {
         maintenance: MAINTENANCE,
         state,
         tick,
+        gate: gate_before,
         authorize,
+        refused,
         challenge,
         called,
         answered,
@@ -92,6 +94,8 @@ pub struct Kept {
     pub documents: oauth::Documents,
     /// Public OAuth requests admitted before they can consume database capacity.
     pub limits: oauth::limits::Limits,
+    /// Agents' requests admitted before they can, by their address and credential.
+    pub gate: gate::Gate,
     /// When calls were last written down for the Activity log.
     written: AtomicI64,
 }
@@ -118,6 +122,7 @@ fn state(store: &Store) -> Result<Box<dyn Any + Send + Sync>> {
         activity: activity::Activity::seeded(store)?,
         documents: oauth::Documents::default(),
         limits: oauth::limits::Limits::default(),
+        gate: gate::Gate::default(),
         written: AtomicI64::new(0),
     }))
 }
@@ -181,26 +186,27 @@ impl Grant for Agent {
     fn access(self) -> dispatch_core::server::http::Access {
         dispatch_core::server::http::Access::Agent(self.0.as_str())
     }
-    fn authorize(self, db: &Store, input: &Input) -> Result<Caller> {
-        // Agents are the platform owner's, and reach Dispatch only at the admin's address.
-        ensure(input.site == Site::Admin, "not_found", 404)?;
-        let header = input.header("authorization");
-        let (token, bearer) = match header.split_once(' ') {
-            Some((scheme, token)) if scheme.eq_ignore_ascii_case("bearer") => (token.trim(), true),
-            _ if header.is_empty() => (input.header("x-api-key").trim(), false),
-            _ => ("", false),
+    /// Before the database is asked for: the address is not waiting out a minute of refused
+    /// credentials, and the credential is shaped like one Dispatch issued. One that isn't is
+    /// refused as the database would refuse it, and counted against the address.
+    fn gate(self, state: &State, input: &Input) -> Result<()> {
+        let gate = &Kept::of(state).gate;
+        gate.admit(&input.ip)?;
+        let (token, app) = credential(&state.config, input)?;
+        let (kind, code) = if app {
+            (token::Kind::Access, "access_token_invalid")
+        } else {
+            (token::Kind::Key, "agent_key_invalid")
         };
-        ensure(!token.is_empty(), "agent_key_required", 401)?;
-        // A key and a session never travel together, so a browser can never lend its
-        // session to a request an agent sends, or the other way round.
-        ensure(
-            input.session_token(db.config.development).is_empty(),
-            "session_and_key",
-            400,
-        )?;
+        if !token::well_formed(token, kind, state.config.env()) {
+            gate.refused(&input.ip);
+            return Err(Error::new(code, 401));
+        }
+        Ok(())
+    }
+    fn authorize(self, db: &Store, input: &Input) -> Result<Caller> {
+        let (token, app) = credential(&db.config, input)?;
         let client = client_label(input.header("user-agent"));
-        // A connected app signs in with its OAuth access token, and only ever as a bearer.
-        let app = bearer && token.starts_with("dsa_");
         let caller = if app {
             db.authenticate_app(token, &client)?
         } else {
@@ -232,10 +238,45 @@ impl Grant for Agent {
     fn admit(self, state: &State, who: &Caller) -> Result<()> {
         Kept::of(state).usage.admit(&who.key, &who.client)
     }
+    /// A credential the database refused counts against its address; a key that may not do
+    /// what it asked, or made too many calls, is no such refusal.
+    fn refused(self, state: &State, input: &Input, error: &Error) {
+        if error.status == 401 {
+            Kept::of(state).gate.refused(&input.ip);
+        }
+    }
 }
 
+/// The credential a request to the agent API carries, and whether it is a connected app's
+/// access token, which only ever comes as a bearer. Agents are the platform owner's, and
+/// reach Dispatch only at the admin's address. A key and a session never travel together,
+/// so a browser can never lend its session to a request an agent sends, or the other way
+/// round.
+fn credential<'a>(config: &Config, input: &'a Input) -> Result<(&'a str, bool)> {
+    ensure(input.site == Site::Admin, "not_found", 404)?;
+    let header = input.header("authorization");
+    let (token, bearer) = match header.split_once(' ') {
+        Some((scheme, token)) if scheme.eq_ignore_ascii_case("bearer") => (token.trim(), true),
+        _ if header.is_empty() => (input.header("x-api-key").trim(), false),
+        _ => ("", false),
+    };
+    ensure(!token.is_empty(), "agent_key_required", 401)?;
+    ensure(
+        input.session_token(config.development).is_empty(),
+        "session_and_key",
+        400,
+    )?;
+    Ok((token, bearer && token.starts_with("dsa_")))
+}
+
+fn gate_before(state: &State, input: &Input) -> Result<()> {
+    Agent::READ.gate(state, input)
+}
 fn authorize(db: &Store, input: &Input) -> Result<()> {
     Agent::READ.authorize(db, input).map(|_| ())
+}
+fn refused(state: &State, input: &Input, error: &Error) {
+    Agent::READ.refused(state, input, error);
 }
 
 /// Where and how to sign in. An MCP client finds Dispatch's authorization server from the

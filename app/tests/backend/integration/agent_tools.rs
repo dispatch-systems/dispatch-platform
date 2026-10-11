@@ -474,9 +474,7 @@ fn keys_are_recorded_on_the_platform_and_never_in_a_dsp() {
     let made = db
         .create_agent_key(&user, &request(reach(&[&dsp])))
         .unwrap();
-    let mut wider = reach(&[]);
-    wider["access"] = json!("operator");
-    db.update_agent_key(&user, &made.key.id, &request(wider))
+    db.update_agent_key(&user, &made.key.id, &request(reach(&[])))
         .unwrap();
     db.revoke_agent_key(&user, &made.key.id).unwrap();
     let platform = audits(&db, None).unwrap();

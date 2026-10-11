@@ -16,6 +16,10 @@
   justify-content: center;
   padding: 24px;
 }
+/* A prompt raised over whatever dialog or sheet asked for it. */
+.modal-backdrop.modal-above {
+  z-index: 120;
+}
 .modal {
   width: 560px;
   max-width: 100%;

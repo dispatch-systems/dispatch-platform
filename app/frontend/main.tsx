@@ -409,7 +409,7 @@ function App() {
         </p>
       )}
       {reauthenticate && session && (
-        <Modal title="Confirm it’s you" onClose={() => setReauthenticate(false)}>
+        <Modal title="Confirm it’s you" onClose={() => setReauthenticate(false)} above>
           <Suspense fallback={<Loading />}>
             <SecurityPrompt
               security={session.security}

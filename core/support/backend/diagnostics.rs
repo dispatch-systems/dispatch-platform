@@ -7,6 +7,8 @@ use crate::{
 };
 use serde_json::{Value, json};
 
+/// A ticket's diagnostics for its reporter or a platform owner, at the ticket's DSP and no
+/// other, without the reporter's name: what an agent is answered.
 pub fn diagnostic_dsp(db: &Store, ticket: &str, dsp: &str, actor: &str) -> Result<Value> {
     let row = tickets::record(db, ticket)?;
     ensure(
@@ -15,7 +17,11 @@ pub fn diagnostic_dsp(db: &Store, ticket: &str, dsp: &str, actor: &str) -> Resul
         "support_ticket_not_found",
         404,
     )?;
-    worker(db, ticket)
+    let mut diagnostics = worker(db, ticket)?;
+    if let Some(fields) = diagnostics.as_object_mut() {
+        fields.remove("reporterName");
+    }
+    Ok(diagnostics)
 }
 pub(crate) fn worker(db: &Store, ticket: &str) -> Result<Value> {
     let row = tickets::record(db, ticket)?;

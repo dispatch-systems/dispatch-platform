@@ -7,7 +7,7 @@ use super::{
     upload::{UPLOAD_LIMIT, Upload},
 };
 use crate::{
-    Result, State,
+    Error, Result, State,
     accounts::{Auth, Context},
     db::Store,
     ensure,
@@ -51,6 +51,15 @@ pub trait Grant: Copy + Send + Sync + 'static {
     fn admit(self, _state: &State, _who: &Self::Who) -> Result<()> {
         Ok(())
     }
+    /// Refuses a request from what it alone says, before any database turn: a credential not
+    /// shaped like one, or an address whose credentials keep being refused. Most callers
+    /// refuse nothing here.
+    fn gate(self, _state: &State, _input: &Input) -> Result<()> {
+        Ok(())
+    }
+    /// Told that `authorize` refused the request with `error`, for a caller that counts such
+    /// refusals.
+    fn refused(self, _state: &State, _input: &Input, _error: &Error) {}
 }
 #[derive(Clone, Copy)]
 pub struct Public;
@@ -225,6 +234,14 @@ pub enum Work {
 }
 
 type Blocking = Arc<dyn Fn(&Store, &State, &Input) -> Result<Reply> + Send + Sync>;
+/// A route's gate: its access's `Grant::gate`, run before the database is asked for.
+type Gate = Arc<dyn Fn(&State, &Input) -> Result<()> + Send + Sync>;
+fn gate_of<A: Grant>(access: A) -> Gate {
+    Arc::new(move |state, input| access.gate(state, input))
+}
+fn open() -> Gate {
+    Arc::new(|_, _| Ok(()))
+}
 type Pending = Pin<Box<dyn Future<Output = Result<Reply>> + Send>>;
 pub type Served = Pin<Box<dyn Future<Output = Response> + Send>>;
 type Uploaded = Box<dyn Fn(Arc<State>, Input, Upload) -> Pending + Send + Sync>;
@@ -267,6 +284,7 @@ pub struct Route {
     pub work: Work,
     pub invalidates_schedules: bool,
     logged: bool,
+    gate: Gate,
     handler: Handler,
 }
 
@@ -278,7 +296,9 @@ fn blocking<A: Grant>(
     handler: impl Fn(&Store, &Ctx<'_, A::Who>, &Input) -> Result<Reply> + Send + Sync + 'static,
 ) -> Route {
     let handler = move |db: &Store, state: &State, input: &Input| {
-        let who = access.authorize(db, input)?;
+        let who = access
+            .authorize(db, input)
+            .inspect_err(|error| access.refused(state, input, error))?;
         access.admit(state, &who)?;
         handler(db, &Ctx { state, who }, input)
     };
@@ -289,6 +309,7 @@ fn blocking<A: Grant>(
         work,
         invalidates_schedules: false,
         logged: false,
+        gate: gate_of(access),
         handler: Handler::Blocking(Arc::new(handler)),
     }
 }
@@ -325,6 +346,7 @@ where
         work: Work::Async,
         invalidates_schedules: false,
         logged: false,
+        gate: gate_of(access),
         handler: Handler::Async(Box::new(handler)),
     }
 }
@@ -375,6 +397,7 @@ where
         work: Work::Upload,
         invalidates_schedules: false,
         logged: false,
+        gate: gate_of(access),
         handler: Handler::Upload(limit, Box::new(handler)),
     }
 }
@@ -392,7 +415,9 @@ where
     A::Who: Clone + Sync,
 {
     let signer: Signer = Arc::new(move |db: &Store, state: &State, input: &Input| {
-        let who = access.authorize(db, input)?;
+        let who = access
+            .authorize(db, input)
+            .inspect_err(|error| access.refused(state, input, error))?;
         access.admit(state, &who)?;
         Ok(Box::new(move |extensions: &mut Extensions| {
             extensions.insert(who);
@@ -405,6 +430,7 @@ where
         work: Work::Async,
         invalidates_schedules: false,
         logged: false,
+        gate: gate_of(access),
         handler: Handler::Protocol(signer, handler),
     }
 }
@@ -434,6 +460,7 @@ pub fn protocol(
         work: Work::Async,
         invalidates_schedules: false,
         logged: false,
+        gate: open(),
         handler: Handler::Open(handler),
     }
 }
@@ -446,6 +473,7 @@ pub fn probe(path: &'static str, handler: fn(&State) -> Reply) -> Route {
         work: Work::Memory,
         invalidates_schedules: false,
         logged: false,
+        gate: open(),
         handler: Handler::Memory(handler),
     }
 }
@@ -558,6 +586,7 @@ impl Route {
             Handler::Memory(handler) => return Ok(handler(&state).into_response()),
             Handler::Async(handler) => {
                 let input = middleware::input(&state, request, self.path).await?;
+                (self.gate)(&state, &input)?;
                 return Ok(handler(state, input).await?.into_response());
             }
             Handler::Protocol(signer, handler) => {
@@ -574,12 +603,14 @@ impl Route {
             Handler::Upload(limit, handler) => {
                 let (parts, body) = request.into_parts();
                 let input = middleware::head(&state, &parts, self.path)?;
+                (self.gate)(&state, &input)?;
                 let upload = Upload::begin(&parts, body, *limit)?;
                 return Ok(handler(state, input, upload).await?.into_response());
             }
             Handler::Blocking(handler) => handler.clone(),
         };
         let input = middleware::input(&state, request, self.path).await?;
+        (self.gate)(&state, &input)?;
         let shared = state.clone();
         let work = move |db: &Store| handler(db, &shared, &input);
         let reply = if self.work == Work::Read {
@@ -599,6 +630,7 @@ impl Route {
     async fn signed(&self, signer: Signer, state: Arc<State>, request: Request) -> Result<Request> {
         let (mut parts, body) = request.into_parts();
         let input = middleware::head(&state, &parts, self.path)?;
+        (self.gate)(&state, &input)?;
         middleware::json_only(&parts)?;
         let body = middleware::bytes(body).await?;
         // What the message calls, if anything, before the caller is even counted: a call

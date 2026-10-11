@@ -796,6 +796,20 @@ test('a request opens only in the browser the app sent to Dispatch', async (t) =
     assert.deepEqual([answered.status, answered.value.error], [403, 'wrong_browser']);
   }
   assert.equal((await c.owner.get(path)).status, 200);
+  // Approving hands out a credential that outlives the session, so it asks the owner to have
+  // verified who they are recently; the request waits meanwhile.
+  const accounts = 'data/platform/accounts.sqlite';
+  const session = c.owner.session.user.id;
+  f.database(accounts, (db) =>
+    db.prepare('UPDATE sessions SET created_at=0 WHERE user_id=?').run(session),
+  );
+  const aged = await c.owner.post(`${path}/approve`, everything('Claude Code'));
+  assert.equal(aged.status, 403, aged.body);
+  assert.ok(['sign_in_again', 'reauthentication_required'].includes(aged.value.error), aged.body);
+  f.database(accounts, (db) =>
+    db.prepare('UPDATE sessions SET created_at=? WHERE user_id=?').run(Date.now(), session),
+  );
+  assert.equal((await c.owner.get(path)).status, 200);
   // A second app started in the same browser before the first is approved: both open, and
   // each approval clears only its own cookie.
   const second = await c.begin(chatgpt, chatgptRedirect);

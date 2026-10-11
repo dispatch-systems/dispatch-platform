@@ -1,5 +1,6 @@
+use crate::names;
 use dispatch_core::{
-    Result,
+    Error, Result,
     db::{FromRow, Row},
     ensure,
     foundation::{config::Environment, validate as v, wire::request},
@@ -190,7 +191,9 @@ pub struct AgentKeyRequest {
 impl AgentKeyRequest {
     pub fn parse(value: &Value) -> Result<Self> {
         let mut input: Self = request(value)?;
-        input.name = v::name(value, "name", 80)?;
+        input.name = shown_name(value)?;
+        // A key only ever reads: the operator level is nothing a key may be given.
+        ensure(input.access == AgentAccess::Read, "invalid_input", 400)?;
         ensure(input.dsps.len() <= 500, "invalid_input", 400)?;
         input.dsps.sort();
         input.dsps.dedup();
@@ -203,6 +206,11 @@ impl AgentKeyRequest {
         input.tools.retain(|_, level| *level != ToolLevel::Off);
         Ok(input)
     }
+}
+/// A key's or connection's `name` as the owner reads it (`names::shown`), refused when
+/// nothing shows.
+fn shown_name(value: &Value) -> Result<String> {
+    names::shown(&v::name(value, "name", 80)?).ok_or_else(|| Error::new("invalid_input", 400))
 }
 /// What the platform owner grants an app they approve: the choices a key is made with, the
 /// tools it may use among them, never expiring.
@@ -220,7 +228,7 @@ pub struct OAuthApproval {
 impl OAuthApproval {
     pub fn parse(value: &Value) -> Result<Self> {
         let mut input: Self = request(value)?;
-        input.name = v::name(value, "name", 80)?;
+        input.name = shown_name(value)?;
         ensure(
             input.all_dsps == input.dsps.is_empty() && input.dsps.len() <= 500,
             "invalid_input",

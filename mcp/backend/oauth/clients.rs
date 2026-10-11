@@ -408,7 +408,7 @@ fn document(url: &str, fallback: &str, body: &[u8]) -> Option<Client> {
         id: url.to_owned(),
         name: value["client_name"]
             .as_str()
-            .and_then(display_name)
+            .and_then(crate::names::shown)
             .unwrap_or_else(|| fallback.to_owned()),
         known: true,
         redirect_uris,
@@ -432,46 +432,6 @@ fn website_document(url: &str, body: &[u8]) -> Option<Client> {
         known: false,
         ..document(url, &host, body)?
     })
-}
-
-/// A name an app gave itself, made fit to show: trimmed, without control or format
-/// characters (which could hide or reorder what the owner reads), at most 80 characters.
-/// None when nothing is left.
-fn display_name(name: &str) -> Option<String> {
-    let clean: String = name
-        .chars()
-        .filter(|c| !c.is_control() && !format_character(*c))
-        .collect();
-    let name: String = clean.trim().chars().take(80).collect();
-    let name = name.trim_end();
-    (!name.is_empty()).then(|| name.to_owned())
-}
-
-/// Unicode's format characters (general category Cf): invisible, and some reorder text.
-fn format_character(c: char) -> bool {
-    matches!(
-        u32::from(c),
-        0xAD | 0x600..=0x605
-            | 0x61C
-            | 0x6DD
-            | 0x70F
-            | 0x890..=0x891
-            | 0x8E2
-            | 0x180E
-            | 0x200B..=0x200F
-            | 0x202A..=0x202E
-            | 0x2060..=0x2064
-            | 0x2066..=0x206F
-            | 0xFEFF
-            | 0xFFF9..=0xFFFB
-            | 0x110BD
-            | 0x110CD
-            | 0x13430..=0x1343F
-            | 0x1BCA0..=0x1BCA3
-            | 0x1D173..=0x1D17A
-            | 0xE0001
-            | 0xE0020..=0xE007F
-    )
 }
 
 /// Whether `requested` is one of the app's redirects: the same text, or for a loopback `http`
@@ -675,7 +635,7 @@ impl ClientStore for Store {
         }
         let name = metadata["client_name"]
             .as_str()
-            .and_then(display_name)
+            .and_then(crate::names::shown)
             .unwrap_or_else(|| "Unnamed app".into());
         let id = crypto::id("dcr")?;
         let created = now();
