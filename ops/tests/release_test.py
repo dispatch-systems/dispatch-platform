@@ -12,7 +12,7 @@ spec.loader.exec_module(release)
 
 class ReleaseLauncherTests(unittest.TestCase):
     def test_legacy_arguments_and_explicit_stages_exec_the_checkout_host(self):
-        for args in ([], ["1.2.3", "--bump", "minor"], ["prepare", "--notes", "/tmp/notes with spaces.md"],
+        for args in ([], ["1.2.3", "--bump", "minor"], ["publish", "--notes", "/tmp/notes with spaces.md"],
                      ["status"], ["publish", "1.2.3"], ["--help"]):
             with self.subTest(args=args), patch.object(release, "host_binary", return_value=Path("/tmp/host")), \
                     patch.object(release.os, "execv") as execute:

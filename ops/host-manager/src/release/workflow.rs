@@ -91,6 +91,18 @@ impl Release<'_> {
         let latest = latest_version(&listed);
         Ok((latest != "0.0.0").then(|| format!("v{latest}")))
     }
+    /// The commit `--commit` names, or main's head.
+    pub(super) fn resolve(&self, requested: Option<&str>) -> Result<String> {
+        self.git(
+            &[
+                "rev-parse",
+                "--verify",
+                &format!("{}^{{commit}}", requested.unwrap_or("origin/main")),
+            ],
+            None,
+            120,
+        )
+    }
     /// The commit this release publishes: main's head, or the commit on main `--commit`
     /// names. A resumed release keeps its pin; `--commit` replaces it only while nothing
     /// has been prepared from it, such as after its full checks failed.
@@ -99,15 +111,7 @@ impl Release<'_> {
         let commit = match (&journal.commit, requested) {
             (Some(pinned), None) => pinned.clone(),
             (pinned, requested) => {
-                let commit = self.git(
-                    &[
-                        "rev-parse",
-                        "--verify",
-                        &format!("{}^{{commit}}", requested.unwrap_or("origin/main")),
-                    ],
-                    None,
-                    120,
-                )?;
+                let commit = self.resolve(requested)?;
                 if let Some(pinned) = pinned
                     && *pinned != commit
                 {
@@ -380,6 +384,54 @@ impl Release<'_> {
         {
             fs::remove_file(&self.notes)?;
         }
+        Ok(())
+    }
+    /// Sets aside a release that was never published, so another can take its place. Its
+    /// GitHub draft is deleted: a draft has no tag, and Production never sees one. Its notes,
+    /// prepared directory and journal move to `superseded/` rather than being deleted.
+    pub(super) fn supersede(&self) -> Result<()> {
+        if let Some(release) = self.listed_release()? {
+            require(
+                release["draft"] == true,
+                "A published release is never superseded",
+            )?;
+            self.command(
+                &[
+                    "gh",
+                    "api",
+                    &format!("repos/{REPOSITORY}/releases/{}", release["id"]),
+                    "--method",
+                    "DELETE",
+                ],
+                None,
+                120,
+            )?;
+        }
+        self.remove_checks_branch()?;
+        let pinned = self
+            .journal()?
+            .commit
+            .map_or("unpinned".into(), |c| c[..8].to_owned());
+        let superseded = self.directory.join("superseded");
+        let mut target = superseded.join(format!("{}-{pinned}", self.tag));
+        for n in 2.. {
+            if !target.try_exists()? {
+                break;
+            }
+            target = superseded.join(format!("{}-{pinned}-{n}", self.tag));
+        }
+        io::private_directory(&target)?;
+        // The journal moves last: until it does, a rerun finds this release and continues.
+        for path in [self.notes.clone(), self.output.clone(), self.journal_path()] {
+            if path.try_exists()? {
+                fs::rename(&path, target.join(path.file_name().ok_or("Invalid path")?))?;
+            }
+        }
+        say(format!(
+            "Set aside the unpublished {} in {}",
+            self.tag,
+            target.display()
+        ));
         Ok(())
     }
 }
