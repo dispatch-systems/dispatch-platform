@@ -97,6 +97,12 @@ A network-isolated process sandbox mounts that projection, the branch artifact a
 state; it cannot read host home directories, live DSP roots or worker authentication. Vault
 material resides on RAM-backed broker storage and an isolated tmpfs target vault. The
 installed collector registry brokers only that provider's permitted public HTTPS hosts.
+Both trusted supervisors use the existing root-owned
+`/usr/local/libexec/dispatch-dev/bwrap` when installed, otherwise `/usr/bin/bwrap`.
+The dedicated Dev installation permits nested sandboxes under its existing AppArmor profile.
+Host validation checks the selected executable and its parents; native verification carries
+that exact executable into its sealed receipt and isolated configuration. The wrapper and
+canonical BrowserOS release metadata are mounted together read-only for the inner process.
 Only the isolated collector decrypts credentials. A shared
 OS account lease excludes normal verification-account provider browsers while verification
 runs; source credential rotation or disablement cancels the run. Temporary encrypted credentials are

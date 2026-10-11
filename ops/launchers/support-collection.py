@@ -22,6 +22,7 @@ import time
 PINNED_BROWSER = json.loads(Path(__file__).with_name("browseros-release.json").read_text())
 BROWSER = Path("/opt/dispatch-browseros") / PINNED_BROWSER["version"] / "browseros"
 HOST_NAMESPACES = ("pid", "net", "mnt", "ipc", "uts", "user")
+SANDBOXES = (Path("/usr/local/libexec/dispatch-dev/bwrap"), Path("/usr/bin/bwrap"))
 
 
 def file_digest(path):
@@ -39,7 +40,17 @@ def root_owned(path, executable=False):
             raise ValueError("Trusted installed browser runtime required")
 
 
-def browser_authority(binary, source_sha):
+def trusted_sandbox():
+    # The dedicated Dev binary has the host's nested-userns policy. Never accept
+    # an agent-selected executable or validate host ownership after UID remapping.
+    path = SANDBOXES[0]
+    if not path.exists() and not path.is_symlink():
+        path = SANDBOXES[1]
+    root_owned(path, executable=True)
+    return path
+
+
+def browser_authority(binary, source_sha, sandbox_executable):
     root_owned(BROWSER, executable=True)
     directory = BROWSER.parent
     manifest_path = directory / "dispatch-install.json"
@@ -72,7 +83,7 @@ def browser_authority(binary, source_sha):
                 raise ValueError("Installed browser file changed")
     if actual != set(inventory) | {"dispatch-install.json"} or "browseros" not in inventory:
         raise ValueError("Installed browser inventory differs")
-    tools = {"browser": BROWSER, "sandbox": Path("/usr/bin/bwrap"), "display": Path("/usr/bin/Xvfb")}
+    tools = {"browser": BROWSER, "sandbox": sandbox_executable, "display": Path("/usr/bin/Xvfb")}
     for path in tools.values():
         root_owned(path, executable=True)
     return {"schemaVersion": 1, "sourceSha": source_sha, "backendSha256": file_digest(binary),
@@ -166,7 +177,10 @@ def project_account(source, dsp, provider, broker):
 
 def sandbox(artifact, state, env, broker=None, egress=None, target_dsp=None):
     """No host account homes, live DSP roots, keys or network namespace are mounted."""
-    command = ["/usr/bin/bwrap", "--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL",
+    executable = Path(env["DISPATCH_BWRAP_EXECUTABLE"])
+    if executable not in SANDBOXES:
+        raise ValueError("Trusted installed sandbox required")
+    command = [str(executable), "--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL",
                "--clearenv", "--ro-bind", "/usr", "/usr", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
                "--dir", "/sandbox", "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib"]
     if Path("/usr/lib64").exists():
@@ -181,7 +195,9 @@ def sandbox(artifact, state, env, broker=None, egress=None, target_dsp=None):
             raise ValueError("Installed provider browser required")
         command.extend(["--ro-bind", str(browser.parent), str(browser.parent)])
         command.extend(["--bind", str(broker), "/broker/dev", "--ro-bind", str(egress), "/run/support-provider",
-                        "--ro-bind", str(Path(__file__).resolve()), "/runtime/support-collection.py"])
+                        "--ro-bind", str(Path(__file__).resolve()), "/runtime/support-collection.py",
+                        "--ro-bind", str(Path(__file__).with_name("browseros-release.json").resolve()),
+                        "/runtime/browseros-release.json"])
         # Credentials created by the changed collector vanish even after SIGKILL.
         command.extend(["--perms", "0700", "--tmpfs", str(state / "dsps" / target_dsp / "secrets")])
     env.update({"HOME":"/sandbox", "PATH":"/usr/bin:/bin", "TMPDIR":"/tmp"})
@@ -278,10 +294,11 @@ def main():
     else:
         state = Path(tempfile.mkdtemp(prefix=f"support-native-{args.provider}-", dir=scratch))
         (state / ".support-verification.json").write_text(json.dumps({"ticketId":args.ticket,"sourceSha":head}))
+    sandbox_executable = trusted_sandbox()
     env = {"NODE_ENV":"development", "DISPATCH_ENVIRONMENT":"preview", "DISPATCH_STATE_ROOT":str(state),
            "DISPATCH_ARTIFACT_ROOT":str(artifact), "DISPATCH_ORIGIN":"http://localhost:5173",
            "DISPATCH_PROVIDER_MODE":"fixture", "DISPATCH_DEV_MAIL_MODE":"capture",
-           "DISPATCH_BROWSEROS_EXECUTABLE":str(BROWSER)}
+           "DISPATCH_BROWSEROS_EXECUTABLE":str(BROWSER), "DISPATCH_BWRAP_EXECUTABLE":str(sandbox_executable)}
     if not args.state_root:
         subprocess.run(sandbox(artifact, state, dict(env)) + [str(binary), "seed"], check=True,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -290,7 +307,7 @@ def main():
         row = connection.execute("SELECT id FROM dsps WHERE code='nll' AND status='active'").fetchone()
     if row is None or not isinstance(row[0], str) or not re.fullmatch(r"dsp_[0-9a-f]{32}", row[0]):
         raise ValueError("Isolated verification DSP unavailable")
-    authority = browser_authority(binary, head)
+    authority = browser_authority(binary, head, sandbox_executable)
     lock_root = source / "dsps" / dsp / "state/credential-leases"
     lock_root.mkdir(mode=0o700, parents=True, exist_ok=True)
     lock_path = lock_root / f"{args.provider}.lock"

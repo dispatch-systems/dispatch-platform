@@ -1,5 +1,6 @@
 """Verify changed commands cannot inherit host credentials or networking."""
 import importlib.util
+import json
 import os
 from pathlib import Path
 import shutil
@@ -14,6 +15,76 @@ spec.loader.exec_module(module)
 
 
 class SandboxTests(unittest.TestCase):
+    def test_collection_child_starts_with_its_canonical_pin_mounted_read_only(self):
+        launchers = Path(__file__).resolve().parents[2] / "ops/launchers"
+        pin = json.loads((launchers / "browseros-release.json").read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            artifact = base / "artifact"
+            binary = artifact / "services/rust/dispatch-backend"
+            binary.parent.mkdir(parents=True)
+            binary.write_text("""#!/usr/bin/python3
+import errno, json, os, pathlib, sys
+assert sys.argv[1:] == ['support-verify-collection']
+assert json.load(sys.stdin) == {'request': 'synthetic'}
+pin = pathlib.Path('/runtime/browseros-release.json')
+release = json.loads(pin.read_text())
+assert os.statvfs(pin).f_flag & os.ST_RDONLY
+try:
+    descriptor = os.open(pin, os.O_WRONLY)
+except OSError as error:
+    assert error.errno == errno.EROFS
+else:
+    os.close(descriptor)
+    raise AssertionError('canonical pin is writable')
+print(json.dumps({'argv': sys.argv[1:], 'pin': release, 'readOnly': True}))
+""")
+            binary.chmod(0o700)
+            state = base / "state"
+            target = "dsp_" + "a" * 32
+            (state / "dsps" / target / "secrets").mkdir(parents=True)
+            for name in ("broker", "egress", "browser"):
+                (base / name).mkdir()
+            # Only path resolution is needed here; the real wrapper's child will execute
+            # the witness backend, never BrowserOS or a provider collector.
+            (base / "browser/browseros").write_text("synthetic browser install")
+            browser = f"/opt/dispatch-browseros/{pin['version']}"
+            sandbox = module.trusted_sandbox()
+            outer = [str(sandbox), "--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL",
+                     "--clearenv", "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin",
+                     "--symlink", "usr/lib", "/lib", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"]
+            if Path("/usr/lib64").exists():
+                outer.extend(["--symlink", "usr/lib64", "/lib64"])
+            for source, destination, writable in [
+                (artifact, "/artifact", False),
+                (state, "/state", True),
+                (base / "broker", "/broker", True),
+                (base / "egress", "/egress", False),
+                (base / "browser", browser, False),
+                (launchers / "support-collection.py", "/collection/support-collection.py", False),
+                (launchers / "browseros-release.json", "/collection/browseros-release.json", False),
+            ]:
+                outer.extend(["--bind" if writable else "--ro-bind", str(source), destination])
+            launcher = """import importlib.util, json, pathlib, subprocess, sys
+spec = importlib.util.spec_from_file_location('collection', '/collection/support-collection.py')
+collection = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(collection)
+command = collection.sandbox(pathlib.Path('/artifact'), pathlib.Path('/state'),
+    {'DISPATCH_BROWSEROS_EXECUTABLE': str(collection.BROWSER), 'DISPATCH_BWRAP_EXECUTABLE': sys.argv[1]},
+    pathlib.Path('/broker'), pathlib.Path('/egress'), 'dsp_' + 'a' * 32)
+command.extend(['/usr/bin/python3', '/runtime/support-collection.py', '--sandbox-child',
+    '/artifact/services/rust/dispatch-backend'])
+result = subprocess.run(command, input=json.dumps({'request': 'synthetic'}), text=True)
+sys.exit(result.returncode)
+"""
+            outer.extend(["/usr/bin/python3", "-I", "-B", "-c", launcher, str(sandbox)])
+            result = subprocess.run(outer, capture_output=True, text=True, timeout=15)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            witness = json.loads(result.stdout)
+            self.assertEqual(witness["argv"], ["support-verify-collection"])
+            self.assertEqual(witness["pin"], pin)
+            self.assertTrue(witness["readOnly"])
+
     def test_changed_command_has_only_assigned_source_projected_git_and_no_host_network(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
