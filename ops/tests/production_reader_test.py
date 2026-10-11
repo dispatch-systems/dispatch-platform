@@ -25,7 +25,8 @@ def entry(seconds_ago, message):
 def request(dsp, actor, route, level="info"):
     return {"level": level, "event": "http.request", "fields": {
         "requestId": "req_" + "1" * 16, "route": route, "dspId": dsp, "actorId": actor,
-        "client": "CLIENT_CANARY", "account": "ACCOUNT_CANARY", "status": 500 if level == "error" else 200}}
+        "client": "CLIENT_CANARY", "account": "ACCOUNT_CANARY", "authToken": "TOKEN_CANARY",
+        "status": 500 if level == "error" else 200}}
 
 
 class ReaderTests(unittest.TestCase):
@@ -58,7 +59,7 @@ class ReaderTests(unittest.TestCase):
             self.assertEqual(shown["matched"], 3)
             for seen in ("usr_mine", "database.slow", "panicked", "[redacted]"):
                 self.assertIn(seen, text)
-            for hidden in ("usr_other", "wp-login", "usr_owner", "CLIENT_CANARY", "ACCOUNT_CANARY", "someone@example.com"):
+            for hidden in ("usr_other", "wp-login", "usr_owner", "CLIENT_CANARY", "ACCOUNT_CANARY", "TOKEN_CANARY", "someone@example.com"):
                 self.assertNotIn(hidden, text)
             self.assertIn("_SYSTEMD_USER_UNIT=dispatch-production.service", journal.call_args.args[0])
             # A panic is kept at any level; a route or request leaves only the matching requests.

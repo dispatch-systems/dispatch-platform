@@ -39,10 +39,12 @@ PATTERNS = {
 }
 # Identifiers no investigation needs: the address fingerprint and the hashed account.
 DROPPED_FIELDS = ("client", "account")
+# App events are shown as JSON, so a secret-named field is redacted by its quoted value too.
 SECRETS = [
-    re.compile(r"(?i)bearer\s+\S+"),
-    re.compile(r"(?i)\b(password|secret|token|key)=\S+"),
-    re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
+    (re.compile(r'(?i)("\w*(?:password|secret|token|key)\w*"\s*:\s*)"[^"]*"'), r'\1"[redacted]"'),
+    (re.compile(r"(?i)bearer\s+\S+"), "[redacted]"),
+    (re.compile(r"(?i)\b(password|secret|token|key)=\S+"), "[redacted]"),
+    (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"), "[redacted]"),
 ]
 
 
@@ -119,8 +121,8 @@ def stamp(entry):
 
 
 def redact(line):
-    for pattern in SECRETS:
-        line = pattern.sub("[redacted]", line)
+    for pattern, replacement in SECRETS:
+        line = pattern.sub(replacement, line)
     return line[:MAX_LINE]
 
 
