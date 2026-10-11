@@ -61,14 +61,32 @@ export function Proposal({
       setBusy(false);
     }
   };
+  if (
+    !proposal &&
+    ['acknowledged', 'answered', 'unclear_bug', 'unclear_feature'].includes(ticket.status)
+  )
+    return null;
   if (!proposal)
     return (
       <section className="support-section support-analysis-pending">
-        <GitPullRequest size={20} />
-        <h3>Investigation in progress</h3>
+        {ticket.status === 'triaging' ? <MessageCircle size={20} /> : <GitPullRequest size={20} />}
+        <h3>
+          {ticket.status === 'triaging'
+            ? 'Reviewing message'
+            : ticket.status === 'needs_information'
+              ? 'More information requested'
+              : ticket.status === 'waiting'
+                ? 'Investigation paused'
+                : 'Investigation in progress'}
+        </h3>
         <p className="muted">
-          Browser observations and a proposed plan will appear here when the agent completes its
-          analysis.
+          {ticket.status === 'triaging'
+            ? 'The agent is reviewing the message to decide whether to answer or investigate. Its response will appear in the conversation.'
+            : ticket.status === 'needs_information'
+              ? 'Read the question in the conversation and reply with the requested details.'
+              : ticket.status === 'waiting'
+                ? 'The investigation is paused. Review the progress update before resuming it.'
+                : 'Investigation findings and a proposed plan will appear here when the agent completes its analysis.'}
         </p>
         {ticket.status === 'waiting' && (
           <>
@@ -110,7 +128,7 @@ export function Proposal({
         </p>
       )}
       <div className="support-reproduction">
-        <strong>Browser reproduction</strong>
+        <strong>Reproduction</strong>
         <p className="support-body">{proposal.reproduction}</p>
       </div>
       <Words title="Observed" items={proposal.observations} />

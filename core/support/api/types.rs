@@ -92,6 +92,31 @@ pub struct SupportEvidence {
     pub created_at: i64,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/support/api/generated/"))]
+pub enum SupportIntakeOutcome {
+    Acknowledged,
+    Answered,
+    UnclearBug,
+    UnclearFeature,
+}
+
+/// Intake findings are private decision context, never implementation or browser proof.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/support/api/generated/"))]
+pub struct SupportIntake {
+    pub outcome: SupportIntakeOutcome,
+    pub reply: String,
+    pub reason: String,
+    pub findings: Vec<String>,
+    pub questions: Vec<String>,
+    pub investigation_attempted: bool,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -105,6 +130,7 @@ pub struct SupportDetail {
     pub attachments: Vec<SupportAttachment>,
     pub proposals: Vec<SupportProposal>,
     pub evidence: Vec<SupportEvidence>,
+    pub intake: Option<SupportIntake>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

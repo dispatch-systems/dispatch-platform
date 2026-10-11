@@ -200,128 +200,367 @@ fn browser(metadata: &Value) -> Result<Value> {
     Ok(json!({"url":origin,"readOnly":true,"storageState":{"cookies":[cookie],"origins":[]}}))
 }
 
+async fn analysis_progress(
+    platform: &Platform,
+    job: &SupportJob,
+    checkpoint: &Checkpoint,
+    message: &str,
+    fields: Value,
+) -> Result<()> {
+    if job.kind != "answer" {
+        let status = if fields["phase"] == "routing" {
+            "triaging"
+        } else {
+            "investigating"
+        };
+        return progress(platform, job, checkpoint, status, message, fields).await;
+    }
+    // Owner answers must preserve approval/queued status while selecting their tools.
+    let mut value = saved(checkpoint);
+    if !value.is_object() {
+        value = json!({});
+    }
+    for (key, item) in fields.as_object().ok_or("Invalid analysis checkpoint")? {
+        value[key] = item.clone();
+    }
+    platform
+        .update(job, "heartbeat", json!({"checkpoint":value}))
+        .await?;
+    *checkpoint.lock().unwrap_or_else(|error| error.into_inner()) = value;
+    Ok(())
+}
+
+async fn report_images(config: &Config, platform: &Platform, job: &SupportJob) -> Result<Value> {
+    let root = config
+        .runtime_root
+        .join(&job.environment)
+        .join(&job.detail.ticket.id)
+        .join("inputs");
+    fs::create_dir_all(&root)?;
+    let mut images = vec![];
+    for image in job.detail.attachments.iter().filter(|image| !image.private) {
+        let (kind, bytes) = platform.image(job, &image.id).await?;
+        let path = root.join(&image.id);
+        fs::write(&path, bytes)?;
+        images.push(json!({"path":path,"mediaType":kind}));
+    }
+    Ok(json!(images))
+}
+
 async fn investigate(
     config: &Config,
     platform: &Platform,
     job: &SupportJob,
     checkpoint: &Checkpoint,
 ) -> Result<()> {
-    require(
-        is_sha(&job.detail.source_sha),
-        "The submitted runtime source commit is unavailable; investigation must not guess a production version",
-    )?;
-    let tree = Worktree::prepare(config, job, Some(&job.detail.source_sha)).await?;
-    let metadata = platform.metadata(job).await?;
-    let observed_source = metadata["sourceSha"]
-        .as_str()
-        .filter(|source| is_sha(source))
-        .ok_or("The observed runtime source is unavailable")?;
-    let mut images = vec![];
-    let image_root = config
-        .runtime_root
-        .join(&job.environment)
-        .join(&job.detail.ticket.id)
-        .join("inputs");
-    fs::create_dir_all(&image_root)?;
-    for image in job.detail.attachments.iter().filter(|image| !image.private) {
-        let (kind, bytes) = platform.image(job, &image.id).await?;
-        let path = image_root.join(&image.id);
-        fs::write(&path, bytes)?;
-        images.push(json!({"path":path,"mediaType":kind}));
-    }
-    let mut context = json!({"rules":rules(config)?,"headSha":observed_source,"pinnedSourceSha":job.detail.source_sha,"browser":browser(&metadata)?,"observedRuntime":observed_source,"diagnostics":platform.diagnostics(job).await?,"imageInputs":images});
-    if job.kind == "investigate" {
-        progress(
+    use crate::hermes::AnalystStage;
+    use crate::intake::{Analysis, Decision, NextStep, Outcome, Route};
+
+    // This is intentionally before source preparation, diagnostics, screenshots and grants.
+    let decision: Decision = if let Some(value) = saved(checkpoint).get("routingDecision") {
+        serde_json::from_value(value.clone())?
+    } else {
+        analysis_progress(
             platform,
             job,
             checkpoint,
-            "investigating",
-            "Inspecting the reported behavior in a real browser",
-            json!({"phase":"production_browser","sourceSha":job.detail.source_sha}),
+            "Choosing the most useful response",
+            json!({"phase":"routing"}),
         )
         .await?;
-    }
-    let instruction = if job.kind == "answer" {
-        "Answer the owner's private question identified by questionId in the messages using prior evidence and current read-only source/context. Return {answer:string}, adding a revised proposal only if the answer materially changes the plan or criteria AND no prUrl has been attached. Once a PR exists or the ticket is queued/merged/resolved, return answer only and describe any new scope as a follow-up request; the published approval is immutable. Investigate in the actual readonly browser when new observations are needed; do not invalidate an approved proposal merely to restate it."
-    } else {
-        "Use the real read-only browser first, then examine the pinned runtime source. Produce the proposal JSON contract. Explicitly identify reproduction steps that require mutations and will need an isolated baseline."
+        let mut result = hermes::analyze(
+            config,
+            job,
+            None,
+            AnalystStage::Intake,
+            crate::intake::ROUTING,
+            json!({}),
+        )
+        .await?;
+        let activity = result
+            .as_object_mut()
+            .ok_or("Invalid intake result")?
+            .remove("toolActivity");
+        let observations = result
+            .as_object_mut()
+            .ok_or("Invalid intake result")?
+            .remove("toolObservations");
+        require(
+            activity
+                .as_ref()
+                .is_some_and(|value| value.as_array().is_some_and(Vec::is_empty))
+                && observations
+                    .as_ref()
+                    .is_some_and(|value| value.as_array().is_some_and(Vec::is_empty)),
+            "Tool-free intake attempted a tool",
+        )?;
+        let decision: Decision = serde_json::from_value(result)?;
+        decision.validate()?;
+        analysis_progress(
+            platform,
+            job,
+            checkpoint,
+            "Selected the useful investigation steps",
+            json!({"phase":"routing","routingDecision":decision,"routingSchema":1}),
+        )
+        .await?;
+        decision
     };
-    let readonly = hermes::run(config, job, &tree, "analyst", instruction, context.clone()).await?;
-    if job.kind == "answer" {
-        if let Some(proposal) = readonly
-            .get("proposal")
-            .filter(|_| job.detail.ticket.pr_url.is_none())
-        {
-            let mut proposal: SupportProposal = serde_json::from_value(proposal.clone())?;
-            proposal.source_sha = job.detail.source_sha.clone();
-            platform
-                .update(job, "proposal", json!({"proposal":proposal}))
-                .await?;
-        }
+    decision.validate()?;
+    if let Some(completion) = decision.completion() {
+        let result = if job.kind == "answer" {
+            json!({"answer":decision.reply})
+        } else {
+            completion
+        };
         platform
-            .update(
-                job,
-                "complete",
-                json!({"result":{"answer":readonly["answer"]}}),
-            )
+            .update(job, "complete", json!({"result":result}))
             .await?;
-        tree.cleanup_analysis(config).await?;
         return Ok(());
     }
-    verification::investigation(config, platform, job, observed_source).await?;
-    // A second browser uses the exact submitted source with isolated fixture data. This allows
-    // save/sync reproduction without any production mutation or borrowed production credentials.
-    let baseline = async {
-        tree.build(config).await?;
-        verification::NativePreview::start(config, &tree, None).await
-    }
-    .await;
-    let preview = match baseline {
-        Ok(preview) => Some(preview),
-        Err(error) => {
-            context["isolatedBaselineUnavailable"] = error.to_string().into();
-            None
-        }
-    };
-    if let Some(preview) = &preview {
-        context["browser"] = json!({"url":preview.origin,"readOnly":false,"fixtureLogin":true});
-        context["headSha"] = job.detail.source_sha.clone().into();
-    }
-    context["priorReadOnlyInvestigation"] = readonly;
-    let result = hermes::run(config, job, &tree, "analyst", "Continue the prior browser-first investigation using the isolated baseline matching the pinned source. Reproduce mutations only here. Analyze even if reproduction fails, distinguish observations from inference, and return the final versioned proposal JSON contract. Keep reporter/DSP fixture differences explicit.", context).await?;
-    verification::investigation(
-        config,
+
+    analysis_progress(
         platform,
         job,
-        if preview.is_some() {
-            &job.detail.source_sha
-        } else {
-            observed_source
-        },
+        checkpoint,
+        "Preparing the selected investigation",
+        json!({"phase":"source_preparation"}),
     )
     .await?;
-    if let Some(proposal) = result.get("proposal") {
-        let mut proposal: SupportProposal = serde_json::from_value(proposal.clone())?;
-        proposal.source_sha = job.detail.source_sha.clone();
-        require(
-            !proposal.acceptance_criteria.is_empty()
-                && !proposal.production_verification.is_empty(),
-            "Proposal has no verifiable implementation or readonly production criteria",
-        )?;
-        platform
-            .update(job, "proposal", json!({"proposal":proposal}))
-            .await?;
+    let mut context = json!({"rules":rules(config)?,"pinnedSourceSha":job.detail.source_sha,"headSha":job.detail.source_sha,"routing":decision});
+    let tree = if is_sha(&job.detail.source_sha) {
+        match Worktree::prepare(config, job, Some(&job.detail.source_sha)).await {
+            Ok(tree) => Some(tree),
+            Err(error) => {
+                context["sourceUnavailable"] = error.to_string().into();
+                None
+            }
+        }
+    } else {
+        context["sourceUnavailable"] = "The submitted runtime source commit is unavailable; no source version has been guessed".into();
+        None
+    };
+    let mut selected = saved(checkpoint)["analysisStage"]
+        .as_str()
+        .map(str::to_owned)
+        .unwrap_or_else(|| {
+            if decision.route == Route::Source {
+                "source"
+            } else {
+                "browser"
+            }
+            .into()
+        });
+    let mut attempted = saved(checkpoint)["investigationAttempted"]
+        .as_bool()
+        .unwrap_or(false);
+    let mut usable = saved(checkpoint)["usableInvestigation"]
+        .as_bool()
+        .unwrap_or(false);
+    let mut browser_attempted = saved(checkpoint)["browserAttempted"]
+        .as_bool()
+        .unwrap_or(false);
+    let mut live_browser_attempted = saved(checkpoint)["liveBrowserAttempted"]
+        .as_bool()
+        .unwrap_or(false);
+    let mut live_browser_observed = saved(checkpoint)["liveBrowserObserved"]
+        .as_bool()
+        .unwrap_or(false);
+    let mut preview = None;
+    if let Some(prior) = saved(checkpoint).get("priorAnalysis") {
+        context["priorAnalysis"] = prior.clone();
     }
-    platform
-        .update(
+
+    loop {
+        context
+            .as_object_mut()
+            .ok_or("Invalid analysis context")?
+            .remove("browser");
+        context
+            .as_object_mut()
+            .ok_or("Invalid analysis context")?
+            .remove("diagnostics");
+        context["headSha"] = job.detail.source_sha.clone().into();
+        let mut observed_source = job.detail.source_sha.clone();
+        let stage = if selected == "isolated" {
+            let tree = tree
+                .as_ref()
+                .ok_or("Pinned source is unavailable for isolated reproduction")?;
+            if preview.is_none() {
+                analysis_progress(
+                    platform,
+                    job,
+                    checkpoint,
+                    "Preparing the requested isolated reproduction",
+                    json!({"phase":"isolated_reproduction","analysisStage":"isolated"}),
+                )
+                .await?;
+                let baseline = async {
+                    tree.build(config).await?;
+                    verification::NativePreview::start(config, tree, None).await
+                }
+                .await;
+                match baseline {
+                    Ok(value) => preview = Some(value),
+                    Err(error) => {
+                        context["isolatedBaselineUnavailable"] = error.to_string().into();
+                        context["continuationConstraint"] = "An isolated build was attempted and is unavailable. Continue source analysis; do not request the same unavailable baseline again. Identified issues can still have an uncertain proposal; infrastructure alone cannot make a report unclear.".into();
+                        selected = "source".into();
+                    }
+                }
+            }
+            if let Some(preview) = &preview {
+                context["browser"] =
+                    json!({"url":preview.origin,"readOnly":false,"fixtureLogin":true});
+                AnalystStage::Browser
+            } else {
+                AnalystStage::Source
+            }
+        } else if selected == "browser" {
+            match platform.metadata(job).await {
+                Ok(metadata) => {
+                    observed_source = metadata["sourceSha"]
+                        .as_str()
+                        .filter(|source| is_sha(source))
+                        .ok_or("The observed runtime source is unavailable")?
+                        .into();
+                    context["browser"] = browser(&metadata)?;
+                    context["headSha"] = observed_source.clone().into();
+                    context["observedRuntime"] = observed_source.clone().into();
+                    match platform.diagnostics(job).await {
+                        Ok(value) => context["diagnostics"] = value,
+                        Err(_) => context["diagnosticsUnavailable"] = true.into(),
+                    }
+                    context["imageInputs"] = report_images(config, platform, job).await?;
+                    AnalystStage::Browser
+                }
+                Err(error) => {
+                    context["liveBrowserUnavailable"] = error.to_string().into();
+                    context["continuationConstraint"] = "The live browser grant is unavailable. Continue useful source analysis; do not request the same unavailable grant again. Access failure alone cannot make a report unclear.".into();
+                    selected = "source".into();
+                    AnalystStage::Source
+                }
+            }
+        } else {
+            require(selected == "source", "Invalid durable analysis stage")?;
+            AnalystStage::Source
+        };
+        if stage == AnalystStage::Source {
+            require(
+                tree.is_some(),
+                "Pinned source and useful browser access are unavailable; investigation needs infrastructure access",
+            )?;
+        }
+        analysis_progress(platform, job, checkpoint,
+            if stage == AnalystStage::Source { "Reading the relevant source and prior context" } else { "Inspecting the relevant behavior in a real browser" },
+            json!({"phase":"analysis","analysisStage":selected,"browserObservation":if stage == AnalystStage::Source { "skipped" } else { "granted" }})).await?;
+        let mut result = hermes::analyze(
+            config,
             job,
-            "complete",
-            json!({"result":{"answer":result["answer"]}}),
+            tree.as_ref(),
+            stage,
+            crate::intake::ANALYSIS,
+            context.clone(),
         )
         .await?;
-    drop(preview);
-    tree.cleanup_analysis(config).await?;
-    Ok(())
+        let activity = result
+            .as_object_mut()
+            .ok_or("Invalid analysis result")?
+            .remove("toolActivity")
+            .and_then(|value| value.as_array().cloned())
+            .ok_or("Trusted tool activity is missing")?;
+        let observations = result
+            .as_object_mut()
+            .ok_or("Invalid analysis result")?
+            .remove("toolObservations")
+            .and_then(|value| value.as_array().cloned())
+            .ok_or("Trusted usable tool observations are missing")?;
+        attempted |= !activity.is_empty();
+        usable |= !observations.is_empty();
+        let actual_browser = activity.iter().any(|tool| tool == "dispatch_browser");
+        let observed_browser = observations.iter().any(|tool| tool == "dispatch_browser");
+        browser_attempted |= actual_browser;
+        live_browser_attempted |= actual_browser && selected != "isolated";
+        live_browser_observed |= observed_browser && selected != "isolated";
+        analysis_progress(platform, job, checkpoint, "Recorded the tool observations", json!({"phase":"analysis","analysisStage":selected,"investigationAttempted":attempted,"usableInvestigation":usable,"browserAttempted":browser_attempted,"liveBrowserAttempted":live_browser_attempted,"liveBrowserObserved":live_browser_observed,"browserObservation":if observed_browser { "observed" } else if actual_browser { "attempted" } else if stage == AnalystStage::Source { "skipped" } else { "not_used" }})).await?;
+        if actual_browser {
+            verification::investigation(config, platform, job, &observed_source).await?;
+        }
+        let analysis: Analysis = serde_json::from_value(result)?;
+        analysis.validate(&job.detail.ticket.kind, attempted, usable)?;
+        analysis_progress(
+            platform,
+            job,
+            checkpoint,
+            "Recorded the investigation findings",
+            json!({"phase":"analysis","analysisStage":selected,"priorAnalysis":analysis}),
+        )
+        .await?;
+
+        match analysis.next_step {
+            NextStep::Browser => {
+                require(
+                    selected == "source" && context.get("liveBrowserUnavailable").is_none(),
+                    "The requested browser continuation is unavailable or was already inspected",
+                )?;
+                selected = "browser".into();
+            }
+            NextStep::Isolated => {
+                require(
+                    selected != "isolated" && context.get("isolatedBaselineUnavailable").is_none(),
+                    "The requested isolated reproduction is unavailable or was already inspected",
+                )?;
+                selected = "isolated".into();
+            }
+            NextStep::Finish => {
+                if let Some(mut proposal) = analysis.proposal.clone() {
+                    require(
+                        is_sha(&job.detail.source_sha),
+                        "A proposal cannot guess the submitted runtime source",
+                    )?;
+                    proposal.source_sha = job.detail.source_sha.clone();
+                    require(
+                        !proposal.acceptance_criteria.is_empty()
+                            && !proposal.production_verification.is_empty(),
+                        "Proposal has no verifiable implementation or readonly production criteria",
+                    )?;
+                    if !live_browser_observed {
+                        proposal.uncertainties.push("No live browser inspection was recorded; this proposal relies on source, supplied context or isolated observations, with no live browser pass claimed.".into());
+                    }
+                    require(
+                        job.detail.ticket.pr_url.is_none(),
+                        "Published approval is immutable; additional scope needs a follow-up",
+                    )?;
+                    platform
+                        .update(job, "proposal", json!({"proposal":proposal}))
+                        .await?;
+                }
+                let completion =
+                    if job.kind == "answer" || analysis.outcome == Some(Outcome::Proposal) {
+                        json!({"answer":analysis.reply})
+                    } else {
+                        analysis.completion(attempted)
+                    };
+                platform
+                    .update(job, "complete", json!({"result":completion}))
+                    .await?;
+                drop(preview);
+                if let Some(tree) = tree {
+                    tree.cleanup_analysis(config).await?;
+                }
+                return Ok(());
+            }
+        }
+        context["priorAnalysis"] = serde_json::to_value(&analysis)?;
+        analysis_progress(
+            platform,
+            job,
+            checkpoint,
+            "Continuing with the requested evidence",
+            json!({"phase":"analysis","analysisStage":selected}),
+        )
+        .await?;
+    }
 }
 
 async fn implement(

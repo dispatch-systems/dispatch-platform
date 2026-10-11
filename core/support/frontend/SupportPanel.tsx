@@ -125,7 +125,7 @@ export function SupportPanel({ session, onClose }: Access & { onClose: () => voi
               {submitted && (
                 <p className="support-submitted" role="status">
                   <CheckCheck size={18} />
-                  Report received. The agent will investigate and keep you updated here.
+                  Report received. The agent will review your message and keep you updated here.
                 </p>
               )}
               {selected ? (

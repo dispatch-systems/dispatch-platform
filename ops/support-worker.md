@@ -17,6 +17,26 @@ The Dev artifact includes:
 - `services/support-worker/support-collection.py`, a trusted credential-reference wrapper;
 - `services/support-worker/dispatch-support-worker.service`, the Dev-only user service.
 
+Each new report starts with a tool-free intake stage from the common analyst profile. It
+receives ticket text, conversation and reporter/DSP context before the worker assigns source,
+issues a browser session or builds a preview. Explicit tests and acknowledgments receive a
+reply; simple questions use existing context or read-only source when needed. A message that
+describes an actual failure still gets investigated even when it also says "test".
+
+Investigations select source inspection, a read-only browser or an isolated reproduction
+preview according to the evidence needed. A preview is built only when reproduction needs
+to change data. Source-only stages cannot invoke the browser tool. Skipped browser work is
+recorded as skipped, never as successful verification. Approved implementations retain their
+independent browser verification and normal merge-queue gates.
+
+Vague bug reports and feature requests receive a best-effort investigation. If the intended
+issue or feature remains unclear, the ticket becomes **Unclear Bug Report** or **Unclear
+Feature**, with findings and focused questions. An identified bug that cannot be reproduced
+keeps its explicit uncertainty; access or provider failures remain waiting conditions.
+Reporter clarifications resume intake, and ordinary acknowledgments do not repeat the
+investigation. Replies and notifications remain in the platform. Intake outcomes require no
+implementation proposal and grant no approval or publication authority.
+
 The first supporting artifact needs a compatible host manager: older managers and their
 Python startup guards reject its new resource paths. From the trusted checkout of the merged,
 checked supporting commit, build a standalone manager. A temporary, uniquely named service

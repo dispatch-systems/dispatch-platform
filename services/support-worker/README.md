@@ -44,9 +44,23 @@ resumes pending jobs; losing the lease or approved proposal cancels the entire e
 One heavy job runs at a time and origins rotate. This is resource scheduling, with no usage,
 token, runtime, daily or correction-attempt quota.
 
-The analyst inspects the actual application with a lease-bound reporter read-only browser
-session, then the exact submitted runtime commit. Mutating reproduction uses its isolated
-baseline preview. Unreproduced reports still receive analysis with explicit uncertainty.
+The analyst first routes the public report/conversation with zero tools and no source directory,
+browser grant, diagnostics or preview. Genuine tests, greetings and thanks receive an
+acknowledgement; supported one-off questions receive an answer. Source questions select the
+source-only stage, which cannot call a browser. UI questions and real vague reports select
+read-only observation when useful. These named stages share the existing analyst manifest and
+the same Codex subscription/model configuration across both environments.
+
+Useful investigation reads the exact submitted runtime commit and may inspect the actual
+application with a lease-bound reporter read-only session. A build/isolated preview runs only
+after the analyst requests a specific necessary mutation/reproduction, including why the other
+evidence is insufficient. Unreproduced identified bugs still receive proposals with uncertainty.
+An unclear bug/feature outcome requires actual best-effort investigation and useful clarification
+questions; reporter replies resume tool-free routing. Skipped or unused browser work is recorded
+as such and never counted as passing evidence. Owner questions use prior private context and
+select new tools only when needed. Public analyst payloads exclude private owner messages,
+proposals, evidence, attachments and intake findings before any model call.
+
 Owner approval names one immutable proposal and its criteria. The builder uses a separate
 current-main worktree; an independent reviewer exercises its committed head in a fresh real
 Chromium browser. Host-recorded assertions and private screenshots must cover every criterion.

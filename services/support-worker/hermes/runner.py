@@ -16,7 +16,8 @@ request = json.loads(request_path.read_text(encoding="utf-8"))
 home = Path(request["home"])
 home.mkdir(parents=True, exist_ok=True)
 os.environ["HERMES_HOME"] = str(home)
-os.environ["TERMINAL_CWD"] = request["worktree"]
+cwd = request["worktree"] or str(home)
+os.environ["TERMINAL_CWD"] = cwd
 os.environ["TERMINAL_ENV"] = "local"
 os.environ["DISPATCH_SUPPORT_REQUEST"] = str(request_path)
 # Owned profile configuration prevents personal tool discovery and provider fallback. JSON
@@ -40,7 +41,7 @@ with (home / "runner.log").open("w", encoding="utf-8") as log, contextlib.redire
         skills = "\n\n".join((Path(request["resources"]) / "skills" / name / "SKILL.md").read_text(encoding="utf-8") for name in profile["skills"])
         rules = request["context"].get("rules", "")
         instructions = "\n\n".join([skills, rules, request["instructions"]])
-        agent = AIAgent(provider=profile["provider"], requested_provider=profile["provider"], model=profile["model"], api_key=runtime.get("api_key"), base_url=runtime.get("base_url"), api_mode=runtime.get("api_mode"), enabled_toolsets=[profile["toolset"]], reasoning_config={"effort": profile["reasoningEffort"]}, service_tier=profile["serviceTier"], skip_memory=True, skip_background_review=True, skip_context_files=True, load_soul_identity=False, quiet_mode=True, cwd=request["worktree"])
+        agent = AIAgent(provider=profile["provider"], requested_provider=profile["provider"], model=profile["model"], api_key=runtime.get("api_key"), base_url=runtime.get("base_url"), api_mode=runtime.get("api_mode"), enabled_toolsets=[profile["toolset"]], reasoning_config={"effort": profile["reasoningEffort"]}, service_tier=profile["serviceTier"], skip_memory=True, skip_background_review=True, skip_context_files=True, load_soul_identity=False, quiet_mode=True, cwd=cwd)
         # Dynamic MCP/plugin additions fail startup rather than silently broadening capabilities.
         if set(agent.valid_tool_names) != set(profile["tools"]):
             raise PermissionError("Effective Hermes tools differ from the profile's exact manifest: " + json.dumps({"expected":profile["tools"], "actual":sorted(agent.valid_tool_names)}))
@@ -74,7 +75,7 @@ with (home / "runner.log").open("w", encoding="utf-8") as log, contextlib.redire
         if final.startswith("```"):
             final = final.split("\n", 1)[1].rsplit("```", 1)[0]
         value = json.loads(final)
-        result_path.write_text(json.dumps({"completed": True, "result": value}), encoding="utf-8")
+        result_path.write_text(json.dumps({"completed": True, "result": value, "toolActivity":policy.activity, "toolObservations":policy.observations}), encoding="utf-8")
         policy.close()
     except Exception:
         import traceback

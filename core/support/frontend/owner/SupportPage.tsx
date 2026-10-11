@@ -34,7 +34,7 @@ export function SupportPage() {
       <div className="support-owner-heading">
         <Header title="Support" />
         <p className="muted">
-          User reports, agent investigations and approved changes in one place.
+          User messages, agent responses, investigations and approved changes in one place.
         </p>
         <span className="support-inbox-count">{review} ready in this view</span>
       </div>
@@ -89,7 +89,8 @@ export function SupportPage() {
               </span>
               <h2>Select a ticket</h2>
               <p className="muted">
-                Read the original report, browser findings and proposal before making a decision.
+                Read the original message and the agent's response. Reports that need changes
+                include findings and a proposal for your review.
               </p>
             </div>
           )}

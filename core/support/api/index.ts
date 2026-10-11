@@ -4,4 +4,6 @@ export type { SupportAttachment } from './generated/SupportAttachment';
 export type { SupportProposal } from './generated/SupportProposal';
 export type { SupportEvidence } from './generated/SupportEvidence';
 export type { SupportDetail } from './generated/SupportDetail';
+export type { SupportIntake } from './generated/SupportIntake';
+export type { SupportIntakeOutcome } from './generated/SupportIntakeOutcome';
 export type { SupportNotification } from './generated/SupportNotification';

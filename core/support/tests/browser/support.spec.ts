@@ -33,7 +33,8 @@ test('a member reports with a screenshot, follows the ticket and the owner appro
   await expect(
     panel.getByRole('heading', { name: 'An employee disappears after refreshing', exact: true }),
   ).toBeVisible();
-  await expect(panel).toContainText('Report received');
+  await expect(panel.getByText('Reviewing message', { exact: true })).toBeVisible();
+  await expect(panel.getByText('Routing your request', { exact: true })).toBeVisible();
   await expect(panel.getByRole('img', { name: 'employee.png' })).toBeVisible();
   await panel
     .getByLabel('Reply', { exact: true })
@@ -126,4 +127,123 @@ test('a member reports with a screenshot, follows the ticket and the owner appro
   await expect(details).toContainText('Version 2 approved for implementation through merge.');
   expect(new URL(page.url()).hash).toContain(ticketId);
   expect(errors).toEqual([]);
+});
+
+test('intake outcomes show agent responses and unclear reports focus the shared reply', async ({
+  page,
+  dispatch,
+}) => {
+  const member = await dispatch.client(demo.member);
+  const cases = [
+    {
+      status: 'acknowledged',
+      kind: 'bug',
+      title: 'Just testing support',
+      response: 'Thanks for trying AI Support. Your message was received.',
+    },
+    {
+      status: 'answered',
+      kind: 'feature',
+      title: 'Where are account settings?',
+      response: 'Open your account menu and choose Account settings.',
+    },
+    {
+      status: 'unclear_bug',
+      kind: 'bug',
+      title: 'Something looks wrong',
+      response: 'I could not identify the affected control. What did you click?',
+    },
+    {
+      status: 'unclear_feature',
+      kind: 'feature',
+      title: 'Make it better',
+      response: 'Which task should the feature help you complete?',
+    },
+  ];
+  // The backend holds routing and agent authority. Arrange completed outcomes here to guard
+  // their actual page presentation and the clarification control's focus/channel behavior.
+  for (const item of cases) {
+    const created = await member.post('/api/support/tickets', {
+      requestId: `intake-browser-${item.status}`,
+      kind: item.kind,
+      title: item.title,
+      description: item.title,
+      attachmentIds: [],
+    });
+    expect(created.status).toBe(201);
+    const id = created.value.ticket.id;
+    dispatch.database('data/platform/accounts.sqlite', (db) => {
+      db.prepare('UPDATE support_tickets SET status=?,progress=? WHERE id=?').run(
+        item.status,
+        'Agent response available',
+        id,
+      );
+      db.prepare(
+        "UPDATE support_jobs SET status='done',checkpoint=? WHERE ticket_id=? AND kind='investigate'",
+      ).run(
+        JSON.stringify({
+          phase: 'intake_completed',
+          intake: {
+            outcome: item.status,
+            reply: item.response,
+            reason: `Owner-only intake context for ${item.title}`,
+            findings: item.status.startsWith('unclear_')
+              ? ['No actionable change could be established from the message.']
+              : [],
+            questions: item.status.startsWith('unclear_') ? [item.response] : [],
+            investigationAttempted: item.status.startsWith('unclear_'),
+          },
+        }),
+        id,
+      );
+      db.prepare(
+        "INSERT INTO support_messages(id,ticket_id,author,role,body,private,created_at) VALUES(?,?,'AI Support','agent',?,0,?)",
+      ).run(`message-${item.status}`, id, item.response, Date.now());
+      db.prepare(
+        'INSERT INTO support_notifications(id,ticket_id,user_id,user_scope,body,created_at) SELECT ?,id,reporter_id,reporter_scope,?,? FROM support_tickets WHERE id=?',
+      ).run(`notice-${item.status}`, item.title, Date.now(), id);
+    });
+  }
+  await login(page);
+  await page.getByRole('link', { name: 'Support', exact: true }).click();
+  const details = page.getByRole('region', { name: 'Ticket details' });
+  for (const item of cases) {
+    await page.getByRole('combobox', { name: 'Filter ticket status' }).selectOption(item.status);
+    await page.getByRole('button', { name: new RegExp(item.title) }).click();
+    await expect(details.getByRole('list', { name: 'Ticket conversation' })).toContainText(
+      item.response,
+    );
+    await expect(details.getByRole('region', { name: 'Private intake review' })).toContainText(
+      `Owner-only intake context for ${item.title}`,
+    );
+    await expect(details.getByRole('heading', { name: 'Investigation in progress' })).toHaveCount(
+      0,
+    );
+    await expect(
+      details.getByRole('button', { name: 'Approve proposal', exact: true }),
+    ).toHaveCount(0);
+    if (item.status.startsWith('unclear_')) {
+      await expect(details).toContainText(
+        item.kind === 'bug' ? 'Unclear Bug Report' : 'Unclear Feature',
+      );
+      await details.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('agent');
+      await details.getByRole('button', { name: 'Add details', exact: true }).click();
+      await expect(details.getByRole('combobox', { name: 'Send to', exact: true })).toHaveValue(
+        'reporter',
+      );
+      await expect(details.getByLabel('Reply', { exact: true })).toBeFocused();
+    }
+  }
+  await login(page, demo.member);
+  await page.getByLabel('Account menu', { exact: true }).click();
+  await page.getByRole('button', { name: 'AI Support', exact: true }).click();
+  const panel = page.getByRole('dialog', { name: 'AI Support', exact: true });
+  await panel.getByRole('tab', { name: 'Updates' }).click();
+  await panel.getByRole('button', { name: /Something looks wrong/ }).click();
+  await expect(panel).toContainText('Unclear Bug Report');
+  await expect(panel.getByRole('list', { name: 'Ticket conversation' })).toContainText(
+    cases[2]!.response,
+  );
+  await panel.getByRole('button', { name: 'Add details', exact: true }).click();
+  await expect(panel.getByLabel('Reply', { exact: true })).toBeFocused();
 });

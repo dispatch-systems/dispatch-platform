@@ -5,6 +5,8 @@ import type { SupportDetail } from '../../api/index.js';
 import { DataState, ErrorBox } from '../../../shell/frontend/ui/index.js';
 import { TicketStatus, kindLabel, when } from '../format.js';
 import { Proposal } from '../owner/Proposal.js';
+import { IntakeReview } from '../owner/IntakeReview.js';
+import { IntakeOutcome } from './IntakeOutcome.js';
 
 function githubUrl(value: string | null) {
   if (!value) return undefined;
@@ -65,6 +67,11 @@ function TicketContent({
   const [target, setTarget] = useState<'reporter' | 'agent'>('reporter');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const focusReply = (nextTarget: 'reporter' | 'agent') => {
+    setTarget(nextTarget);
+    reply.current?.focus();
+    reply.current?.scrollIntoView({ block: 'center' });
+  };
   const mutate = async (work: () => Promise<unknown>) => {
     setBusy(true);
     setError('');
@@ -137,16 +144,18 @@ function TicketContent({
           ))}
         </div>
       </section>
+      <IntakeOutcome
+        status={ticket.status}
+        onReply={() => focusReply('reporter')}
+        disabled={busy}
+      />
+      {owner && detail.intake && <IntakeReview intake={detail.intake} />}
       {owner && (
         <Proposal
           ticket={ticket}
           proposals={detail.proposals}
           onChanged={onChanged}
-          onAsk={() => {
-            setTarget('agent');
-            reply.current?.focus();
-            reply.current?.scrollIntoView({ block: 'center' });
-          }}
+          onAsk={() => focusReply('agent')}
         />
       )}
       {detail.evidence.length > 0 && (
@@ -254,7 +263,11 @@ function TicketContent({
               placeholder={
                 target === 'agent'
                   ? 'Ask about the analysis or another approach…'
-                  : 'Add details or answer a question…'
+                  : ticket.status === 'unclear_bug'
+                    ? 'What did you do, what happened and what did you expect?'
+                    : ticket.status === 'unclear_feature'
+                      ? 'What would you like to do, and how would it help?'
+                      : 'Add details or answer a question…'
               }
               disabled={busy}
             />

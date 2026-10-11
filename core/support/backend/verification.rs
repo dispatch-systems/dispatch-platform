@@ -121,6 +121,9 @@ pub fn complete(db: &Store, job: &str, lease: &str, result: &Value) -> Result<()
         let run = jobs::leased(db, job, lease)?;
         let ticket = tickets::record(db, &run.ticket)?;
         match run.kind.as_str() {
+            "investigate" if result.get("outcome").is_some() => {
+                super::intake::complete(db, job, lease, result)?;
+            }
             "investigate" => {
                 ensure(
                     s(&ticket, "status") == "awaiting_approval",

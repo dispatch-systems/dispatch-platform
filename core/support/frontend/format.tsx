@@ -1,8 +1,13 @@
 import type { SupportTicket } from '../api/index.js';
 
 export const statusLabels: Record<string, string> = {
+  triaging: 'Reviewing message',
+  acknowledged: 'Acknowledged',
+  answered: 'Answered',
   investigating: 'Investigating',
   needs_information: 'Needs information',
+  unclear_bug: 'Unclear Bug Report',
+  unclear_feature: 'Unclear Feature',
   awaiting_approval: 'Ready for review',
   implementing: 'Implementing',
   verifying: 'Verifying',

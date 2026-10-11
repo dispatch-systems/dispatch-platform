@@ -79,6 +79,11 @@ pub fn detail(db: &Store, auth: &Auth, id: &str) -> Result<SupportDetail> {
 pub(crate) fn view(db: &Store, id: &str, private: bool) -> Result<SupportDetail> {
     let row = record(db, id)?;
     Ok(SupportDetail {
+        intake: if private {
+            super::intake::latest(db, id, row["proposal_version"].as_u64().unwrap_or(0) as u32)?
+        } else {
+            None
+        },
         ticket: found(
             db.platform
                 .one_as("SELECT * FROM support_tickets WHERE id=?", [id])?,
@@ -132,7 +137,8 @@ pub fn create(db: &Store, auth: &Auth, body: &Value) -> Result<SupportDetail> {
         let time = now();
         db.platform.exec(
             "INSERT INTO support_tickets(id,request_id,reporter_id,reporter_scope,reporter_name,dsp_id,dsp_name,\
-             kind,title,description,release,source_sha,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+             kind,title,description,release,source_sha,created_at,updated_at,status,progress) \
+             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'triaging','Routing your request')",
             params![id, request, auth.user.id, scope, auth.user.name(), auth.scope, dsp_name, kind,
                 title, description, db.config.release, db.config.source.commit.as_deref().unwrap_or(""), time, time],
         )?;
