@@ -33,7 +33,9 @@ that works as written, with its test, and runs that; its `--features`, `--scope`
 `--changes` and `--changing` set what the list below describes. A tool is a type implementing
 `toolbox::Tool`:
 
-- `NAME`, `TITLE` and `DESCRIPTION`: what agents call it and read about it.
+- `NAME`, `TITLE` and `DESCRIPTION`: what agents call it and read about it. `DESCRIPTION` is
+  one short sentence, 120 characters at most, which the Agents page lists beside the tool too:
+  what an argument means goes in its doc comment, and what an answer means in the answer.
 - `SCOPE`: one DSP (`Dsp`, the default), several (`Dsps`), or the connection itself
   (`Connection`). A call names its DSP with `dsp`, or its DSPs with `dsps`; the server reads
   them, so the tool takes neither itself.

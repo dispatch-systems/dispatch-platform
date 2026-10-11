@@ -30,7 +30,7 @@ async function connectApp(page: Page, origin: string, name: string) {
   });
   await page.goto(`/oauth/authorize?${query}`);
   const approval = page.getByRole('form', { name: 'Claude Code' });
-  await approval.getByLabel('Connection name').fill(name);
+  await approval.getByLabel('Name in Dispatch').fill(name);
   await approval.getByRole('button', { name: 'Approve', exact: true }).click();
   await page.waitForURL((url) => url.href.startsWith(`${callback}?`));
   const token = await page.request.post('/oauth/token', {
@@ -155,7 +155,7 @@ test('a key takes tools, to read, as they are added, until the owner says otherw
   const sheet = page.getByRole('dialog', { name: 'New key' });
   await sheet.getByLabel('Name').fill('Nightly report script');
   const tools = sheet.getByRole('group', { name: 'Tools', exact: true });
-  const added = tools.getByRole('switch', { name: 'New tools, to read', exact: true });
+  const added = tools.getByRole('switch', { name: 'Tools added later', exact: true });
   await expect(added).toBeChecked();
   await sheet.getByRole('button', { name: 'Create key', exact: true }).click();
   await page
@@ -168,7 +168,7 @@ test('a key takes tools, to read, as they are added, until the owner says otherw
   // Changed afterwards, without making the key again.
   await row.getByRole('button', { name: 'Open Nightly report script' }).click();
   const edit = page.getByRole('dialog', { name: 'Nightly report script', exact: true });
-  await edit.getByRole('switch', { name: 'New tools, to read', exact: true }).click();
+  await edit.getByRole('switch', { name: 'Tools added later', exact: true }).click();
   await edit.getByRole('button', { name: 'Save changes', exact: true }).click();
   // With tools to choose, the key keeps them; it only stops taking those added later.
   await expect(row).toContainText(starting.count ? starting.text : 'No tools');

@@ -128,51 +128,21 @@
   font-size: 14px;
   font-weight: 500;
 }
-.agents-choices {
-  display: grid;
-  gap: 8px;
-}
-.agents-choices.two {
-  grid-template-columns: 1fr 1fr;
-}
-.agents-choice {
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-weight: 400;
-  cursor: pointer;
-}
-.agents-choice:has(> input:checked) {
-  border-color: var(--primary);
-  background: var(--selection);
-}
-.agents-choice input {
-  margin-top: 2px;
-}
-.agents-choice strong {
-  display: block;
-  font-size: 14px;
-  font-weight: 500;
-}
-.agents-choice small {
-  display: block;
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--muted-foreground);
-}
 .agents-dsps {
   display: grid;
   gap: 10px;
-  margin-top: 10px;
+  margin-top: 14px;
 }
 .agents-dsps label {
   flex-direction: row;
   align-items: center;
   gap: 10px;
   font-weight: 400;
+}
+/* A hint under a choice. */
+.agents-under {
+  margin-top: 8px;
+  font-size: 12px;
 }
 .agents-segmented {
   display: inline-flex;
@@ -275,59 +245,73 @@
   font-size: 13px;
   color: var(--muted-foreground);
 }
-/* A choice for each tool, under the features it needs. */
+/* A row for each tool, under the features it needs, and last whether tools added later come. */
 .agents-tools {
-  margin-top: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-.agents-tools-group + .agents-tools-group {
-  border-top: 1px solid var(--border);
+  margin-top: 6px;
 }
 .agents-tools-group > header {
-  padding: 10px 14px 2px;
-  font-size: 12px;
+  padding-top: 12px;
+  font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted-foreground);
+}
+.agents-tools-group + .agents-tools-group,
+.agents-new-tools {
+  border-top: 1px solid var(--border);
 }
 .agents-tool {
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 9px 14px;
+  gap: 16px;
+  padding: 12px 0;
   font-weight: 400;
+}
+.agents-tools-group > header + .agents-tool {
+  padding-top: 6px;
+}
+.agents-tool + .agents-tool {
+  border-top: 1px solid var(--border);
 }
 label.agents-tool {
   cursor: pointer;
 }
+.agents-tool-name {
+  font-weight: 500;
+}
 .agents-tool small {
   display: block;
-  margin-top: 1px;
+  margin-top: 2px;
   font-size: 12px;
   color: var(--muted-foreground);
 }
-/* What it may do with a tool: Off, Read, or Read and change, side by side. */
+/* A choice of a few, side by side: what it may do with a tool, Off, Read, or Read and change;
+   or, wide, which DSPs it reaches. */
 .agents-levels {
   display: inline-flex;
   flex: none;
-  border: 1px solid var(--border);
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--input);
   border-radius: var(--radius);
-  overflow: hidden;
+  background: var(--background);
+}
+.agents-levels.wide {
+  display: flex;
+}
+.agents-levels.wide .agents-level {
+  flex: 1;
 }
 .agents-level {
   position: relative;
   flex-direction: row;
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-}
-.agents-level + .agents-level {
-  border-left: 1px solid var(--border);
 }
 .agents-level input {
   position: absolute;
@@ -337,24 +321,24 @@ label.agents-tool {
   cursor: pointer;
 }
 .agents-level span {
-  padding: 5px 10px;
+  flex: 1;
+  padding: 5px 12px;
+  border-radius: calc(var(--radius) - 3px);
   color: var(--muted-foreground);
+  text-align: center;
   white-space: nowrap;
 }
+.agents-level:hover span {
+  color: var(--foreground);
+}
 .agents-level:has(input:checked) span {
-  background: var(--accent);
+  background: var(--selection);
+  box-shadow: inset 0 0 0 1px var(--primary);
   color: var(--foreground);
 }
 .agents-level:has(input:focus-visible) span {
   outline: 2px solid var(--ring);
-  outline-offset: -2px;
-}
-/* Whether tools added later come with it: a box of its own, under the tools. */
-.agents-new-tools {
-  margin-top: 10px;
-  padding: 13px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  outline-offset: 1px;
 }
 /* A tool that makes changes, wherever it is named. */
 .agents-changes {
@@ -590,30 +574,114 @@ label.agents-tool {
   padding: 4px 10px;
 }
 
-/* An app asking to connect: who it is, where access goes and what it may do. */
+/* An app asking to connect, in one column in the middle of the page: who it is and where access
+   goes, then where it reaches, the tools it may use and its name, then the answer. */
 .agents-authorize {
-  max-width: 560px;
+  max-width: 520px;
+  margin-inline: auto;
 }
-.agents-authorize .agents-form {
-  padding: 22px 24px;
+.agents-approval {
+  gap: 0;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--card);
+  overflow: hidden;
 }
-.agents-authorize-app {
+.agents-approval-top {
+  display: grid;
+  gap: 16px;
+  padding: 28px 28px 20px;
+}
+.agents-approval-app {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+}
+.agents-approval-pair {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.agents-approval-pair :is(.agents-logo, .agents-icon) {
+  border-radius: 12px;
+}
+.agents-approval-link {
+  width: 28px;
+  border-top: 2px dotted var(--input);
+}
+.agents-approval-dispatch {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.agents-approval-dispatch .brand svg {
+  width: 24px;
+  height: 24px;
+}
+.agents-approval-app h2 {
+  font-size: 20px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.agents-approval-app p {
+  color: var(--muted-foreground);
+}
+.agents-approval-facts {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
-  gap: 6px 14px;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted-foreground);
 }
-.agents-authorize-app h2 {
-  font-size: 18px;
-  font-weight: 600;
+.agents-approval-facts > * {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
 }
-.agents-authorize .form-actions {
-  margin-top: 0;
+.agents-approval-facts strong {
+  font-weight: 500;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
 }
-.agents-authorize .agents-notice {
+.agents-approval-part {
+  padding: 20px 28px;
+  border-top: 1px solid var(--border);
+}
+.agents-approval-top + .agents-approval-part {
+  padding-top: 4px;
+  border-top: 0;
+}
+.agents-approval-part .agents-notice {
+  margin: 14px 0 0;
+}
+.agents-approval-actions {
+  display: grid;
+  gap: 12px;
+  padding: 16px 28px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.agents-approval-actions :is(.form-actions, .notice) {
   margin: 0;
+}
+.agents-approval-actions .form-actions > .primary {
+  flex: 1;
+}
+.agents-approval-after {
+  margin-top: 14px;
+  font-size: 12px;
+  text-align: center;
+  color: var(--muted-foreground);
 }
 /* Asks the owner to approve only what they started, calmly. */
 .agents-consent {
@@ -621,8 +689,11 @@ label.agents-tool {
   align-items: flex-start;
   gap: 12px;
   margin: 0;
+  padding: 10px 12px;
+  border: 0;
   background: var(--surface);
-  color: var(--foreground);
+  font-size: 13px;
+  color: var(--muted-foreground);
 }
 .agents-consent > svg {
   flex-shrink: 0;
@@ -692,12 +763,14 @@ label.agents-tool {
   overflow-wrap: anywhere;
 }
 @media (max-width: 700px) {
-  .agents-choices.two {
-    grid-template-columns: 1fr;
-  }
   .agents-endpoint {
     grid-template-columns: 1fr;
     gap: 6px;
+  }
+  .agents-approval-top,
+  .agents-approval-part,
+  .agents-approval-actions {
+    padding-inline: 18px;
   }
 }
 

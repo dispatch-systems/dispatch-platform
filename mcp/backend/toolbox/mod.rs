@@ -78,7 +78,9 @@ pub trait Tool: Sync + 'static {
     const NAME: &'static str;
     /// The tool's name as people read it.
     const TITLE: &'static str;
-    /// What it does and answers, for the model choosing a tool: a sentence or two.
+    /// What it does, for the model choosing a tool and the Agents page listing it: one short
+    /// sentence, at most `DESCRIBED` characters. What an argument means goes in its doc
+    /// comment, and what an answer means in the answer.
     const DESCRIPTION: &'static str;
     const SCOPE: Scope = Scope::Dsp;
     /// The features it needs, each by its switch or a part's (`"timecard"`,
@@ -167,6 +169,9 @@ impl<T: Tool> AnyTool for T {
         Box::pin(async move { T::call(cx, input).await?.answered() })
     }
 }
+
+/// The longest a tool's description may be, in characters: one short sentence.
+const DESCRIBED: usize = 120;
 
 /// The arguments a call about DSPs names them with, and what each says.
 const DSP: &str = "dsp";
@@ -621,9 +626,9 @@ fn built() -> BTreeSet<&'static str> {
         .collect()
 }
 
-/// Panics unless every tool has a name of its own as agents call it, says what it is, needs
-/// only features there are, refuses arguments it doesn't name, leaves `dsp` and `dsps` to the
-/// server, and answers an object.
+/// Panics unless every tool has a name of its own as agents call it, says what it is in one
+/// short sentence, needs only features there are, refuses arguments it doesn't name, leaves
+/// `dsp` and `dsps` to the server, and answers an object.
 pub fn check(tools: &[&dyn AnyTool]) {
     let switches = built();
     let mut names = BTreeSet::new();
@@ -642,6 +647,11 @@ pub fn check(tools: &[&dyn AnyTool]) {
         assert!(
             !tool.title().is_empty() && !tool.description().is_empty(),
             "{name} has no title or description"
+        );
+        assert!(
+            tool.description().chars().count() <= DESCRIBED,
+            "{name}'s description is over {DESCRIBED} characters: say what it does in one short \
+             sentence, and the rest in its arguments and answer"
         );
         for switch in tool.features() {
             assert!(

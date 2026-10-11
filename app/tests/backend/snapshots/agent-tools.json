@@ -2,7 +2,7 @@
   {
     "name": "dvic_short_inspections",
     "title": "DVIC short inspections",
-    "description": "Find the drivers whose DVIC pre-trip inspections were shorter than the minimum time (90 seconds, 300 for a step van), at one DSP: for some drivers, a day, or a range such as the last 3 days or last week. DVIC records only the inspections that fell short. Answers each driver's count and days, the inspections, and how far DVIC is collected, since a day it hasn't collected is unknown.",
+    "description": "Find drivers whose DVIC pre-trip inspections were shorter than the minimum.",
     "features": ["dvic"],
     "changes": false,
     "scope": "dsp",

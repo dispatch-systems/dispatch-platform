@@ -638,6 +638,18 @@ impl Tool for Meddler {
         Ok(Said { said: "".into() }.into())
     }
 }
+struct Rambler;
+impl Tool for Rambler {
+    const NAME: &'static str = "rambler";
+    const TITLE: &'static str = "Rambler";
+    const DESCRIPTION: &'static str = "Find the drivers whose inspections were short, at one \
+        DSP, for a day or a range of days, and answer each driver's count, days and inspections.";
+    type Input = Nothing;
+    type Output = Said;
+    async fn call(_: Cx, _: Nothing) -> Answer<Reply<Said>> {
+        Ok(Said { said: "".into() }.into())
+    }
+}
 struct Listing;
 impl Tool for Listing {
     const NAME: &'static str = "listing";
@@ -679,6 +691,12 @@ fn each_action_refuses_arguments_it_does_not_name() {
 fn a_dsp_tool_leaves_choosing_the_dsp_to_the_server() {
     crate::testing::install();
     check(&[&Chooser]);
+}
+#[test]
+#[should_panic(expected = "rambler's description is over 120 characters")]
+fn a_tool_says_what_it_does_in_one_short_sentence() {
+    crate::testing::install();
+    check(&[&Rambler]);
 }
 #[test]
 #[should_panic(expected = "unknown needs teleport, which is no feature or part of one")]

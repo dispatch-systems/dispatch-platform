@@ -15,17 +15,13 @@ import {
   useAgentKeys,
   useOAuthRequest,
 } from '../api/client.js';
+import { Brand } from '../../core/shell/frontend/runtime/Brand.js';
 import { hashQuery, platformHash } from '../../core/shell/frontend/runtime/navigation.js';
 import { useAction } from '../../core/shell/frontend/runtime/useAction.js';
-import { appKindName, blankKey } from './agents.js';
+import { appKindName, blankKey, knownApp } from './agents.js';
 import { calendarDay } from '../../core/shell/frontend/lib/format.js';
-import {
-  Badge,
-  DataState,
-  DetailList,
-  ErrorBox,
-  Header,
-} from '../../core/shell/frontend/ui/index.js';
+import { Badge, DataState, ErrorBox, Header } from '../../core/shell/frontend/ui/index.js';
+import { AppIcon } from './AppIcon.js';
 import { DspReach } from './KeyChoices.js';
 import { ToolChoices } from './ToolChoices.js';
 
@@ -79,7 +75,8 @@ function refusal(error: string, app: string | null): ReactNode {
   }
 }
 
-/** Platform → Agents → an app asking to connect, opened from `#authorize?request=<id>`. */
+/** Platform → Agents → an app asking to connect, opened from `#authorize?request=<id>`: one
+ * column in the middle of the page, the request asking in its own words. */
 export function AuthorizePage() {
   const [query, setQuery] = useState(() => hashQuery().toString());
   // Another request opened in this tab changes only the address's query.
@@ -89,12 +86,9 @@ export function AuthorizePage() {
     return () => window.removeEventListener('hashchange', changed);
   }, []);
   return (
-    <>
-      <Header title="Connect an app" />
-      <section className="agents-authorize">
-        <Authorization key={query} query={new URLSearchParams(query)} />
-      </section>
-    </>
+    <section className="agents-authorize">
+      <Authorization key={query} query={new URLSearchParams(query)} />
+    </section>
   );
 }
 
@@ -117,25 +111,32 @@ function Authorization({ query }: { query: URLSearchParams }) {
           : '';
   if (problem)
     return (
-      <p className="notice" role="status">
-        {problem}
-      </p>
+      <>
+        <Header title="Connect an app" />
+        <p className="notice" role="status">
+          {problem}
+        </p>
+      </>
     );
   const loaded = request.data &&
     agents.data && { pending: request.data, dsps: agents.data.dsps, tools: agents.data.tools };
+  // The request names itself; the page's own heading is for assistive technology.
   return (
-    <DataState
-      data={loaded || undefined}
-      error={request.error || agents.error}
-      retry={() => {
-        request.refresh();
-        agents.refresh();
-      }}
-    >
-      {({ pending, dsps, tools }) => (
-        <Approval request={pending} dsps={dsps} tools={tools} end={setEnded} />
-      )}
-    </DataState>
+    <>
+      <h1 className="sr-only">Connect an app</h1>
+      <DataState
+        data={loaded || undefined}
+        error={request.error || agents.error}
+        retry={() => {
+          request.refresh();
+          agents.refresh();
+        }}
+      >
+        {({ pending, dsps, tools }) => (
+          <Approval request={pending} dsps={dsps} tools={tools} end={setEnded} />
+        )}
+      </DataState>
+    </>
   );
 }
 
@@ -203,90 +204,122 @@ function Approval({
   // An app Dispatch doesn't know, on a website: where access goes is what matters most.
   const website = !app.known && !app.redirectScheme && app.redirectHost !== 'this computer';
   const name = <bdi>{app.name}</bdi>;
+  // Only recognized published metadata gets an app's logo; any other app, the plain icon for
+  // where it sends access.
+  const icon = app.known ? knownApp(app) : app.redirectHost === 'this computer' ? 'local' : 'web';
   return (
-    <form
-      className="agents-form"
-      aria-labelledby="agents-authorize-app"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (ready) void answer.run(true);
-      }}
-    >
-      <div className="agents-authorize-app">
-        <h2 id="agents-authorize-app">{name}</h2>
-        <Badge value={app.known ? 'known_metadata' : 'app_provided'}>
-          {app.known ? 'Known metadata' : 'App-provided metadata'}
-        </Badge>
-      </div>
-      {website && (
-        <p className="agents-sends">
-          <Globe size={18} aria-hidden="true" />
-          <span>
-            Sends access to: <strong>{app.redirectHost}</strong>
-          </span>
-        </p>
-      )}
-      {!website && (
-        <DetailList
-          items={[
-            [
-              'Sends access to',
-              app.redirectScheme
-                ? `an app on ${app.redirectHost} (${app.redirectScheme}://…)`
-                : app.redirectHost,
-            ],
-          ]}
-        />
-      )}
-      <label>
-        Connection name
-        <input
-          name="name"
-          required
-          maxLength={80}
-          value={form.name}
-          onChange={(event) => set({ name: event.target.value })}
-        />
-      </label>
-      <DspReach dsps={dsps} form={form} set={set} />
-      <ToolChoices tools={tools} form={form} set={set} />
-      {replaces && (
-        <div className="notice agents-notice" role="status">
-          <TriangleAlert size={16} aria-hidden="true" />
-          <span>
-            Approving replaces “<bdi>{replaces.name}</bdi>”, connected{' '}
-            {calendarDay(replaces.connectedAt)}. Its current connection stops working.
-          </span>
-        </div>
-      )}
-      <div className="notice agents-consent">
-        <Info size={16} aria-hidden="true" />
-        <span>
-          {app.known ? (
-            <>
-              Dispatch recognizes this app’s published metadata, but public app identity is not
-              authenticated.{' '}
-            </>
-          ) : (
-            <>Unrecognized app: it says it is “{name}”. </>
+    <>
+      <form
+        className="agents-form agents-approval"
+        aria-labelledby="agents-authorize-app"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (ready) void answer.run(true);
+        }}
+      >
+        <div className="agents-approval-top">
+          <header className="agents-approval-app">
+            <div className="agents-approval-pair" aria-hidden="true">
+              <AppIcon app={icon} large />
+              <span className="agents-approval-link" />
+              <span className="agents-approval-dispatch">
+                <Brand mark />
+              </span>
+            </div>
+            <h2>
+              <bdi id="agents-authorize-app">{app.name}</bdi> wants to connect to Dispatch
+            </h2>
+            <p>It gets only the DSPs and tools you allow below.</p>
+            <div className="agents-approval-facts">
+              <Badge value={app.known ? 'known_metadata' : 'app_provided'}>
+                {app.known ? 'Known metadata' : 'App-provided metadata'}
+              </Badge>
+              {!website && (
+                <span>
+                  Sends access to{' '}
+                  <strong>
+                    {app.redirectScheme
+                      ? `an app on ${app.redirectHost} (${app.redirectScheme}://…)`
+                      : app.redirectHost}
+                  </strong>
+                </span>
+              )}
+            </div>
+          </header>
+          {website && (
+            <p className="agents-sends">
+              <Globe size={18} aria-hidden="true" />
+              <span>
+                Sends access to: <strong>{app.redirectHost}</strong>
+              </span>
+            </p>
           )}
-          Only approve if you started connecting {name} yourself just now. If you didn’t, choose
-          Deny.
-          {app.redirectHost === 'this computer' &&
-            ' Access will be sent to an app running on this computer.'}
-        </span>
-      </div>
-      <ErrorBox message={answer.error} />
-      {leaving && <p role="status">Sending you back to {name}…</p>}
-      <div className="form-actions">
-        <button type="button" disabled={busy} onClick={() => void answer.run(false)}>
-          Deny
-        </button>
-        <button className="primary" disabled={!ready || busy}>
-          Approve
-        </button>
-      </div>
-    </form>
+          <div className="notice agents-consent">
+            <Info size={16} aria-hidden="true" />
+            <span>
+              {app.known ? (
+                <>
+                  Dispatch recognizes this app’s published metadata, but public app identity is not
+                  authenticated.{' '}
+                </>
+              ) : (
+                <>Unrecognized app: it says it is “{name}”. </>
+              )}
+              Only approve if you started connecting {name} yourself just now. If you didn’t, choose
+              Deny.
+              {app.redirectHost === 'this computer' &&
+                ' Access will be sent to an app running on this computer.'}
+            </span>
+          </div>
+        </div>
+        <div className="agents-approval-part">
+          <DspReach dsps={dsps} form={form} set={set} />
+        </div>
+        <div className="agents-approval-part">
+          <ToolChoices tools={tools} form={form} set={set} />
+        </div>
+        <div className="agents-approval-part">
+          <label>
+            Name in Dispatch
+            <input
+              name="name"
+              required
+              maxLength={80}
+              aria-describedby="agents-approval-name"
+              value={form.name}
+              onChange={(event) => set({ name: event.target.value })}
+            />
+          </label>
+          <p className="agents-hint agents-under" id="agents-approval-name">
+            How it shows in Agents → Apps.
+          </p>
+          {replaces && (
+            <div className="notice agents-notice" role="status">
+              <TriangleAlert size={16} aria-hidden="true" />
+              <span>
+                Approving replaces “<bdi>{replaces.name}</bdi>”, connected{' '}
+                {calendarDay(replaces.connectedAt)}. Its current connection stops working.
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="agents-approval-actions">
+          <ErrorBox message={answer.error} />
+          {leaving && <p role="status">Sending you back to {name}…</p>}
+          <div className="form-actions">
+            <button type="button" disabled={busy} onClick={() => void answer.run(false)}>
+              Deny
+            </button>
+            <button className="primary" disabled={!ready || busy}>
+              Approve
+            </button>
+          </div>
+        </div>
+      </form>
+      <p className="agents-approval-after">
+        You can change or revoke it any time in Agents → Apps.
+      </p>
+    </>
   );
 }
 

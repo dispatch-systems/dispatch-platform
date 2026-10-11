@@ -75,7 +75,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
       ),
     ).toBeVisible();
     await expect(approval.getByText(/^Approving replaces/)).toHaveCount(0);
-    const name = approval.getByLabel('Connection name');
+    const name = approval.getByLabel('Name in Dispatch');
     await expect(name).toHaveValue('Claude Code');
     await name.fill('Laptop – Claude Code app');
     await approval.getByText('Choose DSPs', { exact: true }).click();
@@ -133,7 +133,7 @@ test('an app signs in with Dispatch: the owner signs in, approves it, then revok
     await page.goto(`/oauth/authorize?${query('again')}`);
     const again = page.getByRole('form', { name: 'Claude Code' });
     await expect(again.getByText(/^Approving replaces/)).toHaveCount(0);
-    await again.getByLabel('Connection name').fill('Laptop – Claude Code app');
+    await again.getByLabel('Name in Dispatch').fill('Laptop – Claude Code app');
     await expect(again.getByText(/^Approving replaces/)).toHaveText(
       /^Approving replaces “Laptop – Claude Code app”, connected \w{3} \d{1,2}, \d{4}\. Its current connection stops working\.$/,
     );
