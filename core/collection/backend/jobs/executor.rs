@@ -154,9 +154,12 @@ async fn run(state: Arc<State>, job: JobRow, owner: String) {
                 let guard=state.run_bookkeeping(move|db|{db.guard(&jid,&worker)?;db.jobs.exec("UPDATE \
                     jobs SET lease_until=? WHERE id=? AND lease_owner=?",params![now()+120000,jid,worker])?;Ok(())}).await;
                 // A publication may have finished the job while this waited for the lock:
-                // the task's own outcome then stands, not the lease it released.
+                // the task's own outcome then stands, not the lease it released, so it is
+                // left to return it. Any other lost lease stops the work.
                 if let Err(error)=guard{
-                    task.0.abort();
+                    let jid=id.clone();
+                    let succeeded=state.read(move|db|Ok(db.job_row(&jid,None)?.status==JobStatus::Succeeded)).await.unwrap_or(false);
+                    if !succeeded{task.0.abort();}
                     break (&mut task.0).await.unwrap_or(Err(error));
                 }
             }
