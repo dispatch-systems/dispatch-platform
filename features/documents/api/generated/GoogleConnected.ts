@@ -6,7 +6,7 @@ import type { DocumentsAccount } from "./DocumentsAccount";
  */
 export type GoogleConnected = { account: DocumentsAccount,
 /**
- * Whether Dispatch made the DSP's main folder just now, so Documents holds nothing yet
- * and offers folders to start with.
+ * Whether Dispatch made the DSP's main folder just now, rather than keeping the one the
+ * account already held.
  */
 madeFolder: boolean, };

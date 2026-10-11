@@ -82,7 +82,7 @@ function FixturePicker({
         would show them.
       </p>
       {picker.madeInDrive.length ? (
-        <div className="documents-starters documents-picked">
+        <div className="documents-picked">
           {picker.madeInDrive.map((file) => (
             <label key={file.id} className={chosen.has(file.id) ? 'chosen' : undefined}>
               <input

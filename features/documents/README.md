@@ -38,8 +38,10 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   site), so it only passes what Google sent on to the page the sign-in started on, which
   finishes it as the member who started it: Settings' Connections for the DSP's account and for
   a member linking theirs there, and Documents for a member linking theirs from there. Its
-  state says which. Each sign-in is used once, by its starter, within
-  ten minutes, and its code is bound to a PKCE verifier only the server holds.
+  state says which. Once the DSP's account is connected, those who hold `documents.use` go on to
+  Documents, which starts empty: Dispatch makes the main folder and nothing in it. Each sign-in
+  is used once, by its starter, within ten minutes, and its code is bound to a PKCE verifier
+  only the server holds.
 - **Uploads and downloads:** files picked or dropped on their own are named first, in a
   dialog that shows each name without its extension and keeps the extension; a folder's files
   keep their names. A file streams through Dispatch to Google as it arrives, into the folder
