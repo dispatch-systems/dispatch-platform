@@ -261,6 +261,10 @@
 .meal-employee small.meal-other-gap {
   color: var(--meal-gap-foreground);
 }
+.meal-employee small.meal-period-gaps {
+  color: var(--meal-gap-foreground);
+  font-weight: 500;
+}
 .meal-status {
   display: inline-block;
   border: 1px solid var(--border);

@@ -1,7 +1,7 @@
 import { useUpdateState } from '../../../../../core/shell/frontend/runtime/browser-update.js';
 import { useDeferredValue, useMemo } from 'react';
 import { AlertTriangle, ArrowRight, Download, Globe, Info, RefreshCw } from 'lucide-react';
-import { mealComparisonUrl, useMealComparison } from '../../../api/client.js';
+import { mealComparisonUrl, useMealComparison, useMealPeriodGaps } from '../../../api/client.js';
 import { navigate, settingsHash } from '../../../../../core/shell/frontend/runtime/navigation.js';
 import { useTableState } from '../../../../../core/shell/frontend/runtime/useTableState.js';
 import {
@@ -60,19 +60,30 @@ export function MealBreaksPage({
   const data = current ?? request.stale;
   const shownDate = data?.date ?? date;
   const zone = data?.timezone ?? timezone;
+  const gapsRequest = useMealPeriodGaps(date, refreshKey);
+  // Whichever answer's period holds the day shown: the previous one keeps its counts while
+  // a day of the same period loads.
+  const periodGaps = [gapsRequest.data, gapsRequest.stale].find(
+    (gaps) => gaps?.period && gaps.period.from <= shownDate && shownDate <= gaps.period.to,
+  );
   const nameOrder = preferences.name_order;
   const lateTime = preferences.late_da_time,
     lateDepartments = preferences.late_da_departments;
   const rows = useMemo<MealLine[]>(
     () =>
-      (data?.rows ?? []).map((row: MealEmployee) => ({
-        ...mealLines(row, displayMeal(row), personName(row.name, nameOrder), shownDate),
-        onOpenEmployee:
-          onOpenEmployee && row.id.startsWith('paycom:')
-            ? () => onOpenEmployee(row.id.slice(7), shownDate)
-            : undefined,
-      })),
-    [data, shownDate, nameOrder, onOpenEmployee],
+      (data?.rows ?? []).map((row: MealEmployee) => {
+        const count = periodGaps?.counts[row.id],
+          period = periodGaps?.period;
+        return {
+          ...mealLines(row, displayMeal(row), personName(row.name, nameOrder), shownDate),
+          onOpenEmployee:
+            onOpenEmployee && row.id.startsWith('paycom:')
+              ? () => onOpenEmployee(row.id.slice(7), shownDate)
+              : undefined,
+          periodGaps: count && period ? { count, period } : undefined,
+        };
+      }),
+    [data, shownDate, nameOrder, onOpenEmployee, periodGaps],
   );
   const prepared = useMemo(() => {
     const counts = { all: rows.length, late: 0, different: 0, missing: 0, gaps: 0 };

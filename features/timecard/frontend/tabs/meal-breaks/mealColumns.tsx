@@ -1,7 +1,8 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cortexClock, displayMeal, type ClockTime } from '../../meal-breaks.js';
-import type { MealEmployee } from '../../../api/index.js';
+import type { EmployeeTimecardPeriod, MealEmployee } from '../../../api/index.js';
 import type { TableColumn } from '../../../../../core/shell/frontend/ui/index.js';
+import { timecardPeriod } from '../../timecard-format.js';
 import { Clock, GapBadge, LunchCell, type SourceLink } from './cells.js';
 
 type Summary = ReturnType<typeof displayMeal>;
@@ -17,6 +18,8 @@ export interface MealLine {
   index: number;
   more?: MealLine[];
   onOpenEmployee?: () => void;
+  /** The employee's verified gaps over the timecard period holding the day, when any. */
+  periodGaps?: { count: number; period: EmployeeTimecardPeriod };
 }
 export function mealLines(
   row: MealEmployee,
@@ -105,7 +108,7 @@ export const mealColumns: TableColumn<MealLine>[] = [
     sticky: true,
     sortHeader,
     value: (line) => line.name,
-    cell: ({ name, summary, index, onOpenEmployee }, { expanded, toggle }) =>
+    cell: ({ name, summary, index, onOpenEmployee, periodGaps }, { expanded, toggle }) =>
       index === 0 ? (
         <div className="meal-employee">
           <button
@@ -131,6 +134,14 @@ export const mealColumns: TableColumn<MealLine>[] = [
                 .some((pair) => pair.gaps.before?.overLimit || pair.gaps.after?.overLimit) && (
                 <small className="meal-other-gap">Gap over 5m on another meal</small>
               )}
+            {periodGaps && (
+              <small
+                className="meal-period-gaps"
+                title={`Meal break gaps over 5 min · ${timecardPeriod(periodGaps.period.from, periodGaps.period.to)}`}
+              >
+                {periodGaps.count} {periodGaps.count === 1 ? 'gap' : 'gaps'} this period
+              </small>
+            )}
           </span>
         </div>
       ) : (

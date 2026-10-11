@@ -15,9 +15,10 @@ Timecard's collections. It names drivers through Driver Match.
   settings and schedules; and `collections.run`, to sync now or cancel a sync. The demo DSPs
   give Managers and Members View, and Managers Run Collections.
 - **API:** behind `timecard.view`, `GET /api/dsp/timecards` (a day's), `…/employees` and
-  `…/employees/{code}` (Employee Search's), `GET /api/dsp/paycom/meal-breaks` and
-  `GET /api/dsp/cortex/meal-breaks` (the Meal Breaks tab's), `…/paycom/status`,
-  `…/paycom/settings` and `GET /api/dsp/jobs/meal-breaks`. Behind `collections.run`:
+  `…/employees/{code}` (Employee Search's), `GET /api/dsp/paycom/meal-breaks`, its
+  `…/period` (a person's gaps over their timecard period) and `…/period-gaps` (everyone's
+  count of them), and `GET /api/dsp/cortex/meal-breaks` (the Meal Breaks tab's),
+  `…/paycom/status`, `…/paycom/settings` and `GET /api/dsp/jobs/meal-breaks`. Behind `collections.run`:
   `GET` and `POST /api/dsp/jobs` (its jobs, and a Paycom collection), `…/jobs/{id}/cancel`,
   `POST …/jobs/meal-breaks` (a day's meal breaks from both sources), `…/employees/{code}/sync`
   and `…/cortex/meal-breaks/collect`. Behind `timecard.manage`, `POST …/paycom/settings` and

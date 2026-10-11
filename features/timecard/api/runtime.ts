@@ -8,6 +8,7 @@ import type {
   PaycomDay,
   MealComparison,
   MealPeriod,
+  MealPeriodGaps,
   MealEmployee,
   MealAssessment,
   PaycomPreferences,
@@ -15,7 +16,13 @@ import type {
 } from './index.js';
 import { jobSchema, jobsSchema } from '../../../core/collection/api/runtime.js';
 import { count, text, type Replies } from '../../../core/foundation/api/runtime.js';
-import { employeesPath, mealBreaksPath, mealPeriodPath, paycomSettingsPath } from './urls.js';
+import {
+  employeesPath,
+  mealBreaksPath,
+  mealPeriodGapsPath,
+  mealPeriodPath,
+  paycomSettingsPath,
+} from './urls.js';
 
 const optionalText = z.optional(z.nullable(text));
 const whole = z.number().check(z.int());
@@ -199,6 +206,10 @@ export const mealPeriodSchema = z.object({
   ),
   excessMilliseconds: count,
 }) satisfies z.ZodMiniType<MealPeriod>;
+export const mealPeriodGapsSchema = z.object({
+  period: z.nullable(period),
+  counts: z.record(text, count),
+}) satisfies z.ZodMiniType<MealPeriodGaps>;
 const preferences = z.object({
   opening_page: z.enum(['timecards', 'meal-breaks', 'employees']),
   rows_per_page: z.union([z.literal(25), z.literal(50), z.literal(100)]),
@@ -232,6 +243,7 @@ export const replies: Replies = (route, method) => {
     if (route === '/api/dsp/timecards') return dailyTimecardsSchema;
     if (route === mealBreaksPath) return mealComparisonSchema;
     if (route === mealPeriodPath) return mealPeriodSchema;
+    if (route === mealPeriodGapsPath) return mealPeriodGapsSchema;
     return undefined;
   }
   if (route === '/api/dsp/jobs') return jobSchema;
