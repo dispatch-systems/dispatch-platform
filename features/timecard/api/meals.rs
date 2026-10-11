@@ -172,3 +172,15 @@ pub struct MealPeriod {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub excess_milliseconds: i64,
 }
+
+/// How many verified delivery gaps each person has over the timecard period holding a day,
+/// by the id of their meal-break row. Only people with a gap are listed; a day outside
+/// Paycom's collected periods has no period and no counts.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct MealPeriodGaps {
+    pub period: Option<dispatch_paycom::timecards::EmployeeTimecardPeriod>,
+    pub counts: std::collections::BTreeMap<String, usize>,
+}

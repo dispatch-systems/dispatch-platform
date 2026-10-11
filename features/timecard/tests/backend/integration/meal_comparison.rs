@@ -412,6 +412,12 @@ fn meal_period_counts_each_verified_gap_and_only_time_beyond_five_minutes() {
         vec![7, 9, 12, 8, 6]
     );
     assert_eq!(result.excess_milliseconds, 17 * 60_000);
+    // Everyone's counts, as the page shows them, count the same gaps over the same period.
+    let everyone = db
+        .meal_period_gaps(&id, "2026-09-07", "America/Los_Angeles")
+        .unwrap();
+    assert_eq!(everyone.period.as_ref(), Some(&result.period));
+    assert_eq!(everyone.counts["paycom:E001"], 5);
     let previous = db
         .meal_period(
             &id,
@@ -424,6 +430,17 @@ fn meal_period_counts_each_verified_gap_and_only_time_beyond_five_minutes() {
     assert_eq!(previous.period.from, "2026-08-23");
     assert_eq!(previous.period.to, "2026-09-05");
     assert_eq!(previous.gaps.len(), 2);
+    assert_eq!(
+        db.meal_period_gaps(&id, "2026-09-05", "America/Los_Angeles")
+            .unwrap()
+            .counts["paycom:E001"],
+        2
+    );
+    // A day past Paycom's latest period has no period to count over.
+    let unpublished = db
+        .meal_period_gaps(&id, "2026-09-20", "America/Los_Angeles")
+        .unwrap();
+    assert!(unpublished.period.is_none() && unpublished.counts.is_empty());
     assert_eq!(
         db.timecard_period(&id, Some("E001"), Some("2026-09-07"), None)
             .unwrap(),

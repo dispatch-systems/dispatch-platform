@@ -2,7 +2,7 @@
 //! employees, timecards and preferences, and the meal breaks Cortex reports. Each method is
 //! written beside the rest of its part of Timecard.
 use crate::api::{
-    meals::{MealComparison, MealPeriod},
+    meals::{MealComparison, MealPeriod, MealPeriodGaps},
     types::{DailyTimecards, EmployeeTimecardResponse, EmployeesResponse},
 };
 use dispatch_core::{Result, db::Store};
@@ -27,6 +27,7 @@ pub trait TimecardStore {
         requested: Option<&EmployeeTimecardPeriod>,
         timezone: &str,
     ) -> Result<MealPeriod>;
+    fn meal_period_gaps(&self, id: &str, date: &str, timezone: &str) -> Result<MealPeriodGaps>;
     fn daily_timecards_source(
         &self,
         id: &str,
@@ -135,6 +136,9 @@ impl TimecardStore for Store {
         timezone: &str,
     ) -> Result<MealPeriod> {
         super::meals::period::meal_period(self, id, source, date, requested, timezone)
+    }
+    fn meal_period_gaps(&self, id: &str, date: &str, timezone: &str) -> Result<MealPeriodGaps> {
+        super::meals::period::meal_period_gaps(self, id, date, timezone)
     }
     fn daily_timecards_source(
         &self,

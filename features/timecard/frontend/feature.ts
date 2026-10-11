@@ -7,6 +7,7 @@ import type { Access, FrontendFeature } from '../../../core/shell/frontend/runti
 import {
   employeesPath,
   mealBreaksPath,
+  mealPeriodGapsPath,
   mealPeriodPath,
   paycomSettingsPath,
   paycomStatusPath,
@@ -88,7 +89,7 @@ export const feature: FrontendFeature = {
         if (change.provider === 'all') return true;
         if (change.provider === 'cortex' && !route.startsWith(mealBreaksPath)) return false;
         // A day's publication or match can change any summary whose pay period contains it.
-        if (route === mealPeriodPath) return true;
+        if (route === mealPeriodPath || route === mealPeriodGapsPath) return true;
         if (route === paycomSettingsPath) return Boolean(change.roster);
         if (route === employeesPath) return Boolean(change.roster);
         if (route.startsWith(`${employeesPath}/`))

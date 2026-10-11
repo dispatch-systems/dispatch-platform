@@ -40,6 +40,13 @@ test('meal API requires DSP context, exposes the punch union to members, and lin
     );
     const employee = await member.get(`/api/dsp/employees/E001?date=${date}`);
     assert.deepEqual(period.value.period, employee.value.period);
+    // Everyone's counts read the same period, so the page's count matches the summary's.
+    const gapsPath = '/api/dsp/paycom/meal-breaks/period-gaps';
+    const gaps = await member.get(`${gapsPath}?date=${date}`);
+    assert.equal(gaps.status, 200);
+    checkReply([timecardReplies], gapsPath, 'GET', gaps.value);
+    assert.deepEqual(gaps.value.period, period.value.period);
+    assert.equal(gaps.value.counts['paycom:E001'] ?? 0, period.value.gaps.length);
     assert.equal((await member.get(`${periodUrl}&from=2026-09-06&to=2026-09-19`)).status, 400);
     assert.equal(
       (await member.get('/api/dsp/paycom/meal-breaks/period?source=unknown&date=2026-09-07'))

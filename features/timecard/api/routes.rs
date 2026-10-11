@@ -56,6 +56,12 @@ pub fn routes() -> Vec<Route> {
         write("/api/dsp/paycom/settings", MANAGE, save_paycom_settings),
         read("/api/dsp/paycom/meal-breaks", VIEW, meal_comparison).logged(),
         read("/api/dsp/paycom/meal-breaks/period", VIEW, meal_period).logged(),
+        read(
+            "/api/dsp/paycom/meal-breaks/period-gaps",
+            VIEW,
+            meal_period_gaps,
+        )
+        .logged(),
         read("/api/dsp/cortex/meal-breaks", VIEW, cortex_meal_breaks),
         job_list("/api/dsp/jobs", RUN, KINDS).logged(),
         write("/api/dsp/jobs", RUN, collect),
@@ -234,6 +240,26 @@ fn meal_period(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         requested.as_ref(),
         c.dsp.timezone.as_str(),
     )?)
+}
+
+fn meal_period_gaps(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    tab(c, MEAL_BREAKS)?;
+    v::fields(&input.query, &["date"])?;
+    let date = v::text(&input.query, "date", 10, 10)?;
+    let timezone = c.dsp.timezone.as_str();
+    // As the day's comparison: read afresh while a collection runs, and cached otherwise.
+    if db.any_active_job(c.dsp_id(), KINDS)? {
+        return Reply::of(&db.meal_period_gaps(c.dsp_id(), date, timezone)?);
+    }
+    let gaps = c.state.read_cache.json(
+        dispatch_core::server::cache::Scope::tenant(crate::backend::meals::CACHED, c.dsp_id()),
+        format!("meal-period-gaps:{}:{}:{}", c.dsp_id(), date, timezone),
+        c.state
+            .data_revision
+            .load(std::sync::atomic::Ordering::Relaxed),
+        || db.meal_period_gaps(c.dsp_id(), date, timezone),
+    )?;
+    Ok(Reply::encoded(gaps))
 }
 
 fn cortex_meal_breaks(db: &Store, c: &Member, input: &Input) -> Result<Reply> {

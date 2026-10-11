@@ -10,6 +10,7 @@ import type {
   EmployeesResponse,
   MealComparison,
   MealPeriod,
+  MealPeriodGaps,
   PaycomPreferences,
   PaycomSettings,
 } from './index.js';
@@ -18,6 +19,7 @@ import {
   dailyTimecardsUrl,
   employeeTimecardUrl,
   mealComparisonUrl,
+  mealPeriodGapsUrl,
   mealPeriodUrl,
   schedules,
 } from './urls.js';
@@ -109,6 +111,13 @@ export const useMealPeriod = (
 ) =>
   useCachedData<MealPeriod>(
     period ? mealPeriodUrl(source, period) : '',
+    performancePolicy.recoveryPollMs,
+    refreshKey,
+  );
+/** Everyone's count of verified gaps over the timecard period holding `date`. */
+export const useMealPeriodGaps = (date: string, refreshKey?: string | null) =>
+  useCachedData<MealPeriodGaps>(
+    mealPeriodGapsUrl(date),
     performancePolicy.recoveryPollMs,
     refreshKey,
   );

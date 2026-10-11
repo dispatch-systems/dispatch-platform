@@ -8,6 +8,7 @@ export const schedules = '/api/dsp/schedules';
 export const employeesPath = '/api/dsp/employees';
 export const mealBreaksPath = '/api/dsp/paycom/meal-breaks';
 export const mealPeriodPath = `${mealBreaksPath}/period`;
+export const mealPeriodGapsPath = `${mealBreaksPath}/period-gaps`;
 export const paycomSettingsPath = '/api/dsp/paycom/settings';
 export const paycomStatusPath = '/api/dsp/paycom/status';
 export const employeeTimecardUrl = (
@@ -20,5 +21,7 @@ export const dailyTimecardsUrl = (date: string) =>
   `/api/dsp/timecards?date=${date}&sort=name&direction=asc`;
 export const mealComparisonUrl = (date: string) =>
   `${mealBreaksPath}?date=${encodeURIComponent(date)}`;
+export const mealPeriodGapsUrl = (date: string) =>
+  `${mealPeriodGapsPath}?date=${encodeURIComponent(date)}`;
 export const mealPeriodUrl = (source: string, period: EmployeeTimecardPeriod | string) =>
   `${mealPeriodPath}?source=${encodeURIComponent(source)}&${typeof period === 'string' ? `date=${period}` : `from=${period.from}&to=${period.to}`}`;
