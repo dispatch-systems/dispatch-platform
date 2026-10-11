@@ -63,11 +63,11 @@ pub fn routes() -> Vec<Route> {
             Box::pin(revoke(state, request)) as Served
         }),
         read("/api/platform/oauth/requests/{id}", PlatformOwner, request),
-        // Approving makes an app that only ever reads what the owner allows, as making a key
-        // does, so neither it nor refusing asks for recent verification.
+        // Approving makes a connected app that outlives the session, as making a key does, so
+        // it asks for recent verification; refusing asks for nothing.
         write(
             "/api/platform/oauth/requests/{id}/approve",
-            PlatformRoutine,
+            PlatformOwner,
             approve,
         ),
         write(
@@ -355,9 +355,8 @@ fn refused(limits: &Limits, endpoint: &str, refusal: Refusal) -> Response {
 /// Only in the browser that brought the request, as approving and denying are.
 fn request(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     let browser = this_browser(owner, input)?;
-    let name = optional_text(&input.query, "name", 80)?.trim();
-    let name = (!name.is_empty()).then_some(name);
-    Reply::of(&db.oauth_request(input.param("id"), name, browser)?)
+    let name = crate::names::shown(optional_text(&input.query, "name", 80)?);
+    Reply::of(&db.oauth_request(input.param("id"), name.as_deref(), browser)?)
 }
 /// Answered, the request is gone, and so is the browser's cookie for it.
 fn approve(db: &Store, owner: &User, input: &Input) -> Result<Reply> {

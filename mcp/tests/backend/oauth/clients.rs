@@ -283,16 +283,3 @@ fn apps_register_only_redirects_to_this_computer() {
         ("chatgpt.com".into(), None)
     );
 }
-
-#[test]
-fn names_are_trimmed_and_cut_short() {
-    assert_eq!(display_name("  Codex\n "), Some("Codex".into()));
-    assert_eq!(display_name(&"a".repeat(100)).unwrap().len(), 80);
-    assert_eq!(display_name(" \u{7} "), None);
-    // Invisible and reordering characters cannot hide or disguise a name.
-    assert_eq!(
-        display_name("\u{202E}edoC \u{200B}edualC\u{2066}\u{FEFF}"),
-        Some("edoC edualC".into())
-    );
-    assert_eq!(display_name("\u{200F}\u{2069}\u{E0041}"), None);
-}

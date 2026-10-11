@@ -18,6 +18,49 @@ const body = (dsps: string[]): AgentKeyRequest => ({
   expiresAt: null,
 });
 
+test('a key is made or changed only by a recently verified owner, reads only, and is named cleanly', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  // The operator level is nothing a key may be given.
+  const operator = await owner.post('/api/platform/agents/keys', {
+    ...body([]),
+    access: 'operator',
+  });
+  assert.deepEqual([operator.status, operator.value.error], [400, 'invalid_input']);
+  // A name shows as given, less what would hide or reorder it; one that shows nothing is no name.
+  const made = await owner.post('/api/platform/agents/keys', {
+    ...body([]),
+    name: ' \u202EedoC\u200B \u0007',
+  });
+  assert.equal(made.status, 200, made.body);
+  assert.equal(made.value.key.name, 'edoC');
+  const blank = await owner.post('/api/platform/agents/keys', {
+    ...body([]),
+    name: '\u200B\u0007',
+  });
+  assert.deepEqual([blank.status, blank.value.error], [400, 'invalid_input']);
+  // Verification aged, a key is neither made nor changed, since either hands out a
+  // credential that outlives the session; it is still revoked, so one stops at once.
+  f.database('data/platform/accounts.sqlite', (db) =>
+    db.prepare('UPDATE sessions SET created_at=0 WHERE user_id=?').run(owner.session.user.id),
+  );
+  for (const aged of [
+    await owner.post('/api/platform/agents/keys', { ...body([]), name: 'Another' }),
+    await owner.post(`/api/platform/agents/keys/${made.value.key.id}`, {
+      ...body([]),
+      name: 'edoC',
+    }),
+  ]) {
+    assert.equal(aged.status, 403, aged.body);
+    assert.ok(['sign_in_again', 'reauthentication_required'].includes(aged.value.error), aged.body);
+  }
+  assert.equal(
+    (await owner.post(`/api/platform/agents/keys/${made.value.key.id}/revoke`)).status,
+    200,
+  );
+});
+
 test('only the platform owner makes keys, and a key reaches only what it was given', async (t) => {
   const f = await fixture();
   t.after(f.close);

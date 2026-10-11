@@ -56,6 +56,9 @@ async fn ticket_diagnostics_are_read_only_private_and_bound_to_the_servers_dsp()
     .data;
     assert_eq!(answer["ticket_id"], report.ticket.id);
     assert!(!answer.to_string().contains("Private reporter sentinel"));
+    // Nor who reported it: the agent reads the ticket's health, never its people.
+    assert!(answer["diagnostics"].get("reporterName").is_none());
+    assert_eq!(answer["diagnostics"]["dspId"], dsp);
     let refused = call_tool(
         &state,
         &caller,

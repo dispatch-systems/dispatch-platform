@@ -7,10 +7,14 @@
 #[path = "backend/activity.rs"]
 pub mod activity;
 pub mod api;
+#[path = "backend/gate.rs"]
+mod gate;
 #[path = "backend/keys.rs"]
 mod keys;
 #[path = "backend/migrations.rs"]
 mod migrations;
+#[path = "backend/names.rs"]
+mod names;
 #[path = "backend/oauth/mod.rs"]
 pub mod oauth;
 #[path = "backend/piece.rs"]

@@ -1,4 +1,5 @@
-//! An authorized ticket's bounded operational health, without employee records or secrets.
+//! A ticket's bounded operational health at its DSP, without names, employee records or
+//! secrets.
 use crate::toolbox::{Answer, Cx, Reply, Scope, Tool};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -14,7 +15,7 @@ pub struct Input {
 #[derive(Serialize, JsonSchema)]
 pub struct Diagnostics {
     pub ticket_id: String,
-    /// Ticket-derived runtime and bounded provider/job health; excludes reports and employee records.
+    /// Ticket-derived runtime and bounded provider/job health; no reports, names or employee records.
     pub diagnostics: Value,
 }
 
@@ -23,7 +24,7 @@ impl Tool for SupportTicketDiagnostics {
     const NAME: &'static str = "support_ticket_diagnostics";
     const TITLE: &'static str = "AI Support ticket diagnostics";
     const DESCRIPTION: &'static str =
-        "Read an authorized AI Support ticket's runtime and recent provider/job health at its DSP.";
+        "Read an AI Support ticket's runtime and recent provider/job health at its DSP.";
     const SCOPE: Scope = Scope::Dsp;
     type Input = Input;
     type Output = Diagnostics;

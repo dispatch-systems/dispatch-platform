@@ -1,7 +1,8 @@
 //! Agent keys and the agent API: the platform owner's Agents page, `whoami` under `/api/v1/`,
-//! and the MCP server at `/api/v1/mcp`. Nothing on the Agents page asks
-//! for recent verification: a key only ever reads what the owner allows, and stops at once
-//! when revoked.
+//! and the MCP server at `/api/v1/mcp`. Making or changing a key asks the owner to have
+//! verified who they are recently, as approving an app does: either hands out a credential
+//! that outlives the session and may change things. Revoking asks for nothing, so a key stops
+//! at once.
 use crate::{ActivityStore, KeyStore};
 use crate::{
     activity::{self, ActivityQuery, Outcomes},
@@ -24,8 +25,8 @@ use dispatch_core::{
 pub fn routes() -> Vec<Route> {
     vec![
         read("/api/platform/agents", PlatformOwner, keys),
-        write("/api/platform/agents/keys", PlatformRoutine, create),
-        write("/api/platform/agents/keys/{id}", PlatformRoutine, update),
+        write("/api/platform/agents/keys", PlatformOwner, create),
+        write("/api/platform/agents/keys/{id}", PlatformOwner, update),
         write(
             "/api/platform/agents/keys/{id}/revoke",
             PlatformRoutine,

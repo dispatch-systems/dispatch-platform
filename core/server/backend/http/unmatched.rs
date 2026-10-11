@@ -33,6 +33,13 @@ pub async fn unmatched(AxumState(state): AxumState<Arc<State>>, request: Request
 async fn refuse(state: Arc<State>, request: Request) -> Result<std::convert::Infallible> {
     let input = middleware::input(&state, request, "").await?;
     let reading = input.method == Method::GET && !input.path.starts_with("/api/invitations/");
+    // The agent API's gate stands before every path of it, one no route serves included.
+    if input.path.starts_with("/api/v1/")
+        && let Some(agents) = registry().agents
+    {
+        (agents.gate)(&state, &input)?;
+    }
+    let shared = state.clone();
     let work = move |db: &Store| {
         if input.path.starts_with("/api/platform/") {
             PlatformOwner.authorize(db, &input)?;
@@ -45,7 +52,8 @@ async fn refuse(state: Arc<State>, request: Request) -> Result<std::convert::Inf
         } else if input.path.starts_with("/api/v1/")
             && let Some(agents) = registry().agents
         {
-            (agents.authorize)(db, &input)?;
+            (agents.authorize)(db, &input)
+                .inspect_err(|error| (agents.refused)(&shared, &input, error))?;
         }
         Err(Error::new("not_found", 404))
     };
