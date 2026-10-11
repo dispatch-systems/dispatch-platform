@@ -35,10 +35,16 @@ fn status(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
 }
 fn collect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let b = &input.body;
-    v::fields(b, &["requestId", "week", "weeks"])?;
+    v::fields(b, &["requestId", "week", "weeks", "viewing"])?;
     let key = v::text(b, "requestId", 1, 128)?;
     let week = if b.get("week").is_some() {
         Some(v::text(b, "week", 8, 8)?)
+    } else {
+        None
+    };
+    // A day of the week the page shows, whose publication weeks the sync checks too.
+    let viewing = if b.get("viewing").is_some() {
+        Some(v::text(b, "viewing", 10, 10)?)
     } else {
         None
     };
@@ -49,7 +55,7 @@ fn collect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     } else {
         2
     };
-    let job = db.enqueue_dvic(c.dsp_id(), Some(c.actor()), key, week, weeks)?;
+    let job = db.enqueue_dvic(c.dsp_id(), Some(c.actor()), key, week, weeks, viewing)?;
     db.audit(
         Some(c.actor()),
         Some(c.dsp_id()),

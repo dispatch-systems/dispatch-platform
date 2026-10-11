@@ -3,7 +3,6 @@ import { Shirt } from 'lucide-react';
 import { begins } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
-import { replies } from '../api/runtime.js';
 
 declare module '../../../core/shell/frontend/runtime/slots.js' {
   interface DspPages {
@@ -33,7 +32,7 @@ export const feature: FrontendFeature = {
   ],
   platformSlots: () => import('./platform-slots.js'),
   longPolls: ['/api/dsp/uniforms/updates'],
-  replies,
+  replies: () => import('../api/runtime.js'),
   cache: {
     write: (write, url) =>
       write.startsWith('/api/dsp/uniforms') ? begins(url, '/api/dsp/uniforms') : undefined,

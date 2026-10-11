@@ -1,7 +1,6 @@
 import { createElement, lazy } from 'react';
 import { LifeBuoy, Sparkles } from 'lucide-react';
 import type { FrontendFeature } from '../../shell/frontend/runtime/slots.js';
-import { replies } from '../api/runtime.js';
 
 declare module '../../shell/frontend/runtime/slots.js' {
   interface PlatformPages {
@@ -42,7 +41,7 @@ export const feature: FrontendFeature = {
       render: () => createElement(Page),
     },
   ],
-  replies,
+  replies: () => import('../api/runtime.js'),
   cache: {
     write: (write, url) => {
       if (!write.startsWith('/api/support/') && !write.startsWith('/api/platform/support/'))

@@ -2,7 +2,6 @@ import { createElement, lazy } from 'react';
 import { begins } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
-import { replies } from '../api/runtime.js';
 
 const load = () => import('./index.js');
 const loadBadge = () => import('./badge.js');
@@ -30,7 +29,7 @@ export const feature: FrontendFeature = {
     },
   ],
   platformSlots: () => import('./platform-slots.js'),
-  replies,
+  replies: () => import('../api/runtime.js'),
   // A finished collection can bring new drivers to match.
   cache: {
     collected: ['/api/dsp/driver-match'],

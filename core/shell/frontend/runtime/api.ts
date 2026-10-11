@@ -138,7 +138,7 @@ export async function api<T>(
       );
     }
     try {
-      const parsed = parseApiResponse(url, body === undefined ? 'GET' : 'POST', value) as T;
+      const parsed = (await parseApiResponse(url, body === undefined ? 'GET' : 'POST', value)) as T;
       if (body !== undefined && requestView === view)
         dataCache.invalidate((key) => mutationAffects(url, key));
       return parsed;

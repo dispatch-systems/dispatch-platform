@@ -398,7 +398,7 @@ fn listed_jobs_respect_the_cap_scope_names_and_attempt_order() {
 fn the_status_keeps_its_jobs_however_many_of_other_kinds_came_since() {
     dispatch_backend::install();
     let (_root, db, id) = dvic_ready();
-    let job = db.enqueue_dvic(&id, None, "busy", None, 2).unwrap();
+    let job = db.enqueue_dvic(&id, None, "busy", None, 2, None).unwrap();
     let job = s(&job, "id").to_owned();
     // A busy DSP: more newer jobs of another kind than the latest 200 hold.
     let others: Vec<_> = (0..201)

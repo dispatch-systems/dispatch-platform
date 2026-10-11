@@ -269,8 +269,8 @@ fn no_route_is_registered_twice_and_only_get_and_post_exist() {
     }
 }
 
-// The versioned API is for agents alone, signed in with a key, and agents reach nothing
-// else: no session can call it, and no key can call the dashboard's routes.
+// The versioned API admits agent keys and dedicated support service bearers, never
+// browser sessions. Those credentials cannot call the dashboard's routes.
 #[test]
 fn only_agents_reach_the_versioned_api_and_nothing_else() {
     for route in table() {
@@ -278,7 +278,16 @@ fn only_agents_reach_the_versioned_api_and_nothing_else() {
         let agent = matches!(route.access, Agent(_));
         assert_eq!(versioned, agent, "{} {}", route.method, route.path);
         if let Agent(access) = route.access {
-            assert!(["read", "operator"].contains(&access), "{}", route.path);
+            let admitted = match access {
+                "read" | "operator" => !route.path.starts_with("/api/v1/support/"),
+                "support worker" => {
+                    route.path.starts_with("/api/v1/support/worker/")
+                        && route.path != "/api/v1/support/worker/github/events"
+                }
+                "support github" => route.path == "/api/v1/support/worker/github/events",
+                _ => false,
+            };
+            assert!(admitted, "{} requires {access}", route.path);
             // Calls are counted in memory, so a read is never a write. Only the MCP server
             // reads its own requests, and its tools only read.
             assert!(

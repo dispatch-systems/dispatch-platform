@@ -294,8 +294,11 @@ export type FrontendFeature = {
   cache?: CacheRules;
   /** Its reads that wait for a change before they answer, by path prefix. */
   longPolls?: readonly string[];
-  /** How the API client checks the replies of its routes, as core checks its own. */
-  replies?: Replies;
+  /**
+   * Loads its module that exports how the API client checks the replies of its routes, as
+   * `replies`, as core checks its own. It loads apart from the first page, as its pages do.
+   */
+  replies?: () => Promise<{ replies: Replies }>;
   /** What its error codes say. */
   errors?: Record<string, string>;
   /** Why a schedule of its collections waits, by the code it last stopped on; its error too. */
@@ -313,6 +316,7 @@ export function installFeatures(features: readonly FrontendFeature[]) {
   installed = features;
   loadedSlots = [];
   slotsLoad = undefined;
+  repliesLoad = undefined;
 }
 
 /** The installed page at an address. */
@@ -398,7 +402,22 @@ export const connectionCard = (provider: string) =>
 export const cacheRules = () => installed.flatMap((feature) => feature.cache ?? []);
 
 /** Every owner's reply validators, in the order the owners are listed. */
-export const replyChecks = () => installed.flatMap((feature) => feature.replies ?? []);
+let repliesLoad: Promise<Replies[]> | undefined;
+/**
+ * Loads how every owner checks its routes' replies, once; a failed load is tried again next
+ * time.
+ */
+export function loadReplyChecks() {
+  repliesLoad ??= Promise.all(
+    installed.flatMap(({ replies }) =>
+      replies ? [replies().then((module) => module.replies)] : [],
+    ),
+  ).catch((error: unknown) => {
+    repliesLoad = undefined;
+    throw error;
+  });
+  return repliesLoad;
+}
 
 /** Whether a read waits for a change before it answers. */
 export const isLongPoll = (url: string) =>

@@ -4,9 +4,15 @@ import { fixture } from '../../../shell/tests/support/support.js';
 
 // Transport checks protect routes that backend storage tests cannot exercise: public
 // writes, signed DSP views, cookie precedence, and dedicated machine authentication.
-test('support browser reads as its reporter but cannot write or cross DSPs', async (t) => {
+test('support credentials stay separate from agent keys and its browser remains read only', async (t) => {
   const token = 'fixture-support-worker-token-of-at-least-32-characters';
-  const f = await fixture({ env: { DISPATCH_DEV_SUPPORT_WORKER_TOKEN: token } });
+  const githubToken = 'fixture-support-github-token-of-at-least-32-characters';
+  const f = await fixture({
+    env: {
+      DISPATCH_DEV_SUPPORT_WORKER_TOKEN: token,
+      DISPATCH_DEV_SUPPORT_GITHUB_TOKEN: githubToken,
+    },
+  });
   t.after(f.close);
   const member = await f.client('member@dispatch.test');
   const owner = await f.client();
@@ -24,12 +30,38 @@ test('support browser reads as its reporter but cannot write or cross DSPs', asy
     created.value.ticket.reporterName,
     member.session.user.firstName + ' ' + member.session.user.lastName,
   );
-  assert.equal((await owner.post('/api/v1/support/worker/claim')).status, 401);
+  const made = await owner.post('/api/platform/agents/keys', {
+    name: 'Support authority verifier',
+    allDsps: false,
+    dsps: [dsp.id],
+    access: 'read',
+    allTools: true,
+    tools: {},
+    expiresAt: null,
+  });
+  assert.equal(made.status, 200, made.body);
+  const agent = { authorization: `Bearer ${made.value.token}` };
+  assert.equal((await f.request('/api/v1/whoami', undefined, agent)).status, 200);
   const machine = { authorization: `Bearer ${token}` };
-  assert.equal(
-    (await f.request('/api/v1/support/worker/claim', {}, { ...owner.headers, ...machine })).status,
-    401,
-  );
+  const github = { authorization: `Bearer ${githubToken}` };
+  const claimPath = '/api/v1/support/worker/claim';
+  const eventPath = '/api/v1/support/worker/github/events';
+  for (const path of [claimPath, eventPath]) {
+    const correct = path === claimPath ? machine : github;
+    const wrong = path === claimPath ? github : machine;
+    for (const headers of [{}, owner.headers, agent, wrong, { ...owner.headers, ...correct }]) {
+      const denied = await f.request(path, {}, headers);
+      assert.equal(denied.status, 401, path);
+      assert.equal(denied.value.error, 'sign_in_required', path);
+    }
+  }
+  for (const headers of [machine, github]) {
+    assert.equal((await f.request('/api/v1/whoami', undefined, headers)).status, 401);
+  }
+  // The callback's own credential reaches payload validation rather than authentication denial.
+  const malformedEvent = await f.request(eventPath, {}, github);
+  assert.equal(malformedEvent.status, 400);
+  assert.equal(malformedEvent.value.error, 'invalid_input');
   const claimed = await f.request('/api/v1/support/worker/claim', {}, machine);
   assert.equal(claimed.status, 200);
   const job = claimed.value;

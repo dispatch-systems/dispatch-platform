@@ -4,7 +4,6 @@ import type { DspView } from '../../../core/accounts/api/index.js';
 import { begins, collectionData, path } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { Access, FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
-import { replies } from '../api/runtime.js';
 import {
   employeesPath,
   mealBreaksPath,
@@ -69,7 +68,7 @@ export const feature: FrontendFeature = {
     },
   ],
   platformSlots: () => import('./platform-slots.js'),
-  replies,
+  replies: () => import('../api/runtime.js'),
   scheduleIssues: {
     schedule_scope_required: 'Run an initial Meal Break collection to set up the DSP’s station.',
   },
