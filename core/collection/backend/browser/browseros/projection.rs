@@ -97,7 +97,10 @@ impl VerificationAuthority {
                     .and_then(Path::parent)
                     == Some(Path::new("/opt/dispatch-browseros"))
                 && receipt.executables.sandbox.path == config.sandbox
-                && receipt.executables.sandbox.path == Path::new("/usr/bin/bwrap")
+                && matches!(
+                    receipt.executables.sandbox.path.to_str(),
+                    Some("/usr/bin/bwrap" | "/usr/local/libexec/dispatch-dev/bwrap")
+                )
                 && receipt.executables.display.path == Path::new(DISPLAY),
         )?;
         for tool in [

@@ -12,6 +12,7 @@ import selectors
 import shutil
 import socket
 import socketserver
+import stat
 import subprocess
 import sys
 import tempfile
@@ -79,12 +80,27 @@ def inner_preview(input):
     return child.wait()
 
 
+def trusted_sandbox():
+    path = Path("/usr/local/libexec/dispatch-dev/bwrap")
+    if not path.exists() and not path.is_symlink():
+        path = Path("/usr/bin/bwrap")
+    for entry in (path, *path.parents):
+        info = entry.lstat()
+        expected = stat.S_ISREG(info.st_mode) if entry == path else stat.S_ISDIR(info.st_mode)
+        if (not expected or info.st_uid != 0 or info.st_mode & 0o022
+                or (entry == path and not info.st_mode & 0o111)):
+            raise ValueError("Trusted installed sandbox required")
+    return path
+
+
 def runtime():
-    args = ["bwrap", "--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL",
+    executable = trusted_sandbox()
+    args = [str(executable), "--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL",
             "--clearenv", "--ro-bind", "/usr", "/usr", "--ro-bind", "/bin", "/bin",
             "--ro-bind", "/lib", "/lib", "--proc", "/proc", "--dev", "/dev",
             "--tmpfs", "/tmp", "--dir", "/sandbox", "--dir", "/sandbox/home",
             "--setenv", "HOME", "/sandbox/home",
+            "--setenv", "DISPATCH_BWRAP_EXECUTABLE", str(executable),
             "--setenv", "PATH", "/sandbox/bin:/sandbox/.cargo/bin:/usr/bin:/bin",
             "--setenv", "TMPDIR", "/tmp"]
     if Path("/lib64").exists():
