@@ -34,7 +34,7 @@ const phrases: AuditPhrases = {
 // Earlier key changes, from when keys chose what they read: a kind of data each, as
 // `reads.timecards`, reads as its title.
 const fields: Record<string, string> = {
-  all_tools: 'New tools, to read',
+  all_tools: 'Tools added later',
   bypass: 'Bypass features',
   dsp_reads: 'DSP settings',
   tools: 'Tools',
