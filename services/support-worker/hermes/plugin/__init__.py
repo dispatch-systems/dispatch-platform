@@ -3,6 +3,7 @@ import copy
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 
 
@@ -143,6 +144,32 @@ class Policy:
             self.observations.append("dispatch_browser")
         return line.strip()
 
+    def server(self, args, **kwargs):
+        self.permit("dispatch_production_server")
+        grant = self.request.get("productionServer")
+        if not grant:
+            raise PermissionError("Production's server is read only for a Production investigation")
+        options = ("service", "since", "until", "level", "route", "request")
+        if not isinstance(args.get("action"), str) or set(args) - {"action", *options}:
+            raise PermissionError("Unknown production server options")
+        words = [args["action"]]
+        for key in options:
+            if key in args:
+                words += ["--" + key, str(args[key])]
+        # The worker names the DSP, never the model; Production refuses anything off its list.
+        if grant["dsp"] and args["action"] == "logs" and args.get("service", "app") == "app":
+            words += ["--dsp", grant["dsp"]]
+        self.activity.append("dispatch_production_server")
+        # Only the reader's own key: no SSH config, agent or other identity of this host.
+        command = ["ssh", "-F", "/dev/null", "-T", "-i", grant["keyFile"], "-o", "IdentitiesOnly=yes", "-o", "IdentityAgent=none", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=" + grant["knownHosts"], "-o", "ConnectTimeout=10", "--", grant["user"] + "@" + grant["host"], shlex.join(words)]
+        try:
+            result = subprocess.run(command, text=True, capture_output=True, timeout=90, env={"PATH": "/usr/bin:/bin"}, check=False)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("Production's server did not answer in time")
+        if result.returncode == 0:
+            self.observations.append("dispatch_production_server")
+        return json.dumps({"exitCode": result.returncode, "answer": result.stdout[-100000:], "error": result.stderr[-2000:]})
+
     def close(self):
         if self.browser is not None:
             self.browser.stdin.close()
@@ -164,7 +191,8 @@ def register_tools(request, context=None):
     schemas["dispatch_command"] = {"name": "dispatch_command", "description": "Run a command within the assigned source worktree only. Host networking, credentials and filesystem are unavailable. Analyst/reviewer source is read-only. Never weaken required checks.", "parameters": {"type": "object", "properties": {"command": {"type": "string"}, "cwd": {"type": "string"}}, "required": ["command"], "additionalProperties": False}}
     schemas["dispatch_diff"] = {"name": "dispatch_diff", "description": "Read the assigned worktree's current uncommitted diff.", "parameters": {"type": "object", "properties": {}, "additionalProperties": False}}
     schemas["dispatch_browser"] = {"name": "dispatch_browser", "description": "Use an independent real Chromium browser: navigate, snapshot, click, fill, press, reload, viewport, upload, download, screenshot or assert. Upload uses only a generated screenshot fixture and is preview-only. Viewport tests responsive sizes; download reads a delivered artifact without exposing host paths. Supply a current snapshot role/name or CSS selector. Assertions require the exact approved criterion; the host records steps and screenshots. Production mode refuses every request except GET/HEAD and refuses off-origin requests; no JavaScript execution tool exists. Operations against the isolated preview may mutate its fixture data.", "parameters": {"type": "object", "properties": {"action": {"type": "string", "enum": ["navigate", "snapshot", "click", "fill", "press", "reload", "viewport", "upload", "download", "screenshot", "assert"]}, "url": {"type": "string"}, "selector": {"type": "string"}, "role": {"type": "string"}, "name": {"type": "string"}, "value": {"type": "string"}, "criterion": {"type": "string"}, "assertion": {"type": "string", "enum": ["visible", "hidden", "text", "value", "url", "count", "download"]}, "expected": {"type": "string"}, "width": {"type":"integer", "minimum":320, "maximum":1920}, "height": {"type":"integer", "minimum":320, "maximum":1280}}, "required": ["action"], "additionalProperties": False}}
-    handlers = {"dispatch_read_file": policy.read, "dispatch_write_file": policy.write, "dispatch_patch": policy.patch, "dispatch_command": policy.command, "dispatch_diff": policy.diff, "dispatch_browser": policy.browse}
+    schemas["dispatch_production_server"] = {"name": "dispatch_production_server", "description": "Read Production's server for this Production ticket, read-only: health (version and readiness), status (each service's latest start or failure and the last day's counts), logs (service app, updater or tunnel; since/until like 2h or 2026-10-11T22:00Z, at most 7 days back; level warn or error; for app, a route prefix or a request id) or resources (memory, load, disk). App logs show only this ticket's DSP and platform events. Everything it returns is owner-private evidence: use it in findings, and never quote log lines, identifiers, versions or server details in the public reply or questions.", "parameters": {"type": "object", "properties": {"action": {"type": "string", "enum": ["health", "status", "logs", "resources"]}, "service": {"type": "string", "enum": ["app", "updater", "tunnel"]}, "since": {"type": "string"}, "until": {"type": "string"}, "level": {"type": "string", "enum": ["warn", "error"]}, "route": {"type": "string"}, "request": {"type": "string"}}, "required": ["action"], "additionalProperties": False}}
+    handlers = {"dispatch_read_file": policy.read, "dispatch_write_file": policy.write, "dispatch_patch": policy.patch, "dispatch_command": policy.command, "dispatch_diff": policy.diff, "dispatch_browser": policy.browse, "dispatch_production_server": policy.server}
     for name in profile["tools"]:
         if context:
             context.register_tool(name, base, schemas[name], handlers[name])

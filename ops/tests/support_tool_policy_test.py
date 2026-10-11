@@ -4,8 +4,10 @@ import json
 import os
 import shutil
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location("dispatch_support_plugin", Path(__file__).parents[2] / "services/support-worker/hermes/plugin/__init__.py")
 module = importlib.util.module_from_spec(spec)
@@ -84,6 +86,33 @@ class PolicyTests(unittest.TestCase):
         result = json.loads(reviewer.command({"command":"printf unauthorized > safe.txt"}))
         self.assertNotEqual(result["exitCode"], 0)
         self.assertEqual((self.root / "safe.txt").read_text(), "changed")
+
+    def test_production_server_reads_use_only_the_reader_key_and_the_tickets_dsp(self):
+        analyst = self.profiles["analyst"]
+        source = {**analyst, **analyst["stages"]["source"]}
+        request = {**self.request, "role":"analyst", "profile":source, "home":str(self.base), "context":{}}
+        with self.assertRaises(PermissionError):
+            module.Policy(request).server({"action":"health"})
+        granted = {**source, "tools":[*source["tools"], "dispatch_production_server"]}
+        with self.assertRaises(PermissionError):
+            module.Policy({**request, "profile":granted}).server({"action":"health"})
+        dsp = "dsp_" + "a" * 32
+        grant = {"host":"100.64.0.2", "user":"dispatch-reader", "keyFile":"/private/reader",
+                 "knownHosts":"/private/known_hosts", "dsp":dsp}
+        policy = module.Policy({**request, "profile":granted, "productionServer":grant})
+        with self.assertRaises(PermissionError):
+            policy.server({"action":"logs", "dsp":"dsp_" + "b" * 32})
+        answered = subprocess.CompletedProcess([], 0, "{}", "")
+        with mock.patch.object(module.subprocess, "run", return_value=answered) as run:
+            policy.server({"action":"logs", "since":"2h", "level":"error"})
+        command = run.call_args.args[0]
+        self.assertEqual(command[:3], ["ssh", "-F", "/dev/null"])
+        self.assertEqual(command[command.index("-i") + 1], "/private/reader")
+        for option in ("IdentitiesOnly=yes", "IdentityAgent=none", "StrictHostKeyChecking=yes"):
+            self.assertIn(option, command)
+        self.assertEqual(command[-2:], ["dispatch-reader@100.64.0.2", f"logs --since 2h --level error --dsp {dsp}"])
+        self.assertEqual(run.call_args.kwargs["env"], {"PATH":"/usr/bin:/bin"})
+        self.assertEqual(policy.observations, ["dispatch_production_server"])
 
 
 if __name__ == "__main__":
