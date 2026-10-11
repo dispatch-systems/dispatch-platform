@@ -3,16 +3,16 @@
 Dispatch combines a Rust backend, React dashboard, and an email delivery Worker.
 Run commands from the repository root.
 
-| Directory                   | Owns                                                                                                      |
-| --------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `core/`                     | The platform, in parts; names no collector or feature                                                     |
-| `collectors/`               | One directory per outside site: `paycom/`, `cortex/`                                                      |
-| `features/`                 | One directory per feature: backend, API, frontend, migrations and tests                                   |
-| `mcp/`                      | The MCP, whole: how outside agents connect, the tools they use and the Agents page                        |
-| `app/`                      | The assembly: the `dispatch-backend` binary, the frontend entry, whole-product tests                      |
-| `services/cloudflare-mail/` | Email Worker and its generated environment types                                                          |
-| `tooling/`                  | Build, CI, dev, scaffolding, testing, agent eval, benchmark, asset, security, mail and screenshot helpers |
-| `ops/`                      | Host manager, launchers, systemd units and host scripts                                                   |
+| Directory                   | Owns                                                                                          |
+| --------------------------- | --------------------------------------------------------------------------------------------- |
+| `core/`                     | The platform, in parts; names no collector or feature                                         |
+| `collectors/`               | One directory per outside site: `paycom/`, `cortex/`                                          |
+| `features/`                 | One directory per feature: backend, API, frontend, migrations and tests                       |
+| `mcp/`                      | The MCP, whole: how outside agents connect, the tools they use and the Agents page            |
+| `app/`                      | The assembly: the `dispatch-backend` binary, the frontend entry, whole-product tests          |
+| `services/cloudflare-mail/` | Email Worker and its generated environment types                                              |
+| `tooling/`                  | Build, CI, dev, scaffolding, testing, agent eval, benchmark, asset, security and mail helpers |
+| `ops/`                      | Host manager, launchers, systemd units and host scripts                                       |
 
 Dependencies point one way: `app → mcp → features → collectors → core`. Core, each collector,
 each feature, the MCP and the app is its own crate, and each feature and collector declares what it
