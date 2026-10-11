@@ -53,6 +53,10 @@ const manifest = await replaceBuild(out, async (staging) => {
     path.join(support, 'support-collection.py'),
   );
   fs.copyFileSync(
+    path.join(root, 'ops/launchers/browseros-release.json'),
+    path.join(support, 'browseros-release.json'),
+  );
+  fs.copyFileSync(
     path.join(root, 'ops/systemd/dispatch-support-worker.service'),
     path.join(support, 'dispatch-support-worker.service'),
   );
@@ -81,7 +85,7 @@ const manifest = await replaceBuild(out, async (staging) => {
   const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   fs.writeFileSync(
     path.join(staging, 'tooling/build-info.json'),
-    JSON.stringify({ commit, hostManagement: 1, supportWorker: 1, dashboardAssets }) + '\n',
+    JSON.stringify({ commit, hostManagement: 1, supportWorker: 2, dashboardAssets }) + '\n',
   );
   writeManifest(staging, JSON.parse(fs.readFileSync('package.json', 'utf8')).version);
 });

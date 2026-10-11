@@ -38,9 +38,11 @@ pub async fn run() -> Result<()> {
         let _lock = Lock::acquire(&config.root)?;
         let mut input = Vec::new();
         std::io::stdin().take(16385).read_to_end(&mut input)?;
+        let authority =
+            dispatch_core::collection::browser::browseros::VerificationAuthority::load(&config)?;
         println!(
             "{}",
-            dispatch_core::collection::verification::run(config, &input).await?
+            dispatch_core::collection::verification::run(config, &input, authority).await?
         );
         return Ok(());
     }

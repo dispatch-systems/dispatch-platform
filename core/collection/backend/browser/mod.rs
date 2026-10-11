@@ -96,6 +96,12 @@ impl ProviderAuthority {
     }
 }
 impl Manager {
+    pub(crate) fn with_verified_runtime(runtime: browseros::Runtime) -> Self {
+        Self {
+            runtime: Mutex::new(Some(Arc::new(runtime))),
+            ..Self::default()
+        }
+    }
     fn runtime(
         &self,
         config: &crate::foundation::config::Config,
