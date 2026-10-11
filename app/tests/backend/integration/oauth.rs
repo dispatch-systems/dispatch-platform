@@ -3125,49 +3125,29 @@ async fn a_connected_app_is_edited_like_a_key_but_only_ever_reads_and_never_expi
 }
 
 #[tokio::test]
-async fn agents_ask_for_no_recent_verification_while_removing_a_dsp_still_does() {
+async fn handing_out_a_key_or_app_asks_for_recent_verification_as_removing_a_dsp_does() {
     let server = Server::paired().await;
     let earlier = server.signed_in(db::now() - DAY).await;
+    let owner = server.owner().await;
     let north = server.dsp("Northline Logistics").await;
     let key = |name: &str| json!({"name":name,"allDsps":true,"dsps":[],"access":"read","allTools":true,"tools":{},"expiresAt":null});
-    // A day after signing in, the owner makes and edits a key, approves an app and edits it.
     let made = server
-        .as_owner(&earlier, "POST", "/api/platform/agents/keys", key("Desk"))
+        .as_owner(&owner, "POST", "/api/platform/agents/keys", key("Desk"))
         .await;
     assert_eq!(made.status, 200, "{}", made.body);
-    let id = s(&made.body["key"], "id");
-    let mut wider = key("Desk");
-    wider["access"] = json!("operator");
-    let edited = server
-        .as_owner(
-            &earlier,
-            "POST",
-            &format!("/api/platform/agents/keys/{id}"),
-            wider,
-        )
-        .await;
-    assert_eq!(edited.status, 200, "{}", edited.body);
+    let id = s(&made.body["key"], "id").to_owned();
     let local = "http://localhost:50022/callback";
     let request = server.requested(CLAUDE_CODE, local).await;
-    let code = server
-        .approved(&earlier, &request, everything("Laptop"))
-        .await;
-    assert_eq!(server.exchange(CLAUDE_CODE, local, &code).await.status, 200);
-    let app = s(&listed_key(&server, &earlier, "Laptop").await, "id").to_owned();
-    let mut narrower = key("Laptop");
-    narrower["allDsps"] = json!(false);
-    narrower["dsps"] = json!([north]);
-    let app_edited = server
-        .as_owner(
-            &earlier,
-            "POST",
-            &format!("/api/platform/agents/keys/{app}"),
-            narrower,
-        )
-        .await;
-    assert_eq!(app_edited.status, 200, "{}", app_edited.body);
-    // Removing a DSP and the account's own security still ask.
+    // A day after signing in, the owner neither makes nor changes a key, nor approves an
+    // app: each hands out a credential that outlives the session, as removing a DSP and
+    // the account's own security ask.
     for (path, body) in [
+        ("/api/platform/agents/keys".to_owned(), key("Another")),
+        (format!("/api/platform/agents/keys/{id}"), key("Desk")),
+        (
+            format!("/api/platform/oauth/requests/{request}/approve"),
+            everything("Laptop"),
+        ),
         (format!("/api/platform/dsps/{north}/remove"), json!({})),
         (
             "/api/auth/security/authenticator/register/start".to_owned(),
@@ -3181,6 +3161,20 @@ async fn agents_ask_for_no_recent_verification_while_removing_a_dsp_still_does()
             "{path}"
         );
     }
+    // Refused, the request still waits for the owner; and a key is still revoked at once.
+    let code = server
+        .approved(&owner, &request, everything("Laptop"))
+        .await;
+    assert_eq!(server.exchange(CLAUDE_CODE, local, &code).await.status, 200);
+    let revoked = server
+        .as_owner(
+            &earlier,
+            "POST",
+            &format!("/api/platform/agents/keys/{id}/revoke"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(revoked.status, 200, "{}", revoked.body);
 }
 
 #[tokio::test]
