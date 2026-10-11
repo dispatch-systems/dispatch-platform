@@ -1,8 +1,8 @@
 //! Contracts guarding queue admission and private service configuration.
 use dispatch_support_worker::{
-    config::{Config, Origin, read_private},
+    config::{Config, Origin, ProductionReader, read_private},
     github::{admitted, redact_identities},
-    hermes::safe_job,
+    hermes::{production_server, safe_job},
     intake::{Analysis, Decision},
     verification::cortex_collections,
 };
@@ -23,6 +23,7 @@ fn config() -> Config {
         repository: "dispatch-systems/dispatch-platform".into(),
         collection_bridge: "/runtime/collection".into(),
         node: "/usr/bin/node".into(),
+        production_reader: None,
     }
 }
 
@@ -139,6 +140,48 @@ fn reporter_model_payload_excludes_owner_private_context_but_owner_answers_retai
     let owner = safe_job(&job).unwrap().to_string();
     assert!(owner.contains("OWNER_CANARY") && owner.contains("PROPOSAL_CANARY"));
     assert!(!owner.contains("LEASE_CANARY") && !owner.contains("CHECKPOINT_CANARY"));
+}
+
+#[test]
+fn production_server_reads_go_only_to_production_analysis_with_the_tickets_dsp() {
+    let mut job: dispatch_core::support::api::types::SupportJob = serde_json::from_value(json!({
+        "id":"job","kind":"investigate","version":0,"lease":"lease","leaseUntil":0,"checkpoint":{},
+        "questionId":null,"environment":"production","origin":"https://dispatch.example",
+        "detail":{
+            "ticket":{"id":"support_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","kind":"bug","title":"Report","status":"triaging","progress":"","reporterName":"Reporter","dspId":"dsp_reported","dspName":"Reported DSP","proposalVersion":0,"approvedVersion":null,"prUrl":null,"headSha":null,"mergeSha":null,"releasedVersion":null,"createdAt":0,"updatedAt":0},
+            "description":"","release":"v1","sourceSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "messages":[],"attachments":[],"proposals":[],"evidence":[],"intake":null
+        }
+    })).unwrap();
+    let mut config = config();
+    assert!(production_server(&config, &job, "analyst", Some("source")).is_none());
+    config.production_reader = Some(ProductionReader {
+        host: "production.test".into(),
+        user: "dispatch-reader".into(),
+        key_file: "/runtime/production-reader".into(),
+        known_hosts: "/runtime/production-reader.known_hosts".into(),
+    });
+    config.validate().unwrap();
+    for stage in ["source", "browser"] {
+        let grant = production_server(&config, &job, "analyst", Some(stage)).unwrap();
+        assert_eq!(grant["dsp"], "dsp_reported");
+        assert_eq!(grant["keyFile"], "/runtime/production-reader");
+    }
+    for (role, stage) in [
+        ("analyst", Some("intake")),
+        ("analyst", None),
+        ("builder", None),
+        ("reviewer", None),
+    ] {
+        assert!(
+            production_server(&config, &job, role, stage).is_none(),
+            "{role} {stage:?}"
+        );
+    }
+    job.environment = "dev".into();
+    assert!(production_server(&config, &job, "analyst", Some("source")).is_none());
+    config.production_reader.as_mut().unwrap().host = "host;command".into();
+    assert!(config.validate().is_err());
 }
 
 #[test]

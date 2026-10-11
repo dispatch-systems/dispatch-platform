@@ -7,7 +7,7 @@ and reviewer profile templates, skills, custom tools and model settings. Ticket-
 profile instances isolate sessions; an environment changes context and authority only.
 
 The application never installs Hermes on Production. Production investigation is read-only,
-and collection verification uses the configured Dev verification account in a separate
+including its reads of Production's server (below), and collection verification uses the configured Dev verification account in a separate
 private DSP. Merged changes reach Dev through the existing checked-artifact updater. Production changes arrive through
 the separately published release, followed by read-only deployment verification.
 
@@ -127,8 +127,9 @@ Only the isolated collector decrypts credentials. A shared
 OS account lease excludes normal verification-account provider browsers while verification
 runs; source credential rotation or disablement cancels the run. Temporary encrypted credentials are
 deleted afterward. Changed collector output remains in private isolated state so the
-reviewer can exercise the actual collected rows in a real browser. Logs and raw provider
-records never become agent-tool or GitHub responses.
+reviewer can exercise the actual collected rows in a real browser. Collector logs and raw
+provider records never become agent-tool or GitHub responses. Production's service logs reach
+only the analyst of a Production ticket, through the reader below, limited to that ticket's DSP.
 
 The bot's optional `support_prs` feature reads worker-written private registrations with
 the approved ticket version, source origin, PR, branch and tested head. It delivers short,
@@ -141,3 +142,39 @@ so scheduled collections and verification share the same exclusion mechanism. If
 requires MFA or becomes unavailable, the ticket waits with its evidence rather than passing.
 The existing provider account protections and physical scheduling capacity remain in force.
 There are no application investigation, token, spending or attempt quotas.
+
+## Reading Production's server
+
+The analyst of a Production ticket, past intake, can read Production's server with
+`dispatch_production_server`: its health, each service's status, service logs and resources.
+Production's `dispatch-reader` account has one SSH key, accepted only from Dev's Tailscale
+address, whose forced command is `ops/scripts/production-reader.py`. It runs a request only if
+it is one of those reads: no shell, files, database, configuration or forwarding. App logs keep
+the ticket's DSP and platform events, never another DSP's or unsigned traffic, and drop each
+request's client fingerprint and hashed account. The worker names the DSP, never the model. The
+key, host and pinned host key stay outside the model's context. What the reader returns is
+owner-private evidence, never quoted in a reporter's reply or a PR.
+
+Setting it up once on Production, with the reader script from the checked commit:
+
+```sh
+sudo useradd --system --create-home --home-dir /var/lib/dispatch-reader \
+  --shell /bin/sh --groups systemd-journal dispatch-reader
+sudo usermod -p '*' dispatch-reader   # no password; only its key signs in
+sudo install -o root -g root -m 0755 -D production-reader.py \
+  /usr/local/libexec/dispatch-reader/production-reader
+sudo install -o root -g root -m 0755 -d /var/lib/dispatch-reader/.ssh
+printf 'from="<Dev Tailscale address>",restrict,command="/usr/local/libexec/dispatch-reader/production-reader --owner <service account> --health http://127.0.0.1:5180/api/health" %s\n' \
+  "$(cat production-reader.pub)" |
+  sudo install -o root -g root -m 0644 /dev/stdin /var/lib/dispatch-reader/.ssh/authorized_keys
+```
+
+On Dev the key pair and Production's pinned host key live beside the worker's tokens, and the
+worker's configuration names them:
+
+```json
+"productionReader": {"host": "<Production Tailscale address>", "user": "dispatch-reader",
+  "keyFile": "<runtime>/production-reader_ed25519", "knownHosts": "<runtime>/production-reader.known_hosts"}
+```
+
+Without `productionReader`, Production tickets are investigated as before, without the server.

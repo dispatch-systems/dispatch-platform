@@ -8,9 +8,10 @@ version or decline it. Approval authorizes implementation, independent verificat
 through the existing queue. Publishing a production release remains a separate owner action.
 
 The same worker and versioned Hermes profiles handle Dev and Production. Environment, ticket
-identity and deployed source are job context; profile instructions, skills and tools are shared.
-The production server stores its own tickets and exposes the scoped worker protocol. Hermes and
-the worker run on the development host. A queued job remains durable while the worker or provider
+identity and deployed source are job context; profile instructions, skills and tools are shared,
+except that a Production investigation can also read Production's server through its read-only
+`dispatch-reader` account (`ops/support-worker.md`). The production server stores its own tickets
+and exposes the scoped worker protocol. Hermes and the worker run on the development host. A queued job remains durable while the worker or provider
 is unavailable. There are no support-specific daily, token, runtime or attempt quotas.
 
 ## Ownership

@@ -15,6 +15,21 @@ pub struct Config {
     pub repository: String,
     pub collection_bridge: PathBuf,
     pub node: PathBuf,
+    /// Production's server, read over SSH by its `dispatch-reader` account. Absent, Production
+    /// tickets are investigated without it.
+    #[serde(default)]
+    pub production_reader: Option<ProductionReader>,
+}
+
+/// The reader's own key can only run Production's fixed reads (`ops/scripts/production-reader.py`),
+/// only from this host's Tailscale address; the host key is pinned.
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProductionReader {
+    pub host: String,
+    pub user: String,
+    pub key_file: PathBuf,
+    pub known_hosts: PathBuf,
 }
 
 #[derive(Clone, Deserialize)]
@@ -89,7 +104,25 @@ impl Config {
                     .chars()
                     .all(|c| c.is_ascii_alphanumeric() || "-_/".contains(c)),
             "Invalid support repository",
-        )
+        )?;
+        if let Some(reader) = &self.production_reader {
+            require(
+                !reader.host.is_empty()
+                    && reader
+                        .host
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || ".-:".contains(c))
+                    && !reader.user.is_empty()
+                    && reader
+                        .user
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || "-_".contains(c))
+                    && reader.key_file.is_absolute()
+                    && reader.known_hosts.is_absolute(),
+                "Invalid Production reader",
+            )?;
+        }
+        Ok(())
     }
 }
 

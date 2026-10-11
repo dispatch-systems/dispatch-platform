@@ -136,8 +136,16 @@ async fn run_private(
     if stage == Some("intake") {
         require(profile["tools"] == json!([]), "Intake must have zero tools")?;
     }
+    let server = production_server(config, job, role, stage);
+    if server.is_some() {
+        profile["tools"]
+            .as_array_mut()
+            .ok_or("Invalid support profile")?
+            .push("dispatch_production_server".into());
+    }
     let safe_job = safe_job(job)?;
-    let request = json!({"profile":profile,"role":role,"stage":stage,"instructions":instructions,"context":context,"job":safe_job,"worktree":worktree.map(|tree| &tree.path),"home":home,"resources":resources(),"node":config.node,"trustedNodeModules":config.workspace_root.join("dev/node_modules")});
+    // The reader's key and host stay outside `context`, which is all the model is shown.
+    let request = json!({"profile":profile,"role":role,"stage":stage,"instructions":instructions,"context":context,"job":safe_job,"worktree":worktree.map(|tree| &tree.path),"home":home,"resources":resources(),"node":config.node,"trustedNodeModules":config.workspace_root.join("dev/node_modules"),"productionServer":server});
     let input = home.join("request.json");
     atomic_json(&input, &request)?;
     let result = home.join("result.json");
@@ -193,6 +201,24 @@ async fn run_private(
     result["toolActivity"] = value["toolActivity"].clone();
     result["toolObservations"] = value["toolObservations"].clone();
     Ok(result)
+}
+
+/// Production's server is read only by the analyst of a Production ticket, past intake, and
+/// only for that ticket's DSP: the worker names the DSP, never the model.
+pub fn production_server(
+    config: &Config,
+    job: &SupportJob,
+    role: &str,
+    stage: Option<&str>,
+) -> Option<Value> {
+    let reader = config.production_reader.as_ref()?;
+    (job.environment == "production"
+        && role == "analyst"
+        && matches!(stage, Some("source" | "browser")))
+    .then(|| {
+        json!({"host":reader.host,"user":reader.user,"keyFile":reader.key_file,
+            "knownHosts":reader.known_hosts,"dsp":job.detail.ticket.dsp_id})
+    })
 }
 
 /// Public intake never receives owner-private discussion, evidence or proposals. This
