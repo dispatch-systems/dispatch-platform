@@ -179,6 +179,39 @@ fn empty_reports_keep_history_and_missing_weeks_are_rechecked_without_inventing_
 }
 
 #[test]
+fn the_status_names_every_stretch_of_days_a_checked_report_covers() {
+    install();
+    let (_root, db, id) = ready();
+    // The reports of Sep 6, Sep 20 and Sep 27: the last two meet, and Sep 6 to 11 is unknown.
+    for week in ["2026-W36", "2026-W38", "2026-W39"] {
+        publish(&db, &id, week, &dvic::fixture(&request(&[week])).unwrap());
+    }
+    let stretch = |from: &str, through: &str| dispatch_dvic::DvicCoverage {
+        from: from.into(),
+        through: through.into(),
+    };
+    assert_eq!(
+        db.dvic_status(&id).unwrap().covered,
+        [
+            stretch("2026-08-29", "2026-09-05"),
+            stretch("2026-09-12", "2026-09-26")
+        ]
+    );
+    // A report whose scope was never checked covers nothing.
+    db.dvic_db(&id)
+        .unwrap()
+        .exec(
+            "UPDATE dvic_reports SET scope_verified=0 WHERE week='2026-W36'",
+            [],
+        )
+        .unwrap();
+    assert_eq!(
+        db.dvic_status(&id).unwrap().covered,
+        [stretch("2026-09-12", "2026-09-26")]
+    );
+}
+
+#[test]
 fn publication_rejects_wrong_scope_and_reads_are_paginated_and_isolated() {
     install();
     let (_root, db, id) = ready();

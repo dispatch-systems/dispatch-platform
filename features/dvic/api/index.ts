@@ -1,3 +1,4 @@
+export type { DvicCoverage } from './generated/DvicCoverage.js';
 export type { DvicInspection } from './generated/DvicInspection.js';
 export type { DvicInspections } from './generated/DvicInspections.js';
 export type { DvicReport } from './generated/DvicReport.js';

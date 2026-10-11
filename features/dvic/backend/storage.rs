@@ -1,5 +1,5 @@
 use super::*;
-use crate::api::types::{DvicInspection, DvicInspections, DvicStatus};
+use crate::api::types::{DvicCoverage, DvicInspection, DvicInspections, DvicStatus};
 use dispatch_core::{
     db::{DspLease, Store, at, now, s},
     manifest::Keeper,
@@ -17,13 +17,6 @@ pub struct DvicDriver {
     pub short_inspections: usize,
     pub first_date: String,
     pub last_date: String,
-}
-/// The days the DSP's collected reports cover: the first, and the last. A day outside them is
-/// unknown, not a day nobody was short. Each daily report covers the eight days before it.
-#[derive(Clone, Debug, PartialEq)]
-pub struct DvicCoverage {
-    pub from: String,
-    pub through: String,
 }
 
 /// What DVIC reads and writes for a DSP: its inspections, in the database beside Cortex's,
@@ -260,6 +253,7 @@ impl DvicStore for Store {
                     shortCount,min_date AS minDate,max_date AS maxDate,checked_at AS checkedAt FROM dvic_reports WHERE \
                     station=? AND scope_verified=1 ORDER BY report_date DESC LIMIT 366")?
                 .into_iter().map(serde_json::from_value).collect::<std::result::Result<_,_>>()?,
+            covered: covered(&db, &station)?,
             jobs: self.recent_jobs_of(id, JOB_KIND)?,
             station,
         })
@@ -333,24 +327,43 @@ impl DvicStore for Store {
     }
     fn dvic_coverage(&self, id: &str) -> Result<Option<DvicCoverage>> {
         let station = self.profile(id)?.station_code;
-        let (first, last): (Option<String>, Option<String>) = self
-            .dvic_db(id)?
-            .query_as(
-                "SELECT min(report_date),max(report_date) FROM dvic_reports \
-                 WHERE station=? AND scope_verified=1",
-                [&station],
-            )?
-            .into_iter()
-            .next()
-            .unwrap_or((None, None));
-        let shifted = |date: Option<String>, days: i64| -> Option<String> {
-            let date = chrono::NaiveDate::parse_from_str(&date?, "%Y-%m-%d").ok()?;
-            Some((date + chrono::Duration::days(days)).to_string())
-        };
-        Ok(shifted(first, -8)
-            .zip(shifted(last, -1))
-            .map(|(from, through)| DvicCoverage { from, through }))
+        let db = self.dvic_db(id)?;
+        let covered = covered(&db, &station)?;
+        Ok(covered
+            .first()
+            .zip(covered.last())
+            .map(|(first, last)| DvicCoverage {
+                from: first.from.clone(),
+                through: last.through.clone(),
+            }))
     }
+}
+
+/// The stretches of days the station's checked reports cover, oldest first. Each daily report
+/// covers the eight days before it; stretches that overlap or meet are one.
+fn covered(db: &Db, station: &str) -> Result<Vec<DvicCoverage>> {
+    let dates: Vec<(String,)> = db.query_as(
+        "SELECT DISTINCT report_date FROM dvic_reports WHERE station=? AND scope_verified=1 \
+         ORDER BY report_date",
+        [station],
+    )?;
+    let mut stretches: Vec<(NaiveDate, NaiveDate)> = Vec::new();
+    for (date,) in dates {
+        let date = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
+            .map_err(|_| Error::new("invalid_stored_record", 500))?;
+        let (from, through) = (date - Duration::days(8), date - Duration::days(1));
+        match stretches.last_mut() {
+            Some(last) if from <= last.1 + Duration::days(1) => last.1 = last.1.max(through),
+            _ => stretches.push((from, through)),
+        }
+    }
+    Ok(stretches
+        .into_iter()
+        .map(|(from, through)| DvicCoverage {
+            from: from.to_string(),
+            through: through.to_string(),
+        })
+        .collect())
 }
 
 pub(crate) fn bind_dvic_request(store: &Store, id: &str, weeks: Vec<String>) -> Result<Value> {
