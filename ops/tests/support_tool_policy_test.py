@@ -44,7 +44,7 @@ class PolicyTests(unittest.TestCase):
 
     def test_shell_can_edit_only_builder_source_and_cannot_replace_host_git_pointer(self):
         builder = module.Policy(self.request)
-        result = json.loads(builder.command({"command":"printf changed > safe.txt"}))
+        result = json.loads(builder.command({"command":"test \"$HOME\" = /sandbox/home && test -d \"$HOME\" && printf changed > safe.txt"}))
         self.assertEqual(result["exitCode"], 0, result["stderr"])
         self.assertEqual((self.root / "safe.txt").read_text(), "changed")
         result = json.loads(builder.command({"command":"printf escaped > .git"}))

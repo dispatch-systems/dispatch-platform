@@ -36,6 +36,8 @@ class SandboxTests(unittest.TestCase):
                 listener.listen()
                 port = listener.getsockname()[1]
                 command = f"""set -e
+test "$HOME" = /sandbox/home
+test -d "$HOME"
 test ! -e '{secret}'
 test -z "${{SUPPORT_SANDBOX_TEST_SECRET:-}}"
 git rev-parse HEAD

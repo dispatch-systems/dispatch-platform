@@ -83,7 +83,8 @@ def runtime():
     args = ["bwrap", "--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL",
             "--clearenv", "--ro-bind", "/usr", "/usr", "--ro-bind", "/bin", "/bin",
             "--ro-bind", "/lib", "/lib", "--proc", "/proc", "--dev", "/dev",
-            "--tmpfs", "/tmp", "--dir", "/sandbox", "--setenv", "HOME", "/sandbox",
+            "--tmpfs", "/tmp", "--dir", "/sandbox", "--dir", "/sandbox/home",
+            "--setenv", "HOME", "/sandbox/home",
             "--setenv", "PATH", "/sandbox/bin:/sandbox/.cargo/bin:/usr/bin:/bin",
             "--setenv", "TMPDIR", "/tmp"]
     if Path("/lib64").exists():
