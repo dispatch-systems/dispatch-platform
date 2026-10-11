@@ -167,7 +167,7 @@ export function Shell({
                 {actionLabel}
               </button>
             ))}
-            <button onClick={logout}>
+            <button className="danger" onClick={logout}>
               <LogOut size={16} />
               Sign out
             </button>
