@@ -49,6 +49,7 @@ import {
   dspSetup,
   installFeatures,
   landingPage,
+  loadReplyChecks,
   type DspRouteId,
 } from '../../core/shell/frontend/runtime/slots.js';
 const loadAuth = () => import('../../core/accounts/frontend/index.js');
@@ -444,7 +445,7 @@ const root = createRoot(document.getElementById('root')!);
 function start() {
   root.render(<Loading />);
   loadSite().then(
-    () =>
+    () => {
       root.render(
         <FeedbackProvider>
           <PageBoundary>
@@ -453,7 +454,11 @@ function start() {
             </Suspense>
           </PageBoundary>
         </FeedbackProvider>,
-      ),
+      );
+      // The owners' reply checks load beside the first page, so its replies rarely wait for
+      // them. A failed load is tried again when a reply needs it.
+      loadReplyChecks().catch(() => {});
+    },
     () => root.render(<button onClick={start}>Retry connection</button>),
   );
 }
