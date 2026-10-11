@@ -872,7 +872,7 @@ fn unpublished_releases_are_those_after_the_latest_published_one_never_published
     );
     let published = json!({"tag_name":"v1.0.0","draft":false,"prerelease":false});
     assert!(
-        unpublished(&release.directory, &[published.clone()])
+        unpublished(&release.directory, std::slice::from_ref(&published))
             .unwrap()
             .is_empty()
     );
