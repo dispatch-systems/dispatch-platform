@@ -1,5 +1,4 @@
-/** Dispatch's mark and name; `mark` alone where the name is written beside it. */
-export function Brand({ mark = false }: { mark?: boolean }) {
+export function Brand() {
   return (
     <span className="brand">
       <svg viewBox="0 0 28 28" aria-hidden="true">
@@ -8,7 +7,7 @@ export function Brand({ mark = false }: { mark?: boolean }) {
           d="M3 3h9C20 3 25 7.5 25 14s-5 11-13 11H3v-7h6v2h3c4.5 0 7-2.2 7-6s-2.5-6-7-6H9v6H3V3Z"
         />
       </svg>
-      {!mark && <span>Dispatch</span>}
+      <span>Dispatch</span>
     </span>
   );
 }

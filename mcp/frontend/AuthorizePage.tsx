@@ -223,7 +223,7 @@ function Approval({
               <AppIcon app={icon} large />
               <span className="agents-approval-link" />
               <span className="agents-approval-dispatch">
-                <Brand mark />
+                <Brand />
               </span>
             </div>
             <h2>

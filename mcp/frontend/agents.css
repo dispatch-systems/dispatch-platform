@@ -624,6 +624,10 @@ label.agents-tool {
   width: 24px;
   height: 24px;
 }
+/* Dispatch's mark alone: its name is in the heading below. */
+.agents-approval-dispatch .brand > span {
+  display: none;
+}
 .agents-approval-app h2 {
   font-size: 20px;
   font-weight: 600;
