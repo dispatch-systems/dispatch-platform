@@ -145,6 +145,13 @@ export function Shell({
               </>
             }
           >
+            <a href={source.href} target="_blank" rel="noreferrer">
+              Source code
+              <span className="source-version">
+                {source.label}
+                <ArrowUpRight aria-hidden="true" />
+              </span>
+            </a>
             <a href={(dspId && settingsHash(dspId)) || platformHash('account')}>Account settings</a>
             {actions.map(({ id, label: actionLabel, icon: Icon, preload }) => (
               <button
@@ -160,13 +167,6 @@ export function Shell({
                 {actionLabel}
               </button>
             ))}
-            <a href={source.href} target="_blank" rel="noreferrer">
-              Source code
-              <span className="source-version">
-                {source.label}
-                <ArrowUpRight aria-hidden="true" />
-              </span>
-            </a>
             <button onClick={logout}>
               <LogOut size={16} />
               Sign out
