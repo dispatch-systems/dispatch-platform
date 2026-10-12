@@ -54,6 +54,7 @@ const profile = z.object({
   setupRequired: z.boolean(),
   removed: z.boolean(),
   supportVisible: z.boolean(),
+  aiSupportHidden: z.boolean(),
 }) satisfies z.ZodMiniType<DspProfile>;
 const permission = z.enum(permissions);
 const feature = z.enum(features);

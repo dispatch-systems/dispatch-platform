@@ -7,7 +7,7 @@ import type {
   MailMessage,
   PlatformHealth,
 } from './index.js';
-import type { DspSummary } from '../../accounts/api/index.js';
+import type { DspProfile, DspSummary } from '../../accounts/api/index.js';
 import type { Feature } from '../../tenancy/api/index.js';
 import type { Job } from '../../collection/api/index.js';
 
@@ -25,6 +25,9 @@ export const setDspFeature = (dspId: string, feature: Feature, enabled: boolean)
 /** Hides a feature from the DSP's members, or shows it again; it keeps running either way. */
 export const showDspFeature = (dspId: string, feature: Feature, shown: boolean) =>
   api<DspHidden>(`${dspFeatures(dspId)}/shown`, { feature, shown });
+/** Hides the AI Support button from the DSP's members, or shows it to them again. */
+export const showDspAiSupport = (dspId: string, shown: boolean) =>
+  api<DspProfile>(`/api/platform/dsps/${dspId}/ai-support`, { shown });
 export const usePlatformMail = (poll = 0) =>
   useCachedData<MailMessage[]>('/api/platform/mail', poll);
 /** Gives a failed message a fresh set of attempts, or drops it. */

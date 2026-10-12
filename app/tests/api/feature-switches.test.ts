@@ -375,3 +375,38 @@ test('a feature hidden from a DSP keeps running, out of sight of all but the pla
     ],
   );
 });
+
+test('AI Support hidden from a DSP leaves its members without the button until it is shown', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const platform = await f.client();
+  const member = await f.client('member@dispatch.test');
+  const north = member.session.dsps[0];
+  const url = `/api/platform/dsps/${north.id}/ai-support`;
+  assert.equal((await member.post(url, { shown: false })).status, 403);
+  assert.equal((await platform.post(url, {})).status, 400);
+  assert.equal((await member.select(north.id)).profile.aiSupportHidden, false);
+
+  let result = await platform.post(url, { shown: false });
+  assert.deepEqual([result.status, result.value.aiSupportHidden], [200, true]);
+  // Members lose it at once: their open view expires, and the next one says so.
+  assert.equal((await member.get('/api/dsp/uniforms')).value.error, 'dsp_view_expired');
+  assert.equal((await member.select(north.id)).profile.aiSupportHidden, true);
+  // Only the button goes: what they reported stays theirs.
+  assert.equal((await member.get('/api/support/tickets')).status, 200);
+  // Asking for what already is changes nothing: open views stay open.
+  await platform.post(url, { shown: false });
+  assert.equal((await member.get('/api/dsp/uniforms')).status, 200);
+  result = await platform.post(url, { shown: true });
+  assert.equal(result.value.aiSupportHidden, false);
+  assert.equal((await member.select(north.id)).profile.aiSupportHidden, false);
+
+  const events = (await platform.read('/api/platform/audit?limit=20')).events;
+  assert.deepEqual(
+    events
+      .filter((event: { action: string }) => event.action.startsWith('dsp.ai_support_'))
+      .map((event: { action: string }) => event.action)
+      .reverse(),
+    ['dsp.ai_support_hidden', 'dsp.ai_support_shown'],
+  );
+});

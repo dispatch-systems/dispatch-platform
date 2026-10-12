@@ -105,6 +105,8 @@ const phrases: AuditPhrases = {
     ' to ',
     strong(e.dspName ?? 'a DSP'),
   ],
+  'dsp.ai_support_hidden': (e) => ['hid AI Support from ', strong(e.dspName ?? 'a DSP')],
+  'dsp.ai_support_shown': (e) => ['showed AI Support to ', strong(e.dspName ?? 'a DSP')],
   'dsp.code_changed': (e) => [
     'gave ',
     strong(e.dspName ?? 'a DSP'),
@@ -220,6 +222,8 @@ const spoken = new Set([
   'dsp.feature_disabled',
   'dsp.feature_hidden',
   'dsp.feature_shown',
+  'dsp.ai_support_hidden',
+  'dsp.ai_support_shown',
 ]);
 export const isSpoken = (action: string) =>
   spoken.has(action) || owners.some((owner) => owner.spoken?.includes(action));

@@ -11,13 +11,15 @@ const VISIT_WINDOW: i64 = 30 * 60 * 1000;
 // Activity older than a year is removed by the collector's periodic cleanup.
 const AUDIT_RETENTION: i64 = 365 * 24 * 60 * 60 * 1000;
 // Managing a DSP from the platform is never part of that DSP's own log.
-const PLATFORM_ONLY: [&str; 13] = [
+const PLATFORM_ONLY: [&str; 15] = [
     "dsp.created",
     "dsp.code_changed",
     "dsp.feature_enabled",
     "dsp.feature_disabled",
     "dsp.feature_hidden",
     "dsp.feature_shown",
+    "dsp.ai_support_hidden",
+    "dsp.ai_support_shown",
     "dsp.removed",
     "dsp.restored",
     "dsp.suspended",
@@ -326,7 +328,8 @@ const AREAS: &[(&str, &str)] = &[
     ("a.action LIKE 'account.%'", "'access'"),
     (
         "a.action IN ('dsp.created','dsp.removed','dsp.restored','dsp.suspended','dsp.resumed',\
-         'dsp.feature_enabled','dsp.feature_disabled','dsp.feature_hidden','dsp.feature_shown')",
+         'dsp.feature_enabled','dsp.feature_disabled','dsp.feature_hidden','dsp.feature_shown',\
+         'dsp.ai_support_hidden','dsp.ai_support_shown')",
         "'dsps'",
     ),
 ];

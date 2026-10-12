@@ -247,3 +247,45 @@ test('intake outcomes show agent responses and unclear reports focus the shared 
   await panel.getByRole('button', { name: 'Add details', exact: true }).click();
   await expect(panel.getByLabel('Reply', { exact: true })).toBeFocused();
 });
+
+test('a DSP whose AI Support the platform owner hides loses the button until it is shown', async ({
+  page,
+  browser,
+}) => {
+  await login(page);
+  await page
+    .getByRole('region', { name: 'DSPs', exact: true })
+    .getByRole('button', { name: /Northline Logistics/ })
+    .click();
+  const pane = page.getByRole('region', { name: 'Northline Logistics', exact: true });
+  await pane.getByRole('tab', { name: 'Features', exact: true }).click();
+  const shown = pane.getByRole('switch', { name: 'AI Support', exact: true });
+  const context = await browser.newContext();
+  const member = await context.newPage();
+  await login(member, demo.member);
+  const menu = member.getByLabel('Account menu', { exact: true });
+  const button = member.getByRole('button', { name: 'AI Support', exact: true });
+  await menu.click();
+  await expect(button).toBeVisible();
+  await member.keyboard.press('Escape');
+
+  await shown.click();
+  await expect(shown).not.toBeChecked();
+  // The member's next request finds their view expired, and the button gone.
+  await member.reload();
+  await menu.click();
+  await expect(member.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
+  await expect(button).toHaveCount(0);
+  await member.keyboard.press('Escape');
+  // The platform owner keeps it.
+  await page.getByLabel('Account menu', { exact: true }).click();
+  await expect(page.getByRole('button', { name: 'AI Support', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  await shown.click();
+  await expect(shown).toBeChecked();
+  await member.reload();
+  await menu.click();
+  await expect(button).toBeVisible();
+  await context.close();
+});

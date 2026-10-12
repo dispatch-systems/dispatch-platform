@@ -49,6 +49,11 @@ pub fn routes() -> Vec<Route> {
             PlatformRoutine,
             show_feature,
         ),
+        write(
+            "/api/platform/dsps/{id}/ai-support",
+            PlatformRoutine,
+            show_ai_support,
+        ),
         async_post("/api/platform/dsps/{id}/remove", PlatformOwner, remove_dsp),
         async_post(
             "/api/platform/dsps/{id}/restore",
@@ -206,6 +211,13 @@ fn show_feature(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
     let feature = v::text(b, "feature", 1, 40)?;
     let shown = v::boolean(b, "shown")?;
     Reply::of(&db.show_feature(input.param("id"), feature, shown, owner.actor())?)
+}
+
+/// Hides the AI Support button from the DSP's members, or shows it to them again.
+fn show_ai_support(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &["shown"])?;
+    let shown = v::boolean(&input.body, "shown")?;
+    Reply::of(&db.show_ai_support(input.param("id"), shown, owner.actor())?)
 }
 
 // Switching a feature off stops what it ran for the DSP: its jobs and live

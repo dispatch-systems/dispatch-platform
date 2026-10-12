@@ -23,6 +23,10 @@ export const feature: FrontendFeature = {
       id: 'ai-support',
       label: 'AI Support',
       icon: Sparkles,
+      // Its badge goes with it. The platform owner hides the button from a DSP's members; the
+      // platform owner always has it.
+      visible: ({ session, view }) =>
+        session.user.platformOwner || !(view ?? session.dsps[0])?.profile.aiSupportHidden,
       preload: loadPanel,
       render: (context) => createElement(Panel, context),
       indicator: () => createElement(Indicator),
