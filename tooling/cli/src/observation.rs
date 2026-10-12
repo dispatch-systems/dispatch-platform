@@ -60,12 +60,16 @@ fn output_parent(output: &Path) -> Result<&Path> {
 
 /// Source only the installed host's config. Tracing, config output and backend diagnostics
 /// are suppressed; neither an inherited shell setting nor a failure can print a secret.
-fn mint_script(active: &str, config: &str, environment: &str, origin: &str) -> String {
+fn mint_script(active: &str, config: &str, environment: &str, origin: Option<&str>) -> String {
+    let origin_check = origin.map_or_else(
+        || "case \"${DISPATCH_ORIGIN:-}\" in https://*) ;; *) exit 1 ;; esac".into(),
+        |origin| format!("[ \"${{DISPATCH_ORIGIN:-}}\" = {} ]", quote(origin)),
+    );
     format!(
         "set +x\nset -eu\nexec 2>/dev/null\n\
          set -a\n. {config} >/dev/null 2>&1\nset +a\n\
          [ \"${{DISPATCH_ENVIRONMENT:-}}\" = {environment} ]\n\
-         [ \"${{DISPATCH_ORIGIN:-}}\" = {origin} ]\n\
+         {origin_check}\n\
          observation_active={active}\ncd \"$observation_active\"\n\
          observation_private=$(mktemp -d /tmp/dispatch-observation.XXXXXXXX)\n\
          observation_file=\"$observation_private/session.json\"\n\
@@ -73,9 +77,9 @@ fn mint_script(active: &str, config: &str, environment: &str, origin: &str) -> S
          DISPATCH_ARTIFACT_ROOT=\"$observation_active\" \
          \"$observation_active/services/rust/dispatch-backend\" \
          observation-session \"$observation_file\" >/dev/null\n\
+         printf '%s\\n' \"$DISPATCH_ORIGIN\"\n\
          cat -- \"$observation_file\"\n",
         environment = quote(environment),
-        origin = quote(origin),
     )
 }
 
@@ -83,8 +87,8 @@ fn mint_script(active: &str, config: &str, environment: &str, origin: &str) -> S
 /// anything. The returned summary deliberately cannot contain the exchange credential.
 pub fn run(ws: &Workspace, target: &str, output: &Path, runner: &dyn Runner) -> Result<Value> {
     let (environment, origin) = match target {
-        "dev" => ("preview", "https://dispatchdev.dillonlille.com"),
-        "production" => ("production", "https://admin.dspdispatch.com"),
+        "dev" => ("preview", None),
+        "production" => ("production", Some("https://admin.dspdispatch.com")),
         _ => return Err("The browser target is dev or production.".into()),
     };
     let parent = output_parent(output)?;
@@ -130,8 +134,15 @@ pub fn run(ws: &Workspace, target: &str, output: &Path, runner: &dyn Runner) -> 
         bytes.len() <= 16_384,
         "Invalid browser credential response.",
     )?;
-    let credential: Credential =
-        serde_json::from_slice(&bytes).map_err(|_| "Invalid browser credential response.")?;
+    let separator = bytes
+        .iter()
+        .position(|byte| *byte == b'\n')
+        .ok_or("Invalid browser credential response.")?;
+    let configured_origin = std::str::from_utf8(&bytes[..separator])
+        .map_err(|_| "Invalid browser credential response.")?;
+    let credential_bytes = &bytes[separator + 1..];
+    let credential: Credential = serde_json::from_slice(credential_bytes)
+        .map_err(|_| "Invalid browser credential response.")?;
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
     let token = credential
         .token
@@ -146,7 +157,12 @@ pub fn run(ws: &Workspace, target: &str, output: &Path, runner: &dyn Runner) -> 
                 .all(|byte| byte.is_ascii_alphanumeric() || b"-_=+/".contains(&byte))
     });
     require(
-        credential.origin == origin
+        // The installed backend's Config::load validates a canonical URL with url::Url.
+        // Require HTTPS here and bind its issued origin to the separately captured host
+        // configuration. Dev's deployment address belongs in that config, not this code.
+        credential.origin == configured_origin
+            && configured_origin.starts_with("https://")
+            && origin.is_none_or(|expected| configured_origin == expected)
             && credential.read_only
             && valid_token
             && credential.expires_at > now
@@ -161,7 +177,7 @@ pub fn run(ws: &Workspace, target: &str, output: &Path, runner: &dyn Runner) -> 
         .tempfile_in(parent)?;
     file.as_file()
         .set_permissions(fs::Permissions::from_mode(0o600))?;
-    file.write_all(&bytes)?;
+    file.write_all(credential_bytes)?;
     file.flush()?;
     file.persist_noclobber(output)
         .map_err(|_| "Could not save private browser credentials without replacing a file.")?;

@@ -64,10 +64,12 @@ export function DspViewBanner({
   view,
   viewAs,
   exitView,
+  readOnly,
 }: {
   view: DspView;
   viewAs: (roleId?: string) => void;
   exitView: () => void;
+  readOnly?: boolean;
 }) {
   return (
     <div className="dsp-view-banner" data-sticky-banner role="region" aria-label="DSP viewing mode">
@@ -76,7 +78,11 @@ export function DspViewBanner({
         <strong>
           Viewing {view.dsp.name} as {viewer(view)}
         </strong>
-        <span>{viewing(view)} Changes are saved to this DSP.</span>
+        <span>
+          {readOnly
+            ? 'Read-only access to this DSP.'
+            : `${viewing(view)} Changes are saved to this DSP.`}
+        </span>
       </div>
       <ViewRoleMenu view={view} viewAs={viewAs} />
       <button onClick={exitView}>Exit view</button>

@@ -47,7 +47,12 @@ impl Runner for Host {
         self.calls.fetch_add(1, Ordering::SeqCst);
         assert_eq!(args[0], "ssh");
         assert!(args.contains(&"dispatch-production"));
-        Ok(serde_json::to_vec(&self.answer)?)
+        Ok(format!(
+            "{}\n{}",
+            self.answer["origin"].as_str().unwrap(),
+            self.answer
+        )
+        .into_bytes())
     }
 }
 
@@ -60,11 +65,11 @@ fn dev_mints_using_installed_config_saves_private_access_and_cleans_host_tempora
     fs::create_dir(dev.join("config")).unwrap();
     fs::write(
         dev.join("config/platform.env"),
-        "DISPATCH_ENVIRONMENT=preview\nDISPATCH_ORIGIN=https://dispatchdev.dillonlille.com\n\
+        "DISPATCH_ENVIRONMENT=preview\nDISPATCH_ORIGIN=https://dispatchdev.example\n\
          DISPATCH_TEST_SECRET=should-never-be-printed\necho \"$DISPATCH_TEST_SECRET\"\n",
     )
     .unwrap();
-    let expected = credential("https://dispatchdev.dillonlille.com");
+    let expected = credential("https://dispatchdev.example");
     let backend = active.join("services/rust/dispatch-backend");
     fs::write(
         &backend,
@@ -111,6 +116,29 @@ fn dev_mints_using_installed_config_saves_private_access_and_cleans_host_tempora
     let temporary = fs::read_to_string(active.join("minted-path")).unwrap();
     assert!(!Path::new(&temporary).exists());
     assert!(!Path::new(&temporary).parent().unwrap().exists());
+
+    // Even a minting helper returning a valid-looking credential must agree with the
+    // separately captured installed config; the requested target alone is insufficient.
+    let helper = fs::read_to_string(&backend).unwrap();
+    fs::write(
+        &backend,
+        helper.replace("https://dispatchdev.example", "https://other.example"),
+    )
+    .unwrap();
+    let mismatched = root.path().join("mismatched.json");
+    let error = observation::run(
+        &Workspace {
+            root: root.path().into(),
+        },
+        "dev",
+        &mismatched,
+        &Native,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("unexpected origin"));
+    assert!(!error.contains("fixtureClaims"));
+    assert!(!mismatched.exists());
 }
 
 #[test]
@@ -127,7 +155,7 @@ fn production_rejects_wrong_host_writable_or_expired_credentials_without_saving_
         changed
     };
     for bad in [
-        change("origin", json!("https://dispatchdev.dillonlille.com")),
+        change("origin", json!("https://dispatchdev.example")),
         change("readOnly", json!(false)),
         change("expiresAt", json!(1)),
         change("expiresAt", json!(u64::MAX)),

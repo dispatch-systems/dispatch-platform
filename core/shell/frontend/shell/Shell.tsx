@@ -178,7 +178,12 @@ export function Shell({
       <div className="main-area" inert={mobile}>
         {view && session.user.platformOwner && (
           <Suspense fallback={null}>
-            <DspViewBanner view={view} viewAs={viewAs} exitView={exitView} />
+            <DspViewBanner
+              view={view}
+              viewAs={viewAs}
+              exitView={exitView}
+              readOnly={session.readOnly}
+            />
           </Suspense>
         )}
         <header className="topbar">
