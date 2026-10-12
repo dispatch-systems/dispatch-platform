@@ -20,7 +20,7 @@ export function EmployeePeriodControls({
         type="button"
         className="icon-button"
         aria-label="Previous timecard"
-        disabled={!data?.previousPeriod}
+        disabled={!busy && !data?.previousPeriod}
         aria-disabled={busy || !data?.previousPeriod}
         onClick={() => !busy && data?.previousPeriod && onChange(data.previousPeriod)}
       >
@@ -31,7 +31,7 @@ export function EmployeePeriodControls({
         type="button"
         className="icon-button"
         aria-label="Next timecard"
-        disabled={!data?.nextPeriod}
+        disabled={!busy && !data?.nextPeriod}
         aria-disabled={busy || !data?.nextPeriod}
         onClick={() => !busy && data?.nextPeriod && onChange(data.nextPeriod)}
       >
