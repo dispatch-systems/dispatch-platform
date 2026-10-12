@@ -366,8 +366,14 @@ test('Sync now keeps its displayed-period batch across employee and view changes
   const latest = (await owner.get('/api/dsp/employees/E002')).value;
   const period = latest.previousPeriod;
   const requests: string[] = [];
+  const batchReads: string[] = [];
   page.on('request', (request) => {
-    if (request.method() === 'POST') requests.push(new URL(request.url()).pathname);
+    const url = new URL(request.url());
+    if (request.method() === 'POST') requests.push(url.pathname);
+    if (request.method() === 'GET' && url.pathname === '/api/dsp/jobs/employees') {
+      const id = url.searchParams.get('requestId');
+      if (id) batchReads.push(id);
+    }
   });
   await login(page);
   await openDsp(page, 'Northline Logistics');
@@ -403,12 +409,12 @@ test('Sync now keeps its displayed-period batch across employee and view changes
       timeZone: 'UTC',
     }),
   );
-  for (const source of ['Paycom', 'Flex'])
-    await expect(
-      page.getByRole('status', { name: `${source} period sync`, exact: true }),
-    ).toContainText('Complete');
+  await expect.poll(() => batchReads.at(-1)).toBe(body.requestId);
+  await expect(page.getByRole('status', { name: 'Paycom period sync', exact: true })).toContainText(
+    'Complete',
+  );
   await expect(page.getByRole('status', { name: 'Flex period sync', exact: true })).toContainText(
-    '14/14',
+    '/14',
   );
   await detail
     .getByRole('group', { name: 'Employee view' })

@@ -206,13 +206,29 @@ test('employee Sync Now collects every employee and both sources for the display
   const original = [...queued.value.paycom.jobs, ...queued.value.cortex.jobs].map(
     (job: any) => job.id,
   );
-  await until(async () => {
-    const status = (await owner.get(statusUrl)).value;
-    assert.equal(status.paycom.failed, 0, JSON.stringify(status));
-    assert.equal(status.cortex.failed, 0, JSON.stringify(status));
-    return status.complete;
-  });
+  assert.equal(original.length, 15);
+  let finished = 0;
+  // Each serial job must finish within the ordinary wait budget. The next wait
+  // starts only after the accepted batch makes forward progress.
+  while (finished < original.length) {
+    const before = finished;
+    await until(async () => {
+      const status = (await owner.get(statusUrl)).value;
+      const jobs = [...status.paycom.jobs, ...status.cortex.jobs];
+      assert.deepEqual(jobs.map((job: any) => job.id).sort(), [...original].sort());
+      assert.equal(status.paycom.failed, 0, JSON.stringify(status));
+      assert.equal(status.cortex.failed, 0, JSON.stringify(status));
+      assert.equal(status.paycom.cancelled, 0, JSON.stringify(status));
+      assert.equal(status.cortex.cancelled, 0, JSON.stringify(status));
+      const succeeded = jobs.filter((job: any) => job.status === 'succeeded').length;
+      assert(succeeded >= before, JSON.stringify(status));
+      if (succeeded === before) return false;
+      finished = succeeded;
+      return true;
+    });
+  }
   const completed = (await owner.get(statusUrl)).value;
+  assert.equal(completed.complete, true);
   assert.equal(completed.paycom.completed, 1);
   assert.equal(completed.cortex.completed, 14);
   assert.equal(completed.cortex.progress, 100);
