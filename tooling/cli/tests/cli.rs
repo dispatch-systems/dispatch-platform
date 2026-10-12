@@ -37,6 +37,9 @@ fn dispatchdev_shows_its_usage_and_refuses_what_it_does_not_take() {
     let (ok, _, error) = run(&["new", "widget"]);
     assert!(!ok);
     assert!(error.contains("Usage: dispatchdev new feature"), "{error}");
+    let (ok, _, error) = run(&["browser", "dev"]);
+    assert!(!ok);
+    assert!(error.contains("Usage: dispatchdev browser"), "{error}");
 }
 
 #[test]

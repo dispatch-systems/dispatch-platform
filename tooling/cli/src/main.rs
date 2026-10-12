@@ -1,6 +1,6 @@
 use dispatchdev_cli::{
-    Native, Result, Runner, api, build, check, finish, logs, pr, preview, scaffold, ship, start,
-    status, test, workspace::Workspace,
+    Native, Result, Runner, api, build, check, finish, logs, observation, pr, preview, scaffold,
+    ship, start, status, test, workspace::Workspace,
 };
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -32,6 +32,8 @@ A change, from start to finish:
   finish <name> [--abandon]        After the merge: its preview, port, worktree, build,
                                    branches and scratch folder go; then wait for Dev.
   status                           Worktrees, previews, open PRs, what Dev runs, free disk.
+  browser <dev | production>       Mint 15-minute, read-only dashboard access into a new
+          --out <absolute-file>     private JSON file. Its parent directory must be private.
 
   new feature <name> [options]     In a change's worktree, a feature or collector that works as
   new collector <site> [options]   written, listed in app/, with its catalog, API types and
@@ -53,6 +55,7 @@ test, check, build and new work on the checkout the current directory is in, or 
 /// Options that take a value.
 const VALUED: &[&str] = &[
     "--root", "--from", "--page", "--dsp", "--as", "--data", "--title", "--body", "--since",
+    "--out",
 ];
 
 /// The command line: the command, its flags and options, and its other arguments, in order.
@@ -291,6 +294,22 @@ fn run() -> Result<()> {
         "status" => {
             line.only(&[], 0)?;
             status::run(&line.workspace()?, &Native)
+        }
+        "browser" => {
+            line.only(&["--out"], 1)?;
+            let usage = "browser <dev | production> --out <absolute-private-json-file>";
+            let target = line.name(usage)?;
+            let output = line
+                .option("--out")
+                .ok_or_else(|| format!("Usage: dispatchdev {usage}"))?;
+            let summary = observation::run(
+                &line.workspace()?,
+                target,
+                std::path::Path::new(output),
+                &Native,
+            )?;
+            println!("{}", serde_json::to_string(&summary)?);
+            Ok(())
         }
         "build" => {
             line.only(&["--release", "--fixture", "--cache-key"], 0)?;

@@ -103,7 +103,7 @@ impl Store {
     }
 
     pub fn security_status(&self, a: &Auth) -> Result<SecurityStatus> {
-        if crate::support::browser::read_only(a) {
+        if super::browser::read_only(a) {
             // This service identity already passed the job lease and current reporter-access
             // checks. It grants no account writes or fresh-verification authority.
             return Ok(SecurityStatus {
@@ -142,6 +142,7 @@ impl Store {
     }
 
     pub fn ensure_recent(&self, a: &Auth) -> Result<()> {
+        ensure(!super::browser::read_only(a), "observation_read_only", 403)?;
         self.ensure_mfa(a)?;
         let status = self.security_status(a)?;
         if status.enrolled {

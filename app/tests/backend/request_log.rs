@@ -5,6 +5,7 @@
 const LABELS: &[(&str, &str)] = &[
     ("/api/health", "/api/health"),
     ("/api/auth/login", "/api/auth/login"),
+    ("/api/auth/observation", "/api/auth/observation"),
     ("/api/auth/logout", "/api/auth/logout"),
     ("/api/auth/password", "/api/auth/password"),
     ("/api/auth/forgot-password", "/api/auth/forgot-password"),

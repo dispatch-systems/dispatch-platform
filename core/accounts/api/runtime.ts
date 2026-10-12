@@ -113,6 +113,7 @@ export const sessionSchema = z.object({
   providerMode,
   source: z.object({ version: z.nullable(text), commit: z.nullable(text) }),
   security: securityStatus,
+  readOnly: z.boolean(),
 }) satisfies z.ZodMiniType<SessionView>;
 const viewRole = z.object({ id: text, name: text, owner: z.boolean() });
 const viewSchema = z.object({

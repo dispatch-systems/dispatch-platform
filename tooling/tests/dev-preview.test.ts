@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { createHmac } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -136,6 +138,7 @@ test('parallel worktree previews isolate ports, files, fixtures and browser sess
       assert(cookie.includes('HttpOnly'));
       assert(cookie.includes('SameSite=Strict'));
       assert(!pair.startsWith('dispatch_session='));
+      assert(!pair.startsWith('dispatch_observation_read='));
     }
     return { status: response.status, value: await response.json() };
   }
@@ -169,6 +172,86 @@ test('parallel worktree previews isolate ports, files, fixtures and browser sess
   assert.equal((await request(first.origin, '/api/auth/logout', {}, owner.value.csrf)).status, 200);
   assert.equal((await request(first.origin, '/api/session')).status, 401);
   assert.equal((await request(memberOrigin, '/api/session')).status, 200);
+
+  // Observation access also ignores ports in a browser's jar. Exercise its real host
+  // exchange through the proxy, where direct backend auth tests cannot catch a lost cookie.
+  assert.equal(
+    (
+      await request(first.origin, '/api/auth/login', {
+        email: demo.email,
+        password: demo.password,
+      })
+    ).status,
+    200,
+  );
+  const credentialPath = path.join(first.root, 'observation.json');
+  execFileSync(
+    path.resolve(process.env.DISPATCH_TEST_BINARY ?? 'target/debug/dispatch-backend'),
+    ['observation-session', credentialPath],
+    {
+      env: {
+        ...process.env,
+        NODE_ENV: 'development',
+        DISPATCH_STANDALONE: '1',
+        DISPATCH_ENVIRONMENT: 'preview',
+        DISPATCH_STATE_ROOT: first.root,
+        DISPATCH_PROVIDER_MODE: 'fixture',
+        DISPATCH_ORIGIN: first.origin,
+      },
+      stdio: 'pipe',
+    },
+  );
+  const credential = JSON.parse(fs.readFileSync(credentialPath, 'utf8'));
+  fs.unlinkSync(credentialPath);
+  const observation = await request(first.origin, '/api/auth/observation', {
+    token: credential.token,
+  });
+  assert.equal(observation.status, 200);
+  const observationCookie = `dispatch_preview_observation_${new URL(first.origin).port}`;
+  assert(jar.has(observationCookie));
+  const observed = await request(first.origin, '/api/session');
+  assert.equal(observed.status, 200);
+  assert.equal(observed.value.readOnly, true);
+  assert.equal(observed.value.user.email, demo.email);
+  const denied = await request(first.origin, '/api/auth/forgot-password', { email: demo.email });
+  assert.equal(denied.status, 403);
+  assert.equal(denied.value.error, 'observation_read_only');
+  assert.equal((await request(memberOrigin, '/api/session')).value.readOnly, false);
+  assert.equal((await request(second.origin, '/api/session')).status, 401);
+
+  const normalCookies = [...jar].map(([key, value]) => `${key}=${value}`).join('; ');
+  for (const invalid of [
+    `${observationCookie}=${credential.token}`,
+    `${observationCookie}=`,
+    observationCookie,
+  ]) {
+    const response = await fetch(first.origin + '/api/session', {
+      headers: { cookie: `${normalCookies}; ${invalid}` },
+    });
+    assert.equal(response.status, 401);
+    assert.equal((await response.json()).error, 'sign_in_required');
+  }
+  // A genuinely expired grant, rather than a forged signature, must not be dropped by
+  // the proxy and thereby expose the valid ordinary owner session in the same jar.
+  const claims = JSON.parse(
+    Buffer.from(credential.token.split(':')[1], 'base64url').toString('utf8'),
+  );
+  claims.expiresAt = Date.now() - 1_000;
+  claims.issuedAt = claims.expiresAt - 900_000;
+  const unsigned = `observation-read:${Buffer.from(JSON.stringify(claims)).toString('base64url')}`;
+  const signature = createHmac(
+    'sha256',
+    fs.readFileSync(path.join(first.root, 'data/platform/platform.key')),
+  )
+    .update(unsigned)
+    .digest('base64url');
+  jar.set(observationCookie, `${unsigned}:${signature}`);
+  assert.equal((await request(first.origin, '/api/session')).status, 401);
+  assert.equal((await request(memberOrigin, '/api/session')).status, 200);
+  jar.delete(observationCookie);
+  const restored = await request(first.origin, '/api/session');
+  assert.equal(restored.status, 200);
+  assert.equal(restored.value.readOnly, false);
 
   // An explicit occupied port fails, without taking over or stopping its owner.
   await assert.rejects(

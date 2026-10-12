@@ -78,6 +78,13 @@ impl Input {
         let first = values.next().unwrap_or("");
         if values.next().is_some() { "" } else { first }
     }
+    /// Observation cookie errors never fall back to a human sign-in in the same browser.
+    pub fn observation_token(
+        &self,
+        config: &crate::foundation::config::Config,
+    ) -> Result<Option<&str>> {
+        crate::accounts::browser::token(&self.headers, config)
+    }
 }
 
 enum Payload {

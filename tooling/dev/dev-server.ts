@@ -6,7 +6,9 @@ import { createServer, type ProxyOptions, type ViteDevServer } from 'vite';
 import { demo, fixture } from '../testing/fixture-server.js';
 
 const previewCookie = (value: string, port: number) =>
-  value.replace(/^dispatch_session=/, `dispatch_preview_${port}=`);
+  value
+    .replace(/^dispatch_session=/, `dispatch_preview_${port}=`)
+    .replace(/^dispatch_observation_read=/, `dispatch_preview_observation_${port}=`);
 
 async function enterDemo(
   app: Awaited<ReturnType<typeof fixture>>,
@@ -35,20 +37,29 @@ async function enterDemo(
   }
 }
 
-// Cookies ignore ports. Only this preview's cookie may reach its fixture backend;
+// Cookies ignore ports. Only this preview's cookies may reach its fixture backend;
 // the backend and published application keep their normal session cookie name.
 function sessionProxy(target: string, port: number): ProxyOptions {
   const cookie = `dispatch_preview_${port}`;
+  const observation = `dispatch_preview_observation_${port}`;
   return {
     target,
     changeOrigin: false,
     configure(proxy) {
       proxy.on('proxyReq', (outgoing, incoming) => {
-        const session = incoming.headers.cookie
+        const sessions = incoming.headers.cookie
           ?.split(';')
           .map((part) => part.trim())
-          .find((part) => part.startsWith(`${cookie}=`));
-        if (session) outgoing.setHeader('cookie', session.replace(cookie, 'dispatch_session'));
+          .flatMap((part) => {
+            const name = part.split('=', 1)[0]!.trim();
+            if (name === cookie) return [part.replace(cookie, 'dispatch_session')];
+            if (name === observation)
+              return [part.replace(observation, 'dispatch_observation_read')];
+            return [];
+          });
+        // Keep malformed and duplicate cookies so the backend can reject them rather
+        // than silently recovering the human session underneath observation access.
+        if (sessions?.length) outgoing.setHeader('cookie', sessions.join('; '));
         else outgoing.removeHeader('cookie');
       });
       proxy.on('proxyRes', (response) => {

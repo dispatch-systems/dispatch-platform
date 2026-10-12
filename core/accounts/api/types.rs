@@ -206,6 +206,8 @@ pub struct SessionResponse {
     pub provider_mode: ProviderMode,
     pub source: RuntimeSource,
     pub security: SecurityStatus,
+    /// Host-issued observation and support sessions can only inspect the dashboard.
+    pub read_only: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]

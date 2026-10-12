@@ -121,3 +121,127 @@ test('each address signs in only its own people, and a session works only where 
   // Agents reach Dispatch at the admin's address alone.
   assert.equal((await f.request('/api/v1/whoami', undefined, north)).status, 404);
 });
+
+// Protects the HTTP boundary that signed-claim unit tests cannot reach: cookies must stay
+// read only on public/async routes and GET writes, even alongside a human sign-in. Uses
+// the installed CLI and live route table, without a token-minting test-only API.
+test('host-issued observation sign-in cannot mutate or fall back to a human session', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const canonical = { host: new URL(f.env.DISPATCH_ORIGIN!).host };
+  const authorityRows = () =>
+    f.database('data/platform/accounts.sqlite', (db) =>
+      db
+        .prepare(
+          `SELECT (SELECT count(*) FROM sessions WHERE user_id=?) sessions,
+      (SELECT count(*) FROM audit WHERE actor_id=? AND action IN ('account.signed_in','dsp.owner_view_opened')) audits`,
+        )
+        .get(owner.session.user.id, owner.session.user.id),
+    );
+  const before = authorityRows();
+  const output = path.join(f.root, 'observation.json');
+  const metadata = JSON.parse(f.cli(['observation-session', output]));
+  const credential = JSON.parse(fs.readFileSync(output, 'utf8'));
+  assert.equal(fs.statSync(output).mode & 0o777, 0o600);
+  assert.equal(metadata.token, undefined);
+  assert.equal(metadata.expiresAt, credential.expiresAt);
+  const exchange = () => f.request('/api/auth/observation', { token: credential.token }, canonical);
+  assert.equal(
+    (await f.request('/api/auth/observation', { token: 'forged' }, canonical)).status,
+    401,
+  );
+  assert.equal(
+    (await f.request('/api/auth/observation', { token: credential.token }, f.at('nll'))).status,
+    401,
+  );
+  const issued = await exchange();
+  assert.equal(issued.status, 200, issued.body);
+  assert.equal(issued.value.expiresAt, credential.expiresAt);
+  const setCookie = issued.headers.get('set-cookie')!;
+  assert.match(setCookie, /; HttpOnly; SameSite=Strict;/);
+  const cookie = setCookie.split(';')[0]!;
+  const observer = { ...canonical, cookie };
+  const session = await f.request('/api/session', undefined, observer);
+  assert.equal(session.status, 200, session.body);
+  assert.equal(session.value.user.id, owner.session.user.id);
+  assert.equal(session.value.readOnly, true);
+  const headers = {
+    ...observer,
+    cookie: `${cookie}; ${owner.headers.cookie}`,
+    'x-csrf-token': session.value.csrf,
+  };
+  const view = await f.request('/api/session/dsp', { dspId: owner.session.dsps[0].id }, headers);
+  assert.equal(view.status, 200, view.body);
+  assert.deepEqual(
+    authorityRows(),
+    before,
+    'mint, exchange and observation views leave human session and visit records untouched',
+  );
+  const authorized = { ...headers, 'x-dispatch-view': view.value.token };
+  assert.equal((await f.request('/api/platform/dsps', undefined, headers)).status, 200);
+  for (const route of [
+    '/api/auth/login',
+    '/api/auth/logout',
+    '/api/auth/forgot-password',
+    '/api/auth/security/passkeys/register/start',
+    '/api/platform/dsps',
+    '/api/dsp/employees/E001/sync',
+    '/oauth/token',
+    '/api/v1/mcp',
+  ]) {
+    const denied = await f.request(route, {}, authorized);
+    assert.equal(denied.status, 403, route);
+    assert.equal(denied.value.error, 'observation_read_only', route);
+  }
+  assert.equal(
+    (await f.request('/api/invitations/nonexistent', undefined, headers)).value.error,
+    'observation_read_only',
+  );
+  for (const invalidCookie of [
+    'dispatch_observation_read=',
+    'dispatch_observation_read',
+    'dispatch_observation_read=forged',
+    `dispatch_observation_read=${owner.headers.cookie!.split('=')[1]}`,
+    `${cookie}; ${cookie}`,
+    `__Host-dispatch_observation_read=forged; ${cookie}`,
+  ]) {
+    const answer = await f.request('/api/session', undefined, {
+      ...canonical,
+      cookie: `${invalidCookie}; ${owner.headers.cookie}`,
+    });
+    assert.equal(answer.status, 401, invalidCookie.split('=')[0]);
+  }
+  assert.equal(
+    (await f.request('/api/session', undefined, { cookie })).status,
+    401,
+    'loopback alias',
+  );
+  for (const name of ['dispatch_session', 'dispatch_support_read', 'unrelated_cookie']) {
+    const misplaced = {
+      ...canonical,
+      cookie: `${name}=${credential.token}; ${owner.headers.cookie}`,
+      'x-csrf-token': owner.session.csrf,
+    };
+    assert.equal((await f.request('/api/session', undefined, misplaced)).status, 401, name);
+    assert.equal(
+      (await f.request('/api/session/dsp', { dspId: owner.session.dsps[0].id }, misplaced)).status,
+      401,
+      name,
+    );
+    assert.equal(
+      (await f.request('/api/invitations/nonexistent', undefined, misplaced)).value.error,
+      'observation_read_only',
+      name,
+    );
+  }
+  const renewed = await f.request('/api/auth/observation', { token: credential.token }, headers);
+  assert.equal(renewed.status, 200, renewed.body);
+  assert.equal(renewed.value.expiresAt, credential.expiresAt, 'exchange must not extend lifetime');
+  assert(!f.logs().includes(credential.token), 'tokens must not enter request logs');
+  f.database('data/platform/accounts.sqlite', (db) =>
+    db.prepare('UPDATE users SET version=version+1 WHERE id=?').run(owner.session.user.id),
+  );
+  assert.equal((await f.request('/api/session', undefined, headers)).status, 401);
+  assert.equal((await exchange()).status, 401);
+});
