@@ -346,6 +346,29 @@ impl Store {
             self.dsp(id)?.setting("dsp.profile", json!({}))?,
         )?)
     }
+    /// Hides the AI Support button from a DSP's members, or shows it to them again. Only the
+    /// button: their tickets stay as they are, and the platform owner always has it. Audited;
+    /// open views expire, so members lose or regain it at once.
+    pub fn show_ai_support(&self, id: &str, shown: bool, actor: &str) -> Result<DspProfile> {
+        self.find_dsp(id)?;
+        let profile = self.profile(id)?;
+        if profile.ai_support_hidden == !shown {
+            return Ok(profile);
+        }
+        let profile = self.set_profile(id, json!({"aiSupportHidden": !shown}))?;
+        self.platform.transaction(|| {
+            let action = if shown {
+                "dsp.ai_support_shown"
+            } else {
+                "dsp.ai_support_hidden"
+            };
+            self.audit(Some(actor), Some(id), action, "")?;
+            self.platform
+                .exec("UPDATE dsps SET revision=revision+1 WHERE id=?", [id])?;
+            Ok(())
+        })?;
+        Ok(profile)
+    }
     pub fn set_profile(&self, id: &str, changes: Value) -> Result<DspProfile> {
         let mut profile = serde_json::to_value(self.profile(id)?)?;
         for (k, v) in changes

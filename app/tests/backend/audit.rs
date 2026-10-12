@@ -37,6 +37,8 @@ const AREAS: &[(&str, &str, &str)] = &[
     ("dsp.resumed", "dsps", "dsps"),
     ("dsp.feature_enabled", "dsps", "dsps"),
     ("dsp.feature_disabled", "dsps", "dsps"),
+    ("dsp.ai_support_hidden", "dsps", "dsps"),
+    ("dsp.ai_support_shown", "dsps", "dsps"),
     ("dsp.support_visibility_changed", "settings", "settings"),
     (
         "routes.collection_requested",

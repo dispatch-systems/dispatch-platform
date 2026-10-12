@@ -286,6 +286,8 @@ pub struct DspProfile {
     pub setup_required: bool,
     pub removed: bool,
     pub support_visible: bool,
+    /// The platform owner hid the AI Support button from this DSP's members.
+    pub ai_support_hidden: bool,
 }
 text_enum! {
     pub enum UserStatus {

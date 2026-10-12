@@ -1,7 +1,12 @@
 import { useState } from 'react';
-import { ChevronRight, Eye, EyeOff, Plug } from 'lucide-react';
+import { ChevronRight, Eye, EyeOff, Plug, Sparkles } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
-import { setDspFeature, showDspFeature, useDspFeatures } from '../../api/client.js';
+import {
+  setDspFeature,
+  showDspAiSupport,
+  showDspFeature,
+  useDspFeatures,
+} from '../../api/client.js';
 import {
   featureCatalog,
   subsOf,
@@ -24,11 +29,15 @@ const connections = featureCatalog.filter((f): f is ConnectionEntry => f.kind ==
 // switching the feature back on brings each part back as it was. A switch acts at once; one
 // that takes other features with it asks first. The eye beside an optional one hides it from
 // the DSP's members while it keeps running, as the Platform Owner view still shows it; a
-// hidden feature hides its parts too.
+// hidden feature hides its parts too. Above them, AI Support: switching it off hides only its
+// button from the DSP's members, and the platform owner keeps it.
 export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () => void }) {
   const { data, error, refresh } = useDspFeatures(dsp.id);
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const [pending, setPending] = useState<{ feature: FeatureEntry; on: boolean }>();
+  // As the switch last answered, until the DSP's profile is read again.
+  const [support, setSupport] = useState<{ dsp: string; shown: boolean }>();
+  const supportShown = support?.dsp === dsp.id ? support.shown : !dsp.profile.aiSupportHidden;
   // What is switched on, parts of a feature that is off included, so they come back as they were.
   const enabled = data
     ? data.features.filter((state) => state.enabled).map((state) => state.feature)
@@ -59,6 +68,14 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
       success: (feature, shown) =>
         `${switchLabel(feature)} ${shown ? 'shown to' : 'hidden from'} ${dsp.name}`,
     },
+  );
+  const supporting = useAction(
+    async (shown: boolean) => {
+      const profile = await showDspAiSupport(dsp.id, shown);
+      setSupport({ dsp: dsp.id, shown: !profile.aiSupportHidden });
+      changed();
+    },
+    { success: (shown) => `AI Support ${shown ? 'shown to' : 'hidden from'} ${dsp.name}` },
   );
   // What every DSP has is always shown; an optional one can be hidden.
   const eye = (feature: FeatureEntry) =>
@@ -112,6 +129,28 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
   return (
     <div className="dsp-features">
       <ErrorBox message={error} />
+      <section aria-label="Platform">
+        <h3 className="dsp-group">
+          <Sparkles size={14} aria-hidden="true" />
+          Platform
+        </h3>
+        <ul className="dsp-feature-list">
+          <li className={`dsp-feature-row ${supportShown ? '' : 'off'}`}>
+            <span className="dsp-expand" aria-hidden="true" />
+            <input
+              type="checkbox"
+              role="switch"
+              aria-label="AI Support"
+              title="The AI Support button in the DSP's account menu"
+              checked={supportShown}
+              disabled={supporting.busy}
+              onChange={(event) => void supporting.run(event.target.checked)}
+            />
+            <strong>AI Support</strong>
+            <small>{supportShown ? '' : 'Hidden from DSP'}</small>
+          </li>
+        </ul>
+      </section>
       <section aria-label="Features">
         <h3 className="dsp-group">Features</h3>
         <ul className="dsp-feature-list">
