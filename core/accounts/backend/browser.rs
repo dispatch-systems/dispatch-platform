@@ -227,7 +227,10 @@ pub fn mint(config: &Config, output: &Path, email: Option<&str>) -> Result<Value
         account_path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )?;
-    let mut statement = connection.prepare("SELECT id,version FROM users WHERE status='active' AND platform_owner=1 AND (?1 IS NULL OR email=?1) LIMIT 2")?;
+    let mut statement = connection.prepare(
+        "SELECT id,version FROM users WHERE status='active' AND platform_owner=1 \
+         AND (?1 IS NULL OR email=?1) LIMIT 2",
+    )?;
     let rows = statement
         .query_map(params![email], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
