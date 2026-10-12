@@ -1,22 +1,28 @@
 import { Bug, ChevronRight, Lightbulb } from 'lucide-react';
 import type { SupportTicket } from '../../api/index.js';
 import { Empty } from '../../../shell/frontend/ui/index.js';
-import { TicketStatus, when } from '../format.js';
+import { kindLabel, TicketStatus, when } from '../format.js';
 export function TicketList({
   tickets,
   selected,
   onSelect,
+  cards = false,
 }: {
   tickets: SupportTicket[];
   selected?: string;
   onSelect: (id: string) => void;
+  cards?: boolean;
 }) {
   if (!tickets.length)
     return (
       <Empty title="No tickets yet">Your reports and feature requests will appear here.</Empty>
     );
   return (
-    <div className="support-ticket-list" role="region" aria-label="Support tickets">
+    <div
+      className={`support-ticket-list ${cards ? 'support-ticket-cards' : ''}`}
+      role="region"
+      aria-label="Support tickets"
+    >
       {tickets.map((ticket) => (
         <button
           type="button"
@@ -25,19 +31,30 @@ export function TicketList({
           onClick={() => onSelect(ticket.id)}
           aria-pressed={selected === ticket.id}
         >
-          <span className={`support-kind-icon ${ticket.kind}`}>
-            {ticket.kind === 'bug' ? <Bug size={17} /> : <Lightbulb size={17} />}
-          </span>
+          {!cards && (
+            <span className={`support-kind-icon ${ticket.kind}`}>
+              {ticket.kind === 'bug' ? <Bug size={17} /> : <Lightbulb size={17} />}
+            </span>
+          )}
           <span className="support-ticket-copy">
+            {cards && <TicketStatus ticket={ticket} />}
             <strong>{ticket.title}</strong>
             <span>
-              {ticket.reporterName}
-              {ticket.dspName ? ` · ${ticket.dspName}` : ''}
+              {cards ? (
+                <>
+                  {kindLabel(ticket.kind)} · Updated {when(ticket.updatedAt)}
+                </>
+              ) : (
+                <>
+                  {ticket.reporterName}
+                  {ticket.dspName ? ` · ${ticket.dspName}` : ''}
+                </>
+              )}
             </span>
-            <TicketStatus ticket={ticket} />
+            {!cards && <TicketStatus ticket={ticket} />}
           </span>
           <span className="support-ticket-age">
-            {when(ticket.updatedAt)}
+            {!cards && when(ticket.updatedAt)}
             <ChevronRight size={16} />
           </span>
         </button>

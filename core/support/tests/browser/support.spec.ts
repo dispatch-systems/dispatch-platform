@@ -19,6 +19,13 @@ test('a member reports with a screenshot, follows the ticket and the owner appro
   const panel = page.getByRole('dialog', { name: 'AI Support', exact: true });
   await expect(panel).toBeVisible();
   await expect(page.getByRole('button', { name: 'Close navigation' })).toBeHidden();
+  const panelBounds = await panel.boundingBox();
+  expect(panelBounds).not.toBeNull();
+  for (const tab of ['My tickets', 'Updates', 'New report']) {
+    await panel.getByRole('tab', { name: tab }).click();
+    await expect.poll(() => panel.boundingBox()).toEqual(panelBounds);
+  }
+  await panel.getByRole('button', { name: 'Continue', exact: true }).click();
   await panel.getByLabel('Title', { exact: true }).fill('An employee disappears after refreshing');
   await panel
     .getByLabel('Description', { exact: true })
@@ -29,10 +36,22 @@ test('a member reports with a screenshot, follows the ticket and the owner appro
     .getByLabel('Upload screenshots')
     .setInputFiles({ name: 'employee.png', mimeType: 'image/png', buffer: screenshot });
   await expect(panel.getByRole('img', { name: 'employee.png' })).toBeVisible();
+  await panel.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect.poll(() => panel.boundingBox()).toEqual(panelBounds);
+  await panel.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(panel.getByLabel('Title', { exact: true })).toHaveValue(
+    'An employee disappears after refreshing',
+  );
+  await expect(panel.getByLabel('Description', { exact: true })).toHaveValue(
+    'After opening an employee and refreshing, the selected employee disappears. I expected the selection to stay.',
+  );
+  await expect(panel.getByRole('img', { name: 'employee.png' })).toBeVisible();
+  await expect.poll(() => panel.boundingBox()).toEqual(panelBounds);
   await panel.getByRole('button', { name: 'Send report', exact: true }).click();
   await expect(
     panel.getByRole('heading', { name: 'An employee disappears after refreshing', exact: true }),
   ).toBeVisible();
+  await expect.poll(() => panel.boundingBox()).toEqual(panelBounds);
   await expect(panel.getByText('Reviewing message', { exact: true })).toBeVisible();
   await expect(panel.getByText('Routing your request', { exact: true })).toBeVisible();
   await expect(panel.getByRole('img', { name: 'employee.png' })).toBeVisible();
