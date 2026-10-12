@@ -352,7 +352,7 @@ impl Store {
     pub fn show_ai_support(&self, id: &str, shown: bool, actor: &str) -> Result<DspProfile> {
         self.find_dsp(id)?;
         let profile = self.profile(id)?;
-        if profile.ai_support_hidden == !shown {
+        if profile.ai_support_hidden != shown {
             return Ok(profile);
         }
         let profile = self.set_profile(id, json!({"aiSupportHidden": !shown}))?;
