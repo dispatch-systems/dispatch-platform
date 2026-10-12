@@ -544,7 +544,7 @@ test('sync remains locked across dates, tabs and reloads until both sources stop
   await expect(periodFlex).toHaveText('Flex · Ready');
   await expect(sync).toBeDisabled();
   await meals.click();
-  await expect(flex).toHaveText('Queued · Sep 16');
+  await expect(flex).toHaveText('Flex queued · Sep 16');
   paycomStatus = 'succeeded';
   flexStatus = 'running';
   await page.reload();
@@ -552,7 +552,7 @@ test('sync remains locked across dates, tabs and reloads until both sources stop
   await expect(periodFlex).toHaveText('Flex · Ready');
   await expect(sync).toBeDisabled();
   await meals.click();
-  await expect(flex).toHaveText('Running · Sep 16');
+  await expect(flex).toHaveText('Flex running · Sep 16');
   await setDate(page, '2026-09-15');
   await expect(flex).toHaveText('Flex running · Sep 16');
   await expect(sync).toBeDisabled();
