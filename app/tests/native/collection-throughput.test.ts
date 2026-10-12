@@ -170,6 +170,12 @@ test(
       (await owner.post('/api/dsp/connections/paycom', credentials)).value.status,
       'ready',
     );
+    const currentPublication = () =>
+      f.collector(dsp.id, (db) =>
+        db.prepare('SELECT id,period_from,period_to FROM publications WHERE active=1').get(),
+      );
+    const seededPublication = currentPublication();
+    assert(seededPublication);
     const id = (await owner.post('/api/dsp/jobs', { requestId: 'data-ready', date: '2026-01-10' }))
       .value.id;
     let job: any;
@@ -186,19 +192,36 @@ test(
     assert.equal(f.state.imagesFinished, 0);
     assert.equal(job.metrics[0].pageReads.earlyReady, 2);
     assert.equal(job.metrics[0].pageReads.retries, 0);
+    const source = f.state.requests
+      .filter((request) => request.isAdvancedFilterApplied === false)
+      .at(-1)!;
+    const from = source.startDate;
+    const to = source.endDate;
+    assert(typeof from === 'string' && typeof to === 'string');
     const selectedPeriod = f.collector(dsp.id, (db) =>
-      db.prepare('SELECT period_from,period_to FROM publications WHERE active=1').get(),
+      db
+        .prepare(
+          `SELECT id,period_from,period_to FROM publications WHERE period_from=? AND period_to=?
+        ORDER BY collected_at DESC,rowid DESC LIMIT 1`,
+        )
+        .get(from, to),
     );
     assert.equal(selectedPeriod?.period_from, '2026-01-04');
     assert.equal(selectedPeriod?.period_to, '2026-01-17');
+    const capturedPublication = selectedPeriod?.id;
+    assert(typeof capturedPublication === 'string');
+    assert.deepEqual(
+      currentPublication(),
+      seededPublication,
+      'A historical refresh retains the seeded newer active roster',
+    );
+    assert.notEqual(capturedPublication, seededPublication.id);
     const hours = f.collector(
       dsp.id,
       (db) =>
         db
-          .prepare(
-            'SELECT sum(hours) total FROM timecards WHERE publication_id=(SELECT id FROM publications WHERE active=1)',
-          )
-          .get()!.total,
+          .prepare('SELECT sum(hours) total FROM timecards WHERE publication_id=?')
+          .get(capturedPublication)!.total,
     );
     assert.equal(hours, 36, 'Collect the final response, not the initially valid 32-hour timecard');
   },
