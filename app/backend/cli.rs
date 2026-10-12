@@ -24,6 +24,22 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
     let config = Config::load()?;
+    if command == "observation-session" {
+        ensure(
+            (2..=3).contains(&args.len()),
+            "usage_observation_session_output_optional_owner",
+            400,
+        )?;
+        println!(
+            "{}",
+            dispatch_core::accounts::browser::mint(
+                &config,
+                Path::new(&args[1]),
+                args.get(2).map(String::as_str)
+            )?
+        );
+        return Ok(());
+    }
     if command == "support-provider-egress" {
         ensure(args.len() == 3, "invalid_verification_arguments", 400)?;
         return dispatch_core::collection::verification::provider_egress(

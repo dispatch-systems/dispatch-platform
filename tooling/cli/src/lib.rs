@@ -6,6 +6,7 @@ pub mod build;
 pub mod check;
 pub mod finish;
 pub mod logs;
+pub mod observation;
 pub mod pr;
 pub mod preview;
 pub mod scaffold;

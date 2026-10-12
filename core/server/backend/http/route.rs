@@ -92,17 +92,35 @@ impl Grant for Session {
     }
     fn authorize(self, db: &Store, input: &Input) -> Result<Auth> {
         let support = input.support_read_token(db.config.development);
-        let raw = if support.is_empty() {
-            input.session_token(db.config.development)
+        let raw = if let Some(raw) = input.observation_token(&db.config)? {
+            crate::accounts::browser::at_origin(&db.config, input)?;
+            raw
+        } else if support.is_empty() {
+            let session = input.session_token(db.config.development);
+            ensure(
+                !session.starts_with(crate::accounts::browser::PREFIX),
+                "sign_in_required",
+                401,
+            )?;
+            session
         } else {
+            ensure(
+                support.starts_with(crate::support::browser::PREFIX),
+                "sign_in_required",
+                401,
+            )?;
             support
         };
         let auth = db.authenticate(raw, &input.site)?;
-        if crate::support::browser::read_only(&auth) {
+        if crate::accounts::browser::read_only(&auth) {
             ensure(
                 input.method == Method::GET
                     || (input.method == Method::POST && input.path == "/api/session/dsp"),
-                "support_read_only",
+                if auth.raw.starts_with(crate::accounts::browser::PREFIX) {
+                    "observation_read_only"
+                } else {
+                    "support_read_only"
+                },
                 403,
             )?;
         }
@@ -573,12 +591,22 @@ impl Route {
             .filter_map(|h| h.to_str().ok())
             .flat_map(|h| h.split(';'))
             .any(|part| part.trim().starts_with(support_cookie));
-        if support {
+        let observation = crate::accounts::browser::restricted_request(request.headers());
+        if support || observation {
             let view = self.path == "/api/session/dsp" && request.method() == Method::POST;
+            let exchange = observation
+                && !support
+                && self.path == crate::accounts::browser::EXCHANGE
+                && request.method() == Method::POST;
             ensure(
-                view || (request.method() == Method::GET
-                    && matches!(self.work, Work::Read | Work::Memory)),
-                "support_read_only",
+                view || exchange
+                    || (request.method() == Method::GET
+                        && matches!(self.work, Work::Read | Work::Memory)),
+                if observation {
+                    "observation_read_only"
+                } else {
+                    "support_read_only"
+                },
                 403,
             )?;
         }

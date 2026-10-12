@@ -145,6 +145,15 @@
   top: 10px;
   right: var(--page-gutter);
 }
+.observation-notice {
+  padding: 10px 14px;
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
 .mobile-menu {
   display: none;
 }

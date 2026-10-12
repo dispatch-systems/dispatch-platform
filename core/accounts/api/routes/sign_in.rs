@@ -17,11 +17,22 @@ use std::sync::Arc;
 pub fn routes() -> Vec<Route> {
     vec![
         async_post("/api/auth/login", Public, login),
+        async_post(crate::accounts::browser::EXCHANGE, Public, observation),
         write("/api/auth/logout", Session, logout),
         async_post("/api/auth/password", Session, change_password),
         async_post("/api/auth/forgot-password", Public, forgot_password),
         async_post("/api/auth/reset-password", Public, reset_password),
     ]
+}
+
+async fn observation(state: Arc<State>, input: Input, _: Public) -> Result<Reply> {
+    v::fields(&input.body, &["token"])?;
+    // Credentials are accepted only in the JSON body, never query strings or links.
+    v::fields(&input.query, &[])?;
+    let raw = v::text(&input.body, "token", 1, 2048)?.to_owned();
+    state
+        .read(move |db| crate::accounts::browser::exchange(db, &input, &raw))
+        .await
 }
 
 async fn login(state: Arc<State>, input: Input, _: Public) -> Result<Reply> {

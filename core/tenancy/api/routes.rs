@@ -66,6 +66,7 @@ fn session(db: &Store, user: &User, _: &Input) -> Result<Reply> {
         },
         source: db.config.source.clone(),
         security,
+        read_only: crate::accounts::browser::read_only(user),
     })
 }
 
@@ -91,7 +92,7 @@ fn open_dsp(db: &Store, user: &User, input: &Input) -> Result<Reply> {
     } else {
         ""
     };
-    if !crate::support::browser::read_only(&a) {
+    if !crate::accounts::browser::read_only(&a) {
         db.audit_visit(a.user.id.as_str(), c.dsp.id.as_str(), action, previewed)?;
     }
     let summary = |role: crate::accounts::api::types::Role| RoleSummary {

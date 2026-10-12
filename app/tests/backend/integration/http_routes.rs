@@ -74,6 +74,7 @@ const INVENTORY: &[Row] = &[
     ("GET", "/api/health", Public, Memory, false),
     ("GET", "/api/browser-update", Public, Memory, false),
     ("POST", "/api/auth/login", Public, Async, false),
+    ("POST", "/api/auth/observation", Public, Async, false),
     ("POST", "/api/auth/logout", Session, Write, false),
     ("POST", "/api/auth/password", Session, Async, false),
     ("POST", "/api/auth/forgot-password", Public, Async, false),

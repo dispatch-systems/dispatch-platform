@@ -47,7 +47,7 @@ export function Shell({
 }) {
   const [mobile, setMobile] = useState(false);
   const [accountAction, setAccountAction] = useState<string>();
-  const actions = accountActions({ session, view });
+  const actions = session.readOnly ? [] : accountActions({ session, view });
   const openedAction = actions.find((action) => action.id === accountAction);
   const sidebar = useRef<HTMLElement>(null);
   const name = `${session.user.firstName} ${session.user.lastName}`;
@@ -166,10 +166,12 @@ export function Shell({
                 {actionLabel}
               </button>
             ))}
-            <button className="danger" onClick={logout}>
-              <LogOut size={16} />
-              Sign out
-            </button>
+            {!session.readOnly && (
+              <button className="danger" onClick={logout}>
+                <LogOut size={16} />
+                Sign out
+              </button>
+            )}
           </Popover>
         </div>
       </aside>
@@ -200,6 +202,11 @@ export function Shell({
           aria-busy={pending || undefined}
           inert={pending}
         >
+          {session.readOnly && (
+            <p className="observation-notice" role="status">
+              Read-only access · Changes are disabled
+            </p>
+          )}
           {children}
         </main>
       </div>

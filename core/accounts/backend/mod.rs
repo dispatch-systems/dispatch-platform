@@ -1,6 +1,7 @@
 //! Accounts, authenticated contexts, sessions and invitations.
 #[path = "../api/mod.rs"]
 pub mod api;
+pub mod browser;
 pub mod directories;
 mod invitations;
 mod passwords;

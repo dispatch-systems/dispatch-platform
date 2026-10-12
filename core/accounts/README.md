@@ -4,6 +4,11 @@ Users, sessions, passwords, passkeys, authenticator apps and recovery codes; inv
 onboarding and member profiles; their emails and their screens. Both Settings pages show its
 Profile, Security and Theme panels, through `frontend/settings/tabs.ts`.
 
+Operators can mint a 15-minute, read-only dashboard observation credential using existing
+local/SSH access. It is separate from password sessions, bound to the environment and current
+owner account version, and cannot perform writes. See
+[Agent browser access](../../../ops/agent-browser-access.md) for issuance and browser use.
+
 It serves the public pages an invitation links to, reading and accepting it. A feature invites
 through `Store::invite`, as Team does: the platform owner always may, and a member only holding
 the one permission a feature marks `.invites()`; without one, only the platform owner invites.
