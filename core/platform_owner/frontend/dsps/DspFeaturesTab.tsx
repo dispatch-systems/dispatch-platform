@@ -130,10 +130,7 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
     <div className="dsp-features">
       <ErrorBox message={error} />
       <section aria-label="Platform">
-        <h3 className="dsp-group">
-          <Sparkles size={14} aria-hidden="true" />
-          Platform
-        </h3>
+        <h3 className="dsp-group">Platform</h3>
         <ul className="dsp-feature-list">
           <li className={`dsp-feature-row ${supportShown ? '' : 'off'}`}>
             <span className="dsp-expand" aria-hidden="true" />
@@ -146,8 +143,10 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
               disabled={supporting.busy}
               onChange={(event) => void supporting.run(event.target.checked)}
             />
+            <Sparkles size={16} aria-hidden="true" />
             <strong>AI Support</strong>
             <small>{supportShown ? '' : 'Hidden from DSP'}</small>
+            <span className="dsp-eye" aria-hidden="true" />
           </li>
         </ul>
       </section>
