@@ -16,7 +16,7 @@ dispatchdev browser production --out /tmp/dispatch-<name>/browser-production.jso
 The output file must be a new absolute path; choose a new filename when renewing. It is
 written with mode `0600`. The command prints only the origin, deadline and read-only status.
 Production issuance runs the installed backend through `ssh dispatch-production`; its
-platform signing key stays on that host. Both environments must run a release that includes
+platform signing key stays on that host. Both environments must run an installed build that includes
 `dispatch-backend observation-session` and `/api/auth/observation`.
 
 Open an Incognito T3 browser tab at the returned origin. Redeem the file's `token` with a
@@ -43,7 +43,7 @@ external-provider pages, file downloads and live streams therefore remain unavai
 observation access; a GET method alone does not prove that its handler cannot write.
 
 These signed credentials can be replayed until their fixed expiry. They are not one-use
-links, and there is no per-credential revocation record. Prefer an Incognito tab so the
+links, and there is no per-credential revocation record. Always use an Incognito tab so the
 observation session never changes the human's saved browser profile. The dashboard labels
 this access as read-only.
 
