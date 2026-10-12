@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Bug, ChevronLeft, ChevronRight, Lightbulb, Paperclip, X } from 'lucide-react';
 import { createTicket, uploadScreenshot } from '../../api/client.js';
 import type { SupportDetail } from '../../api/index.js';
@@ -13,6 +13,7 @@ export function ReportForm({
   onSubmitted: (detail: SupportDetail) => void;
   onStepChange: () => void;
 }) {
+  const fieldId = useId();
   const [step, setStep] = useState<'type' | 'details'>('type');
   const [kind, setKind] = useState('bug');
   const [title, setTitle] = useState('');
@@ -184,9 +185,10 @@ export function ReportForm({
         </fieldset>
       ) : (
         <>
-          <label>
-            Title
+          <div className="support-report-field">
+            <label htmlFor={`${fieldId}-title`}>Title</label>
             <input
+              id={`${fieldId}-title`}
               ref={titleInput}
               type="text"
               required
@@ -198,10 +200,11 @@ export function ReportForm({
                 kind === 'bug' ? 'A short summary of the issue' : 'What would you like to add?'
               }
             />
-          </label>
-          <label>
-            Description
+          </div>
+          <div className="support-report-field">
+            <label htmlFor={`${fieldId}-description`}>Description</label>
             <textarea
+              id={`${fieldId}-description`}
               required
               maxLength={40000}
               rows={7}
@@ -214,7 +217,7 @@ export function ReportForm({
                   : 'Describe the feature and how it would help.'
               }
             />
-          </label>
+          </div>
           <div className="support-upload">
             <button type="button" onClick={() => fileInput.current?.click()} disabled={busy}>
               <Paperclip size={16} />

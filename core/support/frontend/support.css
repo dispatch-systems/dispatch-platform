@@ -211,12 +211,16 @@
   margin-top: 5px;
   color: var(--muted-foreground);
 }
-.support-report > label {
+.support-report-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.support-report-field > label {
   margin: 0;
   font-size: 13px;
   line-height: 18px;
   font-weight: 600;
-  gap: 8px;
 }
 .support-report textarea,
 .support-reply textarea,
