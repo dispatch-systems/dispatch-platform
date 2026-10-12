@@ -15,18 +15,17 @@ import {
 import { ArrowRight, RefreshCw, Settings } from 'lucide-react';
 import type { Connection } from '../../../core/collection/api/index.js';
 import type { DspView } from '../../../core/accounts/api/index.js';
-import type { EmployeeTimecardPeriod, EmployeeTimecardResponse } from '../api/index.js';
+import type { EmployeeTimecardPeriod } from '../api/index.js';
 import { paycomDefaults } from './paycom.js';
 import { useCachedData, useData } from '../../../core/shell/frontend/runtime/api.js';
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
-import { syncEmployeeTimecard, syncMealBreaks, usePaycomSettings } from '../api/client.js';
+import { syncMealBreaks, usePaycomSettings } from '../api/client.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { collectionData } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { useCollectionUpdates } from '../../../core/collection/frontend/live-collection.js';
 import { ErrorBox, Header, Loading, Tabs } from '../../../core/shell/frontend/ui/index.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { randomId } from '../../../core/shell/frontend/lib/random-id.js';
-import { timecardPeriod } from './timecard-format.js';
 import { prefetchRouteData } from '../../../core/shell/frontend/runtime/route-prefetch.js';
 import { prefetchTimecardTab } from './prefetch.js';
 import { usePaycomDate } from './DateControls.js';
@@ -37,6 +36,7 @@ import {
   settingsHash,
 } from '../../../core/shell/frontend/runtime/navigation.js';
 import { SourceSyncStatus, type SyncSource } from './SourceSyncStatus.js';
+import { EmployeePeriodSync } from './tabs/employees/EmployeePeriodSync.js';
 
 const loadEmployees = () => import('./tabs/employees/EmployeesPage.js');
 const loadTimecards = () => import('./tabs/daily/TimecardsPage.js');
@@ -108,6 +108,9 @@ export function PaycomPage({ view }: { view: DspView }) {
     : (shownTabs[0]?.[0] ?? 'timecards');
   const [syncRevision, setSyncRevision] = useState(0);
   const [collecting, setCollecting] = useState(false);
+  const meals = tab === 'meal-breaks';
+  const timecards = tab === 'timecards';
+  const daily = timecards || meals;
   const overview = useCachedData<{
     connection: Connection;
     workforce: { collectedAt: string | null };
@@ -118,7 +121,7 @@ export function PaycomPage({ view }: { view: DspView }) {
     paycom: SyncSource;
     flex: SyncSource;
   }>(
-    `/api/dsp/jobs/meal-breaks?date=${date}`,
+    daily ? `/api/dsp/jobs/meal-breaks?date=${date}` : '',
     collecting ? performancePolicy.activeCollectionPollMs : performancePolicy.recoveryPollMs,
     String(syncRevision),
     `${date}:${syncRevision}`,
@@ -129,10 +132,7 @@ export function PaycomPage({ view }: { view: DspView }) {
   const sourceCurrent = syncState.data?.date === date;
   const { error, refresh } = overview;
   const data = overview.data?.connection;
-  const meals = tab === 'meal-breaks';
-  const timecards = tab === 'timecards';
-  const daily = timecards || meals;
-  const activeSync = sourceState?.paycom.active || sourceState?.flex.active;
+  const activeSync = daily && (sourceState?.paycom.active || sourceState?.flex.active);
   useEffect(() => setCollecting(Boolean(activeSync)), [activeSync]);
   const collectedAt = overview.data?.workforce.collectedAt;
   useEffect(() => {
@@ -155,31 +155,22 @@ export function PaycomPage({ view }: { view: DspView }) {
           : !sourceState.scopeAvailable
             ? 'Complete your DSP profile with a station code to sync Flex.'
             : ''
-    : !data?.enabled
-      ? 'Connect Paycom to sync.'
-      : '';
+    : '';
   const canConnect = can(view, 'connections.manage');
   const connections = settingsHash(view.dsp.id, 'connections');
   const sync = useAction(
-    async (timecard?: EmployeeTimecardResponse) => {
+    async () => {
       try {
-        if (timecard) {
-          await syncEmployeeTimecard(timecard.employee.code, timecard.period, randomId());
-        } else if (daily) await syncMealBreaks(date, randomId());
+        if (daily) await syncMealBreaks(date, randomId());
       } finally {
         refresh();
         // Keep every Sync Now disabled until status read after this request arrives.
         setSyncRevision((value) => value + 1);
       }
     },
-    {
-      success: (timecard) =>
-        timecard
-          ? `${timecard.employee.name}’s timecard sync queued`
-          : 'Flex and Paycom collections queued',
-    },
+    { success: 'Flex and Paycom collections queued' },
   );
-  const syncButton = (timecard?: EmployeeTimecardResponse) =>
+  const syncButton = () =>
     canCollect && (
       <button
         disabled={
@@ -189,19 +180,14 @@ export function PaycomPage({ view }: { view: DspView }) {
           !!syncState.error ||
           sync.busy ||
           !!activeSync ||
-          (daily && !sourceCurrent) ||
-          (!daily && !timecard)
+          !sourceCurrent
         }
         title={
           syncUnavailable ||
           (activeSync && 'A collection is in progress for this DSP.') ||
-          (timecard
-            ? `Sync ${timecard.employee.name} · ${timecardPeriod(timecard.period.from, timecard.period.to)}`
-            : daily
-              ? `Sync Flex and Paycom for ${date}`
-              : 'Select an employee timecard to sync')
+          `Sync Flex and Paycom for ${date}`
         }
-        onClick={() => void sync.run(timecard)}
+        onClick={() => void sync.run()}
       >
         <RefreshCw size={16} />
         Sync now
@@ -245,7 +231,7 @@ export function PaycomPage({ view }: { view: DspView }) {
         )}
       </Header>
       {canConnect && <ErrorBox message={error} />}
-      {canCollect && <ErrorBox message={syncState.error} />}
+      {daily && canCollect && <ErrorBox message={syncState.error} />}
       <Tabs
         value={tab}
         onIntent={(value) => {
@@ -310,38 +296,19 @@ export function PaycomPage({ view }: { view: DspView }) {
                     showMeals={hasFeature(view, 'timecard.meal_breaks')}
                     today={today}
                     refreshKey={`${refreshKey}:${syncRevision}`}
-                    actions={(timecard) => (
-                      <>
-                        {canCollect && (
-                          <SourceSyncStatus
-                            name="Paycom"
-                            source={
-                              sourceState?.paycom && {
-                                ...sourceState.paycom,
-                                collectedAt: timecard?.collectedAt ?? null,
-                                job: timecard?.syncStatus ? { status: timecard.syncStatus } : null,
-                                active:
-                                  !!timecard?.syncStatus &&
-                                  ['queued', 'running', 'waiting_verification'].includes(
-                                    timecard.syncStatus,
-                                  ),
-                                jobDate: timecard?.period.from ?? null,
-                              }
-                            }
-                            timezone={view.dsp.timezone}
-                            compact
-                          />
-                        )}
-                        {canCollect && sourceState?.flex.active && (
-                          <SourceSyncStatus
-                            name="Flex"
-                            source={sourceState.flex}
-                            timezone={view.dsp.timezone}
-                          />
-                        )}
-                        {syncButton(timecard)}
-                      </>
-                    )}
+                    actions={(timecard) =>
+                      canCollect && (
+                        <EmployeePeriodSync
+                          key={view.dsp.id}
+                          period={employeeSelection?.period ?? timecard?.period}
+                          refreshKey={refreshKey}
+                          onQueued={() => {
+                            refresh();
+                            setSyncRevision((value) => value + 1);
+                          }}
+                        />
+                      )
+                    }
                   />
                 ) : (
                   <TimecardsPage

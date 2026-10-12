@@ -92,15 +92,25 @@ pub(crate) fn publish_timecards(store: &Store, id: &str, value: &Value) -> Resul
                 ],
             )?;
         }
-        db.exec("UPDATE publications SET active=0 WHERE active=1", [])?;
+        // Refreshing an older period must not replace the current employee roster.
+        let newest: (String,) = db
+            .one_as(
+                "SELECT id FROM publications ORDER BY \
+            period_to DESC,period_from DESC,collected_at DESC,rowid DESC LIMIT 1",
+                [],
+            )?
+            .unwrap();
         db.exec(
-            "UPDATE publications SET active=1 WHERE id=?",
-            [&publication],
+            "UPDATE publications SET active=0 WHERE active=1 AND id<>?",
+            [&newest.0],
         )?;
-        db.set(
-            "paycom.publicationFingerprint",
-            &json!({"id":publication,"digest":fingerprint}),
-        )?;
+        db.exec("UPDATE publications SET active=1 WHERE id=?", [&newest.0])?;
+        if newest.0 == publication {
+            db.set(
+                "paycom.publicationFingerprint",
+                &json!({"id":publication,"digest":fingerprint}),
+            )?;
+        }
         Ok(())
     })?;
     Ok(

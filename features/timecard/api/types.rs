@@ -115,6 +115,8 @@ pub struct EmployeeTimecard {
     #[serde(flatten)]
     pub card: Timecard,
     pub assessment: PaycomDay,
+    pub regular_minutes: Option<i32>,
+    pub overtime_minutes: Option<i32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

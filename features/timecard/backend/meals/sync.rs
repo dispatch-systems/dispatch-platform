@@ -20,7 +20,7 @@ const SCOPES: &str = "SELECT station,service_area_id,provider,timezone FROM meal
     (SELECT report_date FROM meal_publications WHERE active=1 \
      ORDER BY collected_at DESC,id DESC LIMIT 1)) ORDER BY station,service_area_id,provider";
 
-fn meal_sync_discovery(store: &Store, id: &str, date: &str) -> Result<Discovery> {
+pub(crate) fn meal_sync_discovery(store: &Store, id: &str, date: &str) -> Result<Discovery> {
     let profile = store.profile(id)?;
     let dsp = store.find_dsp(id)?;
     Ok(Discovery {

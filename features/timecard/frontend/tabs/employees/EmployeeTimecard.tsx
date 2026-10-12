@@ -9,7 +9,11 @@ import {
 } from '../../../../../core/shell/frontend/ui/index.js';
 import { hoursAndMinutes, timecardDate, punchTime } from '../../timecard-format.js';
 
-type EmployeeDay = Timecard & { events: PunchEvent[] };
+type EmployeeDay = Timecard & {
+  events: PunchEvent[];
+  regularMinutes: number | null;
+  overtimeMinutes: number | null;
+};
 function periodDays(data: EmployeeTimecardResponse | undefined): EmployeeDay[] {
   if (!data?.collectedAt) return [];
   const byDate = new Map(data.timecards.map((card) => [card.date, card]));
@@ -22,6 +26,8 @@ function periodDays(data: EmployeeTimecardResponse | undefined): EmployeeDay[] {
       status: '',
       punches: [],
       assessment: { events: [] },
+      regularMinutes: 0,
+      overtimeMinutes: 0,
     };
     days.push({ ...card, events: card.assessment.events });
   }
@@ -39,7 +45,14 @@ const columns: TableColumn<EmployeeDay>[] = [
   { id: 'outLunch', header: 'Out lunch', cell: (card) => punchCell(card, 'OUT LUNCH') },
   { id: 'inLunch', header: 'In lunch', cell: (card) => punchCell(card, 'IN LUNCH') },
   { id: 'out', header: 'Out', cell: (card) => punchCell(card, 'OUT DAY') },
-  { id: 'hours', header: 'Hours', cell: (card) => hoursAndMinutes(card.hours) },
+  {
+    id: 'hours',
+    header: 'Hours',
+    cell: (card) =>
+      card.regularMinutes === null || card.overtimeMinutes === null
+        ? '—'
+        : hoursAndMinutes((card.regularMinutes + card.overtimeMinutes) / 60),
+  },
 ];
 
 export function EmployeeTimecard({
@@ -59,7 +72,14 @@ export function EmployeeTimecard({
     (card) => card.hours > 0 || card.punches.some((punch) => punch.in || punch.out),
   ).length;
   const table = useDataTable({ columns, rows: days, rowId: (card) => card.date });
-  const minutes = days.reduce((total, card) => total + Math.round(card.hours * 60), 0);
+  const incomplete = days.filter(
+    (card) => card.regularMinutes === null || card.overtimeMinutes === null,
+  ).length;
+  const complete = days.filter(
+    (card) => card.regularMinutes !== null && card.overtimeMinutes !== null,
+  );
+  const regular = complete.reduce((total, card) => total + (card.regularMinutes ?? 0), 0);
+  const overtime = complete.reduce((total, card) => total + (card.overtimeMinutes ?? 0), 0);
   return (
     <>
       <div className="employee-timecard-body">
@@ -93,12 +113,21 @@ export function EmployeeTimecard({
         )}
       </div>
       <div className="employee-timecard-total">
-        <span>
-          {current?.collectedAt ? recorded : '—'} recorded {recorded === 1 ? 'day' : 'days'}
-        </span>
-        <div>
-          <span>Total hours</span>
-          <strong>{current?.collectedAt ? hoursAndMinutes(minutes / 60) : '—'}</strong>
+        <div className="employee-timecard-days">
+          <span>
+            {current?.collectedAt ? recorded : '—'} recorded {recorded === 1 ? 'day' : 'days'}
+          </span>
+          {incomplete > 0 && <span>Incomplete days: {incomplete}</span>}
+        </div>
+        <div className="employee-hour-totals">
+          <div>
+            <span>Regular Hours:</span>
+            <strong>{current?.collectedAt ? hoursAndMinutes(regular / 60) : '—'}</strong>
+          </div>
+          <div>
+            <span>Overtime Hours:</span>
+            <strong>{current?.collectedAt ? hoursAndMinutes(overtime / 60) : '—'}</strong>
+          </div>
         </div>
       </div>
     </>

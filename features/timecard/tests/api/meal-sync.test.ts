@@ -165,3 +165,102 @@ test('simultaneous manual requests from separate sessions reserve one DSP sync',
     for (const id of [...ids].reverse())
       assert.ok([200, 409].includes((await client.post(`/api/dsp/jobs/${id}/cancel`)).status));
 });
+
+test('employee Sync Now collects every employee and both sources for the displayed historical period', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const dsp = owner.session.dsps.find((d: any) => d.name === 'Northline Logistics');
+  await owner.select(dsp.id);
+  const member = await f.client('member@dispatch.test');
+  await member.select(dsp.id);
+  const latest = (await owner.get('/api/dsp/employees/E001')).value;
+  const period = latest.previousPeriod;
+  const request = { requestId: 'historical-employees', ...period };
+  const statusUrl = `/api/dsp/jobs/employees?from=${period.from}&to=${period.to}`;
+  assert.equal((await member.post('/api/dsp/jobs/employees', request)).status, 403);
+  assert.equal(
+    (await owner.post('/api/dsp/jobs/employees', request)).value.error,
+    'meal_sync_flex_required',
+  );
+  assert.equal((await owner.get('/api/dsp/jobs')).value.length, 0);
+  await owner.post('/api/dsp/connections/cortex', {
+    username: 'fixture@example.test',
+    password: 'fixture-password',
+  });
+  await owner.post('/api/dsp/profile', {
+    name: dsp.name,
+    abbreviation: 'NLL',
+    stationCode: 'DEMO1',
+    timezone: 'America/Los_Angeles',
+  });
+  await owner.select(dsp.id);
+  await member.select(dsp.id);
+  assert.equal((await member.get(statusUrl)).status, 200);
+  const queued = await owner.post('/api/dsp/jobs/employees', request);
+  assert.equal(queued.status, 202, queued.body);
+  assert.deepEqual(queued.value.period, period);
+  assert.equal(queued.value.through, period.to);
+  assert.equal(queued.value.paycom.total, 1);
+  assert.equal(queued.value.cortex.total, 14);
+  const original = [...queued.value.paycom.jobs, ...queued.value.cortex.jobs].map(
+    (job: any) => job.id,
+  );
+  assert.equal(original.length, 15);
+  let finished = 0;
+  // Each serial job must finish within the ordinary wait budget. The next wait
+  // starts only after the accepted batch makes forward progress.
+  while (finished < original.length) {
+    const before = finished;
+    await until(async () => {
+      const status = (await owner.get(statusUrl)).value;
+      const jobs = [...status.paycom.jobs, ...status.cortex.jobs];
+      assert.deepEqual(jobs.map((job: any) => job.id).sort(), [...original].sort());
+      assert.equal(status.paycom.failed, 0, JSON.stringify(status));
+      assert.equal(status.cortex.failed, 0, JSON.stringify(status));
+      assert.equal(status.paycom.cancelled, 0, JSON.stringify(status));
+      assert.equal(status.cortex.cancelled, 0, JSON.stringify(status));
+      const succeeded = jobs.filter((job: any) => job.status === 'succeeded').length;
+      assert(succeeded >= before, JSON.stringify(status));
+      if (succeeded === before) return false;
+      finished = succeeded;
+      return true;
+    });
+  }
+  const completed = (await owner.get(statusUrl)).value;
+  assert.equal(completed.complete, true);
+  assert.equal(completed.paycom.completed, 1);
+  assert.equal(completed.cortex.completed, 14);
+  assert.equal(completed.cortex.progress, 100);
+  assert.equal(completed.active, false);
+  // The batch does not depend on the employee selected when clicked, nor replace
+  // the directory's latest roster with the historical publication.
+  const other = (await owner.get(`/api/dsp/employees/E002?from=${period.from}&to=${period.to}`))
+    .value;
+  assert(other.collectedAt);
+  assert.equal(other.timecards.length, 14);
+  assert.equal((await owner.get('/api/dsp/employees/E001')).value.period.to, latest.period.to);
+  const meals = (
+    await owner.get(
+      `/api/dsp/paycom/meal-breaks/period?source=paycom:E002&from=${period.from}&to=${period.to}`,
+    )
+  ).value;
+  assert.equal(meals.days.length, 14);
+  assert(
+    meals.days.every((day: any) => day.paycomCollectedAt && day.cortexPublications.length === 1),
+  );
+  const replay = await owner.post('/api/dsp/jobs/employees', request);
+  assert.deepEqual(
+    [...replay.value.paycom.jobs, ...replay.value.cortex.jobs].map((job: any) => job.id),
+    original,
+  );
+  const conflict = await owner.post('/api/dsp/jobs/employees', { ...request, ...latest.period });
+  assert.equal(conflict.status, 409);
+  assert.equal(conflict.value.error, 'idempotency_conflict');
+  const otherDsp = owner.session.dsps.find((d: any) => d.permanent);
+  await owner.select(otherDsp.id);
+  const isolated = (await owner.get(statusUrl)).value;
+  assert.equal(isolated.requestId, null);
+  assert.deepEqual(isolated.paycom.jobs, []);
+  assert.deepEqual(isolated.cortex.jobs, []);
+});

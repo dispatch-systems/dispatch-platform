@@ -104,6 +104,61 @@ fn requested_days_keep_the_cycle_observed_in_paycom() -> Result<()> {
     }
     Ok(())
 }
+
+// Scope and roster union belong here; native coverage proves these employees actually
+// reach their authorized pages. Ordinary active-roster validation remains unchanged.
+#[test]
+fn full_period_requests_include_known_unlisted_employees_and_require_every_day() -> Result<()> {
+    let request = json!({"allEmployees":true,"from":"2026-09-06","to":"2026-09-19"});
+    let scope = PeriodSync::parse(&request)?.unwrap();
+    assert!(PeriodSync::parse(&json!({}))?.is_none());
+    for change in [
+        json!({"allEmployees":false,"from":"2026-09-06","to":"2026-09-19"}),
+        json!({"allEmployees":true,"from":"2026-09-06","to":"2026-09-20"}),
+        json!({"allEmployees":true,"from":"2026-09-06","to":"2026-09-19","employeeCode":"AA01"}),
+        json!({"allEmployees":true,"from":"2026-09-06","to":"2026-09-19","date":"2026-09-06"}),
+    ] {
+        assert!(PeriodSync::parse(&change).is_err());
+    }
+    let future = PeriodSync {
+        all_employees: true,
+        from: "2999-01-06".into(),
+        to: "2999-01-19".into(),
+    };
+    assert!(future.date("UTC").is_err());
+    let capture = scope.fixture("UTC")?;
+    scope.validate_capture(&capture)?;
+    let mut incomplete = capture.clone();
+    incomplete["timecards"].as_array_mut().unwrap().pop();
+    assert_eq!(
+        scope.validate_capture(&incomplete).unwrap_err().code,
+        "timecard_identity_mismatch"
+    );
+    let different = PeriodSync {
+        all_employees: true,
+        from: "2026-08-23".into(),
+        to: "2026-09-05".into(),
+    };
+    assert_eq!(
+        different.validate_capture(&capture).unwrap_err().code,
+        "timecard_identity_mismatch"
+    );
+    let active = json!({"code":"AA01","name":"Current name","department":"Driver","position":"Driver","station":"S","active":true});
+    let mut older = active.clone();
+    older["name"] = json!("Previous name");
+    let mut missing = active.clone();
+    missing["code"] = json!("BB02");
+    let employees = with_known_employees(
+        vec![active.clone()],
+        &[older, missing],
+        &scope.period().provider_period()?,
+    )?;
+    assert_eq!(employees.len(), 2);
+    assert_eq!(employees[0], active);
+    assert_eq!(employees[1]["code"], "BB02");
+    assert_eq!(employees[1]["active"], false);
+    Ok(())
+}
 #[test]
 fn projection_reconciles_additional_totals_without_double_counting() -> Result<()> {
     let days = (0..14)

@@ -31,7 +31,7 @@ use dispatch_core::{
 };
 use serde_json::{Value, json};
 use std::{collections::HashSet, path::Path};
-use timecards::EmployeeSync;
+use timecards::{EmployeeSync, PeriodSync};
 
 /// Core's test support, for this crate's module tests.
 #[cfg(test)]
@@ -221,7 +221,9 @@ impl Collector for Paycom {
         })
     }
     fn fixture(&self, timezone: &str, request: &Value) -> Result<Collected> {
-        let data = if let Some(scope) = EmployeeSync::parse(request)? {
+        let data = if let Some(scope) = PeriodSync::parse(request)? {
+            scope.fixture(timezone)?
+        } else if let Some(scope) = EmployeeSync::parse(request)? {
             scope.fixture(timezone)?
         } else {
             fixtures::fixture_date(timezone, timecards::collection_date(request, timezone)?)?

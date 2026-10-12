@@ -60,6 +60,102 @@ impl EmployeeTimecardPeriod {
     }
 }
 
+/// An explicit full-workforce capture whose period cannot move while it is queued.
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PeriodSync {
+    pub all_employees: bool,
+    pub from: String,
+    pub to: String,
+}
+impl PeriodSync {
+    pub fn parse(request: &Value) -> Result<Option<Self>> {
+        if request.get("allEmployees").is_none() {
+            return Ok(None);
+        }
+        let scope: Self = dispatch_core::foundation::wire::request(request)?;
+        ensure(scope.all_employees, "invalid_period", 400)?;
+        scope.period().start()?;
+        Ok(Some(scope))
+    }
+    pub fn period(&self) -> EmployeeTimecardPeriod {
+        EmployeeTimecardPeriod {
+            from: self.from.clone(),
+            to: self.to.clone(),
+        }
+    }
+    pub fn date(&self, timezone: &str) -> Result<NaiveDate> {
+        ensure(self.all_employees, "invalid_period", 400)?;
+        self.period().start()?;
+        super::collection_date(&json!({"date":self.from}), timezone)?
+            .ok_or_else(|| Error::new("invalid_period", 400))
+    }
+    pub fn validate_capture(&self, data: &Value) -> Result<()> {
+        super::validate_workforce(data)?;
+        self.period().start()?;
+        let employees = data["employees"].as_array().unwrap();
+        // Workforce validation already requires unique employee/day pairs within these
+        // fourteen bounds, so this count also proves every employee has every day.
+        ensure(
+            self.all_employees
+                && data["from"] == self.from
+                && data["to"] == self.to
+                && !employees.is_empty()
+                && data["timecards"].as_array().unwrap().len()
+                    == employees.len() * PERIOD_DAYS as usize,
+            "timecard_identity_mismatch",
+            502,
+        )
+    }
+    pub fn fixture(&self, timezone: &str) -> Result<Value> {
+        let start = self.date(timezone)?;
+        let zone: chrono_tz::Tz = timezone
+            .parse()
+            .map_err(|_| Error::new("invalid_timezone", 400))?;
+        let today = chrono::Utc::now().with_timezone(&zone).date_naive();
+        let mut data = fixtures::fixture_date(
+            timezone,
+            Some((start + Duration::days(PERIOD_DAYS - 1)).min(today)),
+        )?;
+        ensure(
+            data["from"] == self.from && data["to"] == self.to,
+            "invalid_period",
+            400,
+        )?;
+        let cards = data["timecards"].as_array().unwrap();
+        let records = data["employees"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|employee| {
+                (0..PERIOD_DAYS)
+                    .map(|i| {
+                        let date = (start + Duration::days(i)).to_string();
+                        cards
+                            .iter()
+                            .find(|card| {
+                                card["employeeCode"] == employee["code"] && card["date"] == date
+                            })
+                            .cloned()
+                            .unwrap_or_else(|| {
+                                json!({
+                                    "employeeCode":employee["code"],
+                                    "date":date,
+                                    "hours":0,
+                                    "status":"No punches",
+                                    "punches":[]
+                                })
+                            })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        data["timecards"] = json!(records);
+        self.validate_capture(&data)?;
+        Ok(data)
+    }
+}
+
 /// A job with this scope can only read and publish this employee's period.
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

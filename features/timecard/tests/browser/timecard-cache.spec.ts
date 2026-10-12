@@ -93,7 +93,9 @@ test('cached names cannot cross DSPs, even when an older request finishes late',
                   date: '2026-09-13',
                   hours: isNorth ? 8 : 4,
                   status: 'Complete',
-                  punches: [],
+                  punches: [
+                    { in: '08:00', out: isNorth ? '16:00' : '12:00', hours: isNorth ? 8 : 4 },
+                  ],
                 },
               ]),
             }
@@ -104,7 +106,7 @@ test('cached names cannot cross DSPs, even when an older request finishes late',
   try {
     await enter(page);
     await page.getByRole('tab', { name: 'Employees', exact: true }).click();
-    await expect(page.locator('.employee-timecard-total strong')).toHaveText('8h 00m');
+    await expect(page.locator('.employee-timecard-total strong')).toHaveText(['8h 00m', '0h 00m']);
     delayNorth = true;
     await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
     await expect.poll(() => waiting).toBe(true);
@@ -113,11 +115,11 @@ test('cached names cannot cross DSPs, even when an older request finishes late',
     await page.getByRole('link', { name: 'Timecard', exact: true }).click();
     await page.getByRole('tab', { name: 'Employees', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Summit Driver', exact: true })).toBeVisible();
-    await expect(page.locator('.employee-timecard-total strong')).toHaveText('4h 00m');
+    await expect(page.locator('.employee-timecard-total strong')).toHaveText(['4h 00m', '0h 00m']);
     hold.release();
     await page.unrouteAll({ behavior: 'wait' });
     await expect(page.getByRole('heading', { name: 'North Driver', exact: true })).toHaveCount(0);
-    await expect(page.locator('.employee-timecard-total strong')).toHaveText('4h 00m');
+    await expect(page.locator('.employee-timecard-total strong')).toHaveText(['4h 00m', '0h 00m']);
   } finally {
     hold.release();
     await page.unrouteAll({ behavior: 'wait' });

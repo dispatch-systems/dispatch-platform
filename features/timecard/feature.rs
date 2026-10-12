@@ -8,6 +8,7 @@ pub use api::{
         AssessedClock, DeliveryGap, DeliveryGaps, LateRule, Lunch, MealAssessment, MealPair,
         MealStatus, PaycomDay, PunchEvent,
     },
+    employee_sync::{EmployeeSyncSource, EmployeeSyncStatus},
     meals::{
         CortexMeal, CortexPublication, CortexUnreadable, MatchType, MealComparison, MealDriver,
         MealEmployee, MealPaycom, MealPeriod, MealPeriodGaps, MealSource, PeriodMealGap,
@@ -38,7 +39,7 @@ use dispatch_core::testing;
 
 use backend::{meals, punches};
 use dispatch_core::{
-    db::{Migration, Migrations, migrations::Apply::Sql},
+    db::{Migration, Migrations, OwnMigrations, migrations::Apply::Sql},
     manifest::{
         Audit,
         DefaultRole::{Manager, Member},
@@ -94,6 +95,7 @@ pub const FEATURE: Feature = Feature {
             &[
                 "meal_schema",
                 "meal_publications",
+                "meal_publication_jobs",
                 "meal_itineraries",
                 "meal_delivery_events",
                 "meal_breaks",
@@ -141,6 +143,16 @@ pub const FEATURE: Feature = Feature {
             ],
         },
     ],
+    own_migrations: &[OwnMigrations {
+        kind: cortex::DATABASE,
+        list: &[Migration {
+            id: 1,
+            name: "meal_publication_jobs",
+            apply: Sql(include_str!(
+                "migrations/cortex/0001_meal_publication_jobs.sql"
+            )),
+        }],
+    }],
     domains: &[punches::DOMAIN, meals::DOMAIN],
     cached: &[
         // The DSP listings' collection dates are its timecards'.
@@ -218,5 +230,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         MealPeriodGaps,
         PeriodMealGap,
         EmployeeTimecardResponse,
+        EmployeeSyncSource,
+        EmployeeSyncStatus,
     )
 }

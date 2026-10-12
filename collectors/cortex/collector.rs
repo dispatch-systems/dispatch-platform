@@ -290,6 +290,12 @@ impl Collector for Cortex {
                 scope: Some(scope),
             });
         }
+        if let Some(request) = meals::DayRequest::parse(request)? {
+            return Ok(Collected {
+                data: serde_json::to_value(request.fixture()?)?,
+                scope: None,
+            });
+        }
         let scope = match serde_json::from_value(request.clone())? {
             CollectionRequest::Scoped(scope) => scope,
             CollectionRequest::Discover(discovery) => {
@@ -324,12 +330,31 @@ impl Collector for Cortex {
             })
         };
         Counts {
-            itineraries: data["itineraries"].as_array().map(Vec::len),
-            meals: data["itineraries"].as_array().map(|rows| {
-                rows.iter()
-                    .map(|r| r["meals"].as_array().map_or(0, Vec::len))
-                    .sum()
-            }),
+            itineraries: data["captures"]
+                .as_array()
+                .map(|captures| {
+                    captures
+                        .iter()
+                        .map(|capture| capture["itineraries"].as_array().map_or(0, Vec::len))
+                        .sum()
+                })
+                .or_else(|| data["itineraries"].as_array().map(Vec::len)),
+            meals: data["captures"]
+                .as_array()
+                .map(|captures| {
+                    captures
+                        .iter()
+                        .flat_map(|capture| capture["itineraries"].as_array().into_iter().flatten())
+                        .map(|route| route["meals"].as_array().map_or(0, Vec::len))
+                        .sum()
+                })
+                .or_else(|| {
+                    data["itineraries"].as_array().map(|rows| {
+                        rows.iter()
+                            .map(|r| r["meals"].as_array().map_or(0, Vec::len))
+                            .sum()
+                    })
+                }),
             rows: total_rows(&data["reports"]).or_else(|| total_rows(&data["datasets"])),
             ..Counts::default()
         }

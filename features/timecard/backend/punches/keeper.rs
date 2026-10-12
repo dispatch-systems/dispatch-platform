@@ -9,7 +9,7 @@ use dispatch_core::{
 };
 use dispatch_paycom::{
     self as paycom,
-    timecards::{EmployeeSync, JOB_KIND},
+    timecards::{EmployeeSync, JOB_KIND, PeriodSync},
 };
 use serde_json::{Value, json};
 
@@ -17,6 +17,9 @@ pub struct Timecards;
 impl Keeper for Timecards {
     fn keeps(&self) -> &'static str {
         JOB_KIND
+    }
+    fn queue_capacity(&self) -> i64 {
+        15
     }
     fn permission(&self) -> &'static str {
         "collections.run"
@@ -26,11 +29,33 @@ impl Keeper for Timecards {
     }
     /// The employee a single-employee sync reads, as the latest publication holds them.
     fn kept(&self, store: &Store, dsp: &str, question: &Value) -> Result<Value> {
+        if question["allEmployees"] == true {
+            return Ok(json!(super::timecards::known_paycom_employees(store, dsp)?));
+        }
         super::timecards::paycom_employee(store, dsp, s(question, "employeeCode"))
     }
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
         let request: Value = serde_json::from_str(&store.job_row(job, Some(dsp))?.request)?;
-        if let Some(scope) = EmployeeSync::parse(&request)? {
+        if let Some(scope) = PeriodSync::parse(&request)? {
+            scope.date(&store.find_dsp(dsp)?.timezone)?;
+            scope.validate_capture(&collected.data)?;
+            let collected_codes = collected.data["employees"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|employee| s(employee, "code").to_ascii_uppercase())
+                .collect::<std::collections::BTreeSet<_>>();
+            dispatch_core::ensure(
+                super::timecards::known_paycom_employees(store, dsp)?
+                    .iter()
+                    .all(|employee| {
+                        collected_codes.contains(&s(employee, "code").to_ascii_uppercase())
+                    }),
+                "roster_not_complete",
+                502,
+            )?;
+            store.publish_timecards(dsp, &collected.data)?;
+        } else if let Some(scope) = EmployeeSync::parse(&request)? {
             super::sync::publish_employee_timecard(store, dsp, &scope, &collected.data)?;
         } else {
             store.publish_timecards(dsp, &collected.data)?;

@@ -8,6 +8,8 @@ export type { DailyTimecards } from './generated/DailyTimecards.js';
 export type { EmployeesResponse } from './generated/EmployeesResponse.js';
 export type { EmployeeTimecardPeriod } from '../../../collectors/paycom/api/generated/EmployeeTimecardPeriod.js';
 export type { EmployeeTimecardResponse } from './generated/EmployeeTimecardResponse.js';
+export type { EmployeeSyncSource } from './generated/EmployeeSyncSource.js';
+export type { EmployeeSyncStatus } from './generated/EmployeeSyncStatus.js';
 export type { AssessedClock } from './generated/AssessedClock.js';
 export type { PunchEvent } from './generated/PunchEvent.js';
 export type { PaycomDay } from './generated/PaycomDay.js';

@@ -143,6 +143,26 @@ async function mockComparison(page: Page, data = sample, unavailableDate?: strin
 
 test('comparison filters, search and details use the assessed meal data', async ({ page }) => {
   const errors = await mockComparison(page);
+  await page.route('**/api/dsp/paycom/meal-breaks/period?*', async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    if (new URL(route.request().url()).searchParams.get('source') === 'paycom:E001') {
+      const source = sample();
+      const row = source.rows[0]!;
+      const instant = (clock: string) => new Date(`${date}T${clock}:00-07:00`).toISOString();
+      row.cortex.push({
+        ...row.cortex[0]!,
+        mealId: 'later-meal',
+        lastDelivery: instant('16:58'),
+        start: instant('17:00'),
+        end: instant('17:30'),
+        firstDelivery: instant('17:32'),
+      });
+      const comparison = assessMealResponse({ ...source, rows: [row] });
+      data.days = data.days.map((day: { date: string }) => (day.date === date ? comparison : day));
+    }
+    await route.fulfill({ response, json: data });
+  });
   await page.setViewportSize({ width: 1586, height: 992 });
   await page.evaluate(() => window.scrollTo(0, 0));
   await open(page);
@@ -188,7 +208,13 @@ test('comparison filters, search and details use the assessed meal data', async 
     'aria-pressed',
     'true',
   );
-  await expect(page.locator('.employee-meals .meal-table tbody > tr')).toHaveCount(14);
+  await expect(page.locator('.employee-meals .meal-table tbody > tr')).toHaveCount(15);
+  const employeeMeals = page.getByRole('table', { name: 'Employee meal breaks' });
+  await expect(employeeMeals.getByRole('button', { name: /^Details for / })).toHaveCount(0);
+  const laterMeal = employeeMeals.getByRole('row').filter({ hasText: 'Meal 2' });
+  await expect(laterMeal).toBeVisible();
+  await expect(laterMeal).toContainText('5:00 PM');
+  await expect(laterMeal).toContainText('5:30 PM');
   const period = await page.locator('.employee-period-controls > span').textContent();
   await view.getByRole('button', { name: 'Timecard', exact: true }).click();
   await expect(page.getByRole('table', { name: 'Employee timecard' })).toBeVisible();
@@ -450,6 +476,32 @@ test('sync remains locked across dates, tabs and reloads until both sources stop
       },
     });
   });
+  await page.route('**/api/dsp/jobs/employees?*', async (route) => {
+    await holdStatus;
+    const query = new URL(route.request().url()).searchParams;
+    const source = {
+      enabled: true,
+      active: false,
+      total: 0,
+      completed: 0,
+      failed: 0,
+      cancelled: 0,
+      progress: 0,
+      jobs: [],
+    };
+    await route.fulfill({
+      json: {
+        period: { from: query.get('from'), to: query.get('to') },
+        through: query.get('to'),
+        requestId: null,
+        scopeAvailable: true,
+        active: active(paycomStatus) || active(flexStatus),
+        complete: false,
+        paycom: source,
+        cortex: source,
+      },
+    });
+  });
   await page.route('**/api/dsp/jobs/meal-breaks', async (route) => {
     jobDate = route.request().postDataJSON().date;
     submitted.push(jobDate!);
@@ -478,6 +530,7 @@ test('sync remains locked across dates, tabs and reloads until both sources stop
   await expect(page.locator('vite-error-overlay')).toHaveCount(0);
   const sync = page.getByRole('button', { name: 'Sync now', exact: true });
   const flex = page.getByRole('status', { name: 'Flex sync', exact: true });
+  const periodFlex = page.getByRole('status', { name: 'Flex period sync', exact: true });
   const meals = page.getByRole('tab', { name: 'Meal Breaks', exact: true });
   const employees = page.getByRole('tab', { name: 'Employees', exact: true });
   await expect(sync).toBeEnabled();
@@ -488,14 +541,18 @@ test('sync remains locked across dates, tabs and reloads until both sources stop
   await expect(sync).toBeDisabled();
   await expect.poll(() => submitted).toEqual(['2026-09-16']);
   releaseStatus();
-  await expect(flex).toHaveText('Queued · Sep 16');
+  await expect(periodFlex).toHaveText('Flex · Ready');
+  await expect(sync).toBeDisabled();
+  await meals.click();
+  await expect(flex).toHaveText('Flex queued · Sep 16');
   paycomStatus = 'succeeded';
   flexStatus = 'running';
   await page.reload();
   await employees.click();
-  await expect(flex).toHaveText('Running · Sep 16');
+  await expect(periodFlex).toHaveText('Flex · Ready');
   await expect(sync).toBeDisabled();
   await meals.click();
+  await expect(flex).toHaveText('Flex running · Sep 16');
   await setDate(page, '2026-09-15');
   await expect(flex).toHaveText('Flex running · Sep 16');
   await expect(sync).toBeDisabled();

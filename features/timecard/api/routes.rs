@@ -68,6 +68,8 @@ pub fn routes() -> Vec<Route> {
         job_cancel("/api/dsp/jobs/{id}/cancel", RUN, KINDS),
         read("/api/dsp/jobs/meal-breaks", VIEW, meal_sync_status),
         write("/api/dsp/jobs/meal-breaks", RUN, sync_meal_breaks),
+        read("/api/dsp/jobs/employees", VIEW, employee_sync_status),
+        write("/api/dsp/jobs/employees", RUN, sync_employees),
         write(
             "/api/dsp/cortex/meal-breaks/collect",
             RUN,
@@ -165,6 +167,40 @@ fn sync_employee(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         &format!("{code} {}–{}", period.from, period.to),
     )?;
     Ok(Reply::status(job, 202))
+}
+
+fn employee_sync_status(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    tab(c, EMPLOYEES)?;
+    let query = &input.query;
+    v::fields(query, &["from", "to", "requestId"])?;
+    let period = EmployeeTimecardPeriod {
+        from: v::text(query, "from", 10, 10)?.into(),
+        to: v::text(query, "to", 10, 10)?.into(),
+    };
+    let request_id = optional(query, "requestId", |query, key| v::text(query, key, 1, 128))?;
+    Reply::of(&db.employee_sync_status(c.dsp_id(), &period, request_id)?)
+}
+
+fn sync_employees(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    tab(c, EMPLOYEES)?;
+    let body = &input.body;
+    v::fields(body, &["requestId", "from", "to"])?;
+    let period = EmployeeTimecardPeriod {
+        from: v::text(body, "from", 10, 10)?.into(),
+        to: v::text(body, "to", 10, 10)?.into(),
+    };
+    let status = db.enqueue_employee_sync(
+        c.dsp_id(),
+        c.actor(),
+        v::text(body, "requestId", 1, 128)?,
+        &period,
+    )?;
+    c.audit(
+        db,
+        "collection.requested",
+        &format!("{}–{}", period.from, period.to),
+    )?;
+    Ok(Reply::status(serde_json::to_value(status)?, 202))
 }
 
 fn paycom_status(db: &Store, c: &Member, _: &Input) -> Result<Reply> {

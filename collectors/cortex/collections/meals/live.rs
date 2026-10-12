@@ -31,8 +31,13 @@ impl Writer {
         self.state
             .run_bookkeeping(move |db| {
                 let row = db.job_row(&job, None)?;
-                let request: CollectionRequest = serde_json::from_str(&row.request)?;
-                request.validate_scope(&scope)?;
+                let request: Value = serde_json::from_str(&row.request)?;
+                if let Some(request) = super::DayRequest::parse(&request)? {
+                    request.validate_scope(&scope)?;
+                } else {
+                    let request: CollectionRequest = serde_json::from_value(request)?;
+                    request.validate_scope(&scope)?;
+                }
                 state
                     .read_cache
                     .invalidate_tenant(&row.dsp_id, dispatch_core::server::cache::DataDomain::LIVE);

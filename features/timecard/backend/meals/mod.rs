@@ -1,5 +1,6 @@
 pub(crate) mod assessment;
 pub(crate) mod comparison;
+pub(crate) mod employee_sync;
 pub(crate) mod keeper;
 pub(crate) mod people;
 pub(crate) mod period;
@@ -251,12 +252,12 @@ pub(crate) fn meal_publications(store: &Store, dsp: &str, date: &str) -> Result<
         400,
     )?;
     Ok(json!(store.collector(dsp, cortex::PROVIDER)?.all(
-        "SELECT id,job_id \
-        jobId,report_date date,station,service_area_id \
-        serviceAreaId,provider,timezone,started_at startedAt,collected_at \
-        collectedAt,itinerary_count itineraryCount,meal_count \
-        mealCount,verified_gap_count verifiedGapPairs FROM meal_publications WHERE \
-        report_date=? AND active=1 ORDER BY station,service_area_id,provider",
+        "SELECT p.id,COALESCE(j.job_id,p.job_id) jobId,p.report_date date,p.station,p.service_area_id \
+        serviceAreaId,p.provider,p.timezone,p.started_at startedAt,p.collected_at \
+        collectedAt,p.itinerary_count itineraryCount,p.meal_count \
+        mealCount,p.verified_gap_count verifiedGapPairs FROM meal_publications p \
+        LEFT JOIN meal_publication_jobs j ON j.publication_key=p.job_id WHERE \
+        p.report_date=? AND p.active=1 ORDER BY p.station,p.service_area_id,p.provider",
         [date]
     )?))
 }

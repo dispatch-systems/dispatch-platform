@@ -8,11 +8,18 @@ use dispatch_core::{
     manifest::Keeper,
     server::cache::DataDomain,
 };
-use dispatch_cortex::{self as cortex, discovery::Scope, meals::JOB_KIND};
+use dispatch_cortex::{
+    self as cortex,
+    discovery::Scope,
+    meals::{DayCapture, DayRequest, JOB_KIND},
+};
 use serde_json::{Value, json};
 
 pub struct MealBreaks;
 impl Keeper for MealBreaks {
+    fn queue_capacity(&self) -> i64 {
+        dispatch_paycom::timecards::PERIOD_DAYS + 1
+    }
     fn keeps(&self) -> &'static str {
         JOB_KIND
     }
@@ -24,6 +31,25 @@ impl Keeper for MealBreaks {
     }
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
         let Collected { data, scope } = collected;
+        let request: Value = serde_json::from_str(&store.job_row(job, Some(dsp))?.request)?;
+        if let Some(request) = DayRequest::parse(&request)? {
+            ensure(scope.is_none(), "cortex_scope_mismatch", 502)?;
+            let data: DayCapture = serde_json::from_value(data)
+                .map_err(|_| dispatch_core::Error::new("invalid_cortex_capture", 502))?;
+            data.validate(&request)?;
+            let db = store.collector(dsp, cortex::PROVIDER)?;
+            return db.transaction(|| {
+                for (index, capture) in data.captures.iter().enumerate() {
+                    let key = format!("{job}:scope:{index}");
+                    store.publish_meals(dsp, &key, capture, &capture.scope)?;
+                    db.exec(
+                        "INSERT OR IGNORE INTO meal_publication_jobs(publication_key,job_id,scope_index) VALUES (?,?,?)",
+                        rusqlite::params![key,job,index as i64],
+                    )?;
+                }
+                Ok(())
+            });
+        }
         store.publish_meals(
             dsp,
             job,
@@ -53,6 +79,7 @@ impl Keeper for MealBreaks {
         for table in ["meal_publications", "meal_itineraries"] {
             db.one(&format!("SELECT count(*) FROM {table} WHERE 0"), [])?;
         }
+        db.one("SELECT count(*) FROM meal_publication_jobs WHERE 0", [])?;
         ensure(
             db.all("SELECT version FROM meal_record_schema", [])? == vec![json!({"version":1})],
             "unsupported_cortex_schema",

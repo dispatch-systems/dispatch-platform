@@ -1,4 +1,5 @@
 import { z } from 'zod/mini';
+import { employeeSyncSchema } from './employee-sync-runtime.js';
 import type {
   Employee,
   EmployeeTimecardResponse,
@@ -62,7 +63,13 @@ const card = z.object({
 const period = z.object({ from: text, to: text });
 export const employeeTimecardSchema = z.object({
   employee: employeeSchema,
-  timecards: z.array(z.extend(card, { assessment: day })),
+  timecards: z.array(
+    z.extend(card, {
+      assessment: day,
+      regularMinutes: z.nullable(count),
+      overtimeMinutes: z.nullable(count),
+    }),
+  ),
   period,
   previousPeriod: z.nullable(period),
   nextPeriod: z.nullable(period),
@@ -235,6 +242,7 @@ export const paycomSettingsSchema = z.object({
 
 /** The replies of Timecard's reads, its Paycom settings and its jobs and collections. */
 export const replies: Replies = (route, method) => {
+  if (route === '/api/dsp/jobs/employees') return employeeSyncSchema;
   if (method === 'GET') {
     if (route === '/api/dsp/jobs') return jobsSchema;
     if (route === paycomSettingsPath) return paycomSettingsSchema;

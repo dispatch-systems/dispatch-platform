@@ -35,7 +35,7 @@ test(
       }, 60000);
       return job;
     };
-    await run('complete', 'succeeded');
+    const first = await run('complete', 'succeeded');
     assert.equal(f.events.filter((e) => e === 'timecard').length, 2);
     assert.equal(f.events.filter((e) => e === 'primary').length, 1);
     const selected = f.state.requests.find((r) => r.isAdvancedFilterApplied === false)!;
@@ -66,6 +66,70 @@ test(
         (db) => db.prepare('SELECT id FROM publications WHERE active=1').get()!.id,
       );
     const id = publication();
+    assert(typeof id === 'string');
+    // Keep this account's real captured history, excluding unrelated synthetic demo
+    // employees. The source's active search can omit an authorized former employee.
+    const bounds = f.collector(north.id, (db) => {
+      db.exec('PRAGMA foreign_keys=ON');
+      db.prepare('DELETE FROM publications WHERE id<>?').run(id);
+      return db.prepare('SELECT period_from,period_to FROM publications WHERE id=?').get(id)!;
+    });
+    f.state.unlistedCodes = ['BB02'];
+    const start = Date.parse(`${bounds.period_from}T00:00:00Z`) - 14 * 86400000;
+    const from = new Date(start).toISOString().slice(0, 10);
+    const to = new Date(start + 13 * 86400000).toISOString().slice(0, 10);
+    const fullId = 'job-paycom-all-known-period';
+    // Seed a real queued request as the shared fixture's seedQueuedJob does. This
+    // provider-only stand-in cannot sign in to Cortex for the combined UI batch.
+    f.database('data/preview/jobs.sqlite', (db) =>
+      db
+        .prepare(
+          `INSERT INTO jobs
+        (id,dsp_id,environment,kind,status,available_at,created_at,release,actor_id,connection_revision,idempotency_key,request)
+        SELECT ?,dsp_id,environment,kind,'queued',?,?,release,actor_id,connection_revision,?,?
+        FROM jobs WHERE id=?`,
+        )
+        .run(
+          fullId,
+          Date.now(),
+          new Date().toISOString(),
+          fullId,
+          JSON.stringify({ allEmployees: true, from, to }),
+          first.id,
+        ),
+    );
+    await until(async () => {
+      const job = (await owner.read('/api/dsp/jobs')).find(
+        (job: { id: string }) => job.id === fullId,
+      );
+      if (!['succeeded', 'failed', 'cancelled'].includes(job.status)) return false;
+      assert.equal(job.status, 'succeeded', JSON.stringify(job));
+      return true;
+    }, 60000);
+    assert.equal(publication(), id, 'historical collection preserves the current roster');
+    const retained = f.collector(north.id, (db) =>
+      db
+        .prepare(
+          `SELECT e.code,e.active,count(t.date) days,sum(t.hours) hours FROM publications p
+        JOIN employees e ON e.publication_id=p.id
+        JOIN timecards t ON t.publication_id=p.id AND t.employee_code=e.code
+        WHERE p.period_from=? AND p.period_to=? GROUP BY e.code ORDER BY e.code`,
+        )
+        .all(from, to),
+    );
+    assert.deepEqual(
+      retained.map((row) => ({ ...row })),
+      [
+        { code: 'AA01', active: 1, days: 14, hours: 16 },
+        { code: 'BB02', active: 0, days: 14, hours: 16 },
+      ],
+    );
+    assert.deepEqual(
+      f.state.requests.filter((request) => request.isAdvancedFilterApplied === false).at(-1)!
+        .eeCodes,
+      ['AA01'],
+    );
+    f.state.unlistedCodes = [];
     f.state.incomplete = true;
     await run('partial', 'failed');
     assert.equal(publication(), id);

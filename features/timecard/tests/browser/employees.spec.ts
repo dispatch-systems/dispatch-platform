@@ -1,7 +1,7 @@
 import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
 import type { Punch } from '../../api/index.js';
 
-test('employee workspace navigates real period history, resets selection, filters and fits every theme', async ({
+test('employee workspace keeps period history across people, filters and themes', async ({
   page,
   dispatch,
 }) => {
@@ -117,7 +117,8 @@ test('employee workspace navigates real period history, resets selection, filter
   ]);
   await expect(detail.locator('tbody tr')).toHaveCount(14);
   await expect(detail).toContainText('4 recorded days');
-  await expect(detail).toContainText('25h 30m');
+  await expect(detail.locator('.employee-timecard-total strong')).toHaveText(['24h 00m', '1h 30m']);
+  await expect(detail).toContainText('Incomplete days: 1');
   const rows = detail.locator('tbody tr');
   await expect(rows.locator('td:first-child')).toHaveText([
     'Sun, Sep 6',
@@ -174,7 +175,7 @@ test('employee workspace navigates real period history, resets selection, filter
     '12:03 PM',
     '—',
     '—',
-    '0h 00m',
+    '—',
   ]);
   for (const label of ['Employee code', 'Department', 'Delivery station', 'Source'])
     await expect(detail.getByText(label, { exact: true })).toHaveCount(0);
@@ -183,7 +184,7 @@ test('employee workspace navigates real period history, resets selection, filter
   await previous.press('Enter');
   await expect(page.getByLabel('Timecard navigation')).toContainText('Aug 23');
   await expect(rows).toHaveCount(14);
-  await expect(detail).toContainText('28h 00m');
+  await expect(detail.locator('.employee-timecard-total strong')).toHaveText(['24h 00m', '1h 30m']);
   await expect(previous).toBeFocused();
   await expect(next).toBeEnabled();
   await previous.click();
@@ -198,7 +199,7 @@ test('employee workspace navigates real period history, resets selection, filter
   await expect(
     detail.getByRole('heading', { name: 'This pay period has not been collected' }),
   ).toBeVisible();
-  await expect(detail.locator('.employee-timecard-total strong')).toHaveText('—');
+  await expect(detail.locator('.employee-timecard-total strong')).toHaveText(['—', '—']);
   await expect(rows).toHaveCount(0);
   await next.click();
   await expect(page.getByLabel('Timecard navigation')).toContainText('Aug 9');
@@ -210,10 +211,36 @@ test('employee workspace navigates real period history, resets selection, filter
   await expect(page.getByLabel('Timecard navigation')).toContainText('Aug 23');
   await directory.getByRole('button', { name: 'Alex Parker', exact: true }).click();
   await expect(detail.getByRole('heading', { name: 'Alex Parker', exact: true })).toBeVisible();
-  await expect(detail.getByText('Latest', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Timecard navigation')).toContainText('Aug 23');
+  await expect(detail.getByText('Not collected', { exact: true })).toBeVisible();
   await directory.getByRole('button', { name: 'Avery Morgan', exact: true }).click();
+  await expect(page.getByLabel('Timecard navigation')).toContainText('Aug 23');
+  await expect(detail.locator('.employee-timecard-total strong')).toHaveText(['24h 00m', '1h 30m']);
+  await next.click();
   await expect(detail.getByText('Latest', { exact: true })).toBeVisible();
   await expect(next).toBeDisabled();
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const list = directory.locator('ul');
+  await list.evaluate((element) => (element.scrollTop = 100));
+  const directoryState = await directory.evaluate((element) => ({
+    height: element.getBoundingClientRect().height,
+    scroll: element.querySelector('ul')!.scrollTop,
+  }));
+  expect(directoryState.scroll).toBeGreaterThan(0);
+  const view = detail.getByRole('group', { name: 'Employee view' });
+  await view.getByRole('button', { name: 'Meal Breaks', exact: true }).click();
+  await expect(detail.locator('.employee-meals')).toHaveAttribute('aria-busy', 'false');
+  await expect(detail.getByRole('table', { name: 'Employee meal breaks' })).toBeVisible();
+  expect(
+    await directory.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      scroll: element.querySelector('ul')!.scrollTop,
+    })),
+  ).toEqual(directoryState);
+  await view.getByRole('button', { name: 'Timecard', exact: true }).click();
+  await expect(detail.getByRole('table', { name: 'Employee timecard' })).toBeVisible();
+  expect(await list.evaluate((element) => element.scrollTop)).toBe(directoryState.scroll);
 
   for (const [theme, width] of [
     ['dark', 1440],
@@ -268,13 +295,15 @@ test('employee workspace navigates real period history, resets selection, filter
   await expect(detail.getByRole('heading', { name: 'Morgan Reed', exact: true })).toBeVisible();
   await expect(rows).toHaveCount(14);
   await expect(detail).toContainText('0 recorded days');
-  await expect(detail.locator('.employee-timecard-total strong')).toHaveText('0h 00m');
+  await expect(detail.locator('.employee-timecard-total strong')).toHaveText(['0h 00m', '0h 00m']);
   await expect(rows.first().locator('td')).toHaveText(['Sun, Sep 6', '—', '—', '—', '—', '0h 00m']);
   await expect(previous).toBeEnabled();
   expect(errors).toEqual([]);
 });
 
-test('a delayed employee response cannot overwrite a newer selection', async ({ page }) => {
+test('meals stay selected while a delayed employee response cannot overwrite a newer person', async ({
+  page,
+}) => {
   let unblock!: () => void;
   const blocked = new Promise<void>((resolve) => {
     unblock = resolve;
@@ -283,9 +312,9 @@ test('a delayed employee response cannot overwrite a newer selection', async ({ 
   const requested = new Promise<void>((resolve) => {
     arrived = resolve;
   });
-  await page.route('**/api/dsp/employees/E001', async (route) => {
+  await page.route(/\/api\/dsp\/employees\/E00[13](\?|$)/, async (route) => {
     const response = await route.fetch();
-    arrived();
+    if (new URL(route.request().url()).pathname.endsWith('/E001')) arrived();
     await blocked;
     await route.fulfill({ response });
   });
@@ -297,32 +326,61 @@ test('a delayed employee response cannot overwrite a newer selection', async ({ 
   await expect(directory.getByRole('button', { name: 'Avery Morgan', exact: true })).toBeVisible();
   await directory.getByRole('button', { name: 'Avery Morgan', exact: true }).click();
   await requested;
-  await directory.getByRole('button', { name: 'Alex Parker', exact: true }).click();
   const detail = page.getByRole('region', { name: 'Employee details', exact: true });
-  await expect(detail.getByRole('heading', { name: 'Alex Parker', exact: true })).toBeVisible();
-  await expect(detail.getByRole('table', { name: 'Employee timecard' })).toBeVisible();
+  const views = detail.getByRole('group', { name: 'Employee view' });
+  await views.getByRole('button', { name: 'Meal Breaks', exact: true }).click();
+  await expect(detail.getByRole('table', { name: 'Employee meal breaks' })).toBeVisible();
+  await expect(detail.getByRole('table', { name: 'Employee timecard' })).toHaveCount(0);
+  await directory.getByRole('button', { name: 'Jordan Ellis', exact: true }).click();
+  await expect(detail.getByRole('heading', { name: 'Jordan Ellis', exact: true })).toBeVisible();
+  await expect(detail.getByRole('table', { name: 'Employee meal breaks' })).toBeVisible();
+  await expect(detail.locator('.employee-meals tbody tr')).toHaveCount(14);
   unblock();
   await page.unrouteAll({ behavior: 'wait' });
-  await expect(detail.getByRole('heading', { name: 'Alex Parker', exact: true })).toBeVisible();
+  await expect(detail.getByRole('heading', { name: 'Jordan Ellis', exact: true })).toBeVisible();
+  await expect(views.getByRole('button', { name: 'Meal Breaks', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(detail.getByRole('table', { name: 'Employee timecard' })).toHaveCount(0);
 });
 
-test('Sync now collects the selected employee and the displayed uncollected period', async ({
+test('Sync now keeps its displayed-period batch across employee and view changes', async ({
   page,
   dispatch,
 }) => {
   const owner = await dispatch.client();
   const dsp = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
   await owner.select(dsp.id);
+  await owner.post('/api/dsp/connections/cortex', {
+    username: 'fixture@example.test',
+    password: 'fixture-password',
+  });
+  await owner.post('/api/dsp/profile', {
+    name: dsp.name,
+    abbreviation: 'NLL',
+    stationCode: 'DEMO1',
+    timezone: 'America/Los_Angeles',
+  });
+  await owner.select(dsp.id);
   const latest = (await owner.get('/api/dsp/employees/E002')).value;
   const period = latest.previousPeriod;
   const requests: string[] = [];
+  const batchReads: string[] = [];
   page.on('request', (request) => {
-    if (request.method() === 'POST') requests.push(new URL(request.url()).pathname);
+    const url = new URL(request.url());
+    if (request.method() === 'POST') requests.push(url.pathname);
+    if (request.method() === 'GET' && url.pathname === '/api/dsp/jobs/employees') {
+      const id = url.searchParams.get('requestId');
+      if (id) batchReads.push(id);
+    }
   });
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: 'Timecard', exact: true }).click();
   await page.getByRole('tab', { name: 'Employees', exact: true }).click();
+  const search = page.getByRole('searchbox', { name: 'Search employees' });
+  await search.fill('Jordan');
   await page
     .getByRole('navigation', { name: 'Employee directory' })
     .getByRole('button', { name: 'Jordan Ellis', exact: true })
@@ -331,24 +389,53 @@ test('Sync now collects the selected employee and the displayed uncollected peri
   const detail = page.getByRole('region', { name: 'Employee details', exact: true });
   await expect(detail.getByText('Not collected', { exact: true })).toBeVisible();
   const sync = page.getByRole('button', { name: 'Sync now', exact: true });
-  await expect(sync).toHaveAttribute('title', /Sync Jordan Ellis/);
+  await expect(sync).toHaveAttribute('title', /All employees/);
+  await expect(sync).toBeEnabled();
   const request = page.waitForRequest(
-    (request) =>
-      request.method() === 'POST' && request.url().endsWith('/api/dsp/employees/E002/sync'),
+    (request) => request.method() === 'POST' && request.url().endsWith('/api/dsp/jobs/employees'),
   );
   await sync.click();
   const body = (await request).postDataJSON();
   expect(body).toEqual({ requestId: expect.any(String), ...period });
+  await detail
+    .getByRole('group', { name: 'Employee view' })
+    .getByRole('button', { name: 'Meal Breaks', exact: true })
+    .click();
+  await search.fill('Avery');
+  await expect(detail.getByRole('heading', { name: 'Avery Morgan', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Timecard navigation')).toContainText(
+    new Date(`${period.from}T12:00:00Z`).toLocaleString('en-US', {
+      month: 'short',
+      timeZone: 'UTC',
+    }),
+  );
+  await expect.poll(() => batchReads.at(-1)).toBe(body.requestId);
+  await expect(page.getByRole('status', { name: 'Paycom period sync', exact: true })).toContainText(
+    'Complete',
+  );
+  await expect(page.getByRole('status', { name: 'Flex period sync', exact: true })).toContainText(
+    '/14',
+  );
+  await detail
+    .getByRole('group', { name: 'Employee view' })
+    .getByRole('button', { name: 'Timecard', exact: true })
+    .click();
   await expect(detail.getByText('Not collected', { exact: true })).toHaveCount(0);
   await expect(detail.locator('tbody tr')).toHaveCount(14);
-  await expect(page.getByRole('status', { name: 'Paycom sync', exact: true })).toContainText(
-    'Paycom synced',
-  );
   expect(
-    requests.filter((url) => url === '/api/dsp/jobs' || url === '/api/dsp/jobs/meal-breaks'),
+    requests.filter(
+      (url) =>
+        url === '/api/dsp/jobs' || url === '/api/dsp/jobs/meal-breaks' || url.endsWith('/sync'),
+    ),
   ).toEqual([]);
+  await expect(detail.locator('tbody tr').first().locator('td').first()).toHaveText(
+    new Date(`${period.from}T12:00:00Z`).toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC',
+    }),
+  );
+  await search.fill('');
   await expect(page.getByLabel('Employee count')).toHaveText('12');
-  const other = (await owner.get(`/api/dsp/employees/E001?from=${period.from}&to=${period.to}`))
-    .value;
-  expect(other.collectedAt).toBeNull();
 });

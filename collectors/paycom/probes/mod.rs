@@ -134,7 +134,7 @@ pub async fn measure_live_collection() -> Result<()> {
         let timezone=std::env::var("DISPATCH_BENCHMARK_TIMEZONE").map_err(|_|Error::new("benchmark_configuration_required",400))?;
         let started=Instant::now();
         let recorder=dispatch_core::collection::metrics::Recorder::new(&json!({}));
-        let data=driver.collect(&timezone, None, &recorder, None, |progress,_| async move {
+        let data=driver.collect(&timezone, collection::Selection::Date(None), &recorder, None, |progress,_| async move {
             if progress % 10 == 0 { eprintln!("BENCH {}",json!({"progress":progress})); }
             Ok(())
         }, std::env::var("DISPATCH_BENCHMARK_HTTP").is_ok_and(|v| v == "1")).await?;

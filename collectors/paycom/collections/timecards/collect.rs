@@ -60,6 +60,35 @@ const API: &str = "https://time-and-attendance.paycomonline.net/api/cl/timecard-
 /// Timecards read over HTTP at once. Paycom answered six together as fast as two
 /// (3.6 s against 3.5 s each for 100 employees) and refused none.
 const HTTP_LANES: usize = 6;
+
+pub(crate) enum Selection<'a> {
+    Date(Option<NaiveDate>),
+    Period(&'a EmployeeTimecardPeriod, &'a [Value]),
+}
+
+/// The current source roster wins for listed people. Known DSP-local people omitted
+/// from its active-only search still receive their individual timecard reads.
+fn with_known_employees(
+    mut roster: Vec<Value>,
+    known: &[Value],
+    period: &Value,
+) -> Result<Vec<Value>> {
+    let mut seen = roster
+        .iter()
+        .map(|employee| s(employee, "code").to_ascii_uppercase())
+        .collect::<BTreeSet<_>>();
+    for employee in known {
+        if seen.insert(s(employee, "code").to_ascii_uppercase()) {
+            let mut employee = employee.clone();
+            employee["active"] = json!(false);
+            roster.push(employee);
+        }
+    }
+    validate_workforce(
+        &json!({"employees":roster,"timecards":[],"from":period["start"],"to":period["end"],"collectedAt":db::iso()}),
+    )?;
+    Ok(roster)
+}
 const FIELDS: &[&str] = &[
     "allocationCategories",
     "approvalMode",
@@ -466,10 +495,10 @@ impl Driver {
             http: reader,
         })
     }
-    pub async fn collect<F, Fut>(
+    pub(crate) async fn collect<F, Fut>(
         &mut self,
         timezone: &str,
-        selected_date: Option<NaiveDate>,
+        selection: Selection<'_>,
         metrics: &Recorder,
         checkpoint: Option<&Checkpoint>,
         mut progress: F,
@@ -482,12 +511,27 @@ impl Driver {
         self.credentials = Value::Null;
         self.assistance = None;
         progress(10, "Reading employee roster".into()).await?;
+        let selected_date = match &selection {
+            Selection::Date(date) => *date,
+            Selection::Period(period, _) => Some(period.start()?),
+        };
         let Roster {
             raw,
             period,
             employees,
             http: reader,
         } = self.roster(timezone, selected_date, http).await?;
+        let employees = match selection {
+            Selection::Date(_) => employees,
+            Selection::Period(requested, known) => {
+                ensure(
+                    period["start"] == requested.from && period["end"] == requested.to,
+                    "timecard_identity_mismatch",
+                    502,
+                )?;
+                with_known_employees(employees, known, &period)?
+            }
+        };
         let resume = if let Some(checkpoint) = checkpoint {
             Some(checkpoint.prepare(&period, &employees, timezone).await?)
         } else {

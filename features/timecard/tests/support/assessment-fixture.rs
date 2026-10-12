@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             timecards: input
                 .timecards
                 .into_iter()
-                .map(Timecard::assessed)
+                .map(|card| card.assessed("UTC"))
                 .collect(),
         })
         .collect();

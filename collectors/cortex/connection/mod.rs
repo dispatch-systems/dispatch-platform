@@ -238,6 +238,53 @@ impl Drives for Driver {
                     scope: Some(scope),
                 });
             }
+            if let Some(request) = crate::meals::DayRequest::parse(run.request)? {
+                let count = request.scope_requests.len();
+                let mut captures = Vec::with_capacity(count);
+                for (index, scope_request) in request.scope_requests.iter().enumerate() {
+                    // Every scope begins with a lease/connection/permission check.
+                    run.progress(
+                        10 + (index * 85 / count) as i64,
+                        format!("{} · scope {} of {}", request.date, index + 1, count),
+                    )
+                    .await?;
+                    let scope = self.resolve_scope(scope_request, run.metrics).await?;
+                    let kept = kept_meals(run, &scope).await.unwrap_or_else(|_| {
+                        run.metrics.detail("meal_kept_unavailable");
+                        Vec::new()
+                    });
+                    let data = Driver::collect(
+                        self,
+                        &scope,
+                        &kept,
+                        run.metrics,
+                        Some(&crate::meals::Writer::new(
+                            run.state.clone(),
+                            run.job,
+                            run.owner,
+                        )),
+                        |progress, message| {
+                            run.progress(
+                                10 + (index as i64 * 100 + progress) * 85 / (count as i64 * 100),
+                                format!("{} · {} · {message}", request.date, scope.station),
+                            )
+                        },
+                        &collection::MealMethod::default(),
+                    )
+                    .await?;
+                    captures.push(serde_json::from_value(data)?);
+                }
+                let data = crate::meals::DayCapture {
+                    date: request.date.clone(),
+                    captures,
+                };
+                data.validate(&request)?;
+                run.progress(95, "Publishing meal breaks".into()).await?;
+                return Ok(Collected {
+                    data: serde_json::to_value(data)?,
+                    scope: None,
+                });
+            }
             let scope = self
                 .resolve_scope(&serde_json::from_value(run.request.clone())?, run.metrics)
                 .await?;

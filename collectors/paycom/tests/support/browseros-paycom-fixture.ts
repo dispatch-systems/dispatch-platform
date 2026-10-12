@@ -131,6 +131,7 @@ export async function paycomFixture(
     incomplete: false,
     mismatch: false,
     codes: ['AA01', 'BB02'],
+    unlistedCodes: [] as string[],
     accounts: {} as Record<string, string[]>,
     accountStarts: [] as string[],
     activeByAccount: new Map<string, number>(),
@@ -175,6 +176,7 @@ export async function paycomFixture(
       req.headers.cookie?.match(/(?:^|; )fixture_account=([^;]+)/)?.[1] ?? credentials.username,
     );
     const accountCodes = state.accounts[account] ?? state.codes;
+    const rosterCodes = accountCodes.filter((code) => !state.unlistedCodes.includes(code));
     const logged = !state.rejection && req.headers.cookie?.includes('fixture_session=one');
     const solved = req.headers.cookie?.includes('fixture_captcha=solved');
     const chunks: Buffer[] = [];
@@ -254,7 +256,7 @@ export async function paycomFixture(
     }
     if (url.pathname === '/v4/cl/web.php/timecardsearch/index')
       return html(
-        `${authenticated}<title>Timecard Search</title><p>Employee Status Is Active</p><button>Export</button><script>fetch('/api/cl/timecard-search/employees',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':'fixture-token'},body:JSON.stringify(${JSON.stringify({ ...requestBody, eeCodes: accountCodes })})})</script>`,
+        `${authenticated}<title>Timecard Search</title><p>Employee Status Is Active</p><button>Export</button><script>fetch('/api/cl/timecard-search/employees',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':'fixture-token'},body:JSON.stringify(${JSON.stringify({ ...requestBody, eeCodes: rosterCodes })})})</script>`,
       );
     if (url.pathname === '/api/cl/timecard-search/employees' && req.method === 'POST') {
       const body = JSON.parse(text);
@@ -264,7 +266,7 @@ export async function paycomFixture(
         return res.end();
       }
       res.setHeader('Content-Type', 'application/json');
-      const codes = state.incomplete ? ['AA01'] : accountCodes;
+      const codes = state.incomplete ? ['AA01'] : rosterCodes;
       return res.end(JSON.stringify({ eeCodes: codes, employees: codes.map(employee) }));
     }
     if (url.pathname === '/fixture/image' || url.pathname === '/fixture/hydrate') {
