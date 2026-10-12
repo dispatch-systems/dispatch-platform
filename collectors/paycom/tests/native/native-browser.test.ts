@@ -66,6 +66,7 @@ test(
         (db) => db.prepare('SELECT id FROM publications WHERE active=1').get()!.id,
       );
     const id = publication();
+    assert(typeof id === 'string');
     // Keep this account's real captured history, excluding unrelated synthetic demo
     // employees. The source's active search can omit an authorized former employee.
     const bounds = f.collector(north.id, (db) => {

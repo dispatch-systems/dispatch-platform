@@ -59,7 +59,7 @@ Timecard's collections. It names drivers through Driver Match.
   finished routes are not read again. A route whose meal punches Cortex sent in a shape the
   meal rules can't read is kept in `meal_unreadable`, and its driver reads as
   `cortex_unreadable` (Check Cortex punches), linked to the route, rather than as no meal.
-  Cortex migration `0004_meal_publication_jobs` adds only the mapping from bundled scope
+  Cortex migration `0001_meal_publication_jobs` adds only the mapping from bundled scope
   publications to their actual collection job. Each day validates and publishes all scopes
   in one transaction. Existing meal fields and privacy cleanup remain unchanged. The additive
   table can remain during a code rollback; do not remove it or rewrite shipped migrations.

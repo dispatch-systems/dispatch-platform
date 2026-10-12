@@ -39,7 +39,7 @@ use dispatch_core::testing;
 
 use backend::{meals, punches};
 use dispatch_core::{
-    db::{Migration, Migrations, migrations::Apply::Sql},
+    db::{Migration, Migrations, OwnMigrations, migrations::Apply::Sql},
     manifest::{
         Audit,
         DefaultRole::{Manager, Member},
@@ -140,16 +140,19 @@ pub const FEATURE: Feature = Feature {
                     name: "meal_unreadable",
                     apply: Sql(include_str!("migrations/cortex/0003_meal_unreadable.sql")),
                 },
-                Migration {
-                    id: 4,
-                    name: "meal_publication_jobs",
-                    apply: Sql(include_str!(
-                        "migrations/cortex/0004_meal_publication_jobs.sql"
-                    )),
-                },
             ],
         },
     ],
+    own_migrations: &[OwnMigrations {
+        kind: cortex::DATABASE,
+        list: &[Migration {
+            id: 1,
+            name: "meal_publication_jobs",
+            apply: Sql(include_str!(
+                "migrations/cortex/0001_meal_publication_jobs.sql"
+            )),
+        }],
+    }],
     domains: &[punches::DOMAIN, meals::DOMAIN],
     cached: &[
         // The DSP listings' collection dates are its timecards'.

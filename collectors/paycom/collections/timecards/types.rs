@@ -123,13 +123,33 @@ impl PeriodSync {
             400,
         )?;
         let cards = data["timecards"].as_array().unwrap();
-        let records = data["employees"].as_array().unwrap().iter().flat_map(|employee| {
-            (0..PERIOD_DAYS).map(|i| {
-                let date = (start + Duration::days(i)).to_string();
-                cards.iter().find(|card| card["employeeCode"] == employee["code"] && card["date"] == date)
-                    .cloned().unwrap_or_else(|| json!({"employeeCode":employee["code"],"date":date,"hours":0,"status":"No punches","punches":[]}))
-            }).collect::<Vec<_>>()
-        }).collect::<Vec<_>>();
+        let records = data["employees"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|employee| {
+                (0..PERIOD_DAYS)
+                    .map(|i| {
+                        let date = (start + Duration::days(i)).to_string();
+                        cards
+                            .iter()
+                            .find(|card| {
+                                card["employeeCode"] == employee["code"] && card["date"] == date
+                            })
+                            .cloned()
+                            .unwrap_or_else(|| {
+                                json!({
+                                    "employeeCode":employee["code"],
+                                    "date":date,
+                                    "hours":0,
+                                    "status":"No punches",
+                                    "punches":[]
+                                })
+                            })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
         data["timecards"] = json!(records);
         self.validate_capture(&data)?;
         Ok(data)

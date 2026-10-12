@@ -243,17 +243,9 @@ fn employee_period_batches_all_proven_scopes_without_an_employee_or_station_job_
     assert_eq!(dates.last().unwrap(), &period.to);
     db.cancel_dsp(&id).unwrap();
     seed(&db, &id, &period.from, 7);
-    // An accepted request remains replayable when the connection later goes off.
-    for provider in [paycom::PROVIDER, cortex::PROVIDER] {
-        db.collector(&id, provider)
-            .unwrap()
-            .exec("UPDATE connections SET enabled=0", [])
-            .unwrap();
-    }
     let replay = db
         .enqueue_employee_sync(&id, &actor, "period:ñ", &period)
         .unwrap();
-    assert!(!replay.paycom.enabled && !replay.cortex.enabled);
     assert_eq!(queued.paycom.jobs[0].id, replay.paycom.jobs[0].id);
     assert_eq!(
         queued

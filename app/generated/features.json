@@ -535,10 +535,6 @@
         {
           "id": 3,
           "name": "meal_unreadable"
-        },
-        {
-          "id": 4,
-          "name": "meal_publication_jobs"
         }
       ],
       "paycom": [

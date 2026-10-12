@@ -32,6 +32,59 @@ fn dvic_ready() -> (tempfile::TempDir, Store, String) {
 
 #[cfg(feature = "timecard")]
 #[test]
+fn accepted_employee_batches_replay_after_their_connections_are_disabled() {
+    dispatch_backend::install();
+    let (_root, db, id) = common::bootstrapped();
+    db.enable_all_features(&id).unwrap();
+    db.set_profile(&id, json!({"stationCode":"TST1","abbreviation":"TEST"}))
+        .unwrap();
+    let actor = common::platform_owner(&db);
+    let timezone = db.find_dsp(&id).unwrap().timezone;
+    db.publish_timecards(&id, &paycom::fixtures::fixture(&timezone).unwrap())
+        .unwrap();
+    let period = db
+        .timecard_period(&id, None, None, None)
+        .unwrap()
+        .shift(-1)
+        .unwrap();
+    for provider in [paycom::PROVIDER, cortex::PROVIDER] {
+        common::ready_connection(&db, &id, provider).unwrap();
+    }
+    let queued = db
+        .enqueue_employee_sync(&id, &actor, "disabled-replay", &period)
+        .unwrap();
+    db.cancel_dsp(&id).unwrap();
+    // This fixture changes core's connection state; the replay itself must still
+    // pass through the feature's real collection entry point.
+    for provider in [paycom::PROVIDER, cortex::PROVIDER] {
+        db.collector(&id, provider)
+            .unwrap()
+            .exec("UPDATE connections SET enabled=0", [])
+            .unwrap();
+    }
+    let replay = db
+        .enqueue_employee_sync(&id, &actor, "disabled-replay", &period)
+        .unwrap();
+    assert!(!replay.paycom.enabled && !replay.cortex.enabled);
+    assert_eq!(queued.paycom.jobs[0].id, replay.paycom.jobs[0].id);
+    assert_eq!(
+        queued
+            .cortex
+            .jobs
+            .iter()
+            .map(|job| &job.id)
+            .collect::<Vec<_>>(),
+        replay
+            .cortex
+            .jobs
+            .iter()
+            .map(|job| &job.id)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[cfg(feature = "timecard")]
+#[test]
 fn queue_limits_and_authority_are_checked_again_before_publication() {
     dispatch_backend::install();
     let (_root, db) = seeded();
