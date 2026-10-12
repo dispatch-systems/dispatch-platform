@@ -834,6 +834,37 @@ fn waiting_for_dev_confirms_the_commit_or_a_later_one_is_live() {
     assert!(u.wait("not-a-commit", 20).is_err());
 }
 #[test]
+fn a_failing_dev_update_says_why_until_one_gets_through() {
+    let f = Fixture::new(Environment::Dev);
+    let u = f.updater();
+    f.dev_download();
+    f.system
+        .reply(&f.run_url(), vec![json!({"workflow_runs":[f.run()]})]);
+    // A file written into the installed runtime stops every update before it downloads.
+    let stray = u.active.join("services/cache.pyc");
+    fs::write(&stray, "stray").unwrap();
+    for attempt in 1..=3 {
+        let error = u.run_locked().unwrap_err().to_string();
+        assert!(
+            error.contains(r#""services/cache.pyc" is not in its inventory"#),
+            "{error}"
+        );
+        let failure = io::read_json(&u.failure_file).unwrap();
+        assert_eq!(failure["attempts"], attempt);
+        assert_eq!(failure["error"], json!(error));
+    }
+    // Waiting for Dev ends at once with why, rather than when its time runs out.
+    let error = u.wait(&f.new, 900).unwrap_err().to_string();
+    assert!(
+        error.contains(&format!("Dev cannot install {}", f.new)) && error.contains("cache.pyc"),
+        "{error}"
+    );
+    fs::remove_file(&stray).unwrap();
+    u.run_locked().unwrap();
+    assert!(!u.failure_file.exists());
+    assert_eq!(u.wait(&f.new, 20).unwrap()["commit"], json!(f.new));
+}
+#[test]
 fn dev_follows_main_and_refuses_other_branches() {
     let f = Fixture::new(Environment::Dev);
     git(&f.root, &["checkout", "-q", "-B", "feature"]);

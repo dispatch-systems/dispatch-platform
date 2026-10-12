@@ -100,6 +100,15 @@ pub fn run(ws: &Workspace, runner: &dyn Runner) -> Result<()> {
             String::new()
         }
     );
+    // Written by Dev's updater while its updates fail, and removed once one gets through.
+    if let Some(failure) = read("data/platform/dev-update-failure.json") {
+        println!(
+            "  Dev's updates have failed since {} ({} attempts): {}",
+            failure["since"].as_str().unwrap_or("unknown"),
+            failure["attempts"],
+            failure["error"].as_str().unwrap_or("no error recorded")
+        );
+    }
     println!(
         "Disk: {} free.",
         workspace::human(workspace::free_bytes(&ws.root)?)
