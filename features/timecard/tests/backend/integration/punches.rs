@@ -185,6 +185,46 @@ fn publication_is_atomic_and_keeps_the_last_successful_dataset() {
     bad["timecards"][0]["date"] = json!("2026-02-30");
     assert!(db.publish_timecards(id, &bad).is_err());
     assert_eq!(db.employee_timecard(id, "E001", None).unwrap(), before);
+    let storage = db.collector(id, paycom::PROVIDER).unwrap();
+    let current = storage
+        .setting("paycom.publicationFingerprint", Value::Null)
+        .unwrap();
+    let mut historical =
+        fixtures::fixture_date("UTC", Some("2020-09-05".parse().unwrap())).unwrap();
+    historical["collectedAt"] = json!("2099-01-01T00:00:00.000Z");
+    historical["employees"][0]["name"] = json!("Historical name");
+    db.publish_timecards(id, &historical).unwrap();
+    assert_eq!(
+        storage
+            .setting("paycom.publicationFingerprint", Value::Null)
+            .unwrap(),
+        current
+    );
+    let active: (String,) = storage
+        .one_as("SELECT id FROM publications WHERE active=1", [])
+        .unwrap()
+        .unwrap();
+    assert_eq!(active.0, s(&current, "id"));
+    assert_eq!(
+        db.timecard_employees(id, "", 0, None, false, None)
+            .unwrap()
+            .total,
+        12
+    );
+    assert_eq!(db.employee_timecard(id, "E001", None).unwrap(), before);
+    assert!(
+        !db.employee_timecard(
+            id,
+            "E001",
+            Some(&dispatch_paycom::timecards::EmployeeTimecardPeriod {
+                from: s(&historical, "from").into(),
+                to: s(&historical, "to").into()
+            })
+        )
+        .unwrap()
+        .timecards
+        .is_empty()
+    );
     let mut later = data.clone();
     later["collectedAt"] = json!("2099-01-01T00:00:00.000Z");
     later["employees"].as_array_mut().unwrap().remove(0);

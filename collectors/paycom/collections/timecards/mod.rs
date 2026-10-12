@@ -7,5 +7,5 @@ mod types;
 mod validation;
 
 pub use checkpoint::{Checkpoint, PaycomStore};
-pub use types::{EmployeeSync, EmployeeTimecardPeriod, JOB_KIND, PERIOD_DAYS};
+pub use types::{EmployeeSync, EmployeeTimecardPeriod, JOB_KIND, PERIOD_DAYS, PeriodSync};
 pub use validation::{collection_date, sources, validate_workforce};

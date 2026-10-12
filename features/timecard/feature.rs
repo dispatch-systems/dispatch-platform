@@ -8,6 +8,7 @@ pub use api::{
         AssessedClock, DeliveryGap, DeliveryGaps, LateRule, Lunch, MealAssessment, MealPair,
         MealStatus, PaycomDay, PunchEvent,
     },
+    employee_sync::{EmployeeSyncSource, EmployeeSyncStatus},
     meals::{
         CortexMeal, CortexPublication, CortexUnreadable, MatchType, MealComparison, MealDriver,
         MealEmployee, MealPaycom, MealPeriod, MealPeriodGaps, MealSource, PeriodMealGap,
@@ -94,6 +95,7 @@ pub const FEATURE: Feature = Feature {
             &[
                 "meal_schema",
                 "meal_publications",
+                "meal_publication_jobs",
                 "meal_itineraries",
                 "meal_delivery_events",
                 "meal_breaks",
@@ -137,6 +139,13 @@ pub const FEATURE: Feature = Feature {
                     id: 3,
                     name: "meal_unreadable",
                     apply: Sql(include_str!("migrations/cortex/0003_meal_unreadable.sql")),
+                },
+                Migration {
+                    id: 4,
+                    name: "meal_publication_jobs",
+                    apply: Sql(include_str!(
+                        "migrations/cortex/0004_meal_publication_jobs.sql"
+                    )),
                 },
             ],
         },
@@ -218,5 +227,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         MealPeriodGaps,
         PeriodMealGap,
         EmployeeTimecardResponse,
+        EmployeeSyncSource,
+        EmployeeSyncStatus,
     )
 }

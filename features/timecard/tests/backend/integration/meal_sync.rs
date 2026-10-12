@@ -163,7 +163,7 @@ fn invalid_dates_missing_connections_and_capacity_never_queue_half_a_sync() {
         );
     }
     assert!(jobs(&db, &id).is_empty());
-    for i in 2..=5 {
+    for i in 2..=15 {
         seed(&db, &id, "2026-01-10", i);
     }
     assert_eq!(
@@ -187,6 +187,178 @@ fn invalid_dates_missing_connections_and_capacity_never_queue_half_a_sync() {
         serde_json::from_str::<Value>(&db.job_row(&jobs(&db, &id)[0].id, None).unwrap().request)
             .unwrap()
     );
+}
+
+#[test]
+fn employee_period_batches_all_proven_scopes_without_an_employee_or_station_job_limit() {
+    install();
+    let (_root, db, id, actor) = fixture();
+    let zone = db.find_dsp(&id).unwrap().timezone;
+    db.publish_timecards(&id, &paycom::fixtures::fixture(&zone).unwrap())
+        .unwrap();
+    let latest = db.timecard_period(&id, None, None, None).unwrap();
+    let period = latest.shift(-1).unwrap();
+    enable(&db, &id, paycom::PROVIDER);
+    enable(&db, &id, cortex::PROVIDER);
+    // No single day holds all scope identities. Every day in the period must collect
+    // their union, including a station not yet collected for this period.
+    for index in 1..=5 {
+        let date = (period.start().unwrap() + chrono::Duration::days(index as i64)).to_string();
+        seed(&db, &id, &date, index);
+    }
+    seed(&db, &id, &period.shift(-1).unwrap().from, 6);
+    let queued = db
+        .enqueue_employee_sync(&id, &actor, "period:ñ", &period)
+        .unwrap();
+    assert_eq!(queued.paycom.total, 1);
+    assert_eq!(queued.cortex.total, 14);
+    assert_eq!(jobs(&db, &id).len(), 15);
+    assert_eq!(queued.through, period.to);
+    let paycom: Value = serde_json::from_str(
+        &db.job_row(&queued.paycom.jobs[0].id, Some(&id))
+            .unwrap()
+            .request,
+    )
+    .unwrap();
+    assert_eq!(
+        paycom,
+        json!({"allEmployees":true,"from":period.from,"to":period.to})
+    );
+    let mut dates = Vec::new();
+    for job in &queued.cortex.jobs {
+        let value: Value =
+            serde_json::from_str(&db.job_row(&job.id, Some(&id)).unwrap().request).unwrap();
+        let request = meals::DayRequest::parse(&value).unwrap().unwrap();
+        assert_eq!(request.scope_requests.len(), 6);
+        assert!(
+            value["scopeRequests"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|scope| scope["date"] == request.date)
+        );
+        dates.push(request.date);
+    }
+    assert_eq!(dates.first().unwrap(), &period.from);
+    assert_eq!(dates.last().unwrap(), &period.to);
+    db.cancel_dsp(&id).unwrap();
+    seed(&db, &id, &period.from, 7);
+    // An accepted request remains replayable when the connection later goes off.
+    for provider in [paycom::PROVIDER, cortex::PROVIDER] {
+        db.collector(&id, provider)
+            .unwrap()
+            .exec("UPDATE connections SET enabled=0", [])
+            .unwrap();
+    }
+    let replay = db
+        .enqueue_employee_sync(&id, &actor, "period:ñ", &period)
+        .unwrap();
+    assert!(!replay.paycom.enabled && !replay.cortex.enabled);
+    assert_eq!(queued.paycom.jobs[0].id, replay.paycom.jobs[0].id);
+    assert_eq!(
+        queued
+            .cortex
+            .jobs
+            .iter()
+            .map(|job| &job.id)
+            .collect::<Vec<_>>(),
+        replay
+            .cortex
+            .jobs
+            .iter()
+            .map(|job| &job.id)
+            .collect::<Vec<_>>(),
+    );
+    assert_eq!(
+        db.enqueue_employee_sync(&id, &actor, "period:ñ", &latest)
+            .unwrap_err()
+            .code,
+        "idempotency_conflict"
+    );
+    assert_eq!(
+        db.employee_sync_status(&id, &period, None)
+            .unwrap()
+            .request_id
+            .as_deref(),
+        Some("period:ñ")
+    );
+}
+
+#[test]
+fn employee_period_sync_reserves_both_sources_and_retains_cutoff_and_all_day_outcomes() {
+    install();
+    let (_root, db, id, actor) = fixture();
+    let zone = db.find_dsp(&id).unwrap().timezone;
+    db.publish_timecards(&id, &paycom::fixtures::fixture(&zone).unwrap())
+        .unwrap();
+    let period = db.timecard_period(&id, None, None, None).unwrap();
+    enable(&db, &id, paycom::PROVIDER);
+    assert_eq!(
+        db.enqueue_employee_sync(&id, &actor, "limited", &period)
+            .unwrap_err()
+            .code,
+        "meal_sync_flex_required"
+    );
+    assert!(jobs(&db, &id).is_empty());
+    enable(&db, &id, cortex::PROVIDER);
+    assert_eq!(
+        db.enqueue_employee_sync(&id, &actor, "limited", &period)
+            .unwrap_err()
+            .code,
+        "meal_sync_scope_required"
+    );
+    assert!(jobs(&db, &id).is_empty());
+    db.set_profile(&id, json!({"stationCode":"TST1","abbreviation":"TEST"}))
+        .unwrap();
+    let queued = db
+        .enqueue_employee_sync(&id, &actor, "limited", &period)
+        .unwrap();
+    let today = db.local_date(&id).unwrap();
+    assert_eq!(queued.through, today);
+    let days = (today.parse::<chrono::NaiveDate>().unwrap() - period.start().unwrap()).num_days()
+        as usize
+        + 1;
+    assert_eq!(queued.cortex.total, days);
+    let dates: Vec<_> = queued
+        .cortex
+        .jobs
+        .iter()
+        .map(|job| {
+            let value: Value =
+                serde_json::from_str(&db.job_row(&job.id, Some(&id)).unwrap().request).unwrap();
+            assert!(value["scopeRequests"][0].get("serviceAreaId").is_none());
+            value["date"].as_str().unwrap().to_owned()
+        })
+        .collect();
+    assert_eq!(dates.last().unwrap(), &today);
+    common::set_every_status(&db, "succeeded").unwrap();
+    common::set_job_status(&db, &queued.cortex.jobs[0].id, "failed").unwrap();
+    let failed = db.employee_sync_status(&id, &period, None).unwrap();
+    assert!(!failed.complete && !failed.active);
+    assert_eq!(failed.cortex.failed, 1);
+    assert_eq!(failed.cortex.completed, days - 1);
+    assert!(failed.cortex.progress < 100);
+    // A later successful date must never hide this failed first date.
+    common::set_job_status(&db, &queued.cortex.jobs[0].id, "waiting_verification").unwrap();
+    let active = db.employee_sync_status(&id, &period, None).unwrap();
+    assert!(active.active && active.cortex.active && !active.complete);
+    assert_eq!(
+        db.enqueue_employee_sync(&id, &actor, "overlap", &period)
+            .unwrap_err()
+            .code,
+        "sync_in_progress"
+    );
+    common::set_job_status(&db, &queued.cortex.jobs[0].id, "cancelled").unwrap();
+    let cancelled = db
+        .employee_sync_status(&id, &period, Some("limited"))
+        .unwrap();
+    assert_eq!(cancelled.cortex.cancelled, 1);
+    assert!(!cancelled.complete);
+    common::set_job_status(&db, &queued.cortex.jobs[0].id, "succeeded").unwrap();
+    let complete = db.employee_sync_status(&id, &period, None).unwrap();
+    assert!(complete.complete);
+    assert_eq!(complete.paycom.progress, 100);
+    assert_eq!(complete.cortex.progress, 100);
 }
 
 #[test]

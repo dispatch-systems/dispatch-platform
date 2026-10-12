@@ -3,6 +3,7 @@ use crate::api::{
     assessment::{AssessedClock, Lunch, PaycomDay, PunchEvent},
     types::{EmployeeTimecard, Punch, Timecard},
 };
+use chrono::TimeZone;
 
 // Collected display strings historically used JavaScript's whitespace rules.
 fn clock_space(c: char) -> bool {
@@ -139,12 +140,75 @@ pub fn paycom_day(status: &str, punches: &[Punch]) -> PaycomDay {
     result
 }
 
+enum WorkState {
+    Outside,
+    Working(i64),
+    Meal,
+}
+
+// Sum only complete on-clock segments. Reported hours can include paid leave and
+// already exclude meals, so they cannot safely supply or adjust worked time.
+fn worked_minutes(card: &Timecard, day: &PaycomDay, timezone: &str) -> Option<i32> {
+    if day.review || !matches!(card.status.as_str(), "Complete" | "No punches") {
+        return None;
+    }
+    if day.events.is_empty() {
+        return (card.punches.is_empty() && card.hours == 0.0).then_some(0);
+    }
+    if card.status != "Complete" {
+        return None;
+    }
+    let timezone: chrono_tz::Tz = timezone.parse().ok()?;
+    let midnight = card
+        .date
+        .parse::<chrono::NaiveDate>()
+        .ok()?
+        .and_hms_opt(0, 0, 0)?;
+    let mut state = WorkState::Outside;
+    let mut total: i32 = 0;
+    let mut previous = i64::MIN;
+    let mut closed = false;
+    for event in &day.events {
+        let local = midnight.checked_add_signed(chrono::Duration::minutes(i64::from(
+            event.time.as_ref()?.minute,
+        )))?;
+        // Repeated or skipped local clocks cannot establish an unambiguous duration.
+        let minute = timezone
+            .from_local_datetime(&local)
+            .single()?
+            .timestamp()
+            .div_euclid(60);
+        if minute < previous {
+            return None;
+        }
+        previous = minute;
+        state = match (state, event.kind.as_str()) {
+            (WorkState::Outside, "IN DAY") => WorkState::Working(minute),
+            (WorkState::Working(start), "OUT LUNCH") => {
+                total = total.checked_add(i32::try_from(minute - start).ok()?)?;
+                WorkState::Meal
+            }
+            (WorkState::Meal, "IN LUNCH") => WorkState::Working(minute),
+            (WorkState::Working(start), "OUT DAY") => {
+                total = total.checked_add(i32::try_from(minute - start).ok()?)?;
+                closed = true;
+                WorkState::Outside
+            }
+            _ => return None,
+        };
+    }
+    (closed && matches!(state, WorkState::Outside)).then_some(total)
+}
+
 impl Timecard {
-    pub fn assessed(self) -> EmployeeTimecard {
+    pub fn assessed(self, timezone: &str) -> EmployeeTimecard {
         let assessment = paycom_day(&self.status, &self.punches);
+        let worked = worked_minutes(&self, &assessment, timezone);
         EmployeeTimecard {
             card: self,
             assessment,
+            regular_minutes: worked.map(|minutes| minutes.min(480)),
+            overtime_minutes: worked.map(|minutes| (minutes - 480).max(0)),
         }
     }
 }

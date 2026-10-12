@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { EmployeeTimecardPeriod } from '../../../api/index.js';
 import { useMealPeriod } from '../../../api/client.js';
 import {
@@ -15,26 +14,15 @@ import { mealColumns, mealLines, type MealLine } from '../meal-breaks/mealColumn
 import { MealGapSummary } from '../meal-breaks/MealGapSummary.js';
 import '../meal-breaks/meal-breaks.css';
 
-type Day = { id: string; date: string; line?: MealLine; status?: string; more?: Day[] };
+type Day = { id: string; date: string; line?: MealLine; status?: string };
 const columns: TableColumn<Day>[] = [
   {
     id: 'date',
     header: 'Date',
     rowHeader: true,
     sticky: true,
-    cell: (day, { expanded, toggle }) => (
+    cell: (day) => (
       <div className="meal-employee">
-        {day.line && day.line.index === 0 && (
-          <button
-            type="button"
-            className="meal-expand"
-            aria-expanded={expanded}
-            aria-label={`Details for ${day.date}`}
-            onClick={toggle}
-          >
-            {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </button>
-        )}
         <span>{day.line?.index ? `Meal ${day.line.index + 1}` : timecardDate(day.date)}</span>
       </div>
     ),
@@ -63,31 +51,33 @@ const columns: TableColumn<Day>[] = [
 export function EmployeeMeals({
   code,
   period,
+  periodError,
+  onRetryPeriod,
   today,
   refreshKey,
   focusDate,
 }: {
   code: string;
-  period: EmployeeTimecardPeriod;
+  period?: EmployeeTimecardPeriod;
+  periodError: string;
+  onRetryPeriod: () => void;
   today: string;
   refreshKey: string;
   focusDate?: string;
 }) {
   const request = useMealPeriod(`paycom:${code}`, period, refreshKey);
+  const error = period ? request.error : periodError;
   const rows = useMemo(() => {
+    if (!period || !request.data) return [];
     const days: Day[] = [];
-    const byDate = new Map(request.data?.days.map((day) => [day.date, day]));
+    const byDate = new Map(request.data.days.map((day) => [day.date, day]));
     for (let date = period.from; date <= period.to; date = addDays(date, 1)) {
       const day = byDate.get(date);
       const row = day?.rows[0];
       if (row) {
         const line = mealLines(row, displayMeal(row), '', date);
-        days.push({
-          id: date,
-          date,
-          line,
-          more: line.more?.map((line) => ({ id: `${date}:${line.index}`, date, line })),
-        });
+        for (const meal of [line, ...(line.more ?? [])])
+          days.push({ id: `${date}:${meal.index}`, date, line: meal });
       } else
         days.push({
           id: date,
@@ -101,46 +91,50 @@ export function EmployeeMeals({
         });
     }
     return days;
-  }, [request.data, period.from, period.to, today]);
-  const table = useDataTable({ columns, rows, rowId: (day) => day.id, subRows: (day) => day.more });
+  }, [request.data, period?.from, period?.to, today]);
+  const table = useDataTable({ columns, rows, rowId: (day) => day.id });
   const region = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (request.data && focusDate)
       region.current?.querySelector('.meal-focused-day')?.scrollIntoView({ block: 'nearest' });
   }, [request.data, focusDate]);
   return (
-    <div className="employee-meals meal-page">
-      <DataState data={request.data} error={request.error} failed={!!request.error}>
-        {(data) => (
-          <>
-            <MealGapSummary data={data} compact />
-            <div
-              ref={region}
-              className="table-wrap meal-table-scroll"
-              role="region"
-              aria-label="Employee meal breaks"
-              tabIndex={0}
+    <div className="employee-meals meal-page" aria-busy={!request.data && !error}>
+      <div className="employee-meals-summary">
+        {request.data && <MealGapSummary data={request.data} compact />}
+      </div>
+      <div className="employee-timecard-body">
+        <div
+          ref={region}
+          className="table-wrap meal-table-scroll employee-meals-scroll"
+          role="region"
+          aria-label="Employee meal breaks"
+          tabIndex={0}
+        >
+          <DataTable
+            table={table}
+            className="meal-table"
+            label="Employee meal breaks"
+            rowClassName={(day) =>
+              [day.date === focusDate && 'meal-focused-day', day.line?.index && 'meal-extra']
+                .filter(Boolean)
+                .join(' ') || undefined
+            }
+          />
+        </div>
+        {!request.data && (
+          <div className="employee-timecard-state">
+            <DataState
+              data={request.data}
+              error={error}
+              failed={!!error}
+              retry={period ? request.refresh : onRetryPeriod}
             >
-              <DataTable
-                table={table}
-                className="meal-table"
-                label="Employee meal breaks"
-                rowClassName={(day) =>
-                  day.date === focusDate
-                    ? 'meal-focused-day'
-                    : day.line?.index
-                      ? 'meal-extra'
-                      : undefined
-                }
-                renderDetail={(day) =>
-                  day.line ? <MealGapSummary data={data} date={day.date} /> : null
-                }
-                detailClassName="meal-detail"
-              />
-            </div>
-          </>
+              {() => null}
+            </DataState>
+          </div>
         )}
-      </DataState>
+      </div>
     </div>
   );
 }

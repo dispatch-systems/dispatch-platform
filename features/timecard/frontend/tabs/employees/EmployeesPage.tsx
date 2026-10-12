@@ -66,14 +66,22 @@ export function EmployeesPage({
     data?.employees.find((person) => person.code === selection?.code) ??
     (selection?.date ? undefined : data?.employees[0]);
   const code = selection?.date ? selection.code : (directoryEmployee?.code ?? '');
-  const period = code === selection?.code ? selection.period : null;
+  const period = selection?.period ?? null;
   const timecard = useEmployeeTimecard(code, period, refreshKey, selection?.date);
+  const shownPeriod =
+    period ??
+    timecard.data?.period ??
+    (timecard.stale?.employee.code === code &&
+    (!selection?.date ||
+      (timecard.stale.period.from <= selection.date && timecard.stale.period.to >= selection.date))
+      ? timecard.stale.period
+      : null);
   const employee =
     directoryEmployee ??
     (timecard.data?.employee.code === code ? timecard.data.employee : undefined) ??
     (timecard.stale?.employee.code === code ? timecard.stale.employee : undefined);
-  const clearLinkedDate = () => {
-    if (selection?.date) setSelection({ code: selection.code, period: null });
+  const preservePeriod = () => {
+    if (code) setSelection({ code, period: shownPeriod });
   };
   const directory = useRef<HTMLUListElement>(null);
   const visibleCodes = data?.employees.map((person) => person.code).join(',');
@@ -86,7 +94,9 @@ export function EmployeesPage({
         prefetchData(
           entries
             .filter((entry) => entry.isIntersecting)
-            .map((entry) => employeeTimecardUrl((entry.target as HTMLElement).dataset.employee!)),
+            .map((entry) =>
+              employeeTimecardUrl((entry.target as HTMLElement).dataset.employee!, shownPeriod),
+            ),
           { owner },
         );
       },
@@ -97,7 +107,7 @@ export function EmployeesPage({
       observer.disconnect();
       cancelPrefetches(owner);
     };
-  }, [visibleCodes]);
+  }, [visibleCodes, shownPeriod?.from, shownPeriod?.to]);
   return (
     <section className="employees-page" aria-label="Employees">
       <div className="employees-heading">
@@ -116,7 +126,7 @@ export function EmployeesPage({
           placeholder="Search employees…"
           value={query}
           onChange={(value) => {
-            clearLinkedDate();
+            preservePeriod();
             setQuery(value);
           }}
         />
@@ -127,7 +137,7 @@ export function EmployeesPage({
               type="button"
               aria-pressed={status === value}
               onClick={() => {
-                clearLinkedDate();
+                preservePeriod();
                 setStatus(value);
                 setPage(0);
               }}
@@ -140,7 +150,7 @@ export function EmployeesPage({
           type="button"
           aria-label={desc ? 'Sort employees A to Z' : 'Sort employees Z to A'}
           onClick={() => {
-            clearLinkedDate();
+            preservePeriod();
             setDesc(!desc);
             setPage(0);
           }}
@@ -167,15 +177,15 @@ export function EmployeesPage({
                           className="employees-person"
                           data-employee={person.code}
                           aria-pressed={person.code === code}
-                          onClick={() => setSelection({ code: person.code, period: null })}
+                          onClick={() => setSelection({ code: person.code, period: shownPeriod })}
                           onPointerEnter={() =>
-                            prefetchData([employeeTimecardUrl(person.code)], {
+                            prefetchData([employeeTimecardUrl(person.code, shownPeriod)], {
                               owner: 'employees:directory',
                               priority: true,
                             })
                           }
                           onFocus={() =>
-                            prefetchData([employeeTimecardUrl(person.code)], {
+                            prefetchData([employeeTimecardUrl(person.code, shownPeriod)], {
                               owner: 'employees:directory',
                               priority: true,
                             })
@@ -193,12 +203,16 @@ export function EmployeesPage({
                     pageSize={performancePolicy.employeePageSize}
                     total={data.total}
                     onChange={(page) => {
-                      clearLinkedDate();
+                      preservePeriod();
                       setPage(page);
                     }}
                   />
                 </nav>
-                <DataState data={employee} error={timecard.error} failed={!!timecard.error}>
+                <DataState
+                  data={employee}
+                  error={employee ? '' : timecard.error}
+                  failed={!!timecard.error}
+                >
                   {(employee) => (
                     <EmployeeDetail
                       key={employee.code}

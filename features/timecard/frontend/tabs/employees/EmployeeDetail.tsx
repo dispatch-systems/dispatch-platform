@@ -1,4 +1,8 @@
-import type { Employee, EmployeeTimecardPeriod } from '../../../api/index.js';
+import type {
+  Employee,
+  EmployeeTimecardPeriod,
+  EmployeeTimecardResponse,
+} from '../../../api/index.js';
 import type { useEmployeeTimecard } from '../../../api/client.js';
 import { Badge } from '../../../../../core/shell/frontend/ui/index.js';
 import { EmployeeAvatar } from './EmployeeAvatar.js';
@@ -30,9 +34,14 @@ export function EmployeeDetail({
   focusDate?: string;
 }) {
   const { data, stale, error, refresh } = timecard;
-  const shown = data ?? (stale?.employee.code === employee.code ? stale : undefined);
+  const matches = (value: EmployeeTimecardResponse | undefined) =>
+    value?.employee.code === employee.code &&
+    (!period || (value.period.from === period.from && value.period.to === period.to)) &&
+    (!focusDate || (value.period.from <= focusDate && value.period.to >= focusDate));
+  const current = matches(data) ? data : undefined;
+  const shown = current ?? (matches(stale) ? stale : undefined);
   const person = shown?.employee ?? employee;
-  const busy = !data && !error;
+  const busy = !current && !error;
   let status = shown?.nextPeriod ? 'Previous timecard' : 'Latest';
   if (shown && !shown.collectedAt) status = 'Not collected';
   if (busy) status = 'Loading…';
@@ -42,15 +51,15 @@ export function EmployeeDetail({
     <section className="employee-detail" aria-label="Employee details">
       <div className="employee-detail-heading">
         <EmployeeAvatar name={person.name} />
+        <div className="employee-identity">
+          <h3 title={person.name}>{person.name}</h3>
+          <div className="employee-position" title={person.position}>
+            {person.position || '\u00a0'}
+          </div>
+        </div>
         <Badge value={person.active ? 'active' : 'inactive'} />
       </div>
-      <div className="employee-identity">
-        <h3 title={person.name}>{person.name}</h3>
-        <div className="employee-position" title={person.position}>
-          {person.position || '\u00a0'}
-        </div>
-      </div>
-      <div className="employee-timecard-section" aria-busy={!data && !error}>
+      <div className="employee-timecard-section" aria-busy={busy}>
         <div className="employee-timecard-heading">
           <div className="employees-filters" role="group" aria-label="Employee view">
             <button
@@ -80,11 +89,12 @@ export function EmployeeDetail({
           busy={busy}
           onChange={onPeriodChange}
         />
-        {employeeView === 'meals' && shownPeriod ? (
+        {employeeView === 'meals' ? (
           <EmployeeMeals
-            key={`${employee.code}:${shownPeriod.from}`}
             code={employee.code}
             period={shownPeriod}
+            periodError={shownPeriod ? '' : error}
+            onRetryPeriod={refresh}
             today={today}
             refreshKey={refreshKey}
             focusDate={focusDate}

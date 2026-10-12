@@ -1,0 +1,19 @@
+.employee-period-sync,
+.employee-period-sources,
+.employee-period-source {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.employee-period-sync {
+  justify-content: flex-end;
+  gap: 12px;
+}
+.employee-period-source {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.employee-period-sync .error-box {
+  flex-basis: 100%;
+}

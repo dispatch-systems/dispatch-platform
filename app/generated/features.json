@@ -535,6 +535,10 @@
         {
           "id": 3,
           "name": "meal_unreadable"
+        },
+        {
+          "id": 4,
+          "name": "meal_publication_jobs"
         }
       ],
       "paycom": [
@@ -605,6 +609,8 @@
         "POST /api/dsp/jobs/{id}/cancel",
         "GET /api/dsp/jobs/meal-breaks",
         "POST /api/dsp/jobs/meal-breaks",
+        "GET /api/dsp/jobs/employees",
+        "POST /api/dsp/jobs/employees",
         "POST /api/dsp/cortex/meal-breaks/collect",
         "GET /api/dsp/schedules",
         "POST /api/dsp/schedules",
@@ -622,6 +628,7 @@
         "meal_breaks",
         "meal_delivery_events",
         "meal_itineraries",
+        "meal_publication_jobs",
         "meal_publications",
         "meal_record_schema",
         "meal_records",

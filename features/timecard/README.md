@@ -23,6 +23,26 @@ Timecard's collections. It names drivers through Driver Match.
   `POST …/jobs/meal-breaks` (a day's meal breaks from both sources), `…/employees/{code}/sync`
   and `…/cortex/meal-breaks/collect`. Behind `timecard.manage`, `POST …/paycom/settings` and
   its schedules under `/api/dsp/schedules`. A tab switched off answers its routes 404.
+- **Employee workspace:** the directory scrolls independently of the selected detail.
+  Changing a person, filter or detail view preserves the displayed period. Meal comparisons
+  are flat rows, including additional meals. Regular and overtime minutes come from complete
+  on-clock punch segments in the DSP's timezone, excluding every off-clock meal. Each day's
+  first 480 minutes are regular and its remainder is overtime; period totals sum those daily
+  splits. Missing punches, paid leave without worked punches, and ambiguous or nonexistent
+  daylight-saving clocks have unknown worked totals and count as incomplete days.
+- **Employee sync:** `GET /api/dsp/jobs/employees` behind `timecard.view` reports the displayed
+  `from`/`to`, optionally pinned to `requestId`. `POST` behind `collections.run` accepts those
+  bounds and a request ID, independent of the selected employee and directory filters. It
+  atomically queues one Paycom job for every known employee plus one Cortex bundle for each
+  elapsed DSP-local date through today: at most 15 jobs for a 14-day period. Bundles capture
+  every proven tenant station/area/provider identity, preferring period evidence and filling
+  missing identities from that tenant's history; initial collection uses tenant discovery.
+  Both connections and a valid scope are required before any jobs are queued. Source status
+  follows the exact immutable accepted jobs, including failures and cancellations. Retries
+  preserve their bounds, dates and scopes. Historical Paycom refreshes preserve the newest
+  directory roster; employees retained from history are collected even if absent from the
+  active source roster. An inaccessible known employee fails the job rather than becoming
+  zero hours; inactive employees never seen by the application cannot be inferred.
 - **Schedules:** of Paycom's timecards, Cortex's meal breaks, or `both` at once.
 - **Live results:** the page follows collections through core's live collection updates, one
   waiting request for every tab, and refreshes only the days and employees a result changed.
@@ -39,3 +59,7 @@ Timecard's collections. It names drivers through Driver Match.
   finished routes are not read again. A route whose meal punches Cortex sent in a shape the
   meal rules can't read is kept in `meal_unreadable`, and its driver reads as
   `cortex_unreadable` (Check Cortex punches), linked to the route, rather than as no meal.
+  Cortex migration `0004_meal_publication_jobs` adds only the mapping from bundled scope
+  publications to their actual collection job. Each day validates and publishes all scopes
+  in one transaction. Existing meal fields and privacy cleanup remain unchanged. The additive
+  table can remain during a code rollback; do not remove it or rewrite shipped migrations.

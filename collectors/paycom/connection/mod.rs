@@ -387,6 +387,7 @@ impl Drives for Driver {
     }
     fn collect<'a>(&'a mut self, run: &'a Run<'a>) -> Pending<'a, Collected> {
         Box::pin(async move {
+            let period_scope = crate::timecards::PeriodSync::parse(run.request)?;
             if let Some(scope) = crate::timecards::EmployeeSync::parse(run.request)? {
                 let code = scope.employee_code.clone();
                 let job = run.job.to_owned();
@@ -407,10 +408,41 @@ impl Drives for Driver {
                     .await?;
                 return Ok(Collected { data, scope: None });
             }
+            let known = if let Some(scope) = &period_scope {
+                scope.date(run.timezone)?;
+                let job = run.job.to_owned();
+                let owner = run.owner.to_owned();
+                run.state
+                    .read(move |store| {
+                        let dsp = store.guard(&job, &owner)?;
+                        dispatch_core::manifest::registry()
+                            .keeper(crate::timecards::JOB_KIND)
+                            .kept(store, &dsp.id, &json!({"allEmployees":true}))
+                    })
+                    .await?
+            } else {
+                Value::Null
+            };
+            let requested = period_scope
+                .as_ref()
+                .map(crate::timecards::PeriodSync::period);
+            let selection = if let Some(period) = &requested {
+                crate::timecards::collect::Selection::Period(
+                    period,
+                    known
+                        .as_array()
+                        .ok_or_else(|| dispatch_core::Error::new("invalid_workforce", 502))?,
+                )
+            } else {
+                crate::timecards::collect::Selection::Date(crate::timecards::collection_date(
+                    run.request,
+                    run.timezone,
+                )?)
+            };
             let data = Driver::collect(
                 self,
                 run.timezone,
-                crate::timecards::collection_date(run.request, run.timezone)?,
+                selection,
                 run.metrics,
                 Some(&crate::timecards::Checkpoint::new(
                     run.state.clone(),
@@ -421,6 +453,9 @@ impl Drives for Driver {
                 run.attempt == 1,
             )
             .await?;
+            if let Some(scope) = period_scope {
+                scope.validate_capture(&data)?;
+            }
             Ok(Collected { data, scope: None })
         })
     }

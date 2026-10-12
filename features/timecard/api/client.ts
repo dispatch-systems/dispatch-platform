@@ -7,6 +7,7 @@ import type {
   DailyTimecards,
   EmployeeTimecardPeriod,
   EmployeeTimecardResponse,
+  EmployeeSyncStatus,
   EmployeesResponse,
   MealComparison,
   MealPeriod,
@@ -14,7 +15,7 @@ import type {
   PaycomPreferences,
   PaycomSettings,
 } from './index.js';
-import type { Job, ScheduleInput } from '../../../core/collection/api/index.js';
+import type { ScheduleInput } from '../../../core/collection/api/index.js';
 import {
   dailyTimecardsUrl,
   employeeTimecardUrl,
@@ -46,11 +47,8 @@ export const previewSchedule = (
   },
   signal: AbortSignal,
 ) => api<{ nextRun: string }>(`${schedules}/preview`, timing, signal);
-export const syncEmployeeTimecard = (
-  code: string,
-  period: EmployeeTimecardPeriod,
-  requestId: string,
-) => api<Job>(`/api/dsp/employees/${encodeURIComponent(code)}/sync`, { requestId, ...period });
+export const syncEmployeePeriod = (period: EmployeeTimecardPeriod, requestId: string) =>
+  api<EmployeeSyncStatus>('/api/dsp/jobs/employees', { requestId, ...period });
 export const useEmployeeTimecard = (
   code: string,
   period: EmployeeTimecardPeriod | null,

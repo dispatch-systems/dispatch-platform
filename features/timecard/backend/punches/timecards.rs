@@ -73,6 +73,23 @@ pub(crate) fn paycom_employee(store: &Store, id: &str, code: &str) -> Result<Val
     boolean(&mut employee, &["active"]);
     Ok(employee)
 }
+
+/// Unfiltered, DSP-local metadata for every known employee, including older rosters.
+pub(crate) fn known_paycom_employees(store: &Store, id: &str) -> Result<Vec<Value>> {
+    let mut employees = store.collector(id, paycom::PROVIDER)?.all(
+        "WITH newest AS (SELECT e.code,e.name,e.department,e.position,e.station,e.active, \
+         row_number() OVER (PARTITION BY e.code COLLATE NOCASE ORDER BY p.period_to DESC, \
+         p.period_from DESC,p.collected_at DESC,p.rowid DESC) ordinal \
+         FROM employees e JOIN publications p ON p.id=e.publication_id) \
+         SELECT code,name,department,position,station,active FROM newest WHERE ordinal=1 ORDER BY code",
+        [],
+    )?;
+    ensure(employees.len() <= 5000, "invalid_workforce", 502)?;
+    for employee in &mut employees {
+        boolean(employee, &["active"]);
+    }
+    Ok(employees)
+}
 pub(crate) fn employee_timecard(
     store: &Store,
     id: &str,
@@ -137,11 +154,12 @@ pub(crate) fn employee_timecard(
             ("to", period.to.as_str()),
         ],
     )?;
+    let timezone = store.find_dsp(id)?.timezone;
     Ok(EmployeeTimecardResponse {
         employee: serde_json::from_value(employee)?,
         timecards: timecards
             .into_iter()
-            .map(|card| Ok(serde_json::from_value::<Timecard>(card)?.assessed()))
+            .map(|card| Ok(serde_json::from_value::<Timecard>(card)?.assessed(&timezone)))
             .collect::<Result<_>>()?,
         period: period.clone(),
         collected_at,

@@ -68,7 +68,7 @@ export function executionPage(quirks: Quirks = {}, props: object = {}): string {
         fiber.memoizedProps = { ...list, isLoadingItineraryDetails: false, itineraryDetails: details };
       };
       request.open('GET', '${itineraryApi}?documentType=Itinerary&historicalDay=true&itineraryId=' +
-        encodeURIComponent(quirks.show || id) + '&serviceAreaId=area-1');
+        encodeURIComponent(quirks.show || id) + '&serviceAreaId=' + encodeURIComponent(list.serviceAreaId));
       request.send();
     };
     addEventListener('popstate', () => show(true));
@@ -85,7 +85,7 @@ export function executionPage(quirks: Quirks = {}, props: object = {}): string {
       };
       show(false);
     };
-    summaries.open('GET', '${summariesApi}?historicalDay=false&localDate=' + day + '&serviceAreaId=area-1');
+    summaries.open('GET', '${summariesApi}?historicalDay=false&localDate=' + day + '&serviceAreaId=' + encodeURIComponent(list.serviceAreaId));
     summaries.send();
   </script>`;
 }

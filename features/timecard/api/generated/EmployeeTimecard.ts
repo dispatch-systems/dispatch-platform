@@ -2,4 +2,4 @@
 import type { PaycomDay } from "./PaycomDay";
 import type { Punch } from "./Punch";
 
-export type EmployeeTimecard = { assessment: PaycomDay, employeeCode: string, date: string, hours: number, status: string, punches: Array<Punch>, sourceUrl?: string | null, };
+export type EmployeeTimecard = { assessment: PaycomDay, regularMinutes: number | null, overtimeMinutes: number | null, employeeCode: string, date: string, hours: number, status: string, punches: Array<Punch>, sourceUrl?: string | null, };

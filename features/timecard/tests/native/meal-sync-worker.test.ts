@@ -15,8 +15,8 @@ import {
 
 const native = process.env.DISPATCH_TEST_NATIVE !== '1';
 test(
-  'first Sync Now discovers Cortex scope and publishes both sources through BrowserOS',
-  { skip: native, timeout: 120000 },
+  'Sync Now discovers both sources and a bundled Cortex job collects every snapshotted station',
+  { skip: native, timeout: 180000 },
   async (t) => {
     const date = '2026-09-06';
     const start = Date.parse(`${date}T20:00:00Z`);
@@ -59,7 +59,7 @@ test(
             itineraryDetails: {
               ...candidate,
               localDate: [2026, 9, 6],
-              serviceAreaId: 'area-1',
+              serviceAreaId: url.searchParams.get('serviceAreaId'),
               unknownStops: [],
               inactiveTasks: [],
               stops: [start - 60000, start + 1860000].map((time, i) => ({
@@ -103,10 +103,17 @@ test(
         return true;
       }
       res.setHeader('Content-Type', 'text/html');
+      const area = url.searchParams.get('serviceAreaId')!;
       res.end(
         executionPage(
           {},
           {
+            serviceAreaId: area,
+            selectedStation: {
+              serviceAreaID: area,
+              defaultStationCode: area === 'area-2' ? 'ABC1' : 'TST1',
+              timeZone: 'US/Pacific',
+            },
             providerFilterOptions: [
               { value: 'ALL_DRIVERS', label: 'All Drivers' },
               { value: 'ALL_DSPS' },
@@ -173,5 +180,65 @@ test(
       (await owner.post('/api/dsp/jobs/meal-breaks', request)).value.jobs.map((j: any) => j.id),
       queued.value.jobs.map((j: any) => j.id),
     );
+    // Exercise the persisted day-bundle format through the ordinary native scheduler,
+    // driver, live writer and keeper. The API's period fan-out is covered at its own layer.
+    const source = queued.value.jobs.find((job: any) => job.kind === 'cortex.meal_breaks.collect');
+    const bundleId = 'job_cortex_scope_bundle';
+    f.database('data/preview/jobs.sqlite', (db) => {
+      db.exec('PRAGMA busy_timeout=5000');
+      const inserted = db
+        .prepare(
+          `INSERT INTO jobs
+        (id,dsp_id,environment,kind,status,available_at,created_at,release,actor_id,connection_revision,idempotency_key,request)
+        SELECT ?,dsp_id,environment,kind,'queued',?,?,release,actor_id,connection_revision,?,?
+        FROM jobs WHERE id=?`,
+        )
+        .run(
+          bundleId,
+          Date.now(),
+          new Date().toISOString(),
+          bundleId,
+          JSON.stringify({
+            date,
+            scopeRequests: [
+              {
+                date,
+                station: 'TST1',
+                serviceAreaId: 'area-1',
+                provider: 'provider-1',
+                timezone: 'America/Los_Angeles',
+              },
+              {
+                date,
+                station: 'ABC1',
+                serviceAreaId: 'area-2',
+                provider: 'provider-1',
+                timezone: 'America/Los_Angeles',
+              },
+            ],
+          }),
+          source.id,
+        );
+      assert.equal(Number(inserted.changes), 1);
+    });
+    let bundled: any;
+    await until(async () => {
+      bundled = (await owner.read('/api/dsp/jobs')).find((job: any) => job.id === bundleId);
+      assert.notEqual(bundled?.status, 'failed', JSON.stringify(bundled));
+      return bundled?.status === 'succeeded';
+    }, 60000);
+    const both = (await owner.get(`/api/dsp/cortex/meal-breaks?date=${date}`)).value;
+    assert.equal(both.length, 2);
+    assert.deepEqual(
+      both.map((publication: any) => publication.station),
+      ['ABC1', 'TST1'],
+    );
+    assert(
+      both.every(
+        (publication: any) => publication.jobId === bundleId && publication.mealCount === 1,
+      ),
+    );
+    assert.equal(bundled.metrics.at(-1).itineraries, 2);
+    assert.equal(bundled.metrics.at(-1).meals, 2);
   },
 );

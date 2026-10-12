@@ -2,6 +2,7 @@
 //! employees, timecards and preferences, and the meal breaks Cortex reports. Each method is
 //! written beside the rest of its part of Timecard.
 use crate::api::{
+    employee_sync::EmployeeSyncStatus,
     meals::{MealComparison, MealPeriod, MealPeriodGaps},
     types::{DailyTimecards, EmployeeTimecardResponse, EmployeesResponse},
 };
@@ -12,6 +13,19 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 pub trait TimecardStore {
+    fn employee_sync_status(
+        &self,
+        id: &str,
+        period: &EmployeeTimecardPeriod,
+        request_id: Option<&str>,
+    ) -> Result<EmployeeSyncStatus>;
+    fn enqueue_employee_sync(
+        &self,
+        id: &str,
+        actor: &str,
+        key: &str,
+        period: &EmployeeTimecardPeriod,
+    ) -> Result<EmployeeSyncStatus>;
     fn timecard_period(
         &self,
         id: &str,
@@ -118,6 +132,23 @@ pub trait TimecardStore {
     fn enqueue_meal_sync(&self, id: &str, actor: &str, key: &str, date: &str) -> Result<Value>;
 }
 impl TimecardStore for Store {
+    fn employee_sync_status(
+        &self,
+        id: &str,
+        period: &EmployeeTimecardPeriod,
+        request_id: Option<&str>,
+    ) -> Result<EmployeeSyncStatus> {
+        super::meals::employee_sync::employee_sync_status(self, id, period, request_id)
+    }
+    fn enqueue_employee_sync(
+        &self,
+        id: &str,
+        actor: &str,
+        key: &str,
+        period: &EmployeeTimecardPeriod,
+    ) -> Result<EmployeeSyncStatus> {
+        super::meals::employee_sync::enqueue_employee_sync(self, id, actor, key, period)
+    }
     fn timecard_period(
         &self,
         id: &str,

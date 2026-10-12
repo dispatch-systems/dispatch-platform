@@ -2,7 +2,9 @@
 //! as a collection finds it.
 mod capture;
 pub(crate) mod collect;
+mod day;
 mod live;
 
 pub use capture::{Capture, Coverage, Itinerary, JOB_KIND, Meal, fixture};
+pub use day::{DayCapture, DayRequest};
 pub use live::Writer;

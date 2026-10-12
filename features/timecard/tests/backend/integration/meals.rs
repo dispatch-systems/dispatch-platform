@@ -8,6 +8,103 @@ use dispatch_cortex::{
 use dispatch_timecard::{TimecardStore, comparison_meal};
 use serde_json::json;
 
+#[test]
+fn bundled_scope_publication_is_atomic_replayable_and_keeps_the_real_job_identity() {
+    use dispatch_core::{collection::browser::Collected, manifest::registry};
+    use dispatch_cortex::discovery::CollectionRequest;
+    install();
+    let (_root, db, id) = common::bootstrapped();
+    common::ready_connection(&db, &id, cortex::PROVIDER).unwrap();
+    let first = scope();
+    let mut second = first.clone();
+    second.station = "TST2".into();
+    second.service_area_id = "area-2".into();
+    let request = meals::DayRequest {
+        date: first.date.clone(),
+        scope_requests: vec![
+            CollectionRequest::Scoped(first),
+            CollectionRequest::Scoped(second.clone()),
+        ],
+    };
+    let job = db
+        .enqueue_for(
+            &id,
+            None,
+            "bundle",
+            cortex::PROVIDER,
+            &serde_json::to_value(&request).unwrap(),
+        )
+        .unwrap();
+    let job = s(&job, "id");
+    let data = serde_json::to_value(request.fixture().unwrap()).unwrap();
+    db.publish_meals(&id, "prior-second", &meals::fixture(&second), &second)
+        .unwrap();
+    let cortex_db = db.collector(&id, cortex::PROVIDER).unwrap();
+    cortex_db.exec("UPDATE meal_publications SET collected_at='2099-01-01T00:00:00Z' WHERE job_id='prior-second'", []).unwrap();
+    let publish = |data| {
+        registry()
+            .keeper(meals::JOB_KIND)
+            .publish(&db, &id, job, Collected { data, scope: None })
+    };
+    assert_eq!(
+        publish(data.clone()).unwrap_err().code,
+        "cortex_stale_capture"
+    );
+    assert_eq!(
+        cortex_db
+            .count("SELECT count(*) FROM meal_publications", [])
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        cortex_db
+            .count("SELECT count(*) FROM meal_publication_jobs", [])
+            .unwrap(),
+        0
+    );
+    cortex_db.exec("UPDATE meal_publications SET collected_at='2000-01-01T00:00:00Z' WHERE job_id='prior-second'", []).unwrap();
+    publish(data.clone()).unwrap();
+    let publications = db.meal_publications(&id, &request.date).unwrap();
+    assert_eq!(publications.as_array().unwrap().len(), 2);
+    assert!(
+        publications
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|publication| publication["jobId"] == job)
+    );
+    let before = cortex_db
+        .count("SELECT count(*) FROM meal_publications", [])
+        .unwrap();
+    publish(data.clone()).unwrap();
+    assert_eq!(
+        cortex_db
+            .count("SELECT count(*) FROM meal_publications", [])
+            .unwrap(),
+        before
+    );
+    let mut missing = data.clone();
+    missing["captures"].as_array_mut().unwrap().pop();
+    assert_eq!(publish(missing).unwrap_err().code, "cortex_scope_mismatch");
+    let mut wrong = data;
+    wrong["captures"][1]["scope"]["serviceAreaId"] = json!("other-tenant-area");
+    assert_eq!(publish(wrong).unwrap_err().code, "cortex_scope_mismatch");
+    assert_eq!(
+        cortex_db
+            .count("SELECT count(*) FROM meal_publications", [])
+            .unwrap(),
+        before
+    );
+    for table in ["meal_delivery_events", "meal_breaks"] {
+        assert_eq!(
+            cortex_db
+                .count(&format!("SELECT count(*) FROM {table}"), [])
+                .unwrap(),
+            0
+        );
+    }
+}
+
 /// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
 fn install() {
     common::install(
