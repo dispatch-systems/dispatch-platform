@@ -2,8 +2,9 @@ name: Flaky tests
 # A job that failed and then passed on the same code is a flake, or a runner problem, and
 # either costs a merge. This lists them weekly in the run's summary: reruns of one run, and
 # queue entries that failed and then merged with the PR's head unchanged, since a PR queued
-# again gets a new run on a new squash commit. A week with any is also posted to the open
-# `flaky-tests` issue, which it opens when there is none. It changes nothing else.
+# again gets a new run on a new squash commit, unless the entry ahead of it failed the same
+# job. A week with any is also posted to the open `flaky-tests` issue, which it opens when
+# there is none. It changes nothing else.
 on:
   schedule:
     - cron: '17 6 * * 1'
@@ -69,6 +70,15 @@ jobs:
           # share a branch name.
           admitted = api(f"repos/{repo}/actions/workflows/queue-admission.yml/runs"
                          f"?created=>={heads}&per_page=100", f".workflow_runs[] | {fields}")
+          # An entry is tested on top of the entry queued ahead of it, whose head its branch
+          # names, so a job that also failed there failed for that PR rather than this one.
+          failed_heads = {run["head_sha"]: run for run in queue if run["conclusion"] == "failure"}
+
+          def failed_jobs(run):
+              return [job["name"] for job in api(
+                  f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100",
+                  '.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out") | {name}')]
+
           entries = defaultdict(list)
           for run in sorted(queue, key=lambda run: run["created_at"]):
               number = re.match(r"gh-readonly-queue/main/pr-(\d+)-", run["head_branch"] or "")
@@ -96,10 +106,10 @@ jobs:
 
                   if head_at(failed["created_at"]) is None or head_at(failed["created_at"]) != head_at(passed["created_at"]):
                       continue
-                  jobs = api(f"repos/{repo}/actions/runs/{failed['id']}/jobs?per_page=100",
-                             '.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out") | {name}')
-                  for job in (job["name"] for job in jobs):
-                      if job != "platform":
+                  ahead = failed_heads.get(failed["head_branch"].rsplit("-", 1)[1])
+                  ahead_jobs = failed_jobs(ahead) if ahead else []
+                  for job in failed_jobs(failed):
+                      if job != "platform" and job not in ahead_jobs:
                           rows += 1
                           print(f"| #{number} | [{failed['id']}]({failed['html_url']}) | {job} "
                                 f"| [{passed['id']}]({passed['html_url']}) |")
