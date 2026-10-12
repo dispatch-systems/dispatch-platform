@@ -33,6 +33,9 @@ impl Environment {
         }
     }
 }
+/// How many attempts in a row, ten seconds apart on Dev's timer, fail before waiting for Dev
+/// stops: past one that a moment's network trouble explains.
+const FAILED_ATTEMPTS: u64 = 3;
 /// What the checks say about a commit Dev could install.
 enum Checked {
     /// A passed run and the build it published.
@@ -64,6 +67,9 @@ pub struct Updater<'a> {
     pub previous: PathBuf,
     pub receipt: PathBuf,
     pub status_file: PathBuf,
+    /// Dev's update that keeps failing, and why. The status says what Dev last installed,
+    /// which a failing update leaves as it was, so a stalled Dev would otherwise read ready.
+    pub failure_file: PathBuf,
     pub environment: Environment,
     pub system: &'a dyn System,
     health_url: String,
@@ -132,6 +138,7 @@ impl<'a> Updater<'a> {
             previous: runtime.join("previous"),
             receipt: platform.join(format!("{name}-activation.json")),
             status_file: platform.join(format!("{name}-update.json")),
+            failure_file: platform.join(format!("{name}-update-failure.json")),
             root,
             active,
             runtime,
@@ -409,10 +416,32 @@ impl<'a> Updater<'a> {
         else {
             return Ok(());
         };
-        self.recover()?;
-        match self.environment {
-            Environment::Dev => self.update_dev(),
-            Environment::Production => self.update_production(),
+        if self.environment == Environment::Production {
+            self.recover()?;
+            return self.update_production();
+        }
+        let result = self.recover().and_then(|()| self.update_dev());
+        let recorded = self.record_dev_update(&result);
+        result.and(recorded)
+    }
+    /// Keeps a failing update's error, from its first attempt, until one gets through.
+    fn record_dev_update(&self, result: &Result<()>) -> Result<()> {
+        match result {
+            Ok(()) if self.failure_file.exists() => io::remove_receipt(&self.failure_file),
+            Ok(()) => Ok(()),
+            Err(error) => {
+                let previous = io::read_json(&self.failure_file).unwrap_or(Value::Null);
+                let now = chrono::Utc::now().to_rfc3339();
+                io::write_json(
+                    &self.failure_file,
+                    &json!({
+                        "error": error.to_string(),
+                        "since": previous["since"].as_str().unwrap_or(&now),
+                        "attempts": previous["attempts"].as_u64().unwrap_or(0) + 1,
+                        "updatedAt": now,
+                    }),
+                )
+            }
         }
     }
     /// Wait until Dev runs `commit`, or a later commit of its branch that contains it, and
@@ -432,6 +461,17 @@ impl<'a> Updater<'a> {
                     .map_or_else(|error| error.to_string(), |status| status.to_string()),
                 Err(error) => error.to_string(),
             };
+            // An update that fails attempt after attempt won't get through by waiting.
+            if let Ok(failure) = io::read_json(&self.failure_file)
+                && failure["attempts"].as_u64().unwrap_or(0) >= FAILED_ATTEMPTS
+            {
+                return Err(format!(
+                    "Dev cannot install {commit}: its updates have failed since {}: {}",
+                    io::text(&failure, "since"),
+                    io::text(&failure, "error")
+                )
+                .into());
+            }
             if self.system.monotonic() >= deadline {
                 return Err(
                     format!("Dev did not install {commit} within {timeout}s: {last}").into(),

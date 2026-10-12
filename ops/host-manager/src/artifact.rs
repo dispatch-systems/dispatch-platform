@@ -182,12 +182,20 @@ pub fn verify(root: &Path, commit: Option<&str>) -> Result<Manifest> {
     }
     let actual = inventory(root)?;
     for entry in &actual {
-        require(
-            files
-                .get(entry.path.as_str())
-                .is_some_and(|stored| **stored == *entry),
-            "Artifact file verification failed",
-        )?;
+        // Named, so a runtime that stops updating says which file stopped it.
+        let stored = files.get(entry.path.as_str());
+        if stored.is_none_or(|stored| **stored != *entry) {
+            return Err(format!(
+                "Artifact file verification failed: {:?} {}",
+                entry.path,
+                if stored.is_some() {
+                    "changed"
+                } else {
+                    "is not in its inventory"
+                }
+            )
+            .into());
+        }
         require(
             entry.path.starts_with("dashboard/")
                 || REQUIRED[1..].contains(&entry.path.as_str())
@@ -195,8 +203,14 @@ pub fn verify(root: &Path, commit: Option<&str>) -> Result<Manifest> {
             "Rust-only artifact contains retired runtime files",
         )?;
     }
+    let present: HashSet<_> = actual.iter().map(|entry| entry.path.as_str()).collect();
+    if let Some(missing) = files.keys().find(|path| !present.contains(*path)) {
+        return Err(
+            format!("Artifact incomplete or contains extra files: {missing:?} is missing").into(),
+        );
+    }
     require(
-        actual.len() == files.len() && REQUIRED.iter().all(|name| files.contains_key(name)),
+        REQUIRED.iter().all(|name| files.contains_key(name)),
         "Artifact incomplete or contains extra files",
     )?;
     if !support_resources.is_empty() {
