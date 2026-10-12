@@ -187,13 +187,27 @@ fn daily_work_splits_at_eight_net_hours_and_keeps_incomplete_punches_unknown() {
         if *name == "no meal" {
             let unresolved = Timecard {
                 status: "Missing punch".into(),
-                ..card.card
+                ..card.card.clone()
             }
             .assessed("America/Los_Angeles");
             assert_eq!(
                 (unresolved.regular_minutes, unresolved.overtime_minutes),
                 (None, None),
                 "a missing-punch flag remains unresolved despite a closed visible segment"
+            );
+            let mut missing_clock = card.card;
+            missing_clock.punches.push(Punch {
+                in_kind: Some(Some(InPunchKind::Day)),
+                out_kind: None,
+                clock_in: None,
+                clock_out: None,
+                hours: None,
+            });
+            let unresolved = missing_clock.assessed("America/Los_Angeles");
+            assert_eq!(
+                (unresolved.regular_minutes, unresolved.overtime_minutes),
+                (None, None),
+                "a labeled missing clock remains unresolved despite a complete source status"
             );
         }
     }

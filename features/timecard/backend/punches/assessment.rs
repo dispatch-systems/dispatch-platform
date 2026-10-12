@@ -152,6 +152,21 @@ fn worked_minutes(card: &Timecard, day: &PaycomDay, timezone: &str) -> Option<i3
     if day.review || !matches!(card.status.as_str(), "Complete" | "No punches") {
         return None;
     }
+    if card.punches.iter().any(|punch| {
+        [
+            (punch.in_kind.flatten().is_some(), punch.clock_in.as_deref()),
+            (
+                punch.out_kind.flatten().is_some(),
+                punch.clock_out.as_deref(),
+            ),
+        ]
+        .into_iter()
+        .any(|(typed, clock)| {
+            typed && clock.is_none_or(|clock| clock.trim_matches(clock_space).is_empty())
+        })
+    }) {
+        return None;
+    }
     if day.events.is_empty() {
         return (card.punches.is_empty() && card.hours == 0.0).then_some(0);
     }

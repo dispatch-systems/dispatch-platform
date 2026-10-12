@@ -55,7 +55,10 @@ fn queue_limits_and_authority_are_checked_again_before_publication() {
         "sync_in_progress"
     );
     // The underlying queue still bounds internal batches independently of the manual lock.
-    for i in 1..5 {
+    let capacity = dispatch_core::manifest::registry()
+        .keeper(paycom::timecards::JOB_KIND)
+        .queue_capacity();
+    for i in 1..capacity {
         db.enqueue_timecards(id, None, &format!("request-{i}"))
             .unwrap();
     }
