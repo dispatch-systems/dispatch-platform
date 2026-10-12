@@ -1,12 +1,20 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Bug, Lightbulb, Paperclip, Send, X } from 'lucide-react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { Bug, ChevronLeft, ChevronRight, Lightbulb, Paperclip, X } from 'lucide-react';
 import { createTicket, uploadScreenshot } from '../../api/client.js';
 import type { SupportDetail } from '../../api/index.js';
 import { ErrorBox } from '../../../shell/frontend/ui/index.js';
 import { randomId } from '../../../shell/frontend/lib/random-id.js';
 
 type Screenshot = { id: string; file: File; preview: string; attachmentId?: string };
-export function ReportForm({ onSubmitted }: { onSubmitted: (detail: SupportDetail) => void }) {
+export function ReportForm({
+  onSubmitted,
+  onStepChange,
+}: {
+  onSubmitted: (detail: SupportDetail) => void;
+  onStepChange: () => void;
+}) {
+  const fieldId = useId();
+  const [step, setStep] = useState<'type' | 'details'>('type');
   const [kind, setKind] = useState('bug');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -17,6 +25,16 @@ export function ReportForm({ onSubmitted }: { onSubmitted: (detail: SupportDetai
   const requestId = useRef(randomId());
   const previews = useRef(new Set<string>());
   const fileInput = useRef<HTMLInputElement>(null);
+  const titleInput = useRef<HTMLInputElement>(null);
+  const kindChoices = useRef<HTMLFieldSetElement>(null);
+  const changeStep = (next: 'type' | 'details') => {
+    setStep(next);
+    onStepChange();
+  };
+  useEffect(() => {
+    if (step === 'details') titleInput.current?.focus();
+    else kindChoices.current?.querySelector<HTMLInputElement>('input:checked')?.focus();
+  }, [step]);
   useEffect(
     () => () => {
       for (const url of previews.current) URL.revokeObjectURL(url);
@@ -44,6 +62,10 @@ export function ReportForm({ onSubmitted }: { onSubmitted: (detail: SupportDetai
   };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (step === 'type') {
+      changeStep('details');
+      return;
+    }
     if (busy) return;
     setBusy(true);
     setError('');
@@ -70,6 +92,7 @@ export function ReportForm({ onSubmitted }: { onSubmitted: (detail: SupportDetai
       for (const screenshot of screenshots) URL.revokeObjectURL(screenshot.preview);
       previews.current.clear();
       setScreenshots([]);
+      setStep('type');
       requestId.current = randomId();
       onSubmitted(detail);
     } catch (cause) {
@@ -90,120 +113,174 @@ export function ReportForm({ onSubmitted }: { onSubmitted: (detail: SupportDetai
           .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
           .map((item) => item.getAsFile())
           .filter((file): file is File => file !== null);
-        if (files.length && !busy) {
+        if (files.length && !busy && step === 'details') {
           event.preventDefault();
           addFiles(files);
         }
       }}
     >
+      <div className="support-report-stepbar">
+        {step === 'details' && (
+          <button
+            type="button"
+            className="text-button support-report-back"
+            disabled={busy}
+            onClick={() => changeStep('type')}
+          >
+            <ChevronLeft size={14} />
+            Back
+          </button>
+        )}
+        <ol className="support-report-steps" aria-label="Report progress">
+          <li aria-current={step === 'type' ? 'step' : undefined}>
+            <span aria-hidden="true">1</span>Report type
+          </li>
+          <li aria-current={step === 'details' ? 'step' : undefined}>
+            <span aria-hidden="true">2</span>Details
+          </li>
+        </ol>
+      </div>
       <div className="support-intro">
-        <h3>What can we help with?</h3>
-        <p className="muted">Tell us what happened or what would make Dispatch better.</p>
+        <h3>
+          {step === 'type'
+            ? 'What would you like to share?'
+            : kind === 'bug'
+              ? 'Tell us what happened.'
+              : 'Describe your idea.'}
+        </h3>
       </div>
-      <fieldset className="support-kind" disabled={busy}>
-        <legend className="support-sr-only">Report type</legend>
-        <label className={kind === 'bug' ? 'selected' : ''}>
-          <input
-            type="radio"
-            name="kind"
-            value="bug"
-            checked={kind === 'bug'}
-            onChange={() => setKind('bug')}
-          />
-          <Bug size={18} />
-          <span>Bug report</span>
-        </label>
-        <label className={kind === 'feature' ? 'selected' : ''}>
-          <input
-            type="radio"
-            name="kind"
-            value="feature"
-            checked={kind === 'feature'}
-            onChange={() => setKind('feature')}
-          />
-          <Lightbulb size={18} />
-          <span>Feature request</span>
-        </label>
-      </fieldset>
-      <label>
-        Title
-        <input
-          required
-          maxLength={180}
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          disabled={busy}
-          placeholder={
-            kind === 'bug' ? 'A short summary of the issue' : 'What would you like to add?'
-          }
-        />
-      </label>
-      <label>
-        Description
-        <textarea
-          required
-          maxLength={40000}
-          rows={5}
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          disabled={busy}
-          placeholder={
-            kind === 'bug'
-              ? 'What did you do? What happened, and what did you expect?'
-              : 'Describe the feature and how it would help you.'
-          }
-        />
-      </label>
-      <div className="support-upload">
-        <button type="button" onClick={() => fileInput.current?.click()} disabled={busy}>
-          <Paperclip size={16} />
-          Add screenshots
-        </button>
-        <span className="muted">Or paste a screenshot here.</span>
-        <input
-          ref={fileInput}
-          className="support-sr-only"
-          type="file"
-          aria-label="Upload screenshots"
-          accept="image/png,image/jpeg,image/webp"
-          multiple
-          disabled={busy}
-          onChange={(event) => {
-            addFiles(Array.from(event.target.files ?? []));
-            event.target.value = '';
-          }}
-        />
-      </div>
-      {screenshots.length > 0 && (
-        <ul className="support-screenshot-list">
-          {screenshots.map((screenshot) => (
-            <li key={screenshot.id}>
-              <img src={screenshot.preview} alt={screenshot.file.name} />
-              <span>{screenshot.file.name}</span>
-              <button
-                type="button"
-                className="icon-button"
-                aria-label={`Remove ${screenshot.file.name}`}
-                onClick={() => removeFile(screenshot)}
-                disabled={busy}
-              >
-                <X size={14} />
-              </button>
-            </li>
-          ))}
-        </ul>
+      {step === 'type' ? (
+        <fieldset className="support-kind" ref={kindChoices} disabled={busy}>
+          <legend className="support-sr-only">Report type</legend>
+          <label className={kind === 'bug' ? 'selected' : ''}>
+            <input
+              className="support-sr-only"
+              type="radio"
+              name="kind"
+              value="bug"
+              checked={kind === 'bug'}
+              onChange={() => setKind('bug')}
+            />
+            <Bug size={28} />
+            <span className="support-kind-copy">
+              <strong>Report a bug</strong>
+              <span>Something isn’t working as expected.</span>
+            </span>
+          </label>
+          <label className={kind === 'feature' ? 'selected' : ''}>
+            <input
+              className="support-sr-only"
+              type="radio"
+              name="kind"
+              value="feature"
+              checked={kind === 'feature'}
+              onChange={() => setKind('feature')}
+            />
+            <Lightbulb size={28} />
+            <span className="support-kind-copy">
+              <strong>Suggest a feature</strong>
+              <span>Help us improve how Dispatch works.</span>
+            </span>
+          </label>
+        </fieldset>
+      ) : (
+        <>
+          <div className="support-report-field">
+            <label htmlFor={`${fieldId}-title`}>Title</label>
+            <input
+              id={`${fieldId}-title`}
+              ref={titleInput}
+              type="text"
+              required
+              maxLength={180}
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              disabled={busy}
+              placeholder={
+                kind === 'bug' ? 'A short summary of the issue' : 'What would you like to add?'
+              }
+            />
+          </div>
+          <div className="support-report-field">
+            <label htmlFor={`${fieldId}-description`}>Description</label>
+            <textarea
+              id={`${fieldId}-description`}
+              required
+              maxLength={40000}
+              rows={7}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              disabled={busy}
+              placeholder={
+                kind === 'bug'
+                  ? 'What happened? What did you expect?'
+                  : 'Describe the feature and how it would help.'
+              }
+            />
+          </div>
+          <div className="support-upload">
+            <button type="button" onClick={() => fileInput.current?.click()} disabled={busy}>
+              <Paperclip size={16} />
+              Add screenshots
+            </button>
+            <span className="muted">or paste an image</span>
+            <input
+              ref={fileInput}
+              className="support-sr-only"
+              type="file"
+              aria-label="Upload screenshots"
+              accept="image/png,image/jpeg,image/webp"
+              multiple
+              disabled={busy}
+              onChange={(event) => {
+                addFiles(Array.from(event.target.files ?? []));
+                event.target.value = '';
+              }}
+            />
+          </div>
+          {screenshots.length > 0 && (
+            <ul className="support-screenshot-list">
+              {screenshots.map((screenshot) => (
+                <li key={screenshot.id}>
+                  <img src={screenshot.preview} alt={screenshot.file.name} />
+                  <span>{screenshot.file.name}</span>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={`Remove ${screenshot.file.name}`}
+                    onClick={() => removeFile(screenshot)}
+                    disabled={busy}
+                  >
+                    <X size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
       <ErrorBox message={error} />
-      <p className="support-report-note muted">
-        The agent reviews your message, answers questions and investigates reports that need further
-        work. The platform owner approves a proposal before any changes begin.
-      </p>
       <div className="support-report-submit">
         <span role="status">{progress}</span>
-        <button className="primary" disabled={busy || !title.trim() || !description.trim()}>
-          <Send size={16} />
-          {busy ? 'Sending…' : 'Send report'}
-        </button>
+        {step === 'type' ? (
+          <button
+            key="continue"
+            type="button"
+            className="primary"
+            onClick={() => changeStep('details')}
+          >
+            Continue <ChevronRight size={16} />
+          </button>
+        ) : (
+          <button
+            key="submit"
+            type="submit"
+            className="primary"
+            disabled={busy || !title.trim() || !description.trim()}
+          >
+            {busy ? 'Sending…' : 'Send report'}
+          </button>
+        )}
       </div>
     </form>
   );

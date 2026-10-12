@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, CheckCheck, Sparkles, X } from 'lucide-react';
+import { CheckCheck, ChevronRight, Sparkles, X } from 'lucide-react';
 import type { Access } from '../../shell/frontend/runtime/slots.js';
 import { DataState, Empty, ErrorBox, Tabs } from '../../shell/frontend/ui/index.js';
 import { useFocusTrap } from '../../shell/frontend/ui/useFocusTrap.js';
@@ -31,6 +31,15 @@ export function SupportPanel({ session, onClose }: Access & { onClose: () => voi
   const notifications = useNotifications();
   const unreadCount = useUnreadNotifications();
   const unread = notifications.data?.filter((item) => item.readAt === null) ?? [];
+  const today = new Date().toDateString();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const previousDay = yesterday.toDateString();
+  const notificationDay = (createdAt: number) => {
+    const day = new Date(createdAt).toDateString();
+    return day === today ? 'Today' : day === previousDay ? 'Yesterday' : 'Earlier';
+  };
+  const ticketTitles = new Map(tickets.data?.map((ticket) => [ticket.id, ticket.title]));
   useFocusTrap(panel, { onEscape: onClose });
   useEffect(() => {
     content.current?.scrollTo({ top: 0 });
@@ -79,7 +88,6 @@ export function SupportPanel({ session, onClose }: Access & { onClose: () => voi
             </span>
             <div>
               <h2 id={heading}>AI Support</h2>
-              <p className="muted">Help shape Dispatch</p>
             </div>
           </div>
           <button className="icon-button" aria-label="Close AI Support" onClick={onClose}>
@@ -99,7 +107,6 @@ export function SupportPanel({ session, onClose }: Access & { onClose: () => voi
             [
               'notifications',
               <span key="notifications" className="support-notifications-tab">
-                <Bell size={14} />
                 Updates
                 {Boolean(unreadCount.data?.count) && (
                   <span className="support-unread-count">{unreadCount.data?.count}</span>
@@ -109,8 +116,9 @@ export function SupportPanel({ session, onClose }: Access & { onClose: () => voi
           ]}
         />
         <div className="support-panel-body" ref={content}>
-          <div hidden={tab !== 'report'}>
+          <div className="support-report-container" hidden={tab !== 'report'}>
             <ReportForm
+              onStepChange={() => content.current?.scrollTo({ top: 0 })}
               onSubmitted={(detail) => {
                 tickets.refresh();
                 notifications.refresh();
@@ -125,7 +133,7 @@ export function SupportPanel({ session, onClose }: Access & { onClose: () => voi
               {submitted && (
                 <p className="support-submitted" role="status">
                   <CheckCheck size={18} />
-                  Report received. The agent will review your message and keep you updated here.
+                  Report received.
                 </p>
               )}
               {selected ? (
@@ -145,7 +153,8 @@ export function SupportPanel({ session, onClose }: Access & { onClose: () => voi
                 <DataState data={tickets.data} error={tickets.error} retry={tickets.refresh}>
                   {(data) => (
                     <>
-                      <TicketList tickets={data} onSelect={openTicket} />
+                      <h3 className="support-panel-section-heading">Your tickets</h3>
+                      <TicketList tickets={data} onSelect={openTicket} cards />
                       <TicketPagination {...tickets} />
                     </>
                   )}
@@ -178,16 +187,27 @@ export function SupportPanel({ session, onClose }: Access & { onClose: () => voi
                 {(data) =>
                   data.length ? (
                     <ol className="support-notification-list">
-                      {data.map((notification) => (
+                      {data.map((notification, index) => (
                         <li key={notification.id}>
+                          {(index === 0 ||
+                            notificationDay(data[index - 1]!.createdAt) !==
+                              notificationDay(notification.createdAt)) && (
+                            <h4>{notificationDay(notification.createdAt)}</h4>
+                          )}
                           <button onClick={() => openTicket(notification.ticketId)}>
                             <span
                               className={`support-notification-dot ${notification.readAt === null ? 'unread' : ''}`}
                             />
-                            <span>
+                            <span className="support-notification-copy">
                               <strong>{notification.body}</strong>
+                              {ticketTitles.has(notification.ticketId) && (
+                                <span className="muted">
+                                  {ticketTitles.get(notification.ticketId)}
+                                </span>
+                              )}
                               <span className="muted">{when(notification.createdAt)}</span>
                             </span>
+                            <ChevronRight size={16} className="support-notification-chevron" />
                           </button>
                         </li>
                       ))}
@@ -202,10 +222,6 @@ export function SupportPanel({ session, onClose }: Access & { onClose: () => voi
             </>
           )}
         </div>
-        <footer className="support-panel-footer">
-          <span>Visible to you and the platform owner</span>
-          <span>Dispatch</span>
-        </footer>
       </div>
     </div>,
     document.body,

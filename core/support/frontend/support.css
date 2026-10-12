@@ -22,7 +22,7 @@
   display: flex;
   flex-direction: column;
   width: min(480px, calc(100vw - 32px));
-  max-height: min(820px, calc(100dvh - 32px));
+  height: min(780px, calc(100dvh - 32px));
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--card);
@@ -33,8 +33,17 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 22px 18px;
-  border-bottom: 1px solid var(--border);
+  height: 76px;
+  flex-shrink: 0;
+  padding: 16px 22px;
+}
+.support-panel-header .icon-button {
+  width: 36px;
+  min-height: 36px;
+  padding: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
 }
 .support-panel-brand {
   display: flex;
@@ -45,9 +54,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
   color: var(--primary);
   background: var(--selection);
 }
@@ -56,19 +65,18 @@
   font-weight: 600;
   letter-spacing: -0.3px;
 }
-.support-panel-brand p {
-  margin-top: 3px;
-  font-size: 12px;
-}
 .support-panel > .restored-tabs {
+  height: 44px;
   margin: 0;
-  padding: 0 18px;
-  gap: 20px;
+  padding: 0 16px;
+  gap: 2px;
   flex-shrink: 0;
 }
 .support-panel > .restored-tabs > button {
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
-  padding-inline: 0;
+  padding: 0 6px;
 }
 .support-notifications-tab {
   display: inline-flex;
@@ -76,50 +84,106 @@
   gap: 6px;
 }
 .support-panel-body {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
-  padding: 22px;
-  min-height: 100px;
+  padding: 22px 22px 20px;
   overscroll-behavior: contain;
 }
-.support-panel-footer {
-  border-top: 1px solid var(--border);
+.support-report-container {
+  height: 100%;
+}
+.support-report {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100%;
+}
+.support-report-stepbar {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 52px;
+  column-gap: 6px;
+  align-items: center;
+  min-height: 32px;
+}
+.support-report-stepbar .support-report-back {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  gap: 3px;
+  padding: 0;
+  min-height: 32px;
+  font-size: 12px;
+}
+.support-report-steps {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  width: max-content;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 12px 22px;
-  font-size: 11px;
+  gap: 9px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
   color: var(--muted-foreground);
-  background: var(--surface);
+  font-size: 12px;
+}
+.support-report-steps li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+.support-report-steps li:first-child::after {
+  content: '';
+  width: 20px;
+  height: 1px;
+  background: var(--input);
+  margin-left: 2px;
+}
+.support-report-steps li > span {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--input);
+  border-radius: 50%;
+  font-size: 11px;
+}
+.support-report-steps li[aria-current='step'] {
+  color: var(--foreground);
+}
+.support-report-steps li[aria-current='step'] > span {
+  color: var(--primary-foreground);
+  background: var(--primary);
+  border-color: var(--primary);
 }
 .support-intro h3 {
-  font-size: 17px;
+  font-size: 22px;
+  line-height: 28px;
   font-weight: 600;
-  letter-spacing: -0.3px;
-}
-.support-intro p {
-  font-size: 13px;
-  line-height: 1.5;
-  margin: 6px 0 18px;
+  letter-spacing: -0.5px;
 }
 .support-kind {
   padding: 0;
-  margin: 0 0 22px;
+  margin: 0;
   border: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  grid-template-columns: 1fr;
+  gap: 12px;
 }
 .support-kind label {
   position: relative;
   flex-direction: row;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 16px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 13px 8px;
-  font-size: 13px;
+  min-height: 102px;
+  padding: 20px;
+  color: var(--muted-foreground);
   cursor: pointer;
 }
 .support-kind label.selected {
@@ -127,16 +191,36 @@
   background: var(--selection);
   color: var(--primary);
 }
-.support-kind input {
-  width: 14px;
-  height: 14px;
-  min-height: 14px;
+.support-kind label:has(input:focus-visible) {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
 }
-.support-report label {
+.support-kind label > svg {
+  flex-shrink: 0;
+}
+.support-kind-copy strong {
+  display: block;
+  font-size: 16px;
+  line-height: 23px;
+  font-weight: 600;
+}
+.support-kind-copy > span {
+  display: block;
   font-size: 13px;
+  line-height: 20px;
+  margin-top: 5px;
+  color: var(--muted-foreground);
 }
-.support-report > label + label {
-  margin-top: 20px;
+.support-report-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.support-report-field > label {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
 }
 .support-report textarea,
 .support-reply textarea,
@@ -145,20 +229,39 @@
   min-height: 90px;
   line-height: 1.55;
 }
+.support-report input[type='text'],
+.support-report textarea {
+  font-size: 14px;
+  line-height: 20px;
+  padding: 11px 12px;
+}
+.support-report input[type='text'] {
+  height: 44px;
+}
+.support-report textarea {
+  height: 176px;
+  min-height: 176px;
+}
+.support-report input::placeholder,
+.support-report textarea::placeholder {
+  color: var(--muted-foreground);
+  opacity: 1;
+}
 .support-upload {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 17px;
   flex-wrap: wrap;
 }
 .support-upload button {
   font-size: 12px;
-  min-height: 34px;
-  padding: 7px 10px;
+  min-height: 40px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
 }
 .support-upload > span {
-  font-size: 12px;
+  font-size: 11px;
 }
 .support-screenshot-list {
   list-style: none;
@@ -198,21 +301,30 @@
   border: 0;
   background: transparent;
 }
-.support-report-note {
-  font-size: 12px;
-  line-height: 1.6;
-}
 .support-report-submit {
+  position: sticky;
+  bottom: -20px;
+  z-index: 1;
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
+  flex-direction: column;
   gap: 12px;
-  margin-top: 20px;
+  margin-top: auto;
+  margin-bottom: -20px;
+  padding: 17px 0 20px;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+}
+.support-report-submit > button {
+  width: 100%;
+  min-height: 44px;
+  font-size: 13px;
 }
 .support-report-submit > span {
   font-size: 12px;
   color: var(--muted-foreground);
-  margin-right: auto;
+}
+.support-report-submit > span:empty {
+  display: none;
 }
 .support-status {
   display: inline-flex;
@@ -260,6 +372,30 @@
 .support-ticket-list {
   display: flex;
   flex-direction: column;
+}
+.support-panel-section-heading {
+  font-size: 22px;
+  line-height: 28px;
+  margin-bottom: 24px;
+}
+.support-ticket-cards {
+  gap: 12px;
+}
+.support-ticket-list.support-ticket-cards > button.support-ticket-row {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  background: var(--surface);
+}
+.support-ticket-cards .support-ticket-copy > strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+.support-ticket-cards .support-ticket-copy > span:not(.support-status) {
+  font-size: 12px;
+}
+.support-ticket-cards .support-ticket-age {
+  align-self: center;
 }
 .support-pagination {
   display: flex;
@@ -698,7 +834,7 @@ button.support-ticket-row.selected {
   margin-bottom: 14px;
 }
 .support-updates-heading h3 {
-  font-size: 15px;
+  font-size: 22px;
 }
 .support-updates-heading button {
   font-size: 11px;
@@ -707,25 +843,40 @@ button.support-ticket-row.selected {
   padding: 0;
   list-style: none;
 }
+.support-notification-list h4 {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  margin: 18px 0 4px;
+}
 .support-notification-list button {
+  position: relative;
   text-align: left;
   border: 0;
-  border-bottom: 1px solid var(--border);
+  border-left: 1px solid var(--input);
   border-radius: 0;
   background: transparent;
-  width: 100%;
-  padding: 15px 0;
+  width: calc(100% - 5px);
+  margin-left: 5px;
+  padding: 14px 0 26px 22px;
   gap: 10px;
   align-items: flex-start;
   justify-content: flex-start;
 }
-.support-notification-list button > span:last-child {
+.support-notification-copy {
   display: flex;
   flex-direction: column;
   gap: 7px;
+  min-width: 0;
+  flex: 1;
+}
+.support-notification-chevron {
+  flex-shrink: 0;
+  align-self: center;
+  color: var(--muted-foreground);
 }
 .support-notification-list strong {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   line-height: 1.5;
 }
@@ -733,11 +884,13 @@ button.support-ticket-row.selected {
   font-size: 11px;
 }
 .support-notification-dot {
+  position: absolute;
+  left: -4px;
+  top: 21px;
   background: var(--muted);
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  margin-top: 6px;
   flex-shrink: 0;
 }
 .support-notification-dot.unread {
@@ -898,34 +1051,45 @@ button.support-ticket-row.selected {
     left: 8px;
     bottom: 8px;
     width: calc(100vw - 16px);
-    max-height: calc(100dvh - 16px);
+    height: min(780px, calc(100dvh - 16px));
     border-radius: 12px;
   }
   .support-panel-body {
-    padding: 18px;
+    padding-inline: 18px;
   }
   .support-panel-header {
     padding: 17px 18px;
   }
-  .support-panel-footer {
-    padding-inline: 18px;
-    font-size: 10px;
-  }
   .support-panel > .restored-tabs {
-    gap: 18px;
+    gap: 2px;
   }
   .support-panel > .restored-tabs > button {
     font-size: 12px;
   }
   .support-kind {
-    gap: 8px;
+    gap: 12px;
   }
   .support-kind label {
     font-size: 12px;
-    gap: 5px;
+    padding: 16px;
+    gap: 14px;
   }
   .support-kind svg {
-    width: 16px;
+    width: 28px;
+  }
+  .support-report-steps {
+    gap: 6px;
+    font-size: 10px;
+  }
+  .support-report-steps li {
+    gap: 5px;
+  }
+  .support-report-steps li:first-child::after {
+    width: 12px;
+  }
+  .support-report textarea {
+    height: 144px;
+    min-height: 144px;
   }
   .support-ticket-age {
     font-size: 9px;
