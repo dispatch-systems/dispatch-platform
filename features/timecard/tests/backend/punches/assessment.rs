@@ -20,7 +20,12 @@ fn collected_clock_syntax_keeps_legacy_whitespace_and_hour_rules() {
 #[test]
 fn daily_work_splits_at_eight_net_hours_and_keeps_incomplete_punches_unknown() {
     use crate::api::types::{InPunchKind, OutPunchKind};
-    let cases: &[(&str, &[(&str, &str)], Option<(i32, i32)>)] = &[
+    type ClockCase = (
+        &'static str,
+        &'static [(&'static str, &'static str)],
+        Option<(i32, i32)>,
+    );
+    let cases: &[ClockCase] = &[
         (
             "under eight",
             &[
