@@ -4,7 +4,14 @@
 use super::*;
 use crate::backend::{drive::Person, google::FOLDER};
 
-fn item(id: &str, name: &str, parent: Option<&str>, folder: bool, modified: &str) -> Item {
+/// A file or folder as Drive describes it, in the folder `parent`.
+pub(crate) fn item(
+    id: &str,
+    name: &str,
+    parent: Option<&str>,
+    folder: bool,
+    modified: &str,
+) -> Item {
     Item {
         id: id.into(),
         name: name.into(),
@@ -19,6 +26,7 @@ fn item(id: &str, name: &str, parent: Option<&str>, folder: bool, modified: &str
         web_view_link: String::new(),
         thumbnail_link: None,
         thumbnail_version: None,
+        seen: std::time::Instant::now(),
     }
 }
 
@@ -54,9 +62,14 @@ fn the_tree_is_the_main_folder_and_only_what_it_holds() {
         ],
     );
     // Folders first, by name in any case; then files, the newest first.
-    let ids = |items: Vec<&Item>| items.into_iter().map(|i| i.id.clone()).collect::<Vec<_>>();
+    let ids = |rows: Vec<&Row>| {
+        rows.into_iter()
+            .map(|r| r.id.to_string())
+            .collect::<Vec<_>>()
+    };
     assert_eq!(ids(tree.children("main")), ["fleet", "safety", "top"]);
     assert_eq!(ids(tree.children("safety")), ["new", "old"]);
+    assert_eq!((tree.count("main"), tree.count("safety")), (3, 2));
     assert!(tree.get("theirs").is_none() && tree.get("a").is_none() && !tree.is_folder("other"));
     assert!(tree.is_folder("main") && tree.is_folder("safety") && !tree.is_folder("top"));
     assert_eq!(ids(tree.path("old")), ["safety", "old"]);

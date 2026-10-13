@@ -26,10 +26,23 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   `POST /api/dsp/documents/add`, for files and folders picked in Google Drive. Public, the picker's
   window: `GET /api/documents/google/picker`.
 - **Browsing:** with `drive.file`, Dispatch reaches only the files it made or was given, so it
-  lists them all and keeps the ones inside the DSP's main folder: another DSP's folder made
-  with the same account is never listed, found or changed. A file opens in Google, in a tab
-  of its own. Google names the connected account for every change Dispatch makes, so Dispatch
-  records who added each file and who last changed it, and names them instead.
+  lists them all and keeps the ones inside the DSP's main folder: another DSP's folder made with
+  the same account is never listed, found or changed. A file opens in Google, in a tab of its
+  own. Google names the connected account for every change Dispatch makes, so Dispatch records
+  who added each file and who last changed it, and names them instead.
+- **The copy:** the server keeps the list of each DSP's Documents in memory (each file's name,
+  type, folder, size, who changed it when and Google's links, never what a file holds), and a
+  folder opens and a search finds from it. It keeps only what's inside the main folder, packed:
+  each file once, sharing its folder's ID and who changed it. Google's change feed brings it up
+  to date: in the background once it's five seconds old, and before it answers once it's a
+  minute old. What Dispatch changes goes in as soon as Google confirms it, and a feed that
+  describes the file from before doesn't undo it. A copy nobody has looked at for half an hour
+  goes, so the server keeps only those of the DSPs using Documents. A server that starts, or a
+  DSP that connects again or comes back, lists the Drive whole, as does a feed that lost its
+  place or one that brings a folder in from elsewhere in the account, since the copy doesn't
+  know what it holds. Trashing asks Google where the file is first, in case someone moved it out
+  of Documents in Drive. Every call to Google is logged with how long it took
+  (`documents.google`).
 - **Google sign-in:** the platform's Google client, which this feature reads from the server's
   own settings: `DISPATCH_DEV_GOOGLE_CLIENT_ID` and `…_SECRET` on Dev and its previews
   (`DISPATCH_PRODUCTION_…` on Production), declared as its settings. Without both, no DSP can
@@ -56,11 +69,14 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   its kind until then, or when Google made none. Google's link to a picture lasts hours and
   opens only for the account, so Dispatch fetches it with the account's token and hands the
   picture on: members needn't be signed in to Google, and the token never reaches a browser.
-  A listing keeps, for its DSP, the links of the files it showed, for an hour; a picture is
-  fetched only by a link kept for that DSP, never one a browser sent, only from Google's own
+  A listing keeps, for its DSP, the links of the files it showed, for an hour, and asks Google
+  for a new link once the one it has is an hour old; a picture is fetched only for a file
+  kept for that DSP, never by a link a browser sent, only from Google's own
   hosts (a redirect anywhere else is refused), and only as a PNG, JPEG, GIF or WebP of up to
   2 MB; Google refusing one only leaves the drawing. Its address names the picture's version, so each browser keeps a
-  picture until the file changes; eight are fetched from Google at once across the server.
+  picture until the file changes; eight are fetched from Google at once across the server. The
+  page asks for it as large as the screen shows it sharply (`s`): 600 pixels on a high-density
+  screen, 300 on an ordinary one.
 - **Adding from Google Drive:** a file or folder someone made directly in Drive is out of
   `drive.file`'s reach until Google's picker gives it. Those who manage the DSP's connections,
   who hold its Google account, pick it in a window of its own, signed in to Google as that
@@ -69,13 +85,14 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   and folders, for those who can: Google Drive opens the picker on the folder open in
   Documents, and Drive link asks for a Google Drive, Docs, Sheets or Slides link and opens it
   on the files the link names, or on the folder, as pasting one on the page (outside a field)
-  does. A browser that blocks the window offers to open it again with a click. The window gets its own short-lived
-  token from Google, never the one Dispatch keeps, and tells the Documents page what was picked
-  on a channel only Dispatch's own pages reach, with a word the page gave it. Dispatch then
-  checks it reaches each file with the account's token, so a file picked as another account is
-  refused. One already in Documents becomes visible; one elsewhere in the account's Drive moves
-  into the folder open. A folder brings only itself: what it holds is picked once it's there,
-  and stays where it is. Picking the main folder changes nothing. The picker needs
+  does. A browser that blocks the window offers to open it again with a click. The window gets
+  its own short-lived token from Google, never the one Dispatch keeps, and tells the Documents
+  page what was picked on a channel only Dispatch's own pages reach, with a word the page gave
+  it. Dispatch then checks it reaches each file with the account's token, so a file picked as
+  another account is refused. One already in Documents becomes visible; one elsewhere in the
+  account's Drive moves into the folder open. A folder brings only itself: what it holds is
+  picked once it's there, and stays where it is. Picking the main folder changes nothing. The
+  picker needs
   `DISPATCH_DEV_GOOGLE_API_KEY` and `…_GOOGLE_APP_ID` (the Google project's number), or
   `DISPATCH_PRODUCTION_…`, beside the sign-in client; without them the page doesn't offer it,
   and with one alone the server refuses to start.
@@ -111,4 +128,8 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   account. Its Drive also holds files and a folder made directly in Drive, out of reach until
   they're picked, and in place of Google's picker the page lists them, with those a pasted
   link names chosen.
-- **Page:** Documents, in a DSP's sidebar.
+- **Page:** Documents, in a DSP's sidebar. It keeps the folders it opened, shows them at once
+  when they open again and asks for them anew behind them, every 15 seconds while one is
+  open; it asks for a folder as the pointer rests on it. A folder opening for the first time,
+  or a search, leaves what was shown until it comes. Making, renaming and trashing show at once,
+  and go back with the reason if Google refuses; an upload shows its file as it lands.

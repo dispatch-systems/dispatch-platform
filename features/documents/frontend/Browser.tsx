@@ -10,18 +10,17 @@ import {
   LayoutGrid,
   Link2,
   List,
-  LoaderCircle,
   Plus,
   Upload,
 } from 'lucide-react';
 import type { DspView } from '../../../core/accounts/api/index.js';
+import { useFeedback } from '../../../core/shell/frontend/runtime/feedback.js';
 import { dspHash, hashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import {
   ConfirmDialog,
   DataState,
   Empty,
-  ErrorBox,
   Modal,
   Popover,
   SearchInput,
@@ -30,13 +29,15 @@ import {
 import {
   createItem,
   downloadItem,
+  foldersChanged,
+  prefetchFolder,
   renameItem,
   trashItem,
   useDocumentsFolder,
   type DocumentsConnection,
-  type DocumentsFolder,
   type DocumentsOverview,
   type DocumentsItem,
+  type FolderStep,
   type NewKind,
 } from '../api/client.js';
 import { Initials, Thumb, Tile, edited, editedInline, kindLabel, typeOf } from './items.js';
@@ -45,8 +46,10 @@ import { useFromDrive } from './FromDrive.js';
 
 // The DSP's Documents, once Google is connected: a folder at a time, as a list or a grid,
 // with what Documents makes, what anyone uploads, by picking files or dropping them on the
-// page, and what those who hold its Google account add from Drive. A file opens in Google, in a tab of its own, or downloads. Right-clicking a file or
-// folder opens its menu where the pointer is.
+// page, and what those who hold its Google account add from Drive. A file opens in Google, in
+// a tab of its own, or downloads. Right-clicking a file or folder opens its menu where the
+// pointer is. What's made, renamed or trashed shows at once, and goes back if Google refuses
+// it; a folder that hasn't come yet leaves the last one shown.
 
 type Filter = 'all' | 'folders' | 'docs' | 'sheets' | 'slides' | 'uploads';
 const FILTERS: [Filter, string][] = [
@@ -92,7 +95,7 @@ function useFolder() {
   );
 }
 /** `value`, once it stops changing for a moment. */
-function useSettled(value: string, ms = 300) {
+function useSettled(value: string, ms = 150) {
   const [settled, setSettled] = useState(value);
   useEffect(() => {
     const timer = setTimeout(() => setSettled(value), ms);
@@ -109,6 +112,59 @@ type Asked =
   | { to: 'make'; kind: NewKind }
   | { to: 'rename'; item: DocumentsItem }
   | { to: 'trash'; item: DocumentsItem };
+
+/**
+ * A change the page shows before the folder it's in is read again with it: made, uploaded,
+ * renamed or trashed in `folder`. Something being made has a stand-in's ID until Google makes
+ * it. Once Google confirmed it, it shows until a reading of the folder does, or a while.
+ */
+type Pending = {
+  key: string;
+  folder?: string;
+  change: 'made' | 'renamed' | 'trashed';
+  item: DocumentsItem;
+  settled?: number;
+};
+const SETTLING_MS = 30_000;
+/** Whether `item` stands in for something Google is still making. */
+const making = (item: DocumentsItem) => item.id.startsWith('pending:');
+
+/** Folders first, by name; then files, the most recently changed first: as the server sorts. */
+function arranged(items: DocumentsItem[]) {
+  const order = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+  return [...items].sort(
+    (a, b) =>
+      Number(b.kind === 'folder') - Number(a.kind === 'folder') ||
+      (a.kind === 'folder'
+        ? order(a.name.toLowerCase(), b.name.toLowerCase())
+        : order(b.modifiedAt, a.modifiedAt)),
+  );
+}
+/** What a folder or a search shows, with the changes it hasn't been read with yet. */
+function overlaid(
+  items: DocumentsItem[],
+  pending: Pending[],
+  folder: string | undefined,
+  searching: boolean,
+) {
+  const here = pending.filter((each) =>
+    each.change === 'made' ? !searching && each.folder === folder : true,
+  );
+  if (!here.length) return items;
+  const shown = items.flatMap((item) => {
+    const change = here.findLast((each) => each.change !== 'made' && each.item.id === item.id);
+    if (!change) return [item];
+    return change.change === 'trashed' ? [] : [{ ...item, name: change.item.name }];
+  });
+  if (searching) return shown;
+  const made = here
+    .filter((each) => each.change === 'made' && !items.some((item) => item.id === each.item.id))
+    .map((each) => each.item);
+  return arranged([...made, ...shown]);
+}
+
+/** The way to each folder the page has shown, so its path shows before the folder comes. */
+const trails = new Map<string, FolderStep[]>();
 
 export function Browser({
   view,
@@ -130,7 +186,25 @@ export function Browser({
   );
   const listing = useDocumentsFolder(folder, query);
   const [asked, ask] = useState<Asked>();
-  const uploads = useUploads(folder, listing.refresh);
+  const { perform } = useFeedback();
+  const [pending, setPending] = useState<Pending[]>([]);
+  const changes = useRef(0);
+  const show = (change: Omit<Pending, 'key'>) => {
+    const key = `${change.change}:${changes.current++}`;
+    setPending((all) => [...all, { ...change, key }]);
+    return key;
+  };
+  const settle = (key: string, item?: DocumentsItem) =>
+    setPending((all) =>
+      all.map((each) =>
+        each.key === key ? { ...each, item: item ?? each.item, settled: Date.now() } : each,
+      ),
+    );
+  const drop = (key: string) => setPending((all) => all.filter((each) => each.key !== key));
+  const uploads = useUploads(folder, (item, into) => {
+    settle(show({ folder: into, change: 'made', item }), item);
+    foldersChanged();
+  });
   // Files picked or dropped on their own are named before they go up; a folder goes as it is.
   const [naming, setNaming] = useState<Picked[]>();
   const offer = (files: Picked[]) => {
@@ -154,8 +228,106 @@ export function Browser({
     localStorage.setItem(LAYOUT, next);
   };
   const searching = Boolean(query.trim());
-  const at = listing.data;
+  const read = listing.data;
+  // Until the folder comes, the last one shown stays, under the folder's own path.
+  const at = read ?? listing.stale;
+  const coming = !read && !listing.error && Boolean(at);
+  const path = read?.path ?? (folder ? (trails.get(folder) ?? at?.path ?? []) : []);
   const top = !folder;
+  const name = path.at(-1)?.name ?? read?.name ?? '';
+  // What shows is a search's results while the last reading shown came from one.
+  const [searchShown, setSearchShown] = useState(false);
+  useEffect(() => {
+    if (read) setSearchShown(searching);
+  }, [read, searching]);
+  const showsSearch = read ? searching : searchShown;
+  useEffect(() => {
+    if (!read || searching) return;
+    read.path.forEach((_, index) =>
+      trails.set(read.path[index]!.id, read.path.slice(0, index + 1)),
+    );
+    for (const item of read.items)
+      if (item.kind === 'folder')
+        trails.set(item.id, [...read.path, { id: item.id, name: item.name }]);
+  }, [read, searching]);
+  // A change Google confirmed goes once the folder is read with it.
+  useEffect(() => {
+    if (!read) return;
+    setPending((all) => {
+      const left = all.filter((each) => {
+        if (!each.settled) return true;
+        if (Date.now() - each.settled > SETTLING_MS) return false;
+        const listed = read.items.find((item) => item.id === each.item.id);
+        const inside = !searching && each.folder === folder;
+        if (each.change === 'renamed') return listed?.name !== each.item.name;
+        if (each.change === 'made') return !(inside && listed);
+        return !(inside && !listed);
+      });
+      return left.length === all.length ? all : left;
+    });
+  }, [read, folder, searching]);
+  const make = (kind: NewKind, title: string) => {
+    // A tab opened by the click itself, so no popup blocker stops it; it goes to the file once
+    // Google has made it.
+    const tab = kind === 'folder' ? null : window.open('about:blank', '_blank');
+    const into = folder;
+    const id = `pending:${changes.current}`;
+    const key = show({
+      folder: into,
+      change: 'made',
+      item: {
+        id,
+        name: title,
+        kind,
+        size: null,
+        modifiedAt: new Date().toISOString(),
+        modifiedBy: null,
+        addedBy: null,
+        items: kind === 'folder' ? 0 : null,
+        url: '',
+        location: null,
+        thumbnail: null,
+        extension: null,
+      },
+    });
+    void perform(
+      async () => {
+        try {
+          const made = await createItem(into, kind, title);
+          if (tab) tab.location.href = made.url;
+          settle(key, made);
+        } catch (error) {
+          tab?.close();
+          drop(key);
+          throw error;
+        }
+      },
+      `${kindLabel(kind)} created`,
+    );
+  };
+  const rename = (item: DocumentsItem, title: string) => {
+    const key = show({ folder, change: 'renamed', item: { ...item, name: title } });
+    void perform(async () => {
+      try {
+        settle(key, await renameItem(item.id, title));
+      } catch (error) {
+        drop(key);
+        throw error;
+      }
+    }, 'Renamed');
+  };
+  const trash = (item: DocumentsItem) => {
+    const key = show({ folder, change: 'trashed', item });
+    void perform(async () => {
+      try {
+        await trashItem(item.id);
+        settle(key);
+      } catch (error) {
+        drop(key);
+        throw error;
+      }
+    }, 'Moved to the trash');
+  };
   return (
     <>
       <div className="page-heading documents-heading">
@@ -169,7 +341,7 @@ export function Browser({
         <div className="heading-actions">
           <a
             className="documents-link-button"
-            href={at?.url ?? connection.folderUrl}
+            href={read?.url ?? connection.folderUrl}
             target="_blank"
             rel="noreferrer"
           >
@@ -263,8 +435,8 @@ export function Browser({
         </div>
       </div>
       <div className="documents-toolbar">
-        {at && at.path.length > 0 ? (
-          <Path view={view} at={at} />
+        {path.length > 0 ? (
+          <Path view={view} path={path} />
         ) : (
           <div className="documents-pills" role="group" aria-label="Show">
             {FILTERS.map(([value, label]) => (
@@ -320,32 +492,33 @@ export function Browser({
         {dragging && (
           <div className="documents-drop-hint" aria-hidden>
             <Upload size={22} />
-            Drop to upload to {at && at.path.length ? at.name : 'Documents'}
+            Drop to upload to {path.length ? name : 'Documents'}
           </div>
         )}
-        <DataState data={listing.data} error={listing.error} retry={listing.refresh}>
+        {coming && <div className="documents-progress" role="status" aria-label="Loading" />}
+        <DataState data={at} error={listing.error} retry={listing.refresh}>
           {(at) => {
-            const items = at.items.filter(shown(filter));
+            const items = overlaid(at.items, pending, folder, showsSearch).filter(shown(filter));
             if (!items.length)
-              return searching ? (
+              return showsSearch ? (
                 <Empty title="Nothing found">
-                  No file or folder {top ? 'in Documents' : `in ${at.name}`} has that in its name.
+                  No file or folder {top ? 'in Documents' : `in ${name}`} has that in its name.
                 </Empty>
               ) : at.items.length ? (
                 <Empty title={`No ${FILTERS.find(([value]) => value === filter)![1]} here`} />
               ) : (
-                <Empty title={top ? 'Nothing here yet' : `${at.name} is empty`}>
+                <Empty title={top ? 'Nothing here yet' : `${name} is empty`}>
                   Use New to add a folder, a Google Doc, a Sheet or Slides, or drop files here to
                   upload them.
                 </Empty>
               );
-            const props = { view, items, searching, ask };
+            const props = { view, items, searching: showsSearch, ask };
             const folders = items.filter((item) => item.kind === 'folder').length;
             return (
-              <>
+              <div className={coming ? 'documents-coming' : undefined}>
                 {layout === 'list' ? <Table {...props} /> : <Grid {...props} />}
                 <p className="documents-count">{counted(folders, items.length - folders)}</p>
-              </>
+              </div>
             );
           }}
         </DataState>
@@ -365,20 +538,7 @@ export function Browser({
           initial={NEW.find(([kind]) => kind === asked.kind)![2]}
           confirm="Create"
           done={() => ask(undefined)}
-          save={async (name) => {
-            // A tab opened by the click itself, so no popup blocker stops it; it goes to the
-            // file once Google has made it.
-            const tab = asked.kind === 'folder' ? null : window.open('about:blank', '_blank');
-            try {
-              const made = await createItem(folder, asked.kind, name);
-              if (tab) tab.location.href = made.url;
-            } catch (error) {
-              tab?.close();
-              throw error;
-            }
-            listing.refresh();
-          }}
-          success={`${kindLabel(asked.kind)} created`}
+          save={(name) => make(asked.kind, name)}
         />
       )}
       {asked?.to === 'rename' && (
@@ -391,15 +551,11 @@ export function Browser({
           extension={asked.item.extension ?? ''}
           confirm="Rename"
           done={() => ask(undefined)}
-          save={async (name) => {
-            await renameItem(asked.item.id, name);
-            listing.refresh();
-          }}
-          success="Renamed"
+          save={(name) => rename(asked.item, name)}
         />
       )}
       {asked?.to === 'trash' && (
-        <Trash item={asked.item} done={() => ask(undefined)} trashed={listing.refresh} />
+        <Trash item={asked.item} done={() => ask(undefined)} trash={() => trash(asked.item)} />
       )}
     </>
   );
@@ -414,17 +570,29 @@ const counted = (folders: number, files: number) =>
     .join(' and ');
 
 /** The way from the top of Documents to the folder open now. */
-function Path({ view, at }: { view: DspView; at: DocumentsFolder }) {
+function Path({ view, path }: { view: DspView; path: FolderStep[] }) {
   return (
     <nav className="documents-path" aria-label="Folder">
-      <a href={dspHash(view.dsp.id, 'documents')}>Documents</a>
-      {at.path.map((step, index) => (
+      <a
+        href={dspHash(view.dsp.id, 'documents')}
+        onPointerEnter={() => prefetchFolder()}
+        onFocus={() => prefetchFolder()}
+      >
+        Documents
+      </a>
+      {path.map((step, index) => (
         <span key={step.id}>
           <ChevronRight size={14} aria-hidden="true" />
-          {index === at.path.length - 1 ? (
+          {index === path.length - 1 ? (
             <strong aria-current="page">{step.name}</strong>
           ) : (
-            <a href={dspHash(view.dsp.id, 'documents', { folder: step.id })}>{step.name}</a>
+            <a
+              href={dspHash(view.dsp.id, 'documents', { folder: step.id })}
+              onPointerEnter={() => prefetchFolder(step.id)}
+              onFocus={() => prefetchFolder(step.id)}
+            >
+              {step.name}
+            </a>
           )}
         </span>
       ))}
@@ -439,7 +607,10 @@ type ViewProps = {
   ask: (asked: Asked) => void;
 };
 
-/** Where an item opens: a folder in Documents, a file in Google, in a tab of its own. */
+/**
+ * Where an item opens: a folder in Documents, read as the pointer rests on it, and a file in
+ * Google, in a tab of its own. One Google is still making opens nowhere yet.
+ */
 function Opens({
   view,
   item,
@@ -451,8 +622,14 @@ function Opens({
   className?: string;
   children: ReactNode;
 }) {
+  if (making(item)) return <span className={className}>{children}</span>;
   return item.kind === 'folder' ? (
-    <a className={className} href={dspHash(view.dsp.id, 'documents', { folder: item.id })}>
+    <a
+      className={className}
+      href={dspHash(view.dsp.id, 'documents', { folder: item.id })}
+      onPointerEnter={() => prefetchFolder(item.id)}
+      onFocus={() => prefetchFolder(item.id)}
+    >
       {children}
     </a>
   ) : (
@@ -515,7 +692,11 @@ function Table({ view, items, searching, ask }: ViewProps) {
         </thead>
         <tbody>
           {items.map((item) => (
-            <tr key={item.id} onContextMenu={openContextMenu}>
+            <tr
+              key={item.id}
+              className={making(item) ? 'documents-making' : undefined}
+              onContextMenu={openContextMenu}
+            >
               <td>
                 <Opens view={view} item={item} className="documents-name">
                   <Tile kind={item.kind} />
@@ -542,9 +723,7 @@ function Table({ view, items, searching, ask }: ViewProps) {
                   <span className="muted">—</span>
                 )}
               </td>
-              <td className="cell-end">
-                <Actions item={item} ask={ask} />
-              </td>
+              <td className="cell-end">{!making(item) && <Actions item={item} ask={ask} />}</td>
             </tr>
           ))}
         </tbody>
@@ -564,7 +743,11 @@ function Grid({ view, items, searching, ask }: ViewProps) {
           <h2>Folders</h2>
           <div className="documents-card-grid">
             {folders.map((item) => (
-              <div className="documents-folder-card" key={item.id} onContextMenu={openContextMenu}>
+              <div
+                className={`documents-folder-card${making(item) ? ' documents-making' : ''}`}
+                key={item.id}
+                onContextMenu={openContextMenu}
+              >
                 <Opens view={view} item={item} className="documents-name">
                   <Tile kind="folder" size={18} />
                   <span>
@@ -572,7 +755,7 @@ function Grid({ view, items, searching, ask }: ViewProps) {
                     <small>{searching ? `in ${item.location ?? 'Documents'}` : typeOf(item)}</small>
                   </span>
                 </Opens>
-                <Actions item={item} ask={ask} />
+                {!making(item) && <Actions item={item} ask={ask} />}
               </div>
             ))}
           </div>
@@ -583,7 +766,11 @@ function Grid({ view, items, searching, ask }: ViewProps) {
           <h2>Files</h2>
           <div className="documents-card-grid">
             {files.map((item) => (
-              <div className="documents-file-card" key={item.id} onContextMenu={openContextMenu}>
+              <div
+                className={`documents-file-card${making(item) ? ' documents-making' : ''}`}
+                key={item.id}
+                onContextMenu={openContextMenu}
+              >
                 <Opens view={view} item={item} className="documents-file-open">
                   <Thumb kind={item.kind} picture={item.thumbnail} />
                   <span className="documents-name">
@@ -598,7 +785,7 @@ function Grid({ view, items, searching, ask }: ViewProps) {
                     </span>
                   </span>
                 </Opens>
-                <Actions item={item} ask={ask} />
+                {!making(item) && <Actions item={item} ask={ask} />}
               </div>
             ))}
           </div>
@@ -608,38 +795,33 @@ function Grid({ view, items, searching, ask }: ViewProps) {
   );
 }
 
-/** Asks for a name, to make something or rename it: a file's `extension` stays, unshown. */
+/**
+ * Asks for a name, to make something or rename it: a file's `extension` stays, unshown. It
+ * closes as the name is given; the page shows the change while Google makes it.
+ */
 function Naming({
   title,
   initial,
   extension = '',
   confirm,
   save,
-  success,
   done,
 }: {
   title: string;
   initial: string;
   extension?: string;
   confirm: string;
-  save: (name: string) => Promise<void>;
-  success: string;
+  save: (name: string) => void;
   done: () => void;
 }) {
   const [name, setName] = useState(initial);
-  const saving = useAction(
-    async () => {
-      await save(name.trim() + extension);
-      done();
-    },
-    { success, inline: true },
-  );
   return (
     <Modal title={title} onClose={done} initialFocus="input">
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          void saving.run();
+          save(name.trim() + extension);
+          done();
         }}
       >
         <label>
@@ -652,13 +834,11 @@ function Naming({
             onFocus={(event) => event.target.select()}
           />
         </label>
-        <ErrorBox message={saving.error} />
         <div className="form-actions">
           <button type="button" onClick={done}>
             Cancel
           </button>
-          <button className="primary" disabled={saving.busy || !name.trim()}>
-            {saving.busy && <LoaderCircle className="spin" size={16} />}
+          <button className="primary" disabled={!name.trim()}>
             {confirm}
           </button>
         </div>
@@ -670,27 +850,21 @@ function Naming({
 function Trash({
   item,
   done,
-  trashed,
+  trash,
 }: {
   item: DocumentsItem;
   done: () => void;
-  trashed: () => void;
+  trash: () => void;
 }) {
-  const trashing = useAction(
-    async () => {
-      await trashItem(item.id);
-      done();
-      trashed();
-    },
-    { success: 'Moved to the trash' },
-  );
   return (
     <ConfirmDialog
       title={`Move ${item.name} to the trash?`}
       confirm="Move to trash"
       tone="danger"
-      busy={trashing.busy}
-      onConfirm={() => void trashing.run()}
+      onConfirm={() => {
+        trash();
+        done();
+      }}
       onCancel={done}
     >
       {item.kind === 'folder'

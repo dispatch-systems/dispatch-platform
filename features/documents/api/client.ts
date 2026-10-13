@@ -1,4 +1,7 @@
+import { useMemo } from 'react';
 import { ApiError, useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
+import { canPrefetch } from '../../../core/shell/frontend/runtime/prefetch.js';
 import { download, picture, upload } from '../../../core/shell/frontend/runtime/transfer.js';
 import type { DocumentsAccount } from './generated/DocumentsAccount.js';
 import type { DocumentsOverview } from './generated/DocumentsOverview.js';
@@ -14,6 +17,7 @@ export type { DriveStorage } from './generated/DriveStorage.js';
 export type { DocumentsOverview } from './generated/DocumentsOverview.js';
 export type { DocumentsConnection } from './generated/DocumentsConnection.js';
 export type { DocumentsFolder } from './generated/DocumentsFolder.js';
+export type { FolderStep } from './generated/FolderStep.js';
 export type { DocumentsItem } from './generated/DocumentsItem.js';
 export type { ItemKind } from './generated/ItemKind.js';
 export type { NewKind } from './generated/NewKind.js';
@@ -66,14 +70,16 @@ async function moving<T>(work: Promise<T>) {
   }
 }
 
-/** The DSP's Google connection, and whether it can make one. */
-export const useDocumentsOverview = () => useData<DocumentsOverview>('/api/dsp/documents');
+/** The DSP's Google connection, and whether it can make one: kept, as the page's opening reads it. */
+export const useDocumentsOverview = () =>
+  useData<DocumentsOverview>('/api/dsp/documents', 0, undefined, undefined, true);
 /** The DSP's Google account, as those who manage its connections see it. */
 export const documentsAccountUrl = '/api/dsp/documents/account';
+// A reader stays the same function from one render to the next: a new one reads again.
+const readAccount = (signal: AbortSignal) =>
+  call<DocumentsAccount>(documentsAccountUrl, undefined, signal);
 export const useDocumentsAccount = () =>
-  useData<DocumentsAccount>(documentsAccountUrl, 0, undefined, undefined, false, (signal) =>
-    call<DocumentsAccount>(documentsAccountUrl, undefined, signal),
-  );
+  useData<DocumentsAccount>(documentsAccountUrl, 0, undefined, undefined, false, readAccount);
 /** Starts a sign-in with Google to connect the DSP's account: where the browser goes next. */
 export const connectGoogle = () => call<GoogleSignIn>('/api/dsp/documents/connect', {});
 /** Finishes the sign-in Google sent the browser back from. */
@@ -89,15 +95,25 @@ export const documentsFolderUrl = (folder?: string, query?: string) => {
   const search = params.toString();
   return `/api/dsp/documents/folder${search ? `?${search}` : ''}`;
 };
-export const useDocumentsFolder = (folder?: string, query?: string) =>
-  useData<DocumentsFolder>(
-    documentsFolderUrl(folder, query),
-    0,
-    undefined,
-    undefined,
-    false,
-    (signal) => call<DocumentsFolder>(documentsFolderUrl(folder, query), undefined, signal),
-  );
+/** How often the folder open is asked for again, for what changed in Google Drive. */
+const FOLLOW_MS = 15_000;
+const readFolder = (url: string) => (signal: AbortSignal) =>
+  call<DocumentsFolder>(url, undefined, signal);
+/** A folder, kept once read: it shows at once when it opens again, and is asked for anew. */
+export function useDocumentsFolder(folder?: string, query?: string) {
+  const url = documentsFolderUrl(folder, query);
+  const read = useMemo(() => readFolder(url), [url]);
+  return useData<DocumentsFolder>(url, FOLLOW_MS, undefined, undefined, true, read);
+}
+/** Reads a folder ahead of its opening, as the pointer rests on it. */
+export function prefetchFolder(folder?: string) {
+  if (!canPrefetch()) return;
+  const url = documentsFolderUrl(folder);
+  void dataCache.read(url, readFolder(url)).catch(() => {});
+}
+/** Has every folder read since anything changed read again, as a finished upload does. */
+export const foldersChanged = () =>
+  dataCache.invalidate((url) => url.startsWith('/api/dsp/documents/folder'));
 /** Makes a folder, Doc, Sheet or Slides in `folder`, or at the top. */
 export const createItem = (folder: string | undefined, kind: NewKind, name: string) =>
   call<DocumentsItem>('/api/dsp/documents/new', { folder: folder ?? null, kind, name });
@@ -121,8 +137,13 @@ export const uploadFile = (
 /** Adds files picked with Google's picker to `folder`, or the top. */
 export const addFiles = (files: string[], folder: string | undefined) =>
   call<DocumentsItem[]>('/api/dsp/documents/add', { files, folder: folder ?? null });
-/** Google's picture of a file, at the address its item names. */
-export const thumbnail = (url: string, signal: AbortSignal) => picture(url, signal);
+/**
+ * Google's picture of a file, at the address its item names, as large as the screen shows it
+ * sharply: 600 pixels on a high-density screen, 300 on an ordinary one, which holds a quarter
+ * of the memory once shown.
+ */
+export const thumbnail = (url: string, signal: AbortSignal) =>
+  picture(`${url}&s=${window.devicePixelRatio > 1.25 ? 600 : 300}`, signal);
 /** Saves the file `id`: Google's own Docs, Sheets and Slides as Word, Excel and PowerPoint. */
 export const downloadItem = (id: string) =>
   moving(download(`/api/dsp/documents/items/${encodeURIComponent(id)}/download`));

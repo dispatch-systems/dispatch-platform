@@ -446,8 +446,3 @@
 .employee-meals .meal-table th:first-child {
   min-width: 135px;
 }
-.employee-meals .meal-focused-day > * {
-  box-shadow:
-    inset 0 2px var(--primary),
-    inset 0 -2px var(--primary);
-}

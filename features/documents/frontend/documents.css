@@ -786,6 +786,56 @@
   position: relative;
   min-height: 240px;
 }
+/* While a folder comes, the last one shown stays, faded, under a line running along its top:
+   both only once it takes a moment, so a folder that comes at once never flickers. */
+.documents-progress {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 2;
+  height: 2px;
+  overflow: hidden;
+  opacity: 0;
+  animation: documents-shown 0s 150ms forwards;
+}
+.documents-progress::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: var(--primary);
+  animation: documents-progress 1s ease-in-out infinite;
+}
+.documents-coming {
+  animation: documents-faded 0s 150ms forwards;
+}
+/* Something Google is still making. */
+.documents-making {
+  opacity: 0.6;
+}
+@media (prefers-reduced-motion: reduce) {
+  .documents-progress::after {
+    width: 100%;
+    animation: none;
+  }
+}
+@keyframes documents-shown {
+  to {
+    opacity: 1;
+  }
+}
+@keyframes documents-faded {
+  to {
+    opacity: 0.55;
+  }
+}
+@keyframes documents-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
 .documents-drop-hint {
   position: absolute;
   inset: 0;

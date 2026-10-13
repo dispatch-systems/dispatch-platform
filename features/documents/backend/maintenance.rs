@@ -1,8 +1,9 @@
 //! Documents's upkeep. Every minute, sharing the folder with who joined the team and taking it
-//! back from who left. Hourly, noticing a Google connection that stopped working, so the page
+//! back from who left, and letting go of the copies of DSPs' Drives nobody has looked at for
+//! half an hour. Hourly, noticing a Google connection that stopped working, so the page
 //! says so and the owner can reconnect before someone finds out by trying, and checking the
 //! sharing against Google's own list.
-use super::{connection::broken, google::Google, storage::DocumentsStore, team};
+use super::{connection::broken, google::Google, mirror, storage::DocumentsStore, team};
 use dispatch_core::{
     Error, State,
     foundation::observability,
@@ -24,7 +25,11 @@ pub const TEAM: Maintenance = Maintenance {
 /// a moment; the sharing runs on its own, so the scheduler doesn't wait on Google.
 fn follow(state: Arc<State>, due: bool) -> Upkeep {
     Box::pin(async move {
-        if !due || Google::of(&state.config).is_err() {
+        if !due {
+            return;
+        }
+        mirror::sweep();
+        if Google::of(&state.config).is_err() {
             return;
         }
         let changed = state

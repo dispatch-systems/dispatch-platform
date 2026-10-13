@@ -5,7 +5,7 @@
 use super::{
     files,
     google::{self, Google},
-    picker,
+    mirror, picker,
     storage::{Connection, DocumentsStore},
     team,
 };
@@ -163,6 +163,7 @@ pub async fn finish(
     };
     let refresh = granted.refresh;
     files::forget(&c.dsp.id);
+    mirror::forget(&c.dsp.id);
     let shared = c.dsp.id.clone();
     state
         .run(move |db| {
@@ -206,6 +207,7 @@ pub async fn disconnect(state: &Arc<State>, c: Context, access: Dsp) -> Result<D
         google.revoke(&token).await;
     }
     files::forget(&c.dsp.id);
+    mirror::forget(&c.dsp.id);
     state
         .run(move |db| {
             let c = access.revalidate(db, &c)?;
