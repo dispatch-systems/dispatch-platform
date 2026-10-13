@@ -129,12 +129,14 @@ fn html(page: &str, settings: &serde_json::Value, allowed: &str) -> Response {
 /// Documents, which comes straight back when the browser is signed in already, and opens
 /// Google's picker on the files a link named, or on the folder open in Documents. It checks
 /// Google signed in that account first, since a file picked as another can't be added. Then it
-/// goes back to Documents, leaving what was picked for it there.
+/// goes back to Documents, leaving what was picked for it there. It names this address to
+/// Google, though not the page, since Google's picker key works only from Dispatch's own.
 const PAGE: &str = r#"<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin">
 <title>Google Drive · Dispatch</title>
 <style>
   body { margin: 0; min-height: 100vh; display: grid; place-items: center;

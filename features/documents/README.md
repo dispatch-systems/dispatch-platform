@@ -90,12 +90,13 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   browser is signed in to that account already, to the same return address as connecting, with
   its answer in the fragment, which no server sees. That address takes it on to the picker's
   page at the address it started at, the admin's or the DSP's own, as the state names. The page
-  gets its own short-lived token from Google, never the one Dispatch keeps, checks Google
-  signed in the account that holds Documents and offers to switch if not, then opens the
-  picker. Once something is picked, or the picker is closed, it goes back to Documents, which
-  adds what was picked. Leaving Documents while files upload asks first. Dispatch checks it
-  reaches each file with the account's token, so a file picked as another account is
-  refused. One already in Documents becomes visible; one elsewhere in the
+  gets its own short-lived token from Google, never the one Dispatch keeps, and names its
+  address to Google, though not the page, since the picker's key works only from Dispatch's own
+  addresses. It checks Google signed in the account that holds Documents and offers to switch
+  if not, then opens the picker. Once something is picked, or the picker is closed, it goes
+  back to Documents, which adds what was picked. Leaving Documents while files upload asks
+  first. Dispatch checks it reaches each file with the account's token, so a file picked as
+  another account is refused. One already in Documents becomes visible; one elsewhere in the
   account's Drive moves into the folder open. A folder brings only itself: what it holds is
   picked once it's there, and stays where it is. Picking the main folder changes nothing. The
   picker needs
