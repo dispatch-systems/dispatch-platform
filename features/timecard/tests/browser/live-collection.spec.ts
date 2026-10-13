@@ -76,8 +76,9 @@ test('driver results update open timecards and meal breaks without resetting the
   });
   await page.route('**/api/dsp/paycom/meal-breaks/page?*', (route) => {
     rowReads++;
-    const selected = new URL(route.request().url()).searchParams.get('date')!;
-    mealDates.add(selected);
+    const params = new URL(route.request().url()).searchParams;
+    const selected = params.get('date')!;
+    if (params.get('q') === 'live') mealDates.add(selected);
     if (failNextRead) {
       failNextRead = false;
       return route.fulfill({
