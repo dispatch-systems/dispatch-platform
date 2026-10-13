@@ -590,24 +590,62 @@ test('those who manage Documents add files and folders made directly in Drive, p
   );
 });
 
-test("Google's picker runs in a window of its own, and the dashboard loads none of Google", async (t) => {
+test("Google's picker runs on a page of its own, and the dashboard loads none of Google", async (t) => {
   const f = await fixture();
   t.after(f.close);
-  const window = await f.raw('/api/documents/google/picker');
-  assert.equal(window.status, 200);
-  assert.match(window.headers.get('content-type')!, /^text\/html/);
-  const policy = window.headers.get('content-security-policy')!;
-  assert.match(
-    policy,
-    /script-src 'nonce-[\w-]+' https:\/\/accounts\.google\.com https:\/\/apis\.google\.com;/,
-  );
+  const picker = await f.raw('/api/documents/google/picker');
+  assert.equal(picker.status, 200);
+  assert.match(picker.headers.get('content-type')!, /^text\/html/);
+  const policy = picker.headers.get('content-security-policy')!;
+  assert.match(policy, /script-src 'nonce-[\w-]+' https:\/\/apis\.google\.com;/);
+  assert.match(policy, /connect-src https:\/\/www\.googleapis\.com;/);
   assert.match(policy, /frame-ancestors 'none'/);
-  assert.equal(window.headers.get('cross-origin-opener-policy'), 'same-origin-allow-popups');
+  assert.equal(picker.headers.get('cross-origin-opener-policy'), 'same-origin-allow-popups');
   const nonce = /'nonce-([\w-]+)'/.exec(policy)![1];
-  assert.ok((await window.text()).includes(`<script nonce="${nonce}">`));
+  const page = await picker.text();
+  assert.ok(page.includes(`<script nonce="${nonce}">`));
+  // Google sends the browser back to the platform's own return address, the one it knows,
+  // and the page names the DSP address it's at, to go back on to.
+  const back = `${f.env.DISPATCH_ORIGIN}/api/documents/google/return`;
+  assert.ok(page.includes(JSON.stringify({ back, code: '' })));
+  // At a DSP's own address, which the test's requests reach by its Host.
+  const atDsp = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+    http
+      .get(
+        `${f.env.DISPATCH_ORIGIN}/api/documents/google/picker`,
+        { headers: f.at('nll') },
+        (res) => {
+          let body = '';
+          res.on('data', (chunk) => (body += chunk));
+          res.on('end', () => resolve({ status: res.statusCode!, body }));
+        },
+      )
+      .on('error', reject);
+  });
+  assert.equal(atDsp.status, 200);
+  assert.ok(atDsp.body.includes(JSON.stringify({ back, code: 'nll' })));
   const dashboard = await f.raw('/');
   assert.doesNotMatch(dashboard.headers.get('content-security-policy')!, /google/);
   assert.equal(dashboard.headers.get('cross-origin-opener-policy'), 'same-origin');
+});
+
+test("Google's return address takes the picker's answer on, in the fragment, to the picker's page", async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const relay = await f.raw('/api/documents/google/return');
+  assert.equal(relay.status, 200);
+  const policy = relay.headers.get('content-security-policy')!;
+  assert.match(policy, /^default-src 'none'; script-src 'nonce-[\w-]+'; base-uri 'none'/);
+  const page = await relay.text();
+  assert.ok(
+    page.includes(
+      JSON.stringify({
+        origin: f.env.DISPATCH_ORIGIN,
+        dsp: `http://{code}.localhost:${f.env.PORT}`,
+        picker: '/api/documents/google/picker',
+      }),
+    ),
+  );
 });
 
 test("a server with half of Google's settings refuses to start, naming what's missing", async (t) => {

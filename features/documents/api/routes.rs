@@ -18,7 +18,7 @@ use dispatch_core::{
     server::http::{
         input::optional,
         input::{Input, Reply},
-        route::{Dsp, Grant, Member, Route, async_get, async_post, protocol, upload, write},
+        route::{Dsp, Grant, Member, Route, async_get, async_post, page, protocol, upload, write},
         upload::{UPLOAD_LIMIT, Upload},
     },
 };
@@ -48,8 +48,8 @@ pub fn routes() -> Vec<Route> {
         protocol(Method::GET, RETURN_PATH, |state, request| {
             Box::pin(returned(state, request))
         }),
-        protocol(Method::GET, picker::PICKER_PATH, |_, _| {
-            Box::pin(async { picker::page() })
+        page(picker::PICKER_PATH, |state, request| {
+            Box::pin(async move { picker::page(&state.config, request.extensions().get()) })
         }),
     ]
 }
@@ -272,6 +272,10 @@ async fn returned(state: Arc<State>, request: Request) -> Response {
             .find(|(key, _)| key == name)
             .map(|(_, v)| v.as_str())
     };
+    // Google's answer to the picker's page is in the fragment, which only the browser reads.
+    if sent.is_empty() {
+        return picker::relay(&state.config);
+    }
     let sign_in = field("state").unwrap_or("");
     let Some(dsp) = sign_in
         .split_once('.')

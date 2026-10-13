@@ -127,7 +127,7 @@ pub async fn pipeline(
     headers
         .entry(header::CACHE_CONTROL)
         .or_insert("no-store".parse().unwrap());
-    // A page that runs an outside service's scripts, as a window of its own, sets its own
+    // A page that runs an outside service's scripts, such as Google's picker, sets its own
     // rules for them; every other response gets the dashboard's.
     headers
         .entry("cross-origin-opener-policy")

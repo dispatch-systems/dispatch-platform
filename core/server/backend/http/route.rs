@@ -278,6 +278,7 @@ enum Handler {
     Memory(fn(&State) -> Reply),
     Protocol(Signer, fn(Request) -> Served),
     Open(fn(Arc<State>, Request) -> Served),
+    Page(fn(Arc<State>, Request) -> Served),
 }
 
 /// The paths a logged route covers, and the route the request log names them by.
@@ -515,6 +516,14 @@ pub fn protocol(
         handler: Handler::Open(handler),
     }
 }
+/// A public `GET` page of Dispatch's own that the handler answers itself, at every address:
+/// one that sets its own rules, as for an outside service's scripts.
+pub fn page(path: &'static str, handler: fn(Arc<State>, Request) -> Served) -> Route {
+    Route {
+        handler: Handler::Page(handler),
+        ..protocol(Method::GET, path, handler)
+    }
+}
 /// A public `GET` answered from memory: no session, query, body or database.
 pub fn probe(path: &'static str, handler: fn(&State) -> Reply) -> Route {
     Route {
@@ -668,6 +677,7 @@ impl Route {
                 ensure(admin, "not_found", 404)?;
                 return Ok(handler(state, request).await);
             }
+            Handler::Page(handler) => return Ok(handler(state, request).await),
             Handler::Upload(limit, handler) => {
                 let (parts, body) = request.into_parts();
                 let input = middleware::head(&state, &parts, self.path)?;

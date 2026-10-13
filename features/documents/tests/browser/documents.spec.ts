@@ -148,3 +148,87 @@ test('an owner adds a file someone made directly in Drive from its link', async 
   await expect(picker).toBeHidden();
   await expect(page.getByRole('link', { name: /Fuel receipts\.pdf/ })).toBeVisible();
 });
+
+test("Google's picker opens in the tab, signed in as the account, and comes back with what was picked", async ({
+  page,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  // Fixture mode has no picker of Google's: here the server offers one, and Google answers as
+  // it does for a browser signed in to the account already.
+  let account = '';
+  await page.route('**/api/dsp/documents', async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    if (json.picker) {
+      account = json.picker.account;
+      json.picker.google = { clientId: 'client', apiKey: 'key', appId: '1' };
+    }
+    await route.fulfill({ response, json });
+  });
+  const overview = page.waitForResponse(
+    async (response) =>
+      response.url().endsWith('/api/dsp/documents') && Boolean((await response.json()).picker),
+  );
+  await page.route('https://accounts.google.com/o/oauth2/v2/auth?**', async (route) => {
+    const asked = new URL(route.request().url()).searchParams;
+    expect(asked.get('login_hint')).toBe(account);
+    const answer = new URLSearchParams({ access_token: 'token', state: asked.get('state')! });
+    await route.fulfill({
+      contentType: 'text/html',
+      body: `<script>location.replace(${JSON.stringify(`${asked.get('redirect_uri')}#${answer}`)})</script>`,
+    });
+  });
+  await page.route('https://www.googleapis.com/drive/v3/about?**', (route) =>
+    route.fulfill({
+      headers: {
+        'access-control-allow-origin': '*',
+        'access-control-allow-headers': 'authorization',
+      },
+      json: { user: { emailAddress: account } },
+    }),
+  );
+  // Google's picker picks what it was opened on.
+  await page.route('https://apis.google.com/js/api.js', (route) =>
+    route.fulfill({
+      contentType: 'text/javascript',
+      body: `
+        window.gapi = { load: (name, options) => options.callback() };
+        class DocsView {
+          setIncludeFolders() { return this; }
+          setSelectFolderEnabled() { return this; }
+          setFileIds(ids) { this.ids = ids; return this; }
+          setParent() { return this; }
+        }
+        class PickerBuilder {
+          addView(view) { this.view = view; return this; }
+          enableFeature() { return this; }
+          setOAuthToken(token) { this.token = token; return this; }
+          setDeveloperKey() { return this; }
+          setAppId() { return this; }
+          setCallback(callback) { this.callback = callback; return this; }
+          build() {
+            return { setVisible: () => this.token === 'token' && this.callback({
+              action: 'picked', docs: this.view.ids.split(',').map((id) => ({ id })),
+            }) };
+          }
+        }
+        window.google = { picker: { DocsView, PickerBuilder, ViewId: {}, Feature: {},
+          Action: { PICKED: 'picked', CANCEL: 'cancel' } } };
+      `,
+    }),
+  );
+  await connect(page);
+  const made: { id: string; name: string }[] = (await (await overview).json()).picker.madeInDrive;
+  const receipts = made.find((file) => file.name === 'Fuel receipts.pdf')!;
+  await page.getByLabel('Upload', { exact: true }).click();
+  await page.getByRole('button', { name: 'Drive link' }).click();
+  const linking = page.getByRole('dialog', { name: 'Add a Drive link' });
+  await linking
+    .getByRole('textbox', { name: 'Link' })
+    .fill(`https://drive.google.com/file/d/${receipts.id}/view?usp=drive_link`);
+  await linking.getByRole('button', { name: 'Add' }).click();
+  await expect(page.getByText('Added to Documents')).toBeVisible();
+  await expect(page.getByRole('link', { name: /Fuel receipts\.pdf/ })).toBeVisible();
+  expect(page.context().pages()).toHaveLength(1);
+});
