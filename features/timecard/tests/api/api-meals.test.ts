@@ -19,6 +19,27 @@ test('meal API requires DSP context, exposes the punch union to members, and lin
     const response = await owner.get(`/api/dsp/paycom/meal-breaks?date=${date}`);
     assert.equal(response.status, 200);
     assert.equal(response.value.rows.length, 12);
+    const pagePath = '/api/dsp/paycom/meal-breaks/page';
+    const first = await owner.get(`${pagePath}?date=${date}&limit=3&offset=0`);
+    checkReply([timecardReplies], pagePath, 'GET', first.value);
+    assert.equal(first.value.total, 12);
+    assert.equal(first.value.counts.all, 12);
+    assert.deepEqual(first.value.rows, response.value.rows.slice(0, 3));
+    const second = await owner.get(`${pagePath}?date=${date}&limit=3&offset=3`);
+    assert.deepEqual(second.value.rows, response.value.rows.slice(3, 6));
+    const late = response.value.rows.filter((row: MealEmployee) => row.assessment.lateIn);
+    const latePage = await owner.get(`${pagePath}?date=${date}&limit=all&filter=late`);
+    assert.deepEqual(latePage.value.rows, late);
+    assert.equal(latePage.value.counts.late, late.length);
+    const searched = await owner.get(`${pagePath}?date=${date}&q=E001&limit=all`);
+    assert.deepEqual(
+      searched.value.rows.map((row: MealEmployee) => row.id),
+      ['paycom:E001'],
+    );
+    const descending = await owner.get(`${pagePath}?date=${date}&limit=all&direction=desc`);
+    assert.deepEqual(descending.value.rows, [...response.value.rows].reverse());
+    for (const query of ['limit=101', 'sort=unknown', 'filter=unknown'])
+      assert.equal((await owner.get(`${pagePath}?date=${date}&${query}`)).status, 400);
     // The Late DAs filter reads each card's department.
     assert.deepEqual(
       [...new Set(response.value.rows.map((r: MealEmployee) => r.paycom?.department))].sort(),
@@ -26,7 +47,9 @@ test('meal API requires DSP context, exposes the punch union to members, and lin
     );
     assert.equal((await owner.get('/api/dsp/paycom/meal-breaks?date=invalid')).status, 400);
     const member = await f.client('member@dispatch.test');
+    assert.equal((await member.get(`${pagePath}?date=${date}`)).status, 403);
     await member.select(dsp.id);
+    assert.equal((await member.get(`${pagePath}?date=${date}&limit=2`)).value.rows.length, 2);
     assert.equal((await member.get(`/api/dsp/paycom/meal-breaks?date=${date}`)).status, 200);
     const periodUrl = `/api/dsp/paycom/meal-breaks/period?source=paycom%3AE001&date=${date}`;
     const period = await member.get(periodUrl);

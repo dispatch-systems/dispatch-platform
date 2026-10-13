@@ -52,26 +52,41 @@ pub(crate) fn meal_period_gaps(
     date: &str,
     timezone: &str,
 ) -> Result<MealPeriodGaps> {
-    let mut counts = BTreeMap::new();
-    let period = match store.timecard_period(id, None, Some(date), None) {
-        Ok(period) => period,
-        // Before Paycom's first collection, or past its latest period, the day has none.
+    gaps_for(store, id, gap_period(store, id, date)?, timezone)
+}
+pub(crate) fn gap_period(
+    store: &Store,
+    id: &str,
+    date: &str,
+) -> Result<Option<EmployeeTimecardPeriod>> {
+    match store.timecard_period(id, None, Some(date), None) {
+        Ok(period) => Ok(Some(period)),
         Err(error)
             if matches!(
                 error.code.as_str(),
                 "timecard_period_unavailable" | "invalid_period"
             ) =>
         {
-            return Ok(MealPeriodGaps {
-                period: None,
-                counts,
-            });
+            Ok(None)
         }
-        Err(error) => return Err(error),
+        Err(error) => Err(error),
+    }
+}
+pub(crate) fn gaps_for(
+    store: &Store,
+    id: &str,
+    period: Option<EmployeeTimecardPeriod>,
+    timezone: &str,
+) -> Result<MealPeriodGaps> {
+    let mut counts = BTreeMap::new();
+    let Some(period) = period else {
+        return Ok(MealPeriodGaps {
+            period: None,
+            counts,
+        });
     };
-    for day in store
-        .meal_comparisons(id, &period.from, &period.to, timezone, None)?
-        .values()
+    for day in
+        super::comparison::gap_comparisons(store, id, &period.from, &period.to, timezone)?.values()
     {
         for (row, _) in verified_gaps(day) {
             *counts.entry(row.to_owned()).or_default() += 1;

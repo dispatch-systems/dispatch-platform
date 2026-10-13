@@ -10,16 +10,17 @@ pub use api::{
     },
     employee_sync::{EmployeeSyncSource, EmployeeSyncStatus},
     meals::{
-        CortexMeal, CortexPublication, CortexUnreadable, MatchType, MealComparison, MealDriver,
-        MealEmployee, MealPaycom, MealPeriod, MealPeriodGaps, MealSource, PeriodMealGap,
+        CortexMeal, CortexPublication, CortexUnreadable, MatchType, MealComparison,
+        MealComparisonPage, MealCounts, MealDriver, MealEmployee, MealPaycom, MealPeriod,
+        MealPeriodGaps, MealSource, PeriodMealGap,
     },
     settings::{
         DepartmentOption, NameOrder, PaycomColumn, PaycomOptions, PaycomPage, PaycomPreferences,
         PaycomSettings, PaycomSort, PreferenceRevision,
     },
     types::{
-        DailyTimecard, DailyTimecards, Employee, EmployeeTimecard, EmployeeTimecardResponse,
-        EmployeesResponse, InPunchKind, OutPunchKind, Punch, Timecard,
+        DailyTimecard, DailyTimecardPage, DailyTimecards, Employee, EmployeeTimecard,
+        EmployeeTimecardResponse, EmployeesResponse, InPunchKind, OutPunchKind, Punch, Timecard,
     },
 };
 /// What its integration tests and its offline fixture builder use beside: how a meal break
@@ -155,6 +156,14 @@ pub const FEATURE: Feature = Feature {
     }],
     domains: &[punches::DOMAIN, meals::DOMAIN],
     cached: &[
+        Cached {
+            read: punches::daily::CACHED,
+            evicted: By(&[punches::DOMAIN, DataDomain::LIVE, DataDomain::TENANT]),
+        },
+        Cached {
+            read: punches::employees::CACHED,
+            evicted: By(&[punches::DOMAIN, DataDomain::TENANT]),
+        },
         // The DSP listings' collection dates are its timecards'.
         Cached {
             read: LISTINGS,
@@ -206,6 +215,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         EmployeeTimecard,
         DailyTimecard,
         DailyTimecards,
+        DailyTimecardPage,
         EmployeesResponse,
         AssessedClock,
         Lunch,
@@ -226,6 +236,8 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         MealDriver,
         CortexPublication,
         MealComparison,
+        MealComparisonPage,
+        MealCounts,
         MealPeriod,
         MealPeriodGaps,
         PeriodMealGap,

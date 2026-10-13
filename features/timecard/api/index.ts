@@ -30,3 +30,7 @@ export type { MealStatus } from './generated/MealStatus.js';
 export type { LateRule } from './generated/LateRule.js';
 export type { PaycomPreferences } from './generated/PaycomPreferences';
 export type { PaycomSettings } from './generated/PaycomSettings';
+
+export type { MealComparisonPage } from './generated/MealComparisonPage.js';
+export type { MealCounts } from './generated/MealCounts.js';
+export type { DailyTimecardPage } from './generated/DailyTimecardPage.js';

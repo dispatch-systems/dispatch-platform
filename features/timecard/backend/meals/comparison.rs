@@ -19,6 +19,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 // Exact matches take priority over the more conservative name-variant pass.
 fn match_drivers(drivers: &mut BTreeMap<String, Value>, roster: &[Value], settings: &Value) {
+    if drivers.is_empty() {
+        return;
+    }
     let saved = settings["links"].as_array().cloned().unwrap_or_default();
     let separate = settings["separate"].as_array().cloned().unwrap_or_default();
     let mut reserved: HashSet<String> = saved
@@ -122,12 +125,48 @@ pub(crate) fn meal_comparisons(
     timezone: &str,
     selected: Option<&[String]>,
 ) -> Result<BTreeMap<String, MealComparison>> {
+    comparisons(store, id, from, to, timezone, Read::Comparison(selected))
+}
+
+/// Gap counts need complete identity context and Cortex observations, without
+/// assessing every employee's Paycom punches on every day of the period.
+pub(crate) fn gap_comparisons(
+    store: &Store,
+    id: &str,
+    from: &str,
+    to: &str,
+    timezone: &str,
+) -> Result<BTreeMap<String, MealComparison>> {
+    comparisons(store, id, from, to, timezone, Read::Gaps)
+}
+#[derive(Clone, Copy)]
+enum Read<'a> {
+    Comparison(Option<&'a [String]>),
+    Gaps,
+}
+fn comparisons(
+    store: &Store,
+    id: &str,
+    from: &str,
+    to: &str,
+    timezone: &str,
+    read: Read<'_>,
+) -> Result<BTreeMap<String, MealComparison>> {
+    let selected = match read {
+        Read::Comparison(selected) => selected,
+        Read::Gaps => None,
+    };
     let codes = selected.map(|sources| {
         sources
             .iter()
             .filter_map(|source| source.strip_prefix("paycom:").map(str::to_owned))
             .collect::<Vec<_>>()
     });
+    let codes = if matches!(read, Read::Gaps) {
+        Some(vec![])
+    } else {
+        codes
+    };
     let days = punches::daily_sources(store, id, from, to, codes.as_deref())?;
     let cortex = store.collector(id, cortex::PROVIDER)?;
     let mut publications: BTreeMap<String, Vec<Value>> = BTreeMap::new();

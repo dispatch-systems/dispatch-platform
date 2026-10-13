@@ -156,6 +156,23 @@ pub struct ReadCache {
     entries: Mutex<VecDeque<Entry>>,
 }
 impl ReadCache {
+    /// Keep one immutable derived result when pages need different slices of it.
+    /// Cloning its Arc neither copies the roster nor repeats JSON parsing.
+    pub fn shared<T: Serialize + Send + Sync + 'static>(
+        &self,
+        scope: Scope,
+        key: String,
+        revision: u64,
+        load: impl FnOnce() -> Result<T>,
+    ) -> Result<Arc<T>> {
+        self.read_sized(
+            scope,
+            key,
+            revision,
+            || Ok(Arc::new(load()?)),
+            |value| Ok(serde_json::to_vec(value.as_ref())?.len().saturating_mul(2)),
+        )
+    }
     /// Call under the transition write lock, before the first mutation. Evict on
     /// errors too: a later database may fail after an earlier one committed.
     pub fn invalidate_tenant(&self, dsp: &str, domain: DataDomain) {

@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sortDailyRows } from '../../frontend/daily-sort.js';
 import { localDate } from '../../../../core/shell/frontend/lib/day.js';
 import { fixture, until } from '../../../../core/shell/tests/support/support.js';
 
@@ -186,7 +185,6 @@ test('Unicode employee sorting agrees with the dashboard locale and preserves di
     expected,
   );
   const day = `/api/dsp/timecards?date=${localDate('America/Chicago')}`;
-  const rows = (await owner.get(day)).value.rows;
   for (const sort of [
     'name',
     'totalHours',
@@ -198,11 +196,33 @@ test('Unicode employee sorting agrees with the dashboard locale and preserves di
   ]) {
     for (const direction of ['asc', 'desc']) {
       const server = (await owner.get(`${day}&sort=${sort}&direction=${direction}`)).value.rows;
-      assert.deepEqual(
-        sortDailyRows(rows, sort, direction === 'desc'),
-        server,
-        `${sort}/${direction}`,
-      );
+      const page = (
+        await owner.get(
+          `${day.replace('/timecards?', '/timecards/page?')}&sort=${sort}&direction=${direction}&offset=2&limit=3`,
+        )
+      ).value;
+      assert.equal(page.total, server.length);
+      assert.deepEqual(page.rows, server.slice(2, 5), `${sort}/${direction}`);
+      if (sort === 'totalHours') {
+        assert.deepEqual(
+          server.map((r: any) => r.hours),
+          direction === 'desc' ? [2, 2, 2, 1, 1, 1, 0, 0, 0] : [0, 0, 0, 1, 1, 1, 2, 2, 2],
+        );
+        for (const hours of [0, 1, 2]) {
+          const codes = server
+            .filter((r: any) => r.hours === hours)
+            .map((r: any) => r.employeeCode);
+          assert.deepEqual(codes, [...codes].sort());
+        }
+      } else if (sort === 'name') {
+        const names = server.map((r: any) => r.name);
+        assert.deepEqual(
+          names,
+          [...names].sort(
+            (a: string, b: string) => a.localeCompare(b, 'en') * (direction === 'desc' ? -1 : 1),
+          ),
+        );
+      }
     }
   }
 });

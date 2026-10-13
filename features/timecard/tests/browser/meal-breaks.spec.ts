@@ -1,4 +1,8 @@
-import { assessMealResponse, type MealComparisonSource } from '../support/assessment.js';
+import {
+  assessMealResponse,
+  mealPageFixture,
+  type MealComparisonSource,
+} from '../support/assessment.js';
 import type { Page } from '@playwright/test';
 import {
   test,
@@ -129,14 +133,16 @@ async function mockComparison(page: Page, data = sample, unavailableDate?: strin
       },
     }),
   );
-  await page.route('**/api/dsp/paycom/meal-breaks?*', async (route) => {
+  await page.route('**/api/dsp/paycom/meal-breaks/page?*', async (route) => {
     const selected = new URL(route.request().url()).searchParams.get('date');
     if (selected === unavailableDate)
       return route.fulfill({
         status: 503,
         json: { error: 'platform_busy', message: 'Please try again.' },
       });
-    await route.fulfill({ json: assessMealResponse({ ...data(), date: selected }) });
+    await route.fulfill({
+      json: mealPageFixture({ ...data(), date: selected }, route.request().url()),
+    });
   });
   return errors;
 }
@@ -511,12 +517,15 @@ test('sync remains locked across dates, tabs and reloads until both sources stop
     });
     await route.fulfill({ status: 202, json: { date: jobDate, jobs: [] } });
   });
-  await page.route('**/api/dsp/paycom/meal-breaks?*', (route) =>
+  await page.route('**/api/dsp/paycom/meal-breaks/page?*', (route) =>
     route.fulfill({
-      json: assessMealResponse({
-        ...sample(),
-        date: new URL(route.request().url()).searchParams.get('date'),
-      }),
+      json: mealPageFixture(
+        {
+          ...sample(),
+          date: new URL(route.request().url()).searchParams.get('date'),
+        },
+        route.request().url(),
+      ),
     }),
   );
   await open(page, false, '2026-09-16');
@@ -621,17 +630,20 @@ test('shared date and sync controls survive tabs, navigation, reload and collect
       },
     }),
   );
-  await page.route('**/api/dsp/paycom/meal-breaks?*', (route) => {
+  await page.route('**/api/dsp/paycom/meal-breaks/page?*', (route) => {
     mealReads++;
     const selected = new URL(route.request().url()).searchParams.get('date')!;
     const comparison = sample();
     return route.fulfill({
-      json: assessMealResponse({
-        ...comparison,
-        date: selected,
-        paycomCollectedAt: collectedAt,
-        rows: comparison.rows.map((row) => ({ ...row, name: `${row.name} ${selected}` })),
-      }),
+      json: mealPageFixture(
+        {
+          ...comparison,
+          date: selected,
+          paycomCollectedAt: collectedAt,
+          rows: comparison.rows.map((row) => ({ ...row, name: `${row.name} ${selected}` })),
+        },
+        route.request().url(),
+      ),
     });
   });
   await page.route('**/api/dsp/jobs/meal-breaks?*', (route) =>

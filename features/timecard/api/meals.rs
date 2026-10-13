@@ -148,6 +148,30 @@ pub struct MealComparison {
     pub drivers: Vec<MealDriver>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct MealCounts {
+    pub all: usize,
+    pub late: usize,
+    pub different: usize,
+    pub missing: usize,
+    pub gaps: usize,
+}
+
+/// One table page. Counts cover the full day; total covers the selected search/filter.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct MealComparisonPage {
+    #[serde(flatten)]
+    pub comparison: MealComparison,
+    pub total: usize,
+    pub counts: MealCounts,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]

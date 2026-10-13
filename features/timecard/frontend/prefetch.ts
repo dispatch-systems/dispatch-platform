@@ -3,10 +3,10 @@ import type { EmployeesResponse } from '../api/index.js';
 import { readUpdateState } from '../../../core/shell/frontend/runtime/browser-update.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import {
-  dailyTimecardsUrl,
+  dailyPageUrl,
   employeesPath,
   employeeTimecardUrl,
-  mealComparisonUrl,
+  mealPageUrl,
   paycomSettingsPath,
 } from '../api/urls.js';
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
@@ -21,11 +21,18 @@ import { selectedPaycomDate } from './paycom-date.js';
 function timecardUrls(tab: string, date: string, view: DspView): string[] {
   if (!admitted(view) || !can(view, 'timecard.view')) return [];
   const urls = [paycomSettingsPath];
-  if (tab === 'timecards' && hasFeature(view, 'timecard.daily')) urls.push(dailyTimecardsUrl(date));
-  else if (tab === 'meal-breaks' && hasFeature(view, 'timecard.meal_breaks'))
-    urls.push(mealComparisonUrl(date));
-  else if (tab === 'employees' && hasFeature(view, 'timecard.employees')) {
-    const hash = dspHash(view.dsp.id, 'paycom');
+  const hash = dspHash(view.dsp.id, 'paycom');
+  if (tab === 'timecards' && hasFeature(view, 'timecard.daily')) {
+    const sort = readUpdateState('timecard-sort', { id: 'name', desc: false }, hash);
+    const page = readUpdateState('timecard-page', 0, hash);
+    urls.push(dailyPageUrl(date, sort.id, sort.desc, page));
+  } else if (tab === 'meal-breaks' && hasFeature(view, 'timecard.meal_breaks')) {
+    const sort = readUpdateState('meal-sort', { id: 'employee', desc: false }, hash);
+    const query = readUpdateState('meal-query', '', hash);
+    const filter = readUpdateState('meal-filter', 'all', hash);
+    const page = readUpdateState('meal-page', 0, hash);
+    urls.push(mealPageUrl(date, query.toLowerCase(), filter, sort.id, sort.desc, page));
+  } else if (tab === 'employees' && hasFeature(view, 'timecard.employees')) {
     const query = readUpdateState('employee-query', '', hash);
     const status = readUpdateState('employee-status', 'all', hash);
     const page = readUpdateState('employee-page', 0, hash);
