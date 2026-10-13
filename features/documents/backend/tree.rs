@@ -69,6 +69,8 @@ pub struct Row {
     pub version: Option<u64>,
     /// When Google described it, which its picture's link lasts hours from.
     pub seen: Instant,
+    /// For a shortcut, the file it stands for, whose bytes a download takes.
+    pub target: Option<Arc<str>>,
 }
 impl Row {
     pub fn folder(&self) -> bool {
@@ -77,18 +79,32 @@ impl Row {
 }
 impl From<Item> for Row {
     fn from(item: Item) -> Self {
+        // A shortcut shows as the file it stands for, and opens it. One to a folder opens it in
+        // Drive, since Dispatch can't reach what that folder holds.
+        let (mime, link, target) = match &item.shortcut_details {
+            Some(shortcut) => (
+                match shortcut.target_mime_type.as_str() {
+                    FOLDER => Mime::of(drive::SHORTCUT),
+                    target => Mime::of(target),
+                },
+                drive::link(&shortcut.target_mime_type, &shortcut.target_id),
+                Some(Arc::from(shortcut.target_id.as_str())),
+            ),
+            None => (Mime::of(&item.mime_type), item.web_view_link, None),
+        };
         Self {
             parent: item.parents.into_iter().next().map(Arc::from),
             id: item.id.into(),
             name: item.name.into(),
-            mime: Mime::of(&item.mime_type),
+            mime,
             modified: item.modified_time.into(),
             by: item.last_modifying_user.map(Arc::new),
             size: item.size.and_then(|size| size.parse().ok()),
-            link: item.web_view_link.into(),
+            link: link.into(),
             thumbnail: item.thumbnail_link.map(Into::into),
             version: item.thumbnail_version.and_then(|v| v.parse().ok()),
             seen: item.seen,
+            target,
         }
     }
 }
@@ -211,6 +227,12 @@ impl Tree {
         self.places.get(id).map(|place| &self.rows[*place as usize])
     }
     /// Whether `id` is the main folder or a folder inside it.
+    /// Whether a shortcut in Documents stands for the file `id`.
+    pub fn stands_for(&self, id: &str) -> bool {
+        self.rows
+            .iter()
+            .any(|row| row.target.as_deref() == Some(id))
+    }
     pub fn is_folder(&self, id: &str) -> bool {
         id == &*self.root || self.get(id).is_some_and(Row::folder)
     }

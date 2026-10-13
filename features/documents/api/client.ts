@@ -50,6 +50,7 @@ const wording: Record<string, string> = {
   documents_storage_full:
     'The Google account that holds Documents is out of storage. Free up space in it, or add storage with Google One.',
   documents_too_many_files: 'Documents holds more files than Dispatch can list at once.',
+  documents_cannot_move: "Google wouldn't move that file into Documents.",
   documents_picked_elsewhere:
     'Those files were picked as another Google account. Pick them again, signed in to Google as the account that holds Documents.',
   upload_too_large: 'Files can be up to 100 MB.',

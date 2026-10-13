@@ -98,9 +98,15 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   back to Documents, which adds what was picked. Leaving Documents while files upload asks
   first. Dispatch checks it reaches each file with the account's token, so a file picked as
   another account is refused. One already in Documents becomes visible; one elsewhere in the
-  account's Drive moves into the folder open. A folder brings only itself: what it holds is
-  picked once it's there, and stays where it is. Picking the main folder changes nothing. The
-  picker needs
+  account's Drive moves into the folder open. Only its owner moves a file, so one someone else
+  owns and shared with the account, or one Google won't move (`cannotAddParent`), gets a
+  shortcut in the folder open instead, as Drive's own Add shortcut does, once however often
+  it's added. Documents shows a shortcut as the file it stands for and opens that file, a
+  download takes that file's bytes, and renaming or trashing it changes only the shortcut. A
+  shortcut to a folder opens the folder in Drive, since Dispatch can't reach what it holds.
+  Teammates open the file only if its owner shared it with them. A folder brings only itself:
+  what it holds is picked once it's there, and stays where it is. Picking the main folder
+  changes nothing. The picker needs
   `DISPATCH_DEV_GOOGLE_API_KEY` and `…_GOOGLE_APP_ID` (the Google project's number), or
   `DISPATCH_PRODUCTION_…`, beside the sign-in client; without them the page doesn't offer it,
   and with one alone the server refuses to start.
@@ -133,7 +139,8 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
 - **Fixture mode** never calls Google: its sign-in comes straight back with
   `fixture:<email>` as the code, and each account's Drive is kept in memory. A member who
   links signs in as `teammate@example.com`, and an address at `example.net` is no Google
-  account. Its Drive also holds files and a folder made directly in Drive, out of reach until
+  account. Its Drive also holds files and a folder made directly in Drive, and a Sheet someone
+  else owns and shared with the account (`Route tracker`), out of reach until
   they're picked, and in place of Google's picker the page lists them, with those a pasted
   link names chosen.
 - **Page:** Documents, in a DSP's sidebar. It keeps the folders it opened, shows them at once

@@ -511,6 +511,7 @@ test('those who manage Documents add files and folders made directly in Drive, p
   assert.deepEqual(picker.madeInDrive.map((file: Picked) => [file.name, file.kind]).sort(), [
     ['Fuel receipts.pdf', 'pdf'],
     ['Route map 2025.png', 'image'],
+    ['Route tracker', 'sheet'],
     ['Safety', 'folder'],
     ['Weekly safety huddle', 'doc'],
   ]);
@@ -560,12 +561,30 @@ test('those who manage Documents add files and folders made directly in Drive, p
     folder: null,
   });
   assert.deepEqual(await inSafety(), ['Weekly safety huddle']);
+  // One someone else owns and shared with the account stays where its owner keeps it:
+  // Documents gets a shortcut to it, which shows and opens as the Sheet, once however often
+  // it's added.
+  const shared = made('Route tracker');
+  for (const _ of [1, 2]) {
+    const tracker = await owner.post('/api/dsp/documents/add', {
+      files: [shared.id],
+      folder: null,
+    });
+    assert.equal(tracker.status, 200, tracker.body);
+  }
+  const trackers = (await owner.read('/api/dsp/documents/folder')).items.filter(
+    (item: { name: string }) => item.name === 'Route tracker',
+  );
+  assert.equal(trackers.length, 1);
+  assert.notEqual(trackers[0].id, shared.id);
+  assert.equal(trackers[0].kind, 'sheet');
+  assert.equal(trackers[0].url, `https://docs.google.com/spreadsheets/d/${shared.id}/edit`);
   assert.deepEqual((await setup()).madeInDrive, []);
   // Picking the main folder itself changes nothing.
   const main = await owner.post('/api/dsp/documents/add', { files: [picker.folder], folder: null });
   assert.equal(main.status, 200, main.body);
   assert.deepEqual(main.value, []);
-  assert.deepEqual(await top(), ['Fleet', 'Safety', 'Fuel receipts.pdf']);
+  assert.deepEqual(await top(), ['Fleet', 'Safety', 'Route tracker', 'Fuel receipts.pdf']);
   // A file the account wasn't given was picked as another account.
   assert.equal(
     (await owner.post('/api/dsp/documents/add', { files: ['someone-elses-file'], folder: null }))

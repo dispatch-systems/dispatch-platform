@@ -26,6 +26,8 @@ pub(crate) fn item(
         web_view_link: String::new(),
         thumbnail_link: None,
         thumbnail_version: None,
+        owned_by_me: true,
+        shortcut_details: None,
         seen: std::time::Instant::now(),
     }
 }
@@ -79,4 +81,39 @@ fn the_tree_is_the_main_folder_and_only_what_it_holds() {
     assert_eq!(ids(tree.search("safety", "plan")), ["new", "old"]);
     assert_eq!(ids(tree.search("fleet", "plan")), Vec::<String>::new());
     assert_eq!(ids(tree.search("main", "new plan")), ["new"]);
+}
+
+#[test]
+fn a_shortcut_shows_as_the_file_it_stands_for_and_one_to_a_folder_opens_in_drive() {
+    let shortcut = |id: &str, target: &str, mime: &str| Item {
+        mime_type: drive::SHORTCUT.into(),
+        shortcut_details: Some(drive::Shortcut {
+            target_id: target.into(),
+            target_mime_type: mime.into(),
+        }),
+        ..item(id, "Shared", Some("main"), false, "2026-10-02")
+    };
+    let tree = Tree::new(
+        "main",
+        vec![
+            item("main", "Documents", None, true, "2026-10-01"),
+            shortcut("to-sheet", "sheet", drive::SHEET),
+            shortcut("to-folder", "folder", FOLDER),
+        ],
+    );
+    let sheet = tree.get("to-sheet").unwrap();
+    assert_eq!(sheet.mime, Mime::Sheet);
+    assert_eq!(
+        &*sheet.link,
+        "https://docs.google.com/spreadsheets/d/sheet/edit"
+    );
+    assert_eq!(sheet.target.as_deref(), Some("sheet"));
+    let folder = tree.get("to-folder").unwrap();
+    assert!(!folder.folder());
+    assert_eq!(
+        &*folder.link,
+        "https://drive.google.com/drive/folders/folder"
+    );
+    assert!(tree.stands_for("sheet") && tree.stands_for("folder"));
+    assert!(!tree.stands_for("to-sheet"));
 }
