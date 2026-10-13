@@ -65,10 +65,11 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   `drive.file`'s reach until Google's picker gives it. Those who manage the DSP's connections,
   who hold its Google account, pick it in a window of its own, signed in to Google as that
   account: the window has rules of its own that let only Google's sign-in and picker run, and
-  the dashboard's stay as they are. Add from Drive, beside Upload, opens the picker on the
-  folder open in Documents; a Google Drive, Docs, Sheets or Slides link pasted on the page
-  (outside a field) opens it on the files the link names, or on the folder. A browser that
-  blocks the window offers to open it again with a click. The window gets its own short-lived
+  the dashboard's stay as they are. The page's Upload menu holds them beside uploading files
+  and folders, for those who can: Google Drive opens the picker on the folder open in
+  Documents, and Drive link asks for a Google Drive, Docs, Sheets or Slides link and opens it
+  on the files the link names, or on the folder, as pasting one on the page (outside a field)
+  does. A browser that blocks the window offers to open it again with a click. The window gets its own short-lived
   token from Google, never the one Dispatch keeps, and tells the Documents page what was picked
   on a channel only Dispatch's own pages reach, with a word the page gave it. Dispatch then
   checks it reaches each file with the account's token, so a file picked as another account is

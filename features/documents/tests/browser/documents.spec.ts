@@ -128,23 +128,20 @@ test('a member names files as they upload, drops one on the page, renames and do
   expect(saved.suggestedFilename()).toBe('Route notes week 41.txt');
 });
 
-test('an owner adds a file someone made directly in Drive by pasting its link', async ({
-  page,
-}) => {
+test('an owner adds a file someone made directly in Drive from its link', async ({ page }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await connect(page);
   const made: { id: string; name: string }[] = (await fromPage(page, '/api/dsp/documents')).value
     .picker.madeInDrive;
   const receipts = made.find((file) => file.name === 'Fuel receipts.pdf')!;
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], {
-    origin: new URL(page.url()).origin,
-  });
-  await page.evaluate(
-    (link) => navigator.clipboard.writeText(link),
-    `https://drive.google.com/file/d/${receipts.id}/view?usp=drive_link`,
-  );
-  await page.keyboard.press('ControlOrMeta+V');
+  await page.getByLabel('Upload', { exact: true }).click();
+  await page.getByRole('button', { name: 'Drive link' }).click();
+  const linking = page.getByRole('dialog', { name: 'Add a Drive link' });
+  await linking
+    .getByRole('textbox', { name: 'Link' })
+    .fill(`https://drive.google.com/file/d/${receipts.id}/view?usp=drive_link`);
+  await linking.getByRole('button', { name: 'Add' }).click();
   // Fixture mode lists its Drive's files out of reach, where Google's picker would open, with
   // the one the link names chosen.
   const picker = page.getByRole('dialog', { name: 'Add from Google Drive' });

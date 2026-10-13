@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
-import { Modal } from '../../../core/shell/frontend/ui/index.js';
+import { ErrorBox, Modal } from '../../../core/shell/frontend/ui/index.js';
 import { addFiles, type PickerSetup } from '../api/client.js';
 import { driveLinks } from './driveLinks.js';
 import { Tile } from './items.js';
@@ -8,8 +8,8 @@ import { Tile } from './items.js';
 // Adding files and folders someone made directly in Google Drive. Google's picker opens in a
 // window of its own, signed in to Google as the account that holds Documents, on the folder
 // open here, and tells this page what was picked on a channel only this origin reaches. A
-// Google link pasted on the page opens it on the files the link names. Fixture mode has no
-// picker of Google's: it lists its Drive's files here instead.
+// Google link, given in a dialog or pasted on the page, opens it on the files the link names.
+// Fixture mode has no picker of Google's: it lists its Drive's files here instead.
 
 const CHANNEL = 'dispatch-documents-picker';
 
@@ -26,6 +26,7 @@ export function useFromDrive(
   const [choosing, setChoosing] = useState<string[]>();
   // Where the picker was to open when the browser blocked its window.
   const [blocked, setBlocked] = useState<At>();
+  const [linking, setLinking] = useState(false);
   const channel = useRef<BroadcastChannel | undefined>(undefined);
   useEffect(() => () => channel.current?.close(), []);
   const adding = useAction(
@@ -88,6 +89,7 @@ export function useFromDrive(
           }}
         />
       )}
+      {linking && <DriveLink close={() => setLinking(false)} open={open} />}
       {blocked && (
         <Modal title="Add from Google Drive" onClose={() => setBlocked(undefined)}>
           <div className="form-actions">
@@ -100,7 +102,47 @@ export function useFromDrive(
       )}
     </>
   );
-  return { open: () => open(), dialog };
+  return { open: () => open(), askLink: () => setLinking(true), dialog };
+}
+
+/** Asks for a Google link, then opens the picker on what it names. */
+function DriveLink({ close, open }: { close: () => void; open: (at: At) => void }) {
+  const [link, setLink] = useState('');
+  const [wrong, setWrong] = useState(false);
+  return (
+    <Modal title="Add a Drive link" onClose={close} initialFocus="input">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          const at = driveLinks(link);
+          if (!at) return setWrong(true);
+          close();
+          open(at);
+        }}
+      >
+        <label>
+          Link
+          <input
+            value={link}
+            placeholder="https://docs.google.com/…"
+            onChange={(event) => {
+              setLink(event.target.value);
+              setWrong(false);
+            }}
+          />
+        </label>
+        <ErrorBox message={wrong ? "That isn't a link to a file or folder in Google Drive." : ''} />
+        <div className="form-actions">
+          <button type="button" onClick={close}>
+            Cancel
+          </button>
+          <button className="primary" disabled={!link.trim()}>
+            Add
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
 }
 
 /** Fixture mode's stand-in for Google's picker: the files its Drive holds out of reach. */

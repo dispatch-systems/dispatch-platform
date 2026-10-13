@@ -4,9 +4,11 @@ import {
   Download,
   Ellipsis,
   ExternalLink,
+  FileUp,
   FolderUp,
   HardDriveDownload,
   LayoutGrid,
+  Link2,
   List,
   LoaderCircle,
   Plus,
@@ -174,16 +176,48 @@ export function Browser({
             <ExternalLink size={16} />
             Open in Drive
           </a>
-          <button className="documents-link-button" onClick={() => files.current?.click()}>
-            <Upload size={16} />
-            Upload
-          </button>
-          {overview.picker && (
-            <button className="documents-link-button" onClick={fromDrive.open}>
-              <HardDriveDownload size={16} />
-              Add from Drive
+          <Popover
+            className="row-menu documents-upload"
+            triggerClassName="documents-link-button"
+            label="Upload"
+            trigger={
+              <>
+                <Upload size={16} />
+                Upload
+              </>
+            }
+            anchored
+          >
+            <button onClick={() => files.current?.click()}>
+              <span className="documents-menu-icon">
+                <FileUp size={16} />
+              </span>
+              Files
             </button>
-          )}
+            <button onClick={() => folders.current?.click()}>
+              <span className="documents-menu-icon">
+                <FolderUp size={16} />
+              </span>
+              Folder
+            </button>
+            {overview.picker && (
+              <>
+                <span className="documents-menu-rule" role="separator" />
+                <button onClick={fromDrive.askLink}>
+                  <span className="documents-menu-icon">
+                    <Link2 size={16} />
+                  </span>
+                  Drive link
+                </button>
+                <button onClick={fromDrive.open}>
+                  <span className="documents-menu-icon">
+                    <HardDriveDownload size={16} />
+                  </span>
+                  Google Drive
+                </button>
+              </>
+            )}
+          </Popover>
           <Popover
             className="row-menu documents-new"
             label="New"
@@ -201,33 +235,6 @@ export function Browser({
                 {label}
               </button>
             ))}
-            <span className="documents-menu-rule" role="separator" />
-            <button onClick={() => files.current?.click()}>
-              <span className="documents-menu-icon">
-                <Upload size={16} />
-              </span>
-              Upload files
-            </button>
-            <button onClick={() => folders.current?.click()}>
-              <span className="documents-menu-icon">
-                <FolderUp size={16} />
-              </span>
-              Upload a folder
-            </button>
-            {overview.picker && (
-              <>
-                <span className="documents-menu-rule" role="separator" />
-                <button className="documents-from-drive" onClick={fromDrive.open}>
-                  <span className="documents-menu-icon">
-                    <HardDriveDownload size={16} />
-                  </span>
-                  <span>
-                    Add from Google Drive
-                    <small>Files someone made directly in Drive</small>
-                  </span>
-                </button>
-              </>
-            )}
           </Popover>
           <input
             ref={files}
