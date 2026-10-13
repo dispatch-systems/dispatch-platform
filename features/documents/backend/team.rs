@@ -240,7 +240,6 @@ async fn share_files(
         .collect();
     let at = dsp.to_owned();
     let made = state.read(move |db| db.documents_shared_files(&at)).await?;
-    let mut saved = Vec::new();
     for file in &targets {
         let missing: Vec<&String> = wanted
             .iter()
@@ -267,18 +266,31 @@ async fn share_files(
             if has {
                 continue;
             }
-            match drive.google.share(&drive.access, file, email).await {
-                Ok(Ok(share)) => saved.push(SharedFile {
-                    file: file.clone(),
-                    email: email.clone(),
-                    share,
-                }),
+            let share = match drive.google.share(&drive.access, file, email).await {
+                Ok(Ok(share)) => share,
                 Err(error) if error.code == "google_connection_broken" => return Err(error),
-                _ => {}
+                _ => continue,
+            };
+            // Kept at once, so a share Dispatch made is always one it can take back: one it
+            // couldn't keep is taken back now.
+            let shared = SharedFile {
+                file: file.clone(),
+                email: email.clone(),
+                share,
+            };
+            let (at, kept) = (dsp.to_owned(), shared.clone());
+            if let Err(error) = state
+                .run(move |db| db.save_documents_shared_file(&at, &kept))
+                .await
+            {
+                drive
+                    .google
+                    .unshare(&drive.access, &shared.file, &shared.share)
+                    .await?;
+                return Err(error);
             }
         }
     }
-    let mut taken = Vec::new();
     for shared in made {
         if targets.contains(&shared.file) && wanted.contains(&shared.email) {
             continue;
@@ -288,27 +300,19 @@ async fn share_files(
             .unshare(&drive.access, &shared.file, &shared.share)
             .await
         {
+            // Taken back, or the account no longer reaches the file to take it back.
+            Ok(()) => {}
+            Err(error) if error.code == "documents_item_not_found" => {}
             Err(error) if error.code == "google_connection_broken" => return Err(error),
-            // One Google won't take back is forgotten all the same: the account may no
-            // longer reach the file.
-            _ => taken.push(shared),
+            // Google may be busy: it's kept, and the next sync tries again.
+            Err(_) => continue,
         }
+        let at = dsp.to_owned();
+        state
+            .run(move |db| db.remove_documents_shared_file(&at, &shared))
+            .await?;
     }
-    if saved.is_empty() && taken.is_empty() {
-        return Ok(());
-    }
-    let at = dsp.to_owned();
-    state
-        .run(move |db| {
-            for shared in &saved {
-                db.save_documents_shared_file(&at, shared)?;
-            }
-            for shared in &taken {
-                db.remove_documents_shared_file(&at, shared)?;
-            }
-            Ok(())
-        })
-        .await
+    Ok(())
 }
 
 /// Emails a member how to link a Google account, so the folder can be shared with them. A
