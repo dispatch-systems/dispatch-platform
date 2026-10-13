@@ -570,6 +570,8 @@
         "subjects": []
       },
       "cached": [
+        "timecard.daily",
+        "timecard.employees",
         "listings",
         "meals"
       ],
@@ -593,10 +595,13 @@
         "GET /api/dsp/employees/{code}",
         "POST /api/dsp/employees/{code}/sync",
         "GET /api/dsp/timecards",
+        "GET /api/dsp/timecards/page",
+        "GET /api/dsp/timecards/punches/{code}",
         "GET /api/dsp/paycom/status",
         "GET /api/dsp/paycom/settings",
         "POST /api/dsp/paycom/settings",
         "GET /api/dsp/paycom/meal-breaks",
+        "GET /api/dsp/paycom/meal-breaks/page",
         "GET /api/dsp/paycom/meal-breaks/period",
         "GET /api/dsp/paycom/meal-breaks/period-gaps",
         "GET /api/dsp/cortex/meal-breaks",

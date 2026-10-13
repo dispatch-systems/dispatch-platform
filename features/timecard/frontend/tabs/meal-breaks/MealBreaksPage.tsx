@@ -1,7 +1,13 @@
+import { performancePolicy } from '../../../../../core/shell/frontend/lib/performance-policy.js';
 import { useUpdateState } from '../../../../../core/shell/frontend/runtime/browser-update.js';
-import { useDeferredValue, useMemo } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight, Download, Globe, Info, RefreshCw } from 'lucide-react';
-import { mealComparisonUrl, useMealComparison, useMealPeriodGaps } from '../../../api/client.js';
+import {
+  mealPageUrl,
+  exportMealComparison,
+  useMealComparison,
+  useMealPeriodGaps,
+} from '../../../api/client.js';
 import { navigate, settingsHash } from '../../../../../core/shell/frontend/runtime/navigation.js';
 import { useTableState } from '../../../../../core/shell/frontend/runtime/useTableState.js';
 import {
@@ -52,8 +58,24 @@ export function MealBreaksPage({
   const [query, setQuery] = useUpdateState('meal-query', ''),
     [filter, setFilter] = useUpdateState('meal-filter', 'all');
   const state = useTableState('meal', { id: 'employee', desc: false });
-  const url = mealComparisonUrl(date);
-  const request = useMealComparison(date, refreshKey);
+  const [settledQuery, setSettledQuery] = useState(query);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledQuery(query), performancePolicy.employeeSearchDelayMs);
+    return () => clearTimeout(timer);
+  }, [query]);
+  const deferredSearch = useDeferredValue(settledQuery.toLowerCase());
+  const searching = deferredSearch !== query.toLowerCase();
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const url = mealPageUrl(
+    date,
+    deferredSearch,
+    filter,
+    state.sort?.id,
+    state.sort?.desc,
+    state.page,
+  );
+  const request = useMealComparison(url, refreshKey);
   useAdjacentDays(url, date, today, request.data);
   const current = request.data?.date === date ? request.data : undefined;
   // The previous day's rows hold the layout, dimmed and inert, until the new day arrives.
@@ -66,6 +88,10 @@ export function MealBreaksPage({
   const periodGaps = [gapsRequest.data, gapsRequest.stale].find(
     (gaps) => gaps?.period && gaps.period.from <= shownDate && shownDate <= gaps.period.to,
   );
+  useEffect(() => {
+    if (current && state.page && state.page * 100 >= current.total)
+      state.setPage(Math.max(0, Math.ceil(current.total / 100) - 1));
+  }, [current, state.page, state.setPage]);
   const nameOrder = preferences.name_order;
   const lateTime = preferences.late_da_time,
     lateDepartments = preferences.late_da_departments;
@@ -85,45 +111,13 @@ export function MealBreaksPage({
       }),
     [data, shownDate, nameOrder, onOpenEmployee, periodGaps],
   );
-  const prepared = useMemo(() => {
-    const counts = { all: rows.length, late: 0, different: 0, missing: 0, gaps: 0 };
-    const searchable = rows.map((line) => {
-      counts.late += Number(line.summary.lateIn);
-      counts.different += Number(line.summary.different);
-      counts.missing += Number(line.summary.missing);
-      counts.gaps += Number(line.summary.longGap);
-      return {
-        line,
-        text: `${line.name} ${line.row.paycom?.employeeCode ?? ''} ${line.row.cortex.map((m) => m.driverName).join(' ')}`.toLowerCase(),
-      };
-    });
-    return { counts, searchable };
-  }, [rows]);
-  const counts = prepared.counts;
-  const search = query.toLowerCase();
-  const deferredSearch = useDeferredValue(search);
-  const searching = deferredSearch !== search;
-  const filtered = useMemo(
-    () =>
-      prepared.searchable
-        .filter(
-          ({ line: { summary }, text }) =>
-            (filter === 'all' ||
-              (filter === 'late'
-                ? summary.lateIn
-                : filter === 'different'
-                  ? summary.different
-                  : filter === 'gaps'
-                    ? summary.longGap
-                    : summary.missing)) &&
-            text.includes(deferredSearch),
-        )
-        .map(({ line }) => line),
-    [prepared, filter, deferredSearch],
-  );
+  const counts = data?.counts ?? { all: 0, late: 0, different: 0, missing: 0, gaps: 0 };
+  const filtered = rows;
   const table = useDataTable({
     columns: mealColumns,
     rows: filtered,
+    total: data?.total,
+    sorting: 'server',
     rowId: (line) => line.id,
     state,
     pageSize: 100,
@@ -139,8 +133,8 @@ export function MealBreaksPage({
           <h2 id="meal-heading">Meal Breaks</h2>
           {data && (
             <span className="paycom-employee-count">
-              {filtered.length}
-              {filtered.length !== counts.all && ` of ${counts.all}`}{' '}
+              {data.total}
+              {data.total !== counts.all && ` of ${counts.all}`}{' '}
               {counts.all === 1 ? 'employee' : 'employees'}
             </span>
           )}
@@ -157,12 +151,34 @@ export function MealBreaksPage({
         <button
           className="icon-button"
           aria-label="Export meal breaks"
-          disabled={!filtered.length || searching}
-          onClick={() => downloadTable(table, `meal-breaks-${shownDate}.csv`)}
+          disabled={!current?.total || searching || exporting}
+          aria-busy={exporting}
+          onClick={async () => {
+            setExporting(true);
+            setExportError('');
+            try {
+              const full = await exportMealComparison(
+                shownDate,
+                deferredSearch,
+                filter,
+                state.sort?.id ?? 'employee',
+                state.sort?.desc ?? false,
+              );
+              const allRows = full.rows.map((row) =>
+                mealLines(row, displayMeal(row), personName(row.name, nameOrder), shownDate),
+              );
+              downloadTable({ ...table, allRows }, `meal-breaks-${shownDate}.csv`);
+            } catch (error) {
+              setExportError(error instanceof Error ? error.message : String(error));
+            } finally {
+              setExporting(false);
+            }
+          }}
         >
           <Download size={16} />
         </button>
       </header>
+      {exportError && <ErrorBox message={exportError} />}
       <div className="meal-toolbar">
         <SearchInput
           label="Search meal break employees"

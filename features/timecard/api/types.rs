@@ -143,6 +143,16 @@ pub struct DailyTimecards {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(rename_all = "camelCase")]
+pub struct DailyTimecardPage {
+    #[serde(flatten)]
+    pub timecards: DailyTimecards,
+    pub total: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
+#[serde(rename_all = "camelCase")]
 pub struct EmployeesResponse {
     pub employees: Vec<Employee>,
     pub total: usize,

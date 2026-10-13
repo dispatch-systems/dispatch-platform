@@ -11,7 +11,7 @@ use crate::{
 };
 use chrono::{DateTime, NaiveDate, Timelike};
 
-fn cortex_clock(value: Option<&str>, date: &str, zone: &str) -> Option<AssessedClock> {
+pub(super) fn cortex_clock(value: Option<&str>, date: &str, zone: &str) -> Option<AssessedClock> {
     let instant = DateTime::parse_from_rfc3339(value?).ok()?;
     let local = instant.with_timezone(&zone.parse::<chrono_tz::Tz>().ok()?);
     let day =

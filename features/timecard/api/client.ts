@@ -5,11 +5,13 @@ import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { cancelPrefetches, prefetchData } from '../../../core/shell/frontend/runtime/prefetch.js';
 import type {
   DailyTimecards,
+  DailyTimecard,
+  DailyTimecardPage,
+  MealComparisonPage,
   EmployeeTimecardPeriod,
   EmployeeTimecardResponse,
   EmployeeSyncStatus,
   EmployeesResponse,
-  MealComparison,
   MealPeriod,
   MealPeriodGaps,
   PaycomPreferences,
@@ -18,6 +20,8 @@ import type {
 import type { ScheduleInput } from '../../../core/collection/api/index.js';
 import {
   dailyTimecardsUrl,
+  dailyPageUrl,
+  mealPageUrl,
   employeeTimecardUrl,
   mealComparisonUrl,
   mealPeriodGapsUrl,
@@ -25,7 +29,14 @@ import {
   schedules,
 } from './urls.js';
 
-export { dailyTimecardsUrl, employeeTimecardUrl, mealComparisonUrl, schedules };
+export {
+  dailyPageUrl,
+  mealPageUrl,
+  dailyTimecardsUrl,
+  employeeTimecardUrl,
+  mealComparisonUrl,
+  schedules,
+};
 
 // Timecard's endpoints, as its pages call them. Only its own screens raise these, so their
 // words load with them.
@@ -90,18 +101,30 @@ export const useEmployees = (
     0,
     refreshKey,
   );
-export const useDailyTimecards = (date: string, refreshKey?: string | null) =>
-  useCachedData<DailyTimecards>(
-    dailyTimecardsUrl(date),
+export const useDailyTimecards = (url: string, refreshKey?: string | null) =>
+  useCachedData<DailyTimecardPage>(url, performancePolicy.recoveryPollMs, refreshKey);
+export const useMealComparison = (url: string, refreshKey?: string | null) =>
+  useCachedData<MealComparisonPage>(url, performancePolicy.recoveryPollMs, refreshKey);
+export const useDailyPunches = (date: string, code: string, refreshKey?: string | null) =>
+  useCachedData<DailyTimecard>(
+    `/api/dsp/timecards/punches/${encodeURIComponent(code)}?date=${date}`,
     performancePolicy.recoveryPollMs,
     refreshKey,
   );
-export const useMealComparison = (date: string, refreshKey?: string | null) =>
-  useCachedData<MealComparison>(
-    mealComparisonUrl(date),
-    performancePolicy.recoveryPollMs,
-    refreshKey,
+export const exportDailyTimecards = (date: string, sort: string, desc: boolean) =>
+  api<DailyTimecards>(
+    dailyTimecardsUrl(date).replace(
+      'sort=name&direction=asc',
+      `sort=${sort}&direction=${desc ? 'desc' : 'asc'}`,
+    ),
   );
+export const exportMealComparison = (
+  date: string,
+  query: string,
+  filter: string,
+  sort: string,
+  desc: boolean,
+) => api<MealComparisonPage>(mealPageUrl(date, query, filter, sort, desc, 0, 'all'));
 export const useMealPeriod = (
   source: string,
   period: EmployeeTimecardPeriod | string | undefined,

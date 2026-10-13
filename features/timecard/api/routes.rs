@@ -13,7 +13,7 @@ use dispatch_core::{
     foundation::validate as v,
     server::http::{
         input::{Input, Reply, descending, optional, optional_text, query_number},
-        route::{Dsp, Member, Route, coalesced_read, read, write},
+        route::{Dsp, Member, Route, coalesced_read, coalesced_read_by, read, write},
     },
 };
 use dispatch_cortex::{self as cortex, discovery::Scope};
@@ -43,7 +43,16 @@ const SORTS: &[&str] = &[
 
 pub fn routes() -> Vec<Route> {
     let mut routes = vec![
-        read("/api/dsp/employees", VIEW, employees).logged(),
+        coalesced_read_by(
+            "/api/dsp/employees",
+            VIEW,
+            |_, c, _| {
+                tab(c, EMPLOYEES)?;
+                Ok("roster".into())
+            },
+            employees,
+        )
+        .logged(),
         read("/api/dsp/employees/{code}", VIEW, employee).logged(),
         write(
             "/api/dsp/employees/{code}/sync",
@@ -51,14 +60,30 @@ pub fn routes() -> Vec<Route> {
             sync_employee,
         ),
         read("/api/dsp/timecards", VIEW, timecards).logged(),
+        coalesced_read_by("/api/dsp/timecards/page", VIEW, daily_key, timecard_page).logged(),
+        coalesced_read_by(
+            "/api/dsp/timecards/punches/{code}",
+            VIEW,
+            daily_key,
+            daily_punches,
+        )
+        .logged(),
         read("/api/dsp/paycom/status", VIEW, paycom_status),
         read("/api/dsp/paycom/settings", VIEW, paycom_settings).logged(),
         write("/api/dsp/paycom/settings", MANAGE, save_paycom_settings),
         coalesced_read("/api/dsp/paycom/meal-breaks", VIEW, meal_comparison).logged(),
+        coalesced_read_by(
+            "/api/dsp/paycom/meal-breaks/page",
+            VIEW,
+            meal_key,
+            meal_page,
+        )
+        .logged(),
         read("/api/dsp/paycom/meal-breaks/period", VIEW, meal_period).logged(),
-        coalesced_read(
+        coalesced_read_by(
             "/api/dsp/paycom/meal-breaks/period-gaps",
             VIEW,
+            period_key,
             meal_period_gaps,
         )
         .logged(),
@@ -78,6 +103,29 @@ pub fn routes() -> Vec<Route> {
     ];
     routes.extend(schedule_routes("/api/dsp/schedules", MANAGE, "timecard"));
     routes
+}
+
+fn day_key(_: &Store, c: &Member, input: &Input) -> Result<String> {
+    let date = v::text(&input.query, "date", 10, 10)?;
+    Ok(format!("{date}:{}", c.dsp.timezone))
+}
+fn daily_key(db: &Store, c: &Member, input: &Input) -> Result<String> {
+    tab(c, DAILY)?;
+    day_key(db, c, input)
+}
+fn meal_key(db: &Store, c: &Member, input: &Input) -> Result<String> {
+    tab(c, MEAL_BREAKS)?;
+    day_key(db, c, input)
+}
+fn period_key(db: &Store, c: &Member, input: &Input) -> Result<String> {
+    tab(c, MEAL_BREAKS)?;
+    let date = v::text(&input.query, "date", 10, 10)?;
+    let period = crate::backend::meals::period::gap_period(db, c.dsp_id(), date)?;
+    Ok(format!(
+        "{}:{}",
+        serde_json::to_string(&period)?,
+        c.dsp.timezone
+    ))
 }
 
 fn employees(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -101,7 +149,18 @@ fn employees(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         "inactive" => Some(false),
         _ => None,
     };
-    let page = db.timecard_employees(c.dsp_id(), query, offset, limit, desc, active)?;
+    let roster = c.state.read_cache.shared(
+        dispatch_core::server::cache::Scope::tenant(
+            crate::backend::punches::employees::CACHED,
+            c.dsp_id(),
+        ),
+        "roster".into(),
+        c.state
+            .data_revision
+            .load(std::sync::atomic::Ordering::Relaxed),
+        || crate::backend::punches::employees::roster(db, c.dsp_id()),
+    )?;
+    let page = roster.page(query, offset, limit, desc, active);
     Reply::of(&page)
 }
 
@@ -143,6 +202,159 @@ fn timecards(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let sort = optional(q, "sort", |q, key| v::choice(q, key, SORTS))?.unwrap_or("name");
     let date = v::text(q, "date", 10, 10)?;
     Reply::of(&db.daily_timecards(c.dsp_id(), date, sort, descending(q)?)?)
+}
+
+fn page_bounds(q: &serde_json::Value) -> Result<(usize, Option<usize>)> {
+    let offset = query_number(q, "offset", 0, 0, 100000)?;
+    let limit = if q["limit"] == "all" {
+        None
+    } else {
+        Some(query_number(q, "limit", 100, 1, 100)?)
+    };
+    Ok((offset, limit))
+}
+fn timecard_page(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    tab(c, DAILY)?;
+    let q = &input.query;
+    v::fields(q, &["date", "sort", "direction", "offset", "limit"])?;
+    let date = v::text(q, "date", 10, 10)?;
+    let sort = optional(q, "sort", |q, key| v::choice(q, key, SORTS))?.unwrap_or("name");
+    let desc = descending(q)?;
+    let (offset, limit) = page_bounds(q)?;
+    let day = cached_daily(db, c, date, sort, desc)?;
+    Reply::of(&crate::api::types::DailyTimecardPage {
+        total: day.rows.len(),
+        timecards: crate::api::types::DailyTimecards {
+            rows: day
+                .rows
+                .iter()
+                .skip(offset)
+                .take(limit.unwrap_or(usize::MAX))
+                .cloned()
+                .collect(),
+            available: day.available,
+            collected_at: day.collected_at.clone(),
+        },
+    })
+}
+fn daily_punches(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    tab(c, DAILY)?;
+    v::fields(&input.query, &["date"])?;
+    let date = v::text(&input.query, "date", 10, 10)?;
+    let day = cached_daily(db, c, date, "name", false)?;
+    let card = day
+        .rows
+        .iter()
+        .find(|row| row.card.employee_code == input.param("code"))
+        .ok_or_else(|| Error::new("not_found", 404))?;
+    Reply::of(card)
+}
+fn cached_daily(
+    db: &Store,
+    c: &Member,
+    date: &str,
+    sort: &str,
+    desc: bool,
+) -> Result<std::sync::Arc<crate::api::types::DailyTimecards>> {
+    let load = || db.daily_timecards(c.dsp_id(), date, sort, desc);
+    let day = if db.any_active_job(c.dsp_id(), KINDS)? {
+        std::sync::Arc::new(load()?)
+    } else {
+        c.state.read_cache.shared(
+            dispatch_core::server::cache::Scope::tenant(
+                crate::backend::punches::daily::CACHED,
+                c.dsp_id(),
+            ),
+            format!("{date}:{sort}:{desc}"),
+            c.state
+                .data_revision
+                .load(std::sync::atomic::Ordering::Relaxed),
+            load,
+        )?
+    };
+    Ok(day)
+}
+
+fn meal_page(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    tab(c, MEAL_BREAKS)?;
+    let q = &input.query;
+    v::fields(
+        q,
+        &[
+            "date",
+            "q",
+            "filter",
+            "sort",
+            "direction",
+            "offset",
+            "limit",
+        ],
+    )?;
+    let date = v::text(q, "date", 10, 10)?;
+    let search = optional_text(q, "q", 100)?;
+    let filter = optional(q, "filter", |q, key| {
+        v::choice(q, key, &["all", "late", "different", "missing", "gaps"])
+    })?
+    .unwrap_or("all");
+    let sort = optional(q, "sort", |q, key| {
+        v::choice(
+            q,
+            key,
+            &[
+                "employee",
+                "inDay",
+                "outDay",
+                "outLunch",
+                "inLunch",
+                "firstDelivery",
+                "lastDelivery",
+                "comparison",
+            ],
+        )
+    })?
+    .unwrap_or("employee");
+    let desc = descending(q)?;
+    let (offset, limit) = page_bounds(q)?;
+    let load = || db.meal_comparison(c.dsp_id(), date, c.dsp.timezone.as_str());
+    let live = db.any_active_job(c.dsp_id(), KINDS)?;
+    let day = if live {
+        std::sync::Arc::new(load()?)
+    } else {
+        c.state.read_cache.shared(
+            dispatch_core::server::cache::Scope::tenant(crate::backend::meals::CACHED, c.dsp_id()),
+            format!("meal-table:{date}:{}", c.dsp.timezone),
+            c.state
+                .data_revision
+                .load(std::sync::atomic::Ordering::Relaxed),
+            load,
+        )?
+    };
+    let preferences = db.timecard_preference_values(c.dsp_id())?;
+    let query = crate::backend::meals::page::Query {
+        search,
+        filter,
+        sort,
+        desc,
+        offset,
+        limit,
+        name_order: dispatch_core::db::s(&preferences["values"], "name_order"),
+    };
+    let ordering = if live {
+        std::sync::Arc::new(crate::backend::meals::page::order(&day, &query))
+    } else {
+        c.state.read_cache.shared(
+            dispatch_core::server::cache::Scope::tenant(crate::backend::meals::CACHED, c.dsp_id()),
+            format!(
+                "meal-order:{date}:{}:{}:{sort}:{desc}",
+                c.dsp.timezone, query.name_order
+            ),
+            c.state
+                .data_revision
+                .load(std::sync::atomic::Ordering::Relaxed),
+            || Ok(crate::backend::meals::page::order(&day, &query)),
+        )?
+    };
+    Reply::of(&crate::backend::meals::page::page(&day, query, &ordering))
 }
 
 fn sync_employee(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -287,13 +499,18 @@ fn meal_period_gaps(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     if db.any_active_job(c.dsp_id(), KINDS)? {
         return Reply::of(&db.meal_period_gaps(c.dsp_id(), date, timezone)?);
     }
+    let period = crate::backend::meals::period::gap_period(db, c.dsp_id(), date)?;
     let gaps = c.state.read_cache.json(
         dispatch_core::server::cache::Scope::tenant(crate::backend::meals::CACHED, c.dsp_id()),
-        format!("meal-period-gaps:{}:{}:{}", c.dsp_id(), date, timezone),
+        format!(
+            "meal-period-gaps:{}:{}",
+            serde_json::to_string(&period)?,
+            timezone
+        ),
         c.state
             .data_revision
             .load(std::sync::atomic::Ordering::Relaxed),
-        || db.meal_period_gaps(c.dsp_id(), date, timezone),
+        || crate::backend::meals::period::gaps_for(db, c.dsp_id(), period, timezone),
     )?;
     Ok(Reply::encoded(gaps))
 }

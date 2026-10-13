@@ -1,4 +1,4 @@
-import { assessMealResponse } from '../support/assessment.js';
+import { mealPageFixture } from '../support/assessment.js';
 import type { CortexMeal } from '../../api/index.js';
 import type { Route } from '@playwright/test';
 import { test, expect, demo, login } from '../../../../core/shell/tests/support/fixtures.js';
@@ -58,14 +58,27 @@ test('driver results update open timecards and meal breaks without resetting the
   await page.route('**/api/dsp/paycom/settings', (route) =>
     route.fulfill({ json: { revision: 0, values: paycomDefaults, options: {}, history: [] } }),
   );
-  await page.route('**/api/dsp/timecards?*', (route) => {
+  await page.route('**/api/dsp/timecards/punches/*', (route) => route.fulfill({ json: card }));
+  await page.route('**/api/dsp/timecards/page?*', (route) => {
     rowReads++;
-    return route.fulfill({ json: { rows: [card], available: true, collectedAt: null } });
+    // A roster update can move the open employee to the next server page.
+    const rows =
+      card.hours === 9
+        ? Array.from({ length: 100 }, (_, index) => ({
+            ...card,
+            employeeCode: `earlier-${index}`,
+            name: `Earlier Driver ${index}`,
+          }))
+        : [card];
+    return route.fulfill({
+      json: { rows, total: card.hours === 9 ? 101 : 1, available: true, collectedAt: null },
+    });
   });
-  await page.route('**/api/dsp/paycom/meal-breaks?*', (route) => {
+  await page.route('**/api/dsp/paycom/meal-breaks/page?*', (route) => {
     rowReads++;
-    const selected = new URL(route.request().url()).searchParams.get('date')!;
-    mealDates.add(selected);
+    const params = new URL(route.request().url()).searchParams;
+    const selected = params.get('date')!;
+    if (params.get('q') === 'live') mealDates.add(selected);
     if (failNextRead) {
       failNextRead = false;
       return route.fulfill({
@@ -74,25 +87,28 @@ test('driver results update open timecards and meal breaks without resetting the
       });
     }
     return route.fulfill({
-      json: assessMealResponse({
-        date: selected,
-        timezone: 'America/Los_Angeles',
-        rows:
-          selected === date
-            ? [
-                {
-                  id: 'paycom:E001',
-                  name: card.name,
-                  paycom: card,
-                  cortex: meals,
-                  cortexUnreadable: [],
-                },
-              ]
-            : [],
-        paycomCollectedAt: null,
-        cortexPublications: [],
-        drivers: [],
-      }),
+      json: mealPageFixture(
+        {
+          date: selected,
+          timezone: 'America/Los_Angeles',
+          rows:
+            selected === date
+              ? [
+                  {
+                    id: 'paycom:E001',
+                    name: card.name,
+                    paycom: card,
+                    cortex: meals,
+                    cortexUnreadable: [],
+                  },
+                ]
+              : [],
+          paycomCollectedAt: null,
+          cortexPublications: [],
+          drivers: [],
+        },
+        route.request().url(),
+      ),
     });
   });
   await page.clock.install();

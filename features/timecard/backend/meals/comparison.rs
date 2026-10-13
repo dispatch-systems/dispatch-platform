@@ -19,6 +19,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 // Exact matches take priority over the more conservative name-variant pass.
 fn match_drivers(drivers: &mut BTreeMap<String, Value>, roster: &[Value], settings: &Value) {
+    if drivers.is_empty() {
+        return;
+    }
     let saved = settings["links"].as_array().cloned().unwrap_or_default();
     let separate = settings["separate"].as_array().cloned().unwrap_or_default();
     let mut reserved: HashSet<String> = saved
@@ -122,14 +125,61 @@ pub(crate) fn meal_comparisons(
     timezone: &str,
     selected: Option<&[String]>,
 ) -> Result<BTreeMap<String, MealComparison>> {
+    comparisons(store, id, from, to, timezone, Read::Comparison(selected))
+}
+
+/// Gap counts need complete identity context and Cortex observations, without
+/// assessing every employee's Paycom punches on every day of the period.
+pub(crate) fn gap_comparisons(
+    store: &Store,
+    id: &str,
+    from: &str,
+    to: &str,
+    timezone: &str,
+) -> Result<BTreeMap<String, MealComparison>> {
+    comparisons(store, id, from, to, timezone, Read::Gaps)
+}
+#[derive(Clone, Copy)]
+enum Read<'a> {
+    Comparison(Option<&'a [String]>),
+    Gaps,
+}
+fn comparisons(
+    store: &Store,
+    id: &str,
+    from: &str,
+    to: &str,
+    timezone: &str,
+    read: Read<'_>,
+) -> Result<BTreeMap<String, MealComparison>> {
+    let cortex = store.collector(id, cortex::PROVIDER)?;
+    let mut live = store.live_results_range(id, cortex::PROVIDER, from, to)?;
+    if matches!(read, Read::Gaps)
+        && live.is_empty()
+        && cortex.one(
+            "SELECT 1 FROM meal_publications p WHERE p.active=1 AND p.report_date BETWEEN ? AND ? \
+             AND EXISTS(SELECT 1 FROM meal_records m WHERE m.publication_id=p.id) LIMIT 1",
+            [from, to],
+        )?.is_none()
+    {
+        return Ok(BTreeMap::new());
+    }
+    let selected = match read {
+        Read::Comparison(selected) => selected,
+        Read::Gaps => None,
+    };
     let codes = selected.map(|sources| {
         sources
             .iter()
             .filter_map(|source| source.strip_prefix("paycom:").map(str::to_owned))
             .collect::<Vec<_>>()
     });
+    let codes = if matches!(read, Read::Gaps) {
+        Some(vec![])
+    } else {
+        codes
+    };
     let days = punches::daily_sources(store, id, from, to, codes.as_deref())?;
-    let cortex = store.collector(id, cortex::PROVIDER)?;
     let mut publications: BTreeMap<String, Vec<Value>> = BTreeMap::new();
     let mut ids = vec![];
     for mut publication in cortex.all(
@@ -189,13 +239,18 @@ pub(crate) fn meal_comparisons(
             "SELECT timezone FROM meal_publications WHERE active=1                  ORDER BY collected_at DESC,id DESC LIMIT 1", [],
         )?,
     };
-    let mut live = store.live_results_range(id, cortex::PROVIDER, from, to)?;
     days.into_iter()
-        .map(|(date, source)| {
+        .filter_map(|(date, source)| {
             let publications = publications.remove(&date).unwrap_or_default();
             let live = live.remove(&date).unwrap_or_default();
-            let comparison = context.day(&date, source, &publications, &live)?;
-            Ok((date, comparison))
+            if matches!(read, Read::Gaps) && publications.is_empty() && live.is_empty() {
+                return None;
+            }
+            Some(
+                context
+                    .day(&date, source, &publications, &live)
+                    .map(|comparison| (date, comparison)),
+            )
         })
         .collect()
 }

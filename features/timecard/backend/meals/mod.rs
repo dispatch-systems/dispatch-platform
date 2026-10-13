@@ -2,6 +2,7 @@ pub(crate) mod assessment;
 pub(crate) mod comparison;
 pub(crate) mod employee_sync;
 pub(crate) mod keeper;
+pub(crate) mod page;
 pub(crate) mod people;
 pub(crate) mod period;
 pub(crate) mod sync;

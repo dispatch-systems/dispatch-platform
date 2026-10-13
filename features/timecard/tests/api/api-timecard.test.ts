@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sortDailyRows } from '../../frontend/daily-sort.js';
 import { localDate } from '../../../../core/shell/frontend/lib/day.js';
 import { fixture, until } from '../../../../core/shell/tests/support/support.js';
 
@@ -103,6 +102,12 @@ test('Rust workforce settings enforce revisions, filter employees and timecards,
   const date = detail.timecards[0].date;
   const daily = await owner.get(`/api/dsp/timecards?date=${date}&sort=totalHours&direction=desc`);
   assert.equal(daily.value.rows.length, 11);
+  const card = daily.value.rows[0];
+  const punches = await owner.get(`/api/dsp/timecards/punches/${card.employeeCode}?date=${date}`);
+  assert.equal(punches.status, 200);
+  assert.deepEqual(punches.value, card);
+  assert.equal((await owner.get(`/api/dsp/timecards/punches/absent?date=${date}`)).status, 404);
+
   assert.equal((await owner.get('/api/dsp/timecards?date=2026-02-30')).status, 400);
   const member = await f.client('member@dispatch.test');
   await member.select(north.id);
@@ -186,7 +191,6 @@ test('Unicode employee sorting agrees with the dashboard locale and preserves di
     expected,
   );
   const day = `/api/dsp/timecards?date=${localDate('America/Chicago')}`;
-  const rows = (await owner.get(day)).value.rows;
   for (const sort of [
     'name',
     'totalHours',
@@ -198,11 +202,48 @@ test('Unicode employee sorting agrees with the dashboard locale and preserves di
   ]) {
     for (const direction of ['asc', 'desc']) {
       const server = (await owner.get(`${day}&sort=${sort}&direction=${direction}`)).value.rows;
-      assert.deepEqual(
-        sortDailyRows(rows, sort, direction === 'desc'),
-        server,
-        `${sort}/${direction}`,
-      );
+      const page = (
+        await owner.get(
+          `${day.replace('/timecards?', '/timecards/page?')}&sort=${sort}&direction=${direction}&offset=2&limit=3`,
+        )
+      ).value;
+      assert.equal(page.total, server.length);
+      assert.deepEqual(page.rows, server.slice(2, 5), `${sort}/${direction}`);
+      if (sort === 'totalHours') {
+        assert.deepEqual(
+          server.map((r: any) => r.hours),
+          direction === 'desc' ? [2, 2, 2, 1, 1, 1, 0, 0, 0] : [0, 0, 0, 1, 1, 1, 2, 2, 2],
+        );
+        for (const hours of [0, 1, 2]) {
+          const codes = server
+            .filter((r: any) => r.hours === hours)
+            .map((r: any) => r.employeeCode);
+          assert.deepEqual(codes, [...codes].sort());
+        }
+      } else if (sort === 'name') {
+        const names = server.map((r: any) => r.name);
+        assert.deepEqual(
+          names,
+          [...names].sort(
+            (a: string, b: string) => a.localeCompare(b, 'en') * (direction === 'desc' ? -1 : 1),
+          ),
+        );
+      } else {
+        const oddFirst = sort === 'inDay' || sort === 'outDay';
+        const first = oddFirst ? ['E1', 'E3', 'E5', 'E7'] : ['E0', 'E2', 'E4', 'E6', 'E8'];
+        const last = oddFirst ? ['E0', 'E2', 'E4', 'E6', 'E8'] : ['E1', 'E3', 'E5', 'E7'];
+        const expected =
+          sort === 'condition'
+            ? ['E0', 'E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8']
+            : direction === 'desc'
+              ? [...last, ...first]
+              : [...first, ...last];
+        assert.deepEqual(
+          server.map((row: any) => row.employeeCode),
+          expected,
+          `${sort}/${direction}`,
+        );
+      }
     }
   }
 });

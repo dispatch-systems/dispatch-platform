@@ -5,6 +5,9 @@ import type {
   EmployeeTimecardResponse,
   EmployeesResponse,
   DailyTimecards,
+  DailyTimecard,
+  DailyTimecardPage,
+  MealComparisonPage,
   Punch,
   PaycomDay,
   MealComparison,
@@ -19,6 +22,8 @@ import { jobSchema, jobsSchema } from '../../../core/collection/api/runtime.js';
 import { count, text, type Replies } from '../../../core/foundation/api/runtime.js';
 import {
   employeesPath,
+  dailyPagePath,
+  mealPagePath,
   mealBreaksPath,
   mealPeriodGapsPath,
   mealPeriodPath,
@@ -83,11 +88,15 @@ export const employeesSchema = z.object({
   total: count,
   collectedAt: z.nullable(text),
 }) satisfies z.ZodMiniType<EmployeesResponse>;
+const dailyCard = z.extend(card, { name: text }) satisfies z.ZodMiniType<DailyTimecard>;
 export const dailyTimecardsSchema = z.object({
-  rows: z.array(z.extend(card, { name: text })),
+  rows: z.array(dailyCard),
   collectedAt: z.nullable(text),
   available: z.boolean(),
 }) satisfies z.ZodMiniType<DailyTimecards>;
+export const dailyPageSchema = z.extend(dailyTimecardsSchema, {
+  total: count,
+}) satisfies z.ZodMiniType<DailyTimecardPage>;
 const cortexMeal = z.object({
   mealId: text,
   itineraryId: text,
@@ -205,6 +214,10 @@ export const mealComparisonSchema = z.object({
     }),
   ),
 }) satisfies z.ZodMiniType<MealComparison>;
+export const mealPageSchema = z.extend(mealComparisonSchema, {
+  total: count,
+  counts: z.object({ all: count, late: count, different: count, missing: count, gaps: count }),
+}) satisfies z.ZodMiniType<MealComparisonPage>;
 export const mealPeriodSchema = z.object({
   period,
   days: z.array(mealComparisonSchema),
@@ -248,6 +261,9 @@ export const replies: Replies = (route, method) => {
     if (route === paycomSettingsPath) return paycomSettingsSchema;
     if (route === employeesPath) return employeesSchema;
     if (/^\/api\/dsp\/employees\/[^/]+$/.test(route)) return employeeTimecardSchema;
+    if (route.startsWith('/api/dsp/timecards/punches/')) return dailyCard;
+    if (route === dailyPagePath) return dailyPageSchema;
+    if (route === mealPagePath) return mealPageSchema;
     if (route === '/api/dsp/timecards') return dailyTimecardsSchema;
     if (route === mealBreaksPath) return mealComparisonSchema;
     if (route === mealPeriodPath) return mealPeriodSchema;

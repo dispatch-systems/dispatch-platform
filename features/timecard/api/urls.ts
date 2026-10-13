@@ -25,3 +25,24 @@ export const mealPeriodGapsUrl = (date: string) =>
   `${mealPeriodGapsPath}?date=${encodeURIComponent(date)}`;
 export const mealPeriodUrl = (source: string, period: EmployeeTimecardPeriod | string) =>
   `${mealPeriodPath}?source=${encodeURIComponent(source)}&${typeof period === 'string' ? `date=${period}` : `from=${period.from}&to=${period.to}`}`;
+
+export const dailyPagePath = '/api/dsp/timecards/page';
+export const mealPagePath = `${mealBreaksPath}/page`;
+export const dailyPageUrl = (
+  date: string,
+  sort = 'name',
+  desc = false,
+  page = 0,
+  limit: number | 'all' = 100,
+) =>
+  `${dailyPagePath}?date=${date}&sort=${sort}&direction=${desc ? 'desc' : 'asc'}&offset=${limit === 'all' ? 0 : page * limit}&limit=${limit}`;
+export const mealPageUrl = (
+  date: string,
+  query = '',
+  filter = 'all',
+  sort = 'employee',
+  desc = false,
+  page = 0,
+  limit: number | 'all' = 100,
+) =>
+  `${mealPagePath}?date=${date}&q=${encodeURIComponent(query)}&filter=${filter}&sort=${sort}&direction=${desc ? 'desc' : 'asc'}&offset=${limit === 'all' ? 0 : page * limit}&limit=${limit}`;

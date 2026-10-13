@@ -8,6 +8,7 @@ use dispatch_core::{
 use dispatch_paycom as paycom;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+pub(crate) const CACHED: &str = "timecard.daily";
 fn visible(row: &Value, p: &Value, drivers: bool) -> bool {
     ["department", "station"]
         .iter()
