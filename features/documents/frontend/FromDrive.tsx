@@ -175,7 +175,7 @@ function DriveLink({ close, open }: { close: () => void; open: (at: At) => void 
   );
 }
 
-/** Fixture mode's stand-in for Google's picker: the files its Drive holds out of reach. */
+/** Fixture mode's stand-in for Google's picker: the files its Drive holds outside Documents. */
 function FixturePicker({
   picker,
   initial,
@@ -190,7 +190,7 @@ function FixturePicker({
   pick: (files: string[]) => void;
 }) {
   const [chosen, setChosen] = useState<Set<string>>(
-    () => new Set(initial.filter((id) => picker.madeInDrive.some((file) => file.id === id))),
+    () => new Set(initial.filter((id) => picker.elsewhere.some((file) => file.id === id))),
   );
   const toggle = (id: string, on: boolean) =>
     setChosen((all) => {
@@ -202,12 +202,12 @@ function FixturePicker({
   return (
     <Modal title="Add from Google Drive" onClose={close}>
       <p className="muted">
-        Files in {picker.account}'s Google Drive that Documents can't reach yet, as Google's picker
-        would show them.
+        Files in {picker.account}'s Google Drive outside Documents, as Google's picker would show
+        them.
       </p>
-      {picker.madeInDrive.length ? (
+      {picker.elsewhere.length ? (
         <div className="documents-picked">
-          {picker.madeInDrive.map((file) => (
+          {picker.elsewhere.map((file) => (
             <label key={file.id} className={chosen.has(file.id) ? 'chosen' : undefined}>
               <input
                 type="checkbox"

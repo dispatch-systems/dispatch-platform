@@ -511,8 +511,8 @@ test('every member adds files and folders from Drive, and what the team makes in
   const picker = await setup();
   assert.equal(picker.account, 'documents@example.com');
   assert.equal(picker.google, null);
-  const made = (name: string) => picker.madeInDrive.find((file: Picked) => file.name === name)!;
-  assert.deepEqual(picker.madeInDrive.map((file: Picked) => [file.name, file.kind]).sort(), [
+  const made = (name: string) => picker.elsewhere.find((file: Picked) => file.name === name)!;
+  assert.deepEqual(picker.elsewhere.map((file: Picked) => [file.name, file.kind]).sort(), [
     ['Fuel prices', 'sheet'],
     ['Route map 2025.png', 'image'],
     ['Route tracker', 'sheet'],
@@ -604,7 +604,7 @@ test('every member adds files and folders from Drive, and what the team makes in
   assert.equal(prices.status, 200, prices.body);
   assert.deepEqual(prices.value.unshared, ['Fuel prices']);
   assert.equal(prices.value.items[0].shortcut, true);
-  assert.deepEqual((await setup()).madeInDrive, []);
+  assert.deepEqual((await setup()).elsewhere, []);
   // Picking the main folder itself changes nothing.
   const main = await owner.post('/api/dsp/documents/add', { files: [picker.folder], folder: null });
   assert.equal(main.status, 200, main.body);
@@ -621,7 +621,7 @@ test('every member adds files and folders from Drive, and what the team makes in
   const trashed = await owner.post(`/api/dsp/documents/items/${trackers[0].id}/trash`, {});
   assert.equal(trashed.status, 200, trashed.body);
   await until(async () => sharedFiles().length === 0);
-  // A file the account wasn't given was picked as another account.
+  // A file the account that holds Documents doesn't reach isn't added.
   assert.equal(
     (await owner.post('/api/dsp/documents/add', { files: ['someone-elses-file'], folder: null }))
       .value.error,

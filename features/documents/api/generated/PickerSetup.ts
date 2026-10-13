@@ -25,6 +25,6 @@ folder: string,
  */
 google: PickerKeys | null,
 /**
- * In fixture mode, the files in its Drive outside Documents.
+ * In fixture mode, the files in its Drive outside Documents, which its picker lists.
  */
-madeInDrive: Array<DriveFile>, };
+elsewhere: Array<DriveFile>, };

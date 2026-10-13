@@ -17,8 +17,7 @@ available: boolean,
  */
 me: MySharing | null,
 /**
- * For those who manage the DSP's connections, while Google is connected: how to add
- * files someone made directly in Drive, signed in as its account. None when this server
- * has no keys for Google's file picker.
+ * For every member, while Google is connected: how to add files from Google Drive. None
+ * when this server has no keys for Google's file picker.
  */
 picker: PickerSetup | null, };

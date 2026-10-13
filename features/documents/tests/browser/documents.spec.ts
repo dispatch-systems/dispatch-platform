@@ -186,13 +186,13 @@ test('a member names files as they upload, drops one on the page, renames and do
 test('a file the Documents account reaches comes in from its link at once', async ({ page }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  // The page's own read of Documents, once connected, names what its Drive holds out of reach.
+  // The page's own read of Documents, once connected, names what its Drive holds outside it.
   const overview = page.waitForResponse(
     async (response) =>
       response.url().endsWith('/api/dsp/documents') && Boolean((await response.json()).picker),
   );
   await connect(page);
-  const made: { id: string; name: string }[] = (await (await overview).json()).picker.madeInDrive;
+  const made: { id: string; name: string }[] = (await (await overview).json()).picker.elsewhere;
   const map = made.find((file) => file.name === 'Route map 2025.png')!;
   await page.getByLabel('Upload', { exact: true }).click();
   await page.getByRole('button', { name: 'Drive link' }).click();
@@ -290,7 +290,7 @@ test("a file only the member reaches comes in through Google's picker, signed in
     }),
   );
   await connect(page);
-  const made: { id: string; name: string }[] = (await (await overview).json()).picker.madeInDrive;
+  const made: { id: string; name: string }[] = (await (await overview).json()).picker.elsewhere;
   const map = made.find((file) => file.name === 'Route map 2025.png')!;
   await page.getByLabel('Upload', { exact: true }).click();
   await page.getByRole('button', { name: 'Drive link' }).click();

@@ -303,7 +303,7 @@ impl Google {
     pub async fn create_folder(&self, access: &str, name: &str) -> Result<String> {
         let id = self.create(access, name, FOLDER, None).await?.id;
         if let Self::Fixture = self {
-            super::drive::fixture_made_in_drive(access)?;
+            super::drive::fixture_elsewhere(access)?;
         }
         Ok(id)
     }

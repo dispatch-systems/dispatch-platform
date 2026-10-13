@@ -1,9 +1,9 @@
-//! Adding files and folders someone made directly in Google Drive. `drive.file` reaches only
-//! what Dispatch made or was given, so Google's own file picker gives them: whoever holds the
-//! DSP's Google account picks them on a page of its own, in the same tab, signed in to Google
-//! there. The dashboard never loads Google's scripts, and Dispatch never hands the account's
-//! token to a browser. The page goes back to Documents with what was picked, and Documents
-//! adds it.
+//! Adding files and folders from a member's own Google Drive: what the account that holds
+//! Documents doesn't reach. The member picks them in Google's own file picker, on a page of its
+//! own in the same tab, signed in to Google as themselves with access to only what they pick,
+//! and brings each where that account reaches it. The dashboard never loads Google's scripts,
+//! and Dispatch never hands the account's token to a browser. The page goes back to Documents
+//! with what was picked, and Documents adds it.
 use super::{
     drive,
     google::{Google, RETURN_PATH},
@@ -25,9 +25,8 @@ use dispatch_core::{
 /// The picker's page, at the address of the Documents page that sent the browser to it.
 pub const PICKER_PATH: &str = "/api/documents/google/picker";
 
-/// What adding files from Drive needs, for those who manage the DSP's connections while
-/// Google is connected, since only they hold its account: none on a server without the
-/// picker's keys.
+/// What adding files from Drive needs, for every member while Google is connected: none on a
+/// server without the picker's keys.
 pub fn setup(google: &Google, connection: &Connection, me: String) -> Result<Option<PickerSetup>> {
     if connection.broken {
         return Ok(None);
@@ -38,7 +37,7 @@ pub fn setup(google: &Google, connection: &Connection, me: String) -> Result<Opt
         Google::Fixture => {
             let made = drive::fixture_hidden(&format!("fixture:{account}"))?;
             Some(PickerSetup {
-                made_in_drive: made
+                elsewhere: made
                     .into_iter()
                     .map(|item| DriveFile {
                         kind: super::files::kind(&item.mime_type),
@@ -57,7 +56,7 @@ pub fn setup(google: &Google, connection: &Connection, me: String) -> Result<Opt
             me,
             folder,
             google: Some(keys),
-            made_in_drive: Vec::new(),
+            elsewhere: Vec::new(),
         }),
     })
 }
@@ -206,6 +205,7 @@ const PAGE: &str = r#"<!doctype html>
       client_id: asked.clientId,
       redirect_uri: settings.back,
       response_type: 'token',
+      // The member reaches only what they pick.
       scope: 'https://www.googleapis.com/auth/drive.file',
       login_hint: asked.me,
       state,
