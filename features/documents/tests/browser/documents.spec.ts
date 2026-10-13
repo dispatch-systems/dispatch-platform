@@ -137,11 +137,9 @@ test('an owner adds a file someone made directly in Drive by pasting its link', 
   const made: { id: string; name: string }[] = (await fromPage(page, '/api/dsp/documents')).value
     .picker.madeInDrive;
   const receipts = made.find((file) => file.name === 'Fuel receipts.pdf')!;
-  await page
-    .context()
-    .grantPermissions(['clipboard-read', 'clipboard-write'], {
-      origin: new URL(page.url()).origin,
-    });
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], {
+    origin: new URL(page.url()).origin,
+  });
   await page.evaluate(
     (link) => navigator.clipboard.writeText(link),
     `https://drive.google.com/file/d/${receipts.id}/view?usp=drive_link`,
