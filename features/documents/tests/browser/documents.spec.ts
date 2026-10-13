@@ -39,7 +39,7 @@ test('large folders keep one page mounted in both layouts, search every item and
     thumbnail: null,
     extension: '.txt',
   }));
-  await page.route('**/api/dsp/documents/folder?*', async (route) => {
+  await page.route('**/api/dsp/documents/folder*', async (route) => {
     const response = await route.fetch();
     const folder = await response.json();
     const query = new URL(route.request().url()).searchParams.get('q')?.toLowerCase() ?? '';
@@ -59,7 +59,7 @@ test('large folders keep one page mounted in both layouts, search every item and
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page.getByRole('link', { name: 'File 0100.txt', exact: true })).toBeVisible();
   await expect(rows).toHaveCount(100);
-  await page.getByRole('button', { name: 'Grid view' }).click();
+  await page.getByRole('button', { name: 'Grid', exact: true }).click();
   await expect(page.locator('.documents-file-card')).toHaveCount(100);
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page.locator('.documents-file-card')).toHaveCount(50);
