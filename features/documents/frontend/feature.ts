@@ -1,5 +1,6 @@
 import { createElement, lazy } from 'react';
 import { FolderOpen } from 'lucide-react';
+import { begins } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
 
@@ -36,8 +37,9 @@ export const feature: FrontendFeature = {
       permission: ({ view }) => can(view, 'documents.use'),
       preload: loadPage,
       render: ({ view }) => createElement(DocumentsPage, { key: view.token, view }),
+      // The top folder comes with the connection, so the page opens with its files.
       prefetch: ({ view, warm }) => {
-        if (can(view, 'documents.use')) warm(['/api/dsp/documents']);
+        if (can(view, 'documents.use')) warm(['/api/dsp/documents', '/api/dsp/documents/folder']);
       },
     },
   ],
@@ -66,4 +68,11 @@ export const feature: FrontendFeature = {
   ],
   // Its switch's icon on the DSPs page, and how its events read in the audit log.
   platformSlots: () => import('./platform-slots.js'),
+  cache: {
+    // Making, adding, renaming or trashing a file changes only the folders read.
+    write: (write, url) =>
+      begins(write, '/api/dsp/documents/new', '/api/dsp/documents/add', '/api/dsp/documents/items/')
+        ? begins(url, '/api/dsp/documents/folder')
+        : undefined,
+  },
 };

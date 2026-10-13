@@ -1,12 +1,15 @@
 //! Browsing and changing a DSP's Documents: what a folder holds, and making, uploading,
-//! downloading, renaming and trashing files in it. Each asks Google outside the database, inside the DSP's own tree
-//! only, then checks the member's access again before it records anything.
+//! downloading, renaming and trashing files in it. A folder opens from the copy of the DSP's
+//! Drive kept in memory; a change asks Google outside the database, inside the DSP's own tree
+//! only, puts Google's answer in the copy, then checks the member's access again before it
+//! records anything.
 use super::{
     connection,
-    drive::{self, Download, Item},
+    drive::{self, Download},
     google::{FOLDER, Google, folder_url},
+    mirror,
     storage::{Connection, DocumentsStore, Record},
-    tree::Tree,
+    tree::{Row, Tree},
 };
 use crate::api::types::{DocumentsFolder, DocumentsItem, FolderStep, ItemKind, NewKind};
 use dispatch_core::{
@@ -14,8 +17,10 @@ use dispatch_core::{
     accounts::Context,
     db::Store,
     ensure,
+    foundation::observability,
     server::http::{route::Dsp, upload::Upload},
 };
+use serde_json::json;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     sync::{Arc, LazyLock, Mutex},
@@ -42,25 +47,32 @@ pub fn forget(dsp: &str) {
         .remove(dsp);
 }
 
-/// Google's links to pictures of what each DSP's Documents showed, by DSP and file, with when
-/// each was shown. A picture is fetched only by a link kept here: so only for a file the DSP's
-/// own Documents showed, and never by a link a browser sent.
-static PICTURES: LazyLock<Mutex<Shown>> = LazyLock::new(Default::default);
-/// Each link, and when Documents showed it, by DSP and file.
-type Shown = HashMap<(String, String), (String, Instant)>;
-/// How long a link is used after Documents showed it, well inside the hours Google's last.
+/// Google's links to pictures of what each DSP's Documents showed, by DSP and file. A picture
+/// is fetched only for a file kept here: so only one the DSP's own Documents showed, and never
+/// by a link a browser sent.
+static PICTURES: LazyLock<Mutex<HashMap<(String, String), Shown>>> =
+    LazyLock::new(Default::default);
+/// Google's link to a file's picture, when Google gave the link, and when Documents showed
+/// the file.
+#[derive(Clone)]
+struct Shown {
+    link: String,
+    given: Instant,
+    shown: Instant,
+}
+/// How long a picture is fetched after Documents showed its file, and how long a link Google
+/// gave is used, well inside the hours Google's last: an older one is asked for again.
 const PICTURE_LINK_LASTS: Duration = Duration::from_secs(60 * 60);
 /// The most links kept across every DSP; past them, a card keeps its drawing.
 const PICTURE_LINKS: usize = 20_000;
-/// The link Google gave for a picture of the file `id`, when the DSP's Documents showed it
-/// within the hour.
-fn shown(dsp: &str, id: &str) -> Option<String> {
+/// The picture of the file `id`, when the DSP's Documents showed it within the hour.
+fn shown(dsp: &str, id: &str) -> Option<Shown> {
     PICTURES
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .get(&(dsp.to_owned(), id.to_owned()))
-        .filter(|(_, at)| at.elapsed() < PICTURE_LINK_LASTS)
-        .map(|(link, _)| link.clone())
+        .filter(|shown| shown.shown.elapsed() < PICTURE_LINK_LASTS)
+        .cloned()
 }
 
 /// What a call to the DSP's Drive works with.
@@ -69,10 +81,9 @@ pub(crate) struct Drive {
     pub connection: Connection,
     pub access: String,
 }
-/// The DSP's connection, and an access token for it: the one kept unless `fresh`. A
-/// connection Google stopped accepting is marked broken, as the hourly check marks it.
-pub(crate) async fn open(state: &Arc<State>, dsp: &str, fresh: bool) -> Result<Drive> {
-    let google = Google::of(&state.config)?;
+/// The DSP's connection as Dispatch keeps it, with its refresh token: none once it's gone or
+/// broken.
+async fn connected(state: &Arc<State>, dsp: &str) -> Result<(Connection, String)> {
     let at = dsp.to_owned();
     let (connection, refresh) = state
         .read(move |db| {
@@ -86,6 +97,13 @@ pub(crate) async fn open(state: &Arc<State>, dsp: &str, fresh: bool) -> Result<D
     let (false, Some(refresh)) = (connection.broken, refresh) else {
         return Err(Error::new("google_connection_broken", 409));
     };
+    Ok((connection, refresh))
+}
+/// The DSP's connection, and an access token for it: the one kept unless `fresh`. A
+/// connection Google stopped accepting is marked broken, as the hourly check marks it.
+pub(crate) async fn open(state: &Arc<State>, dsp: &str, fresh: bool) -> Result<Drive> {
+    let google = Google::of(&state.config)?;
+    let (connection, refresh) = connected(state, dsp).await?;
     if let Some(access) = kept(dsp).filter(|_| !fresh) {
         return Ok(Drive {
             google,
@@ -133,14 +151,92 @@ macro_rules! on_drive {
         }
     }};
 }
-/// The DSP's Documents, as Drive holds it now.
-async fn tree(state: &Arc<State>, dsp: &str) -> Result<(Connection, Tree)> {
-    let (connection, all) = on_drive!(state, dsp, |google, token| google.list(token))?;
-    let tree = Tree::new(&connection.folder_id, all);
+/// The DSP's Documents, from the copy kept of its Drive: brought up to date in the background
+/// once it's a few seconds old, and before it answers once it's a minute old.
+async fn tree(state: &Arc<State>, dsp: &str) -> Result<(Connection, Arc<Tree>)> {
+    let (connection, _) = connected(state, dsp).await?;
+    let root = connection.folder_id.clone();
+    let mirror = mirror::of(dsp);
+    match mirror.age(&root) {
+        Some(age) if age < mirror::FRESH => {}
+        Some(age) if age < mirror::STALE => {
+            if let Some(turn) = mirror.try_turn() {
+                let (state, dsp, root) = (Arc::clone(state), dsp.to_owned(), root.clone());
+                let mirror = Arc::clone(&mirror);
+                tokio::spawn(async move {
+                    if let Err(error) = follow(&state, &dsp, &root).await {
+                        mirror.fail(&error);
+                        observability::event(
+                            "warn",
+                            "documents_follow_failed",
+                            json!({"error": error.code}),
+                        );
+                    }
+                    drop(turn);
+                });
+            }
+        }
+        _ => {
+            let _turn = mirror.wait().await;
+            // Whoever had the turn may have brought it up to date, or just failed to: then
+            // their answer stands, rather than each waiting request asking Google in turn.
+            if mirror.age(&root).is_none_or(|age| age >= mirror::FRESH) {
+                if let Some(error) = mirror.failed() {
+                    return Err(error);
+                }
+                if let Err(error) = follow(state, dsp, &root).await {
+                    mirror.fail(&error);
+                    return Err(error);
+                }
+            }
+        }
+    }
+    let tree = mirror
+        .tree(&root)
+        .ok_or_else(|| Error::new("google_unreachable", 502))?;
     Ok((connection, tree))
+}
+/// Asks Google what changed in the DSP's Drive since its copy was brought up to date, or lists
+/// the Drive whole when there's no copy, or the feed lost its place. The caller has the
+/// mirror's turn.
+async fn follow(state: &Arc<State>, dsp: &str, root: &str) -> Result<()> {
+    let mirror = mirror::of(dsp);
+    if let Some(from) = mirror.changes(root) {
+        match on_drive!(state, dsp, |google, token| google.changes(token, &from)) {
+            Ok((_, changes)) => {
+                // A folder that came in from elsewhere brings files the copy doesn't know.
+                if !mirror.follow(root, changes) {
+                    return Ok(());
+                }
+            }
+            Err(error)
+                if ["google_connection_broken", "google_unreachable"]
+                    .contains(&error.code.as_str()) =>
+            {
+                return Err(error);
+            }
+            Err(_) => {}
+        }
+    }
+    let (_, (changes, all)) = on_drive!(state, dsp, |google, token| async {
+        let changes = google.start_changes(token).await?;
+        Ok::<_, Error>((changes, google.list(token).await?))
+    })?;
+    mirror.replace(root, all, changes);
+    Ok(())
 }
 fn not_found() -> Error {
     Error::new("documents_item_not_found", 404)
+}
+/// `answer`, taking the file `id` out of the DSP's copy when Google said it's gone.
+fn gone<T>(dsp: &str, root: &str, id: &str, answer: Result<T>) -> Result<T> {
+    if answer
+        .as_ref()
+        .is_err_and(|error| error.code == "documents_item_not_found")
+    {
+        mirror::of(dsp).remove(root, id);
+    }
+    answer
 }
 
 /// The folder `id` of the DSP's Documents, or its main folder, with what it holds; with
@@ -158,15 +254,15 @@ pub async fn folder(
         .path(&at)
         .into_iter()
         .map(|step| FolderStep {
-            id: step.id.clone(),
-            name: step.name.clone(),
+            id: step.id.to_string(),
+            name: step.name.to_string(),
         })
         .collect();
     let (shown, searched) = match query.as_deref().map(str::trim) {
         Some(words) if !words.is_empty() => (tree.search(&at, words), true),
         _ => (tree.children(&at), false),
     };
-    let ids: Vec<String> = shown.iter().map(|item| item.id.clone()).collect();
+    let ids: Vec<String> = shown.iter().map(|row| row.id.to_string()).collect();
     let dsp = c.dsp.id.clone();
     let (records, names) = state.read(move |db| known(db, &dsp, &ids)).await?;
     let described = Described {
@@ -185,7 +281,7 @@ pub async fn folder(
         path,
         items: shown
             .into_iter()
-            .map(|item| described.item(item, searched))
+            .map(|row| described.item(row, searched))
             .collect(),
     })
 }
@@ -215,6 +311,7 @@ pub async fn create(
         mime,
         Some(&parent)
     ))?;
+    mirror::of(&dsp).put(&connection.folder_id, made.clone());
     let (id, title) = (made.id.clone(), made.name.clone());
     let at = dsp.clone();
     let (records, names) = state
@@ -234,7 +331,7 @@ pub async fn create(
         names: &names,
         account: &connection.account.email,
     }
-    .item(&made, false))
+    .item(&Row::from(made), false))
 }
 
 /// Uploads a file named `name`, of `mime`, into the folder `parent`, or the main one.
@@ -260,6 +357,7 @@ pub async fn upload(
         .google
         .finish_upload(&drive.access, &session, upload)
         .await?;
+    mirror::of(&dsp).put(&drive.connection.folder_id, made.clone());
     let (id, title) = (made.id.clone(), made.name.clone());
     let at = dsp.clone();
     let (records, names) = state
@@ -278,7 +376,7 @@ pub async fn upload(
         names: &names,
         account: &drive.connection.account.email,
     }
-    .item(&made, false))
+    .item(&Row::from(made), false))
 }
 
 /// Adds the files `ids`, picked with Google's picker, to the folder `parent`, or the main one.
@@ -308,14 +406,16 @@ pub async fn add(
         };
         ensure(!item.folder(), "invalid_input", 400)?;
         let inside = item.parents.iter().any(|folder| tree.is_folder(folder));
-        added.push(if inside {
+        let item = if inside {
             item
         } else {
             drive
                 .google
                 .move_into(&drive.access, &item, &parent)
                 .await?
-        });
+        };
+        mirror::of(&dsp).put(&drive.connection.folder_id, item.clone());
+        added.push(item);
     }
     let named: Vec<(String, String)> = added
         .iter()
@@ -344,29 +444,49 @@ pub async fn add(
         account: &connection.account.email,
     };
     Ok(added
-        .iter()
-        .map(|item| described.item(item, false))
+        .into_iter()
+        .map(|item| described.item(&Row::from(item), false))
         .collect())
 }
 
 /// The file `id`, to save, as Google sends it.
 pub async fn download(state: &Arc<State>, c: &Context, id: String) -> Result<Download> {
-    let (_, tree) = tree(state, &c.dsp.id).await?;
+    let (connection, tree) = tree(state, &c.dsp.id).await?;
     let item = tree
         .get(&id)
         .filter(|item| !item.folder())
         .ok_or_else(not_found)?;
-    let (_, download) = on_drive!(state, &c.dsp.id, |google, token| google
-        .download(token, item))?;
+    let answer = on_drive!(state, &c.dsp.id, |google, token| google.download(
+        token,
+        &item.id,
+        &item.name,
+        item.mime.as_str()
+    ));
+    let (_, download) = gone(&c.dsp.id, &connection.folder_id, &id, answer)?;
     Ok(download)
 }
 
-/// Google's picture of what the file `id` holds, by the link the DSP's Documents showed it
-/// with.
-pub async fn picture(state: &Arc<State>, c: &Context, id: String) -> Result<drive::Picture> {
-    let link = shown(&c.dsp.id, &id).ok_or_else(not_found)?;
+/// Google's picture of what the file `id` holds, `size` pixels on its longest side, by the
+/// link the DSP's Documents showed it with.
+pub async fn picture(
+    state: &Arc<State>,
+    c: &Context,
+    id: String,
+    size: u32,
+) -> Result<drive::Picture> {
+    let shown = shown(&c.dsp.id, &id).ok_or_else(not_found)?;
     let drive = open(state, &c.dsp.id, false).await?;
-    drive.google.picture(&drive.access, &link).await
+    let link = if shown.given.elapsed() < PICTURE_LINK_LASTS {
+        shown.link
+    } else {
+        // The file was shown from a copy older than its link lasts: Google gives a new one.
+        let answer = drive.google.get(&drive.access, &id).await;
+        let item = gone(&c.dsp.id, &drive.connection.folder_id, &id, answer)?;
+        let link = item.thumbnail_link.clone().ok_or_else(not_found)?;
+        mirror::of(&c.dsp.id).put(&drive.connection.folder_id, item);
+        link
+    };
+    drive.google.picture(&drive.access, &link, size).await
 }
 
 /// Gives the file or folder `id` the name `name`.
@@ -380,14 +500,16 @@ pub async fn rename(
     let dsp = c.dsp.id.clone();
     let (_, tree) = tree(state, &dsp).await?;
     let item = tree.get(&id).ok_or_else(not_found)?;
-    let before = item.name.clone();
+    let before = item.name.to_string();
     // A file keeps its extension, so renaming never changes what kind of file it is.
-    if let Some(kept) = extension(&before, &item.mime_type) {
-        let same = extension(&name, &item.mime_type) == Some(kept);
+    if let Some(kept) = extension(&before, item.mime.as_str()) {
+        let same = extension(&name, item.mime.as_str()) == Some(kept);
         ensure(same, "documents_extension_kept", 400)?;
     }
-    let (connection, renamed) = on_drive!(state, &dsp, |google, token| google
-        .rename(token, &id, &name))?;
+    let answer = on_drive!(state, &dsp, |google, token| google
+        .rename(token, &id, &name));
+    let (connection, renamed) = gone(&dsp, tree.root(), &id, answer)?;
+    mirror::of(&dsp).put(&connection.folder_id, renamed.clone());
     let after = renamed.name.clone();
     let at = dsp.clone();
     let (records, names) = state
@@ -412,15 +534,26 @@ pub async fn rename(
         names: &names,
         account: &connection.account.email,
     }
-    .item(&renamed, false))
+    .item(&Row::from(renamed), false))
 }
 
 /// Moves the file or folder `id`, and whatever it holds, to the account's trash.
 pub async fn trash(state: &Arc<State>, c: Context, access: Dsp, id: String) -> Result<()> {
     let dsp = c.dsp.id.clone();
-    let (_, tree) = tree(state, &dsp).await?;
-    let name = tree.get(&id).ok_or_else(not_found)?.name.clone();
-    on_drive!(state, &dsp, |google, token| google.trash(token, &id))?;
+    let (connection, tree) = tree(state, &dsp).await?;
+    let root = connection.folder_id;
+    let name = tree.get(&id).ok_or_else(not_found)?.name.to_string();
+    // Someone may have moved it out of Documents in Drive since the copy last heard: Google
+    // says where it is now.
+    let answer = on_drive!(state, &dsp, |google, token| google.get(token, &id));
+    let (_, now) = gone(&dsp, &root, &id, answer)?;
+    if !now.parents.iter().any(|parent| tree.is_folder(parent)) {
+        mirror::of(&dsp).put(&root, now);
+        return Err(not_found());
+    }
+    let answer = on_drive!(state, &dsp, |google, token| google.trash(token, &id));
+    gone(&dsp, &root, &id, answer)?;
+    mirror::of(&dsp).remove(&root, &id);
     state
         .run(move |db| {
             let c = access.revalidate(db, &c)?;
@@ -460,10 +593,10 @@ struct Described<'a> {
     account: &'a str,
 }
 impl Described<'_> {
-    fn item(&self, item: &Item, located: bool) -> DocumentsItem {
-        let record = self.records.get(&item.id);
+    fn item(&self, row: &Row, located: bool) -> DocumentsItem {
+        let record = self.records.get(&*row.id);
         let named = |user: &String| self.names.get(user).cloned();
-        let modifier = item.last_modifying_user.as_ref();
+        let modifier = row.by.as_deref();
         // Google names the account for what Dispatch did, and the person for what they did
         // in Google.
         let by_account = modifier
@@ -475,55 +608,60 @@ impl Described<'_> {
             modifier.and_then(|person| person.display_name.clone())
         };
         DocumentsItem {
-            id: item.id.clone(),
-            name: item.name.clone(),
-            kind: kind(&item.mime_type),
-            size: item.size.as_deref().and_then(|size| size.parse().ok()),
-            modified_at: item.modified_time.clone(),
+            id: row.id.to_string(),
+            name: row.name.to_string(),
+            kind: kind(row.mime.as_str()),
+            size: row.size,
+            modified_at: row.modified.to_string(),
             modified_by,
             added_by: record.and_then(|record| named(&record.added_by)),
-            items: item
-                .folder()
-                .then(|| self.tree.children(&item.id).len() as u32),
-            url: item.web_view_link.clone(),
-            location: item
-                .parents
-                .first()
+            items: row.folder().then(|| self.tree.count(&row.id) as u32),
+            url: row.link.to_string(),
+            location: row
+                .parent
+                .as_deref()
                 .and_then(|parent| self.tree.get(parent))
                 .filter(|_| located)
-                .map(|parent| parent.name.clone()),
-            thumbnail: self.picture(item),
-            extension: extension(&item.name, &item.mime_type).map(str::to_owned),
+                .map(|parent| parent.name.to_string()),
+            thumbnail: self.picture(row),
+            extension: extension(&row.name, row.mime.as_str()).map(str::to_owned),
         }
     }
-    /// Where the page fetches Google's picture of `item`, keeping its link for the DSP to
+    /// Where the page fetches Google's picture of `row`, keeping its link for the DSP to
     /// fetch it by: none when Google made none. The address names the picture's version, so
     /// the browser keeps each until the file changes.
-    fn picture(&self, item: &Item) -> Option<String> {
-        let link = item.thumbnail_link.clone()?;
+    fn picture(&self, row: &Row) -> Option<String> {
+        let link = row.thumbnail.as_deref()?.to_owned();
         let mut links = PICTURES
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let key = (self.dsp.to_owned(), item.id.clone());
+        let key = (self.dsp.to_owned(), row.id.to_string());
         if links.len() >= PICTURE_LINKS && !links.contains_key(&key) {
-            links.retain(|_, (_, at)| at.elapsed() < PICTURE_LINK_LASTS);
+            links.retain(|_, shown| shown.shown.elapsed() < PICTURE_LINK_LASTS);
             if links.len() >= PICTURE_LINKS {
                 return None;
             }
         }
-        links.insert(key, (link, Instant::now()));
         // Google's version tells its pictures apart; without one, when the file changed does.
-        let version: String = item
-            .thumbnail_version
-            .as_deref()
-            .filter(|version| !version.is_empty())
-            .unwrap_or(&item.modified_time)
-            .chars()
-            .filter(char::is_ascii_alphanumeric)
-            .collect();
+        let version: String = match row.version {
+            Some(version) => version.to_string(),
+            None => row
+                .modified
+                .chars()
+                .filter(char::is_ascii_alphanumeric)
+                .collect(),
+        };
+        links.insert(
+            key,
+            Shown {
+                link,
+                given: row.seen,
+                shown: Instant::now(),
+            },
+        );
         Some(format!(
             "/api/dsp/documents/items/{}/thumbnail?v={version}",
-            item.id
+            row.id
         ))
     }
 }

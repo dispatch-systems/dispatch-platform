@@ -3,7 +3,7 @@
 //! outside the database and check again before they write.
 use crate::{
     api::types::{NewKind, SharingState},
-    backend::{connection, files, google::RETURN_PATH, picker, team},
+    backend::{connection, drive::PICTURE_SIZES, files, google::RETURN_PATH, picker, team},
 };
 use axum::{
     extract::Request,
@@ -209,13 +209,18 @@ async fn download(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply>
     ))
 }
 /// Google's picture of a file. Its address names the picture's version, `v`, which only tells
-/// one picture from the next.
+/// one picture from the next, and its size, `s`, for the screen: 600 pixels unless it says.
 async fn thumbnail(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
     let c = state.run(move |db| access.authorize(db, &asked)).await?;
-    v::fields(&input.query, &["v"])?;
+    v::fields(&input.query, &["v", "s"])?;
     let id = file_id(input.param("id"))?;
-    let picture = files::picture(&state, &c, id).await?;
+    let size = optional(&input.query, "s", |q, key| {
+        let size = v::text(q, key, 1, 4)?.parse::<u32>().unwrap_or(0);
+        ensure(PICTURE_SIZES.contains(&size), "invalid_input", 400)?;
+        Ok(size)
+    })?;
+    let picture = files::picture(&state, &c, id, size.unwrap_or(PICTURE_SIZES[1])).await?;
     // The member's access may have changed while Google answered.
     state.read(move |db| access.revalidate(db, &c)).await?;
     Ok(Reply::picture(&picture.kind, picture.bytes))
