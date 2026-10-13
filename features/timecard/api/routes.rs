@@ -13,7 +13,7 @@ use dispatch_core::{
     foundation::validate as v,
     server::http::{
         input::{Input, Reply, descending, optional, optional_text, query_number},
-        route::{Dsp, Member, Route, read, write},
+        route::{Dsp, Member, Route, coalesced_read, read, write},
     },
 };
 use dispatch_cortex::{self as cortex, discovery::Scope};
@@ -54,9 +54,9 @@ pub fn routes() -> Vec<Route> {
         read("/api/dsp/paycom/status", VIEW, paycom_status),
         read("/api/dsp/paycom/settings", VIEW, paycom_settings).logged(),
         write("/api/dsp/paycom/settings", MANAGE, save_paycom_settings),
-        read("/api/dsp/paycom/meal-breaks", VIEW, meal_comparison).logged(),
+        coalesced_read("/api/dsp/paycom/meal-breaks", VIEW, meal_comparison).logged(),
         read("/api/dsp/paycom/meal-breaks/period", VIEW, meal_period).logged(),
-        read(
+        coalesced_read(
             "/api/dsp/paycom/meal-breaks/period-gaps",
             VIEW,
             meal_period_gaps,

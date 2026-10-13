@@ -746,9 +746,9 @@ pub struct Agents {
 
 /// Work a feature runs for the platform, with nothing to answer: it logs its own failures.
 pub type Upkeep = Pin<Box<dyn Future<Output = ()> + Send>>;
-/// Upkeep the scheduler runs for a feature every minute, after the platform's own cleanup
-/// and in the registry's order. `run` hears whether `every` has passed since it was last
-/// due, for work it does less often than the rest.
+/// Upkeep offered every minute, independently of collection starts and other upkeep.
+/// One pass per task may run at a time. `run` hears whether `every` has passed since
+/// it was last due, for work it does less often than the rest.
 pub struct Maintenance {
     pub every: Duration,
     pub run: fn(Arc<State>, bool) -> Upkeep,

@@ -243,6 +243,8 @@ pub enum Work {
     Read,
     /// One closure under the exclusive platform lock: `State::run`.
     Write,
+    /// Reviewed leases and checkpoints, under the exclusive lock without evicting data.
+    Bookkeeping,
     /// An async handler that makes its own `State::read` and `State::run` calls.
     Async,
     /// An async handler, as `Async`, given a file as it arrives rather than a JSON body.
@@ -338,6 +340,37 @@ pub fn read<A: Grant>(
     handler: impl Fn(&Store, &Ctx<'_, A::Who>, &Input) -> Result<Reply> + Send + Sync + 'static,
 ) -> Route {
     blocking(path, access, Work::Read, Method::GET, handler)
+}
+/// An expensive cached DSP read. Waiters hold no database slot; each checks its
+/// credentials before waiting and again alongside the handler's read afterward.
+pub fn coalesced_read(
+    path: &'static str,
+    access: Dsp,
+    handler: impl Fn(&Store, &Member<'_>, &Input) -> Result<Reply> + Send + Sync + 'static,
+) -> Route {
+    let mut route = read(path, access, handler);
+    let Handler::Blocking(handler) = route.handler else {
+        unreachable!()
+    };
+    route.handler = Handler::Async(Box::new(move |state, input| {
+        let handler = handler.clone();
+        Box::pin(async move {
+            let checking = input.clone();
+            let dsp = state
+                .read(move |db| Ok(access.authorize(db, &checking)?.dsp.id))
+                .await?;
+            let key = serde_json::to_string(&(dsp, &input.path, &input.query))?;
+            let turn = state.read_turns.enter(key).await?;
+            let shared = state.clone();
+            state
+                .read(move |db| {
+                    let _turn = turn;
+                    handler(db, &shared, &input)
+                })
+                .await
+        })
+    }));
+    route
 }
 /// `POST path`: authorizes, then runs the handler, in one closure under the platform write lock.
 pub fn write<A: Grant>(
@@ -497,6 +530,13 @@ pub fn probe(path: &'static str, handler: fn(&State) -> Reply) -> Route {
 }
 
 impl Route {
+    /// The owner's reviewed write changes only bookkeeping, never data a cached read
+    /// uses. It keeps the write lock and all of the route's authorization checks.
+    pub fn bookkeeping(mut self) -> Self {
+        assert_eq!(self.work, Work::Write);
+        self.work = Work::Bookkeeping;
+        self
+    }
     /// Wakes the scheduler after the handler succeeds, because the route
     /// changes which DSPs or schedules exist.
     pub fn invalidates_schedules(mut self) -> Self {
@@ -641,10 +681,10 @@ impl Route {
         (self.gate)(&state, &input)?;
         let shared = state.clone();
         let work = move |db: &Store| handler(db, &shared, &input);
-        let reply = if self.work == Work::Read {
-            state.read(work).await?
-        } else {
-            state.run(work).await?
+        let reply = match self.work {
+            Work::Read => state.read(work).await?,
+            Work::Bookkeeping => state.run_bookkeeping(work).await?,
+            _ => state.run(work).await?,
         };
         if self.invalidates_schedules {
             state

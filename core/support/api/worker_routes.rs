@@ -57,7 +57,7 @@ impl Grant for Worker {
 }
 pub(super) fn routes() -> Vec<Route> {
     vec![
-        write("/api/v1/support/worker/claim", Worker(false), claim),
+        write("/api/v1/support/worker/claim", Worker(false), claim).bookkeeping(),
         read(
             "/api/v1/support/worker/jobs/{id}/status",
             Worker(false),
@@ -67,7 +67,8 @@ pub(super) fn routes() -> Vec<Route> {
             "/api/v1/support/worker/jobs/{id}/heartbeat",
             Worker(false),
             heartbeat,
-        ),
+        )
+        .bookkeeping(),
         write(
             "/api/v1/support/worker/jobs/{id}/progress",
             Worker(false),

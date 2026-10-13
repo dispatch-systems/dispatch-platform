@@ -43,7 +43,7 @@ impl FromRow for Ready {
         })
     }
 }
-fn failed(event: &str, error: &Error) {
+pub(super) fn failed(event: &str, error: &Error) {
     crate::foundation::observability::event("error", event, json!({"error":error.code}));
 }
 
@@ -85,86 +85,8 @@ struct Scheduler {
     running_dsps: HashSet<String>,
     deadlines: HashMap<String, i64>,
     refresh: Refresh,
-    // A year's retention does not need checking every minute.
-    audit_pruned: i64,
-    // When each upkeep task was last due: the agents' piece's, then each feature's, in the
-    // registry's order.
-    upkept: Vec<i64>,
 }
 impl Scheduler {
-    async fn cleanup(&mut self) {
-        let prune_audit = now() - self.audit_pruned >= 24 * 60 * 60 * 1000;
-        if prune_audit {
-            self.audit_pruned = now();
-        }
-        let cache_state = self.state.clone();
-        let result = self
-            .state
-            .run_bookkeeping(move |db| {
-                // Expired invitations may change an owner shown in session listings.
-                // Token/checkpoint/audit cleanup does not change provider-derived data.
-                cache_state.read_cache.invalidate_listings();
-                if prune_audit {
-                    db.prune_audit()?;
-                }
-                // Expired access tokens have no remaining authentication purpose, in the
-                // platform's directory or any DSP's.
-                const EXPIRED: [&str; 2] = [
-                    "DELETE FROM sessions WHERE expires_at<?",
-                    "DELETE FROM resets WHERE expires_at<?",
-                ];
-                // An accepted invitation stays 90 days, so Diagnostics can show that it was
-                // accepted. It can no longer be used. Invitations are each DSP's own: the ones
-                // the platform's directory still holds stay as the release before left them.
-                const INVITATIONS: &str = "DELETE FROM invitations WHERE expires_at<?1 AND \
-                     (used_at IS NULL OR used_at<?1-7776000000)";
-                db.platform.transaction(|| {
-                    for sql in EXPIRED
-                        .iter()
-                        .chain(&["DELETE FROM throttle WHERE reset_at<?"])
-                    {
-                        db.platform.exec(sql, [now()])?;
-                    }
-                    Ok(())
-                })?;
-                let dsps: Vec<(String,)> = db.platform.query_as(
-                    "SELECT id FROM dsps WHERE status IN ('active','suspended')",
-                    [],
-                )?;
-                for (dsp,) in dsps {
-                    let people = db.dsp(&dsp)?;
-                    people.transaction(|| {
-                        for sql in EXPIRED.iter().chain(&[INVITATIONS]) {
-                            people.exec(sql, [now()])?;
-                        }
-                        Ok(())
-                    })?;
-                    drop(people);
-                    for provider in Provider::all() {
-                        provider.collector().prune(db, &dsp)?;
-                    }
-                }
-                Ok(())
-            })
-            .await;
-        if let Err(error) = result {
-            failed("checkpoint_cleanup_failed", &error);
-        }
-        self.maintain().await;
-    }
-    /// The agents' piece's upkeep, then each feature's, in the registry's order, told
-    /// whether it is due.
-    async fn maintain(&mut self) {
-        let agents = registry().agents.into_iter().flat_map(|a| a.maintenance);
-        let tasks = agents.chain(registry().features.iter().flat_map(|f| f.maintenance));
-        for (task, last) in tasks.zip(self.upkept.iter_mut()) {
-            let due = now() - *last >= task.every.as_millis() as i64;
-            if due {
-                *last = now();
-            }
-            (task.run)(self.state.clone(), due).await;
-        }
-    }
     async fn run_due_schedules(&mut self) {
         let state = &self.state;
         let revision = state
@@ -294,20 +216,12 @@ pub async fn start(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<boo
         running_dsps: HashSet::new(),
         deadlines: HashMap::new(),
         refresh: Refresh::new(),
-        audit_pruned: 0,
-        upkept: vec![
-            0;
-            registry().agents.map_or(0, |a| a.maintenance.len())
-                + registry()
-                    .features
-                    .iter()
-                    .map(|f| f.maintenance.len())
-                    .sum::<usize>()
-        ],
     };
+    let mut upkeep = super::maintenance::Maintenance::new();
     let mut timer = tokio::time::interval(Duration::from_secs(1));
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut checkpoint_cleanup = tokio::time::interval(Duration::from_secs(60));
+    checkpoint_cleanup.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
         tokio::select! {
             _ = crate::cancelled(&mut stop) => break,
@@ -320,7 +234,8 @@ pub async fn start(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<boo
                     None => {}
                 }
             },
-            _ = checkpoint_cleanup.tick() => scheduler.cleanup().await,
+            result = upkeep.tasks.join_next(), if !upkeep.tasks.is_empty() => upkeep.finished(result)?,
+            _ = checkpoint_cleanup.tick() => upkeep.start(&scheduler.state),
             _ = timer.tick() => {
                 if let Some(agents) = registry().agents {
                     (agents.tick)(scheduler.state.clone(), false).await;
@@ -329,6 +244,9 @@ pub async fn start(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<boo
             },
         }
     }
+    // Cancel external upkeep before closing browser resources. Database closures already
+    // running finish under their normal lock; the next pass safely resumes maintenance.
+    upkeep.tasks.shutdown().await;
     // What the agents' piece holds in memory is not lost to a restart.
     if let Some(agents) = registry().agents {
         (agents.tick)(scheduler.state.clone(), true).await;
