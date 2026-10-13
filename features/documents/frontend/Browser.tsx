@@ -47,7 +47,7 @@ import { useFromDrive } from './FromDrive.js';
 
 // The DSP's Documents, once Google is connected: a folder at a time, as a list or a grid,
 // with what Documents makes, what anyone uploads, by picking files or dropping them on the
-// page, and what those who hold its Google account add from Drive. A file opens in Google, in
+// page, and what the team adds from Google Drive. A file opens in Google, in
 // a tab of its own, or downloads. Right-clicking a file or folder opens its menu where the
 // pointer is. What's made, renamed or trashed shows at once, and goes back if Google refuses
 // it; a folder that hasn't come yet leaves the last one shown.

@@ -105,9 +105,9 @@ and weeks, so it's best submitted well before the limit.
   one of theirs moves into the folder open, where the team has it; one someone else owns, or
   one it can't move, is shared with that account, as an editor or else to view. Then it goes
   back to Documents, which adds what was picked. Leaving Documents while files upload asks
-  first. Dispatch checks it reaches each file with the account's token, so a file picked as
-  another account is refused. One already in Documents becomes visible; one elsewhere in the
-  account's Drive moves into the folder open. Only its owner moves a file, so one someone else
+  first. Dispatch checks the account that holds Documents reaches each file, and refuses one it
+  doesn't (`documents_picked_elsewhere`). One already in Documents is recorded as added; one
+  elsewhere in the account's Drive moves into the folder open. Only its owner moves a file, so one someone else
   owns and shared with the account, or one Google won't move (`cannotAddParent`), gets a
   shortcut in the folder open instead, as Drive's own Add shortcut does, once however often
   it's added. Documents keeps the file a shortcut stands for beside its tree, and shows the

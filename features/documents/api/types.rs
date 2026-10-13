@@ -27,9 +27,8 @@ pub struct DocumentsOverview {
     /// How the folder is shared with the member asking; none for the platform owner, who
     /// isn't one of the DSP's members.
     pub me: Option<MySharing>,
-    /// For those who manage the DSP's connections, while Google is connected: how to add
-    /// files someone made directly in Drive, signed in as its account. None when this server
-    /// has no keys for Google's file picker.
+    /// For every member, while Google is connected: how to add files from Google Drive. None
+    /// when this server has no keys for Google's file picker.
     pub picker: Option<PickerSetup>,
 }
 
@@ -76,8 +75,8 @@ pub struct PickerSetup {
     /// Google's keys for its file picker, which a browser uses as they are. None in fixture
     /// mode, which lists the files instead.
     pub google: Option<PickerKeys>,
-    /// In fixture mode, the files in its Drive outside Documents.
-    pub made_in_drive: Vec<DriveFile>,
+    /// In fixture mode, the files in its Drive outside Documents, which its picker lists.
+    pub elsewhere: Vec<DriveFile>,
 }
 /// The keys Google's file picker opens with, none of them secret: they name the platform's
 /// Google project to Google.
@@ -90,7 +89,7 @@ pub struct PickerKeys {
     pub api_key: String,
     pub app_id: String,
 }
-/// A file or folder in the account's Drive that Documents can't reach yet.
+/// A file or folder in the account's Drive outside Documents.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]

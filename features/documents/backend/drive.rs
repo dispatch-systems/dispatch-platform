@@ -1081,7 +1081,7 @@ fn fixture<T>(access: &str, work: impl FnOnce(&mut Drive) -> Result<T>) -> Resul
 /// Puts files in fixture mode's Drive elsewhere than the main folder, as its account holds
 /// them: a picture someone made directly in its Drive, and two Sheets someone else owns and
 /// shared with the account, one to view only. Each comes into Documents once it's picked.
-pub fn fixture_made_in_drive(access: &str) -> Result<()> {
+pub fn fixture_elsewhere(access: &str) -> Result<()> {
     fixture(access, |drive| {
         for (name, mime, size) in [
             ("Route map 2025.png", "image/png", Some("231004")),

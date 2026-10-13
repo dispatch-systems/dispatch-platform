@@ -404,7 +404,7 @@ pub async fn add(
     let mut shortcuts = false;
     let mut unshared = Vec::new();
     for id in &ids {
-        // Picked as another Google account, the file was given to that account instead.
+        // One the account that holds Documents doesn't reach: the member couldn't bring it.
         let item = match drive.google.get(&drive.access, id).await {
             Err(error) if error.code == "documents_item_not_found" => {
                 return Err(Error::new("documents_picked_elsewhere", 409));
