@@ -223,7 +223,7 @@ async fn follow(state: &Arc<State>, dsp: &str, root: &str) -> Result<()> {
     }
     let (_, (changes, all)) = on_drive!(state, dsp, |google, token| async {
         let changes = google.start_changes(token).await?;
-        Ok::<_, Error>((changes, google.list(token).await?))
+        Ok::<_, Error>((changes, google.inside(token, root).await?))
     })?;
     mirror.replace(root, all, changes);
     Ok(())

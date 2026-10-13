@@ -157,12 +157,16 @@ export function GoogleDriveCard({ view }: { view: DspView }) {
               </>
             );
           const broken = connection.status === 'broken';
+          // One connected before Dispatch asked for the whole Drive reaches less until reconnected.
+          const limited = !broken && !connection.fullAccess;
           return (
             <>
               <div className="archived-connection-content">
                 <div role="status">
                   {broken ? (
                     <Badge value="failed">Needs Reconnecting</Badge>
+                  ) : limited ? (
+                    <Badge value="needs_verification">Limited Access</Badge>
                   ) : (
                     <Badge value="ready" />
                   )}
@@ -204,7 +208,7 @@ export function GoogleDriveCard({ view }: { view: DspView }) {
                 </dl>
               </div>
               <footer>
-                {broken && (
+                {(broken || limited) && (
                   <button
                     className="primary documents-row"
                     disabled={signIn.busy}

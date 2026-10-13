@@ -9,4 +9,10 @@ export type DocumentsConnection = { status: ConnectionStatus, accountEmail: stri
 /**
  * Who connected it, while their account exists.
  */
-connectedBy: string | null, connectedAt: string, };
+connectedBy: string | null, connectedAt: string,
+/**
+ * Whether Dispatch reaches everything in the account's Drive. One connected before
+ * Dispatch asked for that reaches only the files it made or was given, until someone
+ * reconnects it.
+ */
+fullAccess: boolean, };

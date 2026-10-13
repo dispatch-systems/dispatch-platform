@@ -5,6 +5,7 @@ use dispatch_core::testing;
 fn connection(email: &str) -> Connection {
     Connection {
         broken: false,
+        full: true,
         account: Account {
             email: email.into(),
             workspace: false,

@@ -60,7 +60,8 @@
       [12, "accounts", "3b90671344bd46dd"]
     ],
     "owned": [
-      ["documents", 1, "documents_shared_files", "2f535ad4e09b9f2d"]
+      ["documents", 1, "documents_shared_files", "2f535ad4e09b9f2d"],
+      ["documents", 2, "documents_full_access", "code"]
     ]
   },
   {

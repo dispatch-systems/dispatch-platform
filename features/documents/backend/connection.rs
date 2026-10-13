@@ -62,6 +62,7 @@ fn described(
             folder_name: found.folder_name,
             connected_by: db.actor_name(dsp, &found.connected_by)?,
             connected_at: found.connected_at,
+            full_access: found.full,
         }),
         None => None,
     })
@@ -146,6 +147,10 @@ pub async fn finish(
         _ => None,
     };
     let made_folder = kept.is_none();
+    // Fixture mode's team made files directly in the folder it kept, meanwhile.
+    if let (Google::Fixture, Some((folder, _))) = (&google, &kept) {
+        super::drive::fixture_made_in_folder(&granted.access, folder)?;
+    }
     let (folder_id, folder_name) = match kept {
         Some(kept) => kept,
         None => {
@@ -155,6 +160,7 @@ pub async fn finish(
     };
     let connection = Connection {
         broken: false,
+        full: true,
         account: granted.account,
         folder_id,
         folder_name,
