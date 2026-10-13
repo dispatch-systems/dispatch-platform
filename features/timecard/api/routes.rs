@@ -46,7 +46,10 @@ pub fn routes() -> Vec<Route> {
         coalesced_read_by(
             "/api/dsp/employees",
             VIEW,
-            |_, _, _| Ok("roster".into()),
+            |_, c, _| {
+                tab(c, EMPLOYEES)?;
+                Ok("roster".into())
+            },
             employees,
         )
         .logged(),
@@ -57,11 +60,11 @@ pub fn routes() -> Vec<Route> {
             sync_employee,
         ),
         read("/api/dsp/timecards", VIEW, timecards).logged(),
-        coalesced_read_by("/api/dsp/timecards/page", VIEW, day_key, timecard_page).logged(),
+        coalesced_read_by("/api/dsp/timecards/page", VIEW, daily_key, timecard_page).logged(),
         coalesced_read_by(
             "/api/dsp/timecards/punches/{code}",
             VIEW,
-            day_key,
+            daily_key,
             daily_punches,
         )
         .logged(),
@@ -69,7 +72,13 @@ pub fn routes() -> Vec<Route> {
         read("/api/dsp/paycom/settings", VIEW, paycom_settings).logged(),
         write("/api/dsp/paycom/settings", MANAGE, save_paycom_settings),
         coalesced_read("/api/dsp/paycom/meal-breaks", VIEW, meal_comparison).logged(),
-        coalesced_read_by("/api/dsp/paycom/meal-breaks/page", VIEW, day_key, meal_page).logged(),
+        coalesced_read_by(
+            "/api/dsp/paycom/meal-breaks/page",
+            VIEW,
+            meal_key,
+            meal_page,
+        )
+        .logged(),
         read("/api/dsp/paycom/meal-breaks/period", VIEW, meal_period).logged(),
         coalesced_read_by(
             "/api/dsp/paycom/meal-breaks/period-gaps",
@@ -100,7 +109,16 @@ fn day_key(_: &Store, c: &Member, input: &Input) -> Result<String> {
     let date = v::text(&input.query, "date", 10, 10)?;
     Ok(format!("{date}:{}", c.dsp.timezone))
 }
+fn daily_key(db: &Store, c: &Member, input: &Input) -> Result<String> {
+    tab(c, DAILY)?;
+    day_key(db, c, input)
+}
+fn meal_key(db: &Store, c: &Member, input: &Input) -> Result<String> {
+    tab(c, MEAL_BREAKS)?;
+    day_key(db, c, input)
+}
 fn period_key(db: &Store, c: &Member, input: &Input) -> Result<String> {
+    tab(c, MEAL_BREAKS)?;
     let date = v::text(&input.query, "date", 10, 10)?;
     let period = crate::backend::meals::period::gap_period(db, c.dsp_id(), date)?;
     Ok(format!(
