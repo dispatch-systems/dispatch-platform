@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 import { csrf } from './api.js';
+import { recoverAccess } from './access-recovery.js';
+import { performancePolicy } from '../lib/performance-policy.js';
 import { onActivity } from './activity.js';
 import { randomId } from '../lib/random-id.js';
 
@@ -19,13 +21,16 @@ export function usePresence(token: string | undefined) {
     const tab = randomId();
     let lastActivity = performance.now();
     let sent: State | undefined;
+    let active = true;
     const send = (state: State) => {
+      if (!active && state !== 'gone') return Promise.resolve();
       sent = state;
       // Presence is best effort: a missed beat only delays the next status.
       return fetch('/api/dsp/presence', {
         method: 'POST',
         credentials: 'same-origin',
         keepalive: true,
+        signal: AbortSignal.timeout(performancePolicy.readTimeoutMs),
         headers: {
           'Content-Type': 'application/json',
           'X-CSRF-Token': csrf,
@@ -33,7 +38,16 @@ export function usePresence(token: string | undefined) {
         },
         body: JSON.stringify({ tab, state }),
       }).then(
-        () => undefined,
+        async (response) => {
+          if (!active || state === 'gone' || ![401, 409].includes(response.status)) return;
+          const value = await response.json().catch(() => null);
+          if (!active || (response.status !== 401 && value?.error !== 'dsp_view_expired')) return;
+          // Stop the rejected view before recovery can install its replacement. Late
+          // replies from a view that already closed cannot refresh a newer admission.
+          active = false;
+          clearInterval(timer);
+          recoverAccess('/api/dsp/presence', response.status, value?.error);
+        },
         () => undefined,
       );
     };
@@ -66,6 +80,7 @@ export function usePresence(token: string | undefined) {
     void send('active');
     leave = () => send('gone');
     return () => {
+      active = false;
       leave = undefined;
       clearInterval(timer);
       unwatch();

@@ -23,7 +23,7 @@ export function OnboardingLayout({
     previous.current = title;
   }, [title]);
   return (
-    <div className="onboarding-page" data-ready={ready} aria-busy={!ready}>
+    <div className="onboarding-page" data-ready={ready}>
       <OnboardingMap desktop={desktop} />
       <header className="onboarding-brand">
         <Brand />

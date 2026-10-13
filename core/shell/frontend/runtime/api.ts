@@ -1,3 +1,4 @@
+import { recoverAccess } from './access-recovery.js';
 import { performancePolicy } from '../lib/performance-policy.js';
 import { beginBrowserWrite, clearNavigationState } from './browser-update.js';
 import { useEffect, useState, useCallback, useRef, useSyncExternalStore } from 'react';
@@ -124,13 +125,7 @@ export async function api<T>(
     });
     const value = await response.json();
     if (!response.ok) {
-      if (['reauthentication_required', 'sign_in_again'].includes(value.error))
-        window.dispatchEvent(new Event('dispatch-reauthenticate'));
-      if (value.error === 'mfa_required') window.dispatchEvent(new Event('dispatch-mfa-required'));
-      if (response.status === 401 && url !== '/api/auth/login')
-        window.dispatchEvent(new Event('dispatch-signed-out'));
-      if (value.error === 'dsp_view_expired' && url !== '/api/session/dsp')
-        window.dispatchEvent(new Event('dispatch-view-expired'));
+      recoverAccess(url, response.status, value.error);
       throw new ApiError(
         value.error,
         errorLabel(value.error) ?? value.message ?? 'The request could not be completed.',

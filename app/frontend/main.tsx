@@ -75,7 +75,8 @@ import { openView, saveRole } from '../../core/shell/frontend/runtime/session.js
 import { getSession } from '../../core/shell/frontend/runtime/endpoints.js';
 import { loadSite } from '../../core/shell/frontend/runtime/site.js';
 import { cancelPrefetches } from '../../core/shell/frontend/runtime/prefetch.js';
-function App() {
+function App({ initialSession }: { initialSession: Promise<Session> }) {
+  const firstSession = useRef<Promise<Session> | undefined>(initialSession);
   const [pending, startTransition] = useTransition();
   const admission = useRef(0);
   const pendingAdmission = useRef<number>(undefined);
@@ -135,7 +136,9 @@ function App() {
       );
       setSessionError('');
       try {
-        const next = await getSession();
+        const reading = firstSession.current ?? getSession();
+        firstSession.current = undefined;
+        const next = await reading;
         if (request !== sessionRequest.current) return;
         credentials(next.csrf);
         setView(undefined);
@@ -168,6 +171,9 @@ function App() {
     // the session's unauthenticated response before downloading its form.
     if (!initial.dspId) void loadAuth().catch(() => undefined);
     else void prepareRoute('dsp', initial.page).catch(() => undefined);
+    return () => {
+      sessionRequest.current++;
+    };
   }, [load]);
   useEffect(() => {
     const changed = () => {
@@ -444,13 +450,17 @@ const root = createRoot(document.getElementById('root')!);
 // Which address this is decides what every link means here, so it is read first.
 function start() {
   root.render(<Loading />);
+  // Address and session are independent reads. Handle an early rejection while the
+  // address is still loading; App consumes the same promise once it can open safely.
+  const initialSession = getSession();
+  void initialSession.catch(() => undefined);
   loadSite().then(
     () => {
       root.render(
         <FeedbackProvider>
           <PageBoundary>
             <Suspense fallback={<Loading />}>
-              <App />
+              <App initialSession={initialSession} />
             </Suspense>
           </PageBoundary>
         </FeedbackProvider>,

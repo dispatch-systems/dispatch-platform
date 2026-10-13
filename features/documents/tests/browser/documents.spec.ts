@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import type { Page } from '@playwright/test';
+import type { DocumentsItem } from '../../api/client.js';
 import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
 
 // The seeded DSP has every feature switched on, and its owner holds every permission. Fixture
@@ -17,6 +18,64 @@ async function connect(page: Page) {
   await page.getByRole('button', { name: 'Connect Google' }).click();
   await expect(page.getByText('Nothing here yet')).toBeVisible();
 }
+
+test('large folders keep one page mounted in both layouts, search every item and reveal a new folder', async ({
+  page,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await connect(page);
+  const items: DocumentsItem[] = Array.from({ length: 250 }, (_, index) => ({
+    id: `large-folder-${index}`,
+    name: `File ${String(index).padStart(4, '0')}.txt`,
+    kind: 'file',
+    size: 10,
+    modifiedAt: '2026-01-05T12:00:00Z',
+    modifiedBy: null,
+    addedBy: null,
+    items: null,
+    url: `https://drive.google.com/file/d/large-folder-${index}/view`,
+    location: null,
+    thumbnail: null,
+    extension: '.txt',
+  }));
+  await page.route('**/api/dsp/documents/folder*', async (route) => {
+    const response = await route.fetch();
+    const folder = await response.json();
+    const query = new URL(route.request().url()).searchParams.get('q')?.toLowerCase() ?? '';
+    await route.fulfill({
+      response,
+      json: { ...folder, items: items.filter((item) => item.name.toLowerCase().includes(query)) },
+    });
+  });
+  await page.reload();
+  const rows = page.locator('.documents-table tbody tr');
+  await expect(rows).toHaveCount(100);
+  await expect(page.locator('.documents-table .row-menu .account-popover button')).toHaveCount(0);
+  await page.getByLabel('Actions for File 0000.txt').click();
+  await expect(page.getByRole('button', { name: 'Rename', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.documents-table .row-menu .account-popover button')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'File 0100.txt', exact: true })).toBeVisible();
+  await expect(rows).toHaveCount(100);
+  await page.getByRole('button', { name: 'Grid', exact: true }).click();
+  await expect(page.locator('.documents-file-card')).toHaveCount(100);
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.locator('.documents-file-card')).toHaveCount(50);
+  await page.getByLabel('Search Documents').fill('File 0249');
+  await expect(page.locator('.documents-file-card')).toHaveCount(1);
+  await expect(page.getByRole('link', { name: /File 0249/ })).toBeVisible();
+  await page.getByLabel('Search Documents').fill('');
+  await expect(page.locator('.documents-file-card')).toHaveCount(100);
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await page.getByLabel('New', { exact: true }).click();
+  await page.getByRole('button', { name: 'Folder', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Name' }).fill('New folder');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.getByRole('link', { name: /New folder/ })).toBeVisible();
+});
 
 test('an owner connects Google, lands in an empty Documents and makes a folder and a Doc that opens in Google', async ({
   page,

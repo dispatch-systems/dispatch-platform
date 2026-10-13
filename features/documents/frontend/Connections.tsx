@@ -1,3 +1,4 @@
+import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 import { useEffect, useRef, useState } from 'react';
 import { ExternalLink, FolderOpen, LoaderCircle, TriangleAlert } from 'lucide-react';
 import type { DspView } from '../../../core/accounts/api/index.js';
@@ -80,9 +81,7 @@ function Storage({ storage }: { storage: DriveStorage }) {
 }
 
 const time = (at: string, timeZone: string) =>
-  new Intl.DateTimeFormat('en-US', { timeZone, month: 'short', day: 'numeric' }).format(
-    new Date(at),
-  );
+  dateFormatter('en-US', { timeZone, month: 'short', day: 'numeric' }).format(new Date(at));
 
 /** The DSP's Google account, which holds its Documents. */
 export function GoogleDriveCard({ view }: { view: DspView }) {

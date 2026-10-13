@@ -16,7 +16,7 @@ let pending: Promise<void> | undefined;
 function loadMap() {
   return (pending ??= new Promise<void>((resolve) => {
     const image = new Image();
-    image.fetchPriority = 'high';
+    image.fetchPriority = 'low';
     image.onload = image.onerror = () => {
       ready = true;
       resolve();

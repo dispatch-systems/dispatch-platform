@@ -451,11 +451,6 @@ body:has(.member-profile-page) {
   }
 }
 
-/* Reveal the desktop composition together, with no timed fade or staged map appearance. */
-.member-profile-page[data-ready='false'] .member-profile-main {
-  visibility: hidden;
-}
-
 /* Freeze the map before fading it, so it does not repaint behind the falling badge. */
 .member-profile-page[inert] .member-profile-map {
   --map-motion-state: paused;
