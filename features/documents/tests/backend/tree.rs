@@ -28,6 +28,7 @@ pub(crate) fn item(
         thumbnail_version: None,
         owned_by_me: true,
         shortcut_details: None,
+        capabilities: Default::default(),
         seen: std::time::Instant::now(),
     }
 }
@@ -84,36 +85,61 @@ fn the_tree_is_the_main_folder_and_only_what_it_holds() {
 }
 
 #[test]
-fn a_shortcut_shows_as_the_file_it_stands_for_and_one_to_a_folder_opens_in_drive() {
+fn a_shortcut_shows_the_file_it_stands_for_until_the_account_no_longer_reaches_it() {
     let shortcut = |id: &str, target: &str, mime: &str| Item {
         mime_type: drive::SHORTCUT.into(),
         shortcut_details: Some(drive::Shortcut {
             target_id: target.into(),
             target_mime_type: mime.into(),
         }),
-        ..item(id, "Shared", Some("main"), false, "2026-10-02")
+        ..item(id, "Tracker", Some("main"), false, "2026-10-02")
     };
-    let tree = Tree::new(
+    // The Sheet sits in its owner's Drive, in none of the account's folders.
+    let sheet = Item {
+        mime_type: drive::SHEET.into(),
+        ..item("sheet", "Route tracker", None, false, "2026-10-09")
+    };
+    let mut tree = Tree::new(
         "main",
         vec![
             item("main", "Documents", None, true, "2026-10-01"),
+            item("older", "Older.pdf", Some("main"), false, "2026-10-05"),
             shortcut("to-sheet", "sheet", drive::SHEET),
             shortcut("to-folder", "folder", FOLDER),
+            sheet,
         ],
     );
-    let sheet = tree.get("to-sheet").unwrap();
-    assert_eq!(sheet.mime, Mime::Sheet);
+    // Shown as the Sheet, by its owner's name, and as changed when the Sheet was.
+    let row = tree.get("to-sheet").unwrap();
+    assert_eq!(row.mime, Mime::Sheet);
     assert_eq!(
-        &*sheet.link,
+        &*row.link,
         "https://docs.google.com/spreadsheets/d/sheet/edit"
     );
-    assert_eq!(sheet.target.as_deref(), Some("sheet"));
+    assert_eq!(&*row.shown().name, "Route tracker");
+    assert!(!row.unavailable());
+    let names: Vec<&str> = tree.children("main").iter().map(|row| &*row.id).collect();
+    assert_eq!(names, ["to-sheet", "older", "to-folder"]);
+    assert_eq!(
+        tree.search("main", "route")
+            .iter()
+            .map(|row| &*row.id)
+            .collect::<Vec<_>>(),
+        ["to-sheet"]
+    );
+    // The file outside isn't in Documents itself.
+    assert!(tree.get("sheet").is_none());
+    // One to a folder opens it in Drive, and one whose file the account doesn't reach is
+    // unavailable.
     let folder = tree.get("to-folder").unwrap();
     assert!(!folder.folder());
     assert_eq!(
         &*folder.link,
         "https://drive.google.com/drive/folders/folder"
     );
+    assert!(folder.unavailable());
     assert!(tree.stands_for("sheet") && tree.stands_for("folder"));
-    assert!(!tree.stands_for("to-sheet"));
+    // Once its owner trashes the Sheet, or stops sharing it, the shortcut is unavailable.
+    tree.follow(vec![Changed::Gone("sheet".into())]);
+    assert!(tree.get("to-sheet").unwrap().unavailable());
 }

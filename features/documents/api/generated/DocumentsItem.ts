@@ -37,4 +37,14 @@ thumbnail: string | null,
  * The extension its name keeps when renamed, such as `.pdf`: none for a folder, Google's
  * own Docs, Sheets and Slides, or a name without one.
  */
-extension: string | null, };
+extension: string | null,
+/**
+ * A shortcut to a file someone else owns: it shows that file's name, which its owner
+ * keeps, so it isn't renamed here.
+ */
+shortcut: boolean,
+/**
+ * A shortcut whose file the account no longer reaches: its owner trashed it, or stopped
+ * sharing it.
+ */
+unavailable: boolean, };

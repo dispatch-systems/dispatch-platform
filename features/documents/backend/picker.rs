@@ -131,6 +131,8 @@ fn html(page: &str, settings: &serde_json::Value, allowed: &str) -> Response {
 /// Google signed in that account first, since a file picked as another can't be added. Then it
 /// goes back to Documents, leaving what was picked for it there. It names this address to
 /// Google, though not the page, since Google's picker key works only from Dispatch's own.
+/// Beside the folder open in Documents, the picker shows what's shared with the account, and
+/// the shared drives it's in.
 const PAGE: &str = r#"<!doctype html>
 <html lang="en">
 <head>
@@ -225,13 +227,20 @@ const PAGE: &str = r#"<!doctype html>
     gapi.load('picker', { callback: () => choose(token), onerror: failed });
   }
   function choose(token) {
-    const view = new google.picker.DocsView(google.picker.ViewId.DOCS)
-      .setIncludeFolders(true)
-      .setSelectFolderEnabled(true);
-    if (asked.files) view.setFileIds(asked.files);
-    else view.setParent(asked.folder);
-    new google.picker.PickerBuilder()
-      .addView(view)
+    const view = () =>
+      new google.picker.DocsView(google.picker.ViewId.DOCS)
+        .setIncludeFolders(true)
+        .setSelectFolderEnabled(true);
+    const builder = new google.picker.PickerBuilder();
+    // A link's files alone; else the folder open in Documents, then what's shared with the
+    // account, and the shared drives it's in.
+    if (asked.files) builder.addView(view().setFileIds(asked.files));
+    else
+      builder
+        .addView(view().setParent(asked.folder))
+        .addView(view().setOwnedByMe(false))
+        .addView(view().setEnableDrives(true));
+    builder
       .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
       .setOAuthToken(token)
       .setDeveloperKey(asked.apiKey)

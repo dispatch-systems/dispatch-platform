@@ -26,8 +26,12 @@ pub const SHORTCUT: &str = "application/vnd.google-apps.shortcut";
 /// What Documents asks of each file.
 const FIELDS: &str = concat!(
     "id,name,mimeType,parents,modifiedTime,lastModifyingUser(displayName,emailAddress),size,",
-    "webViewLink,thumbnailLink,thumbnailVersion,ownedByMe,shortcutDetails(targetId,targetMimeType)"
+    "webViewLink,thumbnailLink,thumbnailVersion,ownedByMe,shortcutDetails(targetId,targetMimeType),",
+    "capabilities(canShare)"
 );
+/// Asked of every call about one file, which may sit in a shared drive: Google answers for
+/// one there only when told the app understands them.
+const ALL_DRIVES: (&str, &str) = ("supportsAllDrives", "true");
 /// Enough pages for 50,000 files; a Drive that keeps answering past them is not listed whole.
 const PAGES: usize = 50;
 /// What changed in the account's Drive.
@@ -114,9 +118,20 @@ pub struct Item {
     pub owned_by_me: bool,
     /// For a shortcut, the file it stands for.
     pub shortcut_details: Option<Shortcut>,
+    /// What the account may do with it.
+    #[serde(default)]
+    pub capabilities: Capabilities,
     /// When Google described it, which its picture's link lasts hours from.
     #[serde(skip, default = "Instant::now")]
     pub seen: Instant,
+}
+/// What the account may do with a file.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Capabilities {
+    /// Whether it may share the file on: an editor whose owner allows it.
+    #[serde(default)]
+    pub can_share: bool,
 }
 /// The file a shortcut stands for.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -245,6 +260,8 @@ impl Google {
                 ("fields", format!("nextPageToken,files({FIELDS})")),
                 ("pageSize", "1000".to_owned()),
                 ("spaces", "drive".to_owned()),
+                ("includeItemsFromAllDrives", "true".to_owned()),
+                ("supportsAllDrives", "true".to_owned()),
             ];
             query.extend(next.take().map(|token| ("pageToken", token)));
             let page: Page = send(HTTP.get(FILES).bearer_auth(access).query(&query)).await?;
@@ -310,6 +327,8 @@ impl Google {
                 ("pageSize", "1000"),
                 ("spaces", "drive"),
                 ("includeRemoved", "true"),
+                ("includeItemsFromAllDrives", "true"),
+                ("supportsAllDrives", "true"),
             ]))
             .await?;
             match page.read(&mut changed) {
@@ -350,6 +369,7 @@ impl Google {
                     thumbnail_version: None,
                     owned_by_me: true,
                     shortcut_details: None,
+                    capabilities: Capabilities { can_share: true },
                     seen: Instant::now(),
                 };
                 drive.files.insert(id.clone(), item.clone());
@@ -412,7 +432,10 @@ impl Google {
         let listed: Shares = send(
             HTTP.get(format!("{FILES}/{id}/permissions"))
                 .bearer_auth(access)
-                .query(&[("fields", "permissions(id,role,type,emailAddress)")]),
+                .query(&[
+                    ("fields", "permissions(id,role,type,emailAddress)"),
+                    ALL_DRIVES,
+                ]),
         )
         .await?;
         Ok(listed.permissions)
@@ -431,6 +454,13 @@ impl Google {
                 if email.ends_with("@example.net") {
                     return Ok(Err(Refused::NoGoogleAccount));
                 }
+                if drive
+                    .files
+                    .get(id)
+                    .is_some_and(|file| !file.capabilities.can_share)
+                {
+                    return Ok(Err(Refused::Other("insufficientFilePermissions".into())));
+                }
                 let share = Share {
                     id: format!("fixture-share-{}", crypto::hex(&crypto::random::<6>()?)),
                     role: "writer".into(),
@@ -445,7 +475,11 @@ impl Google {
         let response = HTTP
             .post(format!("{FILES}/{id}/permissions"))
             .bearer_auth(access)
-            .query(&[("sendNotificationEmail", "false"), ("fields", "id")])
+            .query(&[
+                ("sendNotificationEmail", "false"),
+                ("fields", "id"),
+                ALL_DRIVES,
+            ])
             .json(&json!({"type": "user", "role": "writer", "emailAddress": email}))
             .timed()
             .await
@@ -482,6 +516,7 @@ impl Google {
         }
         let response = HTTP
             .delete(format!("{FILES}/{id}/permissions/{share}"))
+            .query(&[ALL_DRIVES])
             .bearer_auth(access)
             .timed()
             .await
@@ -593,6 +628,7 @@ impl Google {
                     size: Some(length.to_string()),
                     owned_by_me: true,
                     shortcut_details: None,
+                    capabilities: Capabilities { can_share: true },
                     seen: Instant::now(),
                 };
                 drive.files.insert(id.clone(), item.clone());
@@ -718,10 +754,10 @@ impl Google {
         let request = match exported {
             Some((kind, _)) => TRANSFER
                 .get(format!("{FILES}/{id}/export"))
-                .query(&[("mimeType", kind)]),
+                .query(&[("mimeType", kind), ALL_DRIVES]),
             None => TRANSFER
                 .get(format!("{FILES}/{id}"))
-                .query(&[("alt", "media")]),
+                .query(&[("alt", "media"), ALL_DRIVES]),
         };
         let response = request
             .bearer_auth(access)
@@ -755,7 +791,7 @@ impl Google {
         send(
             HTTP.get(format!("{FILES}/{id}"))
                 .bearer_auth(access)
-                .query(&[("fields", FIELDS)]),
+                .query(&[("fields", FIELDS), ALL_DRIVES]),
         )
         .await
     }
@@ -804,6 +840,7 @@ impl Google {
                     thumbnail_version: None,
                     owned_by_me: true,
                     shortcut_details: Some(target),
+                    capabilities: Capabilities { can_share: true },
                     seen: Instant::now(),
                     ..item.clone()
                 };
@@ -815,7 +852,7 @@ impl Google {
         send(
             HTTP.post(FILES)
                 .bearer_auth(access)
-                .query(&[("fields", FIELDS)])
+                .query(&[("fields", FIELDS), ALL_DRIVES])
                 .json(&json!({
                     "name": item.name,
                     "mimeType": SHORTCUT,
@@ -989,7 +1026,8 @@ fn fixture<T>(access: &str, work: impl FnOnce(&mut Drive) -> Result<T>) -> Resul
 }
 /// Puts files in fixture mode's Drive as someone making them directly in Drive would: a folder
 /// and a file in `folder`, a Doc in that folder, a picture elsewhere in the account's Drive, and
-/// a Sheet someone else owns and shared with the account, all out of Dispatch's reach.
+/// two Sheets someone else owns and shared with the account, one to view only, all out of
+/// Dispatch's reach.
 pub fn fixture_made_in_drive(access: &str, folder: &str) -> Result<()> {
     let id = || Ok::<_, Error>(format!("fixture-{}", crypto::hex(&crypto::random::<8>()?)));
     let safety = id()?;
@@ -1005,6 +1043,7 @@ pub fn fixture_made_in_drive(access: &str, folder: &str) -> Result<()> {
             ),
             ("Route map 2025.png", "image/png", Some("231004"), None),
             (SHARED_SHEET, SHEET, None, None),
+            (VIEW_ONLY_SHEET, SHEET, None, None),
         ] {
             let id = if mime == FOLDER {
                 safety.clone()
@@ -1026,8 +1065,11 @@ pub fn fixture_made_in_drive(access: &str, folder: &str) -> Result<()> {
                 thumbnail_link: None,
                 thumbnail_version: None,
                 // Google shows a file shared with the account in no folder of the account's.
-                owned_by_me: name != SHARED_SHEET,
+                owned_by_me: name != SHARED_SHEET && name != VIEW_ONLY_SHEET,
                 shortcut_details: None,
+                capabilities: Capabilities {
+                    can_share: name != VIEW_ONLY_SHEET,
+                },
                 seen: Instant::now(),
             };
             drive.files.insert(id.clone(), item);
@@ -1038,6 +1080,8 @@ pub fn fixture_made_in_drive(access: &str, folder: &str) -> Result<()> {
 }
 /// The Sheet someone else owns in fixture mode, shared with the account.
 pub const SHARED_SHEET: &str = "Route tracker";
+/// One shared with the account to view only, which it can't share on.
+pub const VIEW_ONLY_SHEET: &str = "Fuel prices";
 /// The files fixture mode's Drive holds that Dispatch can't reach yet.
 pub fn fixture_hidden(access: &str) -> Result<Vec<Item>> {
     fixture(access, |drive| {

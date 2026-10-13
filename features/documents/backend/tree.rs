@@ -71,10 +71,22 @@ pub struct Row {
     pub seen: Instant,
     /// For a shortcut, the file it stands for, whose bytes a download takes.
     pub target: Option<Arc<str>>,
+    /// That file as Google last described it, while the account reaches it.
+    pub stands_for: Option<Arc<Row>>,
 }
 impl Row {
     pub fn folder(&self) -> bool {
         self.mime == Mime::Folder
+    }
+    /// What the page shows of it: for a shortcut, the file it stands for, whose name and
+    /// changes are its owner's.
+    pub fn shown(&self) -> &Row {
+        self.stands_for.as_deref().unwrap_or(self)
+    }
+    /// A shortcut whose file the account no longer reaches: its owner trashed it, or stopped
+    /// sharing it.
+    pub fn unavailable(&self) -> bool {
+        self.target.is_some() && self.stands_for.is_none()
     }
 }
 impl From<Item> for Row {
@@ -105,6 +117,7 @@ impl From<Item> for Row {
             version: item.thumbnail_version.and_then(|v| v.parse().ok()),
             seen: item.seen,
             target,
+            stands_for: None,
         }
     }
 }
@@ -119,6 +132,8 @@ pub struct Tree {
     /// place, the main folder's after them.
     starts: Vec<u32>,
     held: Vec<u32>,
+    /// The files outside the main folder that shortcuts inside stand for, by ID.
+    linked: HashMap<Arc<str>, Row>,
 }
 impl Tree {
     /// The files of `all` inside the folder `root`.
@@ -165,11 +180,29 @@ impl Tree {
             .map(|row| row.id != root && inside(row))
             .collect();
         drop(places);
+        // The files the shortcuts inside stand for stay beside the tree, wherever they are.
+        let targets: HashSet<Arc<str>> = rows
+            .iter()
+            .zip(&kept)
+            .filter(|(_, kept)| **kept)
+            .filter_map(|(row, _)| row.target.clone())
+            .collect();
+        let mut linked = HashMap::new();
         let mut place = 0;
-        rows.retain(|_| {
+        rows.retain_mut(|row| {
             place += 1;
+            if !kept[place - 1] && targets.contains(&row.id) {
+                linked.insert(Arc::clone(&row.id), row.clone());
+            }
             kept[place - 1]
         });
+        for row in &mut rows {
+            row.stands_for = row
+                .target
+                .as_ref()
+                .and_then(|target| linked.get(target))
+                .map(|file: &Row| Arc::new(file.clone()));
+        }
         rows.shrink_to_fit();
         let places: HashMap<Arc<str>, u32> = rows
             .iter()
@@ -217,6 +250,7 @@ impl Tree {
             places,
             starts,
             held,
+            linked,
         }
     }
     pub fn root(&self) -> &str {
@@ -284,7 +318,7 @@ impl Tree {
             .rows
             .iter()
             .filter(|row| {
-                let name = row.name.to_lowercase();
+                let name = row.shown().name.to_lowercase();
                 words.iter().all(|word| name.contains(word.as_str()))
                     && (id == &*self.root
                         || self
@@ -303,7 +337,10 @@ impl Tree {
         let row = Row::from(item);
         match self.places.get(&row.id) {
             Some(place) => self.rows[*place as usize] = row,
-            None => self.rows.push(row),
+            None => {
+                self.linked.remove(&row.id);
+                self.rows.push(row);
+            }
         }
         self.regrow();
     }
@@ -337,6 +374,7 @@ impl Tree {
                         if item.mime_type == FOLDER {
                             arrived.push(item.id.clone());
                         }
+                        self.linked.remove(item.id.as_str());
                         self.rows.push(Row::from(*item));
                     }
                 },
@@ -346,6 +384,7 @@ impl Tree {
             }
         }
         self.rows.retain(|row| !gone.contains(&*row.id));
+        self.linked.retain(|id, _| !gone.contains(&**id));
         self.regrow();
         // A folder that stays outside, such as another DSP's in the same account, brings
         // nothing in.
@@ -354,20 +393,25 @@ impl Tree {
             .any(|id| self.places.contains_key(id.as_str()))
     }
     fn regrow(&mut self) {
-        let rows = mem::take(&mut self.rows);
+        let mut rows = mem::take(&mut self.rows);
+        rows.extend(mem::take(&mut self.linked).into_values());
         *self = Self::grown(Arc::clone(&self.root), rows);
     }
 }
 
 /// Folders first, by name; then files, the most recently changed first.
 fn order(a: &Row, b: &Row) -> std::cmp::Ordering {
+    let (shown_a, shown_b) = (a.shown(), b.shown());
     b.folder()
         .cmp(&a.folder())
         .then_with(|| {
             if a.folder() {
-                a.name.to_lowercase().cmp(&b.name.to_lowercase())
+                shown_a
+                    .name
+                    .to_lowercase()
+                    .cmp(&shown_b.name.to_lowercase())
             } else {
-                b.modified.cmp(&a.modified)
+                shown_b.modified.cmp(&shown_a.modified)
             }
         })
         .then_with(|| a.id.cmp(&b.id))
