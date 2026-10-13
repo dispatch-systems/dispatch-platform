@@ -64,6 +64,14 @@ fn the_copy_follows_drive_and_keeps_what_dispatch_changed() {
                 // Trashed or deleted in Drive, a file and a folder with what it held.
                 Changed::Gone("old".into()),
                 Changed::Gone("safety".into()),
+                // A folder another DSP made with the same account.
+                kept(item(
+                    "theirs-new",
+                    "Routes",
+                    Some("other"),
+                    true,
+                    "2026-10-07",
+                )),
             ],
             "2",
         ),

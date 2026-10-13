@@ -8,6 +8,7 @@ use super::{
     drive::{Changes, Item},
     tree::Tree,
 };
+use dispatch_core::Error;
 use std::{
     collections::HashMap,
     sync::{Arc, LazyLock, Mutex, MutexGuard},
@@ -22,6 +23,8 @@ pub const FRESH: Duration = Duration::from_secs(5);
 pub const STALE: Duration = Duration::from_secs(60);
 /// How long a copy is kept after it was last looked at.
 const IDLE: Duration = Duration::from_secs(30 * 60);
+/// How long Google's failing to answer stands for those waiting their turn to ask.
+const FAILED: Duration = Duration::from_secs(5);
 
 /// What the account's Drive held when Dispatch last asked.
 struct Copy {
@@ -33,11 +36,12 @@ struct Copy {
 }
 
 /// One DSP's copy, when it was last looked at, and the turn to bring it up to date: Google is
-/// asked once at a time.
+/// asked once at a time. When asking last failed, and why.
 pub struct Mirror {
     copy: Mutex<Option<Copy>>,
     viewed: Mutex<Instant>,
     turn: Arc<tokio::sync::Mutex<()>>,
+    failed: Mutex<Option<(Instant, String, u16)>>,
 }
 static MIRRORS: LazyLock<Mutex<HashMap<String, Arc<Mirror>>>> = LazyLock::new(Default::default);
 
@@ -65,6 +69,7 @@ impl Default for Mirror {
             copy: Mutex::new(None),
             viewed: Mutex::new(Instant::now()),
             turn: Arc::default(),
+            failed: Mutex::new(None),
         }
     }
 }
@@ -139,6 +144,23 @@ impl Mirror {
     /// The turn to ask Google, unless someone has it.
     pub fn try_turn(&self) -> Option<OwnedMutexGuard<()>> {
         Arc::clone(&self.turn).try_lock_owned().ok()
+    }
+    fn failure(&self) -> MutexGuard<'_, Option<(Instant, String, u16)>> {
+        self.failed
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+    /// Notes that asking Google failed with `error`.
+    pub fn fail(&self, error: &Error) {
+        *self.failure() = Some((Instant::now(), error.code.clone(), error.status));
+    }
+    /// Why asking Google failed a moment ago, if it did: what those who waited for the turn
+    /// answer, rather than each asking in turn.
+    pub fn failed(&self) -> Option<Error> {
+        self.failure()
+            .as_ref()
+            .filter(|(at, _, _)| at.elapsed() < FAILED)
+            .map(|(_, code, status)| Error::new(code.clone(), *status))
     }
 }
 

@@ -293,7 +293,7 @@ impl Tree {
         if changes.is_empty() {
             return false;
         }
-        let mut arrived = false;
+        let mut arrived = Vec::new();
         let mut gone = HashSet::new();
         for change in changes {
             match change {
@@ -305,7 +305,9 @@ impl Tree {
                         }
                     }
                     None => {
-                        arrived |= item.mime_type == FOLDER;
+                        if item.mime_type == FOLDER {
+                            arrived.push(item.id.clone());
+                        }
                         self.rows.push(Row::from(*item));
                     }
                 },
@@ -316,7 +318,11 @@ impl Tree {
         }
         self.rows.retain(|row| !gone.contains(&*row.id));
         self.regrow();
+        // A folder that stays outside, such as another DSP's in the same account, brings
+        // nothing in.
         arrived
+            .iter()
+            .any(|id| self.places.contains_key(id.as_str()))
     }
     fn regrow(&mut self) {
         let rows = mem::take(&mut self.rows);

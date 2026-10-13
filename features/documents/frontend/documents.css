@@ -807,6 +807,12 @@
 .documents-making {
   opacity: 0.6;
 }
+@media (prefers-reduced-motion: reduce) {
+  .documents-progress::after {
+    width: 100%;
+    animation: none;
+  }
+}
 @keyframes documents-shown {
   to {
     opacity: 1;

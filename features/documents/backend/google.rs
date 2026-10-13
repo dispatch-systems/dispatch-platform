@@ -441,9 +441,10 @@ async fn sent(request: reqwest::RequestBuilder) -> reqwest::Result<reqwest::Resp
     answer
 }
 /// A request as the log names it: its method and address, without the IDs in its path or
-/// anything after it. A picture's address is only its host, since its path is its key.
+/// anything after it. A picture's address is only its host, since its path is its key, and an
+/// address by number is never named.
 fn called(method: &reqwest::Method, url: &reqwest::Url) -> String {
-    let host = url.host_str().unwrap_or_default();
+    let host = url.domain().unwrap_or("an address");
     if !host.ends_with("googleapis.com") {
         return format!("{method} {host}");
     }

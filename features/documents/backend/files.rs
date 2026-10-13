@@ -162,8 +162,10 @@ async fn tree(state: &Arc<State>, dsp: &str) -> Result<(Connection, Arc<Tree>)> 
         Some(age) if age < mirror::STALE => {
             if let Some(turn) = mirror.try_turn() {
                 let (state, dsp, root) = (Arc::clone(state), dsp.to_owned(), root.clone());
+                let mirror = Arc::clone(&mirror);
                 tokio::spawn(async move {
                     if let Err(error) = follow(&state, &dsp, &root).await {
+                        mirror.fail(&error);
                         observability::event(
                             "warn",
                             "documents_follow_failed",
@@ -176,9 +178,16 @@ async fn tree(state: &Arc<State>, dsp: &str) -> Result<(Connection, Arc<Tree>)> 
         }
         _ => {
             let _turn = mirror.wait().await;
-            // Whoever had the turn may have brought it up to date.
+            // Whoever had the turn may have brought it up to date, or just failed to: then
+            // their answer stands, rather than each waiting request asking Google in turn.
             if mirror.age(&root).is_none_or(|age| age >= mirror::FRESH) {
-                follow(state, dsp, &root).await?;
+                if let Some(error) = mirror.failed() {
+                    return Err(error);
+                }
+                if let Err(error) = follow(state, dsp, &root).await {
+                    mirror.fail(&error);
+                    return Err(error);
+                }
             }
         }
     }
