@@ -10,13 +10,13 @@ import { test, expect, login, openDsp } from '../../../../core/shell/tests/suppo
 /**
  * Connects Google as an owner does: from Documents to the Google Drive card on Settings'
  * Connections, which Google sends the browser back to, and which sends the owner on to
- * Documents, empty.
+ * Documents, which shows what someone made directly in its folder in Drive.
  */
 async function connect(page: Page) {
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
   await page.getByRole('link', { name: /Go to Settings/ }).click();
   await page.getByRole('button', { name: 'Connect Google' }).click();
-  await expect(page.getByText('Nothing here yet')).toBeVisible();
+  await expect(page.getByRole('link', { name: /Fuel receipts\.pdf/ })).toBeVisible();
 }
 
 test('large folders keep one page mounted in both layouts, search every item and reveal a new folder', async ({
@@ -79,7 +79,7 @@ test('large folders keep one page mounted in both layouts, search every item and
   await expect(page.getByRole('link', { name: /New folder/ })).toBeVisible();
 });
 
-test('an owner connects Google, lands in an empty Documents and makes a folder and a Doc that opens in Google', async ({
+test('an owner connects Google, lands in Documents and makes a folder and a Doc that opens in Google', async ({
   page,
 }) => {
   await login(page);
@@ -193,21 +193,21 @@ test('an owner adds a file someone made directly in Drive from its link', async 
   );
   await connect(page);
   const made: { id: string; name: string }[] = (await (await overview).json()).picker.madeInDrive;
-  const receipts = made.find((file) => file.name === 'Fuel receipts.pdf')!;
+  const map = made.find((file) => file.name === 'Route map 2025.png')!;
   await page.getByLabel('Upload', { exact: true }).click();
   await page.getByRole('button', { name: 'Drive link' }).click();
   const linking = page.getByRole('dialog', { name: 'Add a Drive link' });
   await linking
     .getByRole('textbox', { name: 'Link' })
-    .fill(`https://drive.google.com/file/d/${receipts.id}/view?usp=drive_link`);
+    .fill(`https://drive.google.com/file/d/${map.id}/view?usp=drive_link`);
   await linking.getByRole('button', { name: 'Add' }).click();
   // Fixture mode lists its Drive's files out of reach, where Google's picker would open, with
   // the one the link names chosen.
   const picker = page.getByRole('dialog', { name: 'Add from Google Drive' });
-  await expect(picker.getByLabel('Fuel receipts.pdf')).toBeChecked();
+  await expect(picker.getByLabel('Route map 2025.png')).toBeChecked();
   await picker.getByRole('button', { name: 'Add 1 file' }).click();
   await expect(picker).toBeHidden();
-  await expect(page.getByRole('link', { name: /Fuel receipts\.pdf/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Route map 2025\.png/ })).toBeVisible();
 });
 
 test("Google's picker opens in the tab, signed in as the account, and comes back with what was picked", async ({
@@ -281,15 +281,15 @@ test("Google's picker opens in the tab, signed in as the account, and comes back
   );
   await connect(page);
   const made: { id: string; name: string }[] = (await (await overview).json()).picker.madeInDrive;
-  const receipts = made.find((file) => file.name === 'Fuel receipts.pdf')!;
+  const map = made.find((file) => file.name === 'Route map 2025.png')!;
   await page.getByLabel('Upload', { exact: true }).click();
   await page.getByRole('button', { name: 'Drive link' }).click();
   const linking = page.getByRole('dialog', { name: 'Add a Drive link' });
   await linking
     .getByRole('textbox', { name: 'Link' })
-    .fill(`https://drive.google.com/file/d/${receipts.id}/view?usp=drive_link`);
+    .fill(`https://drive.google.com/file/d/${map.id}/view?usp=drive_link`);
   await linking.getByRole('button', { name: 'Add' }).click();
   await expect(page.getByText('Added to Documents')).toBeVisible();
-  await expect(page.getByRole('link', { name: /Fuel receipts\.pdf/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Route map 2025\.png/ })).toBeVisible();
   expect(page.context().pages()).toHaveLength(1);
 });

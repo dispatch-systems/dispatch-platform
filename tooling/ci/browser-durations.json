@@ -61,7 +61,7 @@
   "features/daily_performance/tests/browser/daily-performance.spec.ts › Daily Performance has its switch on the DSPs page, on for the seeded DSP": 3.2,
   "features/documents/tests/browser/documents.spec.ts › a member names files as they upload, drops one on the page, renames and downloads one": 6.3,
   "features/documents/tests/browser/documents.spec.ts › an owner adds a file someone made directly in Drive from its link": 6.5,
-  "features/documents/tests/browser/documents.spec.ts › an owner connects Google, lands in an empty Documents and makes a folder and a Doc that opens in Google": 6.7,
+  "features/documents/tests/browser/documents.spec.ts › an owner connects Google, lands in Documents and makes a folder and a Doc that opens in Google": 6.7,
   "features/driver_match/tests/browser/driver-match.spec.ts › Driver Match shows who might be listed twice and makes them one person": 4.8,
   "features/dvic/tests/browser/dvic.spec.ts › DVIC viewers can read without collection controls; a disabled feature has no page or navigation": 4.2,
   "features/dvic/tests/browser/dvic.spec.ts › a full week follows the server cursor and does not present a failed page as zero records": 4.9,

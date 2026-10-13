@@ -503,31 +503,40 @@ test('those who manage Documents add files and folders made directly in Drive, p
   await connect(owner);
   type Picked = { id: string; name: string; kind: string };
   const setup = async () => (await owner.read('/api/dsp/documents')).picker;
-  // Fixture mode has no picker of Google's: it names what its Drive holds out of reach.
+  // Fixture mode has no picker of Google's: it names what its Drive holds outside Documents.
   const picker = await setup();
   assert.equal(picker.account, 'documents@example.com');
   assert.equal(picker.google, null);
   const made = (name: string) => picker.madeInDrive.find((file: Picked) => file.name === name)!;
   assert.deepEqual(picker.madeInDrive.map((file: Picked) => [file.name, file.kind]).sort(), [
     ['Fuel prices', 'sheet'],
-    ['Fuel receipts.pdf', 'pdf'],
     ['Route map 2025.png', 'image'],
     ['Route tracker', 'sheet'],
-    ['Safety', 'folder'],
-    ['Weekly safety huddle', 'doc'],
   ]);
-  const top = async () =>
-    (await owner.read('/api/dsp/documents/folder')).items.map(
-      (item: { name: string }) => item.name,
-    );
-  assert.deepEqual(await top(), []);
+  const listed = async (folder?: string) =>
+    (await owner.read(`/api/dsp/documents/folder${folder ? `?id=${folder}` : ''}`)).items as {
+      id: string;
+      name: string;
+    }[];
+  const top = async () => (await listed()).map((item) => item.name);
+  const named = async (name: string, folder?: string) =>
+    (await listed(folder)).find((item) => item.name === name)!;
+  // Dispatch reaches the whole Drive: what someone made directly in the folder shows at once,
+  // folders and all.
+  assert.deepEqual(await top(), ['Safety', 'Fuel receipts.pdf']);
+  const safetyFolder = await named('Safety');
+  assert.deepEqual(
+    (await listed(safetyFolder.id)).map((item) => item.name),
+    ['Weekly safety huddle'],
+  );
 
-  // One inside the folder only becomes reachable; one elsewhere in the Drive moves in.
+  // One already inside is only recorded as added; one elsewhere in the Drive moves in.
   const fleet = (
     await owner.post('/api/dsp/documents/new', { folder: null, kind: 'folder', name: 'Fleet' })
   ).value;
+  const receipts = await named('Fuel receipts.pdf');
   const added = await owner.post('/api/dsp/documents/add', {
-    files: [made('Fuel receipts.pdf').id, made('Route map 2025.png').id],
+    files: [receipts.id, made('Route map 2025.png').id],
     folder: fleet.id,
   });
   assert.equal(added.status, 200, added.body);
@@ -538,30 +547,11 @@ test('those who manage Documents add files and folders made directly in Drive, p
       ['Route map 2025.png', 'Platform support'],
     ],
   );
-  assert.deepEqual(await top(), ['Fleet', 'Fuel receipts.pdf']);
+  assert.deepEqual(await top(), ['Fleet', 'Safety', 'Fuel receipts.pdf']);
   assert.deepEqual(
-    (await owner.read(`/api/dsp/documents/folder?id=${fleet.id}`)).items.map(
-      (item: { name: string }) => item.name,
-    ),
+    (await listed(fleet.id)).map((item) => item.name),
     ['Route map 2025.png'],
   );
-  // A folder made inside Documents shows where it is, and what it holds once that's picked too.
-  const safety = await owner.post('/api/dsp/documents/add', {
-    files: [made('Safety').id],
-    folder: fleet.id,
-  });
-  assert.equal(safety.status, 200, safety.body);
-  assert.deepEqual(await top(), ['Fleet', 'Safety', 'Fuel receipts.pdf']);
-  const inSafety = async () =>
-    (await owner.read(`/api/dsp/documents/folder?id=${made('Safety').id}`)).items.map(
-      (item: { name: string }) => item.name,
-    );
-  assert.deepEqual(await inSafety(), []);
-  await owner.post('/api/dsp/documents/add', {
-    files: [made('Weekly safety huddle').id],
-    folder: null,
-  });
-  assert.deepEqual(await inSafety(), ['Weekly safety huddle']);
   // One someone else owns and shared with the account stays where its owner keeps it:
   // Documents gets a shortcut to it, which shows and opens as the Sheet, once however often
   // it's added.
@@ -640,7 +630,7 @@ test('those who manage Documents add files and folders made directly in Drive, p
   assert.equal(
     (
       await member.post('/api/dsp/documents/add', {
-        files: [made('Weekly safety huddle').id],
+        files: [receipts.id],
         folder: null,
       })
     ).status,
