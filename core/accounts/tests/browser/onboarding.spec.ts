@@ -37,7 +37,7 @@ async function fits(page: import('@playwright/test').Page) {
     .toBe(true);
 }
 
-test('desktop reveals map and form together and remains usable if the map fails', async ({
+test('desktop form is usable while the map loads and if the map fails', async ({
   page,
   browser,
   dispatch,
@@ -60,7 +60,7 @@ test('desktop reveals map and form together and remains usable if the map fails'
     const heading = page.getByRole('heading', { name: 'Set up your DSP' });
     await expect.poll(() => waiting).toBe(true);
     await expect(page.locator('.onboarding-page')).toHaveAttribute('data-ready', 'false');
-    await expect(heading).toBeHidden();
+    await expect(heading).toBeVisible();
     await expect(page.locator('.onboarding-map')).toBeHidden();
     release();
     await expect(heading).toBeVisible();

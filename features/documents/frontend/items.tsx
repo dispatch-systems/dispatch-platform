@@ -8,6 +8,7 @@ import {
   Sheet,
   type LucideIcon,
 } from 'lucide-react';
+import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 import { useEffect, useRef, useState } from 'react';
 import { thumbnail, type DocumentsItem, type ItemKind } from '../api/client.js';
 
@@ -152,37 +153,37 @@ export function typeOf(item: DocumentsItem) {
 }
 
 const day = (value: Date, timeZone: string) =>
-  new Intl.DateTimeFormat('en-CA', { timeZone, dateStyle: 'short' }).format(value);
+  dateFormatter('en-CA', { timeZone, dateStyle: 'short' }).format(value);
 /**
  * When something changed, as people say it: "40 minutes ago", "3 hours ago", "Yesterday",
  * "Oct 3", or with its year when it isn't this one.
  */
-export function edited(at: string, timeZone: string, now = new Date()) {
-  const then = new Date(at);
-  const minutes = Math.max(0, Math.round((now.getTime() - then.getTime()) / 60_000));
-  if (minutes < 1) return 'Just now';
-  if (minutes < 60) return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
-  if (day(then, timeZone) === day(now, timeZone)) {
-    const hours = Math.round(minutes / 60);
-    return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
-  }
-  const yesterday = new Date(now.getTime() - 86_400_000);
-  if (day(then, timeZone) === day(yesterday, timeZone)) return 'Yesterday';
-  const sameYear =
-    new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric' }).format(then) ===
-    new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric' }).format(now);
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    month: 'short',
-    day: 'numeric',
-    ...(sameYear ? {} : { year: 'numeric' }),
-  }).format(then);
+export function editedLabels(timeZone: string, now = new Date()) {
+  let today: string | undefined, yesterday: string | undefined, year: string | undefined;
+  const edited = (at: string) => {
+    const then = new Date(at);
+    const minutes = Math.max(0, Math.round((now.getTime() - then.getTime()) / 60_000));
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
+    const changedDay = day(then, timeZone);
+    if (changedDay === (today ??= day(now, timeZone))) {
+      const hours = Math.round(minutes / 60);
+      return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+    }
+    if (changedDay === (yesterday ??= day(new Date(now.getTime() - 86_400_000), timeZone)))
+      return 'Yesterday';
+    const years = dateFormatter('en-US', { timeZone, year: 'numeric' });
+    const sameYear = years.format(then) === (year ??= years.format(now));
+    return dateFormatter('en-US', {
+      timeZone,
+      month: 'short',
+      day: 'numeric',
+      ...(sameYear ? {} : { year: 'numeric' }),
+    }).format(then);
+  };
+  return { edited, inline: (at: string) => inline(edited(at)) };
 }
-/** `edited` in the middle of a sentence: "Edited yesterday", "Edited Oct 3". */
-export const editedInline = (at: string, timeZone: string) => {
-  const said = edited(at, timeZone);
-  return /^[A-Z][a-z]{2} \d/.test(said) ? said : said.toLowerCase();
-};
+const inline = (said: string) => (/^[A-Z][a-z]{2} \d/.test(said) ? said : said.toLowerCase());
 
 const TONES = ['slate', 'sage', 'violet', 'steel'] as const;
 /** Someone's initials, in a tone of their name, as the team's avatars are drawn. */

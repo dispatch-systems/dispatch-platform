@@ -522,8 +522,3 @@ body:has(.onboarding-page) {
     font-size: 12px;
   }
 }
-
-/* Reveal the desktop composition together, with no timed fade or staged map appearance. */
-.onboarding-page[data-ready='false'] .onboarding-main {
-  visibility: hidden;
-}

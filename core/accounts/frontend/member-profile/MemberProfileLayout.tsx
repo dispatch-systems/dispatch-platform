@@ -28,7 +28,7 @@ export function MemberProfileLayout({
       ref={ref}
       className="member-profile-page"
       data-ready={ready}
-      aria-busy={!ready}
+
       inert={completing}
       aria-hidden={completing || undefined}
     >

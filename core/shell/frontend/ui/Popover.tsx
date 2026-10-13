@@ -63,6 +63,7 @@ export function Popover({
   className,
   triggerClassName,
   anchored = false,
+  lazy = false,
 }: {
   label: string;
   trigger: ReactNode;
@@ -71,6 +72,8 @@ export function Popover({
   triggerClassName?: string;
   /** Places the panel against the viewport so a scrolling or clipping ancestor cannot cut it off. */
   anchored?: boolean;
+  /** Mount row actions only while their menu is open. The empty panel keeps dismissal safe. */
+  lazy?: boolean;
 }) {
   const details = useRef<HTMLDetailsElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -150,7 +153,7 @@ export function Popover({
           details.current!.open = false;
         }}
       >
-        {children}
+        {(!lazy || open) && children}
       </div>
     </details>
   );

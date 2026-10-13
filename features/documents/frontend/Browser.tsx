@@ -23,6 +23,7 @@ import {
   Empty,
   Modal,
   Popover,
+  Pagination,
   SearchInput,
   openContextMenu,
 } from '../../../core/shell/frontend/ui/index.js';
@@ -40,7 +41,7 @@ import {
   type FolderStep,
   type NewKind,
 } from '../api/client.js';
-import { Initials, Thumb, Tile, edited, editedInline, kindLabel, typeOf } from './items.js';
+import { Initials, Thumb, Tile, editedLabels, kindLabel, typeOf } from './items.js';
 import { UploadNaming, UploadsPanel, dropped, picked, useUploads, type Picked } from './Uploads.js';
 import { useFromDrive } from './FromDrive.js';
 
@@ -188,8 +189,10 @@ export function Browser({
   const [asked, ask] = useState<Asked>();
   const { perform } = useFeedback();
   const [pending, setPending] = useState<Pending[]>([]);
+  const [reveal, setReveal] = useState<string>();
   const changes = useRef(0);
   const show = (change: Omit<Pending, 'key'>) => {
+    if (change.change === 'made' && change.folder === folder) setReveal(change.item.id);
     const key = `${change.change}:${changes.current++}`;
     setPending((all) => [...all, { ...change, key }]);
     return key;
@@ -512,11 +515,19 @@ export function Browser({
                   upload them.
                 </Empty>
               );
-            const props = { view, items, searching: showsSearch, ask };
             const folders = items.filter((item) => item.kind === 'folder').length;
             return (
               <div className={coming ? 'documents-coming' : undefined}>
-                {layout === 'list' ? <Table {...props} /> : <Grid {...props} />}
+                <Listing
+                  key={`${folder}:${query}:${filter}`}
+                  view={view}
+                  items={items}
+                  searching={showsSearch}
+                  ask={ask}
+                  layout={layout}
+                  reveal={reveal}
+                  revealed={() => setReveal(undefined)}
+                />
                 <p className="documents-count">{counted(folders, items.length - folders)}</p>
               </div>
             );
@@ -607,6 +618,38 @@ type ViewProps = {
   ask: (asked: Asked) => void;
 };
 
+/** Both layouts keep only one page mounted, including row menus and thumbnails. */
+function Listing({
+  layout,
+  reveal,
+  revealed,
+  ...props
+}: ViewProps & {
+  layout: Layout;
+  reveal?: string;
+  revealed: () => void;
+}) {
+  const [selected, setPage] = useState(0);
+  const pageSize = 100;
+  const page = Math.min(selected, Math.max(0, Math.ceil(props.items.length / pageSize) - 1));
+  useEffect(() => {
+    if (selected !== page) setPage(page);
+  }, [selected, page]);
+  useEffect(() => {
+    if (!reveal) return;
+    const index = props.items.findIndex((item) => item.id === reveal);
+    if (index >= 0) setPage(Math.floor(index / pageSize));
+    revealed();
+  }, [reveal, revealed, props.items]);
+  const visible = { ...props, items: props.items.slice(page * pageSize, (page + 1) * pageSize) };
+  return (
+    <>
+      {layout === 'list' ? <Table {...visible} /> : <Grid {...visible} />}
+      <Pagination page={page} pageSize={pageSize} total={props.items.length} onChange={setPage} />
+    </>
+  );
+}
+
 /**
  * Where an item opens: a folder in Documents, read as the pointer rests on it, and a file in
  * Google, in a tab of its own. One Google is still making opens nowhere yet.
@@ -647,6 +690,7 @@ function Actions({ item, ask }: { item: DocumentsItem; ask: (asked: Asked) => vo
       label={`Actions for ${item.name}`}
       trigger={<Ellipsis size={18} />}
       anchored
+      lazy
     >
       {item.kind !== 'folder' && (
         <a href={item.url} target="_blank" rel="noreferrer">
@@ -675,7 +719,7 @@ const downloadLabel = (item: DocumentsItem) =>
   ] ?? 'Download';
 
 function Table({ view, items, searching, ask }: ViewProps) {
-  const zone = view.dsp.timezone;
+  const labels = editedLabels(view.dsp.timezone);
   return (
     <div className="table-wrap">
       <table className="documents-table">
@@ -709,7 +753,7 @@ function Table({ view, items, searching, ask }: ViewProps) {
               <td className="muted">{typeOf(item)}</td>
               <td>
                 <span className="documents-edited">
-                  {edited(item.modifiedAt, zone)}
+                  {labels.edited(item.modifiedAt)}
                   {item.modifiedBy && <small>{item.modifiedBy}</small>}
                 </span>
               </td>
@@ -733,7 +777,7 @@ function Table({ view, items, searching, ask }: ViewProps) {
 }
 
 function Grid({ view, items, searching, ask }: ViewProps) {
-  const zone = view.dsp.timezone;
+  const labels = editedLabels(view.dsp.timezone);
   const folders = items.filter((item) => item.kind === 'folder');
   const files = items.filter((item) => item.kind !== 'folder');
   return (
@@ -780,7 +824,7 @@ function Grid({ view, items, searching, ask }: ViewProps) {
                       <small>
                         {searching
                           ? `in ${item.location ?? 'Documents'}`
-                          : `Edited ${editedInline(item.modifiedAt, zone)}${item.modifiedBy ? ` by ${item.modifiedBy}` : ''}`}
+                          : `Edited ${labels.inline(item.modifiedAt)}${item.modifiedBy ? ` by ${item.modifiedBy}` : ''}`}
                       </small>
                     </span>
                   </span>
